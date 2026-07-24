@@ -255,6 +255,14 @@ public final class CustomWordsManager {
     var builtinsVersion: Int = 1
     var deletedBuiltinIds: [String] = []
     var words: [CustomWord] = []
+    /// Durable bulk-import-enrichment total (#1701 Chunk 2) — the progress
+    /// card's denominator. `nil` = no run in progress. A missing key on a
+    /// pre-#1701 file decodes as `nil` automatically: this is a stored
+    /// `Optional` property with no explicit `CodingKeys` on this type, so
+    /// synthesized `Decodable` already treats an absent key as `nil`, exactly
+    /// the correct legacy behavior (no run can possibly be "in progress" in a
+    /// library persisted before this feature existed).
+    var pendingEnrichmentBatchTotal: Int?
   }
 
   /// `loadFileWhileLocked()`'s result (#1646) — distinguishes the three
@@ -327,17 +335,18 @@ public final class CustomWordsManager {
     return .needsRepair
   }
 
-  /// Load the effective word list: built-in defaults (minus tombstones) + user words.
-  /// Returns nil only on unrecoverable I/O failure or a corrupted (archived)
-  /// file — `lastLoadFailure` says which (#1646).
-  public func load() -> [CustomWord]? {
+  /// Shared resolution behind `load()` and `loadSnapshot()` (#1701 Chunk 2) —
+  /// one cascade, so the two callers can never disagree about what "the
+  /// current file" is. Sets `lastLoadFailure` exactly as the pre-#1701
+  /// `load()` body did; returns nil on the same unrecoverable conditions.
+  private func resolveCurrentFile() -> CustomWordsFile? {
     switch loadFileReadOnly() {
     case .missing:
       lastLoadFailure = nil
-      return mergedWords(file: CustomWordsFile())
+      return CustomWordsFile()
     case .loaded(let file):
       lastLoadFailure = nil
-      return mergedWords(file: file)
+      return file
     case .unreadable:
       lastLoadFailure = .unreadable
       return nil
@@ -354,7 +363,7 @@ public final class CustomWordsManager {
         let result = try withExclusiveFileLock(blocking: true) { loadFileWhileLocked() }
         switch result {
         case .missing:
-          // This same load() call already observed readable, non-current-format
+          // This same call already observed readable, non-current-format
           // bytes moments ago (that is why we are in the `.needsRepair` branch
           // at all). The app never deletes the canonical file except during
           // quarantine, so a fresh `.missing` result here, under the lock,
@@ -364,7 +373,7 @@ public final class CustomWordsManager {
           return nil
         case .loaded(let file):
           lastLoadFailure = nil
-          return mergedWords(file: file)
+          return file
         case .unreadable:
           lastLoadFailure = .unreadable
           return nil
@@ -382,6 +391,63 @@ public final class CustomWordsManager {
         lastLoadFailure = .unreadable
         return nil
       }
+    }
+  }
+
+  /// Load the effective word list: built-in defaults (minus tombstones) + user words.
+  /// Returns nil only on unrecoverable I/O failure or a corrupted (archived)
+  /// file — `lastLoadFailure` says which (#1646).
+  public func load() -> [CustomWord]? {
+    guard let file = resolveCurrentFile() else { return nil }
+    return mergedWords(file: file)
+  }
+
+  /// One read of the persisted library AND its durable bulk-import-enrichment
+  /// total together (#1701 Chunk 2), so a caller — `CustomWordsCoordinator`,
+  /// the sole AppKit adapter — can never see one without the other. Existing
+  /// `load()` stays a words-only convenience for every untouched consumer;
+  /// this is additive, sharing the identical resolution cascade.
+  package func loadSnapshot() -> CustomWordsLibrarySnapshot? {
+    guard let file = resolveCurrentFile() else { return nil }
+    return CustomWordsLibrarySnapshot(
+      words: mergedWords(file: file),
+      pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal)
+  }
+
+  /// Word list filtered to `enrichmentPending == true` (#1701 Chunk 2) — the
+  /// durable bulk-import-enrichment queue IS this scan over live state, never
+  /// a separately-tracked in-memory job list. Returns nil only on the same
+  /// unrecoverable read failure `load()`/`loadSnapshot()` report.
+  package func loadPendingEnrichmentWords() -> [CustomWord]? {
+    guard let file = resolveCurrentFile() else { return nil }
+    return mergedWords(file: file).filter(\.enrichmentPending)
+  }
+
+  /// Two-way self-heal (#1701 Chunk 2, Codex Chunk 2 review finding 2b) — a
+  /// state normal operation should never produce, but tolerated defensively
+  /// rather than treated as fatal:
+  /// - Pending words exist but no durable total: repairs the total to the
+  ///   current live pending count.
+  /// - No pending words exist but a total is stuck non-nil (e.g. the last
+  ///   pending word was deleted, whose checkpoint result then found nothing
+  ///   to apply and so never reached the total-clearing check): clears it.
+  /// No-op write when nothing needs repairing. Returns the resulting
+  /// (possibly just-repaired) total either way, so the caller always learns
+  /// the true current denominator. Called by the background coordinator
+  /// before it begins draining.
+  package func repairPendingEnrichmentTotalIfNeeded() throws -> Int? {
+    try performLockedTransaction { file -> (value: Int?, shouldSave: Bool) in
+      let livePendingCount = file.words.filter(\.enrichmentPending).count
+      if livePendingCount == 0 {
+        guard file.pendingEnrichmentBatchTotal != nil else { return (nil, false) }
+        file.pendingEnrichmentBatchTotal = nil
+        return (nil, true)
+      }
+      guard file.pendingEnrichmentBatchTotal == nil else {
+        return (file.pendingEnrichmentBatchTotal, false)
+      }
+      file.pendingEnrichmentBatchTotal = livePendingCount
+      return (livePendingCount, true)
     }
   }
 
@@ -850,12 +916,43 @@ public final class CustomWordsManager {
 
         // (3) Additions — fresh UUID each; unspecified fields take type defaults,
         // since there is no existing word to preserve from.
+        //
+        // Eligible additions enter the bulk-import-enrichment queue here
+        // (#1701 Chunk 2) — `plan.enrichmentEligible` is per-BATCH, so it
+        // applies uniformly to every addition in this plan, never to a
+        // Replace (a machine guess must not overwrite hand-tuned aliases
+        // either way, matching D15's existing rule for suggestedAliases).
         var addedIDs: [UUID] = []
+        var newlyPendingCount = 0
         for candidate in plan.additions {
-          let word = Self.makeAddition(from: candidate)
+          var word = Self.makeAddition(from: candidate)
           guard !word.canonical.isEmpty else { throw CustomWordsImportCommitError.invalidPlan }
+          if plan.enrichmentEligible {
+            word.enrichmentPending = true
+            newlyPendingCount += 1
+          }
           file.words.append(word)
           addedIDs.append(word.id)
+        }
+        // Atomically, in this SAME transaction as the flags just set above
+        // (never left "untouched" while flags change underneath it): extend
+        // an already-active total, or start one. Never reset smaller — a
+        // second import committing mid-drain must not lose the first run's
+        // remaining count. When the stored total is nil, it is NOT safe to
+        // assume nothing was pending before this commit (Codex Chunk 2 review
+        // finding 2a) — that is the same defensive "should never happen"
+        // state `repairPendingEnrichmentTotalIfNeeded` exists to heal, and if
+        // this commit wrote a total covering only its OWN new additions, the
+        // total would go non-nil and the repair path would never fire again,
+        // permanently undercounting. Base a fresh total on every word
+        // currently pending (already includes this commit's own additions,
+        // appended above), never just this commit's delta.
+        if newlyPendingCount > 0 {
+          if let existingTotal = file.pendingEnrichmentBatchTotal {
+            file.pendingEnrichmentBatchTotal = existingTotal + newlyPendingCount
+          } else {
+            file.pendingEnrichmentBatchTotal = file.words.filter(\.enrichmentPending).count
+          }
         }
 
         let touchedIDs = Set(addedIDs + replacedIDs)
@@ -908,7 +1005,8 @@ public final class CustomWordsManager {
         // saves `file` right after this closure returns, so this IS what will be on disk.
         resulting = mergedWords(file: file)
         let receipt = CustomWordsImportCommitReceipt(
-          addedIDs: addedIDs, replacedIDs: replacedIDs, droppedAliasCollisions: dropped)
+          addedIDs: addedIDs, replacedIDs: replacedIDs, droppedAliasCollisions: dropped,
+          pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal)
         return ((receipt, resulting), true)
       }
     } catch let persistenceError as CustomWordsPersistenceError {
@@ -938,6 +1036,151 @@ public final class CustomWordsManager {
       words = merged
     }
     return outcome.0
+  }
+
+  // MARK: - Bulk-import enrichment checkpoint (#1701 Chunk 2)
+
+  /// Merge-safe, pending-gated checkpoint. For each result: reload the live
+  /// word by ID under the SAME lock this saves with, apply only if it still
+  /// has `enrichmentPending == true` — first durable terminal action wins, so
+  /// a late result for a word another writer already checkpointed or
+  /// Cancel already cleared is silently skipped, never resurrecting the flag
+  /// and never applying a second time — append sanitized, nonduplicate
+  /// generated aliases to whatever aliases are there RIGHT NOW (never a
+  /// caller-supplied snapshot that could have gone stale across the await
+  /// before this call), clear the flag, leave every other field untouched. A
+  /// missing/deleted ID is skipped, never resurrected. Reapplying the
+  /// identical result is idempotent: a second pass finds
+  /// `enrichmentPending == false` already and no-ops.
+  ///
+  /// A generated alias clears the SAME `WordCorrector` ownership index the
+  /// import commit path's `enforceAliases` is built on, but ONLY the newly
+  /// generated alias is validated against it — never a touched word's
+  /// pre-existing aliases, which `enforceAliases`'s own touched-order replay
+  /// would otherwise re-evaluate and could silently drop even though this
+  /// checkpoint never intended to touch them (Codex Chunk 2 review round 2
+  /// finding 1: reusing `enforceAliases` wholesale let one touched word's
+  /// PRE-EXISTING alias lose to another touched word's PRE-EXISTING alias in
+  /// the same batch — neither was generated content). So a generated guess
+  /// can never collide with another word's canonical or ANY existing alias,
+  /// human-authored or otherwise (D17), while every already-persisted alias
+  /// on every word — touched or not — is left completely untouched. `applied`
+  /// reports exactly which generated aliases actually landed per touched
+  /// word (finding 6).
+  ///
+  /// The durable total is cleared whenever the freshly-computed live pending
+  /// count is zero, unconditionally — never gated behind whether THIS batch
+  /// itself changed anything (Codex Chunk 2 review finding 2b: a checkpoint
+  /// whose only result referenced an already-deleted word changes nothing
+  /// itself, but the delete may have been what brought the live count to
+  /// zero, and that must still clear the total).
+  package func applyEnrichmentResults(
+    _ results: [CustomWordEnrichmentResult]
+  ) throws -> CustomWordsEnrichmentCheckpointOutcome {
+    try performLockedTransaction {
+      file -> (value: CustomWordsEnrichmentCheckpointOutcome, shouldSave: Bool) in
+      var touchedIDs: [UUID] = []
+      var candidatesByID: [UUID: [String]] = [:]
+
+      for result in results {
+        guard let idx = file.words.firstIndex(where: { $0.id == result.id }) else { continue }
+        guard file.words[idx].enrichmentPending else { continue }
+        let existingKeys = Set(file.words[idx].aliases.map(Self.importPersistenceKey))
+        var seenThisWord = existingKeys
+        var candidates: [String] = []
+        for alias in Self.sanitizeAliases(result.generatedAliases) {
+          let key = Self.importPersistenceKey(alias)
+          guard !key.isEmpty, !seenThisWord.contains(key) else { continue }
+          candidates.append(alias)
+          seenThisWord.insert(key)
+        }
+        file.words[idx].enrichmentPending = false
+        touchedIDs.append(result.id)
+        candidatesByID[result.id] = candidates
+      }
+
+      // Ownership seeded from the CURRENT, untouched library — every alias
+      // any word holds right now, whether or not that word is touched, is a
+      // real existing claim a new guess must respect. Never stripped and
+      // never replayed: only the newly generated candidates below are ever
+      // validated or gap-filled.
+      var index = WordCorrector.buildExactTriggerIndex(words: mergedWords(file: file))
+      var applied: [CustomWordEnrichmentResult] = []
+      for id in touchedIDs {
+        guard let idx = file.words.firstIndex(where: { $0.id == id }) else {
+          applied.append(CustomWordEnrichmentResult(id: id, generatedAliases: []))
+          continue
+        }
+        let canonical = file.words[idx].canonical
+        let canonicalKey = Self.importPersistenceKey(canonical)
+        var accepted: [String] = []
+        for alias in candidatesByID[id] ?? [] {
+          // Redundant with the word's OWN canonical: silently dropped, same
+          // as `enforceAliases` (Codex Chunk 2 review round 3 finding 1 — the
+          // per-word ownership check excludes the word's own existing
+          // claims, so without this a generated "Kubernetes" could land on
+          // canonical "Kubernetes" itself).
+          if Self.importPersistenceKey(alias) == canonicalKey { continue }
+          // Mirrors `enforceAliases`'s own three-way branch exactly — a
+          // generated guess earns no different treatment than an imported
+          // one. `.noClaims` (the alias produces no real trigger claim at
+          // all) is dropped, same as there.
+          switch index.resolveAliasOwnership(for: alias, excludingOwnerID: id) {
+          case .noClaims, .blocked:
+            continue
+          case .available(let claims):
+            index.gapFill(
+              claims,
+              owner: WordCorrector.TriggerOwner(wordID: id, canonical: canonical, isPack: false))
+            accepted.append(alias)
+          }
+        }
+        file.words[idx].aliases.append(contentsOf: accepted)
+        applied.append(CustomWordEnrichmentResult(id: id, generatedAliases: accepted))
+      }
+
+      let changed = !touchedIDs.isEmpty
+      let stillPending = file.words.contains(where: \.enrichmentPending)
+      var totalChanged = false
+      if file.pendingEnrichmentBatchTotal != nil, !stillPending {
+        file.pendingEnrichmentBatchTotal = nil
+        totalChanged = true
+      }
+
+      return (
+        CustomWordsEnrichmentCheckpointOutcome(
+          snapshot: CustomWordsLibrarySnapshot(
+            words: mergedWords(file: file),
+            pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal),
+          applied: applied),
+        changed || totalChanged
+      )
+    }
+  }
+
+  /// Durable Cancel: one locked reload-and-sweep that clears
+  /// `enrichmentPending` on every word CURRENTLY found `true` in the freshly
+  /// reloaded file — never a caller's potentially-stale in-memory target
+  /// list — and clears the durable total to nil in the same transaction.
+  /// Returns the resulting snapshot so the caller can atomically adopt both.
+  package func cancelEnrichment() throws -> CustomWordsLibrarySnapshot {
+    try performLockedTransaction { file -> (value: CustomWordsLibrarySnapshot, shouldSave: Bool) in
+      var changed = false
+      for idx in file.words.indices where file.words[idx].enrichmentPending {
+        file.words[idx].enrichmentPending = false
+        changed = true
+      }
+      if file.pendingEnrichmentBatchTotal != nil {
+        file.pendingEnrichmentBatchTotal = nil
+        changed = true
+      }
+      return (
+        CustomWordsLibrarySnapshot(
+          words: mergedWords(file: file),
+          pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal),
+        changed
+      )
+    }
   }
 
   /// This type's own dedup rule, named so the import path cannot accidentally

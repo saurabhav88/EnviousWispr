@@ -72,20 +72,88 @@ package struct CustomWordsImportCommitPlan: Sendable, Equatable {
   package let baseline: CustomWordsImportLibrarySnapshot
   package let additions: [CustomWordsImportCandidate]
   package let replacements: [CustomWordsImportReplacement]
+  /// Carried from the originating `CustomWordsImportBatch.enrichmentEligible`
+  /// (#1701 Chunk 2), retained by `CustomWordsImportFlowModel` from
+  /// `loadCandidates()` through `confirm()` — nothing about the originating
+  /// batch otherwise survives to commit time. `commitImport` reads this once,
+  /// inside its own locked transaction, to decide whether freshly-added words
+  /// enter the bulk-import-enrichment queue. Never applies to Replace: a
+  /// machine guess must not overwrite hand-tuned aliases either way.
+  package let enrichmentEligible: Bool
 
   package init(
     baseline: CustomWordsImportLibrarySnapshot,
     additions: [CustomWordsImportCandidate],
-    replacements: [CustomWordsImportReplacement]
+    replacements: [CustomWordsImportReplacement],
+    enrichmentEligible: Bool = true
   ) {
     self.baseline = baseline
     self.additions = additions
     self.replacements = replacements
+    self.enrichmentEligible = enrichmentEligible
   }
 
   /// True when the commit would change nothing — an all-Skip confirm. Such a
   /// commit writes no file and takes no backup.
   package var isEmpty: Bool { additions.isEmpty && replacements.isEmpty }
+}
+
+/// One manager-level read of the persisted library plus its durable
+/// bulk-import-enrichment total, returned together so a caller can never see
+/// one without the other (#1701 Chunk 2). Deliberately NOT
+/// `CustomWordsImportLibrarySnapshot` above — that type is Review's baseline
+/// (excludes usage history, compares by value for staleness); this one is the
+/// AppKit-layer read path for `CustomWordsCoordinator.loadSnapshot()`, always
+/// initialized together so the total can never be read stale relative to the
+/// words it describes.
+package struct CustomWordsLibrarySnapshot: Sendable, Equatable {
+  package let words: [CustomWord]
+  /// `nil` = no bulk-import-enrichment run in progress. A number is the
+  /// honest original size of the current run, only ever extended (never
+  /// reset smaller) by a later import committing mid-drain.
+  package let pendingEnrichmentBatchTotal: Int?
+
+  package init(words: [CustomWord], pendingEnrichmentBatchTotal: Int?) {
+    self.words = words
+    self.pendingEnrichmentBatchTotal = pendingEnrichmentBatchTotal
+  }
+}
+
+/// One bulk-import-enrichment checkpoint outcome: stable word identity plus
+/// generated aliases ONLY — deliberately never a full `CustomWord` snapshot,
+/// which could go stale across the `await` between the background
+/// coordinator reading a word and checkpointing its result (#1701 Chunk 2).
+/// `CustomWordsManager.applyEnrichmentResults` reloads the live word by this
+/// `id`, under the same lock it writes with, and appends only these aliases
+/// to whatever is there right now.
+package struct CustomWordEnrichmentResult: Sendable, Equatable {
+  package let id: UUID
+  package let generatedAliases: [String]
+
+  package init(id: UUID, generatedAliases: [String]) {
+    self.id = id
+    self.generatedAliases = generatedAliases
+  }
+}
+
+/// The full outcome of one `CustomWordsManager.applyEnrichmentResults` call
+/// (Codex Chunk 2 review finding 6): the resulting snapshot, AND — separately
+/// from the caller's raw input — exactly which results actually applied and
+/// exactly which aliases actually landed for each, after in-word dedup AND
+/// cross-word alias-ownership enforcement (finding 3). A TOUCHED word (found
+/// and still pending) always appears here, with fewer aliases than it sent —
+/// possibly zero, if every one collided or was redundant with its own
+/// canonical — never more. A word is ABSENT only when its result was skipped
+/// entirely (not found, or no longer pending) — the input alone is never
+/// proof of what was actually persisted.
+package struct CustomWordsEnrichmentCheckpointOutcome: Sendable, Equatable {
+  package let snapshot: CustomWordsLibrarySnapshot
+  package let applied: [CustomWordEnrichmentResult]
+
+  package init(snapshot: CustomWordsLibrarySnapshot, applied: [CustomWordEnrichmentResult]) {
+    self.snapshot = snapshot
+    self.applied = applied
+  }
 }
 
 package struct CustomWordsImportCommitReceipt: Sendable, Equatable {
@@ -95,15 +163,22 @@ package struct CustomWordsImportCommitReceipt: Sendable, Equatable {
   /// `suggestedAliases`. The AI channel gets no compare-time disclosure, so
   /// this receipt is its only reporting path.
   package let droppedAliasCollisions: [CustomWordsImportAliasCollision]
+  /// The durable bulk-import-enrichment total immediately after this commit
+  /// (#1701 Chunk 2) — `nil` when no run is in progress. Lets
+  /// `CustomWordsCoordinator` adopt the fresh total from the SAME commit that
+  /// just wrote it, without a separate follow-up read.
+  package let pendingEnrichmentBatchTotal: Int?
 
   package init(
     addedIDs: [UUID],
     replacedIDs: [UUID],
-    droppedAliasCollisions: [CustomWordsImportAliasCollision]
+    droppedAliasCollisions: [CustomWordsImportAliasCollision],
+    pendingEnrichmentBatchTotal: Int? = nil
   ) {
     self.addedIDs = addedIDs
     self.replacedIDs = replacedIDs
     self.droppedAliasCollisions = droppedAliasCollisions
+    self.pendingEnrichmentBatchTotal = pendingEnrichmentBatchTotal
   }
 }
 

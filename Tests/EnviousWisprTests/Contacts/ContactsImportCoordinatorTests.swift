@@ -42,6 +42,9 @@ private final class FakeAliasSuggester: AliasSuggesting, @unchecked Sendable {
   let available: Bool
   let aliasesByWord: [String: [String]]
   private(set) var calls: [String] = []
+  /// Priority received on each call, in order — #1701 characterization: the
+  /// coordinator must pass `.background` on every call, never the default.
+  private(set) var priorities: [AliasSuggestionPriority] = []
 
   init(available: Bool, aliasesByWord: [String: [String]] = [:]) {
     self.available = available
@@ -50,9 +53,21 @@ private final class FakeAliasSuggester: AliasSuggesting, @unchecked Sendable {
 
   var isAvailable: Bool { available }
 
-  func suggestAliases(for word: String, category: WordCategory) async -> [String]? {
+  func suggestAliases(
+    for word: String, category: WordCategory, priority: AliasSuggestionPriority
+  ) async -> [String]? {
     calls.append(word)
+    priorities.append(priority)
     return aliasesByWord[word]
+  }
+
+  /// Contacts import always pins `.person` and never takes this path; a
+  /// minimal stub satisfies protocol conformance (#1701 Phase 3 review
+  /// finding A).
+  func suggestAliases(
+    for word: String, priority: AliasSuggestionPriority
+  ) async -> [String]? {
+    aliasesByWord[word]
   }
 }
 
@@ -231,6 +246,21 @@ struct ContactsImportCoordinatorTests {
     await coord.awaitEnrichmentForTesting()
     #expect(cw.customWords.first { $0.canonical == "Rajesh" }?.aliases == ["rah jesh", "raj esh"])
     #expect(cw.customWords.first { $0.canonical == "Vasquez" }?.aliases == ["vaskez", "vah skez"])
+  }
+
+  @Test("Enrichment calls the shared suggester with background priority, never the default (#1701)")
+  func enrichmentUsesBackgroundPriority() async {
+    let provider = FakeContactProvider(
+      status: .authorized, candidates: [contact("Rajesh", "Vasquez", id: "c1")])
+    let fake = FakeAliasSuggester(
+      available: true, aliasesByWord: ["Rajesh": ["r"], "Vasquez": ["v"]])
+    let (coord, _, _, dir) = make(provider: provider, suggester: fake)
+    defer { cleanup(dir) }
+    await coord.prepareImport()
+    coord.confirmImport()
+    await coord.awaitEnrichmentForTesting()
+    #expect(fake.calls.count == 2)
+    #expect(fake.priorities == [.background, .background])
   }
 
   @Test("Enrichment clears its progress line on completion")

@@ -57,6 +57,8 @@ public final class WisprBootstrapper {
   let activeEngine: ActiveEngineOperation
   let customWordsCoordinator: CustomWordsCoordinator
   let contactsImportCoordinator: ContactsImportCoordinator
+  /// #1701 Chunk 2 — UI Cancel routes through `customWordsCoordinator.cancelBulkImportEnrichment`.
+  let bulkImportEnrichmentCoordinator: BulkImportEnrichmentCoordinator
   let setup: SetupCoordinator
   /// #1271 — EG-1 native runtime home (model store + inference server).
   let egOneRuntime: EGOneRuntime
@@ -121,6 +123,25 @@ public final class WisprBootstrapper {
     let contactsImportCoordinator = ContactsImportCoordinator(
       customWords: customWordsCoordinator,
       aliasSuggester: customWordsCoordinator.aliasSuggester)
+    // #1701 Chunk 2: bulk-import-enrichment producer, a sibling of
+    // `contactsImportCoordinator` on the same alias-suggester permit lane.
+    // Construction is unconditional; the DEBUG gate below controls scanning.
+    let bulkImportEnrichmentCoordinator = BulkImportEnrichmentCoordinator(
+      customWords: customWordsCoordinator,
+      aliasSuggester: customWordsCoordinator.aliasSuggester,
+      presentStatus: { [weak recordingOverlay] message in
+        recordingOverlay?.showImportStatus(message: message)
+      })
+    #if DEBUG
+      customWordsCoordinator.onImportCommitted = { [weak bulkImportEnrichmentCoordinator] in
+        bulkImportEnrichmentCoordinator?.requestDrain()
+      }
+      customWordsCoordinator.cancelBulkImportEnrichment = {
+        [weak bulkImportEnrichmentCoordinator] in
+        bulkImportEnrichmentCoordinator?.cancel()
+      }
+      bulkImportEnrichmentCoordinator.requestDrain()
+    #endif
     let customWordsPropagator = CustomWordsPropagator()
     // #633 Phase 9: owns enabled vocabulary-pack state; merges pack terms into
     // the corrector lane (default OFF). Wired into `wireCustomWords` below.
@@ -954,6 +975,7 @@ public final class WisprBootstrapper {
     self.activeEngine = activeEngine
     self.customWordsCoordinator = customWordsCoordinator
     self.contactsImportCoordinator = contactsImportCoordinator
+    self.bulkImportEnrichmentCoordinator = bulkImportEnrichmentCoordinator
     self.setup = setup
     self.whisperKitRetirement = whisperKitRetirement
     self.egOneRuntime = egOneRuntime

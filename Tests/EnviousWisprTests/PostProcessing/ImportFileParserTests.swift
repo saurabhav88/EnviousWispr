@@ -52,6 +52,29 @@ struct ImportFileParserTests {
     #expect(candidate.minSimilarityOverride == .supplied(0.8))
   }
 
+  @Test("an exported words file is not eligible for background enrichment")
+  func exportedWordsFileIsNotEnrichmentEligible() async throws {
+    // #1701 Chunk 2: a backup restore is already as complete as it will get —
+    // re-enriching it would waste a model call on data that was never
+    // eligible in the first place.
+    let original = CustomWord(canonical: "Kubernetes", aliases: ["k8s"], category: .brand)
+    let data = try CustomWordsTransferDocument(words: [original]).encoded()
+    let url = try write(data, as: "words.json")
+
+    let batch = try await FileImportSource(url: url).loadCandidates()
+
+    #expect(batch.enrichmentEligible == false)
+  }
+
+  @Test("a plain-text file IS eligible for background enrichment")
+  func plainTextFileIsEnrichmentEligible() async throws {
+    let url = try write("Kubernetes", as: "words.txt")
+
+    let batch = try await FileImportSource(url: url).loadCandidates()
+
+    #expect(batch.enrichmentEligible == true)
+  }
+
   @Test("a JSON file that isn't ours says so, rather than reading as damaged")
   func foreignJSONReportsItDidNotComeFromEnviousWispr() async throws {
     let url = try write(#"{"format":"com.example.other","version":1,"words":[]}"#, as: "other.json")
@@ -1127,6 +1150,23 @@ struct ImportFileParserTests {
     await #expect(throws: CustomWordsImportValidationError.self) {
       try await FileImportSource(url: url).loadCandidates()
     }
+  }
+
+  @Test("validated() preserves enrichmentEligible through reconstruction")
+  func validatedPreservesEnrichmentEligible() throws {
+    // #1701 Chunk 2 (Grounded Review round 2 — the actual bug the plan's
+    // first revision missed): validated() rebuilds the batch from scratch, so
+    // a field not explicitly threaded through silently reverts to its default.
+    let candidates = [CustomWordsImportCandidate(canonical: "Kubernetes")]
+    let ineligible = CustomWordsImportBatch(
+      sourceID: "exported-words", sourceDisplayName: "test", candidates: candidates,
+      enrichmentEligible: false)
+    #expect(try ineligible.validated().enrichmentEligible == false)
+
+    let eligible = CustomWordsImportBatch(
+      sourceID: "plain-text", sourceDisplayName: "test", candidates: candidates,
+      enrichmentEligible: true)
+    #expect(try eligible.validated().enrichmentEligible == true)
   }
 
 }

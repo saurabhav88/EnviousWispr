@@ -82,6 +82,14 @@ package protocol ImportFileParser: Sendable {
   /// the words but not the bytes left the identical round-trip hole one layer
   /// down, since the byte check runs BEFORE the parser is consulted.
   var maximumBytes: Int { get }
+  /// Whether words newly added from this format should enter the bulk-import
+  /// enrichment queue (#1701 Chunk 2). Defaults `true` — every format opts
+  /// out deliberately, with a stated reason. Read off the matched parser by
+  /// `FileImportSource.loadRawCandidates()` and carried as a batch-level flag
+  /// (never per-candidate — `CustomWordsImportCandidate` deliberately cannot
+  /// carry provenance, and one Upload conformer serves multiple parsers, so
+  /// this is the correct, and only, seam for the decision).
+  var enrichmentEligible: Bool { get }
   func parse(data: Data) throws -> [CustomWordsImportCandidate]
 }
 
@@ -89,6 +97,7 @@ extension ImportFileParser {
   /// Formats default to the shared ceilings; a format opts out deliberately.
   package var maximumCandidates: Int? { CustomWordsImportLimits.maximumCandidates }
   package var maximumBytes: Int { CustomWordsImportLimits.maximumImportFileBytes }
+  package var enrichmentEligible: Bool { true }
 }
 
 /// The file EnviousWispr itself exports.
@@ -126,6 +135,14 @@ package struct ExportedWordsFileParser: ImportFileParser {
   /// case.
   package let maximumCandidates: Int? = CustomWordsImportLimits.maximumExportedCandidates
   package let maximumBytes = CustomWordsImportLimits.maximumExportedFileBytes
+
+  /// The user's own backup restore is already as complete as it will ever
+  /// get — whatever aliases it carries are what a prior enrichment run (or
+  /// hand-tuning) already produced. Re-enriching it would spend a model call
+  /// improving data this parser's own doc comment above says needs no
+  /// improving (#1701 Chunk 2). The sole override in this protocol; every
+  /// other parser inherits `true` unless it states an equally explicit reason.
+  package let enrichmentEligible = false
 
   package init() {}
 
@@ -302,7 +319,8 @@ package struct ImportFileRegistry: Sendable {
   /// this is the panel's view of the same set.
   package var acceptedContentTypes: [UTType] {
     let declared = parsers.flatMap(\.contentTypes)
-    let fromExtensions = parsers
+    let fromExtensions =
+      parsers
       .flatMap(\.fileExtensions)
       .compactMap { UTType(filenameExtension: $0) }
     var seen = Set<UTType>()
@@ -395,7 +413,8 @@ package struct FileImportSource: CustomWordsImportSource {
     return CustomWordsImportBatch(
       sourceID: parser.identifier,
       sourceDisplayName: parser.displayName,
-      candidates: candidates
+      candidates: candidates,
+      enrichmentEligible: parser.enrichmentEligible
     )
   }
 }

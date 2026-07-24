@@ -87,4 +87,31 @@ struct CustomWordSchemaTests {
     #expect(word.frequencyUsed == 0)
     #expect(word.lastUsed == nil)
   }
+
+  @Test("Decode pre-#1701 JSON (no enrichmentPending) defaults to false")
+  func decodePreEnrichmentJSONDefaultsToFalse() throws {
+    let json = """
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "canonical": "EnviousWispr",
+        "aliases": ["envious wispr"],
+        "category": "brand",
+        "priority": 0,
+        "forceReplace": false,
+        "caseSensitive": false
+      }
+      """.data(using: .utf8)!
+
+    let word = try JSONDecoder().decode(CustomWord.self, from: json)
+    #expect(word.enrichmentPending == false, "Missing enrichmentPending defaults to false")
+  }
+
+  @Test("Round-trip preserves enrichmentPending")
+  func roundTripPreservesEnrichmentPending() throws {
+    var original = CustomWord(canonical: "Qualtrics")
+    original.enrichmentPending = true
+    let data = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(CustomWord.self, from: data)
+    #expect(decoded.enrichmentPending == true)
+  }
 }

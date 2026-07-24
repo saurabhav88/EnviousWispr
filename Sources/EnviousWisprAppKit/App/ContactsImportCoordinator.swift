@@ -338,7 +338,8 @@ final class ContactsImportCoordinator {
         enrichmentProgress?.done = attempted
         continue
       }
-      let raw = await suggester.suggestAliases(for: current.canonical, category: .person)
+      let raw = await suggester.suggestAliases(
+        for: current.canonical, category: .person, priority: .background)
       if Task.isCancelled { return }  // post-await: never write for a cancelled job
       attempted += 1
       enrichmentProgress?.done = attempted

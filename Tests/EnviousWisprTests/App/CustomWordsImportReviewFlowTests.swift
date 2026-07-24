@@ -53,9 +53,11 @@ struct CustomWordsImportReviewFlowTests {
 
   struct StubSource: CustomWordsImportSource {
     let candidates: [CustomWordsImportCandidate]
+    var enrichmentEligible = true
     func loadRawCandidates() async throws -> CustomWordsImportBatch {
       CustomWordsImportBatch(
-        sourceID: "test", sourceDisplayName: "Test", candidates: candidates)
+        sourceID: "test", sourceDisplayName: "Test", candidates: candidates,
+        enrichmentEligible: enrichmentEligible)
     }
   }
 
@@ -131,10 +133,11 @@ struct CustomWordsImportReviewFlowTests {
 
   /// Drive a source to the review screen. Returns once the flow settles.
   static func runToReview(
-    _ model: Model, candidates: [CustomWordsImportCandidate]
+    _ model: Model, candidates: [CustomWordsImportCandidate], enrichmentEligible: Bool = true
   ) async {
     model.select(.paste)
-    model.begin(with: StubSource(candidates: candidates))
+    model.begin(
+      with: StubSource(candidates: candidates, enrichmentEligible: enrichmentEligible))
     await Self.settle(model, waitingFor: "the review or result screen") {
       $0.step == .review || $0.step.isResult
     }
@@ -272,6 +275,48 @@ struct CustomWordsImportReviewFlowTests {
     #expect(plan.replacements.isEmpty)
     #expect(plan.additions.map(\.canonical) == ["Kubernetes"])
     #expect(model.step == .result(.completed(added: 1, replaced: 0)))
+  }
+
+  @Test("confirm's plan carries the loaded batch's enrichmentEligible (#1701 Chunk 2)")
+  func confirmPlanCarriesBatchEnrichmentEligible() async {
+    let compare = CompareSpy()
+    let commit = CommitSpy()
+    compare.results = [[Self.comparison("Kubernetes", .new)]]
+    commit.outcomes = [
+      .committed(
+        CustomWordsImportCommitReceipt(
+          addedIDs: [UUID()], replacedIDs: [], droppedAliasCollisions: []))
+    ]
+    let model = Self.makeModel(compare: compare, commit: commit)
+    await Self.runToReview(
+      model, candidates: [Self.candidate("Kubernetes")], enrichmentEligible: false)
+
+    model.confirm()
+
+    #expect(try! #require(commit.plans.first).enrichmentEligible == false)
+  }
+
+  @Test("a second, unrelated load never inherits an earlier batch's eligibility")
+  func secondLoadReflectsOnlyItsOwnBatchEligibility() async {
+    // #1701 Chunk 2: an ineligible batch's flag must never leak into a
+    // SUBSEQUENT, unrelated load in the same still-open sheet.
+    let compare = CompareSpy()
+    let commit = CommitSpy()
+    compare.results = [[Self.comparison("Kubernetes", .new)], [Self.comparison("Qualtrics", .new)]]
+    commit.outcomes = [
+      .committed(
+        CustomWordsImportCommitReceipt(
+          addedIDs: [UUID()], replacedIDs: [], droppedAliasCollisions: []))
+    ]
+    let model = Self.makeModel(compare: compare, commit: commit)
+    await Self.runToReview(
+      model, candidates: [Self.candidate("Kubernetes")], enrichmentEligible: false)
+
+    // Second, unrelated load — the eligible default this time.
+    await Self.runToReview(model, candidates: [Self.candidate("Qualtrics")])
+    model.confirm()
+
+    #expect(try! #require(commit.plans.first).enrichmentEligible == true)
   }
 
   @Test("confirm with everything skipped writes nothing")

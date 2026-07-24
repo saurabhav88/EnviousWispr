@@ -901,6 +901,13 @@ struct CustomWordsManagerLockingTests {
 
     let loadSlice = try functionBody(
       in: source, declaring: "public func load() -> [CustomWord]?")
+    // #1701 Chunk 2: the missing/loaded/unreadable/needsRepair cascade —
+    // including load()'s blocking repair path — moved out of load() into
+    // this shared helper, verbatim, so loadSnapshot() and
+    // loadPendingEnrichmentWords() can reuse the identical resolution
+    // without duplicating it. load() itself is now a thin two-line wrapper.
+    let resolveCurrentFileSlice = try functionBody(
+      in: source, declaring: "private func resolveCurrentFile() -> CustomWordsFile?")
     let transactionSlice = try functionBody(
       in: source, declaring: "private func performLockedTransaction<T>(")
     let loadFileWhileLockedSlice = try functionBody(
@@ -922,16 +929,20 @@ struct CustomWordsManagerLockingTests {
       source.components(separatedBy: "try withExclusiveFileLock").count - 1 == 2,
       "Expected exactly two `try withExclusiveFileLock` call sites in the whole file.")
     #expect(
-      loadSlice.contains("try withExclusiveFileLock"),
-      "load()'s repair path must call withExclusiveFileLock.")
+      resolveCurrentFileSlice.contains("try withExclusiveFileLock"),
+      "resolveCurrentFile()'s repair path must call withExclusiveFileLock.")
     #expect(
       transactionSlice.contains("try withExclusiveFileLock"),
       "performLockedTransaction must call withExclusiveFileLock.")
 
-    // 3. load()'s slice shape.
-    #expect(loadSlice.contains("loadFileReadOnly()"))
-    #expect(loadSlice.contains("withExclusiveFileLock(blocking: true)"))
-    #expect(loadSlice.contains("loadFileWhileLocked()"))
+    // 3. resolveCurrentFile()'s slice shape — load()'s own slice is now just
+    // a two-line wrapper delegating to it (#1701 Chunk 2).
+    #expect(resolveCurrentFileSlice.contains("loadFileReadOnly()"))
+    #expect(resolveCurrentFileSlice.contains("withExclusiveFileLock(blocking: true)"))
+    #expect(resolveCurrentFileSlice.contains("loadFileWhileLocked()"))
+    #expect(
+      loadSlice.contains("resolveCurrentFile()"),
+      "load() must delegate to resolveCurrentFile(), not inline the cascade.")
 
     // 4. performLockedTransaction's slice shape — the mutation loader and
     // its sole save call (already proven non-blocking by check 2 above).

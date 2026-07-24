@@ -131,17 +131,29 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
   package let sourceDisplayName: String
   package let candidates: [CustomWordsImportCandidate]
   package let notices: [CustomWordsImportNotice]
+  /// Per-BATCH (not per-candidate — one import session is uniformly eligible
+  /// or not), whether newly-added words from this batch should enter the
+  /// bulk-import-enrichment queue (#1701 Chunk 2). Defaults `true` so Paste
+  /// and Smart Import, which never construct this explicitly, stay eligible
+  /// for free. Only `ExportedWordsFileParser` sets this `false`, via
+  /// `FileImportSource.loadRawCandidates()` copying the matched parser's
+  /// `enrichmentEligible` — the user's own backup restore is already as
+  /// complete as it will get, so re-enriching it would waste a model call on
+  /// data that was never eligible in the first place.
+  package let enrichmentEligible: Bool
 
   package init(
     sourceID: String,
     sourceDisplayName: String,
     candidates: [CustomWordsImportCandidate],
-    notices: [CustomWordsImportNotice] = []
+    notices: [CustomWordsImportNotice] = [],
+    enrichmentEligible: Bool = true
   ) {
     self.sourceID = sourceID
     self.sourceDisplayName = sourceDisplayName
     self.candidates = candidates
     self.notices = notices
+    self.enrichmentEligible = enrichmentEligible
   }
 
   /// Refuses the WHOLE batch if any candidate is unstorable.
@@ -200,7 +212,8 @@ package struct CustomWordsImportBatch: Sendable, Equatable {
       sourceID: sourceID,
       sourceDisplayName: sourceDisplayName,
       candidates: candidates.map { $0.trimmed() },
-      notices: notices)
+      notices: notices,
+      enrichmentEligible: enrichmentEligible)
   }
 }
 

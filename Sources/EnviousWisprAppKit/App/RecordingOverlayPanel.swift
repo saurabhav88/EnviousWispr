@@ -62,6 +62,21 @@ final class RecordingOverlayPanel {
   /// shows only when `currentIntent == .hidden`).
   private(set) var currentIntent: OverlayIntent = .hidden
 
+  /// Local, generation-stamped ownership record for the bulk-import-status
+  /// pill (#1701 Phase 3 review finding B). Deliberately NOT an `OverlayIntent`
+  /// case — that enum is the dictation/processing pipeline's own intent set;
+  /// import-status UI ownership is local to this panel. The generation match
+  /// is the ownership proof: a stale import record can never authorize
+  /// closing a panel a newer recording or processing transition created.
+  private struct ImportStatusPresentation {
+    let generation: UInt64
+    let message: String
+  }
+  private var importStatusPresentation: ImportStatusPresentation?
+  private var importStatusOwnsCurrentSlot: Bool {
+    currentIntent == .hidden && importStatusPresentation?.generation == generation
+  }
+
   /// Tracks lock state for flicker guard comparison.
   private var isRecordingLocked: Bool = false
 
@@ -709,6 +724,84 @@ final class RecordingOverlayPanel {
     }
   }
 
+  /// One narrow informational-status entry point for the bulk-import-
+  /// enrichment start/finish pills (#1701 Chunk 2). Reuses this same
+  /// non-activating, positioned, auto-dismissing panel shell
+  /// `showWarning`/`showError`/`showNotification` already use, but is
+  /// deliberately NOT routed through `NotificationStyle` — that enum is the
+  /// recording domain's error/warning/interruption intent set, and this
+  /// message is neither; adding a case there would widen an intent enum this
+  /// feature has no business touching. `BulkImportEnrichmentCoordinator`
+  /// receives only a closure into this method, never the concrete panel type.
+  func showImportStatus(message: String) {
+    let dismissSeconds = Self.importStatusAutoDismissSeconds
+    // Heart & Limbs: bulk-import enrichment is a limb and must never
+    // interrupt the live dictation overlay. Accepted only when idle, or when
+    // replacing THIS feature's own prior import-status pill (#1701 Phase 3
+    // review finding B) — never a genuine recording/processing panel.
+    let replacingOwnStatus = importStatusOwnsCurrentSlot
+    guard
+      replacingOwnStatus
+        || (currentIntent == .hidden && panel == nil && pendingCreateWork == nil)
+    else { return }
+
+    let inheritedFrame = replacingOwnStatus ? tearDownOwnedImportStatus() : nil
+
+    generation &+= 1
+    let token = generation
+    importStatusPresentation = ImportStatusPresentation(generation: token, message: message)
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token,
+        self.importStatusPresentation?.generation == token
+      else { return }
+      self.pendingCreateWork = nil
+      self.showPanel(
+        content: ImportStatusOverlayView(message: message), width: 320,
+        inheritedFrame: inheritedFrame, fitToContent: true)
+      guard self.panel != nil else {
+        // `showPanel` can no-op (no screen available) — never claim false
+        // ownership of a slot with no actual panel.
+        self.importStatusPresentation = nil
+        return
+      }
+      self.scheduleAutoDismiss(seconds: dismissSeconds)
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
+  }
+
+  /// Tears down THIS feature's own currently-owned import-status
+  /// pending/visible pill, returning its frame if one was visible so a
+  /// replacement can appear in the same place. Never operates on an
+  /// unowned panel (#1701 Phase 3 review finding B) — the previous,
+  /// unrestricted `transitionToImportStatus` (deleted in the round-1 fix)
+  /// is exactly what let this feature close a live recording panel.
+  private func tearDownOwnedImportStatus() -> NSRect? {
+    guard importStatusOwnsCurrentSlot else { return nil }
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    guard let existingPanel = panel else { return nil }
+    let frame = existingPanel.frame
+    panel = nil
+    autoDismissTask?.cancel()
+    autoDismissTask = nil
+    CATransaction.flush()
+    existingPanel.close()
+    return frame
+  }
+
+  // periphery:ignore - test seam
+  /// Projects the currently-owned import-status message without exposing
+  /// panel/NSPanel internals (#1701 Phase 3 review finding B) — lets a
+  /// headless test assert the state-machine outcome without rendering.
+  var importStatusMessageForTesting: String? {
+    guard importStatusOwnsCurrentSlot else { return nil }
+    return importStatusPresentation?.message
+  }
+
+  private static let importStatusAutoDismissSeconds = 3.0
+
   /// Show a transient warning notice that auto-dismisses after 2.5s.
   func showWarning(message: String) {
     showNotification(message: message, style: .warning)
@@ -1211,6 +1304,7 @@ final class RecordingOverlayPanel {
     autoDismissTask?.cancel()
     autoDismissTask = nil
     generation &+= 1
+    importStatusPresentation = nil
     // Cancel any pending deferred panel creation so it never fires.
     // This handles the rapid-ESC race: if hide() is called before the
     // DispatchQueue.main.async closure from show() has had a chance to run,
@@ -1727,6 +1821,30 @@ struct NotificationOverlayView: View {
     .background(
       style.usesDistressLips
         ? AnyView(DistressCapsuleBackground()) : AnyView(OverlayCapsuleBackground()))
+  }
+}
+
+/// Bulk-import-enrichment start/finish pill (#1701 Chunk 2). Mirrors
+/// `NotificationOverlayView`'s shell with a neutral status icon — this is
+/// neither an error nor a warning, so it does not borrow `NotificationStyle`.
+struct ImportStatusOverlayView: View {
+  let message: String
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "arrow.triangle.2.circlepath")
+        .foregroundStyle(.white)
+        .font(.system(size: 16))
+      Text(message)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.white)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: 280, alignment: .leading)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(OverlayCapsuleBackground())
   }
 }
 

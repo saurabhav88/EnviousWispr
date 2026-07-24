@@ -120,6 +120,15 @@ final class CustomWordsImportFlowModel {
   /// commit time and refuses the write if it no longer matches.
   private var baseline = CustomWordsImportLibrarySnapshot(words: [])
   private var candidates: [CustomWordsImportCandidate] = []
+  /// Retained from the loaded batch's `enrichmentEligible` (#1701 Chunk 2) —
+  /// nothing about the originating batch otherwise survives to `confirm()`.
+  /// Reset to the safe default alongside every `abandonWork()` (a fresh
+  /// `begin()`, an explicit `cancel()`, or leaving Review via `goBack()`),
+  /// mirroring `candidates`' own lifecycle: `recompareAfterStaleCommit()`
+  /// deliberately does not call `abandonWork()`, so a stale-triggered
+  /// recompare correctly keeps the ORIGINAL load's eligibility, exactly as it
+  /// keeps `candidates` itself.
+  private var batchEnrichmentEligible = true
   private var generation = 0
   private var activeTask: Task<Void, Never>?
 
@@ -320,7 +329,8 @@ final class CustomWordsImportFlowModel {
     staleNotice = nil
     beginWork(.committing)
     let plan = CustomWordsImportCommitPlan(
-      baseline: baseline, additions: additions, replacements: [])
+      baseline: baseline, additions: additions, replacements: [],
+      enrichmentEligible: batchEnrichmentEligible)
 
     switch dependencies.commit(plan) {
     case .committed(let receipt):
@@ -353,6 +363,7 @@ final class CustomWordsImportFlowModel {
         return
       }
       candidates = batch.candidates
+      batchEnrichmentEligible = batch.enrichmentEligible
       beginWork(.comparing)
       await compare(candidates: batch.candidates, generation: generation)
     } catch is CancellationError {
@@ -409,6 +420,7 @@ final class CustomWordsImportFlowModel {
   private func abandonWork() -> Int {
     activeTask?.cancel()
     activeTask = nil
+    batchEnrichmentEligible = true
     return advanceGeneration()
   }
 

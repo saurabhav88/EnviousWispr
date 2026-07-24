@@ -1,11 +1,200 @@
 import EnviousWisprCore
 import Foundation
+import os
 
 #if canImport(FoundationModels)
   import FoundationModels
 #endif
 
+/// Explicit, priority-aware permit queue backing `WordSuggestionService`'s
+/// shared production door (#1701). Not "await inside an actor" — actors are
+/// reentrant across a suspension point, so a method that merely awaits model
+/// work inside an actor would still let a second call interleave. This type
+/// grants an explicit permit token instead: exactly one holder at a time,
+/// `.interactive` waiters served ahead of already-queued `.background`
+/// waiters, FIFO within a priority, and the current holder is never
+/// pre-empted — priority affects only queue ordering, not interruption.
+///
+/// `internal` (default) visibility: invisible to consumers outside this
+/// module (AppKit imports the module without `@testable`); reachable from
+/// `WordSuggestionServiceTests` only via `@testable import`, which is the
+/// narrow seam those tests use to drive queue ordering and cancellation
+/// deterministically without touching FoundationModels.
+actor AliasSuggestionPermitQueue {
+  private struct Waiter {
+    let id: UUID
+    let priority: AliasSuggestionPriority
+    let latch: CancellationLatch
+    let continuation: CheckedContinuation<Bool, Never>
+  }
+
+  /// Per-`acquire` cancellation signal, set synchronously and thread-safely
+  /// (via `OSAllocatedUnfairLock`) from `withTaskCancellationHandler`'s
+  /// `onCancel` closure, which is NOT
+  /// actor-isolated and may fire before, during, or after `register` runs.
+  /// Deliberately NOT actor state: an actor-owned `Set<UUID>` needs a
+  /// tombstone entry for every id whose `onCancel` races ahead of or past
+  /// `register`, and once `register` has already run for that id, nothing
+  /// could ever remove the tombstone (Grounded Review Chunk 1 finding —
+  /// reachable via Add-term's frequent debounced task cancellation, not a
+  /// rare edge: real unbounded growth, not the "bounded/inert" residue the
+  /// prior revision claimed). A latch scoped to the call stack is freed by
+  /// ARC when `acquire`'s frame unwinds — nothing persists in the actor
+  /// regardless of cancellation timing.
+  private final class CancellationLatch: Sendable {
+    private let lock = OSAllocatedUnfairLock(initialState: false)
+    var isCancelled: Bool { lock.withLock { $0 } }
+    func cancel() { lock.withLock { $0 = true } }
+  }
+
+  private var waiters: [Waiter] = []
+  private var permitHeld = false
+
+  /// Waits for the permit. Returns `true` once granted; returns `false`,
+  /// without ever granting a permit, when the caller's task was cancelled
+  /// before its turn arrived. A `false` result means zero model work should
+  /// run and the caller must not call `release()`.
+  func acquire(id: UUID, priority: AliasSuggestionPriority) async -> Bool {
+    let latch = CancellationLatch()
+    return await withTaskCancellationHandler {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+        register(id: id, priority: priority, latch: latch, continuation: continuation)
+      }
+    } onCancel: {
+      latch.cancel()
+      Task { await self.cancelWaiting(id: id) }
+    }
+  }
+
+  /// Test seam: current queue depth. Lets a test deterministically poll
+  /// (`await Task.yield()` in a loop, never `Task.sleep`/wall-clock) until a
+  /// concurrently-started waiter has actually registered, instead of guessing
+  /// at timing. `internal`: reachable only via `@testable import`.
+  var waiterCountForTesting: Int { waiters.count }
+
+  /// Releases the held permit, granting it directly to the next LIVE queued
+  /// waiter (priority, then FIFO) if one exists. Must be called exactly once
+  /// for every `acquire` that returned `true` — including when the caller
+  /// itself discovers a post-grant cancellation and never runs its operation.
+  ///
+  /// Walks (never just peeks) the front of the queue: `onCancel` sets a
+  /// waiter's latch synchronously but removes it from `waiters` via a
+  /// separately-scheduled actor message (`cancelWaiting`, below) — this
+  /// method can run BEFORE that removal message arrives (Grounded Review
+  /// Chunk 1 round 3 finding), so a queued-but-not-yet-removed cancelled
+  /// waiter must never be handed the permit even briefly. Each cancelled
+  /// waiter encountered is resumed `false` and dropped; the loop keeps going
+  /// until it finds a live waiter to grant, or the queue is exhausted.
+  func release() {
+    while !waiters.isEmpty {
+      let next = waiters.removeFirst()
+      if next.latch.isCancelled {
+        next.continuation.resume(returning: false)
+        continue
+      }
+      next.continuation.resume(returning: true)
+      // permitHeld stays true: ownership transfers directly to `next`, never
+      // a window where the permit is unheld while a waiter is queued.
+      return
+    }
+    permitHeld = false
+  }
+
+  private func register(
+    id: UUID,
+    priority: AliasSuggestionPriority,
+    latch: CancellationLatch,
+    continuation: CheckedContinuation<Bool, Never>
+  ) {
+    if latch.isCancelled {
+      continuation.resume(returning: false)
+      return
+    }
+    if !permitHeld {
+      permitHeld = true
+      continuation.resume(returning: true)
+      return
+    }
+    let insertIndex =
+      priority == .interactive
+      ? (waiters.firstIndex(where: { $0.priority == .background }) ?? waiters.count)
+      : waiters.count
+    waiters.insert(
+      Waiter(id: id, priority: priority, latch: latch, continuation: continuation),
+      at: insertIndex)
+  }
+
+  /// Test seam: marks a currently-queued waiter's cancellation latch as
+  /// cancelled WITHOUT removing it from the queue — simulates the exact
+  /// interleaving `release()`'s doc comment above describes, where
+  /// `onCancel` has set the latch but the asynchronous `cancelWaiting`
+  /// removal message has not yet reached the actor (Grounded Review Chunk 1
+  /// round 3 finding). No-op if `id` is not currently queued. `internal`:
+  /// reachable only via `@testable import`.
+  func cancelLatchWithoutRemovingForTesting(id: UUID) {
+    guard let waiter = waiters.first(where: { $0.id == id }) else { return }
+    waiter.latch.cancel()
+  }
+
+  /// No-op when `id` is neither currently queued nor still pending
+  /// registration — covers both "already granted" (nothing to remove) and
+  /// "already resolved via the latch" (the latch, not this method, was the
+  /// signal that mattered).
+  private func cancelWaiting(id: UUID) {
+    guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+    let waiter = waiters.remove(at: index)
+    waiter.continuation.resume(returning: false)
+  }
+}
+
+#if DEBUG
+  /// Test-only storage for `benchmarkSuggest`'s deterministic override
+  /// (#1701 Grounded Review Chunk 1 finding). An actor, not a plain `var` on
+  /// `WordSuggestionService`, so storage stays Sendable-safe without
+  /// `nonisolated(unsafe)`/`@unchecked` — `WordSuggestionService` otherwise
+  /// has only immutable stored properties. Always empty (`value == nil`) in
+  /// production; nothing production-facing ever writes to it. `#if DEBUG`-
+  /// gated end to end (Grounded Review Chunk 1 round 2 finding): the Release
+  /// alias-eval harness calls `benchmarkSuggest` directly to measure real
+  /// latency and concurrency (`scripts/eval/alias_runner`) — this box, its
+  /// property, and the check inside `benchmarkSuggest` must not add an actor
+  /// hop to that measured path.
+  actor RawSuggestionOverrideBox {
+    private(set) var value:
+      (@Sendable (String) async throws -> (category: WordCategory, aliases: [String]))?
+
+    func set(
+      _ newValue: (@Sendable (String) async throws -> (category: WordCategory, aliases: [String]))?
+    ) {
+      value = newValue
+    }
+  }
+#endif
+
+/// Wraps `withPermit`'s operation result so a `nil` FROM the operation itself
+/// (a normal "no suggestion" outcome) is never confused with `withDeadline`
+/// abandoning the operation (Phase 3 review finding A, #1701).
+private struct PermitOperationResult<Value: Sendable>: Sendable {
+  let value: Value
+}
+
 public final class WordSuggestionService: Sendable {
+  /// Serializes every production alias-suggestion call — `suggest(for:)` and
+  /// `suggestAliases(for:category:)` — through one in-flight permit at a time,
+  /// interactive before background (#1701). `internal` (narrowest visibility
+  /// that compiles): invisible to consumers outside this module; reachable
+  /// from `WordSuggestionServiceTests` only via `@testable import`. This is
+  /// the sole production door — there is no second, unserialized path to the
+  /// model left for a future caller to reach by accident.
+  let permitQueue = AliasSuggestionPermitQueue()
+
+  #if DEBUG
+    /// Test-only override for `benchmarkSuggest`'s on-device path (#1701).
+    /// See `RawSuggestionOverrideBox`. `internal`: reachable only via
+    /// `@testable import`. `#if DEBUG`-gated: absent from Release builds.
+    let rawSuggestionOverrideForTesting = RawSuggestionOverrideBox()
+  #endif
+
   public var isAvailable: Bool {
     #if canImport(FoundationModels)
       guard #available(macOS 26, *) else { return false }
@@ -17,19 +206,71 @@ public final class WordSuggestionService: Sendable {
 
   public init() {}
 
-  public func suggest(for word: String) async -> WordSuggestions? {
+  /// Runs `operation` while holding the shared permit, in priority order.
+  /// Returns `whenNotGranted` — never invoking `operation` — when the calling
+  /// task is cancelled either while queued or in the gap between permit grant
+  /// and this check (both are zero-model-call cancellation points; #1701).
+  /// `internal`: this is the test seam `WordSuggestionServiceTests` drives
+  /// directly to exercise the exact queue/permit mechanics both production
+  /// entry points use, without touching FoundationModels (unavailable/
+  /// unreliable in a test environment).
+  ///
+  /// `afterGrantForTesting` is a test-only hook, always `nil` in production
+  /// (`suggest`/`suggestAliases` never pass it, so `await nil?()` is an
+  /// instant no-op — zero behavior change on the real path). It exists
+  /// because the real cancelled-after-grant race is impossible to hit
+  /// deterministically through actual `Task` scheduling on a multi-threaded
+  /// executor; this hook lets a test park the call at exactly that point,
+  /// cancel it, then resume, proving the check fires correctly without
+  /// relying on scheduler timing.
+  /// `deadlineSeconds` has no default (Phase 3 review finding A, #1701):
+  /// `withDeadline`, never `withThrowingTimeout`, bounds `operation` — a
+  /// FoundationModels call that ignores cancellation cannot make
+  /// `withThrowingTimeout`'s task-group scope return, which would strand
+  /// this permit forever and block every later interactive and background
+  /// caller. `withDeadline` returns at the true deadline WITHOUT awaiting an
+  /// abandoned operation; the abandoned physical task may keep running in
+  /// the background while a later logical request starts — an accepted
+  /// tradeoff over permanently blocking every suggestion request.
+  func withPermit<T: Sendable>(
+    priority: AliasSuggestionPriority,
+    whenNotGranted: T,
+    deadlineSeconds: Double,
+    afterGrantForTesting: (@Sendable () async -> Void)? = nil,
+    operation: @escaping @Sendable () async -> T
+  ) async -> T {
+    let id = UUID()
+    let granted = await permitQueue.acquire(id: id, priority: priority)
+    guard granted else { return whenNotGranted }
+    await afterGrantForTesting?()
+    if Task.isCancelled {
+      await permitQueue.release()
+      return whenNotGranted
+    }
+    let result = await withDeadline(seconds: deadlineSeconds) {
+      PermitOperationResult(value: await operation())
+    }
+    await permitQueue.release()
+    return result?.value ?? whenNotGranted
+  }
+
+  /// Preserves the existing five-second policy — not a new timing invention
+  /// (Phase 3 review finding A, #1701).
+  private static let suggestionDeadlineSeconds = 5.0
+
+  public func suggest(
+    for word: String,
+    priority: AliasSuggestionPriority = .interactive
+  ) async -> WordSuggestions? {
     #if canImport(FoundationModels)
       guard #available(macOS 26, *),
         case .available = SystemLanguageModel.default.availability
       else { return nil }
 
-      // Hard 5s timeout — FM can hang on some inputs
-      do {
-        return try await withThrowingTimeout(seconds: 5) {
-          await self.runSuggestion(for: word)
-        }
-      } catch {
-        return nil
+      return await withPermit(
+        priority: priority, whenNotGranted: nil, deadlineSeconds: Self.suggestionDeadlineSeconds
+      ) {
+        await self.runSuggestion(for: word)
       }
     #else
       return nil
@@ -52,6 +293,41 @@ public final class WordSuggestionService: Sendable {
     disableTimeout: Bool = false
   ) async -> WordSuggestionBenchmarkRecord {
     let startTime = Date()
+    #if DEBUG
+      // Test-only path (#1701 Grounded Review Chunk 1 finding), absent from
+      // Release entirely — the Release alias-eval harness calls this method
+      // directly to measure real latency and concurrency, so Release must
+      // never add an actor hop here even when the override is unset.
+      // Bypasses the live-availability gate below too, not just the
+      // raw-suggestion call — real Apple Intelligence eligibility is
+      // environment-dependent (this suite's own dev machine has it enabled,
+      // so a test asserting the unavailable branch would be flaky/wrong on a
+      // machine where it isn't), so a deterministic test needs the whole
+      // on-device decision replaced, not just the model call inside it.
+      if let override = await rawSuggestionOverrideForTesting.value {
+        do {
+          let resolved = try await override(word)
+          let filtered = Self.filterDegeneratedAliases(resolved.aliases, canonical: word)
+          return WordSuggestionBenchmarkRecord(
+            category: resolved.category,
+            rawAliases: resolved.aliases,
+            filteredAliases: filtered,
+            timedOut: false,
+            errorDescription: nil,
+            latencyMs: Self.elapsedMs(since: startTime)
+          )
+        } catch {
+          return WordSuggestionBenchmarkRecord(
+            category: .general,
+            rawAliases: [],
+            filteredAliases: [],
+            timedOut: false,
+            errorDescription: "\(error)",
+            latencyMs: Self.elapsedMs(since: startTime)
+          )
+        }
+      }
+    #endif
     #if canImport(FoundationModels)
       guard #available(macOS 26, *),
         case .available = SystemLanguageModel.default.availability
@@ -624,24 +900,41 @@ extension WordSuggestionService: AliasSuggesting {
   /// `suggest(for:)`'s availability gate, 5-second timeout, and degeneration
   /// filter, but skips classification (the caller pins the category) and returns
   /// the bare alias list. nil when unavailable, timed out, or the model
-  /// degenerated to self-echoes.
-  package func suggestAliases(for word: String, category: WordCategory) async -> [String]? {
+  /// degenerated to self-echoes. `priority` has no default (#1701) — every
+  /// caller states its own scheduling intent explicitly.
+  package func suggestAliases(
+    for word: String, category: WordCategory, priority: AliasSuggestionPriority
+  ) async -> [String]? {
     #if canImport(FoundationModels)
       guard #available(macOS 26, *),
         case .available = SystemLanguageModel.default.availability
       else { return nil }
-      do {
-        return try await withThrowingTimeout(seconds: 5) {
+      return await withPermit(
+        priority: priority, whenNotGranted: nil, deadlineSeconds: Self.suggestionDeadlineSeconds
+      ) {
+        do {
           let raw = try await self.runRawSuggestion(for: word, knownCategory: category)
           let filtered = Self.filterDegeneratedAliases(raw.aliases, canonical: word)
           return filtered.isEmpty ? nil : filtered
+        } catch {
+          return nil
         }
-      } catch {
-        return nil
       }
     #else
       return nil
     #endif
+  }
+
+  /// Delegates to `suggest(for:priority:)` directly, which already owns
+  /// availability, timeout, classification, filtering, and permit handling
+  /// — never a second `withPermit` wrapper here, or one logical request
+  /// would attempt to acquire the shared permit twice (Phase 3 review
+  /// finding A, #1701).
+  package func suggestAliases(
+    for word: String, priority: AliasSuggestionPriority
+  ) async -> [String]? {
+    let suggestions = await suggest(for: word, priority: priority)
+    return suggestions?.suggestedAliases
   }
 }
 
