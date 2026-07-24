@@ -79,12 +79,69 @@ package final class CaptureVADSignalSource: VADSignalSource {
   private var segmentsProvider: @MainActor () -> [SpeechSegment]
   private var sessionConfig: DictationSessionConfig?
 
+  /// Monotonic monitor-run identity (#1780). A session id alone is NOT a
+  /// sufficient staleness guard: `finalizeAtStop` cancels a run without
+  /// changing the session, and a replacement can reuse the same session, so a
+  /// resumed old task would still pass a session-only check and emit into the
+  /// wrong run. Bumped by `invalidateMonitor()` at every cancellation site.
+  private var monitorGeneration: UInt64 = 0
+
+  /// Test seam (#1780): produces the detector `startMonitoring` would build
+  /// itself. Internal and defaulted, so production construction is unchanged;
+  /// tests inject a detector backed by a continuation-controlled fake so
+  /// preparation and first-chunk suspension are deterministic.
+  private let makeDetector: @MainActor (TimeInterval, SmoothedVADConfig) -> SilenceDetector
+
+  /// Dual-channel record-start markers (#1780). Injected so tests observe with
+  /// per-instance spies rather than global Sentry/PostHog hooks.
+  private let recordStartTelemetry: RecordStartTelemetrySink
+
   init(
     evidenceProvider: @escaping @MainActor () -> VADSpeechEvidence = { .unavailable },
-    segmentsProvider: @escaping @MainActor () -> [SpeechSegment] = { [] }
+    segmentsProvider: @escaping @MainActor () -> [SpeechSegment] = { [] },
+    makeDetector: @escaping @MainActor (TimeInterval, SmoothedVADConfig) -> SilenceDetector = {
+      timeout, vadConfig in
+      SilenceDetector(silenceTimeout: timeout, vadConfig: vadConfig)
+    },
+    recordStartTelemetry: RecordStartTelemetrySink = RecordStartTelemetrySink()
   ) {
     self.evidenceProvider = evidenceProvider
     self.segmentsProvider = segmentsProvider
+    self.makeDetector = makeDetector
+    self.recordStartTelemetry = recordStartTelemetry
+  }
+
+  /// Sole authority for ending a monitor run (#1780). Cancels, clears, and
+  /// advances the generation together — separating them is what let a resumed
+  /// task emit into a newer run.
+  private func invalidateMonitor() {
+    monitorTask?.cancel()
+    monitorTask = nil
+    monitorGeneration += 1
+  }
+
+  /// A captured run may emit only while its session and generation are still
+  /// current AND the recording is still live. Checked immediately before every
+  /// marker, with no await or mutable read between the check and the emit.
+  ///
+  /// The liveness term is load-bearing and not redundant with the other two.
+  /// `RecordingSessionKernel` concludes a session through ~40 `finishTerminal`
+  /// sites — cancellation, capture-start failure, model wedge, capture stall,
+  /// ASR failure — and only the normal stop path reaches `finalizeAtStop`. On
+  /// every other terminal the session id and the generation are BOTH unchanged,
+  /// so a task suspended in preparation or in first-chunk processing would wake
+  /// after the recording had already ended and emit a marker into a concluded
+  /// session. `isRecording` is the kernel's own liveness predicate
+  /// (`state == .live && currentSessionID == sid`), so it goes false on every
+  /// terminal path by construction, including any added later. It is passed per
+  /// run rather than stored, so a new run's predicate can never be read by an
+  /// older one.
+  private func monitorIsCurrent(
+    sessionID: SessionID,
+    generation: UInt64,
+    isRecording: @MainActor () -> Bool
+  ) -> Bool {
+    currentSessionID == sessionID && monitorGeneration == generation && isRecording()
   }
 
   // MARK: VADSignalSource (PR-5 Rung 5: package-required because the
@@ -168,8 +225,7 @@ package final class CaptureVADSignalSource: VADSignalSource {
   func configureSession(config: DictationSessionConfig, audioCapture: any AudioCaptureInterface) {
     self.audioCapture = audioCapture
     sessionConfig = config
-    monitorTask?.cancel()
-    monitorTask = nil
+    invalidateMonitor()
     if detectorSilenceTimeout != nil && detectorSilenceTimeout != config.vadSilenceTimeout {
       silenceDetector = nil
       detectorSilenceTimeout = nil
@@ -184,13 +240,30 @@ package final class CaptureVADSignalSource: VADSignalSource {
   /// this loop owns the `SilenceDetector` and the max-duration stop.
   func startMonitoring(
     recordingStartTime: Date,
+    backend: String,
     isRecording: @escaping @MainActor () -> Bool
   ) {
     guard let audioCapture, let config = sessionConfig else { return }
 
-    monitorTask?.cancel()
-    monitorTask = Task { @MainActor [weak self] in
-      guard let self, let audioCapture = self.audioCapture else { return }
+    invalidateMonitor()
+
+    // Snapshot every telemetry identity fact SYNCHRONOUSLY, before the task
+    // exists (#1780). Reading these inside the task is unsafe: the task may
+    // first execute after a later session has been stamped, which would
+    // silently attribute this run's markers to the next recording.
+    let runSessionID = currentSessionID
+    let runGeneration = monitorGeneration
+    let runBackend = backend
+    let runInputRoute = audioCapture.currentAudioRoute
+
+    monitorTask = Task { @MainActor [weak self, audioCapture] in
+      guard let self else { return }
+      // Reject a run already superseded before it first executed, BEFORE it
+      // mutates retained detector state.
+      guard self.monitorIsCurrent(
+        sessionID: runSessionID, generation: runGeneration, isRecording: isRecording) else {
+        return
+      }
 
       let vadConfig = SmoothedVADConfig.fromSensitivity(
         config.vadSensitivity,
@@ -198,10 +271,19 @@ package final class CaptureVADSignalSource: VADSignalSource {
       )
       let directDetector =
         self.silenceDetector
-        ?? SilenceDetector(
-          silenceTimeout: config.vadSilenceTimeout,
-          vadConfig: vadConfig
-        )
+        ?? self.makeDetector(config.vadSilenceTimeout, vadConfig)
+      // #1780: `model_reused` MUST be read here, before any preparation. Read
+      // afterwards it would be true for every successful preparation and carry
+      // no information. `reset()` does not unload the model, so `true` means
+      // this retained detector entered the run already loaded.
+      let modelReused = await directDetector.isReady
+      // Invalidation can land during that actor await; re-check BEFORE taking
+      // ownership of the retained detector, or a superseded run would rewrite
+      // `silenceDetector`/`detectorSilenceTimeout` under the live run.
+      guard self.monitorIsCurrent(
+        sessionID: runSessionID, generation: runGeneration, isRecording: isRecording) else {
+        return
+      }
       self.silenceDetector = directDetector
       self.detectorSilenceTimeout = config.vadSilenceTimeout
       await directDetector.reset()
@@ -221,14 +303,35 @@ package final class CaptureVADSignalSource: VADSignalSource {
       // approaching-cap warning — only the silence-auto-stop limb is lost. The
       // old XPC topology likewise ran a nil-detector host-side monitor.
       let ready = await directDetector.isReady
+      // Same reason: `directDetectorPrepared` is live source state and must not
+      // be written by a run that was superseded during preparation.
+      guard self.monitorIsCurrent(
+        sessionID: runSessionID, generation: runGeneration, isRecording: isRecording) else {
+        return
+      }
       if ready { self.directDetectorPrepared = true }
+
+      // Re-check immediately before emitting: this point follows detector actor
+      // awaits, so the run may have been invalidated while suspended. No await
+      // or mutable read between the guard and the emit.
+      guard self.monitorIsCurrent(
+        sessionID: runSessionID, generation: runGeneration, isRecording: isRecording) else {
+        return
+      }
+      self.recordStartTelemetry.vadPreparationCompleted(
+        backend: runBackend, inputRoute: runInputRoute,
+        ready: ready, modelReused: modelReused)
 
       await self.runMonitor(
         detector: ready ? directDetector : nil,
         config: config,
         recordingStartTime: recordingStartTime,
         audioCapture: audioCapture,
-        isRecording: isRecording
+        isRecording: isRecording,
+        runSessionID: runSessionID,
+        runGeneration: runGeneration,
+        runBackend: runBackend,
+        runInputRoute: runInputRoute
       )
     }
   }
@@ -296,8 +399,7 @@ package final class CaptureVADSignalSource: VADSignalSource {
   }
 
   func finalizeAtStop(rawSampleCount: Int) async {
-    monitorTask?.cancel()
-    monitorTask = nil
+    invalidateMonitor()
 
     guard let silenceDetector, directDetectorPrepared else {
       setSegmentsProvider { [] }
@@ -316,7 +418,11 @@ package final class CaptureVADSignalSource: VADSignalSource {
     config: DictationSessionConfig,
     recordingStartTime: Date,
     audioCapture: any AudioCaptureInterface,
-    isRecording: @escaping @MainActor () -> Bool
+    isRecording: @escaping @MainActor () -> Bool,
+    runSessionID: SessionID,
+    runGeneration: UInt64,
+    runBackend: String,
+    runInputRoute: String
   ) async {
     await VADMonitorLoop.run(
       detector: detector,
@@ -336,6 +442,27 @@ package final class CaptureVADSignalSource: VADSignalSource {
         case .maxDuration:
           self?.noteMaxDurationReached()
         }
+      },
+      // #1780 first-chunk markers. Both callbacks carry the values captured
+      // before the task existed and re-check run identity immediately before
+      // emitting — a first-chunk await can resume after invalidation.
+      onFirstChunkStarted: { [weak self] monitorMs in
+        guard let self,
+          self.monitorIsCurrent(
+        sessionID: runSessionID, generation: runGeneration, isRecording: isRecording)
+        else { return }
+        self.recordStartTelemetry.firstChunkStarted(
+          backend: runBackend, inputRoute: runInputRoute,
+          monitorToFirstChunkMs: monitorMs)
+      },
+      onFirstChunkCompleted: { [weak self] latencyMs, shouldStop in
+        guard let self,
+          self.monitorIsCurrent(
+        sessionID: runSessionID, generation: runGeneration, isRecording: isRecording)
+        else { return }
+        self.recordStartTelemetry.firstChunkCompleted(
+          backend: runBackend, inputRoute: runInputRoute,
+          chunkProcessingLatencyMs: latencyMs, shouldStop: shouldStop)
       }
     )
   }
