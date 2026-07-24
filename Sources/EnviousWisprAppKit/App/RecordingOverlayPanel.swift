@@ -720,13 +720,13 @@ final class RecordingOverlayPanel {
   /// receives only a closure into this method, never the concrete panel type.
   func showImportStatus(message: String) {
     let dismissSeconds = Self.importStatusAutoDismissSeconds
-    guard panel == nil else {
-      transitionToImportStatus(message: message)
-      scheduleAutoDismiss(seconds: dismissSeconds)
-      return
-    }
-    pendingCreateWork?.cancel()
-    pendingCreateWork = nil
+    // Heart & Limbs: bulk-import enrichment is a limb and must never
+    // interrupt the live dictation overlay. If anything is showing, about to
+    // show, or queued to show — recording, processing, another notice — this
+    // pill is silently skipped rather than replacing it (Phase 3 review
+    // finding: the prior transition-in-place branch could close a live
+    // recording panel and cancel a queued one).
+    guard currentIntent == .hidden, panel == nil, pendingCreateWork == nil else { return }
     generation &+= 1
     let token = generation
 
@@ -742,33 +742,6 @@ final class RecordingOverlayPanel {
   }
 
   private static let importStatusAutoDismissSeconds = 3.0
-
-  /// Transition an existing panel to an import-status display.
-  private func transitionToImportStatus(message: String) {
-    guard let existingPanel = panel else { return }
-    let inheritedFrame = existingPanel.frame
-
-    panel = nil
-    autoDismissTask?.cancel()
-    autoDismissTask = nil
-    pendingCreateWork?.cancel()
-    pendingCreateWork = nil
-    CATransaction.flush()
-    existingPanel.close()
-
-    generation &+= 1
-    let token = generation
-
-    let work = DispatchWorkItem { [weak self] in
-      guard let self, self.generation == token else { return }
-      self.pendingCreateWork = nil
-      self.showPanel(
-        content: ImportStatusOverlayView(message: message), width: 320,
-        inheritedFrame: inheritedFrame, fitToContent: true)
-    }
-    pendingCreateWork = work
-    DispatchQueue.main.async(execute: work)
-  }
 
   /// Show a transient warning notice that auto-dismisses after 2.5s.
   func showWarning(message: String) {
