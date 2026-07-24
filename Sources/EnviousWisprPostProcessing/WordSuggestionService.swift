@@ -588,7 +588,9 @@ public final class WordSuggestionService: Sendable {
   /// Accepts numbered, dashed, or newline-separated outputs. Strips leading
   /// numbering, surrounding quotes (straight or curly), bracket artifacts,
   /// and whitespace. Drops obvious meta-commentary lines (model often
-  /// produces "Note:", "Example for X:", "If you cannot..." etc.).
+  /// produces "Note:", "Example for X:", "If you cannot..." etc.) and
+  /// markdown code-fence delimiter lines (the model sometimes wraps its
+  /// list in ```plaintext ... ```, #1763).
   /// Used by the plain-string alias-generation path (mirroring the polish
   /// path's plain-string + post-filter pattern).
   static func parsePlainStringAliases(_ raw: String) -> [String] {
@@ -599,22 +601,88 @@ public final class WordSuggestionService: Sendable {
       "asr", "i have ", "i did not", "no mistranscript", "no aliases",
       "return empty", "explanation",
     ]
+    // A line that starts with 3+ of the same fence character (backtick or
+    // tilde, the two CommonMark fence delimiters) — a real alias never
+    // starts this way, so the rest of the line (any info string, or none)
+    // is accepted rather than allowlisted. Compiled once per call.
+    let fenceRegex = try? NSRegularExpression(
+      pattern: #"^(?:`{3,}|~{3,}).*$"#
+    )
+    // List/blockquote container markers: all three CommonMark bullet
+    // characters (-, *, +), ordered markers, and blockquote '>'. Compiled
+    // once per call, applied repeatedly below (they nest arbitrarily, e.g.
+    // "- > text" or "\"- text\"", so a single fixed-order pass of
+    // bracket/list/quote stripping can leave an inner wrapper behind —
+    // GitHub cloud review, PR #1765 r2/r3). Bullet markers require trailing
+    // whitespace or end-of-line so the fixed-point loop below cannot
+    // repeatedly eat real content like "+44" or "--alias" one character at
+    // a time (Codex final sweep, PR #1765 r4). Ordered markers instead
+    // require the following char be NOT a digit — AFM sometimes emits a
+    // compact numbered item with no space ("1.kuber netties"), which must
+    // still strip, while a decimal/version-shaped alias ("1.2") must not
+    // have its leading "1." mistaken for a marker; `(?!\d)` also succeeds
+    // at end-of-line, covering a marker-only line ("1.") with no separate
+    // alternative needed (GitHub cloud review, PR #1765 r5/r6). Blockquote
+    // '>' keeps optional whitespace since CommonMark permits ">text".
+    let listPrefixRegex = try? NSRegularExpression(
+      pattern: #"^(?:\d+[.)](?!\d)|[-*•+](?:\s+|$)|>\s*)"#
+    )
+    let bracketSet = CharacterSet(charactersIn: "[]()")
+    let quoteSet = CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019}")
+    let commaPeriodSet = CharacterSet(charactersIn: ",.")
     for line in raw.components(separatedBy: .newlines) {
       var s = line.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
-      s = s.trimmingCharacters(in: CharacterSet(charactersIn: "[]()"))
-      s = s.trimmingCharacters(in: .whitespacesAndNewlines)
-      if s.isEmpty { continue }
-      if let regex = try? NSRegularExpression(
-        pattern: #"^(?:\d+[.)]\s*|[-*•]\s*)"#
-      ) {
-        let range = NSRange(s.startIndex..., in: s)
-        s = regex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
+      // Strip list/blockquote markers, brackets, quotes, and trailing
+      // comma/period to a fixed point — any interleaving or nesting of
+      // these wrapper types converges to the real inner content, not just
+      // one layer of it. At most ONE of these operations may change `s`
+      // per pass; the moment any one does, the pass ends immediately and
+      // the marker check re-runs on the result — never two operations
+      // applied back-to-back in the same pass. Batching them (even with
+      // single-character peeling) let a marker's own delimiter be exposed
+      // and then immediately consumed by the NEXT operation in the same
+      // pass before the marker regex saw it, e.g. "\"1.\"" or "(1.)"
+      // wrongly collapsing to "1" (GitHub cloud review structured
+      // pair-matrix re-check, PR #1765 r9).
+      var previous = ""
+      while previous != s {
+        previous = s
+        if let listPrefixRegex {
+          let range = NSRange(s.startIndex..., in: s)
+          let stripped = listPrefixRegex.stringByReplacingMatches(
+            in: s, range: range, withTemplate: "")
+          if stripped != s {
+            s = stripped
+            continue
+          }
+        }
+        let withoutBracket = Self.peelOneEdgeCharacter(s, in: bracketSet)
+        if withoutBracket != s {
+          s = withoutBracket
+          continue
+        }
+        let withoutQuote = Self.peelOneEdgeCharacter(s, in: quoteSet)
+        if withoutQuote != s {
+          s = withoutQuote
+          continue
+        }
+        let withoutCommaPeriod = Self.peelOneEdgeCharacter(s, in: commaPeriodSet)
+        if withoutCommaPeriod != s {
+          s = withoutCommaPeriod
+          continue
+        }
+        s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       }
-      s = s.trimmingCharacters(
-        in: CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019},."))
-      s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
+      // Fence check runs AFTER wrapper convergence — a wrapped fence line
+      // (numbered, bulleted, quoted, blockquoted, or any nesting of those)
+      // does not match the bare-fence pattern until every wrapper is gone.
+      if let fenceRegex,
+        fenceRegex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+      {
+        continue
+      }
       // Drop meta-commentary by token match.
       let lower = s.lowercased()
       var isMeta = false
@@ -631,6 +699,29 @@ public final class WordSuggestionService: Sendable {
       aliases.append(s)
     }
     return aliases
+  }
+
+  /// Removes AT MOST ONE matching character total — from the front if it
+  /// matches, else from the back if it matches, never both in one call.
+  /// Deliberately NOT `trimmingCharacters(in:)`, which removes an entire
+  /// consecutive run, and deliberately not "one from each edge" either —
+  /// either of those can consume a wrapper character on one edge together
+  /// with an unrelated list marker's own delimiter sitting on the OTHER
+  /// edge in a single call (e.g. ",1." or "[1)"), before the marker regex
+  /// gets another look. Used by `parsePlainStringAliases`'s convergence
+  /// loop, which already stops and restarts from the marker check after
+  /// ANY single-character change (#1763).
+  private static func peelOneEdgeCharacter(_ s: String, in set: CharacterSet) -> String {
+    guard !s.isEmpty else { return s }
+    var s = s
+    if let first = s.unicodeScalars.first, set.contains(first) {
+      s.removeFirst()
+      return s
+    }
+    if let last = s.unicodeScalars.last, set.contains(last) {
+      s.removeLast()
+    }
+    return s
   }
 
   /// Deterministic classification by syntax. Returns nil when AFM should

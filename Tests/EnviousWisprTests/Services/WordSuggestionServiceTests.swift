@@ -192,6 +192,161 @@ struct WordSuggestionServiceParserTests {
     #expect(WordSuggestionService.parsePlainStringAliases("   ").isEmpty)
     #expect(WordSuggestionService.parsePlainStringAliases("\n\n\n").isEmpty)
   }
+
+  @Test("Fence-only lines are dropped without stripping legitimate backticks or tildes")
+  func fenceOnlyLinesDropped() {
+    let raw = [
+      "```plaintext",
+      "```PlainText",
+      "``` c#",
+      "```text/plain",
+      "```plain text",
+      "```",
+      "````",
+      "`````swift",
+      "~~~plaintext",
+      "~~~ plain text",
+      "~~~",
+      "kuber ``` netties",
+      "`inline alias`",
+      "``double inline alias``",
+      "~ish sound",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(
+      parsed == [
+        "kuber ``` netties",
+        "`inline alias`",
+        "``double inline alias``",
+        "~ish sound",
+      ])
+  }
+
+  @Test("Kubernetes response strips Markdown fences (#1763 regression)")
+  func kubernetesResponseStripsMarkdownFences() {
+    let raw = [
+      "kuber netties",
+      "cube ernetes",
+      "cooper nettys",
+      "```plaintext",
+      "```",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes", "cooper nettys"])
+  }
+
+  @Test("Fence lines wrapped in a numbered, bulleted, or quoted marker are still dropped")
+  func fenceLinesWithListMarkersOrQuotesDropped() {
+    let raw = [
+      "1. kuber netties",
+      "2. cube ernetes",
+      "3. cooper nettys",
+      "4. ```plaintext",
+      "- ```",
+      "\"```\"",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes", "cooper nettys"])
+  }
+
+  @Test("Nested and blockquote container markers around a fence are stripped repeatedly")
+  func nestedContainerMarkersAroundFenceDropped() {
+    let raw = [
+      "kuber netties",
+      "> ```plaintext",
+      "- - ```",
+      "+ ```swift",
+      "- > ```",
+      "cube ernetes",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes"])
+  }
+
+  @Test("Interleaved wrapper types around a fence converge to nothing, not one layer")
+  func interleavedWrapperTypesAroundFenceDropped() {
+    let raw = [
+      "kuber netties",
+      "\"- ```plaintext\"",
+      "[- > ```]",
+      "- \"```\"",
+      "cube ernetes",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes"])
+  }
+
+  @Test("Punctuation-prefixed content is preserved, not eaten as a repeated list marker")
+  func punctuationPrefixedContentPreserved() {
+    let raw = "+44\n++alias\n--alias\n***alias\n1.2"
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["+44", "++alias", "--alias", "***alias", "1.2"])
+  }
+
+  @Test("Compact numbered list markers with no separating space still strip")
+  func compactNumberedMarkersStripped() {
+    let raw = "1.kuber netties\n2)cube ernetes"
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes"])
+  }
+
+  @Test("Marker-only lines vanish; decimals survive; compact markers still strip")
+  func markerOnlyLinesAndDecimalsHandledCorrectly() {
+    let raw = [
+      "1. word",
+      "1.word",
+      "1.",
+      "1.2",
+      "12.34",
+      "2)cube",
+      "2)",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["word", "word", "1.2", "12.34", "cube"])
+  }
+
+  @Test("Quoted line with a trailing comma fully unwraps (JSON-array-style output)")
+  func quotedLineWithTrailingCommaFullyUnwraps() {
+    let raw = "\"kuber netties\",\n\"cube ernetes\",\ncooper nettys"
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes", "cooper nettys"])
+  }
+
+  @Test("A marker's own delimiter is never consumed alongside an unrelated outer wrapper")
+  func markerDelimiterNotConsumedByOuterWrapperRun() {
+    #expect(WordSuggestionService.parsePlainStringAliases("(1))").isEmpty)
+    #expect(WordSuggestionService.parsePlainStringAliases(",1.,").isEmpty)
+  }
+
+  @Test("A marker's own delimiter is not consumed by a DIFFERENT operation later in the same pass")
+  func markerDelimiterNotConsumedWithinSameBatchedPass() {
+    #expect(WordSuggestionService.parsePlainStringAliases("\"1.\"").isEmpty)
+    #expect(WordSuggestionService.parsePlainStringAliases("(1.)").isEmpty)
+  }
+
+  @Test("A wrapper on one edge is never peeled together with a marker delimiter on the other edge")
+  func wrapperOnOneEdgeNotPeeledWithMarkerOnOtherEdge() {
+    #expect(WordSuggestionService.parsePlainStringAliases(",1.").isEmpty)
+    #expect(WordSuggestionService.parsePlainStringAliases("[1)").isEmpty)
+  }
 }
 
 /// Pins the multi-call dedupe pool helper.
