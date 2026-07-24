@@ -21,8 +21,9 @@ public struct OpenAIConnector: TranscriptPolisher {
   private let baseURL = "https://api.openai.com/v1/chat/completions"
 
   /// Params the strip-retry may remove after a qualifying 400. Never
-  /// `model`/`messages`/`max_completion_tokens` — stripping the cap would
-  /// unbound cost, and the others are the request itself.
+  /// `model`/`messages` — they are the request itself. `max_completion_tokens`
+  /// is absent under `.providerDefault` (#1710) and, when present via
+  /// `.capped`, is a deliberate policy value the strip must not remove.
   static let strippableParams: Set<String> = ["temperature", "reasoning_effort"]
 
   /// Process-lifetime memo of params each exact model id rejected, so the
@@ -111,9 +112,13 @@ public struct OpenAIConnector: TranscriptPolisher {
     var body: [String: Any] = [
       "model": config.model,
       "messages": messages,
-      "max_completion_tokens": config.maxTokens,
       "store": false,
     ]
+    // #1710: only `.capped` serializes a limit; `.providerDefault` sends
+    // none, so the provider's own per-model maximum applies.
+    if case .capped(let value) = config.outputTokens {
+      body["max_completion_tokens"] = value
+    }
     if capabilities.temperaturePolicy == .include && !omitting.contains("temperature") {
       body["temperature"] = config.temperature
     }
@@ -364,23 +369,34 @@ public struct OpenAIConnector: TranscriptPolisher {
     data: Data, config: LLMProviderConfig
   ) throws -> LLMResult {
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    guard let choices = json?["choices"] as? [[String: Any]],
-      let message = choices.first?["message"] as? [String: Any],
-      let content = message["content"] as? String,
-      !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    else {
+    guard let choices = json?["choices"] as? [[String: Any]] else {
       throw LLMError.emptyResponse
     }
 
+    // #1710: a length-stop is a PARTIAL rewrite — pasting it would silently
+    // delete the tail of the dictation. Reject whole; the pipeline keeps the
+    // complete pre-polish text. Checked BEFORE the content guard (cloud
+    // review P2): a reasoning model can burn the whole budget on hidden
+    // thinking and return NO visible content — that is a provider condition
+    // (non-alerting outputTruncated), never our alerting emptyResponse.
     if let finishReason = choices.first?["finish_reason"] as? String,
       finishReason == "length"
     {
       Task {
         await AppLogger.shared.log(
-          "WARNING: OpenAI response truncated (finish_reason=length, model=\(config.model), max_tokens=\(config.maxTokens))",
+          "WARNING: OpenAI response truncated; rejecting partial output "
+            + "(finish_reason=length, model=\(config.model), policy=\(config.outputTokens))",
           level: .info, category: "LLM"
         )
       }
+      throw LLMError.classified(.outputTruncated)
+    }
+
+    guard let message = choices.first?["message"] as? [String: Any],
+      let content = message["content"] as? String,
+      !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      throw LLMError.emptyResponse
     }
 
     return LLMResult(

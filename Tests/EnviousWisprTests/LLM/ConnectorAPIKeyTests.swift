@@ -53,7 +53,7 @@ struct ConnectorAPIKeyTests {
 
   private func config(keychainId: String?) -> LLMProviderConfig {
     LLMProviderConfig(
-      model: "test-model", apiKeyKeychainId: keychainId, maxTokens: 64,
+      model: "test-model", apiKeyKeychainId: keychainId, outputTokens: .capped(64),
       temperature: 0, thinkingBudget: nil, reasoningEffort: nil)
   }
 

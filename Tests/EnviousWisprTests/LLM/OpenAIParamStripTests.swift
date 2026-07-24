@@ -142,7 +142,7 @@ struct OpenAIParamStripTests {
 
   private func config(model: String, reasoningEffort: String? = nil) -> LLMProviderConfig {
     LLMProviderConfig(
-      model: model, apiKeyKeychainId: "openai-api-key", maxTokens: 512,
+      model: model, apiKeyKeychainId: "openai-api-key", outputTokens: .capped(512),
       temperature: 0, thinkingBudget: nil, reasoningEffort: reasoningEffort)
   }
 
@@ -337,4 +337,38 @@ struct OpenAIParamStripTests {
     }
     #expect(transport.requestCount == 1)
   }
+
+  // MARK: - Truncation rejection (#1710) — RED-first against chunk-1 HEAD
+
+  @Test("finish_reason=length is rejected, never returned as success")
+  func truncatedResponseIsRejectedNotAccepted() async {
+    let model = "gpt-4o-trunc-\(UUID().uuidString)"
+    defer { OpenAIConnector.resetOmissions(model: model) }
+    let truncatedBody = Data(
+      #"{"choices": [{"message": {"content": "This got cut off mid"}, "finish_reason": "length"}]}"#
+        .utf8)
+    let transport = ScriptedTransport(script: [(truncatedBody, Self.response(200))])
+
+    // Written RED against chunk 1 (the connector returned the partial text
+    // as success); now pinned to the exact classified rejection.
+    await #expect(throws: LLMError.classified(.outputTruncated)) {
+      _ = try await connector(transport).polish(
+        text: "hello", instructions: .default, config: config(model: model), onToken: nil)
+    }
+  }
+
+
+  @Test("length stop with empty content classifies as truncation, not empty")
+  func emptyLengthStopIsTruncationNotEmpty() async {
+    let model = "gpt-4o-trunc-empty-\(UUID().uuidString)"
+    defer { OpenAIConnector.resetOmissions(model: model) }
+    let body = Data(
+      #"{"choices": [{"message": {"content": ""}, "finish_reason": "length"}]}"#.utf8)
+    let transport = ScriptedTransport(script: [(body, Self.response(200))])
+    await #expect(throws: LLMError.classified(.outputTruncated)) {
+      _ = try await connector(transport).polish(
+        text: "hello", instructions: .default, config: config(model: model), onToken: nil)
+    }
+  }
+
 }

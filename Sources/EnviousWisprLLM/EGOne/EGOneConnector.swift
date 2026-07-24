@@ -40,18 +40,31 @@ public struct EGOneConnector: TranscriptPolisher {
     return try await send(system: pair.system ?? "", user: pair.user, config: config)
   }
 
-  private func send(
+  /// Build the chat-completions body (#1710). Static and pure for fixture
+  /// testing. EG-1's truncation policy depends on its computed cap; an
+  /// uncapped request is an invariant breach and throws through the
+  /// ordinary limb-failure path.
+  static func makeRequestBody(
     system: String, user: String, config: LLMProviderConfig
-  ) async throws -> LLMResult {
-    let body: [String: Any] = [
+  ) throws -> [String: Any] {
+    guard case .capped(let maxTokens) = config.outputTokens else {
+      throw LLMError.requestFailed("Local polish requires an explicit output-token cap")
+    }
+    return [
       "model": config.model,
       "messages": [
         ["role": "system", "content": system],
         ["role": "user", "content": user],
       ],
-      "max_tokens": config.maxTokens,
+      "max_tokens": maxTokens,
       "temperature": config.temperature,
     ]
+  }
+
+  private func send(
+    system: String, user: String, config: LLMProviderConfig
+  ) async throws -> LLMResult {
+    let body = try Self.makeRequestBody(system: system, user: user, config: config)
 
     var request = URLRequest(url: endpoint.chatCompletionsURL)
     request.httpMethod = "POST"

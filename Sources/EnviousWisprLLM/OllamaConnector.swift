@@ -85,10 +85,14 @@ public struct OllamaConnector: TranscriptPolisher {
       messages.append(["role": "user", "content": text])
     }
 
+    // #1710: local polish requires an explicit computed cap for num_predict.
+    guard case .capped(let maxTokens) = config.outputTokens else {
+      throw LLMError.requestFailed("Local polish requires an explicit output-token cap")
+    }
     let body = Self.makeRequestBody(
       model: config.model,
       messages: messages,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
       temperature: config.temperature
     )
 
@@ -148,10 +152,14 @@ public struct OllamaConnector: TranscriptPolisher {
       throw LLMError.requestFailed("Invalid Ollama URL: \(endpointURL)")
     }
 
+    // #1710: local polish requires an explicit computed cap for num_predict.
+    guard case .capped(let maxTokens) = config.outputTokens else {
+      throw LLMError.requestFailed("Local polish requires an explicit output-token cap")
+    }
     let body = Self.makeRequestBody(
       model: config.model,
       messages: messages,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
       temperature: config.temperature
     )
 
