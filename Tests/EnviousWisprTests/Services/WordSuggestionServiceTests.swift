@@ -232,6 +232,22 @@ struct WordSuggestionServiceParserTests {
 
     #expect(parsed == ["kuber netties", "cube ernetes", "cooper nettys"])
   }
+
+  @Test("Fence lines wrapped in a numbered, bulleted, or quoted marker are still dropped")
+  func fenceLinesWithListMarkersOrQuotesDropped() {
+    let raw = [
+      "1. kuber netties",
+      "2. cube ernetes",
+      "3. cooper nettys",
+      "4. ```plaintext",
+      "- ```",
+      "\"```\"",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes", "cooper nettys"])
+  }
 }
 
 /// Pins the multi-call dedupe pool helper.

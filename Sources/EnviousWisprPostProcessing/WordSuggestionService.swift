@@ -609,11 +609,6 @@ public final class WordSuggestionService: Sendable {
     for line in raw.components(separatedBy: .newlines) {
       var s = line.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
-      if let fenceRegex,
-        fenceRegex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
-      {
-        continue
-      }
       s = s.trimmingCharacters(in: CharacterSet(charactersIn: "[]()"))
       s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
@@ -627,6 +622,15 @@ public final class WordSuggestionService: Sendable {
         in: CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019},."))
       s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
+      // Re-check for a fence AFTER list-marker/quote/bracket stripping —
+      // a numbered/bulleted/quoted fence line (e.g. "1. ```plaintext") does
+      // not match the bare-fence pattern until its wrapper is removed
+      // (GitHub cloud review, PR #1765).
+      if let fenceRegex,
+        fenceRegex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+      {
+        continue
+      }
       // Drop meta-commentary by token match.
       let lower = s.lowercased()
       var isMeta = false
