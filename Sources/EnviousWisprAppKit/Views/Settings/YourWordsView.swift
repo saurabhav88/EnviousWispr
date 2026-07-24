@@ -24,13 +24,9 @@ struct YourWordsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var sheetRoute: YourWordsSheetRoute?
-  #if DEBUG
-    // Outcome-to-message mapping moved to shared `CustomWordsExportNotice`
-    // (#1703) so `BulkDeleteConfirmSheet`'s release-visible export offer can
-    // present the identical copy. This button stays DEBUG-only; only the
-    // mapping it reads from is now shared, not private.
-    @State private var exportNotice: CustomWordsExportNotice?
-  #endif
+  // Outcome-to-message mapping is shared with `BulkDeleteConfirmSheet` so both
+  // export entry points present the identical copy (#1703).
+  @State private var exportNotice: CustomWordsExportNotice?
 
   var body: some View {
     @Bindable var settings = settings
@@ -50,45 +46,28 @@ struct YourWordsView: View {
         } label: {
           Label("Add term", systemImage: "plus")
         }
-        #if DEBUG
-          // The ONLY doorway into Custom Words import, and deliberately
-          // DEBUG-only.
-          //
-          // This is founder policy, not an oversight or an unfinished edge
-          // (epic #1619, restated 2026-07-19): the whole import feature is
-          // compiled out of release builds until the founder decides it ships,
-          // and every import PR carries "adds no second entry point" in its
-          // definition of done. The mechanism is compile-time exclusion rather
-          // than a runtime toggle precisely because a runtime toggle ships in
-          // release and is user-discoverable — the exact bleed being avoided.
-          //
-          // Reviewers reasonably read a real, working, unreachable feature as
-          // a bug — it was raised as a P1 on #1681 — so the reason lives here,
-          // next to the gate, rather than only in the issue tracker. Removing
-          // this gate is a founder decision, not a code-review one.
-          Button {
-            sheetRoute = .importWords
-          } label: {
-            Label("Import", systemImage: "square.and.arrow.down")
-          }
-          // Export (#1680). Also DEBUG-only: the whole import/export feature is
-          // compiled out of release builds until the founder ships it, and a
-          // release-visible Export whose companion Import is invisible would be
-          // half a promise.
-          // ONE body-render snapshot drives both the count shown in the save
-          // dialog and the array handed to the action, so the number the user
-          // reads and the bytes written cannot come from different moments
-          // (#1697). The sentence itself lives in the dialog, not on this
-          // screen: a paragraph wedged between two buttons competes with them
-          // (#1715).
-          let proposed = CustomWordsExportAction.exportableWords(
-            from: customWordsCoordinator.customWords)
-          Button {
-            exportWords(proposed: proposed)
-          } label: {
-            Label("Export your words", systemImage: "square.and.arrow.up")
-          }
-        #endif
+        // The ONLY doorway into Custom Words import (epic #1619). Shipped to
+        // release users from v2.4.1 by founder decision, 2026-07-24; every
+        // import PR still carries "adds no second entry point" in its
+        // definition of done, so this stays the single doorway.
+        Button {
+          sheetRoute = .importWords
+        } label: {
+          Label("Import", systemImage: "square.and.arrow.down")
+        }
+        // Export (#1680). ONE body-render snapshot drives both the count shown
+        // in the save dialog and the array handed to the action, so the number
+        // the user reads and the bytes written cannot come from different
+        // moments (#1697). The sentence itself lives in the dialog, not on this
+        // screen: a paragraph wedged between two buttons competes with them
+        // (#1715).
+        let proposed = CustomWordsExportAction.exportableWords(
+          from: customWordsCoordinator.customWords)
+        Button {
+          exportWords(proposed: proposed)
+        } label: {
+          Label("Export your words", systemImage: "square.and.arrow.up")
+        }
       }
 
       // Master toggle (preserves the Enable custom words switch from the old view)
@@ -110,48 +89,39 @@ struct YourWordsView: View {
         }
       }
 
-      #if DEBUG
-        // Same DEBUG-only doorway as the rest of the import feature (#1619):
-        // this card can only ever appear if the DEBUG-only "Import"
-        // button above committed a batch, so it stays behind the same gate
-        // rather than a redundant runtime check.
-        //
-        // Visibility and the progress numerator both read `pendingEnrichmentCount`
-        // — the observable in-memory count, never `pendingEnrichmentWords()`
-        // (a real locked file read) and never the total's mere presence
-        // (Codex Chunk 2 review finding 5: neither belongs in a SwiftUI
-        // `body`, and the durable total can theoretically lag live state
-        // during the brief self-heal window). The durable total remains the
-        // denominator when available, falling back to the live count itself
-        // as an honest floor if the total is momentarily nil.
-        let pendingCount = customWordsCoordinator.pendingEnrichmentCount
-        if pendingCount > 0 {
-          BulkImportEnrichmentProgressCard(
-            total: customWordsCoordinator.pendingEnrichmentBatchTotal ?? pendingCount,
-            pendingCount: pendingCount,
-            recent: customWordsCoordinator.mostRecentEnrichment,
-            onCancel: { customWordsCoordinator.cancelBulkImportEnrichment?() }
-          )
-        }
-      #endif
+      // Visibility and the progress numerator both read `pendingEnrichmentCount`
+      // — the observable in-memory count, never `pendingEnrichmentWords()`
+      // (a real locked file read) and never the total's mere presence
+      // (Codex Chunk 2 review finding 5: neither belongs in a SwiftUI
+      // `body`, and the durable total can theoretically lag live state
+      // during the brief self-heal window). The durable total remains the
+      // denominator when available, falling back to the live count itself
+      // as an honest floor if the total is momentarily nil.
+      let pendingCount = customWordsCoordinator.pendingEnrichmentCount
+      if pendingCount > 0 {
+        BulkImportEnrichmentProgressCard(
+          total: customWordsCoordinator.pendingEnrichmentBatchTotal ?? pendingCount,
+          pendingCount: pendingCount,
+          recent: customWordsCoordinator.mostRecentEnrichment,
+          onCancel: { customWordsCoordinator.cancelBulkImportEnrichment?() }
+        )
+      }
 
       LearningSection()
       VocabPacksSection()
       CustomTermsSection()
     }
-    #if DEBUG
-      .alert(
-        exportNotice?.title ?? "",
-        isPresented: Binding(
-          get: { exportNotice != nil },
-          set: { if !$0 { exportNotice = nil } }
-        )
-      ) {
-        Button("OK", role: .cancel) { exportNotice = nil }
-      } message: {
-        Text(exportNotice?.message ?? "")
-      }
-    #endif
+    .alert(
+      exportNotice?.title ?? "",
+      isPresented: Binding(
+        get: { exportNotice != nil },
+        set: { if !$0 { exportNotice = nil } }
+      )
+    ) {
+      Button("OK", role: .cancel) { exportNotice = nil }
+    } message: {
+      Text(exportNotice?.message ?? "")
+    }
     .sheet(item: $sheetRoute) { route in
       switch route {
       case .addTerm:
@@ -174,32 +144,29 @@ struct YourWordsView: View {
     }
   }
 
-  #if DEBUG
-    /// Export the user's own words (#1680).
-    ///
-    /// Order matters: the destination is chosen first, and only then is the
-    /// word list snapshotted — so cancelling reads nothing and writes nothing.
-    /// Built-ins are excluded; what ships is what the user authored or edited,
-    /// which is the only scope whose restore path this app can actually honor.
-    private func exportWords(proposed: [CustomWord]) {
-      // The decision lives in CustomWordsExportAction so the ORDER of its
-      // steps is testable; this is just the wiring (#1680).
-      Task {
-        let outcome = await CustomWordsExportAction.run(
-          coordinator: customWordsCoordinator,
-          proposedExportWords: proposed,
-          chooseDestination: {
-            CustomWordsExportPanel.chooseDestination(exportableCount: proposed.count)
-          },
-          write: { document, destination in
-            try await CustomWordsExportWriter.write(document, to: destination)
-          }
-        )
-        exportNotice = CustomWordsExportNotice.forOutcome(outcome)
-      }
+  /// Export the user's own words (#1680).
+  ///
+  /// Order matters: the destination is chosen first, and only then is the
+  /// word list snapshotted — so cancelling reads nothing and writes nothing.
+  /// Built-ins are excluded; what ships is what the user authored or edited,
+  /// which is the only scope whose restore path this app can actually honor.
+  private func exportWords(proposed: [CustomWord]) {
+    // The decision lives in CustomWordsExportAction so the ORDER of its
+    // steps is testable; this is just the wiring (#1680).
+    Task {
+      let outcome = await CustomWordsExportAction.run(
+        coordinator: customWordsCoordinator,
+        proposedExportWords: proposed,
+        chooseDestination: {
+          CustomWordsExportPanel.chooseDestination(exportableCount: proposed.count)
+        },
+        write: { document, destination in
+          try await CustomWordsExportWriter.write(document, to: destination)
+        }
+      )
+      exportNotice = CustomWordsExportNotice.forOutcome(outcome)
     }
-
-  #endif
+  }
 
   private func saveNewWord(_ newWord: CustomWord) -> String? {
     let trimmedCanonical = newWord.canonical.trimmingCharacters(in: .whitespaces)

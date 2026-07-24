@@ -240,17 +240,12 @@ struct UnifiedWindowView: View {
   /// The load-bearing notification surface for a background bulk-import
   /// enrichment run (#1701 Chunk 2, plan §3.1 point 6): independent of
   /// whether either transient pill was ever seen, this badge tells the
-  /// founder something is in progress just by opening Settings at all.
-  /// DEBUG-only because the whole import feature is (§316). Reads
+  /// user something is in progress just by opening Settings at all. Reads
   /// `pendingEnrichmentCount` (observable in-memory), never the total's mere
   /// presence — same reasoning as the progress card (Codex Chunk 2 review
   /// finding 5).
   private func yourWordsEnrichmentBadgeVisible(for section: SettingsSection) -> Bool {
-    #if DEBUG
-      section == .wordCorrection && customWordsCoordinator.pendingEnrichmentCount > 0
-    #else
-      false
-    #endif
+    section == .wordCorrection && customWordsCoordinator.pendingEnrichmentCount > 0
   }
 
   /// The centered top-bar identity: the brand mark plus the app wordmark. Held

@@ -125,23 +125,22 @@ public final class WisprBootstrapper {
       aliasSuggester: customWordsCoordinator.aliasSuggester)
     // #1701 Chunk 2: bulk-import-enrichment producer, a sibling of
     // `contactsImportCoordinator` on the same alias-suggester permit lane.
-    // Construction is unconditional; the DEBUG gate below controls scanning.
+    // Construction and scanning are both unconditional: without this wiring
+    // `onImportCommitted` stays nil and a committed import never enriches.
     let bulkImportEnrichmentCoordinator = BulkImportEnrichmentCoordinator(
       customWords: customWordsCoordinator,
       aliasSuggester: customWordsCoordinator.aliasSuggester,
       presentStatus: { [weak recordingOverlay] message in
         recordingOverlay?.showImportStatus(message: message)
       })
-    #if DEBUG
-      customWordsCoordinator.onImportCommitted = { [weak bulkImportEnrichmentCoordinator] in
-        bulkImportEnrichmentCoordinator?.requestDrain()
-      }
-      customWordsCoordinator.cancelBulkImportEnrichment = {
-        [weak bulkImportEnrichmentCoordinator] in
-        bulkImportEnrichmentCoordinator?.cancel()
-      }
-      bulkImportEnrichmentCoordinator.requestDrain()
-    #endif
+    customWordsCoordinator.onImportCommitted = { [weak bulkImportEnrichmentCoordinator] in
+      bulkImportEnrichmentCoordinator?.requestDrain()
+    }
+    customWordsCoordinator.cancelBulkImportEnrichment = {
+      [weak bulkImportEnrichmentCoordinator] in
+      bulkImportEnrichmentCoordinator?.cancel()
+    }
+    bulkImportEnrichmentCoordinator.requestDrain()
     let customWordsPropagator = CustomWordsPropagator()
     // #633 Phase 9: owns enabled vocabulary-pack state; merges pack terms into
     // the corrector lane (default OFF). Wired into `wireCustomWords` below.
