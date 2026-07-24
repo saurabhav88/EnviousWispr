@@ -709,12 +709,17 @@ struct TextProcessingRunnerCaptureTests {
     let step = makeStep(provider: .gemini, model: "gemini-2.5-flash") {
       LLMError.classified(.outputTruncated)
     }
+    // Downstream recorder: proves the COMPLETE pre-polish text continues to
+    // the next step after the rejected polish (plan §11 contract).
+    let downstream = RecordingStep()
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, language: "en", targetAppName: nil,
+      steps: [step, downstream])
 
     // Complete pre-polish text retained exactly; no partial output accepted.
     #expect(result.context.text == Self.longTranscript)
+    #expect(downstream.receivedText == Self.longTranscript)
     #expect(result.context.polishedText == nil)
     #expect(result.context.llmProvider == nil)
     #expect(result.context.llmModel == nil)
@@ -731,6 +736,22 @@ struct TextProcessingRunnerCaptureTests {
     #expect(records.calls.first?.provider == "gemini")
     #expect(records.calls.first?.model == "gemini-2.5-flash")
     #expect(records.calls.first?.isTimeout == false)
+  }
+
+
+  /// Pass-through step that records the text it receives, proving the
+  /// pipeline continues downstream with the complete pre-polish text after
+  /// a rejected polish (#1710).
+  private final class RecordingStep: TextProcessingStep {
+    let name = "Downstream Recorder"
+    let isEnabled = true
+    let maxDuration: Duration = .seconds(5)
+    private(set) var receivedText: String?
+
+    func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+      receivedText = context.text
+      return context
+    }
   }
 
 }
