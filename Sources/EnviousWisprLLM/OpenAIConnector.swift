@@ -369,17 +369,16 @@ public struct OpenAIConnector: TranscriptPolisher {
     data: Data, config: LLMProviderConfig
   ) throws -> LLMResult {
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    guard let choices = json?["choices"] as? [[String: Any]],
-      let message = choices.first?["message"] as? [String: Any],
-      let content = message["content"] as? String,
-      !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    else {
+    guard let choices = json?["choices"] as? [[String: Any]] else {
       throw LLMError.emptyResponse
     }
 
     // #1710: a length-stop is a PARTIAL rewrite — pasting it would silently
     // delete the tail of the dictation. Reject whole; the pipeline keeps the
-    // complete pre-polish text.
+    // complete pre-polish text. Checked BEFORE the content guard (cloud
+    // review P2): a reasoning model can burn the whole budget on hidden
+    // thinking and return NO visible content — that is a provider condition
+    // (non-alerting outputTruncated), never our alerting emptyResponse.
     if let finishReason = choices.first?["finish_reason"] as? String,
       finishReason == "length"
     {
@@ -391,6 +390,13 @@ public struct OpenAIConnector: TranscriptPolisher {
         )
       }
       throw LLMError.classified(.outputTruncated)
+    }
+
+    guard let message = choices.first?["message"] as? [String: Any],
+      let content = message["content"] as? String,
+      !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      throw LLMError.emptyResponse
     }
 
     return LLMResult(

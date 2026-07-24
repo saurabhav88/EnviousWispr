@@ -279,10 +279,18 @@ public struct GeminiConnector: TranscriptPolisher {
       .filter { $0["thought"] as? Bool != true }
       .compactMap { $0["text"] as? String }
       .joined()
-    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    let finishReason = candidate["finishReason"] as? String
+    // #1710 cloud review P2: an empty body that ALSO carries MAX_TOKENS is a
+    // provider condition (thinking consumed the whole budget) — return it so
+    // the body phase classifies it as outputTruncated, never as our alerting
+    // emptyResponse. Empty WITHOUT the marker stays emptyResponse.
+    guard
+      finishReason == "MAX_TOKENS"
+        || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
       throw LLMError.emptyResponse
     }
-    return (text, candidate["finishReason"] as? String)
+    return (text, finishReason)
   }
 
   // MARK: - Shared

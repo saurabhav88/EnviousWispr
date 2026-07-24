@@ -139,4 +139,31 @@ struct GeminiResponseParsingTests {
     #expect(text == "Complete.")
     #expect(box.status == nil)
   }
+
+  // MARK: - Truncation-before-empty precedence (#1710 cloud review P2)
+
+  @Test("all-thought MAX_TOKENS batch classifies as truncation, not empty")
+  func allThoughtMaxTokensIsTruncationNotEmpty() {
+    // Thinking consumed the whole budget: no visible text, but the provider
+    // says MAX_TOKENS. That is a provider condition (non-alerting
+    // outputTruncated), never our alerting emptyResponse.
+    let data = responseJSON(text: "internal reasoning", finishReason: "MAX_TOKENS", thought: true)
+    let box = StatusBox()
+    #expect(throws: LLMError.classified(.outputTruncated)) {
+      _ = try GeminiConnector.batchBodyPhase(
+        data: data, statusCode: 200, config: config(),
+        recordStatus: { box.status = $0 })
+    }
+    #expect(box.status?.hasPrefix("error_after_200") == true)
+  }
+
+  @Test("empty without a truncation marker stays emptyResponse")
+  func emptyWithoutMarkerStaysEmptyResponse() {
+    let data = responseJSON(text: "   \n  ")
+    #expect(throws: LLMError.emptyResponse) {
+      _ = try GeminiConnector.batchBodyPhase(
+        data: data, statusCode: 200, config: config(), recordStatus: { _ in })
+    }
+  }
+
 }

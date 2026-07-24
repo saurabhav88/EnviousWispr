@@ -307,4 +307,13 @@ struct ClaudeConnectorTests {
       truncated: extracted.truncated, config: truncConfig())
   }
 
+
+  @Test("max_tokens stop with empty text still reports truncated, not empty")
+  func emptyMaxTokensIsTruncatedNotEmpty() throws {
+    let body = Data(
+      #"{"content": [{"type": "text", "text": ""}], "stop_reason": "max_tokens"}"#.utf8)
+    let extracted = try ClaudeConnector.extractResponseText(from: body)
+    #expect(extracted.truncated == true)
+  }
+
 }

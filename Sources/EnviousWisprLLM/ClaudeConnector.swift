@@ -336,7 +336,12 @@ public struct ClaudeConnector: TranscriptPolisher {
       .filter { $0["type"] as? String == "text" }
       .compactMap { $0["text"] as? String }
       .joined()
-    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    let truncated = (json?["stop_reason"] as? String) == "max_tokens"
+    // #1710 cloud review P2 class: empty text that ALSO carries max_tokens
+    // is a provider condition — return the truncated flag so the decision
+    // seam classifies it as outputTruncated, never our alerting
+    // emptyResponse. Empty WITHOUT the marker stays emptyResponse.
+    guard truncated || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw LLMError.emptyResponse
     }
     // `stop_reason: "refusal"` is a documented Anthropic value for a model
@@ -350,7 +355,6 @@ public struct ClaudeConnector: TranscriptPolisher {
     if (json?["stop_reason"] as? String) == "refusal" {
       throw LLMError.classified(.contentBlocked)
     }
-    let truncated = (json?["stop_reason"] as? String) == "max_tokens"
     return (text, truncated)
   }
 

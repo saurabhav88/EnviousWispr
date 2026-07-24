@@ -357,4 +357,18 @@ struct OpenAIParamStripTests {
     }
   }
 
+
+  @Test("length stop with empty content classifies as truncation, not empty")
+  func emptyLengthStopIsTruncationNotEmpty() async {
+    let model = "gpt-4o-trunc-empty-\(UUID().uuidString)"
+    defer { OpenAIConnector.resetOmissions(model: model) }
+    let body = Data(
+      #"{"choices": [{"message": {"content": ""}, "finish_reason": "length"}]}"#.utf8)
+    let transport = ScriptedTransport(script: [(body, Self.response(200))])
+    await #expect(throws: LLMError.classified(.outputTruncated)) {
+      _ = try await connector(transport).polish(
+        text: "hello", instructions: .default, config: config(model: model), onToken: nil)
+    }
+  }
+
 }
