@@ -906,6 +906,18 @@ extension WordSuggestionService: AliasSuggesting {
       return nil
     #endif
   }
+
+  /// Delegates to `suggest(for:priority:)` directly, which already owns
+  /// availability, timeout, classification, filtering, and permit handling
+  /// — never a second `withPermit` wrapper here, or one logical request
+  /// would attempt to acquire the shared permit twice (Phase 3 review
+  /// finding A, #1701).
+  package func suggestAliases(
+    for word: String, priority: AliasSuggestionPriority
+  ) async -> [String]? {
+    let suggestions = await suggest(for: word, priority: priority)
+    return suggestions?.suggestedAliases
+  }
 }
 
 public struct WordSuggestions: Sendable {

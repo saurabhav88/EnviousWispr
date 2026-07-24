@@ -60,6 +60,15 @@ private final class FakeAliasSuggester: AliasSuggesting, @unchecked Sendable {
     priorities.append(priority)
     return aliasesByWord[word]
   }
+
+  /// Contacts import always pins `.person` and never takes this path; a
+  /// minimal stub satisfies protocol conformance (#1701 Phase 3 review
+  /// finding A).
+  func suggestAliases(
+    for word: String, priority: AliasSuggestionPriority
+  ) async -> [String]? {
+    aliasesByWord[word]
+  }
 }
 
 @MainActor

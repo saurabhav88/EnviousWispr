@@ -34,4 +34,16 @@ package protocol AliasSuggesting: Sendable {
   func suggestAliases(
     for word: String, category: WordCategory, priority: AliasSuggestionPriority
   ) async -> [String]?
+
+  /// Generate aliases for `word` whose category is NOT genuinely known —
+  /// classifies first, then generates from that classification (Phase 3
+  /// review finding A, #1701). A word stored as `.general` because it was
+  /// never explicitly categorized (the type default) must not be force-fed
+  /// the general-word prompt as though `.general` were confirmed; this
+  /// overload gets it a real classification pass first, matching what
+  /// Add-term's `suggest(for:priority:)` already does. Returns nil under the
+  /// same conditions as the known-category overload.
+  func suggestAliases(
+    for word: String, priority: AliasSuggestionPriority
+  ) async -> [String]?
 }

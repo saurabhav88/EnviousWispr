@@ -367,9 +367,12 @@ final class CustomWordsCoordinator {
   /// One-time self-heal: repairs a `nil` durable total to the current live
   /// pending count when pending words exist but no total does. Adopts the
   /// (possibly just-repaired) total either way. Called by the background
-  /// coordinator before it begins draining.
+  /// coordinator before it begins draining. Throws (Phase 3 review finding
+  /// B, #1701) rather than silently falling back to the stale total, so a
+  /// caller can distinguish a transient `.libraryBusy` from a permanent
+  /// failure and retry accordingly.
   @discardableResult
-  func repairPendingEnrichmentTotalIfNeeded() -> Int? {
+  func repairPendingEnrichmentTotalIfNeeded() throws -> Int? {
     do {
       let total = try manager.repairPendingEnrichmentTotalIfNeeded()
       pendingEnrichmentBatchTotal = total
@@ -377,7 +380,7 @@ final class CustomWordsCoordinator {
       return total
     } catch {
       _ = note(error)
-      return pendingEnrichmentBatchTotal
+      throw error
     }
   }
 
@@ -386,8 +389,9 @@ final class CustomWordsCoordinator {
   /// one without the other. Fires `onWordsChanged` only when something in
   /// this batch actually still needed applying (first-terminal-action-wins:
   /// a checkpoint that only contains already-resolved IDs is a no-op).
-  @discardableResult
-  func applyEnrichmentResults(_ results: [CustomWordEnrichmentResult]) -> String? {
+  /// Throws (Phase 3 review finding B, #1701) so a caller can distinguish a
+  /// transient `.libraryBusy` from a permanent failure and retry accordingly.
+  func applyEnrichmentResults(_ results: [CustomWordEnrichmentResult]) throws {
     do {
       let outcome = try manager.applyEnrichmentResults(results)
       let snapshot = outcome.snapshot
@@ -407,9 +411,9 @@ final class CustomWordsCoordinator {
       }
       customWordError = nil
       if changed { onWordsChanged?(customWords) }
-      return nil
     } catch {
-      return note(error)
+      _ = note(error)
+      throw error
     }
   }
 

@@ -14,7 +14,12 @@ import Testing
 private final class FakeAliasSuggester: AliasSuggesting, @unchecked Sendable {
   private let aliasesByWord: [String: [String]]
   private let gate: CallGate?
+  /// Known-category-overload calls (`suggestAliases(for:category:priority:)`).
   private(set) var calls: [String] = []
+  /// Classification-overload calls (`suggestAliases(for:priority:)`,
+  /// #1701 Phase 3 review finding A) — recorded SEPARATELY so tests can
+  /// assert which path a word actually took.
+  private(set) var classificationCalls: [String] = []
   var available = true
   var isAvailable: Bool { available }
 
@@ -32,6 +37,19 @@ private final class FakeAliasSuggester: AliasSuggesting, @unchecked Sendable {
     priorities.append(priority)
     // Mirrors `WordSuggestionService.suggestAliases`'s own real behavior:
     // unavailable always resolves to nil, never a call that hangs or throws.
+    guard available else { return nil }
+    if let gate {
+      await gate.markCallStarted()
+      try? await gate.waitUntilOpen()
+    }
+    return aliasesByWord[word]
+  }
+
+  func suggestAliases(
+    for word: String, priority: AliasSuggestionPriority
+  ) async -> [String]? {
+    classificationCalls.append(word)
+    priorities.append(priority)
     guard available else { return nil }
     if let gate {
       await gate.markCallStarted()
@@ -72,6 +90,14 @@ private actor CallGate {
       }
     }
   }
+}
+
+/// Records `retrySleep` calls without ever actually sleeping — the bounded
+/// `.libraryBusy` retry tests (#1701 Phase 3 review finding B) assert the
+/// exact delay schedule and count without depending on wall-clock time.
+private actor DelayRecorder {
+  private(set) var delays: [Duration] = []
+  func record(_ delay: Duration) { delays.append(delay) }
 }
 
 @MainActor
@@ -222,6 +248,8 @@ struct BulkImportEnrichmentCoordinatorTests {
     await bulkCoordinator.awaitDrainForTesting()
 
     #expect(suggester.calls.isEmpty, "a pre-start cancel must trigger zero model calls")
+    #expect(
+      suggester.classificationCalls.isEmpty, "a pre-start cancel must trigger zero model calls")
     #expect(presented.isEmpty, "a pre-start cancel must never announce a start pill")
     #expect(
       coordinator.pendingEnrichmentBatchTotal == nil, "the sweep must durably clear the total")
@@ -264,7 +292,9 @@ struct BulkImportEnrichmentCoordinatorTests {
 
     // The coalesced extra pass must have picked up "Qualtrics" too, not just
     // stopped after the original word.
-    #expect(suggester.calls.contains("Qualtrics"), "the newly added word must be drained too")
+    #expect(
+      suggester.classificationCalls.contains("Qualtrics"),
+      "the newly added word must be drained too")
     let qualtrics = try #require(coordinator.customWords.first { $0.canonical == "Qualtrics" })
     #expect(qualtrics.aliases == ["qualtrix"])
     #expect(coordinator.pendingEnrichmentBatchTotal == nil)
@@ -289,10 +319,12 @@ struct BulkImportEnrichmentCoordinatorTests {
     }
 
     var presented: [String] = []
+    let delayRecorder = DelayRecorder()
     let bulkCoordinator = BulkImportEnrichmentCoordinator(
       customWords: coordinator,
       aliasSuggester: FakeAliasSuggester(aliasesByWord: ["Kubernetes": ["k8s"]]),
-      presentStatus: { presented.append($0) })
+      presentStatus: { presented.append($0) },
+      retrySleep: { await delayRecorder.record($0) })
 
     bulkCoordinator.requestDrain()
     await bulkCoordinator.awaitDrainForTesting()
@@ -301,6 +333,9 @@ struct BulkImportEnrichmentCoordinatorTests {
     #expect(
       !presented.contains("Finished importing your words."),
       "a failed checkpoint write must never announce completion")
+    #expect(
+      await delayRecorder.delays.isEmpty,
+      "a permanent (non-.libraryBusy) failure must never retry — Phase 3 review finding B")
 
     // Restore permissions before reading back, so the read-side of this
     // assertion isn't itself blocked by the fixture's own lockdown.
@@ -310,6 +345,140 @@ struct BulkImportEnrichmentCoordinatorTests {
     #expect(
       word.enrichmentPending == true,
       "an unresolved word must keep its pending flag when the checkpoint failed to write")
+  }
+
+  // MARK: - Bounded .libraryBusy recovery (Phase 3 review finding B)
+
+  /// Unlike `makeCoordinator()`, keeps the manager reference so its
+  /// `lockSyscall` seam can be rigged after seeding (#1701 finding B).
+  private func makeCoordinatorRetainingManager() -> (CustomWordsCoordinator, CustomWordsManager) {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-bulk-coordinator-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let mgr = CustomWordsManager(fileURL: dir.appendingPathComponent("custom-words.json"))
+    return (CustomWordsCoordinator(manager: mgr), mgr)
+  }
+
+  @Test("busy on the initial repair, then success: one retry, clean completion")
+  func busyOnRepairThenSucceeds() async throws {
+    let (coordinator, mgr) = makeCoordinatorRetainingManager()
+    // Seed through the coordinator's own commit path — real `lockSyscall`,
+    // exactly as production writes — before rigging contention.
+    _ = coordinator.commitImport(
+      plan(
+        baseline: coordinator.customWords,
+        additions: [CustomWordsImportCandidate(canonical: "Kubernetes")])
+    )
+    var lockCalls = 0
+    mgr.lockSyscall = { fd, flags in
+      lockCalls += 1
+      guard lockCalls == 1 else { return flock(fd, flags) }
+      errno = EWOULDBLOCK
+      return -1
+    }
+
+    let delayRecorder = DelayRecorder()
+    var presented: [String] = []
+    let suggester = FakeAliasSuggester(aliasesByWord: ["Kubernetes": ["k8s"]])
+    let bulkCoordinator = BulkImportEnrichmentCoordinator(
+      customWords: coordinator,
+      aliasSuggester: suggester,
+      presentStatus: { presented.append($0) },
+      retrySleep: { await delayRecorder.record($0) })
+
+    bulkCoordinator.requestDrain()
+    await bulkCoordinator.awaitDrainForTesting()
+
+    #expect(await delayRecorder.delays == [.seconds(1)])
+    #expect(
+      suggester.classificationCalls == ["Kubernetes"],
+      "the busy repair failed before the word loop ever ran — exactly one model call, on retry")
+    #expect(coordinator.pendingEnrichmentCount == 0, "eventually persisted despite the busy repair")
+    #expect(
+      presented == [
+        "Importing your words now. Check progress in the Your Words menu.",
+        "Finished importing your words.",
+      ], "no duplicate pills across the retry")
+  }
+
+  @Test("busy on the checkpoint, then success: eventually persisted, pills not duplicated")
+  func busyOnCheckpointThenSucceeds() async throws {
+    let (coordinator, mgr) = makeCoordinatorRetainingManager()
+    _ = coordinator.commitImport(
+      plan(
+        baseline: coordinator.customWords,
+        additions: [CustomWordsImportCandidate(canonical: "Kubernetes")])
+    )
+    // Call 1 = the repair (must succeed); call 2 = the checkpoint (busy
+    // once); every later call succeeds — this puts the busy failure past the
+    // word loop, unlike `busyOnRepairThenSucceeds` above.
+    var lockCalls = 0
+    mgr.lockSyscall = { fd, flags in
+      lockCalls += 1
+      guard lockCalls == 2 else { return flock(fd, flags) }
+      errno = EWOULDBLOCK
+      return -1
+    }
+
+    let delayRecorder = DelayRecorder()
+    var presented: [String] = []
+    let bulkCoordinator = BulkImportEnrichmentCoordinator(
+      customWords: coordinator,
+      aliasSuggester: FakeAliasSuggester(aliasesByWord: ["Kubernetes": ["k8s"]]),
+      presentStatus: { presented.append($0) },
+      retrySleep: { await delayRecorder.record($0) })
+
+    bulkCoordinator.requestDrain()
+    await bulkCoordinator.awaitDrainForTesting()
+
+    #expect(await delayRecorder.delays == [.seconds(1)])
+    let word = try #require(coordinator.customWords.first { $0.canonical == "Kubernetes" })
+    #expect(word.aliases == ["k8s"], "the word is eventually persisted despite the busy checkpoint")
+    #expect(
+      presented == [
+        "Importing your words now. Check progress in the Your Words menu.",
+        "Finished importing your words.",
+      ], "the pills are not duplicated by the retry")
+  }
+
+  @Test("exhausting all retries hard-stops once, keeps the queue pending, never loops tightly")
+  func exhaustedRetriesHardStops() async throws {
+    let (coordinator, mgr) = makeCoordinatorRetainingManager()
+    _ = coordinator.commitImport(
+      plan(
+        baseline: coordinator.customWords,
+        additions: [CustomWordsImportCandidate(canonical: "Kubernetes")])
+    )
+    // Every acquisition is busy, with no escape — proves genuine exhaustion,
+    // not a lucky later success.
+    mgr.lockSyscall = { _, _ in
+      errno = EWOULDBLOCK
+      return -1
+    }
+
+    let delayRecorder = DelayRecorder()
+    var presented: [String] = []
+    let suggester = FakeAliasSuggester(aliasesByWord: ["Kubernetes": ["k8s"]])
+    let bulkCoordinator = BulkImportEnrichmentCoordinator(
+      customWords: coordinator,
+      aliasSuggester: suggester,
+      presentStatus: { presented.append($0) },
+      retrySleep: { await delayRecorder.record($0) })
+
+    bulkCoordinator.requestDrain()
+    await bulkCoordinator.awaitDrainForTesting()
+
+    #expect(
+      await delayRecorder.delays == [.seconds(1), .seconds(2), .seconds(4)],
+      "four total attempts (one initial + three retries), then genuine exhaustion")
+    #expect(
+      suggester.classificationCalls.isEmpty,
+      "every attempt failed at the repair, before the word loop could ever run")
+    #expect(
+      coordinator.pendingEnrichmentCount == 1, "the queue stays pending — nothing was abandoned")
+    #expect(
+      !presented.contains("Finished importing your words."),
+      "exhaustion is a hard stop, never a false completion")
   }
 
   // MARK: - Fail-open (Codex Chunk 2 review finding 1)
@@ -385,7 +554,9 @@ struct BulkImportEnrichmentCoordinatorTests {
     await gate.open_()
     await bulkCoordinator.awaitDrainForTesting()
 
-    #expect(suggester.calls.contains("Qualtrics"), "the model IS called again — no per-word skip")
+    #expect(
+      suggester.classificationCalls.contains("Qualtrics"),
+      "the model IS called again — no per-word skip")
     let qualtrics = try #require(coordinator.customWords.first { $0.id == qualtricsID })
     #expect(
       qualtrics.aliases == ["other-instance-alias"],
@@ -428,7 +599,7 @@ struct BulkImportEnrichmentCoordinatorTests {
 
     // Exactly one call: the failure must hard-stop the loop before the
     // queued wake gets a chance to retry the same broken write again.
-    #expect(suggester.calls == ["Kubernetes"])
+    #expect(suggester.classificationCalls == ["Kubernetes"])
   }
 
   #if DEBUG
@@ -537,6 +708,46 @@ struct BulkImportEnrichmentCoordinatorTests {
       "a failed sweep write must never be reported as a successful cancel")
   }
 
+  // MARK: - Classification-aware routing (Phase 3 review finding A)
+
+  @Test(
+    "a never-classified .general word is routed through classification; an explicitly categorized word is not"
+  )
+  func generalWordsClassifyExplicitlyCategorizedWordsDoNot() async throws {
+    let (coordinator, _) = makeCoordinator()
+    _ = coordinator.commitImport(
+      plan(
+        baseline: coordinator.customWords,
+        additions: [
+          CustomWordsImportCandidate(canonical: "Kubernetes"),
+          CustomWordsImportCandidate(
+            canonical: "Qualtrics", category: .supplied(.brand)),
+        ]))
+    let suggester = FakeAliasSuggester(
+      aliasesByWord: ["Kubernetes": ["k8s"], "Qualtrics": ["qualtrix"]])
+    let bulkCoordinator = BulkImportEnrichmentCoordinator(
+      customWords: coordinator, aliasSuggester: suggester, presentStatus: { _ in })
+
+    bulkCoordinator.requestDrain()
+    await bulkCoordinator.awaitDrainForTesting()
+
+    #expect(
+      suggester.classificationCalls == ["Kubernetes"],
+      "the never-classified word must take the classification path, not the known-category one")
+    #expect(
+      suggester.calls == ["Qualtrics"],
+      "the explicitly categorized word must take the known-category path, not classification")
+    #expect(suggester.priorities == [.background, .background])
+
+    let kubernetes = try #require(coordinator.customWords.first { $0.canonical == "Kubernetes" })
+    #expect(kubernetes.aliases == ["k8s"], "classified aliases still persist")
+    #expect(
+      kubernetes.category == .general,
+      "the classifier's category is prompt-routing input only — the stored word stays .general")
+    let qualtrics = try #require(coordinator.customWords.first { $0.canonical == "Qualtrics" })
+    #expect(qualtrics.aliases == ["qualtrix"])
+  }
+
   // MARK: - Required coverage: priority, single-flight, pill counts, chunking
 
   @Test("every suggestion call uses .background priority")
@@ -582,7 +793,10 @@ struct BulkImportEnrichmentCoordinatorTests {
     await gate.open_()
     await bulkCoordinator.awaitDrainForTesting()
 
-    #expect(suggester.calls == ["Kubernetes"], "one word, called exactly once, by one walker")
+    #expect(
+      suggester.classificationCalls == ["Kubernetes"],
+      "one word, called exactly once, by one walker"
+    )
   }
 
   @Test("the start and finish pills each fire exactly once per continuous session")

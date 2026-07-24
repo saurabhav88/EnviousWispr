@@ -180,7 +180,7 @@ struct CustomWordsCoordinatorTests {
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
     let target = try #require(coordinator.customWords.first { $0.canonical == "Kubernetes" })
-    _ = coordinator.applyEnrichmentResults([
+    try coordinator.applyEnrichmentResults([
       CustomWordEnrichmentResult(id: target.id, generatedAliases: ["k8s"])
     ])
     #expect(coordinator.mostRecentEnrichment != nil, "the completed run left a display behind")
@@ -225,7 +225,7 @@ struct CustomWordsCoordinatorTests {
   }
 
   @Test("pendingEnrichmentCount drops as checkpoints land and reaches 0 on completion")
-  func pendingEnrichmentCountDropsAsCheckpointsLand() {
+  func pendingEnrichmentCountDropsAsCheckpointsLand() throws {
     let (coordinator, _) = makeCoordinator()
     _ = coordinator.commitImport(
       plan(
@@ -238,12 +238,12 @@ struct CustomWordsCoordinatorTests {
       $0.canonical == "Kubernetes" || $0.canonical == "Qualtrics"
     }
 
-    _ = coordinator.applyEnrichmentResults([
+    try coordinator.applyEnrichmentResults([
       CustomWordEnrichmentResult(id: words[0].id, generatedAliases: [])
     ])
     #expect(coordinator.pendingEnrichmentCount == 1)
 
-    _ = coordinator.applyEnrichmentResults([
+    try coordinator.applyEnrichmentResults([
       CustomWordEnrichmentResult(id: words[1].id, generatedAliases: [])
     ])
     #expect(coordinator.pendingEnrichmentCount == 0)

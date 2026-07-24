@@ -2,28 +2,28 @@ import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
 
-/// Background bulk-import-enrichment producer (#1701 Chunk 2), sibling of
+/// Background bulk-import-enrichment producer (#1701), sibling of
 /// `ContactsImportCoordinator`. Shares `WordSuggestionService`'s permit lane
 /// via the injected `AliasSuggesting` seam. Limb, not heart: depends only on
 /// `CustomWordsCoordinator` and an injected `any AliasSuggesting`. The
 /// durable queue is always a fresh scan of `enrichmentPending`, never an
-/// in-memory job list — a fresh instance, or a second app instance (#1747),
-/// finds the same work by re-scanning.
+/// in-memory list — a fresh or second app instance (#1747) re-scans it.
 @MainActor
 final class BulkImportEnrichmentCoordinator {
   private let customWords: CustomWordsCoordinator
   private let aliasSuggester: any AliasSuggesting
   /// Narrow closure into the transient-pill mechanism (`di-narrow-homes`).
   private let presentStatus: (String) -> Void
+  /// Cancellable timing seam for bounded `.libraryBusy` recovery (#1701).
+  /// Tests substitute a signal-recording stub, never wall-clock time.
+  private let retrySleep: @Sendable (Duration) async throws -> Void
 
   private var drainTask: Task<Void, Never>?
   /// A superseded task whose generation no longer matches must not act.
   private var generation = 0
-  /// Single-flight wake: consumed by the loop so a mid-drain request is
-  /// never lost, never a second concurrent walker.
+  /// Single-flight wake: never a lost mid-drain request, never a second walker.
   private var drainRequestedAgain = false
-  /// Checked only BEFORE starting the next word's call; in-flight always
-  /// finishes and checkpoints normally.
+  /// Checked only BEFORE the next word; in-flight always finishes and checkpoints.
   private var cancelRequested = false
   /// Whether the "started" pill has fired for the CURRENT session.
   private var didAnnounceStart = false
@@ -37,26 +37,31 @@ final class BulkImportEnrichmentCoordinator {
   private static let startMessage =
     "Importing your words now. Check progress in the Your Words menu."
   private static let finishMessage = "Finished importing your words."
+  /// Same shipped 1/2/4s schedule as `ManifestFetchTask`, not a new timing invention.
+  private static let busyRetryDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4)]
 
-  /// `.failed` hard-stops the loop regardless of `drainRequestedAgain` —
-  /// never retry a broken repair/read/write in a tight loop.
-  private enum DrainPassOutcome { case completedNormally, failed }
+  /// `.retryable` (transient `.libraryBusy`) retries silently until
+  /// exhausted. `.failed` hard-stops regardless of `drainRequestedAgain`.
+  private enum DrainPassOutcome { case completedNormally, retryable, failed }
   private enum DrainStatus: String { case checkpoint, completed, cancelled, failed }
 
   init(
     customWords: CustomWordsCoordinator,
     aliasSuggester: any AliasSuggesting,
-    presentStatus: @escaping (String) -> Void
+    presentStatus: @escaping (String) -> Void,
+    retrySleep: @escaping @Sendable (Duration) async throws -> Void = {
+      try await Task.sleep(for: $0)
+    }
   ) {
     self.customWords = customWords
     self.aliasSuggester = aliasSuggester
     self.presentStatus = presentStatus
+    self.retrySleep = retrySleep
   }
 
   /// Wake the drain — called at launch and after every nonempty import
   /// commit. Single-flight. Never gated on `isAvailable`: `suggestAliases`
-  /// resolves to `nil` safely when unavailable, an honest "tried, got
-  /// nothing" (D16 fail-open).
+  /// resolves to `nil` safely when unavailable, an honest "tried, got nothing".
   func requestDrain() {
     guard drainTask == nil else {
       drainRequestedAgain = true
@@ -77,8 +82,7 @@ final class BulkImportEnrichmentCoordinator {
     await drainTask?.value
   }
 
-  /// Never hard-cancels an in-flight call; the sweep runs only once the loop
-  /// observes this and exits.
+  /// Never hard-cancels an in-flight call; the sweep runs once the loop exits.
   func cancel() {
     guard drainTask != nil else {
       performCancelSweep()
@@ -88,9 +92,27 @@ final class BulkImportEnrichmentCoordinator {
   }
 
   private func runDrainLoop(generation gen: Int) async {
-    repeat {
+    // Attempt index is local to this pass, never stored session state — a
+    // fresh `requestDrain()` gets a fresh retry budget; success resets it.
+    outer: repeat {
       drainRequestedAgain = false
-      if case .failed = await drainOnce(generation: gen) { break }
+      for attempt in 0...Self.busyRetryDelays.count {
+        switch await drainOnce(generation: gen) {
+        case .completedNormally: break
+        case .failed: break outer
+        case .retryable:
+          guard attempt < Self.busyRetryDelays.count else {
+            // Exhausted: same one `.failed` log a permanent failure gets,
+            // then hard-stop — pending flags and the total stay intact for a
+            // later explicit wake to resume this same lingering session.
+            logCheckpoint(status: .failed)
+            break outer
+          }
+          try? await retrySleep(Self.busyRetryDelays[attempt])
+          continue
+        }
+        break
+      }
     } while drainRequestedAgain && gen == generation && !cancelRequested
     guard gen == generation else { return }  // superseded — a newer generation owns cleanup
     drainTask = nil
@@ -100,19 +122,27 @@ final class BulkImportEnrichmentCoordinator {
     }
   }
 
+  /// Transient `.libraryBusy` retries the same pass; everything else
+  /// (unreadable/corrupted files, coordination, ordinary write failures) is
+  /// an immediate hard stop, logged once here.
+  private func drainFailure(_ error: Error) -> DrainPassOutcome {
+    if error as? CustomWordsPersistenceError == .libraryBusy { return .retryable }
+    logCheckpoint(status: .failed)
+    return .failed
+  }
+
   private func drainOnce(generation gen: Int) async -> DrainPassOutcome {
-    customWords.repairPendingEnrichmentTotalIfNeeded()
-    if customWords.customWordError != nil {
-      logCheckpoint(status: .failed)
-      return .failed
+    do {
+      try customWords.repairPendingEnrichmentTotalIfNeeded()
+    } catch {
+      return drainFailure(error)
     }
     guard let pending = customWords.pendingEnrichmentWords() else {
       logCheckpoint(status: .failed)
       return .failed
     }
     guard !pending.isEmpty else {
-      // An unfinalized prior pass (its final scan failed after checkpointing
-      // everything) must finalize now, or it blocks the next session's pill.
+      // An unfinalized prior pass must finalize now, or it blocks the pill.
       finalizeLingeringSessionIfNeeded()
       return .completedNormally
     }
@@ -124,25 +154,30 @@ final class BulkImportEnrichmentCoordinator {
 
     var buffer: [CustomWordEnrichmentResult] = []
 
-    @discardableResult
-    func flush() -> Bool {
-      guard !buffer.isEmpty else { return true }
-      let error = customWords.applyEnrichmentResults(buffer)
-      buffer.removeAll(keepingCapacity: true)
-      return error == nil
+    // Never retains a stale buffer across a retry: a busy checkpoint
+    // propagates out of `drainOnce`; the next attempt starts fresh.
+    func flush() throws {
+      guard !buffer.isEmpty else { return }
+      defer { buffer.removeAll(keepingCapacity: true) }
+      try customWords.applyEnrichmentResults(buffer)
     }
 
     for word in pending {
       guard gen == generation, !cancelRequested else { break }
-      // `word` from this pass's ONE initial scan, never a per-word re-read
-      // (an O(n²) main-thread path) — the checkpoint's own pending-gate
-      // already makes a stale word a safe no-op.
-      let raw = await aliasSuggester.suggestAliases(
-        for: word.canonical, category: word.category, priority: .background)
+      // `word` from this pass's ONE initial scan, never a per-word re-read —
+      // the checkpoint's own pending-gate makes a stale word a safe no-op.
+      let raw: [String]?
+      if word.category == .general {
+        // Never a confirmed classification, only the type default — classify
+        // first rather than force-feeding the general-word prompt.
+        raw = await aliasSuggester.suggestAliases(for: word.canonical, priority: .background)
+      } else {
+        raw = await aliasSuggester.suggestAliases(
+          for: word.canonical, category: word.category, priority: .background)
+      }
 
-      // Always recorded, even if `cancelRequested` flipped true mid-call —
-      // "allow it to finish and checkpoint normally." Only the loop guard
-      // above, checked before STARTING the next call, stops further work.
+      // Always recorded, even if `cancelRequested` flipped mid-call — only
+      // the loop guard above, checked before the NEXT call, stops work.
       processedThisSession += 1
       if let raw, !raw.isEmpty {
         succeededWithAliases += 1
@@ -154,21 +189,22 @@ final class BulkImportEnrichmentCoordinator {
       buffer.append(CustomWordEnrichmentResult(id: word.id, generatedAliases: raw ?? []))
 
       if buffer.count >= Self.checkpointChunkSize {
-        guard flush() else {
-          logCheckpoint(status: .failed)
-          return .failed
+        do {
+          try flush()
+        } catch {
+          return drainFailure(error)
         }
         logCheckpoint(status: .checkpoint)
       }
     }
 
-    guard flush() else {
-      logCheckpoint(status: .failed)
-      return .failed
+    do {
+      try flush()
+    } catch {
+      return drainFailure(error)
     }
 
-    // A FAILED final read is its own terminal outcome, never folded into
-    // "read fine, still not empty."
+    // A FAILED final read is its own terminal outcome, not "still not empty".
     guard let stillPendingAfter = customWords.pendingEnrichmentWords() else {
       logCheckpoint(status: .failed)
       return .failed
@@ -190,8 +226,7 @@ final class BulkImportEnrichmentCoordinator {
   }
 
   private func performCancelSweep() {
-    // Report .cancelled and reset state ONLY once the sweep succeeds — a
-    // failed write is never logged as a clean cancel.
+    // A failed write is never logged as a clean cancel.
     guard customWords.cancelEnrichment() == nil else {
       logCheckpoint(status: .failed)
       return

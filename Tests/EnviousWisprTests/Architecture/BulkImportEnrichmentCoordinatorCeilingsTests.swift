@@ -3,14 +3,21 @@ import Testing
 
 /// Architecture ceiling for `BulkImportEnrichmentCoordinator` (#1701 Chunk 2).
 ///
-/// First measurement, not a ratchet: caps are set to the shape that shipped,
-/// not padded ahead of need. Raising any of these requires a Bible §30
-/// changelog entry, same discipline as every other per-home ceiling.
+/// Ratchet history:
+/// - Stored collaborators 3 -> 4 in #1701 (2026-07-23): injected
+///   `retrySleep`, the cancellable timing seam for bounded `.libraryBusy`
+///   recovery. Production uses the shipped 1/2/4-second retry schedule;
+///   tests replace the wait with a signal and never depend on wall-clock time.
+/// - Lines 225 -> 260 in #1701 (2026-07-23): Phase 3 full-diff review required
+///   typed `.libraryBusy` handling, a bounded delayed-retry state machine,
+///   and classification-aware routing for `.general` imported words. This is
+///   coordinator sequencing, not a new domain responsibility.
 ///
 /// Caps:
-/// - 3 stored collaborators (`customWords`, `aliasSuggester`, `presentStatus`)
+/// - 4 stored collaborators
+///   (`customWords`, `aliasSuggester`, `presentStatus`, `retrySleep`)
 /// - 3 non-private methods (`requestDrain`, `cancel`, `awaitDrainForTesting`)
-/// - ≤225 lines
+/// - <=260 lines
 /// - imports ⊆ {EnviousWisprCore, EnviousWisprPostProcessing, Foundation}
 @Suite struct BulkImportEnrichmentCoordinatorCeilingsTests {
   private static let sourcePath =
@@ -22,11 +29,11 @@ import Testing
       named: "BulkImportEnrichmentCoordinator", in: source)
     let total = bodies.reduce(0) { $0 + CeilingsTestSupport.countTopLevelLetCollaborators(in: $1) }
     #expect(
-      total <= 3,
+      total <= 4,
       """
-      BulkImportEnrichmentCoordinator stored-collaborator ceiling exceeded: \(total) > 3. \
-      Expected only `customWords`, `aliasSuggester`, `presentStatus`. Raising this cap \
-      requires a Bible §30 changelog entry.
+      BulkImportEnrichmentCoordinator stored-collaborator ceiling exceeded: \(total) > 4. \
+      Expected only `customWords`, `aliasSuggester`, `presentStatus`, `retrySleep`. Raising \
+      this cap requires a Bible §30 changelog entry.
       """)
   }
 
@@ -48,9 +55,9 @@ import Testing
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)
     let count = CeilingsTestSupport.lineCount(in: source)
     #expect(
-      count <= 225,
+      count <= 260,
       """
-      BulkImportEnrichmentCoordinator line count exceeded: \(count) > 225. Ratchet down \
+      BulkImportEnrichmentCoordinator line count exceeded: \(count) > 260. Ratchet down \
       if shipping smaller; raise only via Bible §30.
       """)
   }
