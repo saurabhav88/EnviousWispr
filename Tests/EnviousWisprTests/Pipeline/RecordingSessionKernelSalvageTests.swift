@@ -152,6 +152,68 @@ struct ExhaustedRetrySpoolDeletionTests {
     // always holds the samples, so no interruption cause is unsalvageable. The
     // salvage-succeeds path is covered by the salvage tests below.
 
+    // MARK: 1b. #1755 chunk 2 — a text-processing throw must not lose usable raw ASR
+
+    /// North Star point 3: a transcript the app already has is never thrown
+    /// away when raw text can be delivered. A throwing `processText` used to
+    /// publish `.failed(.emptyAfterProcessing)` BEFORE storage or delivery;
+    /// it now routes the raw ASR through the sole recovery-floor authority
+    /// (`KernelFinalizationWiring.emptyOutputRecoveryFloor`) and, when
+    /// lexical, follows the ordinary store → deliver → `.completed` path.
+    @Test("a processText throw with lexical raw ASR stores and delivers the raw text once")
+    func processTextThrowLexicalRawDelivers() async {
+      let (context, wrapper) = makeWrapper(behavior: .batchSuccess(text: "raw text"))
+      wrapper.testProcessTextThrows()
+      let kernel = wrapper.testKernel
+
+      await startRecording(context)
+      await context.sut.apply(.stop)
+      await wrapper.drainReadyWork()
+
+      #expect(
+        wrapper.telemetryState.transcriptionFailureError as? KernelLimbError
+          == .emptyAfterProcessing,
+        "the exact processing error must remain on the diagnostics side-channel")
+      #expect(wrapper.storedTexts == ["raw text"], "storage receives exactly the raw ASR")
+      #expect(
+        context.paste.pasteAttempts == ["raw text"],
+        "the delivery seam is called exactly once with the raw ASR")
+      #expect(context.paste.pasteCount == 1, "delivery happens exactly once")
+      #expect(kernel.deliveredTranscript == "raw text")
+      #expect(kernel.recordingOutcome == .completed)
+      #expect(
+        KernelDictationDriver.recoveryEnding(for: .completed) == nil,
+        "a completed dictation requests no ended-without-save recovery ending")
+      #expect(kernel.recordingOutcome != .failed(.emptyAfterProcessing))
+    }
+
+    /// The quiet twin: filler-only raw ASR has nothing worth saving — the
+    /// floor returns empty and the session ends `.noSpeech(.emptyAfterProcessing)`
+    /// with zero storage and zero delivery (never `.completed`, never `.failed`).
+    @Test("a processText throw with filler-only raw ASR ends quietly as no-speech")
+    func processTextThrowFillerOnlyEndsNoSpeech() async {
+      let (context, wrapper) = makeWrapper(behavior: .batchSuccess(text: "uh"))
+      wrapper.testProcessTextThrows()
+      let kernel = wrapper.testKernel
+
+      await startRecording(context)
+      await context.sut.apply(.stop)
+      await wrapper.drainReadyWork()
+
+      #expect(
+        wrapper.telemetryState.transcriptionFailureError as? KernelLimbError
+          == .emptyAfterProcessing,
+        "the exact processing error must remain on the diagnostics side-channel")
+      #expect(kernel.recordingOutcome == .noSpeech(.emptyAfterProcessing))
+      #expect(wrapper.storedTexts.isEmpty, "storage receives zero calls")
+      #expect(context.paste.pasteAttempts.isEmpty, "the delivery seam is never called")
+      #expect(kernel.deliveredTranscript == nil)
+      #expect(kernel.recordingOutcome != .completed)
+      if case .failed = kernel.recordingOutcome {
+        Issue.record("a filler-only processing throw must never be a .failed terminal")
+      }
+    }
+
     // MARK: 2. The floor — salvage never deletes a spool today's code would keep
 
     /// The pair that proves the floor. Same early terminal (`bufferCount == 0`

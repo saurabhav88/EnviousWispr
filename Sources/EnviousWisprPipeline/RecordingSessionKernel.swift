@@ -2472,10 +2472,20 @@ final class RecordingSessionKernel {
         self?.bump()
       }
     } catch {
+      // #1755 §3.2b: a THROWING text-processing step must not lose a
+      // transcript the app already has (heart rule
+      // preserve-raw-dictation-on-polish-error). Route the raw ASR through
+      // the sole recovery-floor authority: lexical raw text falls through to
+      // the ordinary store → deliver → `.completed` path below; filler-only/
+      // non-lexical raw text yields "" and lands on the quiet
+      // `.noSpeech(.emptyAfterProcessing)` branch. The error stays on the
+      // diagnostics side-channel either way.
       guard isCurrent(sid) else { return }
       telemetryState.transcriptionFailureError = error
-      finishTerminal(.failed(.emptyAfterProcessing), sid: sid)
-      return
+      processed = KernelFinalizationWiring.emptyOutputRecoveryFloor(
+        deterministicText: "",
+        rawASR: asrText
+      )
     }
     guard isCurrent(sid) else { return }
 

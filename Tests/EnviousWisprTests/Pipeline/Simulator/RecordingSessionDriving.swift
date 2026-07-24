@@ -129,6 +129,18 @@ final class LimbInjectionBox {
   /// without depending on this harness's identity `processText` running real
   /// text-processing logic (it does not — PR-3's fake polish is identity).
   var forceEmptyAfterProcessing = false
+  /// #1755 chunk 2: forces the harness `processText` to THROW (the
+  /// `KernelLimbError.emptyAfterProcessing` seam) — the deterministic stand-in
+  /// for a text-processing step failing outright while valid raw ASR exists,
+  /// driving `runFinalizing`'s catch.
+  var processTextThrows = false
+}
+
+/// #1755 chunk 2: records every text the kernel's `store` seam receives, in
+/// order. Reference type for the same pre-`self` capture constraint as
+/// `StopTimeZeroSignalTelemetryLog` — observation only, no policy.
+final class StoreLog {
+  var storedTexts: [String] = []
 }
 
 /// #1317: reference-type holder so `stopTimeZeroSignalTelemetry`'s closure
@@ -161,6 +173,10 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// instance across the kernel, the finalization wiring, and the lifecycle sink;
   /// this wrapper mirrors that by constructing it once and passing it in.
   let telemetryState = KernelTelemetryState()
+
+  private let storeLog = StoreLog()
+  /// #1755 chunk 2: every text the kernel handed the `store` seam, in order.
+  var storedTexts: [String] { storeLog.storedTexts }
 
   private let stopTimeTelemetryLog = StopTimeZeroSignalTelemetryLog()
   /// #1317: `CaptureStallContext`s the kernel's STOP-time classification
@@ -198,6 +214,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
     let limb = self.limb
     let telemetryState = self.telemetryState
     let stopTimeTelemetryLog = self.stopTimeTelemetryLog
+    let storeLog = self.storeLog
     let captureTelemetry = self.captureTelemetry
     let deadMicLog = self.deadMicLog
     self.kernel = RecordingSessionKernel(
@@ -213,10 +230,12 @@ final class KernelRecordingSession: RecordingSessionDriving {
         // way so the kernel's polish-signal observation point is covered.
         onPolishStarted()
         _ = limb.degradeToRaw
+        if limb.processTextThrows { throw KernelLimbError.emptyAfterProcessing }
         if limb.forceEmptyAfterProcessing { return "" }
         return raw
       },
-      store: { _, _ in
+      store: { [storeLog] text, _ in
+        storeLog.storedTexts.append(text)
         // #1167: a throwing save models the best-effort store seam. The kernel
         // ABSORBS the throw (records it on the finalization outcome) and still
         // proceeds to deliver + `.completed` — it no longer routes a terminal
@@ -325,6 +344,12 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// `runFinalizing`-from-`.finalizing` empty path).
   func testForceEmptyAfterProcessing() {
     limb.forceEmptyAfterProcessing = true
+  }
+
+  /// #1755 chunk 2: direct test-only knob — makes the harness `processText`
+  /// throw, standing in for a real text-processing failure over valid raw ASR.
+  func testProcessTextThrows() {
+    limb.processTextThrows = true
   }
 
   /// Yield until the kernel's `workEpoch` stops advancing — the FSM has settled
