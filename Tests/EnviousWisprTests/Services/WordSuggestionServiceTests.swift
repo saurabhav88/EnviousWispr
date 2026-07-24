@@ -303,6 +303,23 @@ struct WordSuggestionServiceParserTests {
 
     #expect(parsed == ["kuber netties", "cube ernetes"])
   }
+
+  @Test("Marker-only lines vanish; decimals survive; compact markers still strip")
+  func markerOnlyLinesAndDecimalsHandledCorrectly() {
+    let raw = [
+      "1. word",
+      "1.word",
+      "1.",
+      "1.2",
+      "12.34",
+      "2)cube",
+      "2)",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["word", "word", "1.2", "12.34", "cube"])
+  }
 }
 
 /// Pins the multi-call dedupe pool helper.

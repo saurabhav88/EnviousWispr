@@ -617,35 +617,47 @@ public final class WordSuggestionService: Sendable {
     // whitespace or end-of-line so the fixed-point loop below cannot
     // repeatedly eat real content like "+44" or "--alias" one character at
     // a time (Codex final sweep, PR #1765 r4). Ordered markers instead
-    // require the following char be NOT a digit (rather than requiring
-    // whitespace outright) — AFM sometimes emits a compact numbered item
-    // with no space ("1.kuber netties"), which must still strip, while a
-    // decimal/version-shaped alias ("1.2") must not have its leading
-    // "1." mistaken for a marker (GitHub cloud review, PR #1765 r5).
-    // Blockquote '>' keeps optional whitespace since CommonMark permits
-    // ">text".
+    // require the following char be NOT a digit — AFM sometimes emits a
+    // compact numbered item with no space ("1.kuber netties"), which must
+    // still strip, while a decimal/version-shaped alias ("1.2") must not
+    // have its leading "1." mistaken for a marker; `(?!\d)` also succeeds
+    // at end-of-line, covering a marker-only line ("1.") with no separate
+    // alternative needed (GitHub cloud review, PR #1765 r5/r6). Blockquote
+    // '>' keeps optional whitespace since CommonMark permits ">text".
     let listPrefixRegex = try? NSRegularExpression(
-      pattern: #"^(?:\d+[.)](?:\s+|$|(?![0-9]))|[-*•+](?:\s+|$)|>\s*)"#
+      pattern: #"^(?:\d+[.)](?!\d)|[-*•+](?:\s+|$)|>\s*)"#
     )
     for line in raw.components(separatedBy: .newlines) {
       var s = line.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
-      // Strip brackets, quotes, and list/blockquote markers to a fixed
+      // Strip list/blockquote markers, brackets, and quotes to a fixed
       // point — any interleaving or nesting of these wrapper types (a
       // quoted bullet, a bulleted blockquote, brackets around a numbered
-      // line) converges to the real inner content, not just one layer of it.
+      // line) converges to the real inner content, not just one layer of
+      // it. List-marker stripping runs FIRST in each pass, before comma/
+      // period trimming ever gets a chance to eat a marker's own "."/")"
+      // out from under it and leave an orphaned digit behind (GitHub cloud
+      // review, PR #1765 r6) — comma/period trimming is deliberately
+      // deferred to a single pass after the loop converges, below.
       var previous = ""
       while previous != s {
         previous = s
-        s = s.trimmingCharacters(in: CharacterSet(charactersIn: "[]()"))
-        s = s.trimmingCharacters(
-          in: CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019},."))
         if let listPrefixRegex {
           let range = NSRange(s.startIndex..., in: s)
           s = listPrefixRegex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
         }
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: "[]()"))
+        s = s.trimmingCharacters(
+          in: CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019}"))
         s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       }
+      if s.isEmpty { continue }
+      // Comma/period trimming runs ONCE, after convergence, not inside the
+      // loop — combining it with quote trimming let it strip a marker's own
+      // "." out from under the list-marker regex before that regex ever saw
+      // the whole marker (GitHub cloud review, PR #1765 r6).
+      s = s.trimmingCharacters(in: CharacterSet(charactersIn: ",."))
+      s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
       // Fence check runs AFTER wrapper convergence — a wrapped fence line
       // (numbered, bulleted, quoted, blockquoted, or any nesting of those)
