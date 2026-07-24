@@ -701,18 +701,22 @@ public final class WordSuggestionService: Sendable {
     return aliases
   }
 
-  /// Removes at most one matching character from the front and one from
-  /// the back — deliberately NOT `trimmingCharacters(in:)`, which removes
-  /// an entire consecutive run and can consume a wrapper character together
-  /// with an unrelated adjacent delimiter (e.g. a list marker's own "."/")")
-  /// in a single call. Used by `parsePlainStringAliases`'s convergence loop
-  /// so every removal gets re-evaluated by the marker regex on the next
-  /// pass, rather than several edge characters vanishing at once (#1763).
+  /// Removes AT MOST ONE matching character total — from the front if it
+  /// matches, else from the back if it matches, never both in one call.
+  /// Deliberately NOT `trimmingCharacters(in:)`, which removes an entire
+  /// consecutive run, and deliberately not "one from each edge" either —
+  /// either of those can consume a wrapper character on one edge together
+  /// with an unrelated list marker's own delimiter sitting on the OTHER
+  /// edge in a single call (e.g. ",1." or "[1)"), before the marker regex
+  /// gets another look. Used by `parsePlainStringAliases`'s convergence
+  /// loop, which already stops and restarts from the marker check after
+  /// ANY single-character change (#1763).
   private static func peelOneEdgeCharacter(_ s: String, in set: CharacterSet) -> String {
     guard !s.isEmpty else { return s }
     var s = s
     if let first = s.unicodeScalars.first, set.contains(first) {
       s.removeFirst()
+      return s
     }
     if let last = s.unicodeScalars.last, set.contains(last) {
       s.removeLast()

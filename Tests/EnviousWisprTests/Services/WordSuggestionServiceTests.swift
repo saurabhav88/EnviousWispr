@@ -341,6 +341,12 @@ struct WordSuggestionServiceParserTests {
     #expect(WordSuggestionService.parsePlainStringAliases("\"1.\"").isEmpty)
     #expect(WordSuggestionService.parsePlainStringAliases("(1.)").isEmpty)
   }
+
+  @Test("A wrapper on one edge is never peeled together with a marker delimiter on the other edge")
+  func wrapperOnOneEdgeNotPeeledWithMarkerOnOtherEdge() {
+    #expect(WordSuggestionService.parsePlainStringAliases(",1.").isEmpty)
+    #expect(WordSuggestionService.parsePlainStringAliases("[1)").isEmpty)
+  }
 }
 
 /// Pins the multi-call dedupe pool helper.
