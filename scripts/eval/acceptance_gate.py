@@ -162,7 +162,14 @@ BATCH_PASS_THRESHOLD = 0.90  # >=90% of cases must pass.
 # Format: (canonical, aliases). Matches CustomVocabularyFormatter output.
 
 DEFAULT_CUSTOM_VOCAB = [
-    ("EnviousWispr", ["envious whisper", "envious wisper", "envious whispr"]),
+    (
+        "EnviousWispr",
+        [
+            "envious whisper", "envious wisper", "envious whispr",
+            "envious visper", "envious cisper", "mbs cisper",
+            "in vious wispr", "envy us wispr", "NVS Visper", "NBS Vesper",
+        ],
+    ),
     ("Envious Labs", ["envious laps"]),
     ("macOS", ["mac OS", "Mack OS"]),
     ("iOS", ["I OS", "eye OS"]),
