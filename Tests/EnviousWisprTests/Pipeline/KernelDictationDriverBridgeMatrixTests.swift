@@ -179,18 +179,19 @@ import Testing
       // `.live → .asrInterrupted` depends on the live recording-exit
       // continuation that the real forward path creates — the forced-state
       // fixture has no continuation, so this matrix freeze covers only
-      // `delivering(.transcribing)`, which concludes through `finishTerminal`
-      // directly. Recording-positive coverage lives in the kernel's
-      // external-entry scenario tests (`RecordingSessionKernelExternalInterruptionTests`).
+      // `delivering(.transcribing)`. #1755 chunk 3: that state ROUTES into the
+      // kernel and stays pending (the suspended decode's own failure enters
+      // the Phase-2 retry) — no early terminal, and no driver fallback error
+      // for a routable state. Retry behavior: `KernelPhase2RetryTests`.
       let fx = makeFixture()
       await place(fx.kernel, in: .deliveringTranscribing)
       fx.driver.handleASRServiceInterruption()
       await drain()
-      if case .asrInterrupted = fx.kernel.recordingOutcome {
-      } else {
-        Issue.record(
-          "asrInterruption from delivering(.transcribing) must conclude .asrInterrupted; got outcome \(String(describing: fx.kernel.recordingOutcome))"
-        )
+      #expect(fx.kernel.recordingOutcome == nil, "no early terminal from a routable state")
+      #expect(fx.kernel.state == .delivering)
+      #expect(fx.kernel.deliveringPhase == .transcribing)
+      if case .error = fx.driver.state {
+        Issue.record("the driver must not manufacture its fallback error for a routable state")
       }
     }
 

@@ -2,6 +2,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
 // MARK: - #1707 Phase 2 — one live post-capture decode retry (kernel routing)
@@ -55,6 +56,200 @@ struct KernelPhase2RetryTests {
     await ctx.wrapper.drainReadyWork()
   }
 
+  /// #1755 chunk 3 helper: stop with the held finalize suspended, await the
+  /// fake's registration signal (never scheduler timing), and return once the
+  /// kernel is genuinely parked in `.delivering(.transcribing)`.
+  private func stopIntoHeldFinalize(_ ctx: Context) async {
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    deliverVoicedCapture(ctx)
+    await ctx.wrapper.drainReadyWork()
+    var pendingSignal: CheckedContinuation<Void, Never>?
+    ctx.engine.onHeldFinalizePending = { pendingSignal?.resume() }
+    await ctx.wrapper.apply(.stop)
+    if !ctx.engine.heldFinalizePending {
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        pendingSignal = c
+        if ctx.engine.heldFinalizePending { c.resume() }
+      }
+    }
+    ctx.engine.onHeldFinalizePending = nil
+  }
+
+  // MARK: #1755 chunk 3 — transcribe-phase helper death enters the SAME retry
+
+  @Test("helper death mid-decode routes into the one Phase-2 retry, and a successful retry delivers")
+  func helperDeathMidDecodeRetriesAndDelivers() async {
+    let ctx = makeContext(behavior: .heldFinalize)
+    ctx.engine.retryDecodeResult = .transcript(
+      ASRResult(
+        text: "rescued after death", language: nil, duration: 0, processingTime: 0,
+        backendType: .parakeet))
+    await stopIntoHeldFinalize(ctx)
+    let kernel = ctx.wrapper.testKernel
+    #expect(ctx.engine.heldFinalizePending, "the initial finalize must be genuinely suspended")
+    #expect(ctx.engine.finalizeCallCount == 1)
+
+    // Helper death arrives while the decode is suspended.
+    kernel.externalASRInterrupted()
+    await ctx.wrapper.drainReadyWork()
+
+    // No early terminal: the session keeps waiting for its own decode to fail.
+    #expect(kernel.recordingOutcome == nil, "no terminal may be published before finalize resolves")
+    #expect(kernel.state == .delivering)
+    #expect(kernel.deliveringPhase == .transcribing)
+    #expect(ctx.engine.retryDecodeCallCount == 0, "the retry must not start early")
+
+    // Chunk 1's drained continuation: the suspended decode now fails.
+    ctx.engine.resolveHeldFinalizeAsHelperDeath()
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.engine.finalizeCallCount == 1, "the initial decode ran exactly once")
+    #expect(
+      ctx.engine.recoverFromASRInterruptionCallCount == 0,
+      "this is NOT the .live Phase-1 rewarm path")
+    #expect(ctx.engine.retryDecodeCallCount == 1, "exactly one Phase-2 retry")
+    #expect(
+      !(ctx.engine.lastRetryDecodeInputSamples?.isEmpty ?? true),
+      "the retry decodes the captured audio, not an empty buffer")
+    #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .retrySucceeded)
+    #expect(kernel.recordingOutcome == .completed)
+    #expect(kernel.deliveredTranscript == "rescued after death")
+    #expect(ctx.wrapper.storedTexts == ["rescued after death"])
+    #expect(ctx.paste.pasteAttempts == ["rescued after death"])
+    #expect(ctx.paste.pasteCount == 1)
+    #expect(kernel.recordingOutcome != .asrInterrupted(wasRecording: false))
+  }
+
+  @Test("helper death mid-decode with an exhausted retry ends .asrFailed and projects .asrRetryExhausted")
+  func helperDeathMidDecodeExhaustsOnce() async {
+    let ctx = makeContext(behavior: .heldFinalize)
+    ctx.engine.retryDecodeResult = .failed(.decodeFailed)
+    await stopIntoHeldFinalize(ctx)
+    let kernel = ctx.wrapper.testKernel
+    #expect(ctx.engine.heldFinalizePending, "the initial finalize must be genuinely suspended")
+
+    kernel.externalASRInterrupted()
+    await ctx.wrapper.drainReadyWork()
+    #expect(kernel.recordingOutcome == nil, "no terminal may be published before finalize resolves")
+    #expect(kernel.state == .delivering)
+    #expect(kernel.deliveringPhase == .transcribing)
+    #expect(ctx.engine.retryDecodeCallCount == 0)
+
+    ctx.engine.resolveHeldFinalizeAsHelperDeath()
+    await ctx.wrapper.drainReadyWork()
+
+    #expect(ctx.engine.finalizeCallCount == 1)
+    #expect(ctx.engine.recoverFromASRInterruptionCallCount == 0)
+    #expect(ctx.engine.retryDecodeCallCount == 1, "one retry, no second budget")
+    #expect(!(ctx.engine.lastRetryDecodeInputSamples?.isEmpty ?? true))
+    #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .retryExhausted)
+    #expect(kernel.recordingOutcome == .failed(.asrFailed))
+    #expect(
+      KernelDictationDriver.recoveryEnding(for: .failed(.asrFailed), retryOutcome: .retryExhausted)
+        == .asrRetryExhausted)
+    #expect(ctx.wrapper.storedTexts.isEmpty, "storage receives zero calls")
+    #expect(ctx.paste.pasteAttempts.isEmpty, "the delivery seam is never called")
+    #expect(kernel.deliveredTranscript == nil)
+    #expect(kernel.pasteCount == 0)
+  }
+
+
+#if DEBUG
+  // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (kernel side)
+
+  private static func makeIsolatedBoundaryController() -> CrashBoundaryFaultController {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-cb-kernel-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return CrashBoundaryFaultController(
+      armFilePath: dir.appendingPathComponent("arm").path,
+      reachedFilePath: dir.appendingPathComponent("reached").path)
+  }
+
+  /// Snapshot box the publication callback (fires on the hook's own thread,
+  /// before the park) writes into; the callback releases the hold immediately
+  /// so the flow completes — deterministic, no polling.
+  private final class BoundarySnapshot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _fired = 0
+    private var _outcomeWasNil: Bool?
+    var fired: Int { lock.withLock { _fired } }
+    var outcomeWasNil: Bool? { lock.withLock { _outcomeWasNil } }
+    func record(outcomeWasNil: Bool) {
+      lock.withLock {
+        _fired += 1
+        if _outcomeWasNil == nil { _outcomeWasNil = outcomeWasNil }
+      }
+    }
+  }
+
+  @Test("retry_exhaustion_decided fires after the diagnostic stamp, before terminal publication")
+  func retryExhaustionBoundaryHook() async {
+    let ctx = makeContext(behavior: .crashOnFinalize)
+    ctx.engine.retryDecodeResult = .failed(.decodeFailed)
+    let controller = Self.makeIsolatedBoundaryController()
+    ctx.wrapper.testKernel.crashBoundaryController = controller
+    defer { controller.clear() }
+    let snapshot = BoundarySnapshot()
+    let kernel = ctx.wrapper.testKernel
+    controller.onPublishForTesting = { _ in
+      // The hook fires on the kernel's MainActor context, synchronously.
+      MainActor.assumeIsolated {
+        snapshot.record(outcomeWasNil: kernel.recordingOutcome == nil)
+      }
+      controller.releaseHeldForTesting()
+    }
+    #expect(controller.arm(trialID: "kb1", boundary: .retryExhaustionDecided))
+
+    await runToTerminal(ctx)
+
+    #expect(snapshot.fired == 1, "the boundary published exactly once")
+    #expect(
+      snapshot.outcomeWasNil == true,
+      "at the boundary the terminal was NOT yet published (hook sits before finishTerminal)")
+    #expect(controller.isReached(trialID: "kb1", boundary: .retryExhaustionDecided))
+    #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .retryExhausted, "after the stamp")
+    #expect(kernel.recordingOutcome == .failed(.asrFailed))
+  }
+
+  @Test("live_terminal_published fires exactly once, after the set-once outcome write")
+  func liveTerminalBoundaryHook() async {
+    let ctx = makeContext(behavior: .batchSuccess(text: "hello"))
+    let controller = Self.makeIsolatedBoundaryController()
+    ctx.wrapper.testKernel.crashBoundaryController = controller
+    defer { controller.clear() }
+    let snapshot = BoundarySnapshot()
+    let kernel = ctx.wrapper.testKernel
+    controller.onPublishForTesting = { _ in
+      MainActor.assumeIsolated {
+        snapshot.record(outcomeWasNil: kernel.recordingOutcome == nil)
+      }
+      controller.releaseHeldForTesting()
+    }
+    #expect(controller.arm(trialID: "kb2", boundary: .liveTerminalPublished))
+
+    await runToTerminal(ctx)
+
+    #expect(snapshot.fired == 1, "one-shot: fired exactly once")
+    #expect(
+      snapshot.outcomeWasNil == false,
+      "at the boundary recordingOutcome was ALREADY set (hook sits after the set-once write)")
+    #expect(controller.isReached(trialID: "kb2", boundary: .liveTerminalPublished))
+    #expect(!controller.hasLiveArmForTesting, "consumed exactly once")
+  }
+
+  @Test("unarmed sessions retain the exact pre-chunk behavior and never block")
+  func unarmedBoundaryControllerIsInert() async {
+    let ctx = makeContext(behavior: .batchSuccess(text: "hello"))
+    ctx.wrapper.testKernel.crashBoundaryController = Self.makeIsolatedBoundaryController()
+    await runToTerminal(ctx)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(ctx.paste.pasteCount == 1)
+  }
+
+#endif
+
   @Test("a decode failure spends exactly one retry, and a successful retry delivers its own text")
   func decodeFailureRetriesOnceAndDelivers() async {
     let ctx = makeContext(behavior: .crashOnFinalize)
@@ -87,9 +282,9 @@ struct KernelPhase2RetryTests {
   }
 
   @Test(
-    "GitHub cloud review (PR #1725): a retry that resolves .cancelled (a genuine backend CancellationError, not a confirmed decode conclusion) still terminates as .asrFailed but retains the spool, same as a timeout"
+    "#1755 founder override: a retry that resolves .cancelled still terminates .asrFailed, stays diagnostically .attempted, and now DELETES"
   )
-  func cancelledRetryTerminatesButRetainsSpool() async {
+  func cancelledRetryTerminatesAndDeletes() async {
     let ctx = makeContext(behavior: .crashOnFinalize)
     ctx.engine.retryDecodeResult = .cancelled
     await runToTerminal(ctx)
@@ -97,18 +292,26 @@ struct KernelPhase2RetryTests {
 
     #expect(kernel.recordingOutcome == .failed(.asrFailed))
     #expect(kernel.deliveredTranscript == nil)
-    #expect(ctx.engine.retryDecodeCallCount == 1)
-    // The distinguishing assertion: NOT .retryExhausted — `.cancelled` is
-    // not a confirmed "the decode produced nothing," so the spool must be
-    // retained exactly like the timeout case above, not deleted like a
-    // genuine `.empty`/`.failed` exhaustion.
+    #expect(ctx.wrapper.storedTexts.isEmpty)
+    #expect(ctx.paste.pasteAttempts.isEmpty)
+    #expect(ctx.engine.retryDecodeCallCount == 1, "retry budget unchanged: exactly one")
+    // `.attempted` remains the honest diagnostic that no decode conclusion
+    // was accepted (late-result fencing unchanged); the founder's Gate 2
+    // decision makes the DISPOSITION delete anyway — the user watched the
+    // retry fail and re-dictates.
     #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .attempted)
+    let ending = KernelDictationDriver.recoveryEnding(
+      for: .failed(.asrFailed), retryOutcome: .attempted)
+    #expect(ending == .failed, "projects to plain .failed")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.failed),
+      "#1755: the composed authorities delete")
   }
 
   @Test(
-    "#1707 Codex r5: a retry that times out (never resolves) still terminates as .asrFailed but retains the spool, distinct from a genuinely exhausted retry"
+    "#1755 founder override: a retry that times out still terminates .asrFailed, stays diagnostically .attempted, and now DELETES"
   )
-  func timedOutRetryTerminatesButRetainsSpool() async {
+  func timedOutRetryTerminatesAndDeletes() async {
     let ctx = makeContext(behavior: .crashOnFinalize)
     // A real, tiny wall-clock deadline — the retry never resolves within it
     // (the fake-clock delay is never advanced during this test), so
@@ -128,13 +331,22 @@ struct KernelPhase2RetryTests {
     }
 
     #expect(kernel.recordingOutcome == .failed(.asrFailed))
-    #expect(ctx.engine.bumpRetryGenerationCallCount == 1)
-    // The distinguishing assertion (Codex r5): NOT .retryExhausted. A mere
-    // timeout must never be conflated with a confirmed second failure — the
-    // underlying decode call is still running with no genuine cancellation,
-    // and deleting the spool now could discard audio a slower-but-healthy
-    // retry would have recovered.
+    #expect(kernel.deliveredTranscript == nil)
+    #expect(ctx.wrapper.storedTexts.isEmpty, "zero storage")
+    #expect(ctx.paste.pasteAttempts.isEmpty, "zero delivery")
+    #expect(kernel.pasteCount == 0, "zero paste")
+    #expect(ctx.engine.retryDecodeCallCount == 1, "exactly one retry, no second budget")
+    #expect(ctx.engine.bumpRetryGenerationCallCount == 1, "late-result fencing unchanged")
+    // `.attempted` (not .retryExhausted) remains the honest diagnostic: we
+    // stopped waiting, no conclusion was accepted. The founder's Gate 2
+    // decision deletes anyway — the visible live rescue failed.
     #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .attempted)
+    let ending = KernelDictationDriver.recoveryEnding(
+      for: .failed(.asrFailed), retryOutcome: .attempted)
+    #expect(ending == .failed, "projects to plain .failed")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.failed),
+      "#1755: the composed authorities delete")
   }
 
   @Test(

@@ -203,6 +203,13 @@ final class RecordingSessionKernel {
   /// no-op in production.
   private let batchDecodeFaultController: BatchDecodeFaultController?
 
+  #if DEBUG
+    /// #1755 chunk 6: crash-boundary hold seam. Defaults to the shared
+    /// controller (unarmed = every hook is a no-op); tests inject an isolated
+    /// instance. Compiled out of release entirely.
+    var crashBoundaryController: CrashBoundaryFaultController = .shared
+  #endif
+
   /// Logical-time seam (PR-3 plan §14a). Production wiring of a real clock is
   /// PR-4/PR-7; the simulator wires `FakeClock`.
   private let currentTick: @MainActor () -> UInt64
@@ -2243,20 +2250,14 @@ final class RecordingSessionKernel {
       // and eliminates the cross-session write for the stale one.
       guard isCurrent(sid), recordingOutcome == nil else { return }
       markASRTimingEnd()
-      // Codex r5: a TIMEOUT (`nil`) is NOT a confirmed second failure — the
-      // real decode call is still running in the background (no genuine
-      // in-flight cancellation exists on either backend, per the comment
-      // above) and could still succeed after our still-unmeasured placeholder
-      // deadline (§11.1) gave up waiting, especially for a long recording.
-      // Conflating "we stopped waiting" with "the decode genuinely produced
-      // nothing" would delete recoverable user audio. Leave
-      // `asrRetryOutcome` at `.attempted` (never promote to
-      // `.retryExhausted`) so `recoveryEnding`/`shouldDeleteOnLiveEnding`
-      // retain the spool exactly as a plain `.failed`. GitHub cloud review
-      // (PR #1725): `.cancelled` gets the SAME non-exhausted treatment
-      // below — only `.empty`/`.failed` are a confirmed decode conclusion
-      // with nothing useful; `.cancelled` means we have no conclusion at
-      // all, same as the timeout case here.
+      // A TIMEOUT (`nil`) is not a confirmed second failure — `.attempted`
+      // remains the honest diagnostic that no decode conclusion was accepted
+      // (never promoted to `.retryExhausted`), and the late-result fencing
+      // above stays unchanged. #1755 (founder Gate 2 2026-07-23): the
+      // DISPOSITION no longer follows that nuance — the user watched the
+      // live rescue visibly fail, so plain `.failed` now deletes at the
+      // coordinator like every concluded live ending. `.cancelled` gets the
+      // same treatment below.
       guard let retryOutcome else {
         finishTerminal(.failed(.asrFailed), sid: sid)
         return
@@ -2301,19 +2302,24 @@ final class RecordingSessionKernel {
         telemetryState.transcriptionFailureError =
           (adapter as? ASREngineTelemetryProviding)?.lastFailureError ?? retryError
         telemetryState.asrRetryOutcome = .retryExhausted
+        #if DEBUG
+          // #1755 chunk 6: crash-boundary hold — after the diagnostic stamp,
+          // before terminal publication. Unarmed: no-op.
+          crashBoundaryController.boundaryReached(.retryExhaustionDecided)
+        #endif
         finishTerminal(.failed(.asrFailed), sid: sid)
       case .empty:  // genuinely resolved with nothing useful; exhausted
         telemetryState.asrRetryOutcome = .retryExhausted
+        #if DEBUG
+          // #1755 chunk 6: same crash boundary as the confirmed-failure branch.
+          crashBoundaryController.boundaryReached(.retryExhaustionDecided)
+        #endif
         finishTerminal(.failed(.asrFailed), sid: sid)
       case .cancelled:
-        // GitHub cloud review (PR #1725): `.cancelled` is NOT a confirmed
-        // second failure the way `.empty`/`.failed` are — both adapters can
-        // return it from a genuine backend `CancellationError` (a real
-        // Task/XPC cancellation mid-decode) with THIS session still
-        // current, not only from the staleness guard's own supersede path.
-        // Either way we have no confirmed decode conclusion, exactly the
-        // nil-timeout case above — leave `asrRetryOutcome` at `.attempted`
-        // so the spool is retained, never promoted to `.retryExhausted`.
+        // `.cancelled` is not a confirmed second failure — `.attempted`
+        // remains the honest no-conclusion diagnostic (same as the timeout
+        // case above, never promoted to `.retryExhausted`). #1755: the
+        // disposition deletes anyway; the visible live rescue failed.
         finishTerminal(.failed(.asrFailed), sid: sid)
       }
     }
@@ -2472,10 +2478,20 @@ final class RecordingSessionKernel {
         self?.bump()
       }
     } catch {
+      // #1755 §3.2b: a THROWING text-processing step must not lose a
+      // transcript the app already has (heart rule
+      // preserve-raw-dictation-on-polish-error). Route the raw ASR through
+      // the sole recovery-floor authority: lexical raw text falls through to
+      // the ordinary store → deliver → `.completed` path below; filler-only/
+      // non-lexical raw text yields "" and lands on the quiet
+      // `.noSpeech(.emptyAfterProcessing)` branch. The error stays on the
+      // diagnostics side-channel either way.
       guard isCurrent(sid) else { return }
       telemetryState.transcriptionFailureError = error
-      finishTerminal(.failed(.emptyAfterProcessing), sid: sid)
-      return
+      processed = KernelFinalizationWiring.emptyOutputRecoveryFloor(
+        deterministicText: "",
+        rawASR: asrText
+      )
     }
     guard isCurrent(sid) else { return }
 
@@ -2485,8 +2501,8 @@ final class RecordingSessionKernel {
     // so an empty result here is genuinely non-lexical (a bare filler / non-
     // speech artifact). End quietly as no-speech — never a heart-path failure
     // (mirrors the #979 asr-empty downgrade). If the capture was interrupted,
-    // `interruptedTerminalFloor` floors this to `.audioInterrupted` to retain
-    // the #1408 crash-recovery spool.
+    // `interruptedTerminalFloor` floors this to `.audioInterrupted` so the
+    // notice tells the truth (#1755: disposition is best-effort deletion).
     if processed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       finishTerminal(.noSpeech(.emptyAfterProcessing), sid: sid)
       return
@@ -2792,7 +2808,7 @@ final class RecordingSessionKernel {
   ///
   /// #1317 §3.2 / #1548 D2: routes by `ctx.failureMode` AND lifecycle state.
   /// - `.noBuffers` + no buffer ever (`bufferCountThisSession == 0`) → dead mic:
-  ///   `finishTerminal(.noTransport)` ("No audio captured", spool retained).
+  ///   `finishTerminal(.noTransport)` ("No audio captured"; #1755 disposition: best-effort deletion).
   /// - `.noBuffers` after a buffer arrived → `.captureStall` (routed via the
   ///   pending slot from `.arming`, `deliverRecordingExitIfCurrent` from `.live`).
   /// - `.allZeroFromStart` / `.becameZeroMidCapture` → the dedicated `.zeroSignal`
@@ -2808,7 +2824,7 @@ final class RecordingSessionKernel {
       // would override a latched stop. Honor the earlier winner.
       guard !stopLatched, !cancelRequested, !recordingExitLatched else { return }
       if bufferCountThisSession == 0 {
-        // Dead mic — no audio ever arrived. "No audio captured", spool retained.
+        // Dead mic — no audio ever arrived. "No audio captured" (#1755: deletes).
         finishTerminal(.noTransport, sid: currentSessionID)
       } else {
         // A buffer arrived, then the stream stalled. `.captureStall` must survive
@@ -3019,9 +3035,10 @@ final class RecordingSessionKernel {
   /// Routing differs by state because the recording-exit continuation is
   /// consumed once: in `.recording` we send through the channel so the
   /// forward-path coroutine sees the exit and runs unified cleanup; in
-  /// `.transcribing` the continuation is gone, so we go DIRECTLY to terminal.
-  /// Other states (.stopping, .finalizing, terminal) are unchanged from the
-  /// prior drop — out of scope for #7.
+  /// `.transcribing` (#1755 chunk 3) we freeze diagnostics and let the
+  /// suspended `finalize` fail into the existing Phase-2 retry — no direct
+  /// terminal. Other states (.stopping, .finalizing, terminal) are unchanged
+  /// from the prior drop — out of scope for #7.
   private func routeASRInterruption(sid: SessionID) {
     guard isCurrent(sid) else { return }
     // PR-4.5 §8: record the FSM state at callback time. The OLD pipeline's
@@ -3041,11 +3058,19 @@ final class RecordingSessionKernel {
       freezeRecordingSnapshot()
       deliverRecordingExit(.asrInterruption)
     case .delivering where deliveringPhase == .transcribing:
-      // Pre-transcript delivering — the continuation is gone, so conclude
-      // directly. `wasRecording: false` (not `.live`) folds in the observer's
-      // old `priorState == .recording` distinction (§3.7).
+      // #1755 chunk 3 (§3.4 Option B): do NOT conclude here. The forward
+      // coroutine is suspended on `await finalize(...)` and still owns the
+      // captured samples; the helper's death resolves that call as a failure
+      // (the #1755 chunk-1 drained continuation), which lands in the ordinary
+      // `.failed(let error)` switch and spends the ONE existing Phase-2
+      // retry. Publishing `.asrInterrupted(wasRecording: false)` first would
+      // preempt that rescue and race the losing signal (#1713, settled by not
+      // racing at all). Freeze the diagnostics snapshot and return — the
+      // session stays in `.delivering(.transcribing)` until its own decode
+      // resolves. Deliberately NOT stamping `interruptedSalvageSource = .asr`:
+      // that field means an interruption won while capture was still `.live`
+      // and would invoke the live-interruption terminal floor.
       freezeRecordingSnapshot()
-      finishTerminal(.asrInterrupted(wasRecording: false), sid: sid)
     default:
       // `.arming` / `.stopping` / `delivering(.finalizing(_))` (safe point) —
       // unchanged prior drop (out of scope for #7 / #1548).
@@ -3163,9 +3188,10 @@ final class RecordingSessionKernel {
     case .delivering:
       switch phase {
       case .transcribing:
-        // Old transcribing terminal edges. `.asrInterrupted(false)` is the
-        // pre-existing direct producer (routed from `delivering(.transcribing)`
-        // by a genuinely NEW interruption at that phase); `.asrInterrupted(true)`
+        // Old transcribing terminal edges. `.asrInterrupted(false)` is
+        // legacy/defensive legality only — #1755 chunk 3 removed its direct
+        // producer (a transcribe-phase interruption now lets the suspended
+        // finalize fail into the Phase-2 retry); `.asrInterrupted(true)`
         // is #1707's salvage-recovery-failure floor target, typed-gated below.
         switch outcome {
         case .failed, .noSpeech, .cancelled, .audioInterrupted:
@@ -3200,11 +3226,12 @@ final class RecordingSessionKernel {
     }
   }
 
-  /// #1408. On a session whose capture was interrupted, any terminal that would
-  /// DELETE the crash-recovery spool must instead land on `.audioInterrupted` — a
-  /// `.failure` terminal that RETAINS it, and precisely the terminal this session
-  /// reached before salvage existed. Salvage may only ever ADD a transcript; it
-  /// must never convert "recoverable on the next launch" into "gone."
+  /// #1408 / #1755. On a session whose capture was interrupted, the three
+  /// no-transcript terminals land on `.audioInterrupted` — the honest notice
+  /// ("the mic died"), precisely the terminal this session reached before
+  /// salvage existed. Salvage may only ever ADD a transcript. Since #1755
+  /// the floor decides the terminal/notice ONLY; disk disposition is
+  /// best-effort deletion for every concluded live ending.
   ///
   /// Applied ONCE, inside `finishTerminal`, never at the call sites: one of the
   /// terminals is computed from a ternary (`effectiveSpeechEvidence ?
@@ -3216,14 +3243,12 @@ final class RecordingSessionKernel {
   /// **One rule: an interrupted recording that ends with no transcript lands on
   /// `.audioInterrupted`, whatever interrupted it.**
   ///
-  /// `.discarded` / `.noSpeech` DELETE the spool (they project to a delete ending;
-  /// #1464). Letting an interrupted session reach either would destroy the
-  /// crash-recovery copy of audio the user can still get back on next launch —
-  /// converting "recoverable" into "gone." Safety does not get to depend on which
-  /// interruption fired, so this holds for every cause including the duration cap.
-  /// `.failed(.noAudioCaptured)` already retains the spool; it is folded in so all
-  /// three no-transcript endings agree, rather than one of them keeping a
-  /// different overlay for no reason a user could name.
+  /// #1755: the floor is about TERMINAL/NOTICE honesty, not disk retention —
+  /// every concluded live ending now requests best-effort deletion at the
+  /// coordinator. `.discarded` / `.noSpeech` would tell an interrupted user
+  /// "you said nothing" when their mic died mid-sentence; the floor lands all
+  /// three no-transcript endings on `.audioInterrupted` so the notice tells
+  /// the truth, whatever interruption fired (including the duration cap).
   ///
   /// This used to be TWO rules, the second gated on `cause.isDeviceLoss`, because
   /// `.audioInterrupted` rendered "Microphone disconnected" unconditionally and
@@ -3231,18 +3256,19 @@ final class RecordingSessionKernel {
   /// lives at its own single authority (#1558: the driver stamps a typed
   /// `TerminalNoticeReason` and `DictationNarrator` authors the copy), so
   /// the floor no longer has to encode a copy decision. What the terminal MEANS
-  /// (the spool survives) and what the user READS are separate questions with
-  /// separate owners — which is the same split `hasRecoverableAudio` and
-  /// `isDeviceLoss` draw one layer up.
+  /// and what the user READS are separate questions with separate owners —
+  /// the same split `hasRecoverableAudio` and `isDeviceLoss` draw one layer
+  /// up. (Since #1755 neither question decides retention.)
   ///
-  /// `.cancelled` is NEVER floored: an explicit user cancel is honored, and its
-  /// retain/delete disposition belongs to the driver's `pendingCancelOrigin`. Every other
-  /// `.failed(reason)` (`.asrEmpty`, `.asrFailed`, `.captureStartFailed`,
-  /// `.modelLoadFailed`) keeps its own honest reason and is already spool-retaining.
+  /// `.cancelled` is NEVER floored: an explicit user cancel is honored, and
+  /// its provenance belongs to the driver's `pendingCancelOrigin` (both
+  /// origins delete under #1755). Every other `.failed(reason)` (`.asrEmpty`,
+  /// `.asrFailed`, `.captureStartFailed`, `.modelLoadFailed`) keeps its own
+  /// honest reason.
   /// #1707: extended for the ASR-interruption salvage source. `.engine`
-  /// keeps the original, narrower protection (deletion-class outcomes only —
-  /// every other `.failed(reason)` already retains the spool on its own
-  /// honest terminal). `.asr` is WIDER by design: the salvage promises the
+  /// keeps the original, narrower honesty set (the three no-transcript
+  /// endings only — every other `.failed(reason)` keeps its own honest
+  /// terminal). `.asr` is WIDER by design: the salvage promises the
   /// SAME terminal every failure mode already produced before salvage
   /// existed, not just the deletion-class subset — restoring
   /// `.asrInterrupted(wasRecording: true)` for any outcome that isn't a
@@ -3282,6 +3308,14 @@ final class RecordingSessionKernel {
         // just this one. Extending it would mean revisiting that cross-cutting
         // policy, out of scope here.
         telemetryState.asrSalvageOutcome = .cancelled
+        // #1709 (folded into #1755 chunk 4): a context-only breadcrumb for the
+        // formerly-invisible cancelled-during-ASR-salvage cell — no event, no
+        // captured error, no new telemetry owner. Fires ONLY here (the typed
+        // `.asr` source + `.cancelled` floor cell), never for ordinary or
+        // engine-interruption cancellation.
+        SentryBreadcrumb.add(
+          stage: "recovery", message: "asr_salvage_cancelled",
+          data: ["asr_salvage_outcome": "cancelled"])
         return outcome
       case .discarded, .noSpeech, .failed, .audioInterrupted, .asrInterrupted, .noTransport:
         // #1707 Codex code-diff r2: only UPGRADE the telemetry signal — a
@@ -3319,6 +3353,11 @@ final class RecordingSessionKernel {
     }
     let terminal = outcome  // local alias for the existing telemetry logs below
     recordingOutcome = outcome
+    #if DEBUG
+      // #1755 chunk 6: crash-boundary hold — immediately after the set-once
+      // outcome write, before the idle transition and downstream cleanup.
+      crashBoundaryController.boundaryReached(.liveTerminalPublished)
+    #endif
     // #1548 D2: wake a forward path parked in `awaitRecordingExit()` when the
     // session is concluded DIRECTLY — the dead-mic `.noTransport` branch of
     // `externalCaptureStalled` calls `finishTerminal` while the forward path sits
@@ -3957,12 +3996,12 @@ final class RecordingSessionKernel {
       lastStopReason = reason
     }
 
-    /// #1408: surface the terminal floor as a pure function so a test can prove it
-    /// covers EVERY outcome that would delete the spool. The floor's mapped set and
-    /// the coordinator's spool-deleting endings (`KernelDictationDriver.recovery
-    /// Ending` → `RecoveryCoordinator.shouldDeleteOnLiveEnding`, #1464) are two lists
-    /// of the same fact; without this seam they can drift, and a new spool-deleting
-    /// outcome would silently escape the floor.
+    /// #1408 / #1755: surface the terminal floor as a pure function so tests
+    /// can prove its terminal-honesty mapping (the exact three no-transcript
+    /// endings floor to `.audioInterrupted`; everything else passes through)
+    /// and that every non-completed projected ending requests deletion at the
+    /// coordinator. Stale interruption state would mislabel the next
+    /// terminal/notice — it can no longer retain a spool.
     func testInterruptedTerminalFloor(_ outcome: RecordingOutcome)
       -> RecordingOutcome
     {

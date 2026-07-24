@@ -1,5 +1,6 @@
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -29,53 +30,56 @@ private func deletesRecoverySpool(_ outcome: RecordingOutcome, retryOutcome: ASR
   return RecoveryCoordinator.shouldDeleteOnLiveEnding(ending)
 }
 
-/// #1707 Phase 2: an exhausted Phase-2 retry deletes its spool — the decode
-/// genuinely never produced anything, so there is nothing worth recovering
-/// (§4/§6). The negative (RULE: matcher-set-adversarial-tests): a pre-capture
-/// or never-retried `.asrFailed` — `retryOutcome == nil`, exactly the default
-/// every existing call site above already exercises — still retains.
+/// #1755 discard doctrine: EVERY `.failed` deletes, whatever the retry
+/// outcome — an ending fired while the app was alive, the user witnessed the
+/// failure and re-dictates. `.asrRetryExhausted` stays a distinct typed
+/// projection for diagnostics; it now AGREES with `.failed` on deletion.
 @MainActor
-@Suite("Exhausted-retry spool deletion (#1707 Phase 2)")
+@Suite("Failed-session spool deletion (#1707 Phase 2 → #1755 cutover)")
 struct ExhaustedRetrySpoolDeletionTests {
-  @Test("an exhausted retry's failed session deletes its spool")
+  @Test("an exhausted retry's failed session deletes its spool (unchanged)")
   func exhaustedRetryDeletes() {
     #expect(deletesRecoverySpool(.failed(.asrFailed), retryOutcome: .retryExhausted))
   }
 
-  @Test("a pre-capture or never-retried failed session still retains its spool")
-  func neverRetriedFailureRetains() {
-    #expect(!deletesRecoverySpool(.failed(.asrFailed), retryOutcome: nil))
-    #expect(!deletesRecoverySpool(.failed(.asrFailed)))
+  @Test("a pre-capture or never-retried failed session deletes too (#1755 flipped)")
+  func neverRetriedFailureDeletes() {
+    #expect(deletesRecoverySpool(.failed(.asrFailed), retryOutcome: nil))
+    #expect(deletesRecoverySpool(.failed(.asrFailed)))
   }
 
-  @Test("a retry left at .attempted by a preempting interruption does not delete as .failed")
-  func attemptedOnlyRetryDoesNotDeleteAsFailed() {
-    #expect(!deletesRecoverySpool(.failed(.asrFailed), retryOutcome: .attempted))
+  @Test("a retry left at .attempted (timeout/cancel) deletes as plain .failed (#1755 founder override)")
+  func attemptedOnlyRetryDeletesAsFailed() {
+    // `.attempted` remains the honest diagnostic that no decode conclusion
+    // was accepted; the founder's Gate 2 decision makes it delete anyway —
+    // a visible retry failure is a failure to the user.
+    #expect(deletesRecoverySpool(.failed(.asrFailed), retryOutcome: .attempted))
   }
 }
 
 // MARK: - #1408 — salvage a dictation whose capture was interrupted mid-recording
 //
-// Before this change, a microphone that died mid-sentence sent the recording
+// Before #1408, a microphone that died mid-sentence sent the recording
 // straight to `.audioInterrupted` and the audio the capture manager was still
 // holding was never transcribed. Now a salvageable interruption falls through
 // into the normal stop tail.
 //
-// Two properties are under test, and the second is the one that matters:
+// Two properties are under test:
 //
 //   1. Salvage happens for the causes that leave audio in memory, and does NOT
 //      happen for the one cause whose sample owner is gone.
-//   2. THE FLOOR. Salvage may only ever ADD a transcript. It must never turn a
-//      terminal that RETAINS the crash-recovery spool into one that DELETES it.
-//      Falling through means an interrupted recording now meets the same early
+//   2. THE FLOOR (#1755 reframe: terminal/notice HONESTY, not retention).
+//      Falling through means an interrupted recording meets the same early
 //      terminals a normal stop does (`.discarded`, `.noSpeech`,
-//      `.failed(.noAudioCaptured)`) — and two of those delete the spool. The
-//      floor maps them back to `.audioInterrupted`, precisely the terminal this
-//      session reached before salvage existed.
+//      `.failed(.noAudioCaptured)`) — which would tell an interrupted user
+//      "you said nothing." The floor maps them back to `.audioInterrupted`,
+//      the honest notice. Disk disposition is uniform best-effort deletion
+//      for every concluded live ending; stale interruption state can only
+//      mislabel a terminal/notice, never retain a spool.
 //
-// The floor's proof is a PAIR: identical early-terminal trigger, different exit.
-// A too-short user stop must still `.discarded` (spool deleted, unchanged); a
-// too-short interrupted recording must land `.audioInterrupted` (spool retained).
+// The floor's proof is a PAIR: identical early-terminal trigger, different
+// exit. A too-short user stop still reads `.discarded`; a too-short
+// interrupted recording reads `.audioInterrupted` (the honest notice).
 
 #if DEBUG
 
@@ -152,6 +156,115 @@ struct ExhaustedRetrySpoolDeletionTests {
     // always holds the samples, so no interruption cause is unsalvageable. The
     // salvage-succeeds path is covered by the salvage tests below.
 
+    // MARK: 1b. #1755 chunk 2 — a text-processing throw must not lose usable raw ASR
+
+    /// North Star point 3: a transcript the app already has is never thrown
+    /// away when raw text can be delivered. A throwing `processText` used to
+    /// publish `.failed(.emptyAfterProcessing)` BEFORE storage or delivery;
+    /// it now routes the raw ASR through the sole recovery-floor authority
+    /// (`KernelFinalizationWiring.emptyOutputRecoveryFloor`) and, when
+    /// lexical, follows the ordinary store → deliver → `.completed` path.
+    @Test("a processText throw with lexical raw ASR stores and delivers the raw text once")
+    func processTextThrowLexicalRawDelivers() async {
+      let (context, wrapper) = makeWrapper(behavior: .batchSuccess(text: "raw text"))
+      wrapper.testProcessTextThrows()
+      let kernel = wrapper.testKernel
+
+      await startRecording(context)
+      await context.sut.apply(.stop)
+      await wrapper.drainReadyWork()
+
+      #expect(
+        wrapper.telemetryState.transcriptionFailureError as? KernelLimbError
+          == .emptyAfterProcessing,
+        "the exact processing error must remain on the diagnostics side-channel")
+      #expect(wrapper.storedTexts == ["raw text"], "storage receives exactly the raw ASR")
+      #expect(
+        context.paste.pasteAttempts == ["raw text"],
+        "the delivery seam is called exactly once with the raw ASR")
+      #expect(context.paste.pasteCount == 1, "delivery happens exactly once")
+      #expect(kernel.deliveredTranscript == "raw text")
+      #expect(kernel.recordingOutcome == .completed)
+      #expect(
+        KernelDictationDriver.recoveryEnding(for: .completed) == nil,
+        "a completed dictation requests no ended-without-save recovery ending")
+      #expect(kernel.recordingOutcome != .failed(.emptyAfterProcessing))
+    }
+
+    /// The quiet twin: filler-only raw ASR has nothing worth saving — the
+    /// floor returns empty and the session ends `.noSpeech(.emptyAfterProcessing)`
+    /// with zero storage and zero delivery (never `.completed`, never `.failed`).
+    @Test("a processText throw with filler-only raw ASR ends quietly as no-speech")
+    func processTextThrowFillerOnlyEndsNoSpeech() async {
+      let (context, wrapper) = makeWrapper(behavior: .batchSuccess(text: "uh"))
+      wrapper.testProcessTextThrows()
+      let kernel = wrapper.testKernel
+
+      await startRecording(context)
+      await context.sut.apply(.stop)
+      await wrapper.drainReadyWork()
+
+      #expect(
+        wrapper.telemetryState.transcriptionFailureError as? KernelLimbError
+          == .emptyAfterProcessing,
+        "the exact processing error must remain on the diagnostics side-channel")
+      #expect(kernel.recordingOutcome == .noSpeech(.emptyAfterProcessing))
+      #expect(wrapper.storedTexts.isEmpty, "storage receives zero calls")
+      #expect(context.paste.pasteAttempts.isEmpty, "the delivery seam is never called")
+      #expect(kernel.deliveredTranscript == nil)
+      #expect(kernel.recordingOutcome != .completed)
+      if case .failed = kernel.recordingOutcome {
+        Issue.record("a filler-only processing throw must never be a .failed terminal")
+      }
+    }
+
+    // MARK: 1c. #1755 chunk 4 — #1709 salvage-cancelled breadcrumb (exact cell only)
+
+    /// ONE synchronous MainActor test with no suspension points: the
+    /// process-global SentryBreadcrumb delegate is swapped in, every cell is
+    /// driven synchronously, and the PRIOR delegate is preserved, forwarded
+    /// unrelated breadcrumbs, and restored. The no-suspension window is the
+    /// real protection — a previously installed delegate survives; a truly
+    /// concurrent writer to the same global could still race it, which this
+    /// test cannot prevent.
+    @Test("the .asr + .cancelled floor cell emits exactly one asr_salvage_cancelled breadcrumb; siblings stay silent")
+    func asrSalvageCancelledBreadcrumbExactCellOnly() {
+      nonisolated(unsafe) var matches: [[String: String]] = []
+      let prior = SentryBreadcrumb.breadcrumbDelegate
+      SentryBreadcrumb.breadcrumbDelegate = { stage, message, level, data in
+        guard message == "asr_salvage_cancelled" else {
+          prior?(stage, message, level, data)  // forward unrelated crumbs
+          return
+        }
+        matches.append(
+          ["stage": stage]
+            .merging((data ?? [:]).compactMapValues { $0 as? String }) { a, _ in a })
+      }
+      defer { SentryBreadcrumb.breadcrumbDelegate = prior }
+
+      // Eligible cell: .asr source + .cancelled.
+      let (_, eligible) = makeWrapper()
+      eligible.telemetryState.interruptedSalvageSource = .asr
+      let floored = eligible.testKernel.testInterruptedTerminalFloor(.cancelled)
+      #expect(floored == .cancelled, "the terminal itself is unchanged")
+      #expect(eligible.telemetryState.asrSalvageOutcome == .cancelled)
+      #expect(matches.count == 1, "exactly one breadcrumb for the eligible cell")
+      #expect(
+        matches.first == ["stage": "recovery", "asr_salvage_outcome": "cancelled"],
+        "exact shape: stage recovery + the single data field")
+
+      // Adversarial siblings, same delegate, still synchronous.
+      let (_, sibling1) = makeWrapper()
+      sibling1.telemetryState.interruptedSalvageSource = .asr
+      _ = sibling1.testKernel.testInterruptedTerminalFloor(.failed(.asrFailed))
+      let (_, sibling2) = makeWrapper()
+      sibling2.telemetryState.interruptedSalvageSource = .engine(.deviceRemoved)
+      _ = sibling2.testKernel.testInterruptedTerminalFloor(.cancelled)
+      let (_, sibling3) = makeWrapper()
+      _ = sibling3.testKernel.testInterruptedTerminalFloor(.cancelled)
+      #expect(matches.count == 1, "no sibling cell may emit the salvage-cancelled breadcrumb")
+    }
+
     // MARK: 2. The floor — salvage never deletes a spool today's code would keep
 
     /// The pair that proves the floor. Same early terminal (`bufferCount == 0`
@@ -161,12 +274,12 @@ struct ExhaustedRetrySpoolDeletionTests {
     /// A too-short INTERRUPTED recording must NOT discard: without the floor it
     /// would reach `.discarded`, whose terminal kind is `.discard` — "delete the
     /// spool now" — destroying the only surviving copy of a recording the user
-    /// never chose to throw away.
+    /// never chose to be told they "said nothing" about.
     // The PAIR that proves the floor (#1548 D1): identical sub-minimum setup —
     // one real buffer (so the session reaches `.live` under the transport gate)
     // but below the tick-based minimum-recording gate (the clock never advances)
     // — different exit. A too-short USER stop still discards; a too-short
-    // INTERRUPTED recording floors to `.audioInterrupted` (spool retained). The
+    // INTERRUPTED recording floors to `.audioInterrupted` (honest notice). The
     // old zero-buffer arm is unreachable now: with no buffer the session never
     // reaches `.live`, so it cannot be interrupted mid-recording at all.
     @Test("a sub-minimum USER stop still discards (the floor is inert outside salvage)")
@@ -194,9 +307,10 @@ struct ExhaustedRetrySpoolDeletionTests {
       await wrapper.drainReadyWork()
 
       #expect(wrapper.testKernel.recordingOutcome == .audioInterrupted(.engineLost))
-      #expect(
-        !deletesRecoverySpool(.audioInterrupted(.engineLost)),
-        "the floor must convert the spool-deleting terminal into a spool-retaining one")
+      // #1755: the floor now preserves honest TERMINAL/notice semantics only —
+      // `.audioInterrupted` tells the user what happened; the disk disposition
+      // is best-effort deletion like every concluded live ending.
+      #expect(deletesRecoverySpool(.audioInterrupted(.engineLost)))
     }
 
     /// The tick-driven arm of the same gate, with the minimum-recording
@@ -290,9 +404,10 @@ struct ExhaustedRetrySpoolDeletionTests {
       #expect(wrapper.testKernel.recordingOutcome != nil, "\(site.name): wedged")
     }
 
-    /// THE INVARIANT. Absent an explicit user cancel, a session whose exit was a
-    /// salvageable interruption terminates in exactly one of two states. There is
-    /// no third outcome, and neither outcome deletes a spool today's code retains.
+    /// THE INVARIANT. Absent an explicit user cancel, a session whose exit was
+    /// a salvageable interruption terminates in exactly one of two states —
+    /// `.completed` or `.audioInterrupted` (#1755: both request best-effort
+    /// deletion; the invariant is about terminal honesty, not disk state).
     @Test(
       "invariant: a live salvageable interruption ends .completed or .audioInterrupted, never a third state",
       // #1548 D1: a genuine interruption is only reachable from `.live`, which
@@ -313,15 +428,16 @@ struct ExhaustedRetrySpoolDeletionTests {
         terminal.kind == .completed || terminal.kind == .audioInterrupted,
         "salvage produced a third terminal: \(String(describing: terminal))")
       if terminal.kind != .completed, let outcome = terminal {
-        #expect(!deletesRecoverySpool(outcome))
+        // #1755: every non-completed live ending now requests deletion.
+        #expect(deletesRecoverySpool(outcome))
       }
     }
 
     /// The one sanctioned third outcome. A user who sees the disconnect notice
-    /// and cancels has asked us to throw the take away; flooring `.cancelled`
-    /// would override an explicit instruction to protect data the user just told
-    /// us to discard. Its retain/delete disposition belongs to the driver's
-    /// `pendingCancelOrigin`, not to the floor.
+    /// and cancels has asked us to stop; flooring `.cancelled` would override
+    /// that explicit instruction with an interruption notice. Its provenance
+    /// belongs to the driver's `pendingCancelOrigin` (#1755: both origins
+    /// delete), not to the floor.
     @Test("an explicit cancel during a salvage is honored, never floored")
     func explicitCancelDuringSalvageIsNotFloored() async {
       // `slowFinalize` dwells inside `.transcribing`, which is how the inventory
@@ -363,35 +479,43 @@ struct ExhaustedRetrySpoolDeletionTests {
       .failed(.modelLoadFailed), .failed(.captureStartFailed), .failed(.noAudioCaptured),
       .failed(.asrEmpty), .failed(.asrFailed), .failed(.asrWedged),
       .failed(.emptyAfterProcessing), .failed(.captureStalled),
+      // #1755 chunk 5: the two cases the "every terminal" claim omitted.
+      .failed(.noMicrophoneFound), .failed(.zeroSignal),
     ]
 
-    /// The floor's mapped set and the coordinator's spool-deleting endings are two
-    /// lists of one fact: "this terminal deletes the crash-recovery spool." They
-    /// live in different types (Pipeline floor + AppKit predicate) and can drift.
-    /// This test couples them through the two real authorities, so adding a new
-    /// spool-deleting terminal without flooring it reddens here rather than
-    /// silently destroying a user's only surviving copy of a dictation.
-    @Test("the floor covers EVERY terminal that would delete the spool")
-    func floorCoversEverySpoolDeletingTerminal() async {
+    /// #1755 rewrite: under the discard doctrine EVERY concluded live ending
+    /// deletes, so "the floor protects the spool" is obsolete. The floor's
+    /// remaining job is TERMINAL/NOTICE honesty: exactly its original mapped
+    /// set (`.discarded` / `.noSpeech` / `.failed(.noAudioCaptured)`) floors
+    /// to `.audioInterrupted` so the user is told the mic died rather than
+    /// "you said nothing"; every other terminal passes through, and every
+    /// non-completed terminal now requests deletion at the coordinator.
+    @Test("the floor keeps its exact terminal-honesty set; every non-completed terminal deletes")
+    func floorKeepsTerminalHonestySetAndEverythingDeletes() async {
       let (_, wrapper) = makeWrapper()
       wrapper.telemetryState.interruptionCause = .engineLost
       let kernel = wrapper.testKernel
 
       for terminal in Self.allTerminals {
-        let deletesSpool = deletesRecoverySpool(terminal)
         let floored = kernel.testInterruptedTerminalFloor(terminal)
-        if deletesSpool {
+        switch terminal {
+        case .discarded, .noSpeech, .failed(.noAudioCaptured):
           #expect(
             floored.kind == .audioInterrupted,
-            "\(terminal) deletes the spool but the floor let it through")
+            "\(terminal) is in the floor's honesty set and must floor")
+        default:
+          #expect(floored == terminal, "\(terminal) must pass through unchanged")
+        }
+        if floored.kind != .completed, floored.kind != .cancelled {
+          #expect(deletesRecoverySpool(floored), "\(floored) must request deletion (#1755)")
         }
       }
     }
 
-    /// The floor must not over-reach. A user who cancels has asked us to discard;
-    /// a completion delivered a transcript; every other `.failed` reason is
-    /// already spool-retaining and keeps its own honest cause.
-    @Test("the floor leaves every non-spool-deleting terminal alone, except noAudioCaptured")
+    /// The floor must not over-reach. A user who cancels has asked us to stop;
+    /// a completion delivered a transcript; every other `.failed` reason keeps
+    /// its own honest cause (#1755: all of them delete at the coordinator).
+    @Test("the floor leaves every terminal outside its honesty set alone")
     func floorLeavesOtherTerminalsAlone() async {
       let (_, wrapper) = makeWrapper()
       wrapper.telemetryState.interruptionCause = .deviceRemoved
@@ -406,19 +530,20 @@ struct ExhaustedRetrySpoolDeletionTests {
           == .asrInterrupted(wasRecording: false))
       #expect(kernel.testInterruptedTerminalFloor(.failed(.asrEmpty)) == .failed(.asrEmpty))
       #expect(kernel.testInterruptedTerminalFloor(.failed(.asrFailed)) == .failed(.asrFailed))
-      // Folded in with the spool-deleting pair: already retaining, but all three
-      // no-transcript endings land on one terminal so none of them keeps a
-      // different overlay for a reason no user could name.
+      // Folded in with the other two no-transcript endings: all three land on
+      // one honest terminal so none keeps a different overlay for a reason no
+      // user could name.
       #expect(
         kernel.testInterruptedTerminalFloor(.failed(.noAudioCaptured)).kind == .audioInterrupted)
     }
 
     // MARK: 2b. The floor is unconditional — the SENTENCE is what varies
 
-    /// SAFETY, for every cause. A spool-deleting terminal is rewritten no matter
-    /// which interruption fired. Letting the cap fall through to `.discarded`
-    /// because "no microphone disconnected" would be a NEW data loss dressed up
-    /// as honesty. The honesty belongs in the message, not the terminal.
+    /// HONESTY, for every cause. A no-transcript terminal is rewritten no
+    /// matter which interruption fired: letting the cap fall through to
+    /// `.discarded` because "no microphone disconnected" would tell the user
+    /// "you said nothing" when the take was cut short. The cause-specific
+    /// sentence belongs to the message; the honest CATEGORY to the terminal.
     @Test(
       "every no-transcript terminal is floored for EVERY recoverable cause",
       arguments: EngineInterruptionCause.allCases.filter(\.hasRecoverableAudio))
@@ -482,7 +607,9 @@ struct ExhaustedRetrySpoolDeletionTests {
         kernel.recordingOutcome == .asrInterrupted(wasRecording: true),
         "reached \(String(describing: kernel.recordingOutcome)) — a wedge would leave no outcome")
       #expect(kernel.recordingOutcome != nil, "the session must not wedge")
-      #expect(!deletesRecoverySpool(.asrInterrupted(wasRecording: true)))
+      #expect(
+        deletesRecoverySpool(.asrInterrupted(wasRecording: true)),
+        "#1755: the interruption terminal keeps its honest copy but now deletes")
       #expect(context.paste.pasteCount == 0)
       #expect(
         kernel.lastASRSalvageOutcome == .decodeFailed,
@@ -529,8 +656,8 @@ struct ExhaustedRetrySpoolDeletionTests {
       #expect(EngineInterruptionCause(rawValue: "xpc_connection_lost") == nil)
     }
 
-    /// Outside an interruption the floor is a no-op on every terminal. If it were
-    /// not, an ordinary too-short tap would retain a spool forever.
+    /// Outside an interruption the floor is a no-op on every terminal. If it
+    /// were not, an ordinary too-short tap would read as a mic interruption.
     @Test("with no interruption stamped, the floor is the identity function")
     func floorIsInertWithoutACause() async {
       let (_, wrapper) = makeWrapper()
@@ -546,10 +673,11 @@ struct ExhaustedRetrySpoolDeletionTests {
 
     // MARK: 3. The single home — one writer, one clearer
 
-    /// The cause now lives on the shared `KernelTelemetryState`, cleared ONLY by
-    /// `resetForNewSession()`. Two clearers would let a stale cause leak into the
-    /// next session, and the floor would then convert an ordinary too-short tap
-    /// into `.audioInterrupted` with a retained spool. This test is the guard.
+    /// The cause now lives on the shared `KernelTelemetryState`, cleared ONLY
+    /// by `resetForNewSession()`. Two clearers would let a stale cause leak
+    /// into the next session, and the floor would then mislabel an ordinary
+    /// too-short tap as `.audioInterrupted` — a wrong notice (#1755: never a
+    /// retention change). This test is the guard.
     @Test("a fresh session starts with no cause, even after an interrupted one")
     func causeDoesNotLeakAcrossSessions() async {
       let (context, wrapper) = makeWrapper()
@@ -564,7 +692,7 @@ struct ExhaustedRetrySpoolDeletionTests {
 
       #expect(
         wrapper.testKernel.lastAudioInterruptionCause == nil,
-        "a stale cause would make the next ordinary too-short tap retain a spool")
+        "a stale cause would mislabel the next ordinary too-short tap as an interruption")
 
       // And the floor is genuinely inert again: an ordinary stop discards.
       await wrapper.apply(.stop)

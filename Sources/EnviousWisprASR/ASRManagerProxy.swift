@@ -69,6 +69,19 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// from clobbering a retry's freshly registered guard.
   private var pendingLoadCompletion: OneShotContinuationASR<Void>?
 
+  /// #1755 §3.4 prerequisite: the pending batch-transcribe continuations'
+  /// resume-once guards, keyed by per-call operation UUID, reachable by EVERY
+  /// completion source — the XPC reply, the per-call proxy error, and the
+  /// interruption/invalidation handlers. Same production defect class as
+  /// `pendingLoadCompletion` (#1388: the per-call error handler is NOT
+  /// guaranteed to fire for a pending reply on invalidate/death): before this
+  /// registry, a helper death mid-decode left `transcribe(audioSamples:)`'s
+  /// await suspended forever, so the kernel's finalize could never fail into
+  /// its Phase-2 retry. `OneShotContinuationASR` guarantees exactly one
+  /// resume; `awaitTranscribeReply`'s `defer` removes exactly its own key on every exit,
+  /// so a superseded call can never clobber a later call's registration.
+  private var pendingTranscribeCompletions: [UUID: OneShotContinuationASR<(Data?, NSError?)>] = [:]
+
   /// #959 readiness-integrity token. Monotonic; `loadModel()` captures it at the
   /// start of its load and refuses to write `isModelLoaded = true` if it changed
   /// before the load completes (throws `ASRLoadSupersededError`). Bumped by
@@ -145,6 +158,52 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// The contract test asserts it is cleared on every `loadModel` exit.
   // periphery:ignore - test seam
   var hasPendingLoadCompletionForTesting: Bool { pendingLoadCompletion != nil }
+
+  /// #1755 test seams (minimal, mirroring the recycle/load seams above): the
+  /// registry count and a connection-era setter, so the real handler factories'
+  /// era guard is testable without spawning a helper.
+  // periphery:ignore - test seam
+  var pendingTranscribeCountForTesting: Int { pendingTranscribeCompletions.count }
+
+  // periphery:ignore - test seam
+  func setConnectionForTesting(_ conn: NSXPCConnection?) { connection = conn }
+
+  // periphery:ignore - test seam (PR #1761 cloud P2: lets the streaming-finalize
+  // registration test pass the isStreaming guard without a real session)
+  func setStreamingForTesting(_ streaming: Bool) { isStreaming = streaming }
+
+  /// #1755: the registry lifecycle around ONE suspended transcribe reply —
+  /// register the resume-once guard under a fresh operation UUID, hand it to
+  /// `start` (production wires the XPC call; tests wire a scripted
+  /// completion), and remove exactly this call's key on every exit. This is
+  /// the SINGLE implementation `transcribe(audioSamples:)` runs, so tests of
+  /// this helper test production's real registration/cleanup, not a copy.
+  func awaitTranscribeReply(
+    _ start: (OneShotContinuationASR<(Data?, NSError?)>) -> Void
+  ) async throws -> (Data?, NSError?) {
+    let operationID = UUID()
+    defer { pendingTranscribeCompletions.removeValue(forKey: operationID) }
+    return try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<(Data?, NSError?), any Error>) in
+      let completion = OneShotContinuationASR(continuation)
+      pendingTranscribeCompletions[operationID] = completion
+      start(completion)
+    }
+  }
+
+  /// #1755: fail every pending batch-transcribe completion with the typed
+  /// transport error. Called ONLY from the current-era region of the
+  /// interruption/invalidation handlers (the callers hold the era guard, so a
+  /// retired connection's late handler can never drain a successor's
+  /// operations). Snapshot-then-clear before resuming so a re-entrant
+  /// registration during resume cannot be swallowed.
+  private func failAllPendingTranscribes() {
+    let pending = Array(pendingTranscribeCompletions.values)
+    pendingTranscribeCompletions.removeAll()
+    for completion in pending {
+      completion.resume(throwing: XPCASRTransportError.serviceUnreachable)
+    }
+  }
 
   /// Invalidate whatever load is current: bump the generation so an in-flight
   /// `loadModel()` completion (even one whose `isModelLoaded` is still `false`)
@@ -445,19 +504,20 @@ public final class ASRManagerProxy: ASRManagerInterface {
       }
     }
 
-    let (resultData, error): (Data?, NSError?) = try await withCheckedThrowingContinuation {
-      (cont: CheckedContinuation<(Data?, NSError?), any Error>) in
-      let guard_ = OneShotContinuationASR(cont)
+    // #1755 §3.4 prerequisite: run the reply through the registry helper so
+    // the connection death handlers can fail a suspended decode (see
+    // `pendingTranscribeCompletions` / `awaitTranscribeReply`).
+    let (resultData, error): (Data?, NSError?) = try await awaitTranscribeReply { completion in
       serviceProxy { proxy in
         proxy.transcribeSamples(
           data, sampleCount: audioSamples.count,
           language: language, enableTimestamps: options.enableTimestamps,
           speechSegmentsData: speechSegmentsData
         ) { resultData, nsError in
-          guard_.resume(returning: (resultData, nsError))
+          completion.resume(returning: (resultData, nsError))
         }
       } onProxyError: {
-        guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
+        completion.resume(throwing: XPCASRTransportError.serviceUnreachable)
       }
     }
 
@@ -540,15 +600,17 @@ public final class ASRManagerProxy: ASRManagerInterface {
   public func finalizeStreaming() async throws -> ASRResult {
     guard isStreaming else { throw ASRError.streamingNotSupported }
 
-    let (resultData, error): (Data?, NSError?) = try await withCheckedThrowingContinuation {
-      (cont: CheckedContinuation<(Data?, NSError?), any Error>) in
-      let guard_ = OneShotContinuationASR(cont)
+    // PR #1761 cloud P2: route the STREAMING finalize through the same
+    // pending-transcribe registry as the batch path — a helper death during a
+    // streaming session's finalize must fail this suspended await (and enter
+    // the Phase-2 retry) instead of hanging it forever.
+    let (resultData, error): (Data?, NSError?) = try await awaitTranscribeReply { completion in
       serviceProxy { proxy in
         proxy.finalizeStreaming { resultData, nsError in
-          guard_.resume(returning: (resultData, nsError))
+          completion.resume(returning: (resultData, nsError))
         }
       } onProxyError: {
-        guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
+        completion.resume(throwing: XPCASRTransportError.serviceUnreachable)
       }
     }
 
@@ -858,8 +920,9 @@ public final class ASRManagerProxy: ASRManagerInterface {
     }
   }
 
-  nonisolated private static func makeInterruptionHandler(
-    proxy: ASRManagerProxy, connection: NSXPCConnection
+  nonisolated static func makeInterruptionHandler(  // internal: #1755 era-guard tests
+    proxy: ASRManagerProxy, connection: NSXPCConnection,
+    didFinishForTesting: (@MainActor @Sendable () -> Void)? = nil
   ) -> @Sendable () ->
     Void
   {
@@ -868,6 +931,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
     let eraID = ObjectIdentifier(connection)
     return { [weak proxy] in
       Task { @MainActor [weak proxy] in
+        defer { didFinishForTesting?() }
         guard let proxy else { return }
         let wasStreaming = proxy.isStreaming
         let wasLoaded = proxy.isModelLoaded
@@ -892,6 +956,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
         guard currentEraID == nil || currentEraID == eraID else { return }
         proxy.pendingLoadCompletion?.resume(throwing: XPCASRTransportError.serviceUnreachable)
         proxy.pendingLoadCompletion = nil
+        // #1755 §3.4 prerequisite: a helper death must also fail every
+        // suspended batch decode, or the kernel's finalize hangs and the one
+        // live rescue can never begin (same #1388 defect class as the load).
+        proxy.failAllPendingTranscribes()
         // #959: supersede the current/in-flight load (and log the ready→notReady
         // cause) BEFORE clearing `isModelLoaded`, so the cause log fires and a
         // load completing after this teardown cannot resurrect a false `.ready`.
@@ -919,14 +987,16 @@ public final class ASRManagerProxy: ASRManagerInterface {
     }
   }
 
-  nonisolated private static func makeInvalidationHandler(
-    proxy: ASRManagerProxy, connection: NSXPCConnection
+  nonisolated static func makeInvalidationHandler(  // internal: #1755 era-guard tests
+    proxy: ASRManagerProxy, connection: NSXPCConnection,
+    didFinishForTesting: (@MainActor @Sendable () -> Void)? = nil
   ) -> @Sendable () ->
     Void
   {
     let eraID = ObjectIdentifier(connection)
     return { [weak proxy] in
       Task { @MainActor [weak proxy] in
+        defer { didFinishForTesting?() }
         guard let proxy else { return }
         let wasActive = proxy.isStreaming || proxy.isModelLoaded
         let wasInFlight = proxy.inFlightLoadTask != nil
@@ -941,6 +1011,9 @@ public final class ASRManagerProxy: ASRManagerInterface {
         guard currentEraID == nil || currentEraID == eraID else { return }
         proxy.pendingLoadCompletion?.resume(throwing: XPCASRTransportError.serviceUnreachable)
         proxy.pendingLoadCompletion = nil
+        // #1755 §3.4 prerequisite: same as the interruption handler — fail
+        // every suspended batch decode under the same era guard.
+        proxy.failAllPendingTranscribes()
         // #959: same as the interruption handler — supersede current/in-flight
         // load + log cause BEFORE clearing `isModelLoaded`.
         if wasActive || wasInFlight {

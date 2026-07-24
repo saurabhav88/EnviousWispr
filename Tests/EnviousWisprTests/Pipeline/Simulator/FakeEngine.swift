@@ -61,6 +61,15 @@ enum FakeEngineBehavior: Sendable {
   /// genuine finalize cadence stall (PR-3 plan §3.7). Resolved only by
   /// `cancel()`.
   case wedgeOnFinalize
+  /// #1755 chunk 3: `finalize()` SUSPENDS on a continuation (a genuine
+  /// in-flight decode) until the test resolves it via
+  /// `resolveHeldFinalizeAsHelperDeath()`, then returns `.failed(.engineCrashed)`
+  /// — the deterministic stand-in for a helper death failing a suspended
+  /// decode (Chunk 1's drained continuation). `heldFinalizePending` /
+  /// `onHeldFinalizePending` are the registration signals; `cancel()` releases
+  /// the continuation so a test cannot leak it. No routing or retry policy
+  /// lives here.
+  case heldFinalize
   /// `finalize()` surfaces an engine crash as `.failed(.engineCrashed)` —
   /// never a throw, never a hang.
   case crashOnFinalize
@@ -133,6 +142,18 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   var asrInterruptionRecoveryResult: ASRInterruptionRecoveryOutcome = .readyForBatchDecode
   var asrInterruptionRecoveryDelayTicks = 0
   private(set) var recoverFromASRInterruptionCallCount = 0
+
+  /// #1755 chunk 3 — held-finalize signals (see `.heldFinalize`).
+  private(set) var heldFinalizePending = false
+  var onHeldFinalizePending: (@MainActor () -> Void)?
+  private var heldFinalizeContinuation: CheckedContinuation<Void, Never>?
+
+  /// Resolve the suspended `.heldFinalize` decode as a helper death. Safe to
+  /// call when nothing is pending (no-op).
+  func resolveHeldFinalizeAsHelperDeath() {
+    heldFinalizeContinuation?.resume()
+    heldFinalizeContinuation = nil
+  }
 
   func recoverFromASRInterruption() async -> ASRInterruptionRecoveryOutcome {
     recoverFromASRInterruptionCallCount += 1
@@ -416,6 +437,23 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     case .crashOnFinalize:
       // An engine crash surfaces as a VALUE, never a throw, never a hang.
       outcome = .failed(.engineCrashed)
+    case .heldFinalize:
+      // #1755 chunk 3: a genuine suspended decode. Signal registration, park
+      // on the continuation, and — once the test resolves it — surface the
+      // helper death exactly as Chunk 1's drained continuation does.
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        // Store FIRST, then signal — the signal structurally proves the
+        // continuation is registered and resolvable.
+        heldFinalizeContinuation = continuation
+        heldFinalizePending = true
+        onHeldFinalizePending?()
+      }
+      heldFinalizePending = false
+      if isCancelled {
+        isTerminal = true
+        return .cancelled
+      }
+      outcome = .failed(.engineCrashed)
     case .wedgeOnFinalize:
       // The finalize emits a few finalize-progress ticks (arming the kernel's
       // wedge watcher) then goes silent — a genuine cadence stall (PR-3 plan
@@ -489,6 +527,11 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     // #959: cheap discard — it does NOT release a wedged `warmUp()`/`finalize()`.
     // The kernel only routes ordinary terminals here; releasing a wedge is the
     // job of `recoverFromWedge()` below.
+    // #1755 chunk 3: the HELD finalize is the exception — release it on cancel
+    // so a cancelling test cannot leak the continuation (it then returns
+    // `.cancelled` per the post-cancel MUST clause above).
+    heldFinalizeContinuation?.resume()
+    heldFinalizeContinuation = nil
   }
 
   /// #959 HEAVY wedge recovery. Does the same teardown as `cancel()` PLUS

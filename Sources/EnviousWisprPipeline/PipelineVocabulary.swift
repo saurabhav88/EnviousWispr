@@ -144,11 +144,10 @@ public enum OverlayIntent: Equatable, Sendable {
   case bluetoothAwareness
 }
 
-/// The user-versus-fault attribution of a `.cancelled` recording terminal — the
-/// only outcome whose recovery disposition is ambiguous (#1464). A genuine user
-/// cancel DELETES the spool; a fault/system cancel RETAINS the recoverable audio.
-/// Kept narrow and public so the driver can project it across the Pipeline →
-/// AppKit boundary without leaking the internal `RecordingOutcome`.
+/// Typed cancellation PROVENANCE for a `.cancelled` terminal: who asked —
+/// the user, or the system/a fault. Under the #1755 discard doctrine both
+/// origins delete the recovery spool; the distinction survives for
+/// diagnostics and copy, not as a retain/delete fork.
 public enum RecordingCancelOrigin: Equatable, Sendable {
   case user
   case systemOrFault
@@ -159,15 +158,14 @@ public enum RecordingCancelOrigin: Equatable, Sendable {
 /// (and its `DiscardReason` / `NoSpeechSource` payloads) stays inside Pipeline;
 /// `KernelDictationDriver` maps the already-floored outcome into this before it
 /// crosses into AppKit, where `RecoveryCoordinator` applies the SOLE
-/// delete-versus-retain predicate:
+/// delete-versus-retain predicate.
 ///
-/// - delete: `.discarded`, `.noSpeech`, `.cancelled(.user)`, `.asrRetryExhausted`
-///   — nothing worth recovering, the user asked to drop it, or (#1707 Phase 2)
-///   this session spent and exhausted its one live retry over the exact same
-///   audio, so there is nothing left to recover on the next launch either.
-/// - retain: `.failed`, `.audioInterrupted`, `.asrInterrupted`, `.noTransport`,
-///   `.cancelled(.systemOrFault)` — the captured audio is the user's words; keep
-///   the spool so the next launch recovers it.
+/// #1755 (founder Gate 2 2026-07-23): EVERY represented non-saved live ending
+/// requests best-effort deletion — an ending fired means the app was alive, the
+/// user witnessed the outcome, and the one in-session rescue already ran.
+/// `.asrRetryExhausted` stays a distinct case for typed projection/diagnostic
+/// clarity even though it now agrees with `.failed` on deletion. Launch replay
+/// serves only the no-ending app-gone orphan (which never projects here).
 ///
 /// `.completed` is not representable here — a durable save has its own cleanup
 /// callback (`handleDurableSave`).
@@ -177,8 +175,7 @@ public enum RecordingRecoveryEnding: Equatable, Sendable {
   case failed
   /// #1707 Phase 2: a `.failed` session that spent and exhausted its one
   /// Phase-2 retry over the exact same already-captured audio. Distinct from
-  /// plain `.failed` (a pre-capture failure, or a `.failed` that never
-  /// consulted Phase 2) — only this case deletes the spool.
+  /// plain `.failed` for diagnostics; both delete under #1755.
   case asrRetryExhausted
   case audioInterrupted
   case asrInterrupted

@@ -328,8 +328,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// carrying this session's `recoverySessionID` (captured from `context.config`
   /// BEFORE the terminal cleanup nulls it) and the terminal KIND (discard vs
   /// failure). The App's `DictationLifecycleCoordinator` routes it to
-  /// `RecoveryCoordinator` so a discarded recording's spool is deleted and a
-  /// failed recording's spool is RETAINED for next-launch recovery. Distinct
+  /// `RecoveryCoordinator`, which under the #1755 discard doctrine requests
+  /// best-effort deletion for every represented live ending. Distinct
   /// from `onStateChange` (which fires the externalError-pinnable public
   /// `PipelineState`): this keys off the RAW kernel terminal, so it never fires
   /// for `.completed` (a durable save already ran) and the error pin can't
@@ -374,14 +374,14 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// #1063 PR2 / #1464 — the origin attributed to the CURRENT session's
   /// `.cancelled` terminal. `.cancelled` is reached by BOTH a genuine user cancel
   /// (`RecordingFinalizer.cancel()` → `cancelRecording(disposition: .user)`) AND
-  /// fault/system cancels that route through `kernel.cancel()` (active `reset()`,
-  /// `setTerminalReason()`, the settings-rebuild cancel). A user cancel should
-  /// DELETE the spool; a fault cancel should RETAIN recoverable audio. Defaults to
-  /// `.systemOrFault` (RETAIN) so any cancel NOT explicitly attributed as a user
-  /// discard conservatively keeps the audio. Set at the `cancelRecording` call
-  /// site, consumed + reset at the `.cancelled` signal fire, and reset on each new
-  /// session start. Projected into `RecordingRecoveryEnding.cancelled(_)` for the
-  /// coordinator's delete-versus-retain predicate.
+  /// fault/system cancels that route through `kernel.cancel()` (active
+  /// `reset()`, `setTerminalReason()`). PROVENANCE only (#1755): both origins
+  /// delete at the coordinator; the distinction feeds diagnostics and copy.
+  /// Defaults to `.systemOrFault` so a cancel NOT explicitly attributed as a
+  /// user discard never masquerades as one. Set at the `cancelRecording` call
+  /// site, consumed + reset at the `.cancelled` signal fire, and reset on
+  /// each new session start. Projected into
+  /// `RecordingRecoveryEnding.cancelled(_)` for the coordinator's predicate.
   @ObservationIgnored
   private var pendingCancelOrigin: RecordingCancelOrigin = .systemOrFault
 
@@ -733,10 +733,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// on its own is fire-and-latch: it triggers the recording-exit path or sets
   /// `cancelRequested`, but the actual transition to `.cancelled` /
   /// `.discarded` happens on the forward path's next yield.
-  /// `disposition` (#1063 PR2 / #1464) attributes a `.cancelled` terminal for
-  /// crash recovery: `.user` (genuine USER cancel — delete the spool) vs the
-  /// default `.systemOrFault` (a system cancel — RETAIN recoverable audio). The
-  /// user-cancel path passes `.user`; system cancels use the retain default.
+  /// `disposition` (#1063 PR2 / #1464 / #1755) attributes a `.cancelled`
+  /// terminal's PROVENANCE for crash recovery: `.user` (genuine USER cancel)
+  /// vs the default `.systemOrFault` (a system/fault cancel). Both delete
+  /// under the #1755 discard doctrine — the origin is diagnostics/copy, not a
+  /// retain/delete fork. The user-cancel path passes `.user` explicitly.
   public func cancelRecording(disposition: RecordingCancelOrigin = .systemOrFault) async {
     pendingCancelOrigin = disposition
     kernel.cancel()
@@ -1070,10 +1071,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // closures to read at finalize time (the wiring's optional-chained
         // reads were always-nil in production until this PR — finding #6).
         lastTerminalReason = nil
-        // #1063 PR2: a fresh session starts with the conservative cancel origin
-        // (RETAIN) — only a genuine user cancel during this session flips it to
-        // `.user`. Prevents a stale user-discard from a prior session leaking onto
-        // this session's fault-cancel.
+        // #1063 PR2 / #1755: a fresh session starts at the `.systemOrFault`
+        // provenance default — only a genuine user cancel during this session
+        // flips it to `.user`, so a stale user attribution from a prior
+        // session can never leak onto this session's fault-cancel.
         pendingCancelOrigin = .systemOrFault
         outcome.transcript = nil
         outcome.polishError = nil
@@ -1318,13 +1319,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     lastEndedWithoutSaveSessionID = kernel.currentSessionID
     let ending: RecordingRecoveryEnding?
     if case .cancelled = outcome {
-      // `.cancelled` is ambiguous (Codex terminal-kind matrix): a genuine user
-      // cancel DELETES, but a fault/system cancel (active reset, external-error,
-      // settings rebuild) RETAINS recoverable audio. Resolve via the per-cancel
-      // origin attributed at the `kernel.cancel()` call site; consume + reset to
-      // the conservative default so a stale user-discard can't leak to a later
-      // fault cancel. The delete-versus-retain decision itself lives in the
-      // coordinator's predicate (#1464) — the driver only projects the origin.
+      // `.cancelled` carries per-cancel PROVENANCE (user vs system/fault),
+      // attributed at the `kernel.cancel()` call site; consume + reset to the
+      // default so a stale user attribution can't leak to a later fault
+      // cancel. Both origins delete under #1755 — the disposition decision
+      // lives solely in the coordinator's predicate; the driver only
+      // projects the origin.
       ending = .cancelled(pendingCancelOrigin)
       pendingCancelOrigin = .systemOrFault
     } else {
@@ -1355,9 +1355,9 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// all continue to get plain `.failed`. Only the ONE production call site
   /// above passes `kernel.asrRetryOutcome` explicitly. A `.failed` outcome
   /// whose retry was exhausted projects to the distinct `.asrRetryExhausted`
-  /// ending (§4) so `RecoveryCoordinator` can delete that spool specifically
-  /// — a pre-capture `.failed` (retry never consulted, `retryOutcome == nil`)
-  /// still projects to plain `.failed` and retains exactly as today. Codex r7:
+  /// ending (§4) as a typed diagnostic — under #1755 it AGREES with plain
+  /// `.failed` on deletion (a pre-capture or never-retried `.failed`,
+  /// `retryOutcome == nil`, projects to plain `.failed` and deletes too). Codex r7:
   /// `.asrInterrupted` honors the same exhausted-retry distinction, since the
   /// kernel's `interruptedTerminalFloor` can raise an exhausted-retry `.failed`
   /// into `.asrInterrupted` when an ASR-interruption salvage attempt preceded it.

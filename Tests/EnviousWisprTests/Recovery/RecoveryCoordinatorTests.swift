@@ -164,37 +164,30 @@ struct RecoveryCoordinatorTests {
 
   // MARK: - Non-saved terminal routing (#1464 live-ending predicate)
 
-  @Test("a delete ending (discard/no-speech/user-cancel) deletes the spool + key")
-  func discardTerminalDeletes() async throws {
+  @Test("EVERY concluded live ending physically deletes the spool + key (#1755 discard doctrine)")
+  func everyLiveEndingDeletes() async throws {
+    // #1755: an ending fired ⇒ the app was alive ⇒ the user witnessed the
+    // outcome and re-dictates. All nine representable endings request
+    // best-effort deletion; only the no-ending app-gone orphan retains.
     let h = Self.makeHarness()
-    for ending in [RecordingRecoveryEnding.discarded, .noSpeech, .cancelled(.user)] {
-      let id = "del-\(UUID().uuidString)"
-      try Self.writeSpool(h.spoolStore, id)
-      try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
-      await h.coordinator.handleRecordingEndedWithoutDurableSave(
-        recoverySessionID: id, ending: ending)?.value
-      #expect(
-        !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
-        "\(ending) should delete the spool")
-      #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
-    }
-  }
-
-  @Test("a retain ending (fault / system-cancel) RETAINS the spool + key")
-  func failureTerminalRetains() async throws {
-    let h = Self.makeHarness()
-    let retainEndings: [RecordingRecoveryEnding] = [
-      .failed, .audioInterrupted, .asrInterrupted, .noTransport, .cancelled(.systemOrFault),
+    let allEndings: [RecordingRecoveryEnding] = [
+      .discarded, .noSpeech, .failed, .asrRetryExhausted, .audioInterrupted,
+      .asrInterrupted, .noTransport, .cancelled(.user), .cancelled(.systemOrFault),
     ]
-    for ending in retainEndings {
-      let id = "keep-\(UUID().uuidString)"
+    for ending in allEndings {
+      let id = "del-\(UUID().uuidString)"
       try Self.writeSpool(h.spoolStore, id)
       try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
       let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
         recoverySessionID: id, ending: ending)
-      #expect(task == nil, "\(ending) retains — no delete work")
-      #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
-      #expect((try? h.keyStore.retrieve(for: id)) != nil)
+      let unwrapped = try #require(task, "\(ending) must return the destruction work")
+      await unwrapped.value
+      #expect(
+        !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+        "\(ending) must delete the spool")
+      #expect(
+        throws: RecoveryKeyStoreError.notFound, "\(ending) must delete the key"
+      ) { try h.keyStore.retrieve(for: id) }
     }
   }
 
@@ -208,21 +201,31 @@ struct RecoveryCoordinatorTests {
 
   // MARK: - #1464 delete/retain predicates (adversarial: every case in both classes)
 
-  @Test("shouldDeleteOnLiveEnding: delete endings delete, retain endings retain")
+  @Test("shouldDeleteOnLiveEnding: all nine ending cells delete (#1755 founder discard doctrine)")
   func liveEndingPredicate() {
-    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.discarded))
-    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.noSpeech))
-    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user)))
-    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.failed))
-    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.audioInterrupted))
-    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrInterrupted))
-    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.noTransport))
-    #expect(!RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.systemOrFault)))
+    // Unchanged cells (already deleted before #1755):
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.discarded), "unchanged")
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.noSpeech), "unchanged")
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user)), "unchanged")
+    // FLIPPED by the founder's discard doctrine (#1755, Gate 2 2026-07-23):
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.failed), "flipped: live failure discards")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.audioInterrupted),
+      "flipped: in-session salvage already ran; discard on failure")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrInterrupted),
+      "flipped: the live rescue is the Phase-2 retry; discard on failure")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.noTransport),
+      "flipped: nothing recoverable by construction")
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.systemOrFault)),
+      "flipped: every producer is app-alive")
     // #1707 Phase 2: an exhausted Phase-2 retry deletes its spool (the
     // decode genuinely never produced anything); a pre-capture / never-
-    // retried `.failed` (plain, no retry consulted) still retains — the
+    // #1755: plain `.failed` (no retry consulted) ALSO deletes now — the
     // negative half of this same adversarial pair.
-    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrRetryExhausted))
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrRetryExhausted), "unchanged")
   }
 
   @Test(
@@ -438,37 +441,27 @@ struct RecoveryCoordinatorTests {
     }
   }
 
-  @Test(
-    "a live recording's own retained failure is excluded from THIS SAME session's wake-up rescan"
-  )
-  func retainedLiveFailureExcludedFromSameSessionRescan() async throws {
-    // GitHub cloud review, PR #1732: `onDictationEndedForRecovery` fires right
-    // after a live recording ends. For a RETAIN ending, the engine may still be
-    // in the exact broken state that produced the failure — a same-launch
-    // rescan must not immediately re-attempt (and potentially delete) the very
-    // spool this ending just retained.
+  @Test("a live failure deletes its spool, so a same-launch scan finds nothing to replay (#1755)")
+  func liveFailureDeletedNothingForSameSessionRescan() async throws {
+    // #1755 rewrite of the PR #1732 retention test: `.failed` now DELETES —
+    // the launch/wake scan has nothing left to replay, which removes the
+    // same-launch race population at the source instead of suppressing it.
     let h = Self.makeHarness()
     let id = "live-fail-\(UUID().uuidString)"
     try Self.writeSpool(h.spoolStore, id)
-    // `.failed` is a RETAIN-kind ending (`shouldDeleteOnLiveEnding` returns
-    // false) — mirrors the live driver calling this on a genuine failure.
-    h.coordinator.handleRecordingEndedWithoutDurableSave(recoverySessionID: id, ending: .failed)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: id, ending: .failed)
+    let unwrapped = try #require(task, ".failed now returns destruction work")
+    await unwrapped.value
     #expect(
-      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
-      "a retain ending never deletes")
-    // If the engine were still broken, a replay attempt here would fail again.
-    h.replayer.outcomeByID[id] = .failed(.unrecoverable)
-    // The SAME session's own wake-up call — must not touch `id` this pass.
-    h.coordinator.requestRecoveryRecheck()
-    for _ in 0..<20 {
-      try? await Task.sleep(for: .milliseconds(5))  // settle: bounded drain to let any spurious replay run
-    }
+      !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "the live failure's spool is gone")
+    // A direct same-launch scan attempts nothing — the population is empty.
+    await h.coordinator.scanAndRecover()
     #expect(
       h.replayer.replayedIDs.isEmpty,
-      "the just-retained id must not be re-attempted by this same session's own rescan")
-    #expect(
-      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
-      "still on disk — not destroyed by a same-launch replay of the just-retained spool")
+      "nothing remains for the same-launch scan to replay")
   }
 
   @Test("a FRESH coordinator instance (a genuine new launch) starts with an empty suppression set")
@@ -813,4 +806,314 @@ struct RecoveryCoordinatorTests {
       coordinator.handleRecordingEndedWithoutDurableSave(
         recoverySessionID: nil, ending: .discarded) == nil)
   }
+  // MARK: - #1755 chunk 4 — deletion-failure breadcrumb matrix
+
+  /// The exact breadcrumb shape the deletion-failure seam records.
+  struct Crumb: Equatable {
+    let stage: String
+    let message: String
+    let data: [String: String]
+  }
+
+  private final class CrumbLog {
+    var crumbs: [Crumb] = []
+  }
+
+  /// Lock-protected fired-or-waiting one-shot: whichever of signal()/wait()
+  /// runs first, the waiter resumes exactly once. Race-safe by construction.
+  private final class OneShotSignal: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fired = false
+    private var waiter: CheckedContinuation<Void, Never>?
+    func signal() {
+      let resumable: CheckedContinuation<Void, Never>? = lock.withLock {
+        if fired { return nil }
+        fired = true
+        let w = waiter
+        waiter = nil
+        return w
+      }
+      resumable?.resume()
+    }
+    func wait() async {
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        let resumeNow: Bool = lock.withLock {
+          if fired { return true }
+          waiter = c
+          return false
+        }
+        if resumeNow { c.resume() }
+      }
+    }
+  }
+
+  /// Lock-safe counter for the key-delete seam, which runs OFF the MainActor
+  /// inside the detached destruction task. Awaiting that task proves the
+  /// increment completed — no scheduling hops.
+  private final class AtomicCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.withLock { count += 1 } }
+    var value: Int { lock.withLock { count } }
+  }
+
+  // Best-effort deletion stays best-effort (no retries, no escapes); the ONLY
+  // new behavior is one failure breadcrumb per failed component per
+  // destruction call, with exact shape and a fixed source label.
+  @Test(
+    "live-ending destruction: 2×2 spool/key failure matrix emits exactly one breadcrumb per failed component",
+    arguments: [false, true], [false, true])
+  func deletionFailureMatrix(spoolFails: Bool, keyFails: Bool) async throws {
+    let harness = Self.makeHarness()
+    let coordinator = harness.coordinator
+    let log = CrumbLog()
+    let spoolAttempts = Box(0)
+    let keyAttempts = AtomicCounter()
+    struct InjectedDeleteFailure: Error {}
+    coordinator.destructionSpoolDeleteForTesting = { _ in
+      spoolAttempts.value += 1
+      if spoolFails { throw InjectedDeleteFailure() }
+    }
+    coordinator.destructionKeyDeleteForTesting = { _ in
+      keyAttempts.increment()
+      if keyFails { throw InjectedDeleteFailure() }
+    }
+    coordinator.deletionFailureBreadcrumbForTesting = { stage, message, data in
+      log.crumbs.append(Crumb(stage: stage, message: message, data: data))
+    }
+
+    // Drive the REAL live-ending destruction route with a delete-class ending.
+    let task = coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: "matrix-\(spoolFails)-\(keyFails)", ending: .discarded)
+    let unwrapped = try #require(task, "a delete-class ending must return the detached work")
+    // Awaiting the destruction task IS the completion proof: the key attempt
+    // increments inline and the key-failure breadcrumb's MainActor emission is
+    // awaited inside the task before it finishes.
+    await unwrapped.value
+
+    #expect(spoolAttempts.value == 1, "spool attempt exactly once")
+    #expect(keyAttempts.value == 1, "key attempt exactly once, even after spool failure")
+    let expectedCount = (spoolFails ? 1 : 0) + (keyFails ? 1 : 0)
+    #expect(log.crumbs.count == expectedCount, "exactly one breadcrumb per failed component")
+    if spoolFails {
+      #expect(
+        log.crumbs.contains(
+          Crumb(
+            stage: "recovery", message: "deletion_failed",
+            data: ["component": "spool", "source": "live_ending"])),
+        "exact spool failure breadcrumb")
+    }
+    if keyFails {
+      #expect(
+        log.crumbs.contains(
+          Crumb(
+            stage: "recovery", message: "deletion_failed",
+            data: ["component": "key", "source": "live_ending"])),
+        "exact key failure breadcrumb")
+    }
+    if spoolFails && keyFails {
+      #expect(
+        Set(log.crumbs.map { $0.data["component"] ?? "" }) == ["spool", "key"],
+        "both-fail cell: one spool + one key, no duplicate")
+    }
+  }
+
+  @Test("key-failure breadcrumb survives external coordinator ownership release")
+  func keyFailureBreadcrumbSurvivesOwnershipRelease() async throws {
+    // Finding r2-1/r3-1: prove the detached delete's STRONG capture delivers
+    // the breadcrumb after every external reference is gone. Deterministic
+    // protocol: gate the injected key delete AFTER it signals entry, await the
+    // entry signal, nil every external strong reference, assert the weak
+    // observer stays alive (the task owns the coordinator), release the gate
+    // so the delete throws, await the task, assert the exact crumb.
+    let log = CrumbLog()
+    struct InjectedDeleteFailure: Error {}
+    var harness: Harness? = Self.makeHarness()
+    var coordinator: RecoveryCoordinator? = harness?.coordinator
+    weak var observed = coordinator
+    // Race-safe one-shot entry signal, created BEFORE destruction starts —
+    // fired-or-waiting semantics make the ordering safe whichever thread wins
+    // (r4 ordering).
+    let entry = OneShotSignal()
+    let gate = DispatchSemaphore(value: 0)
+    coordinator?.destructionSpoolDeleteForTesting = { _ in }
+    coordinator?.destructionKeyDeleteForTesting = { _ in
+      entry.signal()
+      gate.wait()  // released by the test after ownership is dropped — a signal, not a clock
+      throw InjectedDeleteFailure()
+    }
+    coordinator?.deletionFailureBreadcrumbForTesting = { stage, message, data in
+      log.crumbs.append(Crumb(stage: stage, message: message, data: data))
+    }
+    let task = try #require(coordinator).handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: "lifetime", ending: .discarded)
+    let unwrapped = try #require(task)
+    await entry.wait()  // entry — resumes immediately if it already fired
+    harness = nil
+    coordinator = nil
+    #expect(observed != nil, "the detached task must own the coordinator while running")
+    gate.signal()
+    await unwrapped.value
+    #expect(
+      log.crumbs == [
+        Crumb(
+          stage: "recovery", message: "deletion_failed",
+          data: ["component": "key", "source": "live_ending"])
+      ],
+      "the strong capture must deliver the breadcrumb after ownership release")
+  }
+
+#if DEBUG
+  // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (coordinator side)
+
+  private static func makeBoundaryController() -> CrashBoundaryFaultController {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-cb-coord-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return CrashBoundaryFaultController(
+      armFilePath: dir.appendingPathComponent("arm").path,
+      reachedFilePath: dir.appendingPathComponent("reached").path)
+  }
+
+  @Test("before_spool_delete fires before the spool attempt; release lets deletion proceed")
+  func beforeSpoolDeleteHook() async throws {
+    let h = Self.makeHarness()
+    let controller = Self.makeBoundaryController()
+    h.coordinator.crashBoundaryController = controller
+    defer { controller.clear() }
+    let spoolAttempted = AtomicCounter()
+    let attemptsAtBoundary = AtomicCounter()
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in spoolAttempted.increment() }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    controller.onPublishForTesting = { _ in
+      // Publication callback fires synchronously at the hook, BEFORE the
+      // spool attempt; record and release immediately (no polling).
+      for _ in 0..<spoolAttempted.value { attemptsAtBoundary.increment() }
+      controller.releaseHeldForTesting()
+    }
+    #expect(controller.arm(trialID: "cb1", boundary: .beforeSpoolDelete))
+
+    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: "cb-spool", ending: .failed)
+    let unwrapped = try #require(task)
+    await unwrapped.value
+
+    #expect(controller.isReached(trialID: "cb1", boundary: .beforeSpoolDelete))
+    #expect(attemptsAtBoundary.value == 0, "the boundary sits BEFORE the spool attempt")
+    #expect(spoolAttempted.value == 1, "release lets the real attempt proceed")
+  }
+
+  @Test("before_key_delete fires inside the detached task before the key attempt")
+  func beforeKeyDeleteHook() async throws {
+    let h = Self.makeHarness()
+    let controller = Self.makeBoundaryController()
+    h.coordinator.crashBoundaryController = controller
+    defer { controller.clear() }
+    let keyAttempted = AtomicCounter()
+    let attemptsAtBoundary = AtomicCounter()
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in keyAttempted.increment() }
+    controller.onPublishForTesting = { _ in
+      for _ in 0..<keyAttempted.value { attemptsAtBoundary.increment() }
+      controller.releaseHeldForTesting()
+    }
+    #expect(controller.arm(trialID: "cb2", boundary: .beforeKeyDelete))
+
+    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: "cb-key", ending: .failed)
+    let unwrapped = try #require(task)
+    await unwrapped.value
+
+    #expect(controller.isReached(trialID: "cb2", boundary: .beforeKeyDelete))
+    #expect(attemptsAtBoundary.value == 0, "the boundary sits BEFORE the key attempt")
+    #expect(keyAttempted.value == 1, "release lets the real attempt proceed")
+  }
+
+  @Test("destruction_api_return: key deletion gated across the API return; caller hook publishes after")
+  func destructionAPIReturnHookOrdering() async throws {
+    let h = Self.makeHarness()
+    let controller = Self.makeBoundaryController()
+    h.coordinator.crashBoundaryController = controller
+    defer { controller.clear() }
+    let keyAttempted = AtomicCounter()
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in }
+    // The key-delete seam SIGNALS entry so the gated schedule is provable
+    // without any polling: the gate parks BEFORE the seam runs, so entry
+    // never fires while gated.
+    let keyEntered = OneShotSignal()
+    h.coordinator.destructionKeyDeleteForTesting = { _ in
+      keyAttempted.increment()
+      keyEntered.signal()
+    }
+    // Observe the real detached key path REACHING the gate — `keyAttempted ==
+    // 0` alone could mean the detached task simply has not started yet.
+    let gateDecision = OneShotSignal()
+    let gateDecisionLock = NSLock()
+    nonisolated(unsafe) var keyWasGated: Bool?
+    controller.onKeyDeleteGateDecisionForTesting = { decision in
+      gateDecisionLock.withLock {
+        if keyWasGated == nil { keyWasGated = decision }
+      }
+      gateDecision.signal()
+    }
+    #expect(controller.arm(trialID: "cb3", boundary: .destructionAPIReturn))
+
+    // The API must return while the key path is gated.
+    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: "cb-api", ending: .failed)
+    let unwrapped = try #require(task, "the API returned while the key path is gated")
+    await gateDecision.wait()
+    #expect(
+      gateDecisionLock.withLock { keyWasGated } == true,
+      "the real detached key path reached the API-return gate")
+    #expect(keyAttempted.value == 0, "key deletion has not passed its pre-point")
+    #expect(
+      !controller.isReached(trialID: "cb3", boundary: .destructionAPIReturn),
+      "gating alone must not publish")
+
+    // The caller-side hook (what DictationRuntime's closure runs after the
+    // API returns) publishes and parks on a background thread; its
+    // publication callback releases every hold, freeing the gated key path.
+    let published = OneShotSignal()
+    controller.onPublishForTesting = { _ in
+      controller.releaseHeldForTesting()
+      published.signal()
+    }
+    let callerDone = OneShotSignal()
+    Thread.detachNewThread {
+      controller.boundaryReached(.destructionAPIReturn)
+      callerDone.signal()
+    }
+    await published.wait()
+    await callerDone.wait()
+    await keyEntered.wait()
+    await unwrapped.value
+    #expect(controller.isReached(trialID: "cb3", boundary: .destructionAPIReturn))
+    #expect(keyAttempted.value == 1, "the gated key deletion completed after release")
+  }
+
+#endif
+
+  @Test("a FAILED live-ending spool delete is suppressed from the same-launch rescan (PR #1761 cloud P2)")
+  func failedLiveDeleteSuppressedSameLaunch() async throws {
+    let h = Self.makeHarness()
+    struct InjectedDeleteFailure: Error {}
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    let id = "suppress-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: id, ending: .failed)
+    let unwrapped = try #require(task)
+    await unwrapped.value
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "precondition: the spool survived the failed delete")
+    // The same-launch scan must NOT rediscover/replay the survivor.
+    await h.coordinator.scanAndRecover()
+    #expect(
+      h.replayer.replayedIDs.isEmpty,
+      "the failed-delete survivor is suppressed until a genuine new launch")
+  }
+
 }

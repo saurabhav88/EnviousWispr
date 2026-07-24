@@ -127,20 +127,30 @@ import Testing
       #expect(kernel.lastASRSalvageOutcome == .rewarmSucceeded)
     }
 
-    @Test("externalASRInterrupted while delivering(.transcribing) records wasRecording false")
-    func asrInterruptedWhileTranscribingCarriesFalse() {
+    @Test("externalASRInterrupted while delivering(.transcribing) publishes NO early terminal")
+    func asrInterruptedWhileTranscribingStaysPending() {
+      // #1755 chunk 3: a helper death during the transcribe phase no longer
+      // concludes the session directly — the suspended decode's own failure
+      // (Chunk 1's drained continuation) enters the Phase-2 retry instead.
+      // This forced-state routing test pins ONLY the routing: no terminal, no
+      // synthesized success, session parked exactly where it was. The real
+      // retry behavior lives in `KernelPhase2RetryTests`.
       let (_, wrapper) = makeWrapper()
       let kernel = wrapper.testKernel
 
-      // The ASR-service crash arriving during the transcribe phase (not `.live`)
-      // must stamp `wasRecording: false`, the distinction `isLegalConclusion`
-      // enforces per state.
       kernel.testForceState(.delivering)
       kernel.testSetDeliveringPhase(.transcribing)
+      #expect(kernel.testGetRecordingSnapshot() == nil, "no snapshot before the interruption")
 
       kernel.externalASRInterrupted()
 
-      #expect(kernel.recordingOutcome == .asrInterrupted(wasRecording: false))
+      #expect(
+        kernel.testGetRecordingSnapshot() != nil,
+        "the diagnostics snapshot must be frozen at routing time")
+      #expect(kernel.recordingOutcome == nil, "no early terminal")
+      #expect(kernel.state == .delivering)
+      #expect(kernel.deliveringPhase == .transcribing)
+      #expect(kernel.deliveredTranscript == nil, "nothing may be synthesized")
     }
 
     @Test(

@@ -246,11 +246,11 @@ private final class SavedBox {
     }
 
     @Test(
-      "an interrupted empty finalize floors .noSpeech → .audioInterrupted (retain spool), else unchanged"
+      "an interrupted empty finalize floors .noSpeech → .audioInterrupted (honest terminal), else unchanged"
     )
     func interruptedEmptyFloorsToAudioInterrupted() {
       // With an interruption cause, the empty no-speech is floored UP so the
-      // #1408 crash-recovery spool is retained.
+      // #1408 honest interruption terminal; disk disposition is #1755 best-effort deletion.
       let interrupted = freshKernelAtFinalizing()
       interrupted.testSetInterruptionCause(.engineLost)
       #expect(

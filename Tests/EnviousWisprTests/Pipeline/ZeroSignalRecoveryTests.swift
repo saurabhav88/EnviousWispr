@@ -102,7 +102,7 @@ struct ZeroSignalRecoveryTests {
   func reactiveNoBuffersWithNoAudioConcludesNoTransport() async {
     // #1548 D2: reaching `.live` no longer needs a buffer (sequential transition),
     // so a `.noBuffers` stall with `bufferCountThisSession == 0` is the dead-mic
-    // case → `.noTransport` ("No audio captured", spool retained), NOT the live
+    // case → `.noTransport` ("No audio captured"; #1755: best-effort deletion), NOT the live
     // `.captureStall` exit. (The `.captureStall` path — `.noBuffers` AFTER a buffer
     // arrived — is covered by `captureStalledRoutes` in the external-entry suite.)
     let ctx = makeContext()

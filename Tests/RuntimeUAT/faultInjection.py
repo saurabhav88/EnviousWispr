@@ -1653,6 +1653,92 @@ def evaluate_trial(name: str, inner: dict) -> tuple[bool, str]:
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# #1755 chunk 6 — crash-boundary helpers (plan §11.1 leg 5 client support).
+# The five-leg scenario execution itself is NOT here; these are the narrow
+# building blocks: validate → clear → arm (acknowledged) → read the reached
+# artifact directly (cross-process, works while the app's main thread is
+# deliberately held) → clear after relaunch.
+
+CRASH_BOUNDARIES = (
+    "retry_exhaustion_decided",
+    "live_terminal_published",
+    "before_spool_delete",
+    "before_key_delete",
+    "destruction_api_return",
+)
+_CRASH_BOUNDARY_ARM_FILE = "/tmp/com.enviouswispr.crash-boundary-arm"
+_CRASH_BOUNDARY_REACHED_FILE = "/tmp/com.enviouswispr.crash-boundary-reached"
+
+
+def _validate_crash_boundary(boundary: str) -> None:
+    if boundary not in CRASH_BOUNDARIES:
+        raise ValueError(f"unknown crash boundary {boundary!r}; must be one of {CRASH_BOUNDARIES}")
+
+
+def clear_crash_boundary_artifacts() -> None:
+    """Remove both signal files. MUST run before every arm and after every
+    relaunch — kill -9 prevents in-process cleanup, and a stale reached file
+    must never authorize a kill."""
+    import os
+
+    for path in (_CRASH_BOUNDARY_ARM_FILE, _CRASH_BOUNDARY_REACHED_FILE):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+
+
+def arm_crash_boundary(boundary: str, trial_id: str) -> str:
+    """Clear stale artifacts, then arm the exact (boundary, trial) pair via the
+    endpoint. Returns only after the app acknowledged the arm (OK)."""
+    _validate_crash_boundary(boundary)
+    if not trial_id:
+        raise ValueError("trial_id must be non-empty")
+    clear_crash_boundary_artifacts()
+    reply = send(f"clear_crash_boundary")
+    if reply != "OK":
+        raise RuntimeError(f"clear_crash_boundary failed: {reply!r}")
+    reply = send(f"arm_crash_boundary({boundary},{trial_id})")
+    if reply != "OK":
+        raise RuntimeError(f"arm_crash_boundary failed: {reply!r}")
+    return reply
+
+
+def read_crash_boundary_reached(boundary: str, trial_id: str) -> bool:
+    """The authoritative post-hold query: a direct plist read of the reached
+    artifact requiring the EXACT pair. Missing, malformed, mismatched-trial,
+    and mismatched-boundary records all read False (fail closed). Never uses
+    the endpoint — a hold may deliberately stop the app's main thread."""
+    import plistlib
+
+    _validate_crash_boundary(boundary)
+    if not trial_id:
+        return False
+    try:
+        with open(_CRASH_BOUNDARY_REACHED_FILE, "rb") as fh:
+            record = plistlib.load(fh)
+    except (FileNotFoundError, plistlib.InvalidFileException, OSError, ValueError):
+        return False
+    if not isinstance(record, dict):
+        return False
+    return record.get("trialID") == trial_id and record.get("boundary") == boundary
+
+
+def wait_crash_boundary_reached(boundary: str, trial_id: str, deadline_sec: float = 30.0) -> bool:
+    """Bounded external poll of the reached artifact (short intervals; elapsed
+    time is never evidence — only the exact record authorizes kill -9)."""
+    import time
+
+    _validate_crash_boundary(boundary)
+    end = time.monotonic() + deadline_sec
+    while time.monotonic() < end:
+        if read_crash_boundary_reached(boundary, trial_id):
+            return True
+        time.sleep(0.05)
+    return False
+
+
 def main(argv: list[str]) -> int:
     if not argv or argv[0] in ("-h", "--help", "list", "list_scenarios"):
         print_scenarios()

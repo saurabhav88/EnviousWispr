@@ -42,9 +42,9 @@ final class RecordingFinalizer {
     try await $0.handle(event: .requestStop)
   }
   var cancelRecordingDispatch: @MainActor (KernelDictationDriver) async -> Void = {
-    // #1063 PR2 / #1464: this is the genuine USER cancel path (the cancel button →
-    // `RecordingFinalizer.cancel()`), so a recovery spool is DELETED, not retained.
-    // The settings-rebuild system cancel uses `cancelRecording()`'s retain default.
+    // #1063 PR2 / #1464 / #1755: the genuine USER cancel path (the cancel
+    // button → `RecordingFinalizer.cancel()`) — attributed `.user` for
+    // provenance; every cancel origin deletes under the discard doctrine.
     await $0.cancelRecording(disposition: .user)
   }
 

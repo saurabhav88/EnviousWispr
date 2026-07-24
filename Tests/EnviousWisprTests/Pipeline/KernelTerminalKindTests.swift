@@ -2,6 +2,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
 /// #1063 PR2 / #1548 D1 / #1464 — the driver projects each concluded session's
@@ -122,5 +123,52 @@ struct KernelTerminalKindTests {
   @Test(".completed never fires the signal (durable save ran)")
   func completedIsNil() {
     #expect(KernelDictationDriver.recoveryEnding(for: .completed) == nil)
+  }
+}
+
+// MARK: - #1755 chunk 5 — ending × retry-outcome composed through both real authorities
+
+/// Proves the existing projection collapse is CORRECT under the discard
+/// doctrine: every retry-outcome cell of `.failed(.asrFailed)` and both
+/// `.asrInterrupted` payloads project to an ending the coordinator deletes.
+@MainActor
+@Suite("Ending × retry-outcome composed matrix (#1755)")
+struct EndingRetryOutcomeComposedMatrixTests {
+  private func composedDelete(
+    _ outcome: RecordingOutcome, _ retry: ASRRetryOutcome?
+  ) -> (ending: RecordingRecoveryEnding?, deletes: Bool) {
+    let ending = KernelDictationDriver.recoveryEnding(for: outcome, retryOutcome: retry)
+    guard let ending else { return (nil, false) }
+    return (ending, RecoveryCoordinator.shouldDeleteOnLiveEnding(ending))
+  }
+
+  @Test(".failed(.asrFailed): all four retry-outcome cells project and delete")
+  func failedAllRetryCellsDelete() {
+    #expect(composedDelete(.failed(.asrFailed), nil) == (.failed, true))
+    #expect(composedDelete(.failed(.asrFailed), .attempted) == (.failed, true))
+    #expect(composedDelete(.failed(.asrFailed), .retrySucceeded) == (.failed, true))
+    #expect(composedDelete(.failed(.asrFailed), .retryExhausted) == (.asrRetryExhausted, true))
+  }
+
+  @Test(".asrInterrupted (both payloads): all four retry-outcome cells project and delete")
+  func asrInterruptedAllRetryCellsDelete() {
+    for wasRecording in [true, false] {
+      let outcome = RecordingOutcome.asrInterrupted(wasRecording: wasRecording)
+      #expect(composedDelete(outcome, nil) == (.asrInterrupted, true))
+      #expect(composedDelete(outcome, .attempted) == (.asrInterrupted, true))
+      #expect(composedDelete(outcome, .retrySucceeded) == (.asrInterrupted, true))
+      #expect(composedDelete(outcome, .retryExhausted) == (.asrRetryExhausted, true))
+    }
+  }
+
+  @Test("characterization: .completed and static .cancelled stay outside the predicate")
+  func completedAndStaticCancelledProjectNil() {
+    #expect(KernelDictationDriver.recoveryEnding(for: .completed) == nil)
+    #expect(KernelDictationDriver.recoveryEnding(for: .cancelled) == nil)
+    // Both DYNAMIC cancel origins delete when presented to the coordinator.
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user)))
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.systemOrFault)))
+    // No-ending/app-gone has no predicate invocation by construction — there
+    // is no synthetic ending to test, which is the point.
   }
 }

@@ -402,12 +402,12 @@ enum ScenarioInventory {
     // `.live`, so a device that dies before the first buffer now routes through the
     // ONE `.live` interruption path (§3.7) — not the old Arming no-transport
     // fallback. It concludes `.audioInterrupted` (rendering `.interruption`); the
-    // crash-recovery spool is still retained via that failure terminal. This is the
+    // interruption terminal keeps its honest copy (#1755: disk disposition is best-effort deletion). This is the
     // deliberate unification: one interruption path, not two. The salvage FLOOR for
     // a device that dies mid-recording WITH audio is C5 + the salvage-suite floor
     // tests.
     Scenario(
-      id: "C8", name: "device dies before the first buffer (interruption, spool retained)",
+      id: "C8", name: "device dies before the first buffer (interruption terminal)",
       steps: [.trigger(.start), .capture(.interrupt), .capture(.stall)],
       expected: ExpectedOutcome(
         terminalState: .audioInterrupted, pasteCount: 0, pasteOutcome: .none,
