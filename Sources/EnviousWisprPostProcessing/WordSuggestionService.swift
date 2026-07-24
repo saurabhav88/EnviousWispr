@@ -613,13 +613,19 @@ public final class WordSuggestionService: Sendable {
     // once per call, applied repeatedly below (they nest arbitrarily, e.g.
     // "- > text" or "\"- text\"", so a single fixed-order pass of
     // bracket/list/quote stripping can leave an inner wrapper behind —
-    // GitHub cloud review, PR #1765 r2/r3). Ordered/bullet markers require
-    // trailing whitespace or end-of-line so the fixed-point loop below
-    // cannot repeatedly eat real content like "+44" or "--alias" one
-    // character at a time (Codex final sweep, PR #1765 r4) — blockquote
-    // '>' keeps optional whitespace since CommonMark permits ">text".
+    // GitHub cloud review, PR #1765 r2/r3). Bullet markers require trailing
+    // whitespace or end-of-line so the fixed-point loop below cannot
+    // repeatedly eat real content like "+44" or "--alias" one character at
+    // a time (Codex final sweep, PR #1765 r4). Ordered markers instead
+    // require the following char be NOT a digit (rather than requiring
+    // whitespace outright) — AFM sometimes emits a compact numbered item
+    // with no space ("1.kuber netties"), which must still strip, while a
+    // decimal/version-shaped alias ("1.2") must not have its leading
+    // "1." mistaken for a marker (GitHub cloud review, PR #1765 r5).
+    // Blockquote '>' keeps optional whitespace since CommonMark permits
+    // ">text".
     let listPrefixRegex = try? NSRegularExpression(
-      pattern: #"^(?:\d+[.)](?:\s+|$)|[-*•+](?:\s+|$)|>\s*)"#
+      pattern: #"^(?:\d+[.)](?:\s+|$|(?![0-9]))|[-*•+](?:\s+|$)|>\s*)"#
     )
     for line in raw.components(separatedBy: .newlines) {
       var s = line.trimmingCharacters(in: .whitespacesAndNewlines)

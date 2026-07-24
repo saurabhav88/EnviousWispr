@@ -294,6 +294,15 @@ struct WordSuggestionServiceParserTests {
 
     #expect(parsed == ["+44", "++alias", "--alias", "***alias", "1.2"])
   }
+
+  @Test("Compact numbered list markers with no separating space still strip")
+  func compactNumberedMarkersStripped() {
+    let raw = "1.kuber netties\n2)cube ernetes"
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes"])
+  }
 }
 
 /// Pins the multi-call dedupe pool helper.
