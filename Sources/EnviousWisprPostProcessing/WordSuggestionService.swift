@@ -171,6 +171,13 @@ actor AliasSuggestionPermitQueue {
   }
 #endif
 
+/// Wraps `withPermit`'s operation result so a `nil` FROM the operation itself
+/// (a normal "no suggestion" outcome) is never confused with `withDeadline`
+/// abandoning the operation (Phase 3 review finding A, #1701).
+private struct PermitOperationResult<Value: Sendable>: Sendable {
+  let value: Value
+}
+
 public final class WordSuggestionService: Sendable {
   /// Serializes every production alias-suggestion call — `suggest(for:)` and
   /// `suggestAliases(for:category:)` — through one in-flight permit at a time,
@@ -216,11 +223,21 @@ public final class WordSuggestionService: Sendable {
   /// executor; this hook lets a test park the call at exactly that point,
   /// cancel it, then resume, proving the check fires correctly without
   /// relying on scheduler timing.
+  /// `deadlineSeconds` has no default (Phase 3 review finding A, #1701):
+  /// `withDeadline`, never `withThrowingTimeout`, bounds `operation` — a
+  /// FoundationModels call that ignores cancellation cannot make
+  /// `withThrowingTimeout`'s task-group scope return, which would strand
+  /// this permit forever and block every later interactive and background
+  /// caller. `withDeadline` returns at the true deadline WITHOUT awaiting an
+  /// abandoned operation; the abandoned physical task may keep running in
+  /// the background while a later logical request starts — an accepted
+  /// tradeoff over permanently blocking every suggestion request.
   func withPermit<T: Sendable>(
     priority: AliasSuggestionPriority,
     whenNotGranted: T,
+    deadlineSeconds: Double,
     afterGrantForTesting: (@Sendable () async -> Void)? = nil,
-    operation: @Sendable () async -> T
+    operation: @escaping @Sendable () async -> T
   ) async -> T {
     let id = UUID()
     let granted = await permitQueue.acquire(id: id, priority: priority)
@@ -230,10 +247,16 @@ public final class WordSuggestionService: Sendable {
       await permitQueue.release()
       return whenNotGranted
     }
-    let result = await operation()
+    let result = await withDeadline(seconds: deadlineSeconds) {
+      PermitOperationResult(value: await operation())
+    }
     await permitQueue.release()
-    return result
+    return result?.value ?? whenNotGranted
   }
+
+  /// Preserves the existing five-second policy — not a new timing invention
+  /// (Phase 3 review finding A, #1701).
+  private static let suggestionDeadlineSeconds = 5.0
 
   public func suggest(
     for word: String,
@@ -244,15 +267,10 @@ public final class WordSuggestionService: Sendable {
         case .available = SystemLanguageModel.default.availability
       else { return nil }
 
-      return await withPermit(priority: priority, whenNotGranted: nil) {
-        // Hard 5s timeout — FM can hang on some inputs
-        do {
-          return try await withThrowingTimeout(seconds: 5) {
-            await self.runSuggestion(for: word)
-          }
-        } catch {
-          return nil
-        }
+      return await withPermit(
+        priority: priority, whenNotGranted: nil, deadlineSeconds: Self.suggestionDeadlineSeconds
+      ) {
+        await self.runSuggestion(for: word)
       }
     #else
       return nil
@@ -891,13 +909,13 @@ extension WordSuggestionService: AliasSuggesting {
       guard #available(macOS 26, *),
         case .available = SystemLanguageModel.default.availability
       else { return nil }
-      return await withPermit(priority: priority, whenNotGranted: nil) {
+      return await withPermit(
+        priority: priority, whenNotGranted: nil, deadlineSeconds: Self.suggestionDeadlineSeconds
+      ) {
         do {
-          return try await withThrowingTimeout(seconds: 5) {
-            let raw = try await self.runRawSuggestion(for: word, knownCategory: category)
-            let filtered = Self.filterDegeneratedAliases(raw.aliases, canonical: word)
-            return filtered.isEmpty ? nil : filtered
-          }
+          let raw = try await self.runRawSuggestion(for: word, knownCategory: category)
+          let filtered = Self.filterDegeneratedAliases(raw.aliases, canonical: word)
+          return filtered.isEmpty ? nil : filtered
         } catch {
           return nil
         }

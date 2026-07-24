@@ -408,6 +408,35 @@ private actor CallCounter {
   func increment() { count += 1 }
 }
 
+/// Simulates a FoundationModels call that ignores cancellation entirely
+/// (Phase 3 review finding A, #1701): `waitIgnoringCancellation()` never
+/// calls `Task.checkCancellation()`, unlike every other gate in this file —
+/// that is the whole point, since a genuinely cooperating wait would not
+/// reproduce the hang `withDeadline` exists to survive.
+private actor NonCooperativeGate {
+  private(set) var parked = false
+  private var released = false
+
+  func markParked() { parked = true }
+  func release() { released = true }
+
+  func waitIgnoringCancellation() async {
+    markParked()
+    while !released {
+      await Task.yield()
+    }
+  }
+
+  func waitUntilParked(timeoutSeconds: Double = 5) async throws {
+    try await withThrowingTimeout(seconds: timeoutSeconds) {
+      while await self.parked == false {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+    }
+  }
+}
+
 /// Pins the explicit permit queue behind `WordSuggestionService.suggest(for:)`
 /// and `.suggestAliases(for:category:)` (#1701). Swift actors are reentrant
 /// across a suspension point, so a naive "await inside an actor" would not
@@ -534,6 +563,7 @@ struct WordSuggestionServicePermitQueueTests {
       await service.withPermit(
         priority: .interactive,
         whenNotGranted: false,
+        deadlineSeconds: 30,
         afterGrantForTesting: { try? await gate.wait() }
       ) {
         await counter.increment()
@@ -583,7 +613,7 @@ struct WordSuggestionServicePermitQueueTests {
     let holdGate = ResumeGate()
 
     let addTerm: Task<Bool, Never> = Task {
-      await service.withPermit(priority: .interactive, whenNotGranted: false) {
+      await service.withPermit(priority: .interactive, whenNotGranted: false, deadlineSeconds: 30) {
         try? await holdGate.wait()
         return true
       }
@@ -591,7 +621,9 @@ struct WordSuggestionServicePermitQueueTests {
     try await holdGate.waitUntilParked()  // Add-term now holds the one permit
 
     let bulk: Task<Bool, Never> = Task {
-      await service.withPermit(priority: .background, whenNotGranted: false) { true }
+      await service.withPermit(priority: .background, whenNotGranted: false, deadlineSeconds: 30) {
+        true
+      }
     }
     try await waitForWaiterCount(service.permitQueue, toEqual: 1)
     // Nothing can force the in-flight Add-term holder to give up the permit
@@ -610,7 +642,7 @@ struct WordSuggestionServicePermitQueueTests {
     let holdGate = ResumeGate()
 
     let first: Task<Bool, Never> = Task {
-      await service.withPermit(priority: .interactive, whenNotGranted: false) {
+      await service.withPermit(priority: .interactive, whenNotGranted: false, deadlineSeconds: 30) {
         try? await holdGate.wait()
         await order.record("first")
         return true
@@ -619,7 +651,7 @@ struct WordSuggestionServicePermitQueueTests {
     try await holdGate.waitUntilParked()  // `first` now holds the one permit
 
     let second: Task<Bool, Never> = Task {
-      await service.withPermit(priority: .background, whenNotGranted: false) {
+      await service.withPermit(priority: .background, whenNotGranted: false, deadlineSeconds: 30) {
         await order.record("second")
         return true
       }
@@ -655,7 +687,8 @@ struct WordSuggestionServicePermitQueueTests {
       let holdGate = ResumeGate()
 
       let holder: Task<Bool, Never> = Task {
-        await service.withPermit(priority: .interactive, whenNotGranted: false) {
+        await service.withPermit(priority: .interactive, whenNotGranted: false, deadlineSeconds: 30)
+        {
           try? await holdGate.wait()
           return true
         }
@@ -721,6 +754,7 @@ struct WordSuggestionServicePermitQueueTests {
         await service.withPermit(
           priority: .interactive,
           whenNotGranted: false,
+          deadlineSeconds: 30,
           afterGrantForTesting: { try? await gate.wait() }
         ) {
           await counter.increment()
@@ -734,5 +768,43 @@ struct WordSuggestionServicePermitQueueTests {
       #expect(await counter.count == 0)
       #expect(await service.permitQueue.waiterCountForTesting == 0)
     }
+  }
+
+  @Test(
+    "a model call that ignores cancellation cannot strand the permit past its deadline (Phase 3 review finding A)"
+  )
+  func nonCooperatingOperationDoesNotStrandThePermit() async throws {
+    let service = WordSuggestionService()
+    let gate = NonCooperativeGate()
+
+    let first: Task<Bool, Never> = Task {
+      await service.withPermit(
+        priority: .interactive, whenNotGranted: false, deadlineSeconds: 0.05
+      ) {
+        await gate.waitIgnoringCancellation()
+        return true
+      }
+    }
+    try await gate.waitUntilParked()  // first operation genuinely started, ignoring cancellation
+
+    let second: Task<Bool, Never> = Task {
+      await service.withPermit(priority: .interactive, whenNotGranted: false, deadlineSeconds: 30) {
+        true
+      }
+    }
+    try await waitForWaiterCount(service.permitQueue, toEqual: 1)  // genuinely queued behind first
+
+    // The key assertion is not elapsed-time precision — it is that the
+    // second operation is granted and completes while the first is STILL
+    // physically running (its gate is still closed here), proving the
+    // logical permit was released at the deadline despite the
+    // non-cooperating first caller.
+    let secondResult = try await withThrowingTimeout(seconds: 5) { await second.value }
+    #expect(secondResult, "the second request must be granted despite the first still running")
+
+    let firstResult = await first.value
+    #expect(firstResult == false, "the abandoned first caller receives whenNotGranted")
+
+    await gate.release()  // clean teardown of the still-running abandoned operation
   }
 }

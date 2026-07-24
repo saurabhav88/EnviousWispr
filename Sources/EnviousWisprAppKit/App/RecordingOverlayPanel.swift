@@ -62,6 +62,21 @@ final class RecordingOverlayPanel {
   /// shows only when `currentIntent == .hidden`).
   private(set) var currentIntent: OverlayIntent = .hidden
 
+  /// Local, generation-stamped ownership record for the bulk-import-status
+  /// pill (#1701 Phase 3 review finding B). Deliberately NOT an `OverlayIntent`
+  /// case — that enum is the dictation/processing pipeline's own intent set;
+  /// import-status UI ownership is local to this panel. The generation match
+  /// is the ownership proof: a stale import record can never authorize
+  /// closing a panel a newer recording or processing transition created.
+  private struct ImportStatusPresentation {
+    let generation: UInt64
+    let message: String
+  }
+  private var importStatusPresentation: ImportStatusPresentation?
+  private var importStatusOwnsCurrentSlot: Bool {
+    currentIntent == .hidden && importStatusPresentation?.generation == generation
+  }
+
   /// Tracks lock state for flicker guard comparison.
   private var isRecordingLocked: Bool = false
 
@@ -721,24 +736,68 @@ final class RecordingOverlayPanel {
   func showImportStatus(message: String) {
     let dismissSeconds = Self.importStatusAutoDismissSeconds
     // Heart & Limbs: bulk-import enrichment is a limb and must never
-    // interrupt the live dictation overlay. If anything is showing, about to
-    // show, or queued to show — recording, processing, another notice — this
-    // pill is silently skipped rather than replacing it (Phase 3 review
-    // finding: the prior transition-in-place branch could close a live
-    // recording panel and cancel a queued one).
-    guard currentIntent == .hidden, panel == nil, pendingCreateWork == nil else { return }
+    // interrupt the live dictation overlay. Accepted only when idle, or when
+    // replacing THIS feature's own prior import-status pill (#1701 Phase 3
+    // review finding B) — never a genuine recording/processing panel.
+    let replacingOwnStatus = importStatusOwnsCurrentSlot
+    guard
+      replacingOwnStatus
+        || (currentIntent == .hidden && panel == nil && pendingCreateWork == nil)
+    else { return }
+
+    let inheritedFrame = replacingOwnStatus ? tearDownOwnedImportStatus() : nil
+
     generation &+= 1
     let token = generation
+    importStatusPresentation = ImportStatusPresentation(generation: token, message: message)
 
     let work = DispatchWorkItem { [weak self] in
-      guard let self, self.generation == token else { return }
+      guard let self, self.generation == token,
+        self.importStatusPresentation?.generation == token
+      else { return }
       self.pendingCreateWork = nil
       self.showPanel(
-        content: ImportStatusOverlayView(message: message), width: 320, fitToContent: true)
+        content: ImportStatusOverlayView(message: message), width: 320,
+        inheritedFrame: inheritedFrame, fitToContent: true)
+      guard self.panel != nil else {
+        // `showPanel` can no-op (no screen available) — never claim false
+        // ownership of a slot with no actual panel.
+        self.importStatusPresentation = nil
+        return
+      }
       self.scheduleAutoDismiss(seconds: dismissSeconds)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
+  }
+
+  /// Tears down THIS feature's own currently-owned import-status
+  /// pending/visible pill, returning its frame if one was visible so a
+  /// replacement can appear in the same place. Never operates on an
+  /// unowned panel (#1701 Phase 3 review finding B) — the previous,
+  /// unrestricted `transitionToImportStatus` (deleted in the round-1 fix)
+  /// is exactly what let this feature close a live recording panel.
+  private func tearDownOwnedImportStatus() -> NSRect? {
+    guard importStatusOwnsCurrentSlot else { return nil }
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    guard let existingPanel = panel else { return nil }
+    let frame = existingPanel.frame
+    panel = nil
+    autoDismissTask?.cancel()
+    autoDismissTask = nil
+    CATransaction.flush()
+    existingPanel.close()
+    return frame
+  }
+
+  // periphery:ignore - test seam
+  /// Projects the currently-owned import-status message without exposing
+  /// panel/NSPanel internals (#1701 Phase 3 review finding B) — lets a
+  /// headless test assert the state-machine outcome without rendering.
+  var importStatusMessageForTesting: String? {
+    guard importStatusOwnsCurrentSlot else { return nil }
+    return importStatusPresentation?.message
   }
 
   private static let importStatusAutoDismissSeconds = 3.0
@@ -1245,6 +1304,7 @@ final class RecordingOverlayPanel {
     autoDismissTask?.cancel()
     autoDismissTask = nil
     generation &+= 1
+    importStatusPresentation = nil
     // Cancel any pending deferred panel creation so it never fires.
     // This handles the rapid-ESC race: if hide() is called before the
     // DispatchQueue.main.async closure from show() has had a chance to run,
