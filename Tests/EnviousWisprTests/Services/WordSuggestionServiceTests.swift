@@ -567,6 +567,42 @@ struct WordSuggestionServicePermitQueueTests {
     #expect(await interactive.value)
   }
 
+  @Test(
+    "A bulk-import (.background) arrival cannot preempt an in-flight Add-term (.interactive) request"
+  )
+  func bulkImportNeverPreemptsAddTerm() async throws {
+    // The exact cross-producer acceptance test named in the plan (issue-1701
+    // §6, `BulkImportEnrichmentCoordinator` row): `.background` stands in for
+    // bulk import's real priority, `.interactive` for `CustomWordEditSheet`'s
+    // real Add-term priority, driven through the SAME shared
+    // `WordSuggestionService` instance both production callers actually use
+    // — composing `inFlightHolderNeverPreempted` and
+    // `sharedPermitAcrossEntryPoints` with the real producer framing, which
+    // neither proves alone.
+    let service = WordSuggestionService()
+    let holdGate = ResumeGate()
+
+    let addTerm: Task<Bool, Never> = Task {
+      await service.withPermit(priority: .interactive, whenNotGranted: false) {
+        try? await holdGate.wait()
+        return true
+      }
+    }
+    try await holdGate.waitUntilParked()  // Add-term now holds the one permit
+
+    let bulk: Task<Bool, Never> = Task {
+      await service.withPermit(priority: .background, whenNotGranted: false) { true }
+    }
+    try await waitForWaiterCount(service.permitQueue, toEqual: 1)
+    // Nothing can force the in-flight Add-term holder to give up the permit
+    // early — a bulk arrival can only queue, never interrupt.
+    #expect(await service.permitQueue.waiterCountForTesting == 1)
+
+    await holdGate.resume()
+    #expect(await addTerm.value)  // Add-term finished normally, never interrupted
+    #expect(await bulk.value)  // bulk granted only after Add-term released
+  }
+
   @Test("Both production entry points serialize through one shared permit")
   func sharedPermitAcrossEntryPoints() async throws {
     let service = WordSuggestionService()

@@ -709,6 +709,67 @@ final class RecordingOverlayPanel {
     }
   }
 
+  /// One narrow informational-status entry point for the bulk-import-
+  /// enrichment start/finish pills (#1701 Chunk 2). Reuses this same
+  /// non-activating, positioned, auto-dismissing panel shell
+  /// `showWarning`/`showError`/`showNotification` already use, but is
+  /// deliberately NOT routed through `NotificationStyle` — that enum is the
+  /// recording domain's error/warning/interruption intent set, and this
+  /// message is neither; adding a case there would widen an intent enum this
+  /// feature has no business touching. `BulkImportEnrichmentCoordinator`
+  /// receives only a closure into this method, never the concrete panel type.
+  func showImportStatus(message: String) {
+    let dismissSeconds = Self.importStatusAutoDismissSeconds
+    guard panel == nil else {
+      transitionToImportStatus(message: message)
+      scheduleAutoDismiss(seconds: dismissSeconds)
+      return
+    }
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    generation &+= 1
+    let token = generation
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.showPanel(
+        content: ImportStatusOverlayView(message: message), width: 320, fitToContent: true)
+      self.scheduleAutoDismiss(seconds: dismissSeconds)
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
+  }
+
+  private static let importStatusAutoDismissSeconds = 3.0
+
+  /// Transition an existing panel to an import-status display.
+  private func transitionToImportStatus(message: String) {
+    guard let existingPanel = panel else { return }
+    let inheritedFrame = existingPanel.frame
+
+    panel = nil
+    autoDismissTask?.cancel()
+    autoDismissTask = nil
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    CATransaction.flush()
+    existingPanel.close()
+
+    generation &+= 1
+    let token = generation
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.showPanel(
+        content: ImportStatusOverlayView(message: message), width: 320,
+        inheritedFrame: inheritedFrame, fitToContent: true)
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
+  }
+
   /// Show a transient warning notice that auto-dismisses after 2.5s.
   func showWarning(message: String) {
     showNotification(message: message, style: .warning)
@@ -1727,6 +1788,30 @@ struct NotificationOverlayView: View {
     .background(
       style.usesDistressLips
         ? AnyView(DistressCapsuleBackground()) : AnyView(OverlayCapsuleBackground()))
+  }
+}
+
+/// Bulk-import-enrichment start/finish pill (#1701 Chunk 2). Mirrors
+/// `NotificationOverlayView`'s shell with a neutral status icon — this is
+/// neither an error nor a warning, so it does not borrow `NotificationStyle`.
+struct ImportStatusOverlayView: View {
+  let message: String
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "arrow.triangle.2.circlepath")
+        .foregroundStyle(.white)
+        .font(.system(size: 16))
+      Text(message)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.white)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: 280, alignment: .leading)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(OverlayCapsuleBackground())
   }
 }
 

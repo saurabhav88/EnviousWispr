@@ -168,13 +168,17 @@ import Testing
   ///   phase ran and the retirement silently no-op'd (caught by Live UAT, not
   ///   by any static review). Storing it here IS the fix: nothing narrower owns
   ///   its lifetime, the same rule that placed `egOneRuntime` above.
+  /// - 38 → 39 in #1701 (2026-07-23): App-owned
+  ///   `bulkImportEnrichmentCoordinator`, the app-lifetime owner of the durable
+  ///   pending-word drain and Cancel/checkpoint sequencing. The approved #1701
+  ///   plan §3b/§10 places this sibling of `contactsImportCoordinator` here.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 38,
+      count <= 39,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 38. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 39. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.

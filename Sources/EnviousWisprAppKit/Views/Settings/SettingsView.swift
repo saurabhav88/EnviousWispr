@@ -7,6 +7,7 @@ struct UnifiedWindowView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @Environment(UpdateCoordinatorHolder.self) private var updateCoordinatorHolder
+  @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var selectedSection: SettingsSection = .history
 
   var body: some View {
@@ -223,7 +224,10 @@ struct UnifiedWindowView: View {
       }
     } else {
       let selected = selectedSection == section
-      SidebarNavRow(label: section.label, isSelected: selected) {
+      SidebarNavRow(
+        label: section.label, isSelected: selected,
+        showsBadge: yourWordsEnrichmentBadgeVisible(for: section)
+      ) {
         Image(systemName: section.icon)
           .font(.system(size: 15, weight: .medium))
           .foregroundStyle(selected ? .white : .stAccent)
@@ -231,6 +235,22 @@ struct UnifiedWindowView: View {
         selectedSection = section
       }
     }
+  }
+
+  /// The load-bearing notification surface for a background bulk-import
+  /// enrichment run (#1701 Chunk 2, plan §3.1 point 6): independent of
+  /// whether either transient pill was ever seen, this badge tells the
+  /// founder something is in progress just by opening Settings at all.
+  /// DEBUG-only because the whole import feature is (§316). Reads
+  /// `pendingEnrichmentCount` (observable in-memory), never the total's mere
+  /// presence — same reasoning as the progress card (Codex Chunk 2 review
+  /// finding 5).
+  private func yourWordsEnrichmentBadgeVisible(for section: SettingsSection) -> Bool {
+    #if DEBUG
+      section == .wordCorrection && customWordsCoordinator.pendingEnrichmentCount > 0
+    #else
+      false
+    #endif
   }
 
   /// The centered top-bar identity: the brand mark plus the app wordmark. Held
@@ -266,6 +286,9 @@ struct UnifiedWindowView: View {
 private struct SidebarNavRow<Icon: View>: View {
   let label: String
   let isSelected: Bool
+  /// Small in-progress dot (#1701 Chunk 2). Paired with an accessibility
+  /// value rather than color/shape alone, per accessibility-noncolor-motion.
+  var showsBadge: Bool = false
   @ViewBuilder var icon: () -> Icon
   let action: () -> Void
 
@@ -280,6 +303,12 @@ private struct SidebarNavRow<Icon: View>: View {
           .lineLimit(1)
           .minimumScaleFactor(0.85)
         Spacer(minLength: 2)
+        if showsBadge {
+          Circle()
+            .fill(isSelected ? Color.white : Color.stAccentSolid)
+            .frame(width: 7, height: 7)
+            .accessibilityHidden(true)
+        }
       }
       .padding(.horizontal, 9)
       .padding(.vertical, 8)
@@ -307,6 +336,8 @@ private struct SidebarNavRow<Icon: View>: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .accessibilityLabel(label)
+    .accessibilityValue(showsBadge ? "Importing in progress" : "")
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
 }

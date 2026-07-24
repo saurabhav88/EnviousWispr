@@ -18,7 +18,12 @@ public enum AliasSuggestionPriority: Sendable, Equatable {
 /// `WordSuggestionService`; tests use a fake. (#636 follow-up.)
 package protocol AliasSuggesting: Sendable {
   /// Whether on-device generation is available right now (Apple Intelligence on
-  /// macOS 26+). When false, callers skip enrichment entirely.
+  /// macOS 26+). `ContactsImportCoordinator` checks this and skips enrichment
+  /// entirely when false. `BulkImportEnrichmentCoordinator` does NOT check
+  /// this (#1701 D16 fail-open): it always calls `suggestAliases`, which
+  /// resolves to `nil` when unavailable the same way it does on a timeout,
+  /// and checkpoints that as an honest "tried, got nothing" so durable
+  /// pending state is never stranded waiting for availability to change.
   var isAvailable: Bool { get }
 
   /// Generate spoken-variant aliases for `word`, with the category already known

@@ -110,6 +110,31 @@ struct YourWordsView: View {
         }
       }
 
+      #if DEBUG
+        // Same DEBUG-only doorway as the rest of the import feature (#1619):
+        // this card can only ever appear if the DEBUG-only "Preview import"
+        // button above committed a batch, so it stays behind the same gate
+        // rather than a redundant runtime check.
+        //
+        // Visibility and the progress numerator both read `pendingEnrichmentCount`
+        // — the observable in-memory count, never `pendingEnrichmentWords()`
+        // (a real locked file read) and never the total's mere presence
+        // (Codex Chunk 2 review finding 5: neither belongs in a SwiftUI
+        // `body`, and the durable total can theoretically lag live state
+        // during the brief self-heal window). The durable total remains the
+        // denominator when available, falling back to the live count itself
+        // as an honest floor if the total is momentarily nil.
+        let pendingCount = customWordsCoordinator.pendingEnrichmentCount
+        if pendingCount > 0 {
+          BulkImportEnrichmentProgressCard(
+            total: customWordsCoordinator.pendingEnrichmentBatchTotal ?? pendingCount,
+            pendingCount: pendingCount,
+            recent: customWordsCoordinator.mostRecentEnrichment,
+            onCancel: { customWordsCoordinator.cancelBulkImportEnrichment?() }
+          )
+        }
+      #endif
+
       LearningSection()
       VocabPacksSection()
       CustomTermsSection()
@@ -223,6 +248,76 @@ private struct WordsLoadFailureBanner: View {
     .overlay(
       RoundedRectangle(cornerRadius: 10)
         .strokeBorder(Color.stWarning.opacity(0.25), lineWidth: 1)
+    )
+  }
+}
+
+/// Bulk-import-enrichment progress card (#1701 Chunk 2). Visible whenever a
+/// background enrichment run is in progress. Real progress against the
+/// durable total (never a timed animation standing in for it); once at least
+/// one word has actually completed, the word-transform display shows the
+/// actual word and its actual freshly generated aliases (mockup:
+/// docs/feature-requests/issue-1701-mockup-flow.html). A word that completed
+/// with no useful aliases shows no transform row for that moment — nothing
+/// honest to display.
+private struct BulkImportEnrichmentProgressCard: View {
+  let total: Int
+  let pendingCount: Int
+  let recent: CustomWordEnrichmentDisplay?
+  let onCancel: () -> Void
+
+  private var processedCount: Int { max(0, total - pendingCount) }
+  private var fraction: Double {
+    guard total > 0 else { return 0 }
+    return Double(processedCount) / Double(total)
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        Text("Importing your words").settingsRowLabel()
+        Spacer()
+        Button("Cancel", action: onCancel)
+          .buttonStyle(.plain)
+          .font(.stHelper)
+          .foregroundStyle(.stAccent)
+      }
+
+      ProgressView(value: fraction)
+        .tint(.stAccentSolid)
+
+      HStack(alignment: .firstTextBaseline) {
+        Text("\(processedCount) of \(total) processed")
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+        Spacer(minLength: 8)
+        if let recent, !recent.generatedAliases.isEmpty {
+          HStack(spacing: 4) {
+            Text(recent.canonical)
+              .foregroundStyle(.stTextBody)
+            Image(systemName: "arrow.right")
+              .font(.system(size: 10, weight: .semibold))
+              .foregroundStyle(.stTextTertiary)
+              .accessibilityHidden(true)
+            Text(recent.generatedAliases.joined(separator: ", "))
+              .foregroundStyle(.stAccent)
+          }
+          .font(.stHelper)
+          .lineLimit(1)
+          .truncationMode(.tail)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel(
+            "\(recent.canonical) now recognizes \(recent.generatedAliases.joined(separator: ", "))"
+          )
+        }
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
     )
   }
 }

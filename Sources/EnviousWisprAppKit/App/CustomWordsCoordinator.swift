@@ -3,6 +3,17 @@ import EnviousWisprPostProcessing
 import Foundation
 import Observation
 
+/// The progress card's word-transform display (#1701 Chunk 2): the most
+/// recently checkpointed word plus its freshly generated aliases. The
+/// checkpoint batch itself never carries canonical text (only id +
+/// generatedAliases, keeping persistence minimal) — `CustomWordsCoordinator`
+/// synthesizes this by matching the batch's last result against the
+/// just-reloaded snapshot, which does have it.
+struct CustomWordEnrichmentDisplay: Sendable, Equatable {
+  let canonical: String
+  let generatedAliases: [String]
+}
+
 /// Manages custom word state, CRUD operations, and persistence.
 @MainActor @Observable
 final class CustomWordsCoordinator {
@@ -16,6 +27,32 @@ final class CustomWordsCoordinator {
   /// aside. Separate from the launch flag because corruption does not only
   /// happen at startup, and the archive makes the next read look clean.
   private(set) var didDiscoverCorruptionThisSession = false
+  /// Durable bulk-import-enrichment total (#1701 Chunk 2) — the progress
+  /// card's denominator. `nil` = no run in progress. Initialized alongside
+  /// `customWords` from ONE `loadSnapshot()` call, never loaded separately,
+  /// so the two can never disagree; every checkpoint/Cancel wrapper below
+  /// atomically adopts both together too.
+  private(set) var pendingEnrichmentBatchTotal: Int?
+  /// Progress card's word-transform display (#1701 Chunk 2). Best-effort:
+  /// set from the last APPLIED result in each checkpoint batch (never the
+  /// caller's raw input, which can include results that were skipped,
+  /// sanitized away, or lost first-terminal-action-wins — Codex Chunk 2
+  /// review finding 6), cleared on Cancel and at the start of a genuinely new
+  /// run. Purely a delight/progress cue, never load-bearing for correctness.
+  private(set) var mostRecentEnrichment: CustomWordEnrichmentDisplay?
+
+  /// Live in-memory pending count (#1701 Chunk 2, Codex Chunk 2 review
+  /// finding 5) — the load-bearing signal for "is a background enrichment
+  /// run in progress," derived from the already-observable `customWords`.
+  /// NEVER touches disk: safe to read from a SwiftUI `body` on every render,
+  /// unlike `pendingEnrichmentWords()` (a real locked file read). Progress
+  /// card / sidebar badge visibility and the progress numerator both read
+  /// this, never `pendingEnrichmentBatchTotal`'s mere presence — the total
+  /// can theoretically lag behind live state during the brief self-heal
+  /// window `repairPendingEnrichmentTotalIfNeeded` exists for.
+  var pendingEnrichmentCount: Int {
+    customWords.reduce(into: 0) { if $1.enrichmentPending { $0 += 1 } }
+  }
 
   let suggestionService = WordSuggestionService()
   /// The reused on-device alias generator, exposed as the narrow protocol so the
@@ -25,12 +62,26 @@ final class CustomWordsCoordinator {
 
   /// Called after any mutation so the former root state can sync words to pipelines.
   var onWordsChanged: (([CustomWord]) -> Void)?
+  /// Fires after a successful, NONEMPTY import commit (#1701 Chunk 2) —
+  /// additive alongside `onWordsChanged`, never instead of it; never fires
+  /// for an empty/all-Skip, stale, or failed commit. `WisprBootstrapper`
+  /// wires this to `BulkImportEnrichmentCoordinator.requestDrain()` so a
+  /// commit that lands while the coordinator is idle wakes it, and one that
+  /// lands mid-drain still reaches it (no lost wakeup).
+  var onImportCommitted: (@MainActor () -> Void)?
+  /// Routes Your Words' progress-card Cancel action to
+  /// `BulkImportEnrichmentCoordinator.cancel()` (#1701 Chunk 2) — a narrow
+  /// closure rather than injecting that coordinator into the SwiftUI
+  /// environment, since this is the only interaction the view needs with it.
+  var cancelBulkImportEnrichment: (@MainActor () -> Void)?
 
   private let manager: CustomWordsManager
 
   init() {
     self.manager = CustomWordsManager()
-    customWords = manager.load() ?? []
+    let snapshot = manager.loadSnapshot()
+    customWords = snapshot?.words ?? []
+    pendingEnrichmentBatchTotal = snapshot?.pendingEnrichmentBatchTotal
     wordsLoadFailureAtLaunch = manager.lastLoadFailure
   }
 
@@ -39,7 +90,9 @@ final class CustomWordsCoordinator {
   // periphery:ignore - test seam
   package init(manager: CustomWordsManager) {
     self.manager = manager
-    customWords = manager.load() ?? []
+    let snapshot = manager.loadSnapshot()
+    customWords = snapshot?.words ?? []
+    pendingEnrichmentBatchTotal = snapshot?.pendingEnrichmentBatchTotal
     wordsLoadFailureAtLaunch = manager.lastLoadFailure
   }
 
@@ -97,7 +150,13 @@ final class CustomWordsCoordinator {
 
   @discardableResult
   func refreshFromDiskIfPossible() -> Bool {
-    guard let refreshed = manager.load() else {
+    // `loadSnapshot()`, never `load()` alone (Codex Chunk 2 review round 2
+    // finding 4): words and `pendingEnrichmentBatchTotal` must adopt together
+    // here too, the same atomic-pair guarantee every other read/write path
+    // already honors — otherwise a stale-commit refresh after another app
+    // instance wrote can leave the total pointing at a run that no longer
+    // matches the just-refreshed words.
+    guard let snapshot = manager.loadSnapshot() else {
       // Corruption found DURING the session, not at launch, is still
       // corruption — and it must be remembered (code review r3). The load
       // archives the damaged file aside, so the NEXT attempt sees a
@@ -109,9 +168,20 @@ final class CustomWordsCoordinator {
       }
       return false
     }
-    if refreshed != customWords {
-      customWords = refreshed
-      onWordsChanged?(customWords)
+    // Codex Chunk 2 review round 3 finding 3: words and total adopt
+    // together, but `onWordsChanged` fires ONLY when words actually
+    // changed — a total-only change (another instance's run starting or
+    // ending) must not republish unchanged words to pipelines. The same
+    // nil -> non-nil new-run detection `commitImport` uses clears a stale
+    // display here too, since another instance's fresh run is exactly as
+    // "new" as a local one.
+    let wordsChanged = snapshot.words != customWords
+    let isNewRun = pendingEnrichmentBatchTotal == nil && snapshot.pendingEnrichmentBatchTotal != nil
+    if wordsChanged || snapshot.pendingEnrichmentBatchTotal != pendingEnrichmentBatchTotal {
+      customWords = snapshot.words
+      pendingEnrichmentBatchTotal = snapshot.pendingEnrichmentBatchTotal
+      if isNewRun { mostRecentEnrichment = nil }
+      if wordsChanged { onWordsChanged?(customWords) }
     }
 
     // NOTE: the corrupted-library refusal deliberately does NOT live here.
@@ -150,12 +220,26 @@ final class CustomWordsCoordinator {
   }
 
   /// Apply a reviewed import in one atomic write. Fires `onWordsChanged`
-  /// exactly once, and only when something actually changed.
+  /// exactly once, and only when something actually changed; `onImportCommitted`
+  /// fires alongside it, under the identical `!plan.isEmpty` gate (#1701
+  /// Chunk 2) — an all-Skip commit touches neither `customWords` nor
+  /// `pendingEnrichmentBatchTotal`, matching `manager.commitImport`'s own
+  /// "writes nothing, changes no total" contract for that case.
   func commitImport(_ plan: CustomWordsImportCommitPlan) -> CustomWordsImportCommitOutcome {
     do {
       let receipt = try manager.commitImport(plan, to: &customWords)
       if !plan.isEmpty {
+        // A genuinely NEW run starting (nil -> non-nil) clears any stale
+        // display left over from a previous, already-completed run — an
+        // EXTENDING commit (a run already active) must not reset it, since
+        // that would flicker away a display mid-drain (Codex Chunk 2 review
+        // finding 6).
+        let isNewRun =
+          pendingEnrichmentBatchTotal == nil && receipt.pendingEnrichmentBatchTotal != nil
+        pendingEnrichmentBatchTotal = receipt.pendingEnrichmentBatchTotal
+        if isNewRun { mostRecentEnrichment = nil }
         onWordsChanged?(customWords)
+        onImportCommitted?()
       }
       customWordError = nil
       return .committed(receipt)
@@ -238,6 +322,113 @@ final class CustomWordsCoordinator {
       try manager.updateBatch(words, to: &customWords)
       onWordsChanged?(customWords)
       customWordError = nil
+      return nil
+    } catch {
+      return note(error)
+    }
+  }
+
+  // MARK: - Bulk-import enrichment (#1701 Chunk 2)
+  //
+  // `BulkImportEnrichmentCoordinator` never reaches through to
+  // `CustomWordsManager` directly — this is the sole AppKit adapter, exactly
+  // as it already is for every other Custom Words mutation.
+
+  #if DEBUG
+    // periphery:ignore - test seam
+    /// Forces the Nth call to `pendingEnrichmentWords()` this session to
+    /// return `nil` (a read failure), letting a test deterministically target
+    /// ONE specific call — e.g. the drain loop's final re-scan specifically,
+    /// distinct from its earlier, successful initial scan — without racing
+    /// real file-system timing. Both calls in one drain pass are fully
+    /// synchronous with no suspension point between them, so no external task
+    /// could otherwise intervene between "checkpoint succeeded" and "the
+    /// following scan failed."
+    var forcePendingEnrichmentWordsFailureOnCallForTesting: Int?
+    private var pendingEnrichmentWordsCallCountForTesting = 0
+  #endif
+
+  /// Word list filtered to `enrichmentPending == true` — the durable queue
+  /// itself is this scan over live state, never an in-memory job list. `nil`
+  /// only on the same unrecoverable read failure `customWords` itself would
+  /// report via `customWordError`.
+  func pendingEnrichmentWords() -> [CustomWord]? {
+    #if DEBUG
+      pendingEnrichmentWordsCallCountForTesting += 1
+      if forcePendingEnrichmentWordsFailureOnCallForTesting
+        == pendingEnrichmentWordsCallCountForTesting
+      {
+        return nil
+      }
+    #endif
+    return manager.loadPendingEnrichmentWords()
+  }
+
+  /// One-time self-heal: repairs a `nil` durable total to the current live
+  /// pending count when pending words exist but no total does. Adopts the
+  /// (possibly just-repaired) total either way. Called by the background
+  /// coordinator before it begins draining.
+  @discardableResult
+  func repairPendingEnrichmentTotalIfNeeded() -> Int? {
+    do {
+      let total = try manager.repairPendingEnrichmentTotalIfNeeded()
+      pendingEnrichmentBatchTotal = total
+      customWordError = nil
+      return total
+    } catch {
+      _ = note(error)
+      return pendingEnrichmentBatchTotal
+    }
+  }
+
+  /// Merge-safe, pending-gated checkpoint. Atomically adopts both the
+  /// returned words and the returned total before notifying observers — never
+  /// one without the other. Fires `onWordsChanged` only when something in
+  /// this batch actually still needed applying (first-terminal-action-wins:
+  /// a checkpoint that only contains already-resolved IDs is a no-op).
+  @discardableResult
+  func applyEnrichmentResults(_ results: [CustomWordEnrichmentResult]) -> String? {
+    do {
+      let outcome = try manager.applyEnrichmentResults(results)
+      let snapshot = outcome.snapshot
+      let changed =
+        snapshot.words != customWords
+        || snapshot.pendingEnrichmentBatchTotal != pendingEnrichmentBatchTotal
+      customWords = snapshot.words
+      pendingEnrichmentBatchTotal = snapshot.pendingEnrichmentBatchTotal
+      // Only a result that actually applied non-empty aliases — never the
+      // caller's raw input, which can include skipped/sanitized/collided
+      // results (Codex Chunk 2 review finding 6).
+      if let lastApplied = outcome.applied.last(where: { !$0.generatedAliases.isEmpty }),
+        let word = snapshot.words.first(where: { $0.id == lastApplied.id })
+      {
+        mostRecentEnrichment = CustomWordEnrichmentDisplay(
+          canonical: word.canonical, generatedAliases: lastApplied.generatedAliases)
+      }
+      customWordError = nil
+      if changed { onWordsChanged?(customWords) }
+      return nil
+    } catch {
+      return note(error)
+    }
+  }
+
+  /// Durable Cancel: one locked reload-and-sweep, under the manager's own
+  /// lock, clearing every word CURRENTLY pending — never this coordinator's
+  /// potentially-stale in-memory idea of what was pending — and the durable
+  /// total. Atomically adopts both before notifying observers.
+  @discardableResult
+  func cancelEnrichment() -> String? {
+    do {
+      let snapshot = try manager.cancelEnrichment()
+      let changed =
+        snapshot.words != customWords
+        || snapshot.pendingEnrichmentBatchTotal != pendingEnrichmentBatchTotal
+      customWords = snapshot.words
+      pendingEnrichmentBatchTotal = snapshot.pendingEnrichmentBatchTotal
+      mostRecentEnrichment = nil
+      customWordError = nil
+      if changed { onWordsChanged?(customWords) }
       return nil
     } catch {
       return note(error)

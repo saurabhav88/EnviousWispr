@@ -46,6 +46,13 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
   /// "Match strictness: Loose / Default / Strict" radio. Pre-Phase-2 entries
   /// decode as nil (use global threshold).
   public var minSimilarityOverride: Double?
+  /// Durable bulk-import-enrichment queue flag (#1701 Chunk 2). `true` means
+  /// "eligible and not yet durably checkpointed" — the entire durable work
+  /// queue is a scan over this field, never a separate job list. Set only by
+  /// `CustomWordsManager.commitImport`; cleared only by
+  /// `CustomWordsManager.applyEnrichmentResults` or its Cancel sweep.
+  /// Pre-#1701 entries decode as `false` (`decodeIfPresent(...) ?? false`).
+  public var enrichmentPending: Bool
 
   public init(
     id: UUID = UUID(),
@@ -58,7 +65,8 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     source: WordSource = .user,
     frequencyUsed: Int = 0,
     lastUsed: Date? = nil,
-    minSimilarityOverride: Double? = nil
+    minSimilarityOverride: Double? = nil,
+    enrichmentPending: Bool = false
   ) {
     self.id = id
     self.canonical = canonical
@@ -71,6 +79,7 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     self.frequencyUsed = frequencyUsed
     self.lastUsed = lastUsed
     self.minSimilarityOverride = minSimilarityOverride
+    self.enrichmentPending = enrichmentPending
   }
 
   /// The same word, re-tagged as user-authored (#1680).
@@ -94,7 +103,8 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
       source: .user,
       frequencyUsed: frequencyUsed,
       lastUsed: lastUsed,
-      minSimilarityOverride: minSimilarityOverride
+      minSimilarityOverride: minSimilarityOverride,
+      enrichmentPending: enrichmentPending
     )
   }
 
@@ -107,7 +117,7 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
   // additive forward/backward-compat semantics.
   private enum CodingKeys: String, CodingKey {
     case id, canonical, aliases, category, priority, forceReplace, caseSensitive
-    case frequencyUsed, lastUsed, minSimilarityOverride
+    case frequencyUsed, lastUsed, minSimilarityOverride, enrichmentPending
   }
 
   public init(from decoder: Decoder) throws {
@@ -122,6 +132,7 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     self.frequencyUsed = try c.decodeIfPresent(Int.self, forKey: .frequencyUsed) ?? 0
     self.lastUsed = try c.decodeIfPresent(Date.self, forKey: .lastUsed)
     self.minSimilarityOverride = try c.decodeIfPresent(Double.self, forKey: .minSimilarityOverride)
+    self.enrichmentPending = try c.decodeIfPresent(Bool.self, forKey: .enrichmentPending) ?? false
     self.source = .user
   }
 
@@ -137,6 +148,7 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     try c.encode(frequencyUsed, forKey: .frequencyUsed)
     try c.encodeIfPresent(lastUsed, forKey: .lastUsed)
     try c.encodeIfPresent(minSimilarityOverride, forKey: .minSimilarityOverride)
+    try c.encode(enrichmentPending, forKey: .enrichmentPending)
     // source intentionally NOT encoded.
   }
 }

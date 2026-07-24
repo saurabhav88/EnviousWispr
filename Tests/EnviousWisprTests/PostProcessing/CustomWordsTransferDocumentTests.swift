@@ -60,6 +60,22 @@ struct CustomWordsTransferDocumentTests {
     #expect(!json.contains("source"))
   }
 
+  @Test("bulk-import-enrichment state never leaves this Mac (#1701 Chunk 2)")
+  func exportOmitsEnrichmentPersistenceFields() throws {
+    // A restored backup is not enrichment-eligible in the first place
+    // (`ExportedWordsFileParser.enrichmentEligible == false`), so this
+    // in-progress state would be meaningless on another Mac even if it did
+    // travel — `PortableCustomWord`'s explicit field whitelist keeps it out
+    // structurally, this freezes that so a future widening can't reopen it.
+    var pending = word("Kubernetes")
+    pending.enrichmentPending = true
+    let data = try CustomWordsTransferDocument(words: [pending]).encoded()
+    let json = try #require(String(data: data, encoding: .utf8))
+
+    #expect(!json.contains("enrichmentPending"))
+    #expect(!json.contains("pendingEnrichmentBatchTotal"))
+  }
+
   @Test("an empty word list is a valid backup, not an error")
   func emptyWordListIsAValidBackup() throws {
     let data = try CustomWordsTransferDocument(words: []).encoded()
@@ -188,11 +204,15 @@ struct CustomWordsTransferDocumentTests {
 
   @Test("re-tagging a built-in as user-owned preserves every other field")
   func ownedByUserPreservesEveryOtherField() {
-    let builtin = word(
+    var builtin = word(
       "GitHub", aliases: ["git hub"], category: .brand, priority: 2,
       forceReplace: true, caseSensitive: true, source: .builtin,
       frequencyUsed: 7, lastUsed: Date(timeIntervalSince1970: 5),
       minSimilarityOverride: 0.9)
+    // #1701 Chunk 2: a field added to `CustomWord` after this reconstruction
+    // method existed must be threaded through it explicitly, or a built-in
+    // override edited mid-enrichment would silently lose its pending flag.
+    builtin.enrichmentPending = true
     let owned = builtin.ownedByUser()
 
     #expect(owned.source == .user)
@@ -206,6 +226,7 @@ struct CustomWordsTransferDocumentTests {
     #expect(owned.frequencyUsed == builtin.frequencyUsed)
     #expect(owned.lastUsed == builtin.lastUsed)
     #expect(owned.minSimilarityOverride == builtin.minSimilarityOverride)
+    #expect(owned.enrichmentPending == true)
   }
 
   @Test("re-tagging an already-user word returns it unchanged")
