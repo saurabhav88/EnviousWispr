@@ -696,4 +696,41 @@ struct TextProcessingRunnerCaptureTests {
       LLMResult(polishedText: "So I was thinking we could ship the new thing next week.")
     }
   }
+
+  // MARK: - Output truncation contract (#1710) — RED-first against chunk-1 HEAD
+
+  @Test("truncated cloud polish -> complete pre-polish text, one count, no alert")
+  func outputTruncatedContract() async throws {
+    // Written with a dynamic rawValue lookup during the RED phase; now the
+    // typed case is injected directly (per chunk-2 review).
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
+    let step = makeStep(provider: .gemini, model: "gemini-2.5-flash") {
+      LLMError.classified(.outputTruncated)
+    }
+
+    let result = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+
+    // Complete pre-polish text retained exactly; no partial output accepted.
+    #expect(result.context.text == Self.longTranscript)
+    #expect(result.context.polishedText == nil)
+    #expect(result.context.llmProvider == nil)
+    #expect(result.context.llmModel == nil)
+    // Exact composed notice.
+    #expect(
+      result.polishError
+        == "AI polish failed: Gemini ended the response before cleanup finished. "
+        + "EnviousWispr kept your complete original text instead. If this keeps happening, "
+        + "choose another model or use a shorter dictation.")
+    // Exactly one durable count with the right attribution; zero alerts.
+    #expect(spy.calls.isEmpty)
+    #expect(records.calls.count == 1)
+    #expect(records.calls.first?.reason == "output_truncated")
+    #expect(records.calls.first?.provider == "gemini")
+    #expect(records.calls.first?.model == "gemini-2.5-flash")
+    #expect(records.calls.first?.isTimeout == false)
+  }
+
 }

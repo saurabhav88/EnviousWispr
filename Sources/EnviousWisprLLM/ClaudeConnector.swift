@@ -102,16 +102,26 @@ public struct ClaudeConnector: TranscriptPolisher {
     )
   }
 
+  // MARK: - Truncation rejection (#1710)
+
+  /// A max_tokens stop is a PARTIAL rewrite — reject whole; the pipeline
+  /// keeps the complete pre-polish text. The production decision seam:
+  /// `polish` feeds `extractResponseText`'s truncated flag here, and tests
+  /// drive the same function.
+  static func rejectTruncationIfNeeded(truncated: Bool, config: LLMProviderConfig) throws {
+    guard truncated else { return }
+    Task {
+      await AppLogger.shared.log(
+        "WARNING: Claude response truncated; rejecting partial output "
+          + "(stop_reason=max_tokens, model=\(config.model), policy=\(config.outputTokens))",
+        level: .info, category: "LLM"
+      )
+    }
+    throw LLMError.classified(.outputTruncated)
+  }
+
   // MARK: - Request construction
 
-  /// The single owner of the Claude request shape, used by both production
-  /// polish and `LLMModelDiscovery.probeClaude` — so a probe/production body
-  /// mismatch can never report a model "available" against a shape
-  /// production doesn't actually send. `system` is omitted entirely when
-  /// nil/empty (the probe passes `nil`; production always has a real system
-  /// prompt for the `.cloudFixed` family). Deliberately module-internal
-  /// (not `private`): `LLMModelDiscovery` calls this from another file in
-  /// the same `EnviousWisprLLM` module.
   /// Resolve the required `max_tokens` value for a policy (#1710). Static
   /// and pure for fixture testing. `usedFallback` marks the defensive
   /// `.providerDefault` mapping so the call site can log the invariant breach.
@@ -124,6 +134,14 @@ public struct ClaudeConnector: TranscriptPolisher {
     }
   }
 
+  /// The single owner of the Claude request shape, used by both production
+  /// polish and `LLMModelDiscovery.probeClaude` — so a probe/production body
+  /// mismatch can never report a model "available" against a shape
+  /// production doesn't actually send. `system` is omitted entirely when
+  /// nil/empty (the probe passes `nil`; production always has a real system
+  /// prompt for the `.cloudFixed` family). Deliberately module-internal
+  /// (not `private`): `LLMModelDiscovery` calls this from another file in
+  /// the same `EnviousWisprLLM` module.
   static func makeRequestBody(
     model: String,
     maxTokens: Int,
@@ -208,22 +226,10 @@ public struct ClaudeConnector: TranscriptPolisher {
 
       let extracted = try Self.extractResponseText(from: data)
       responseText = extracted.text
-      // A max_tokens-truncated response is still a real (if partial) answer
-      // — Gemini/OpenAI's existing precedent logs a warning rather than
-      // rejecting it, so Claude matches that instead of diverging into a
-      // stricter reject-and-fall-back-to-raw policy this PR never designed
-      // or reviewed. Whether ALL THREE providers should instead reject a
-      // truncated response is a real, separate cross-provider question,
-      // tracked as a follow-up (#1710) rather than decided here for Claude alone.
-      if extracted.truncated {
-        Task {
-          await AppLogger.shared.log(
-            "WARNING: Claude response truncated (stop_reason=max_tokens, "
-              + "model=\(config.model), policy=\(config.outputTokens))",
-            level: .info, category: "LLM"
-          )
-        }
-      }
+      // #1710: the throw happens inside this do block so the catch below
+      // stamps error_after_<code>; the decision itself is the production
+      // seam tests drive directly.
+      try Self.rejectTruncationIfNeeded(truncated: extracted.truncated, config: config)
     } catch {
       statusForLog = "error_after_\(httpResponse.statusCode):\(Self.shortError(error))"
       throw error

@@ -257,6 +257,9 @@ struct PolishFailureReasonTests {
     .providerUnreachable, .apiKeyMissing, .apiKeyRejected, .accessDenied,
     .outOfCredits, .rateLimited, .rateLimitedOrQuota, .providerServerError,
     .contentBlocked, .inputTooLong,
+    // #1710: with no client ceiling (or Claude's generous fixed cap), a
+    // truncation is the provider's own per-model limit — their condition.
+    .outputTruncated,
   ]
 
   @Test(
@@ -439,4 +442,57 @@ struct PolishFailureReasonTests {
           == .nonAlertingAnalytics)
     }
   }
+
+  // MARK: - Output truncation (#1710) — RED-first against chunk-1 HEAD
+
+  @Test("outputTruncated exists in the catalog with tag output_truncated")
+  func outputTruncatedCaseExists() throws {
+    // Written as a dynamic rawValue lookup during the RED phase (compiled
+    // against pre-fix code, failed on nil); now also pinned to the typed case.
+    let reason = try #require(PolishFailureReason(rawValue: "outputTruncated"))
+    #expect(reason == .outputTruncated)
+    #expect(reason.telemetryTag == "output_truncated")
+    #expect(PolishFailureReason.allCases.contains(.outputTruncated))
+  }
+
+  @Test("outputTruncated tag stays unique in the catalog")
+  func outputTruncatedTagUnique() {
+    let tags = PolishFailureReason.allCases.map(\.telemetryTag)
+    #expect(tags.filter { $0 == "output_truncated" }.count == 1)
+  }
+
+  @Test("outputTruncated leads with failed, never retries")
+  func outputTruncatedLeadInAndRetry() {
+    #expect(PolishFailureReason.outputTruncated.leadIn == .failed)
+    #expect(PolishFailureReason.outputTruncated.isRetryable == false)
+  }
+
+  @Test("outputTruncated is non-alerting for every provider")
+  func outputTruncatedChannelNonAlertingEverywhere() {
+    for provider in LLMProvider.allCases {
+      #expect(
+        PolishFailureReason.outputTruncated.telemetryChannel(provider: provider)
+          == .nonAlertingAnalytics)
+    }
+  }
+
+  @Test("outputTruncated composed copy is exact per cloud provider")
+  func outputTruncatedComposedCopy() {
+    for (provider, name) in [
+      (LLMProvider.openAI, "OpenAI"), (.gemini, "Gemini"), (.claude, "Claude"),
+    ] {
+      #expect(
+        PolishFailureReason.outputTruncated.composedMessage(provider: provider)
+          == "AI polish failed: \(name) ended the response before cleanup finished. "
+          + "EnviousWispr kept your complete original text instead. "
+          + "If this keeps happening, choose another model or use a shorter dictation.")
+    }
+  }
+
+  @Test("classified(outputTruncated) unwraps unchanged")
+  func classifiedUnwrapsUnchanged() {
+    #expect(
+      PolishFailureReason.from(LLMError.classified(.outputTruncated)) == .outputTruncated)
+  }
+
 }

@@ -168,60 +168,27 @@ public struct GeminiConnector: TranscriptPolisher {
     // cancellation). Capture that outcome in statusForLog before the defer
     // fires so the diagnostic does not record a mid-stream failure as a
     // successful 200 (Codex review finding P2).
-    let fullText: String
-    let lastFinishReason: String?
-    do {
-      if httpResponse.statusCode != 200 {
+    if httpResponse.statusCode != 200 {
+      do {
         var errorBody = ""
         for try await line in stream.lines {
           errorBody += line
         }
-        try handleHTTPError(statusCode: httpResponse.statusCode, body: errorBody)
+        try Self.handleHTTPError(statusCode: httpResponse.statusCode, body: errorBody)
+      } catch {
+        statusForLog = Self.bodyFailureStatus(
+          httpStatus: httpResponse.statusCode, error: error)
+        throw error
       }
-
-      var text = ""
-      var finishReason: String?
-
-      for try await line in stream.lines {
-        // SSE format: lines prefixed with "data: " contain JSON
-        // Empty lines delimit events, lines starting with ":" are comments
-        guard line.hasPrefix("data: ") else { continue }
-        let jsonString = String(line.dropFirst(6))
-
-        guard let jsonData = jsonString.data(using: .utf8),
-          let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-          let candidates = json["candidates"] as? [[String: Any]],
-          let firstCandidate = candidates.first
-        else {
-          continue
-        }
-
-        // Extract text fragments from this chunk, skipping thought parts
-        if let content = firstCandidate["content"] as? [String: Any],
-          let parts = content["parts"] as? [[String: Any]]
-        {
-          for part in parts {
-            if part["thought"] as? Bool == true { continue }
-            if let textFragment = part["text"] as? String {
-              text += textFragment
-              onToken(textFragment)
-            }
-          }
-        }
-
-        // Check finishReason — present only in the final chunk
-        if let reason = firstCandidate["finishReason"] as? String {
-          finishReason = reason
-        }
-      }
-      fullText = text
-      lastFinishReason = finishReason
-    } catch {
-      // Record the mid-stream failure so the metrics line reflects reality.
-      // The HTTP status was 200 at headers, but the body did not complete.
-      statusForLog = "error_after_\(httpResponse.statusCode):\(Self.shortError(error))"
-      throw error
     }
+
+    // #1710: accumulation, truncation rejection, and failure-status
+    // recording live in ONE production authority (`streamBodyPhase`), so a
+    // truncated stream records error_after_200, never a false 200 — and
+    // tests drive the same function.
+    let fullText = try await Self.streamBodyPhase(
+      lines: stream.lines, statusCode: httpResponse.statusCode, config: config,
+      onToken: onToken, recordStatus: { statusForLog = $0 })
 
     // Trimmed, not raw (#1710): see extractBatchResponseText's doc comment
     // for why a whitespace/newline-only accumulation must not pass as a
@@ -230,8 +197,6 @@ public struct GeminiConnector: TranscriptPolisher {
       statusForLog = "error_after_\(httpResponse.statusCode):empty_response"
       throw LLMError.emptyResponse
     }
-
-    logTruncationIfNeeded(finishReason: lastFinishReason, config: config)
 
     return LLMResult(
       polishedText: fullText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -272,26 +237,13 @@ public struct GeminiConnector: TranscriptPolisher {
     }
     statusForLog = String(httpResponse.statusCode)
 
-    // Post-header failures (non-200 body, malformed JSON, empty candidates,
-    // all-thought response with zero text) must be reflected in statusForLog
-    // so the defer never records a successful-looking line for a failed
-    // call. The responseText empty-check is inside this do block because
-    // an all-thought response still throws LLMError.emptyResponse and would
-    // otherwise leak through with status=200.
-    let extracted: (text: String, finishReason: String?)
-    do {
-      if httpResponse.statusCode != 200 {
-        let body = String(data: data, encoding: .utf8) ?? ""
-        try handleHTTPError(statusCode: httpResponse.statusCode, body: body)
-      }
-
-      extracted = try Self.extractBatchResponseText(from: data)
-    } catch {
-      statusForLog = "error_after_\(httpResponse.statusCode):\(Self.shortError(error))"
-      throw error
-    }
-
-    logTruncationIfNeeded(finishReason: extracted.finishReason, config: config)
+    // #1710: the ENTIRE post-header body phase — non-200 classification,
+    // extraction, truncation rejection, and failure-status recording — is
+    // ONE production authority (`batchBodyPhase`); a failed call can never
+    // record a successful-looking 200, and tests drive the same function.
+    let extracted = try Self.batchBodyPhase(
+      data: data, statusCode: httpResponse.statusCode, config: config,
+      recordStatus: { statusForLog = $0 })
 
     return LLMResult(
       polishedText: extracted.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -335,18 +287,124 @@ public struct GeminiConnector: TranscriptPolisher {
 
   // MARK: - Shared
 
-  private func logTruncationIfNeeded(finishReason: String?, config: LLMProviderConfig) {
+  /// The REAL streaming accumulation/detection loop (#1710): consumes SSE
+  /// lines, concatenates non-thought text fragments (forwarding each to
+  /// `onToken`), and captures the final chunk's `finishReason`. Generic over
+  /// the line sequence so tests can drive it with a fixture stream while
+  /// production passes `URLSession.AsyncBytes.lines` — one parser, no
+  /// test-only duplicate.
+  static func accumulateSSELines<S: AsyncSequence>(
+    _ lines: S, onToken: @Sendable (String) -> Void
+  ) async throws -> (text: String, finishReason: String?) where S.Element == String {
+    var text = ""
+    var finishReason: String?
+
+    for try await line in lines {
+      // SSE format: lines prefixed with "data: " contain JSON
+      // Empty lines delimit events, lines starting with ":" are comments
+      guard line.hasPrefix("data: ") else { continue }
+      let jsonString = String(line.dropFirst(6))
+
+      guard let jsonData = jsonString.data(using: .utf8),
+        let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+        let candidates = json["candidates"] as? [[String: Any]],
+        let firstCandidate = candidates.first
+      else {
+        continue
+      }
+
+      // Extract text fragments from this chunk, skipping thought parts
+      if let content = firstCandidate["content"] as? [String: Any],
+        let parts = content["parts"] as? [[String: Any]]
+      {
+        for part in parts {
+          if part["thought"] as? Bool == true { continue }
+          if let textFragment = part["text"] as? String {
+            text += textFragment
+            onToken(textFragment)
+          }
+        }
+      }
+
+      // Check finishReason — present only in the final chunk
+      if let reason = firstCandidate["finishReason"] as? String {
+        finishReason = reason
+      }
+    }
+    return (text, finishReason)
+  }
+
+  /// #1710: a MAX_TOKENS stop is a PARTIAL rewrite — reject whole; the
+  /// pipeline keeps the complete pre-polish text. Called with `try` INSIDE
+  /// both post-200 do blocks so the catch stamps `error_after_200`, never a
+  /// successful-looking 200. Static and pure (plus a fire-and-forget log)
+  /// for fixture testing.
+  static func rejectTruncationIfNeeded(
+    finishReason: String?, config: LLMProviderConfig
+  ) throws {
     guard finishReason == "MAX_TOKENS" else { return }
     Task {
       await AppLogger.shared.log(
-        "WARNING: Gemini response truncated (finishReason=MAX_TOKENS, "
-          + "model=\(config.model), policy=\(config.outputTokens))",
+        "WARNING: Gemini response truncated; rejecting partial output "
+          + "(finishReason=MAX_TOKENS, model=\(config.model), policy=\(config.outputTokens))",
         level: .info, category: "LLM"
       )
     }
+    throw LLMError.classified(.outputTruncated)
   }
 
-  private func handleHTTPError(statusCode: Int, body: String) throws -> Never {
+  /// The diagnostics status a post-header body failure records (#1710). One
+  /// authority used by every production body-failure path — both body-phase
+  /// catches (`batchBodyPhase`, `streamBodyPhase`) and the streaming non-200
+  /// error-body branch — so the error_after composition is directly testable
+  /// against the production function.
+  static func bodyFailureStatus(httpStatus: Int, error: Error) -> String {
+    "error_after_\(httpStatus):\(shortError(error))"
+  }
+
+  /// The ENTIRE post-header batch body phase (#1710): non-200 classification,
+  /// extraction, truncation rejection, and — on ANY failure — recording the
+  /// exact production diagnostics status before rethrowing. One authority
+  /// used verbatim by `polishBatch` and driven directly by tests, so a throw
+  /// can never silently move outside the status-stamping scope.
+  static func batchBodyPhase(
+    data: Data, statusCode: Int, config: LLMProviderConfig,
+    recordStatus: (String) -> Void
+  ) throws -> (text: String, finishReason: String?) {
+    do {
+      if statusCode != 200 {
+        let body = String(data: data, encoding: .utf8) ?? ""
+        try handleHTTPError(statusCode: statusCode, body: body)
+      }
+      let extracted = try extractBatchResponseText(from: data)
+      try rejectTruncationIfNeeded(finishReason: extracted.finishReason, config: config)
+      return extracted
+    } catch {
+      recordStatus(bodyFailureStatus(httpStatus: statusCode, error: error))
+      throw error
+    }
+  }
+
+  /// Streaming twin of `batchBodyPhase` (#1710): accumulation, truncation
+  /// rejection, and failure-status recording in one production authority.
+  /// The non-200 error-body branch stays in `polishStreaming` (it consumes
+  /// the same byte stream before any accumulation).
+  static func streamBodyPhase<S: AsyncSequence>(
+    lines: S, statusCode: Int, config: LLMProviderConfig,
+    onToken: @Sendable (String) -> Void,
+    recordStatus: (String) -> Void
+  ) async throws -> String where S.Element == String {
+    do {
+      let accumulated = try await accumulateSSELines(lines, onToken: onToken)
+      try rejectTruncationIfNeeded(finishReason: accumulated.finishReason, config: config)
+      return accumulated.text
+    } catch {
+      recordStatus(bodyFailureStatus(httpStatus: statusCode, error: error))
+      throw error
+    }
+  }
+
+  private static func handleHTTPError(statusCode: Int, body: String) throws -> Never {
     #if DEBUG
       let truncated = String(body.prefix(200))
       Task {

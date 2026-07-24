@@ -91,6 +91,14 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   case emptyResponse
   /// Our polish budget was exceeded (the runner's timeout).
   case timedOut
+  /// The provider reported it stopped generating at ITS OWN output limit
+  /// (#1710: OpenAI `finish_reason=length`, Gemini `finishReason=MAX_TOKENS`,
+  /// Claude `stop_reason=max_tokens`). The content is a PARTIAL rewrite;
+  /// pasting it would silently delete the tail of the dictation, so the
+  /// connectors reject it and the complete pre-polish text falls through.
+  /// Under the no-client-ceiling request policy this is a provider/model
+  /// condition, not an EnviousWispr defect: counted, never paged.
+  case outputTruncated
   /// Unclassified.
   case unknown
 
@@ -126,6 +134,7 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     case .badRequest: return "bad_request"
     case .emptyResponse: return "empty_response"
     case .timedOut: return "timed_out"
+    case .outputTruncated: return "output_truncated"
     case .unknown: return "unknown"
     }
   }
@@ -141,6 +150,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   public var leadIn: LeadIn {
     switch self {
     case .apiKeyMissing, .apiKeyUnreadable, .inputTooLong, .timedOut: return .skipped
+    // #1710: a real failure the user should see, explicitly — not left to
+    // the default: arm the file header warns about.
+    case .outputTruncated: return .failed
     default: return .failed
     }
   }
@@ -152,6 +164,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   public var isRetryable: Bool {
     switch self {
     case .providerServerError, .rateLimited: return true
+    // #1710: same-budget retry recovery is unmeasured — no unknown-benefit
+    // retry cost on the user's key. Explicit, not default-absorbed.
+    case .outputTruncated: return false
     default: return false
     }
   }
@@ -208,6 +223,11 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       .outOfCredits, .rateLimited, .rateLimitedOrQuota, .providerServerError,
       .contentBlocked, .inputTooLong:
       return .nonAlertingAnalytics
+    // #1710: with no client ceiling on OpenAI/Gemini and a generous fixed
+    // Claude cap, a truncation is the provider's own per-model limit —
+    // their condition, counted for the post-ship metric, never paged.
+    case .outputTruncated:
+      return .nonAlertingAnalytics
     }
   }
 
@@ -257,6 +277,10 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       return "the dictation took too long. Your original text was pasted unchanged."
     case .unknown:
       return "an unexpected error stopped it. Your original text was pasted unchanged."
+    case .outputTruncated:
+      return "\(name) ended the response before cleanup finished. "
+        + "EnviousWispr kept your complete original text instead. "
+        + "If this keeps happening, choose another model or use a shorter dictation."
     }
   }
 

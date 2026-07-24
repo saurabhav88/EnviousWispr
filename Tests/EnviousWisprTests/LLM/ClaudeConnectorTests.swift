@@ -272,4 +272,39 @@ struct ClaudeConnectorTests {
   @Test func classifyUnknownStatusIsUnknown() {
     #expect(ClaudeConnector.classify(statusCode: 999, bodyString: "") == .unknown)
   }
+
+  // MARK: - Truncation rejection (#1710)
+
+  private func truncConfig() -> LLMProviderConfig {
+    LLMProviderConfig(
+      model: "claude-haiku-4-5", apiKeyKeychainId: "claude-api-key",
+      outputTokens: .capped(8192), temperature: 0, thinkingBudget: nil,
+      reasoningEffort: nil)
+  }
+
+  @Test("stop_reason=max_tokens rejects through the production decision seam")
+  func maxTokensStopReasonIsRejected() throws {
+    // The exact two calls polish makes: real parser, then the same
+    // rejection seam production feeds the truncated flag into.
+    let body = Data(
+      #"{"content": [{"type": "text", "text": "This got cut off mid"}], "stop_reason": "max_tokens"}"#
+        .utf8)
+    let extracted = try ClaudeConnector.extractResponseText(from: body)
+    #expect(extracted.truncated == true)
+    #expect(throws: LLMError.classified(.outputTruncated)) {
+      try ClaudeConnector.rejectTruncationIfNeeded(
+        truncated: extracted.truncated, config: truncConfig())
+    }
+  }
+
+  @Test("normal end_turn passes the production decision seam untouched")
+  func endTurnIsNotRejected() throws {
+    let body = Data(
+      #"{"content": [{"type": "text", "text": "Complete."}], "stop_reason": "end_turn"}"#.utf8)
+    let extracted = try ClaudeConnector.extractResponseText(from: body)
+    #expect(extracted.truncated == false)
+    try ClaudeConnector.rejectTruncationIfNeeded(
+      truncated: extracted.truncated, config: truncConfig())
+  }
+
 }

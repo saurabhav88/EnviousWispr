@@ -377,16 +377,20 @@ public struct OpenAIConnector: TranscriptPolisher {
       throw LLMError.emptyResponse
     }
 
+    // #1710: a length-stop is a PARTIAL rewrite — pasting it would silently
+    // delete the tail of the dictation. Reject whole; the pipeline keeps the
+    // complete pre-polish text.
     if let finishReason = choices.first?["finish_reason"] as? String,
       finishReason == "length"
     {
       Task {
         await AppLogger.shared.log(
-          "WARNING: OpenAI response truncated (finish_reason=length, "
-            + "model=\(config.model), policy=\(config.outputTokens))",
+          "WARNING: OpenAI response truncated; rejecting partial output "
+            + "(finish_reason=length, model=\(config.model), policy=\(config.outputTokens))",
           level: .info, category: "LLM"
         )
       }
+      throw LLMError.classified(.outputTruncated)
     }
 
     return LLMResult(
