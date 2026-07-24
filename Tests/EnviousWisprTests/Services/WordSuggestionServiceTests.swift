@@ -193,19 +193,24 @@ struct WordSuggestionServiceParserTests {
     #expect(WordSuggestionService.parsePlainStringAliases("\n\n\n").isEmpty)
   }
 
-  @Test("Fence-only lines are dropped without stripping legitimate backticks")
+  @Test("Fence-only lines are dropped without stripping legitimate backticks or tildes")
   func fenceOnlyLinesDropped() {
     let raw = [
       "```plaintext",
       "```PlainText",
       "``` c#",
       "```text/plain",
+      "```plain text",
       "```",
       "````",
       "`````swift",
+      "~~~plaintext",
+      "~~~ plain text",
+      "~~~",
       "kuber ``` netties",
       "`inline alias`",
       "``double inline alias``",
+      "~ish sound",
     ].joined(separator: "\n")
 
     let parsed = WordSuggestionService.parsePlainStringAliases(raw)
@@ -215,6 +220,7 @@ struct WordSuggestionServiceParserTests {
         "kuber ``` netties",
         "`inline alias`",
         "``double inline alias``",
+        "~ish sound",
       ])
   }
 

@@ -601,10 +601,12 @@ public final class WordSuggestionService: Sendable {
       "asr", "i have ", "i did not", "no mistranscript", "no aliases",
       "return empty", "explanation",
     ]
-    // A line that is purely a fence delimiter (optional language tag), not
-    // real content that merely contains backticks. Compiled once per call.
+    // A line that starts with 3+ of the same fence character (backtick or
+    // tilde, the two CommonMark fence delimiters) — a real alias never
+    // starts this way, so the rest of the line (any info string, or none)
+    // is accepted rather than allowlisted. Compiled once per call.
     let fenceRegex = try? NSRegularExpression(
-      pattern: #"^`{3,}[ \t]*[A-Za-z0-9_+./#-]*[ \t]*$"#
+      pattern: #"^(?:`{3,}|~{3,}).*$"#
     )
     for line in raw.components(separatedBy: .newlines) {
       var s = line.trimmingCharacters(in: .whitespacesAndNewlines)
