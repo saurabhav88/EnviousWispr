@@ -1,4 +1,6 @@
-// Unit tests for the pure threshold/state logic (no network).
+// Unit tests for the pure threshold/state logic (no network) plus the
+// reliability machinery (issue #1589: concurrency cap, retry, resolve-once
+// dev exclusion, fail-soft degrade, evaluateHealthData, plain-English copy).
 // Run: node --test  (from workers/product-health/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +14,15 @@ import {
   evaluateOnboardingAbandon,
   evaluateBackendTranscription,
   evaluateOnboardingBlackout,
+  evaluateHealthData,
   buildMessage,
+  hogql,
+  runLimited,
+  fetchHealth,
+  runHealth,
+  resolveDevIds,
+  productionClauseFor,
+  PostHogQueryError,
 } from "../src/index.js";
 
 // ---- latency ----
@@ -75,13 +85,13 @@ test("paste: below 50 total -> skipped", () => {
   assert.equal(evaluatePaste({ paste_total: 40, paste_cb: 30, paste_ax: 0 }).state, "skipped-low-volume");
 });
 
-// ---- AFM (dark / forward-looking) ----
-test("AFM: zero fr-bearing rows (pre-release) -> dark", () => {
+// ---- AFM data availability ----
+test("AFM: zero eligible fallback-reason rows -> dark", () => {
   const row = { afm_fr_rows: 0, afm_disc: 0 };
   assert.equal(evaluateAFM(row).state, "dark-awaiting-release");
 });
 
-test("AFM: release seen but too few rows -> skipped (not 0%)", () => {
+test("AFM: too few eligible fallback-reason rows -> skipped (not 0%)", () => {
   assert.equal(evaluateAFM({ afm_fr_rows: 20, afm_disc: 2 }).state, "skipped-low-volume");
 });
 
@@ -217,6 +227,14 @@ function results(over = {}) {
       afm: { state: "dark-awaiting-release" },
       transcription: { state: "evaluated-ok" },
       volume: { state: "evaluated-ok", t1d: 312, avg: 280, ratio: 1.11 },
+      versions: [],
+      onboardingVersions: [],
+      backendVersions: [],
+      versionsDegraded: false,
+      onboardingVersionsDegraded: false,
+      backendVersionsDegraded: false,
+      backendTranscriptionUnavailable: false,
+      backendAttributionBlackoutUnavailable: false,
     },
     over
   );
@@ -224,33 +242,38 @@ function results(over = {}) {
 
 test("message: clean day posts a heartbeat only, no alert block", () => {
   const msg = buildMessage(results());
-  assert.match(msg, /health - OK/);
-  assert.match(msg, /312 dictations/);
-  assert.match(msg, /Dark: AFM-discard/);
+  assert.match(msg, /everything looks normal/);
+  assert.match(msg, /312 dictations were completed yesterday/);
+  assert.match(msg, /Waiting for enough eligible data: Apple on-device polishing quality/);
   assert.ok(!msg.includes("\n\n*"), "no alert block on a clean day");
 });
 
-test("message: a crossing produces an ALERT header + block + dashboard link", () => {
+test("message: a crossing produces a found-N-things header + alert block + dashboard link", () => {
   const msg = buildMessage(
-    results({ paste: { state: "alerting", share: 0.065, fb: 17, cb: 7, ax: 10, total: 260 } }),
-    [{ ver: "v2.1.4", paste_fb: 12, trans_fail: 0, afm_disc: 0 }]
+    results({
+      paste: { state: "alerting", share: 0.065, fb: 17, cb: 7, ax: 10, total: 260 },
+      versions: [{ ver: "v2.1.4", paste_fb: 12, trans_fail: 0, afm_disc: 0 }],
+    })
   );
-  assert.match(msg, /health - ALERT/);
-  assert.match(msg, /paste fallback 6\.5%/);
-  assert.match(msg, /ax_denied 10, direct-paste-failed 7/);
-  assert.match(msg, /v2\.1\.4: 12/);
-  assert.match(msg, /dashboard/);
+  assert.match(msg, /found 1 thing worth a look/);
+  assert.match(msg, /Auto-paste is failing more than usual: 6\.5%/);
+  assert.match(msg, /10 were caused by a missing permission; 7 failed another way/);
+  assert.match(msg, /v2\.1\.4 \(12\)/);
+  assert.match(msg, /Full data: https:\/\/us\.posthog\.com/);
 });
 
-test("message: drift alert names asr.completed, not paste/asr (#1130)", () => {
+test("message: drift alert renders the tracking-broken wording, not the zero-dictations wording (#1130)", () => {
   const msg = buildMessage(
     results({
       volume: { state: "alerting", t1d: 200, avg: 200, ratio: 1.0, zeroAlert: false, driftAlert: true, asrDrift: true },
     })
   );
-  assert.match(msg, /health - ALERT/);
-  assert.match(msg, /asr\.completed was 0/);
-  assert.ok(!msg.includes("paste/asr"), "drift wording must not reference the dropped paste leg");
+  assert.match(msg, /found 1 thing worth a look/);
+  assert.match(msg, /a signal that should fire every time did not fire once/);
+  assert.ok(
+    !msg.includes("even though a typical day sees about"),
+    "drift wording must not also render the zero-dictations wording"
+  );
 });
 
 test("message: stays within Discord 2000-char cap", () => {
@@ -475,13 +498,12 @@ test("backend transcription: unknown backend with trivial volume does NOT trip d
 });
 
 // ---- message: Phase 10 additions ----
-test("message: H1 static pointer appears every run", () => {
+test("message: crash-tracking disclaimer appears every run", () => {
   const msg = buildMessage(results());
-  assert.match(msg, /Sentry's own alert rules/);
-  assert.match(msg, /Error Spike >5\/hr/);
+  assert.match(msg, /Crashes and app errors are tracked separately and alert on their own/);
 });
 
-test("message: onboarding-abandon alert renders and is not double-counted as evaluated", () => {
+test("message: onboarding-abandon alert renders and is not double-counted as checked-and-normal", () => {
   const msg = buildMessage(
     results({
       onboardingAbandon: {
@@ -490,8 +512,8 @@ test("message: onboarding-abandon alert renders and is not double-counted as eva
       },
     })
   );
-  assert.match(msg, /onboarding abandon 60\.0%/);
-  assert.ok(!msg.includes("Evaluated: onboarding-abandon"));
+  assert.match(msg, /60\.0% of setup attempts ended before setup was finished \(6 of 10\)/);
+  assert.ok(!/Checked and normal:[^\n]*onboarding completion/.test(msg));
 });
 
 test("message: onboarding-abandon fast crossing does not report the healthy rolling rate", () => {
@@ -503,7 +525,8 @@ test("message: onboarding-abandon fast crossing does not report the healthy roll
       },
     })
   );
-  assert.match(msg, /fast 2-day crossing/);
+  assert.match(msg, /In just the last 2 days/);
+  assert.match(msg, /sudden change worth a look/);
   assert.ok(!msg.includes("14.5%"), "must not display the healthy rolling share when the fast path fired");
 });
 
@@ -513,7 +536,7 @@ test("message: onboarding-abandon rolling crossing reports the rolling window", 
       onboardingAbandon: { state: "alerting", fastCrossing: false, rollingShare: 0.6, totalStarted: 40, totalAbandoned: 24 },
     })
   );
-  assert.match(msg, /rolling crossing/);
+  assert.match(msg, /Of the setup attempts started over the last three weeks/);
   assert.match(msg, /60\.0%/);
 });
 
@@ -526,30 +549,48 @@ test("message: per-backend transcription alerts name the backend and skip clean 
       ],
     })
   );
-  assert.match(msg, /whisperkit transcription failure 30\.0%/);
-  assert.ok(!msg.includes("parakeet transcription failure"));
-  assert.match(msg, /Evaluated:.*transcription-parakeet/);
+  assert.match(msg, /WhisperKit speech-to-text is failing more than usual: 30\.0%/);
+  assert.ok(!msg.includes("Parakeet speech-to-text is failing"));
+  assert.match(msg, /Checked and normal:[^\n]*Parakeet speech-to-text/);
 });
 
 test("message: empty per-backend result during genuine low volume reports skipped, not silence (Codex r5 fix)", () => {
   const msg = buildMessage(
     results({ backendTranscription: [], backendAttributionBlackout: false })
   );
-  assert.match(msg, /Skipped \(low volume\):.*transcription-backend/);
-  assert.ok(!msg.includes("attribution blackout"));
+  assert.match(msg, /Not enough activity to judge:[^\n]*speech-to-text reliability by engine/);
+  assert.ok(!msg.includes("We can no longer tell which speech engine"));
+});
+
+test("message: backend-transcription and blackout unavailable together render as unavailable, not alerts", () => {
+  const msg = buildMessage(
+    results({ backendTranscriptionUnavailable: true, backendAttributionBlackoutUnavailable: true })
+  );
+  assert.match(msg, /Temporarily unavailable:[^\n]*speech-to-text reliability by engine/);
+  assert.match(msg, /Temporarily unavailable:[^\n]*speech-engine tracking/);
+  // Codex diff review finding: a degraded-but-not-alerting run must NOT claim
+  // "everything looks normal" - that would falsely reassure a founder
+  // skimming only the headline while two checks silently couldn't run.
+  assert.match(msg, /no problems found, but 2 checks couldn't run today/);
+  assert.ok(!msg.includes("everything looks normal"));
+});
+
+test("message: a single unavailable check uses singular grammar in the headline", () => {
+  const msg = buildMessage(results({ afm: { state: "temporarily-unavailable" } }));
+  assert.match(msg, /no problems found, but 1 check couldn't run today/);
 });
 
 test("message: onboarding-blackout entry-point-down and terminal-drift render distinct wording", () => {
   const entryDown = buildMessage(
     results({ onboardingBlackout: { state: "alerting", entryPointDown: true, terminalDrift: false, recentStarted: 0, recentTerminals: 0, baselineAvg: 12 } })
   );
-  assert.match(entryDown, /onboarding entry point down/);
+  assert.match(entryDown, /There were no setup starts in the last 2 days/);
 
   const terminalDrift = buildMessage(
     results({ onboardingBlackout: { state: "alerting", entryPointDown: false, terminalDrift: true, recentStarted: 10, recentTerminals: 0, baselineAvg: 12 } })
   );
-  assert.match(terminalDrift, /onboarding terminal drift/);
-  assert.ok(!terminalDrift.includes("entry point down"));
+  assert.match(terminalDrift, /but none registered as either finishing or giving up/);
+  assert.ok(!terminalDrift.includes("no setup starts"));
 });
 
 test("message: many simultaneous alerts drop whole alerts from the end, never the dashboard link", () => {
@@ -570,7 +611,7 @@ test("message: many simultaneous alerts drop whole alerts from the end, never th
   assert.ok(msg.length <= 2000, `message must respect the Discord cap, got ${msg.length}`);
   assert.match(msg, /https:\/\/us\.posthog\.com\/project\/\d+\/dashboard\/\d+/, "dashboard link must always survive truncation");
   if (msg.includes("more alert(s) omitted")) {
-    assert.match(msg, /\d+ more alert\(s\) omitted; see dashboard/);
+    assert.match(msg, /\d+ more alert\(s\) omitted; see full data below\./);
   }
 });
 
@@ -578,11 +619,11 @@ test("message: onboarding screen-attribution drift renders distinct wording, no 
   const msg = buildMessage(
     results({
       onboardingAbandon: { state: "alerting", attributionDrift: true, fastCrossing: false, totalStarted: 100, totalAbandoned: 0, totalAbandonedRaw: 40, totalAbandonedMissingScreen: 40 },
-    }),
-    [], [{ ver: "v2.1.4", onboarding_abandon: 40 }]
+      onboardingVersions: [{ ver: "v2.1.4", onboarding_abandon: 40 }],
+    })
   );
-  assert.match(msg, /onboarding abandon attribution lost/);
-  assert.match(msg, /40 of 40 onboarding\.abandoned events/);
+  assert.match(msg, /We lost the ability to tell where setup was abandoned/);
+  assert.match(msg, /40 of 40 abandon events/);
   assert.ok(!msg.includes("v2.1.4"), "attribution-drift alert must not attach version data to a broken denominator");
 });
 
@@ -594,19 +635,21 @@ test("message: backend attribution drift (unknown backend) renders distinct word
       ],
     })
   );
-  assert.match(msg, /transcription backend attribution lost/);
+  assert.match(msg, /We lost track of which speech engine, Parakeet or WhisperKit, was used for 270/);
 });
 
 test("message: backend attribution blackout (empty result set) renders and alerts", () => {
   const msg = buildMessage(results({ backendTranscription: [], backendAttributionBlackout: true }));
-  assert.match(msg, /transcription backend attribution blackout/);
-  assert.match(msg, /health - ALERT/);
+  assert.match(msg, /We can no longer tell which speech engine people are using at all/);
+  assert.match(msg, /found 1 thing worth a look/);
 });
 
 test("message: fast-crossing alerts omit version attribution (window mismatch, Codex review finding)", () => {
   const onboardingMsg = buildMessage(
-    results({ onboardingAbandon: { state: "alerting", fastCrossing: true, fastStarted: 10, fastAbandoned: 6, fastShare: 0.6, rollingShare: 0.1, totalStarted: 300, totalAbandoned: 30 } }),
-    [], [{ ver: "v2.1.4", onboarding_abandon: 40 }]
+    results({
+      onboardingAbandon: { state: "alerting", fastCrossing: true, fastStarted: 10, fastAbandoned: 6, fastShare: 0.6, rollingShare: 0.1, totalStarted: 300, totalAbandoned: 30 },
+      onboardingVersions: [{ ver: "v2.1.4", onboarding_abandon: 40 }],
+    })
   );
   assert.ok(!onboardingMsg.includes("v2.1.4"), "a fast (2-day) crossing must not attribute to a 21-day version query");
 
@@ -615,8 +658,416 @@ test("message: fast-crossing alerts omit version attribution (window mismatch, C
       backendTranscription: [
         { backend: "parakeet", state: "alerting", fastCrossing: true, fastFails: 20, fastDictations: 10, fastAttempts: 30, fastShare: 0.67, rollingShare: 0.05, fails: 50, dictations: 950, attempts: 1000 },
       ],
-    }),
-    [], [], [{ ver: "v2.1.4", backend: "parakeet", backend_trans_fail: 40 }]
+      backendVersions: [{ ver: "v2.1.4", backend: "parakeet", backend_trans_fail: 40 }],
+    })
   );
   assert.ok(!backendMsg.includes("v2.1.4"), "a fast (2-day) crossing must not attribute to a 14-day version query");
+});
+
+test("message: a degraded version query preserves the core alert, only its top-versions clause changes", () => {
+  const msg = buildMessage(
+    results({
+      paste: { state: "alerting", share: 0.065, fb: 17, cb: 7, ax: 10, total: 260 },
+      versionsDegraded: true,
+    })
+  );
+  assert.match(msg, /Auto-paste is failing more than usual: 6\.5%/, "the core alert must still fire normally");
+  assert.match(msg, /We couldn't break this down by app version today\./);
+});
+
+// ---- runLimited (issue #1589 - PostHog's 3-concurrent-query project limit) ----
+test("runLimited: never exceeds the given concurrency and preserves input order", async () => {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const tasks = [1, 2, 3, 4, 5].map(
+    (n) => () =>
+      new Promise((resolve) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        // settle: fixed synthetic duration observed via the maxInFlight counter, not a wall-clock race
+        setTimeout(() => {
+          inFlight -= 1;
+          resolve(n);
+        }, 5);
+      })
+  );
+  const out = await runLimited(tasks, 2);
+  assert.deepEqual(out, [1, 2, 3, 4, 5]);
+  assert.ok(maxInFlight <= 2, `expected at most 2 concurrent tasks, saw ${maxInFlight}`);
+});
+
+test("runLimited: a failed wave rejects and never starts a later wave", async () => {
+  let laterWaveStarted = false;
+  const tasks = [
+    () => Promise.resolve("ok"),
+    () => Promise.reject(new Error("boom")),
+    () => {
+      laterWaveStarted = true;
+      return Promise.resolve("should not run");
+    },
+  ];
+  await assert.rejects(() => runLimited(tasks, 2), /boom/);
+  assert.equal(laterWaveStarted, false);
+});
+
+test("runLimited: rejects a non-positive-integer limit", async () => {
+  await assert.rejects(() => runLimited([() => Promise.resolve(1)], 0), TypeError);
+});
+
+// ---- hogql retry (issue #1589, ported from workers/daily-report #1588/#1720) ----
+function fakeResponse(status, body, { onCancel } = {}) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    body: onCancel ? { cancel: async () => onCancel() } : undefined,
+  };
+}
+
+const TEST_ENV = { POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" };
+
+test("hogql: retries on 504, waits within the attempt-2 backoff range, then succeeds", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return calls === 1 ? fakeResponse(504) : fakeResponse(200, { results: [[1]] });
+  };
+  const sleeps = [];
+  const sleepFn = async (ms) => sleeps.push(ms);
+  const json = await hogql(TEST_ENV, "SELECT 1", "test_query", {
+    fetchFn,
+    sleepFn,
+    randomFn: () => 0, // pins the delay to the range floor for a deterministic assertion
+  });
+  assert.deepEqual(json.results, [[1]]);
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [12_000], "attempt 2's backoff floor is 12s");
+});
+
+test("hogql: retries on 429 (previously threw immediately)", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return calls === 1 ? fakeResponse(429) : fakeResponse(200, { results: [[1]] });
+  };
+  const json = await hogql(TEST_ENV, "SELECT 1", "test_query", { fetchFn, sleepFn: async () => {}, randomFn: () => 0 });
+  assert.deepEqual(json.results, [[1]]);
+  assert.equal(calls, 2);
+});
+
+test("hogql: cancels the failed response body before retrying", async () => {
+  let cancelled = false;
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    if (calls === 1) return fakeResponse(504, undefined, { onCancel: () => (cancelled = true) });
+    return fakeResponse(200, { results: [[1]] });
+  };
+  await hogql(TEST_ENV, "SELECT 1", "test_query", { fetchFn, sleepFn: async () => {}, randomFn: () => 0 });
+  assert.equal(cancelled, true);
+});
+
+test("hogql: does not retry on a non-transient 4xx status", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return fakeResponse(401);
+  };
+  await assert.rejects(
+    () => hogql(TEST_ENV, "SELECT 1", "test_query", { fetchFn, sleepFn: async () => {}, randomFn: () => 0 }),
+    (err) => err instanceof PostHogQueryError && err.status === 401
+  );
+  assert.equal(calls, 1, "a non-retryable status must not be retried");
+});
+
+test("hogql: throws with the query name after exhausting all 3 attempts on repeated 504", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return fakeResponse(504);
+  };
+  await assert.rejects(
+    () => hogql(TEST_ENV, "SELECT 1", "test_query", { fetchFn, sleepFn: async () => {}, randomFn: () => 0 }),
+    (err) => {
+      assert.ok(err instanceof PostHogQueryError);
+      assert.equal(err.queryName, "test_query");
+      assert.equal(err.status, 504);
+      return true;
+    }
+  );
+  assert.equal(calls, 3);
+});
+
+// ---- resolveDevIds / productionClauseFor (issue #1589, ported from daily-report #1720) ----
+test("resolveDevIds: accepts hogqlOpts so its own retry path is test-deterministic", async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return calls === 1 ? fakeResponse(504) : fakeResponse(200, { results: [["dev-1"]] });
+  };
+  const ids = await resolveDevIds(TEST_ENV, { fetchFn, sleepFn: async () => {}, randomFn: () => 0 });
+  assert.deepEqual(ids, ["dev-1"]);
+  assert.equal(calls, 2);
+});
+
+test("resolveDevIds: throws on overflow rather than silently building a truncated exclusion list", async () => {
+  const manyIds = Array.from({ length: 5001 }, (_, i) => [`dev-${i}`]);
+  const fetchFn = async () => fakeResponse(200, { results: manyIds });
+  await assert.rejects(() => resolveDevIds(TEST_ENV, { fetchFn }), /dev-id completeness check failed/);
+});
+
+test("resolveDevIds: an empty result is a valid, non-throwing state", async () => {
+  const fetchFn = async () => fakeResponse(200, { results: [] });
+  const ids = await resolveDevIds(TEST_ENV, { fetchFn });
+  assert.deepEqual(ids, []);
+});
+
+test("productionClauseFor: empty dev-id list uses the bare environment filter, never NOT IN ()", () => {
+  const clause = productionClauseFor([]);
+  assert.doesNotMatch(clause, /NOT IN/);
+  assert.match(clause, /properties\.environment = 'production'/);
+});
+
+test("productionClauseFor: non-empty list appends a literal NOT IN exclusion", () => {
+  const clause = productionClauseFor(["dev-1", "dev-2"]);
+  assert.match(clause, /NOT IN \('dev-1', 'dev-2'\)/);
+});
+
+// ---- fetchHealth: fail-loud vs degradable queries (issue #1589) ----
+//
+// These MUST drive fetchHealth, not hogql in isolation - the dependency-
+// graph-aware degrade wiring these guard lives in fetchHealth's own
+// construction of the return object. fetchHealth calls hogql without an
+// injectable fetchFn of its own, so the mock installs on globalThis.fetch
+// and dispatches on the query name the worker puts in the request body.
+
+const DEFAULT_QUERY_RESPONSES = {
+  ref: { results: [["2026-07-17"]], columns: ["t1"] },
+  dev_ids: { results: [], columns: ["distinct_id"] },
+  latency: { results: [], columns: ["day", "n", "p50", "p95"] },
+  seven_day: {
+    results: [[0, 0, 0, 0, 0, 0, 0]],
+    columns: ["paste_total", "paste_cb", "paste_ax", "afm_fr_rows", "afm_disc", "trans_fails", "dictations_7d"],
+  },
+  volume: { results: [], columns: ["day", "dictations", "pastes", "asr"] },
+  versions: { results: [], columns: ["ver", "paste_fb", "trans_fail", "afm_disc"] },
+  onboarding: { results: [], columns: ["day", "started", "completed", "abandoned", "abandonedRaw", "abandonedMissingScreen"] },
+  backend_transcription: { results: [], columns: ["day", "backend", "dictations", "fails"] },
+  onboarding_versions: { results: [], columns: ["ver", "onboarding_abandon"] },
+  backend_versions: { results: [], columns: ["ver", "backend", "backend_trans_fail"] },
+};
+
+/** Installs a global fetch that lets every query succeed with a minimal
+ * valid shape and lets the caller decide what one named query does. Also
+ * transparently succeeds any non-PostHog call (the Discord webhook POST
+ * runHealth makes - its body is `{content}`, with no `.name` field, unlike
+ * every hogql() request body) so tests can drive runHealth end-to-end, not
+ * just fetchHealth. Returns a restore fn and any Discord post bodies
+ * captured. */
+function mockPostHog({ failQuery, failWith }) {
+  const realFetch = globalThis.fetch;
+  const discordPosts = [];
+  globalThis.fetch = async (_url, init) => {
+    const body = init?.body ? JSON.parse(init.body) : {};
+    if (!body.name) {
+      if (typeof body.content === "string") discordPosts.push(body.content);
+      return fakeResponse(204); // Discord webhook success shape, not a PostHog call
+    }
+    const queryName = body.name.replace(/^product_health_/, "");
+    if (queryName === failQuery) {
+      if (failWith instanceof Error) throw failWith;
+      return fakeResponse(failWith);
+    }
+    const shape = DEFAULT_QUERY_RESPONSES[queryName] || { results: [], columns: [] };
+    return fakeResponse(200, shape);
+  };
+  return { restore: () => (globalThis.fetch = realFetch), discordPosts };
+}
+
+for (const queryName of ["ref", "dev_ids", "volume"]) {
+  test(`fetchHealth: ${queryName} exhausting retries fails the whole run (fail-loud)`, async () => {
+    const mock = mockPostHog({ failQuery: queryName, failWith: 504 });
+    try {
+      await assert.rejects(
+        () => fetchHealth(TEST_ENV, { sleepFn: async () => {} }),
+        new RegExp(`PostHog query ${queryName} HTTP 504`)
+      );
+    } finally {
+      mock.restore();
+    }
+  });
+}
+
+const DEGRADABLE_QUERY_FLAGS = {
+  latency: "latencyDegraded",
+  seven_day: "sevenDayDegraded",
+  versions: "versionsDegraded",
+  onboarding: "onboardingDegraded",
+  backend_transcription: "backendTranscriptionDegraded",
+  onboarding_versions: "onboardingVersionsDegraded",
+  backend_versions: "backendVersionsDegraded",
+};
+
+for (const [queryName, flag] of Object.entries(DEGRADABLE_QUERY_FLAGS)) {
+  test(`fetchHealth: ${queryName} exhausting retries degrades only its own flag (${flag})`, async () => {
+    const mock = mockPostHog({ failQuery: queryName, failWith: 504 });
+    try {
+      const data = await fetchHealth(TEST_ENV, { sleepFn: async () => {} });
+      assert.equal(data[flag], true, `expected ${flag} to be true`);
+      for (const otherFlag of Object.values(DEGRADABLE_QUERY_FLAGS)) {
+        if (otherFlag !== flag) assert.equal(data[otherFlag], false, `expected ${otherFlag} to stay false`);
+      }
+    } finally {
+      mock.restore();
+    }
+  });
+
+  test(`fetchHealth: ${queryName} a NON-retryable failure (401) still throws, no silent swallow`, async () => {
+    const mock = mockPostHog({ failQuery: queryName, failWith: 401 });
+    try {
+      await assert.rejects(
+        () => fetchHealth(TEST_ENV, { sleepFn: async () => {} }),
+        (err) => err instanceof PostHogQueryError && err.status === 401
+      );
+    } finally {
+      mock.restore();
+    }
+  });
+}
+
+test("fetchHealth: a clean run leaves every degrade flag false", async () => {
+  const mock = mockPostHog({ failQuery: null });
+  try {
+    const data = await fetchHealth(TEST_ENV, { sleepFn: async () => {} });
+    for (const flag of Object.values(DEGRADABLE_QUERY_FLAGS)) {
+      assert.equal(data[flag], false, `expected ${flag} to be false on a clean run`);
+    }
+  } finally {
+    mock.restore();
+  }
+});
+
+// ---- evaluateHealthData (issue #1589): single owner of degrade-then-evaluate wiring ----
+function healthData(over = {}) {
+  return Object.assign(
+    {
+      latencyDays: [{ day: "2026-07-15", n: 200, p50: 1.5, p95: 4.9 }],
+      latencyDegraded: false,
+      seven: { paste_total: 1000, paste_cb: 9, paste_ax: 3, afm_fr_rows: 100, afm_disc: 10, trans_fails: 14, dictations_7d: 1500 },
+      sevenDayDegraded: false,
+      volumeDays: [{ day: "2026-07-15", dictations: 300, pastes: 300, asr: 300 }],
+      versions: [],
+      versionsDegraded: false,
+      t1ref: "2026-07-15",
+      onboardingDays: [{ day: "2026-07-15", started: 50, completed: 40, abandoned: 5, abandonedRaw: 5, abandonedMissingScreen: 0 }],
+      onboardingDegraded: false,
+      backendTranscriptionDays: { parakeet: [{ day: "2026-07-15", dictations: 300, fails: 5 }] },
+      backendTranscriptionDegraded: false,
+      onboardingVersions: [],
+      onboardingVersionsDegraded: false,
+      backendVersions: [],
+      backendVersionsDegraded: false,
+    },
+    over
+  );
+}
+
+test("evaluateHealthData: sevenDayDegraded disables paste+afm+transcription together and makes the blackout check uncheckable", () => {
+  const r = evaluateHealthData(healthData({ sevenDayDegraded: true }));
+  assert.equal(r.paste.state, "temporarily-unavailable");
+  assert.equal(r.afm.state, "temporarily-unavailable");
+  assert.equal(r.transcription.state, "temporarily-unavailable");
+  assert.equal(r.backendAttributionBlackoutUnavailable, true);
+  assert.equal(r.backendAttributionBlackout, false, "must never fabricate a blackout when it can't be checked");
+  // Unrelated metrics stay real.
+  assert.equal(r.latency.state, "evaluated-ok");
+});
+
+test("evaluateHealthData: onboardingDegraded disables both onboarding checks together", () => {
+  const r = evaluateHealthData(healthData({ onboardingDegraded: true }));
+  assert.equal(r.onboardingAbandon.state, "temporarily-unavailable");
+  assert.equal(r.onboardingBlackout.state, "temporarily-unavailable");
+});
+
+test("evaluateHealthData: backendTranscriptionDegraded can never fabricate a blackout reading", () => {
+  const r = evaluateHealthData(healthData({ backendTranscriptionDegraded: true }));
+  assert.deepEqual(r.backendTranscription, []);
+  assert.equal(r.backendTranscriptionUnavailable, true);
+  assert.equal(r.backendAttributionBlackoutUnavailable, true);
+  assert.equal(r.backendAttributionBlackout, false);
+});
+
+test("evaluateHealthData: latencyDegraded is independent of every other metric", () => {
+  const r = evaluateHealthData(healthData({ latencyDegraded: true }));
+  assert.equal(r.latency.state, "temporarily-unavailable");
+  assert.equal(r.paste.state, "evaluated-ok");
+  assert.equal(r.onboardingAbandon.state, "evaluated-ok");
+});
+
+test("evaluateHealthData: a clean run carries the version arrays through untouched", () => {
+  const data = healthData({
+    versions: [{ ver: "v2.1.4", paste_fb: 5 }],
+    onboardingVersions: [{ ver: "v2.1.4", onboarding_abandon: 3 }],
+    backendVersions: [{ ver: "v2.1.4", backend: "parakeet", backend_trans_fail: 1 }],
+  });
+  const r = evaluateHealthData(data);
+  assert.deepEqual(r.versions, data.versions);
+  assert.deepEqual(r.onboardingVersions, data.onboardingVersions);
+  assert.deepEqual(r.backendVersions, data.backendVersions);
+});
+
+// ---- runHealth (issue #1589): plain failure notice, no claimed cause, no raw error text on Discord ----
+test("runHealth: an exhausted retryable failure posts a plain notice with no technical detail, logs the detail instead, and rethrows", async () => {
+  const mock = mockPostHog({ failQuery: "volume", failWith: 504 });
+  const realConsoleLog = console.log;
+  const logged = [];
+  console.log = (...args) => logged.push(args.join(" "));
+  try {
+    await assert.rejects(
+      () =>
+        runHealth(
+          { ...TEST_ENV, DISCORD_WEBHOOK_URL: "https://discord.example/webhook" },
+          { hogqlOpts: { sleepFn: async () => {} } }
+        ),
+      /PostHog query volume HTTP 504/
+    );
+    assert.equal(mock.discordPosts.length, 1);
+    assert.equal(mock.discordPosts[0], "EnviousWispr health check didn't run today.");
+    assert.ok(
+      !mock.discordPosts[0].includes("didn't respond in time"),
+      "must not claim a specific cause for a failure class that also covers auth/malformed-response/overflow errors"
+    );
+    // Codex diff review finding: raw HTTP/query-name jargon must never reach
+    // the founder-facing Discord post - it belongs only in the Cloudflare log.
+    assert.ok(
+      !/PostHog|HTTP \d/.test(mock.discordPosts[0]),
+      "must not expose raw PostHog error text on Discord"
+    );
+    assert.ok(
+      logged.some((line) => line.includes("PostHog query volume HTTP 504")),
+      "the technical detail must still be logged for debugging, just not posted to Discord"
+    );
+  } finally {
+    console.log = realConsoleLog;
+    mock.restore();
+  }
+});
+
+test("runHealth: a clean run calls evaluateHealthData exactly once and posts a real heartbeat", async () => {
+  const mock = mockPostHog({ failQuery: null });
+  let calls = 0;
+  const spy = (data) => {
+    calls += 1;
+    return evaluateHealthData(data);
+  };
+  try {
+    const message = await runHealth(
+      { ...TEST_ENV, DISCORD_WEBHOOK_URL: "https://discord.example/webhook" },
+      { evaluateHealthData: spy, hogqlOpts: { sleepFn: async () => {} } }
+    );
+    assert.equal(calls, 1);
+    assert.match(message, /EnviousWispr health check for yesterday/);
+  } finally {
+    mock.restore();
+  }
 });

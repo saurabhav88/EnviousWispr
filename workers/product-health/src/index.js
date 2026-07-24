@@ -4,13 +4,25 @@
  * Runs once a day (cron) plus a manual HTTP trigger. Reads existing product
  * events from PostHog over COMPLETED time windows, compares each metric to a
  * baseline-calibrated threshold with low-volume guards, and posts to Discord:
- *   - a one-line heartbeat EVERY run (carries the day's dictation volume +
- *     which metrics evaluated / were skipped / are dark / failed), so a silent
- *     worker death or a telemetry blackout is itself visible;
+ *   - a heartbeat block EVERY run (carries the day's dictation volume +
+ *     which metrics evaluated / were skipped / are dark / temporarily
+ *     unavailable), so a silent worker death or a telemetry blackout is
+ *     itself visible;
  *   - a louder alert block when a metric crosses.
+ *
+ * Message text is plain English (issue #1589) - no internal field names or
+ * abbreviations in anything posted to Discord.
+ *
+ * Reliability (issue #1589, porting workers/daily-report's already-shipped
+ * #1588/#1655/#1716/#1720 fixes): PostHog allows only 3 concurrent queries
+ * per project, so queries run in capped waves with retry on 429/502/503/504;
+ * the dev-id exclusion is resolved ONCE per run, not once per query; a
+ * non-essential query's exhausted retry degrades only the metrics it feeds
+ * (see evaluateHealthData) instead of discarding the whole run.
  *
  * Advisory only. Gates nothing. Plan + thresholds:
  *   docs/feature-requests/issue-1092-2026-06-20-daily-product-health-check.md
+ *   docs/feature-requests/issue-1589-2026-07-24-product-health-reliability-and-plain-english.md
  *
  * Privacy: output and logs are counts / rates / version-tags only. Never an
  * error_code string, never a raw PostHog row, never a per-user id.
@@ -60,51 +72,225 @@ export default {
 
 // ----- PostHog -------------------------------------------------------------
 
-// Per-distinct_id -dev exclusion implements analytics-operations.md
-// RULE: founder-machine-tell-in-distinct-id (a dev build anywhere in an id's
-// history marks the whole id as dogfood). Bare field names do not resolve in
-// HogQL, so every property reference is prefixed `properties.`.
-const PROD = `properties.environment = 'production'
-  AND distinct_id NOT IN (
-    SELECT distinct_id FROM events
-    WHERE properties.app_version LIKE '%-dev%' )`;
+// Environment predicate alone; combined with the resolved dev-id exclusion by
+// productionClauseFor() below. Bare field names do not resolve in HogQL, so
+// every property reference is prefixed `properties.`.
+const ENV_ONLY = "properties.environment = 'production'";
 
-async function hogql(env, sql) {
-  const res = await fetch(`${POSTHOG_HOST}/api/projects/${env.POSTHOG_PROJECT_ID}/query/`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.POSTHOG_PERSONAL_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query: { kind: "HogQLQuery", query: sql }, refresh: "blocking" }),
-  });
-  if (!res.ok) {
-    // Loud: do not let a query failure look like healthy silence.
-    throw new Error(`PostHog query HTTP ${res.status}`);
+/** Converts a resolved dev-tainted distinct_id list (from resolveDevIds
+ * below) into the reusable production-filter predicate: environment =
+ * production, AND (only if any dev ids exist) NOT IN that literal list.
+ * Resolving the list ONCE per run and threading the result through every
+ * query that needs it replaces the old per-query live dev-exclusion
+ * subquery, which independently re-scanned the same whole-history data in
+ * 8 separate top-level queries (issue #1589, porting workers/daily-report's
+ * #1720 fix - RULE: founder-machine-tell-in-distinct-id: a dev build
+ * anywhere in an id's history marks the whole id as dogfood). An empty list
+ * is a legitimate state and must not produce invalid `NOT IN ()` SQL. */
+export function productionClauseFor(devIds) {
+  if (devIds.length === 0) return ENV_ONLY;
+  return `${ENV_ONLY}
+    AND distinct_id NOT IN (${sqlIdList(devIds)})`;
+}
+
+/** Escapes a distinct_id for a HogQL string literal (single-quote doubling -
+ * distinct_ids are opaque PostHog-generated ids, never user-authored text). */
+function sqlIdList(ids) {
+  return ids.map((id) => `'${String(id).replace(/'/g, "''")}'`).join(", ");
+}
+
+// Per-worker distinct_id list bound - defense-in-depth ceiling, never the
+// primary correctness mechanism (see resolveDevIds below). 5000 is far above
+// any realistic single-day population.
+const PER_USER_LIST_LIMIT = 5000;
+
+/** Resolves the whole-history dev-tainted distinct_id list ONCE per run.
+ * Queried at PER_USER_LIST_LIMIT+1 to detect overflow: if the true count
+ * exceeds the ceiling, this throws rather than silently building a
+ * truncated exclusion list that would under-exclude dev accounts from
+ * production totals - fail loud, not warn-and-continue. This is itself a
+ * fail-loud query: an unresolved dev-id list can never safely be treated as
+ * "no dev accounts," so callers must never wrap it in querySection's fail-
+ * soft catch. */
+export async function resolveDevIds(env, hogqlOpts = {}) {
+  const result = await hogql(
+    env,
+    `SELECT DISTINCT distinct_id FROM events
+     WHERE properties.app_version LIKE '%-dev%'
+     LIMIT ${PER_USER_LIST_LIMIT + 1}`,
+    "dev_ids",
+    hogqlOpts
+  );
+  const devIds = (result.results || []).map((row) => row[0]);
+  if (devIds.length > PER_USER_LIST_LIMIT) {
+    throw new Error(`dev-id completeness check failed: more than ${PER_USER_LIST_LIMIT} ids`);
   }
-  const json = await res.json();
-  if (!json.results) throw new Error("PostHog query returned no results array");
-  return json; // { results: [...rows], columns: [...] }
+  return devIds;
+}
+
+// PostHog's project-level rate limit allows only 3 concurrent queries, up to
+// 10s execution time per query, and queues/cancels/times out (HTTP
+// 502/503/504) anything beyond that; 429 is the documented, distinct
+// concurrency-limit-reached status (posthog.com/docs/api/queries,
+// posthog.com/docs/endpoints/troubleshooting). `runLimited` below caps this
+// worker's own concurrency under that ceiling; this retry is the second,
+// complementary layer for genuine transient contention (e.g. the project is
+// shared with EnviousStaging - analytics-operations.md FACT:
+// posthog-project-is-shared-with-enviousstaging). Retries up to twice (3
+// attempts total), only on this status class, only ever before any Discord
+// post happens.
+const RETRYABLE_POSTHOG_STATUSES = new Set([429, 502, 503, 504]);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Randomized backoff windows for retry attempts 2 and 3 (ported from
+// workers/daily-report's #1588/#1720 shipped precedent).
+const RETRY_DELAY_RANGES_MS = [
+  [12_000, 18_000],
+  [30_000, 45_000],
+];
+
+function retryDelayMs(range, randomFn) {
+  const [min, max] = range;
+  return Math.floor(min + randomFn() * (max - min + 1));
+}
+
+/** Carries the query name and HTTP status alongside the message, so a caller
+ * can distinguish an exhausted transient failure (which a degradable query
+ * is allowed to degrade on) from an auth failure, a malformed query, or a
+ * bad response shape (which must stay loud). */
+export class PostHogQueryError extends Error {
+  constructor(queryName, status) {
+    super(`PostHog query ${queryName} HTTP ${status}`);
+    this.name = "PostHogQueryError";
+    this.queryName = queryName;
+    this.status = status;
+  }
+}
+
+export async function hogql(
+  env,
+  sql,
+  queryName,
+  { fetchFn = fetch, sleepFn = sleep, randomFn = Math.random } = {}
+) {
+  const url = `${POSTHOG_HOST}/api/projects/${env.POSTHOG_PROJECT_ID}/query/`;
+  const maxAttempts = RETRY_DELAY_RANGES_MS.length + 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const res = await fetchFn(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.POSTHOG_PERSONAL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: { kind: "HogQLQuery", query: sql },
+        refresh: "blocking",
+        name: `product_health_${queryName}`,
+      }),
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (!json.results) throw new Error(`PostHog query ${queryName} returned no results array`);
+      return json; // { results: [...rows], columns: [...] }
+    }
+
+    const status = res.status;
+    if (res.body) {
+      try {
+        await res.body.cancel();
+      } catch (_) {
+        // Best effort: the status remains the authoritative failure, and a
+        // failed cancel must not mask it. Draining the failed body matters
+        // because a retry immediately opens a new outbound request on the
+        // same wave - an uncancelled body can hold its Cloudflare
+        // subrequest connection open.
+      }
+    }
+
+    if (attempt === maxAttempts || !RETRYABLE_POSTHOG_STATUSES.has(status)) {
+      throw new PostHogQueryError(queryName, status);
+    }
+    await sleepFn(retryDelayMs(RETRY_DELAY_RANGES_MS[attempt - 1], randomFn));
+  }
+}
+
+// Runs `tasks` (zero-arg async thunks) in fixed waves of at most `limit`
+// concurrently, preserving input order in the returned results. A failed
+// wave stops later waves from starting, matching `Promise.all`'s existing
+// all-or-nothing contract for the whole batch.
+export async function runLimited(tasks, limit) {
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new TypeError("limit must be a positive integer");
+  }
+  const results = [];
+  for (let start = 0; start < tasks.length; start += limit) {
+    const wave = tasks.slice(start, start + limit);
+    results.push(...(await Promise.all(wave.map((task) => task()))));
+  }
+  return results;
+}
+
+/** Runs one hogql() call and reports whether it degraded instead of
+ * throwing. Only an EXHAUSTED retryable status (RETRYABLE_POSTHOG_STATUSES,
+ * after hogql's own retries) degrades; anything else - auth, bad SQL, a
+ * malformed response, a programming error - still throws. A silently
+ * "approximate" report that hides a real defect is worse than no report. */
+async function querySection(env, sql, queryName, hogqlOpts) {
+  try {
+    return { response: await hogql(env, sql, queryName, hogqlOpts), degraded: false };
+  } catch (err) {
+    const isExpectedTransientFailure =
+      err instanceof PostHogQueryError &&
+      err.queryName === queryName &&
+      RETRYABLE_POSTHOG_STATUSES.has(err.status);
+    if (!isExpectedTransientFailure) throw err;
+    console.log(`product-health ${queryName} degraded after retries: HTTP ${err.status}`);
+    return { response: null, degraded: true };
+  }
 }
 
 // Completed-window helpers: every window ends at the start of today (UTC), so
 // the partial current day (and late-flushing offline laptops) is excluded.
 const DAY = "toStartOfDay(now())"; // ClickHouse/PostHog default timezone is UTC
 
-export async function fetchHealth(env) {
+// `hogqlOpts` forwards the injection bag `hogql` already accepts, so tests can
+// drive the retry path without real backoff delays. Production passes nothing.
+export async function fetchHealth(env, hogqlOpts = {}) {
+  // The expected T-1 date per PostHog's own clock. Used to detect a zero-event
+  // T-1: the GROUP BY day query emits NO row for a day with zero events, so we
+  // must look T-1 up by date rather than trust the newest row.
+  const refSql = `SELECT toString(toDate(toStartOfDay(now()) - INTERVAL 1 DAY)) AS t1`;
+
+  // refSql and the dev-id resolution both stay fail-loud and run first: every
+  // other query below depends on the T-1 date or the production filter (or
+  // both), so there is nothing left to meaningfully degrade around if either
+  // of these fails (issue #1589 §2.5 point 4).
+  const [ref, devIds] = await Promise.all([
+    hogql(env, refSql, "ref", hogqlOpts),
+    resolveDevIds(env, hogqlOpts),
+  ]);
+  const prod = productionClauseFor(devIds);
+
   // 1) Per-day latency for the last 14 complete days (covers the 2-qualifying-day
-  //    sustained check AND the 14d drift median).
+  //    sustained check AND the 14d drift median). Degradable: feeds only the
+  //    latency alert and the heartbeat's response-speed line.
   const latencySql = `
     SELECT toDate(timestamp) AS day, count() AS n,
            round(quantile(0.5)(toFloat(properties.e2e_seconds)), 3) AS p50,
            round(quantile(0.95)(toFloat(properties.e2e_seconds)), 3) AS p95
     FROM events
-    WHERE event = 'dictation.completed' AND ${PROD}
+    WHERE event = 'dictation.completed' AND ${prod}
       AND properties.e2e_seconds IS NOT NULL
       AND timestamp >= ${DAY} - INTERVAL 14 DAY AND timestamp < ${DAY}
     GROUP BY day ORDER BY day DESC`;
 
   // 2) The four 7d rate metrics in one pass (previous 7 complete days).
+  //    Degradable, but degrades paste + AFM + transcription TOGETHER (they
+  //    share this one query), and also disables the backend-attribution-
+  //    blackout check, which needs dictations_7d as its own volume proof
+  //    (issue #1589 §2.5 point 4 - this query is NOT "one query, one metric").
   const sevenDaySql = `
     SELECT
       countIf(event = 'paste.completed') AS paste_total,
@@ -117,23 +303,28 @@ export async function fetchHealth(env) {
       countIf(event = 'pipeline.failed' AND properties.stage = 'transcription') AS trans_fails,
       countIf(event = 'dictation.completed') AS dictations_7d
     FROM events
-    WHERE ${PROD}
+    WHERE ${prod}
       AND event IN ('paste.completed', 'llm.polish_completed', 'pipeline.failed', 'dictation.completed')
       AND timestamp >= ${DAY} - INTERVAL 7 DAY AND timestamp < ${DAY}`;
 
   // 3) Per-day volume + co-firing counts for the last 8 complete days
   //    (T-1 vs the 7 days before it; co-firing blackout = schema drift).
+  //    Fail-loud: this owns the heartbeat's headline dictation count and the
+  //    zero/drift integrity alerts - a heartbeat with no volume number is not
+  //    a heartbeat.
   const volumeSql = `
     SELECT toDate(timestamp) AS day,
            countIf(event = 'dictation.completed') AS dictations,
            countIf(event = 'paste.completed') AS pastes,
            countIf(event = 'asr.completed') AS asr
     FROM events
-    WHERE ${PROD} AND event IN ('dictation.completed', 'paste.completed', 'asr.completed')
+    WHERE ${prod} AND event IN ('dictation.completed', 'paste.completed', 'asr.completed')
       AND timestamp >= ${DAY} - INTERVAL 8 DAY AND timestamp < ${DAY}
     GROUP BY day ORDER BY day DESC`;
 
   // 4) Top app-versions for the crossing-prone metrics (one pass, 7d).
+  //    Degradable, enrichment-only: never suppresses the paste/AFM/
+  //    transcription alerts themselves, only their "top versions" detail.
   const versionSql = `
     SELECT properties.app_version AS ver,
            countIf(event = 'paste.completed' AND properties.tier LIKE 'clipboard_only%') AS paste_fb,
@@ -141,15 +332,10 @@ export async function fetchHealth(env) {
            countIf(event = 'llm.polish_completed'
                    AND properties.fallback_reason IN ('guard_discard', 'validator_discard')) AS afm_disc
     FROM events
-    WHERE ${PROD}
+    WHERE ${prod}
       AND event IN ('paste.completed', 'pipeline.failed', 'llm.polish_completed')
       AND timestamp >= ${DAY} - INTERVAL 7 DAY AND timestamp < ${DAY}
     GROUP BY ver ORDER BY (paste_fb + trans_fail + afm_disc) DESC LIMIT 5`;
-
-  // The expected T-1 date per PostHog's own clock. Used to detect a zero-event
-  // T-1: the GROUP BY day query emits NO row for a day with zero events, so we
-  // must look T-1 up by date rather than trust the newest row.
-  const refSql = `SELECT toString(toDate(toStartOfDay(now()) - INTERVAL 1 DAY)) AS t1`;
 
   // 5) Phase 10 (#1179): per-day onboarding funnel, 21 complete days (covers
   //    the rolling baseline AND the fast path AND the blackout's 9-day need).
@@ -186,6 +372,8 @@ export async function fetchHealth(env) {
   // with `abandoned === 0`, which is healthy, correctly-tagged data, not
   // drift, and the old raw-vs-filtered inference could not tell the two
   // apart.
+  // 5) Degradable, but degrades BOTH onboarding evaluators together - they
+  //    share this one query's rows (issue #1589 §2.5 point 4).
   const onboardingSql = `
     SELECT toDate(timestamp) AS day,
            countIf(event = 'onboarding.started') AS started,
@@ -194,7 +382,7 @@ export async function fetchHealth(env) {
            countIf(event = 'onboarding.abandoned') AS abandonedRaw,
            countIf(event = 'onboarding.abandoned' AND (properties.screen IS NULL OR properties.screen = '')) AS abandonedMissingScreen
     FROM events
-    WHERE ${PROD}
+    WHERE ${prod}
       AND event IN ('onboarding.started', 'onboarding.completed', 'onboarding.abandoned')
       AND timestamp >= ${DAY} - INTERVAL 21 DAY AND timestamp < ${DAY}
     GROUP BY day ORDER BY day DESC`;
@@ -203,26 +391,31 @@ export async function fetchHealth(env) {
   //    complete days. Backend enumeration comes from EITHER event's backend
   //    tag (dictation.completed's asr_backend, pipeline.failed's backend) —
   //    canonical contract B2: an active backend with zero matching failures
-  //    still gets a row (fails: 0), never silently drops.
+  //    still gets a row (fails: 0), never silently drops. Degradable, but
+  //    degrades the per-backend evaluation AND backend-attribution-blackout
+  //    together - a degraded query must read as "we couldn't check this,"
+  //    never get reinterpreted as "zero backends found = blackout" (issue
+  //    #1589 §2.5 point 4).
   const backendTranscriptionSql = `
     SELECT toDate(timestamp) AS day,
            coalesce(properties.asr_backend, properties.backend) AS backend,
            countIf(event = 'dictation.completed') AS dictations,
            countIf(event = 'pipeline.failed' AND properties.stage = 'transcription') AS fails
     FROM events
-    WHERE ${PROD}
+    WHERE ${prod}
       AND ((event = 'dictation.completed')
         OR (event = 'pipeline.failed' AND properties.stage = 'transcription'))
       AND timestamp >= ${DAY} - INTERVAL 14 DAY AND timestamp < ${DAY}
     GROUP BY day, backend ORDER BY day DESC`;
 
   // 7) Phase 10 (#1179) per-release segmentation, matching each metric's own
-  //    window (§3 Design "Per-release segmentation").
+  //    window (§3 Design "Per-release segmentation"). Degradable, enrichment-
+  //    only: never suppresses the onboarding-abandon rolling alert itself.
   const onboardingVersionSql = `
     SELECT properties.app_version AS ver,
            countIf(event = 'onboarding.abandoned' AND properties.screen != 'welcome') AS onboarding_abandon
     FROM events
-    WHERE ${PROD} AND event = 'onboarding.abandoned'
+    WHERE ${prod} AND event = 'onboarding.abandoned'
       AND timestamp >= ${DAY} - INTERVAL 21 DAY AND timestamp < ${DAY}
     GROUP BY ver ORDER BY onboarding_abandon DESC LIMIT 5`;
 
@@ -232,39 +425,58 @@ export async function fetchHealth(env) {
   // only after this query returns (Codex review finding). Two backends today
   // (Parakeet, WhisperKit) with `limit: 3` displayed each means 40 comfortably
   // covers both without a per-backend-ranked subquery this codebase has no
-  // other precedent for.
+  // other precedent for. Degradable, enrichment-only.
   const backendVersionSql = `
     SELECT properties.app_version AS ver,
            properties.backend AS backend,
            countIf(event = 'pipeline.failed' AND properties.stage = 'transcription') AS backend_trans_fail
     FROM events
-    WHERE ${PROD} AND event = 'pipeline.failed' AND properties.stage = 'transcription'
+    WHERE ${prod} AND event = 'pipeline.failed' AND properties.stage = 'transcription'
       AND timestamp >= ${DAY} - INTERVAL 14 DAY AND timestamp < ${DAY}
     GROUP BY ver, backend ORDER BY backend_trans_fail DESC LIMIT 40`;
 
-  const [latency, seven, volume, versions, ref, onboarding, backendTranscription, onboardingVersions, backendVersions] =
-    await Promise.all([
-      hogql(env, latencySql),
-      hogql(env, sevenDaySql),
-      hogql(env, volumeSql),
-      hogql(env, versionSql),
-      hogql(env, refSql),
-      hogql(env, onboardingSql),
-      hogql(env, backendTranscriptionSql),
-      hogql(env, onboardingVersionSql),
-      hogql(env, backendVersionSql),
-    ]);
+  // PostHog allows only 3 concurrent queries per project (posthog-project-
+  // concurrency-limit); `runLimited(..., 2)` runs these 8 in 4 fixed waves of
+  // 2, leaving one slot of headroom for the shared project's other traffic
+  // (EnviousStaging) rather than firing all 8 at once. `volumeSql` is the
+  // sole fail-loud member of this batch (mirrors daily-report's `totals`);
+  // the other 7 go through `querySection` and degrade to "temporarily
+  // unavailable" instead of discarding the whole run on an exhausted
+  // transient failure.
+  const [latencyResult, sevenDayResult, volume, versionsResult, onboardingResult, backendTranscriptionResult, onboardingVersionsResult, backendVersionsResult] =
+    await runLimited(
+      [
+        () => querySection(env, latencySql, "latency", hogqlOpts),
+        () => querySection(env, sevenDaySql, "seven_day", hogqlOpts),
+        () => hogql(env, volumeSql, "volume", hogqlOpts),
+        () => querySection(env, versionSql, "versions", hogqlOpts),
+        () => querySection(env, onboardingSql, "onboarding", hogqlOpts),
+        () => querySection(env, backendTranscriptionSql, "backend_transcription", hogqlOpts),
+        () => querySection(env, onboardingVersionSql, "onboarding_versions", hogqlOpts),
+        () => querySection(env, backendVersionSql, "backend_versions", hogqlOpts),
+      ],
+      2
+    );
 
   return {
-    latencyDays: rowsToObjects(latency),
-    seven: rowsToObjects(seven)[0] || {},
+    latencyDays: latencyResult.degraded ? [] : rowsToObjects(latencyResult.response),
+    latencyDegraded: latencyResult.degraded,
+    seven: sevenDayResult.degraded ? {} : rowsToObjects(sevenDayResult.response)[0] || {},
+    sevenDayDegraded: sevenDayResult.degraded,
     volumeDays: rowsToObjects(volume),
-    versions: rowsToObjects(versions),
+    versions: versionsResult.degraded ? [] : rowsToObjects(versionsResult.response),
+    versionsDegraded: versionsResult.degraded,
     t1ref: (rowsToObjects(ref)[0] || {}).t1,
-    onboardingDays: rowsToObjects(onboarding),
-    backendTranscriptionDays: groupByBackend(rowsToObjects(backendTranscription)),
-    onboardingVersions: rowsToObjects(onboardingVersions),
-    backendVersions: rowsToObjects(backendVersions),
+    onboardingDays: onboardingResult.degraded ? [] : rowsToObjects(onboardingResult.response),
+    onboardingDegraded: onboardingResult.degraded,
+    backendTranscriptionDays: backendTranscriptionResult.degraded
+      ? {}
+      : groupByBackend(rowsToObjects(backendTranscriptionResult.response)),
+    backendTranscriptionDegraded: backendTranscriptionResult.degraded,
+    onboardingVersions: onboardingVersionsResult.degraded ? [] : rowsToObjects(onboardingVersionsResult.response),
+    onboardingVersionsDegraded: onboardingVersionsResult.degraded,
+    backendVersions: backendVersionsResult.degraded ? [] : rowsToObjects(backendVersionsResult.response),
+    backendVersionsDegraded: backendVersionsResult.degraded,
   };
 }
 
@@ -503,6 +715,56 @@ export function evaluateOnboardingBlackout(rows, expectedT1, TH = THRESHOLDS.onb
     entryPointDown, terminalDrift, recentStarted, recentTerminals, baselineAvg };
 }
 
+/** Issue #1589: the SOLE owner of turning `fetchHealth()`'s output (real
+ * rows + per-query degrade flags) into the per-metric `evaluate*()` results
+ * `buildMessage()` consumes. Calls each `evaluate*()` only when its backing
+ * query did NOT degrade; on a degraded query, substitutes
+ * `{ state: "temporarily-unavailable" }` for every metric that query feeds,
+ * per the dependency table in the plan (§2.5 point 4) - `sevenDayDegraded`
+ * alone yields THREE unavailable metrics (paste, afm, transcription) plus an
+ * uncheckable `backendAttributionBlackout`; `onboardingDegraded` yields two
+ * (onboardingAbandon, onboardingBlackout). Both `runHealth()` (production)
+ * and `live-query-smoke.mjs` call this ONE function, so they cannot drift
+ * apart the way they previously did (the smoke script used to omit the
+ * `backendAttributionBlackout` computation entirely). */
+export function evaluateHealthData(data) {
+  const unavailable = () => ({ state: "temporarily-unavailable" });
+
+  const backendTranscription = data.backendTranscriptionDegraded
+    ? []
+    : evaluateBackendTranscription(data.backendTranscriptionDays, data.t1ref);
+
+  const backendAttributionBlackoutUnavailable =
+    data.backendTranscriptionDegraded || data.sevenDayDegraded;
+
+  return {
+    latency: data.latencyDegraded ? unavailable() : evaluateLatency(data.latencyDays),
+    paste: data.sevenDayDegraded ? unavailable() : evaluatePaste(data.seven),
+    afm: data.sevenDayDegraded ? unavailable() : evaluateAFM(data.seven),
+    transcription: data.sevenDayDegraded ? unavailable() : evaluateTranscription(data.seven),
+    volume: evaluateVolume(data.volumeDays, data.t1ref),
+    onboardingAbandon: data.onboardingDegraded
+      ? unavailable()
+      : evaluateOnboardingAbandon(data.onboardingDays, data.t1ref),
+    onboardingBlackout: data.onboardingDegraded
+      ? unavailable()
+      : evaluateOnboardingBlackout(data.onboardingDays, data.t1ref),
+    backendTranscription,
+    backendTranscriptionUnavailable: data.backendTranscriptionDegraded,
+    backendAttributionBlackout:
+      !backendAttributionBlackoutUnavailable &&
+      backendTranscription.length === 0 &&
+      num(data.seven.dictations_7d) >= THRESHOLDS.transcription.minDictations,
+    backendAttributionBlackoutUnavailable,
+    versions: data.versions,
+    onboardingVersions: data.onboardingVersions,
+    backendVersions: data.backendVersions,
+    versionsDegraded: data.versionsDegraded,
+    onboardingVersionsDegraded: data.onboardingVersionsDegraded,
+    backendVersionsDegraded: data.backendVersionsDegraded,
+  };
+}
+
 function num(v) {
   const n = typeof v === "string" ? parseFloat(v) : v;
   return Number.isFinite(n) ? n : 0;
@@ -518,69 +780,88 @@ function topVersionsFor(versions, key, { backend = null, limit = 3 } = {}) {
     .filter((row) => num(row[key]) > 0)
     .sort((a, b) => num(b[key]) - num(a[key]))
     .slice(0, limit)
-    .map((row) => `${row.ver || "unknown"}: ${num(row[key])}`)
+    .map((row) => `${row.ver || "unknown"} (${num(row[key])})`)
     .join(", ");
+}
+
+// Issue #1589: naive title-casing turns `whisperKit` into "Whisperkit."
+// `ASRBackendType`'s Swift rawValue is `whisperKit` camelCase
+// (Sources/EnviousWisprCore/ASRResult.swift) - the lowercase alias is
+// defensive in case an older/renamed tag ever reaches this worker.
+const BACKEND_LABELS = { parakeet: "Parakeet", whisperKit: "WhisperKit", whisperkit: "WhisperKit" };
+function backendLabel(backend) {
+  return BACKEND_LABELS[backend] || (backend ? backend.charAt(0).toUpperCase() + backend.slice(1) : "unknown");
+}
+
+// Issue #1589: the `{ topVersions }` clause. Enrichment-only degrades must
+// stay visible rather than silently vanish, so a degraded backing version
+// query renders a plain "couldn't break this down" sentence instead of
+// omitting the clause. `fastCrossing` alerts never get version attribution
+// at all (a 2-day window can't be honestly attributed to a 21/14-day version
+// query), so callers pass `degraded = false` and `entries = []` for those.
+function topVersionsClause(versions, key, degraded, opts) {
+  if (degraded) return " We couldn't break this down by app version today.";
+  const tv = topVersionsFor(versions, key, opts);
+  return tv ? ` App versions with the most affected events: ${tv}.` : "";
 }
 
 // ----- Message ------------------------------------------------------------
 
-export function buildMessage(r, versions = [], onboardingVersions = [], backendVersions = []) {
+// Issue #1589: plain-English rewrite. `r` is evaluateHealthData()'s return
+// object - one argument, carrying every evaluate*() result plus the version
+// row arrays and every degrade flag `buildMessage` needs.
+export function buildMessage(r) {
   const alerts = [];
   const evaluated = [];
   const skipped = [];
   const dark = [];
+  const unavailable = [];
 
-  const note = (name, ev) => {
+  const note = (label, ev) => {
     if (ev.state === "alerting") return; // handled as an alert
-    if (ev.state === "evaluated-ok") evaluated.push(name);
-    else if (ev.state === "dark-awaiting-release") dark.push(name);
-    else skipped.push(name);
+    if (ev.state === "evaluated-ok") evaluated.push(label);
+    else if (ev.state === "dark-awaiting-release") dark.push(label);
+    else if (ev.state === "temporarily-unavailable") unavailable.push(label);
+    else skipped.push(label);
   };
 
-  // Latency
+  // Response speed (latency)
   if (r.latency.state === "alerting") {
     const d = r.latency.latest;
     alerts.push(
-      `latency high: p50 ${d.p50}s / p95 ${d.p95}s, ${r.latency.last2.length} qualifying days, ` +
-      `thresholds p50>${THRESHOLDS.latency.p50}s or p95>${THRESHOLDS.latency.p95}s (baseline p50 ~1.5s).`
+      `Dictation is taking longer than usual to finish. On the latest day with enough data, the typical time was ${d.p50}s and the slowest 5% took at least ${d.p95}s. This crossed the alert line on each of the latest ${r.latency.last2.length} days with enough data. We alert above ${THRESHOLDS.latency.p50}s typical or ${THRESHOLDS.latency.p95}s for the slowest 5%; normal typical time is about 1.5s.`
     );
   }
-  note("latency", r.latency);
+  note("response speed", r.latency);
 
-  // Paste
+  // Auto-paste reliability
   if (r.paste.state === "alerting") {
-    const tv = topVersionsFor(versions, "paste_fb");
+    const tv = topVersionsClause(r.versions, "paste_fb", r.versionsDegraded);
     alerts.push(
-      `paste fallback ${pct(r.paste.share)} (${r.paste.fb}/${r.paste.total}, prev 7d), ` +
-      `threshold >${pct(THRESHOLDS.paste.share)}, baseline ~1.2%. ` +
-      `Split: ax_denied ${r.paste.ax}, direct-paste-failed ${r.paste.cb}.` +
-      (tv ? ` Top versions ${tv}.` : "")
+      `Auto-paste is failing more than usual: ${pct(r.paste.share)} of pastes over the last week fell back to copying to the clipboard instead of pasting directly (${r.paste.fb} of ${r.paste.total} pastes). ${r.paste.ax} were caused by a missing permission; ${r.paste.cb} failed another way. Normal is about 1.2%; we alert above ${pct(THRESHOLDS.paste.share)}.${tv}`
     );
   }
-  note("paste", r.paste);
+  note("auto-paste reliability", r.paste);
 
-  // AFM discard
+  // Apple on-device polishing quality (AFM)
   if (r.afm.state === "alerting") {
-    const tv = topVersionsFor(versions, "afm_disc");
+    const tv = topVersionsClause(r.versions, "afm_disc", r.versionsDegraded);
     alerts.push(
-      `AFM genuine discard ${pct(r.afm.share)} (${r.afm.disc}/${r.afm.frRows} fr-rows, prev 7d), ` +
-      `threshold >${pct(THRESHOLDS.afm.share)}, baseline ~10%.` + (tv ? ` Top versions ${tv}.` : "")
+      `Among the times Apple's on-device polishing used the raw transcript, it did so because it rejected its own rewritten text more often than usual: ${pct(r.afm.share)} over the last week (${r.afm.disc} of ${r.afm.frRows} raw-text fallbacks). Normal is about 10%; we alert above ${pct(THRESHOLDS.afm.share)}.${tv}`
     );
   }
-  note("AFM-discard", r.afm);
+  note("Apple on-device polishing quality", r.afm);
 
-  // Transcription
+  // Speech-to-text reliability (aggregate)
   if (r.transcription.state === "alerting") {
-    const tv = topVersionsFor(versions, "trans_fail");
+    const tv = topVersionsClause(r.versions, "trans_fail", r.versionsDegraded);
     alerts.push(
-      `transcription failure family ${pct(r.transcription.share)} ` +
-      `(${r.transcription.fails}/${r.transcription.denom}, prev 7d, includes legitimate no-speech), ` +
-      `threshold >${pct(THRESHOLDS.transcription.share)}, baseline ~0.9%.` + (tv ? ` Top versions ${tv}.` : "")
+      `Speech-to-text failed to produce any text more than usual: ${pct(r.transcription.share)} of attempts over the last week (${r.transcription.fails} of ${r.transcription.denom}; this includes attempts where the person genuinely said nothing). Normal is about 0.9%; we alert above ${pct(THRESHOLDS.transcription.share)}.${tv}`
     );
   }
-  note("transcription", r.transcription);
+  note("speech-to-text reliability", r.transcription);
 
-  // Onboarding abandon (Phase 10, #1179)
+  // Onboarding completion (Phase 10, #1179)
   if (r.onboardingAbandon) {
     const ev = r.onboardingAbandon;
     if (ev.state === "alerting" && ev.attributionDrift) {
@@ -589,184 +870,188 @@ export function buildMessage(r, versions = [], onboardingVersions = [], backendV
       // count directly (Codex r4 review finding), not the raw total, so the
       // alert cannot fire on a legitimate all-welcome concentration.
       alerts.push(
-        `onboarding abandon attribution lost: ${ev.totalAbandonedMissingScreen} of ` +
-        `${ev.totalAbandonedRaw} onboarding.abandoned events over the prev 21d had no usable ` +
-        `properties.screen (properties.screen may have stopped emitting or been renamed).`
+        `We lost the ability to tell where setup was abandoned: ${ev.totalAbandonedMissingScreen} of ${ev.totalAbandonedRaw} abandon events over the last three weeks are missing the tag for which screen they were on. Onboarding tracking may be broken.`
+      );
+    } else if (ev.state === "alerting" && ev.fastCrossing) {
+      // Report the fast window's own rate, never the healthy rolling total
+      // (Codex review finding), and never attribute a 2-day crossing to the
+      // metric's own 21-day version query (window mismatch).
+      alerts.push(
+        `In just the last 2 days, ${pct(ev.fastShare)} of setup attempts ended before setup was finished (${ev.fastAbandoned} of ${ev.fastStarted}). This is a sudden change worth a look even though the 3-week average still looks fine.`
       );
     } else if (ev.state === "alerting") {
-      // Report the window that actually crossed (Codex review finding: a
-      // fast-only crossing must not display the healthy rolling total).
-      const windowText = ev.fastCrossing
-        ? `${pct(ev.fastShare)} (${ev.fastAbandoned}/${ev.fastStarted}, fast 2-day crossing)`
-        : `${pct(ev.rollingShare)} (${ev.totalAbandoned}/${ev.totalStarted}, prev 21d, rolling crossing)`;
-      // Version attribution only matches the metric's own 21-day window —
-      // a fast (2-day) crossing must not misattribute to it (Codex review
-      // finding: an older high-volume release can otherwise be blamed for a
-      // regression confined to the last 2 days).
-      const tv = ev.fastCrossing ? "" : topVersionsFor(onboardingVersions, "onboarding_abandon");
+      const tv = topVersionsClause(r.onboardingVersions, "onboarding_abandon", r.onboardingVersionsDegraded);
       alerts.push(
-        `onboarding abandon ${windowText}, threshold >${pct(THRESHOLDS.onboardingAbandon.share)}, ` +
-        `baseline ~37%.` + (tv ? ` Top versions ${tv}.` : "")
+        `Of the setup attempts started over the last three weeks, ${pct(ev.rollingShare)} ended before setup was finished (${ev.totalAbandoned} of ${ev.totalStarted}). Normal is about 37%; we alert above ${pct(THRESHOLDS.onboardingAbandon.share)}.${tv}`
       );
     }
-    note("onboarding-abandon", ev);
+    note("onboarding completion", ev);
   }
 
-  // Per-backend transcription (Phase 10, #1179)
-  if (r.backendTranscription) {
+  // Speech-to-text reliability by engine (Phase 10, #1179)
+  if (r.backendTranscriptionUnavailable) {
+    note("speech-to-text reliability by engine", { state: "temporarily-unavailable" });
+  } else if (r.backendTranscription) {
     for (const row of r.backendTranscription) {
+      const label = backendLabel(row.backend);
       if (row.state === "alerting" && row.attributionDrift) {
         // Backend-attribution drift (Codex review finding): distinct wording,
         // no version attribution.
         alerts.push(
-          `transcription backend attribution lost: ${row.attempts} dictation/failure events ` +
-          `over the prev 14d carried no usable asr_backend or backend tag ` +
-          `(the per-backend split has degraded to an aggregate).`
+          `We lost track of which speech engine, Parakeet or WhisperKit, was used for ${row.attempts} dictation or failure events over the last two weeks. That tracking tag may have stopped working.`
+        );
+      } else if (row.state === "alerting" && row.fastCrossing) {
+        alerts.push(
+          `In just the last 2 days, ${label} speech-to-text failed on ${pct(row.fastShare)} of attempts (${row.fastFails} of ${row.fastAttempts}). This crossed the alert line on both days, a sudden change worth a look even if the 2-week average still looks fine.`
         );
       } else if (row.state === "alerting") {
-        // Same fix as onboarding-abandon: name the window that actually
-        // crossed, and only attribute versions to a matching window.
-        const windowText = row.fastCrossing
-          ? `${pct(row.fastShare)} (${row.fastFails}/${row.fastAttempts}, fast 2-day crossing)`
-          : `${pct(row.rollingShare)} (${row.fails}/${row.attempts}, prev 14d, rolling crossing)`;
-        const tv = row.fastCrossing
-          ? ""
-          : topVersionsFor(backendVersions, "backend_trans_fail", { backend: row.backend });
+        const tv = topVersionsClause(r.backendVersions, "backend_trans_fail", r.backendVersionsDegraded, { backend: row.backend });
         alerts.push(
-          `${row.backend} transcription failure ${windowText}, ` +
-          `threshold >${pct(THRESHOLDS.backendTranscription.share)}.` + (tv ? ` Top versions ${tv}.` : "")
+          `${label} speech-to-text is failing more than usual: ${pct(row.rollingShare)} of attempts over the last two weeks (${row.fails} of ${row.attempts}). We alert above ${pct(THRESHOLDS.backendTranscription.share)}.${tv}`
         );
       }
-      note(`transcription-${row.backend}`, row);
+      note(`${label} speech-to-text`, row);
     }
-    if (r.backendTranscription.length === 0 && !r.backendAttributionBlackout) {
+    if (r.backendTranscription.length === 0 && !r.backendAttributionBlackout && !r.backendAttributionBlackoutUnavailable) {
       // Codex r5 review finding: an empty result during a genuinely
       // low-volume period (not blackout, since aggregate volume is also
       // low) never reaches the loop above, so the metric silently vanished
       // from evaluated/skipped/alerts instead of reading as skipped.
-      note("transcription-backend", { state: "skipped-low-volume" });
-    }
-    if (r.backendAttributionBlackout) {
-      // Total backend-attribution blackout (Codex review finding): the query
-      // matched zero (day, backend) groups despite healthy overall dictation
-      // volume — the per-backend split vanished entirely rather than reading
-      // as merely quiet.
-      alerts.push(
-        `transcription backend attribution blackout: 0 backend rows over the prev 14d despite ` +
-        `healthy aggregate 7d dictation volume (asr_backend/backend may have stopped emitting entirely).`
-      );
+      note("speech-to-text reliability by engine", { state: "skipped-low-volume" });
     }
   }
 
-  // Onboarding blackout (Phase 10, #1179) — evaluated-ok/alerting only, no
-  // low-volume/dark states, so it participates in `note()`'s evaluated bucket
-  // like the rate metrics, but can never land in skipped/dark.
+  // Speech-engine tracking (backend-attribution blackout)
+  if (r.backendAttributionBlackoutUnavailable) {
+    note("speech-engine tracking", { state: "temporarily-unavailable" });
+  } else if (r.backendAttributionBlackout) {
+    // Total backend-attribution blackout (Codex review finding): the query
+    // matched zero (day, backend) groups despite healthy overall dictation
+    // volume - the per-backend split vanished entirely rather than reading
+    // as merely quiet.
+    alerts.push(
+      `We can no longer tell which speech engine people are using at all, even though overall dictation volume looks normal. That tracking may have broken entirely.`
+    );
+  }
+
+  // Onboarding tracking (Phase 10, #1179) - evaluated-ok/alerting only, no
+  // low-volume/dark states normally, but CAN now be temporarily-unavailable.
   if (r.onboardingBlackout) {
     if (r.onboardingBlackout.state === "alerting") {
       if (r.onboardingBlackout.entryPointDown) {
         alerts.push(
-          `onboarding entry point down: 0 starts over the trailing 48h while the 7-day ` +
-          `baseline average is ${r.onboardingBlackout.baselineAvg.toFixed(1)}/day ` +
-          `(possible onboarding-screen crash or telemetry blackout).`
+          `There were no setup starts in the last 2 days, even though a typical day sees about ${r.onboardingBlackout.baselineAvg.toFixed(1)}. Either the setup screen is broken, or our own tracking is.`
         );
       }
       if (r.onboardingBlackout.terminalDrift) {
         alerts.push(
-          `onboarding terminal drift: ${r.onboardingBlackout.recentStarted} starts over the trailing 48h ` +
-          `but neither onboarding.completed nor onboarding.abandoned fired ` +
-          `(a terminal event may have stopped emitting).`
+          `There were ${r.onboardingBlackout.recentStarted} setup starts in the last 2 days, but none registered as either finishing or giving up. That tracking may be broken.`
         );
       }
     }
-    note("onboarding-blackout", r.onboardingBlackout);
+    note("onboarding tracking", r.onboardingBlackout);
   }
 
   // Volume / integrity
   if (r.volume.state === "alerting") {
     if (r.volume.zeroAlert) {
       alerts.push(
-        `ZERO dictations on T-1 while trailing-7d average is ${r.volume.avg.toFixed(0)}/day ` +
-        `(possible crash-on-launch or telemetry blackout).`
+        `No dictations were completed yesterday, even though a typical day sees about ${r.volume.avg.toFixed(0)}. This usually means either the app is crashing for everyone, or our own tracking is broken.`
       );
     }
     if (r.volume.driftAlert) {
       alerts.push(
-        `telemetry drift: T-1 had ${r.volume.t1d} dictations but asr.completed was 0 ` +
-        `(it co-fires on every successful dictation) - a success event may have stopped emitting.`
+        `Something looks broken in our own tracking: ${r.volume.t1d} dictations finished successfully yesterday, but a signal that should fire every time did not fire once. Today's numbers may not be trustworthy until this is fixed.`
       );
     }
   }
 
-  // Heartbeat line (always)
+  // Heartbeat block (always)
   const t1d = r.volume.t1d != null ? r.volume.t1d : "?";
-  const ratioStr =
-    r.volume.ratio != null ? ` (${r.volume.ratio.toFixed(2)}x trailing avg)` : "";
-  const driftStr =
-    r.latency.driftMedian != null && r.latency.latest
-      ? ` p50 drift: ${r.latency.latest.p50}s vs 14d ${r.latency.driftMedian.toFixed(2)}s`
+  const ratioClause =
+    r.volume.ratio == null
+      ? ""
+      : r.volume.ratio < 0.7
+        ? ", well below the usual amount"
+        : r.volume.ratio > 1.3
+          ? ", well above the usual amount"
+          : ", about the usual amount";
+  const responseSpeedLine =
+    r.latency.latest && r.latency.driftMedian != null
+      ? `\nResponse speed on the latest day with enough data: ${r.latency.latest.p50}s, compared with a 14-day median of ${r.latency.driftMedian.toFixed(2)}s.`
       : "";
-  const coverage =
-    `Evaluated: ${evaluated.join(", ") || "none"}.` +
-    (dark.length ? ` Dark: ${dark.join(", ")}.` : "") +
-    (skipped.length ? ` Skipped (low volume): ${skipped.join(", ")}.` : "");
-  const head = alerts.length ? "EnviousWispr health - ALERT" : "EnviousWispr health - OK";
-  // H1 (canonical contract H1): a static pointer, every run — this worker does
-  // NOT deliver crash-free-session-rate or per-version crash regression.
-  const h1Line = " Crash/error-rate monitoring lives in Sentry's own alert rules (see Error Spike >5/hr), not in this report.";
-  const heartbeat = `${head}. T-1: ${t1d} dictations${ratioStr}. ${coverage}${driftStr}${h1Line}`;
+  const coverageLine =
+    `Checked and normal: ${evaluated.join(", ") || "none"}.` +
+    (dark.length ? ` Waiting for enough eligible data: ${dark.join(", ")}.` : "") +
+    (skipped.length ? ` Not enough activity to judge: ${skipped.join(", ")}.` : "") +
+    (unavailable.length ? ` Temporarily unavailable: ${unavailable.join(", ")}.` : "");
+  // Codex diff review finding: a degraded-but-not-alerting run must NOT claim
+  // "everything looks normal" - that is exactly the partial-failure scenario
+  // this reliability fix introduces, and it would falsely reassure a founder
+  // skimming only the headline while checks silently couldn't run.
+  const headline = alerts.length
+    ? `found ${alerts.length} thing${alerts.length === 1 ? "" : "s"} worth a look`
+    : unavailable.length
+      ? `no problems found, but ${unavailable.length} check${unavailable.length === 1 ? "" : "s"} couldn't run today`
+      : "everything looks normal";
+  // `heartbeatHead` deliberately excludes the dashboard line: it is appended
+  // exactly once, as the final line, by each of the three return paths below
+  // - never duplicated, and never at risk of being truncated away (Codex
+  // review finding: a blind character slice can cut mid-alert and silently
+  // drop the dashboard link, hiding the very alerts most worth seeing - drop
+  // whole alerts from the end instead, always keeping the dashboard link).
+  const heartbeatHead =
+    `EnviousWispr health check for yesterday: ${headline}.\n` +
+    `${t1d} dictations were completed yesterday${ratioClause}.\n` +
+    `${coverageLine}${responseSpeedLine}\n` +
+    `Crashes and app errors are tracked separately and alert on their own. This check is only about product usage patterns.`;
 
-  if (!alerts.length) return heartbeat;
+  if (!alerts.length) return `${heartbeatHead}\nFull data: ${DASHBOARD}`;
 
-  // Discord content cap is 2000 chars. A blind character slice can cut mid-
-  // alert and silently drop the dashboard link, hiding the very alerts most
-  // worth seeing (Codex review finding) — drop whole alerts from the end
-  // instead, always keeping the heartbeat and the dashboard link.
   for (let keep = alerts.length; keep > 0; keep--) {
     const omitted = alerts.length - keep;
-    const trailer = omitted > 0 ? `\n(${omitted} more alert(s) omitted; see dashboard)` : "";
+    const trailer = omitted > 0 ? `\n(${omitted} more alert(s) omitted; see full data below.)` : "";
     const trial =
-      heartbeat + "\n\n" + alerts.slice(0, keep).map((a) => "* " + a).join("\n") + trailer + `\n${DASHBOARD}`;
+      heartbeatHead +
+      "\n\n" +
+      alerts.slice(0, keep).map((a) => "* " + a).join("\n") +
+      trailer +
+      `\nFull data: ${DASHBOARD}`;
     if (trial.length <= 1990) return trial;
   }
-  return `${heartbeat}\n\n${alerts.length} alert(s) triggered; see ${DASHBOARD}`.slice(0, 1990);
+  return `${heartbeatHead}\n\n${alerts.length} alert(s) triggered.\nFull data: ${DASHBOARD}`.slice(0, 1990);
 }
 
 // ----- Run ----------------------------------------------------------------
 
-async function runHealth(env) {
+// `deps` is a test-only injection seam (production passes nothing, both
+// defaults apply): `deps.evaluateHealthData` lets a test spy on it; `deps.
+// hogqlOpts` forwards into fetchHealth so a test can force an exhausted
+// retry deterministically instead of waiting through real backoff delays.
+export async function runHealth(env, deps = {}) {
+  const evaluateHealthDataFn = deps.evaluateHealthData || evaluateHealthData;
+  const hogqlOpts = deps.hogqlOpts || {};
+
   let data;
   try {
-    data = await fetchHealth(env);
+    data = await fetchHealth(env, hogqlOpts);
   } catch (err) {
-    // Loud failure: post a notice if Discord is reachable, then rethrow so
-    // Cloudflare logs it. A failed run must never read as "all green".
-    await safePost(env, `EnviousWispr health - CHECK FAILED TO RUN: ${err.message}`);
+    // Loud failure: post a plain-English notice if Discord is reachable, then
+    // rethrow so Cloudflare logs it. A failed run must never read as "all
+    // green". No claimed cause in the plain sentence (issue #1589): this path
+    // also carries auth failures, malformed SQL, malformed responses, and
+    // dev-id-list overflow, none of which are a timeout. Codex diff review
+    // finding: `err.message` (e.g. "PostHog query ref HTTP 503") must stay in
+    // the Cloudflare log for my own debugging, never in the Discord post -
+    // exposing raw HTTP/query-name jargon to the founder is exactly the
+    // unreadable-error-text problem this rewrite exists to remove.
+    console.log(`product-health check failed to run: ${err.message}`);
+    await safePost(env, "EnviousWispr health check didn't run today.");
     throw err;
   }
 
-  const backendTranscription = evaluateBackendTranscription(data.backendTranscriptionDays, data.t1ref);
-  // Backend-attribution blackout (Codex review finding): an empty result here
-  // means the query matched zero (day, backend) groups at all — every row's
-  // backend tag AND every dictation/failure vanished together. The existing
-  // aggregate transcription metric's own 7-day dictation count is proof this
-  // worker already has of real activity; if it's healthy while this metric's
-  // per-backend split came back with nothing, that split has silently gone
-  // dark rather than merely being quiet, so it must alert, not disappear.
-  const backendAttributionBlackout =
-    backendTranscription.length === 0 && num(data.seven.dictations_7d) >= THRESHOLDS.transcription.minDictations;
-
-  const results = {
-    latency: evaluateLatency(data.latencyDays),
-    paste: evaluatePaste(data.seven),
-    afm: evaluateAFM(data.seven),
-    transcription: evaluateTranscription(data.seven),
-    volume: evaluateVolume(data.volumeDays, data.t1ref),
-    onboardingAbandon: evaluateOnboardingAbandon(data.onboardingDays, data.t1ref),
-    backendTranscription,
-    backendAttributionBlackout,
-    onboardingBlackout: evaluateOnboardingBlackout(data.onboardingDays, data.t1ref),
-  };
-  const message = buildMessage(results, data.versions, data.onboardingVersions, data.backendVersions);
+  const results = evaluateHealthDataFn(data);
+  const message = buildMessage(results);
 
   const ok = await postToDiscord(env.DISCORD_WEBHOOK_URL, message);
   if (!ok) throw new Error("Discord post failed");
