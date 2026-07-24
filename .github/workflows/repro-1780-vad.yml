@@ -1,0 +1,106 @@
+name: repro-1780-vad
+
+# Investigation harness for #1780: a hard EXC_BAD_ACCESS inside the Silero VAD
+# CoreML prediction, observed only on macOS 14.2.1. We have no Sonoma machine
+# locally (dev is on macOS 26), so this drives the REAL bundled model through
+# the REAL pinned FluidAudio VadManager on a Sonoma runner.
+#
+# macos-14 = Sonoma, Apple Silicon. macos-15 = Sequoia, control arm.
+# Investigation-only: this branch is never merged to main.
+
+# workflow_dispatch is only dispatchable from the default branch, and this file
+# is deliberately never merged to main — so it triggers on pushes to its own
+# investigation branch instead.
+on:
+  push:
+    branches: ["investigate/1780-vad-repro"]
+  workflow_dispatch:
+    inputs:
+      chunks:
+        description: "Chunks per worker (4096 samples = 256ms each)"
+        default: "600"
+      parallel:
+        description: "Concurrent VadManager workers"
+        default: "4"
+
+permissions:
+  contents: read
+
+jobs:
+  vad:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+        units: [all, cpuOnly, cpuAndGPU, cpuAndNeuralEngine]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record what we are actually testing
+        run: |
+          set -euo pipefail
+          echo "runner-label: ${{ matrix.os }}"
+          sw_vers
+          echo "arch: $(uname -m)"
+          swift --version
+
+      - name: Build repro harness
+        run: |
+          set -euo pipefail
+          swift build --package-path Tests/RuntimeUAT/repro-1780 -c release
+          test -x Tests/RuntimeUAT/repro-1780/.build/release/vadrepro \
+            || { echo "::error::harness binary missing after build"; exit 1; }
+
+      - name: Confirm the model is present
+        run: |
+          set -euo pipefail
+          M="Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+          test -d "$M" || { echo "::error::VAD model missing at $M"; exit 1; }
+          echo "model ok: $(du -sh "$M" | cut -f1)"
+
+      # A crash is the RESULT we are hunting, so a nonzero/​signal exit must be
+      # reported loudly rather than failing the job ambiguously. Green here means
+      # "the harness actually ran to completion", never "the step didn't error".
+      - name: Streaming VAD run
+        env:
+          VAD_MODEL: Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc
+          UNITS: ${{ matrix.units }}
+          CHUNKS: ${{ inputs.chunks || '600' }}
+          PARALLEL: ${{ inputs.parallel || '4' }}
+        run: |
+          set -uo pipefail
+          # Empty/non-numeric would force-unwrap-nil inside the harness and read
+          # as a crash we didn't cause. Validate before we trust any result.
+          case "$CHUNKS" in ''|*[!0-9]*) echo "::error::bad CHUNKS='$CHUNKS'"; exit 1;; esac
+          case "$PARALLEL" in ''|*[!0-9]*) echo "::error::bad PARALLEL='$PARALLEL'"; exit 1;; esac
+          for churn in 0 1; do
+            echo "── UNITS=$UNITS PARALLEL=$PARALLEL CHURN=$churn"
+            out=$(CHURN=$churn ./Tests/RuntimeUAT/repro-1780/.build/release/vadrepro 2>&1); rc=$?
+            echo "$out" | tail -3
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::CRASH REPRODUCED — ${{ matrix.os }} UNITS=$UNITS CHURN=$churn exit=$rc"
+              echo "REPRODUCED rc=$rc os=${{ matrix.os }} units=$UNITS churn=$churn" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            grep -q "SURVIVED" <<<"$out" \
+              || { echo "::error::harness produced no SURVIVED line and did not crash — inconclusive"; exit 1; }
+          done
+          echo "no crash: ${{ matrix.os }} UNITS=$UNITS (both churn modes)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guard-page over-read probe
+        env:
+          VAD_MODEL: Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc
+          UNITS: ${{ matrix.units }}
+        run: |
+          set -uo pipefail
+          out=$(swift Tests/RuntimeUAT/repro-1780/guard.swift 2>&1); rc=$?
+          echo "$out" | tail -3
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::OVER-READ REPRODUCED — ${{ matrix.os }} UNITS=$UNITS exit=$rc"
+            echo "OVER-READ rc=$rc os=${{ matrix.os }} units=$UNITS" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          grep -q "SURVIVED" <<<"$out" \
+            || { echo "::error::guard probe neither survived nor crashed — inconclusive"; exit 1; }
