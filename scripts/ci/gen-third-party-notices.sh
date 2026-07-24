@@ -40,8 +40,14 @@ COMPONENTS=(
   "FluidAudio|e7948e1a (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
   "PostHog iOS|3.62.4|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
   "Sentry Cocoa|9.19.0|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
-  "Sparkle|2.9.3|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
+  "Sparkle|2.9.4|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
   "swift-argument-parser|1.7.1|Apache-2.0|swift-argument-parser/LICENSE.txt|https://github.com/apple/swift-argument-parser|swift-argument-parser"
+  # #1741: test-only — the freeze test's Swift parser. Never linked into the
+  # shipped app (Package.swift depends on it solely from the EnviousWisprTests
+  # test target). Credited anyway: the coverage cross-check keys off
+  # Package.resolved, which cannot distinguish a test-only pin, and
+  # over-attributing costs nothing while under-attributing is the real risk.
+  "swift-syntax|603.0.2|Apache-2.0|swift-syntax/LICENSE.txt|https://github.com/swiftlang/swift-syntax|swift-syntax"
   "fastcluster (bundled in FluidAudio)|n/a|BSD-2-Clause|FluidAudio/ThirdPartyLicenses/fastcluster-LICENSE.md|https://github.com/dmuellner/fastcluster|"
   "VBx (bundled in FluidAudio)|n/a|Apache-2.0|FluidAudio/ThirdPartyLicenses/vbx-LICENSE.md|https://github.com/BUTSpeechFIT/VBx|"
   "PLCrashReporter + protobuf-c (bundled in PostHog)|n/a|MIT / Apache-2.0 / BSD-2-Clause|posthog-ios/vendor/PHPLCrashReporter/LICENSE|https://github.com/microsoft/plcrashreporter|"
