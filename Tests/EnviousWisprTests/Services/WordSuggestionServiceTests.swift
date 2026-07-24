@@ -335,6 +335,12 @@ struct WordSuggestionServiceParserTests {
     #expect(WordSuggestionService.parsePlainStringAliases("(1))").isEmpty)
     #expect(WordSuggestionService.parsePlainStringAliases(",1.,").isEmpty)
   }
+
+  @Test("A marker's own delimiter is not consumed by a DIFFERENT operation later in the same pass")
+  func markerDelimiterNotConsumedWithinSameBatchedPass() {
+    #expect(WordSuggestionService.parsePlainStringAliases("\"1.\"").isEmpty)
+    #expect(WordSuggestionService.parsePlainStringAliases("(1.)").isEmpty)
+  }
 }
 
 /// Pins the multi-call dedupe pool helper.

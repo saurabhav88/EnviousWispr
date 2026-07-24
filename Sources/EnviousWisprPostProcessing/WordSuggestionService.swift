@@ -636,24 +636,42 @@ public final class WordSuggestionService: Sendable {
       // Strip list/blockquote markers, brackets, quotes, and trailing
       // comma/period to a fixed point — any interleaving or nesting of
       // these wrapper types converges to the real inner content, not just
-      // one layer of it. Brackets/quotes/comma-period are peeled ONE
-      // character per edge per pass (never `trimmingCharacters`'s
-      // whole-run removal): a run-trim can eat an outer wrapper AND a
-      // marker's own delimiter together in one call before the marker
-      // regex — which always runs first each pass — gets another look,
-      // e.g. "(1))" wrongly collapsing straight to "1" instead of exposing
-      // "1)" for the marker regex to strip on the next pass (GitHub cloud
-      // review structured pair-matrix check, PR #1765 r8).
+      // one layer of it. At most ONE of these operations may change `s`
+      // per pass; the moment any one does, the pass ends immediately and
+      // the marker check re-runs on the result — never two operations
+      // applied back-to-back in the same pass. Batching them (even with
+      // single-character peeling) let a marker's own delimiter be exposed
+      // and then immediately consumed by the NEXT operation in the same
+      // pass before the marker regex saw it, e.g. "\"1.\"" or "(1.)"
+      // wrongly collapsing to "1" (GitHub cloud review structured
+      // pair-matrix re-check, PR #1765 r9).
       var previous = ""
       while previous != s {
         previous = s
         if let listPrefixRegex {
           let range = NSRange(s.startIndex..., in: s)
-          s = listPrefixRegex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
+          let stripped = listPrefixRegex.stringByReplacingMatches(
+            in: s, range: range, withTemplate: "")
+          if stripped != s {
+            s = stripped
+            continue
+          }
         }
-        s = Self.peelOneEdgeCharacter(s, in: bracketSet)
-        s = Self.peelOneEdgeCharacter(s, in: quoteSet)
-        s = Self.peelOneEdgeCharacter(s, in: commaPeriodSet)
+        let withoutBracket = Self.peelOneEdgeCharacter(s, in: bracketSet)
+        if withoutBracket != s {
+          s = withoutBracket
+          continue
+        }
+        let withoutQuote = Self.peelOneEdgeCharacter(s, in: quoteSet)
+        if withoutQuote != s {
+          s = withoutQuote
+          continue
+        }
+        let withoutCommaPeriod = Self.peelOneEdgeCharacter(s, in: commaPeriodSet)
+        if withoutCommaPeriod != s {
+          s = withoutCommaPeriod
+          continue
+        }
         s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       }
       if s.isEmpty { continue }
