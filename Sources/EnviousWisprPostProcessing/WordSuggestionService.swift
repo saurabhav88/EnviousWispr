@@ -588,7 +588,9 @@ public final class WordSuggestionService: Sendable {
   /// Accepts numbered, dashed, or newline-separated outputs. Strips leading
   /// numbering, surrounding quotes (straight or curly), bracket artifacts,
   /// and whitespace. Drops obvious meta-commentary lines (model often
-  /// produces "Note:", "Example for X:", "If you cannot..." etc.).
+  /// produces "Note:", "Example for X:", "If you cannot..." etc.) and
+  /// markdown code-fence delimiter lines (the model sometimes wraps its
+  /// list in ```plaintext ... ```, #1763).
   /// Used by the plain-string alias-generation path (mirroring the polish
   /// path's plain-string + post-filter pattern).
   static func parsePlainStringAliases(_ raw: String) -> [String] {
@@ -599,9 +601,19 @@ public final class WordSuggestionService: Sendable {
       "asr", "i have ", "i did not", "no mistranscript", "no aliases",
       "return empty", "explanation",
     ]
+    // A line that is purely a fence delimiter (optional language tag), not
+    // real content that merely contains backticks. Compiled once per call.
+    let fenceRegex = try? NSRegularExpression(
+      pattern: #"^`{3,}[ \t]*[A-Za-z0-9_+./#-]*[ \t]*$"#
+    )
     for line in raw.components(separatedBy: .newlines) {
       var s = line.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }
+      if let fenceRegex,
+        fenceRegex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+      {
+        continue
+      }
       s = s.trimmingCharacters(in: CharacterSet(charactersIn: "[]()"))
       s = s.trimmingCharacters(in: .whitespacesAndNewlines)
       if s.isEmpty { continue }

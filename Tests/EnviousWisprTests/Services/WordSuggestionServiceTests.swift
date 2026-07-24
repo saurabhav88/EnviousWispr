@@ -192,6 +192,46 @@ struct WordSuggestionServiceParserTests {
     #expect(WordSuggestionService.parsePlainStringAliases("   ").isEmpty)
     #expect(WordSuggestionService.parsePlainStringAliases("\n\n\n").isEmpty)
   }
+
+  @Test("Fence-only lines are dropped without stripping legitimate backticks")
+  func fenceOnlyLinesDropped() {
+    let raw = [
+      "```plaintext",
+      "```PlainText",
+      "``` c#",
+      "```text/plain",
+      "```",
+      "````",
+      "`````swift",
+      "kuber ``` netties",
+      "`inline alias`",
+      "``double inline alias``",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(
+      parsed == [
+        "kuber ``` netties",
+        "`inline alias`",
+        "``double inline alias``",
+      ])
+  }
+
+  @Test("Kubernetes response strips Markdown fences (#1763 regression)")
+  func kubernetesResponseStripsMarkdownFences() {
+    let raw = [
+      "kuber netties",
+      "cube ernetes",
+      "cooper nettys",
+      "```plaintext",
+      "```",
+    ].joined(separator: "\n")
+
+    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
+
+    #expect(parsed == ["kuber netties", "cube ernetes", "cooper nettys"])
+  }
 }
 
 /// Pins the multi-call dedupe pool helper.
