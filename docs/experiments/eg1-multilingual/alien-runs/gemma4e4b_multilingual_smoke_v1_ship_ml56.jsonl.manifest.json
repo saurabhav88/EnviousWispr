@@ -1,0 +1,30 @@
+{
+  "run_id": "gemma4e4b-multilingual-smoke-v1-ship-ml56",
+  "started_at_epoch": 1784097431.3390718,
+  "host": "AlienSV",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "git_head": null,
+  "model_id": "gemma4e4b_multilingual_smoke_v1",
+  "model_path": "/home/saura/tuning/out/gemma4e4b_multilingual_smoke_v1/merged16",
+  "tokenizer_path": "/home/saura/tuning/models/gemma-4-E4B-it",
+  "tokenizer_hashes": {
+    "tokenizer.json": "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f",
+    "tokenizer_config.json": "da8f02680583713de2d3bf3c0bed612633569950be22d2f7742544b23893bc52"
+  },
+  "corpus_path": "/mnt/c/Users/saura/eg1-overnight/multilingual_cases.jsonl",
+  "corpus_sha256": "6e4a85ce7955a184cb15bdda78c3542107403e02b0136ad52d569379941a65e3",
+  "prompt_path": "/mnt/c/Users/saura/eg1-overnight/eg1-polish-prompt-v1.txt",
+  "prompt_sha256": "7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62",
+  "split": "all",
+  "languages": "all",
+  "case_count": 56,
+  "batch_size": 8,
+  "max_new_tokens": 256,
+  "seed": 1265,
+  "include_language_label": false,
+  "enable_thinking": false,
+  "torch_version": "2.10.0+cu128",
+  "cuda_device": "NVIDIA GeForce RTX 4090",
+  "elapsed_seconds": 10.618,
+  "completed_at_epoch": 1784097441.9774091
+}

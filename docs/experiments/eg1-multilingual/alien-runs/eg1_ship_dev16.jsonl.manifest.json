@@ -1,0 +1,26 @@
+{
+  "run_id": "RU-EG1-SHIP-DEV16",
+  "started_at_epoch": 1784090848.3607566,
+  "host": "AlienSV",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "git_head": null,
+  "model_id": "eg1-v1-merged16",
+  "model_path": "/home/saura/tuning/out/qwen4b_v2/merged16",
+  "corpus_path": "/mnt/c/Users/saura/eg1-overnight/eg1_multilingual_ru_v1.jsonl",
+  "corpus_sha256": "2f066967758f2e332fafe14f1182a64ba7e567ae07b71d343bdc70775dc3512c",
+  "prompt_path": "/mnt/c/Users/saura/eg1-overnight/eg1-polish-prompt-v1.txt",
+  "prompt_sha256": "7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62",
+  "split": "dev",
+  "languages": [
+    "ru"
+  ],
+  "case_count": 16,
+  "batch_size": 8,
+  "max_new_tokens": 256,
+  "seed": 1265,
+  "include_language_label": false,
+  "torch_version": "2.10.0+cu128",
+  "cuda_device": "NVIDIA GeForce RTX 4090",
+  "elapsed_seconds": 3.256,
+  "completed_at_epoch": 1784090851.6368394
+}

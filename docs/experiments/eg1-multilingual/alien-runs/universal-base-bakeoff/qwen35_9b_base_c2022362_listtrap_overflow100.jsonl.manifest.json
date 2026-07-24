@@ -1,0 +1,33 @@
+{
+  "run_id": "base-bakeoff-qwen35-9b-listtrap_overflow100",
+  "started_at_epoch": 1784112063.7706828,
+  "host": "AlienSV",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "git_head": null,
+  "model_id": "qwen35_9b_base_c2022362",
+  "model_path": "C:\\Users\\saura\\eg1-models\\Qwen3.5-9B-c2022362",
+  "model_type": "qwen3_5",
+  "model_loader": "AutoModelForCausalLM",
+  "tokenizer_path": "C:\\Users\\saura\\eg1-models\\Qwen3.5-9B-c2022362",
+  "tokenizer_loader": "AutoTokenizer",
+  "tokenizer_hashes": {
+    "tokenizer.json": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42",
+    "tokenizer_config.json": "316230d6a809701f4db5ea8f8fc862bc3a6f3229c937c174e674ff3ca0a64ac8"
+  },
+  "corpus_path": "C:\\Users\\saura\\eg1-overnight\\list_format_trap_overflow_v1.jsonl",
+  "corpus_sha256": "12acd0ae1a2b7a81857a56fa4a5076fe69742d2587a8d3cf26108d80271a0647",
+  "prompt_path": "C:\\Users\\saura\\eg1-overnight\\eg1-list-aware-v2.txt",
+  "prompt_sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75",
+  "split": "all",
+  "languages": "all",
+  "case_count": 100,
+  "batch_size": 2,
+  "max_new_tokens": 256,
+  "seed": 1265,
+  "include_language_label": false,
+  "enable_thinking": false,
+  "torch_version": "2.12.1+cu130",
+  "cuda_device": "NVIDIA GeForce RTX 4090",
+  "elapsed_seconds": 121.86,
+  "completed_at_epoch": 1784112185.6747406
+}

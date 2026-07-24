@@ -1,0 +1,17 @@
+{
+  "batch_id": "smoke-v1-a",
+  "language": "de",
+  "model": "claude-sonnet-4-6",
+  "generated_at_epoch": 1784091695.4398699,
+  "row_count": 10,
+  "quotas": {
+    "explicit_list": 5,
+    "ordinal_list": 5
+  },
+  "prompt_sha256": "ee8286311c9de40cf6524292553d03541fc58523f62c83db5ee1f5481d03f9e2",
+  "audit_corpora": [
+    "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/eg1_multilingual_ru_v1.jsonl",
+    "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/runs/bakeoff-1265/probes/multilingual_cases.jsonl"
+  ],
+  "warning": "Experimental teacher data; not native-reviewed and not release gold."
+}

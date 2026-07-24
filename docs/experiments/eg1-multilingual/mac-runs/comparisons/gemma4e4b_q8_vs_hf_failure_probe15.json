@@ -1,0 +1,104 @@
+{
+  "baseline": [
+    "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_listpos100.jsonl",
+    "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_listtrap100.jsonl",
+    "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_twoitem_v1a.jsonl",
+    "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_twoitem_v1b.jsonl",
+    "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_ml56.jsonl",
+    "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_ru_dev16.jsonl"
+  ],
+  "candidate": [
+    "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q8_listv2_failure_probe15.jsonl"
+  ],
+  "rows": 15,
+  "exact_matches": 3,
+  "canonical_matches": 3,
+  "changed": 12,
+  "list_structure_changes": 6,
+  "changed_rows": [
+    {
+      "id": "LF-002",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 0,
+      "baseline": "I looked at three places today. They were all pretty nice. I really liked:\n* the one on Elm Street\n* the loft downtown\n* the townhouse near the park\n\nI am going to apply for the loft. Fingers crossed.",
+      "candidate": "I looked at three places today. They were all pretty nice. I really liked the one on Elm Street, the loft downtown, and the townhouse near the park. I am going to apply for the loft. Fingers crossed."
+    },
+    {
+      "id": "LF-008",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "Your current diet is okay, but we can improve it. You should add more:\n* spinach\n* kale\n* broccoli\n* carrots\n* bell peppers\n\nThese vegetables are packed with vitamins. Try roasting them for better flavor.",
+      "candidate": "Your current diet is okay, but we can improve it. You should add more:\n* spinach\n* kale\n* broccoli\n* carrots\n* bell peppers\nto your meals. These vegetables are packed with vitamins. Try roasting them for better flavor."
+    },
+    {
+      "id": "LF-047",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 0,
+      "baseline": "- apples\n- bananas\n- pears",
+      "candidate": "Apples, bananas, and pears"
+    },
+    {
+      "id": "LF-049",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 0,
+      "baseline": "Good morning, class. Take your seats, please. For homework tonight, you must:\n* Read chapter four\n* Answer the questions\n* Write a short essay\n\nIt is due on Friday. No late assignments will be accepted.",
+      "candidate": "Good morning class. Take your seats please. For homework tonight, you must read chapter four, answer the questions, and write a short essay. It is due on Friday. No late assignments will be accepted."
+    },
+    {
+      "id": "LF-052",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 4,
+      "baseline": "Hardware store:\n* Screws\n* Sandpaper\n* Paint brushes",
+      "candidate": "- hardware store\n- screws\n- sandpaper\n- paint brushes"
+    },
+    {
+      "id": "LF-099",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 0,
+      "baseline": "The cleaners come Friday morning. We should make it easier for them tonight.\n\n* Move the bikes\n* Clear the counters\n* Put away shoes\n\nI can handle the garage tomorrow. Thanks.",
+      "candidate": "The cleaners come Friday morning. We should make it easier for them tonight. Move the bikes, clear the counters, and put away shoes. I can handle the garage tomorrow. Thanks."
+    },
+    {
+      "id": "LFT-078",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Given the missing files, the corrupted data, and the tight deadline, we are in big trouble. We need to escalate this.",
+      "candidate": "Given the missing files, the corrupted data, and the tight deadline we are in big trouble. We need to escalate this."
+    },
+    {
+      "id": "en-two-item-dev-v1a-008",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 0,
+      "baseline": "Okay, so after Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23rd, the post-op care involves:\n* Monitoring for infection and swelling\n* Scheduling PT physical therapy sessions starting two weeks post-op",
+      "candidate": "After Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23, the post-op care involves monitoring for infection and swelling, and scheduling PT physical therapy sessions starting two weeks post-op."
+    },
+    {
+      "id": "en-two-item-dev-v1b-001",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "Please make me a bullet list of items to include in the Q3 report.\n\n* Performance metrics for the customer success team\n* Churn analysis for the APAC region",
+      "candidate": "Items to include in the Q3 report:\n\n*   Performance metrics for the customer success team\n*   Churn analysis for the APAC region"
+    },
+    {
+      "id": "en-two-item-dev-v1b-005",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "The two critical requirements for the new user auth endpoint are:\n* Request rate limiting of 300 calls per minute\n* Validation for OAuth 2.0 token format",
+      "candidate": "* Request rate limiting of 300 calls per minute\n* Validation for OAuth 2.0 token format"
+    },
+    {
+      "id": "ml-es-6",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "La cena es a las siete. No te olvides de traer el postre que te encargué.",
+      "candidate": "O sea, la cena es a las siete. No te olvides de traer el postre que te encargué."
+    },
+    {
+      "id": "ml-fr-5",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Pour le projet X, il faut que je revoie le dossier. Je vais revoir le dossier et je t'envoie un résumé avant la fin de la journée.",
+      "candidate": "Pour le projet X, il faut que je revoie le dossier et je t'envoie un résumé avant la fin de la journée."
+    }
+  ]
+}

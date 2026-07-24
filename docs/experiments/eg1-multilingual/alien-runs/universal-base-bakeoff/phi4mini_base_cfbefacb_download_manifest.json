@@ -1,0 +1,194 @@
+{
+  "schema_version": "eg1-official-hf-snapshot-v1",
+  "repo_id": "microsoft/Phi-4-mini-instruct",
+  "revision": "cfbefacb99257ffa30c83adab238a50856ac3083",
+  "total_bytes": 7694050092,
+  "weight_bytes": 7672066216,
+  "files": [
+    {
+      "path": ".cache/huggingface/.gitignore",
+      "bytes": 1,
+      "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1"
+    },
+    {
+      "path": ".cache/huggingface/CACHEDIR.TAG",
+      "bytes": 195,
+      "sha256": "e8893e2dcb3f4545ef67a0a5b7b769113d38eef1aa61c7c7ba14659b02af955f"
+    },
+    {
+      "path": ".cache/huggingface/download/added_tokens.json.metadata",
+      "bytes": 104,
+      "sha256": "a180c3f7500f8ec86c71dd16e49bb9b9517ec37a3d54ca82fc83a85d840bb40e"
+    },
+    {
+      "path": ".cache/huggingface/download/config.json.metadata",
+      "bytes": 103,
+      "sha256": "535c5b7c18095f1800e44e82fb600ec6fd8807ad5694b9731f9bc4d680150584"
+    },
+    {
+      "path": ".cache/huggingface/download/configuration_phi3.py.metadata",
+      "bytes": 103,
+      "sha256": "02d70d683c53b23163d19813dc1fe5f4ca6de824996b1bc1dc420df2f628aac2"
+    },
+    {
+      "path": ".cache/huggingface/download/generation_config.json.metadata",
+      "bytes": 104,
+      "sha256": "8753514f66869e967a71116f14aff406b3be99b710f57d44a123c1be300e1263"
+    },
+    {
+      "path": ".cache/huggingface/download/LICENSE.metadata",
+      "bytes": 104,
+      "sha256": "ee8a67da78f457a1b1f4a66bbac4f4ff4cc1929b8bad3f0d1c8d138288a7be1e"
+    },
+    {
+      "path": ".cache/huggingface/download/merges.txt.metadata",
+      "bytes": 104,
+      "sha256": "054279b36278f1d2f68413120d84e7ee7fcb0160b1ae72043492b99de0388bc1"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00001-of-00002.safetensors.metadata",
+      "bytes": 128,
+      "sha256": "096eeface833f626f26ab8f92bac3e249b2414fa82c92ab8beeb213af06b4815"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00002-of-00002.safetensors.metadata",
+      "bytes": 128,
+      "sha256": "b1a1360635d153033781443f19f1d049cfa0c1389266a36f59e93c9d10f1f0d1"
+    },
+    {
+      "path": ".cache/huggingface/download/model.safetensors.index.json.metadata",
+      "bytes": 104,
+      "sha256": "a53d982e2d3a806a3e1dbbbb75e53f0921dcc6c86e2bc7e1377049a0f8f27d7f"
+    },
+    {
+      "path": ".cache/huggingface/download/modeling_phi3.py.metadata",
+      "bytes": 103,
+      "sha256": "6e7361dca4aa9c966268a385da577d1c6594b8c1bed8373c580a1fa4ec052a33"
+    },
+    {
+      "path": ".cache/huggingface/download/NOTICE.md.metadata",
+      "bytes": 104,
+      "sha256": "7c608c7e2528ff43730465006f4c0a493df62cf0f6d06478962cfbddb85eb465"
+    },
+    {
+      "path": ".cache/huggingface/download/README.md.metadata",
+      "bytes": 104,
+      "sha256": "0ab74cb0173c4c46d53204ed1ed0954a0420e0f525ce7c8745f19ba7f5fda806"
+    },
+    {
+      "path": ".cache/huggingface/download/sample_finetune.py.metadata",
+      "bytes": 103,
+      "sha256": "78e582b8f293f58b46008bd3622622c04ad7b67c7a391a61a666385c92d2a820"
+    },
+    {
+      "path": ".cache/huggingface/download/special_tokens_map.json.metadata",
+      "bytes": 104,
+      "sha256": "897f0659efc3e364ed30a1d74d75221243e6b40f67c780716181fbedc515c2f4"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer.json.metadata",
+      "bytes": 127,
+      "sha256": "b411ca766749e080e6e0330d571267dc516171bde6b92ac5ed63f73d696fe87a"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer_config.json.metadata",
+      "bytes": 104,
+      "sha256": "a78ee1caa4d7c894551686a1591519b75aa72700aef0a69f4fea095ed492f69b"
+    },
+    {
+      "path": ".cache/huggingface/download/vocab.json.metadata",
+      "bytes": 103,
+      "sha256": "5aa8c61ef3e0a8b938eb83cd40cd26ef83ddaecd8d08859abe3f0f02663e5a35"
+    },
+    {
+      "path": ".cache/huggingface/trees/cfbefacb99257ffa30c83adab238a50856ac3083.json",
+      "bytes": 2931,
+      "sha256": "41496d7681f9fe36ed251f78760fc6b6f396dd677e33be1bfdc8371c2a10c23b"
+    },
+    {
+      "path": "added_tokens.json",
+      "bytes": 249,
+      "sha256": "d4f2aceb0f20b71dd1f4bcc7e052e4412946bf281840b8f83d39f259571af486"
+    },
+    {
+      "path": "config.json",
+      "bytes": 2504,
+      "sha256": "ac65d86061d3d0d704ee2511fd0eb8713ef19eb6eedba17c3080a4165d5b933b"
+    },
+    {
+      "path": "configuration_phi3.py",
+      "bytes": 10875,
+      "sha256": "ec2044b77d0b8111640ac134daa3af1f40dc552a739f8959626e7e58ea3352df"
+    },
+    {
+      "path": "generation_config.json",
+      "bytes": 168,
+      "sha256": "3e3f48753753f92d2b958679151861d4fd7bf26e4dfc41fd47056116c4914dcd"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 1084,
+      "sha256": "fa8235e5b48faca34e3ca98cf4f694ef08bd216d28b58071a1f85b1d50cb814d"
+    },
+    {
+      "path": "merges.txt",
+      "bytes": 2418348,
+      "sha256": "856ce61180bb689282eed6b3a6838bb1f438399be23aefe9d20eb379791fb4ad"
+    },
+    {
+      "path": "model-00001-of-00002.safetensors",
+      "bytes": 4903637712,
+      "sha256": "bc703090b63eda16f639fa4de7ac54635c23105ab1da2f6ec4d3403151d38ee6"
+    },
+    {
+      "path": "model-00002-of-00002.safetensors",
+      "bytes": 2768428504,
+      "sha256": "7ff79b9d2d31076bac2663393451f6530f4fc8ca49b09002116c92c373dba983"
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "bytes": 16273,
+      "sha256": "613a98d5e5716ca96fa75931abedc9c5a5d95f488ce4d62df71e639fe3ac6c59"
+    },
+    {
+      "path": "modeling_phi3.py",
+      "bytes": 54268,
+      "sha256": "d5fd551a7fe759b1d25e5b16b5012aa98b9b8bd400d26c7ee69c0090a245d6cd"
+    },
+    {
+      "path": "NOTICE.md",
+      "bytes": 1809,
+      "sha256": "a3386cc7125ec75ed34d4f0a340c47782982095e251d322e01d8ecab22d87ba4"
+    },
+    {
+      "path": "README.md",
+      "bytes": 29246,
+      "sha256": "c4f34916182a3ee87d95d00c92847cfa687ab21dc338a577275f0c34cf0e1dfd"
+    },
+    {
+      "path": "sample_finetune.py",
+      "bytes": 6167,
+      "sha256": "ec9ead444318c31095e5be48ec4b17ec031134836dd7906a73186265c323348a"
+    },
+    {
+      "path": "special_tokens_map.json",
+      "bytes": 587,
+      "sha256": "aff38493227d813e29fcf8406e8e90062f1f031aa47d589325e9c31d89ac7cc3"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 15524095,
+      "sha256": "382cc235b56c725945e149cc25f191da667c836655efd0857b004320e90e91ea"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "bytes": 2932,
+      "sha256": "9c9b6bc0c94d95f69f826c41069a3e8b387ac3ced89601d201886e99240ac9db"
+    },
+    {
+      "path": "vocab.json",
+      "bytes": 3910310,
+      "sha256": "6cb65a857824fa6615bb1782d95d882617a8bbce1da0317118586b36f39e98bd"
+    }
+  ]
+}

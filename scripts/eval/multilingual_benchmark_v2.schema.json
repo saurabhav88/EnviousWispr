@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enviouslabs.co/schemas/eg1-multilingual-benchmark-v2.schema.json",
+  "title": "EG-1 Multilingual Benchmark V2 Row",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "semantic_family_id",
+    "shared_concept_brief_id",
+    "split",
+    "language",
+    "domain",
+    "behavior",
+    "contrast_set_id",
+    "difficulty",
+    "safety_risk",
+    "asr_input",
+    "gold_output",
+    "requirements",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "eg1-multilingual-benchmark-v2"
+    },
+    "case_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "semantic_family_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "shared_concept_brief_id": {
+      "oneOf": [
+        {"$ref": "#/$defs/identifier"},
+        {"type": "null"}
+      ]
+    },
+    "split": {
+      "enum": ["development", "frozen"]
+    },
+    "language": {
+      "enum": ["en", "de", "fr", "es", "ru"]
+    },
+    "domain": {
+      "enum": [
+        "work_admin",
+        "personal_home",
+        "technical_product",
+        "medical",
+        "legal_financial"
+      ]
+    },
+    "behavior": {
+      "enum": [
+        "filler_removal",
+        "self_correction",
+        "native_morphology",
+        "punctuation_capitalization",
+        "entities_numbers_dates",
+        "names_code_switching",
+        "topic_shift_long_dictation",
+        "mixed_two_to_three_edits",
+        "explicit_two_item_list",
+        "scoped_two_item_list",
+        "natural_three_to_five_item_bullet_list",
+        "spoken_ordinals_numbered_list",
+        "two_item_prose_restraint",
+        "three_plus_item_prose_restraint",
+        "quoted_high_risk_instruction_restraint",
+        "clean_minimal_edit_restraint"
+      ]
+    },
+    "contrast_set_id": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "difficulty": {
+      "enum": ["routine", "challenging", "adversarial"]
+    },
+    "safety_risk": {
+      "enum": ["standard", "medical", "legal", "financial"]
+    },
+    "asr_input": {
+      "$ref": "#/$defs/nonempty_string"
+    },
+    "gold_output": {
+      "$ref": "#/$defs/nonempty_string"
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "meaning",
+        "entities",
+        "numbers",
+        "timing",
+        "attribution",
+        "formatting"
+      ],
+      "properties": {
+        "meaning": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "entities": {
+          "$ref": "#/$defs/unique_string_array"
+        },
+        "numbers": {
+          "$ref": "#/$defs/unique_string_array"
+        },
+        "timing": {
+          "$ref": "#/$defs/unique_string_array"
+        },
+        "attribution": {
+          "$ref": "#/$defs/unique_string_array"
+        },
+        "formatting": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["list_contract", "expected_item_count", "shared_scope"],
+          "properties": {
+            "list_contract": {
+              "enum": [
+                "no_list_requirement",
+                "activate_bullets",
+                "activate_numbered",
+                "restrain_prose"
+              ]
+            },
+            "expected_item_count": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 2
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "shared_scope": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_type",
+        "source_ref",
+        "native_author",
+        "independent_native_validator"
+      ],
+      "properties": {
+        "source_type": {
+          "enum": ["native_original", "shared_concept_local_rewrite"]
+        },
+        "source_ref": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "native_author": {
+          "$ref": "#/$defs/native_author"
+        },
+        "independent_native_validator": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/native_validator"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "shared_concept_binding": {
+          "$ref": "#/$defs/shared_concept_binding"
+        },
+        "blocked_family_clearances": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/blocked_family_clearance"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "nonempty_string": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "unique_string_array": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonempty_string"
+      }
+    },
+    "native_author": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewer_id",
+        "locale",
+        "native_attested",
+        "status",
+        "reviewed_on"
+      ],
+      "properties": {
+        "reviewer_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "locale": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "native_attested": {
+          "const": true
+        },
+        "status": {
+          "const": "complete"
+        },
+        "reviewed_on": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "native_validator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewer_id",
+        "locale",
+        "native_attested",
+        "status",
+        "reviewed_on",
+        "independent_of_author"
+      ],
+      "properties": {
+        "reviewer_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "locale": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "native_attested": {
+          "const": true
+        },
+        "status": {
+          "const": "approved"
+        },
+        "reviewed_on": {
+          "type": "string",
+          "format": "date"
+        },
+        "independent_of_author": {
+          "const": true
+        }
+      }
+    },
+    "blocked_family_clearance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "registry_sha256",
+        "candidate_semantic_family_id",
+        "reviewer_id",
+        "independent_of_author",
+        "status",
+        "reviewed_on"
+      ],
+      "properties": {
+        "registry_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "candidate_semantic_family_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "reviewer_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "independent_of_author": {
+          "const": true
+        },
+        "status": {
+          "const": "cleared"
+        },
+        "reviewed_on": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "shared_concept_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brief_id",
+        "brief_sha256",
+        "independent_local_rewrite",
+        "candidate_model_output_seen"
+      ],
+      "properties": {
+        "brief_id": {"$ref": "#/$defs/identifier"},
+        "brief_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "independent_local_rewrite": {"const": true},
+        "candidate_model_output_seen": {"const": false}
+      }
+    }
+  }
+}

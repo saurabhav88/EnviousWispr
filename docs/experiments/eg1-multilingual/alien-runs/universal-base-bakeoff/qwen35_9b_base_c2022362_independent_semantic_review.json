@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-07-15T10:52:04Z",
+  "scope": {
+    "evidence_class": "development_only",
+    "frozen_outputs_opened": false,
+    "other_candidate_artifacts_opened_in_this_review": false,
+    "review_method": "Independent row-level semantic review of model-blind case IDs. Reference outputs and assertion fields were treated as intent guides, not exact-match authorities.",
+    "strict_pass_rule": "behavior_correct and meaning_preserved and cleanup_correct and grammar_punctuation_correct and not damaging_extra_edit; list_correct must also be true when non-null"
+  },
+  "input_validation": {
+    "all_output_ids_unique": true,
+    "all_output_rows_match_source_fields": true,
+    "reviewed_rows": 92,
+    "sources": [
+      {
+        "suite": "ml56",
+        "source_path": "scripts/eval/runs/bakeoff-1265/probes/multilingual_cases.jsonl",
+        "source_sha256": "6e4a85ce7955a184cb15bdda78c3542107403e02b0136ad52d569379941a65e3",
+        "source_rows": 56,
+        "output_path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/qwen35_9b_base_c2022362_ml56.jsonl",
+        "output_sha256": "c018a97e87d895fdecf425a6e09f8212b9a0f1774ff3170327853b98612484ea",
+        "reviewed_rows": 56
+      },
+      {
+        "suite": "ru_dev16",
+        "source_path": "scripts/eval/corpus/eg1_multilingual_ru_v1.jsonl",
+        "source_sha256": "2f066967758f2e332fafe14f1182a64ba7e567ae07b71d343bdc70775dc3512c",
+        "source_rows": 24,
+        "output_path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/qwen35_9b_base_c2022362_ru_dev16.jsonl",
+        "output_sha256": "e539a73c2f024207148d9537bfbbe7a88ef6fdeec17f7e82df43a7cddfdf0ac5",
+        "reviewed_rows": 16,
+        "note": "Only rows marked split=dev were reviewed. The eight non-development rows were not output candidates and were not reviewed."
+      },
+      {
+        "suite": "twoitem_v1a",
+        "source_path": "scripts/eval/corpus/eg1_two_item_list_en_dev_v1a.jsonl",
+        "source_sha256": "1f9d8deed18a8c2e5aa7dd39925592c35ad71b8c800f3b3a2b7446a77b2573ef",
+        "source_rows": 10,
+        "output_path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/qwen35_9b_base_c2022362_twoitem_v1a.jsonl",
+        "output_sha256": "d6bf474f34ef404117eebf8520950144c422ec767f3d418a55b2528e886c6b0f",
+        "reviewed_rows": 10
+      },
+      {
+        "suite": "twoitem_v1b",
+        "source_path": "scripts/eval/corpus/eg1_two_item_list_en_dev_v1b.jsonl",
+        "source_sha256": "e3dd85fe360acd79060ec6de20392a504b18623e6ca47caaca1c980492fdd000",
+        "source_rows": 10,
+        "output_path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/qwen35_9b_base_c2022362_twoitem_v1b.jsonl",
+        "output_sha256": "3714854057ad3bbda0d28e036594c1301c4c03935a2e697d74eb505e809e4262",
+        "reviewed_rows": 10
+      }
+    ]
+  },
+  "judgment_schema": [
+    "case_id",
+    "suite",
+    "lang",
+    "behavior_correct",
+    "list_correct_or_null",
+    "meaning_preserved",
+    "cleanup_correct",
+    "grammar_punctuation_correct",
+    "damaging_extra_edit",
+    "strict_pass",
+    "reason"
+  ],
+  "judgments": [
+    ["ml-es-0", "ml56", "es", true, null, true, true, true, false, true, "Removed the hesitation, preserved the request, and punctuated naturally."],
+    ["ml-es-1", "ml56", "es", false, null, false, false, true, true, false, "Changed the correction cue into an or-choice, leaving suit versus dress ambiguous instead of keeping the final dress intent."],
+    ["ml-es-2", "ml56", "es", false, null, true, false, true, false, false, "Interpreted the filler este as the determiner Esta instead of removing it."],
+    ["ml-es-3", "ml56", "es", true, null, true, true, true, false, true, "Faithful punctuation-only cleanup."],
+    ["ml-es-4", "ml56", "es", false, null, true, false, true, false, false, "Retained the opening filler Bueno."],
+    ["ml-es-5", "ml56", "es", false, null, true, false, true, false, false, "Retained the filler este and the abandoned light-blue span rather than collapsing to dark blue."],
+    ["ml-es-6", "ml56", "es", false, null, true, false, true, false, false, "Rephrased the filler o sea as Es decir instead of removing it."],
+    ["ml-es-7", "ml56", "es", true, null, true, true, true, false, true, "Preserved the request and added correct question and sentence punctuation."],
+
+    ["ml-fr-0", "ml56", "fr", true, null, true, true, true, false, true, "Removed the hesitation and produced natural French punctuation."],
+    ["ml-fr-1", "ml56", "fr", false, null, true, true, false, false, false, "The first sentence joins the greeting and meeting topic awkwardly; it needs a boundary after Bonjour à tous."],
+    ["ml-fr-2", "ml56", "fr", true, null, true, true, true, false, true, "Removed both repetitions while preserving the two actions."],
+    ["ml-fr-3", "ml56", "fr", false, null, true, false, true, false, false, "Kept the abandoned pasta choice and repeated Donc rather than resolving to lasagna."],
+    ["ml-fr-4", "ml56", "fr", true, null, true, true, true, false, true, "Removed the hesitation and kept the conditional request intact."],
+    ["ml-fr-5", "ml56", "fr", false, null, true, false, true, false, false, "Kept both versions of reviewing the file instead of resolving the restart."],
+    ["ml-fr-6", "ml56", "fr", true, null, true, true, true, false, true, "Preserved the speaker's explicit uncertainty between 7:30 and 8 rather than inventing certainty."],
+    ["ml-fr-7", "ml56", "fr", true, null, false, true, true, true, false, "Changed informal singular Appelle and collective on va payer into formal or plural Appelez and vous paierez, changing who pays."],
+
+    ["ml-de-0", "ml56", "de", true, null, true, true, true, false, true, "Removed the hesitation and corrected punctuation and capitalization."],
+    ["ml-de-1", "ml56", "de", false, null, true, false, true, true, false, "Turned the discourse filler also into Außerdem, adding a furthermore relationship not present in the dictation."],
+    ["ml-de-2", "ml56", "de", true, null, true, true, true, false, true, "Cleanly removed the hesitation and separated the emphasis sentence."],
+    ["ml-de-3", "ml56", "de", true, null, true, true, true, false, true, "Resolved ich werde to wir werden and repaired the sentence naturally."],
+    ["ml-de-4", "ml56", "de", true, null, true, true, true, false, true, "Faithful cleanup and punctuation."],
+    ["ml-de-5", "ml56", "de", true, null, true, true, true, false, true, "Faithful cleanup with a harmless active-passive rewrite."],
+    ["ml-de-6", "ml56", "de", true, null, true, true, true, false, true, "Removed the hesitation and punctuated both clauses correctly."],
+    ["ml-de-7", "ml56", "de", true, null, true, true, true, false, true, "Removed the hesitation and preserved the school pickup time."],
+
+    ["ml-pt-0", "ml56", "pt", false, null, true, false, false, false, false, "Retained multiple fillers and the abandoned four o'clock value, with the fragment Tipo, é."],
+    ["ml-pt-1", "ml56", "pt", false, null, true, false, true, false, false, "Kept the coffee correction exchange instead of returning only bread and milk."],
+    ["ml-pt-2", "ml56", "pt", false, null, false, false, true, true, false, "Punctuation makes Monday the kept date and Tuesday the rejected date, reversing the spoken correction."],
+    ["ml-pt-3", "ml56", "pt", false, null, true, false, true, false, false, "Retained Olha, é and né rather than removing fillers."],
+    ["ml-pt-4", "ml56", "pt", false, null, true, false, false, false, false, "Retained tipo and né, and para gente is missing the article in standard written Portuguese."],
+    ["ml-pt-5", "ml56", "pt", false, null, true, false, true, false, false, "Removed some fillers but retained the opening discourse filler Então."],
+    ["ml-pt-6", "ml56", "pt", false, null, true, false, false, false, false, "Retained é and Tá bom, and Amor, é não esquece is not clean written grammar."],
+    ["ml-pt-7", "ml56", "pt", false, null, true, false, true, false, false, "Retained então and Sabe instead of removing the discourse fillers."],
+
+    ["ml-hi-0", "ml56", "hi", false, null, false, false, true, false, false, "Replaced मतलब with अर्थात but retained both 11 and 12 instead of resolving to the final 12 o'clock intent."],
+    ["ml-hi-1", "ml56", "hi", true, null, true, true, true, false, true, "Removed the restart and correctly added vegetables to the shopping request."],
+    ["ml-hi-2", "ml56", "hi", false, null, true, false, true, false, false, "Retained अच्छा as a filler between the two tasks."],
+    ["ml-hi-3", "ml56", "hi", true, null, true, true, true, false, true, "Removed the hesitation and produced natural agreement and punctuation."],
+    ["ml-hi-4", "ml56", "hi", false, null, true, false, true, false, false, "Retained हाँ तो and मतलब rather than cleaning the fillers."],
+    ["ml-hi-5", "ml56", "hi", true, null, true, true, true, false, true, "Removed the hesitation and kept the homework instruction intact."],
+    ["ml-hi-6", "ml56", "hi", true, null, true, true, true, false, true, "Removed मतलब and preserved both office tasks."],
+    ["ml-hi-7", "ml56", "hi", false, null, true, false, true, false, false, "Retained हाँ तो and the awkward filler chain before the drinks item."],
+
+    ["ml-ja-0", "ml56", "ja", true, null, true, true, true, false, true, "Removed the filler chain and preserved the Thursday request in natural polite Japanese."],
+    ["ml-ja-1", "ml56", "ja", true, null, true, true, true, false, true, "Removed the hesitation while faithfully preserving the open dinner choice."],
+    ["ml-ja-2", "ml56", "ja", true, null, true, true, true, false, true, "Removed fillers and preserved the urgency as a natural short emphasis sentence."],
+    ["ml-ja-3", "ml56", "ja", true, null, true, true, true, false, true, "Removed fillers and preserved the follow-up question."],
+    ["ml-ja-4", "ml56", "ja", true, null, true, true, true, false, true, "Removed fillers; the final-version phrase is acceptable contextual ellipsis in Japanese and preserves the Monday deadline."],
+    ["ml-ja-5", "ml56", "ja", true, null, true, true, true, false, true, "Removed repeated fillers and kept the lunch invitation."],
+    ["ml-ja-6", "ml56", "ja", false, null, true, false, true, false, false, "Retained えーと, えーっと, and あのー instead of cleaning them."],
+    ["ml-ja-7", "ml56", "ja", true, null, true, true, true, false, true, "Removed repeated fillers and preserved both completion states."],
+
+    ["ml-zh-0", "ml56", "zh", true, null, true, true, true, false, true, "Removed filler phrases and preserved the 3:30 rescheduling request."],
+    ["ml-zh-1", "ml56", "zh", true, null, true, true, true, false, true, "Removed repeated filler phrases and retained the latest-version request."],
+    ["ml-zh-2", "ml56", "zh", false, null, true, false, true, false, false, "Retained 那个 and 就是 filler phrases."],
+    ["ml-zh-3", "ml56", "zh", false, null, true, false, false, false, false, "Retained 那个, 嗯, and 就是, leaving an awkward broken phrase before the café."],
+    ["ml-zh-4", "ml56", "zh", true, null, true, true, true, false, true, "Faithful punctuation cleanup with the ATM request intact."],
+    ["ml-zh-5", "ml56", "zh", true, null, true, true, true, false, true, "Faithful cleanup; the polite register shift does not alter the action."],
+    ["ml-zh-6", "ml56", "zh", true, null, true, true, true, false, true, "Faithful punctuation cleanup with time and reminder preserved."],
+    ["ml-zh-7", "ml56", "zh", true, null, true, true, true, false, true, "Preserved the request for advice and added natural punctuation."],
+
+    ["ru-dev-001", "ru_dev16", "ru", false, null, true, false, true, true, false, "Retained ну and э-э, and changed informal singular отправь to formal or plural отправьте."],
+    ["ru-dev-002", "ru_dev16", "ru", false, null, true, false, true, false, false, "Kept the abandoned Tuesday and 3 o'clock span instead of resolving to Wednesday at 3:30."],
+    ["ru-dev-003", "ru_dev16", "ru", true, null, true, true, true, false, true, "Correctly repaired the instrumental case and preserved the deadline."],
+    ["ru-dev-004", "ru_dev16", "ru", true, null, true, true, true, false, true, "Correctly repaired numeral and adjective agreement."],
+    ["ru-dev-005", "ru_dev16", "ru", true, null, true, true, true, false, true, "Correctly repaired both feminine agreement errors."],
+    ["ru-dev-006", "ru_dev16", "ru", false, null, false, true, true, true, false, "Split five new applications into an incomplete five and a singular new application, changing the count and structure."],
+    ["ru-dev-007", "ru_dev16", "ru", true, null, true, true, true, false, true, "Correctly repaired collective agreement in both verbs."],
+    ["ru-dev-008", "ru_dev16", "ru", false, false, true, false, true, false, false, "Returned inline prose and retained Сделай список instead of producing the requested bullet list."],
+    ["ru-dev-009", "ru_dev16", "ru", false, false, true, false, true, false, false, "Kept spoken ordinals inline instead of formatting the three-step numbered list."],
+    ["ru-dev-010", "ru_dev16", "ru", true, true, true, true, true, false, true, "Correctly preserved a prose enumeration without inventing a list."],
+    ["ru-dev-011", "ru_dev16", "ru", false, null, true, true, true, false, false, "Preserved the entity and amount but failed the requested № normalization."],
+    ["ru-dev-012", "ru_dev16", "ru", false, null, true, true, true, false, false, "Preserved values semantically but left every number in words instead of normalizing them."],
+    ["ru-dev-013", "ru_dev16", "ru", false, null, false, true, true, true, false, "Changed pull request 184 to 1084, a damaging identifier error."],
+    ["ru-dev-014", "ru_dev16", "ru", true, null, true, true, true, false, true, "Preserved all application names and transfer direction exactly."],
+    ["ru-dev-015", "ru_dev16", "ru", false, null, true, false, true, false, false, "Retained fillers and the abandoned three-box value, though the final four remains clear."],
+    ["ru-dev-016", "ru_dev16", "ru", true, null, true, true, true, false, true, "Preserved the quoted phishing example and did not execute it."],
+
+    ["en-two-item-dev-v1a-001", "twoitem_v1a", "en", true, true, true, true, true, false, true, "Produced exactly two clean bullets with both targets and deadlines."],
+    ["en-two-item-dev-v1a-002", "twoitem_v1a", "en", false, false, true, true, true, false, false, "Preserved both deliverables but left them as one prose sentence instead of a scoped list."],
+    ["en-two-item-dev-v1a-003", "twoitem_v1a", "en", true, true, true, false, true, false, false, "Produced two bullets but retained the spoken meta line Let me make a list."],
+    ["en-two-item-dev-v1a-004", "twoitem_v1a", "en", false, false, false, true, true, true, false, "Did not create a list and changed probably soft gray from a tentative preference into a definite selection."],
+    ["en-two-item-dev-v1a-005", "twoitem_v1a", "en", true, true, false, true, true, true, false, "Produced two bullets but dropped the critical pre-release scope."],
+    ["en-two-item-dev-v1a-006", "twoitem_v1a", "en", false, false, true, true, true, false, false, "Preserved both migration tasks but kept them in prose instead of a release-scoped list."],
+    ["en-two-item-dev-v1a-007", "twoitem_v1a", "en", true, true, false, true, true, true, false, "Produced two bullets but dropped patient Marcus Chen and the new-prescription context."],
+    ["en-two-item-dev-v1a-008", "twoitem_v1a", "en", false, false, true, true, true, false, false, "Preserved the care plan but did not format the two actions as a scoped list."],
+    ["en-two-item-dev-v1a-009", "twoitem_v1a", "en", true, true, false, true, true, true, false, "Produced two bullets but dropped the Henderson estate scope."],
+    ["en-two-item-dev-v1a-010", "twoitem_v1a", "en", false, false, true, true, true, false, false, "Preserved both filing tasks but returned prose instead of a deadline-scoped list."],
+
+    ["en-two-item-dev-v1b-001", "twoitem_v1b", "en", true, true, false, true, true, true, false, "Produced two bullets but dropped the Q3 report scope."],
+    ["en-two-item-dev-v1b-002", "twoitem_v1b", "en", false, false, true, false, true, false, false, "Returned inline prose and retained spoken list scaffolding such as two things and first."],
+    ["en-two-item-dev-v1b-003", "twoitem_v1b", "en", true, true, true, true, true, false, true, "Produced exactly two clean bullets with both days preserved."],
+    ["en-two-item-dev-v1b-004", "twoitem_v1b", "en", false, false, true, true, true, false, false, "Preserved both party tasks but did not format them as a scoped list."],
+    ["en-two-item-dev-v1b-005", "twoitem_v1b", "en", true, true, false, true, true, true, false, "Resolved the bullet-list correction but dropped the authentication-endpoint and critical-requirements scope."],
+    ["en-two-item-dev-v1b-006", "twoitem_v1b", "en", false, false, true, false, true, false, false, "Returned inline prose and retained two tasks, first, and second scaffolding."],
+    ["en-two-item-dev-v1b-007", "twoitem_v1b", "en", true, true, false, true, true, true, false, "Produced two bullets but dropped Margaret Chen, discharge, and today, which is unsafe clinical context loss."],
+    ["en-two-item-dev-v1b-008", "twoitem_v1b", "en", false, false, true, true, true, false, false, "Preserved both follow-up actions but did not format them as a scoped list."],
+    ["en-two-item-dev-v1b-009", "twoitem_v1b", "en", true, true, false, true, true, true, false, "Produced two bullets but dropped the vendor-agreement review scope."],
+    ["en-two-item-dev-v1b-010", "twoitem_v1b", "en", false, false, true, false, true, false, false, "Returned prose and retained two critical items and second scaffolding instead of a scoped list."]
+  ],
+  "summary": {
+    "aggregate": {
+      "rows": 92,
+      "behavior_correct": 49,
+      "meaning_preserved": 78,
+      "cleanup_correct": 60,
+      "grammar_punctuation_correct": 87,
+      "damaging_extra_edit": 15,
+      "strict_pass": 40,
+      "list_applicable": 23,
+      "list_correct": 11
+    },
+    "by_suite": {
+      "ml56": {"rows": 56, "behavior_correct": 32, "meaning_preserved": 52, "cleanup_correct": 33, "grammar_punctuation_correct": 51, "damaging_extra_edit": 4, "strict_pass": 31},
+      "ru_dev16": {"rows": 16, "behavior_correct": 7, "meaning_preserved": 14, "cleanup_correct": 11, "grammar_punctuation_correct": 16, "damaging_extra_edit": 3, "strict_pass": 7, "list_applicable": 3, "list_correct": 1},
+      "twoitem_v1a": {"rows": 10, "behavior_correct": 5, "meaning_preserved": 6, "cleanup_correct": 9, "grammar_punctuation_correct": 10, "damaging_extra_edit": 4, "strict_pass": 1, "list_applicable": 10, "list_correct": 5},
+      "twoitem_v1b": {"rows": 10, "behavior_correct": 5, "meaning_preserved": 6, "cleanup_correct": 7, "grammar_punctuation_correct": 10, "damaging_extra_edit": 4, "strict_pass": 1, "list_applicable": 10, "list_correct": 5}
+    },
+    "by_language": {
+      "de": {"rows": 8, "behavior_correct": 7, "meaning_preserved": 8, "cleanup_correct": 7, "grammar_punctuation_correct": 8, "damaging_extra_edit": 1, "strict_pass": 7},
+      "en": {"rows": 20, "behavior_correct": 10, "meaning_preserved": 12, "cleanup_correct": 16, "grammar_punctuation_correct": 20, "damaging_extra_edit": 8, "strict_pass": 2, "list_applicable": 20, "list_correct": 10},
+      "es": {"rows": 8, "behavior_correct": 3, "meaning_preserved": 7, "cleanup_correct": 3, "grammar_punctuation_correct": 8, "damaging_extra_edit": 1, "strict_pass": 3},
+      "fr": {"rows": 8, "behavior_correct": 5, "meaning_preserved": 7, "cleanup_correct": 6, "grammar_punctuation_correct": 7, "damaging_extra_edit": 1, "strict_pass": 4},
+      "hi": {"rows": 8, "behavior_correct": 4, "meaning_preserved": 7, "cleanup_correct": 4, "grammar_punctuation_correct": 8, "damaging_extra_edit": 0, "strict_pass": 4},
+      "ja": {"rows": 8, "behavior_correct": 7, "meaning_preserved": 8, "cleanup_correct": 7, "grammar_punctuation_correct": 8, "damaging_extra_edit": 0, "strict_pass": 7},
+      "pt": {"rows": 8, "behavior_correct": 0, "meaning_preserved": 7, "cleanup_correct": 0, "grammar_punctuation_correct": 5, "damaging_extra_edit": 1, "strict_pass": 0},
+      "ru": {"rows": 16, "behavior_correct": 7, "meaning_preserved": 14, "cleanup_correct": 11, "grammar_punctuation_correct": 16, "damaging_extra_edit": 3, "strict_pass": 7, "list_applicable": 3, "list_correct": 1},
+      "zh": {"rows": 8, "behavior_correct": 6, "meaning_preserved": 8, "cleanup_correct": 6, "grammar_punctuation_correct": 7, "damaging_extra_edit": 0, "strict_pass": 6}
+    },
+    "concise_findings": [
+      "Strict pass was 40/92. Meaning was preserved on 78/92, while 15/92 had a damaging extra edit.",
+      "The multilingual 56-row suite passed 31/56 strictly. German and Japanese were strongest at 7/8 each; Portuguese was 0/8 because fillers and correction traces remained in every case.",
+      "Russian passed 7/16 strictly. It was strong on case and agreement repair but missed both requested list formats, retained correction spans, and changed PR 184 to 1084.",
+      "The English two-item suites passed 2/20 strictly. All 10 explicit requests became bullets, but none of the 10 scoped implicit cases became lists; eight explicit-list outputs also dropped important scope or identity context.",
+      "This is development evidence only and does not authorize a release decision."
+    ]
+  }
+}

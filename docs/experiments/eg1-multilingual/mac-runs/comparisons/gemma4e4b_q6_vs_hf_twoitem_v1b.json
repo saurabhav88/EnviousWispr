@@ -1,0 +1,32 @@
+{
+  "baseline": "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_twoitem_v1b.jsonl",
+  "candidate": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q6_listv2_twoitem_v1b.jsonl",
+  "rows": 10,
+  "exact_matches": 7,
+  "canonical_matches": 7,
+  "changed": 3,
+  "list_structure_changes": 0,
+  "changed_rows": [
+    {
+      "id": "en-two-item-dev-v1b-001",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "Please make me a bullet list of items to include in the Q3 report.\n\n* Performance metrics for the customer success team\n* Churn analysis for the APAC region",
+      "candidate": "Items to include in the Q3 report:\n*   Performance metrics for the customer success team\n*   Churn analysis for the APAC region"
+    },
+    {
+      "id": "en-two-item-dev-v1b-002",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "For my one-on-one with Priya tomorrow at 2 PM, I need to prepare two things:\n* Discuss her career development plan in the UX strategy track\n* Review the Q3 OKR alignment",
+      "candidate": "For my one-on-one with Priya tomorrow at two PM, I need to prepare two things:\n* Discuss her career development plan in the UX strategy track\n* Review the Q3 OKR alignment"
+    },
+    {
+      "id": "en-two-item-dev-v1b-005",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "The two critical requirements for the new user auth endpoint are:\n* Request rate limiting of 300 calls per minute\n* Validation for OAuth 2.0 token format",
+      "candidate": "* Request rate limiting of 300 calls per minute\n* Validation for OAuth 2.0 token format"
+    }
+  ]
+}

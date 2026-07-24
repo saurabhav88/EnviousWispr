@@ -1,0 +1,953 @@
+{
+  "positive_corpus": "scripts/eval/corpus/list_format_overflow_v1.jsonl",
+  "trap_corpus": "scripts/eval/corpus/list_format_trap_overflow_v1.jsonl",
+  "models": {
+    "eg1_current": {
+      "positive_total": 100,
+      "activated": 83,
+      "activated_wilson_95": [
+        0.7445199523239887,
+        0.8910643388594006
+      ],
+      "intended_count": 77,
+      "intended_count_wilson_95": [
+        0.6784561697712622,
+        0.8415673411969654
+      ],
+      "trap_total": 100,
+      "false_lists": 3,
+      "restraint": 97,
+      "restraint_wilson_95": [
+        0.9154806357094724,
+        0.9897454759759611
+      ],
+      "positive_mismatches": [
+        {
+          "id": "LF-OF-002",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-007",
+          "list_lines": 6,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-008",
+          "list_lines": 6,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-009",
+          "list_lines": 7,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-013",
+          "list_lines": 8,
+          "intended_items": 7,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-024",
+          "list_lines": 5,
+          "intended_items": 7,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-027",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-038",
+          "list_lines": 6,
+          "intended_items": 7,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-049",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-052",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-053",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-054",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-056",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-057",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-061",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-062",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-068",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-081",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-089",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-090",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-091",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-097",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-100",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        }
+      ],
+      "false_list_cases": [
+        {
+          "id": "LFT-OF-005",
+          "list_lines": 2,
+          "false_list": true
+        },
+        {
+          "id": "LFT-OF-047",
+          "list_lines": 2,
+          "false_list": true
+        },
+        {
+          "id": "LFT-OF-082",
+          "list_lines": 2,
+          "false_list": true
+        }
+      ]
+    },
+    "eg1_current_shipped": {
+      "positive_total": 100,
+      "activated": 63,
+      "activated_wilson_95": [
+        0.5322052958094291,
+        0.7181763946567546
+      ],
+      "intended_count": 59,
+      "intended_count_wilson_95": [
+        0.4920143005341078,
+        0.6813268697886348
+      ],
+      "trap_total": 100,
+      "false_lists": 0,
+      "restraint": 100,
+      "restraint_wilson_95": [
+        0.9630065017930143,
+        1.0
+      ],
+      "positive_mismatches": [
+        {
+          "id": "LF-OF-002",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-007",
+          "list_lines": 6,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-009",
+          "list_lines": 7,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-013",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-014",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-024",
+          "list_lines": 5,
+          "intended_items": 7,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-025",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-027",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-028",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-030",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-038",
+          "list_lines": 6,
+          "intended_items": 7,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-040",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-042",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-049",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-051",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-052",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-053",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-054",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-056",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-057",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-058",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-059",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-060",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-061",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-062",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-064",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-066",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-067",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-068",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-078",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-079",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-080",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-081",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-088",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-089",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-090",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-091",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-093",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-097",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-099",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-100",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        }
+      ],
+      "false_list_cases": []
+    },
+    "gemma4e4b_multilingual_listv2_aligned_v1": {
+      "positive_total": 100,
+      "activated": 67,
+      "activated_wilson_95": [
+        0.5730534379509052,
+        0.7543687726587197
+      ],
+      "intended_count": 63,
+      "intended_count_wilson_95": [
+        0.5322052958094291,
+        0.7181763946567546
+      ],
+      "trap_total": 100,
+      "false_lists": 0,
+      "restraint": 100,
+      "restraint_wilson_95": [
+        0.9630065017930143,
+        1.0
+      ],
+      "positive_mismatches": [
+        {
+          "id": "LF-OF-002",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-007",
+          "list_lines": 6,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-009",
+          "list_lines": 6,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-014",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-024",
+          "list_lines": 6,
+          "intended_items": 7,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-025",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-026",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-027",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-028",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-029",
+          "list_lines": 6,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-030",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-042",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-049",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-052",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-054",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-056",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-057",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-058",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-059",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-060",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-061",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-066",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-067",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-068",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-069",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-078",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-079",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-080",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-081",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-082",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-084",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-089",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-090",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-091",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-093",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-098",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-100",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        }
+      ],
+      "false_list_cases": []
+    },
+    "gemma4e4b_multilingual_smoke_v1": {
+      "positive_total": 100,
+      "activated": 87,
+      "activated_wilson_95": [
+        0.7901964855992357,
+        0.9224283257275948
+      ],
+      "intended_count": 82,
+      "intended_count_wilson_95": [
+        0.7333264161369926,
+        0.8829977450105364
+      ],
+      "trap_total": 100,
+      "false_lists": 1,
+      "restraint": 99,
+      "restraint_wilson_95": [
+        0.9455138038212946,
+        0.9982325679358593
+      ],
+      "positive_mismatches": [
+        {
+          "id": "LF-OF-002",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-007",
+          "list_lines": 6,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-009",
+          "list_lines": 6,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-013",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-024",
+          "list_lines": 6,
+          "intended_items": 7,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-027",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-029",
+          "list_lines": 6,
+          "intended_items": 5,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-038",
+          "list_lines": 6,
+          "intended_items": 7,
+          "activated": true,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-052",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-054",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-056",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-061",
+          "list_lines": 0,
+          "intended_items": 7,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-067",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-068",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-078",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-081",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-090",
+          "list_lines": 0,
+          "intended_items": 3,
+          "activated": false,
+          "intended_count": false
+        },
+        {
+          "id": "LF-OF-093",
+          "list_lines": 0,
+          "intended_items": 5,
+          "activated": false,
+          "intended_count": false
+        }
+      ],
+      "false_list_cases": [
+        {
+          "id": "LFT-OF-082",
+          "list_lines": 2,
+          "false_list": true
+        }
+      ]
+    }
+  }
+}

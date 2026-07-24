@@ -1,0 +1,125 @@
+{
+  "schema_version": "eg1-universal-base-control-receipt-v1",
+  "model_id": "phi4mini_base_cfbefacb",
+  "official_repo": "microsoft/Phi-4-mini-instruct",
+  "official_revision": "cfbefacb99257ffa30c83adab238a50856ac3083",
+  "official_model_card": "https://huggingface.co/microsoft/Phi-4-mini-instruct",
+  "license": "MIT",
+  "parameter_count": "3.8B",
+  "target_language_eligibility": {
+    "en": true,
+    "de": true,
+    "fr": true,
+    "es": true,
+    "ru": true
+  },
+  "official_snapshot": {
+    "total_bytes": 7694050092,
+    "weight_bytes": 7672066216,
+    "download_manifest_sha256": "f492204f9a6f0b469427725cc232996264d4311c05eaa1f8d2299abc68fccc0c"
+  },
+  "runtime": {
+    "host": "AlienSV",
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "torch": "2.12.1+cu130",
+    "transformers": "5.5.0",
+    "dtype": "bfloat16",
+    "seed": 1265,
+    "batch_size": 2,
+    "max_new_tokens": 256,
+    "thinking_enabled": false,
+    "shared_runner_sha256": "e023cb200470768aaee384d8c9f61fa5359d62bdc7fc4561cae7dd985d31fa8a",
+    "phi_only_compat_wrapper_sha256": "cfb0b17e3690462333b9ed268499c47f4ac55e158ec8952a61bc6f51386fc5f0"
+  },
+  "hash_convention": "SHA-256 over repository artifacts after normalizing Windows CRLF transport endings to LF. JSON content and decoded output strings are unchanged.",
+  "compatibility_finding": {
+    "invalid_smoke_preserved": true,
+    "cause": "The shared runner replaced Phi's official two-token EOS list [200020, 199999] with tokenizer.eos_token_id 199999, so generation did not stop at <|end|>.",
+    "temporary_fix": "The Phi-only wrapper restores the pinned model generation_config EOS list without changing the shared runner, prompts, corpora, or weights.",
+    "invalid_smoke": {
+      "cases": 5,
+      "repetition_or_prompt_leak_cases": 5,
+      "output_sha256": "688f3c9fb93d0c562957624b68d0c8880a743561524179aea336ff46b697bbee",
+      "manifest_sha256": "3f1bc4b9c85b78687063f2b34e985b39b8c2cc27580de2710601519ccaff4b5c"
+    },
+    "corrected_smoke": {
+      "cases": 5,
+      "nonempty": 5,
+      "reasoning_or_prompt_leaks": 0,
+      "output_sha256": "5083cadbecc9eba566fcf655394286c915f90ac29cb8d14586d1930d49370e79",
+      "manifest_sha256": "4c05b5ae04ea0446e25a2489103acf3100c162dcada67e9689bee29d144f1ed5"
+    }
+  },
+  "shared_runner_fix_validation": {
+    "shared_runner_sha256": "623f283391b3f71ac8ce379b2fe8b7a41ff6adf0c0fae70fda1c69e8c86b2b59",
+    "generation_contract_sha256": "d74f79e9b1a7d08697b7a4a41379df47d54cd042f581608c98eaca84bf92c329",
+    "generation_eos_token_id": [200020, 199999],
+    "clean_outputs": "5/5",
+    "output_parity_with_corrected_wrapper_smoke": "5/5",
+    "output_only_canonical_sha256": "b9fefa862d9a009283d6b668980384e2af997dca60f0bdd01090e6017c175c0d",
+    "output_sha256": "588d64a56950b24af8361755a922533b06bc24bc9bc298172ac74420e1ba52a6",
+    "manifest_sha256": "f8eec6ed185923bdb60dddd42e241f506754f2563e904a4ae0dacad125f4a7c6"
+  },
+  "development_suite": {
+    "expected_cases": 92,
+    "observed_cases": 92,
+    "unique_ids": 92,
+    "empty_outputs": 0,
+    "reasoning_repetition": 0,
+    "prompt_or_language_label_leaks": 1,
+    "leak_case_ids": [
+      "ru-dev-001"
+    ],
+    "outputs": {
+      "ml56": {
+        "cases": 56,
+        "elapsed_seconds": 39.818,
+        "sha256": "eb2f1812b3233f62a7b62317b2be66bd1059b3a0d6d212fb69397b230a078274",
+        "manifest_sha256": "3230d3d0069049a04c76fb8dc6f933ad9c6bc84df5b55b7b919c333411c697b6"
+      },
+      "ru16": {
+        "cases": 16,
+        "elapsed_seconds": 10.815,
+        "sha256": "c0e5be7f19804e170a49ca224286fee7a10a6f805382810b5e43258e68dd80df",
+        "manifest_sha256": "7987d33fec3f7a9b78970838912204acce4b01040caa6f454ae094a862ec6dde"
+      },
+      "twoitem_v1a": {
+        "cases": 10,
+        "elapsed_seconds": 12.102,
+        "sha256": "c99d5f2b18f847a6e9535573328aca824b143036db1b52463484587fbf4ef0b8",
+        "manifest_sha256": "c480cd3a9ae95eb9b832a950feb53eceb389d9d0d2f5340c6ac9e09b0a495c4c"
+      },
+      "twoitem_v1b": {
+        "cases": 10,
+        "elapsed_seconds": 11.262,
+        "sha256": "ee8a89d656c1a56320b93b5f3338b169d83c789599c3455284735c2028e85261",
+        "manifest_sha256": "8b9b460663fe28025639a9e66bb492851f5742ba35e8c9c7fe8925900447c8d1"
+      }
+    }
+  },
+  "deterministic_scores": {
+    "russian": {
+      "nonempty": "16/16",
+      "script_retained": "12/16",
+      "required_all": "5/16",
+      "forbidden_all": "16/16",
+      "structure_ok": "16/16",
+      "strict": "5/16",
+      "score_sha256": "254f07a8683dfe8ed1441f1912de5549e16ba40902818254a740fe4b7196eca7"
+    },
+    "english_two_item": {
+      "structure_ok": "12/20",
+      "required_all": "1/20",
+      "forbidden_all": "10/20",
+      "strict": "1/20",
+      "score_sha256": "2076881da8d10044682bab3bc49d31117a5690529d16ba76f02bb56fff8d2447"
+    }
+  },
+  "observed_hard_failures": [
+    "Four of sixteen Russian outputs contained no Cyrillic and were translated or transliterated into English or Latin script.",
+    "ru-dev-001 appended a Language: Russian label instead of returning only polished text.",
+    "ru-dev-011 changed invoice code АВ-204 to АВ 224.",
+    "Only one of twenty English two-item outputs passed all mechanical preservation and structure checks."
+  ],
+  "scope": "Development-only untouched-base control. No frozen output was opened, no prompt or weight tuning was performed, and deterministic scores are not native-fluency judgments."
+}

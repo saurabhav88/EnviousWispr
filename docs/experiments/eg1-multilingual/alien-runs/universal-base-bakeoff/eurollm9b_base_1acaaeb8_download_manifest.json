@@ -1,0 +1,154 @@
+{
+  "schema_version": "eg1-official-hf-snapshot-v1",
+  "repo_id": "utter-project/EuroLLM-9B-Instruct-2512",
+  "revision": "1acaaeb8d9e8d9b5e3bf0240aacd32fc11ee4213",
+  "total_bytes": 18322965727,
+  "weight_bytes": 18304683360,
+  "files": [
+    {
+      "path": ".cache/huggingface/.gitignore",
+      "bytes": 1,
+      "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1"
+    },
+    {
+      "path": ".cache/huggingface/CACHEDIR.TAG",
+      "bytes": 195,
+      "sha256": "e8893e2dcb3f4545ef67a0a5b7b769113d38eef1aa61c7c7ba14659b02af955f"
+    },
+    {
+      "path": ".cache/huggingface/download/chat_template.jinja.metadata",
+      "bytes": 104,
+      "sha256": "5b2087aa88a1be6e3f99c01edffe636849927e3c2ee99aecd1420f3e9c513c40"
+    },
+    {
+      "path": ".cache/huggingface/download/config.json.metadata",
+      "bytes": 104,
+      "sha256": "70f08704b6fa8f584e8395cf38833d7a04f24ac1e4322df68911098f21dbf3b6"
+    },
+    {
+      "path": ".cache/huggingface/download/generation_config.json.metadata",
+      "bytes": 103,
+      "sha256": "9595dfa22faf53d8b8947afdc6d7aad16ac8d043c549f90c601f84e7236ea4d5"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00001-of-00004.safetensors.metadata",
+      "bytes": 127,
+      "sha256": "2bd4b5c75221f04d8abfedfcd6cc9aeeac994410833bdfdbb53476036771fbd5"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00002-of-00004.safetensors.metadata",
+      "bytes": 127,
+      "sha256": "135cc40582d4ac08388cc7526775ffc01935083212c18ca5a17d1c672ca177f4"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00003-of-00004.safetensors.metadata",
+      "bytes": 128,
+      "sha256": "a10489f305f09c7c20cc2a467ac83cd5f701163bce603d2664f180f7bbb21997"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00004-of-00004.safetensors.metadata",
+      "bytes": 128,
+      "sha256": "57c465977bd46795975173975e741edd2fb16047ac23301569feca5247844a70"
+    },
+    {
+      "path": ".cache/huggingface/download/model.safetensors.index.json.metadata",
+      "bytes": 104,
+      "sha256": "ae260f5bbd1533c04ee098c58e401b14d3dfa527398c05348de0a00e656fd25d"
+    },
+    {
+      "path": ".cache/huggingface/download/README.md.metadata",
+      "bytes": 104,
+      "sha256": "5ed3fd723a72d72e84b141eb27e2ebab4e2d3843e4f4a3dddb33d7a21e3f2791"
+    },
+    {
+      "path": ".cache/huggingface/download/special_tokens_map.json.metadata",
+      "bytes": 103,
+      "sha256": "91f2f60a1733a05da791781fd7c10d46eb1d592c3cc9a5a50cd67051dc1d4918"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer.json.metadata",
+      "bytes": 128,
+      "sha256": "608878057a92655ea8692e9f435600533987e97cdbe96ef46f90e423e3f07f88"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer.model.metadata",
+      "bytes": 128,
+      "sha256": "4e35ad44ca1b498987fb1348285c935f93f9f2eeda04199ab19b05a800fae1c3"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer_config.json.metadata",
+      "bytes": 104,
+      "sha256": "cd1fda9352f4653727370e91fef286843b211a5bb9b5885fd0c0d98fd0d02d0d"
+    },
+    {
+      "path": ".cache/huggingface/trees/1acaaeb8d9e8d9b5e3bf0240aacd32fc11ee4213.json",
+      "bytes": 2833,
+      "sha256": "8c42b94ff7ae48a1ff9f602d0a90516490166d198740f9dbffb8ca1914c99b5c"
+    },
+    {
+      "path": "chat_template.jinja",
+      "bytes": 295,
+      "sha256": "9850c24e4c4adc21d258566d1b1f0c1855c44256287143956631e892a38fc4de"
+    },
+    {
+      "path": "config.json",
+      "bytes": 680,
+      "sha256": "463a04d4e63b34b6390d27f4e4fdc75eec9738de255ccca705195320c7d9d367"
+    },
+    {
+      "path": "generation_config.json",
+      "bytes": 132,
+      "sha256": "3b82363a9b665b34a62b0382b4180ad5583f4dc35fecda38595612f705382ff9"
+    },
+    {
+      "path": "model-00001-of-00004.safetensors",
+      "bytes": 4991396632,
+      "sha256": "32ead89c83133bd187b7a7b377c895f34ee39a564cf67a8cb766a1c3c083be3f"
+    },
+    {
+      "path": "model-00002-of-00004.safetensors",
+      "bytes": 4983059672,
+      "sha256": "a71b284275d7a3e3f0e9b2fb92b949b053adfd16f325893e43dc51c2bfe83339"
+    },
+    {
+      "path": "model-00003-of-00004.safetensors",
+      "bytes": 4999836776,
+      "sha256": "f5f0da186b4d0e2ee9af5be37694195b6a84db751db8cae09cfe0894e810a411"
+    },
+    {
+      "path": "model-00004-of-00004.safetensors",
+      "bytes": 3330390280,
+      "sha256": "d7b0331327bef7520129932447805f082a7b6384c0353c4dcffb955954f52944"
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "bytes": 31380,
+      "sha256": "ebe74f92262e01c28f1573bf39b939b0a407a9142aec709946f30eaca2fad62a"
+    },
+    {
+      "path": "README.md",
+      "bytes": 5461,
+      "sha256": "da2fd1cf74f9dcf07258716cf62ff1f345d2f6f35ec5ef841e2b8aaf72500d0a"
+    },
+    {
+      "path": "special_tokens_map.json",
+      "bytes": 557,
+      "sha256": "5a1e50e0e488ce4306a390682135546eeb6a91039212d85520a4db3e650b5c4f"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 15783507,
+      "sha256": "d6e4810e827e4ffcd735429d19d585326bb4efb31e921cb870ecefc4c1fa16e3"
+    },
+    {
+      "path": "tokenizer.model",
+      "bytes": 2408875,
+      "sha256": "42957aec88804838805b335da1bbcce9d116024a20c6c4b56757648b9e348254"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "bytes": 46959,
+      "sha256": "758bc8e1772626fda16ed9311508d98c352cc47034f3423959eb7ed57ece7bf7"
+    }
+  ]
+}

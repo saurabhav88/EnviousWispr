@@ -1,0 +1,25 @@
+{
+  "baseline": "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_ru_dev16.jsonl",
+  "candidate": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q5_listv2_ru_dev16.jsonl",
+  "rows": 16,
+  "exact_matches": 14,
+  "canonical_matches": 14,
+  "changed": 2,
+  "list_structure_changes": 0,
+  "changed_rows": [
+    {
+      "id": "ru-dev-008",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "На завтра:\n* Позвонить стоматологу\n* Отправить договор юристу\n* Забрать заказ из пункта выдачи",
+      "candidate": "Завтра:\n* Позвонить стоматологу\n* Отправить договор юристу\n* Забрать заказ из пункта выдачи"
+    },
+    {
+      "id": "ru-dev-011",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Подготовь счёт номер АВ-204 для ООО «Северный Ветер» на 248 750 рублей со сроком оплаты 18 июля.",
+      "candidate": "Подготовь счёт номер АВ-24 для ООО «Северный Ветер» на 248 750 рублей со сроком оплаты 18 июля."
+    }
+  ]
+}

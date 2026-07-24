@@ -1,0 +1,1539 @@
+{
+  "audit_sources": [
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/eg1_multilingual_smoke_v1.jsonl",
+      "role": "training_and_eval",
+      "sha256": "31a610847b412868580fc95b1fdb5b4b50900bfc61e07a94e2009ebcccd0a0d2"
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/type_b_approved_1890.jsonl",
+      "role": "training_and_eval",
+      "sha256": "27993adc574242e6bf2aef7430dbc2c6776ebbb6dd547d61f561d4e693d22a6b"
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/ci_corpus.jsonl",
+      "role": "training_and_eval",
+      "sha256": "922686a7b18ba18a5d2d1b5c2defbfbf6923bb5dd0c61bbd868f566e8fc4136d"
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/list_format_v1.jsonl",
+      "role": "prior_generated_batches",
+      "sha256": "50284e314a47d1f736279d6782241a5dc500d9e550a399a0a3fffedbda5e22a0"
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/list_format_trap_v1.jsonl",
+      "role": "prior_generated_batches",
+      "sha256": "c592140f120c83ec41c9c51624ed3bae351267eb7273720ffba8ecaaeb6d0fa3"
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/list_format_overflow_v1.jsonl",
+      "role": "prior_generated_batches",
+      "sha256": "af9959a688c590444f82288e21495ae856ba4754a810d4e484824b3d6f3b87b4"
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/list_format_trap_overflow_v1.jsonl",
+      "role": "prior_generated_batches",
+      "sha256": "12acd0ae1a2b7a81857a56fa4a5076fe69742d2587a8d3cf26108d80271a0647"
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/eg1_two_item_list_en_dev_v1a.jsonl",
+      "role": "prior_generated_batches",
+      "sha256": "1f9d8deed18a8c2e5aa7dd39925592c35ad71b8c800f3b3a2b7446a77b2573ef"
+    },
+    {
+      "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/corpus/eg1_two_item_list_en_dev_v1b.jsonl",
+      "role": "prior_generated_batches",
+      "sha256": "e3dd85fe360acd79060ec6de20392a504b18623e6ca47caaca1c980492fdd000"
+    }
+  ],
+  "created_at_epoch": 1784114395.7647018,
+  "excluded_from_pilot_but_reserved_for_full_run": {
+    "positive_list": [
+      "positive_list-076",
+      "positive_list-077",
+      "positive_list-078",
+      "positive_list-079",
+      "positive_list-080",
+      "positive_list-081",
+      "positive_list-082",
+      "positive_list-083",
+      "positive_list-084",
+      "positive_list-085",
+      "positive_list-086",
+      "positive_list-087",
+      "positive_list-088",
+      "positive_list-089",
+      "positive_list-090",
+      "positive_list-091",
+      "positive_list-092",
+      "positive_list-093",
+      "positive_list-094",
+      "positive_list-095",
+      "positive_list-096",
+      "positive_list-097",
+      "positive_list-098",
+      "positive_list-099",
+      "positive_list-100"
+    ],
+    "prose_restraint": [
+      "prose_restraint-076",
+      "prose_restraint-077",
+      "prose_restraint-078",
+      "prose_restraint-079",
+      "prose_restraint-080",
+      "prose_restraint-081",
+      "prose_restraint-082",
+      "prose_restraint-083",
+      "prose_restraint-084",
+      "prose_restraint-085",
+      "prose_restraint-086",
+      "prose_restraint-087",
+      "prose_restraint-088",
+      "prose_restraint-089",
+      "prose_restraint-090",
+      "prose_restraint-091",
+      "prose_restraint-092",
+      "prose_restraint-093",
+      "prose_restraint-094",
+      "prose_restraint-095",
+      "prose_restraint-096",
+      "prose_restraint-097",
+      "prose_restraint-098",
+      "prose_restraint-099",
+      "prose_restraint-100"
+    ]
+  },
+  "frozen": false,
+  "full_count_per_role": 100,
+  "generator": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/generate_eg1_english_list_benchmark.py",
+  "generator_sha256": "ead3e1b9cbd6b9dad65092296de33e2c5baec716598b008d69d2bae2e8890a3b",
+  "model_blind": true,
+  "native_reviewed": false,
+  "pilot_count_per_role": 75,
+  "pilot_definition_sha256": "5a7cb24ef6fe61f7f67cee66338fc0a4adcf1da16697ff31e2c10f6faf50ca04",
+  "seed": 20260715,
+  "selected_distributions": {
+    "positive_list": {
+      "case_type": {
+        "explicit_bullets": 18,
+        "natural_enumeration": 21,
+        "scoped_deliverables": 19,
+        "spoken_ordinals": 17
+      },
+      "compound_required": {
+        "False": 34,
+        "True": 41
+      },
+      "domain": {
+        "legal_financial": 18,
+        "medical": 16,
+        "personal_home": 12,
+        "technical_product": 15,
+        "work_admin": 14
+      },
+      "item_count": {
+        "2": 18,
+        "3": 17,
+        "4": 20,
+        "5": 20
+      },
+      "length_bucket": {
+        "extended": 21,
+        "long": 18,
+        "medium": 21,
+        "short": 15
+      }
+    },
+    "prose_restraint": {
+      "case_type": {
+        "conditional_narrative": 15,
+        "descriptive_series": 22,
+        "quoted_reported": 16,
+        "woven_argument": 22
+      },
+      "compound_required": {
+        "False": 37,
+        "True": 38
+      },
+      "domain": {
+        "legal_financial": 15,
+        "medical": 17,
+        "personal_home": 13,
+        "technical_product": 14,
+        "work_admin": 16
+      },
+      "item_count": {
+        "2": 19,
+        "3": 19,
+        "4": 18,
+        "5": 19
+      },
+      "length_bucket": {
+        "extended": 20,
+        "long": 18,
+        "medium": 17,
+        "short": 20
+      }
+    }
+  },
+  "selected_specs": {
+    "positive_list": [
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 5,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-001"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 4,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-002"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 4,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-003"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-004"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 3,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-005"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": false,
+        "domain": "personal_home",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-006"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 4,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-007"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 2,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-008"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-009"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 3,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-010"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 4,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-011"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 3,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-012"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 2,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-013"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-014"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 5,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-015"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 2,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-016"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 5,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-017"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 4,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-018"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-019"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-020"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-021"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-022"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 2,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-023"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 5,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-024"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-025"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 2,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-026"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 2,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-027"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 4,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-028"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 5,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-029"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-030"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 5,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-031"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 2,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-032"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 2,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-033"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 2,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-034"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": false,
+        "domain": "personal_home",
+        "item_count": 5,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-035"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 5,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-036"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 2,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-037"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-038"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 4,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-039"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 4,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-040"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-041"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-042"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 2,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-043"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 5,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-044"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-045"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-046"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 4,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-047"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 4,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-048"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": false,
+        "domain": "personal_home",
+        "item_count": 3,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-049"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 2,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-050"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 4,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-051"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 4,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-052"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 4,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-053"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-054"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 3,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-055"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-056"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-057"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 5,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-058"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-059"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 5,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-060"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 2,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-061"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 4,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-062"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 5,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-063"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 5,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-064"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 4,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-065"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-066"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 4,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-067"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 4,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-068"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-069"
+      },
+      {
+        "case_type": "explicit_bullets",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 4,
+        "length_bucket": "medium",
+        "role": "positive_list",
+        "spec_id": "positive_list-070"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 4,
+        "length_bucket": "extended",
+        "role": "positive_list",
+        "spec_id": "positive_list-071"
+      },
+      {
+        "case_type": "scoped_deliverables",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 4,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-072"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 3,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-073"
+      },
+      {
+        "case_type": "spoken_ordinals",
+        "compound_required": false,
+        "domain": "personal_home",
+        "item_count": 5,
+        "length_bucket": "short",
+        "role": "positive_list",
+        "spec_id": "positive_list-074"
+      },
+      {
+        "case_type": "natural_enumeration",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 3,
+        "length_bucket": "long",
+        "role": "positive_list",
+        "spec_id": "positive_list-075"
+      }
+    ],
+    "prose_restraint": [
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-001"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 4,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-002"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 2,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-003"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "personal_home",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-004"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 4,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-005"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 4,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-006"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 5,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-007"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 5,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-008"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 3,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-009"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": false,
+        "domain": "personal_home",
+        "item_count": 3,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-010"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": false,
+        "domain": "personal_home",
+        "item_count": 5,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-011"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-012"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-013"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 3,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-014"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-015"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 4,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-016"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 4,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-017"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 4,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-018"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 4,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-019"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 5,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-020"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 4,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-021"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-022"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-023"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 4,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-024"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 2,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-025"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 4,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-026"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 4,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-027"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-028"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 5,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-029"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 2,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-030"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 5,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-031"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 4,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-032"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-033"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-034"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "personal_home",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-035"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-036"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 5,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-037"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 4,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-038"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-039"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-040"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 3,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-041"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 2,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-042"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-043"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 2,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-044"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 4,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-045"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-046"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 3,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-047"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 2,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-048"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-049"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 5,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-050"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 3,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-051"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 4,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-052"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "legal_financial",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-053"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 5,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-054"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 5,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-055"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 5,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-056"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 2,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-057"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 2,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-058"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-059"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": true,
+        "domain": "technical_product",
+        "item_count": 3,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-060"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 2,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-061"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": true,
+        "domain": "medical",
+        "item_count": 4,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-062"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 2,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-063"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": false,
+        "domain": "legal_financial",
+        "item_count": 2,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-064"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 2,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-065"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 3,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-066"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": false,
+        "domain": "personal_home",
+        "item_count": 5,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-067"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": true,
+        "domain": "work_admin",
+        "item_count": 5,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-068"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "work_admin",
+        "item_count": 2,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-069"
+      },
+      {
+        "case_type": "conditional_narrative",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 4,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-070"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 5,
+        "length_bucket": "short",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-071"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "technical_product",
+        "item_count": 4,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-072"
+      },
+      {
+        "case_type": "descriptive_series",
+        "compound_required": false,
+        "domain": "personal_home",
+        "item_count": 5,
+        "length_bucket": "long",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-073"
+      },
+      {
+        "case_type": "quoted_reported",
+        "compound_required": true,
+        "domain": "personal_home",
+        "item_count": 2,
+        "length_bucket": "extended",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-074"
+      },
+      {
+        "case_type": "woven_argument",
+        "compound_required": false,
+        "domain": "medical",
+        "item_count": 3,
+        "length_bucket": "medium",
+        "role": "prose_restraint",
+        "spec_id": "prose_restraint-075"
+      }
+    ]
+  },
+  "selection_rule": "first_n_checkpoint_order_without_output_inspection",
+  "selection_used_model_outputs": false,
+  "status": "predeclared_candidate_pilot",
+  "training_eligible": false
+}

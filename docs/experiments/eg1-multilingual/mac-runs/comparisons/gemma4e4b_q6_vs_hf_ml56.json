@@ -1,0 +1,165 @@
+{
+  "baseline": "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_ml56.jsonl",
+  "candidate": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q6_listv2_ml56.jsonl",
+  "rows": 56,
+  "exact_matches": 34,
+  "canonical_matches": 34,
+  "changed": 22,
+  "list_structure_changes": 0,
+  "changed_rows": [
+    {
+      "id": "ml-es-0",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "Hola Juan, ¿podrías por favor comprar:\n* Leche\n* Pan\n* Huevos\nen el supermercado? Gracias.",
+      "candidate": "Hola Juan, ¿podrías por favor comprar:\n* Leche\n* Pan\n* Huevos\nEn el supermercado? Gracias."
+    },
+    {
+      "id": "ml-es-2",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Esta reunión se pospuso para el viernes a las tres de la tarde. Confirmamos con el equipo.",
+      "candidate": "La reunión se pospuso para el viernes a las tres de la tarde. Confirmamos con el equipo."
+    },
+    {
+      "id": "ml-es-6",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "La cena es a las siete. No te olvides de traer el postre que te encargué.",
+      "candidate": "O sea, la cena es a las siete. No te olvides de traer el postre que te encargué."
+    },
+    {
+      "id": "ml-fr-0",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Salut maman, est-ce que tu peux acheter du lait et du pain quand tu rentres s'il te plaît ?",
+      "candidate": "Salut maman, est-ce que tu peux acheter du lait et puis du pain quand tu rentres s'il te plaît ?"
+    },
+    {
+      "id": "ml-fr-4",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "J'ai besoin de toi pour m'aider à déménager samedi, si tu es libre bien sûr, fais-moi signe.",
+      "candidate": "J'ai besoin de toi pour m'aider à déménager samedi. Si tu es libre, bien sûr, fais-moi signe."
+    },
+    {
+      "id": "ml-fr-5",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Pour le projet X, il faut que je revoie le dossier. Je vais revoir le dossier et je t'envoie un résumé avant la fin de la journée.",
+      "candidate": "Pour le projet X, il faut que je revoie le dossier et je t'envoie un résumé avant la fin de la journée."
+    },
+    {
+      "id": "ml-fr-6",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "On se retrouve à quelle heure à la gare demain matin ? On avait dit 7h30, non, ou plutôt 8h ? Je ne suis plus sûr.",
+      "candidate": "On se retrouve à quelle heure à la gare demain matin ? On avait dit sept heures et demie, non, ou plutôt huit heures ? Je ne suis plus sûr."
+    },
+    {
+      "id": "ml-de-1",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Also, ich wollte nur kurz Bescheid geben, dass ich heute Abend nicht kommen kann. Sorry.",
+      "candidate": "Ich wollte nur kurz Bescheid geben, dass ich heute Abend nicht kommen kann. Sorry."
+    },
+    {
+      "id": "ml-de-6",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Ich muss noch das Formular ausfüllen und dann abschicken, das ist wichtig.",
+      "candidate": "Ich muss noch das Formular ausfüllen und dann abschicken. Das ist wichtig."
+    },
+    {
+      "id": "ml-pt-2",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "O professor de matemática, então, ele passou a lição de casa para entregar na terça-feira que vem.",
+      "candidate": "O professor de matemática então ele passou a lição de casa para entregar na terça-feira que vem."
+    },
+    {
+      "id": "ml-pt-5",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Então eu preciso ir no supermercado comprar umas frutas e alguns legumes para salada de hoje à noite, tá?",
+      "candidate": "Então eu preciso ir no supermercado comprar umas frutas e alguns legumes pra salada de hoje à noite, tá?"
+    },
+    {
+      "id": "ml-hi-0",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "आज मीटिंग का टाइम क्या है? मतलब वो ग्यारह बजे वाला है या बारह बजे वाला है?",
+      "candidate": "आज मीटिंग का टाइम क्या है? वो ग्यारह बजे वाला है या बारह बजे वाला है?"
+    },
+    {
+      "id": "ml-hi-3",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "शाम को मम्मी को डॉक्टर के पास ले जाना है। वो अपॉइंटमेंट 5 बजे का है।",
+      "candidate": "शाम को मम्मी को डॉक्टर के पास ले जाना है। वो अपॉइंटमेंट पाँच बजे का है।"
+    },
+    {
+      "id": "ml-ja-3",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "なんかあのー、この前の打ち合わせで話した件なんですけど、その後どうなりましたか?",
+      "candidate": "この前の打ち合わせで話した件なんですけど、その後どうなりましたか？"
+    },
+    {
+      "id": "ml-ja-4",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "今週中にレポートの提出をお願いします。それと、来週の月曜日までに最終版を。",
+      "candidate": "今週中にレポートの提出をお願いします。それと、来週の月曜日までに最終版を..."
+    },
+    {
+      "id": "ml-ja-5",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "今日のランチなんですけど、近くのイタリアンのお店に行かないですかね。",
+      "candidate": "今日のランチなんですけど、近くのイタリアンのお店に行かないですかね？"
+    },
+    {
+      "id": "ml-ja-6",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "次回のミーティングの日程なんですけど、金曜日でいいですか、それとも水曜日に変更しますか?",
+      "candidate": "次回のミーティングの日程なんですけど、金曜日でいいですか？それとも水曜日に変更しますか？"
+    },
+    {
+      "id": "ml-ja-7",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "あの、先週頼んだあの書類なんですけど、もう完成してますか、それともまだ時間かかりますか?",
+      "candidate": "あのー先週頼んだあの書類なんですけどもうあの完成してますかそれともあのーまだ時間かかりますか"
+    },
+    {
+      "id": "ml-zh-0",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "王总，那个我今天下午的会议可能需要稍微调整一下时间，就是我想把会议改到三点半，你看方便吗？",
+      "candidate": "王总，那个我今天下午的会议可能需要稍微调整一下时间。那个就是我想把会议改到三点半，你看方便吗？"
+    },
+    {
+      "id": "ml-zh-2",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "妈，我下班以后去超市买点菜，就是你上次说想吃的那个排骨和西红柿。",
+      "candidate": "妈，那个我下班以后去超市买点菜，就是你上次说想吃的那个排骨和西红柿。"
+    },
+    {
+      "id": "ml-zh-3",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "喂，你到了吗？我已经在地铁站了，然后我大概还有五分钟就能到你那个嗯，就是我们约好的那个咖啡馆。",
+      "candidate": "喂，你到了吗？我已经在地铁站了。然后我大概还有五分钟就能到你那个嗯，就是我们约好的那个咖啡馆。"
+    },
+    {
+      "id": "ml-zh-7",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "这个文件有点问题，需要修改一下，你看看怎么改比较好。",
+      "candidate": "这个文件有点问题，需要修改一下。你看看怎么改比较好？"
+    }
+  ]
+}

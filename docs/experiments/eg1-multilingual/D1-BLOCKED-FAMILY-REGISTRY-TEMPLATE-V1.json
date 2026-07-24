@@ -1,0 +1,35 @@
+{
+  "schema_version": "eg1-d1-blocked-family-registry-v1",
+  "registry_id": "REPLACE_WITH_SEALED_REGISTRY_ID",
+  "status": "draft",
+  "required_groups": {
+    "old_list_benchmarks": {
+      "status": "complete",
+      "source_artifact_sha256": "REPLACE_WITH_SOURCE_DIGEST"
+    },
+    "overflow_origins": {
+      "status": "pending",
+      "source_artifact_sha256": null
+    },
+    "russian_dev_frozen": {
+      "status": "pending",
+      "source_artifact_sha256": null
+    },
+    "multilingual_probes": {
+      "status": "pending",
+      "source_artifact_sha256": null
+    },
+    "novel_benchmarks": {
+      "status": "pending",
+      "source_artifact_sha256": null
+    }
+  },
+  "exact_family_ids": [],
+  "family_prefixes": [
+    "LF-",
+    "LFT-"
+  ],
+  "semantic_origin_ids": [],
+  "normalized_input_sha256": [],
+  "normalized_output_sha256": []
+}
