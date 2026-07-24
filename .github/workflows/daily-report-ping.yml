@@ -57,7 +57,8 @@ jobs:
           if [ -n "$DATE_OVERRIDE" ]; then
             URL="${URL}?date=${DATE_OVERRIDE}"
           fi
-          # No --retry here (unlike product-health-ping.yml's --retry 3): this
+          # No --retry here (product-health-ping.yml's own --retry 3 was
+          # removed for the identical reason, issue #1589): this
           # worker posts a Discord failure notice as a SIDE EFFECT before
           # returning a non-2xx (src/index.js runReport's catch block), so a
           # blind curl retry on a transient 500/504 could post a duplicate or
