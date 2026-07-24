@@ -172,7 +172,11 @@ public final class CustomWordsManager {
       id: "enviouswispr",
       word: CustomWord(
         canonical: "EnviousWispr",
-        aliases: ["envious whisper", "envious wisper", "envious whispr"],
+        aliases: [
+          "envious whisper", "envious wisper", "envious whispr",
+          "envious visper", "envious cisper", "mbs cisper",
+          "in vious wispr", "envy us wispr", "NVS Visper", "NBS Vesper",
+        ],
         category: .brand
       )),
     BuiltinWord(
