@@ -813,4 +813,161 @@ struct RecoveryCoordinatorTests {
       coordinator.handleRecordingEndedWithoutDurableSave(
         recoverySessionID: nil, ending: .discarded) == nil)
   }
+  // MARK: - #1755 chunk 4 — deletion-failure breadcrumb matrix
+
+  /// The exact breadcrumb shape the deletion-failure seam records.
+  struct Crumb: Equatable {
+    let stage: String
+    let message: String
+    let data: [String: String]
+  }
+
+  private final class CrumbLog {
+    var crumbs: [Crumb] = []
+  }
+
+  /// Lock-protected fired-or-waiting one-shot: whichever of signal()/wait()
+  /// runs first, the waiter resumes exactly once. Race-safe by construction.
+  private final class OneShotSignal: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fired = false
+    private var waiter: CheckedContinuation<Void, Never>?
+    func signal() {
+      let resumable: CheckedContinuation<Void, Never>? = lock.withLock {
+        if fired { return nil }
+        fired = true
+        let w = waiter
+        waiter = nil
+        return w
+      }
+      resumable?.resume()
+    }
+    func wait() async {
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        let resumeNow: Bool = lock.withLock {
+          if fired { return true }
+          waiter = c
+          return false
+        }
+        if resumeNow { c.resume() }
+      }
+    }
+  }
+
+  /// Lock-safe counter for the key-delete seam, which runs OFF the MainActor
+  /// inside the detached destruction task. Awaiting that task proves the
+  /// increment completed — no scheduling hops.
+  private final class AtomicCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.withLock { count += 1 } }
+    var value: Int { lock.withLock { count } }
+  }
+
+  // Best-effort deletion stays best-effort (no retries, no escapes); the ONLY
+  // new behavior is one failure breadcrumb per failed component per
+  // destruction call, with exact shape and a fixed source label.
+  @Test(
+    "live-ending destruction: 2×2 spool/key failure matrix emits exactly one breadcrumb per failed component",
+    arguments: [false, true], [false, true])
+  func deletionFailureMatrix(spoolFails: Bool, keyFails: Bool) async throws {
+    let harness = Self.makeHarness()
+    let coordinator = harness.coordinator
+    let log = CrumbLog()
+    let spoolAttempts = Box(0)
+    let keyAttempts = AtomicCounter()
+    struct InjectedDeleteFailure: Error {}
+    coordinator.destructionSpoolDeleteForTesting = { _ in
+      spoolAttempts.value += 1
+      if spoolFails { throw InjectedDeleteFailure() }
+    }
+    coordinator.destructionKeyDeleteForTesting = { _ in
+      keyAttempts.increment()
+      if keyFails { throw InjectedDeleteFailure() }
+    }
+    coordinator.deletionFailureBreadcrumbForTesting = { stage, message, data in
+      log.crumbs.append(Crumb(stage: stage, message: message, data: data))
+    }
+
+    // Drive the REAL live-ending destruction route with a delete-class ending.
+    let task = coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: "matrix-\(spoolFails)-\(keyFails)", ending: .discarded)
+    let unwrapped = try #require(task, "a delete-class ending must return the detached work")
+    // Awaiting the destruction task IS the completion proof: the key attempt
+    // increments inline and the key-failure breadcrumb's MainActor emission is
+    // awaited inside the task before it finishes.
+    await unwrapped.value
+
+    #expect(spoolAttempts.value == 1, "spool attempt exactly once")
+    #expect(keyAttempts.value == 1, "key attempt exactly once, even after spool failure")
+    let expectedCount = (spoolFails ? 1 : 0) + (keyFails ? 1 : 0)
+    #expect(log.crumbs.count == expectedCount, "exactly one breadcrumb per failed component")
+    if spoolFails {
+      #expect(
+        log.crumbs.contains(
+          Crumb(
+            stage: "recovery", message: "deletion_failed",
+            data: ["component": "spool", "source": "live_ending"])),
+        "exact spool failure breadcrumb")
+    }
+    if keyFails {
+      #expect(
+        log.crumbs.contains(
+          Crumb(
+            stage: "recovery", message: "deletion_failed",
+            data: ["component": "key", "source": "live_ending"])),
+        "exact key failure breadcrumb")
+    }
+    if spoolFails && keyFails {
+      #expect(
+        Set(log.crumbs.map { $0.data["component"] ?? "" }) == ["spool", "key"],
+        "both-fail cell: one spool + one key, no duplicate")
+    }
+  }
+
+  @Test("key-failure breadcrumb survives external coordinator ownership release")
+  func keyFailureBreadcrumbSurvivesOwnershipRelease() async throws {
+    // Finding r2-1/r3-1: prove the detached delete's STRONG capture delivers
+    // the breadcrumb after every external reference is gone. Deterministic
+    // protocol: gate the injected key delete AFTER it signals entry, await the
+    // entry signal, nil every external strong reference, assert the weak
+    // observer stays alive (the task owns the coordinator), release the gate
+    // so the delete throws, await the task, assert the exact crumb.
+    let log = CrumbLog()
+    struct InjectedDeleteFailure: Error {}
+    var harness: Harness? = Self.makeHarness()
+    var coordinator: RecoveryCoordinator? = harness?.coordinator
+    weak var observed = coordinator
+    // Race-safe one-shot entry signal, created BEFORE destruction starts —
+    // fired-or-waiting semantics make the ordering safe whichever thread wins
+    // (r4 ordering).
+    let entry = OneShotSignal()
+    let gate = DispatchSemaphore(value: 0)
+    coordinator?.destructionSpoolDeleteForTesting = { _ in }
+    coordinator?.destructionKeyDeleteForTesting = { _ in
+      entry.signal()
+      gate.wait()  // released by the test after ownership is dropped — a signal, not a clock
+      throw InjectedDeleteFailure()
+    }
+    coordinator?.deletionFailureBreadcrumbForTesting = { stage, message, data in
+      log.crumbs.append(Crumb(stage: stage, message: message, data: data))
+    }
+    let task = try #require(coordinator).handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: "lifetime", ending: .discarded)
+    let unwrapped = try #require(task)
+    await entry.wait()  // entry — resumes immediately if it already fired
+    harness = nil
+    coordinator = nil
+    #expect(observed != nil, "the detached task must own the coordinator while running")
+    gate.signal()
+    await unwrapped.value
+    #expect(
+      log.crumbs == [
+        Crumb(
+          stage: "recovery", message: "deletion_failed",
+          data: ["component": "key", "source": "live_ending"])
+      ],
+      "the strong capture must deliver the breadcrumb after ownership release")
+  }
+
 }

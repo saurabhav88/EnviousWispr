@@ -266,6 +266,40 @@ final class RecoveryCoordinator {
     return (recoverySessionID, payload)
   }
 
+  /// #1755 chunk 4 — fixed, low-cardinality labels for WHY a destruction ran.
+  /// Closed enum: no caller-supplied strings, no configurability.
+  private enum DestructionSource: String {
+    case durableSave = "durable_save"
+    case liveEnding = "live_ending"
+    case preStartAbort = "pre_start_abort"
+    case historyDedup = "history_dedup"
+    case replayOutcome = "replay_outcome"
+    case userDiscard = "user_discard"
+  }
+
+  /// #1755 chunk 4 test seams (internal; nil in production — the real spool
+  /// store, key store, and `SentryBreadcrumb.add` run when unset). Narrow,
+  /// policy-free, instance-scoped (no process-global spy, parallel-test safe).
+  // periphery:ignore - test seam
+  var destructionSpoolDeleteForTesting: ((String) throws -> Void)?
+  // periphery:ignore - test seam
+  var destructionKeyDeleteForTesting: (@Sendable (String) throws -> Void)?
+  // periphery:ignore - test seam
+  var deletionFailureBreadcrumbForTesting:
+    (@MainActor @Sendable (_ stage: String, _ message: String, _ data: [String: String]) -> Void)?
+
+  /// #1755 chunk 4: one failure-only breadcrumb per failed component per
+  /// destruction call. Never includes the recovery ID, path, or raw error —
+  /// deletion stays best-effort and swallowed; this is diagnosis only.
+  private func emitDeletionFailed(component: String, source: DestructionSource) {
+    let data = ["component": component, "source": source.rawValue]
+    if let sink = deletionFailureBreadcrumbForTesting {
+      sink("recovery", "deletion_failed", data)
+    } else {
+      SentryBreadcrumb.add(stage: "recovery", message: "deletion_failed", data: data)
+    }
+  }
+
   /// The SOLE spool+key destructor (#1464). Deletes the spool file (which also
   /// clears its attempt marker) SYNCHRONOUSLY — it is cheap local FS, and a
   /// follow-up scan / the dedup + discard callers must see it gone at once — then
@@ -274,11 +308,35 @@ final class RecoveryCoordinator {
   /// double-delete or a concurrently-removed spool is a harmless no-op. Returns the
   /// detached key-delete work so tests can await completion; callers may discard it.
   @discardableResult
-  private func destroySpoolAndKey(id: String) -> Task<Void, Never> {
-    try? makeSpoolStore().delete(recoverySessionID: id)
+  private func destroySpoolAndKey(id: String, source: DestructionSource) -> Task<Void, Never> {
+    do {
+      if let override = destructionSpoolDeleteForTesting {
+        try override(id)
+      } else {
+        try makeSpoolStore().delete(recoverySessionID: id)
+      }
+    } catch {
+      emitDeletionFailed(component: "spool", source: source)
+    }
+    // Key deletion ALWAYS runs, detached, even after a spool failure.
     let keyStore = self.keyStore
+    let keyOverride = destructionKeyDeleteForTesting
+    // Capture self STRONGLY: the failure breadcrumb must survive coordinator
+    // deallocation racing the detached delete (a weak capture silently
+    // dropped it). The task is short-lived; the temporary strong retention
+    // ends when the task completes.
     return Task.detached(priority: .utility) {
-      try? keyStore.delete(for: id)
+      do {
+        if let keyOverride {
+          try keyOverride(id)
+        } else {
+          try keyStore.delete(for: id)
+        }
+      } catch {
+        await MainActor.run {
+          self.emitDeletionFailed(component: "key", source: source)
+        }
+      }
     }
   }
 
@@ -328,7 +386,7 @@ final class RecoveryCoordinator {
   @discardableResult
   func handleDurableSave(recoverySessionID id: String) -> Task<Void, Never> {
     if armedSessionID == id { armedSessionID = nil }
-    return destroySpoolAndKey(id: id)
+    return destroySpoolAndKey(id: id, source: .durableSave)
   }
 
   /// A `.complete` dictation whose History save FAILED (GitHub cloud review,
@@ -376,7 +434,7 @@ final class RecoveryCoordinator {
       nextLaunchOnlyRecoveryIDs.insert(id)
       return nil
     }
-    return destroySpoolAndKey(id: id)
+    return destroySpoolAndKey(id: id, source: .liveEnding)
   }
 
   /// A record-press aborted BEFORE a kernel session was minted (a PTT release or
@@ -389,7 +447,7 @@ final class RecoveryCoordinator {
   func handlePreStartAbort(recoverySessionID id: String?) -> Task<Void, Never>? {
     guard let id else { return nil }
     if armedSessionID == id { armedSessionID = nil }
-    return destroySpoolAndKey(id: id)
+    return destroySpoolAndKey(id: id, source: .preStartAbort)
   }
 
   /// On launch, scan for orphan spools and recover them (#1063 PR2 — replaces
@@ -505,7 +563,7 @@ final class RecoveryCoordinator {
         // re-transcribing (the dedup MUST precede any append — History forbids a
         // duplicate id). Routed through the sole destructor (#1464); these ids are
         // never appended to `recoverable`, so the async delete never races a replay.
-        destroySpoolAndKey(id: id)
+        destroySpoolAndKey(id: id, source: .historyDedup)
       } else {
         recoverable.append(id)
       }
@@ -588,7 +646,7 @@ final class RecoveryCoordinator {
       // #1464: the coordinator is the sole destructor — the replayer no longer
       // deletes, so apply the replay predicate now that `replay()` has returned.
       // (`.aborted` deletes nothing here: `discardActiveRecovery` already did.)
-      if Self.shouldDeleteAfterReplay(outcome) { destroySpoolAndKey(id: id) }
+      if Self.shouldDeleteAfterReplay(outcome) { destroySpoolAndKey(id: id, source: .replayOutcome) }
       // Post the standalone success notice for a recording that landed in History.
       if case .recovered = outcome { onRecoverySucceeded?() }
       // A Discard ends the whole hold; remaining orphans (rare) wait for the next
@@ -634,7 +692,7 @@ final class RecoveryCoordinator {
     resetEngine()
     // Route through the sole destructor (#1464). The post-replay predicate sees
     // `.aborted` for this id and does NO second delete.
-    destroySpoolAndKey(id: id)
+    destroySpoolAndKey(id: id, source: .userDiscard)
     activeRecoveryID = nil
     TelemetryService.shared.recoveryCompleted(outcome: "discarded")
   }

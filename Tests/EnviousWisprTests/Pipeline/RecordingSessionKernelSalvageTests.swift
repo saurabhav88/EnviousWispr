@@ -1,5 +1,6 @@
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -212,6 +213,53 @@ struct ExhaustedRetrySpoolDeletionTests {
       if case .failed = kernel.recordingOutcome {
         Issue.record("a filler-only processing throw must never be a .failed terminal")
       }
+    }
+
+    // MARK: 1c. #1755 chunk 4 — #1709 salvage-cancelled breadcrumb (exact cell only)
+
+    /// ONE synchronous MainActor test with no suspension points: the
+    /// process-global SentryBreadcrumb delegate is swapped in, every cell is
+    /// driven synchronously, and the PRIOR delegate is preserved, forwarded
+    /// unrelated breadcrumbs, and restored. The no-suspension window is the
+    /// real protection — a previously installed delegate survives; a truly
+    /// concurrent writer to the same global could still race it, which this
+    /// test cannot prevent.
+    @Test("the .asr + .cancelled floor cell emits exactly one asr_salvage_cancelled breadcrumb; siblings stay silent")
+    func asrSalvageCancelledBreadcrumbExactCellOnly() {
+      nonisolated(unsafe) var matches: [[String: String]] = []
+      let prior = SentryBreadcrumb.breadcrumbDelegate
+      SentryBreadcrumb.breadcrumbDelegate = { stage, message, level, data in
+        guard message == "asr_salvage_cancelled" else {
+          prior?(stage, message, level, data)  // forward unrelated crumbs
+          return
+        }
+        matches.append(
+          ["stage": stage]
+            .merging((data ?? [:]).compactMapValues { $0 as? String }) { a, _ in a })
+      }
+      defer { SentryBreadcrumb.breadcrumbDelegate = prior }
+
+      // Eligible cell: .asr source + .cancelled.
+      let (_, eligible) = makeWrapper()
+      eligible.telemetryState.interruptedSalvageSource = .asr
+      let floored = eligible.testKernel.testInterruptedTerminalFloor(.cancelled)
+      #expect(floored == .cancelled, "the terminal itself is unchanged")
+      #expect(eligible.telemetryState.asrSalvageOutcome == .cancelled)
+      #expect(matches.count == 1, "exactly one breadcrumb for the eligible cell")
+      #expect(
+        matches.first == ["stage": "recovery", "asr_salvage_outcome": "cancelled"],
+        "exact shape: stage recovery + the single data field")
+
+      // Adversarial siblings, same delegate, still synchronous.
+      let (_, sibling1) = makeWrapper()
+      sibling1.telemetryState.interruptedSalvageSource = .asr
+      _ = sibling1.testKernel.testInterruptedTerminalFloor(.failed(.asrFailed))
+      let (_, sibling2) = makeWrapper()
+      sibling2.telemetryState.interruptedSalvageSource = .engine(.deviceRemoved)
+      _ = sibling2.testKernel.testInterruptedTerminalFloor(.cancelled)
+      let (_, sibling3) = makeWrapper()
+      _ = sibling3.testKernel.testInterruptedTerminalFloor(.cancelled)
+      #expect(matches.count == 1, "no sibling cell may emit the salvage-cancelled breadcrumb")
     }
 
     // MARK: 2. The floor — salvage never deletes a spool today's code would keep

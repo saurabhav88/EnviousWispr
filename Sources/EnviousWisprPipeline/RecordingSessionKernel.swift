@@ -3302,6 +3302,14 @@ final class RecordingSessionKernel {
         // just this one. Extending it would mean revisiting that cross-cutting
         // policy, out of scope here.
         telemetryState.asrSalvageOutcome = .cancelled
+        // #1709 (folded into #1755 chunk 4): a context-only breadcrumb for the
+        // formerly-invisible cancelled-during-ASR-salvage cell — no event, no
+        // captured error, no new telemetry owner. Fires ONLY here (the typed
+        // `.asr` source + `.cancelled` floor cell), never for ordinary or
+        // engine-interruption cancellation.
+        SentryBreadcrumb.add(
+          stage: "recovery", message: "asr_salvage_cancelled",
+          data: ["asr_salvage_outcome": "cancelled"])
         return outcome
       case .discarded, .noSpeech, .failed, .audioInterrupted, .asrInterrupted, .noTransport:
         // #1707 Codex code-diff r2: only UPGRADE the telemetry signal — a
