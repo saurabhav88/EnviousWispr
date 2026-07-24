@@ -963,6 +963,7 @@ struct RecoveryCoordinatorTests {
       "the strong capture must deliver the breadcrumb after ownership release")
   }
 
+#if DEBUG
   // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (coordinator side)
 
   private static func makeBoundaryController() -> CrashBoundaryFaultController {
@@ -1090,6 +1091,8 @@ struct RecoveryCoordinatorTests {
     #expect(controller.isReached(trialID: "cb3", boundary: .destructionAPIReturn))
     #expect(keyAttempted.value == 1, "the gated key deletion completed after release")
   }
+
+#endif
 
   @Test("a FAILED live-ending spool delete is suppressed from the same-launch rescan (PR #1761 cloud P2)")
   func failedLiveDeleteSuppressedSameLaunch() async throws {

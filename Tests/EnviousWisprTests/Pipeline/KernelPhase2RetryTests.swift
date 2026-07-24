@@ -155,6 +155,7 @@ struct KernelPhase2RetryTests {
   }
 
 
+#if DEBUG
   // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (kernel side)
 
   private static func makeIsolatedBoundaryController() -> CrashBoundaryFaultController {
@@ -246,6 +247,8 @@ struct KernelPhase2RetryTests {
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.paste.pasteCount == 1)
   }
+
+#endif
 
   @Test("a decode failure spends exactly one retry, and a successful retry delivers its own text")
   func decodeFailureRetriesOnceAndDelivers() async {

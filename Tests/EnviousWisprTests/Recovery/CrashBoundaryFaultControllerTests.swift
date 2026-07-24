@@ -1,3 +1,4 @@
+#if DEBUG
 import EnviousWisprCore
 import Foundation
 import Testing
@@ -291,3 +292,4 @@ struct CrashBoundaryFaultControllerTests {
     #expect(!fresh.hasLiveArmForTesting)
   }
 }
+#endif
