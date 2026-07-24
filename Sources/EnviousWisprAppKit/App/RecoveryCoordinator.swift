@@ -447,6 +447,15 @@ final class RecoveryCoordinator {
       nextLaunchOnlyRecoveryIDs.insert(id)
       return nil
     }
+    // GitHub cloud review PR #1761: suppress BEFORE the best-effort delete.
+    // If the spool deletion fails (transient FS/permission error), the same
+    // callback fires `onDictationEndedForRecovery` moments later — without
+    // this, that same-launch rescan could rediscover and REPLAY the
+    // undeleted spool, resurrecting a take whose live terminal the user
+    // already saw. A successful delete makes the suppression harmless; a
+    // failed one leaves the survivor as a next-launch item, consistent with
+    // the best-effort crash-atomicity contract (§3.5).
+    nextLaunchOnlyRecoveryIDs.insert(id)
     return destroySpoolAndKey(id: id, source: .liveEnding)
   }
 

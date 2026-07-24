@@ -1091,4 +1091,26 @@ struct RecoveryCoordinatorTests {
     #expect(keyAttempted.value == 1, "the gated key deletion completed after release")
   }
 
+  @Test("a FAILED live-ending spool delete is suppressed from the same-launch rescan (PR #1761 cloud P2)")
+  func failedLiveDeleteSuppressedSameLaunch() async throws {
+    let h = Self.makeHarness()
+    struct InjectedDeleteFailure: Error {}
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    let id = "suppress-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: id, ending: .failed)
+    let unwrapped = try #require(task)
+    await unwrapped.value
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "precondition: the spool survived the failed delete")
+    // The same-launch scan must NOT rediscover/replay the survivor.
+    await h.coordinator.scanAndRecover()
+    #expect(
+      h.replayer.replayedIDs.isEmpty,
+      "the failed-delete survivor is suppressed until a genuine new launch")
+  }
+
 }
