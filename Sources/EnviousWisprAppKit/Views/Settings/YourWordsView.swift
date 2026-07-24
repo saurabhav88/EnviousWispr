@@ -69,7 +69,7 @@ struct YourWordsView: View {
           Button {
             sheetRoute = .importWords
           } label: {
-            Label("Preview import", systemImage: "square.and.arrow.down")
+            Label("Import", systemImage: "square.and.arrow.down")
           }
           // Export (#1680). Also DEBUG-only: the whole import/export feature is
           // compiled out of release builds until the founder ships it, and a
@@ -112,7 +112,7 @@ struct YourWordsView: View {
 
       #if DEBUG
         // Same DEBUG-only doorway as the rest of the import feature (#1619):
-        // this card can only ever appear if the DEBUG-only "Preview import"
+        // this card can only ever appear if the DEBUG-only "Import"
         // button above committed a batch, so it stays behind the same gate
         // rather than a redundant runtime check.
         //

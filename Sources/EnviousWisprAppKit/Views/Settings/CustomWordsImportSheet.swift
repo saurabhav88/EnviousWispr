@@ -10,7 +10,7 @@ import SwiftUI
 /// their real sources land (P1 paste, U1 upload, 4a smart import); Review and
 /// the commit path are real from F2c on.
 ///
-/// The sheet is reachable only through the DEBUG-only "Preview import" button
+/// The sheet is reachable only through the DEBUG-only "Import" button
 /// in Your Words, so no release user can see the remaining placeholders.
 /// Dismissing at any point cancels in-flight work and writes nothing.
 struct CustomWordsImportSheet: View {
