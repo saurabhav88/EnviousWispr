@@ -168,6 +168,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
   // periphery:ignore - test seam
   func setConnectionForTesting(_ conn: NSXPCConnection?) { connection = conn }
 
+  // periphery:ignore - test seam (PR #1761 cloud P2: lets the streaming-finalize
+  // registration test pass the isStreaming guard without a real session)
+  func setStreamingForTesting(_ streaming: Bool) { isStreaming = streaming }
+
   /// #1755: the registry lifecycle around ONE suspended transcribe reply —
   /// register the resume-once guard under a fresh operation UUID, hand it to
   /// `start` (production wires the XPC call; tests wire a scripted
@@ -596,15 +600,17 @@ public final class ASRManagerProxy: ASRManagerInterface {
   public func finalizeStreaming() async throws -> ASRResult {
     guard isStreaming else { throw ASRError.streamingNotSupported }
 
-    let (resultData, error): (Data?, NSError?) = try await withCheckedThrowingContinuation {
-      (cont: CheckedContinuation<(Data?, NSError?), any Error>) in
-      let guard_ = OneShotContinuationASR(cont)
+    // PR #1761 cloud P2: route the STREAMING finalize through the same
+    // pending-transcribe registry as the batch path — a helper death during a
+    // streaming session's finalize must fail this suspended await (and enter
+    // the Phase-2 retry) instead of hanging it forever.
+    let (resultData, error): (Data?, NSError?) = try await awaitTranscribeReply { completion in
       serviceProxy { proxy in
         proxy.finalizeStreaming { resultData, nsError in
-          guard_.resume(returning: (resultData, nsError))
+          completion.resume(returning: (resultData, nsError))
         }
       } onProxyError: {
-        guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
+        completion.resume(throwing: XPCASRTransportError.serviceUnreachable)
       }
     }
 

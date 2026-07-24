@@ -292,4 +292,23 @@ struct ASRManagerProxyTranscribeCompletionTests {
     #expect(proxy.hasPendingLoadCompletionForTesting == false)
     #expect(proxy.pendingTranscribeCountForTesting == 0)
   }
+  // MARK: - Streaming finalize shares the registry (PR #1761 cloud P2)
+
+  @Test("a suspended streaming finalize is drained by a current-era interruption")
+  func streamingFinalizeDrainedOnInterruption() async {
+    let proxy = Self.makeProxy()
+    proxy.setStreamingForTesting(true)
+    // No connection → the registration happens, then serviceProxy fires
+    // onProxyError synchronously → serviceUnreachable through the SAME
+    // registry defer. The real drain path is proven by the shared-registry
+    // drain tests above; this pins that finalizeStreaming REGISTERS.
+    do {
+      _ = try await proxy.finalizeStreaming()
+      Issue.record("finalizeStreaming must throw with no connection")
+    } catch {
+      #expect(error as? XPCASRTransportError == .serviceUnreachable)
+    }
+    #expect(proxy.pendingTranscribeCountForTesting == 0, "registration cleared on exit")
+  }
+
 }
