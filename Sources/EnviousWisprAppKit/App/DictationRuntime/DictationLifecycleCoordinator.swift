@@ -175,9 +175,10 @@ final class DictationLifecycleCoordinator {
       guard let self else { return }
       self.handleWhisperKit(newState: newState)
     }
-    // #1063 PR2: the kernel's RAW non-`.completed` terminal signal, carrying the
-    // recovery id + terminal KIND. Routed to the recovery cleanup (discard deletes,
-    // failure retains). Distinct from `onStateChange` (the pinnable published
+    // #1063 PR2 / #1755: the kernel's RAW non-`.completed` terminal signal,
+    // carrying the recovery id + terminal KIND. Routed to the recovery cleanup
+    // (every represented ending requests best-effort deletion under the
+    // discard doctrine). Distinct from `onStateChange` (the pinnable published
     // state) — keyed off the kernel terminal so it never fires during `.finalizing`.
     kernelDriver.onSessionEndedWithoutSave = { [weak self] id, ending in
       self?.onRecordingEndedWithoutDurableSave(id, ending)

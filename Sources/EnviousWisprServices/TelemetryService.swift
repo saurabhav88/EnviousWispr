@@ -48,8 +48,10 @@ public enum ApiKeyValidationSource: String, Sendable {
 }
 
 /// #1464 — the root cause behind one crash-recovery attempt's `recovery.completed`
-/// event. Closed + typed so the retain-vs-delete-on-failure policy (deferred to
-/// Phase 3) can be chosen from real field data instead of a coarse stage. Privacy:
+/// event. Closed + typed root-cause diagnostics. (#1755 settled the
+/// retain-vs-delete policy at Gate 2 — every concluded live ending discards —
+/// dissolving #1464's data-gated Phase 3; the typed causes remain for field
+/// diagnosis of the crash-only replay population.) Privacy:
 /// a category only — the underlying `NSError` domain/code/description is classifier
 /// INPUT and is NEVER emitted (`sentry-operations.md` telemetry-privacy boundary).
 public enum RecoveryTelemetryReason: String, Sendable {

@@ -163,9 +163,9 @@ final class DictationRuntime {
     dictationLifecycleCoordinator.onDurableSave = { id in
       recoveryCoordinator.handleDurableSave(recoverySessionID: id)
     }
-    // #1063 PR2 / #1464: a recording that ends at a non-saved terminal routes to
-    // recovery cleanup — the coordinator's predicate deletes a discard/no-speech/
-    // user-cancel ending now and RETAINS a fault ending for next-launch recovery.
+    // #1063 PR2 / #1464 / #1755: a recording that ends at a non-saved terminal
+    // routes to recovery cleanup — under the discard doctrine the coordinator's
+    // predicate requests best-effort deletion for EVERY represented ending.
     dictationLifecycleCoordinator.onRecordingEndedWithoutDurableSave = { id, ending in
       recoveryCoordinator.handleRecordingEndedWithoutDurableSave(
         recoverySessionID: id, ending: ending)

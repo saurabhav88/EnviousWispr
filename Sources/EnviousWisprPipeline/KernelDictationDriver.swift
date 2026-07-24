@@ -1355,9 +1355,9 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// all continue to get plain `.failed`. Only the ONE production call site
   /// above passes `kernel.asrRetryOutcome` explicitly. A `.failed` outcome
   /// whose retry was exhausted projects to the distinct `.asrRetryExhausted`
-  /// ending (§4) so `RecoveryCoordinator` can delete that spool specifically
-  /// — a pre-capture `.failed` (retry never consulted, `retryOutcome == nil`)
-  /// still projects to plain `.failed` (#1755: which now deletes). Codex r7:
+  /// ending (§4) as a typed diagnostic — under #1755 it AGREES with plain
+  /// `.failed` on deletion (a pre-capture or never-retried `.failed`,
+  /// `retryOutcome == nil`, projects to plain `.failed` and deletes too). Codex r7:
   /// `.asrInterrupted` honors the same exhausted-retry distinction, since the
   /// kernel's `interruptedTerminalFloor` can raise an exhausted-retry `.failed`
   /// into `.asrInterrupted` when an ASR-interruption salvage attempt preceded it.
