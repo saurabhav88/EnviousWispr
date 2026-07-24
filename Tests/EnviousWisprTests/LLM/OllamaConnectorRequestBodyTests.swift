@@ -151,7 +151,7 @@ struct OllamaConnectorRequestBodyTests {
     let config = LLMProviderConfig(
       model: "gemma4:latest",
       apiKeyKeychainId: nil,
-      maxTokens: 128,
+      outputTokens: .capped(128),
       temperature: 0.3,
       thinkingBudget: nil,
       reasoningEffort: nil
@@ -171,10 +171,74 @@ struct OllamaConnectorRequestBodyTests {
     // reroute and hard-throwing earlier drops the count to 0 and reddens this.
     #expect(await counter.count == 1)
   }
+
+  // MARK: - Output-token policy (#1710)
+
+  @Test("capped policy value reaches num_predict exactly through the production polish path")
+  func cappedValueReachesNumPredict() async throws {
+    let captured = CapturedRequest()
+    let connector = OllamaConnector(networkExecutor: { request in
+      await captured.set(request)
+      throw URLError(.notConnectedToInternet)  // stop after capturing the body
+    })
+    let config = LLMProviderConfig(
+      model: "llama3.2",
+      apiKeyKeychainId: nil,
+      outputTokens: .capped(431),
+      temperature: 0.3,
+      thinkingBudget: nil,
+      reasoningEffort: nil
+    )
+    _ = try? await connector.polish(
+      text: "hello",
+      instructions: PolishInstructions(systemPrompt: "sys"),
+      config: config,
+      onToken: nil
+    )
+    let body = await captured.request?.httpBody.flatMap {
+      try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+    }
+    let options = body?["options"] as? [String: Any]
+    #expect(options?["num_predict"] as? Int == 431)
+  }
+
+  @Test("providerDefault policy throws before any network call")
+  func providerDefaultThrowsWithoutNetwork() async {
+    let counter = RequestCounter()
+    let connector = OllamaConnector(networkExecutor: { _ in
+      await counter.bump()
+      throw URLError(.notConnectedToInternet)
+    })
+    let config = LLMProviderConfig(
+      model: "gemma4:latest",
+      apiKeyKeychainId: nil,
+      outputTokens: .providerDefault,
+      temperature: 0.3,
+      thinkingBudget: nil,
+      reasoningEffort: nil
+    )
+    let expected = LLMError.requestFailed(
+      "Local polish requires an explicit output-token cap")
+    await #expect(throws: expected) {
+      _ = try await connector.polish(
+        text: "hello",
+        instructions: PolishInstructions(systemPrompt: "sys"),
+        config: config,
+        onToken: nil
+      )
+    }
+    // Zero executor calls pins the throw to the pre-network guard.
+    #expect(await counter.count == 0)
+  }
 }
 
 /// Counts how many times the injected network executor is invoked. An actor so
 /// the `@Sendable` executor closure can mutate it from any concurrency domain.
+private actor CapturedRequest {
+  var request: URLRequest?
+  func set(_ r: URLRequest) { request = r }
+}
+
 private actor RequestCounter {
   private(set) var count = 0
   func bump() { count += 1 }

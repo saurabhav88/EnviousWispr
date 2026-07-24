@@ -142,7 +142,7 @@ struct RunnerMain {
     let config = LLMProviderConfig(
       model: "apple-intelligence",
       apiKeyKeychainId: nil,
-      maxTokens: 2048,
+      outputTokens: .capped(2048),
       temperature: 0,
       thinkingBudget: nil,
       reasoningEffort: nil,

@@ -66,12 +66,12 @@ struct ClaudeLiveSweepTests {
 
     for model in offered {
       // Mirror LLMPolishStep's config decisions for this model. Claude never
-      // reasons (v1) so maxTokens/reasoningEffort never branch on capability
+      // reasons (v1) so outputTokens/reasoningEffort never branch on capability
       // the way OpenAI's sweep does.
       let config = LLMProviderConfig(
         model: model.id,
         apiKeyKeychainId: KeychainManager.claudeKeyID,
-        maxTokens: 512,
+        outputTokens: .capped(LLMConstants.claudeMaxOutputTokens),
         temperature: 0,
         thinkingBudget: nil,
         reasoningEffort: nil
@@ -163,7 +163,8 @@ struct ClaudeLiveSweepTests {
         for _ in 0..<5 {
           let config = LLMProviderConfig(
             model: model, apiKeyKeychainId: KeychainManager.claudeKeyID,
-            maxTokens: 512, temperature: 0, thinkingBudget: nil, reasoningEffort: nil)
+            outputTokens: .capped(LLMConstants.claudeMaxOutputTokens),
+            temperature: 0, thinkingBudget: nil, reasoningEffort: nil)
           let envelope = Self.productionEnvelope(transcript: text, modelID: model)
           let start = ContinuousClock.now
           do {
@@ -266,7 +267,8 @@ struct ClaudeLiveSweepTests {
         for _ in 0..<runs {
           let config = LLMProviderConfig(
             model: model, apiKeyKeychainId: KeychainManager.claudeKeyID,
-            maxTokens: 512, temperature: 0, thinkingBudget: nil, reasoningEffort: nil)
+            outputTokens: .capped(LLMConstants.claudeMaxOutputTokens),
+            temperature: 0, thinkingBudget: nil, reasoningEffort: nil)
           let envelope = Self.productionEnvelope(transcript: input, modelID: model)
           let start = ContinuousClock.now
           do {

@@ -110,11 +110,26 @@ public struct LLMResult: Sendable {
   }
 }
 
+/// The declared output-token request policy for one LLM call (#1710).
+///
+/// `.providerDefault` sends NO output-token limit: the provider's own
+/// per-model maximum applies, so a stale or undersized client ceiling can
+/// never truncate a healthy polish. `.capped` sends an explicit limit — for
+/// APIs that require the field (Claude) and for local engines whose
+/// truncation policy depends on a computed cap (Ollama, EG-1). "Omitted"
+/// is a declared decision, never an accident.
+public enum OutputTokenPolicy: Codable, Sendable, Equatable {
+  /// Send no output-token limit; the provider's own per-model maximum applies.
+  case providerDefault
+  /// Send this explicit limit.
+  case capped(Int)
+}
+
 /// Configuration for an LLM provider.
 public struct LLMProviderConfig: Codable, Sendable {
   public let model: String
   public let apiKeyKeychainId: String?
-  public let maxTokens: Int
+  public let outputTokens: OutputTokenPolicy
   public let temperature: Double
   public let thinkingBudget: Int?
   public let reasoningEffort: String?
@@ -127,7 +142,7 @@ public struct LLMProviderConfig: Codable, Sendable {
   public init(
     model: String,
     apiKeyKeychainId: String?,
-    maxTokens: Int,
+    outputTokens: OutputTokenPolicy,
     temperature: Double,
     thinkingBudget: Int?,
     reasoningEffort: String?,
@@ -135,7 +150,7 @@ public struct LLMProviderConfig: Codable, Sendable {
   ) {
     self.model = model
     self.apiKeyKeychainId = apiKeyKeychainId
-    self.maxTokens = maxTokens
+    self.outputTokens = outputTokens
     self.temperature = temperature
     self.thinkingBudget = thinkingBudget
     self.reasoningEffort = reasoningEffort

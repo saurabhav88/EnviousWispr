@@ -28,9 +28,12 @@ struct OpenAIRequestBodyTests {
 
   // MARK: - Polish request body per family (#1330)
 
-  private func config(model: String, reasoningEffort: String? = nil) -> LLMProviderConfig {
+  private func config(
+    model: String, reasoningEffort: String? = nil,
+    outputTokens: OutputTokenPolicy = .capped(512)
+  ) -> LLMProviderConfig {
     LLMProviderConfig(
-      model: model, apiKeyKeychainId: "openai-api-key", maxTokens: 512,
+      model: model, apiKeyKeychainId: "openai-api-key", outputTokens: outputTokens,
       temperature: 0, thinkingBudget: nil, reasoningEffort: reasoningEffort)
   }
 
@@ -73,6 +76,23 @@ struct OpenAIRequestBodyTests {
     // Never strippable: the request itself.
     #expect(body["model"] as? String == "gpt-4o-mini")
     #expect(body["max_completion_tokens"] as? Int == 512)
+  }
+
+  // MARK: - Output-token policy (#1710)
+
+  @Test func providerDefaultOmitsMaxCompletionTokens() {
+    let body = OpenAIConnector.makeRequestBody(
+      config: config(model: "gpt-4o-mini", outputTokens: .providerDefault),
+      messages: messages)
+    #expect(body["max_completion_tokens"] == nil)
+    #expect(body["max_tokens"] == nil)
+  }
+
+  @Test func cappedSerializesExactValue() {
+    let body = OpenAIConnector.makeRequestBody(
+      config: config(model: "gpt-4o-mini", outputTokens: .capped(777)),
+      messages: messages)
+    #expect(body["max_completion_tokens"] as? Int == 777)
   }
 
   // MARK: - Discovery candidate predicate (#1330)

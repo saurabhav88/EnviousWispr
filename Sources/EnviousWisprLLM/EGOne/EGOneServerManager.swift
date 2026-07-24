@@ -377,7 +377,7 @@ public actor EGOneServerManager {
       let config = LLMProviderConfig(
         model: LLMProvider.egOneModelName,
         apiKeyKeychainId: nil,
-        maxTokens: 128,
+        outputTokens: .capped(128),
         temperature: 0,
         thinkingBudget: nil,
         reasoningEffort: nil,

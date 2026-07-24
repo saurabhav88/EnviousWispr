@@ -146,7 +146,7 @@ struct LLMProviderConfigDetectedLanguageTests {
     let config = LLMProviderConfig(
       model: "x",
       apiKeyKeychainId: nil,
-      maxTokens: 100,
+      outputTokens: .capped(100),
       temperature: 0,
       thinkingBudget: nil,
       reasoningEffort: nil
@@ -159,7 +159,7 @@ struct LLMProviderConfigDetectedLanguageTests {
     let config = LLMProviderConfig(
       model: "x",
       apiKeyKeychainId: nil,
-      maxTokens: 100,
+      outputTokens: .capped(100),
       temperature: 0,
       thinkingBudget: nil,
       reasoningEffort: nil,
@@ -168,13 +168,16 @@ struct LLMProviderConfigDetectedLanguageTests {
     #expect(config.detectedLanguage == "de")
   }
 
-  @Test("Codable auto-synthesis decodes legacy JSON without detectedLanguage")
+  @Test("Codable auto-synthesis decodes JSON without detectedLanguage")
   func codableBackwardCompat() throws {
+    // #1710: `outputTokens` replaced `maxTokens` with no compatibility
+    // decoder — nothing persists this config, so the fixture uses the
+    // current auto-synthesized enum encoding.
     let legacyJSON = """
       {
           "model": "gpt-4o-mini",
           "apiKeyKeychainId": null,
-          "maxTokens": 500,
+          "outputTokens": { "capped": { "_0": 500 } },
           "temperature": 0.0,
           "thinkingBudget": null,
           "reasoningEffort": null
@@ -191,7 +194,7 @@ struct LLMProviderConfigDetectedLanguageTests {
     let original = LLMProviderConfig(
       model: "x",
       apiKeyKeychainId: nil,
-      maxTokens: 100,
+      outputTokens: .capped(100),
       temperature: 0,
       thinkingBudget: nil,
       reasoningEffort: nil,
@@ -313,7 +316,7 @@ struct UnsupportedBaseCodeTests {
       LLMProviderConfig(
         model: "apple-intelligence",
         apiKeyKeychainId: nil,
-        maxTokens: 500,
+        outputTokens: .capped(500),
         temperature: 0,
         thinkingBudget: nil,
         reasoningEffort: nil,

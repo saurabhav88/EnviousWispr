@@ -43,9 +43,23 @@ public struct ClaudeConnector: TranscriptPolisher {
     guard let url = URL(string: baseURL) else {
       throw LLMError.requestFailed("Invalid Claude URL")
     }
+    // #1710: the Anthropic API REQUIRES `max_tokens`. `.capped` carries the
+    // policy value; an unexpected `.providerDefault` maps defensively to the
+    // fixed constant (non-crashing invariant guard, not a second authority).
+    let resolved = Self.resolvedMaxTokens(config.outputTokens)
+    let maxTokens = resolved.value
+    if resolved.usedFallback {
+      Task {
+        await AppLogger.shared.log(
+          "Claude received providerDefault output-token policy; "
+            + "using required fallback \(maxTokens)",
+          level: .info, category: "LLM"
+        )
+      }
+    }
     let body = Self.makeRequestBody(
       model: config.model,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
       system: instructions.systemPrompt,
       userText: text
     )
@@ -88,7 +102,37 @@ public struct ClaudeConnector: TranscriptPolisher {
     )
   }
 
+  // MARK: - Truncation rejection (#1710)
+
+  /// A max_tokens stop is a PARTIAL rewrite — reject whole; the pipeline
+  /// keeps the complete pre-polish text. The production decision seam:
+  /// `polish` feeds `extractResponseText`'s truncated flag here, and tests
+  /// drive the same function.
+  static func rejectTruncationIfNeeded(truncated: Bool, config: LLMProviderConfig) throws {
+    guard truncated else { return }
+    Task {
+      await AppLogger.shared.log(
+        "WARNING: Claude response truncated; rejecting partial output "
+          + "(stop_reason=max_tokens, model=\(config.model), policy=\(config.outputTokens))",
+        level: .info, category: "LLM"
+      )
+    }
+    throw LLMError.classified(.outputTruncated)
+  }
+
   // MARK: - Request construction
+
+  /// Resolve the required `max_tokens` value for a policy (#1710). Static
+  /// and pure for fixture testing. `usedFallback` marks the defensive
+  /// `.providerDefault` mapping so the call site can log the invariant breach.
+  static func resolvedMaxTokens(
+    _ policy: OutputTokenPolicy
+  ) -> (value: Int, usedFallback: Bool) {
+    switch policy {
+    case .capped(let value): return (value, false)
+    case .providerDefault: return (LLMConstants.claudeMaxOutputTokens, true)
+    }
+  }
 
   /// The single owner of the Claude request shape, used by both production
   /// polish and `LLMModelDiscovery.probeClaude` — so a probe/production body
@@ -182,21 +226,10 @@ public struct ClaudeConnector: TranscriptPolisher {
 
       let extracted = try Self.extractResponseText(from: data)
       responseText = extracted.text
-      // A max_tokens-truncated response is still a real (if partial) answer
-      // — Gemini/OpenAI's existing precedent logs a warning rather than
-      // rejecting it, so Claude matches that instead of diverging into a
-      // stricter reject-and-fall-back-to-raw policy this PR never designed
-      // or reviewed. Whether ALL THREE providers should instead reject a
-      // truncated response is a real, separate cross-provider question,
-      // tracked as a follow-up (#1710) rather than decided here for Claude alone.
-      if extracted.truncated {
-        Task {
-          await AppLogger.shared.log(
-            "WARNING: Claude response truncated (stop_reason=max_tokens, model=\(config.model), max_tokens=\(config.maxTokens))",
-            level: .info, category: "LLM"
-          )
-        }
-      }
+      // #1710: the throw happens inside this do block so the catch below
+      // stamps error_after_<code>; the decision itself is the production
+      // seam tests drive directly.
+      try Self.rejectTruncationIfNeeded(truncated: extracted.truncated, config: config)
     } catch {
       statusForLog = "error_after_\(httpResponse.statusCode):\(Self.shortError(error))"
       throw error
@@ -303,7 +336,12 @@ public struct ClaudeConnector: TranscriptPolisher {
       .filter { $0["type"] as? String == "text" }
       .compactMap { $0["text"] as? String }
       .joined()
-    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    let truncated = (json?["stop_reason"] as? String) == "max_tokens"
+    // #1710 cloud review P2 class: empty text that ALSO carries max_tokens
+    // is a provider condition — return the truncated flag so the decision
+    // seam classifies it as outputTruncated, never our alerting
+    // emptyResponse. Empty WITHOUT the marker stays emptyResponse.
+    guard truncated || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw LLMError.emptyResponse
     }
     // `stop_reason: "refusal"` is a documented Anthropic value for a model
@@ -317,7 +355,6 @@ public struct ClaudeConnector: TranscriptPolisher {
     if (json?["stop_reason"] as? String) == "refusal" {
       throw LLMError.classified(.contentBlocked)
     }
-    let truncated = (json?["stop_reason"] as? String) == "max_tokens"
     return (text, truncated)
   }
 

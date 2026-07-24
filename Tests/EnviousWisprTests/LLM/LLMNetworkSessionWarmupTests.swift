@@ -61,6 +61,32 @@ struct LLMNetworkSessionWarmupTests {
     #expect(request?.value(forHTTPHeaderField: "Authorization") == nil)
   }
 
+  // MARK: - Warm-up literal caps stay independent of #1710 policy
+
+  private func bodyJSON(_ request: URLRequest?) -> [String: Any]? {
+    request?.httpBody.flatMap {
+      try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+    }
+  }
+
+  @Test func openAIWarmupBodyKeepsLiteralCapOfOne() {
+    let request = LLMNetworkSession.shared.buildWarmupRequest(
+      provider: .openAI, model: "gpt-4o-mini", apiKey: "sk-test")
+    #expect(bodyJSON(request)?["max_completion_tokens"] as? Int == 1)
+  }
+
+  @Test func geminiWarmupBodyKeepsLiteralCapOfOne() {
+    let body = LLMNetworkSession.makeGeminiWarmupRequestBody()
+    let generationConfig = body["generationConfig"] as? [String: Any]
+    #expect(generationConfig?["maxOutputTokens"] as? Int == 1)
+  }
+
+  @Test func claudeWarmupBodyKeepsLiteralCapOfOne() {
+    let request = LLMNetworkSession.shared.buildWarmupRequest(
+      provider: .claude, model: "claude-haiku-4-5", apiKey: "sk-ant-test")
+    #expect(bodyJSON(request)?["max_tokens"] as? Int == 1)
+  }
+
   @Test func nonCloudProviderBuildsNoWarmupRequest() {
     let request = LLMNetworkSession.shared.buildWarmupRequest(
       provider: .ollama, model: "llama3.2", apiKey: "unused")

@@ -189,4 +189,39 @@ struct EGOneConnectorResponseTests {
       }
     }
   }
+
+  // MARK: - Output-token policy (#1710)
+
+  @Test("capped policy value reaches max_tokens exactly")
+  func cappedValueReachesMaxTokens() throws {
+    let config = LLMProviderConfig(
+      model: LLMProvider.egOneModelName,
+      apiKeyKeychainId: nil,
+      outputTokens: .capped(963),
+      temperature: 0,
+      thinkingBudget: nil,
+      reasoningEffort: nil
+    )
+    let body = try EGOneConnector.makeRequestBody(system: "sys", user: "hello", config: config)
+    #expect(body["max_tokens"] as? Int == 963)
+  }
+
+  @Test("providerDefault policy throws from the pure body builder")
+  func providerDefaultThrowsWithoutNetwork() {
+    // Direct builder call: synchronous, no endpoint, no port assumptions.
+    let config = LLMProviderConfig(
+      model: LLMProvider.egOneModelName,
+      apiKeyKeychainId: nil,
+      outputTokens: .providerDefault,
+      temperature: 0,
+      thinkingBudget: nil,
+      reasoningEffort: nil
+    )
+    let expected = LLMError.requestFailed(
+      "Local polish requires an explicit output-token cap")
+    #expect(throws: expected) {
+      _ = try EGOneConnector.makeRequestBody(system: "sys", user: "hello", config: config)
+    }
+  }
+
 }
