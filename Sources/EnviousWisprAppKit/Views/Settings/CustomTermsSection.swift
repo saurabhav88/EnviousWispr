@@ -78,6 +78,25 @@ struct CustomTermsSection: View {
         }
       }
 
+      // Bulk-delete action row, shown only once something is selected.
+      // Rendered directly under the search/selection row — above the term
+      // list and pagination — so it never requires scrolling past a full
+      // page of results to reach (founder feedback 2026-07-24).
+      if isSelecting, !selectedIDs.isEmpty {
+        BrandedRow(showDivider: true) {
+          HStack {
+            Text("\(selectedIDs.count) selected")
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+            Spacer()
+            Button("Delete…", role: .destructive) {
+              pendingBulkDelete = BulkDeleteRequest(ids: selectedIDs)
+            }
+            .controlSize(.small)
+          }
+        }
+      }
+
       // List or empty state
       if pagedWords.isEmpty {
         BrandedRow(showDivider: false) {
@@ -93,22 +112,6 @@ struct CustomTermsSection: View {
         ForEach(Array(pagedWords.enumerated()), id: \.element.id) { idx, word in
           BrandedRow(showDivider: idx < pagedWords.count - 1 || pageCount > 1) {
             termRow(for: word)
-          }
-        }
-      }
-
-      // Bulk-delete action row, shown only once something is selected.
-      if isSelecting, !selectedIDs.isEmpty {
-        BrandedRow(showDivider: false) {
-          HStack {
-            Text("\(selectedIDs.count) selected")
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-            Spacer()
-            Button("Delete…", role: .destructive) {
-              pendingBulkDelete = BulkDeleteRequest(ids: selectedIDs)
-            }
-            .controlSize(.small)
           }
         }
       }
