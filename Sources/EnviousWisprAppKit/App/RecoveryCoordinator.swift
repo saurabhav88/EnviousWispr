@@ -270,6 +270,11 @@ final class RecoveryCoordinator {
   /// #1755 chunk 4 test seams (internal; nil in production — the real spool
   /// store, key store, and `SentryBreadcrumb.add` run when unset). Narrow,
   /// policy-free, instance-scoped (no process-global spy, parallel-test safe).
+  #if DEBUG
+    /// #1755 chunk 6: crash-boundary hold seam (see the kernel's twin).
+    var crashBoundaryController: CrashBoundaryFaultController = .shared
+  #endif
+
   // periphery:ignore - test seam
   var destructionSpoolDeleteForTesting: ((String) throws -> Void)?
   // periphery:ignore - test seam
@@ -299,6 +304,11 @@ final class RecoveryCoordinator {
   /// detached key-delete work so tests can await completion; callers may discard it.
   @discardableResult
   private func destroySpoolAndKey(id: String, source: DestructionSource) -> Task<Void, Never> {
+    #if DEBUG
+      // #1755 chunk 6: crash-boundary hold — immediately before the spool
+      // attempt (seam or real store). Unarmed: no-op.
+      crashBoundaryController.boundaryReached(.beforeSpoolDelete)
+    #endif
     do {
       if let override = destructionSpoolDeleteForTesting {
         try override(id)
@@ -315,7 +325,17 @@ final class RecoveryCoordinator {
     // deallocation racing the detached delete (a weak capture silently
     // dropped it). The task is short-lived; the temporary strong retention
     // ends when the task completes.
+    #if DEBUG
+      let crashBoundaryController = self.crashBoundaryController
+    #endif
     return Task.detached(priority: .utility) {
+      #if DEBUG
+        // #1755 chunk 6: crash-boundary hold — immediately before the key
+        // attempt. While destruction_api_return is armed this call GATES
+        // (parks without publishing) so the caller-side hook can prove the
+        // live-ending API returned first.
+        crashBoundaryController.boundaryReached(.beforeKeyDelete)
+      #endif
       do {
         if let keyOverride {
           try keyOverride(id)

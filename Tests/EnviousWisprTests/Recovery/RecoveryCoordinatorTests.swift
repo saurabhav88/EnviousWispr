@@ -963,4 +963,132 @@ struct RecoveryCoordinatorTests {
       "the strong capture must deliver the breadcrumb after ownership release")
   }
 
+  // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (coordinator side)
+
+  private static func makeBoundaryController() -> CrashBoundaryFaultController {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-cb-coord-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return CrashBoundaryFaultController(
+      armFilePath: dir.appendingPathComponent("arm").path,
+      reachedFilePath: dir.appendingPathComponent("reached").path)
+  }
+
+  @Test("before_spool_delete fires before the spool attempt; release lets deletion proceed")
+  func beforeSpoolDeleteHook() async throws {
+    let h = Self.makeHarness()
+    let controller = Self.makeBoundaryController()
+    h.coordinator.crashBoundaryController = controller
+    defer { controller.clear() }
+    let spoolAttempted = AtomicCounter()
+    let attemptsAtBoundary = AtomicCounter()
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in spoolAttempted.increment() }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    controller.onPublishForTesting = { _ in
+      // Publication callback fires synchronously at the hook, BEFORE the
+      // spool attempt; record and release immediately (no polling).
+      for _ in 0..<spoolAttempted.value { attemptsAtBoundary.increment() }
+      controller.releaseHeldForTesting()
+    }
+    #expect(controller.arm(trialID: "cb1", boundary: .beforeSpoolDelete))
+
+    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: "cb-spool", ending: .failed)
+    let unwrapped = try #require(task)
+    await unwrapped.value
+
+    #expect(controller.isReached(trialID: "cb1", boundary: .beforeSpoolDelete))
+    #expect(attemptsAtBoundary.value == 0, "the boundary sits BEFORE the spool attempt")
+    #expect(spoolAttempted.value == 1, "release lets the real attempt proceed")
+  }
+
+  @Test("before_key_delete fires inside the detached task before the key attempt")
+  func beforeKeyDeleteHook() async throws {
+    let h = Self.makeHarness()
+    let controller = Self.makeBoundaryController()
+    h.coordinator.crashBoundaryController = controller
+    defer { controller.clear() }
+    let keyAttempted = AtomicCounter()
+    let attemptsAtBoundary = AtomicCounter()
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in keyAttempted.increment() }
+    controller.onPublishForTesting = { _ in
+      for _ in 0..<keyAttempted.value { attemptsAtBoundary.increment() }
+      controller.releaseHeldForTesting()
+    }
+    #expect(controller.arm(trialID: "cb2", boundary: .beforeKeyDelete))
+
+    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: "cb-key", ending: .failed)
+    let unwrapped = try #require(task)
+    await unwrapped.value
+
+    #expect(controller.isReached(trialID: "cb2", boundary: .beforeKeyDelete))
+    #expect(attemptsAtBoundary.value == 0, "the boundary sits BEFORE the key attempt")
+    #expect(keyAttempted.value == 1, "release lets the real attempt proceed")
+  }
+
+  @Test("destruction_api_return: key deletion gated across the API return; caller hook publishes after")
+  func destructionAPIReturnHookOrdering() async throws {
+    let h = Self.makeHarness()
+    let controller = Self.makeBoundaryController()
+    h.coordinator.crashBoundaryController = controller
+    defer { controller.clear() }
+    let keyAttempted = AtomicCounter()
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in }
+    // The key-delete seam SIGNALS entry so the gated schedule is provable
+    // without any polling: the gate parks BEFORE the seam runs, so entry
+    // never fires while gated.
+    let keyEntered = OneShotSignal()
+    h.coordinator.destructionKeyDeleteForTesting = { _ in
+      keyAttempted.increment()
+      keyEntered.signal()
+    }
+    // Observe the real detached key path REACHING the gate — `keyAttempted ==
+    // 0` alone could mean the detached task simply has not started yet.
+    let gateDecision = OneShotSignal()
+    let gateDecisionLock = NSLock()
+    nonisolated(unsafe) var keyWasGated: Bool?
+    controller.onKeyDeleteGateDecisionForTesting = { decision in
+      gateDecisionLock.withLock {
+        if keyWasGated == nil { keyWasGated = decision }
+      }
+      gateDecision.signal()
+    }
+    #expect(controller.arm(trialID: "cb3", boundary: .destructionAPIReturn))
+
+    // The API must return while the key path is gated.
+    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: "cb-api", ending: .failed)
+    let unwrapped = try #require(task, "the API returned while the key path is gated")
+    await gateDecision.wait()
+    #expect(
+      gateDecisionLock.withLock { keyWasGated } == true,
+      "the real detached key path reached the API-return gate")
+    #expect(keyAttempted.value == 0, "key deletion has not passed its pre-point")
+    #expect(
+      !controller.isReached(trialID: "cb3", boundary: .destructionAPIReturn),
+      "gating alone must not publish")
+
+    // The caller-side hook (what DictationRuntime's closure runs after the
+    // API returns) publishes and parks on a background thread; its
+    // publication callback releases every hold, freeing the gated key path.
+    let published = OneShotSignal()
+    controller.onPublishForTesting = { _ in
+      controller.releaseHeldForTesting()
+      published.signal()
+    }
+    let callerDone = OneShotSignal()
+    Thread.detachNewThread {
+      controller.boundaryReached(.destructionAPIReturn)
+      callerDone.signal()
+    }
+    await published.wait()
+    await callerDone.wait()
+    await keyEntered.wait()
+    await unwrapped.value
+    #expect(controller.isReached(trialID: "cb3", boundary: .destructionAPIReturn))
+    #expect(keyAttempted.value == 1, "the gated key deletion completed after release")
+  }
+
 }

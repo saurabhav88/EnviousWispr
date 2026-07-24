@@ -169,6 +169,13 @@ final class DictationRuntime {
     dictationLifecycleCoordinator.onRecordingEndedWithoutDurableSave = { id, ending in
       recoveryCoordinator.handleRecordingEndedWithoutDurableSave(
         recoverySessionID: id, ending: ending)
+      #if DEBUG
+        // #1755 chunk 6: crash-boundary hold — the live-ending API has
+        // ACTUALLY returned (never faked inside the coordinator). While this
+        // boundary is armed, the detached key deletion is gated at its
+        // pre-point, in either schedule. Unarmed: no-op.
+        CrashBoundaryFaultController.shared.boundaryReached(.destructionAPIReturn)
+      #endif
     }
     // #1707 Phase 3 (GitHub cloud review, PR #1732 round 6): a `.complete`
     // whose History save failed retains its spool but fires no delete

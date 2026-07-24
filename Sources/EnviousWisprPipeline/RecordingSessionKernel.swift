@@ -203,6 +203,13 @@ final class RecordingSessionKernel {
   /// no-op in production.
   private let batchDecodeFaultController: BatchDecodeFaultController?
 
+  #if DEBUG
+    /// #1755 chunk 6: crash-boundary hold seam. Defaults to the shared
+    /// controller (unarmed = every hook is a no-op); tests inject an isolated
+    /// instance. Compiled out of release entirely.
+    var crashBoundaryController: CrashBoundaryFaultController = .shared
+  #endif
+
   /// Logical-time seam (PR-3 plan §14a). Production wiring of a real clock is
   /// PR-4/PR-7; the simulator wires `FakeClock`.
   private let currentTick: @MainActor () -> UInt64
@@ -2295,9 +2302,18 @@ final class RecordingSessionKernel {
         telemetryState.transcriptionFailureError =
           (adapter as? ASREngineTelemetryProviding)?.lastFailureError ?? retryError
         telemetryState.asrRetryOutcome = .retryExhausted
+        #if DEBUG
+          // #1755 chunk 6: crash-boundary hold — after the diagnostic stamp,
+          // before terminal publication. Unarmed: no-op.
+          crashBoundaryController.boundaryReached(.retryExhaustionDecided)
+        #endif
         finishTerminal(.failed(.asrFailed), sid: sid)
       case .empty:  // genuinely resolved with nothing useful; exhausted
         telemetryState.asrRetryOutcome = .retryExhausted
+        #if DEBUG
+          // #1755 chunk 6: same crash boundary as the confirmed-failure branch.
+          crashBoundaryController.boundaryReached(.retryExhaustionDecided)
+        #endif
         finishTerminal(.failed(.asrFailed), sid: sid)
       case .cancelled:
         // `.cancelled` is not a confirmed second failure — `.attempted`
@@ -3337,6 +3353,11 @@ final class RecordingSessionKernel {
     }
     let terminal = outcome  // local alias for the existing telemetry logs below
     recordingOutcome = outcome
+    #if DEBUG
+      // #1755 chunk 6: crash-boundary hold — immediately after the set-once
+      // outcome write, before the idle transition and downstream cleanup.
+      crashBoundaryController.boundaryReached(.liveTerminalPublished)
+    #endif
     // #1548 D2: wake a forward path parked in `awaitRecordingExit()` when the
     // session is concluded DIRECTLY — the dead-mic `.noTransport` branch of
     // `externalCaptureStalled` calls `finishTerminal` while the forward path sits

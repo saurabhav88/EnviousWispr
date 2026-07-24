@@ -268,6 +268,37 @@
             + "source_incarnation=\(status.sourceIncarnation) "
             + "capture_source=\(status.captureSourceType)"
         }
+        // #1755 chunk 6: crash-boundary commands — the three narrow verbs
+        // over the ONE shared CrashBoundaryFaultController. `arm` replies OK
+        // only after the acknowledged arm (in-process state + artifact);
+        // `query` is a pre-hold diagnostic (the authoritative post-hold read
+        // is the external file read, off this MainActor). Boundary strings
+        // are validated against the closed five-value enum; anything else is
+        // ERR.
+        if cmd == "clear_crash_boundary" {
+          CrashBoundaryFaultController.shared.clear()
+          return "OK"
+        }
+        if let (boundaryRaw, trialID) = parseTwoStringArgCommand(
+          cmd, prefix: "arm_crash_boundary(")
+        {
+          guard let boundary = CrashBoundary(rawValue: boundaryRaw) else {
+            return "ERR unknown_boundary"
+          }
+          guard CrashBoundaryFaultController.shared.arm(trialID: trialID, boundary: boundary)
+          else { return "ERR arm_failed" }
+          return "OK"
+        }
+        if let (boundaryRaw, trialID) = parseTwoStringArgCommand(
+          cmd, prefix: "query_crash_boundary(")
+        {
+          guard let boundary = CrashBoundary(rawValue: boundaryRaw) else {
+            return "ERR unknown_boundary"
+          }
+          let reached = CrashBoundaryFaultController.shared.isReached(
+            trialID: trialID, boundary: boundary)
+          return "OK reached=\(reached)"
+        }
         // #1707 Phase 2 (§11.1/§3.2a-i): the seven batch-decode fault
         // commands, all routing to the ONE `BatchDecodeFaultController` —
         // adapter-boundary forced failures (`fail_batch_decode`/
@@ -370,6 +401,18 @@
       guard cmd.hasPrefix(prefix), cmd.hasSuffix(")") else { return nil }
       let inner = String(cmd.dropFirst(prefix.count).dropLast())
       return inner.isEmpty ? nil : inner
+    }
+
+    /// #1755 chunk 6: parse `<prefix><first>,<second>)` — two non-empty
+    /// comma-separated strings, no nesting, no configurability.
+    private func parseTwoStringArgCommand(
+      _ cmd: String, prefix: String
+    ) -> (String, String)? {
+      guard cmd.hasPrefix(prefix), cmd.hasSuffix(")") else { return nil }
+      let inner = cmd.dropFirst(prefix.count).dropLast()
+      let parts = inner.split(separator: ",", maxSplits: 1, omittingEmptySubsequences: false)
+      guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
+      return (String(parts[0]), String(parts[1]))
     }
 
     /// #1707 Phase 2: parse `<prefix><backend>)` — `<backend>` is
