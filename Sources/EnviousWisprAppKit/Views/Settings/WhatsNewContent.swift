@@ -13,6 +13,73 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.4.1
+
+    Entry(
+      id: "import-words-from-another-app",
+      icon: "arrow.down.doc",
+      title: "Bring your words over from another dictation app",
+      description:
+        "Switching no longer means retyping your vocabulary. Pick the app you used before and your words come across, including the misspellings you had it watch for. FluidVoice, Superwhisper and Wispr Flow are supported today, with more on the way, and only apps actually installed on your Mac are offered. Nothing on your disk is touched until you choose one, and nothing is added to your words until you review and approve it. Once they are in, EnviousWispr suggests sound-alike spellings for them automatically, so dictation picks them up without a second pass by hand.",
+      version: "2.4.1"
+    ),
+    Entry(
+      id: "import-words-from-file-or-paste",
+      icon: "square.and.arrow.down",
+      title: "Import words from a file, or just paste a list",
+      description:
+        "Upload a words file or a plain text file, or paste a list straight in. Every route lands on the same review screen, so you see exactly what will be added, what is already yours, and what clashes, before anything changes. Imported words get their sound-alike spellings suggested automatically too.",
+      version: "2.4.1"
+    ),
+    Entry(
+      id: "export-words-backup",
+      icon: "square.and.arrow.up",
+      title: "Export your words to a backup you own",
+      description:
+        "Save your whole vocabulary to a file. Useful for a backup, for moving to a new Mac, or for sharing a set of words with someone else.",
+      version: "2.4.1"
+    ),
+    Entry(
+      id: "claude-cloud-polish-provider",
+      icon: "sparkles",
+      title: "Claude joins OpenAI and Gemini for cloud polish",
+      description:
+        "Bring your own Anthropic key and let Claude clean up your dictation, with ten models to choose from. As always, it is your key and your account, and the app tells you exactly what gets sent.",
+      version: "2.4.1"
+    ),
+    Entry(
+      id: "bulk-select-delete-words",
+      icon: "checklist",
+      title: "Select and delete many words at once",
+      description:
+        "Tidy up your list without deleting one word at a time. If you are about to remove a lot, EnviousWispr offers to export them first so nothing disappears by accident.",
+      version: "2.4.1"
+    ),
+    Entry(
+      id: "revamped-crash-recovery",
+      icon: "lifepreserver",
+      title: "Revamped crash recovery",
+      description:
+        "Our crash recovery system is smarter now. It actively tries to rescue a failed dictation wherever it can while the app is still running, not only after a crash. If the speech engine stops responding while you are still talking, EnviousWispr keeps the audio it already captured and transcribes it rather than losing the dictation.",
+      version: "2.4.1"
+    ),
+    Entry(
+      id: "cloud-polish-longer-dictations",
+      icon: "text.alignleft",
+      title: "Better cloud polishing for long dictations",
+      description:
+        "We reworked the output limits across all three cloud AI providers, so even a very long dictation has the room it needs to be polished in full.",
+      version: "2.4.1"
+    ),
+    Entry(
+      id: "two-copies-share-words-safely",
+      icon: "square.on.square",
+      title: "Fixed: a rare issue when the app was running twice",
+      description:
+        "If you happened to have two copies of EnviousWispr running at the same time, your custom words could be affected. That is now handled properly.",
+      version: "2.4.1"
+    ),
+
     // MARK: - v2.4.0
 
     Entry(
