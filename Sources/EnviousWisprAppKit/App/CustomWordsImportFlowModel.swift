@@ -7,9 +7,7 @@ import Foundation
 ///
 /// Owns which screen the sheet shows, which method the user picked, the review
 /// rows and their decisions, and the load → compare → review → commit
-/// sequence. Real input sources arrive later (P1 paste, U1 upload, 4a smart
-/// import); PR-P1 also inserts its enrichment stage between compare and
-/// review by editing this model directly — no seam is pre-built for it here.
+/// sequence shared by Paste, Open a file, and From another app.
 ///
 /// Invariant: `selectedMethod` is non-nil exactly while a method's flow is
 /// active; returning to `.methodPicker` (via `goBack()` or `reset()`) clears it.

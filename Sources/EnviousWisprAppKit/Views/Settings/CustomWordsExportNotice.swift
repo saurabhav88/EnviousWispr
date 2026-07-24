@@ -1,8 +1,8 @@
 import Foundation
 
 /// Export-outcome-to-message mapping (#1703), extracted from the previously
-/// private, DEBUG-only `YourWordsView.ExportNotice` so a release-visible
-/// caller (`BulkDeleteConfirmSheet`) can present the identical copy. Two
+/// private `YourWordsView.ExportNotice` so both export entry points
+/// (`YourWordsView` and `BulkDeleteConfirmSheet`) present identical copy. Two
 /// kinds, deliberately: a real failure, and an honest outcome that is not a
 /// failure. Sharing one "Export didn't finish" title for both would tell a
 /// pack-only user their export broke when it worked exactly as designed

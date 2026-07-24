@@ -6,12 +6,11 @@ import SwiftUI
 ///
 /// One observable model, one root `switch`, one container-level `.animation()`
 /// — the `OnboardingV2View` root-switch pattern without its timers or
-/// permissions logic. The three input screens are still placeholders until
-/// their real sources land (P1 paste, U1 upload, 4a smart import); Review and
-/// the commit path are real from F2c on.
+/// permissions logic. Paste, file, and supported-app sources all feed the same
+/// review and commit path.
 ///
-/// The sheet is reachable only through the DEBUG-only "Import" button
-/// in Your Words, so no release user can see the remaining placeholders.
+/// The sheet is reachable through the "Import" button in Your Words, shipped to
+/// release users from v2.4.1.
 /// Dismissing at any point cancels in-flight work and writes nothing.
 struct CustomWordsImportSheet: View {
   private static let screenTransition: AnyTransition = .asymmetric(
@@ -636,11 +635,12 @@ private struct ImportSmartAppPickerScreen: View {
   }
 }
 
-// MARK: - Input placeholders (replaced wholesale by the real source PRs)
+// MARK: - DEBUG fixture preview
 
-/// Shared placeholder for the three input screens. In DEBUG it walks the real
-/// pipeline using a fixture source, so the whole flow is exercisable before
-/// any real source exists; in a release build there is no way to reach it.
+/// Test-only fixture launcher retained for focused DEBUG walkthroughs. The
+/// production Paste, Open a file, and From another app sources are wired above;
+/// the fixture button inside this screen is DEBUG-only and unreachable in a
+/// release build.
 private struct ImportPlaceholderScreen: View {
   let notice: String
   let model: CustomWordsImportFlowModel

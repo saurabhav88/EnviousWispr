@@ -20,7 +20,7 @@ enum WhatsNewContent {
       icon: "arrow.down.doc",
       title: "Bring your words over from another dictation app",
       description:
-        "Switching no longer means retyping your vocabulary. Pick the app you used before and your words come across, including the misspellings you had it watch for. FluidVoice, Superwhisper and Wispr Flow are supported today, with more on the way, and only apps actually installed on your Mac are offered. Nothing on your disk is touched until you choose one, and nothing is added to your words until you review and approve it. Once they are in, EnviousWispr suggests sound-alike spellings for them automatically, so dictation picks them up without a second pass by hand.",
+        "Switching no longer means retyping your vocabulary. Pick the app you used before and your words come across, including the misspellings you had it watch for. FluidVoice, Superwhisper and Wispr Flow are supported today, with more on the way, and only apps actually installed on your Mac are offered. Nothing on your disk is touched until you choose one, and nothing is added to your words until you review and approve it. On Macs where Apple Intelligence is available, EnviousWispr also suggests sound-alike spellings for your new words automatically, so dictation picks them up without a second pass by hand.",
       version: "2.4.1"
     ),
     Entry(
@@ -28,7 +28,7 @@ enum WhatsNewContent {
       icon: "square.and.arrow.down",
       title: "Import words from a file, or just paste a list",
       description:
-        "Upload a words file or a plain text file, or paste a list straight in. Every route lands on the same review screen, so you see exactly what will be added, what is already yours, and what clashes, before anything changes. Imported words get their sound-alike spellings suggested automatically too.",
+        "Upload a words file or a plain text file, or paste a list straight in. Every route lands on the same review screen, so you see exactly what will be added, what is already yours, and what clashes, before anything changes. On Macs where Apple Intelligence is available, new words can also get automatic sound-alike suggestions.",
       version: "2.4.1"
     ),
     Entry(
