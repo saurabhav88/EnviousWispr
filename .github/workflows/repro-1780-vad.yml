@@ -1,30 +1,33 @@
 name: repro-1780-vad
 
 # Investigation harness for #1780: a hard EXC_BAD_ACCESS inside the Silero VAD
-# CoreML prediction, observed only on macOS 14.2.1. We have no Sonoma machine
-# locally (dev is on macOS 26), so this drives the REAL bundled model through
-# the REAL pinned FluidAudio VadManager on a Sonoma runner.
+# CoreML prediction, observed only on macOS 14.2.1. Dev is on macOS 26 and could
+# not reproduce, so this runs on a Sonoma runner.
 #
-# macos-14 = Sonoma, Apple Silicon. macos-15 = Sequoia, control arm.
+# Two fidelity levels, because the macos-14 image ships Swift 5.10 while
+# FluidAudio requires swift-tools 6.0:
+#   * sonoma-probe.swift — no package. Ports FluidAudio's exact input prep
+#     (posix_memalign/64B, tile-padded strides, pooled reuse, recurrent state
+#     feedback) and calls the real bundled model. Runs everywhere.
+#   * the SwiftPM harness — the real FluidAudio VadManager. Swift 6 only, so it
+#     runs on macos-15 and is skipped where the toolchain is too old.
+#
+# The crash is inside Apple's Espresso/BNNS reached from MLModel.prediction, so
+# the probe exercises the actual fault surface either way.
+#
+# macos-14 = Sonoma (target). macos-15 = Sequoia (control).
 # Investigation-only: this branch is never merged to main.
 
-# workflow_dispatch is only dispatchable from the default branch, and this file
-# is deliberately never merged to main — so it triggers on pushes to its own
-# investigation branch instead.
 on:
   push:
     branches: ["investigate/1780-vad-repro"]
   workflow_dispatch:
-    inputs:
-      chunks:
-        description: "Chunks per worker (4096 samples = 256ms each)"
-        default: "600"
-      parallel:
-        description: "Concurrent VadManager workers"
-        default: "4"
 
 permissions:
   contents: read
+
+env:
+  VAD_MODEL: Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc
 
 jobs:
   vad:
@@ -34,64 +37,53 @@ jobs:
         os: [macos-14, macos-15]
         units: [all, cpuOnly, cpuAndGPU, cpuAndNeuralEngine]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - name: Record what we are actually testing
+        id: env
         run: |
           set -euo pipefail
-          echo "runner-label: ${{ matrix.os }}"
           sw_vers
           echo "arch: $(uname -m)"
           swift --version
-
-      - name: Build repro harness
-        run: |
-          set -euo pipefail
-          swift build --package-path Tests/RuntimeUAT/repro-1780 -c release
-          test -x Tests/RuntimeUAT/repro-1780/.build/release/vadrepro \
-            || { echo "::error::harness binary missing after build"; exit 1; }
+          # Swift 6 tools are required by FluidAudio; record whether we have them.
+          v=$(swift package --version 2>/dev/null | grep -oE '[0-9]+' | head -1 || echo 0)
+          echo "swift_major=$v" >> "$GITHUB_OUTPUT"
+          echo "detected swift major: $v"
 
       - name: Confirm the model is present
         run: |
           set -euo pipefail
-          M="Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc"
-          test -d "$M" || { echo "::error::VAD model missing at $M"; exit 1; }
-          echo "model ok: $(du -sh "$M" | cut -f1)"
+          test -d "$VAD_MODEL" || { echo "::error::VAD model missing at $VAD_MODEL"; exit 1; }
+          echo "model ok: $(du -sh "$VAD_MODEL" | cut -f1)"
 
-      # A crash is the RESULT we are hunting, so a nonzero/​signal exit must be
-      # reported loudly rather than failing the job ambiguously. Green here means
-      # "the harness actually ran to completion", never "the step didn't error".
-      - name: Streaming VAD run
+      # A crash IS the result being hunted, so a nonzero exit is reported
+      # explicitly and the job stays green. A run that neither survives nor
+      # crashes is inconclusive and FAILS — green must never mean "didn't run".
+      - name: Sonoma probe (ported input prep, real model)
         env:
-          VAD_MODEL: Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc
           UNITS: ${{ matrix.units }}
-          CHUNKS: ${{ inputs.chunks || '600' }}
-          PARALLEL: ${{ inputs.parallel || '4' }}
         run: |
           set -uo pipefail
-          # Empty/non-numeric would force-unwrap-nil inside the harness and read
-          # as a crash we didn't cause. Validate before we trust any result.
-          case "$CHUNKS" in ''|*[!0-9]*) echo "::error::bad CHUNKS='$CHUNKS'"; exit 1;; esac
-          case "$PARALLEL" in ''|*[!0-9]*) echo "::error::bad PARALLEL='$PARALLEL'"; exit 1;; esac
-          for churn in 0 1; do
-            echo "── UNITS=$UNITS PARALLEL=$PARALLEL CHURN=$churn"
-            out=$(CHURN=$churn ./Tests/RuntimeUAT/repro-1780/.build/release/vadrepro 2>&1); rc=$?
+          for churn in 0 200; do
+            echo "── UNITS=$UNITS churnEvery=$churn"
+            out=$(ITERS=800 PARALLEL=4 CHURN_EVERY=$churn \
+                  swift Tests/RuntimeUAT/repro-1780/sonoma-probe.swift 2>&1); rc=$?
             echo "$out" | tail -3
             if [ "$rc" -ne 0 ]; then
-              echo "::error::CRASH REPRODUCED — ${{ matrix.os }} UNITS=$UNITS CHURN=$churn exit=$rc"
-              echo "REPRODUCED rc=$rc os=${{ matrix.os }} units=$UNITS churn=$churn" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::CRASH REPRODUCED — ${{ matrix.os }} UNITS=$UNITS churn=$churn exit=$rc"
+              { echo "REPRODUCED (probe) os=${{ matrix.os }} units=$UNITS churn=$churn rc=$rc"; } >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             grep -q "SURVIVED" <<<"$out" \
-              || { echo "::error::harness produced no SURVIVED line and did not crash — inconclusive"; exit 1; }
+              || { echo "::error::probe neither survived nor crashed — inconclusive"; exit 1; }
           done
-          echo "no crash: ${{ matrix.os }} UNITS=$UNITS (both churn modes)" >> "$GITHUB_STEP_SUMMARY"
+          echo "no crash (probe): ${{ matrix.os }} units=$UNITS" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Guard-page over-read probe
         env:
-          VAD_MODEL: Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc
           UNITS: ${{ matrix.units }}
         run: |
           set -uo pipefail
@@ -99,8 +91,36 @@ jobs:
           echo "$out" | tail -3
           if [ "$rc" -ne 0 ]; then
             echo "::error::OVER-READ REPRODUCED — ${{ matrix.os }} UNITS=$UNITS exit=$rc"
-            echo "OVER-READ rc=$rc os=${{ matrix.os }} units=$UNITS" >> "$GITHUB_STEP_SUMMARY"
+            { echo "OVER-READ os=${{ matrix.os }} units=$UNITS rc=$rc"; } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           grep -q "SURVIVED" <<<"$out" \
             || { echo "::error::guard probe neither survived nor crashed — inconclusive"; exit 1; }
+
+      - name: Real FluidAudio harness (Swift 6 toolchains only)
+        if: steps.env.outputs.swift_major >= '6'
+        env:
+          UNITS: ${{ matrix.units }}
+        run: |
+          set -uo pipefail
+          swift build --package-path Tests/RuntimeUAT/repro-1780 -c release \
+            || { echo "::error::harness build failed on a Swift 6 toolchain"; exit 1; }
+          for churn in 0 1; do
+            out=$(CHUNKS=600 PARALLEL=4 CHURN=$churn \
+                  ./Tests/RuntimeUAT/repro-1780/.build/release/vadrepro 2>&1); rc=$?
+            echo "$out" | tail -3
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::CRASH REPRODUCED (real lib) — ${{ matrix.os }} UNITS=$UNITS churn=$churn exit=$rc"
+              { echo "REPRODUCED (real lib) os=${{ matrix.os }} units=$UNITS churn=$churn rc=$rc"; } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            grep -q "SURVIVED" <<<"$out" \
+              || { echo "::error::real-lib harness inconclusive"; exit 1; }
+          done
+          echo "no crash (real lib): ${{ matrix.os }} units=$UNITS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Note skipped real-lib arm
+        if: steps.env.outputs.swift_major < '6'
+        run: |
+          echo "real-lib harness SKIPPED on ${{ matrix.os }} (swift major ${{ steps.env.outputs.swift_major }} < 6)" \
+            >> "$GITHUB_STEP_SUMMARY"
