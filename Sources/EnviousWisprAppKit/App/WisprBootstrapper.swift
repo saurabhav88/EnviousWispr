@@ -200,11 +200,11 @@ public final class WisprBootstrapper {
     let outputClassifierHolder = OutputClassifierHolder()
 
     // Phase 0 (#640) — single shared paste-completion registry, owned by the
-    // composition root and injected into both pipeline finalizers (and any
-    // future #629 auto-learn subscriber). One instance per app session;
-    // constructed before the pipelines so both receive the same one. (#1106
-    // re-homed this from the deleted re-polish service per
-    // `state-ownership.md` shared-infra-homes-not-feature-services.)
+    // composition root and injected into both kernel drivers' instances of
+    // `KernelFinalizationWiring` (and any future #629 auto-learn subscriber).
+    // One instance per app session; constructed before both drivers so they
+    // share the same registry. (#1106 re-homed this from the deleted re-polish
+    // service per `state-ownership.md` shared-infra-homes-not-feature-services.)
     let pasteCompletionRegistry = PasteCompletionRegistry()
 
     // #1348 Phase 2/3 — owned model delivery. Constructed BEFORE EG-1 so the

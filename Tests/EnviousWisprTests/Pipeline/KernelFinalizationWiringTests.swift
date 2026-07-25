@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
@@ -321,6 +322,312 @@ import Testing
     #expect(outcome == .clipboardOnly, "no auto-paste => never .pasted")
   }
 
+  // MARK: - Contracts migrated to the live finalization wiring
+  //
+  // The retired test-only seam was never constructed by shipped code, so its
+  // contract tests proved nothing about production. Each still-valid contract
+  // now runs against the live wiring, where a regression in the real delivery
+  // path actually fails.
+
+  @Test("a limb failure preserves the raw ASR text and still saves exactly once")
+  func limbFailurePreservesRawTextAndSavesOnce() async throws {
+    // A polish throw is the realistic limb failure; the chain surfaces it and
+    // the heart path still delivers the raw words.
+    let outcome = KernelFinalizationOutcome()
+    let saves = SaveCountBox()
+    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    polish.llmProvider = .openAI
+    polish.makePolisher = { _, _, _ in ThrowingPolisher() }
+    let wiring = makeWiring(
+      outcome: outcome,
+      steps: makeSteps(polish: polish),
+      save: {
+        saves.count += 1
+        saves.last = $0
+      })
+
+    // 4+ words: production's `LLMPolishStep` skips polish at 3 words or fewer
+    // (`minWordsForPolish`), so a shorter input would never reach the polisher
+    // and the limb could not fail at all.
+    let text = try await wiring.processText("hello world this is a test") {}
+    try await wiring.store(text, UUID())
+
+    #expect(text == "hello world this is a test", "raw ASR text survives a limb failure")
+    #expect(outcome.polishedText == nil)
+    #expect(outcome.polishError != nil, "polish surfaces its error")
+    #expect(saves.count == 1)
+    #expect(saves.last?.text == "hello world this is a test")
+  }
+
+  @Test("whitespace-only chain output reaches the kernel's empty guard unchanged")
+  func whitespaceOnlyOutputIsNotGuardedAtThisLayer() async throws {
+    // The deleted seam threw `.emptyAfterProcessing` here. In production that
+    // guard lives one layer up, in `RecordingSessionKernel` (the
+    // `processed.trimmingCharacters(...).isEmpty` check that finishes
+    // `.noSpeech(.emptyAfterProcessing)` BEFORE store or deliver runs). This
+    // pins the wiring's half of that contract: it passes the text through
+    // without inventing an error type. The terminal mapping itself is covered by
+    // KernelLifecycleTelemetrySinkTests and TerminalNoticeReasonMappingTests.
+    let saves = SaveCountBox()
+    let wiring = makeWiring(save: { _ in saves.count += 1 })
+
+    let text = try await wiring.processText("   \n\t  ") {}
+
+    #expect(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    #expect(saves.count == 0, "the wiring does not save on its own; the kernel gates first")
+  }
+
+  @Test(
+    "a storage failure is absorbed and delivery still runs exactly once with the legacy payload")
+  func storageFailureStillDeliversExactlyOnce() async throws {
+    // REPLACES two obsolete contracts from the dead seam:
+    // `storeThrowWrapsAsStorageFailed` (a typed .storageFailed wrap) and
+    // `storeFailureShortCircuitsPaste` (store failure aborted the paste).
+    // Production reversed the second one deliberately in #1167: storage is
+    // best-effort and MUST NOT cost the user their delivery. Proven end to end
+    // here — store then deliver — rather than as two isolated tests.
+    let outcome = KernelFinalizationOutcome()
+    outcome.rawText = "hello world"
+    let telemetryState = KernelTelemetryState()
+    let saveAttempts = SaveCountBox()
+    let delivered = DeliveredPayloadBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      save: { _ in
+        saveAttempts.count += 1
+        throw WiringTestError.storage
+      },
+      deliverPaste: { request in
+        delivered.payloads.append(request.text)
+        return Self.deliveredResult
+      },
+      telemetryState: telemetryState)
+
+    try await wiring.store("hello world", UUID())
+    let deliveryOutcome = await wiring.deliver("hello world")
+
+    #expect(saveAttempts.count == 1, "the save was attempted exactly once")
+    #expect(outcome.historySaved == false)
+    #expect(outcome.historySaveError != nil)
+    #expect(telemetryState.historySaveFailed, "the lifecycle sink must see the degraded save")
+    #expect(outcome.transcript?.text == "hello world", "the side-channel survives for delivery")
+    #expect(deliveryOutcome == .pasted)
+    #expect(
+      delivered.payloads == ["hello world "],
+      "delivery runs exactly once, with the legacy trailing space appended exactly once")
+  }
+
+  @Test("a clipboard-only cascade result is non-fatal and still completes delivery")
+  func clipboardOnlyIsNonFatal() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      outcome: outcome, context: context,
+      deliverPaste: { _ in Self.clipboardResult })
+
+    let deliveryOutcome = await wiring.deliver("paste me")
+
+    #expect(deliveryOutcome == .clipboardOnly)
+    #expect(outcome.pasteResult?.tier == .clipboardOnly)
+  }
+
+  @Test("a cancellation-like limb preserves raw text and still saves and delivers once")
+  func cancellationLikeLimbStillStoresAndDeliversOnce() async throws {
+    // The runner's `isCancellationLike` classification is covered by its own
+    // suite, but classification alone does not prove the heart path survives.
+    // This pins the consequence at the live boundary: raw text preserved, saved
+    // once, delivered once, no duplicate and no loss.
+    let outcome = KernelFinalizationOutcome()
+    let saves = SaveCountBox()
+    let delivered = DeliveredPayloadBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+
+    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    polish.llmProvider = .openAI
+    polish.makePolisher = { _, _, _ in CancellingPolisher() }
+
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      steps: makeSteps(polish: polish),
+      save: {
+        saves.count += 1
+        saves.last = $0
+      },
+      deliverPaste: { request in
+        delivered.payloads.append(request.text)
+        return Self.deliveredResult
+      })
+
+    let raw = "hello world this is a test"
+    let processed = try await wiring.processText(raw) {}
+    try await wiring.store(processed, UUID())
+    let delivery = await wiring.deliver(processed)
+
+    #expect(processed == raw)
+    #expect(
+      outcome.polishError == nil,
+      "a cancellation-like failure is absorbed silently, not surfaced to the user")
+    #expect(saves.count == 1)
+    #expect(saves.last?.text == raw)
+    #expect(delivery == .pasted)
+    #expect(delivered.payloads == ["hello world this is a test "])
+  }
+
+  // MARK: - Paste-completion event gating (migrated, #640)
+
+  private final class CapturingObserver: PasteCompletionObserver {
+    var events: [PasteCompletionEvent] = []
+    func pasteCompleted(_ event: PasteCompletionEvent) { events.append(event) }
+  }
+
+  @Test("a delivered paste emits exactly one completion event carrying the pasted payload")
+  func completionEventOnDelivered() async {
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      context: context, deliverPaste: { _ in Self.deliveredResult }, registry: registry)
+
+    _ = await wiring.deliver("hello")
+
+    #expect(observer.events.count == 1)
+    #expect(observer.events.first?.pastedText == "hello ")
+  }
+
+  @Test("a clipboard-only fallback emits no completion event")
+  func completionEventSilentOnClipboardOnly() async {
+    // Phase 7 auto-learn would otherwise watch a destination where nothing landed.
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      context: context, deliverPaste: { _ in Self.clipboardResult }, registry: registry)
+
+    _ = await wiring.deliver("hello")
+
+    #expect(observer.events.isEmpty)
+  }
+
+  @Test("the copy-only branch emits no completion event and never calls the cascade")
+  func completionEventSilentOnCopyOnly() async {
+    let priorSnapshot = PasteService.saveClipboard()
+    var endChangeCount = NSPasteboard.general.changeCount
+    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
+
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoCopyToClipboard: true, autoPasteToActiveApp: false)
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in
+        Issue.record("the cascade must not run on the copy-only path")
+        return Self.deliveredResult
+      },
+      registry: registry)
+
+    _ = await wiring.deliver("hello")
+    endChangeCount = NSPasteboard.general.changeCount
+
+    #expect(observer.events.isEmpty)
+  }
+
+  // MARK: - Clipboard wiring (migrated, #726)
+
+  @Test(
+    "the restore-clipboard flag is forwarded to the paste request exactly",
+    arguments: [true, false])
+  func restoreFlagForwards(_ restore: Bool) async {
+    let captured = RestoreFlagBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(
+      autoPasteToActiveApp: true, restoreClipboardAfterPaste: restore)
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.value = request.restoreClipboardAfterPaste
+        return Self.deliveredResult
+      })
+
+    _ = await wiring.deliver("hello")
+
+    #expect(captured.value == restore)
+  }
+
+  @Test("copy-only writes the DISPLAY text to the clipboard, never the raw ASR text")
+  func copyOnlyWritesDisplayText() async {
+    let pasteboard = NSPasteboard.general
+    let priorSnapshot = PasteService.saveClipboard()
+    let sentinel = "issue-726-prior-\(UUID().uuidString)"
+    pasteboard.clearContents()
+    pasteboard.setString(sentinel, forType: .string)
+    var endChangeCount = pasteboard.changeCount
+    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
+
+    let polished = "POLISHED-\(UUID().uuidString)"
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoCopyToClipboard: true, autoPasteToActiveApp: false)
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in
+        Issue.record("the cascade must not run when auto-paste is off")
+        return Self.deliveredResult
+      })
+
+    _ = await wiring.deliver(polished)
+    endChangeCount = pasteboard.changeCount
+
+    let after = pasteboard.string(forType: .string)
+    #expect(after == polished, "the clipboard must carry the display text")
+    #expect(after != sentinel, "the sentinel must have been replaced")
+  }
+
+  @Test("with both auto-paste and auto-copy off the clipboard is left untouched")
+  func neitherFlagTouchesClipboard() async {
+    let pasteboard = NSPasteboard.general
+    let priorSnapshot = PasteService.saveClipboard()
+    let sentinel = "issue-726-untouched-\(UUID().uuidString)"
+    pasteboard.clearContents()
+    pasteboard.setString(sentinel, forType: .string)
+    var endChangeCount = pasteboard.changeCount
+    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
+
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoCopyToClipboard: false, autoPasteToActiveApp: false)
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in
+        Issue.record("the cascade must not run when auto-paste is off")
+        return Self.deliveredResult
+      })
+
+    _ = await wiring.deliver("hello")
+    endChangeCount = pasteboard.changeCount
+
+    #expect(pasteboard.string(forType: .string) == sentinel)
+  }
+
+  /// Restore the pasteboard ONLY if nothing else wrote to it after our last
+  /// mutation. Mirrors the production `restoreClipboard` guard: a change count
+  /// past what we expect means a third-party tool owns the clipboard now.
+  private static func restorePasteboard(
+    _ snapshot: ClipboardSnapshot?, expectedChangeCount: Int
+  ) {
+    guard let snapshot else { return }
+    PasteService.restoreClipboard(snapshot, changeCountAfterPaste: expectedChangeCount)
+  }
+
   // MARK: Helpers
 
   private static let deliveredResult = PasteDeliveryResult(
@@ -331,13 +638,13 @@ import Testing
     tier: .clipboardOnly, durationMs: 1,
     outcome: .clipboardOnlyAccessibilityDenied(targetBundleID: nil))
 
-  private func makeSteps() -> LimbSteps {
+  private func makeSteps(polish: LLMPolishStep? = nil) -> LimbSteps {
     LimbSteps(
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
-      llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+      llmPolish: polish ?? LLMPolishStep(keychainManager: KeychainManager()),
       emojiRestore: EmojiRestoreStep())
   }
 
@@ -350,6 +657,7 @@ import Testing
       _ in Self.deliveredResult
     },
     telemetryState: KernelTelemetryState = KernelTelemetryState(),
+    registry: PasteCompletionRegistry? = nil,
     currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
   ) -> KernelFinalizationWiring {
     KernelFinalizationWiring(
@@ -368,7 +676,7 @@ import Testing
         timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),
       save: save,
       deliverPaste: deliverPaste,
-      pasteCompletionRegistry: nil,
+      pasteCompletionRegistry: registry,
       currentTime: currentTime,
       telemetryState: telemetryState)
   }
@@ -485,6 +793,48 @@ private struct CannedPolisher: TranscriptPolisher {
 @MainActor
 private final class SignalFlag {
   var fired = false
+}
+
+@MainActor
+private final class SaveCountBox {
+  var count = 0
+  var last: Transcript?
+}
+
+@MainActor
+private final class DeliveredPayloadBox {
+  var payloads: [String] = []
+}
+
+@MainActor
+private final class RestoreFlagBox {
+  var value: Bool?
+}
+
+/// Cancels mid-polish. The runner absorbs this silently rather than surfacing
+/// it, so the heart path continues with the pre-step text.
+private struct CancellingPolisher: TranscriptPolisher {
+  func polish(
+    text: String,
+    instructions: PolishInstructions,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    throw CancellationError()
+  }
+}
+
+/// Fails every polish, so the chain surfaces the error and the heart path
+/// still delivers the raw words.
+private struct ThrowingPolisher: TranscriptPolisher {
+  func polish(
+    text: String,
+    instructions: PolishInstructions,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    throw WiringTestError.storage
+  }
 }
 
 @MainActor

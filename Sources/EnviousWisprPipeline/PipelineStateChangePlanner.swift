@@ -170,11 +170,11 @@ enum PipelineStateChangePlanner {
     effects.append(.showOverlay(resolvedOverlayIntent))
 
     // Step 2 — complete-path: append to in-memory history + telemetry.
-    // Phase C: replaced unconditional disk-backed reload with an
-    // in-memory append that only fires when the pipeline has a
-    // current transcript. Finalizer already persisted by the time
-    // `.complete` is observed (TranscriptFinalizer.swift:126), so the
-    // new row is on disk regardless. The in-memory append keeps the
+    // Phase C: replaced an unconditional disk-backed reload with an in-memory
+    // append that only fires when the pipeline has a current transcript.
+    // Storage is BEST-EFFORT (#1167): a successful save means the row is
+    // already on disk, and the failure branch below deliberately skips the
+    // append rather than showing a phantom row. The in-memory append keeps the
     // history cache visibly fresh without an O(n) disk scan.
     if case .complete = newState.activity {
       if hasCurrentTranscript {

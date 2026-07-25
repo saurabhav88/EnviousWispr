@@ -56,7 +56,7 @@ enum PasteDirective: Sendable {
 }
 
 /// A limb / finalizer failure to inject (L1–L3, L6). The limb pipeline
-/// (`TextProcessingRunner`, `TranscriptFinalizer`) and transcript storage are
+/// (`TextProcessingRunner`, `KernelFinalizationWiring`) and transcript storage are
 /// production code the kernel calls; PR-2 has no fake for them. PR-3 wires the
 /// kernel's finalizer seam and keys failure injection on THIS directive — not
 /// on the scenario ID. Shipping the directive now keeps the scenario data

@@ -13,12 +13,9 @@ import Foundation
 // single-unit-reviewable home for the run -> store -> deliver wiring, so the
 // App's kernel construction site does not grow a 40-line closure literal.
 //
-// `TranscriptFinalizer.swift` is NOT edited: PR-4 wires the kernel's three
-// closures to the three sub-types `TranscriptFinalizer` already composes
-// (`TextProcessingRunner` / `TranscriptStore` / `PasteCascadeExecutor`).
-// `TranscriptFinalizer` stays live for WhisperKit until PR-5/PR-9.
-//
-// PR-4a ships this production-unwired: no App-layer caller constructs it.
+// This is the sole production finalization path. Its contracts run directly
+// against these closures (`TextProcessingRunner` / `TranscriptStore` /
+// `PasteCascadeExecutor`) in `KernelFinalizationWiringTests`.
 
 /// The polish/storage side-channel (PR-4 §3.3). The kernel's three closures
 /// thread only a `String`; this reference carries the raw / polished split and
@@ -136,7 +133,7 @@ struct KernelFinalizationWiring {
 
   /// `save` and `deliverPaste` are closure seams over `TranscriptStore.save`
   /// and `PasteCascadeExecutor.deliver` — the same test-seam shape
-  /// `TranscriptFinalizer` exposes. The App wraps the concrete types; tests
+  /// this wiring exposes. The App wraps the concrete types; tests
   /// pass fakes without touching disk or the AX paste APIs.
   init(
     outcome: KernelFinalizationOutcome,
@@ -261,7 +258,7 @@ struct KernelFinalizationWiring {
       return floor
     }
 
-    // store — build the Transcript exactly as TranscriptFinalizer.swift:129
+    // store — build the Transcript from the polish side-channel
     // (raw / polished from the side-channel, ASR metadata from the adapter),
     // best-effort persist it, and hand it to the driver via the side-channel.
     //
@@ -320,7 +317,7 @@ struct KernelFinalizationWiring {
     // deliver — run the paste cascade or clipboard copy per the session's
     // paste prefs, map `PasteDeliveryResult` -> `KernelDeliveryOutcome`, emit
     // the paste-completion event only on a real delivered paste
-    // (TranscriptFinalizer.swift:163).
+    // on a real delivered paste.
     deliver = { text in
       let pasteStart = CFAbsoluteTimeGetCurrent()
       let config = context.config
