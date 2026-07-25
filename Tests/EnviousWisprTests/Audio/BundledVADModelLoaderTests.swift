@@ -1,3 +1,4 @@
+import CoreML
 import Foundation
 import Testing
 
@@ -22,7 +23,7 @@ struct BundledVADModelLoaderTests {
         "Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc")
   }
 
-  @Test("loads the model given a bundle containing the real resource")
+  @Test("loads the model with the pinned FluidAudio VAD compute policy")
   func loadsBundledModel() throws {
     let checkedIn = Self.checkedInModelURL
     #expect(FileManager.default.fileExists(atPath: checkedIn.path))
@@ -40,7 +41,13 @@ struct BundledVADModelLoaderTests {
       to: fixtureRoot.appendingPathComponent("silero-vad-unified-256ms-v6.0.0.mlmodelc"))
 
     let fixtureBundle = try #require(Bundle(path: fixtureRoot.path))
-    _ = try BundledVADModelLoader.loadModel(in: fixtureBundle)
+    let model = try BundledVADModelLoader.loadModel(in: fixtureBundle)
+
+    // #1784: freeze the REQUESTED load policy. `MLModel.configuration` reports what
+    // the caller asked for, not CoreML's resolved device — which is exactly the
+    // thing this change alters. A bare `MLModelConfiguration()` would report `.all`.
+    #expect(model.configuration.computeUnits == .cpuAndNeuralEngine)
+    #expect(model.configuration.allowLowPrecisionAccumulationOnGPU)
   }
 
   @Test("throws resourceNotFound given a bundle that does not carry the asset")
