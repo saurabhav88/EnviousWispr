@@ -94,7 +94,10 @@ final class FakeAudioCapture: AudioCaptureInterface {
   private(set) var isCapturing = false
   var audioLevel: Float { 0 }
   var capturedSamples: [Float] { accumulatedSamples }
-  var currentAudioRoute: String { "fake" }
+  /// #1780: tests mutate this to prove the record-start markers carry the
+  /// route captured at monitor start, not a later value. Default unchanged.
+  var routeOverride: String = "fake"
+  var currentAudioRoute: String { routeOverride }
   var currentResolvedRoute: ResolvedRouteTransports? { nil }
   private(set) var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool { isCapturing }

@@ -2246,6 +2246,93 @@ public final class TelemetryService {
       ]
     )
   }
+
+  // MARK: - Record-start VAD stage markers (#1780)
+
+  /// The three markers below light the previously dark interval between
+  /// `dictation.invoked` and `asr.completed`. #1780 crashed inside the first
+  /// VAD chunk and had to be reconstructed from crash-dump thread states
+  /// because nothing in that window was observable in a release build.
+  ///
+  /// `RecordStartTelemetrySink` pairs each of these with a Sentry breadcrumb;
+  /// this type remains the sole authority for the exact PostHog event names
+  /// and property serialization. `package` (not `public`) — no external
+  /// product needs them.
+
+  /// VAD readiness evaluation returned, immediately before monitor entry.
+  /// `modelReused` is snapshotted BEFORE preparation by the caller: read after,
+  /// every successful preparation would report as reuse.
+  package func dictationVADPreparationCompleted(
+    backend: String,
+    inputRoute: String,
+    ready: Bool,
+    modelReused: Bool
+  ) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "dictation.vad_preparation_completed",
+          stringProps: ["backend": backend, "input_route": inputRoute],
+          boolProps: ["ready": ready, "model_reused": modelReused]))
+    #endif
+    PostHogSDK.shared.capture(
+      "dictation.vad_preparation_completed",
+      properties: [
+        "backend": backend,
+        "input_route": inputRoute,
+        "ready": ready,
+        "model_reused": modelReused,
+      ])
+  }
+
+  /// Immediately BEFORE the first `SilenceDetector.processChunk` await.
+  package func dictationFirstVADChunkStarted(
+    backend: String,
+    inputRoute: String,
+    monitorToFirstChunkMs: Double
+  ) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "dictation.first_vad_chunk_started",
+          stringProps: ["backend": backend, "input_route": inputRoute],
+          doubleProps: ["monitor_to_first_chunk_ms": monitorToFirstChunkMs]))
+    #endif
+    PostHogSDK.shared.capture(
+      "dictation.first_vad_chunk_started",
+      properties: [
+        "backend": backend,
+        "input_route": inputRoute,
+        "monitor_to_first_chunk_ms": monitorToFirstChunkMs,
+      ])
+  }
+
+  /// Immediately AFTER that await returns. `started` present with `completed`
+  /// absent is the diagnostic: it localises a fatal failure to first-chunk
+  /// processing, which contains the CoreML path #1780 died in.
+  package func dictationFirstVADChunkCompleted(
+    backend: String,
+    inputRoute: String,
+    chunkProcessingLatencyMs: Double,
+    shouldStop: Bool
+  ) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "dictation.first_vad_chunk_completed",
+          stringProps: ["backend": backend, "input_route": inputRoute],
+          doubleProps: ["chunk_processing_latency_ms": chunkProcessingLatencyMs],
+          boolProps: ["should_stop": shouldStop]))
+    #endif
+    PostHogSDK.shared.capture(
+      "dictation.first_vad_chunk_completed",
+      properties: [
+        "backend": backend,
+        "input_route": inputRoute,
+        "chunk_processing_latency_ms": chunkProcessingLatencyMs,
+        "should_stop": shouldStop,
+      ])
+  }
 }
 
 // MARK: - Latency bucket helper (Phase 8a)

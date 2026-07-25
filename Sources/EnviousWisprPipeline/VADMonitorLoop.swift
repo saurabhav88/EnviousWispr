@@ -37,6 +37,19 @@ internal enum VADMonitorLoop {
   ///     Advisory only — recording continues; never stops.
   ///   - onStop: Called when auto-stop should trigger. Runs in a new Task to avoid
   ///     cancellation propagation from the monitor task into transcription.
+  ///   - monotonicNow: Injectable MONOTONIC clock for first-chunk timing (#1780),
+  ///     defaulting to `ProcessInfo.processInfo.systemUptime`. Deliberately
+  ///     separate from `now`: that one is a wall clock compared against
+  ///     `recordingStartTime` for the duration cap and must stay `Date`-based,
+  ///     while an interval measurement must not be distorted by a clock step.
+  ///   - onFirstChunkStarted: Fired ONCE per run, immediately before the first
+  ///     `processChunk` await, carrying milliseconds from run entry.
+  ///   - onFirstChunkCompleted: Fired ONCE per run, immediately after that await
+  ///     returns, carrying the await's own elapsed milliseconds and the actual
+  ///     `shouldStop` result. #1780: `started` present with `completed` absent
+  ///     localises a fatal failure to the first chunk, which contains the
+  ///     CoreML prediction path. Both are observational and never alter
+  ///     whether recording continues.
   static func run(
     detector: SilenceDetector?,
     vadAutoStop: Bool,
@@ -47,8 +60,18 @@ internal enum VADMonitorLoop {
     isRecording: @escaping @MainActor () -> Bool,
     now: @escaping @MainActor () -> Date = { Date() },
     onApproachingMaxDuration: @escaping @MainActor (TimeInterval) -> Void,
-    onStop: @escaping @MainActor (VADStopReason) -> Void
+    onStop: @escaping @MainActor (VADStopReason) -> Void,
+    monotonicNow: @escaping @MainActor () -> TimeInterval = {
+      ProcessInfo.processInfo.systemUptime
+    },
+    onFirstChunkStarted: @escaping @MainActor (Double) -> Void = { _ in },
+    onFirstChunkCompleted: @escaping @MainActor (Double, Bool) -> Void = { _, _ in }
   ) async {
+    // Captured at run entry, before any loop work, so `monitor_to_first_chunk_ms`
+    // measures the full monitor-entry-to-first-chunk interval. Latch is
+    // function-local: a new `run` invocation gets a fresh pair (#1780).
+    let monitorStartedAt = monotonicNow()
+    var firstChunkObserved = false
     // One-shot approaching-cap warning (#1060). Fires at most once per run when
     // elapsed crosses `maxDuration - warningLead`, only when the cap is long
     // enough to have a lead window. Advisory — it never stops the recording.
@@ -97,7 +120,31 @@ internal enum VADMonitorLoop {
           guard isRecording(), sampleProvider().count >= endIdx else { break }
           let chunk = Array(sampleProvider()[processedSampleCount..<endIdx])
 
+          // #1780 first-chunk observation. The `started` callback fires as the
+          // LAST work before the await, and the clock read plus `completed`
+          // callback are the FIRST work after it returns — nothing may be
+          // inserted between, or the pair stops bracketing the first-chunk
+          // processing it exists to localise.
+          //
+          // `chunkStartedAt` is read AFTER the started callback on purpose. That
+          // callback synchronously writes a Sentry breadcrumb and a PostHog
+          // event; timing from before it would fold that telemetry cost into
+          // `chunk_processing_latency_ms`, which claims to measure chunk
+          // processing. One extra clock read is the honest trade.
+          let isFirstChunk = !firstChunkObserved
+          var chunkStartedAt: TimeInterval = 0
+          if isFirstChunk {
+            firstChunkObserved = true
+            let markerAt = monotonicNow()
+            onFirstChunkStarted((markerAt - monitorStartedAt) * 1000)
+            chunkStartedAt = monotonicNow()
+          }
+
           let shouldStop = await detector.processChunk(chunk)
+
+          if isFirstChunk {
+            onFirstChunkCompleted((monotonicNow() - chunkStartedAt) * 1000, shouldStop)
+          }
 
           if shouldStop && vadAutoStop && isRecording() {
             onStop(.silenceTimeout)

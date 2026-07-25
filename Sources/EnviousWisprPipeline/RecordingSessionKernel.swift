@@ -2917,8 +2917,13 @@ final class RecordingSessionKernel {
     // not count toward minimum-duration.
     recordingStartedAtTick = currentTick()
     resourcesReleased = false
+    // #1780: the backend is not reachable from the VAD source (it is absent
+    // from `DictationSessionConfig`), so the kernel hands over the already
+    // resolved identity. Capability-neutral: it labels telemetry, never gates
+    // behaviour, so `engineIdentity` is the correct read here.
     (vad as? CaptureVADSignalSource)?.startMonitoring(
       recordingStartTime: Date(),
+      backend: adapter.engineIdentity.rawValue,
       isRecording: { [weak self] in
         self?.state == .live && self?.currentSessionID == sid
       }
