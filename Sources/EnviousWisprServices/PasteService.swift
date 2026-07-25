@@ -356,6 +356,180 @@ public enum PasteService {
     return .unverifiable
   }
 
+  // MARK: - Caret context (#1785)
+
+  /// A bounded read of the text either side of the caret, taken at insertion
+  /// time. Carries no `AXValue` state — only plain strings and UTF-16 offsets —
+  /// so nothing about a foreign app's accessibility handles escapes Services.
+  ///
+  /// The selected text itself is EXCLUDED from both windows: the right window
+  /// begins after the selection, because a replacement is about to consume it.
+  package struct CaretContext: Equatable, Sendable {
+    /// Text immediately before the selection, bounded by the window size.
+    package let leftWindow: String
+    /// Text immediately after the selection, bounded by the window size.
+    package let rightWindow: String
+    /// UTF-16 offset of the selection's start.
+    package let selectionLocation: Int
+    /// UTF-16 length of the selection. Zero for a plain caret.
+    package let selectionLength: Int
+
+    package init(
+      leftWindow: String, rightWindow: String, selectionLocation: Int, selectionLength: Int
+    ) {
+      self.leftWindow = leftWindow
+      self.rightWindow = rightWindow
+      self.selectionLocation = selectionLocation
+      self.selectionLength = selectionLength
+    }
+  }
+
+  /// How many UTF-16 units to read either side. One character is provably not
+  /// enough — `"home. "` and `"home, "` both end in a space and need opposite
+  /// decisions — so the reader takes a window and the rule walks back within it.
+  /// Single authority for the literal; no call site repeats it.
+  package static let caretContextWindow = 20
+
+  /// Plan the ranges and assemble the context, with no accessibility calls.
+  ///
+  /// All arithmetic is UTF-16, and every comparison is written to avoid
+  /// overflow: `length <= characterCount - location` rather than
+  /// `location + length <= characterCount`, because the latter can wrap on
+  /// hostile input from a foreign process.
+  ///
+  /// `readRange` returns nil when that span cannot be read. A required non-empty
+  /// span failing means the whole context fails open, because a partially-read
+  /// context would silently produce a wrong repair.
+  static func assembleCaretContext(
+    characterCount: Int,
+    selectionLocation: Int,
+    selectionLength: Int,
+    window: Int,
+    readRange: (Int, Int) -> String?
+  ) -> CaretContext? {
+    guard window > 0 else { return nil }
+    guard characterCount >= 0, selectionLocation >= 0, selectionLength >= 0 else { return nil }
+    guard selectionLocation <= characterCount else { return nil }
+    guard selectionLength <= characterCount - selectionLocation else { return nil }
+
+    // Left: the window's worth of text ending at the selection start.
+    let leftStart = selectionLocation >= window ? selectionLocation - window : 0
+    let leftLength = selectionLocation - leftStart
+    let leftWindow: String
+    if leftLength == 0 {
+      leftWindow = ""
+    } else if let read = readRange(leftStart, leftLength), read.utf16.count == leftLength {
+      leftWindow = read
+    } else {
+      // A read that returns the WRONG number of units is malformed, not usable.
+      // The field may have changed between the count read and this one, so the
+      // text no longer describes the geometry we planned against. Accepting it
+      // would repair confidently against truncated or oversized context, and the
+      // later selection revalidation cannot detect that because the offsets
+      // still look consistent.
+      return nil
+    }
+
+    // Right: begins AFTER the selection, since a replacement consumes it.
+    let rightStart = selectionLocation + selectionLength
+    let available = characterCount - rightStart
+    let rightLength = min(window, available)
+    let rightWindow: String
+    if rightLength <= 0 {
+      rightWindow = ""
+    } else if let read = readRange(rightStart, rightLength), read.utf16.count == rightLength {
+      rightWindow = read
+    } else {
+      return nil
+    }
+
+    // Whitespace exhaustion. If the bounded left window starts PAST offset zero
+    // and holds nothing but spaces and tabs, the nearest real character lies
+    // outside what we read — so we cannot tell a continuation from a line or
+    // field start, and guessing would produce a wrong capital. Refuse. Reaching
+    // offset zero, or finding a newline, makes the boundary positively known.
+    if leftStart > 0, !leftWindow.isEmpty,
+      leftWindow.allSatisfy({ $0 == " " || $0 == "\t" })
+    {
+      return nil
+    }
+
+    return CaretContext(
+      leftWindow: leftWindow,
+      rightWindow: rightWindow,
+      selectionLocation: selectionLocation,
+      selectionLength: selectionLength)
+  }
+
+  /// Read the text either side of the caret in the app that owns `element`.
+  ///
+  /// Synchronous, non-throwing, and fail-open: ANY unavailable, malformed,
+  /// stale, mismatched or unreadable state returns nil, and the caller keeps
+  /// today's behaviour. Nothing here mutates the destination.
+  ///
+  /// The focused element is re-read from the owning application immediately
+  /// before use and required to match the captured handle. A stale handle can
+  /// name an element the user has since left, and repairing against the wrong
+  /// field is worse than not repairing at all.
+  package static func readCaretContext(
+    element: AXUIElement,
+    window: Int = caretContextWindow
+  ) -> CaretContext? {
+    guard AXIsProcessTrusted() else { return nil }
+
+    // Resolve the owning process from the captured element itself — never from
+    // `NSWorkspace.frontmostApplication`, which is stale without a run loop,
+    // and never from a system-wide element, which can answer for another app.
+    var pid: pid_t = 0
+    guard AXUIElementGetPid(element, &pid) == .success, pid > 0 else { return nil }
+
+    let application = AXUIElementCreateApplication(pid)
+    // Bound every subsequent read. A wedged destination must not hang the
+    // dictation path; 0.5s is a failure bound, not a latency target.
+    AXUIElementSetMessagingTimeout(application, 0.5)
+
+    var focusedRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(
+        application, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+      let focusedValue = focusedRef,
+      CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
+    else { return nil }
+    // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check.
+    let fresh = focusedValue as! AXUIElement
+
+    // The user may have moved on since capture. Repairing against a different
+    // field would edit text they never dictated into.
+    guard CFEqual(fresh, element) else { return nil }
+    var freshPid: pid_t = 0
+    guard AXUIElementGetPid(fresh, &freshPid) == .success, freshPid == pid else { return nil }
+
+    // Role is read from the FRESH element, never the captured handle.
+    var roleRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(fresh, kAXRoleAttribute as CFString, &roleRef) == .success,
+      let role = roleRef as? String, textRoles.contains(role)
+    else { return nil }
+
+    var countRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(
+        fresh, kAXNumberOfCharactersAttribute as CFString, &countRef) == .success,
+      let characterCount = countRef as? Int
+    else { return nil }
+
+    guard let range = selectedRange(of: fresh) else { return nil }
+
+    return assembleCaretContext(
+      characterCount: characterCount,
+      selectionLocation: range.location,
+      selectionLength: range.length,
+      window: window,
+      readRange: { location, length in
+        string(of: fresh, at: location, length: length)
+      })
+  }
+
   /// Exact UTF-16 code-unit identity.
   ///
   /// Swift's `String ==` is canonical-equivalence-aware, so it reports two
