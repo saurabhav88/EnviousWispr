@@ -274,10 +274,147 @@ public enum PasteService {
     }
   }
 
+  /// Outcome of a Tier 1 Accessibility insertion attempt.
+  ///
+  /// Three states, not two, because "we could not prove it worked" and "it
+  /// definitely did not happen" demand opposite responses. Retrying an
+  /// unproven write is what double-pastes.
+  public enum AXInsertOutcome: Equatable, Sendable {
+    /// The requested mutation is positively verified. Stop the cascade.
+    case verified
+    /// No mutation landed: the write was refused, failed, or provably left the
+    /// field untouched. Continuing to Tier 2 is safe.
+    case noMutation
+    /// The write reported success but the result cannot be proven. The mutation
+    /// MAY already be in the document, so the cascade must NOT paste again.
+    case unverifiable
+  }
+
+  /// Everything read around a Tier 1 write, so the decision itself stays pure
+  /// and testable. The live AX round-trips happen in `insertViaAccessibility`;
+  /// this struct is what they produce.
+  internal struct AXInsertProbe: Equatable, Sendable {
+    /// UTF-16 length of the text we asked to insert. AX ranges are UTF-16.
+    let insertedUTF16Length: Int
+    /// UTF-16 length of the selection being replaced. Zero for a plain caret.
+    let selectionLengthBefore: Int
+    /// `AXNumberOfCharacters` before the write.
+    let countBefore: Int
+    /// `AXNumberOfCharacters` after the write; nil when unreadable.
+    let countAfter: Int?
+    /// Whether reading the inserted span back matched the text we sent.
+    /// Nil when the span could not be read at all.
+    let readBackMatched: Bool?
+    /// True only when the COMPLETE field is identical before and after the
+    /// write. A window around the original selection is not enough: the
+    /// selection can move between AX calls, so an equal-length write elsewhere
+    /// would leave both the count and the original window untouched. Since
+    /// `.noMutation` is what authorises a second paste, it needs whole-field
+    /// proof.
+    let fieldUnchanged: Bool?
+  }
+
+  /// Decide whether a Tier 1 write is verified, provably absent, or unprovable.
+  ///
+  /// Pure so it can be tested without a live AX element, matching the existing
+  /// `isPasteShortcut` precedent where AX traversal is live-only and the
+  /// decision is unit-tested.
+  ///
+  /// BOTH directions demand positive evidence, because the two ways of being
+  /// wrong are opposite and both are user-visible: claiming success wrongly
+  /// discards the dictation, and claiming nothing-happened wrongly pastes it
+  /// twice. Neither character count nor read-back alone settles it.
+  internal static func classifyInsertOutcome(_ probe: AXInsertProbe) -> AXInsertOutcome {
+    let expectedAfter =
+      probe.countBefore + probe.insertedUTF16Length - probe.selectionLengthBefore
+
+    guard let after = probe.countAfter else {
+      // The write reported success and the result is entirely unreadable. It
+      // may already be in the document, so retrying risks duplicating it.
+      return .unverifiable
+    }
+
+    // Success needs the exact expected length AND our exact text at the
+    // insertion span. Read-back alone is not proof: if the caret sits just
+    // before text identical to the dictation and the app ignores the write,
+    // read-back matches and we would silently drop the user's dictation.
+    if after == expectedAfter, probe.readBackMatched == true {
+      return .verified
+    }
+
+    // Retry is allowed only when the WHOLE field is proven byte-identical. An
+    // unchanged character count is not proof, and neither is an unchanged
+    // window around the original selection: the selection can move between AX
+    // calls, so an equal-length write elsewhere leaves both intact. Electron
+    // apps report a successful write and genuinely leave the field untouched;
+    // they reach Tier 2 through here, and they must, or they lose automatic
+    // paste entirely.
+    if after == probe.countBefore, probe.fieldUnchanged == true {
+      return .noMutation
+    }
+
+    return .unverifiable
+  }
+
+  /// Exact UTF-16 code-unit identity.
+  ///
+  /// Swift's `String ==` is canonical-equivalence-aware, so it reports two
+  /// different combining-mark orderings as equal even though the stored code
+  /// units differ — verified locally: `"a\u{0301}\u{0323}"` and
+  /// `"a\u{0323}\u{0301}"` have equal UTF-16 counts, compare `==` true, and are
+  /// NOT code-unit identical. A destination that reorders marks would therefore
+  /// look untouched, and `.noMutation` would authorise a second paste over a
+  /// write that landed. AX lengths and ranges are UTF-16, so compare in UTF-16.
+  internal static func stringsHaveIdenticalUTF16(_ lhs: String, _ rhs: String) -> Bool {
+    lhs.utf16.elementsEqual(rhs.utf16)
+  }
+
+  /// Read `AXSelectedTextRange` as a UTF-16 range. Nil when unreadable.
+  private static func selectedRange(of element: AXUIElement) -> CFRange? {
+    var rangeRef: CFTypeRef?
+    let err = AXUIElementCopyAttributeValue(
+      element,
+      kAXSelectedTextRangeAttribute as CFString,
+      &rangeRef
+    )
+    guard err == .success, let value = rangeRef else { return nil }
+    // A successful read does NOT promise the value is an AXValue — this is a
+    // foreign app's accessibility implementation. Check the CF type before
+    // casting; the paste path must not be crashable by a misbehaving app.
+    guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+    // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check.
+    let axValue = value as! AXValue
+    guard AXValueGetType(axValue) == .cfRange else { return nil }
+    var range = CFRange(location: 0, length: 0)
+    guard AXValueGetValue(axValue, .cfRange, &range) else { return nil }
+    return range
+  }
+
+  /// Read `length` UTF-16 units starting at `location`. Nil when unreadable.
+  private static func string(of element: AXUIElement, at location: Int, length: Int) -> String? {
+    guard location >= 0, length >= 0 else { return nil }
+    var range = CFRange(location: location, length: length)
+    guard let rangeValue = AXValueCreate(.cfRange, &range) else { return nil }
+    var resultRef: CFTypeRef?
+    let err = AXUIElementCopyParameterizedAttributeValue(
+      element,
+      kAXStringForRangeParameterizedAttribute as CFString,
+      rangeValue,
+      &resultRef
+    )
+    guard err == .success else { return nil }
+    return resultRef as? String
+  }
+
   /// Insert text directly into an AX element at the cursor position.
   /// Uses kAXSelectedTextAttribute which inserts at cursor / replaces selection.
-  /// Returns true only if the text verifiably appeared in the element.
-  public static func insertViaAccessibility(_ text: String, element: AXUIElement) -> Bool {
+  ///
+  /// Returns a tri-state, not a Bool. `noMutation` is the only outcome the
+  /// caller may retry: `unverifiable` means the write may already have landed,
+  /// and pasting again would duplicate the user's text.
+  public static func insertViaAccessibility(_ text: String, element: AXUIElement)
+    -> AXInsertOutcome
+  {
     // Verify the element is a text field or text area.
     var roleRef: CFTypeRef?
     let roleErr = AXUIElementCopyAttributeValue(
@@ -286,9 +423,9 @@ public enum PasteService {
       &roleRef
     )
     guard roleErr == .success, let role = roleRef as? String else {
-      return false
+      return .noMutation
     }
-    guard textRoles.contains(role) else { return false }
+    guard textRoles.contains(role) else { return .noMutation }
 
     // Verify the element is writable (not read-only).
     var settableRef: DarwinBoolean = false
@@ -297,16 +434,59 @@ public enum PasteService {
       kAXValueAttribute as CFString,
       &settableRef
     )
-    guard settableErr == .success, settableRef.boolValue else { return false }
+    guard settableErr == .success, settableRef.boolValue else { return .noMutation }
 
-    // Snapshot character count before insertion for verification.
+    // Everything needed to verify the result must be readable BEFORE we write.
+    // The retired code wrote first and only then discovered it could not read
+    // the field, leaving a possibly-landed write reported as failure — the same
+    // double-paste defect in a second location. Bailing here is free: nothing
+    // has been mutated, so Tier 2 is safe.
     var charCountBefore: CFTypeRef?
     AXUIElementCopyAttributeValue(
       element,
       kAXNumberOfCharactersAttribute as CFString,
       &charCountBefore
     )
-    let countBefore = (charCountBefore as? Int) ?? -1
+    guard let countBefore = charCountBefore as? Int, countBefore >= 0 else {
+      return .noMutation
+    }
+    guard let rangeBefore = selectedRange(of: element) else { return .noMutation }
+    // A foreign app can report a range that does not fit its own field. Reject
+    // rather than compute verification windows from impossible values.
+    guard
+      rangeBefore.location >= 0,
+      rangeBefore.length >= 0,
+      rangeBefore.location <= countBefore,
+      rangeBefore.length <= countBefore - rangeBefore.location
+    else { return .noMutation }
+
+    let insertionStart = rangeBefore.location
+    let selectionLength = rangeBefore.length
+    let insertedLength = text.utf16.count
+
+    // Whole-field before-image. Only this can later prove that NO mutation
+    // landed, because the selection may move between AX calls and an
+    // equal-length write elsewhere would leave a local window untouched.
+    //
+    // An empty field is short-circuited rather than read: a zero-length range
+    // read succeeds in TextEdit but that is one app's behaviour, and an empty
+    // text box is the most common dictation target of all. Deriving `""` from
+    // the count makes the common case independent of per-app AX quirks.
+    //
+    // Cost, measured rather than assumed (`ax_read_cost_by_size.py`): the read
+    // is NOT flat past ~10k characters, it is roughly linear at 0.07 ms per 10k.
+    // A 200,000-character field costs 1.5 ms per read, so about 3 ms for the
+    // before and after pair. Acceptable against a sub-second pipeline budget.
+    let fieldBefore: String
+    if countBefore == 0 {
+      fieldBefore = ""
+    } else if let read = string(of: element, at: 0, length: countBefore) {
+      fieldBefore = read
+    } else {
+      // Without a before-image, a successful AX call could never be proven
+      // harmless. Bail while nothing has been mutated; Tier 2 is safe here.
+      return .noMutation
+    }
 
     // Insert at cursor via kAXSelectedTextAttribute.
     let err = AXUIElementSetAttributeValue(
@@ -314,22 +494,40 @@ public enum PasteService {
       kAXSelectedTextAttribute as CFString,
       text as CFTypeRef
     )
-    guard err == .success else { return false }
+    guard err == .success else { return .noMutation }
 
-    // Verify text actually appeared (Electron apps report success but don't render).
-    // If we can't read character counts, treat as unverified and fall through to Tier 2.
+    // From here the write may have landed, so every remaining failure is
+    // `unverifiable`, never `noMutation`.
     var charCountAfter: CFTypeRef?
     AXUIElementCopyAttributeValue(
       element,
       kAXNumberOfCharactersAttribute as CFString,
       &charCountAfter
     )
-    let countAfter = (charCountAfter as? Int) ?? -1
+    let countAfter = (charCountAfter as? Int).flatMap { $0 >= 0 ? $0 : nil }
 
-    if countBefore < 0 || countAfter < 0 {
-      return false  // Can't verify — let Tier 2 handle it
+    // Positive proof of success: our exact text sits at the insertion span.
+    let readBackMatched = string(of: element, at: insertionStart, length: insertedLength)
+      .map { stringsHaveIdenticalUTF16($0, text) }
+
+    // Positive proof of NO success: the complete field still has identical
+    // UTF-16 code units.
+    let fieldUnchanged = countAfter.flatMap { after -> Bool? in
+      guard after == countBefore else { return false }
+      if after == 0 { return fieldBefore.isEmpty }
+      return string(of: element, at: 0, length: after)
+        .map { stringsHaveIdenticalUTF16($0, fieldBefore) }
     }
-    return countAfter > countBefore
+
+    return classifyInsertOutcome(
+      AXInsertProbe(
+        insertedUTF16Length: insertedLength,
+        selectionLengthBefore: selectionLength,
+        countBefore: countBefore,
+        countAfter: countAfter,
+        readBackMatched: readBackMatched,
+        fieldUnchanged: fieldUnchanged
+      ))
   }
 
   // MARK: - Tier 2: CGEvent Cmd+V

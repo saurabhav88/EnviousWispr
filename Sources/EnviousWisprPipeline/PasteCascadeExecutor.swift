@@ -26,6 +26,15 @@ internal enum PasteDeliveryOutcome: Equatable, Sendable {
   )
   case clipboardOnlyAccessibilityDenied(targetBundleID: String?)
   case cgEventCreationFailed(accessibilityTrusted: Bool)
+  /// A Tier 1 Accessibility write reported success but could not be verified,
+  /// so the cascade stopped rather than risk pasting twice. Distinct from
+  /// `clipboardOnly` because the destination state is genuinely UNKNOWN: the
+  /// text may already be in the document. The user-facing presentation is the
+  /// same clipboard notice; only the typed result differs.
+  case axWriteUnverifiable(
+    targetBundleID: String?,
+    targetDiagnostics: PasteElementDiagnostics
+  )
 }
 
 /// Result of a paste delivery operation.
@@ -90,6 +99,50 @@ internal func isKnownWebWrapperBundle(_ bundleID: String?) -> Bool {
   if bundleID.hasPrefix("com.pake.") { return true }
   if bundleID.hasPrefix("com.tauri.") { return true }
   return false
+}
+
+/// What the cascade does after a Tier 1 Accessibility attempt.
+///
+/// Extracted as a pure mapping for the same reason `classifyPasteFocus` is: the
+/// AX round-trips themselves are live-only and covered by Live UAT, while the
+/// decision they feed is the part that can be wrong in a way tests can catch.
+internal enum AXDirectDisposition: Equatable {
+  /// Verified. Stop the cascade and report Tier 1 delivery.
+  case delivered
+  /// Provably nothing landed. Continue to Tier 2 exactly as before.
+  case continueCascade
+  /// The write may have landed but cannot be proven. Suppress every automatic
+  /// retry and let the clipboard fallback carry the text, so the user is never
+  /// given the same sentence twice.
+  case stopUnverified
+
+  /// The `tierFailures` reason this disposition records, or nil on success.
+  var tierFailureReason: String? {
+    switch self {
+    case .delivered: return nil
+    case .continueCascade: return "refused"
+    case .stopUnverified: return "unverifiable"
+    }
+  }
+
+  /// Whether any automatic paste attempt may follow. Only a provable
+  /// no-mutation may retry.
+  var allowsAutomaticRetry: Bool {
+    switch self {
+    case .delivered, .stopUnverified: return false
+    case .continueCascade: return true
+    }
+  }
+}
+
+internal func dispositionForAXDirect(
+  _ outcome: PasteService.AXInsertOutcome
+) -> AXDirectDisposition {
+  switch outcome {
+  case .verified: return .delivered
+  case .noMutation: return .continueCascade
+  case .unverifiable: return .stopUnverified
+  }
 }
 
 extension PasteFocusClassification {
@@ -177,13 +230,28 @@ internal final class PasteCascadeExecutor {
     let canAttemptKeyPaste = classification.canAttemptKeyPaste
 
     // Tier 1: AX direct insertion (only with a confirmed text field element).
+    //
+    // `unverifiable` blocks every automatic retry below. The AX write reported
+    // success and we could not prove the result, so the text may already be in
+    // the user's document; a second paste would duplicate it. The user still
+    // gets the text — Tier 3 puts it on the clipboard and shows the existing
+    // "press Cmd+V" notice — but we never place it twice on their behalf.
+    var axAllowsRetry = true
     if classification == .textField, let element = request.targetElement {
       tiersAttempted.append(.axDirect)
-      if PasteService.insertViaAccessibility(request.text, element: element) {
+      let disposition = dispositionForAXDirect(
+        PasteService.insertViaAccessibility(request.text, element: element))
+      axAllowsRetry = disposition.allowsAutomaticRetry
+      switch disposition {
+      case .delivered:
         tier = .axDirect
-      } else {
-        tierFailures["ax_direct"] = "refused"
-        emitTierFailureBreadcrumb(stage: "ax_direct", reason: "refused", bundleId: bundleId)
+      case .continueCascade, .stopUnverified:
+        // `tierFailureReason` stays the single authority for these strings, so
+        // the switch cannot drift from the enum.
+        if let reason = disposition.tierFailureReason {
+          tierFailures["ax_direct"] = reason
+          emitTierFailureBreadcrumb(stage: "ax_direct", reason: reason, bundleId: bundleId)
+        }
       }
     }
 
@@ -191,7 +259,9 @@ internal final class PasteCascadeExecutor {
     // was focused OR when no element was reported at all (Chromium/Electron
     // lazy-AX fallback). Skipped when a non-text element was focused so Cmd+V
     // doesn't fire into a void.
-    if tier == .clipboardOnly, canAttemptKeyPaste,
+    // `axAllowsRetry` is false only after an unprovable Tier 1 write, and it
+    // gates Tier 2b too because 2b lives inside this branch.
+    if tier == .clipboardOnly, axAllowsRetry, canAttemptKeyPaste,
       let app = request.targetApp, !app.isTerminated
     {
       let activation = await activate(app)
@@ -260,6 +330,10 @@ internal final class PasteCascadeExecutor {
     // on the clipboard, then drive the app's OWN Edit > Paste command, found by
     // its ⌘V shortcut. The command's enabled-state separates a real editor
     // (Scenario B — paste it) from no-field-focused (Scenario A — overlay).
+    //
+    // Deliberately NOT gated on `axAllowsRetry`: this branch requires
+    // `.nonText` and Tier 1 only runs on `.textField`, so an unprovable Tier 1
+    // write cannot reach here. Adding a guard would service an impossible state.
     if tier == .clipboardOnly, classification == .nonText, axTrusted,
       let app = request.targetApp, !app.isTerminated
     {
@@ -348,6 +422,14 @@ internal final class PasteCascadeExecutor {
     let outcome: PasteDeliveryOutcome
     if tier != .clipboardOnly {
       outcome = .delivered(tier: tier, durationMs: durationMs)
+    } else if !axAllowsRetry {
+      // Only an unprovable Tier 1 write clears this flag, and Tier 1 runs only
+      // on a trusted, text-field-classified element — so no other fallback
+      // diagnosis can apply here.
+      outcome = .axWriteUnverifiable(
+        targetBundleID: request.targetApp?.bundleIdentifier,
+        targetDiagnostics: targetDiagnostics
+      )
     } else if let accessibilityTrusted = cgEventFailureAccessibilityTrusted {
       outcome = .cgEventCreationFailed(accessibilityTrusted: accessibilityTrusted)
     } else if !axTrusted {
@@ -452,6 +534,28 @@ internal final class PasteCascadeExecutor {
         )
         SentryBreadcrumb.captureError(err, category: .pasteFailed, stage: "paste", extra: extra)
       }
+    case .axWriteUnverifiable(let bundle, let diagnostics):
+      // Reuses the clipboard-fallback payload shape so there is one authority
+      // for it. `focus` and `accessibilityTrusted` are invariants of this case,
+      // not assumptions: Tier 1 runs only when the element classified as
+      // `.textField` and Accessibility is trusted. The distinguishing signal is
+      // `paste.tier_failures["ax_direct"] == "unverifiable"`.
+      let tierStrings = [PasteTier.axDirect.rawValue]
+      let extra = Self.clipboardOnlyTelemetryExtra(
+        tiersAttempted: tierStrings,
+        focus: .textField,
+        targetBundleID: bundle,
+        accessibilityTrusted: true,
+        targetDiagnostics: diagnostics,
+        tierFailures: tierFailures,
+        focusClass: nil
+      )
+      let err = HeartPathError.pasteCascadeClipboardFallback(
+        tiersAttempted: tierStrings,
+        focusClassification: PasteFocusClassification.textField.telemetryLabel,
+        targetBundleID: bundle
+      )
+      SentryBreadcrumb.captureError(err, category: .pasteFailed, stage: "paste", extra: extra)
     case .cgEventCreationFailed(let accessibilityTrusted):
       let err = HeartPathError.pasteCGEventCreationFailed(
         accessibilityTrusted: accessibilityTrusted)
