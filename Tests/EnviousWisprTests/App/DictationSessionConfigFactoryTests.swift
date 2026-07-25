@@ -43,6 +43,36 @@ struct DictationSessionConfigFactoryTests {
     }
   }
 
+  @Test("Smart insertion is frozen at recording start by the production factory")
+  func smartInsertionFrozenAtRecordingStart() async throws {
+    // Drives the REAL factory against a mutated SettingsManager. Two
+    // independently constructed test configs would pass even if the factory
+    // ignored the setting entirely, which is why that version was replaced.
+    let harness = try Harness.make(backend: .parakeet)
+    harness.settings.smartInsertion = true
+
+    let captured = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKitKernelDriver: harness.whisperKitKernelDriver,
+      settings: harness.settings,
+      triggerSource: .pttHotkey
+    )
+
+    // The user flips the switch mid-dictation.
+    harness.settings.smartInsertion = false
+    let next = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKitKernelDriver: harness.whisperKitKernelDriver,
+      settings: harness.settings,
+      triggerSource: .pttHotkey
+    )
+
+    #expect(captured.smartInsertion == true, "the in-flight config must not follow the setting")
+    #expect(next.smartInsertion == false, "the next recording observes the new value")
+  }
+
   // MARK: - LLM model resolution
 
   @Test("appleIntelligence resolves to apple-intelligence literal")

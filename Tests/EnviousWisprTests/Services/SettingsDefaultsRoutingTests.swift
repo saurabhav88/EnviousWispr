@@ -39,6 +39,10 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.fillerRemovalEnabled == true)
     #expect(settings.autoCopyToClipboard == true)
     #expect(settings.restoreClipboardAfterPaste == true)
+    // Smart insertion ships ON: the repair only fires where it is positively
+    // safe, and an unrecognised word keeps today's behaviour, so the default
+    // costs nothing and the feature is invisible until it helps.
+    #expect(settings.smartInsertion == true)
     #expect(settings.vadAutoStop == false)
     #expect(settings.vadSilenceTimeout == 1.5)
     #expect(settings.languageMode == .auto)
@@ -47,6 +51,33 @@ struct SettingsDefaultsRoutingTests {
   }
 
   // MARK: - Routing
+
+  @Test("Smart insertion persists OFF and belongs to unified defaults")
+  func smartInsertionPersistsOff() {
+    // The default alone proves nothing about an explicit choice surviving.
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+
+    settings.smartInsertion = false
+
+    #expect(suite.object(forKey: "smartInsertion") as? Bool == false)
+    #expect(SettingsManager(defaults: suite).smartInsertion == false)
+    #expect(
+      SettingsManager.unifiedDefaultsKeys.filter { $0 == "smartInsertion" }.count == 1)
+  }
+
+  @Test("Smart insertion change emits its SettingKey exactly once")
+  func smartInsertionNotifies() {
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    var matchingChanges = 0
+
+    settings.onChange = { key in
+      if case .smartInsertion = key { matchingChanges += 1 }
+    }
+
+    settings.smartInsertion = false
+    #expect(matchingChanges == 1)
+  }
 
   @Test("writes land in the injected store, not .standard")
   func writesRouteToInjectedStore() {

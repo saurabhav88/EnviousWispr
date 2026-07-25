@@ -57,6 +57,22 @@ import Testing
       box.all.filter { $0.stringProps["setting"] == setting }
     }
 
+    @Test("Smart insertion emits one privacy-safe on-to-off delta")
+    func smartInsertionDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.smartInsertion = false
+      telemetry.flush()
+
+      let d = deltas(box, setting: "smart_insertion")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "on")
+      #expect(d.first?.stringProps["to"] == "off")
+      #expect(d.first?.stringProps["source"] == "user")
+      #expect(SettingsProjection.value(for: .smartInsertion, settings: settings) == "off")
+    }
+
     @Test("A→B→A net no-op emits nothing")
     func noOpBurst() {
       let (settings, telemetry, box, _) = makeHarness()

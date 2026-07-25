@@ -26,6 +26,7 @@ public final class SettingsManager {
     case pushToTalkModifiers
     case modelUnloadPolicy
     case restoreClipboardAfterPaste
+    case smartInsertion
     case wordCorrectionEnabled
     case fillerRemovalEnabled
     case emojiFormatterEnabled
@@ -76,9 +77,9 @@ public final class SettingsManager {
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
-    "restoreClipboardAfterPaste", "wordCorrectionEnabled", "fillerRemovalEnabled",
-    "emojiFormatterEnabled", "spokenPunctuationEnabled", "crashRecoveryEnabled",
-    "contactsSyncOnLaunchEnabled",
+    "restoreClipboardAfterPaste", "smartInsertion", "wordCorrectionEnabled",
+    "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
+    "crashRecoveryEnabled", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
@@ -312,6 +313,15 @@ public final class SettingsManager {
     didSet {
       defaults.set(restoreClipboardAfterPaste, forKey: "restoreClipboardAfterPaste")
       onChange?(.restoreClipboardAfterPaste)
+    }
+  }
+
+  /// Frozen into `DictationSessionConfig` at recording start, so a change made
+  /// mid-dictation governs the NEXT recording rather than the one in flight.
+  public var smartInsertion: Bool {
+    didSet {
+      defaults.set(smartInsertion, forKey: "smartInsertion")
+      onChange?(.smartInsertion)
     }
   }
 
@@ -668,6 +678,9 @@ public final class SettingsManager {
     restoreClipboardAfterPaste =
       defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool
       ?? SettingsDefaultValues.restoreClipboardAfterPaste
+    smartInsertion =
+      defaults.object(forKey: "smartInsertion") as? Bool
+      ?? SettingsDefaultValues.smartInsertion
     wordCorrectionEnabled =
       defaults.object(forKey: "wordCorrectionEnabled") as? Bool
       ?? SettingsDefaultValues.wordCorrectionEnabled

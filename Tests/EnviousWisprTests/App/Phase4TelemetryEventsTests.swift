@@ -119,6 +119,7 @@ import Testing
       // New comprehensive fields ride alongside the ten legacy fields.
       #expect(snap?.stringProps["llm_model"] != nil)
       #expect(snap?.stringProps["crash_recovery"] == "on")  // default ON
+      #expect(snap?.stringProps["smart_insertion"] == "on")  // default ON
       #expect(snap?.stringProps["toggle_hotkey_shape"] == "modifier_only")  // default rightOption
       #expect(snap?.stringProps["language_mode"] == "auto")
       // The legacy typed fields are still present and unchanged.

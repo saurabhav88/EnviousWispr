@@ -50,6 +50,7 @@ enum DictationSessionConfigFactory {
       triggerSource: triggerSource,
       autoPasteToActiveApp: autoPaste,
       restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
+      smartInsertion: settings.smartInsertion,
       vadAutoStop: settings.vadAutoStop,
       vadSilenceTimeout: settings.vadSilenceTimeout,
       vadSensitivity: settings.vadSensitivity,
