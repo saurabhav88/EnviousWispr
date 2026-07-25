@@ -31,7 +31,12 @@ enum BundledVADModelLoader {
       throw LoadError.resourceNotFound
     }
     do {
-      return try MLModel(contentsOf: url, configuration: MLModelConfiguration())
+      // Match the pinned FluidAudio VAD loader (`DownloadUtils.swift:301-303`).
+      // Keep this heart-path policy explicit across dependency updates (#1784).
+      let configuration = MLModelConfiguration()
+      configuration.computeUnits = .cpuAndNeuralEngine
+      configuration.allowLowPrecisionAccumulationOnGPU = true
+      return try MLModel(contentsOf: url, configuration: configuration)
     } catch {
       throw LoadError.loadFailed(error)
     }
