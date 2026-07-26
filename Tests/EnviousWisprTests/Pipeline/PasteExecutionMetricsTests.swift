@@ -94,7 +94,10 @@ struct PasteExecutionMetricsTests {
       text: "PostHog is down.",
       context: CursorInsertionRepair.CaretText(left: "I think ", right: ""),
       protectedWords: ["PostHog"],
-      language: "en")
+      language: "en",
+      // Any oracle: a protected spelling refuses before word knowledge is
+      // consulted at all, which is part of what this case proves.
+      oracle: .unavailable(.dictionaryUnavailable))
     let rules = payloads.candidateRules.map(\.telemetryName).joined(separator: ",")
     #expect(rules.contains("case_skipped:protected_word"))
     #expect(rules.localizedCaseInsensitiveContains("posthog") == false)

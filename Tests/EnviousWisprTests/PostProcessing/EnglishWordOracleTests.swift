@@ -172,6 +172,46 @@ struct EnglishWordOracleTests {
     #expect(EnglishWordOracleRuntime.resolveEnglishLanguage(from: ["eng", "enm"]) == nil)
   }
 
+  // MARK: - The spell service failing OPEN
+
+  @Test("A healthy service: a valid word is ordinary and the sentinel is refused")
+  func healthyServiceAcceptsWord() {
+    var failed = false
+    let ordinary = EnglishWordOracleRuntime.isOrdinary(
+      "go", sentinel: "zqx123456vkj",
+      spelledCorrectly: { $0 == "go" },
+      onServiceFailure: { failed = true })
+    #expect(ordinary)
+    #expect(failed == false)
+  }
+
+  @Test("A service answering YES to everything is caught, not believed")
+  func failOpenServiceIsCaught() {
+    // `checkSpelling` reports "no misspelling found" and "not answering" with the
+    // same NSNotFound. Without this guard every word would read as ordinary and
+    // names would be lowercased wholesale — silent, and the worst direction.
+    var failed = false
+    let ordinary = EnglishWordOracleRuntime.isOrdinary(
+      "Rose", sentinel: "zqx123456vkj",
+      spelledCorrectly: { _ in true },
+      onServiceFailure: { failed = true })
+    #expect(ordinary == false, "a yes-to-everything service must not authorise lowering")
+    #expect(failed, "and it must latch the oracle unavailable")
+  }
+
+  @Test("A refused word costs ONE lookup and never consults the sentinel")
+  func refusalDoesNotProbe() {
+    // Refusing is the safe direction, so it needs no confirmation. This keeps
+    // the second lookup off every decision that keeps its capital.
+    var probed: [String] = []
+    let ordinary = EnglishWordOracleRuntime.isOrdinary(
+      "Zorbitrax", sentinel: "zqx123456vkj",
+      spelledCorrectly: { probed.append($0); return false },
+      onServiceFailure: {})
+    #expect(ordinary == false)
+    #expect(probed == ["Zorbitrax"], "the sentinel must not be probed on a refusal")
+  }
+
   // MARK: - Runtime state machine
 
   @Test("Before prewarm the runtime refuses with oracle_warming")

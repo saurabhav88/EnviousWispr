@@ -11,12 +11,12 @@ import Foundation
 /// could not contain the English language: `go`, `send`, `call`, `buy`, `email`
 /// and `learn` were all absent, so ordinary continuations kept a wrong capital.
 /// Issue #1803.
-struct EnglishWordOracle: Sendable {
+package struct EnglishWordOracle: Sendable {
   /// Why this oracle cannot decide, or `nil` when it can.
-  let unavailableReason: CursorInsertionRepair.CaseSkipReason?
+  package let unavailableReason: CursorInsertionRepair.CaseSkipReason?
 
   /// Is the LOWERCASE form an ordinary English word?
-  let isOrdinaryWord: @Sendable (String) -> Bool
+  package let isOrdinaryWord: @Sendable (String) -> Bool
 
   /// Has the user taught this word to macOS?
   ///
@@ -25,7 +25,7 @@ struct EnglishWordOracle: Sendable {
   /// after `learnWord`, a nonsense string reports as correctly spelled, so
   /// without this check anything the user taught macOS would become "an
   /// ordinary English word" and be lowered.
-  let isLearnedWord: @Sendable (String) -> Bool
+  package let isLearnedWord: @Sendable (String) -> Bool
 
   /// Is the payload's first word behaving as something other than a noun,
   /// judged against the text actually preceding the caret?
@@ -35,11 +35,11 @@ struct EnglishWordOracle: Sendable {
   /// converse does not hold, and this also refuses ordinary noun-led
   /// continuations. `pay the Bill` and `call Bill` produce identical tags and
   /// opposite correct answers; both keep the capital.
-  let wordClassIsSafe: @Sendable (_ left: String, _ payload: String) -> Bool
+  package let wordClassIsSafe: @Sendable (_ left: String, _ payload: String) -> Bool
 
-  var isAvailable: Bool { unavailableReason == nil }
+  package var isAvailable: Bool { unavailableReason == nil }
 
-  static func unavailable(
+  package static func unavailable(
     _ reason: CursorInsertionRepair.CaseSkipReason
   ) -> EnglishWordOracle {
     EnglishWordOracle(
@@ -62,7 +62,7 @@ struct EnglishWordOracle: Sendable {
   /// only hand-maintained word data that survives. Growing it requires a
   /// re-measurement, never a reflex: a set that grows to rescue individual
   /// misses has become the word list this change exists to delete.
-  static let compatibilityExceptions: Set<String> = [
+  package static let compatibilityExceptions: Set<String> = [
     "everything", "something", "nothing", "anything",
     "everyone", "someone", "anyone", "everybody",
     "yesterday", "today", "tomorrow", "tonight",
@@ -73,7 +73,7 @@ struct EnglishWordOracle: Sendable {
   /// Every refusal keeps the capital, which is exactly what the app did before
   /// this feature existed, so no failure here can damage text that was already
   /// correct.
-  func mayLower(
+  package func mayLower(
     word: String, left: String, payload: String
   ) -> CursorInsertionRepair.CaseSkipReason? {
     if let unavailableReason { return unavailableReason }

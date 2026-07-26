@@ -171,6 +171,13 @@ struct KernelFinalizationWiring {
     // depending on whatever field happens to be focused on the machine.
     readCaretContext: @escaping @MainActor (AXUIElement) -> PasteService.CaretContext? =
       { PasteService.readCaretContext(element: $0) },
+    // Word-oracle seam. Production takes the live runtime snapshot; tests inject
+    // a fixed oracle so a case never depends on the machine's dictionaries — and
+    // so no test has to MUTATE the process-global runtime, which would race the
+    // suites that legitimately do (local diff review, P2).
+    englishWordOracle: @escaping @MainActor () -> EnglishWordOracle = {
+      EnglishWordOracleRuntime.snapshot()
+    },
     pasteCompletionRegistry: PasteCompletionRegistry?,
     // #900 clock seam — defaults to today's live expression, so production
     // behavior is identical (the closure capture adds one call). A test injects
@@ -419,6 +426,9 @@ struct KernelFinalizationWiring {
           surroundingText: caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? "")
 
         let protectedSpellings = context.protectedSpellings
+        // Taken on the main actor BEFORE the deadline closure, which is
+        // `@Sendable` and cannot call a `@MainActor` seam.
+        let oracleSnapshot = englishWordOracle()
         let payloads =
           await withOrderedDeadline(
             seconds: 0.100,
@@ -427,7 +437,8 @@ struct KernelFinalizationWiring {
                 text: text,
                 context: repairContext,
                 protectedWords: protectedSpellings,
-                language: resolvedLanguage)
+                language: resolvedLanguage,
+                oracle: oracleSnapshot)
             },
             onTimeout: { EnglishWordOracleRuntime.disableAfterTimeout() }
           ) ?? CursorInsertionRepair.legacyOnly(text: text, reason: .oracleTimedOut)

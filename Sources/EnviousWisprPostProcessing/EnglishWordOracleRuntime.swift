@@ -102,6 +102,24 @@ package enum EnglishWordOracleRuntime {
     }
 
     let tag = NSSpellChecker.uniqueSpellDocumentTag()
+
+    // A nonsense word no dictionary can contain, unique to this process.
+    //
+    // `checkSpelling` reports "no misspelling found" as `NSNotFound` — the SAME
+    // value it returns when the spell service is not answering at all. That
+    // failure is silent and fails OPEN, so every word would read as ordinary and
+    // names would be lowercased wholesale.
+    //
+    // The sentinel is checked ONLY when a word came back valid, which is the one
+    // direction where a fail-open does damage; a refusal needs no confirmation.
+    // So the cost lands only on the lowering path, and never on a refusal.
+    //
+    // Per-process random, not a fixed string: an earlier fixed-canary design was
+    // rejected because any user can `learnWord` a known constant and turn the
+    // health check into a permanent false outage. This one cannot be learned in
+    // advance.
+    let sentinel = "zqx\(UInt32.random(in: 100_000...999_999))vkj"
+
     let oracle = EnglishWordOracle(
       unavailableReason: nil,
       isOrdinaryWord: { word in
@@ -112,10 +130,16 @@ package enum EnglishWordOracleRuntime {
           markUnavailableIfReady(.dictionaryUnavailable)
           return false
         }
-        return checker.checkSpelling(
-          of: word, startingAt: 0, language: english, wrap: false,
-          inSpellDocumentWithTag: tag, wordCount: nil
-        ).location == NSNotFound
+        return isOrdinary(
+          word,
+          sentinel: sentinel,
+          spelledCorrectly: { candidate in
+            checker.checkSpelling(
+              of: candidate, startingAt: 0, language: english, wrap: false,
+              inSpellDocumentWithTag: tag, wordCount: nil
+            ).location == NSNotFound
+          },
+          onServiceFailure: { markUnavailableIfReady(.dictionaryUnavailable) })
       },
       isLearnedWord: { NSSpellChecker.shared.hasLearnedWord($0) },
       wordClassIsSafe: { left, payload in
@@ -133,6 +157,31 @@ package enum EnglishWordOracleRuntime {
         return safeWordClasses.contains(lexicalClass)
       })
     return .ready(oracle)
+  }
+
+
+  /// Is `word` ordinary, with a guard against the spell service failing open?
+  ///
+  /// Extracted so the guard is TESTABLE without a live spell service. An
+  /// untested fail-open guard is indistinguishable from no guard at all, and
+  /// this one exists because `checkSpelling` reports "no misspelling" and "not
+  /// answering" with the same `NSNotFound`.
+  ///
+  /// The sentinel is checked ONLY after a word comes back valid: that is the one
+  /// direction where failing open does damage. A refusal needs no confirmation,
+  /// so a rejected word costs exactly one lookup.
+  package static func isOrdinary(
+    _ word: String,
+    sentinel: String,
+    spelledCorrectly: (String) -> Bool,
+    onServiceFailure: () -> Void
+  ) -> Bool {
+    guard spelledCorrectly(word) else { return false }
+    guard !spelledCorrectly(sentinel) else {
+      onServiceFailure()
+      return false
+    }
+    return true
   }
 
   /// Every class a proper name is not. `Noun`, `OtherWord` and no tag at all
@@ -159,7 +208,7 @@ package enum EnglishWordOracleRuntime {
   // MARK: - Decisions
 
   /// The oracle as it stands right now. Never blocks.
-  static func snapshot() -> EnglishWordOracle {
+  package static func snapshot() -> EnglishWordOracle {
     state.withLock { state in
       switch state.phase {
       case .warming: return .unavailable(.oracleWarming)
@@ -192,18 +241,29 @@ package enum EnglishWordOracleRuntime {
     }
   }
 
-  #if DEBUG
-    /// Test seam: restore the pristine warming state between cases.
-    static func resetForTesting() {
-      state.withLock { $0 = State() }
-    }
+  // MARK: - Test seams
+  //
+  // Deliberately NOT `#if DEBUG`. `KernelFinalizationWiringTests` needs an
+  // installed oracle to run at all, and CI compiles the test targets in Release
+  // as well (`build-release`), where a DEBUG-only member does not exist — six
+  // of its cases would fail there for a reason unrelated to what they test
+  // (`swift-testing-patterns.md` swift-testing-debug-seam-needs-if-debug).
+  // `package` keeps them inside the package with no public surface.
 
-    /// Test seam: install a fixed phase without touching a system service.
-    static func installForTesting(_ oracle: EnglishWordOracle) {
-      state.withLock { state in
-        state.prewarmStarted = true
-        state.phase = oracle.isAvailable ? .ready(oracle) : .unavailable(oracle.unavailableReason!)
+  /// Restore the pristine warming state between cases.
+  package static func resetForTesting() {
+    state.withLock { $0 = State() }
+  }
+
+  /// Install a fixed phase without touching a system service.
+  package static func installForTesting(_ oracle: EnglishWordOracle) {
+    state.withLock { state in
+      state.prewarmStarted = true
+      if let reason = oracle.unavailableReason {
+        state.phase = .unavailable(reason)
+      } else {
+        state.phase = .ready(oracle)
       }
     }
-  #endif
+  }
 }

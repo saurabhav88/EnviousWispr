@@ -239,21 +239,6 @@ public enum CursorInsertionRepair {
   ///     defaulted: a call site that forgets it would silently get English
   ///     casing rules applied to another language, which is the one outcome
   ///     this parameter exists to prevent.
-  public static func repair(
-    text: String,
-    context: CaretText?,
-    protectedWords: Set<String>,
-    language: String?
-  ) -> PreparedPayloads {
-    repair(
-      text: text,
-      context: context,
-      protectedWords: protectedWords,
-      language: language,
-      oracle: EnglishWordOracleRuntime.snapshot()
-    )
-  }
-
   /// Today's payload only, with the reason recorded.
   ///
   /// For the caller's deadline path: when a decision is abandoned there is no
@@ -268,9 +253,13 @@ public enum CursorInsertionRepair {
       candidateRules: [.caseSkipped(reason)])
   }
 
-  /// Testing seam. Production always takes the runtime snapshot above; tests
-  /// inject a value with fixed answers and never touch a system service.
-  static func repair(
+  /// The oracle-explicit entry point.
+  ///
+  /// `package` rather than internal because Pipeline snapshots the runtime on
+  /// the main actor and passes the value in, so no caller has to mutate
+  /// process-global state to control this decision — which is what let two test
+  /// suites race each other (local diff review, P2).
+  package static func repair(
     text: String,
     context: CaretText?,
     protectedWords: Set<String>,
