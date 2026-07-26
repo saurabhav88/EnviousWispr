@@ -1,0 +1,226 @@
+## Q1. Direction
+
+The core direction is right: use the system dictionary for vocabulary, use context to protect names, refuse learned words, and fail toward keeping the capital.
+
+Three revisions are required:
+
+- Refusing nouns is defensible only as a permanent conservative boundary. It will keep missing ordinary noun-led continuations. If recall pressure causes repeated noun exceptions, the design becomes another growing word list.
+- The 15 pronoun/time exceptions are meaningfully different from the old 799-word vocabulary list. The 24 “discourse markers” are not. `question`, `answer`, `note`, `reminder`, `update`, and `example` are open-class nouns selected from observed data. That is a smaller allowlist, not a closed grammatical class.
+- The canary is unnecessary for availability. Apple documents `availableLanguages` as the available spell-checking languages. A fixed nonsense word can itself be learned, producing a false outage. Use `availableLanguages`; treat the canary only as an optional health diagnostic, not the availability authority. See `NSSpellChecker.h:150-160`.
+
+The second carve-out should be removed for round 1. Ship the conservative noun refusal plus the genuinely bounded 15-word exception set, then measure misses without automatically adding exceptions.
+
+## Q2. Fact-check
+
+### P0 through P15
+
+| Claim | Classification | Grounding |
+|---|---|---|
+| P0, one word-knowledge consumer | PARTIAL | `isAvailable` and `contains` are used only by `applyLeadingCase` at [CursorInsertionRepair.swift:489-493](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Sources/EnviousWisprPostProcessing/CursorInsertionRepair.swift:489). But not every lexicon-type reference follows that path: apostrophe normalization is also used by seam matching at `:538-540` and the pronoun guard at `:724-725`. The plan later acknowledges this. |
+| P1, dictionary alone is unsafe | JUDGEMENT-CALL | Structurally sound because dictionary membership cannot distinguish homographs. The 38/38 number comes from an authored artifact, not production code: `2026-07-26-casing-headtohead.swift:62-82,106-124`. |
+| P2, noun refusal supplies the discriminator | PARTIAL | The artifact implements the proposed safe-tag whitelist at `casing-headtohead.swift:43-58`. It is a conservative filter, not a reliable name discriminator: ordinary nouns are also refused, and `.nameType` already misses `Bill` in the plan’s own P12 evidence. |
+| P3, exclusion file is test-only and deletable | PARTIAL | Only `OrdinaryLowercaseLexiconTests.swift:61-72` consumes it, and that test is also deleted. But the plan says 453 words; the executable assertion is **457** at `OrdinaryLowercaseLexiconTests.swift:61-64`. It contains `go`, `drive`, and `cook` at `OrdinaryLowercaseExclusionClass.swift:30,66-69`. |
+| P4, authored head-to-head figures | JUDGEMENT-CALL | The executable corpus and scorer exist at `casing-headtohead.swift:42-124`, but committed output proving the reported figures does not. |
+| P5, rejected layers changed zero cases | JUDGEMENT-CALL | The experiment exists in `2026-07-26-rejected-extra-layers.swift`; this is measurement evidence, not a structural code claim. |
+| P6, safe-noun set is required and closed | PARTIAL | Preserving `Yesterday` is an existing contract at `OrdinaryLowercaseLexiconTests.swift:78-110`. The first 15 entries are bounded exceptions. The later 24-word discourse set is not a closed grammatical class. |
+| P7, spell checker is thread-safe | PARTIAL | Production delivery is main-actor isolated at `KernelFinalizationWiring.swift:129-153,357`. The eight-thread probe exists at `spellchecker-thread-and-failopen-probe.swift:4-27`, but Apple documents one checker per application at `NSSpellChecker.h:37-48` and does not give a thread-safety guarantee there. |
+| P8, 20-unit caret window | PARTIAL | The structural claim is true: `PasteService.swift:418-422,446-472`. The claim that truncation “costs nothing” is based on 36 authored cases at `casing-20unit-window.swift:24-80`, not a universal property. |
+| P9, tagger contracts | TRUE | Apple explicitly says one tagger must not be used simultaneously across threads and exposes supported schemes at `NLTagger.h:40-42,56-60`; missing assets are described at `:81-90`. CI has no explicit NaturalLanguage availability check. |
+| P10, non-sandboxed app | PARTIAL | No sandbox entitlement exists, so the conclusion is true. The cited path and lines are wrong: the file is `Sources/EnviousWispr/Resources/EnviousWispr.entitlements`, and the relevant non-sandbox discussion is `:19-25`. Hardened signing is at `scripts/build-release-dmg.sh:282-344`. |
+| P11, no executable checksum | TRUE | The test pins 799 entries at `OrdinaryLowercaseLexiconTests.swift:27-32`; the SHA is prose at `ordinary-lowercase-words.provenance.md:55`. |
+| P12, ambiguous noun pairs | PARTIAL | The two proposed signals cannot separate the shown `Bill` cases. Calling the problem “provably unanswerable” without limiting that statement to those two signals is too broad. |
+| P13, real transcript validation and closed discourse set | PARTIAL | The store data is real, but the proposed discourse class is open-ended and hand-selected. The subsequent P14 generator also contradicts the claim that no useful continuation pairs can be constructed. |
+| P14, 11,562 founder-labelled continuation pairs | FALSE | The generator reads `polishedText` or raw generated text at `build-real-labelled-pairs.py:27-35` and assigns labels automatically from the existing first letter at `:54-60`. These are app-output-labelled synthetic splits, not founder-corrected labels or actual two-recording seams. The scorer’s third row is learned-word refusal at `score-real-labelled-pairs.swift:123-128`, not “Custom Words applied” as the plan claims. The “590 more fixed for 7 more damage” sentence also mixes rows: the custom-word row adds 586 lowercase attempts and 579 correct lowercases, not 590 correct fixes. |
+| P15, learned-word refusal | TRUE | The forced positive control explicitly learns, verifies, and restores a nonsense word at `learned-word-positive-control.swift:17-41`. Refusing learned words is a sound conservative rule. |
+
+### §3 design
+
+PARTIAL.
+
+The dictionary, learned-word refusal, protected-word precedence, conservative tag whitelist, fresh tagger, and case-before-deduplication ordering are structurally sound. Current ordering is proven at `CursorInsertionRepair.swift:341-398`; protected words precede word knowledge at `:474-493`.
+
+Defects:
+
+- The second carve-out is not closed.
+- The static canary is not the correct availability authority.
+- The synchronous oracle has no deadline. Repair runs directly on the main-actor delivery path at `KernelFinalizationWiring.swift:357-429`. A stalled system service can therefore stall paste, contradicting “the limb cannot damage the heart.”
+- The telemetry design is internally inconsistent. §8 promises separate `wordClassUnavailable` and `learnedWord` reasons, but §4 and §10 add only `wordClassNotSafe`.
+- `normalizeApostrophes` does have exactly two surviving production consumers outside the deleted type: `CursorInsertionRepair.swift:538-540,724-725`. That helper must survive.
+
+### §3b ownership
+
+JUDGEMENT-CALL, with the factual bullets mostly TRUE.
+
+- PostProcessing currently depends only on Core: `Package.swift:75-79`, `Project.swift:226-230`, `check-dependency-direction.sh:17,36`.
+- NaturalLanguage already exists in Pipeline: `DictationLanguageResolver.swift:1-4`.
+- The ASR helper does not depend on PostProcessing: `Package.swift:189-200`.
+- `alias_runner` really does consume the PostProcessing product: `scripts/eval/alias_runner/Package.swift:13-24`.
+- The local architecture authority currently documents PostProcessing as Core-only.
+
+Keeping policy in PostProcessing is reasonable, but only if the system calls are deadline-bounded. Without that, the placement violates the project’s limb failure-isolation rule.
+
+### §3c consolidation
+
+PARTIAL.
+
+The current ownership rows are accurate:
+
+- Dictionary membership: `CursorInsertionRepair.swift:489-493`
+- Protected words: `:474-476,693-715`
+- Weekdays/months: `:177-182,486-487`
+- Pronoun I: `:483-484,718-725`
+
+One authority replaces one authority, but `EnglishWordOracle` must own all dictionary/tagger outcomes consistently. The current plan splits its result taxonomy across conflicting sections.
+
+### §4 contracts
+
+PARTIAL.
+
+The deletions and renames are feasible, but the table is incomplete:
+
+- Missing `.wordClassUnavailable`
+- Missing `.learnedWord`
+- Missing a deadline outcome such as `.oracleTimedOut`
+- The resource contains 799 entries but **830 physical lines**, so “delete (799 lines)” is false.
+- `AppliedRule` does not gain cases; `CaseSkipReason` does.
+
+### §10 file list
+
+PARTIAL.
+
+Verified items:
+
+- Both resources exist and are production resources.
+- Both lexicon test files can be deleted together.
+- `CursorInsertionRepairTests` needs its injected seam updated.
+- `PasteExecutionMetricsTests.swift:66-78` enumerates every reason and must change.
+- `OrdinaryLowercaseExclusionClass.swift` has no consumer outside the deleted lexicon suite.
+
+Incorrect or missing items:
+
+- There are **six**, not five, Kernel tests that assert lowering through the real bundled source: `:505-535`, `:734-767`, `:906-929`, `:1009-1043`, `:1076-1096`, and `:1098-1158`.
+- `Sources/EnviousWisprCore/Transcript.swift:19-21` contains the renamed `not_known_lowercase` example and must change.
+- `EnglishWordOracleTests` cannot contain “the measured corpus” because §11 says the private corpus is never committed. It should contain deterministic injected contract tests only.
+- `2026-07-26-casing-headtohead.swift:121-124` and `2026-07-26-score-real-labelled-pairs.swift:63-72` depend on the resource being deleted. Either archive the baseline under the artifact directory or explicitly mark those scripts historical and non-rerunnable.
+
+## Q3. Consolidation
+
+The dominant remaining risk is **an unsafe lowercase decision being certified by labels produced by the same app output being evaluated**.
+
+Owner: `EnglishWordOracle`, including its acceptance dataset and ship gate.
+
+One concern already has a home: explicit user spellings belong to `startsWithProtectedSpelling`. Do not duplicate Custom Words inside the oracle. Otherwise, no additional consolidation is needed.
+
+## Q4. Drop-in edits
+
+### 1. Replace P14 and the ship gate
+
+Replace the P14 headline and result interpretation with:
+
+> **P14 — LARGE APP-OUTPUT CHARACTERISATION, NOT GROUND TRUTH.** The generator produced 11,562 synthetic continuation pairs by splitting stored dictations at mid-sentence word boundaries. The source text is `polishedText` when present, otherwise raw transcript text. Labels are inferred from the casing already present in that generated output. They are not founder corrections and the rows are not observed two-recording seams. This corpus is useful for coverage characterisation and finding suspicious words, but it cannot certify precision because an already-lowercased name is automatically labelled as safe to lowercase.
+
+Replace ship criterion 2 with:
+
+> 2. Before shipping, independently review a deterministic, blinded sample of oracle-lowered pairs, including every generated-capital row the oracle would lower plus a fixed random sample of generated-lowercase rows. Precision on that reviewed sample must be at least 90%. Report the 11,562-row app-output corpus separately as coverage characterisation, never as ground-truth precision.
+
+Replace the trade sentence with:
+
+> Against the automatically labelled corpus, the no-Custom-Words candidate attempts 590 additional lowercases and produces 579 additional decisions that agree with the stored casing, with 11 additional disagreements. These are characterisation counts, not independently verified fixes or damage.
+
+### 2. Replace the carve-out section
+
+> 2. **One bounded exception set, checked before the tagger.** The following 15 words are retained because the current tagger classifies them as nouns despite their shipped ordinary-continuation use: `everything, something, nothing, anything, everyone, someone, anyone, nobody, everybody, somebody, none, yesterday, today, tomorrow, tonight`.
+>
+> The proposed discourse-marker set is not included in round 1. It contains open-class nouns selected from observed vocabulary and would recreate a manually growing allowlist. Noun-led misses remain safe-direction misses and are reported after release without automatically creating new exceptions.
+
+### 3. Replace the canary section
+
+> Resolve the dictionary language only from `NSSpellChecker.availableLanguages`, which Apple defines as the available spell-checking languages. Select an English identifier explicitly and fail closed when none exists. Do not use the raw dictation language, the checker’s selected language, a nil language, or a fixed nonsense-word canary. The canary is not an availability authority and can become a false outage if that word is learned.
+
+### 4. Add a real heart-path deadline
+
+Add to `CaseSkipReason`:
+
+```swift
+case wordClassUnavailable = "word_class_unavailable"
+case wordClassNotSafe = "word_class_not_safe"
+case learnedWord = "learned_word"
+case oracleTimedOut = "oracle_timed_out"
+```
+
+Add inside `CursorInsertionRepair`:
+
+```swift
+package static func legacyOnly(
+  text: String,
+  reason: CaseSkipReason
+) -> PreparedPayloads {
+  PreparedPayloads(
+    legacyText: legacyPayload(text),
+    repairedText: nil,
+    candidateRules: [.caseSkipped(reason)]
+  )
+}
+```
+
+In the delivery closure, resolve and snapshot the language, caret value, and protected words before the task, then use:
+
+```swift
+let payloads =
+  await withDeadline(seconds: 0.100) {
+    CursorInsertionRepair.repair(
+      text: text,
+      context: repairContext,
+      protectedWords: protectedWords,
+      language: resolvedLanguage
+    )
+  }
+  ?? CursorInsertionRepair.legacyOnly(
+    text: text,
+    reason: .oracleTimedOut
+  )
+```
+
+Plan prose:
+
+> The system dictionary and lexical tagger are a limb. Their work runs off the main actor under a 100 ms wall-clock deadline. On timeout, the abandoned result is ignored and delivery immediately continues with `legacyText`. A blocking system call can therefore add at most the declared deadline to paste and can never prevent raw delivery.
+
+### 5. Preserve apostrophe normalization
+
+```swift
+private static func normalizeApostrophes(_ text: String) -> String {
+  text.replacingOccurrences(of: "\u{2019}", with: "'")
+}
+```
+
+Replace both surviving calls with:
+
+```swift
+normalizeApostrophes(lhs).lowercased()
+  == normalizeApostrophes(rhs).lowercased()
+```
+
+and:
+
+```swift
+let normalized = normalizeApostrophes(word)
+```
+
+### 6. Replace §4 and §10 scope text
+
+> `CaseSkipReason.notKnownLowercase` is renamed to `.notOrdinaryWord`; `.lexiconUnavailable` is renamed to `.dictionaryUnavailable`; `.wordClassUnavailable`, `.wordClassNotSafe`, `.learnedWord`, and `.oracleTimedOut` are added. `PasteExecutionMetricsTests` enumerates every resulting telemetry name.
+
+Replace the Kernel row with:
+
+> `Tests/.../KernelFinalizationWiringTests.swift` | Six tests assert lowering through the real bundled word source (`:505-535`, `:734-767`, `:906-929`, `:1009-1043`, `:1076-1096`, `:1098-1158`). Update each to preserve its actual contract under the new production oracle.
+
+Add these §10 rows:
+
+> `Sources/EnviousWisprCore/Transcript.swift` | update the renamed telemetry example in the `repairRules` documentation.
+
+> `docs/feature-requests/issue-1803-artifacts/2026-07-26-casing-headtohead.swift` and `2026-07-26-score-real-labelled-pairs.swift` | point the historical-list comparison at an archived, non-bundled baseline, or mark the scripts explicitly non-rerunnable after deletion.
+
+> `Tests/.../EnglishWordOracleTests.swift` | deterministic injected contract tests only. The private transcript-derived corpus remains a local characterisation run and is not embedded in CI.
+
+**PROCEED-WITH-REVISIONS**
+
