@@ -251,8 +251,14 @@ package enum EnglishWordOracleRuntime {
   // `package` keeps them inside the package with no public surface.
 
   /// Restore the pristine warming state between cases.
+  ///
+  /// Marks prewarm as ALREADY STARTED so a real one cannot fire underneath the
+  /// test. Building a dictation driver triggers `prewarm()`, and many suites do
+  /// that concurrently — without this, a background prepare could publish
+  /// `.ready` over a test's expected state and make full-suite results
+  /// order-dependent (local diff review r3).
   package static func resetForTesting() {
-    state.withLock { $0 = State() }
+    state.withLock { $0 = State(prewarmStarted: true, phase: .warming) }
   }
 
   /// Install a fixed phase without touching a system service.

@@ -14,7 +14,12 @@ import Testing
 //
 // What IS gated here is the contract: guard order, every acceptance and refusal
 // branch, and the runtime's state machine.
-@Suite("EnglishWordOracle")
+// `.serialized` is load-bearing, not tidiness: the runtime-state cases below
+// mutate ONE process-global. Swift Testing runs tests concurrently, so without
+// this `warmingRefuses` can reset the phase while `timeoutLatchIsPermanent`
+// expects it still latched — an order-dependent flake that passes until it does
+// not (local diff review r3).
+@Suite("EnglishWordOracle", .serialized)
 struct EnglishWordOracleTests {
 
   /// An oracle with fixed answers. `wordClassIsSafe` defaults to true so a case
