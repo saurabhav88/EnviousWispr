@@ -70,6 +70,18 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   public let wordCorrectionEnabled: Bool
   public let fillerRemovalEnabled: Bool
   public let emojiFormatterEnabled: Bool
+  /// Spoken-punctuation switch at record time (#1794). OPTIONAL: spools written before
+  /// #1794 have no key, and this type uses synthesized `Codable` with no custom decoder,
+  /// so a non-optional field would fail the WHOLE settings decode. `RecoverySpoolStore`
+  /// swallows that with `try?`, which would silently drop engine, language and polish
+  /// replay fidelity too. `nil` means no preference was recorded because the setting did
+  /// not exist yet; recovery resolves that to the founder-directed default, OFF. Do not
+  /// infer delivery state from spool existence — spools are armed for EVERY recording.
+  ///
+  /// The initializer parameter below is deliberately NOT defaulted: it is the only
+  /// compile-time force on `RecoveryCoordinator` to pass the record-time value. Giving
+  /// it a default would let a new spool silently carry `nil` forever.
+  public let spokenPunctuationEnabled: Bool?
   /// Version/hash of the custom-words vocabulary at record time, so recovery
   /// can note when the vocabulary has since changed. Nil when unknown.
   public let customWordsVersion: String?
@@ -90,6 +102,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     wordCorrectionEnabled: Bool,
     fillerRemovalEnabled: Bool,
     emojiFormatterEnabled: Bool,
+    spokenPunctuationEnabled: Bool?,
     customWordsVersion: String? = nil,
     llmProvider: String,
     llmModel: String,
@@ -102,6 +115,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     self.wordCorrectionEnabled = wordCorrectionEnabled
     self.fillerRemovalEnabled = fillerRemovalEnabled
     self.emojiFormatterEnabled = emojiFormatterEnabled
+    self.spokenPunctuationEnabled = spokenPunctuationEnabled
     self.customWordsVersion = customWordsVersion
     self.llmProvider = llmProvider
     self.llmModel = llmModel

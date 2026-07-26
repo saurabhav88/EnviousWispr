@@ -13,6 +13,17 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.4.2
+
+    Entry(
+      id: "spoken-punctuation-is-now-a-choice",
+      icon: "text.quote",
+      title: "Saying \"comma\" and \"period\" is now yours to switch on",
+      description:
+        "Until now, saying words like \"comma\", \"period\" or \"colon\" always turned them into punctuation marks, even when you meant the word. Dictating \"the grace period expires\" could quietly break your sentence. EnviousWispr already adds punctuation for you, so this is off from now on. If you like dictating punctuation out loud, turn it back on under Speech Engine, in the Cleanup section, where a help button lists every word you can say and what you get.",
+      version: "2.4.2"
+    ),
+
     // MARK: - v2.4.1
 
     Entry(

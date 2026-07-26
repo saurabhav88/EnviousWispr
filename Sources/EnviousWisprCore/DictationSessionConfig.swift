@@ -32,8 +32,15 @@ public enum TriggerSource: String, Sendable, CaseIterable {
 /// duration of the recording. Settings mutated mid-recording apply to the NEXT recording.
 ///
 /// Contains only values that must be frozen per recording. Live-mutable settings
-/// (hotkey registration, `wordCorrectionEnabled`, `fillerRemovalEnabled`, custom-words
-/// dictionary, Ollama RAM eviction side-effects) stay in `PipelineSettingsSync`.
+/// (hotkey registration, `wordCorrectionEnabled`, `fillerRemovalEnabled`,
+/// `spokenPunctuationEnabled`, custom-words dictionary, Ollama RAM eviction
+/// side-effects) stay in `PipelineSettingsSync`.
+///
+/// #1794 note: the live-mutable Cleanup toggles are ALSO frozen into
+/// `RecordingSettingsSnapshot` at capture start, so flipping one mid-recording can make
+/// the live take and a later recovered replay of that same take disagree. That is
+/// pre-existing and shared by all four Cleanup toggles, deliberately not fixed for one
+/// of them alone; fixing it means moving all four here, as one change.
 public struct DictationSessionConfig: Sendable {
   // MARK: Paste / clipboard
 

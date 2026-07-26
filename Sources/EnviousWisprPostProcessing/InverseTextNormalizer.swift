@@ -155,7 +155,12 @@ public struct InverseTextNormalizer: Sendable {
 
   // MARK: - Public entry point
 
-  public func normalize(_ text: String) -> String {
+  /// - Parameter spokenPunctuation: gates ONLY the nine bare spoken-punctuation
+  ///   commands (see `punct`). Every other conversion — numbers, currency, dates,
+  ///   times, phone, email, URL, ordinals, ranges — and the sentence-capitalization
+  ///   pass run regardless. Defaults to `false`, matching the shipped product default
+  ///   (#1794) so a caller that forgets it gets the non-rewriting behaviour.
+  public func normalize(_ text: String, spokenPunctuation: Bool = false) -> String {
     var t = " " + text.trimmingCharacters(in: .whitespacesAndNewlines) + " "
 
     // "shout" = the whole utterance is upper-case (typed in caps). In shout text a capitalized
@@ -497,7 +502,7 @@ public struct InverseTextNormalizer: Sendable {
     t = reSub(#"\b(\d[\d,]*\.\d+)\s+(?:percent|per\s+cent)\b"#, t) { m in "\(m.g(1) ?? "")% " }
 
     t = keepMagnitude(t)  // '$80,000,000'->'$80 million' (founder house style), keep the word
-    t = applyPunct(t)
+    t = applyPunct(t, spokenPunctuation: spokenPunctuation)
 
     // restore register-preserved spans verbatim
     for (i, p) in protected.enumerated() {
@@ -837,7 +842,9 @@ public struct InverseTextNormalizer: Sendable {
     // number is never followed by ",digit" (greedy match would have consumed it), so this only
     // fires where \b failed on the full figure — ordinal suffixes ('1,000,000,000th' #1201),
     // decimals past the (?!\.\d) block ('$5,000,000,000.00'), plurals ('1,000,000,000s').
-    return reSub(#"(?<cur>\$)?(?<n>\d{1,3}(?:,\d{3})+)\b(?!\.\d)(?!,\d)"#, t, caseInsensitive: false) {
+    return reSub(
+      #"(?<cur>\$)?(?<n>\d{1,3}(?:,\d{3})+)\b(?!\.\d)(?!,\d)"#, t, caseInsensitive: false
+    ) {
       m in
       let cur = m.g("cur") ?? ""
       guard let n = Int((m.g("n") ?? "").replacingOccurrences(of: ",", with: "")) else {
@@ -865,6 +872,18 @@ public struct InverseTextNormalizer: Sendable {
 
   // MARK: - Punctuation
 
+  /// The nine bare spoken-punctuation commands, gated by the user setting (#1794).
+  /// Nine tuples, TEN phrases: `exclamation (mark|point)` yields two.
+  ///
+  /// Matching is case-INSENSITIVE (`reSub` defaults `caseInsensitive: true` and the
+  /// loop below does not override it), so "Period" at a sentence start converts too.
+  ///
+  /// User-facing copy mirrors this table BY HAND in `SpokenPunctuationCopy`
+  /// (EnviousWisprAppKit). Change one, change the other, or the in-app help panel
+  /// starts lying about what the app does. A freeze test pins that copy.
+  ///
+  /// Spoken symbol words in CONTEXTUAL conversions (email at/dot, URL dot/slash,
+  /// numeric slash, percent, decimal dot) are NOT here and are never gated.
   private static let punct: [(String, String)] = [
     (#"\bnew paragraph\b"#, "\n\n"), (#"\bnew line\b"#, "\n"),
     (#"\s+comma\b"#, ","), (#"\s+period\b"#, "."), (#"\s+full stop\b"#, "."),
@@ -872,10 +891,17 @@ public struct InverseTextNormalizer: Sendable {
     (#"\s+colon\b"#, ":"), (#"\s+semicolon\b"#, ";"),
   ]
 
-  private func applyPunct(_ t0: String) -> String {
+  /// - Parameter spokenPunctuation: when false, the nine command rewrites are skipped
+  ///   and their trigger words survive as ordinary text. Sentence capitalization below
+  ///   runs REGARDLESS: it keys off `.!?` whoever produced them, including the marks
+  ///   the speech recognizer adds on its own, so it is general formatting rather than
+  ///   part of the spoken-command feature.
+  private func applyPunct(_ t0: String, spokenPunctuation: Bool) -> String {
     var t = t0
-    for (pat, rep) in Self.punct {
-      t = reSub(pat, t) { _ in rep }
+    if spokenPunctuation {
+      for (pat, rep) in Self.punct {
+        t = reSub(pat, t) { _ in rep }
+      }
     }
     // capitalize sentence starts crudely (no case-insensitivity: targets lowercase only)
     t = reSub(#"(^|[.!?]\s+)([a-z])"#, t, caseInsensitive: false) { m in

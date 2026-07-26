@@ -32,6 +32,16 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// own deadline (which also owns the anomaly breadcrumb).
   var maxDuration: Duration { .seconds(2) }
 
+  /// Spoken-punctuation sub-feature gate (#1794). Distinct from `isEnabled`, which
+  /// stays `true`: the ITN limb keeps running either way, because numbers, currency,
+  /// dates, times, phone, email, URL and ordinal formatting are unaffected by this
+  /// setting. Only the nine bare command rewrites are gated.
+  ///
+  /// Default `false` — the safe state for a step built in isolation (tests, and
+  /// recovery before `applySettings` runs), and it matches the shipped product
+  /// default. Seeded and live-updated through `KernelDictationDriver`'s façade.
+  var spokenPunctuationEnabled: Bool = false
+
   /// Per-session capability hint wired by `KernelFinalizationWiring` from
   /// `adapter.capabilities.supportsLanguageDetection` — NOT an engine-identity
   /// literal (`EngineIdentityFreezeTests` bans identity reads at non-factory sites).
@@ -85,10 +95,14 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // cap. Snapshot the Sendable engine into a LOCAL first so the `@Sendable`
     // closure does not capture `self` across the actor boundary (Codex r2;
     // `swift-concurrency-patterns` snapshot rule; `withDeadline` precedent #832/#913 PR8).
+    // Snapshot the flag alongside the normalizer BEFORE the actor hop: a toggle
+    // landing mid-run must not tear this take, which completes under the value it
+    // started with (`swift-concurrency-patterns` telemetry-snapshot-not-shared-property).
     let normalizer = self.normalizer
+    let spokenPunctuation = self.spokenPunctuationEnabled
     let start = CFAbsoluteTimeGetCurrent()
     let maybeConverted = await withDeadline(seconds: 0.5) {
-      normalizer.normalize(input)
+      normalizer.normalize(input, spokenPunctuation: spokenPunctuation)
     }
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
     guard let converted = maybeConverted else {

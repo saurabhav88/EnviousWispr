@@ -23,6 +23,7 @@ struct RecoverySpoolCodecTests {
       wordCorrectionEnabled: true,
       fillerRemovalEnabled: true,
       emojiFormatterEnabled: false,
+      spokenPunctuationEnabled: false,
       customWordsVersion: "v3",
       llmProvider: "appleIntelligence",
       llmModel: "apple-intelligence",

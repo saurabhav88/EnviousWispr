@@ -17,6 +17,7 @@ struct SpeechEngineSettingsView: View {
   @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
 
   @State private var showLanguageLockSheet: Bool = false
+  @State private var showSpokenPunctuationHelp: Bool = false
 
   /// #1171 — shown ONLY when the user's selected engine differs from the active
   /// one because a switch is deferred while a dictation/recovery is in flight.
@@ -317,7 +318,7 @@ struct SpeechEngineSettingsView: View {
             }
           }
         }
-        BrandedRow(showDivider: false) {
+        BrandedRow(showDivider: true) {
           HStack(alignment: .top, spacing: 11) {
             SettingsRowIcon(systemName: "face.smiling")
             VStack(alignment: .leading, spacing: 4) {
@@ -326,6 +327,22 @@ struct SpeechEngineSettingsView: View {
               }
               .toggleStyle(BrandedToggleStyle())
               Text("Say \"<phrase> emoji\" to get the glyph. Bare words never convert.")
+                .settingsReadingCopy()
+            }
+          }
+        }
+        BrandedRow(showDivider: false) {
+          HStack(alignment: .top, spacing: 11) {
+            SettingsRowIcon(systemName: "text.quote")
+            VStack(alignment: .leading, spacing: 4) {
+              HStack(spacing: 6) {
+                Toggle(isOn: $settings.spokenPunctuationEnabled) {
+                  Text(SpokenPunctuationCopy.toggleLabel).settingsRowLabel()
+                }
+                .toggleStyle(BrandedToggleStyle())
+                spokenPunctuationHelpButton
+              }
+              Text(SpokenPunctuationCopy.toggleDescription)
                 .settingsReadingCopy()
             }
           }
@@ -575,6 +592,55 @@ struct SpeechEngineSettingsView: View {
     .buttonStyle(.borderless)
     .help("Re-check model status")
     .accessibilityLabel("Re-check model status")
+  }
+
+  // MARK: - Spoken punctuation help (#1794)
+
+  /// A real `Button`, never a hover-only reveal. Hover cannot be reached by keyboard and
+  /// does not exist for VoiceOver, and the personas who most need this vocabulary are the
+  /// ones least able to reach a hover target. `.help()` gives the mouse-hover tooltip on
+  /// top; the button is what makes it reachable at all.
+  private var spokenPunctuationHelpButton: some View {
+    Button {
+      showSpokenPunctuationHelp = true
+    } label: {
+      Image(systemName: "questionmark.circle")
+        .foregroundStyle(Color.stTextSecondary)
+        .font(.stHelper)
+    }
+    .buttonStyle(.borderless)
+    .help(SpokenPunctuationCopy.helpButtonAccessibilityLabel)
+    .accessibilityLabel(SpokenPunctuationCopy.helpButtonAccessibilityLabel)
+    .popover(isPresented: $showSpokenPunctuationHelp, arrowEdge: .bottom) {
+      spokenPunctuationHelpPanel
+    }
+  }
+
+  private var spokenPunctuationHelpPanel: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(SpokenPunctuationCopy.helpTitle)
+        .font(.stSectionHeader)
+      Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
+        GridRow {
+          Text(SpokenPunctuationCopy.helpSayColumn)
+            .foregroundStyle(Color.stTextSecondary)
+          Text(SpokenPunctuationCopy.helpGetColumn)
+            .foregroundStyle(Color.stTextSecondary)
+        }
+        .font(.stHelper)
+        ForEach(SpokenPunctuationCopy.phrases) { phrase in
+          GridRow {
+            Text("\"\(phrase.spoken)\"")
+            Text(phrase.result)
+          }
+        }
+      }
+      .font(.stBody)
+      Text(SpokenPunctuationCopy.helpFootnote)
+        .settingsReadingCopy()
+        .frame(maxWidth: 280, alignment: .leading)
+    }
+    .padding(16)
   }
 }
 
