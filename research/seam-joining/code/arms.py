@@ -127,8 +127,16 @@ def arm_deterministic(rec1, rec2, language="English"):
     stripped = rec1.strip()
     words = re.findall(r"[^\W\d_]+", stripped, flags=re.UNICODE)
     last = words[-1].lower() if words else ""
-    unfinished = last in CANNOT_END.get(language, set())
-    if unfinished:
+
+    # BOTH certificates, not just the second. The docstring has always promised
+    # two, and the deterministic arm is the baseline every other arm is measured
+    # against, so an arm that silently implements half its stated rule
+    # understates the deterministic floor and flatters everything compared to
+    # it. "We should release" — no terminator, ordinary final word — was being
+    # given a full stop and counted as a KEEP. Found by cloud review on PR #1793.
+    no_terminator = not stripped.endswith((".", "!", "?", "…"))
+    cannot_end = last in CANNOT_END.get(language, set())
+    if no_terminator or cannot_end:
         return apply_merge(stripped, rec2)
     return apply_keep(stripped, rec2)
 

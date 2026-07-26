@@ -60,16 +60,22 @@ def was_joined(first, second, output):
     # exactly what the join changes.
     tail_word, head_word = first_words[-1], second_words[0]
 
-    tail_matches = [m for m in re.finditer(rf"\b{re.escape(tail_word)}\b", output,
-                                           re.IGNORECASE)]
+    # Anchor on the LAST occurrence of the tail word that still has the head
+    # word after it. Taking the first occurrence examines the wrong gap whenever
+    # the first half repeats its own final word: for "Go when I say go." +
+    # "Go now.", the first "Go" is at the very start, and the gap from there to
+    # the next "go" contains no terminator at all — so an untouched pair scored
+    # as joined. Found by cloud review on PR #1793.
+    tail_matches = list(re.finditer(rf"\b{re.escape(tail_word)}\b", output,
+                                    re.IGNORECASE))
     if not tail_matches:
         return None
-    tail_end = tail_matches[0].end()
 
-    head_match = re.search(rf"\b{re.escape(head_word)}\b", output[tail_end:],
-                           re.IGNORECASE)
-    if not head_match:
-        return None
-
-    gap = output[tail_end:tail_end + head_match.start()]
-    return not any(mark in gap for mark in TERMINATORS)
+    for match in reversed(tail_matches):
+        tail_end = match.end()
+        head_match = re.search(rf"\b{re.escape(head_word)}\b", output[tail_end:],
+                               re.IGNORECASE)
+        if head_match:
+            gap = output[tail_end:tail_end + head_match.start()]
+            return not any(mark in gap for mark in TERMINATORS)
+    return None

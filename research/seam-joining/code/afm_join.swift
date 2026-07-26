@@ -123,13 +123,22 @@ func wasJoined(first: String, second: String, output: String) -> Bool {
   }
   guard let tail = words(first).last, let head = words(second).first else { return false }
 
+  // Anchor on the LAST occurrence of the tail word that still has the head word
+  // after it. The first occurrence examines the wrong gap when the first half
+  // repeats its own final word ("Go when I say go." + "Go now.").
   let lower = output.lowercased()
-  guard let tailRange = lower.range(of: tail.lowercased()) else { return false }
-  let afterTail = lower[tailRange.upperBound...]
-  guard let headRange = afterTail.range(of: head.lowercased()) else { return false }
-
-  let gap = afterTail[..<headRange.lowerBound]
-  return !gap.contains { ".!?".contains($0) }
+  var searchEnd = lower.endIndex
+  while let tailRange = lower.range(of: tail.lowercased(), options: .backwards,
+                                    range: lower.startIndex..<searchEnd) {
+    let afterTail = lower[tailRange.upperBound...]
+    if let headRange = afterTail.range(of: head.lowercased()) {
+      let gap = afterTail[..<headRange.lowerBound]
+      return !gap.contains { ".!?".contains($0) }
+    }
+    if tailRange.lowerBound == lower.startIndex { break }
+    searchEnd = tailRange.lowerBound
+  }
+  return false
 }
 
 @main

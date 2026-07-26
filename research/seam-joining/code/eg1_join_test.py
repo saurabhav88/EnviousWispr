@@ -107,7 +107,12 @@ def main():
     parser.add_argument("--endpoint", default="http://127.0.0.1:8899")
     args = parser.parse_args()
 
-    repo = os.path.expanduser("~/Developer/EnviousLabs/EnviousWispr")
+    # Resolve the checkout from THIS file, not from the founder's home.
+    # research/seam-joining/code/ -> repo root is three levels up.
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(here)))
+    if not os.path.exists(os.path.join(repo, SWIFT_EG1)):
+        repo = os.path.expanduser("~/Developer/EnviousLabs/EnviousWispr")
     trained = trained_prompt(repo)
 
     configurations = [
