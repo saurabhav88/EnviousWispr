@@ -450,6 +450,8 @@ Grounded review r3 identified a genuine blocker: **if a serial queue held a lock
 
 A stalled warm-up needs no deadline either: the state simply stays `.warming`, every decision refuses, and capitals are kept — which is today's behaviour.
 
+**Nothing here is a new primitive.** `OSAllocatedUnfairLock(initialState:)` is already the in-repo pattern for exactly this shape — brief state mutation behind a lock — at `RecoverySpoolWriter.swift:51` and `DebugZeroFillController.swift:54`, and the package targets macOS 14 (`Package.swift:8`), well past its availability. The deadline, the prewarm call site and the lock are all ports of shipped patterns; the only genuinely new code is the decision itself.
+
 **Binding transitions** (complete; anything not listed is unreachable):
 
 | From | Event | To / result |
@@ -465,6 +467,26 @@ A stalled warm-up needs no deadline either: the state simply stays `.warming`, e
 | `.unavailable` | any later decision or repeated prewarm | refuse the stored reason; checker never touched again |
 
 **Test obligation:** a fake checker that blocks past the deadline must show `onTimeout` completing without waiting on it, paste resuming with `legacyText`, the runtime latched permanently at `.oracleTimedOut`, a second decision never entering the fake at all, and the first call's late release neither restoring `.ready` nor publishing its result.
+
+#### The two type shapes, so the build does not re-litigate them
+
+`EnglishWordOracle` is a **value**, not a service — it keeps the existing `lexicon:` test seam working unchanged, so unit tests inject fixed answers and never touch a system service:
+
+```swift
+struct EnglishWordOracle: Sendable {
+  let isAvailable: Bool
+  /// Is the lowercase form an ordinary English word?
+  let isOrdinaryWord: @Sendable (String) -> Bool
+  /// Is the word learned by this user's macOS dictionary?
+  let isLearnedWord: @Sendable (String) -> Bool
+  /// Lexical class of the payload's first word, given the left window.
+  let wordClass: @Sendable (_ left: String, _ payload: String) -> NLTag?
+
+  static func unavailable(reason: CursorInsertionRepair.CaseSkipReason) -> EnglishWordOracle
+}
+```
+
+`EnglishWordOracleRuntime` is the **only** thing that builds a live one, owns the state above, and is the sole caller of `NSSpellChecker` / `NLTagger`. `CursorInsertionRepair` never imports either framework directly — it consumes the value. That keeps the pure decision logic testable with zero system dependency and confines the two new framework imports to one file.
 
 If review still finds a reachable path where a stuck call blocks paste, that is a founder escalation, not another revision round.
 
