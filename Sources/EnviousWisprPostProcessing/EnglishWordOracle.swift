@@ -62,7 +62,6 @@ package struct EnglishWordOracle: Sendable {
       isRecognizedName: { _, _ in true })
   }
 
-
   /// The decision, in one place.
   ///
   /// Two steps, in this order, and the order is the whole design:
@@ -94,6 +93,13 @@ package struct EnglishWordOracle: Sendable {
     if let unavailableReason { return unavailableReason }
     let lower = word.lowercased()
     guard !isRecognizedName(left, payload) else { return .recognizedName }
+    // Queried lowercased, and that is sufficient: `hasLearnedWord` folds case in
+    // both directions. Measured with clean before-teaching controls — teach
+    // `Zqxvkjbrandone`, query `zqxvkjbrandone`, and it answers yes; teach a
+    // lowercase probe and every capitalisation of it answers yes too. Cloud
+    // review raised the opposite as a defect (PR #1815), because a user teaching
+    // macOS `Sentry` or `Olive` is exactly the population this design is weakest
+    // on. Probe and controls: issue-1803-artifacts/2026-07-26-learned-word-positive-control.swift.
     guard !isLearnedWord(lower) else { return .learnedWord }
     switch dictionaryVerdict(lower) {
     case .unavailable(let reason): return reason
