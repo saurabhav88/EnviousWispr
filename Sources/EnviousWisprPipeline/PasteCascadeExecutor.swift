@@ -60,6 +60,34 @@ internal struct PasteDeliveryResult {
   }
 }
 
+/// Whether the clipboard is still holding a contextual payload that must be
+/// replaced with today's payload before the cascade returns.
+///
+/// Plan §6: no route may carry a contextual payload into a MANUAL paste. The
+/// repaired text is only correct at the exact caret it was computed for, and a
+/// later Cmd+V happens somewhere we have no claim about — possibly another app,
+/// possibly an hour later. Three of the four conditions are what make this rule
+/// narrow rather than a blanket rewrite:
+///
+/// - `submitted == .repaired`: nothing to undo when today's payload was used.
+/// - `routeWroteClipboard`: the Tier 1 accessibility write never touches the
+///   clipboard, so "restoring" after it would CLOBBER whatever the user had
+///   copied with text they never asked for.
+/// - `!willRestoreUserClipboard`: when the restore-clipboard setting is on, the
+///   user's own snapshot goes back and takes our text with it.
+/// - `!fellBackToClipboardOnly`: a failed cascade ends at Tier 3, which already
+///   puts today's payload on the clipboard. A second write here would be a
+///   second authority for the same rule.
+internal func mustRewriteClipboardToLegacy(
+  submitted: PasteService.PastePayloadKind?,
+  routeWroteClipboard: Bool,
+  willRestoreUserClipboard: Bool,
+  fellBackToClipboardOnly: Bool
+) -> Bool {
+  submitted == .repaired && routeWroteClipboard && !willRestoreUserClipboard
+    && !fellBackToClipboardOnly
+}
+
 /// Three-way classification of the focused AX element at paste time.
 internal enum PasteFocusClassification: Equatable {
   /// Element present with a known text-input role. Full cascade applies.
@@ -237,6 +265,11 @@ internal final class PasteCascadeExecutor {
       targetDiagnostics = .missing
     }
     let canAttemptKeyPaste = classification.canAttemptKeyPaste
+    // Which payload was submitted by the route that last attempted a write.
+    // Nil until one does. A later route may legitimately overwrite this: Tier 1
+    // can attempt a write, PROVE nothing landed, and hand off to Tier 2, whose
+    // choice is then the one the clipboard decision below has to reason about.
+    var submittedKind: PasteService.PastePayloadKind?
 
     // Tier 1: AX direct insertion (only with a confirmed text field element).
     //
@@ -248,8 +281,15 @@ internal final class PasteCascadeExecutor {
     var axAllowsRetry = true
     if classification == .textField, let element = request.targetElement {
       tiersAttempted.append(.axDirect)
-      let disposition = dispositionForAXDirect(
-        PasteService.insertViaAccessibility(request.legacyText, element: element))
+      // The payload choice happens INSIDE the write, against the range read in
+      // the same breath as the write itself (plan §6). Nothing is chosen here.
+      let insert = PasteService.insertViaAccessibility(
+        legacy: request.legacyText,
+        repaired: request.repairedText,
+        context: request.caretContext,
+        element: element)
+      let disposition = dispositionForAXDirect(insert.outcome)
+      submittedKind = insert.submitted
       axAllowsRetry = disposition.allowsAutomaticRetry
       switch disposition {
       case .delivered:
@@ -283,7 +323,15 @@ internal final class PasteCascadeExecutor {
           request.restoreClipboardAfterPaste
           ? PasteService.saveClipboard()
           : nil
-        let dispatchResult = PasteService.pasteToActiveApp(request.legacyText)
+        // Revalidated AFTER activation, because bringing the app frontmost is
+        // itself capable of moving focus and selection.
+        let payload = PasteService.payloadAtCommitBoundary(
+          legacy: request.legacyText,
+          repaired: request.repairedText,
+          context: request.caretContext,
+          element: request.targetElement)
+        submittedKind = payload.kind
+        let dispatchResult = PasteService.pasteToActiveApp(payload.text)
         switch dispatchResult {
         case .dispatched:
           tier = .cgEvent
@@ -318,7 +366,13 @@ internal final class PasteCascadeExecutor {
           request.restoreClipboardAfterPaste
           ? PasteService.saveClipboard()
           : nil
-        let changeCount = PasteService.copyToClipboardReturningChangeCount(request.legacyText)
+        let payload = PasteService.payloadAtCommitBoundary(
+          legacy: request.legacyText,
+          repaired: request.repairedText,
+          context: request.caretContext,
+          element: request.targetElement)
+        submittedKind = payload.kind
+        let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
         if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
           tier = .appleScript
         } else {
@@ -352,7 +406,17 @@ internal final class PasteCascadeExecutor {
         // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste ? PasteService.saveClipboard() : nil
-        let changeCount = PasteService.copyToClipboardReturningChangeCount(request.legacyText)
+        // Selected through the same owner as every other route. A container
+        // target should never HAVE a candidate — the context reader refuses any
+        // role that is not a text role — but this route asks the same question
+        // rather than relying on that argument staying true.
+        let payload = PasteService.payloadAtCommitBoundary(
+          legacy: request.legacyText,
+          repaired: request.repairedText,
+          context: request.caretContext,
+          element: request.targetElement)
+        submittedKind = payload.kind
+        let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
         switch PasteService.findPasteMenuItem(pid: app.processIdentifier) {
         case .found(let menuItem):
           switch PasteService.isMenuItemEnabled(menuItem) {
@@ -415,6 +479,19 @@ internal final class PasteCascadeExecutor {
           )
         }
       }
+    } else if mustRewriteClipboardToLegacy(
+      submitted: submittedKind,
+      routeWroteClipboard: tier != .axDirect,
+      willRestoreUserClipboard: request.restoreClipboardAfterPaste,
+      fellBackToClipboardOnly: false)
+    {
+      // A clipboard route delivered contextual text and nothing else is going to
+      // clear it. Wait first, for the same reason the restore path waits: the
+      // Cmd+V we posted is read by the target app asynchronously, and replacing
+      // the clipboard underneath it would deliver today's payload instead of the
+      // one we just chose — silently undoing the feature at the last step.
+      try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
+      PasteService.copyToClipboard(request.legacyText)
     }
 
     let durationMs = Int((CFAbsoluteTimeGetCurrent() - pasteStart) * 1000)

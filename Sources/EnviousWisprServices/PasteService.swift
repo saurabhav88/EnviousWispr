@@ -352,6 +352,36 @@ public enum PasteService {
 
   // MARK: - Caret context (#1785)
 
+  /// Which of the two payloads a route actually submitted.
+  ///
+  /// `legacy` is today's text and is always available; `repaired` is the
+  /// contextual candidate and may only be submitted by a route that has just
+  /// re-checked the field. Plan §6 is the sole authority on which route may
+  /// commit which, and this type is how a route reports what it did.
+  package enum PastePayloadKind: String, Equatable, Sendable {
+    case legacy
+    case repaired
+  }
+
+  /// Choose the payload for a destination write, at the route's LAST boundary
+  /// before it writes.
+  ///
+  /// Fails closed on every uncertainty: no candidate, no evidence, no element,
+  /// or a field that has moved since the candidate was computed all select
+  /// today's payload. The only way to get the repaired text is positive proof
+  /// that the field is still exactly as it was.
+  package static func payloadAtCommitBoundary(
+    legacy: String,
+    repaired: String?,
+    context: CaretContext?,
+    element: AXUIElement?
+  ) -> (text: String, kind: PastePayloadKind) {
+    guard let repaired, let context, let element,
+      caretUnchanged(element: element, since: context)
+    else { return (legacy, .legacy) }
+    return (repaired, .repaired)
+  }
+
   /// A bounded read of the text either side of the caret, taken at insertion
   /// time. Carries no `AXValue` state — only plain strings and UTF-16 offsets —
   /// so nothing about a foreign app's accessibility handles escapes Services.
@@ -465,10 +495,16 @@ public enum PasteService {
   /// before use and required to match the captured handle. A stale handle can
   /// name an element the user has since left, and repairing against the wrong
   /// field is worse than not repairing at all.
-  package static func readCaretContext(
-    element: AXUIElement,
-    window: Int = caretContextWindow
-  ) -> CaretContext? {
+  /// Re-read the focused element of the app that owns `element` and return it
+  /// only when it is still the SAME element.
+  ///
+  /// The single owner of "is the user still in the field we captured". Both the
+  /// context read and the route-final revalidation go through it, so the two
+  /// cannot come to disagree about what identity means.
+  ///
+  /// Returns nil for untrusted accessibility, a dead process, an unreadable
+  /// focus, or a different element — every one of which means "do not repair".
+  static func freshFocusedElement(matching element: AXUIElement) -> AXUIElement? {
     guard AXIsProcessTrusted() else { return nil }
 
     // Resolve the owning process from the captured element itself — never from
@@ -497,6 +533,29 @@ public enum PasteService {
     guard CFEqual(fresh, element) else { return nil }
     var freshPid: pid_t = 0
     guard AXUIElementGetPid(fresh, &freshPid) == .success, freshPid == pid else { return nil }
+    return fresh
+  }
+
+  /// Whether the field is still EXACTLY as it was when a contextual candidate
+  /// was computed: same focused element, same selection, same length.
+  ///
+  /// This is the last question asked before a route commits a repaired payload.
+  /// It fails CLOSED — unreadable is treated as changed — because the cost of a
+  /// wrong "unchanged" is text repaired against a caret that has moved, while
+  /// the cost of a wrong "changed" is merely today's behaviour.
+  package static func caretUnchanged(element: AXUIElement, since context: CaretContext) -> Bool {
+    guard let fresh = freshFocusedElement(matching: element),
+      let range = selectedRange(of: fresh)
+    else { return false }
+    return range.location == context.selectionLocation
+      && range.length == context.selectionLength
+  }
+
+  package static func readCaretContext(
+    element: AXUIElement,
+    window: Int = caretContextWindow
+  ) -> CaretContext? {
+    guard let fresh = freshFocusedElement(matching: element) else { return nil }
 
     // Role is read from the FRESH element, never the captured handle.
     var roleRef: CFTypeRef?
@@ -580,9 +639,19 @@ public enum PasteService {
   /// Returns a tri-state, not a Bool. `noMutation` is the only outcome the
   /// caller may retry: `unverifiable` means the write may already have landed,
   /// and pasting again would duplicate the user's text.
-  public static func insertViaAccessibility(_ text: String, element: AXUIElement)
-    -> AXInsertOutcome
-  {
+  ///
+  /// Takes BOTH payloads rather than one chosen by the caller, and reports which
+  /// it submitted. The choice belongs here because this function already reads
+  /// the selected range in the same breath as the write (#1785, plan §6): a
+  /// caller-side check would be check-then-write with an AX round trip in the
+  /// gap. Element identity needs no separate check — the write targets the very
+  /// handle the candidate was computed against.
+  package static func insertViaAccessibility(
+    legacy: String,
+    repaired: String? = nil,
+    context: CaretContext? = nil,
+    element: AXUIElement
+  ) -> (outcome: AXInsertOutcome, submitted: PastePayloadKind?) {
     // Verify the element is a text field or text area.
     var roleRef: CFTypeRef?
     let roleErr = AXUIElementCopyAttributeValue(
@@ -591,9 +660,9 @@ public enum PasteService {
       &roleRef
     )
     guard roleErr == .success, let role = roleRef as? String else {
-      return .noMutation
+      return (.noMutation, nil)
     }
-    guard textRoles.contains(role) else { return .noMutation }
+    guard textRoles.contains(role) else { return (.noMutation, nil) }
 
     // Verify the element is writable (not read-only).
     var settableRef: DarwinBoolean = false
@@ -602,7 +671,7 @@ public enum PasteService {
       kAXValueAttribute as CFString,
       &settableRef
     )
-    guard settableErr == .success, settableRef.boolValue else { return .noMutation }
+    guard settableErr == .success, settableRef.boolValue else { return (.noMutation, nil) }
 
     // Everything needed to verify the result must be readable BEFORE we write.
     // The retired code wrote first and only then discovered it could not read
@@ -616,9 +685,9 @@ public enum PasteService {
       &charCountBefore
     )
     guard let countBefore = charCountBefore as? Int, countBefore >= 0 else {
-      return .noMutation
+      return (.noMutation, nil)
     }
-    guard let rangeBefore = selectedRange(of: element) else { return .noMutation }
+    guard let rangeBefore = selectedRange(of: element) else { return (.noMutation, nil) }
     // A foreign app can report a range that does not fit its own field. Reject
     // rather than compute verification windows from impossible values.
     guard
@@ -626,7 +695,21 @@ public enum PasteService {
       rangeBefore.length >= 0,
       rangeBefore.location <= countBefore,
       rangeBefore.length <= countBefore - rangeBefore.location
-    else { return .noMutation }
+    else { return (.noMutation, nil) }
+
+    // The payload choice, made from the range this function just read rather
+    // than from anything the caller measured earlier. A contextual candidate is
+    // committed ONLY when the selection is still exactly where it was when that
+    // candidate was computed; anything else — no candidate, no evidence, or a
+    // caret that moved — takes today's payload. Plan §6.
+    let payload: (text: String, kind: PastePayloadKind) = {
+      guard let repaired, let context,
+        rangeBefore.location == context.selectionLocation,
+        rangeBefore.length == context.selectionLength
+      else { return (legacy, .legacy) }
+      return (repaired, .repaired)
+    }()
+    let text = payload.text
 
     let insertionStart = rangeBefore.location
     let selectionLength = rangeBefore.length
@@ -653,7 +736,7 @@ public enum PasteService {
     } else {
       // Without a before-image, a successful AX call could never be proven
       // harmless. Bail while nothing has been mutated; Tier 2 is safe here.
-      return .noMutation
+      return (.noMutation, nil)
     }
 
     // Insert at cursor via kAXSelectedTextAttribute.
@@ -662,7 +745,7 @@ public enum PasteService {
       kAXSelectedTextAttribute as CFString,
       text as CFTypeRef
     )
-    guard err == .success else { return .noMutation }
+    guard err == .success else { return (.noMutation, nil) }
 
     // From here the write may have landed, so every remaining failure is
     // `unverifiable`, never `noMutation`.
@@ -687,7 +770,7 @@ public enum PasteService {
         .map { stringsHaveIdenticalUTF16($0, fieldBefore) }
     }
 
-    return classifyInsertOutcome(
+    let outcome = classifyInsertOutcome(
       AXInsertProbe(
         insertedUTF16Length: insertedLength,
         selectionLengthBefore: selectionLength,
@@ -696,6 +779,10 @@ public enum PasteService {
         readBackMatched: readBackMatched,
         fieldUnchanged: fieldUnchanged
       ))
+    // The write was attempted with this payload, whatever the verification says
+    // afterwards — including an outcome later classified `unverifiable`, where
+    // the text may already be in the document.
+    return (outcome, payload.kind)
   }
 
   // MARK: - Tier 2: CGEvent Cmd+V
