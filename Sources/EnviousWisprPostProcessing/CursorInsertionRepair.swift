@@ -54,8 +54,25 @@ public enum CursorInsertionRepair {
     case containsDigit = "contains_digit"
     case pronounI = "pronoun_i"
     case alwaysCapitalized = "always_capitalized"
-    case notKnownLowercase = "not_known_lowercase"
-    case lexiconUnavailable = "lexicon_unavailable"
+    /// The system dictionary does not recognise the lowercase form.
+    case notOrdinaryWord = "not_ordinary_word"
+    /// No usable English dictionary on this machine.
+    case dictionaryUnavailable = "dictionary_unavailable"
+    /// The word is acting as a noun here, so it may be a name. Refusing nouns
+    /// is a conservative filter, not a name recogniser — see `EnglishWordOracle`.
+    case wordClassNotSafe = "word_class_not_safe"
+    /// The part-of-speech model is unavailable on this device.
+    case wordClassUnavailable = "word_class_unavailable"
+    /// The user taught macOS this word, which skews heavily toward names and
+    /// brands, so it is evidence against lowering.
+    case learnedWord = "learned_word"
+    /// Launch preparation has not finished. The first dictation after a cold
+    /// launch keeps its capital — today's behaviour — rather than paying the
+    /// measured 105.6 ms of one-time setup on the paste path.
+    case oracleWarming = "oracle_warming"
+    /// A live decision exceeded its deadline. Latched for the process, so a
+    /// stalled spelling service can never be waited on twice.
+    case oracleTimedOut = "oracle_timed_out"
     /// The dictation is not in a language whose casing rules we know. The
     /// lexicon is English, and applying it to another language is not merely
     /// useless — it is actively wrong. `See`, `Start`, `Test`, `Team` and
@@ -113,7 +130,7 @@ public enum CursorInsertionRepair {
     ///
     /// Deliberately carries the REASON and never the word it applied to: a
     /// wrong-case report is unanswerable without knowing that the guard which
-    /// fired was `case_skipped:not_known_lowercase` rather than
+    /// fired was `case_skipped:not_ordinary_word` rather than
     /// `case_skipped:protected_word`, and neither name reveals a syllable of
     /// what the user dictated.
     public var telemetryName: String {
@@ -233,17 +250,32 @@ public enum CursorInsertionRepair {
       context: context,
       protectedWords: protectedWords,
       language: language,
-      lexicon: OrdinaryLowercaseLexicon.bundled
+      oracle: EnglishWordOracleRuntime.snapshot()
     )
   }
 
-  /// Testing seam. Production always goes through the bundled lexicon above.
+  /// Today's payload only, with the reason recorded.
+  ///
+  /// For the caller's deadline path: when a decision is abandoned there is no
+  /// repaired candidate at all, so delivery continues with exactly what the app
+  /// produced before this feature existed. Deliberately narrow — it keeps the
+  /// oracle types inside this module rather than widening them so Pipeline can
+  /// name one.
+  package static func legacyOnly(text: String, reason: CaseSkipReason) -> PreparedPayloads {
+    PreparedPayloads(
+      legacyText: legacyPayload(text),
+      repairedText: nil,
+      candidateRules: [.caseSkipped(reason)])
+  }
+
+  /// Testing seam. Production always takes the runtime snapshot above; tests
+  /// inject a value with fixed answers and never touch a system service.
   static func repair(
     text: String,
     context: CaretText?,
     protectedWords: Set<String>,
     language: String? = "en",
-    lexicon: OrdinaryLowercaseLexicon
+    oracle: EnglishWordOracle
   ) -> PreparedPayloads {
     let legacy = legacyPayload(text)
     guard let context else {
@@ -300,7 +332,7 @@ public enum CursorInsertionRepair {
       context: context,
       protectedWords: protectedWords,
       language: rules,
-      lexicon: lexicon)
+      oracle: oracle)
     return PreparedPayloads(
       legacyText: legacy, repairedText: repaired, candidateRules: appliedRules)
   }
@@ -319,7 +351,7 @@ public enum CursorInsertionRepair {
     context: CaretText,
     protectedWords: Set<String>,
     language: LanguageRules,
-    lexicon: OrdinaryLowercaseLexicon
+    oracle: EnglishWordOracle
   ) -> (String, [AppliedRule]) {
     var out = text
     var rules: [AppliedRule] = []
@@ -353,7 +385,7 @@ public enum CursorInsertionRepair {
       rules.append(.caseSkipped(.languageNotSupported))
     } else if continuing {
       let (adjusted, caseRule) = applyLeadingCase(
-        to: out, protectedWords: protectedWords, lexicon: lexicon)
+        to: out, leftWindow: context.left, protectedWords: protectedWords, oracle: oracle)
       out = adjusted
       rules.append(caseRule)
     } else if left.character == nil {
@@ -456,8 +488,9 @@ public enum CursorInsertionRepair {
   /// behaviour.
   private static func applyLeadingCase(
     to text: String,
+    leftWindow: String,
     protectedWords: Set<String>,
-    lexicon: OrdinaryLowercaseLexicon
+    oracle: EnglishWordOracle
   ) -> (String, AppliedRule) {
     let leadingWhitespace = text.prefix(while: \.isWhitespace)
     let stripped = text.dropFirst(leadingWhitespace.count)
@@ -471,6 +504,9 @@ public enum CursorInsertionRepair {
     let firstWord = stripped.prefix(while: { !$0.isWhitespace })
     let bare = trimEdges(of: String(firstWord), in: terminators.union([",", ";", ":"]))
 
+    // ORDER IS LOAD-BEARING. The user's own protected spellings outrank every
+    // system answer: a custom word is the strongest signal there is, and asking
+    // the dictionary first would silently weaken that contract (PR #1804).
     if startsWithProtectedSpelling(stripped, protectedWords: protectedWords) {
       return (text, .caseSkipped(.protectedWord))
     }
@@ -486,11 +522,8 @@ public enum CursorInsertionRepair {
     if alwaysCapitalized.contains(bare) {
       return (text, .caseSkipped(.alwaysCapitalized))
     }
-    guard lexicon.isAvailable else {
-      return (text, .caseSkipped(.lexiconUnavailable))
-    }
-    guard lexicon.contains(bare) else {
-      return (text, .caseSkipped(.notKnownLowercase))
+    if let refusal = oracle.mayLower(word: bare, left: leftWindow, payload: String(stripped)) {
+      return (text, .caseSkipped(refusal))
     }
 
     let lowered = String(firstCharacter).lowercased()
@@ -535,8 +568,8 @@ public enum CursorInsertionRepair {
   /// apostrophe-folded because cloud polish emits `U+2019` while a typed
   /// document holds `U+0027`.
   static func tokensMatch(_ lhs: String, _ rhs: String) -> Bool {
-    OrdinaryLowercaseLexicon.normalizeApostrophes(lhs).lowercased()
-      == OrdinaryLowercaseLexicon.normalizeApostrophes(rhs).lowercased()
+    normalizeApostrophes(lhs).lowercased()
+      == normalizeApostrophes(rhs).lowercased()
   }
 
   /// The complete token immediately left of the caret, or `nil`.
@@ -721,7 +754,7 @@ public enum CursorInsertionRepair {
   /// the lexicon: absence is a guarantee by omission that one careless future
   /// addition would silently break.
   static func isFirstPersonPronoun(_ word: String) -> Bool {
-    let normalized = OrdinaryLowercaseLexicon.normalizeApostrophes(word)
+    let normalized = normalizeApostrophes(word)
     return ["I", "I'm", "I've", "I'll", "I'd"].contains(normalized)
   }
 
@@ -848,95 +881,12 @@ public enum CursorInsertionRepair {
   }
 }
 
-/// The bundled allowlist of ordinary lowercase English words.
+/// Fold the Unicode right single quote to the ASCII apostrophe.
 ///
-/// A PRODUCT resource, not a spell-checker and not an operating-system
-/// dictionary, so the same input produces the same output on every machine and
-/// in every locale. Provenance, license, normalisation rules, entry count,
-/// checksum and measured coverage live beside it in
-/// `ordinary-lowercase-words.provenance.md`.
-///
-/// Invalid data fails CLOSED and disables leading-case repair only: spacing and
-/// terminal-period repair keep working, and the leading word keeps its capital,
-/// which is today's behaviour.
-struct OrdinaryLowercaseLexicon: Equatable, Sendable {
-  /// Normalised entries. Empty when the resource could not be trusted.
-  let words: Set<String>
-  /// Whether leading-case repair may consult this lexicon at all.
-  let isAvailable: Bool
-
-  static let resourceName = "ordinary-lowercase-words"
-
-  /// One entry: ASCII lowercase letters, at most one INTERNAL ASCII apostrophe.
-  /// Deliberately strict — a malformed line invalidates the whole resource
-  /// rather than being skipped, because silently dropping entries would make
-  /// coverage unreproducible.
-  static func isWellFormedEntry(_ entry: String) -> Bool {
-    guard !entry.isEmpty else { return false }
-    var apostrophes = 0
-    for (offset, character) in entry.enumerated() {
-      if character == "'" {
-        apostrophes += 1
-        if offset == 0 || offset == entry.count - 1 { return false }
-        continue
-      }
-      guard character.isASCII, character.isLowercase, character.isLetter else { return false }
-    }
-    return apostrophes <= 1
-  }
-
-  /// Fold the Unicode right single quote to the ASCII apostrophe. Cloud polish
-  /// providers emit `U+2019`, and the lexicon stores `U+0027`.
-  static func normalizeApostrophes(_ text: String) -> String {
-    text.replacingOccurrences(of: "\u{2019}", with: "'")
-  }
-
-  /// Parse the committed file format. Returns an UNAVAILABLE lexicon on any
-  /// malformed line or duplicate entry.
-  static func parse(_ contents: String) -> OrdinaryLowercaseLexicon {
-    var words: Set<String> = []
-    for rawLine in contents.split(separator: "\n", omittingEmptySubsequences: false) {
-      let line = rawLine.trimmingCharacters(in: .whitespaces)
-      if line.isEmpty || line.hasPrefix("#") { continue }
-      let entry = normalizeApostrophes(line)
-      guard isWellFormedEntry(entry) else { return .unavailable }
-      guard words.insert(entry).inserted else { return .unavailable }
-    }
-    guard !words.isEmpty else { return .unavailable }
-    return OrdinaryLowercaseLexicon(words: words, isAvailable: true)
-  }
-
-  static let unavailable = OrdinaryLowercaseLexicon(words: [], isAvailable: false)
-
-  /// The shipped resource, resolved once through this target's own resource
-  /// bundle. `Bundle.module`, never `Bundle.main`: the app is not the only host
-  /// of this code.
-  static let bundled: OrdinaryLowercaseLexicon = {
-    guard let url = Bundle.module.url(forResource: resourceName, withExtension: "txt"),
-      let contents = try? String(contentsOf: url, encoding: .utf8)
-    else {
-      return .unavailable
-    }
-    return parse(contents)
-  }()
-
-  /// Apply the full lookup normalisation the committed provenance record
-  /// specifies: fold the Unicode right quote, trim surrounding punctuation and
-  /// quotation marks, then lowercase with the invariant mapping.
-  ///
-  /// The trim matters because a caller can hand us a token still wearing its
-  /// quotes or brackets. Only the OUTER edges are trimmed, so internal
-  /// apostrophes in `let's` and `don't` survive.
-  static func normalizeLookupToken(_ text: String) -> String {
-    let folded = normalizeApostrophes(text)
-    let front = folded.drop { $0.isWhitespace || $0.isPunctuation }
-    let trimmed = front.reversed().drop { $0.isWhitespace || $0.isPunctuation }.reversed()
-    return String(trimmed).lowercased()
-  }
-
-  /// Case-insensitive, locale-independent membership.
-  func contains(_ word: String) -> Bool {
-    guard isAvailable else { return false }
-    return words.contains(Self.normalizeLookupToken(word))
-  }
+/// NOT word knowledge — pure punctuation normalisation, which is why it
+/// outlives `OrdinaryLowercaseLexicon`. Two consumers shipped in PR #1804 still
+/// need it: seam de-duplication compares tokens with it, and the pronoun-`I`
+/// guard normalises before matching. Cloud polish providers emit `U+2019`.
+func normalizeApostrophes(_ text: String) -> String {
+  text.replacingOccurrences(of: "\u{2019}", with: "'")
 }

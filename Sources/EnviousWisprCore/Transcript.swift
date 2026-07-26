@@ -17,7 +17,7 @@ public struct ExecutionMetrics: Codable, Sendable {
   /// - `caretContextOutcome`: `setting_off` / `no_target` / `unreadable` /
   ///   `read` — where the feature stopped, if it stopped early.
   /// - `repairRules`: the rules the repair proposed, comma-joined
-  ///   (`leading_space,case_skipped:not_known_lowercase`). The reason travels
+  ///   (`leading_space,case_skipped:not_ordinary_word`). The reason travels
   ///   without the word it applied to.
   /// - `pastePayloadKind`: `legacy` / `repaired`, or nil when no route reached a
   ///   write. What was SUBMITTED, never proof of what landed.

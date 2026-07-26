@@ -5,6 +5,8 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
+@testable import EnviousWisprPostProcessing
+
 @testable import EnviousWisprPipeline
 
 // MARK: - KernelFinalizationWiringTests (epic #827, PR-4 §11.4)
@@ -15,6 +17,27 @@ import Testing
 
 @MainActor
 @Suite struct KernelFinalizationWiringTests {
+
+  /// Install a deterministic word oracle before every case in this suite.
+  ///
+  /// These tests drive the REAL production `repair` entry point, which reads
+  /// `EnglishWordOracleRuntime`. Left alone the runtime is `.warming` here —
+  /// nothing calls `prewarm()` in a test process — so casing would refuse and
+  /// six of these cases would fail for a reason that has nothing to do with what
+  /// they test.
+  ///
+  /// Deliberately a FAKE rather than a real prewarm: the live oracle reads the
+  /// machine's installed dictionaries, its part-of-speech assets and the user's
+  /// learned words, so gating CI on its exact answers would build a flaky test
+  /// (#1803 plan §11.2).
+  init() {
+    EnglishWordOracleRuntime.installForTesting(
+      EnglishWordOracle(
+        unavailableReason: nil,
+        isOrdinaryWord: { ["review", "the", "store", "testing"].contains($0) },
+        isLearnedWord: { _ in false },
+        wordClassIsSafe: { _, _ in true }))
+  }
 
   // MARK: Wedge tuning (PR-4 §3.6)
 

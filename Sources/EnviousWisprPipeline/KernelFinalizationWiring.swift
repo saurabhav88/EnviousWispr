@@ -75,7 +75,7 @@ final class KernelFinalizationOutcome {
   /// repair decide, and what did the writing route actually submit.
   ///
   /// Shapes and closed-set names only, never a word of the user's document —
-  /// the rule names carry the WHY (`notKnownLowercase`, `protectedWord`,
+  /// the rule names carry the WHY (`notOrdinaryWord`, `protectedWord`,
   /// `languageNotSupported`) without carrying the word it applied to.
   var smartInsertionEnabled: Bool?
   var caretContextOutcome: String?
@@ -373,43 +373,64 @@ struct KernelFinalizationWiring {
         // ONE call to the repair, which is the sole owner of the trailing-space
         // rule. Even with no context it returns today's payload, so Pipeline
         // never recreates that rule and the two can never drift apart.
-        let payloads = CursorInsertionRepair.repair(
+        // The oracle reaches a separate spelling-service process, so this is the
+        // one place on the paste path with an unbounded cross-process call. AX
+        // reads here are already capped by `AXUIElementSetMessagingTimeout`
+        // (0.5s); `NSSpellChecker` has no equivalent knob, so the call is bounded
+        // here instead — stricter than the 0.5s we already accept.
+        //
+        // `withOrderedDeadline`, not bare `withDeadline`: on timeout the runtime
+        // must be latched BEFORE paste resumes, so a later dictation can never
+        // race an abandoned call against AppKit's one shared spell checker.
+        let repairContext: CursorInsertionRepair.CaretText? = caretContext.map {
+          CursorInsertionRepair.CaretText(
+            left: $0.leftWindow, right: $0.rightWindow,
+            // The left window is cut to `caretContextWindow` units, and the
+            // string cannot say whether it was cut or simply began at the
+            // document's start. `assembleCaretContext` reads from
+            // `max(0, selectionLocation - window)`, so the window reached
+            // offset zero exactly when it is as long as the caret's offset.
+            // Without this the seam de-duplication refused every short field
+            // (#1803, local diff review).
+            leftReachesDocumentStart: $0.leftWindow.utf16.count == $0.selectionLocation)
+        }
+
+        // Resolved from positive evidence, NOT read off the result.
+        //
+        // The earlier version of this line took `adapter.lastResult?.language`
+        // and justified it as "Parakeet reports English, which is the only
+        // language it transcribes". That was wrong, and our own settings
+        // screen says so: Parakeet transcribes 25 European languages while
+        // `ParakeetBackend` stamps `"en"` on every result. Since Parakeet is
+        // the DEFAULT engine, a German dictation on the default path was being
+        // recased with English rules — the exact defect the language gate was
+        // built to prevent (cloud review, PR #1802).
+        let resolvedLanguage = DictationLanguageResolver.resolve(
+          lockedLanguage: {
+            if case .locked(let code) = context.config?.languageMode { return code }
+            return nil
+          }(),
+          engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
+          engineReportedLanguage: adapter.lastResult?.language,
           text: text,
-          context: caretContext.map {
-            CursorInsertionRepair.CaretText(
-              left: $0.leftWindow, right: $0.rightWindow,
-              // The left window is cut to `caretContextWindow` units, and the
-              // string cannot say whether it was cut or simply began at the
-              // document's start. `assembleCaretContext` reads from
-              // `max(0, selectionLocation - window)`, so the window reached
-              // offset zero exactly when it is as long as the caret's offset.
-              // Without this the seam de-duplication refused every short field
-              // (#1803, local diff review).
-              leftReachesDocumentStart: $0.leftWindow.utf16.count == $0.selectionLocation)
-          },
-          protectedWords: context.protectedSpellings,
-          // Resolved from positive evidence, NOT read off the result.
-          //
-          // The earlier version of this line took `adapter.lastResult?.language`
-          // and justified it as "Parakeet reports English, which is the only
-          // language it transcribes". That was wrong, and our own settings
-          // screen says so: Parakeet transcribes 25 European languages while
-          // `ParakeetBackend` stamps `"en"` on every result. Since Parakeet is
-          // the DEFAULT engine, a German dictation on the default path was being
-          // recased with English rules — the exact defect the language gate was
-          // built to prevent (cloud review, PR #1802).
-          language: DictationLanguageResolver.resolve(
-            lockedLanguage: {
-              if case .locked(let code) = context.config?.languageMode { return code }
-              return nil
-            }(),
-            engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
-            engineReportedLanguage: adapter.lastResult?.language,
-            text: text,
-            // The caret windows we already read. A short mid-sentence
-            // continuation cannot be identified on its own, and that is exactly
-            // the insertion this feature exists for.
-            surroundingText: caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? ""))
+          // The caret windows we already read. A short mid-sentence
+          // continuation cannot be identified on its own, and that is exactly
+          // the insertion this feature exists for.
+          surroundingText: caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? "")
+
+        let protectedSpellings = context.protectedSpellings
+        let payloads =
+          await withOrderedDeadline(
+            seconds: 0.100,
+            operation: {
+              CursorInsertionRepair.repair(
+                text: text,
+                context: repairContext,
+                protectedWords: protectedSpellings,
+                language: resolvedLanguage)
+            },
+            onTimeout: { EnglishWordOracleRuntime.disableAfterTimeout() }
+          ) ?? CursorInsertionRepair.legacyOnly(text: text, reason: .oracleTimedOut)
 
         // Why this dictation was or was not repaired, recorded before delivery
         // so it survives every route outcome. Names and shapes only (#1785 §8).
