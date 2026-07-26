@@ -47,6 +47,11 @@ package enum EnglishWordOracleRuntime {
   private struct State: Sendable {
     var prewarmStarted = false
     var phase: Phase = .warming
+    /// Bumped by every deliberate state change. A prewarm that started before a
+    /// change must not publish after it: `prewarmStarted` guards STARTING one,
+    /// not one already in flight, and a reset restores exactly the `.warming`
+    /// phase its publish step looks for (local diff review r3, residual).
+    var epoch = 0
   }
 
   private static let state = OSAllocatedUnfairLock(initialState: State())
@@ -62,20 +67,21 @@ package enum EnglishWordOracleRuntime {
   /// paste. Measured: unwarmed first paste 105.6 ms, warmed 0.5 ms.
   @concurrent
   package static func prewarm() async {
-    let shouldStart = state.withLock { state -> Bool in
-      guard !state.prewarmStarted else { return false }
+    let startedEpoch = state.withLock { state -> Int? in
+      guard !state.prewarmStarted else { return nil }
       state.prewarmStarted = true
-      return true
+      return state.epoch
     }
-    guard shouldStart else { return }
+    guard let startedEpoch else { return }
 
     let prepared = prepare()
 
     state.withLock { state in
-      // Only a still-warming runtime may be published into. If a timeout
-      // already latched (impossible today, since decisions refuse while
-      // warming), the latch wins.
-      guard case .warming = state.phase else { return }
+      // Publish only if NOTHING has changed the state since this prewarm began.
+      // The phase check alone is insufficient: a reset restores `.warming`, so a
+      // stale prepare would satisfy it and overwrite the state a test just
+      // established.
+      guard state.epoch == startedEpoch, case .warming = state.phase else { return }
       state.phase = prepared
     }
   }
@@ -224,7 +230,10 @@ package enum EnglishWordOracleRuntime {
   /// `onTimeout` to complete before the caller resumes, so anything that could
   /// wait here would recreate the hang the deadline exists to prevent.
   package static func disableAfterTimeout() {
-    state.withLock { $0.phase = .unavailable(.oracleTimedOut) }
+    state.withLock { state in
+      state.epoch += 1
+      state.phase = .unavailable(.oracleTimedOut)
+    }
   }
 
   /// Mark unavailable ONLY while still ready.
@@ -237,6 +246,7 @@ package enum EnglishWordOracleRuntime {
   private static func markUnavailableIfReady(_ reason: CursorInsertionRepair.CaseSkipReason) {
     state.withLock { state in
       guard case .ready = state.phase else { return }
+      state.epoch += 1
       state.phase = .unavailable(reason)
     }
   }
@@ -258,12 +268,15 @@ package enum EnglishWordOracleRuntime {
   /// `.ready` over a test's expected state and make full-suite results
   /// order-dependent (local diff review r3).
   package static func resetForTesting() {
-    state.withLock { $0 = State(prewarmStarted: true, phase: .warming) }
+    state.withLock { state in
+      state = State(prewarmStarted: true, phase: .warming, epoch: state.epoch + 1)
+    }
   }
 
   /// Install a fixed phase without touching a system service.
   package static func installForTesting(_ oracle: EnglishWordOracle) {
     state.withLock { state in
+      state.epoch += 1
       state.prewarmStarted = true
       if let reason = oracle.unavailableReason {
         state.phase = .unavailable(reason)

@@ -320,6 +320,25 @@ struct EnglishWordOracleTests {
       "no decision may reach a system service after the latch")
   }
 
+  @Test("A prewarm that started before a state change cannot publish after it")
+  func stalePrewarmCannotPublish() async {
+    // `prewarmStarted` guards STARTING a prewarm, not one already in flight. A
+    // prepare launched by another suite's driver construction can finish after
+    // `resetForTesting()` restores `.warming` — which is exactly the condition
+    // its publish step checks — and land `.ready` on top of a test's state.
+    //
+    // The epoch closes it. Simulated here by latching, which bumps the epoch,
+    // and then letting a prewarm attempt to publish.
+    EnglishWordOracleRuntime.resetForTesting()
+    EnglishWordOracleRuntime.disableAfterTimeout()
+
+    await EnglishWordOracleRuntime.prewarm()
+
+    #expect(
+      EnglishWordOracleRuntime.snapshot().unavailableReason == .oracleTimedOut,
+      "a prewarm must never overwrite state established after it began")
+  }
+
   @Test("Repeated prewarm after a latch cannot revive the runtime")
   func prewarmCannotRevive() async {
     EnglishWordOracleRuntime.resetForTesting()
