@@ -92,6 +92,22 @@ internal func mustRewriteClipboardToLegacy(
     && !fellBackToClipboardOnly
 }
 
+/// Whether the pasteboard still holds exactly what this route put there.
+///
+/// The rewrite above waits for the target app to consume the posted Cmd+V, and
+/// during that wait the user — or their clipboard manager — can copy something
+/// else. Writing anyway would destroy it. This is the same change-count guard
+/// `restoreClipboard` has always applied, asked separately here because the
+/// POLICY question ("should this be rewritten at all") is answered before the
+/// wait and the FRESHNESS question can only be answered after it.
+///
+/// Fails closed on an unknown count: if we cannot prove what is on the board is
+/// ours, we do not touch it.
+internal func clipboardUntouchedSinceSubmit(submitted: Int?, current: Int) -> Bool {
+  guard let submitted else { return false }
+  return submitted == current
+}
+
 /// Three-way classification of the focused AX element at paste time.
 internal enum PasteFocusClassification: Equatable {
   /// Element present with a known text-input role. Full cascade applies.
@@ -274,6 +290,10 @@ internal final class PasteCascadeExecutor {
     // can attempt a write, PROVE nothing landed, and hand off to Tier 2, whose
     // choice is then the one the clipboard decision below has to reason about.
     var submittedKind: PasteService.PastePayloadKind?
+    // The pasteboard's change count immediately after a clipboard route wrote
+    // its payload. Any later write by the user or a clipboard manager advances
+    // it, which is how the post-cascade rewrite below knows to keep its hands off.
+    var submittedClipboardChangeCount: Int?
 
     // Tier 1: AX direct insertion (only with a confirmed text field element).
     //
@@ -336,6 +356,7 @@ internal final class PasteCascadeExecutor {
           element: request.targetElement)
         submittedKind = payload.kind
         let dispatchResult = PasteService.pasteToActiveApp(payload.text)
+        submittedClipboardChangeCount = dispatchResult.changeCount
         switch dispatchResult {
         case .dispatched:
           tier = .cgEvent
@@ -377,6 +398,7 @@ internal final class PasteCascadeExecutor {
           element: request.targetElement)
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
+        submittedClipboardChangeCount = changeCount
         if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
           tier = .appleScript
         } else {
@@ -421,6 +443,7 @@ internal final class PasteCascadeExecutor {
           element: request.targetElement)
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
+        submittedClipboardChangeCount = changeCount
         switch PasteService.findPasteMenuItem(pid: app.processIdentifier) {
         case .found(let menuItem):
           switch PasteService.isMenuItemEnabled(menuItem) {
@@ -495,7 +518,16 @@ internal final class PasteCascadeExecutor {
       // the clipboard underneath it would deliver today's payload instead of the
       // one we just chose — silently undoing the feature at the last step.
       try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-      PasteService.copyToClipboard(request.legacyText)
+      // ...and during that wait the user, or their clipboard manager, may have
+      // copied something. Rewriting unconditionally would destroy it. Same guard
+      // `restoreClipboard` has always applied: only touch the board if it still
+      // holds exactly what this route put there.
+      if clipboardUntouchedSinceSubmit(
+        submitted: submittedClipboardChangeCount,
+        current: NSPasteboard.general.changeCount)
+      {
+        PasteService.copyToClipboard(request.legacyText)
+      }
     }
 
     let durationMs = Int((CFAbsoluteTimeGetCurrent() - pasteStart) * 1000)

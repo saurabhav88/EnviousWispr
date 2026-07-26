@@ -83,6 +83,27 @@ struct PasteClipboardHygieneTests {
         fellBackToClipboardOnly: false) == false)
   }
 
+  // MARK: - Freshness, asked after the wait (Codex review r3)
+
+  @Test("The board is rewritten only while it still holds what we put there")
+  func rewriteRequiresAnUntouchedBoard() {
+    #expect(clipboardUntouchedSinceSubmit(submitted: 42, current: 42))
+  }
+
+  @Test("A clipboard the user changed during the wait is left alone")
+  func rewriteSkipsAnAdvancedBoard() {
+    // The rewrite waits for the target app to consume the posted Cmd+V. If the
+    // user copies something in that window, writing anyway destroys it — the
+    // exact clobber `restoreClipboard`'s own change-count guard exists to stop.
+    #expect(clipboardUntouchedSinceSubmit(submitted: 42, current: 43) == false)
+  }
+
+  @Test("An unknown change count fails closed")
+  func rewriteFailsClosedWithoutACount() {
+    // No proof that what is on the board is ours, so we do not touch it.
+    #expect(clipboardUntouchedSinceSubmit(submitted: nil, current: 42) == false)
+  }
+
   @Test("A cascade that fell through to clipboard-only is Tier 3's to finish")
   func clipboardOnlyFallbackSuppressesRewrite() {
     #expect(

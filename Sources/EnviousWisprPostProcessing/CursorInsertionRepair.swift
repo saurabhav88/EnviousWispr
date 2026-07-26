@@ -347,8 +347,16 @@ public enum CursorInsertionRepair {
 
     // Rule 2b: a trailing full stop is redundant when real content follows the
     // caret. Only a full stop — `?` and `!` carry meaning the user dictated.
+    //
+    // Whitespace is skipped to find that content, mirroring the left side, which
+    // has walked back over spaces since the beginning. Without the symmetry, a
+    // right window of `" yesterday"` read as "nothing follows" and kept the
+    // period, producing `store today. yesterday` in the middle of a sentence
+    // (Codex review r3). The skip stops at a newline: content on the NEXT line
+    // is a new sentence, and the user's full stop belongs to this one.
+    let rightContent = rightContentAnchor(of: context.right)
     let rightIsContent =
-      right.map { $0.isLetter || $0.isNumber || terminators.contains($0) } ?? false
+      rightContent.map { $0.isLetter || $0.isNumber || terminators.contains($0) } ?? false
     if rightIsContent {
       let body = String(out.reversed().drop(while: \.isWhitespace).reversed())
       if body.hasSuffix(".") {
@@ -589,9 +597,28 @@ public enum CursorInsertionRepair {
   }
 
   /// The first character after the caret, whitespace included. Unlike the left
-  /// side this does NOT skip: an existing space to the right already separates.
+  /// side this does NOT skip: an existing space to the right already separates,
+  /// so SPACING must see it.
   static func rightAnchor(of window: String) -> Character? {
     window.first
+  }
+
+  /// The first real character after the caret, skipping spaces and tabs but
+  /// stopping at a newline.
+  ///
+  /// Spacing and the terminal-period rule ask different questions of the right
+  /// side, which is why they read it differently. Spacing asks "is there already
+  /// a separator", so it must see the space itself. The period rule asks "does
+  /// this sentence continue", and a space is not an answer to that — the content
+  /// behind it is. A newline stops the walk: text on the next line is a new
+  /// sentence, and the user's full stop belongs to the one they just dictated.
+  static func rightContentAnchor(of window: String) -> Character? {
+    for character in window {
+      if character == " " || character == "\t" { continue }
+      if character.isNewline { return nil }
+      return character
+    }
+    return nil
   }
 }
 

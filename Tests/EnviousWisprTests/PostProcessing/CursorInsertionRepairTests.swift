@@ -1031,6 +1031,46 @@ struct CursorInsertionRepairTests {
       payloads.candidateRules.contains(.refusedInsideWord) == false, "\(testCase)")
   }
 
+  // MARK: - The right side, read two different ways (Codex review r3)
+
+  @Test(
+    "A space before the following text does not make the full stop survive",
+    arguments: [" yesterday", "  yesterday", "\tyesterday"])
+  func spacedRightContentStillDropsThePeriod(_ right: String) {
+    // Spacing and the period rule ask different questions of the right side.
+    // Reading both from the immediate character kept a mid-sentence full stop
+    // whenever the existing text happened to start with a space.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: right),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod), "\(right.debugDescription)")
+    #expect(payloads.repairedText?.contains("today.") == false, "\(right.debugDescription)")
+  }
+
+  @Test("Content on the NEXT line leaves the dictated full stop alone")
+  func contentOnTheNextLineKeepsThePeriod() {
+    // A new line is a new sentence. The period belongs to the one just dictated.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "\nyesterday"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod) == false)
+    #expect(payloads.repairedText?.contains("today.") == true)
+  }
+
+  @Test("An existing space to the right still suppresses the trailing space")
+  func spacingStillReadsTheImmediateCharacter() {
+    // The spacing rule must keep seeing the space itself, or we would add a
+    // second one — the two rules read the same window for different reasons.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: " yesterday"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.rightIsSpace)))
+    #expect(payloads.repairedText?.hasSuffix(" ") == false)
+  }
+
   // MARK: - An unverifiable caret
 
   // MEASURED in Ghostty, 2026-07-25: the character count grows as the user
