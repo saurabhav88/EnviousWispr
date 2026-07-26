@@ -34,7 +34,8 @@ import time
 import regex
 
 import Quartz
-from AppKit import NSPasteboard, NSPasteboardTypeString, NSWorkspace
+from AppKit import (NSPasteboard, NSPasteboardItem,
+                    NSPasteboardTypeString, NSWorkspace)
 from ApplicationServices import (AXUIElementCopyAttributeValue,
                                  AXUIElementCopyParameterizedAttributeValue,
                                  AXUIElementCreateApplication,
@@ -487,13 +488,19 @@ def replace_span(element, caret, span_text, replacement, expected_after=None):
     before = terminal_line(element) if expected_after is not None else None
     for _ in range(keypress_length(span_text)):
         post_key(DELETE_KEY)
-    note = ""
     if expected_after is not None:
         problem = settle_deletion(element, expected_after, before)
         if problem:
-            note = f", deletion check: {problem}"
+            # ABORT, do not paste. settle_deletion refuses precisely when the
+            # remaining text cannot be reconciled — too much left, or a prefix
+            # that is not what we expected — which means we no longer know what
+            # is in the field. Pasting on top of that writes the joined sentence
+            # into unknown text and makes a recoverable mess unrecoverable.
+            # It was previously logged and then pasted anyway. Found by cloud
+            # review on PR #1793.
+            return f"ABORTED before pasting, {problem}"
     paste(replacement)
-    return "backspace" + note
+    return "backspace"
 
 
 def type_text(text):
@@ -508,16 +515,43 @@ def type_text(text):
 
 
 def paste(text):
+    """Paste `text`, and put the clipboard back the way it was found.
+
+    Saving only the plain-string representation destroyed everything else on the
+    clipboard: a copied image, a file, or rich text with no string form left
+    `saved` as None and the restore silently dropped it. Even a text item lost
+    its styled and HTML flavours. The user never asked us to touch their
+    clipboard at all, so losing what was on it is our bug, not a side effect.
+    Found by cloud review on PR #1793.
+
+    Every item and every type is snapshotted and written back.
+    """
     board = NSPasteboard.generalPasteboard()
-    saved = board.stringForType_(NSPasteboardTypeString)
+    saved = []
+    for item in (board.pasteboardItems() or []):
+        flavours = {}
+        for kind in (item.types() or []):
+            data = item.dataForType_(kind)
+            if data is not None:
+                flavours[kind] = data
+        if flavours:
+            saved.append(flavours)
+
     board.clearContents()
     board.setString_forType_(text, NSPasteboardTypeString)
     time.sleep(0.06)
     post_key(V_KEY, Quartz.kCGEventFlagMaskCommand)
     time.sleep(0.3)
+
     board.clearContents()
-    if saved:
-        board.setString_forType_(saved, NSPasteboardTypeString)
+    restored = []
+    for flavours in saved:
+        item = NSPasteboardItem.alloc().init()
+        for kind, data in flavours.items():
+            item.setData_forType_(data, kind)
+        restored.append(item)
+    if restored:
+        board.writeObjects_(restored)
 
 
 # ── the join ─────────────────────────────────────────────────────────────────

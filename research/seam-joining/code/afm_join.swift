@@ -110,6 +110,28 @@ let joinNote = """
   makes a connecting word redundant.
   """
 
+
+/// Is there still a sentence boundary BETWEEN the two halves?
+///
+/// Everything else the model does — fixing a comma, contracting "it is",
+/// changing the closing punctuation — is irrelevant to that question. Anchor on
+/// the last word of the first half and the first word of the second, then look
+/// at the text between them: a terminator there means the seam survived.
+func wasJoined(first: String, second: String, output: String) -> Bool {
+  func words(_ text: String) -> [String] {
+    text.split { !($0.isLetter || $0.isNumber || $0 == "'") }.map(String.init)
+  }
+  guard let tail = words(first).last, let head = words(second).first else { return false }
+
+  let lower = output.lowercased()
+  guard let tailRange = lower.range(of: tail.lowercased()) else { return false }
+  let afterTail = lower[tailRange.upperBound...]
+  guard let headRange = afterTail.range(of: head.lowercased()) else { return false }
+
+  let gap = afterTail[..<headRange.lowerBound]
+  return !gap.contains { ".!?".contains($0) }
+}
+
 @main
 struct Runner {
   static func main() async {
@@ -143,11 +165,11 @@ struct Runner {
       }
 
       let lost = words(source).filter { !words(out).contains($0) }
-      // Did the BOUNDARY go? Both halves arrive terminated, so the input
-      // always holds two sentence-final marks. One left means they were
-      // welded; two means they were not, however much else was edited.
-      let marks = out.filter { ".!?".contains($0) }.count
-      let joined = marks < 2
+      // The same definition the Python harnesses use (seam_verdict.py).
+      // Counting sentence marks was wrong: an output that drops only its
+      // FINAL full stop leaves one mark and scored as joined while the
+      // boundary was plainly still there.
+      let joined = wasJoined(first: item.first, second: item.second, output: out)
       let verdict: String
       if lost.count > 2 {
         verdict = "DESTROYED  lost \(lost)"

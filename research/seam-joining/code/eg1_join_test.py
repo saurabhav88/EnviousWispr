@@ -28,6 +28,8 @@ import re
 import sys
 
 import urllib.request
+
+from seam_verdict import was_joined
 import json
 
 SWIFT_EG1 = "Sources/EnviousWisprLLM/Prompting/EGOnePromptBuilder.swift"
@@ -125,13 +127,15 @@ def main():
                 continue
 
             lost = [w for w in words(source) if w not in words(out)]
-            # Did the BOUNDARY go? Both halves arrive terminated, so the
-            # input always holds two sentence-final marks. One left means
-            # they were welded; two means they were not, however much else
-            # was edited. Scoring on 'anything changed' counted a casing or
-            # punctuation tweak as a successful join. Found by cloud review
-            # on PR #1793.
-            joined = sum(out.count(c) for c in '.!?') < 2
+            # One shared definition, in seam_verdict.py. Two home-grown
+            # heuristics lived here before and both were wrong in ways that
+            # changed reported numbers.
+            joined = was_joined(first, second, out)
+            if joined is None:
+                print("  REWRITTEN  too changed to judge as joined or not")
+                print(f"      in : {source}")
+                print(f"      out: {out}")
+                continue
             if len(lost) > 2:
                 verdict = f"DESTROYED  lost {lost}"
             elif want == "join" and not joined:

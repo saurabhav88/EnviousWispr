@@ -24,6 +24,8 @@ import os
 import re
 import sys
 
+from seam_verdict import was_joined
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import join_hotkey as J  # noqa: E402
 
@@ -119,11 +121,9 @@ def main():
                 continue
 
             lost = [w for w in words(source) if w not in words(out)]
-            # Both halves arrive terminated, so the input always holds two
-            # sentence-final marks. One left means the boundary went; two
-            # means it did not, however much else was edited. Comparing
-            # against the source counted a casing tweak as a join.
-            joined = sum(out.count(c) for c in ".!?") < 2
+            joined = was_joined(first, second, out)  # seam_verdict.py
+            if joined is None:
+                joined = False  # a rewrite that heavy is not a join
             # A dropped connecting word is legitimate when joining; losing a
             # third of the sentence is the failure this exists to catch.
             destroyed = len(lost) > 2
