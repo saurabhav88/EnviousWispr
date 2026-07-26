@@ -1,14 +1,19 @@
-"""Build REAL labelled continuation pairs from the local dictation store.
+"""Build app-output-labelled synthetic continuation pairs.
 
-The label is the founder's own mid-sentence casing, not anything I chose:
-a word capitalised mid-sentence is a proper noun (MUST KEEP), a lowercase one
-is ordinary (SHOULD LOWER). Splitting a real sentence reproduces exactly what
-happens when a second recording continues an unfinished first one.
+Splits stored English dictations at eligible mid-sentence word boundaries. The
+label is inferred from casing ALREADY PRESENT IN APP OUTPUT (`polishedText` when
+present, else the raw transcript). It is NOT a founder correction and NOT
+independent ground truth: a name our own pipeline previously lowercased is
+labelled "safe to lowercase", so agreeing with that error scores as correct.
 
-Local only. Emits pairs to the scratchpad; nothing here is ever committed.
+Use for coverage characterisation and for surfacing suspicious words. Never as a
+precision certificate. Corrected 2026-07-26 after grounded review r2.
+
+Local only. Transcript text and generated rows are never committed.
 """
 
 import glob
+import hashlib
 import json
 import os
 import random
@@ -24,7 +29,9 @@ random.seed(1803)  # deterministic sampling
 
 pairs = []
 skipped_short = 0
-for path in glob.glob(os.path.join(STORE, "*.json")):
+# sorted(): glob order is filesystem-dependent, so without this the seed
+# below does not actually make the sample reproducible (grounded review r2).
+for path in sorted(glob.glob(os.path.join(STORE, "*.json"))):
     try:
         j = json.load(open(path))
     except Exception:
@@ -57,11 +64,14 @@ for path in glob.glob(os.path.join(STORE, "*.json")):
     must_keep = word[0].isupper()
     # Simulate what the speech engine does to a fresh chunk: capitalise it.
     payload = payload[0].upper() + payload[1:]
-    pairs.append((left, payload, "keep" if must_keep else "lower"))
+    case_id = hashlib.sha256(
+        f"{os.path.basename(path)}:{start}".encode("utf-8")
+    ).hexdigest()[:16]
+    pairs.append((case_id, left, payload, "keep" if must_keep else "lower"))
 
 with open(OUT, "w") as f:
-    for left, payload, label in pairs:
-        f.write(f"{label}\t{left}\t{payload}\n")
+    for case_id, left, payload, label in pairs:
+        f.write(f"{case_id}\t{label}\t{left}\t{payload}\n")
 
 keep = sum(1 for p in pairs if p[2] == "keep")
 print(f"real labelled continuation pairs: {len(pairs)}")

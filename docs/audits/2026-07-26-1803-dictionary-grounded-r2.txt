@@ -1,0 +1,327 @@
+## Q1. Round-1 findings
+
+| Round-1 finding | Status | Grounding |
+|---|---|---|
+| Core direction: dictionary + context + conservative noun refusal | **FIXED** | The ordered fail-closed design is now explicit in [plan §3](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:228), including the warning against accumulating noun exceptions at line 237. |
+| Remove the second carve-out | **FIXED** | It is explicitly cut at [lines 233-237](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:233). |
+| Canary is not the availability authority | **PARTIALLY FIXED** | Correct design at [lines 241-249](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:241), but the canary still appears at lines 353, 371, 422, 458 and 465. |
+| P0: `applyLeadingCase` is the sole word-knowledge consumer | **PARTIALLY FIXED** | The conclusion is defensible, but P0 line 129 still falsely says every lexicon-type reference is inside `repair`/`applyLeadingCase`. The two apostrophe calls remain at [CursorInsertionRepair.swift:538](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Sources/EnviousWisprPostProcessing/CursorInsertionRepair.swift:538) and [line 724](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Sources/EnviousWisprPostProcessing/CursorInsertionRepair.swift:724). §3 correctly distinguishes them later. |
+| P1/P4: authored measurements are diagnostics | **FIXED** | Clearly demoted at plan lines 151 and 183. |
+| P2: POS is a name discriminator | **NOT FIXED** | Plan line 133 still says “names are always nouns.” The plan’s own `Bill` evidence proves the tagger is not a reliable name recognizer at lines 213-224. Noun refusal is a safety filter, not a name detector. |
+| P3: 457 exclusions and deletion safety | **FIXED** | Corrected at lines 135-140 and §10 line 424. The exclusion file still has no other consumer. |
+| P7: `NSSpellChecker` is safe off-main | **NOT FIXED** | Line 157 still upgrades an eight-thread measurement into an API guarantee. Apple documents one checker per application at `NSSpellChecker.h:37-48`, but does not document thread safety. The proposed background warm-up now materially depends on that unproven claim. |
+| P8: 20-unit truncation | **NOT FIXED** | Line 166 still says truncation “costs nothing” and “reliably” supplies everything needed, based on 36 authored cases. The structural 20-unit claim is true at [PasteService.swift:418](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Sources/EnviousWisprServices/PasteService.swift:418); the universal quality claim is not proven. |
+| P9 tagger contracts | **FIXED** | Fresh tagger and availability handling are retained at plan lines 280-283. |
+| P10 entitlement citation | **FIXED** | Correct path and lines now appear at plan line 170. |
+| P11 checksum claim | **FIXED** | Correct at line 226. |
+| P12 “unanswerable” narrowing | **FIXED** | Now explicitly limited to the two signals used by this design at lines 213-224. |
+| P13 discourse-set reasoning | **PARTIALLY FIXED** | The design cuts it, but lines 204-211 still describe adding it as a second closed carve-out without clearly labelling that paragraph as rejected history. |
+| P14 circular labels and arithmetic | **PARTIALLY FIXED** | Plan prose and arithmetic are fixed at lines 172-185. But [the generator’s docstring](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-artifacts/2026-07-26-build-real-labelled-pairs.py:1) still falsely calls the labels “the founder’s own” and the pairs “REAL.” Also, `glob.glob` is unsorted at line 27, so `random.seed(1803)` does not make the output reliably reproducible. |
+| P15 learned-word refusal | **FIXED** | Positive control and conservative refusal are accurately stated at lines 189-198 and 270. |
+| Heart-path stall | **PARTIALLY FIXED** | The cold measurement is now honest at lines 378-389. The warm-up has no caller, state model, race behavior or failure lifecycle. Line 398 is also factually wrong: `deliver` is already async at [KernelFinalizationWiring.swift:153](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Sources/EnviousWisprPipeline/KernelFinalizationWiring.swift:153). |
+| Telemetry taxonomy | **PARTIALLY FIXED** | §4 correctly lists five changed names at lines 334-338. But §6 says three names, §8 says `AppliedRule` gains the cases, and §10 says “add one.” |
+| Preserve `normalizeApostrophes` | **FIXED** | Correctly preserved and relocated at plan lines 285-291 and contract line 332. |
+| File-by-file facts | **PARTIALLY FIXED** | Six Kernel tests, `Transcript.swift`, entitlements and 830 physical lines are corrected in their main locations. Stale errors remain at lines 37, 420 and 423. The artifact decision at line 431 also remains unresolved. |
+
+## Q2. New defects
+
+### 1. Warm-up is an optimization, not heart-path isolation
+
+This is the blocking defect.
+
+The plan never says who calls the warm-up. It does not define what production does while warm-up is running or if it never finishes. A first paste can beat a fire-and-forget task and pay the full cold cost.
+
+Even after warm-up, later calls into `NSSpellChecker` or `NLTagger` remain synchronous and unbounded. Therefore a deadline is still required for the heart guarantee. The warm-up prevents normal cold latency; the deadline protects against abnormal service stalls. They solve different problems.
+
+The correct home is `WisprBootstrapper`, beside its existing launch prewarm at [WisprBootstrapper.swift:1017](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift:1017). Readiness ownership belongs inside `EnglishWordOracle`, not `AppLifecycleCoordinator`.
+
+If paste beats warm-up, casing must refuse with `.oracleWarming` while spacing and seam repair continue. If a live decision times out, disable the oracle for the remainder of the process before resuming paste. That prevents a second call racing an abandoned call against the one shared spell checker.
+
+### 2. Canary removal is sound, but the plan still describes a nonexistent guarantee
+
+Selecting an identifier from `availableLanguages` makes the measured `"xx"` misuse unreachable. No canary replacement is needed.
+
+However, the cached identifier should be revalidated as still present before each spell lookup. Otherwise a dictionary removed or changed during a long-running process recreates the stale-identifier path. This check belongs inside the same deadline.
+
+Delete the remaining canary claims; do not invent a new health check.
+
+### 3. The human ship gate is not executable and its denominator is biased
+
+At plan line 493:
+
+- There is no sample size.
+- There is no exact seed operation.
+- Rows have no stable IDs.
+- The generator’s input order is not sorted.
+- The reviewer sheet and hidden answer key are unspecified.
+- Mixing every generated-capital disagreement into the precision denominator oversamples likely negatives. That is a safety audit, not an unbiased precision estimate.
+
+Use a deterministic 500-row sample from all oracle-lowered candidates for the precision denominator. Add every generated-capital row as a separate mandatory safety review, reported separately. Include randomized keep-decision decoys so the reviewer is actually blind to the oracle decision.
+
+### 4. The 15-word set is bounded, but not justified as written
+
+It is meaningfully different from the 799-word vocabulary list because it is frozen and targets one measured tagger failure shape. But it is not “the closed grammatical class” of English indefinite pronouns or deictic time words. Those classes contain other words not listed.
+
+More importantly, the plan ablated the deleted sibling but never reports `no exceptions` versus `15 exceptions` on the 11,562 rows. It therefore does not yet show what these 15 entries buy. Run that ablation. Keep only entries with either an existing shipped contract, such as `yesterday`, or measured continuation benefit.
+
+### 5. Remaining internal contradictions can produce the wrong implementation
+
+The stale canary, telemetry counts, resource line counts, P2 wording, P8 overclaim, duplicate damage paragraph at lines 185 and 187, and false artifact docstring are not cosmetic. They describe conflicting implementation and test obligations.
+
+## Q3. Consolidation
+
+Yes—the same root remains across both rounds:
+
+> The system oracle lacks one explicit runtime owner for readiness, availability, timeout and permanent fail-closed state.
+
+Single owner: `EnglishWordOracleRuntime` inside PostProcessing.
+
+Stop implementation until that owner’s state machine is written into the plan. `WisprBootstrapper` only triggers prewarm; it must not become a second availability authority. Custom Words already belongs to `startsWithProtectedSpelling` and must remain there.
+
+## Q4. Drop-in edits
+
+### A. Runtime state, warm-up and deadline
+
+Add to `CaseSkipReason`:
+
+```swift
+case oracleWarming = "oracle_warming"
+case oracleTimedOut = "oracle_timed_out"
+```
+
+Add beside `EnglishWordOracle`:
+
+```swift
+import Foundation
+import os
+
+package enum EnglishWordOracleRuntime {
+  private enum State: Sendable {
+    case warming
+    case ready(EnglishWordOracle)
+    case unavailable(CursorInsertionRepair.CaseSkipReason)
+  }
+
+  private struct Storage: Sendable {
+    var prewarmStarted = false
+    var state: State = .warming
+  }
+
+  private static let storage = OSAllocatedUnfairLock(initialState: Storage())
+
+  package static func prewarm() {
+    let shouldStart = storage.withLock { storage in
+      guard !storage.prewarmStarted else { return false }
+      storage.prewarmStarted = true
+      return true
+    }
+    guard shouldStart else { return }
+
+    DispatchQueue.global(qos: .utility).async {
+      let prepared = EnglishWordOracle.prepare()
+
+      storage.withLock { storage in
+        guard case .warming = storage.state else { return }
+        switch prepared {
+        case .success(let oracle):
+          storage.state = .ready(oracle)
+        case .failure(let reason):
+          storage.state = .unavailable(reason)
+        }
+      }
+    }
+  }
+
+  package static func snapshot() -> EnglishWordOracle {
+    storage.withLock { storage in
+      switch storage.state {
+      case .warming:
+        return .unavailable(reason: .oracleWarming)
+      case .ready(let oracle):
+        return oracle
+      case .unavailable(let reason):
+        return .unavailable(reason: reason)
+      }
+    }
+  }
+
+  package static func disableAfterTimeout() {
+    storage.withLock { storage in
+      storage.state = .unavailable(.oracleTimedOut)
+    }
+  }
+}
+```
+
+Add this import and call beside the existing launch prewarm in `WisprBootstrapper`:
+
+```swift
+import EnviousWisprPostProcessing
+```
+
+```swift
+EnglishWordOracleRuntime.prewarm()
+```
+
+Add inside `CursorInsertionRepair`:
+
+```swift
+package static func legacyOnly(
+  text: String,
+  reason: CaseSkipReason
+) -> PreparedPayloads {
+  PreparedPayloads(
+    legacyText: legacyPayload(text),
+    repairedText: nil,
+    candidateRules: [.caseSkipped(reason)]
+  )
+}
+```
+
+In `KernelFinalizationWiring`, snapshot the existing inputs and use the existing Core deadline facility:
+
+```swift
+let payloads =
+  await withOrderedDeadline(
+    seconds: 0.100,
+    operation: {
+      CursorInsertionRepair.repair(
+        text: text,
+        context: repairContext,
+        protectedWords: protectedWords,
+        language: resolvedLanguage
+      )
+    },
+    onTimeout: {
+      EnglishWordOracleRuntime.disableAfterTimeout()
+    }
+  )
+  ?? CursorInsertionRepair.legacyOnly(
+    text: text,
+    reason: .oracleTimedOut
+  )
+```
+
+Replace plan lines 391-400 with:
+
+> Startup warm-up and the runtime deadline serve different purposes. `WisprBootstrapper` starts `EnglishWordOracleRuntime.prewarm()` beside the existing output-classifier prewarm and does not await it, so launch is not delayed. Until preparation completes, the runtime supplies an unavailable oracle carrying `.oracleWarming`; casing keeps the capital while the independent spacing and seam rules continue normally.
+>
+> A prepared oracle decision still runs off the main actor under a 100 ms ordered wall-clock deadline. On timeout, `EnglishWordOracleRuntime` is synchronously disabled before paste resumes, the abandoned result is ignored, and delivery continues with `legacyText`. Disabling first prevents a later paste from racing the abandoned call against AppKit’s one shared spell checker. The delivery closure is already async; `repair` remains synchronous.
+>
+> The startup warm-up removes the measured 105.6 ms cold cost from normal use. The deadline protects against a later system-service stall. Both are required for the heart-path contract.
+
+### B. Available-language guard and canary removal
+
+Inside the live dictionary decision:
+
+```swift
+guard spellChecker.availableLanguages.contains(englishLanguage) else {
+  return .refuse(.dictionaryUnavailable)
+}
+```
+
+Replace the E2E nil row:
+
+> | Nil | no English dictionary installed? | `availableLanguages` yields no English identifier → `.dictionaryUnavailable` → capital kept. |
+
+Replace the yes-to-everything failure row:
+
+> | Invalid or stale dictionary identifier | Never queried: selection comes from `availableLanguages`, and membership is revalidated before each lookup. Failure keeps the capital. | none |
+
+Replace all remaining canary test prose with:
+
+> Fail-closed tests cover: no English identifier; the prepared identifier disappearing from `availableLanguages`; lexical-class availability missing; and every live oracle timeout. No fixed nonsense-word canary exists.
+
+### C. Correct P0, P2 and P8
+
+Replace P0’s final paragraph with:
+
+> `applyLeadingCase` is the sole consumer of ordinary-word decisions. Two additional references to the deleted type call only `normalizeApostrophes`, at seam comparison and the pronoun-`I` guard. That helper is punctuation normalization, not word knowledge, and is relocated to `CursorInsertionRepair` before the type is deleted.
+
+Replace P2 with:
+
+> **P2 — part of speech supplies a conservative safety filter, not a name recognizer.** The oracle accepts only the listed non-noun lexical classes. `Noun`, `OtherWord` and no tag keep the capital. This blocks many name readings but also refuses ordinary noun-led continuations, and the `Bill` evidence in P12 proves that the tagger does not identify every name.
+
+Replace P8’s final sentence with:
+
+> In this 36-case authored diagnostic, clipping to the production 20-unit window changed no decision. This demonstrates that the proposed rule can work with the real input shape; it does not prove that truncation is universally free or that every relevant context fits inside 20 units.
+
+### D. Justify the 15 entries
+
+Replace P6 and §3 step 2 with:
+
+> **P6 — one frozen compatibility-exception set, pending ablation.** The proposed 15 entries are not presented as the complete grammatical classes of English indefinite pronouns or deictic time expressions. They are explicit compatibility exceptions for words observed to receive a refused noun tag despite intended ordinary continuation use.
+>
+> Before implementation, score the production candidate twice on the same 11,562 rows: first with no exceptions, then with these 15. Report attempts, stored-casing agreements and disagreements for both. Retain an entry only when it preserves an existing shipped contract or contributes a measured continuation decision without reviewed damage. Do not add entries merely because they belong to a named grammatical class. Future noun misses do not automatically expand this set.
+
+### E. Make the corpus and review reproducible
+
+Replace the generator docstring and iteration/output portions with:
+
+```python
+"""Build app-output-labelled synthetic continuation pairs.
+
+The generator splits stored English dictations at eligible mid-sentence word
+boundaries. The label is inferred from casing already present in app output; it
+is not a founder correction and is not independent ground truth.
+
+Local only. Transcript text and generated rows are never committed.
+"""
+
+import glob
+import hashlib
+import json
+import os
+import random
+import re
+```
+
+```python
+for path in sorted(glob.glob(os.path.join(STORE, "*.json"))):
+```
+
+```python
+case_id = hashlib.sha256(
+    f"{os.path.basename(path)}:{start}".encode("utf-8")
+).hexdigest()[:16]
+
+pairs.append((case_id, left, payload, "keep" if must_keep else "lower"))
+```
+
+```python
+with open(OUT, "w") as f:
+    for case_id, left, payload, label in pairs:
+        f.write(f"{case_id}\t{label}\t{left}\t{payload}\n")
+```
+
+Replace ship criterion 2 with:
+
+> 2. Human precision gate:
+>
+> - Produce stable row IDs from the sorted corpus generator.
+> - From all rows the production oracle would lowercase, sort by ID and select 500 using `random.Random(1803).sample`.
+> - Separately include every generated-capital row the oracle would lowercase as a mandatory safety audit; those rows are not added to the 500-row precision denominator.
+> - Add 500 deterministically sampled oracle-kept decoys and shuffle the combined review sheet with seed 1803.
+> - The review sheet contains only `case_id`, left context and payload. It does not contain stored casing, oracle decision or corpus label.
+> - The reviewer records `LOWERCASE`, `KEEP CAPITAL` or `UNSURE`. `UNSURE` counts as an incorrect lowercase for the precision gate.
+> - After review is locked, join decisions back to the hidden key. Precision is `reviewed-correct lowercase decisions / 500` and must be at least 90%.
+> - Report the generated-capital safety audit separately with every disagreement listed. The 11,562-row app-output corpus remains coverage characterisation, never ground-truth precision.
+
+### F. Mechanical consistency edits
+
+Use:
+
+> `CaseSkipReason` renames two cases and adds five: `.wordClassNotSafe`, `.wordClassUnavailable`, `.learnedWord`, `.oracleWarming` and `.oracleTimedOut`. `AppliedRule` gains no cases; it continues to carry these through `.caseSkipped(reason)`.
+
+Use:
+
+> `ordinary-lowercase-words.txt` — delete: 830 physical lines containing 799 entries.
+
+Choose one artifact outcome now:
+
+> The two historical baseline scorers are retained as historical, explicitly non-rerunnable artifacts after resource deletion. Their headers state the commit and resource version used to produce the recorded baseline.
+
+Delete the duplicated paragraph at plan line 187.
+
+**PROCEED-WITH-REVISIONS**
+
