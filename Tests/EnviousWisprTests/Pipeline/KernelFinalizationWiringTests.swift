@@ -796,7 +796,8 @@ import Testing
     // lowercase word AND a German noun — the collision the language gate exists
     // for.
     let processed = try await wiring.processText(
-      "Start ist heute Abend und danach gehen wir in die Stadt") {}
+      "Start ist heute Abend und danach gehen wir in die Stadt"
+    ) {}
     _ = await wiring.deliver(processed)
 
     let request = try #require(captured.requests.first)
@@ -804,6 +805,102 @@ import Testing
     #expect(
       delivered.hasPrefix("Start"),
       "a German noun must keep its capital even though the engine reported English")
+  }
+
+  // Seam de-duplication, checked through the REAL delivery composition (#1803).
+  //
+  // The unit table in `CursorInsertionRepairTests` proves the rule's logic with
+  // hand-built arguments. It cannot prove the rule is wired to the right INPUT,
+  // and that is exactly the class that escaped #1785's eight local rounds, four
+  // apps of live UAT and 4,000 tests: a language gate reading a hard-coded "en",
+  // caught only by cloud review. These drive the actual `deliver` closure.
+  @Test("a word repeated across the seam is delivered once")
+  func duplicateSeamWordIsDroppedThroughTheRealComposition() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in
+        PasteService.CaretContext(
+          leftWindow: "I want to go to the ", rightWindow: "", selectionLocation: 20,
+          selectionLength: 0)
+      },
+      adapter: Self.transcribedEngine(language: "en"))
+
+    let processed = try await wiring.processText(
+      "The store is closed today and I will go tomorrow instead"
+    ) {}
+    _ = await wiring.deliver(processed)
+
+    let request = try #require(captured.requests.first)
+    let repaired = try #require(request.repairedText)
+    #expect(
+      repaired.hasPrefix("store"),
+      "the duplicated determiner must be gone, leaving: \(repaired)")
+    #expect(!repaired.lowercased().hasPrefix("the "))
+  }
+
+  @Test("a locked unsegmented language refuses the drop even with a space in the text")
+  func lockedJapaneseRefusesTheDrop() async throws {
+    // Proves the rule reads the RESOLVED language rather than the presence of a
+    // space. An English reading of this text would find a word boundary and a
+    // matching leading token.
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(
+      autoPasteToActiveApp: true, smartInsertion: true, languageMode: .locked("ja"))
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in
+        PasteService.CaretContext(
+          leftWindow: "\u{4ECA}\u{65E5}", rightWindow: "", selectionLocation: 2,
+          selectionLength: 0)
+      },
+      adapter: Self.transcribedEngine(language: "ja"))
+
+    let processed = try await wiring.processText("\u{4ECA}\u{65E5} \u{6674}\u{308C}") {}
+    _ = await wiring.deliver(processed)
+
+    let request = try #require(captured.requests.first)
+    let delivered = request.repairedText ?? request.legacyText
+    #expect(
+      delivered.hasPrefix("\u{4ECA}\u{65E5}"),
+      "an unsegmented script has no word to de-duplicate: \(delivered)")
+  }
+
+  @Test("an unreadable caret yields no candidate, so today's payload is delivered")
+  func unreadableCaretDeliversLegacyPayload() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in nil })
+
+    let processed = try await wiring.processText(
+      "The store is closed today and I will go tomorrow instead"
+    ) {}
+    _ = await wiring.deliver(processed)
+
+    let request = try #require(captured.requests.first)
+    #expect(request.repairedText == nil)
+    #expect(request.legacyText.hasPrefix("The store"))
   }
 
   @Test("English text on the same engine is still recased")
@@ -823,7 +920,8 @@ import Testing
       adapter: Self.transcribedEngine(language: "en"))
 
     let processed = try await wiring.processText(
-      "Review this before the meeting and then send it along") {}
+      "Review this before the meeting and then send it along"
+    ) {}
     _ = await wiring.deliver(processed)
 
     let request = try #require(captured.requests.first)

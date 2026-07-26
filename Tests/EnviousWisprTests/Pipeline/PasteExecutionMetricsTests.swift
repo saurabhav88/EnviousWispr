@@ -65,7 +65,7 @@ struct PasteExecutionMetricsTests {
     // The whole set, so a rule added later without a name cannot slip through.
     let every: [CursorInsertionRepair.AppliedRule] = [
       .refusedInsideWord, .refusedNoLeftAnchor, .leadingSpace, .lowercasedFirst,
-      .droppedTerminalPeriod, .trailingSpace,
+      .droppedDuplicateWord, .droppedTerminalPeriod, .trailingSpace,
       .caseSkipped(.alreadyLower), .caseSkipped(.protectedWord),
       .caseSkipped(.mixedCaseOrAcronym), .caseSkipped(.containsDigit),
       .caseSkipped(.pronounI), .caseSkipped(.alwaysCapitalized),

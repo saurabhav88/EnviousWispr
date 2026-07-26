@@ -376,7 +376,16 @@ struct KernelFinalizationWiring {
         let payloads = CursorInsertionRepair.repair(
           text: text,
           context: caretContext.map {
-            CursorInsertionRepair.CaretText(left: $0.leftWindow, right: $0.rightWindow)
+            CursorInsertionRepair.CaretText(
+              left: $0.leftWindow, right: $0.rightWindow,
+              // The left window is cut to `caretContextWindow` units, and the
+              // string cannot say whether it was cut or simply began at the
+              // document's start. `assembleCaretContext` reads from
+              // `max(0, selectionLocation - window)`, so the window reached
+              // offset zero exactly when it is as long as the caret's offset.
+              // Without this the seam de-duplication refused every short field
+              // (#1803, local diff review).
+              leftReachesDocumentStart: $0.leftWindow.utf16.count == $0.selectionLocation)
           },
           protectedWords: context.protectedSpellings,
           // Resolved from positive evidence, NOT read off the result.

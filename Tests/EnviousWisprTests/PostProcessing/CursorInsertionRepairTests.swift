@@ -1373,4 +1373,174 @@ struct CursorInsertionRepairTests {
       #expect(payloads.repairedText == nil, "\(language ?? "nil")")
     }
   }
+
+  // MARK: - Seam de-duplication (#1803)
+
+  /// One helper so every de-duplication case reads as document + dictation.
+  private static func seam(
+    left: String, right: String = "", payload: String, language: String? = "en",
+    protectedWords: Set<String> = []
+  ) -> CursorInsertionRepair.PreparedPayloads {
+    CursorInsertionRepair.repair(
+      text: payload,
+      context: CursorInsertionRepair.CaretText(left: left, right: right),
+      protectedWords: protectedWords, language: language, lexicon: Self.prototypeLexicon)
+  }
+
+  @Test("The founder's reported case emits one word, not two")
+  func founderCaseDropsTheDuplicate() {
+    let payloads = Self.seam(left: "I want to go to the", payload: "The store is closed today.")
+    #expect(payloads.candidateRules.contains(.droppedDuplicateWord))
+    #expect(
+      "I want to go to the" + (payloads.repairedText ?? "")
+        == "I want to go to the store is closed today. ")
+  }
+
+  @Test("Both the casing decision and the drop are reported, in order")
+  func recordsCasingAndDropTogether() {
+    let payloads = Self.seam(left: "I want to go to the", payload: "The store is closed today.")
+    let names = payloads.candidateRules.map(\.telemetryName)
+    #expect(names.contains("lowercased_first"))
+    #expect(names.contains("dropped_duplicate_word"))
+    // AppliedRule records decisions TAKEN, not only effects visible in the final
+    // payload, so the casing result is not suppressed by the later deletion.
+    #expect(
+      names.firstIndex(of: "lowercased_first")! < names.firstIndex(of: "dropped_duplicate_word")!)
+  }
+
+  /// The r1 defect, frozen. Dropping BEFORE the casing rule would retarget
+  /// casing onto the second word: `Store` is in the lexicon, so the payload
+  /// would have shipped as `store` and a title or name would be corrupted.
+  @Test("Dropping the duplicate does not retarget the casing rule onto the next word")
+  func dropDoesNotRetargetCasing() {
+    let payloads = Self.seam(left: "Send me the", payload: "The Store is ready.")
+    #expect(payloads.candidateRules.contains(.droppedDuplicateWord))
+    #expect(payloads.repairedText == " Store is ready. ")
+  }
+
+  /// The r2 defect, frozen. Exactly one side supplies the seam separator.
+  @Test(
+    "Separator ownership never yields a double or a missing space",
+    arguments: [
+      ("go to the", "The store.", " store. "),
+      ("go to the", " The store.", " store. "),
+      ("go to the ", "The store.", "store. "),
+      ("go to the ", " The store.", "store. "),
+    ])
+  func separatorOwnershipMatrix(left: String, payload: String, expected: String) {
+    let payloads = Self.seam(left: left, payload: payload)
+    #expect(payloads.candidateRules.contains(.droppedDuplicateWord), "\(left)|\(payload)")
+    #expect(payloads.repairedText == expected, "\(left)|\(payload)")
+  }
+
+  @Test("The whole whitespace run after the duplicate goes, not one character")
+  func removesTheWholeWhitespaceRun() {
+    let payloads = Self.seam(left: "go to the", payload: "The   store is ready.")
+    #expect(payloads.repairedText == " store is ready. ")
+  }
+
+  @Test(
+    "A newline on either side of the candidate refuses",
+    arguments: [
+      ("go to the", "\nThe store is ready."),
+      ("go to the", "The\nstore is ready."),
+      ("go to the\n   ", "The store is ready."),
+    ])
+  func newlineRefusesTheDrop(left: String, payload: String) {
+    let payloads = Self.seam(left: left, payload: payload)
+    #expect(!payloads.candidateRules.contains(.droppedDuplicateWord), "\(left)|\(payload)")
+  }
+
+  @Test(
+    "Refusals that protect the user's own text",
+    arguments: [
+      // Nothing may survive an empty payload — the guard the deleted
+      // terminal-period rule never had.
+      ("go to the", "The"),
+      ("go to the", "The."),
+      // Token shape: deleting here would strand punctuation.
+      ("go to the", "\"The store is ready."),
+      ("go to the", "(The store is ready."),
+      ("go to the", "The, store is ready."),
+      // A sentence boundary is not a seam; the repeat is deliberate.
+      ("I went home.", "Home is where it is."),
+      // A comma between the words means the user wrote something on purpose.
+      ("go to the,", "The store is ready."),
+      // Not a duplicate at all.
+      ("go to the", "Store is ready."),
+    ])
+  func refusesWhereIntentIsUnclear(left: String, payload: String) {
+    let payloads = Self.seam(left: left, payload: payload)
+    #expect(!payloads.candidateRules.contains(.droppedDuplicateWord), "\(left)|\(payload)")
+  }
+
+  @Test("A left token that fills a CUT window is unproven, so it refuses")
+  func truncatedLeftTokenRefuses() {
+    // No boundary inside the window and no document-start evidence: what we hold
+    // may be the tail of a longer word, and matching a suffix would delete a word
+    // on false evidence.
+    let payloads = Self.seam(left: "the", payload: "The store is ready.")
+    #expect(!payloads.candidateRules.contains(.droppedDuplicateWord))
+  }
+
+  @Test("The same token IS complete when the window began at the document start")
+  func documentStartMakesTheLeftTokenComplete() {
+    // Byte-identical left window to the test above; only the provenance differs.
+    // A short field — the user typed `the ` and dictates the rest — is a common
+    // Slack and search-box case that refusing here would never fix.
+    let payloads = CursorInsertionRepair.repair(
+      text: "The store is ready.",
+      context: CursorInsertionRepair.CaretText(
+        left: "the ", right: "", leftReachesDocumentStart: true),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.droppedDuplicateWord))
+    #expect(payloads.repairedText == "store is ready. ")
+  }
+
+  @Test("Document-start evidence defaults to absent, so an unaware caller refuses")
+  func documentStartDefaultsToRefusing() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "The store is ready.",
+      context: CursorInsertionRepair.CaretText(left: "the ", right: ""),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(!payloads.candidateRules.contains(.droppedDuplicateWord))
+  }
+
+  @Test("Apostrophe shape does not hide a duplicate")
+  func foldsApostrophesBeforeComparing() {
+    let payloads = Self.seam(left: "I said don\u{2019}t", payload: "Don't worry about it.")
+    #expect(payloads.candidateRules.contains(.droppedDuplicateWord))
+  }
+
+  @Test("A repeated number is a duplicate like any other token")
+  func dropsRepeatedNumber() {
+    let payloads = Self.seam(left: "on page 5", payload: "5 is missing.")
+    #expect(payloads.candidateRules.contains(.droppedDuplicateWord))
+  }
+
+  @Test("A word character to the RIGHT of the caret does not block the rule")
+  func rightSideWordCharacterStillReachesTheRule() {
+    // Premise B, corrected: `isInsideWord` refuses only when BOTH immediate
+    // sides continue a word. Here the immediate left is whitespace, so the
+    // contextual rules run with a word character on the right.
+    let payloads = Self.seam(left: "go to the ", right: "store", payload: "The store is ready.")
+    #expect(payloads.candidateRules.contains(.droppedDuplicateWord))
+  }
+
+  @Test("An unsegmented script has no word to de-duplicate")
+  func unsegmentedScriptRefuses() {
+    let payloads = Self.seam(
+      left: "\u{4ECA}\u{65E5}\u{306F}", payload: "\u{4ECA}\u{65E5} \u{6674}\u{308C}",
+      language: "ja")
+    #expect(!payloads.candidateRules.contains(.droppedDuplicateWord))
+  }
+
+  @Test("Another spacing language de-duplicates the same way English does")
+  func spacingLanguageDropsDuplicate() {
+    // German: spacing is universal, casing is not. The drop is placement only,
+    // so it fires while the capital is left alone.
+    let payloads = Self.seam(left: "Ich gehe zum", payload: "Zum Bahnhof.", language: "de")
+    #expect(payloads.candidateRules.contains(.droppedDuplicateWord))
+    #expect(payloads.repairedText == " Bahnhof. ")
+  }
 }
