@@ -247,7 +247,11 @@ enum ManifestFixture {
   /// runtime).
   // Updated 2026-07-07 (#1405 Phase 2): `our_copy` baseURL repointed to the
   // edge-cached `/parakeet/` path; digest recomputed via the same canonicalization.
-  static let goldenDigest = "edbd8592cc8316b5aa3a82de81c0855af9d0463a7e2bf8a5a1fe8569af497676"
+  // Updated 2026-07-25 (#1792): `identity.runtimeABI` bumped to the fork pin
+  // carrying the finalization fix. `runtimeABI` participates in the canonical
+  // JSON, so the digest moves with it — cloud review caught the stale value,
+  // which would have made `loadBundled` reject the manifest on every launch.
+  static let goldenDigest = "db47ee6d8eb3bff63a46619ef626bd28618b165e1a48d56ae799871cd31f9232"
 
   @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.shippedManifestURL)
