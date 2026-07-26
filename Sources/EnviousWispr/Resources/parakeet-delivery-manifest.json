@@ -5,7 +5,7 @@
     "name": "parakeet-tdt-0.6b-v3-coreml",
     "revision": "aed02740059203c4a87495924f685de3722ae9ce",
     "variant": "int8",
-    "runtimeABI": "fluidAudio-e7948e1a"
+    "runtimeABI": "fluidAudio-afb9aab1"
   },
   "runtimeCompatibility": {
     "minAppVersion": "2.4.0"
