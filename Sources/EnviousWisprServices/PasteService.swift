@@ -651,6 +651,18 @@ public enum PasteService {
     return trimmed.allSatisfy { $0 == "\u{2500}" || $0 == "\u{2501}" || $0 == "\u{2550}" || $0 == "-" }
   }
 
+  /// The text after a strong prompt marker that OPENS the row, or nil.
+  ///
+  /// "Opens" means first non-whitespace character. That is what separates a live
+  /// shell prompt from a full-screen UI's footer hint, which carries words ahead
+  /// of any marker it happens to contain.
+  static func afterStrongMarkerOpeningRow(in row: Substring) -> String? {
+    let leading = row.prefix(while: { $0.isWhitespace || $0 == "\u{00A0}" })
+    let body = row.dropFirst(leading.count)
+    guard let first = body.first, strongPromptMarkers.contains(first) else { return nil }
+    return afterStrongMarker(in: body)
+  }
+
   /// The text after the LAST strong prompt marker in a row, or nil.
   static func afterStrongMarker(in row: Substring) -> String? {
     var lastIndex: String.Index?
@@ -683,16 +695,23 @@ public enum PasteService {
   static func terminalInputLine(inBufferTail tail: String) -> String? {
     let rows = tail.split(separator: "\n", omittingEmptySubsequences: false)
 
-    // The CURRENT prompt wins over any box still sitting in scrollback.
+    // The CURRENT prompt wins over any box still sitting in scrollback — but
+    // only when the final row is genuinely PROMPT-SHAPED.
     //
     // A session that used a full-screen UI earlier leaves its rules behind, so
-    // `────\n❯ old input\n────\n❯ current command` would otherwise return the
-    // OLD input and compute the repair from stale text (code review). Checking
-    // the final row first settles it: a live shell prompt is the last thing on
-    // screen, while a live full-screen UI prints its footer hints below the box
-    // and so has no marker on that row.
+    // anchoring on the last two rules returned the OLD input while ignoring the
+    // command being typed. Checking the final row fixes that, but "contains a
+    // marker" is too weak: a live TUI footer reading `Press ❯ to continue` would
+    // then be mistaken for a shell prompt (cloud review).
+    //
+    // The discriminator comes from a real Ghostty buffer, not from guessing: a
+    // live prompt STARTS its row (`❯\u{00A0}` at index 0), while footer text has
+    // words in front of the marker. Requiring the marker to open the row keeps
+    // the stale-box fix and refuses the footer. A prompt that puts a path before
+    // the marker on the same row falls through to the box or refuses — a missed
+    // opportunity, never a wrong anchor.
     if let last = rows.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
-      let line = afterStrongMarker(in: last)
+      let line = afterStrongMarkerOpeningRow(in: last)
     {
       return line
     }

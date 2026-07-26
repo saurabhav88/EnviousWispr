@@ -477,4 +477,40 @@ struct PasteCaretContextTests {
       PasteService.terminalInputLine(inBufferTail: Self.boxed("git commit -m fix the"))
         == "git commit -m fix the")
   }
+
+  @Test("A live TUI footer containing a marker is not mistaken for a shell prompt")
+  func footerContainingAMarkerIsNotAPrompt() {
+    // Cloud review, PR #1814: requiring only that the final row CONTAINS a
+    // marker let `Press ❯ to continue` beat a perfectly valid input box.
+    let withMarkerFooter = """
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      \u{276F} git commit -m fix the
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      Press \u{276F} to continue
+      """
+    #expect(
+      PasteService.terminalInputLine(inBufferTail: withMarkerFooter)
+        == "git commit -m fix the")
+  }
+
+  @Test("The founder's real Ghostty buffer resolves to its empty input box")
+  func realGhosttyBufferSample() {
+    // Captured live 2026-07-26 from Ghostty running Claude Code. Kept verbatim
+    // because it is the shape the parser actually has to survive: an empty box
+    // padded with a non-breaking space, then a status bar carrying % and $, then
+    // a mode line, then a bare final row.
+    let real = """
+      · Hullaballooing… (5m 54s · ↓ 2.1k tokens)
+
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      \u{276F}\u{00A0}
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+        \u{2588}\u{2588}\u{2588}\u{2591}\u{2591} 23% | $137.15 | 5h:3% | 7d:11%
+        \u{23F5}\u{23F5} auto mode on · PR #1814 · 1 shell
+                                                      /rc
+      """
+    // The box is empty, so there is nothing to continue and the caller refuses.
+    let line = PasteService.terminalInputLine(inBufferTail: real)
+    #expect(line?.trimmingCharacters(in: .whitespaces).isEmpty == true || line == nil)
+  }
 }
