@@ -32,9 +32,9 @@ import Testing
   /// gating CI on those would be flaky by construction (#1803 plan §11.2).
   static let testOracle = EnglishWordOracle(
     unavailableReason: nil,
-    isOrdinaryWord: { ["review", "the", "store", "testing"].contains($0) },
+    dictionaryVerdict: { ["review", "the", "store", "testing"].contains($0) ? .ordinary : .notOrdinary },
     isLearnedWord: { _ in false },
-    wordClassIsSafe: { _, _ in true })
+    isRecognizedName: { _, _ in false })
 
   // MARK: Wedge tuning (PR-4 §3.6)
 

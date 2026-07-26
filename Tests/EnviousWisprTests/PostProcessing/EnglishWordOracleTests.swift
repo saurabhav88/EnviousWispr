@@ -22,18 +22,18 @@ import Testing
 @Suite("EnglishWordOracle", .serialized)
 struct EnglishWordOracleTests {
 
-  /// An oracle with fixed answers. `wordClassIsSafe` defaults to true so a case
-  /// that is not about the part-of-speech filter cannot fail because of it.
+  /// An oracle with fixed answers. `isName` defaults to false so a case that is
+  /// not about the name recogniser cannot fail because of it.
   static func oracle(
     ordinary: Set<String> = [],
     learned: Set<String> = [],
-    wordClassSafe: Bool = true
+    isName: Bool = false
   ) -> EnglishWordOracle {
     EnglishWordOracle(
       unavailableReason: nil,
-      isOrdinaryWord: { ordinary.contains($0) },
+      dictionaryVerdict: { ordinary.contains($0) ? .ordinary : .notOrdinary },
       isLearnedWord: { learned.contains($0) },
-      wordClassIsSafe: { _, _ in wordClassSafe })
+      isRecognizedName: { _, _ in isName })
   }
 
 
@@ -88,14 +88,54 @@ struct EnglishWordOracleTests {
     #expect(decision == .notOrdinaryWord)
   }
 
-  @Test("An ordinary word acting as a NOUN keeps its capital")
-  func nounRefused() {
-    // The conservative filter: a proper name is always a noun, so refusing nouns
-    // blocks most name readings. It also refuses ordinary noun-led
-    // continuations, which is a miss, not damage.
-    let decision = Self.oracle(ordinary: ["rose"], wordClassSafe: false)
+  @Test("A word the recogniser reads as a name keeps its capital")
+  func recognizedNameRefused() {
+    // Step 1. The recogniser sees the real surrounding text, so it can separate
+    // "speak with Mark" from "mark the page".
+    let decision = Self.oracle(ordinary: ["rose"], isName: true)
       .mayLower(word: "Rose", left: "I heard ", payload: "Rose is moving out.")
-    #expect(decision == .wordClassNotSafe)
+    #expect(decision == .recognizedName)
+  }
+
+  @Test("A recognised name never reaches the dictionary at all")
+  func recognizedNameShortCircuits() {
+    // Order is the design: a name is decided before the dictionary is asked, so
+    // `mark` being a perfectly good English word is irrelevant.
+    let probe = ConsultationSpy()
+    let oracle = EnglishWordOracle(
+      unavailableReason: nil,
+      dictionaryVerdict: { _ in
+        probe.record()
+        return .ordinary
+      },
+      isLearnedWord: { _ in false },
+      isRecognizedName: { _, _ in true })
+
+    #expect(oracle.mayLower(word: "Mark", left: "speak with ", payload: "Mark today.") == .recognizedName)
+    #expect(probe.wasConsulted == false, "the dictionary must not be asked about a recognised name")
+  }
+
+  @Test("A word the dictionary does not know keeps its capital — invented names")
+  func unknownWordIsTreatedAsAName() {
+    // Step 2 is "is this even English?", NOT "is this ordinary". A word no
+    // dictionary contains is an invented name: Ghostty, Vercel, Figma.
+    for invented in ["Ghostty", "Vercel", "Figma"] {
+      let decision = Self.oracle(ordinary: [])
+        .mayLower(word: invented, left: "we deployed on ", payload: "\(invented) today.")
+      #expect(decision == .notOrdinaryWord, "\(invented) must keep its capital")
+    }
+  }
+
+  @Test("An ordinary noun the recogniser does NOT flag is lowered")
+  func ordinaryNounLowers() {
+    // The whole point of design B: `today`, `museum`, `coffee` are nouns and
+    // they lowercase, with no exception list, because the dictionary knows them
+    // and the recogniser does not call them names.
+    for noun in ["today", "museum", "coffee", "everything"] {
+      let decision = Self.oracle(ordinary: [noun])
+        .mayLower(word: noun.capitalized, left: "we went to ", payload: "\(noun.capitalized) later.")
+      #expect(decision == nil, "\(noun) must lowercase without needing an exception list")
+    }
   }
 
   @Test("A word the user taught macOS is refused even though the dictionary accepts it")
@@ -118,40 +158,6 @@ struct EnglishWordOracleTests {
       .mayLower(word: "Vesper", left: "", payload: "Vesper.")
     #expect(decision == .learnedWord)
     #expect(decision != .notOrdinaryWord)
-  }
-
-  @Test(
-    "A compatibility exception bypasses the noun filter",
-    arguments: EnglishWordOracle.compatibilityExceptions.sorted())
-  func exceptionBypassesWordClass(_ word: String) {
-    // These 12 tag as nouns yet are never proper nouns. Each earned its place in
-    // a measured ablation; the set is frozen, not a growing allowlist.
-    let decision = Self.oracle(ordinary: [word], wordClassSafe: false)
-      .mayLower(word: word.capitalized, left: "he said ", payload: "\(word.capitalized) is fine.")
-    #expect(decision == nil, "\(word) must bypass the noun refusal")
-  }
-
-  @Test("A compatibility exception still needs the dictionary to accept it")
-  func exceptionStillNeedsDictionary() {
-    // Membership alone is not a licence: an exception that the dictionary does
-    // not recognise is refused like anything else.
-    let decision = Self.oracle(ordinary: [], wordClassSafe: false)
-      .mayLower(word: "Today", left: "he said ", payload: "Today is busy.")
-    #expect(decision == .notOrdinaryWord)
-  }
-
-  @Test("The exception set is exactly the 12 that earned their place")
-  func exceptionSetIsFrozen() {
-    // Ablated over 11,577 real continuation rows: these buy 79 correct lowerings
-    // and zero errors. `nobody`, `somebody` and `none` contributed nothing in
-    // two independent runs and were cut. A growing set has become the word list
-    // this change deletes.
-    #expect(EnglishWordOracle.compatibilityExceptions.count == 12)
-    for cut in ["nobody", "somebody", "none"] {
-      #expect(
-        EnglishWordOracle.compatibilityExceptions.contains(cut) == false,
-        "\(cut) measured zero contribution and must stay cut")
-    }
   }
 
   @Test(
@@ -251,11 +257,11 @@ struct EnglishWordOracleTests {
     let seenLeft = LeftContextRecorder()
     let recorder = EnglishWordOracle(
       unavailableReason: nil,
-      isOrdinaryWord: { _ in true },
+      dictionaryVerdict: { _ in .ordinary },
       isLearnedWord: { _ in false },
-      wordClassIsSafe: { left, _ in
+      isRecognizedName: { left, _ in
         seenLeft.record(left)
-        return true
+        return false
       })
 
     _ = CursorInsertionRepair.repair(
@@ -362,12 +368,12 @@ struct EnglishWordOracleTests {
     let consulted = ConsultationSpy()
     let spy = EnglishWordOracle(
       unavailableReason: nil,
-      isOrdinaryWord: { _ in
+      dictionaryVerdict: { _ in
         consulted.record()
-        return true
+        return .ordinary
       },
       isLearnedWord: { _ in false },
-      wordClassIsSafe: { _, _ in true })
+      isRecognizedName: { _, _ in false })
 
     let payloads = CursorInsertionRepair.repair(
       text: "Olive sent the files.",
@@ -384,12 +390,12 @@ struct EnglishWordOracleTests {
     let consulted = ConsultationSpy()
     let spy = EnglishWordOracle(
       unavailableReason: nil,
-      isOrdinaryWord: { _ in
+      dictionaryVerdict: { _ in
         consulted.record()
-        return true
+        return .ordinary
       },
       isLearnedWord: { _ in false },
-      wordClassIsSafe: { _, _ in true })
+      isRecognizedName: { _, _ in false })
 
     let payloads = CursorInsertionRepair.repair(
       text: "Haus ist gross.",

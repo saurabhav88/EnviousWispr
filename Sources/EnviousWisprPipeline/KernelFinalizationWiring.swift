@@ -455,6 +455,18 @@ struct KernelFinalizationWiring {
           payloads.candidateRules.isEmpty
           ? nil : payloads.candidateRules.map(\.telemetryName).joined(separator: ",")
 
+        // #1803: the repair decision has only ever gone to telemetry, so a
+        // wrong-case report could not be diagnosed locally — which cost three
+        // rounds of guessing during founder testing on 2026-07-26. Names and
+        // shapes only, never a word of the document, so this respects the same
+        // privacy boundary the telemetry does.
+        await AppLogger.shared.log(
+          "CURSOR_REPAIR app=\(context.targetApp?.bundleIdentifier ?? "nil") "
+            + "caret=\(outcome.caretContextOutcome ?? "nil") "
+            + "rules=\(outcome.repairRules ?? "none") "
+            + "candidate=\(payloads.repairedText == nil ? "none" : "offered")",
+          level: .info, category: "KernelFinalizationWiring")
+
         // The legacy payload is what a route falls back to; §6 decides per route
         // whether the candidate may be committed instead.
         let pasteText = payloads.legacyText

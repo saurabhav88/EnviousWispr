@@ -70,7 +70,7 @@ struct PasteExecutionMetricsTests {
       .caseSkipped(.mixedCaseOrAcronym), .caseSkipped(.containsDigit),
       .caseSkipped(.pronounI), .caseSkipped(.alwaysCapitalized),
       .caseSkipped(.notOrdinaryWord), .caseSkipped(.dictionaryUnavailable),
-      .caseSkipped(.wordClassNotSafe), .caseSkipped(.wordClassUnavailable),
+      .caseSkipped(.recognizedName), .caseSkipped(.wordClassUnavailable),
       .caseSkipped(.learnedWord), .caseSkipped(.oracleWarming),
       .caseSkipped(.oracleTimedOut),
       .caseSkipped(.languageNotSupported),

@@ -58,10 +58,10 @@ public enum CursorInsertionRepair {
     case notOrdinaryWord = "not_ordinary_word"
     /// No usable English dictionary on this machine.
     case dictionaryUnavailable = "dictionary_unavailable"
-    /// The word is acting as a noun here, so it may be a name. Refusing nouns
-    /// is a conservative filter, not a name recogniser — see `EnglishWordOracle`.
-    case wordClassNotSafe = "word_class_not_safe"
-    /// The part-of-speech model is unavailable on this device.
+    /// Apple's recogniser read this word as a person, place or organisation in
+    /// this sentence, so the capital is carrying meaning.
+    case recognizedName = "recognized_name"
+    /// The name recogniser is unavailable on this device.
     case wordClassUnavailable = "word_class_unavailable"
     /// The user taught macOS this word, which skews heavily toward names and
     /// brands, so it is evidence against lowering.

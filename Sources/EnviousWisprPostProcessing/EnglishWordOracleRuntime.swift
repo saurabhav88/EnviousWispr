@@ -102,7 +102,7 @@ package enum EnglishWordOracleRuntime {
     }
     // A scheme/language pair may be unsupported, or its assets not loaded, on
     // this device. We never request a download; an absent model keeps capitals.
-    guard NLTagger.availableTagSchemes(for: .word, language: .english).contains(.lexicalClass)
+    guard NLTagger.availableTagSchemes(for: .word, language: .english).contains(.nameType)
     else {
       return .unavailable(.wordClassUnavailable)
     }
@@ -128,15 +128,17 @@ package enum EnglishWordOracleRuntime {
 
     let oracle = EnglishWordOracle(
       unavailableReason: nil,
-      isOrdinaryWord: { word in
+      dictionaryVerdict: { word in
         let checker = NSSpellChecker.shared
         // Re-validated every lookup: a dictionary removed mid-process would
-        // otherwise recreate the stale-identifier fail-open path.
+        // otherwise recreate the stale-identifier fail-open path. The dictation
+        // that discovers it reports the outage itself rather than looking like
+        // an ordinary miss.
         guard checker.availableLanguages.contains(english) else {
           markUnavailableIfReady(.dictionaryUnavailable)
-          return false
+          return .unavailable(.dictionaryUnavailable)
         }
-        return isOrdinary(
+        let ordinary = isOrdinary(
           word,
           sentinel: sentinel,
           spelledCorrectly: { candidate in
@@ -146,25 +148,35 @@ package enum EnglishWordOracleRuntime {
             ).location == NSNotFound
           },
           onServiceFailure: { markUnavailableIfReady(.dictionaryUnavailable) })
+        // A yes-to-everything service is an outage too, not a plain refusal.
+        if !ordinary, case .unavailable(let reason)? = currentUnavailableReason() {
+          return .unavailable(reason)
+        }
+        return ordinary ? .ordinary : .notOrdinary
       },
       isLearnedWord: { NSSpellChecker.shared.hasLearnedWord($0) },
-      wordClassIsSafe: { left, payload in
+      isRecognizedName: { left, payload in
         let joined = left + payload
         // A fresh tagger per decision: the SDK forbids using one instance from
         // more than one thread at a time, and construction is inside the
-        // measured 0.30 ms.
-        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        // measured cost.
+        let tagger = NLTagger(tagSchemes: [.nameType])
         tagger.string = joined
-        tagger.setLanguage(.english, range: joined.startIndex..<joined.endIndex)
         let index = joined.index(joined.startIndex, offsetBy: left.count)
-        guard
-          let lexicalClass = tagger.tag(at: index, unit: .word, scheme: .lexicalClass).0
-        else { return false }
-        return safeWordClasses.contains(lexicalClass)
+        // No tag is NOT an outage, so it is not routed to `.wordClassUnavailable`.
+        // Probed 2026-07-26 across gibberish, keyboard mash, twelve non-English
+        // languages, emoji, digits, URLs and code: every one returned a real tag
+        // (`OtherWord` for gibberish, `Other` for languages where the scheme is
+        // unsupported). The single input that returned nil was a query
+        // at a position holding no word, which cannot arise here because a word
+        // was already extracted. Zero nils in 11,577 real continuations.
+        guard let name = tagger.tag(at: index, unit: .word, scheme: .nameType).0 else {
+          return false
+        }
+        return Self.nameTags.contains(name)
       })
     return .ready(oracle)
   }
-
 
   /// Is `word` ordinary, with a guard against the spell service failing open?
   ///
@@ -190,12 +202,16 @@ package enum EnglishWordOracleRuntime {
     return true
   }
 
-  /// Every class a proper name is not. `Noun`, `OtherWord` and no tag at all
-  /// refuse, which is the conservative direction.
-  private static let safeWordClasses: Set<NLTag> = [
-    .verb, .adverb, .conjunction, .determiner, .pronoun, .adjective,
-    .preposition, .particle, .interjection, .number,
-  ]
+  /// The stored unavailable reason, if the runtime has latched one.
+  private static func currentUnavailableReason() -> Phase? {
+    state.withLock { state in
+      if case .unavailable = state.phase { return state.phase }
+      return nil
+    }
+  }
+
+  /// What counts as a name. Anything else falls through to the dictionary.
+  private static let nameTags: Set<NLTag> = [.personalName, .placeName, .organizationName]
 
   /// Pick an installed English dictionary deterministically.
   static func resolveEnglishLanguage(from availableLanguages: [String]) -> String? {

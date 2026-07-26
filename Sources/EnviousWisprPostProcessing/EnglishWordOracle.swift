@@ -15,8 +15,19 @@ package struct EnglishWordOracle: Sendable {
   /// Why this oracle cannot decide, or `nil` when it can.
   package let unavailableReason: CursorInsertionRepair.CaseSkipReason?
 
-  /// Is the LOWERCASE form an ordinary English word?
-  package let isOrdinaryWord: @Sendable (String) -> Bool
+  /// What the dictionary says about the lowercase form.
+  ///
+  /// Three-valued, not a Bool: the dictation that DISCOVERS an outage must
+  /// report the outage, not a bland `.notOrdinaryWord`. Collapsing "the
+  /// dictionary said no" and "the dictionary is gone" into `false` mislabels the
+  /// one event worth seeing (local diff review r4).
+  package enum DictionaryVerdict: Equatable, Sendable {
+    case ordinary
+    case notOrdinary
+    case unavailable(CursorInsertionRepair.CaseSkipReason)
+  }
+
+  package let dictionaryVerdict: @Sendable (String) -> DictionaryVerdict
 
   /// Has the user taught this word to macOS?
   ///
@@ -27,15 +38,17 @@ package struct EnglishWordOracle: Sendable {
   /// ordinary English word" and be lowered.
   package let isLearnedWord: @Sendable (String) -> Bool
 
-  /// Is the payload's first word behaving as something other than a noun,
-  /// judged against the text actually preceding the caret?
+  /// Does the recogniser read the payload's first word as a NAME, judged
+  /// against the text actually preceding the caret?
   ///
-  /// A conservative safety FILTER rather than a name recogniser: a proper name
-  /// is always a noun, so refusing nouns blocks most name readings — but the
-  /// converse does not hold, and this also refuses ordinary noun-led
-  /// continuations. `pay the Bill` and `call Bill` produce identical tags and
-  /// opposite correct answers; both keep the capital.
-  package let wordClassIsSafe: @Sendable (_ left: String, _ payload: String) -> Bool
+  /// This is the primary guard. Apple's model is trained on exactly the
+  /// polyseme problem — "speak with Mark" reads as a personal name, "mark the
+  /// page" does not — so it is asked with the real surrounding text, never a
+  /// bare word.
+  ///
+  /// It does not catch everything. A name it has never seen falls through to
+  /// the dictionary, which is why that second step exists.
+  package let isRecognizedName: @Sendable (_ left: String, _ payload: String) -> Bool
 
   package var isAvailable: Bool { unavailableReason == nil }
 
@@ -44,31 +57,33 @@ package struct EnglishWordOracle: Sendable {
   ) -> EnglishWordOracle {
     EnglishWordOracle(
       unavailableReason: reason,
-      isOrdinaryWord: { _ in false },
+      dictionaryVerdict: { _ in .unavailable(reason) },
       isLearnedWord: { _ in false },
-      wordClassIsSafe: { _, _ in false })
+      isRecognizedName: { _, _ in true })
   }
 
-  /// Words the tagger classifies as nouns despite ordinary continuation use.
-  ///
-  /// Twelve entries, each earning its place in a measured ablation over 11,577
-  /// real continuation rows: they buy 79 additional correct lowerings and zero
-  /// additional errors. Three further candidates (`nobody`, `somebody`, `none`)
-  /// contributed nothing in two independent runs and were cut.
-  ///
-  /// This is NOT presented as the complete grammatical class of English
-  /// indefinite pronouns or deictic time words — those classes have other
-  /// members. It is a frozen compatibility list, and it is deliberately the
-  /// only hand-maintained word data that survives. Growing it requires a
-  /// re-measurement, never a reflex: a set that grows to rescue individual
-  /// misses has become the word list this change exists to delete.
-  package static let compatibilityExceptions: Set<String> = [
-    "everything", "something", "nothing", "anything",
-    "everyone", "someone", "anyone", "everybody",
-    "yesterday", "today", "tomorrow", "tonight",
-  ]
 
   /// The decision, in one place.
+  ///
+  /// Two steps, in this order, and the order is the whole design:
+  ///
+  /// 1. **Is it a name here?** The recogniser sees the real surrounding text, so
+  ///    it can separate "speak with Mark" from "mark the page". A recognised
+  ///    name keeps its capital and the dictionary is never consulted.
+  /// 2. **Is it even English?** A word the dictionary knows is an ordinary word
+  ///    and may be lowered. A word it does NOT know is an invented name —
+  ///    `Ghostty`, `Vercel`, `Figma` — and keeps its capital.
+  ///
+  /// The dictionary is deliberately asked "is this English?", not "is this
+  /// ordinary?". An earlier design asked the second question and then refused
+  /// every noun to compensate, which needed a hand-maintained exception list and
+  /// cost 21 points of coverage. Measured on 11,577 real continuations: 97.3%
+  /// against 75.9%.
+  ///
+  /// Known limit: a brand that reuses an English word — `Bluetooth`, `Apple`,
+  /// `Discord`, `Chrome` — is in the dictionary, so if the recogniser misses it
+  /// in context it will be lowered. Custom Words is the per-user answer to that,
+  /// and unlike a built-in list it scales past one person's vocabulary.
   ///
   /// Every refusal keeps the capital, which is exactly what the app did before
   /// this feature existed, so no failure here can damage text that was already
@@ -78,10 +93,13 @@ package struct EnglishWordOracle: Sendable {
   ) -> CursorInsertionRepair.CaseSkipReason? {
     if let unavailableReason { return unavailableReason }
     let lower = word.lowercased()
+    guard !isRecognizedName(left, payload) else { return .recognizedName }
     guard !isLearnedWord(lower) else { return .learnedWord }
-    guard isOrdinaryWord(lower) else { return .notOrdinaryWord }
-    if Self.compatibilityExceptions.contains(lower) { return nil }
-    guard wordClassIsSafe(left, payload) else { return .wordClassNotSafe }
+    switch dictionaryVerdict(lower) {
+    case .unavailable(let reason): return reason
+    case .notOrdinary: return .notOrdinaryWord
+    case .ordinary: break
+    }
     return nil
   }
 }

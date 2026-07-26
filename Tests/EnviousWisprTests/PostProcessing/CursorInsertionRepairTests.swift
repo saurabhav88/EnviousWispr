@@ -32,16 +32,16 @@ struct CursorInsertionRepairTests {
 
   /// An oracle with fixed answers, standing in for the system dictionary.
   ///
-  /// `wordClassIsSafe` always returns true so these cases test repair MECHANICS
+  /// `isRecognizedName` always returns false so these cases test repair MECHANICS
   /// exactly as they did against the old lexicon, which had no part-of-speech
   /// layer. The word-class filter has its own coverage in `EnglishWordOracleTests`;
   /// letting it fire here would silently change what these assertions mean.
   static func oracle(_ words: Set<String>) -> EnglishWordOracle {
     EnglishWordOracle(
       unavailableReason: nil,
-      isOrdinaryWord: { words.contains($0) },
+      dictionaryVerdict: { words.contains($0) ? .ordinary : .notOrdinary },
       isLearnedWord: { _ in false },
-      wordClassIsSafe: { _, _ in true })
+      isRecognizedName: { _, _ in false })
   }
 
   /// The prototype's representative word set. Proves the SHAPE of the rule

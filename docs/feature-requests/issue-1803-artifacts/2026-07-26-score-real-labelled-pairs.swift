@@ -64,7 +64,10 @@ func oracle(_ rawL: String, _ p: String, refuseLearned: Bool) -> Bool {
 }
 let list = Set(
   (try! String(
-    contentsOfFile: "Sources/EnviousWisprPostProcessing/Resources/ordinary-lowercase-words.txt",
+    // The list this change deletes, kept beside the scorer so the comparison
+    // stays runnable after the shipped resource is gone.
+    contentsOfFile:
+      "docs/feature-requests/issue-1803-artifacts/ordinary-lowercase-words-baseline.txt",
     encoding: .utf8))
     .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
     .filter { !$0.isEmpty && !$0.hasPrefix("#") })
@@ -80,6 +83,10 @@ struct Pair {
   let payload: String
 }
 var pairs: [Pair] = []
+// Regenerate with `2026-07-26-build-real-labelled-pairs.py` beside this file, then
+// point the path below at its output. The corpus is derived from the founder's own
+// dictations and is deliberately NOT tracked; the session directory in the original
+// path no longer exists.
 for line
   in (try! String(
     contentsOfFile:

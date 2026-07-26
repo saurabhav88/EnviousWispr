@@ -1,5 +1,32 @@
 # #1803 — replace the hand-authored word list with the macOS system dictionary
 
+## AMENDMENT 2026-07-26 — the decision layer was replaced after this plan was approved
+
+**Everything below §0 describes a design that did NOT ship. Read this section first.**
+
+The approved plan asked the dictionary *"is this an ordinary word?"*, then refused every noun to stop names being lowered, then patched the resulting damage with a 12-word exception set. The founder rejected that layer on sight, with the question that ends it: there are on the order of a hundred thousand English nouns, so by what mechanism would we know which ones to exempt? The 12-word set was measured on one person's dictations and would be wrong for every other user — the same defect as the 799-word list it replaced, two orders of magnitude smaller. It reached Gate 2 through both review gates without either one asking that question.
+
+What ships instead, on founder direction, is two ordered questions:
+
+1. **Is it a name *here*?** The name recogniser sees the real surrounding text, so it separates `speak with Mark` from `mark the page`. A recognised name keeps its capital and the dictionary is never consulted.
+2. **Is it even English?** A word the dictionary knows is ordinary and may be lowered. A word it does not know is an invented name — Ghostty, Vercel, Figma — and keeps its capital.
+
+Asking *"is this English"* rather than *"is this ordinary"* is the whole unlock: the noun problem disappears, and with it the exception list. **Deleted:** the 12-word exception set, the noun refusal, and the word-class-safety concept entirely.
+
+**Measured on the same 11,577 rows**, reproducible from the tracked `issue-1803-artifacts/2026-07-26-score-shipped-design-b.swift`:
+
+| | lowercased | agreeing | disagreements | recall |
+|---|---|---|---|---|
+| 799-word list (today) | 7,880 | 7,869 | 11 | 70.5% |
+| approved plan, §0 below | 8,484 | 8,470 | 14 | 75.9% |
+| **shipped** | **11,003** | **10,873** | **130** | **97.4%** |
+
+About 2,400 more continuations come out right than the approved design would have managed. The cost is 116 more wrong lowercases than that design, concentrated in brands that reuse English words — Bluetooth, English, Claude, Sentry, Apple, Discord. Those are in the dictionary, so when the recogniser misses them in context they fall through. Custom Words is the per-user answer and, unlike a built-in list, scales past one vocabulary. Accepted by the founder as V1, with Level 3 expected to supersede it.
+
+**What below is still load-bearing:** the problem statement (§1), the user rubric, the runtime-owner design, the launch prewarm, the deadline, the dictionary fail-open guard, and the corpus methodology including its own corrections. **What is superseded:** every recall/precision figure, the exception-set ablation (§3 step 3), the noun-refusal rationale, and the "12-word frozen set" wording throughout.
+
+**Retained from the review record:** the sibling scorers in `issue-1803-artifacts/` were left unrunnable when this change deleted the word list they compare against; the list is now tracked there as `ordinary-lowercase-words-baseline.txt`. The scorer above also exists because the shipped figures were originally produced by an untracked scratch script — the same defect, on the numbers that justify the design.
+
 ## Preface — Lane + Live UAT declaration
 
 - **Lane:** `Code`
