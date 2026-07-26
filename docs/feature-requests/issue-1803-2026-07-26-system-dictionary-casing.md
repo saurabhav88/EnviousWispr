@@ -594,6 +594,17 @@ The **real-system characterisation** runs against the frozen 11,577-pair corpus 
 - Custom Words matrix: protect `Olive`, `PostHog` and `The Who`; assert each keeps its capital and emits `case_skipped:protected_word` **without consulting the oracle at all**.
 - Existing spacing, seam de-duplication and terminal-period tests must pass unchanged — they carry no word knowledge and this change must not touch them.
 
+## 11.5 Deviations taken during the build
+
+Four, all narrowing rather than widening, recorded rather than left for a reviewer to find:
+
+1. **`CursorInsertionRepair.legacyOnly(text:reason:)` (package) instead of exposing the oracle to Pipeline.** The deadline's fallback needs "today's payload plus a reason". The planned shape would have required `EnglishWordOracle` and `CaseSkipReason.unavailable` to become visible outside PostProcessing; this keeps both internal and gives Pipeline one narrow entry point (`minimize-visibility`).
+2. **`WisprBootstrapper` gains `import EnviousWisprPostProcessing`.** Anticipated in §3b as a consequence of the prewarm trigger, but not spelled out in the file list.
+3. **`KernelFinalizationWiringTests` gains an `init()` installing a deterministic oracle.** Six of its cases drive the real production entry point; a test process never calls `prewarm()`, so the runtime is `.warming` and casing correctly refuses. Installing a *fake* rather than calling the real prewarm is deliberate — the live oracle reads machine state, and gating the required check on it would build a flaky test.
+4. **`ConsultationSpy` in the oracle tests.** The oracle's closures are `@Sendable`, so a captured `var` cannot record whether it was consulted; the spy is lock-backed.
+
+Everything else matches §10 as written.
+
 ## 12. Blast radius & rollback
 
 The behavioural decision still has one consumer, but the implementation touches **three modules**: PostProcessing owns the oracle and its runtime, Pipeline applies the ordered deadline and fallback, AppKit triggers prewarm. An earlier draft said "one function, one module, one caller", which understated it. Rollback is a single revert; there is no migration, no persisted state, and no schema. The deleted resource is recoverable from git history if the decision is ever reversed.

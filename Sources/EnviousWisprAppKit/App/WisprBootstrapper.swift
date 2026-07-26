@@ -4,7 +4,6 @@ import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
-import EnviousWisprPostProcessing
 import EnviousWisprServices
 import EnviousWisprStorage
 import SwiftUI
@@ -1021,18 +1020,6 @@ public final class WisprBootstrapper {
     // blocks launch, recording, ASR, or paste.
     Self.prewarmOutputClassifierIfNeeded(
       holder: outputClassifierHolder, provider: settings.llmProvider)
-
-    // #1803: prepare the English word oracle off the heart path. Its one-time
-    // setup measures 105.6 ms cold — language resolution plus a tag-scheme
-    // probe — and would otherwise land on the FIRST paste after every launch.
-    // Warmed, a decision costs 0.30 ms.
-    //
-    // `prewarm()` is `@concurrent` deliberately: this type is `@MainActor`, so a
-    // plain `Task { }` would inherit the main actor and run that setup on it,
-    // moving the stall from paste to launch rather than removing it. Until it
-    // completes, casing refuses with `oracle_warming` and keeps the capital,
-    // which is exactly today's behaviour.
-    Task { await EnglishWordOracleRuntime.prewarm() }
   }
 
   /// Load the on-device output-safety classifier in the background and publish
