@@ -79,15 +79,19 @@ func words(_ text: String) -> [String] {
 // testing: without it the on-device model REPLIED to the dictation ("Sure, I'll
 // take a look..."), which is a verdict on the prompt, not on the model.
 func shippedPolishPrompt() -> String {
-  let path = NSString(
-    string:
-      "~/Developer/EnviousLabs/EnviousWispr/Sources/EnviousWisprLLM/Prompting/CloudFixedPromptBuilder.swift"
+  // The prompt production Apple Intelligence sessions actually use, which is
+  // NOT the cloud one. `AppleIntelligenceConnector.onDeviceInstructionsSingle`
+  // is a different document with different rules, and it wraps the transcript
+  // in <TRANSCRIPT> tags. Testing the cloud prompt here measured a
+  // configuration no user has ever run. Found by cloud review on PR #1793.
+  let path = NSString(string:
+    "~/Developer/EnviousLabs/EnviousWispr/Sources/EnviousWisprLLM/AppleIntelligenceConnector.swift"
   ).expandingTildeInPath
   guard let body = try? String(contentsOfFile: path, encoding: .utf8),
-    let start = body.range(of: "cloudFixedSystemPrompt = \"\"\"\n"),
+    let start = body.range(of: "onDeviceInstructionsSingle = \"\"\"\n"),
     let end = body.range(of: "\"\"\"", range: start.upperBound..<body.endIndex)
   else {
-    print("could not read the shipped prompt")
+    print("could not read the on-device prompt")
     exit(1)
   }
   return String(body[start.upperBound..<end.lowerBound])
@@ -129,7 +133,7 @@ struct Runner {
       var out = ""
       do {
         let response = try await session.respond(
-          to: source,
+          to: "<TRANSCRIPT>\n\(source)\n</TRANSCRIPT>",
           options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300))
         out = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
       } catch {
@@ -139,7 +143,11 @@ struct Runner {
       }
 
       let lost = words(source).filter { !words(out).contains($0) }
-      let joined = out != source
+      // Did the BOUNDARY go? Both halves arrive terminated, so the input
+      // always holds two sentence-final marks. One left means they were
+      // welded; two means they were not, however much else was edited.
+      let marks = out.filter { ".!?".contains($0) }.count
+      let joined = marks < 2
       let verdict: String
       if lost.count > 2 {
         verdict = "DESTROYED  lost \(lost)"

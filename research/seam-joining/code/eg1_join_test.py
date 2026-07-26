@@ -125,7 +125,13 @@ def main():
                 continue
 
             lost = [w for w in words(source) if w not in words(out)]
-            joined = out.strip() != source.strip()
+            # Did the BOUNDARY go? Both halves arrive terminated, so the
+            # input always holds two sentence-final marks. One left means
+            # they were welded; two means they were not, however much else
+            # was edited. Scoring on 'anything changed' counted a casing or
+            # punctuation tweak as a successful join. Found by cloud review
+            # on PR #1793.
+            joined = sum(out.count(c) for c in '.!?') < 2
             if len(lost) > 2:
                 verdict = f"DESTROYED  lost {lost}"
             elif want == "join" and not joined:

@@ -76,6 +76,23 @@ def main():
         print(f"{args.labels} not found — run grade_real_seams.py first", file=sys.stderr)
         return 1
     rows = [json.loads(l) for l in open(path, encoding="utf-8")]
+
+    # Refuse a TARGETED label file as a general corpus. `grade_real_seams.py
+    # --predictions` deliberately grades only the pairs ONE source model chose
+    # to merge, which is the right way to measure the dangerous direction and
+    # the wrong population to score any other model against: those rows are
+    # selected by that model's own decisions, so every other model's numbers
+    # come out of a biased sample while reading like a ship gate. Found by
+    # cloud review on PR #1793.
+    sources = {r.get("label_source", "unknown") for r in rows}
+    if any("targeted" in str(s) or "merge_only" in str(s) for s in sources):
+        print(f"REFUSING: {path} was graded on one model's MERGE decisions "
+              f"only (label_source={sorted(sources)}). Those rows are a biased "
+              f"sample, not a population, and scoring other models against them "
+              f"produces numbers that look like a gate and are not one. Grade a "
+              f"random sample instead (omit --predictions).", file=sys.stderr)
+        return 1
+
     boundaries = [r for r in rows if r["label"] == "KEEP"]
     joins = [r for r in rows if r["label"] != "KEEP"]
     print(f"\n{len(rows)} real consecutive recordings from the founder's logs")

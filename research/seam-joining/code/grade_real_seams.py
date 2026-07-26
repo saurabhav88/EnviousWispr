@@ -103,15 +103,19 @@ def main():
             print(f"no MERGE decisions found in {args.predictions}", file=sys.stderr)
             return 1
         rows = wanted
-        print(f"grading the {len(rows)} pairs the model chose to MERGE "
-              f"(the dangerous direction, measured completely)", file=sys.stderr)
+        # "Completely" has to mean completely. The --limit slice below is for
+        # the sampling path; applying it here would grade the first 400 merges
+        # and silently drop every wrong merge after the cut, while the message
+        # claims full coverage. Found by cloud review on PR #1793.
+        print(f"grading ALL {len(rows)} pairs the model chose to MERGE "
+              f"(the dangerous direction, measured completely; --limit ignored)",
+              file=sys.stderr)
     else:
         random.Random(1790).shuffle(rows)
+        rows = rows[: args.limit]
         print(f"NO --predictions given: grading a random sample of "
-              f"{min(args.limit, len(rows))} pairs, which measures both "
-              f"directions weakly rather than the merge direction completely",
-              file=sys.stderr)
-    rows = rows[: args.limit]
+              f"{len(rows)} pairs, which measures both directions weakly "
+              f"rather than the merge direction completely", file=sys.stderr)
     print(f"grading {len(rows)} real pairs (gap <= {args.max_gap:.0f}s)", file=sys.stderr)
 
     from anthropic import AnthropicBedrock
@@ -141,7 +145,8 @@ def main():
             if failure or not label:
                 failures.append(failure or "unknown")
             else:
-                row = {**pair, "label": label, "label_source": "haiku_strict_blind"}
+                row = {**pair, "label": label, "label_source": ("haiku_strict_blind_targeted_merge_only"
+                                if args.predictions else "haiku_strict_blind")}
                 graded.append(row)
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
                 handle.flush()

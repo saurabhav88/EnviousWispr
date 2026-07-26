@@ -69,10 +69,6 @@ anything. Do not correct a word that looks like a mishearing. Every word given \
 to you appears in your answer. Return only the text, with no comment."""
 
 
-def with_shipped(note):
-    return ("shipped-polish", note)
-
-
 CANDIDATES = {
     "shipped polish + loose join": ("shipped", J.JOIN_NOTE.replace(
         " Never drop a word, never replace a word with a different word, and "
@@ -105,7 +101,7 @@ def main():
     base = re.search(r'cloudFixedSystemPrompt = """\n(.*?)\n\s*"""',
                      open(swift, encoding="utf-8").read(), re.DOTALL).group(1)
 
-    for name, note in CANDIDATES.items():
+    for name, (kind, note) in CANDIDATES.items():
         print(f"\n=== {name}")
         wrong = 0
         for first, second, want in CASES:
@@ -113,7 +109,7 @@ def main():
             try:
                 response = client.messages.create(
                     model=args.model, max_tokens=600, temperature=0,
-                    system=base + note,
+                    system=(base + note) if kind == "shipped" else note,
                     messages=[{"role": "user",
                                "content": f"Transcript to clean:\n\n{source}"}])
                 out = response.content[0].text.strip()
@@ -123,7 +119,11 @@ def main():
                 continue
 
             lost = [w for w in words(source) if w not in words(out)]
-            joined = out.strip() != source.strip()
+            # Both halves arrive terminated, so the input always holds two
+            # sentence-final marks. One left means the boundary went; two
+            # means it did not, however much else was edited. Comparing
+            # against the source counted a casing tweak as a join.
+            joined = sum(out.count(c) for c in ".!?") < 2
             # A dropped connecting word is legitimate when joining; losing a
             # third of the sentence is the failure this exists to catch.
             destroyed = len(lost) > 2
