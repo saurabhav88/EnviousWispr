@@ -12,8 +12,8 @@ import Foundation
 // finalize — as the 14-state FSM in PR-1 §B.1. It delegates transcription to
 // an `ASREngineAdapter` and post-ASR text-processing / storage / delivery to
 // injected closure seams (PR-3 plan §14a — closure seams match
-// `TranscriptFinalizer`'s own house style; PR-4 wires the production
-// `TranscriptFinalizer` into them).
+// the finalization house style; the kernel wires `KernelFinalizationWiring`
+// into them).
 //
 // PR-3 ships this production-unwired (epic §14.3): no App-layer caller. It is
 // driven only by the deterministic PR-2 simulator through a test-side
@@ -216,9 +216,9 @@ final class RecordingSessionKernel {
   private let sleepTicks: @MainActor (Int) async -> Void
 
   /// Limb / storage / delivery seams (PR-3 plan §14a — closure seams, matching
-  /// `TranscriptFinalizer`'s house style). `processText` runs the text steps
+  /// the finalization house style). `processText` runs the text steps
   /// and signals polish-start via its callback; `store` persists; `deliver`
-  /// pastes. PR-4 wires these to a real `TranscriptFinalizer` call site.
+  /// pastes. These are wired to `KernelFinalizationWiring`.
   private let processText:
     @MainActor (_ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void)
       async throws -> String

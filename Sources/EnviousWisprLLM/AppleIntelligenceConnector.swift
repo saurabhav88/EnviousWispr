@@ -51,46 +51,6 @@ public struct AFMContextWindowExceeded: Error, Sendable {
   }
 }
 
-/// Normalizes language identifiers (ISO 639-1 or BCP-47) to lowercased base
-/// codes. Shared between the preflight gate and the output validator so both
-/// speak the same language vocabulary. Internal so `@testable import` can reach
-/// it from the test suite.
-enum LanguageNormalizer {
-  /// Normalize an incoming language identifier to a lowercased ISO 639-1 base
-  /// code. Returns nil for empty, whitespace-only, `und`, or unrecognized
-  /// inputs. Collapses Chinese variants (`cmn`, `yue`, `zh-Hans/Hant`) to
-  /// `"zh"` and Norwegian variants (`nb`, `nn`) to `"no"`.
-  static func baseCode(_ raw: String?) -> String? {
-    guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
-      !trimmed.isEmpty
-    else { return nil }
-    let lower = trimmed.lowercased()
-    if lower == "und" { return nil }
-    if lower.hasPrefix("zh") || lower.hasPrefix("cmn") || lower.hasPrefix("yue") {
-      return "zh"
-    }
-    if lower.hasPrefix("nb") || lower.hasPrefix("nn") {
-      return "no"
-    }
-    let separator = lower.firstIndex(where: { $0 == "-" || $0 == "_" })
-    let prefix = separator.map { String(lower[..<$0]) } ?? lower
-    return (prefix.count == 2 || prefix.count == 3) ? prefix : nil
-  }
-
-  #if canImport(FoundationModels)
-    /// Map `Set<Locale.Language>` (as returned by
-    /// `SystemLanguageModel.default.supportedLanguages`) to normalized base
-    /// codes via `baseCode(_:)`.
-    @available(macOS 26.0, *)
-    static func baseCodes(_ languages: Set<Locale.Language>) -> Set<String> {
-      Set(
-        languages.compactMap { lang in
-          baseCode(lang.maximalIdentifier)
-        })
-    }
-  #endif
-}
-
 /// Post-generation language drift detector for Apple Intelligence polish.
 /// Pure-function helper exposed at module-internal scope so unit tests can
 /// validate the algorithm without booting the FoundationModels runtime.

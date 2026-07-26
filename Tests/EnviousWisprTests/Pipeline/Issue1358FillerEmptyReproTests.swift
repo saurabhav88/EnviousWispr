@@ -28,8 +28,8 @@ private let fillerOnlyCaptures: [String] = [
 // SettingsDefaultValues.fillerRemovalEnabled = true), NOT the AI polish (polish is
 // skipped on short dictations). A cold-mic quick press yields an ASR best-guess that
 // is a bare filler token ("uh"/"um"/"mm"...). FillerRemovalStep has no empty-floor, so
-// the whole utterance collapses to "". TranscriptFinalizer then trims to empty and
-// throws FinalizationError.emptyAfterProcessing — a heart-path finalization failure
+// the whole utterance collapses to "". The kernel then trims to empty and finishes
+// .noSpeech(.emptyAfterProcessing) before store or deliver runs
 // with no transcript delivered.
 //
 // This suite runs the real step over the founder's live dictation battery + the filler
@@ -41,7 +41,7 @@ private let fillerOnlyCaptures: [String] = [
 @Suite("#1358 filler-removal empties short transcripts (reproduction)")
 struct Issue1358FillerEmptyReproTests {
 
-  /// Mirrors TranscriptFinalizer.swift:130 — the trim whose emptiness throws.
+  /// Mirrors the kernel's post-chain trim, whose emptiness ends the session.
   private func finalTrim(_ s: String) -> String {
     s.trimmingCharacters(in: .whitespacesAndNewlines)
   }

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprServices
 
 @MainActor
 @Suite("PasteDeliveryResult pasteTierLabel")
@@ -16,6 +17,22 @@ struct PasteDeliveryResultLabelTests {
     )
 
     #expect(result.pasteTierLabel == "clipboard_only_ax_denied")
+  }
+
+  @Test("Unverifiable AX write keeps the clipboard-only presentation label")
+  func axWriteUnverifiableUsesClipboardOnlyLabel() {
+    // The typed result records that the destination is unknown, but the user
+    // still sees the ordinary clipboard notice — no new user-facing state.
+    let result = PasteDeliveryResult(
+      tier: .clipboardOnly,
+      durationMs: 1,
+      outcome: .axWriteUnverifiable(
+        targetBundleID: "com.example.target",
+        targetDiagnostics: .unavailable
+      )
+    )
+
+    #expect(result.pasteTierLabel == PasteTier.clipboardOnly.rawValue)
   }
 
   @Test("non-AX-denied outcomes use raw tier value")

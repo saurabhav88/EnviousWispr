@@ -48,6 +48,10 @@ enum SettingsDefaultValues {
 
   static let modelUnloadPolicy: ModelUnloadPolicy = .never
   static let restoreClipboardAfterPaste = true
+  /// Smart insertion: adjust spacing and capitalisation to the text around the
+  /// caret. Default ON — the repair only ever fires where it is positively safe,
+  /// and an unrecognised word simply keeps today's behaviour.
+  static let smartInsertion = true
 
   static let wordCorrectionEnabled = true
   static let fillerRemovalEnabled = true

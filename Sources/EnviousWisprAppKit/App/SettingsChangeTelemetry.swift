@@ -26,6 +26,7 @@ enum SettingsProjection {
     case vadEnergyGate = "vad_energy_gate"
     case modelUnloadPolicy = "model_unload_policy"
     case restoreClipboard = "restore_clipboard"
+    case smartInsertion = "smart_insertion"
     case wordCorrection = "word_correction"
     case fillerRemoval = "filler_removal"
     case contactsSync = "contacts_sync"
@@ -71,6 +72,7 @@ enum SettingsProjection {
     case .vadEnergyGate: return .vadEnergyGate
     case .modelUnloadPolicy: return .modelUnloadPolicy
     case .restoreClipboardAfterPaste: return .restoreClipboard
+    case .smartInsertion: return .smartInsertion
     case .wordCorrectionEnabled: return .wordCorrection
     case .fillerRemovalEnabled: return .fillerRemoval
     case .contactsSyncOnLaunchEnabled: return .contactsSync
@@ -115,6 +117,7 @@ enum SettingsProjection {
     case .vadEnergyGate: return onOff(settings.vadEnergyGate)
     case .modelUnloadPolicy: return settings.modelUnloadPolicy.rawValue
     case .restoreClipboard: return onOff(settings.restoreClipboardAfterPaste)
+    case .smartInsertion: return onOff(settings.smartInsertion)
     case .wordCorrection: return onOff(settings.wordCorrectionEnabled)
     case .fillerRemoval: return onOff(settings.fillerRemovalEnabled)
     case .contactsSync: return onOff(settings.contactsSyncOnLaunchEnabled)

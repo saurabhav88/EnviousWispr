@@ -60,6 +60,13 @@ public struct DictationSessionConfig: Sendable {
   /// scattered writes to `pipeline.autoPasteToActiveApp` in the former root state.
   public let autoPasteToActiveApp: Bool
   public let restoreClipboardAfterPaste: Bool
+  /// Adjust spacing and capitalisation to the text around the caret.
+  ///
+  /// FROZEN at recording start, like `restoreClipboardAfterPaste` above. A
+  /// change made mid-dictation governs the NEXT recording, never the one in
+  /// flight — otherwise flipping the switch would silently rewrite text the
+  /// user is still speaking.
+  public let smartInsertion: Bool
 
   // MARK: VAD
 
@@ -116,6 +123,7 @@ public struct DictationSessionConfig: Sendable {
     triggerSource: TriggerSource,
     autoPasteToActiveApp: Bool,
     restoreClipboardAfterPaste: Bool,
+    smartInsertion: Bool,
     vadAutoStop: Bool,
     vadSilenceTimeout: Double,
     vadSensitivity: Float,
@@ -137,6 +145,7 @@ public struct DictationSessionConfig: Sendable {
     self.triggerSource = triggerSource
     self.autoPasteToActiveApp = autoPasteToActiveApp
     self.restoreClipboardAfterPaste = restoreClipboardAfterPaste
+    self.smartInsertion = smartInsertion
     self.vadAutoStop = vadAutoStop
     self.vadSilenceTimeout = vadSilenceTimeout
     self.vadSensitivity = vadSensitivity

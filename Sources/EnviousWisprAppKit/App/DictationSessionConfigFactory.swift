@@ -38,7 +38,7 @@ enum DictationSessionConfigFactory {
     // skips all tiers, falls through to clipboard) AND emits the
     // `.clipboardOnlyAccessibilityDenied` outcome which routes to the
     // educational `.accessibilityToast` overlay. The legacy gate bypassed
-    // the cascade entirely (TranscriptFinalizer:143 direct copyToClipboard),
+    // the cascade entirely (the wiring's direct copyToClipboard branch),
     // depriving AX-denied users of both the diagnostic and the toast.
     let autoPaste = activePipelineIdle
     // #1173: the single source of truth for the effective model (was an inline
@@ -50,6 +50,7 @@ enum DictationSessionConfigFactory {
       triggerSource: triggerSource,
       autoPasteToActiveApp: autoPaste,
       restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
+      smartInsertion: settings.smartInsertion,
       vadAutoStop: settings.vadAutoStop,
       vadSilenceTimeout: settings.vadSilenceTimeout,
       vadSensitivity: settings.vadSensitivity,

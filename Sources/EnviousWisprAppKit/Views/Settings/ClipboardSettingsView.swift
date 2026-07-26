@@ -19,7 +19,7 @@ struct ClipboardSettingsView: View {
           }
           .toggleStyle(BrandedToggleStyle())
         }
-        BrandedRow(showDivider: false) {
+        BrandedRow {
           HStack(alignment: .top, spacing: 11) {
             SettingsRowIcon(systemName: "arrow.uturn.backward")
             VStack(alignment: .leading, spacing: 4) {
@@ -29,6 +29,21 @@ struct ClipboardSettingsView: View {
               .toggleStyle(BrandedToggleStyle())
               Text(
                 "Saves and restores whatever was on your clipboard before pasting the transcript."
+              )
+              .settingsReadingCopy()
+            }
+          }
+        }
+        BrandedRow(showDivider: false) {
+          HStack(alignment: .top, spacing: 11) {
+            SettingsRowIcon(systemName: "text.cursor")
+            VStack(alignment: .leading, spacing: 4) {
+              Toggle(isOn: $settings.smartInsertion) {
+                Text("Smart insertion").settingsRowLabel()
+              }
+              .toggleStyle(BrandedToggleStyle())
+              Text(
+                "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence."
               )
               .settingsReadingCopy()
             }

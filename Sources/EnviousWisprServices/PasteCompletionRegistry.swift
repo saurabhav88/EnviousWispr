@@ -3,12 +3,12 @@ import Foundation
 /// Phase 0 (#640) — broadcasts paste-completion events from the dictation
 /// pipeline. Bible §6.5.
 ///
-/// Emitted by `TranscriptFinalizer` after a successful auto-paste. Phase 7
+/// Emitted by `KernelFinalizationWiring` after a successful auto-paste. Phase 7
 /// (#629) auto-learn is the first planned subscriber: it watches for edits to
 /// the just-pasted text and surfaces them as custom-word suggestions.
 ///
 /// **Scope of emission** (intentional, see plan §3.5):
-/// - YES: dictation auto-paste via `TranscriptFinalizer.deliverPaste` when
+/// - YES: dictation auto-paste via the wiring's `deliver` closure when
 ///   the cascade outcome is `.delivered` (paste actually landed).
 /// - NO: dictation auto-paste that fell back to clipboard-only (e.g. AX
 ///   denied, CGEvent failed) — observers would falsely learn from a paste
@@ -36,12 +36,12 @@ public protocol PasteCompletionObserver: AnyObject {
 }
 
 /// Single shared registry per app instance. Constructed once at the composition
-/// root (`WisprBootstrapper`) and threaded into both pipeline finalizers via
-/// `TranscriptFinalizer.init`. Phase 7 subscribers register here. (#1106 moved
+/// root (`WisprBootstrapper`) and passed to `KernelFinalizationWiring`, the sole
+/// production finalization path. Phase 7 subscribers register here. (#1106 moved
 /// construction here from the deleted re-polish service.)
 ///
 /// All operations execute on `@MainActor` because the only emitter
-/// (`TranscriptFinalizer.finalize`) and the only foreseeable subscribers
+/// (the wiring's `deliver` closure) and the only foreseeable subscribers
 /// (AX observation in Phase 7) live on the main actor. Keeping the actor
 /// constraint tight avoids paying for unnecessary cross-actor hops on the
 /// dictation hot path.

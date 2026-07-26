@@ -11,6 +11,9 @@ struct DictationSessionConfigTests {
     #expect(config.autoCopyToClipboard == true)
     #expect(config.autoPasteToActiveApp == false)
     #expect(config.restoreClipboardAfterPaste == false)
+    // OFF in the test helper while production defaults ON, so existing suites
+    // keep their legacy behaviour until they opt in.
+    #expect(config.smartInsertion == false)
     #expect(config.vadAutoStop == false)
     #expect(config.vadSilenceTimeout == 1.5)
     #expect(config.vadSensitivity == 0.5)
@@ -31,6 +34,7 @@ struct DictationSessionConfigTests {
     let config = DictationSessionConfig.testDefault(
       autoCopyToClipboard: false,
       autoPasteToActiveApp: true,
+      smartInsertion: true,
       vadAutoStop: true,
       vadSilenceTimeout: 3.0,
       vadSensitivity: 0.8,
@@ -55,6 +59,7 @@ struct DictationSessionConfigTests {
     #expect(config.useExtendedThinking == true)
     #expect(config.selectedInputDeviceUID == "BuiltInMic")
     #expect(config.preferredInputDeviceIDOverride == "ExternalMic")
+    #expect(config.smartInsertion == true)
   }
 
   @Test("Sendable value semantics — modifying a copy's source does not mutate the snapshot")

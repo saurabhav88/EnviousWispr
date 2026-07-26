@@ -185,6 +185,24 @@ import Testing
     #expect(h.driver.currentTranscript == nil)
   }
 
+  @Test("a new session does not inherit the previous one's insertion facts")
+  func newSessionClearsInsertionState() async throws {
+    // #1785, found by Codex review: these three are written ONLY inside the
+    // auto-paste branch, so without a per-session reset an auto-copy or no-copy
+    // recording would file the previous recording's smart-insertion outcome as
+    // its own — telemetry describing a dictation that never happened that way.
+    let h = makeDriver()
+    h.outcome.smartInsertionEnabled = true
+    h.outcome.caretContextOutcome = "read"
+    h.outcome.repairRules = "leading_space,lowercased_first"
+
+    try await startDriverToLive(h)
+
+    #expect(h.outcome.smartInsertionEnabled == nil)
+    #expect(h.outcome.caretContextOutcome == nil)
+    #expect(h.outcome.repairRules == nil)
+  }
+
   @Test("handle(.reset) clears currentTranscript (event entry — parity with TP:1081-1102)")
   func eventResetClearsTranscript() async throws {
     let h = makeDriver()

@@ -71,7 +71,7 @@ Backends: both. Budget: 30s. Mechanism: settings.
 
 During an active recording, navigate to AI Polish settings. Toggle `wordCorrectionEnabled` and `fillerRemovalEnabled`. Recording continues; toggles apply via `PipelineSettingsSync` live-sync.
 
-**Do NOT toggle:** frozen-at-start fields (`autoCopyToClipboard`, `restoreClipboardAfterPaste`, `vadAutoStop`, `vadSilenceTimeout`, `vadSensitivity`, `vadEnergyGate`, `languageMode`, `useStreamingASR`). (`noiseSuppression` was the heaviest live-sync — cancelled the active recording and rebuilt the engine — but the toggle was removed in #734 because the rebuild path was structurally hostile to the heart and Apple Voice Processing was empirically unhelpful for ASR.)
+**Do NOT toggle:** frozen-at-start fields (`autoCopyToClipboard`, `restoreClipboardAfterPaste`, `smartInsertion`, `vadAutoStop`, `vadSilenceTimeout`, `vadSensitivity`, `vadEnergyGate`, `languageMode`, `useStreamingASR`). (`noiseSuppression` was the heaviest live-sync — cancelled the active recording and rebuilt the engine — but the toggle was removed in #734 because the rebuild path was structurally hostile to the heart and Apple Voice Processing was empirically unhelpful for ASR.)
 
 **Negative control:** remove `wordCorrectionEnabled` live-sync from `PipelineSettingsSync.handleSettingChanged`. Setting takes no effect mid-record; observable via post-recording transcript word handling.
 

@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
@@ -321,6 +322,370 @@ import Testing
     #expect(outcome == .clipboardOnly, "no auto-paste => never .pasted")
   }
 
+  // MARK: - Contracts migrated to the live finalization wiring
+  //
+  // The retired test-only seam was never constructed by shipped code, so its
+  // contract tests proved nothing about production. Each still-valid contract
+  // now runs against the live wiring, where a regression in the real delivery
+  // path actually fails.
+
+  @Test("a limb failure preserves the raw ASR text and still saves exactly once")
+  func limbFailurePreservesRawTextAndSavesOnce() async throws {
+    // A polish throw is the realistic limb failure; the chain surfaces it and
+    // the heart path still delivers the raw words.
+    let outcome = KernelFinalizationOutcome()
+    let saves = SaveCountBox()
+    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    polish.llmProvider = .openAI
+    polish.makePolisher = { _, _, _ in ThrowingPolisher() }
+    let wiring = makeWiring(
+      outcome: outcome,
+      steps: makeSteps(polish: polish),
+      save: {
+        saves.count += 1
+        saves.last = $0
+      })
+
+    // 4+ words: production's `LLMPolishStep` skips polish at 3 words or fewer
+    // (`minWordsForPolish`), so a shorter input would never reach the polisher
+    // and the limb could not fail at all.
+    let text = try await wiring.processText("hello world this is a test") {}
+    try await wiring.store(text, UUID())
+
+    #expect(text == "hello world this is a test", "raw ASR text survives a limb failure")
+    #expect(outcome.polishedText == nil)
+    #expect(outcome.polishError != nil, "polish surfaces its error")
+    #expect(saves.count == 1)
+    #expect(saves.last?.text == "hello world this is a test")
+  }
+
+  @Test("whitespace-only chain output reaches the kernel's empty guard unchanged")
+  func whitespaceOnlyOutputIsNotGuardedAtThisLayer() async throws {
+    // The deleted seam threw `.emptyAfterProcessing` here. In production that
+    // guard lives one layer up, in `RecordingSessionKernel` (the
+    // `processed.trimmingCharacters(...).isEmpty` check that finishes
+    // `.noSpeech(.emptyAfterProcessing)` BEFORE store or deliver runs). This
+    // pins the wiring's half of that contract: it passes the text through
+    // without inventing an error type. The terminal mapping itself is covered by
+    // KernelLifecycleTelemetrySinkTests and TerminalNoticeReasonMappingTests.
+    let saves = SaveCountBox()
+    let wiring = makeWiring(save: { _ in saves.count += 1 })
+
+    let text = try await wiring.processText("   \n\t  ") {}
+
+    #expect(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    #expect(saves.count == 0, "the wiring does not save on its own; the kernel gates first")
+  }
+
+  @Test(
+    "a storage failure is absorbed and delivery still runs exactly once with the legacy payload")
+  func storageFailureStillDeliversExactlyOnce() async throws {
+    // REPLACES two obsolete contracts from the dead seam:
+    // `storeThrowWrapsAsStorageFailed` (a typed .storageFailed wrap) and
+    // `storeFailureShortCircuitsPaste` (store failure aborted the paste).
+    // Production reversed the second one deliberately in #1167: storage is
+    // best-effort and MUST NOT cost the user their delivery. Proven end to end
+    // here — store then deliver — rather than as two isolated tests.
+    let outcome = KernelFinalizationOutcome()
+    outcome.rawText = "hello world"
+    let telemetryState = KernelTelemetryState()
+    let saveAttempts = SaveCountBox()
+    let delivered = DeliveredPayloadBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      save: { _ in
+        saveAttempts.count += 1
+        throw WiringTestError.storage
+      },
+      deliverPaste: { request in
+        delivered.payloads.append(request.legacyText)
+        return Self.deliveredResult
+      },
+      telemetryState: telemetryState)
+
+    try await wiring.store("hello world", UUID())
+    let deliveryOutcome = await wiring.deliver("hello world")
+
+    #expect(saveAttempts.count == 1, "the save was attempted exactly once")
+    #expect(outcome.historySaved == false)
+    #expect(outcome.historySaveError != nil)
+    #expect(telemetryState.historySaveFailed, "the lifecycle sink must see the degraded save")
+    #expect(outcome.transcript?.text == "hello world", "the side-channel survives for delivery")
+    #expect(deliveryOutcome == .pasted)
+    #expect(
+      delivered.payloads == ["hello world "],
+      "delivery runs exactly once, with the legacy trailing space appended exactly once")
+  }
+
+  @Test("a clipboard-only cascade result is non-fatal and still completes delivery")
+  func clipboardOnlyIsNonFatal() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      outcome: outcome, context: context,
+      deliverPaste: { _ in Self.clipboardResult })
+
+    let deliveryOutcome = await wiring.deliver("paste me")
+
+    #expect(deliveryOutcome == .clipboardOnly)
+    #expect(outcome.pasteResult?.tier == .clipboardOnly)
+  }
+
+  @Test("a cancellation-like limb preserves raw text and still saves and delivers once")
+  func cancellationLikeLimbStillStoresAndDeliversOnce() async throws {
+    // The runner's `isCancellationLike` classification is covered by its own
+    // suite, but classification alone does not prove the heart path survives.
+    // This pins the consequence at the live boundary: raw text preserved, saved
+    // once, delivered once, no duplicate and no loss.
+    let outcome = KernelFinalizationOutcome()
+    let saves = SaveCountBox()
+    let delivered = DeliveredPayloadBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+
+    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    polish.llmProvider = .openAI
+    polish.makePolisher = { _, _, _ in CancellingPolisher() }
+
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      steps: makeSteps(polish: polish),
+      save: {
+        saves.count += 1
+        saves.last = $0
+      },
+      deliverPaste: { request in
+        delivered.payloads.append(request.legacyText)
+        return Self.deliveredResult
+      })
+
+    let raw = "hello world this is a test"
+    let processed = try await wiring.processText(raw) {}
+    try await wiring.store(processed, UUID())
+    let delivery = await wiring.deliver(processed)
+
+    #expect(processed == raw)
+    #expect(
+      outcome.polishError == nil,
+      "a cancellation-like failure is absorbed silently, not surfaced to the user")
+    #expect(saves.count == 1)
+    #expect(saves.last?.text == raw)
+    #expect(delivery == .pasted)
+    #expect(delivered.payloads == ["hello world this is a test "])
+  }
+
+  // MARK: - Paste-completion event gating (migrated, #640)
+
+  private final class CapturingObserver: PasteCompletionObserver {
+    var events: [PasteCompletionEvent] = []
+    func pasteCompleted(_ event: PasteCompletionEvent) { events.append(event) }
+  }
+
+  @Test("a delivered paste emits exactly one completion event carrying the pasted payload")
+  func completionEventOnDelivered() async {
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      context: context, deliverPaste: { _ in Self.deliveredResult }, registry: registry)
+
+    _ = await wiring.deliver("hello")
+
+    #expect(observer.events.count == 1)
+    #expect(observer.events.first?.pastedText == "hello ")
+  }
+
+  @Test("the completion event carries the payload the route actually committed")
+  func completionEventCarriesTheDeliveredPayload() async throws {
+    // #629's subscriber watches for edits to the pasted text and learns custom
+    // words from them. Announcing the legacy payload after a route committed the
+    // repaired one would make our own spacing and casing read as the user
+    // correcting us — teaching the app from its own output.
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in
+        PasteDeliveryResult(
+          tier: .cgEvent, durationMs: 5,
+          outcome: .delivered(tier: .cgEvent, durationMs: 5),
+          submittedPayload: .repaired)
+      },
+      registry: registry,
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    let processed = try await wiring.processText("Review this before the meeting") {}
+    _ = await wiring.deliver(processed)
+
+    let event = try #require(observer.events.first)
+    #expect(
+      event.pastedText == "review this before the meeting ",
+      "the repaired payload landed, so that is what the observer must be told")
+  }
+
+  @Test("a route that submitted today's payload still announces today's payload")
+  func completionEventFallsBackToLegacy() async throws {
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in
+        PasteDeliveryResult(
+          tier: .cgEvent, durationMs: 5,
+          outcome: .delivered(tier: .cgEvent, durationMs: 5),
+          submittedPayload: .legacy)
+      },
+      registry: registry,
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    let processed = try await wiring.processText("Review this before the meeting") {}
+    _ = await wiring.deliver(processed)
+
+    let event = try #require(observer.events.first)
+    #expect(event.pastedText == "Review this before the meeting ")
+  }
+
+  @Test("a clipboard-only fallback emits no completion event")
+  func completionEventSilentOnClipboardOnly() async {
+    // Phase 7 auto-learn would otherwise watch a destination where nothing landed.
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      context: context, deliverPaste: { _ in Self.clipboardResult }, registry: registry)
+
+    _ = await wiring.deliver("hello")
+
+    #expect(observer.events.isEmpty)
+  }
+
+  @Test("the copy-only branch emits no completion event and never calls the cascade")
+  func completionEventSilentOnCopyOnly() async {
+    let priorSnapshot = PasteService.saveClipboard()
+    var endChangeCount = NSPasteboard.general.changeCount
+    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
+
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoCopyToClipboard: true, autoPasteToActiveApp: false)
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in
+        Issue.record("the cascade must not run on the copy-only path")
+        return Self.deliveredResult
+      },
+      registry: registry)
+
+    _ = await wiring.deliver("hello")
+    endChangeCount = NSPasteboard.general.changeCount
+
+    #expect(observer.events.isEmpty)
+  }
+
+  // MARK: - Clipboard wiring (migrated, #726)
+
+  @Test(
+    "the restore-clipboard flag is forwarded to the paste request exactly",
+    arguments: [true, false])
+  func restoreFlagForwards(_ restore: Bool) async {
+    let captured = RestoreFlagBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(
+      autoPasteToActiveApp: true, restoreClipboardAfterPaste: restore)
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.value = request.restoreClipboardAfterPaste
+        return Self.deliveredResult
+      })
+
+    _ = await wiring.deliver("hello")
+
+    #expect(captured.value == restore)
+  }
+
+  @Test("copy-only writes the DISPLAY text to the clipboard, never the raw ASR text")
+  func copyOnlyWritesDisplayText() async {
+    let pasteboard = NSPasteboard.general
+    let priorSnapshot = PasteService.saveClipboard()
+    let sentinel = "issue-726-prior-\(UUID().uuidString)"
+    pasteboard.clearContents()
+    pasteboard.setString(sentinel, forType: .string)
+    var endChangeCount = pasteboard.changeCount
+    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
+
+    let polished = "POLISHED-\(UUID().uuidString)"
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoCopyToClipboard: true, autoPasteToActiveApp: false)
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in
+        Issue.record("the cascade must not run when auto-paste is off")
+        return Self.deliveredResult
+      })
+
+    _ = await wiring.deliver(polished)
+    endChangeCount = pasteboard.changeCount
+
+    let after = pasteboard.string(forType: .string)
+    #expect(after == polished, "the clipboard must carry the display text")
+    #expect(after != sentinel, "the sentinel must have been replaced")
+  }
+
+  @Test("with both auto-paste and auto-copy off the clipboard is left untouched")
+  func neitherFlagTouchesClipboard() async {
+    let pasteboard = NSPasteboard.general
+    let priorSnapshot = PasteService.saveClipboard()
+    let sentinel = "issue-726-untouched-\(UUID().uuidString)"
+    pasteboard.clearContents()
+    pasteboard.setString(sentinel, forType: .string)
+    var endChangeCount = pasteboard.changeCount
+    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
+
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoCopyToClipboard: false, autoPasteToActiveApp: false)
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in
+        Issue.record("the cascade must not run when auto-paste is off")
+        return Self.deliveredResult
+      })
+
+    _ = await wiring.deliver("hello")
+    endChangeCount = pasteboard.changeCount
+
+    #expect(pasteboard.string(forType: .string) == sentinel)
+  }
+
+  /// Restore the pasteboard ONLY if nothing else wrote to it after our last
+  /// mutation. Mirrors the production `restoreClipboard` guard: a change count
+  /// past what we expect means a third-party tool owns the clipboard now.
+  private static func restorePasteboard(
+    _ snapshot: ClipboardSnapshot?, expectedChangeCount: Int
+  ) {
+    guard let snapshot else { return }
+    PasteService.restoreClipboard(snapshot, changeCountAfterPaste: expectedChangeCount)
+  }
+
   // MARK: Helpers
 
   private static let deliveredResult = PasteDeliveryResult(
@@ -331,13 +696,379 @@ import Testing
     tier: .clipboardOnly, durationMs: 1,
     outcome: .clipboardOnlyAccessibilityDenied(targetBundleID: nil))
 
-  private func makeSteps() -> LimbSteps {
+  // MARK: - Dual-payload composition (#1785 Chunk 6)
+  //
+  // `deliver` now composes BOTH payloads and hands the caret evidence along
+  // with them, so a later route-local decision can revalidate against the same
+  // reading rather than reading the field a second time and getting a different
+  // answer.
+  //
+  // These tests drive the real `KernelFinalizationWiring` and inspect what the
+  // injected delivery seam actually received. Constructing payloads in the test
+  // and comparing them would prove nothing about the production path.
+
+  /// A caret element the injected reader can be handed. Its identity is all
+  /// that matters — the reader is a fake and never touches the real field.
+  private static func stubCaretElement() -> AXUIElement {
+    AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier)
+  }
+
+  /// An engine that has already transcribed, which is the only state delivery
+  /// runs in: the text being delivered exists BECAUSE a result was produced.
+  /// A pre-finalize adapter reports no language, and the repair reads a missing
+  /// language as "unknown" and declines to recase — correct behaviour against a
+  /// state production cannot reach, and a misleading test if left in place.
+  private static func transcribedEngine(language: String? = "en") -> FakeEngine {
+    let engine = FakeEngine(behavior: .batchSuccess(text: ""), clock: FakeClock())
+    engine.lastResult = ASRResult(
+      text: "", language: language, duration: 0, processingTime: 0, backendType: .parakeet)
+    return engine
+  }
+
+  private static let midSentenceCaret = PasteService.CaretContext(
+    leftWindow: "I went to the ",
+    rightWindow: "",
+    selectionLocation: 14,
+    selectionLength: 0)
+
+  @Test(
+    "delivery carries today's payload, the contextual candidate, and the caret evidence")
+  func deliveryTransportsBothPayloadsAndTheCaretEvidence() async throws {
+    let captured = DeliveryRequestBox()
+    let saved = SavedTranscriptBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      save: { saved.transcript = $0 },
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    let processed = try await wiring.processText("Review this before the meeting") {}
+    try await wiring.store(processed, UUID())
+    _ = await wiring.deliver(processed)
+
+    #expect(captured.requests.count == 1, "delivery still runs exactly once")
+    let request = try #require(captured.requests.first)
+    // Today's payload is unchanged and always present, so a route that cannot
+    // use the candidate has the correct fallback already in hand.
+    #expect(request.legacyText == "Review this before the meeting ")
+    // The candidate lowercases the leading word: the caret sits mid-sentence
+    // after "the ", and "review" is an ordinary lowercase word.
+    #expect(
+      request.repairedText == "review this before the meeting ",
+      "the contextual candidate must reach delivery, not be recomputed there")
+    // The evidence the candidate was computed FROM travels with it.
+    #expect(request.caretContext == Self.midSentenceCaret)
+  }
+
+  // The language the repair acts on is RESOLVED, not read off the engine's
+  // result, and this proves it through the production wiring.
+  //
+  // The simulator stands in for Parakeet: `supportsLanguageDetection == false`
+  // and a hard-coded `"en"` on every result, which is exactly what the real
+  // backend does while transcribing 25 European languages. Believing that field
+  // recased German dictations with English rules on the DEFAULT engine (cloud
+  // review, PR #1802).
+  @Test("German text is not recased even when the engine claims English")
+  func germanTextIsNotRecasedOnAnEnglishClaimingEngine() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in
+        PasteService.CaretContext(
+          leftWindow: "Ich gehe zum ", rightWindow: "", selectionLocation: 13, selectionLength: 0)
+      },
+      adapter: Self.transcribedEngine(language: "en"))
+
+    // Long enough to identify, and unambiguous. `Start` is an ordinary English
+    // lowercase word AND a German noun — the collision the language gate exists
+    // for.
+    let processed = try await wiring.processText(
+      "Start ist heute Abend und danach gehen wir in die Stadt") {}
+    _ = await wiring.deliver(processed)
+
+    let request = try #require(captured.requests.first)
+    let delivered = request.repairedText ?? request.legacyText
+    #expect(
+      delivered.hasPrefix("Start"),
+      "a German noun must keep its capital even though the engine reported English")
+  }
+
+  @Test("English text on the same engine is still recased")
+  func englishTextIsStillRecased() async throws {
+    // The fix must not cost the majority case its feature.
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret },
+      adapter: Self.transcribedEngine(language: "en"))
+
+    let processed = try await wiring.processText(
+      "Review this before the meeting and then send it along") {}
+    _ = await wiring.deliver(processed)
+
+    let request = try #require(captured.requests.first)
+    #expect(request.repairedText?.hasPrefix("review") == true)
+  }
+
+  // The read gate is a closed 2x2: the surrounding document may be read ONLY
+  // when the feature is on AND there is a field to read from. All four cells are
+  // enumerated rather than sampled, because three of them are silent — a read
+  // that happens when it shouldn't leaves no trace in the delivered text, so
+  // only a call counter can catch it. This is a privacy boundary, not a cost one.
+  @Test(
+    "the surrounding document is read only when the feature is on and a field exists",
+    arguments: [
+      (smartInsertion: true, hasTarget: true, expectedReads: 1),
+      (smartInsertion: true, hasTarget: false, expectedReads: 0),
+      (smartInsertion: false, hasTarget: true, expectedReads: 0),
+      (smartInsertion: false, hasTarget: false, expectedReads: 0),
+    ])
+  func caretReadGateIsClosed(
+    _ cell: (smartInsertion: Bool, hasTarget: Bool, expectedReads: Int)
+  ) async {
+    let reads = SaveCountBox()
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(
+      autoPasteToActiveApp: true, smartInsertion: cell.smartInsertion)
+    context.targetElement = cell.hasTarget ? Self.stubCaretElement() : nil
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in
+        reads.count += 1
+        return Self.midSentenceCaret
+      })
+
+    _ = await wiring.deliver("Review this before the meeting")
+
+    #expect(
+      reads.count == cell.expectedReads,
+      "reads for on=\(cell.smartInsertion) target=\(cell.hasTarget): expected \(cell.expectedReads), got \(reads.count)"
+    )
+    // Every cell that does not read must deliver exactly today's payload, with
+    // no candidate and no caret evidence attached.
+    let request = captured.requests.first
+    if cell.expectedReads == 0 {
+      #expect(request?.repairedText == nil)
+      #expect(request?.caretContext == nil)
+    } else {
+      #expect(request?.repairedText != nil)
+      #expect(request?.caretContext != nil)
+    }
+    #expect(
+      request?.legacyText == "Review this before the meeting ",
+      "today's payload is delivered unchanged in every cell")
+  }
+
+  @Test("an unreadable field yields no candidate, and today's payload still ships")
+  func unreadableFieldFallsBackToTodaysPayload() async {
+    // The accessibility read fails open. The distinction that matters is that it
+    // produces NO candidate rather than a wrong one, and never blocks delivery.
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in nil })
+
+    let outcome = await wiring.deliver("Review this before the meeting")
+
+    #expect(outcome == .pasted, "an unreadable field must never cost the user their delivery")
+    #expect(captured.requests.first?.repairedText == nil)
+    #expect(captured.requests.first?.caretContext == nil)
+    #expect(captured.requests.first?.legacyText == "Review this before the meeting ")
+  }
+
+  @Test("a later process refreshes canonicals and aliases never protect output")
+  func laterProcessRefreshesSnapshotAndExcludesAliases() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+
+    let steps = makeSteps()
+    steps.wordCorrection.correctorVocabulary = CorrectorVocabulary(
+      terms: [CustomWord(canonical: "Review")],
+      generation: 1)
+
+    let wiring = makeWiring(
+      context: context,
+      steps: steps,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    let first = try await wiring.processText("Review this before the meeting") {}
+    _ = await wiring.deliver(first)
+
+    steps.wordCorrection.correctorVocabulary = CorrectorVocabulary(
+      terms: [CustomWord(canonical: "Other", aliases: ["Review"])],
+      generation: 2)
+
+    let second = try await wiring.processText("Review this before the meeting") {}
+    _ = await wiring.deliver(second)
+
+    try #require(captured.requests.count == 2)
+    #expect(captured.requests[0].repairedText == "Review this before the meeting ")
+    #expect(captured.requests[1].repairedText == "review this before the meeting ")
+  }
+
+  @Test("mid-word refusal carries its evidence but no contextual candidate")
+  func midWordRefusalCarriesContextAndLegacyPayload() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+
+    let midWord = PasteService.CaretContext(
+      leftWindow: "sto",
+      rightWindow: "re",
+      selectionLocation: 3,
+      selectionLength: 0)
+
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in midWord })
+
+    _ = await wiring.deliver("Store today")
+
+    let request = try #require(captured.requests.first)
+    // The evidence still travels, so a route can tell a deliberate refusal apart
+    // from a field it could not read at all.
+    #expect(request.caretContext == midWord)
+    #expect(request.repairedText == nil)
+    #expect(request.legacyText == "Store today ")
+  }
+
+  @Test("input that already ends in a space is not double-spaced through the wiring")
+  func alreadySpacedInputIsNotDoubleSpaced() async throws {
+    // Kept separate from the gate matrix so a failure says which property broke.
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    _ = await wiring.deliver("Review this before the meeting ")
+
+    let request = try #require(captured.requests.first)
+    #expect(request.legacyText == "Review this before the meeting ")
+    #expect(request.repairedText == "review this before the meeting ")
+  }
+
+  @Test(
+    "custom words added mid-dictation do not change a decision for text already in flight")
+  func protectedSpellingsAreSnapshotAtProcessingStart() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let steps = makeSteps()
+    let wiring = makeWiring(
+      context: context,
+      steps: steps,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    // The vocabulary is EMPTY while this dictation is processed, so nothing
+    // protects the leading word.
+    #expect(steps.wordCorrection.correctorVocabulary.terms.isEmpty)
+    let processed = try await wiring.processText("Review this before the meeting") {}
+
+    // Now the user adds "Review" as a custom word — mid-dictation, exactly what
+    // `CustomWordsPropagator` does when a settings edit lands. The words the
+    // user is already saying must not be re-decided under them.
+    steps.wordCorrection.correctorVocabulary = CorrectorVocabulary(
+      terms: [CustomWord(canonical: "Review")], generation: 1)
+
+    _ = await wiring.deliver(processed)
+
+    let request = try #require(captured.requests.first)
+    #expect(
+      request.repairedText == "review this before the meeting ",
+      "the late custom word must not retroactively protect this dictation")
+
+    // Control, so the assertion above cannot pass for the wrong reason: with the
+    // SAME vocabulary present from the start, the word is protected and the
+    // candidate keeps its capital.
+    let secondCaptured = DeliveryRequestBox()
+    let secondContext = KernelSessionContext()
+    secondContext.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    secondContext.targetElement = Self.stubCaretElement()
+    let secondSteps = makeSteps()
+    secondSteps.wordCorrection.correctorVocabulary = CorrectorVocabulary(
+      terms: [CustomWord(canonical: "Review")], generation: 1)
+    let secondWiring = makeWiring(
+      context: secondContext,
+      steps: secondSteps,
+      deliverPaste: { request in
+        secondCaptured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    let secondProcessed = try await secondWiring.processText("Review this before the meeting") {}
+    _ = await secondWiring.deliver(secondProcessed)
+
+    let secondRequest = try #require(secondCaptured.requests.first)
+    #expect(
+      secondRequest.repairedText == "Review this before the meeting ",
+      "a custom word present at processing time IS honoured")
+  }
+
+  // MARK: - Private helpers
+
+  private func makeSteps(polish: LLMPolishStep? = nil) -> LimbSteps {
     LimbSteps(
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
-      llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+      llmPolish: polish ?? LLMPolishStep(keychainManager: KeychainManager()),
       emojiRestore: EmojiRestoreStep())
   }
 
@@ -350,12 +1081,22 @@ import Testing
       _ in Self.deliveredResult
     },
     telemetryState: KernelTelemetryState = KernelTelemetryState(),
-    currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    registry: PasteCompletionRegistry? = nil,
+    currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    // Defaults to UNREADABLE, so every pre-existing test in this suite keeps
+    // exactly today's behaviour and only tests that opt in see a candidate.
+    readCaretContext: @escaping @MainActor (AXUIElement) -> PasteService.CaretContext? = { _ in
+      nil
+    },
+    // Delivery only ever runs after a transcription produced the text being
+    // delivered, so the adapter it reads has a result by then. The default
+    // stands in for exactly that state; language tests vary the code.
+    adapter: (any ASREngineAdapter)? = nil
   ) -> KernelFinalizationWiring {
     KernelFinalizationWiring(
       outcome: outcome,
       context: context,
-      adapter: ParakeetEngineAdapter(asrManager: StubParakeetASRManager()),
+      adapter: adapter ?? Self.transcribedEngine(),
       steps: steps ?? makeSteps(),
       // #989: deterministic executor — this suite asserts chain SEMANTICS
       // (ordering, side channels, delivery), never step timing. The
@@ -368,7 +1109,8 @@ import Testing
         timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),
       save: save,
       deliverPaste: deliverPaste,
-      pasteCompletionRegistry: nil,
+      readCaretContext: readCaretContext,
+      pasteCompletionRegistry: registry,
       currentTime: currentTime,
       telemetryState: telemetryState)
   }
@@ -485,6 +1227,55 @@ private struct CannedPolisher: TranscriptPolisher {
 @MainActor
 private final class SignalFlag {
   var fired = false
+}
+
+@MainActor
+private final class SaveCountBox {
+  var count = 0
+  var last: Transcript?
+}
+
+@MainActor
+private final class DeliveredPayloadBox {
+  var payloads: [String] = []
+}
+
+@MainActor
+private final class RestoreFlagBox {
+  var value: Bool?
+}
+
+/// The whole delivery request, not just its text. Chunk 6 transports three
+/// things now, so a box that keeps only the payload cannot see the other two.
+@MainActor
+private final class DeliveryRequestBox {
+  var requests: [PasteDeliveryRequest] = []
+}
+
+/// Cancels mid-polish. The runner absorbs this silently rather than surfacing
+/// it, so the heart path continues with the pre-step text.
+private struct CancellingPolisher: TranscriptPolisher {
+  func polish(
+    text: String,
+    instructions: PolishInstructions,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    throw CancellationError()
+  }
+}
+
+/// Fails every polish, so the chain surfaces the error and the heart path
+/// still delivers the raw words.
+private struct ThrowingPolisher: TranscriptPolisher {
+  func polish(
+    text: String,
+    instructions: PolishInstructions,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    throw WiringTestError.storage
+  }
 }
 
 @MainActor

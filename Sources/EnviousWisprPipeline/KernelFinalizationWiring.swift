@@ -1,6 +1,7 @@
 import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
 
@@ -13,12 +14,9 @@ import Foundation
 // single-unit-reviewable home for the run -> store -> deliver wiring, so the
 // App's kernel construction site does not grow a 40-line closure literal.
 //
-// `TranscriptFinalizer.swift` is NOT edited: PR-4 wires the kernel's three
-// closures to the three sub-types `TranscriptFinalizer` already composes
-// (`TextProcessingRunner` / `TranscriptStore` / `PasteCascadeExecutor`).
-// `TranscriptFinalizer` stays live for WhisperKit until PR-5/PR-9.
-//
-// PR-4a ships this production-unwired: no App-layer caller constructs it.
+// This is the sole production finalization path. Its contracts run directly
+// against these closures (`TextProcessingRunner` / `TranscriptStore` /
+// `PasteCascadeExecutor`) in `KernelFinalizationWiringTests`.
 
 /// The polish/storage side-channel (PR-4 §3.3). The kernel's three closures
 /// thread only a `String`; this reference carries the raw / polished split and
@@ -71,6 +69,17 @@ final class KernelFinalizationOutcome {
   var emojiRestored: Int?
   var emojiRestoreIncomplete: Bool?
   var emojiLatencyMs: Double?
+  /// #1785 cursor-aware insertion. Four facts, and only four, because a
+  /// wrong-case report arrives with no text attached and these are what make it
+  /// answerable: was the feature even on, could the field be read, what did the
+  /// repair decide, and what did the writing route actually submit.
+  ///
+  /// Shapes and closed-set names only, never a word of the user's document —
+  /// the rule names carry the WHY (`notKnownLowercase`, `protectedWord`,
+  /// `languageNotSupported`) without carrying the word it applied to.
+  var smartInsertionEnabled: Bool?
+  var caretContextOutcome: String?
+  var repairRules: String?
   /// #1167: whether the durable history save succeeded. `false` ⟺ the save
   /// threw but delivery still proceeded (best-effort save). Default `true` (the
   /// happy path); the `store` closure sets it explicitly on each save attempt,
@@ -100,6 +109,17 @@ final class KernelSessionContext {
   var targetApp: NSRunningApplication?
   /// The focused text element captured at recording start.
   var targetElement: AXUIElement?
+  /// Canonical protected spellings, snapshotted at `processText` entry.
+  ///
+  /// `WordCorrectionStep.correctorVocabulary` is MUTABLE and
+  /// `CustomWordsPropagator` can replace it mid-session, so reading it at
+  /// delivery time would let a custom-word broadcast change a decision for a
+  /// dictation already in flight. Captured once per session, before the first
+  /// suspension point, and retained for that session's delivery.
+  ///
+  /// Canonicals only. Aliases are recognition triggers — the misheard forms we
+  /// correct FROM — never protected output spellings.
+  var protectedSpellings: Set<String> = []
 
   init() {}
 }
@@ -136,7 +156,7 @@ struct KernelFinalizationWiring {
 
   /// `save` and `deliverPaste` are closure seams over `TranscriptStore.save`
   /// and `PasteCascadeExecutor.deliver` — the same test-seam shape
-  /// `TranscriptFinalizer` exposes. The App wraps the concrete types; tests
+  /// this wiring exposes. The App wraps the concrete types; tests
   /// pass fakes without touching disk or the AX paste APIs.
   init(
     outcome: KernelFinalizationOutcome,
@@ -146,6 +166,11 @@ struct KernelFinalizationWiring {
     textProcessingRunner: TextProcessingRunner,
     save: @escaping @MainActor (Transcript) throws -> Void,
     deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult,
+    // Caret reader seam. Production reads the live focused field; tests inject
+    // deterministic context so the real composition path can be driven without
+    // depending on whatever field happens to be focused on the machine.
+    readCaretContext: @escaping @MainActor (AXUIElement) -> PasteService.CaretContext? =
+      { PasteService.readCaretContext(element: $0) },
     pasteCompletionRegistry: PasteCompletionRegistry?,
     // #900 clock seam — defaults to today's live expression, so production
     // behavior is identical (the closure capture adds one call). A test injects
@@ -165,6 +190,14 @@ struct KernelFinalizationWiring {
     // `LLMPolishStep.onWillProcess` so the limb emits and the kernel observes
     // (D18 closed for Parakeet — PR-4 §3.8).
     processText = { raw, onPolishStarted in
+      // FIRST statement, before any suspension point: snapshot the canonical
+      // protected spellings for this session. `correctorVocabulary` is mutable
+      // and `CustomWordsPropagator` can replace it while this dictation is still
+      // being processed; reading it at delivery time would let that broadcast
+      // change a decision for text already in flight. Canonicals only — an alias
+      // is a misheard form we correct FROM, never a spelling to protect.
+      context.protectedSpellings = Set(
+        steps.wordCorrection.correctorVocabulary.terms.map(\.canonical))
       steps.llmPolish.onWillProcess = { onPolishStarted() }
       // PR-5 Rung 5 (#827): wire engine LID -> polish for engines that detect.
       // Parakeet (no LID) returns nil through the cast; polish-step stays nil
@@ -261,7 +294,7 @@ struct KernelFinalizationWiring {
       return floor
     }
 
-    // store — build the Transcript exactly as TranscriptFinalizer.swift:129
+    // store — build the Transcript from the polish side-channel
     // (raw / polished from the side-channel, ASR metadata from the adapter),
     // best-effort persist it, and hand it to the driver via the side-channel.
     //
@@ -320,25 +353,94 @@ struct KernelFinalizationWiring {
     // deliver — run the paste cascade or clipboard copy per the session's
     // paste prefs, map `PasteDeliveryResult` -> `KernelDeliveryOutcome`, emit
     // the paste-completion event only on a real delivered paste
-    // (TranscriptFinalizer.swift:163).
+    // on a real delivered paste.
     deliver = { text in
       let pasteStart = CFAbsoluteTimeGetCurrent()
       let config = context.config
       var pasteResult: PasteDeliveryResult?
       let deliveryOutcome: KernelDeliveryOutcome
       if config?.autoPasteToActiveApp == true {
-        let pasteText = PasteService.appendTrailingSpace(text)
+        // Read the caret ONCE, only when the frozen setting allows it and we
+        // actually have a target. `readCaretContext` fails open, so a nil result
+        // simply means no candidate.
+        let caretContext: PasteService.CaretContext? = {
+          guard config?.smartInsertion == true, let element = context.targetElement else {
+            return nil
+          }
+          return readCaretContext(element)
+        }()
+
+        // ONE call to the repair, which is the sole owner of the trailing-space
+        // rule. Even with no context it returns today's payload, so Pipeline
+        // never recreates that rule and the two can never drift apart.
+        let payloads = CursorInsertionRepair.repair(
+          text: text,
+          context: caretContext.map {
+            CursorInsertionRepair.CaretText(left: $0.leftWindow, right: $0.rightWindow)
+          },
+          protectedWords: context.protectedSpellings,
+          // Resolved from positive evidence, NOT read off the result.
+          //
+          // The earlier version of this line took `adapter.lastResult?.language`
+          // and justified it as "Parakeet reports English, which is the only
+          // language it transcribes". That was wrong, and our own settings
+          // screen says so: Parakeet transcribes 25 European languages while
+          // `ParakeetBackend` stamps `"en"` on every result. Since Parakeet is
+          // the DEFAULT engine, a German dictation on the default path was being
+          // recased with English rules — the exact defect the language gate was
+          // built to prevent (cloud review, PR #1802).
+          language: DictationLanguageResolver.resolve(
+            lockedLanguage: {
+              if case .locked(let code) = context.config?.languageMode { return code }
+              return nil
+            }(),
+            engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
+            engineReportedLanguage: adapter.lastResult?.language,
+            text: text,
+            // The caret windows we already read. A short mid-sentence
+            // continuation cannot be identified on its own, and that is exactly
+            // the insertion this feature exists for.
+            surroundingText: caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? ""))
+
+        // Why this dictation was or was not repaired, recorded before delivery
+        // so it survives every route outcome. Names and shapes only (#1785 §8).
+        outcome.smartInsertionEnabled = config?.smartInsertion
+        outcome.caretContextOutcome = {
+          if config?.smartInsertion != true { return "setting_off" }
+          if context.targetElement == nil { return "no_target" }
+          return caretContext == nil ? "unreadable" : "read"
+        }()
+        outcome.repairRules =
+          payloads.candidateRules.isEmpty
+          ? nil : payloads.candidateRules.map(\.telemetryName).joined(separator: ",")
+
+        // The legacy payload is what a route falls back to; §6 decides per route
+        // whether the candidate may be committed instead.
+        let pasteText = payloads.legacyText
         let result = await deliverPaste(
           PasteDeliveryRequest(
-            text: pasteText,
+            legacyText: pasteText,
+            repairedText: payloads.repairedText,
+            caretContext: caretContext,
             targetApp: context.targetApp,
             targetElement: context.targetElement,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false))
         pasteResult = result
         if case .delivered = result.outcome {
+          // The text that actually LANDED, which is not always the one this
+          // closure passed in: a route may have committed the contextual
+          // candidate. `pasteCompletionRegistry`'s subscriber (#629) watches for
+          // later edits to the pasted text and learns custom words from them, so
+          // announcing the legacy payload after delivering the repaired one
+          // would make our own spacing and casing look like the user correcting
+          // us. Falls back to the legacy payload for `.legacy` and for a
+          // delivered route that reported no payload at all.
+          let deliveredText =
+            result.submittedPayload == .repaired
+            ? (payloads.repairedText ?? pasteText) : pasteText
           pasteCompletionRegistry?.emit(
             PasteCompletionEvent(
-              pastedText: pasteText,
+              pastedText: deliveredText,
               destinationBundleID: context.targetApp?.bundleIdentifier))
           deliveryOutcome = .pasted
         } else {
@@ -467,6 +569,13 @@ struct KernelFinalizationWiring {
       llmLatencySeconds: outcome.polishDurationSeconds,
       pasteTier: outcome.pasteResult?.pasteTierLabel,
       pasteLatencyMs: outcome.pasteResult?.durationMs,
+      // #1785: why this dictation was or was not repaired, and which payload the
+      // writing route submitted. `pastePayloadKind` stays nil when no route
+      // reached a write at all, which is distinct from submitting the legacy one.
+      smartInsertionEnabled: outcome.smartInsertionEnabled,
+      caretContextOutcome: outcome.caretContextOutcome,
+      repairRules: outcome.repairRules,
+      pastePayloadKind: outcome.pasteResult?.submittedPayload?.rawValue,
       targetApp: context.targetApp?.bundleIdentifier,
       coldStart: false,
       streamingMode: outcome.streamingMode,

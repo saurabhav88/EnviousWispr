@@ -265,6 +265,51 @@ public enum LanguageDetectorThresholds {
   public static let sampleRate: Int = 16_000
 }
 
+// MARK: - Language identifier normalization
+
+/// Normalizes language identifiers (ISO 639-1 or BCP-47) to lowercased base
+/// codes, so every consumer speaks one language vocabulary.
+///
+/// Lives in Core rather than beside any one consumer: Apple Intelligence
+/// preflight, the polish output validator and the cursor-insertion repair
+/// (#1785) all have to agree on what `"de-DE"` means, and a second copy of
+/// these rules is exactly how two of them would come to disagree.
+public enum LanguageNormalizer {
+  /// Normalize an incoming language identifier to a lowercased ISO 639-1 base
+  /// code. Returns nil for empty, whitespace-only, `und`, or unrecognized
+  /// inputs. Collapses Chinese variants (`cmn`, `yue`, `zh-Hans/Hant`) to
+  /// `"zh"` and Norwegian variants (`nb`, `nn`) to `"no"`.
+  public static func baseCode(_ raw: String?) -> String? {
+    guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !trimmed.isEmpty
+    else { return nil }
+    let lower = trimmed.lowercased()
+    if lower == "und" { return nil }
+    if lower.hasPrefix("zh") || lower.hasPrefix("cmn") || lower.hasPrefix("yue") {
+      return "zh"
+    }
+    if lower.hasPrefix("nb") || lower.hasPrefix("nn") {
+      return "no"
+    }
+    let separator = lower.firstIndex(where: { $0 == "-" || $0 == "_" })
+    let prefix = separator.map { String(lower[..<$0]) } ?? lower
+    return (prefix.count == 2 || prefix.count == 3) ? prefix : nil
+  }
+
+  #if canImport(FoundationModels)
+    /// Map `Set<Locale.Language>` (as returned by
+    /// `SystemLanguageModel.default.supportedLanguages`) to normalized base
+    /// codes via `baseCode(_:)`.
+    @available(macOS 26.0, *)
+    public static func baseCodes(_ languages: Set<Locale.Language>) -> Set<String> {
+      Set(
+        languages.compactMap { lang in
+          baseCode(lang.maximalIdentifier)
+        })
+    }
+  #endif
+}
+
 // MARK: - Script guardrail
 
 /// Script classification helper. The set of non-Latin-script Whisper languages

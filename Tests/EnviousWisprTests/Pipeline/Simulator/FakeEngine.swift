@@ -624,7 +624,13 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   // MARK: Helpers
 
   private func makeResult(text: String) -> ASRResult {
+    // `"en"`, not nil, because this simulator claims `.parakeet` and the real
+    // Parakeet backend hard-codes English on every result it produces
+    // (`ParakeetBackend.swift:166,235`) — it transcribes no other language.
+    // A nil here made the simulator report a state the engine it stands in for
+    // cannot reach, which then read as "language unknown" to every consumer
+    // that asks (#1785).
     ASRResult(
-      text: text, language: nil, duration: 0, processingTime: 0, backendType: .parakeet)
+      text: text, language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
   }
 }

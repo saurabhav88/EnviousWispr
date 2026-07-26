@@ -14,7 +14,7 @@ import Testing
 @MainActor
 @Suite("Heart Path Integration — Finalizer layer (mocked ASR + paste)")
 struct HeartPathIntegrationTests {
-  // Scope note. The tests in this file exercise `TranscriptFinalizer` with
+  // Scope note. The tests in this file exercise `KernelFinalizationWiring` with
   // mocked ASR and paste boundaries, plus one true the old Parakeet pipeline
   // cancellation test. The full pipeline heart-path (audio capture through
   // delivery) cannot be exercised end-to-end until the old Parakeet pipeline
@@ -36,7 +36,7 @@ struct HeartPathIntegrationTests {
     let asrManager = MockASRManager(
       transcribeBehavior: .success(
         ASRResult(
-          text: "hello world",
+          text: "hello world this is a test",
           language: "en",
           duration: fixture.durationSeconds,
           processingTime: 0.04,
@@ -45,13 +45,11 @@ struct HeartPathIntegrationTests {
       )
     )
     let pasteSink = CapturingPasteSink()
-    let polish = MockPolishStep(mode: .success("Hello, world."))
-
     let harness = HeartPathHarness(
       audioCapture: audioCapture,
       asrManager: asrManager,
       pasteSink: pasteSink,
-      steps: [polish]
+      polisher: FixedPolisher(polished: "Hello, world. This is a test.")
     )
 
     let result = try await harness.run()
@@ -61,12 +59,17 @@ struct HeartPathIntegrationTests {
     #expect(asrManager.lastTranscribedSampleCount == 16_000)
 
     #expect(result.usedASRFallback == false)
-    #expect(result.finalization.transcript.text == "hello world")
-    #expect(result.finalization.transcript.polishedText == "Hello, world.")
-    #expect(result.finalization.transcript.displayText == "Hello, world.")
-    #expect(result.finalization.polishError == nil)
+    #expect(result.outcome.transcript?.text == "hello world this is a test")
+    #expect(result.outcome.transcript?.polishedText == "Hello, world. This is a test.")
+    // ASR metadata must reach the stored transcript through the same adapter.
+    #expect(result.outcome.transcript?.language == "en")
+    #expect(result.outcome.transcript?.duration == fixture.durationSeconds)
+    #expect(result.outcome.transcript?.processingTime == 0.04)
+    #expect(result.outcome.transcript?.displayText == "Hello, world. This is a test.")
+    #expect(result.outcome.polishError == nil)
 
-    #expect(pasteSink.pastedTexts == ["Hello, world. "])
+    // Exact legacy payload, trailing space appended exactly once.
+    #expect(pasteSink.pastedTexts == ["Hello, world. This is a test. "])
   }
 
   @Test("early cancellation: recording starts, pipeline cancels, no transcript or paste path runs")
@@ -147,7 +150,7 @@ struct HeartPathIntegrationTests {
     let asrManager = MockASRManager(
       transcribeBehavior: .success(
         ASRResult(
-          text: "hello world",
+          text: "hello world this is a test",
           language: "en",
           duration: fixture.durationSeconds,
           processingTime: 0.03,
@@ -156,23 +159,26 @@ struct HeartPathIntegrationTests {
       )
     )
     let pasteSink = CapturingPasteSink()
-    let polish = MockPolishStep(mode: .failure(MockFailure.polishOffline))
-
     let harness = HeartPathHarness(
       audioCapture: audioCapture,
       asrManager: asrManager,
       pasteSink: pasteSink,
-      steps: [polish]
+      polisher: ThrowingPolisher(error: MockFailure.polishOffline)
     )
 
     let result = try await harness.run()
 
     #expect(result.usedASRFallback == false)
-    #expect(result.finalization.transcript.text == "hello world")
-    #expect(result.finalization.transcript.polishedText == nil)
-    #expect(result.finalization.transcript.displayText == "hello world")
-    #expect(result.finalization.polishError == MockFailure.polishOffline.localizedDescription)
-    #expect(pasteSink.pastedTexts == ["hello world "])
+    #expect(result.outcome.transcript?.text == "hello world this is a test")
+    #expect(result.outcome.transcript?.polishedText == nil)
+    #expect(result.outcome.transcript?.displayText == "hello world this is a test")
+    // The live path maps a limb failure to USER-FACING copy. The retired seam
+    // surfaced the raw error description, so this mapping was never covered.
+    #expect(
+      result.outcome.polishError
+        == "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+    )
+    #expect(pasteSink.pastedTexts == ["hello world this is a test "])
   }
 
   @Test("polish timeout degrades to raw ASR output")
@@ -186,7 +192,7 @@ struct HeartPathIntegrationTests {
     let asrManager = MockASRManager(
       transcribeBehavior: .success(
         ASRResult(
-          text: "hello world",
+          text: "hello world this is a test",
           language: "en",
           duration: fixture.durationSeconds,
           processingTime: 0.03,
@@ -200,30 +206,32 @@ struct HeartPathIntegrationTests {
     // so the test no longer races the mock's 250ms sleep against a real
     // wall clock. The `.sleepThenSuccess` body never runs — the fake
     // intercepts before `op()`.
-    let polish = MockPolishStep(
-      maxDuration: .milliseconds(50),
-      mode: .sleepThenSuccess(.milliseconds(250), "Hello, world.")
-    )
-
     let harness = HeartPathHarness(
       audioCapture: audioCapture,
       asrManager: asrManager,
       pasteSink: pasteSink,
-      steps: [polish],
-      textProcessingRunner: finalizerRunner(throwBelowSeconds: 0.1)
+      polisher: FixedPolisher(polished: "Hello, world. This is a test."),
+      // The real `.openAI` polish budget is 5s. A 6s discriminator throws
+      // TimeoutError for it before the polisher body runs — deterministic, no
+      // wall clock, no sleep.
+      textProcessingRunner: finalizerRunner(throwBelowSeconds: 6)
     )
 
     let result = try await harness.run()
 
     #expect(result.usedASRFallback == false)
-    #expect(result.finalization.transcript.text == "hello world")
-    #expect(result.finalization.transcript.polishedText == nil)
-    #expect(result.finalization.transcript.displayText == "hello world")
+    #expect(result.outcome.transcript?.text == "hello world this is a test")
+    #expect(result.outcome.transcript?.polishedText == nil)
+    #expect(result.outcome.transcript?.displayText == "hello world this is a test")
+    // The real step's `.openAI` budget is 5s; the fake executor throws for any
+    // budget below 6s, so polish times out deterministically with no wall clock.
+    // The live path maps a timeout to its own user-facing copy, distinct from
+    // the generic failure message above.
     #expect(
-      result.finalization.polishError
-        == TimeoutError(seconds: 0.05).localizedDescription
+      result.outcome.polishError
+        == "AI cleanup skipped: the dictation took too long. Your original text was pasted unchanged."
     )
-    #expect(pasteSink.pastedTexts == ["hello world "])
+    #expect(pasteSink.pastedTexts == ["hello world this is a test "])
   }
 }
 
@@ -231,7 +239,8 @@ struct HeartPathIntegrationTests {
 
 @MainActor
 private struct HeartPathHarnessResult {
-  let finalization: FinalizationResult
+  /// The live wiring's side-channel — the same object the kernel reads.
+  let outcome: KernelFinalizationOutcome
   let usedASRFallback: Bool
 }
 
@@ -251,25 +260,39 @@ private func finalizerRunner(throwBelowSeconds: Double = 0.0) -> TextProcessingR
     timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: throwBelowSeconds).run)
 }
 
+private enum HeartPathHarnessError: Error {
+  case unexpectedASROutcome
+}
+
+/// Drives the REAL `KernelFinalizationWiring` closures — process, store,
+/// deliver — over a fixture audio file and a mocked ASR boundary.
+///
+/// It deliberately does not reimplement finalization. The old harness used a
+/// production-dead test seam, so its assertions did not exercise shipped
+/// behaviour. Running the live wiring means a regression in the real delivery
+/// path fails here.
+///
+/// Polish is a real `LLMPolishStep` with an injected polisher, so the chain,
+/// its ordering, and its fallback behaviour are production code.
 @MainActor
 private final class HeartPathHarness {
   private let audioCapture: FixtureAudioCapture
   private let asrManager: MockASRManager
   private let pasteSink: CapturingPasteSink
-  private let steps: [any TextProcessingStep]
+  private let polisher: (any TranscriptPolisher)?
   private let textProcessingRunner: TextProcessingRunner
 
   init(
     audioCapture: FixtureAudioCapture,
     asrManager: MockASRManager,
     pasteSink: CapturingPasteSink,
-    steps: [any TextProcessingStep],
+    polisher: (any TranscriptPolisher)?,
     textProcessingRunner: TextProcessingRunner = finalizerRunner()
   ) {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.pasteSink = pasteSink
-    self.steps = steps
+    self.polisher = polisher
     self.textProcessingRunner = textProcessingRunner
   }
 
@@ -278,41 +301,59 @@ private final class HeartPathHarness {
     _ = try await audioCapture.beginCapturePhase()
     let captureResult = await audioCapture.stopCapture()
 
-    let duration = Double(captureResult.samples.count) / AudioConstants.sampleRate
+    // ONE adapter drives both transcription and the wiring, so the stored
+    // language, duration and processing time come from the same result the
+    // test asserts. Transcribing separately and handing the wiring a different
+    // adapter silently disconnects that metadata.
+    let adapter = ParakeetEngineAdapter(asrManager: asrManager)
+    try await adapter.beginSession(SessionID(), options: .default, streaming: false)
+    let asrResult: ASRResult
+    switch await adapter.finalize(batchSamples: captureResult.samples) {
+    case .transcript(let result): asrResult = result
+    default: throw HeartPathHarnessError.unexpectedASROutcome
+    }
 
-    let asrResult = try await asrManager.transcribe(
-      audioSamples: captureResult.samples,
-      options: .default
-    )
+    let polishStep = LLMPolishStep(keychainManager: KeychainManager())
+    // `.openAI` only selects the 5 s budget and enables the step; the injected
+    // polisher replaces the connector entirely, so no key or network is used.
+    polishStep.llmProvider = .openAI
+    if let polisher {
+      polishStep.makePolisher = { _, _, _ in polisher }
+    }
 
-    let finalizer = TranscriptFinalizer(
-      save: { _ in },
+    let outcome = KernelFinalizationOutcome()
+    outcome.asrStartedAtSeconds = 0
+    outcome.asrEndedAtSeconds = asrResult.processingTime
+
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+
+    let wiring = KernelFinalizationWiring(
+      outcome: outcome,
+      context: context,
+      adapter: adapter,
+      steps: LimbSteps(
+        wordCorrection: WordCorrectionStep(),
+        fillerRemoval: FillerRemovalStep(),
+        emojiFormatter: EmojiFormatterStep(),
+        inverseTextNormalization: InverseTextNormalizationStep(),
+        llmPolish: polishStep,
+        emojiRestore: EmojiRestoreStep()),
       textProcessingRunner: textProcessingRunner,
+      save: { _ in },
       deliverPaste: { [pasteSink] request in
         await pasteSink.deliver(request)
-      }
-    )
+      },
+      pasteCompletionRegistry: nil,
+      currentTime: { 0 },
+      telemetryState: KernelTelemetryState())
 
-    let finalization = try await finalizer.finalize(
-      FinalizationRequest(
-        asrText: asrResult.text,
-        language: asrResult.language,
-        duration: duration,
-        processingTime: asrResult.processingTime,
-        backendType: asrResult.backendType,
-        targetApp: nil,
-        targetElement: nil,
-        autoCopyToClipboard: false,
-        autoPasteToActiveApp: true,
-        restoreClipboardAfterPaste: false,
-        steps: steps
-      )
-    )
+    // The live order the kernel uses: process, then store, then deliver.
+    let displayText = try await wiring.processText(asrResult.text) {}
+    try await wiring.store(displayText, UUID())
+    _ = await wiring.deliver(displayText)
 
-    return HeartPathHarnessResult(
-      finalization: finalization,
-      usedASRFallback: false
-    )
+    return HeartPathHarnessResult(outcome: outcome, usedASRFallback: false)
   }
 }
 
@@ -681,7 +722,7 @@ private final class CapturingPasteSink {
   private(set) var pastedTexts: [String] = []
 
   func deliver(_ request: PasteDeliveryRequest) async -> PasteDeliveryResult {
-    pastedTexts.append(request.text)
+    pastedTexts.append(request.legacyText)
     return PasteDeliveryResult(
       tier: .cgEvent,
       durationMs: 1,
@@ -691,48 +732,30 @@ private final class CapturingPasteSink {
 }
 
 @MainActor
-private final class MockPolishStep: TextProcessingStep {
-  enum Mode {
-    case success(String)
-    case failure(Error)
-    case sleepThenSuccess(Duration, String)
+/// Returns a fixed polished string. Replaces the whole connector, so no key,
+/// no network, no wall clock.
+private struct FixedPolisher: TranscriptPolisher {
+  let polished: String
+  func polish(
+    text: String,
+    instructions: PolishInstructions,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    LLMResult(polishedText: polished)
   }
+}
 
-  let name = "LLM Polish"
-  let isEnabled = true
-  let maxDuration: Duration
-  let errorSurfacePolicy: ErrorSurfacePolicy = .surface
-
-  private let mode: Mode
-
-  init(
-    maxDuration: Duration = .seconds(5),
-    mode: Mode
-  ) {
-    self.maxDuration = maxDuration
-    self.mode = mode
-  }
-
-  func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
-    switch mode {
-    case .success(let polished):
-      var next = context
-      next.polishedText = polished
-      next.llmProvider = "mock"
-      next.llmModel = "mock-polisher"
-      return next
-
-    case .failure(let error):
-      throw error
-
-    case .sleepThenSuccess(let delay, let polished):
-      try await Task.sleep(for: delay)
-      var next = context
-      next.polishedText = polished
-      next.llmProvider = "mock"
-      next.llmModel = "mock-polisher"
-      return next
-    }
+/// Fails every polish. The chain must surface the error and deliver raw text.
+private struct ThrowingPolisher: TranscriptPolisher {
+  let error: any Error
+  func polish(
+    text: String,
+    instructions: PolishInstructions,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    throw error
   }
 }
 
@@ -763,22 +786,21 @@ private enum MockFailure: LocalizedError, Equatable {
 /*
 FINDINGS
 
-1. Missing injection seam in the old Parakeet kernelDriver:
-   the old Parakeet pipeline's `init(...)` constructs its own `TranscriptFinalizer`, and that
-   finalizer owns the only clean paste seam (`deliverPaste`) plus the real text-processing
-   runner. That prevents a true pipeline-level integration test from injecting a mock paste
-   executor or alternate LLM step through the orchestrator itself. This file uses a small
-   harness around real `TranscriptFinalizer` to cover those behaviors.
+1. RESOLVED (#1785 Chunk 3). The old Parakeet pipeline constructed its own finalizer,
+   which owned the only clean paste seam, so no pipeline-level test could inject a paste
+   executor or an alternate polish path through the orchestrator. That seam became
+   production-dead and is now deleted; this file's harness drives the real
+   `KernelFinalizationWiring` closures, injecting only a polisher and a paste sink.
 
 2. Heart-path contract mismatch in the old Parakeet pipeline's `stopAndTranscribe()`:
    a thrown ASR error currently lands in the outer `catch` and sets
    `.error(.asrFailed)` without any fallback paste. That contradicts the
    stated requirement that the heart path never fails and should still deliver something.
 
-3. Heart-vs-limb ambiguity in `TranscriptFinalizer.finalize(...)`:
-   `emptyAfterProcessing` is terminal. If ASR fallback is allowed to degrade to an empty
-   string, the finalizer rejects it. The spec needs to decide whether empty string is valid
-   heart-path output or whether a documented sentinel is required.
+3. RESOLVED. The empty-output decision now lives in `RecordingSessionKernel`, which trims
+   the chain result and finishes `.noSpeech(.emptyAfterProcessing)` BEFORE store or deliver
+   runs — a quiet no-speech end, not a heart-path failure. The wiring layer passes the text
+   through without inventing an error type.
 
 4. Existing brittleness in `TextProcessingRunner`:
    polish failure surfacing is keyed off the literal step name `"LLM Polish"`, not a typed

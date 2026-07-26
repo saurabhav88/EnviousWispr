@@ -6,7 +6,7 @@ import Foundation
 // paste", "cancellation never pastes", and "transcript delivered". Configurable
 // to fail the paste; on failure it models today's verified behavior — the
 // clipboard-only fallback (`PasteCascadeExecutor.swift:269-316`,
-// `TranscriptFinalizerTests.swift:142-159`): a failed paste copies to the
+// `KernelFinalizationWiringTests`): a failed paste copies to the
 // clipboard and is non-fatal.
 //
 // Not a production-protocol conformer — PR-2 has no kernel paste path to bind

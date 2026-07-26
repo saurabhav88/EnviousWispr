@@ -56,7 +56,7 @@ final class TranscriptCoordinator {
   /// Append a just-completed transcript to the in-memory cache.
   ///
   /// Precondition: the transcript has already been persisted by
-  /// `TranscriptFinalizer.save(_:)`. This method does no disk I/O. Caller
+  /// the finalization `save` closure. This method does no disk I/O. Caller
   /// must not invoke it twice for the same transcript — duplicate-ID
   /// protection would mask heart-path bugs.
   func append(_ transcript: Transcript) {

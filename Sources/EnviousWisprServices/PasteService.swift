@@ -195,12 +195,6 @@ public enum PasteService {
     pasteboard.writeObjects(pbItems)
   }
 
-  /// Append a trailing space to text so consecutive dictations are naturally separated.
-  /// Same approach as WisprFlow — simpler and more reliable than reading cursor context via AX.
-  public static func appendTrailingSpace(_ text: String) -> String {
-    text.hasSuffix(" ") ? text : text + " "
-  }
-
   // MARK: - Tier 1: AX Direct Insertion
 
   /// Capture the system-wide focused UI element (the specific text field, not just the app).
@@ -274,10 +268,445 @@ public enum PasteService {
     }
   }
 
+  /// Outcome of a Tier 1 Accessibility insertion attempt.
+  ///
+  /// Three states, not two, because "we could not prove it worked" and "it
+  /// definitely did not happen" demand opposite responses. Retrying an
+  /// unproven write is what double-pastes.
+  public enum AXInsertOutcome: Equatable, Sendable {
+    /// The requested mutation is positively verified. Stop the cascade.
+    case verified
+    /// No mutation landed: the write was refused, failed, or provably left the
+    /// field untouched. Continuing to Tier 2 is safe.
+    case noMutation
+    /// The write reported success but the result cannot be proven. The mutation
+    /// MAY already be in the document, so the cascade must NOT paste again.
+    case unverifiable
+  }
+
+  /// Everything read around a Tier 1 write, so the decision itself stays pure
+  /// and testable. The live AX round-trips happen in `insertViaAccessibility`;
+  /// this struct is what they produce.
+  internal struct AXInsertProbe: Equatable, Sendable {
+    /// UTF-16 length of the text we asked to insert. AX ranges are UTF-16.
+    let insertedUTF16Length: Int
+    /// UTF-16 length of the selection being replaced. Zero for a plain caret.
+    let selectionLengthBefore: Int
+    /// `AXNumberOfCharacters` before the write.
+    let countBefore: Int
+    /// `AXNumberOfCharacters` after the write; nil when unreadable.
+    let countAfter: Int?
+    /// Whether reading the inserted span back matched the text we sent.
+    /// Nil when the span could not be read at all.
+    let readBackMatched: Bool?
+    /// True only when the COMPLETE field is identical before and after the
+    /// write. A window around the original selection is not enough: the
+    /// selection can move between AX calls, so an equal-length write elsewhere
+    /// would leave both the count and the original window untouched. Since
+    /// `.noMutation` is what authorises a second paste, it needs whole-field
+    /// proof.
+    let fieldUnchanged: Bool?
+  }
+
+  /// Decide whether a Tier 1 write is verified, provably absent, or unprovable.
+  ///
+  /// Pure so it can be tested without a live AX element, matching the existing
+  /// `isPasteShortcut` precedent where AX traversal is live-only and the
+  /// decision is unit-tested.
+  ///
+  /// BOTH directions demand positive evidence, because the two ways of being
+  /// wrong are opposite and both are user-visible: claiming success wrongly
+  /// discards the dictation, and claiming nothing-happened wrongly pastes it
+  /// twice. Neither character count nor read-back alone settles it.
+  internal static func classifyInsertOutcome(_ probe: AXInsertProbe) -> AXInsertOutcome {
+    // Overflow-checked, because every number here came from a foreign process
+    // and this file already treats them as hostile everywhere else. A malformed
+    // app reporting a character count near `Int.max` would otherwise TRAP on
+    // this addition and take the app down mid-paste (Codex review r4). An
+    // unusable count cannot prove the write did nothing, so it is unverifiable
+    // — the outcome that suppresses retries rather than inviting one.
+    let base = probe.countBefore - probe.selectionLengthBefore
+    let (expectedAfter, overflowed) = base.addingReportingOverflow(probe.insertedUTF16Length)
+    guard !overflowed else { return .unverifiable }
+
+    guard let after = probe.countAfter else {
+      // The write reported success and the result is entirely unreadable. It
+      // may already be in the document, so retrying risks duplicating it.
+      return .unverifiable
+    }
+
+    // Success needs the exact expected length AND our exact text at the
+    // insertion span. Read-back alone is not proof: if the caret sits just
+    // before text identical to the dictation and the app ignores the write,
+    // read-back matches and we would silently drop the user's dictation.
+    if after == expectedAfter, probe.readBackMatched == true {
+      return .verified
+    }
+
+    // Retry is allowed only when the WHOLE field is proven byte-identical. An
+    // unchanged character count is not proof, and neither is an unchanged
+    // window around the original selection: the selection can move between AX
+    // calls, so an equal-length write elsewhere leaves both intact. Electron
+    // apps report a successful write and genuinely leave the field untouched;
+    // they reach Tier 2 through here, and they must, or they lose automatic
+    // paste entirely.
+    if after == probe.countBefore, probe.fieldUnchanged == true {
+      return .noMutation
+    }
+
+    return .unverifiable
+  }
+
+  // MARK: - Caret context (#1785)
+
+  /// Which of the two payloads a route actually submitted.
+  ///
+  /// `legacy` is today's text and is always available; `repaired` is the
+  /// contextual candidate and may only be submitted by a route that has just
+  /// re-checked the field. Plan §6 is the sole authority on which route may
+  /// commit which, and this type is how a route reports what it did.
+  package enum PastePayloadKind: String, Equatable, Sendable {
+    case legacy
+    case repaired
+  }
+
+  /// Choose the payload for a destination write, at the route's LAST boundary
+  /// before it writes.
+  ///
+  /// Fails closed on every uncertainty: no candidate, no evidence, no element,
+  /// or a field that has moved since the candidate was computed all select
+  /// today's payload. The only way to get the repaired text is positive proof
+  /// that the field is still exactly as it was.
+  package static func payloadAtCommitBoundary(
+    legacy: String,
+    repaired: String?,
+    context: CaretContext?,
+    element: AXUIElement?
+  ) -> (text: String, kind: PastePayloadKind) {
+    guard let repaired, let context, let element,
+      caretUnchanged(element: element, since: context)
+    else { return (legacy, .legacy) }
+    return (repaired, .repaired)
+  }
+
+  /// A bounded read of the text either side of the caret, taken at insertion
+  /// time. Carries no `AXValue` state — only plain strings and UTF-16 offsets —
+  /// so nothing about a foreign app's accessibility handles escapes Services.
+  ///
+  /// The selected text itself is EXCLUDED from both windows: the right window
+  /// begins after the selection, because a replacement is about to consume it.
+  package struct CaretContext: Equatable, Sendable {
+    /// Text immediately before the selection, bounded by the window size.
+    package let leftWindow: String
+    /// Text immediately after the selection, bounded by the window size.
+    package let rightWindow: String
+    /// UTF-16 offset of the selection's start.
+    package let selectionLocation: Int
+    /// UTF-16 length of the selection. Zero for a plain caret.
+    package let selectionLength: Int
+
+    package init(
+      leftWindow: String, rightWindow: String, selectionLocation: Int, selectionLength: Int
+    ) {
+      self.leftWindow = leftWindow
+      self.rightWindow = rightWindow
+      self.selectionLocation = selectionLocation
+      self.selectionLength = selectionLength
+    }
+  }
+
+  /// How many UTF-16 units to read either side. One character is provably not
+  /// enough — `"home. "` and `"home, "` both end in a space and need opposite
+  /// decisions — so the reader takes a window and the rule walks back within it.
+  /// Single authority for the literal; no call site repeats it.
+  package static let caretContextWindow = 20
+
+  /// Plan the ranges and assemble the context, with no accessibility calls.
+  ///
+  /// All arithmetic is UTF-16, and every comparison is written to avoid
+  /// overflow: `length <= characterCount - location` rather than
+  /// `location + length <= characterCount`, because the latter can wrap on
+  /// hostile input from a foreign process.
+  ///
+  /// `readRange` returns nil when that span cannot be read. A required non-empty
+  /// span failing means the whole context fails open, because a partially-read
+  /// context would silently produce a wrong repair.
+  static func assembleCaretContext(
+    characterCount: Int,
+    selectionLocation: Int,
+    selectionLength: Int,
+    window: Int,
+    readRange: (Int, Int) -> String?
+  ) -> CaretContext? {
+    guard window > 0 else { return nil }
+    guard characterCount >= 0, selectionLocation >= 0, selectionLength >= 0 else { return nil }
+    guard selectionLocation <= characterCount else { return nil }
+    guard selectionLength <= characterCount - selectionLocation else { return nil }
+
+    // Left: the window's worth of text ending at the selection start.
+    let leftStart = selectionLocation >= window ? selectionLocation - window : 0
+    let leftLength = selectionLocation - leftStart
+    let leftWindow: String
+    if leftLength == 0 {
+      leftWindow = ""
+    } else if let read = readRange(leftStart, leftLength), read.utf16.count == leftLength {
+      leftWindow = read
+    } else {
+      // A read that returns the WRONG number of units is malformed, not usable.
+      // The field may have changed between the count read and this one, so the
+      // text no longer describes the geometry we planned against. Accepting it
+      // would repair confidently against truncated or oversized context, and the
+      // later selection revalidation cannot detect that because the offsets
+      // still look consistent.
+      return nil
+    }
+
+    // Right: begins AFTER the selection, since a replacement consumes it.
+    let rightStart = selectionLocation + selectionLength
+    let available = characterCount - rightStart
+    let rightLength = min(window, available)
+    let rightWindow: String
+    if rightLength <= 0 {
+      rightWindow = ""
+    } else if let read = readRange(rightStart, rightLength), read.utf16.count == rightLength {
+      rightWindow = read
+    } else {
+      return nil
+    }
+
+    // Whitespace exhaustion. If the bounded left window starts PAST offset zero
+    // and holds nothing but spaces and tabs, the nearest real character lies
+    // outside what we read — so we cannot tell a continuation from a line or
+    // field start, and guessing would produce a wrong capital. Refuse. Reaching
+    // offset zero, or finding a newline, makes the boundary positively known.
+    if leftStart > 0, !leftWindow.isEmpty,
+      leftWindow.allSatisfy({ $0 == " " || $0 == "\t" })
+    {
+      return nil
+    }
+
+    return CaretContext(
+      leftWindow: leftWindow,
+      rightWindow: rightWindow,
+      selectionLocation: selectionLocation,
+      selectionLength: selectionLength)
+  }
+
+  /// Read the text either side of the caret in the app that owns `element`.
+  ///
+  /// Synchronous, non-throwing, and fail-open: ANY unavailable, malformed,
+  /// stale, mismatched or unreadable state returns nil, and the caller keeps
+  /// today's behaviour. Nothing here mutates the destination.
+  ///
+  /// The focused element is re-read from the owning application immediately
+  /// before use and required to match the captured handle. A stale handle can
+  /// name an element the user has since left, and repairing against the wrong
+  /// field is worse than not repairing at all.
+  /// Re-read the focused element of the app that owns `element` and return it
+  /// only when it is still the SAME element.
+  ///
+  /// The single owner of "is the user still in the field we captured". Both the
+  /// context read and the route-final revalidation go through it, so the two
+  /// cannot come to disagree about what identity means.
+  ///
+  /// Returns nil for untrusted accessibility, a dead process, an unreadable
+  /// focus, or a different element — every one of which means "do not repair".
+  static func freshFocusedElement(matching element: AXUIElement) -> AXUIElement? {
+    guard AXIsProcessTrusted() else { return nil }
+
+    // Resolve the owning process from the captured element itself — never from
+    // `NSWorkspace.frontmostApplication`, which is stale without a run loop,
+    // and never from a system-wide element, which can answer for another app.
+    var pid: pid_t = 0
+    guard AXUIElementGetPid(element, &pid) == .success, pid > 0 else { return nil }
+
+    let application = AXUIElementCreateApplication(pid)
+    // Bound every subsequent read. A wedged destination must not hang the
+    // dictation path; 0.5s is a failure bound, not a latency target.
+    AXUIElementSetMessagingTimeout(application, 0.5)
+
+    var focusedRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(
+        application, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+      let focusedValue = focusedRef,
+      CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
+    else { return nil }
+    // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check.
+    let fresh = focusedValue as! AXUIElement
+
+    // The user may have moved on since capture. Repairing against a different
+    // field would edit text they never dictated into.
+    guard CFEqual(fresh, element) else { return nil }
+    var freshPid: pid_t = 0
+    guard AXUIElementGetPid(fresh, &freshPid) == .success, freshPid == pid else { return nil }
+    return fresh
+  }
+
+  /// Whether the field is still EXACTLY as it was when a contextual candidate
+  /// was computed: same focused element, same selection, and the same text on
+  /// either side of it.
+  ///
+  /// This is the last question asked before a route commits a repaired payload.
+  /// It fails CLOSED — unreadable is treated as changed — because the cost of a
+  /// wrong "unchanged" is text repaired against evidence that no longer holds,
+  /// while the cost of a wrong "changed" is merely today's behaviour.
+  ///
+  /// The SURROUNDING TEXT is compared, not just the offsets (Codex review r2).
+  /// An editor, a collaborator, or an autoformatter can rewrite nearby
+  /// characters without moving the selection at all — turning a preceding `, `
+  /// into `. ` leaves every offset identical while inverting whether the next
+  /// word should be lowercased. Offsets alone would have called that unchanged
+  /// and committed a repair computed from punctuation that is no longer there.
+  package static func caretUnchanged(element: AXUIElement, since context: CaretContext) -> Bool {
+    guard let fresh = readCaretContext(element: element) else { return false }
+    return fresh == context
+  }
+
+  /// Whether the text either side of the selection still matches the evidence a
+  /// candidate was computed from, checked against a whole-field image rather
+  /// than a fresh read.
+  ///
+  /// The Tier 1 write already holds the complete field, captured microseconds
+  /// before it writes, so it can answer this without another accessibility call
+  /// — and from an image closer to the write than any re-read could be.
+  ///
+  /// Fails CLOSED: a window that cannot be sliced, because the field shrank or
+  /// an offset lands inside a surrogate pair, counts as changed.
+  static func contextWindowsStillMatch(_ context: CaretContext, inFieldBefore field: String)
+    -> Bool
+  {
+    let units = field.utf16.count
+    let selectionEnd = context.selectionLocation + context.selectionLength
+    guard context.selectionLocation >= 0, context.selectionLength >= 0,
+      selectionEnd <= units
+    else { return false }
+
+    let leftStart = max(0, context.selectionLocation - context.leftWindow.utf16.count)
+    guard let left = utf16Slice(of: field, from: leftStart, to: context.selectionLocation),
+      left == context.leftWindow
+    else { return false }
+
+    let rightEnd = min(units, selectionEnd + context.rightWindow.utf16.count)
+    guard let right = utf16Slice(of: field, from: selectionEnd, to: rightEnd),
+      right == context.rightWindow
+    else { return false }
+    return true
+  }
+
+  /// A substring by UTF-16 offsets, or nil when the range is not addressable —
+  /// out of bounds, inverted, or landing inside a surrogate pair.
+  static func utf16Slice(of text: String, from start: Int, to end: Int) -> String? {
+    guard start >= 0, end >= start, end <= text.utf16.count else { return nil }
+    let utf16 = text.utf16
+    guard
+      let startIndex = utf16.index(utf16.startIndex, offsetBy: start, limitedBy: utf16.endIndex),
+      let endIndex = utf16.index(utf16.startIndex, offsetBy: end, limitedBy: utf16.endIndex)
+    else { return nil }
+    return String(utf16[startIndex..<endIndex])
+  }
+
+  package static func readCaretContext(
+    element: AXUIElement,
+    window: Int = caretContextWindow
+  ) -> CaretContext? {
+    guard let fresh = freshFocusedElement(matching: element) else { return nil }
+
+    // Role is read from the FRESH element, never the captured handle.
+    var roleRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(fresh, kAXRoleAttribute as CFString, &roleRef) == .success,
+      let role = roleRef as? String, textRoles.contains(role)
+    else { return nil }
+
+    var countRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(
+        fresh, kAXNumberOfCharactersAttribute as CFString, &countRef) == .success,
+      let characterCount = countRef as? Int
+    else { return nil }
+
+    guard let range = selectedRange(of: fresh) else { return nil }
+
+    return assembleCaretContext(
+      characterCount: characterCount,
+      selectionLocation: range.location,
+      selectionLength: range.length,
+      window: window,
+      readRange: { location, length in
+        string(of: fresh, at: location, length: length)
+      })
+  }
+
+  /// Exact UTF-16 code-unit identity.
+  ///
+  /// Swift's `String ==` is canonical-equivalence-aware, so it reports two
+  /// different combining-mark orderings as equal even though the stored code
+  /// units differ — verified locally: `"a\u{0301}\u{0323}"` and
+  /// `"a\u{0323}\u{0301}"` have equal UTF-16 counts, compare `==` true, and are
+  /// NOT code-unit identical. A destination that reorders marks would therefore
+  /// look untouched, and `.noMutation` would authorise a second paste over a
+  /// write that landed. AX lengths and ranges are UTF-16, so compare in UTF-16.
+  internal static func stringsHaveIdenticalUTF16(_ lhs: String, _ rhs: String) -> Bool {
+    lhs.utf16.elementsEqual(rhs.utf16)
+  }
+
+  /// Read `AXSelectedTextRange` as a UTF-16 range. Nil when unreadable.
+  private static func selectedRange(of element: AXUIElement) -> CFRange? {
+    var rangeRef: CFTypeRef?
+    let err = AXUIElementCopyAttributeValue(
+      element,
+      kAXSelectedTextRangeAttribute as CFString,
+      &rangeRef
+    )
+    guard err == .success, let value = rangeRef else { return nil }
+    // A successful read does NOT promise the value is an AXValue — this is a
+    // foreign app's accessibility implementation. Check the CF type before
+    // casting; the paste path must not be crashable by a misbehaving app.
+    guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+    // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check.
+    let axValue = value as! AXValue
+    guard AXValueGetType(axValue) == .cfRange else { return nil }
+    var range = CFRange(location: 0, length: 0)
+    guard AXValueGetValue(axValue, .cfRange, &range) else { return nil }
+    return range
+  }
+
+  /// Read `length` UTF-16 units starting at `location`. Nil when unreadable.
+  private static func string(of element: AXUIElement, at location: Int, length: Int) -> String? {
+    guard location >= 0, length >= 0 else { return nil }
+    var range = CFRange(location: location, length: length)
+    guard let rangeValue = AXValueCreate(.cfRange, &range) else { return nil }
+    var resultRef: CFTypeRef?
+    let err = AXUIElementCopyParameterizedAttributeValue(
+      element,
+      kAXStringForRangeParameterizedAttribute as CFString,
+      rangeValue,
+      &resultRef
+    )
+    guard err == .success else { return nil }
+    return resultRef as? String
+  }
+
   /// Insert text directly into an AX element at the cursor position.
   /// Uses kAXSelectedTextAttribute which inserts at cursor / replaces selection.
-  /// Returns true only if the text verifiably appeared in the element.
-  public static func insertViaAccessibility(_ text: String, element: AXUIElement) -> Bool {
+  ///
+  /// Returns a tri-state, not a Bool. `noMutation` is the only outcome the
+  /// caller may retry: `unverifiable` means the write may already have landed,
+  /// and pasting again would duplicate the user's text.
+  ///
+  /// Takes BOTH payloads rather than one chosen by the caller, and reports which
+  /// it submitted. The choice belongs here because this function already reads
+  /// the selected range in the same breath as the write (#1785, plan §6): a
+  /// caller-side check would be check-then-write with an AX round trip in the
+  /// gap. Element identity needs no separate check — the write targets the very
+  /// handle the candidate was computed against.
+  package static func insertViaAccessibility(
+    legacy: String,
+    repaired: String? = nil,
+    context: CaretContext? = nil,
+    element: AXUIElement
+  ) -> (outcome: AXInsertOutcome, submitted: PastePayloadKind?) {
     // Verify the element is a text field or text area.
     var roleRef: CFTypeRef?
     let roleErr = AXUIElementCopyAttributeValue(
@@ -286,9 +715,9 @@ public enum PasteService {
       &roleRef
     )
     guard roleErr == .success, let role = roleRef as? String else {
-      return false
+      return (.noMutation, nil)
     }
-    guard textRoles.contains(role) else { return false }
+    guard textRoles.contains(role) else { return (.noMutation, nil) }
 
     // Verify the element is writable (not read-only).
     var settableRef: DarwinBoolean = false
@@ -297,16 +726,94 @@ public enum PasteService {
       kAXValueAttribute as CFString,
       &settableRef
     )
-    guard settableErr == .success, settableRef.boolValue else { return false }
+    guard settableErr == .success, settableRef.boolValue else { return (.noMutation, nil) }
 
-    // Snapshot character count before insertion for verification.
+    // Everything needed to verify the result must be readable BEFORE we write.
+    // The retired code wrote first and only then discovered it could not read
+    // the field, leaving a possibly-landed write reported as failure — the same
+    // double-paste defect in a second location. Bailing here is free: nothing
+    // has been mutated, so Tier 2 is safe.
     var charCountBefore: CFTypeRef?
     AXUIElementCopyAttributeValue(
       element,
       kAXNumberOfCharactersAttribute as CFString,
       &charCountBefore
     )
-    let countBefore = (charCountBefore as? Int) ?? -1
+    guard let countBefore = charCountBefore as? Int, countBefore >= 0 else {
+      return (.noMutation, nil)
+    }
+    guard let rangeBefore = selectedRange(of: element) else { return (.noMutation, nil) }
+    // A foreign app can report a range that does not fit its own field. Reject
+    // rather than compute verification windows from impossible values.
+    guard
+      rangeBefore.location >= 0,
+      rangeBefore.length >= 0,
+      rangeBefore.location <= countBefore,
+      rangeBefore.length <= countBefore - rangeBefore.location
+    else { return (.noMutation, nil) }
+
+    // The payload choice, made from the range this function just read rather
+    // than from anything the caller measured earlier. A contextual candidate is
+    // committed ONLY when the selection is still exactly where it was when that
+    // candidate was computed; anything else — no candidate, no evidence, or a
+    // caret that moved — takes today's payload. Plan §6.
+    let insertionStart = rangeBefore.location
+    let selectionLength = rangeBefore.length
+
+    // Whole-field before-image. Only this can later prove that NO mutation
+    // landed, because the selection may move between AX calls and an
+    // equal-length write elsewhere would leave a local window untouched.
+    //
+    // An empty field is short-circuited rather than read: a zero-length range
+    // read succeeds in TextEdit but that is one app's behaviour, and an empty
+    // text box is the most common dictation target of all. Deriving `""` from
+    // the count makes the common case independent of per-app AX quirks.
+    //
+    // Cost, measured rather than assumed (`ax_read_cost_by_size.py`): the read
+    // is NOT flat past ~10k characters, it is roughly linear at 0.07 ms per 10k.
+    // A 200,000-character field costs 1.5 ms per read, so about 3 ms for the
+    // before and after pair. Acceptable against a sub-second pipeline budget.
+    //
+    // The read must return EXACTLY `countBefore` units. A foreign app that
+    // truncates the string yields a before-image that is not the field: if the
+    // write then lands beyond the truncated span, an equally-truncated after-read
+    // compares identical, `fieldUnchanged` says nothing happened, and Tier 2
+    // pastes the dictation a SECOND time into a field that already has it. The
+    // caret-context reader has always demanded this; the verification path had
+    // not (Codex review r2).
+    let fieldBefore: String
+    if countBefore == 0 {
+      fieldBefore = ""
+    } else if let read = string(of: element, at: 0, length: countBefore),
+      read.utf16.count == countBefore
+    {
+      fieldBefore = read
+    } else {
+      // Without a trustworthy before-image, a successful AX call could never be
+      // proven harmless. Bail while nothing has been mutated; Tier 2 is safe.
+      return (.noMutation, nil)
+    }
+
+    // The payload choice, made from the range AND the surrounding text this
+    // function just read, rather than from anything the caller measured earlier.
+    // A contextual candidate is committed ONLY when the field still looks
+    // exactly as it did when that candidate was computed.
+    //
+    // The windows are sliced out of the before-image already in hand, so this
+    // strictness costs no extra accessibility call. Offsets alone are not
+    // enough (Codex review r2): rewriting a preceding `, ` as `. ` leaves every
+    // offset identical while inverting whether the next word should be
+    // lowercased.
+    let payload: (text: String, kind: PastePayloadKind) = {
+      guard let repaired, let context,
+        rangeBefore.location == context.selectionLocation,
+        rangeBefore.length == context.selectionLength,
+        contextWindowsStillMatch(context, inFieldBefore: fieldBefore)
+      else { return (legacy, .legacy) }
+      return (repaired, .repaired)
+    }()
+    let text = payload.text
+    let insertedLength = text.utf16.count
 
     // Insert at cursor via kAXSelectedTextAttribute.
     let err = AXUIElementSetAttributeValue(
@@ -314,22 +821,49 @@ public enum PasteService {
       kAXSelectedTextAttribute as CFString,
       text as CFTypeRef
     )
-    guard err == .success else { return false }
+    guard err == .success else { return (.noMutation, nil) }
 
-    // Verify text actually appeared (Electron apps report success but don't render).
-    // If we can't read character counts, treat as unverified and fall through to Tier 2.
+    // From here the write may have landed, so every remaining failure is
+    // `unverifiable`, never `noMutation`.
     var charCountAfter: CFTypeRef?
     AXUIElementCopyAttributeValue(
       element,
       kAXNumberOfCharactersAttribute as CFString,
       &charCountAfter
     )
-    let countAfter = (charCountAfter as? Int) ?? -1
+    let countAfter = (charCountAfter as? Int).flatMap { $0 >= 0 ? $0 : nil }
 
-    if countBefore < 0 || countAfter < 0 {
-      return false  // Can't verify — let Tier 2 handle it
+    // Positive proof of success: our exact text sits at the insertion span.
+    let readBackMatched = string(of: element, at: insertionStart, length: insertedLength)
+      .map { stringsHaveIdenticalUTF16($0, text) }
+
+    // Positive proof of NO success: the complete field still has identical
+    // UTF-16 code units.
+    // The after-read is held to the same exact length as the before-image: a
+    // truncated read that happens to match a truncated before-image is not proof
+    // that nothing changed, and this value is what AUTHORISES a second paste.
+    let fieldUnchanged = countAfter.flatMap { after -> Bool? in
+      guard after == countBefore else { return false }
+      if after == 0 { return fieldBefore.isEmpty }
+      guard let read = string(of: element, at: 0, length: after),
+        read.utf16.count == after
+      else { return nil }
+      return stringsHaveIdenticalUTF16(read, fieldBefore)
     }
-    return countAfter > countBefore
+
+    let outcome = classifyInsertOutcome(
+      AXInsertProbe(
+        insertedUTF16Length: insertedLength,
+        selectionLengthBefore: selectionLength,
+        countBefore: countBefore,
+        countAfter: countAfter,
+        readBackMatched: readBackMatched,
+        fieldUnchanged: fieldUnchanged
+      ))
+    // The write was attempted with this payload, whatever the verification says
+    // afterwards — including an outcome later classified `unverifiable`, where
+    // the text may already be in the document.
+    return (outcome, payload.kind)
   }
 
   // MARK: - Tier 2: CGEvent Cmd+V
