@@ -31,6 +31,8 @@ import sys
 import threading
 import time
 
+import regex
+
 import Quartz
 from AppKit import NSPasteboard, NSPasteboardTypeString, NSWorkspace
 from ApplicationServices import (AXUIElementCopyAttributeValue,
@@ -335,6 +337,34 @@ def post_key(keycode, flags=0):
         time.sleep(0.004)
 
 
+def utf16_length(text):
+    """Length in UTF-16 units, which is what accessibility ranges count.
+
+    Python counts code points; macOS counts UTF-16 units. They agree until the
+    text contains anything outside the basic plane — an emoji, which dictation
+    produces routinely (`EmojiRestorer` exists for exactly that reason). "I said
+    👍 to that" is 16 code points and 17 UTF-16 units, so a selection computed
+    the Python way starts one unit late and the replacement eats a character it
+    should have kept. Found by cloud review on PR #1793.
+    """
+    return len(text.encode("utf-16-le")) // 2
+
+
+def keypress_length(text):
+    """How many backspaces this text costs: one per user-visible character.
+
+    A third counting system, agreeing with neither of the others. A backspace
+    removes one grapheme cluster, so a flag or a family emoji is one keypress
+    but several code points and several UTF-16 units.
+
+    NOT verified against a real field — no emoji case has been run through the
+    backspace path. The shipped implementation is Swift, where `String` already
+    iterates graphemes and `String.utf16.count` gives the other number, so
+    neither approximation survives into the product.
+    """
+    return len(regex.findall(r"\X", text))
+
+
 def selected_range(element):
     raw = attr(element, "AXSelectedTextRange")
     if raw is None:
@@ -424,8 +454,8 @@ def settle_deletion(element, expected, before, budget=8):
     return f"did not settle — wanted {expected!r}, last saw {current!r}"
 
 
-def replace_span(element, caret, span_length, replacement, expected_after=None):
-    """Swap the `span_length` characters ending at the caret for `replacement`.
+def replace_span(element, caret, span_text, replacement, expected_after=None):
+    """Swap `span_text`, which ends at the caret, for `replacement`.
 
     Two mechanisms, measured across TextEdit, Chrome (both a plain textarea and
     a contenteditable), Slack, Excel and Ghostty on 2026-07-25:
@@ -448,12 +478,16 @@ def replace_span(element, caret, span_length, replacement, expected_after=None):
     contenteditable the editor never saw it — the next character typed landed at
     the very start of the field. Reading the text back cannot detect that.
     """
-    if caret is not None and caret >= span_length:
-        if select_range(element, caret - span_length, span_length):
+    # Three counting systems, one per consumer, and they disagree the moment an
+    # emoji appears. Measure `span_text` itself rather than passing one number
+    # around: accessibility ranges want UTF-16 units, backspaces want keypresses.
+    units = utf16_length(span_text)
+    if caret is not None and caret >= units:
+        if select_range(element, caret - units, units):
             paste(replacement)
             return "selection"
     before = terminal_line(element) if expected_after is not None else None
-    for _ in range(span_length):
+    for _ in range(keypress_length(span_text)):
         post_key(DELETE_KEY)
     note = ""
     if expected_after is not None:
@@ -612,7 +646,7 @@ def do_join(client, model, system):
         if not matches:
             print("  SKIPPED  cannot locate the text to replace in the field\n")
             return
-        to_delete = len(raw_tail) - matches[-1].start()
+        span_text = raw_tail[matches[-1].start():]
     else:
         # A terminal, counted from the PARSED line rather than the raw screen.
         # The raw screen contains the line wraps and the box's own padding, so
@@ -630,7 +664,10 @@ def do_join(client, model, system):
         # space eaten off the front is invisible to any comparison that strips
         # whitespace, so it can never be detected and repaired. Bias towards the
         # mistake that can be seen.
-        to_delete = len(before_caret) - matches[-1].start() - terminal_wraps(value)
+        trimmed = terminal_wraps(value)
+        span_text = before_caret[matches[-1].start():]
+        if trimmed:
+            span_text = span_text[:-trimmed]
         expected_after = before_caret[:matches[-1].start()].strip()
 
     # Screen content AFTER the match is not a problem: in a TUI the input box
@@ -638,8 +675,8 @@ def do_join(client, model, system):
     # so backspaces only consume the box's own text. What matters is that the
     # caret sits at the end of what we matched, which it does straight after
     # dictating. Sanity-check the count instead.
-    if to_delete > len(target) + 40:
-        print(f"  SKIPPED  span looks wrong ({to_delete} chars for "
+    if len(span_text) > len(target) + 40:
+        print(f"  SKIPPED  span looks wrong ({len(span_text)} chars for "
               f"{len(target)} of text), field untouched\n")
         return
 
@@ -653,8 +690,8 @@ def do_join(client, model, system):
     else:
         to_paste = (" " if expected_after else "") + result + " "
 
-    how = replace_span(element, position, to_delete, to_paste, expected_after)
-    print(f"  DONE     replaced {to_delete} characters by {how}\n")
+    how = replace_span(element, position, span_text, to_paste, expected_after)
+    print(f"  DONE     replaced {len(span_text)} characters by {how}\n")
 
 
 # ── hotkey plumbing ──────────────────────────────────────────────────────────

@@ -102,12 +102,16 @@ def main():
 
     # ---------- 3. shortcut probe
     def punct_only(rec1):
+        """The real shortcut: does rec1's own punctuation decide the label?
+
+        Every branch used to return MERGE_SPACE, which made this a second
+        always-merge baseline wearing the name of a punctuation test — so it
+        could never reveal what it exists to reveal. A recording that ENDS a
+        thought carries terminal punctuation, so the honest shortcut is to keep
+        those apart and merge the rest. Found by cloud review on PR #1793.
+        """
         s = rec1.rstrip()
-        if s.endswith("?"):
-            return "MERGE_SPACE"
-        if s.endswith("."):
-            return "MERGE_SPACE"
-        return "MERGE_SPACE"
+        return "KEEP" if s.endswith((".", "?", "!")) else "MERGE_SPACE"
 
     naive = sum(1 for r in rows if punct_only(r["rec1"]) == r["label"])
     majority = Counter(r["label"] for r in rows).most_common(1)[0]

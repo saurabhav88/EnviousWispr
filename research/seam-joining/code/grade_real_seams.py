@@ -97,7 +97,14 @@ def main():
     # be checked for progress, and would have lost every answer on a crash.
     graded, failures = [], []
     done = 0
-    handle = open(out_path, "w", encoding="utf-8")
+    # Write to a SIDECAR and only move it into place once the run has
+    # earned it. Opening the destination directly truncated the previous
+    # labels the moment the run started, so a throttled or interrupted
+    # rerun destroyed a complete label set and left a partial one behind —
+    # and the "REFUSING to write" guard below fired far too late to help.
+    # Found by cloud review on PR #1793.
+    partial_path = out_path + ".partial"
+    handle = open(partial_path, "w", encoding="utf-8")
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         for pair, (label, failure) in zip(
                 rows, pool.map(lambda p: grade_one(client, args.model, p), rows)):
@@ -117,8 +124,13 @@ def main():
     if len(graded) < 0.9 * len(rows):
         from collections import Counter as _C
         print(f"REFUSING to write: only {len(graded)}/{len(rows)} answered "
-              f"({dict(_C(failures).most_common(3))})", file=sys.stderr)
+              f"({dict(_C(failures).most_common(3))}); kept the previous "
+              f"labels, partial run left at {partial_path}", file=sys.stderr)
         return 1
+
+    # Earned it. Replacing in one step means the destination is either the
+    # old complete set or the new complete set, never a half-written mix.
+    os.replace(partial_path, out_path)
 
     from collections import Counter
     print(f"labelled {len(graded)}, failed {len(failures)}", file=sys.stderr)

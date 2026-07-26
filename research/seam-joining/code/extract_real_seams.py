@@ -45,7 +45,11 @@ def parse_log(path):
         stamp = STAMP.match(raw)
         if not stamp:
             if pending_step and current:
-                current[pending_step] += raw.rstrip("\n")
+                # Keep the newline. Appending bare made a transcript
+                # containing a line break come out as "helloworld",
+                # silently corrupting the very recordings the corpus is
+                # built from. Found by cloud review on PR #1793.
+                current[pending_step] += "\n" + raw.rstrip("\n")
             continue
         match = STEP.search(raw)
         if not match:
