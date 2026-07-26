@@ -298,6 +298,8 @@ One name in the realistic corpus is still lowered: `Olive`. The mitigations are 
 
 `EnglishWordOracle` remains in PostProcessing because it implements PostProcessing's own leading-case policy, has one consumer inside `CursorInsertionRepair`, holds no app or pipeline state, and returns a synchronous value. The strongest alternative is a new leaf `EnviousWisprLanguageServices` module implementing a public `EnglishWordDeciding` protocol, constructed and injected by Pipeline. That would preserve PostProcessing's present framework purity, but it requires a new target in both build systems, new cross-module public API, Pipeline composition changes at the heart-path caller, and REFACTOR-tier validation for one implementation and one consumer. That structural cost is larger than the boundary benefit here. The AppKit and NaturalLanguage imports are therefore an **intentional PostProcessing boundary expansion, not a convenience accident.**
 
+**The warm-up is deliberately NOT in PostProcessing.** The oracle owns the decision; the app shell owns when to warm it, because launch sequencing is the shell's job and PostProcessing has no launch concept. That mirrors the classifier prewarm exactly: the classifier lives in its own module, the bootstrapper decides when to load it.
+
 The import cost is real and disclosed: **PostProcessing gains `AppKit` and `NaturalLanguage`.** Today it imports only Foundation, `EnviousWisprCore` and `os`.
 
 - No first-party dependency direction changes. `scripts/check-dependency-direction.sh:36` keeps `EnviousWisprPostProcessing -> EnviousWisprCore`; AppKit and NaturalLanguage are system frameworks, not modules in that graph.
@@ -399,6 +401,20 @@ Telemetry names change. They are privacy-safe reason codes with no dashboard ale
 
 Residual, stated plainly: a machine where the lexical-class asset is genuinely absent is still unmeasured. The design probes availability, never requests a download, and keeps the capital when the probe fails.
 
+#### Where the warm-up lives, and what happens if a paste beats it
+
+**Not a new mechanism — a port of the shipped one.** `WisprBootstrapper.prewarmOutputClassifierIfNeeded` (`WisprBootstrapper.swift:1017-1055`) already warms a limb off the heart path at launch: called from the bootstrapper, wrapped in `Task { }` so it never blocks launch, idempotent, failing open with `limbFailureObserved(limb:operation:result:)` telemetry. The oracle warm-up takes the same shape and the same call site (`port-proven-patterns-wholesale`).
+
+**The race is designed out rather than handled.** The warm-up is a latency optimisation and never a correctness gate:
+
+- Resolution (availability probe + English identifier) lives behind a `static let`, which Swift initialises exactly once with thread-safe, dispatch-once semantics.
+- The warm-up `Task` simply touches that `static let` and performs one throwaway decision.
+- If a paste arrives first, it touches the same `static let` and pays the one-time cost itself — **slower, never wrong**. There is no window in which the oracle answers differently depending on whether the warm-up finished, so there is no state to guard (`close-the-window-never-handle-it`).
+
+**Launch is not delayed.** The work happens inside `Task { }` exactly as the classifier prewarm does; it is off the launch path, off the recording path, and off the paste path.
+
+**Main-actor safety.** `NSSpellChecker` was measured correct across 8 concurrent background threads (P7), and a fresh `NLTagger` is constructed per decision so the SDK's single-thread constraint (`NLTagger.h:56-60`) is never violated by the warm-up racing a paste.
+
 Every failure lands on "keep the capital", which is exactly what the app did before this feature existed. The limb cannot damage the heart.
 
 ## 8. Caller-visible signals audit
@@ -429,6 +445,7 @@ Telemetry distinguishes `.dictionaryUnavailable`, `.wordClassUnavailable` and `.
 | `Tests/.../KernelFinalizationWiringTests.swift` | **six** tests assert lowering through the real bundled source (`:505-535`, `:734-767`, `:906-929`, `:1009-1043`, `:1076-1096`, `:1098-1158`) — not five as an earlier draft said. Preserve each one's actual contract under the new oracle |
 | `Sources/EnviousWisprCore/Transcript.swift:20` | **missed by earlier drafts** — the `repairRules` doc comment quotes `case_skipped:not_known_lowercase` verbatim and must track the rename |
 | `docs/.../2026-07-26-casing-headtohead.swift`, `2026-07-26-score-real-labelled-pairs.swift` | both read the deleted resource to compute the baseline column; mark explicitly non-rerunnable after deletion, or archive a baseline copy beside them |
+| `Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift:1017-1023` | add the oracle warm-up beside the existing classifier prewarm, same `Task { }` shape, same off-heart-path call site |
 | `.claude/knowledge/architecture.md:22` | PostProcessing documented as Core-only; record the two system frameworks. **Gitignored** (`.gitignore:33`), so this is a separate local `Docs/dev-tooling` edit and cannot appear in the PR |
 
 ## 11. Testing
