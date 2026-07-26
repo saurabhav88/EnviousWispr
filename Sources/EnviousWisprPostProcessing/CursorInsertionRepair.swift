@@ -56,6 +56,9 @@ public enum CursorInsertionRepair {
     case alwaysCapitalized = "always_capitalized"
     case notKnownLowercase = "not_known_lowercase"
     case lexiconUnavailable = "lexicon_unavailable"
+    /// German, the word is in the never-nominalised set, but the word-class
+    /// check reports it is being used as a noun here. Keeps the capital.
+    case germanNounInContext = "german_noun_in_context"
     /// The dictation is not in a language whose casing rules we know. The
     /// lexicon is English, and applying it to another language is not merely
     /// useless — it is actively wrong. `See`, `Start`, `Test`, `Team` and
@@ -181,6 +184,14 @@ public enum CursorInsertionRepair {
     "September", "October", "November", "December",
   ]
 
+  /// Whether the outgoing dictation's first word is being used as a NOUN.
+  ///
+  /// Injected exactly as the lexicon is, so this type stays pure and its tests
+  /// need no `NaturalLanguage`. Production supplies an `NLTagger`-backed check;
+  /// the default here answers "yes, a noun", which keeps the capital — the safe
+  /// direction for a caller that forgot to supply one.
+  public typealias GermanNounCheck = @Sendable (String) -> Bool
+
   // MARK: - Language policy
 
   /// What this repair may do in the language actually being dictated.
@@ -190,22 +201,48 @@ public enum CursorInsertionRepair {
   /// rule, and Russian spaces its words while using an alphabet our lexicon has
   /// never seen. Deciding them separately keeps every language in exactly one of
   /// four honest states rather than one all-or-nothing switch.
+  /// How a language decides whether the first word may be lowercased.
+  ///
+  /// A Bool was not enough. English and German need DIFFERENT procedures, not
+  /// the same procedure switched on: English lowercases a word it recognises as
+  /// ordinarily lowercase, while German capitalises every noun and so must ask
+  /// the opposite question.
+  enum CasingStrategy: Equatable {
+    /// Leave the capital alone. Correct for every language whose mid-sentence
+    /// rule is "lowercase unless it is a name" — French, Spanish, Italian,
+    /// Dutch, the Nordics — because that is already what doing nothing achieves.
+    case leaveAlone
+    /// Lowercase when the word is in the bundled ordinary-lowercase lexicon.
+    case englishLexicon
+    /// Lowercase when the word is in the closed never-nominalised set AND the
+    /// word-class check agrees it is not a noun. See `GermanSeamCasing`.
+    case germanSafeWords
+
+    static func forLanguage(_ base: String) -> CasingStrategy {
+      switch base {
+      case "en": return .englishLexicon
+      case "de": return .germanSafeWords
+      default: return .leaveAlone
+      }
+    }
+  }
+
   struct LanguageRules: Equatable {
     /// Words are separated by spaces, so a seam may need one.
     let usesWordSpacing: Bool
-    /// We hold casing knowledge for this language. English only today.
-    let knowsCasing: Bool
+    /// What we know about capitalisation in this language.
+    let casing: CasingStrategy
 
     /// Unknown language: space, do not recase. Spacing is what all but six of
     /// Whisper's ninety-nine languages do, and a missing or extra space is a
     /// far smaller error than a wrongly lowercased proper noun.
-    static let unknown = LanguageRules(usesWordSpacing: true, knowsCasing: false)
+    static let unknown = LanguageRules(usesWordSpacing: true, casing: .leaveAlone)
 
     static func forLanguage(_ raw: String?) -> LanguageRules {
       guard let base = LanguageNormalizer.baseCode(raw) else { return .unknown }
       return LanguageRules(
         usesWordSpacing: !LanguageTypes.isUnsegmentedScript(base),
-        knowsCasing: base == "en")
+        casing: CasingStrategy.forLanguage(base))
     }
   }
 
@@ -233,7 +270,8 @@ public enum CursorInsertionRepair {
       context: context,
       protectedWords: protectedWords,
       language: language,
-      lexicon: OrdinaryLowercaseLexicon.bundled
+      lexicon: OrdinaryLowercaseLexicon.bundled,
+      isGermanNoun: GermanWordClass.isNounInContext
     )
   }
 
@@ -243,7 +281,8 @@ public enum CursorInsertionRepair {
     context: CaretText?,
     protectedWords: Set<String>,
     language: String? = "en",
-    lexicon: OrdinaryLowercaseLexicon
+    lexicon: OrdinaryLowercaseLexicon,
+    isGermanNoun: @escaping GermanNounCheck = { _ in true }
   ) -> PreparedPayloads {
     let legacy = legacyPayload(text)
     guard let context else {
@@ -300,7 +339,8 @@ public enum CursorInsertionRepair {
       context: context,
       protectedWords: protectedWords,
       language: rules,
-      lexicon: lexicon)
+      lexicon: lexicon,
+      isGermanNoun: isGermanNoun)
     return PreparedPayloads(
       legacyText: legacy, repairedText: repaired, candidateRules: appliedRules)
   }
@@ -319,7 +359,8 @@ public enum CursorInsertionRepair {
     context: CaretText,
     protectedWords: Set<String>,
     language: LanguageRules,
-    lexicon: OrdinaryLowercaseLexicon
+    lexicon: OrdinaryLowercaseLexicon,
+    isGermanNoun: @escaping GermanNounCheck
   ) -> (String, [AppliedRule]) {
     var out = text
     var rules: [AppliedRule] = []
@@ -346,14 +387,15 @@ public enum CursorInsertionRepair {
         !left.atLineStart && (anchor.isLetter || anchor.isNumber || continuers.contains(anchor))
       } ?? false
 
-    if continuing, !language.knowsCasing {
+    if continuing, language.casing == .leaveAlone {
       // Positioned to lowercase, but not in a language whose casing we know.
       // Recorded as a skip rather than silently omitted so the field can tell
       // "we chose not to" from "the position did not call for it".
       rules.append(.caseSkipped(.languageNotSupported))
     } else if continuing {
       let (adjusted, caseRule) = applyLeadingCase(
-        to: out, protectedWords: protectedWords, lexicon: lexicon)
+        to: out, protectedWords: protectedWords, lexicon: lexicon,
+        casing: language.casing, isNoun: isGermanNoun)
       out = adjusted
       rules.append(caseRule)
     } else if left.character == nil {
@@ -457,7 +499,9 @@ public enum CursorInsertionRepair {
   private static func applyLeadingCase(
     to text: String,
     protectedWords: Set<String>,
-    lexicon: OrdinaryLowercaseLexicon
+    lexicon: OrdinaryLowercaseLexicon,
+    casing: CasingStrategy = .englishLexicon,
+    isNoun: GermanNounCheck = { _ in true }
   ) -> (String, AppliedRule) {
     let leadingWhitespace = text.prefix(while: \.isWhitespace)
     let stripped = text.dropFirst(leadingWhitespace.count)
@@ -486,11 +530,30 @@ public enum CursorInsertionRepair {
     if alwaysCapitalized.contains(bare) {
       return (text, .caseSkipped(.alwaysCapitalized))
     }
-    guard lexicon.isAvailable else {
-      return (text, .caseSkipped(.lexiconUnavailable))
-    }
-    guard lexicon.contains(bare) else {
-      return (text, .caseSkipped(.notKnownLowercase))
+    switch casing {
+    case .leaveAlone:
+      // Unreachable: the caller records `languageNotSupported` first. Kept
+      // exhaustive so a new strategy cannot silently fall through to English.
+      return (text, .caseSkipped(.languageNotSupported))
+
+    case .englishLexicon:
+      guard lexicon.isAvailable else {
+        return (text, .caseSkipped(.lexiconUnavailable))
+      }
+      guard lexicon.contains(bare) else {
+        return (text, .caseSkipped(.notKnownLowercase))
+      }
+
+    case .germanSafeWords:
+      // Membership is necessary but NOT sufficient. German capitalises a word
+      // for the role it plays, so a listed word used as a noun still keeps its
+      // capital and the word-class check is what catches that.
+      guard GermanSeamCasing.isNeverNominalised(bare) else {
+        return (text, .caseSkipped(.notKnownLowercase))
+      }
+      guard !isNoun(text) else {
+        return (text, .caseSkipped(.germanNounInContext))
+      }
     }
 
     let lowered = String(firstCharacter).lowercased()
