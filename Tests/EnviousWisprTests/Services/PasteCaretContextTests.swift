@@ -347,4 +347,111 @@ struct PasteCaretContextTests {
     #expect(PasteService.utf16Slice(of: "abc", from: 0, to: 9) == nil)
     #expect(PasteService.utf16Slice(of: "abc", from: -1, to: 2) == nil)
   }
+
+  // MARK: - Terminal screen parsing (#1803 part 1)
+
+  /// A full-screen UI draws its input box between two horizontal rules and
+  /// prints hints UNDER it.
+  private static func boxed(_ input: String, footer: String = "  ? for shortcuts") -> String {
+    """
+    some earlier output
+    \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+    \u{276F} \(input)
+    \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+    \(footer)
+    """
+  }
+
+  @Test("The boxed input line is found, and the footer below it is not")
+  func findsBoxedInputLine() {
+    let line = PasteService.terminalInputLine(inBufferTail: Self.boxed("git commit -m fix the"))
+    #expect(line == "git commit -m fix the")
+  }
+
+  @Test("An EMPTY box reads as empty, never as the hints printed below it")
+  func emptyBoxIsNotTheFooter() {
+    // The prototype's exact failure: anchoring on the prompt alone returned
+    // "/rc ⧉ seam-join-explainer" for a box nobody had typed in.
+    let line = PasteService.terminalInputLine(inBufferTail: Self.boxed(""))
+    #expect(line?.isEmpty == true || line == nil)
+  }
+
+  @Test("A WRAPPED box refuses rather than joining rows")
+  func wrappedBoxRefuses() {
+    let wrapped = """
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      \u{276F} this line is long enough that it
+      wrapped onto a second row
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      """
+    #expect(PasteService.terminalInputLine(inBufferTail: wrapped) == nil)
+  }
+
+  @Test("An ordinary shell prompt with no box is the headline case and works")
+  func bareShellPromptWorks() {
+    let bare = """
+      total 24
+      drwxr-xr-x  5 user  staff  160 Jul 26 09:00 .
+      \u{276F} git commit -m fix the
+      """
+    #expect(PasteService.terminalInputLine(inBufferTail: bare) == "git commit -m fix the")
+  }
+
+  @Test("An old prompt buried in a full-screen program's scrollback is not anchored on")
+  func staleScrollbackPromptRefuses() {
+    // Deliberately stricter than the prototype, which collected every row after
+    // a prompt. Only the FINAL non-empty row may carry the anchor.
+    let vimLike = """
+      \u{276F} vim notes.txt
+      ~
+      ~
+      -- INSERT --
+      """
+    #expect(PasteService.terminalInputLine(inBufferTail: vimLike) == nil)
+  }
+
+  @Test(
+    "Weak prompt markers are not anchors, so a status bar cannot be mistaken for input",
+    arguments: ["$ echo hello", "% echo hello", "# echo hello", "81% | $107.40"])
+  func weakMarkersRefuse(row: String) {
+    #expect(PasteService.terminalInputLine(inBufferTail: "output\n\(row)") == nil)
+  }
+
+  @Test("The box's non-breaking padding becomes an ordinary space")
+  func normalisesNonBreakingSpace() {
+    let line = PasteService.terminalInputLine(
+      inBufferTail: Self.boxed("git\u{00A0}commit"))
+    #expect(line == "git commit")
+    #expect(line?.contains("\u{00A0}") == false)
+  }
+
+  @Test("Trailing whitespace on the input line survives, because it is load-bearing")
+  func preservesTrailingWhitespace() {
+    // The app ends each dictation with a space, so the buffer is one character
+    // longer than the visible sentence; dropping it welds the next word on.
+    let line = PasteService.terminalInputLine(inBufferTail: Self.boxed("fix the "))
+    #expect(line == "fix the ")
+  }
+
+  @Test("Only Ghostty is allowlisted, because only Ghostty was measured")
+  func allowlistIsGhosttyAlone() {
+    #expect(PasteService.screenReadableTerminalBundleIDs == ["com.mitchellh.ghostty"])
+  }
+
+  @Test("A screen-derived context is marked as such and carries its buffer tail")
+  func screenDerivedContextCarriesProvenance() {
+    let plain = PasteService.CaretContext(
+      leftWindow: "abc", rightWindow: "", selectionLocation: 3, selectionLength: 0)
+    #expect(plain.isScreenDerived == false)
+
+    let screen = PasteService.CaretContext(
+      leftWindow: "abc", rightWindow: "", selectionLocation: 3, selectionLength: 0,
+      terminalBufferTail: "\u{276F} abc")
+    #expect(screen.isScreenDerived)
+    // The tail is identity: a buffer that changed fails revalidation.
+    let scrolled = PasteService.CaretContext(
+      leftWindow: "abc", rightWindow: "", selectionLocation: 3, selectionLength: 0,
+      terminalBufferTail: "more output\n\u{276F} abc")
+    #expect(screen != scrolled)
+  }
 }

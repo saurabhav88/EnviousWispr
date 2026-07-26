@@ -1549,4 +1549,87 @@ struct CursorInsertionRepairTests {
     #expect(payloads.candidateRules.contains(.droppedDuplicateWord))
     #expect(payloads.repairedText == " Bahnhof. ")
   }
+
+  // MARK: - Screen-derived evidence is spacing-only (#1803 part 1)
+
+  private static func screen(
+    left: String, right: String = "", payload: String
+  ) -> CursorInsertionRepair.PreparedPayloads {
+    CursorInsertionRepair.repair(
+      text: payload,
+      context: CursorInsertionRepair.CaretText(
+        left: left, right: right, repairScope: .spacingOnly),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+  }
+
+  @Test("Spacing still happens, because that is the whole point")
+  func spacingOnlyStillSpaces() {
+    let payloads = Self.screen(left: "git commit -m fix", payload: "The store is ready.")
+    #expect(payloads.repairedText?.hasPrefix(" ") == true)
+  }
+
+  @Test("Screen-derived evidence never recases the first word")
+  func spacingOnlyNeverRecases() {
+    // The same input DOES lowercase under a real caret; only the evidence differs.
+    let real = Self.seam(left: "I want to go to the", payload: "Store is ready.")
+    #expect(real.candidateRules.contains(.lowercasedFirst))
+
+    let screened = Self.screen(left: "I want to go to the", payload: "Store is ready.")
+    #expect(!screened.candidateRules.contains(.lowercasedFirst))
+    #expect(screened.candidateRules.contains(.caseSkipped(.screenDerivedContext)))
+    #expect(screened.repairedText?.contains("Store") == true)
+  }
+
+  @Test("Screen-derived evidence never deletes a duplicated word")
+  func spacingOnlyNeverDeduplicates() {
+    let real = Self.seam(left: "go to the", payload: "The store is ready.")
+    #expect(real.candidateRules.contains(.droppedDuplicateWord))
+
+    let screened = Self.screen(left: "go to the", payload: "The store is ready.")
+    #expect(!screened.candidateRules.contains(.droppedDuplicateWord))
+    #expect(screened.repairedText?.contains("The store") == true)
+  }
+
+  @Test("Screen-derived evidence never deletes a dictated full stop")
+  func spacingOnlyNeverDropsTerminalPeriod() {
+    let screened = Self.screen(left: "some text", right: ".", payload: "Done.")
+    #expect(!screened.candidateRules.contains(.droppedTerminalPeriod))
+    #expect(screened.repairedText?.contains("Done.") == true)
+  }
+
+  /// The finding that made spacing-only safe. A shell EXECUTES a pasted newline,
+  /// so a spacing artifact placed before one changes the command that runs.
+  @Test(
+    "A payload containing a line break refuses screen-derived repair outright",
+    arguments: ["backup\n", "one\ntwo", "trailing\r", "a\u{2028}b"])
+  func spacingOnlyRefusesMultilinePayloads(payload: String) {
+    let screened = Self.screen(left: "rm -rf /tmp/safefile", payload: payload)
+    #expect(screened.repairedText == nil, "\(payload.debugDescription)")
+    #expect(screened.candidateRules == [.refusedScreenDerivedLineBreak])
+    // A real caret is unaffected: the danger is the WRONG-POSITION evidence.
+    let real = CursorInsertionRepair.repair(
+      text: payload,
+      context: CursorInsertionRepair.CaretText(left: "rm -rf /tmp/safefile", right: ""),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(real.repairedText != nil, "\(payload.debugDescription)")
+  }
+
+  /// The invariant, asserted directly rather than trusted: strip the spaces we
+  /// are allowed to add and nothing else may have changed.
+  @Test(
+    "Spacing-only may add spaces at the seams and change nothing else",
+    arguments: [
+      ("go to the", "The store is ready."),
+      ("I want to go to the", "Store is closed today."),
+      ("echo foobar", "Foobar is ready."),
+      ("some text", "Don't worry about it."),
+      ("page 5", "5 is missing."),
+    ])
+  func spacingOnlyChangesOnlyWhitespace(left: String, payload: String) {
+    let screened = Self.screen(left: left, payload: payload)
+    let candidate = try! #require(screened.repairedText)
+    #expect(
+      candidate.trimmingCharacters(in: .whitespaces) == payload,
+      "only edge whitespace may differ: \(candidate.debugDescription)")
+  }
 }

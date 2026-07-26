@@ -23,6 +23,22 @@ public enum CursorInsertionRepair {
   /// nearest real character on each side. One character is NOT enough — `"home. "`
   /// and `"home, "` both present a space and demand opposite outcomes — so the
   /// left side is walked back over spaces and tabs to the last real character.
+  /// How far the repair may go, given how trustworthy the evidence is.
+  ///
+  /// This is EVIDENCE TRUST, not language knowledge, which is why it lives on
+  /// the context rather than on `LanguageRules`: a terminal screen read tells us
+  /// roughly what precedes the cursor and cannot tell us exactly where the
+  /// cursor is, and that is a different question from what a language's rules
+  /// are (grounded review r2, #1803).
+  public enum RepairScope: Equatable, Sendable {
+    /// Everything applies. Today's behaviour for a real caret.
+    case full
+    /// Screen-derived evidence. The repair may ADD ASCII spaces at the two
+    /// seams and may not remove, replace, recase or otherwise change any
+    /// non-whitespace character of the dictation.
+    case spacingOnly
+  }
+
   public struct CaretText: Equatable, Sendable {
     /// Text immediately before the caret. Only its tail matters.
     public let left: String
@@ -36,11 +52,17 @@ public enum CursorInsertionRepair {
     /// longer word. Defaults to `false`, which refuses — a caller that does not
     /// know cannot accidentally authorise a deletion.
     public let leftReachesDocumentStart: Bool
+    /// How much of the repair this evidence is trusted to authorise.
+    public let repairScope: RepairScope
 
-    public init(left: String, right: String, leftReachesDocumentStart: Bool = false) {
+    public init(
+      left: String, right: String, leftReachesDocumentStart: Bool = false,
+      repairScope: RepairScope = .full
+    ) {
       self.left = left
       self.right = right
       self.leftReachesDocumentStart = leftReachesDocumentStart
+      self.repairScope = repairScope
     }
   }
 
@@ -56,6 +78,10 @@ public enum CursorInsertionRepair {
     case alwaysCapitalized = "always_capitalized"
     case notKnownLowercase = "not_known_lowercase"
     case lexiconUnavailable = "lexicon_unavailable"
+    /// The context came from reading a terminal's screen, which cannot say
+    /// where the cursor is inside the line. Casing could produce a wrong
+    /// capital on evidence that may describe a different position.
+    case screenDerivedContext = "screen_derived_context"
     /// The dictation is not in a language whose casing rules we know. The
     /// lexicon is English, and applying it to another language is not merely
     /// useless — it is actively wrong. `See`, `Start`, `Test`, `Team` and
@@ -98,6 +124,10 @@ public enum CursorInsertionRepair {
     /// `refusedInsideWord`: that one knows exactly where it is and declines,
     /// this one cannot place itself.
     case refusedNoLeftAnchor
+    /// Screen-derived evidence plus a payload containing a line break. In a
+    /// shell a pasted newline can EXECUTE the line, so a spacing artifact placed
+    /// before it can change the command that runs. Refused outright.
+    case refusedScreenDerivedLineBreak
     case leadingSpace
     case lowercasedFirst
     case caseSkipped(CaseSkipReason)
@@ -120,6 +150,7 @@ public enum CursorInsertionRepair {
       switch self {
       case .refusedInsideWord: return "refused:inside_word"
       case .refusedNoLeftAnchor: return "refused:no_left_anchor"
+      case .refusedScreenDerivedLineBreak: return "refused:screen_derived_line_break"
       case .leadingSpace: return "leading_space"
       case .lowercasedFirst: return "lowercased_first"
       case .caseSkipped(let reason): return "case_skipped:\(reason.rawValue)"
@@ -249,6 +280,19 @@ public enum CursorInsertionRepair {
     guard let context else {
       return PreparedPayloads(legacyText: legacy, repairedText: nil, candidateRules: [])
     }
+    // Screen-derived evidence plus a line break is the one combination that is
+    // not merely cosmetic. `InverseTextNormalizer` deliberately turns a spoken
+    // "new line" into a real newline, and a shell EXECUTES a pasted newline — so
+    // a spacing artifact placed before it changes the command that runs
+    // (`rm -rf /tmp/safe|file` + "backup\n" splits one path into two arguments
+    // and then runs it). Bracketed paste cannot be assumed. Refuse outright.
+    if context.repairScope == .spacingOnly,
+      text.unicodeScalars.contains(where: { CharacterSet.newlines.contains($0) })
+    {
+      return PreparedPayloads(
+        legacyText: legacy, repairedText: nil,
+        candidateRules: [.refusedScreenDerivedLineBreak])
+    }
     let rules = LanguageRules.forLanguage(language)
     // Inserting between two word characters cannot be repaired safely. The
     // spacing rules would wrap the payload in spaces and split the surrounding
@@ -346,7 +390,11 @@ public enum CursorInsertionRepair {
         !left.atLineStart && (anchor.isLetter || anchor.isNumber || continuers.contains(anchor))
       } ?? false
 
-    if continuing, !language.knowsCasing {
+    if context.repairScope == .spacingOnly {
+      // Screen evidence cannot say where in the line the cursor is, so the word
+      // we would be recasing may not be the word at the seam.
+      rules.append(.caseSkipped(.screenDerivedContext))
+    } else if continuing, !language.knowsCasing {
       // Positioned to lowercase, but not in a language whose casing we know.
       // Recorded as a skip rather than silently omitted so the field can tell
       // "we chose not to" from "the position did not call for it".
@@ -386,7 +434,8 @@ public enum CursorInsertionRepair {
     //
     // Guard order matches plan §3: spacing language, alphanumeric anchor, a left
     // token proven complete, a token-shaped match, and something surviving.
-    if language.usesWordSpacing,
+    if context.repairScope == .full,
+      language.usesWordSpacing,
       let anchor = left.character, anchor.isLetter || anchor.isNumber,
       let leftToken = completeLeftToken(
         in: context.left, reachesDocumentStart: context.leftReachesDocumentStart),
@@ -416,7 +465,12 @@ public enum CursorInsertionRepair {
     // very next character is another one, the pair is a placement artifact we
     // would be creating, so we drop ours. No word knowledge, no lexicon, no
     // language, no abbreviation question.
-    if out.reversed().drop(while: \.isWhitespace).first == ".",
+    // Gated on `.full` even though a screen-derived right window is always
+    // empty today, so this is inert: it DELETES a dictated period, and leaving a
+    // deletion rule enabled contradicts the spacing-only invariant the moment
+    // that empty-right assumption drifts (grounded review r2).
+    if context.repairScope == .full,
+      out.reversed().drop(while: \.isWhitespace).first == ".",
       rightAnchor(of: context.right) == "."
     {
       let body = String(out.reversed().drop(while: \.isWhitespace).reversed())

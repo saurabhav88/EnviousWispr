@@ -385,7 +385,11 @@ struct KernelFinalizationWiring {
               // offset zero exactly when it is as long as the caret's offset.
               // Without this the seam de-duplication refused every short field
               // (#1803, local diff review).
-              leftReachesDocumentStart: $0.leftWindow.utf16.count == $0.selectionLocation)
+              leftReachesDocumentStart: $0.leftWindow.utf16.count == $0.selectionLocation,
+              // A terminal screen tells us roughly what precedes the cursor and
+              // cannot tell us WHERE the cursor is inside the line, so it may
+              // only authorise spacing (#1803 part 1).
+              repairScope: $0.isScreenDerived ? .spacingOnly : .full)
           },
           protectedWords: context.protectedSpellings,
           // Resolved from positive evidence, NOT read off the result.
@@ -417,7 +421,8 @@ struct KernelFinalizationWiring {
         outcome.caretContextOutcome = {
           if config?.smartInsertion != true { return "setting_off" }
           if context.targetElement == nil { return "no_target" }
-          return caretContext == nil ? "unreadable" : "read"
+          if caretContext == nil { return "unreadable" }
+          return caretContext?.isScreenDerived == true ? "read_screen" : "read"
         }()
         outcome.repairRules =
           payloads.candidateRules.isEmpty

@@ -404,14 +404,25 @@ public enum PasteService {
     package let selectionLocation: Int
     /// UTF-16 length of the selection. Zero for a plain caret.
     package let selectionLength: Int
+    /// Non-nil when this context was parsed from a terminal's SCREEN rather than
+    /// read from a real caret, carrying the raw buffer tail it was derived from.
+    ///
+    /// The tail participates in equality, so a buffer that changed between the
+    /// read and the commit fails revalidation. It is the only identity a
+    /// screen-derived context has: there is no selection to compare.
+    package let terminalBufferTail: String?
+
+    package var isScreenDerived: Bool { terminalBufferTail != nil }
 
     package init(
-      leftWindow: String, rightWindow: String, selectionLocation: Int, selectionLength: Int
+      leftWindow: String, rightWindow: String, selectionLocation: Int, selectionLength: Int,
+      terminalBufferTail: String? = nil
     ) {
       self.leftWindow = leftWindow
       self.rightWindow = rightWindow
       self.selectionLocation = selectionLocation
       self.selectionLength = selectionLength
+      self.terminalBufferTail = terminalBufferTail
     }
   }
 
@@ -606,6 +617,127 @@ public enum PasteService {
     return String(utf16[startIndex..<endIndex])
   }
 
+  // MARK: - Terminal screen reading (#1803 part 1)
+
+  /// Terminals whose caret is known to be unreadable AND whose screen shape has
+  /// been measured.
+  ///
+  /// Ghostty ALONE, deliberately. It is the only terminal whose fake caret and
+  /// buffer layout were actually measured; a correct identifier for an
+  /// UNMEASURED terminal is not inert, it actively enables an unverified parser
+  /// against a screen we have never seen (grounded review r1). Adding one is a
+  /// one-line change gated on the same evidence Ghostty has.
+  static let screenReadableTerminalBundleIDs: Set<String> = ["com.mitchellh.ghostty"]
+
+  /// How much of a terminal's scrollback to consider. 2,000 UTF-16 units,
+  /// matching the prototype's window: enough for a wrapped box and its rules,
+  /// far short of a session's history.
+  package static let terminalBufferTailUnits = 2000
+
+  /// Prompt markers that are unambiguous.
+  ///
+  /// `$`, `%` and `#` are DELIBERATELY absent. They are also a dollar amount, a
+  /// percentage and a comment, and in the prototype the weak set anchored on
+  /// Claude Code's own status bar (`81% | $107.40`), which would mean joining a
+  /// dictation onto a banner. Losing stock Terminal's `%` prompt is the accepted
+  /// cost.
+  static let strongPromptMarkers: [Character] = ["\u{276F}", "\u{279C}"]
+
+  /// Whether a row is one of the horizontal rules a full-screen UI draws around
+  /// its input box.
+  static func isRuleRow(_ row: Substring) -> Bool {
+    let trimmed = row.trimmingCharacters(in: .whitespaces)
+    guard trimmed.count >= 4 else { return false }
+    return trimmed.allSatisfy { $0 == "\u{2500}" || $0 == "\u{2501}" || $0 == "\u{2550}" || $0 == "-" }
+  }
+
+  /// The text after the LAST strong prompt marker in a row, or nil.
+  static func afterStrongMarker(in row: Substring) -> String? {
+    var lastIndex: String.Index?
+    for index in row.indices where strongPromptMarkers.contains(row[index]) {
+      lastIndex = index
+    }
+    guard let marker = lastIndex else { return nil }
+    var start = row.index(after: marker)
+    // One separating space belongs to the marker, not to the user's text.
+    if start < row.endIndex, row[start] == " " || row[start] == "\u{00A0}" {
+      start = row.index(after: start)
+    }
+    // NBSP is what the box pads with; it is whitespace to a human and a distinct
+    // character to everything else (prototype).
+    return String(row[start...]).replacingOccurrences(of: "\u{00A0}", with: " ")
+  }
+
+  /// The current input line inside a terminal's screen, or nil to refuse.
+  ///
+  /// Ported from the parked Level 3 prototype rather than reinvented
+  /// (`research/seam-joining/code/join_hotkey.py`), which drove ten dictated
+  /// chunks through Ghostty and paid for every rule here:
+  ///
+  /// - the input box is the landmark, not the prompt: anchoring on the prompt
+  ///   alone swept up the footer hints printed BELOW the box, so an EMPTY box
+  ///   read back as those hints
+  /// - a WRAPPED box is refused rather than compensated for: joining screen rows
+  ///   reconstructs different text, and a soft wrap can fall mid-word
+  /// - a bare shell prompt has no box at all and is the ordinary case
+  static func terminalInputLine(inBufferTail tail: String) -> String? {
+    let rows = tail.split(separator: "\n", omittingEmptySubsequences: false)
+    let ruleRows = rows.indices.filter { isRuleRow(rows[$0]) }
+
+    if ruleRows.count >= 2 {
+      let body = rows[(ruleRows[ruleRows.count - 2] + 1)..<ruleRows[ruleRows.count - 1]]
+      let populated = body.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+      // More than one populated row means the input wrapped.
+      guard populated.count <= 1 else { return nil }
+      guard let first = body.first, let line = afterStrongMarker(in: first) else { return nil }
+      return line
+    }
+
+    // No box: the ordinary shell prompt, and the headline case. Anchor ONLY on
+    // the final non-empty row — deliberately stricter than the prototype, which
+    // collected every row after a prompt and could therefore pick up an old
+    // prompt sitting in a full-screen program's scrollback.
+    guard let last = rows.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+    else { return nil }
+    return afterStrongMarker(in: last)
+  }
+
+  /// A context derived from a terminal's screen, or nil to refuse.
+  static func screenDerivedContext(element: AXUIElement, pid: pid_t, window: Int)
+    -> CaretContext?
+  {
+    guard let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
+      screenReadableTerminalBundleIDs.contains(bundleID)
+    else { return nil }
+
+    var valueRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef)
+        == .success,
+      let value = valueRef as? String
+    else { return nil }
+
+    let units = value.utf16.count
+    let start = units > terminalBufferTailUnits ? units - terminalBufferTailUnits : 0
+    // A boundary landing inside a surrogate pair means we cannot address the
+    // tail we planned; refuse rather than read a different span.
+    guard let tail = utf16Slice(of: value, from: start, to: units) else { return nil }
+
+    guard let line = terminalInputLine(inBufferTail: tail), !line.isEmpty else { return nil }
+
+    // Only the window's worth matters, and the RIGHT side is empty by
+    // construction: in a terminal input line there is nothing after the cursor
+    // that we can see or should act on.
+    let lineUnits = line.utf16.count
+    let leftStart = lineUnits > window ? lineUnits - window : 0
+    guard let leftWindow = utf16Slice(of: line, from: leftStart, to: lineUnits) else {
+      return nil
+    }
+    return CaretContext(
+      leftWindow: leftWindow, rightWindow: "", selectionLocation: lineUnits,
+      selectionLength: 0, terminalBufferTail: tail)
+  }
+
   package static func readCaretContext(
     element: AXUIElement,
     window: Int = caretContextWindow
@@ -627,6 +759,20 @@ public enum PasteService {
     else { return nil }
 
     guard let range = selectedRange(of: fresh) else { return nil }
+
+    // A terminal reports a caret of 0 forever while its character count grows,
+    // so "the text after the cursor" is the TOP of the scrollback. That is the
+    // exact shape below, and it is where the screen fallback belongs: the caret
+    // answer is unusable, not merely unhelpful. Measured in Ghostty
+    // (accessibility-macos.md FACT: reading-caret-context-from-another-app).
+    if range.location == 0, characterCount > window {
+      var pid: pid_t = 0
+      if AXUIElementGetPid(fresh, &pid) == .success, pid > 0,
+        let screen = screenDerivedContext(element: fresh, pid: pid, window: window)
+      {
+        return screen
+      }
+    }
 
     return assembleCaretContext(
       characterCount: characterCount,
@@ -718,6 +864,11 @@ public enum PasteService {
       return (.noMutation, nil)
     }
     guard textRoles.contains(role) else { return (.noMutation, nil) }
+    // Screen-derived evidence has no real selection and no whole-field offsets,
+    // which is exactly what this route validates against before and after it
+    // writes. It must never authorise an accessibility write; the clipboard
+    // route carries it instead (grounded review r2, #1803).
+    if context?.isScreenDerived == true { return (.noMutation, nil) }
 
     // Verify the element is writable (not read-only).
     var settableRef: DarwinBoolean = false
