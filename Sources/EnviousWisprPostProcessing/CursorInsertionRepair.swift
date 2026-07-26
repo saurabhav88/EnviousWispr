@@ -172,7 +172,16 @@ public enum CursorInsertionRepair {
     guard lexicon.isAvailable else { return false }
     let lastToken = body.split(whereSeparator: \.isWhitespace).last.map(String.init) ?? body
     let bare = String(lastToken.dropLast())
-    guard !bare.isEmpty else { return false }
+    guard let first = bare.first else { return false }
+    // A CAPITALISED final word is a proper noun or an abbreviation, never an
+    // ordinary word ending an ordinary sentence — and some abbreviations spell
+    // exactly like allowlisted words. `Reference No.` lowercases to `no`, which
+    // IS in the lexicon, so the positive lookup alone still deleted the period
+    // and produced `Reference No 5` (Codex review r8). Requiring the word to be
+    // lowercase as dictated closes that hole without another list: an ordinary
+    // sentence ending in `...says no.` still drops its period, and anything
+    // capitalised keeps punctuation exactly as spoken.
+    guard !first.isUppercase else { return false }
     return lexicon.contains(bare)
   }
 

@@ -1074,6 +1074,52 @@ struct CursorInsertionRepairTests {
     #expect(payloads.repairedText?.contains(".") == true, "\(payload)")
   }
 
+  @Test(
+    "An abbreviation spelled like an ordinary word keeps its period",
+    arguments: ["Reference No.", "See Fig.", "Volume Vol.", "In St."])
+  func abbreviationHomographsKeepTheirPeriod(_ payload: String) {
+    // The positive lookup alone was not enough: `No.` lowercases to `no`, which
+    // IS an allowlisted ordinary word, so the period was still deleted and
+    // `Reference No.` before `5` produced `Reference No 5` (Codex review r8).
+    // A capitalised final word is a proper noun or an abbreviation either way.
+    let payloads = CursorInsertionRepair.repair(
+      text: payload,
+      context: CursorInsertionRepair.CaretText(left: "I said ", right: "5 yesterday"),
+      protectedWords: [], language: "en",
+      lexicon: OrdinaryLowercaseLexicon(
+        words: ["no", "fig", "vol", "st", "today"], isAvailable: true))
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod) == false, "\(payload)")
+    #expect(payloads.repairedText?.contains(".") == true, "\(payload)")
+  }
+
+  @Test("A lowercase ordinary word ending a sentence still drops its period")
+  func lowercaseOrdinaryWordStillDrops() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "The answer is no.",
+      context: CursorInsertionRepair.CaretText(left: "I said ", right: "yesterday"),
+      protectedWords: [], language: "en",
+      lexicon: OrdinaryLowercaseLexicon(words: ["no", "the"], isAvailable: true))
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod))
+  }
+
+  @Test(
+    "A caret inside an underscored identifier is refused",
+    arguments: [
+      (left: "rename foo", right: "_bar now"),
+      (left: "rename foo_", right: "bar now"),
+    ] as [(left: String, right: String)])
+  func underscoreIsAWordConnector(_ testCase: (left: String, right: String)) {
+    // RESTORED after I deleted it while rewriting this section (Codex review
+    // r8). Dictating into code editors is a real target and `foo_|bar` was
+    // being split by an inserted space; underscore handling has nothing to do
+    // with the punctuation change that displaced this test.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: testCase.left, right: testCase.right),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules == [.refusedInsideWord], "\(testCase)")
+  }
+
   @Test("A known ordinary final word still loses its redundant full stop")
   func knownOrdinaryWordStillDropsThePeriod() {
     // The inversion must not disable the rule it protects: `today` is in the
