@@ -28,10 +28,19 @@ public enum CursorInsertionRepair {
     public let left: String
     /// Text immediately after the caret. Only its head matters.
     public let right: String
+    /// Whether `left` begins at the very start of the document rather than at a
+    /// bounded-window cut.
+    ///
+    /// The difference is invisible in the string itself and decides whether a
+    /// token touching the window's start is COMPLETE or merely the tail of a
+    /// longer word. Defaults to `false`, which refuses — a caller that does not
+    /// know cannot accidentally authorise a deletion.
+    public let leftReachesDocumentStart: Bool
 
-    public init(left: String, right: String) {
+    public init(left: String, right: String, leftReachesDocumentStart: Bool = false) {
       self.left = left
       self.right = right
+      self.leftReachesDocumentStart = leftReachesDocumentStart
     }
   }
 
@@ -93,6 +102,9 @@ public enum CursorInsertionRepair {
     case lowercasedFirst
     case caseSkipped(CaseSkipReason)
     case caseKept(CaseKeptReason)
+    /// The payload's first word repeated the word immediately left of the caret,
+    /// so ours was dropped. Placement only — see `dropDuplicateSeamToken`.
+    case droppedDuplicateWord
     case droppedTerminalPeriod
     case trailingSpace
     case trailingSpaceSkipped(TrailingSkipReason)
@@ -112,6 +124,7 @@ public enum CursorInsertionRepair {
       case .lowercasedFirst: return "lowercased_first"
       case .caseSkipped(let reason): return "case_skipped:\(reason.rawValue)"
       case .caseKept(let reason): return "case_kept:\(reason.rawValue)"
+      case .droppedDuplicateWord: return "dropped_duplicate_word"
       case .droppedTerminalPeriod: return "dropped_terminal_period"
       case .trailingSpace: return "trailing_space"
       case .trailingSpaceSkipped(let reason): return "trailing_space_skipped:\(reason.rawValue)"
@@ -355,6 +368,35 @@ public enum CursorInsertionRepair {
       rules.append(.caseKept(.other))
     }
 
+    // Rule 2a: drop a word repeated across the left seam.
+    //
+    // Polish never sees the document (#1790 is parked), so it returns a
+    // well-formed sentence whose opening word the user has often already typed:
+    // caret after `I want to go to the`, polish returns `The store is closed
+    // today.`, and the result reads `…to the the store…`. This layer is the one
+    // that can see both sides, so it removes OUR copy. Founder framing, #1803:
+    // "is the word to the left of the cursor the same as the word to the right?
+    // If yes, delete that first word before you paste."
+    //
+    // Placement is seam-only: no lexicon, no part of speech, no judgement about
+    // the sentence. It runs AFTER `applyLeadingCase` deliberately — running it
+    // first would retarget the casing rule onto the SECOND word, so
+    // `the` + `The Review is ready.` would lowercase `Review` (it is in the
+    // lexicon) and ship `the review is ready.` (grounded review r1).
+    //
+    // Guard order matches plan §3: spacing language, alphanumeric anchor, a left
+    // token proven complete, a token-shaped match, and something surviving.
+    if language.usesWordSpacing,
+      let anchor = left.character, anchor.isLetter || anchor.isNumber,
+      let leftToken = completeLeftToken(
+        in: context.left, reachesDocumentStart: context.leftReachesDocumentStart),
+      let deduplicated = dropDuplicateSeamToken(
+        from: out, leftToken: leftToken, documentOwnsSeparator: left.crossedSpace)
+    {
+      out = deduplicated
+      rules.append(.droppedDuplicateWord)
+    }
+
     // Rule 2b: never leave TWO full stops touching.
     //
     // SCOPE CORRECTED by the founder, 2026-07-26: "polish takes care of the
@@ -453,6 +495,150 @@ public enum CursorInsertionRepair {
 
     let lowered = String(firstCharacter).lowercased()
     return (String(leadingWhitespace) + lowered + String(stripped.dropFirst()), .lowercasedFirst)
+  }
+
+  // MARK: - Seam de-duplication (#1803)
+
+  /// Whitespace that is NOT a line break.
+  ///
+  /// Swift counts `\n` as whitespace, and both the casing rule and the anchor
+  /// walk use the bare `isWhitespace`. An unqualified "whitespace" contract here
+  /// would let `the` + `The\nstore` delete the word AND the newline, welding two
+  /// lines together — so every whitespace decision in this rule is horizontal.
+  static func isHorizontalWhitespace(_ character: Character) -> Bool {
+    character.isWhitespace && !character.isNewline
+  }
+
+  /// A token with its edge connectors removed, or `nil` when nothing well-formed
+  /// survives.
+  ///
+  /// `wordConnectors` may only sit INSIDE a token: `can't` and
+  /// `state-of-the-art` are one token each, while the trailing apostrophe of
+  /// `the Joneses'` and the bullet in `- item` are not part of one.
+  static func normalizedToken(_ raw: String) -> String? {
+    var characters = Array(raw)
+    while let first = characters.first, wordConnectors.contains(first) {
+      characters.removeFirst()
+    }
+    while let last = characters.last, wordConnectors.contains(last) {
+      characters.removeLast()
+    }
+    guard let first = characters.first, let last = characters.last,
+      first.isLetter || first.isNumber, last.isLetter || last.isNumber
+    else { return nil }
+    return String(characters)
+  }
+
+  /// Two tokens are the same word, ignoring case and apostrophe shape.
+  ///
+  /// Case-insensitive because the duplicate IS a capitalisation mismatch, and
+  /// apostrophe-folded because cloud polish emits `U+2019` while a typed
+  /// document holds `U+0027`.
+  static func tokensMatch(_ lhs: String, _ rhs: String) -> Bool {
+    OrdinaryLowercaseLexicon.normalizeApostrophes(lhs).lowercased()
+      == OrdinaryLowercaseLexicon.normalizeApostrophes(rhs).lowercased()
+  }
+
+  /// The complete token immediately left of the caret, or `nil`.
+  ///
+  /// Returns `nil` when completeness cannot be PROVEN. The left window is
+  /// bounded (20 UTF-16 units), so a backward scan that consumes the whole
+  /// window may be holding the tail of a longer word — comparing that would
+  /// match a suffix and delete a word on the strength of it.
+  ///
+  /// `reachesDocumentStart` is the one piece of evidence the string itself
+  /// cannot carry: a window that starts at document offset 0 was never cut, so a
+  /// token touching its start IS complete. Everything else fails in the safe
+  /// direction — a missed duplicate, never an invented deletion.
+  static func completeLeftToken(in window: String, reachesDocumentStart: Bool) -> String? {
+    var cursor = window.endIndex
+    // Reach the anchor. A newline is a boundary, not a separator to cross.
+    while cursor > window.startIndex {
+      let previous = window.index(before: cursor)
+      let character = window[previous]
+      if character.isNewline { return nil }
+      guard isHorizontalWhitespace(character) else { break }
+      cursor = previous
+    }
+    let end = cursor
+    guard end > window.startIndex else { return nil }
+
+    var start = end
+    while start > window.startIndex {
+      let previous = window.index(before: start)
+      let character = window[previous]
+      guard character.isLetter || character.isNumber || wordConnectors.contains(character)
+      else { break }
+      start = previous
+    }
+    // The scan ran out of window instead of meeting a boundary. That is only
+    // ambiguous when the window was CUT: a window that begins at the document's
+    // own start has no hidden prefix, so the token is complete. Without this the
+    // rule refused every short field — document `the ` plus payload
+    // `The store...` is a common Slack or search-box case (local diff review).
+    guard start > window.startIndex || reachesDocumentStart else { return nil }
+    return normalizedToken(String(window[start..<end]))
+  }
+
+  /// Remove the payload's leading token when it duplicates `leftToken`.
+  ///
+  /// Returns `nil` — meaning refuse — unless the payload opens with exactly one
+  /// complete token followed by a non-empty run of horizontal whitespace. A
+  /// payload opening with a quote or bracket, or whose token is followed by
+  /// punctuation rather than a space, is left alone rather than deleted with
+  /// dangling punctuation left behind.
+  ///
+  /// `documentOwnsSeparator` settles which side supplies the seam space. Rule 1
+  /// declines to add one when the payload already begins with whitespace, so
+  /// with `crossedSpace` true AND a polish payload carrying its own leading
+  /// space, both sides supply one and keeping both emits a double space
+  /// (grounded review r2). Exactly one side wins, never both.
+  static func dropDuplicateSeamToken(
+    from text: String,
+    leftToken: String,
+    documentOwnsSeparator: Bool
+  ) -> String? {
+    var index = text.startIndex
+    while index < text.endIndex, isHorizontalWhitespace(text[index]) {
+      index = text.index(after: index)
+    }
+    let leadingWhitespace = text[text.startIndex..<index]
+    // A payload that starts on its own line is not continuing this one.
+    guard index < text.endIndex, !text[index].isNewline else { return nil }
+
+    let tokenStart = index
+    while index < text.endIndex,
+      text[index].isLetter || text[index].isNumber || wordConnectors.contains(text[index])
+    {
+      index = text.index(after: index)
+    }
+    let rawToken = String(text[tokenStart..<index])
+    guard let token = normalizedToken(rawToken), token.count == rawToken.count else {
+      // A trimmed edge connector means the payload opened with punctuation that
+      // deletion would strand. Refuse rather than guess.
+      return nil
+    }
+    guard tokensMatch(token, leftToken) else { return nil }
+
+    // The token must be followed by a real separator, so `The` alone and
+    // `The, store` both refuse.
+    guard index < text.endIndex, isHorizontalWhitespace(text[index]) else { return nil }
+    while index < text.endIndex, isHorizontalWhitespace(text[index]) {
+      index = text.index(after: index)
+    }
+    // The ENTIRE separator must be horizontal, not just its first character.
+    // `The \nstore` passes the guard above on the space, and this loop then
+    // stops AT the newline — so without this the token would be deleted across
+    // a line break, which is precisely what the newline refusal exists to
+    // prevent (cloud review, PR #1804).
+    guard index < text.endIndex, !text[index].isNewline else { return nil }
+
+    // Never empty the user's dictation. This is the guard the deleted
+    // terminal-period rule never had.
+    let remainder = text[index...]
+    guard remainder.contains(where: { $0.isLetter || $0.isNumber }) else { return nil }
+
+    return (documentOwnsSeparator ? "" : String(leadingWhitespace)) + String(remainder)
   }
 
   /// Whether the caret sits between two word characters.
