@@ -71,18 +71,19 @@ struct DictationLanguageResolverTests {
     #expect(resolved == nil, "\(text.debugDescription)")
   }
 
-  @Test("A short continuation is identified from the document around it")
-  func shortTextUsesTheSurroundingDocument() {
-    // "Store is closed today" is 18 alphabetic scalars — under the floor. On the
-    // default engine that meant the feature never fired for exactly the short
-    // mid-sentence insertions it was built for (cloud review, PR #1802).
+  @Test("An English document cannot authorise recasing an unidentified insertion")
+  func englishSurroundingsDoNotAuthorise() {
+    // The document VETOES, it never authorises. Letting English surroundings
+    // decide meant a short GERMAN insertion into an English document resolved to
+    // English, and English casing then lowercased a German noun — the exact
+    // defect this path exists to prevent (cloud review, PR #1802).
     let resolved = DictationLanguageResolver.resolve(
       lockedLanguage: nil,
       engineDetectsLanguage: false,
       engineReportedLanguage: "en",
       text: "Store is closed today",
       surroundingText: "I went to the shop this morning and then walked back")
-    #expect(resolved == "en")
+    #expect(resolved == nil, "unidentified stays unidentified; casing is skipped")
   }
 
   @Test("A short insertion into a German document is not called English")

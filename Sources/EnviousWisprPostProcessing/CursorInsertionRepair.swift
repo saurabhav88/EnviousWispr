@@ -161,30 +161,6 @@ public enum CursorInsertionRepair {
   static let trailingSuppressors: Set<Character> = [
     ".", "!", "?", ",", ";", ":", ")", "]", "}", "\u{201D}", "\u{2019}",
   ]
-  /// Whether the payload's final word, with its period removed, is a word the
-  /// ordinary-lowercase lexicon knows.
-  ///
-  /// The positive-knowledge test that replaced three rounds of abbreviation
-  /// guessing. Unknown means keep the period, so a missing lexicon, a
-  /// non-English dictation, an abbreviation, an initialism, a surname or a
-  /// product name all leave the user's punctuation exactly as dictated.
-  static func lastWordIsKnownOrdinary(_ body: String, lexicon: OrdinaryLowercaseLexicon) -> Bool {
-    guard lexicon.isAvailable else { return false }
-    let lastToken = body.split(whereSeparator: \.isWhitespace).last.map(String.init) ?? body
-    let bare = String(lastToken.dropLast())
-    guard let first = bare.first else { return false }
-    // A CAPITALISED final word is a proper noun or an abbreviation, never an
-    // ordinary word ending an ordinary sentence — and some abbreviations spell
-    // exactly like allowlisted words. `Reference No.` lowercases to `no`, which
-    // IS in the lexicon, so the positive lookup alone still deleted the period
-    // and produced `Reference No 5` (Codex review r8). Requiring the word to be
-    // lowercase as dictated closes that hole without another list: an ordinary
-    // sentence ending in `...says no.` still drops its period, and anything
-    // capitalised keeps punctuation exactly as spoken.
-    guard !first.isUppercase else { return false }
-    return lexicon.contains(bare)
-  }
-
   /// Always capitalised regardless of position. Closed set, so it needs no lexicon.
   static let alwaysCapitalized: Set<String> = [
     "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
@@ -379,69 +355,32 @@ public enum CursorInsertionRepair {
       rules.append(.caseKept(.other))
     }
 
-    // Rule 2b: a trailing full stop is redundant when real content follows the
-    // caret. Only a full stop — `?` and `!` carry meaning the user dictated.
+    // Rule 2b: never leave TWO full stops touching.
     //
-    // Whitespace is skipped to find that content, mirroring the left side, which
-    // has walked back over spaces since the beginning. Without the symmetry, a
-    // right window of `" yesterday"` read as "nothing follows" and kept the
-    // period, producing `store today. yesterday` in the middle of a sentence
-    // (Codex review r3). The skip stops at a newline: content on the NEXT line
-    // is a new sentence, and the user's full stop belongs to this one.
-    // Continuation punctuation counts as content too: existing text starting
-    // with `, and eggs` cannot follow a full stop, so `Milk.` inserted before it
-    // has to lose the period (Codex review r7).
-    let rightContent = rightContentAnchor(of: context.right)
-    let rightIsContent =
-      rightContent.map {
-        $0.isLetter || $0.isNumber || terminators.contains($0) || continuers.contains($0)
-      } ?? false
-    // ...and only when the caret is actually MID-SENTENCE. The rule's premise is
-    // that our full stop is redundant because the user's sentence continues into
-    // the existing text — which is false when the insertion is a whole sentence
-    // dropped BETWEEN two others. Inserting `We can do that today.` between
-    // `Hello. ` and `Tomorrow...` produced `Hello. We can do that today
-    // Tomorrow...`, deleting a full stop that was doing real work (cloud review,
-    // PR #1802).
+    // SCOPE CORRECTED by the founder, 2026-07-26: "polish takes care of the
+    // commas and periods; all the deterministic thing needs to do is place the
+    // new sentence where it belongs." Polish owns the sentence — its wording,
+    // its internal capitalisation, and its final punctuation. This layer owns
+    // only the SEAM, which is the part polish cannot see.
     //
-    // `continuing` is the same left-side state the casing rule uses, so the two
-    // now agree by construction: we lowercase the first word and drop the final
-    // period in exactly the situations where the sentence carries on through the
-    // caret, and do neither when it does not.
-    if rightIsContent, continuing {
+    // The rule that used to live here judged whether the user's trailing full
+    // stop was redundant, which is a judgement about the SENTENCE and therefore
+    // polish's to make. It produced six of this branch's review findings —
+    // `etc.`, `U.S.`, `Jan.`, `Ave.`, `No.`, and a whole sentence inserted
+    // between two others — every one of them DELETING a character the user
+    // dictated. Deleted rather than fixed a seventh time.
+    //
+    // What remains is not a judgement: if our text ends with a full stop and the
+    // very next character is another one, the pair is a placement artifact we
+    // would be creating, so we drop ours. No word knowledge, no lexicon, no
+    // language, no abbreviation question.
+    if out.reversed().drop(while: \.isWhitespace).first == ".",
+      rightAnchor(of: context.right) == "."
+    {
       let body = String(out.reversed().drop(while: \.isWhitespace).reversed())
-      // The period is removed ONLY when the word carrying it is positively known
-      // to be an ordinary word.
-      //
-      // THREE review rounds arrived at this rule the wrong way round. r5 added a
-      // closed abbreviation list for `etc.`; r6 added a structural test for
-      // `U.S.`; r7 produced `Jan.` and `Ave.`. Each fix asked "is this an
-      // abbreviation?", which cannot be answered without an unbounded dictionary
-      // — so every round found another word the list had never heard of, and
-      // each miss silently deleted a character the user dictated.
-      //
-      // Inverting it ends the class. We already ship an authority on ordinary
-      // English words, the same lexicon the casing rule consults, so the period
-      // goes only when the final word is IN it. Everything unknown — every
-      // abbreviation, initialism, name, brand and foreign word, listed or not —
-      // keeps its period, which is exactly today's behaviour. The abbreviation
-      // list, the initialism test and their tests are deleted rather than left
-      // beside this: 45 lines of guessing replaced by one lookup that fails in
-      // the safe direction.
-      //
-      // The one case where the carrying word does not matter: the next real
-      // character is ITSELF a full stop. Keeping ours would produce `TL;DR..`
-      // whatever kind of word precedes it, and a doubled stop is wrong for
-      // every word in every language. The frozen 52-case matrix caught this the
-      // moment the rule inverted.
-      let wouldDoubleTheStop = rightContent.map { terminators.contains($0) } ?? false
-      if body.hasSuffix("."),
-        wouldDoubleTheStop || lastWordIsKnownOrdinary(body, lexicon: lexicon)
-      {
-        let trailing = out.dropFirst(body.count)
-        out = String(body.dropLast()) + trailing
-        rules.append(.droppedTerminalPeriod)
-      }
+      let trailing = out.dropFirst(body.count)
+      out = String(body.dropLast()) + trailing
+      rules.append(.droppedTerminalPeriod)
     }
 
     // Rule 3: a trailing space, unless what follows makes it wrong.
@@ -720,24 +659,6 @@ public enum CursorInsertionRepair {
   /// so SPACING must see it.
   static func rightAnchor(of window: String) -> Character? {
     window.first
-  }
-
-  /// The first real character after the caret, skipping spaces and tabs but
-  /// stopping at a newline.
-  ///
-  /// Spacing and the terminal-period rule ask different questions of the right
-  /// side, which is why they read it differently. Spacing asks "is there already
-  /// a separator", so it must see the space itself. The period rule asks "does
-  /// this sentence continue", and a space is not an answer to that — the content
-  /// behind it is. A newline stops the walk: text on the next line is a new
-  /// sentence, and the user's full stop belongs to the one they just dictated.
-  static func rightContentAnchor(of window: String) -> Character? {
-    for character in window {
-      if character.isNewline { return nil }
-      if character.isWhitespace { continue }
-      return character
-    }
-    return nil
   }
 }
 

@@ -60,8 +60,24 @@ enum DictationLanguageResolver {
       return engineReportedLanguage
     }
     if let fromDictation = dominantLanguage(of: text) { return fromDictation }
-    guard !surroundingText.isEmpty else { return nil }
-    return dominantLanguage(of: surroundingText + " " + text)
+    // The surrounding document may VETO, never authorise.
+    //
+    // My first version let the document decide outright, under a comment
+    // claiming both mixed cases were safe. That was false in one direction and I
+    // did not check it: an English document with a short GERMAN insertion
+    // resolves to English, and English casing then lowercases a German noun —
+    // the precise defect this whole path exists to prevent (cloud review, PR
+    // #1802, second time tonight a confident comment covered an unchecked claim).
+    //
+    // So the document can only ever make us MORE conservative. If it reads as a
+    // language we do not case, we take that and skip casing. If it reads as
+    // English we still abstain, because the insertion itself was never
+    // identified and English is the one answer that lets recasing proceed.
+    guard !surroundingText.isEmpty,
+      let fromDocument = dominantLanguage(of: surroundingText + " " + text),
+      fromDocument != "en"
+    else { return nil }
+    return fromDocument
   }
 
   /// Apple's on-device recognizer, or nil when the text is too short to trust or
