@@ -30,7 +30,7 @@ Primary persona: **Meera Patel** (Time-Pressed Parent), who has no proofreading 
 
 Delete the 799-word hand-authored allowlist. Decide "may this capital be lowered?" from two facilities already in macOS: the **system spelling dictionary** (is the lowercase form an ordinary English word at all?) and **`NLTagger` part-of-speech over the joined sentence** (is it behaving as an ordinary word *here*, or as a name?), with a 12-word frozen exception set (each entry individually ablated), a learned-word refusal, and a single runtime owner that warms at launch and bounds every live decision with the existing `withOrderedDeadline`.
 
-On the largest realistic sample available — 11,577 continuation rows derived from the local dictation store — recall rises from **70.5% to 76.1%**: 631 more lowercases attempted, 628 of them agreeing with the stored casing, against 3 more disagreements. The founder's own reported case is fixed. Those are characterisation counts, not certified precision (P14); the ship gate is a blinded human review of a deterministic sample.
+On the largest realistic sample available — 11,577 continuation rows derived from the local dictation store — recall rises from **70.5% to 75.9%**: 604 more lowercases attempted, 601 of them agreeing with the stored casing, against 3 more disagreements. The founder's own reported case is fixed. Those are characterisation counts, not certified precision (P14); the ship gate is a blinded human review of a deterministic sample.
 
 ## 1. Problem
 
@@ -178,13 +178,15 @@ It remains the largest realistic sample available and is retained for **coverage
 | Candidate | Lowered | Agrees with stored casing | Disagrees | Recall |
 |---|---|---|---|---|
 | Today's 799-word list | 7,880 | 7,869 | 11 | 70.5% |
-| **System dictionary + word type + bounded exceptions** | **8,511** | **8,497** | **14** | **76.1%** |
+| **System dictionary + word type + 12 exceptions + learned-word refusal** | **8,484** | **8,470** | **14** | **75.9%** |
 
-Stated exactly: the new design attempts **631 more lowercases**, of which **628 agree** with the stored casing, against **3 more disagreements**. Characterisation counts, not independently verified fixes or damage.
+Stated exactly: the production design attempts **604 more lowercases**, of which **601 agree** with the stored casing, against **3 more disagreements**. Agreement among attempted lowerings is 99.83%. Characterisation counts, not independently verified fixes or damage.
+
+**Third instrument correction, and the worst of them.** The scorer that produced an earlier version of this table still carried the **rejected 39-word** exception set — the 12 plus `nobody`, `somebody`, `none`, 18 greetings and 6 open-class nouns — so its 8,511/8,497/14 and 76.1% described a design we are not shipping. Caught by grounded review r4. The scorer now carries the shipped 12 and the figures above are its output. The lesson is recorded rather than buried: **an instrument that drifts from the design under test produces confident, wrong numbers**, and this is the third time in this plan (the others: a synthetic ungrammatical context, and a four-column schema change that broke every reader).
 
 **These figures replace an earlier, unreproducible set** (11,562 rows / 460 stored-capital / 7,915-7,910-5 / 8,481-8,465-16). Grounded review r3 caught that my own schema change broke the generator's counter and all three Swift readers, so nothing downstream could be re-derived. Regenerated with sorted input and re-scored; the conclusion held and improved, but the numbers moved and the old ones are gone rather than kept alongside.
 
-**The author-written corpora were misleading in both directions**, which is the durable lesson here: they predicted 89.5% precision and 97% coverage, against 99.8%-ish agreement and 76.2% recall on realistic data. Constructed examples over-represent the adversarial case and under-represent ordinary speech. They are demoted to diagnostics.
+**The author-written corpora were misleading in both directions**, which is the durable lesson here: they predicted 89.5% precision and 97% coverage, against 99.83% agreement and 75.9% recall on realistic data. Constructed examples over-represent the adversarial case and under-represent ordinary speech. They are demoted to diagnostics.
 
 The 14 disagreements are singletons spread across product and technical vocabulary — `Neural`, `Black`, `Hugging`, `Rung`, `German`, `Customize`, `Polish`, `Reddit`, `Bluetooth` — plus sentence-initial forms the split mislabels (`In`, `Any`, `The`, `Four`, `Let's`). Note the shipped list's own 11 disagreements are the same shape, so this is partly an artefact of the labelling, not purely a design difference. **Correction to an earlier claim:** I wrote that brand homographs "fall through to the existing Custom Words mechanism". Measured against the real 32 custom words, only `Claude` is protected. An earlier revision of this table also carried a "with Custom Words applied" row that I derived by hand and presented among measured rows; it has been removed rather than re-dressed.
 
@@ -248,7 +250,7 @@ Both failures land on **keep the capital**, which is today's behaviour, so they 
 
    **Robustness note:** this ablation was re-run from scratch after the corpus was regenerated with a corrected, reproducible schema. The per-entry deltas moved, but **the same three entries scored zero in both independent runs**, which is the reason to trust the cut.
 
-   **A second "discourse marker" set was designed, measured and CUT.** It held greetings and politeness formulae plus six open-class nouns (`question, answer, note, reminder, update, example`). Grounded review r1 correctly identified that those six are a vocabulary guess selected from observed data — a smaller version of exactly what the founder rejected. Before cutting it I measured what it bought: recall 76.2% without it, 76.3% with — **one case in the whole corpus**. (That measurement predates the corpus-schema correction and was not re-run; a set worth one decision does not become worth keeping under a slightly different sample.) The 518 occurrences that motivated it were first words of whole dictations, not continuation openers, and barely arise in the population that reaches this rule. Cut entirely rather than defended, because a set worth one case in eleven thousand is not worth reintroducing the pattern.
+   **A second "discourse marker" set was designed, measured and CUT.** It held greetings and politeness formulae plus six open-class nouns (`question, answer, note, reminder, update, example`). Grounded review r1 correctly identified that those six are a vocabulary guess selected from observed data — a smaller version of exactly what the founder rejected. Re-measured on the corrected 11,577-row corpus: its **closed-class half** (the 18 greetings and politeness formulae) buys **+3 agreements**, and grounded review r4 reports the full rejected set at **+27**. So roughly 24 of the 27 came from the six OPEN-class nouns — precisely the part that was indefensible. The earlier "one case in the whole corpus" figure came from the superseded corpus and is withdrawn. The set stays cut, but now for the honest reason: its value sat almost entirely in hand-authored vocabulary, not in a bounded grammatical rule. The 518 occurrences that motivated it were first words of whole dictations, not continuation openers, and barely arise in the population that reaches this rule. Cut entirely rather than defended, because a set worth one case in eleven thousand is not worth reintroducing the pattern.
 
    Noun-led misses stay safe-direction misses. They are reported after release and do **not** automatically create new exceptions; if recall pressure ever produces repeated noun exceptions, this design has degenerated back into a word list and should be reconsidered wholesale.
 3. **Part of speech in context.** `NLTagger(.lexicalClass)` over `left + payload`, read at the payload's first word. Accept only `verb, adverb, conjunction, determiner, pronoun, adjective, preposition, particle, interjection, number`. `Noun`, `OtherWord`, and *no tag at all* refuse → `.wordClassNotSafe`.
@@ -446,7 +448,16 @@ Grounded review r3 identified a genuine blocker: **if a serial queue held a lock
 1. **Warm-up never overlaps a decision.** While `.warming`, every decision refuses with `.oracleWarming` without touching the checker. `.ready` is published only after warm-up has finished touching it.
 2. **Two decisions never overlap.** There is one recording session at a time and `deliver` is `@MainActor` (`KernelFinalizationWiring.swift:153`), so decisions are already sequential.
 3. **A timed-out call is never raced, because the latch is permanent.** `onTimeout` takes the state lock briefly and sets `.unavailable(.oracleTimedOut)` for the rest of the process. The abandoned call is not holding that lock — it released it before the system call — so there is no deadlock, and no *later* call can reach the checker to race it.
-4. **Late results cannot publish.** `withOrderedDeadline`'s own `claim()` already discards the loser (`TaskTimeout.swift:120-133`), so no generation counter is required to do it again.
+4. **Late results cannot publish, and cannot corrupt state either.** `withOrderedDeadline`'s own `claim()` discards the losing decision (`TaskTimeout.swift:120-133`), so no generation counter is needed. But `claim()` does **not** roll back side effects inside the operation — grounded review r4 found the one reachable path: a stalled call that later discovers the identifier is missing would write `.unavailable(.dictionaryUnavailable)` over the timeout latch. It cannot re-block paste or permit another checker call, but it violates the documented permanent-timeout transition and mislabels the telemetry. Every operation-side write is therefore an **expected-state transition** — `.ready` may become unavailable only while it is still `.ready`:
+
+```swift
+private static func markUnavailableIfReady(_ reason: CaseSkipReason) {
+  stateLock.withLock { state in
+    guard case .ready = state else { return }
+    state = .unavailable(reason)
+  }
+}
+```
 
 A stalled warm-up needs no deadline either: the state simply stays `.warming`, every decision refuses, and capitals are kept — which is today's behaviour.
 
@@ -463,7 +474,7 @@ A stalled warm-up needs no deadline either: the state simply stays `.warming`, e
 | `.ready` | decision succeeds | return decision; state unchanged |
 | `.ready` | English identifier no longer in `availableLanguages` | `.unavailable(.dictionaryUnavailable)` |
 | `.ready` | ordered deadline wins | `.unavailable(.oracleTimedOut)`, set before paste resumes |
-| any | late completion of a timed-out call | discarded by `claim()`; cannot mutate state |
+| any | late completion of a timed-out call | decision discarded by `claim()`; **and every operation-side state write is conditional on still being `.ready`**, so it cannot overwrite the timeout latch |
 | `.unavailable` | any later decision or repeated prewarm | refuse the stored reason; checker never touched again |
 
 **Test obligation:** a fake checker that blocks past the deadline must show `onTimeout` completing without waiting on it, paste resuming with `legacyText`, the runtime latched permanently at `.oracleTimedOut`, a second decision never entering the fake at all, and the first call's late release neither restoring `.ready` nor publishing its result.
@@ -490,7 +501,17 @@ struct EnglishWordOracle: Sendable {
 
 If review still finds a reachable path where a stuck call blocks paste, that is a founder escalation, not another revision round.
 
-`WisprBootstrapper` only **triggers** prewarm, beside the existing `prewarmOutputClassifierIfNeeded` call (`WisprBootstrapper.swift:1017`), in the same non-blocking `Task { }` shape. It must never become a second availability authority. Custom Words stays with `startsWithProtectedSpelling` and is not duplicated inside the oracle.
+`WisprBootstrapper` only **triggers** prewarm, beside the existing `prewarmOutputClassifierIfNeeded` call (`WisprBootstrapper.swift:1017`).
+
+**`WisprBootstrapper` is `@MainActor`, so a plain `Task { }` INHERITS the main actor** and would run the ~76-85 ms of synchronous language-resolution and availability-probe work there — reintroducing the stall this design exists to remove, just at launch instead of at paste. The prewarm entry point is therefore `@concurrent` and the call site awaits it off the caller's actor (`swift-concurrency-patterns.md` `cpu-work-explicit-offload`):
+
+```swift
+@concurrent
+package static func prewarm() async { … }
+```
+```swift
+Task { await EnglishWordOracleRuntime.prewarm() }
+``` It must never become a second availability authority. Custom Words stays with `startsWithProtectedSpelling` and is not duplicated inside the oracle.
 
 **Contract details verified against `TaskTimeout.swift:106-134` so the build does not rediscover them:**
 
@@ -529,7 +550,7 @@ Telemetry distinguishes `.dictionaryUnavailable`, `.wordClassUnavailable`, `.lea
 | `Tests/.../OrdinaryLowercaseExclusionClass.swift` | **delete** — it asserts absence from a resource that no longer exists |
 | `Tests/.../EnglishWordOracleTests.swift` | **new** — deterministic injected contract tests ONLY. The transcript-derived corpus is never embedded; it is a local characterisation run (§11.2) |
 | `Tests/.../CursorInsertionRepairTests.swift` | update the prototype seam and the renamed reasons |
-| `Tests/.../PasteExecutionMetricsTests.swift:66-78` | enumerates every telemetry reason; must cover all five new/renamed names |
+| `Tests/.../PasteExecutionMetricsTests.swift:66-78` | enumerates every telemetry reason; must cover all **seven** changed names: two renames plus five additions |
 | `Tests/.../KernelFinalizationWiringTests.swift` | **six** tests assert lowering through the real bundled source (`:505-535`, `:734-767`, `:906-929`, `:1009-1043`, `:1076-1096`, `:1098-1158`) — not five as an earlier draft said. Preserve each one's actual contract under the new oracle |
 | `Sources/EnviousWisprCore/Transcript.swift:20` | **missed by earlier drafts** — the `repairRules` doc comment quotes `case_skipped:not_known_lowercase` verbatim and must track the rename |
 | `docs/.../2026-07-26-casing-headtohead.swift`, `2026-07-26-score-real-labelled-pairs.swift` | both read the deleted resource for their baseline column. **Decided:** retained as historical, explicitly non-rerunnable artifacts; each gains a header stating the commit and resource version that produced its recorded baseline |
@@ -604,7 +625,8 @@ The earlier draft of this section was **internally contradictory** and the cover
    - Reviewer records `LOWERCASE` / `KEEP CAPITAL` / `UNSURE`. **`UNSURE` counts against precision.**
    - Join to the hidden key only after review is locked. Precision = reviewed-correct lowercase decisions / 500, and must be **≥ 90%**.
    - Report the safety audit separately, listing every disagreement. The 11,577-row corpus remains coverage characterisation, never ground-truth precision.
-3. Recall on the characterisation corpus strictly greater than the shipped list's 70.5%. (Measured: 76.1%.) The author-written slices are diagnostics with no independent pass threshold and cannot override item 2.
+   - **Compatibility-exception safety audit.** Separately review **every** row whose lowering depends on one of the 12 exceptions — 79 rows in the corrected corpus. Outside the 500-row denominator. Report per exception. An exception ships only with at least one reviewed-correct lowering and zero harmful ones; `UNSURE` counts as harmful. Without this, the ablation shows only that the exceptions change agreement with our own output, never that they are right.
+3. Recall on the characterisation corpus strictly greater than the shipped list's 70.5%. (Measured: 75.9%.) The author-written slices are diagnostics with no independent pass threshold and cannot override item 2.
 3a. **First paste after launch stays under 5 ms**, verified with the startup warm-up in place. Unwarmed it measures 105.6 ms, which is a heart-path regression.
 4. Deterministic CI tests cover every acceptance and refusal branch using injected answers, calling no machine-variable service.
 5. Zero change to spacing, de-duplication, terminal-period, and non-English behaviour.
@@ -619,7 +641,7 @@ Customer-facing copy for that note:
 
 ## 14. Open questions
 
-1. **Is the small precision cost acceptable given today's list is near-perfect?** On the characterisation corpus the new design disagrees with stored casing 16 times versus the list's 5, while lowering 566 more. The founder set the bar at 90% and asked for the coverage. Flagged, not blocking — but item 2 of the ship criteria (blinded sample review) is what actually answers it, and this plan should not be signed off on the assumption that the answer is already known.
+1. **Is the small precision cost acceptable given today's list is near-perfect?** On the corrected characterisation corpus the production design disagrees 14 times versus the list's 11, while attempting 604 more lowerings and gaining 601 agreements. The founder set the bar at 90% and asked for the coverage. Flagged, not blocking — but item 2 of the ship criteria (blinded sample review) is what actually answers it, and this plan should not be signed off on the assumption that the answer is already known.
 2. **Should a small name refusal list sit on top?** Measured as unnecessary to clear the bar, and it would reintroduce exactly what the founder rejected. Recommendation: no. Revisit only if real use produces a second `Olive`.
 
 ## 15. Related

@@ -1,0 +1,156 @@
+Q1. Is the runtime-isolation root closed?
+
+No.
+
+The heart-path isolation is sound: I found no interleaving where the stalled checker keeps paste blocked after the 100 ms deadline. The timeout can acquire the lock, latch unavailable, and resume paste because the lock is never held across the system call. A serial queue and generation counter are unnecessary.
+
+But the permanent timeout latch is not fully protected:
+
+1. State is `.ready`.
+2. A decision enters `availableLanguages`, which stalls.
+3. The deadline wins and changes state to `.unavailable(.oracleTimedOut)`.
+4. Paste resumes with the original capital.
+5. The abandoned call returns and finds the language identifier missing.
+6. Its operation body writes `.unavailable(.dictionaryUnavailable)`.
+7. `claim()` discards its returned result, but cannot undo that state mutation.
+
+This does not re-block paste or permit another checker call, but it violates the documented permanent-timeout transition and corrupts telemetry. Late operation-side mutations must be conditional on their expected source state.
+
+Q2. Was the re-derivation genuine?
+
+Partly.
+
+The corpus and list figures are genuinely regenerated:
+
+- 11,577 rows
+- 411 stored-capital rows
+- 7,880 list attempts
+- 7,869 agreements
+- 11 disagreements
+- Four columns throughout
+
+The design figures are not for the design described by the plan. The scorer at [2026-07-26-score-real-labelled-pairs.swift](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-artifacts/2026-07-26-score-real-labelled-pairs.swift:27) still contains the entire rejected 39-word set: the original 15, 18 greetings/interjections, and six open-class nouns.
+
+The corrected ablation gives the actual production result:
+
+- Zero exceptions: 8,405 attempts / 8,391 agreements / 14 disagreements
+- Fifteen exceptions: 8,484 / 8,470 / 14
+- Twelve exceptions: also 8,484 / 8,470 / 14
+- Twelve-entry recall: 75.9%
+- Versus the list: +604 attempts / +601 agreements / +3 disagreements
+
+The rejected discourse set contributes another 27 agreements, not one. Cutting it is still defensible because it is open-ended hand-authored vocabulary, but the plan must use the real number.
+
+Orphaned or inconsistent figures remain at plan lines 33, 181–187, 206, 251, 585, and 600.
+
+Q3. Remaining implementation defects
+
+Three additional concrete defects remain:
+
+- Prewarm placement: `WisprBootstrapper` is `@MainActor`. A plain `Task {}` inherits that actor, so synchronous spell-system warm-up could spend roughly 85 ms on the main actor. The plan must explicitly move the synchronous work off the caller actor.
+- The promised exception safety audit is absent from the executable ship gate. The blinded 500-row sample does not guarantee review of all 79 exception-dependent decisions.
+- The §10 `PasteExecutionMetricsTests` row says “five new/renamed names.” The plan actually has seven changed names: two renames plus five additions.
+
+The AX comparison is otherwise fair, with one qualification: the 0.5-second value bounds each AX message, not necessarily the complete `readCaretContext` operation. A 100 ms whole-oracle deadline is still stricter and appropriate.
+
+Q4. Drop-in edits
+
+Replace operation-side unavailable mutations with conditional transitions:
+
+```swift
+private static func markUnavailableIfReady(_ reason: CaseSkipReason) {
+    stateLock.withLock { state in
+        guard case .ready = state else { return }
+        state = .unavailable(reason)
+    }
+}
+```
+
+Use it after any decision-time system call:
+
+```swift
+guard NSSpellChecker.availableLanguages.contains(identifier) else {
+    markUnavailableIfReady(.dictionaryUnavailable)
+    return .refused(.dictionaryUnavailable)
+}
+```
+
+Replace the late-completion transition text with:
+
+> **Late completion after timeout:** `withOrderedDeadline.claim()` discards the returned decision, but it does not roll back side effects inside the operation. Every operation-side state mutation therefore uses an expected-state transition: `.ready` may become unavailable only while it is still `.ready`. Once timeout has installed `.unavailable(.oracleTimedOut)`, no late result may replace that state or its telemetry reason.
+
+Add this test:
+
+```swift
+func testLateAvailabilityFailureCannotOverwriteTimeoutLatch() async {
+    let fake = BlockingEnglishWordOracle(
+        resultAfterRelease: .languageUnavailable
+    )
+    let runtime = EnglishWordOracleRuntime(oracle: fake)
+
+    let decision = await runtime.decision(
+        for: "Example",
+        deadline: .milliseconds(100)
+    )
+
+    XCTAssertEqual(decision, .refused(.oracleTimedOut))
+
+    fake.release()
+    await fake.waitForCompletion()
+
+    XCTAssertEqual(runtime.state, .unavailable(.oracleTimedOut))
+}
+```
+
+Make prewarm explicitly leave the caller actor:
+
+```swift
+@concurrent
+package static func prewarm() async {
+    guard beginWarmupIfNeeded() else { return }
+
+    let result = performSynchronousWarmup()
+    publishWarmupResultIfStillWarming(result)
+}
+```
+
+Bootstrap call:
+
+```swift
+Task {
+    await EnglishWordOracleRuntime.prewarm()
+}
+```
+
+Add this plan sentence:
+
+> `WisprBootstrapper` is `@MainActor`; therefore the oracle’s `prewarm()` entry point is `@concurrent`. A plain synchronous warm-up inside an inherited `Task {}` is forbidden because it would execute the approximately 85 ms language-resolution work on the main actor.
+
+Replace the design measurement row with:
+
+> | System dictionary + lexical class + 12 compatibility exceptions + learned-word refusal | 8,484 | 8,470 | 14 | 75.9% |
+
+Replace the comparison paragraph with:
+
+> Against the shipped 799-word list, the production design makes 604 additional lowering attempts, gains 601 stored-casing agreements, and adds three disagreements. Its measured lowercase recall is 75.9%; agreement among attempted lowerings is 99.8%.
+
+Replace the discourse-set result with:
+
+> On the corrected 11,577-row corpus, the rejected greetings/interjections and open-class discourse nouns add 27 stored-casing agreements and zero disagreements. They remain excluded because they form an open-ended, hand-authored vocabulary class rather than a bounded grammatical compatibility rule. The measured benefit is 27 of 11,577 rows, not the previously reported single row.
+
+Add to the ship gate:
+
+> **Compatibility-exception safety audit:** Separately review every row whose lowering depends on one of the 12 compatibility exceptions—79 rows in the corrected corpus. This audit is outside the 500-row denominator. Report results per exception. An exception may ship only if it has at least one correct lowering and zero harmful lowerings; `UNSURE` counts as harmful.
+
+Replace the stale open question with:
+
+> The production design records 14 disagreements versus 11 for the shipped list, while gaining 604 attempts and 601 stored-casing agreements. The blinded review and the complete 79-row compatibility-exception audit decide whether those three additional disagreements are acceptable.
+
+Replace the §10 test row with:
+
+> Update `PasteExecutionMetricsTests` for all seven changed `CaseSkipReason` names: two renames and five additions.
+
+These are real blockers, especially the scorer measuring the rejected design. At the agreed four-round limit, they should now go to the founder as a precise correction set rather than start another review cycle.
+
+VERDICT: PROCEED-WITH-REVISIONS
+

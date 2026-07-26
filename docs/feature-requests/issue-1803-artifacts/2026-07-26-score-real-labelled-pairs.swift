@@ -24,12 +24,14 @@ let safeTags: Set<NLTag> = [
   .verb, .adverb, .conjunction, .determiner, .pronoun, .adjective, .preposition, .particle,
   .interjection, .number,
 ]
+// THE SHIPPED SET: 12 frozen compatibility exceptions. An earlier version of
+// this file carried the REJECTED 39-word set (these 12 plus `nobody`,
+// `somebody`, `none`, 18 greetings and 6 open-class nouns), so the headline
+// table it produced described a design that is not being shipped. Caught by
+// grounded review r4, 2026-07-26.
 let safeNouns: Set<String> = [
   "yesterday", "today", "tomorrow", "tonight", "everything", "something", "nothing", "anything",
-  "everyone", "someone", "anyone", "nobody", "everybody", "somebody", "none",
-  "hey", "hello", "hi", "yep", "yup", "yeah", "yes", "nope", "okay", "ok",
-  "thanks", "thank", "please", "sorry", "sure", "welcome", "goodbye", "bye",
-  "question", "answer", "note", "reminder", "update", "example",
+  "everyone", "someone", "anyone", "everybody",
 ]
 func word(_ p: String) -> String {
   String(p.prefix(while: { !$0.isWhitespace })).trimmingCharacters(in: .punctuationCharacters)
