@@ -682,8 +682,22 @@ public enum PasteService {
   /// - a bare shell prompt has no box at all and is the ordinary case
   static func terminalInputLine(inBufferTail tail: String) -> String? {
     let rows = tail.split(separator: "\n", omittingEmptySubsequences: false)
-    let ruleRows = rows.indices.filter { isRuleRow(rows[$0]) }
 
+    // The CURRENT prompt wins over any box still sitting in scrollback.
+    //
+    // A session that used a full-screen UI earlier leaves its rules behind, so
+    // `────\n❯ old input\n────\n❯ current command` would otherwise return the
+    // OLD input and compute the repair from stale text (code review). Checking
+    // the final row first settles it: a live shell prompt is the last thing on
+    // screen, while a live full-screen UI prints its footer hints below the box
+    // and so has no marker on that row.
+    if let last = rows.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
+      let line = afterStrongMarker(in: last)
+    {
+      return line
+    }
+
+    let ruleRows = rows.indices.filter { isRuleRow(rows[$0]) }
     if ruleRows.count >= 2 {
       let body = rows[(ruleRows[ruleRows.count - 2] + 1)..<ruleRows[ruleRows.count - 1]]
       let populated = body.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -693,35 +707,30 @@ public enum PasteService {
       return line
     }
 
-    // No box: the ordinary shell prompt, and the headline case. Anchor ONLY on
-    // the final non-empty row — deliberately stricter than the prototype, which
-    // collected every row after a prompt and could therefore pick up an old
-    // prompt sitting in a full-screen program's scrollback.
-    guard let last = rows.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
-    else { return nil }
-    return afterStrongMarker(in: last)
+    // Neither a live prompt on the final row nor a box: refuse. This is what a
+    // full-screen program without a recognisable input region looks like.
+    return nil
   }
 
   /// A context derived from a terminal's screen, or nil to refuse.
-  static func screenDerivedContext(element: AXUIElement, pid: pid_t, window: Int)
-    -> CaretContext?
-  {
+  static func screenDerivedContext(
+    element: AXUIElement, pid: pid_t, window: Int, characterCount: Int
+  ) -> CaretContext? {
     guard let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
       screenReadableTerminalBundleIDs.contains(bundleID)
     else { return nil }
 
-    var valueRef: CFTypeRef?
-    guard
-      AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef)
-        == .success,
-      let value = valueRef as? String
+    // Read ONLY the bounded tail, never the whole buffer. A terminal's `AXValue`
+    // is its entire scrollback and it grows all session, so copying it on every
+    // context read AND every commit revalidation puts unbounded work on the
+    // paste path (code review).
+    guard characterCount > 0 else { return nil }
+    let start = characterCount > terminalBufferTailUnits
+      ? characterCount - terminalBufferTailUnits : 0
+    let length = characterCount - start
+    guard let tail = string(of: element, at: start, length: length),
+      tail.utf16.count == length
     else { return nil }
-
-    let units = value.utf16.count
-    let start = units > terminalBufferTailUnits ? units - terminalBufferTailUnits : 0
-    // A boundary landing inside a surrogate pair means we cannot address the
-    // tail we planned; refuse rather than read a different span.
-    guard let tail = utf16Slice(of: value, from: start, to: units) else { return nil }
 
     guard let line = terminalInputLine(inBufferTail: tail), !line.isEmpty else { return nil }
 
@@ -768,7 +777,8 @@ public enum PasteService {
     if range.location == 0, characterCount > window {
       var pid: pid_t = 0
       if AXUIElementGetPid(fresh, &pid) == .success, pid > 0,
-        let screen = screenDerivedContext(element: fresh, pid: pid, window: window)
+        let screen = screenDerivedContext(
+          element: fresh, pid: pid, window: window, characterCount: characterCount)
       {
         return screen
       }

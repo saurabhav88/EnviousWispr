@@ -454,4 +454,27 @@ struct PasteCaretContextTests {
       terminalBufferTail: "more output\n\u{276F} abc")
     #expect(screen != scrolled)
   }
+
+  @Test("A live shell prompt wins over a boxed UI still sitting in scrollback")
+  func currentPromptBeatsAStaleBox() {
+    // The bug this freezes: an earlier full-screen session leaves its rules
+    // behind, and anchoring on the last two rules returned the OLD input while
+    // ignoring the command being typed right now.
+    let stale = """
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      \u{276F} old input from earlier
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      \u{276F} git commit -m fix the
+      """
+    #expect(PasteService.terminalInputLine(inBufferTail: stale) == "git commit -m fix the")
+  }
+
+  @Test("A live full-screen UI still resolves to its box, because its footer follows")
+  func liveBoxStillWinsWhenTheFooterFollows() {
+    // The other side of the same decision: a live UI prints hints BELOW the box,
+    // so its final row carries no prompt marker and the box is correct.
+    #expect(
+      PasteService.terminalInputLine(inBufferTail: Self.boxed("git commit -m fix the"))
+        == "git commit -m fix the")
+  }
 }
