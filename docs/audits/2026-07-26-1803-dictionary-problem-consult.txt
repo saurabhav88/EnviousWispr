@@ -1,0 +1,211 @@
+## Bottom line
+
+The live `main` branch differs from one premise in the question:
+
+**Word knowledge currently affects only leading-case repair. The touching-full-stops rule no longer consults the lexicon.** The source explicitly says “No word knowledge, no lexicon” and drops a period only when two full stops would touch (`Sources/EnviousWisprPostProcessing/CursorInsertionRepair.swift:400-425`).
+
+The tests at `OrdinaryLowercaseLexiconTests.swift:265-305` still describe the deleted, older contract. Their right-side text is `"yesterday"`, not `"."`, so they never exercise touching full stops (`Tests/EnviousWisprTests/PostProcessing/OrdinaryLowercaseLexiconTests.swift:273-285`, `:293-304`). They pass accidentally and are not load-bearing punctuation tests.
+
+## Q1. Owner and process boundary
+
+### Where it executes
+
+Production execution is:
+
+1. The main EnviousWispr app constructs both recording drivers (`Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift:335-355`, `:372-405`).
+2. The factory builds `KernelFinalizationWiring` and gives its `deliver` closure to the recording kernel (`Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift:398-431`).
+3. `RecordingSessionKernel` is `@MainActor`, and its delivery closure is explicitly `@MainActor` (`Sources/EnviousWisprPipeline/RecordingSessionKernel.swift:187-192`, `:218-226`).
+4. After ASR, processing, and storage, the kernel awaits that closure (`Sources/EnviousWisprPipeline/RecordingSessionKernel.swift:2518-2535`).
+5. Inside that main-actor closure, the app reads the caret, resolves language, calls `CursorInsertionRepair.repair`, and only then starts paste delivery (`Sources/EnviousWisprPipeline/KernelFinalizationWiring.swift:357-412`, `:426-436`).
+
+So production repair runs **inside the GUI app process, synchronously on the main actor, immediately before paste**.
+
+### XPC
+
+It is not reached from the XPC helper.
+
+The ASR helper depends on Core, ASR, Audio, Observability, WhisperKit, and FluidAudio. It has no Pipeline or PostProcessing dependency (`Package.swift:189-200`; `Project.swift:323-344`). PostProcessing enters production through Pipeline (`Package.swift:148-164`).
+
+### Non-GUI/test hosts
+
+Yes:
+
+- The unit-test bundle links PostProcessing and Pipeline directly, without launching the app (`Project.swift:415-453`).
+- `OrdinaryLowercaseLexiconTests` calls the production repair overload directly (`Tests/EnviousWisprTests/PostProcessing/OrdinaryLowercaseLexiconTests.swift:87-110`).
+- `KernelFinalizationWiringTests` runs the real delivery closure in the XCTest process (`Tests/EnviousWisprTests/Pipeline/KernelFinalizationWiringTests.swift:906-929`).
+- `AliasRunner` is a command-line executable that consumes the public PostProcessing product, although it does not currently call cursor repair (`scripts/eval/alias_runner/Package.swift:16-24`; `scripts/eval/alias_runner/Sources/AliasRunner/main.swift:6-8`).
+
+### AppKit link blast radius
+
+Adding AppKit to PostProcessing places AppKit on these dependency graphs:
+
+- `EnviousWisprPostProcessing` itself (`Package.swift:74-79`).
+- `EnviousWisprPipeline`, which depends on PostProcessing (`Package.swift:148-164`).
+- `EnviousWisprAppKit`, which depends directly on PostProcessing and Pipeline (`Package.swift:169-187`).
+- `EnviousWispr`, through AppKit (`Package.swift:202-211`).
+- `EnviousWisprTests`, through both direct PostProcessing and AppKit/Pipeline dependencies (`Package.swift:213-241`).
+- External product consumer `AliasRunner` (`scripts/eval/alias_runner/Package.swift:16-24`).
+
+The ASR XPC and `EnviousWisprASRTests` do not acquire it (`Package.swift:189-200`, `:243-253`).
+
+Pipeline, the app, AppKit, and the broad test bundle already use AppKit (`Sources/EnviousWisprPipeline/KernelFinalizationWiring.swift:1-6`; `Sources/EnviousWispr/AppDelegate.swift:1`; `Tests/EnviousWisprTests/Pipeline/KernelFinalizationWiringTests.swift:1`). The known place where AppKit is genuinely new is the standalone AliasRunner CLI graph.
+
+NaturalLanguage is already in Pipeline because `DictationLanguageResolver` uses `NLLanguageRecognizer` (`Sources/EnviousWisprPipeline/DictationLanguageResolver.swift:1-4`, `:83-91`). It would be new only to PostProcessing and its standalone library consumers.
+
+There is also a declared module-boundary expansion: PostProcessing is documented as Core-only (`Package.swift:74-79`; `.claude/knowledge/architecture.md:21-24`).
+
+## Q2. Determinism and test reality
+
+First correction: **there is no executable SHA-256 assertion in the current test suite.** The checksum exists only in provenance prose (`Sources/EnviousWisprPostProcessing/Resources/ordinary-lowercase-words.provenance.md:45-55`). The executable integrity pin is the 799-entry count (`Tests/EnviousWisprTests/PostProcessing/OrdinaryLowercaseLexiconTests.swift:27-32`).
+
+### Load-bearing tests that become machine-dependent
+
+These assert user-visible production decisions using the real bundled provider:
+
+- Known openers, including the shipped `Yesterday` behavior: `OrdinaryLowercaseLexiconTests.swift:78-110`.
+- English/German collision behavior using the actual shipped word source: `CursorInsertionRepairTests.swift:1275-1306`.
+- Production wiring lowers `Review`: `KernelFinalizationWiringTests.swift:906-929`.
+- Candidate reaches delivery as lowercase: `KernelFinalizationWiringTests.swift:740-767`.
+- Custom-word snapshot behavior depends on unprotected `Review` being accepted as lowercase: `KernelFinalizationWiringTests.swift:1009-1043`, `:1098-1158`.
+
+These remain important behavior claims, but a live per-user service makes the expected result dependent on installed dictionaries, learned words, locale, and model assets.
+
+### Load-bearing safety claims that become mechanism-specific or meaningless
+
+- The entire 457-word exclusion safety barrier: `OrdinaryLowercaseLexiconTests.swift:59-74`; data at `OrdinaryLowercaseExclusionClass.swift:18-96`.
+- Unavailable word knowledge must preserve the capital and keep spacing alive: `OrdinaryLowercaseLexiconTests.swift:263-315`.
+- Unknown-word refusal: `CursorInsertionRepairTests.swift:743-751`.
+
+The safety properties are important. The present assertions are tied specifically to a `Set<String>` resource and its `.unavailable` state.
+
+### Incidental resource tests that become meaningless
+
+These test the hand-authored file rather than product behavior:
+
+- Bundle/resource availability and exact count: `OrdinaryLowercaseLexiconTests.swift:20-33`.
+- Entry grammar, ASCII casing, and apostrophe format: `:35-57`.
+- Positive/negative membership checks: `:78-85`, `:135-143`.
+- Lookup normalization against file membership: `:113-169`.
+- Parser grammar and corruption behavior: `:177-260`.
+
+### Tests that stay deterministic today
+
+Most `CursorInsertionRepairTests` inject a small fixed prototype lexicon specifically to avoid production membership drift (`CursorInsertionRepairTests.swift:14-17`, `:33-42`). They become machine-dependent only if that injection seam disappears and they start calling the real system service.
+
+Some wiring tests use `Review` only as a convenient input while testing another contract. Those system-word expectations are incidental:
+
+- Completion-event payload routing: `KernelFinalizationWiringTests.swift:505-535`.
+- Existing trailing-space handling: `:1076-1096`.
+
+### CI guarantee
+
+CI guarantees a `macos-26` runner, latest stable Xcode, and actual Debug tests (`.github/workflows/pr-check.yml:25-46`, `:177-203`). Post-merge runs Debug and Release tests on the same runner class (`.github/workflows/main-post-merge.yml:23-26`, `:198-253`).
+
+It does **not** check `NSSpellChecker.availableLanguages`, check `NLTagger.availableTagSchemes`, or request NaturalLanguage assets. Therefore the workflows do not guarantee the dictionaries or lexical-class/name models required by those assertions.
+
+The installed SDK itself says scheme/language support must be checked on the current device (`MacOSX.sdk/System/Library/Frameworks/NaturalLanguage.framework/Headers/NLTagger.h:40-42`), and that missing assets may need an asynchronous request (`NLTagger.h:81-90`).
+
+Also, the existing language-resolution tests already depend on Apple’s model output for English and German (`Tests/EnviousWisprTests/Pipeline/DictationLanguageResolverTests.swift:14-29`, `:51-59`, `:89-99`, `:113-132`).
+
+## Q3. Every current lexicon-dependent decision
+
+There are only two true word-knowledge decisions:
+
+1. **Is word knowledge available?**  
+   If not, an otherwise eligible English uppercase opener remains unchanged and reports `caseSkipped:lexicon_unavailable` (`CursorInsertionRepair.swift:457-490`).
+
+2. **Is the first word positively known lowercase?**  
+   If absent, it remains capitalized and reports `caseSkipped:not_known_lowercase`; if present, only its first character is lowered (`CursorInsertionRepair.swift:492-497`).
+
+The following do **not** depend on membership or availability:
+
+- Leading spacing: `CursorInsertionRepair.swift:331-339`.
+- Language casing gate: `:341-358`.
+- Seam duplicate removal: `:371-398`.
+- Touching-full-stops removal: `:400-425`.
+- Trailing spacing: `:428-445`.
+- Protected/custom words: checked before word knowledge at `:474-490`.
+- Acronym, digit, pronoun-I, weekday/month guards: `:477-488`.
+
+One coupling trap: seam de-duplication uses `OrdinaryLowercaseLexicon.normalizeApostrophes` as a utility (`CursorInsertionRepair.swift:532-540`), and the pronoun guard does too (`:718-725`). That is normalization reuse, not word knowledge. Removing the type wholesale would therefore touch PR #1804 code even though duplicate detection does not consult its word set.
+
+Today, “lexicon unavailable” means:
+
+- Leading case declines safely.
+- Spacing continues.
+- Duplicate removal continues.
+- A touching full stop is still removed.
+- Trailing spacing continues.
+
+That follows directly from the only availability guard at `CursorInsertionRepair.swift:489-490` and the independent later rules at `:371-445`.
+
+## Q4/Q5. Additional naive-swap traps
+
+### 1. Region information has already been discarded
+
+`LanguageRules` reduces the language to two booleans and keeps casing only when the base code is `"en"` (`CursorInsertionRepair.swift:193-209`). `applyLeadingCase` receives no language or locale at all (`:349-356`, `:457-461`).
+
+Therefore the current seam cannot distinguish `en`, `en_US`, and `en_GB` when it reaches word lookup. This is a separate code trap from the dictionary disagreement you measured.
+
+### 2. Nil language is safe only while the existing gate stays intact
+
+`DictationLanguageResolver` deliberately returns nil for short or uncertain input (`DictationLanguageResolver.swift:25-37`, `:62-80`). Nil becomes `LanguageRules.unknown`, which skips casing (`CursorInsertionRepair.swift:199-208`, `:349-353`).
+
+So: **no trap here if the current casing gate remains intact.**
+
+But passing nil directly to `NSSpellChecker` has different semantics: it uses the spell checker’s currently selected language/user preference (`MacOSX.sdk/.../AppKit.framework/Headers/NSSpellChecker.h:150-153`). That would turn an intentional abstention into mutable user state.
+
+### 3. The system spell checker is application-global state
+
+Apple defines exactly one shared spell checker per application (`NSSpellChecker.h:37-48`). It also exposes user-selected language state and learned-word state (`NSSpellChecker.h:150-160`).
+
+That matters in tests and multiple hosts: the app, XCTest process, and AliasRunner each get their own application/process-level singleton state. Your background-thread measurement proves it functions there; it does not make those hosts share one deterministic dictionary state.
+
+### 4. `NLTagger` instances are not concurrently reusable
+
+The SDK explicitly says one `NLTagger` instance must not be used from more than one thread simultaneously (`NLTagger.h:56-60`). Your concurrent `NSSpellChecker` result does not establish the same contract for one shared tagger.
+
+### 5. Lexical-class assets are not guaranteed to exist
+
+The SDK says some scheme/language combinations may be unsupported on the current device (`NLTagger.h:40-42`). It separately says a missing scheme may mean assets are not loaded, and asset requests complete later, potentially on an arbitrary queue (`NLTagger.h:81-90`).
+
+CI performs no availability or asset step (`.github/workflows/pr-check.yml:64-90`, `:177-203`). This is a real trap.
+
+### 6. The available context is much smaller than “the document”
+
+The production reader supplies at most 20 UTF-16 units on either side (`Sources/EnviousWisprServices/PasteService.swift:392-422`, `:446-472`). `CursorInsertionRepair` receives only those bounded windows (`CursorInsertionRepair.swift:20-44`).
+
+Any POS/name result measured with broader context is not automatically evidence for the actual paste-path input.
+
+### 7. First-call work sits directly on the paste path
+
+The delivery closure is main-actor isolated (`KernelFinalizationWiring.swift:127-155`). Caret reading, language recognition, case repair, and only then paste occur sequentially (`:357-412`, `:426-436`).
+
+There is no timeout or error boundary around `CursorInsertionRepair.repair` itself (`:373-412`). Therefore any synchronous spell-service startup or tagger/model initialization adds directly to stop-to-paste latency. Your measured 1.33 ms `NSSpellChecker` cold call shows **no demonstrated spell-checker latency trap on this machine**. It says nothing about a missing or cold lexical-class asset.
+
+### 8. Protected/custom words currently outrank system knowledge
+
+Protected spellings are snapshotted before the first suspension point (`KernelFinalizationWiring.swift:188-201`), passed into repair (`:376-412`), and checked before lexicon availability or membership (`CursorInsertionRepair.swift:474-493`).
+
+So: **no trap here if that order remains unchanged.** A naive rewrite that asks the system first would silently change PR #1804’s protection contract.
+
+### 9. De-duplication order is load-bearing
+
+Leading-case evaluation happens before seam de-duplication (`CursorInsertionRepair.swift:341-398`). The source explains that reversing the order retargets casing onto the second word (`:381-385`).
+
+Changing the word provider must not be treated as isolated from this order. The existing regression test is `CursorInsertionRepairTests.swift:1399-1419`.
+
+### 10. Repaired text feeds later custom-word learning
+
+When a route commits repaired text, that exact repaired payload is emitted to observers (`KernelFinalizationWiring.swift:438-453`). The registry’s planned consumer learns from edits to what was pasted (`Sources/EnviousWisprServices/PasteCompletionRegistry.swift:3-17`).
+
+Therefore machine-dependent casing changes not only visible output but also the baseline later learning compares against. That is broader than the one pasted sentence.
+
+### 11. Sandbox/entitlement concern: no trap here
+
+The shipped app is Developer-ID signed, hardened, and notarized, but it is **not sandboxed**. Its entitlements omit `com.apple.security.app-sandbox` and explicitly describe it as non-sandboxed (`Sources/EnviousWispr/Resources/EnviousWispr.entitlements:21-25`). Release signing enables hardened runtime (`scripts/build-release-dmg.sh:282-344`) and verifies it (`:444-460`).
+
+I found no special NSSpellChecker entitlement in the SDK/API contract. Therefore there is no current App Sandbox entitlement trap for this app. The premise “sandboxed app” does not match the live release configuration.
+
+No files were changed. I could not refresh GitHub issue/PR comments because network access was unavailable, so this is grounded in the current local `main` checkout rather than a live GitHub refresh.
+

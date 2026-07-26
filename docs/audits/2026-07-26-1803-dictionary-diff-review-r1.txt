@@ -1,0 +1,9 @@
+The system dictionary path can fail open and corrupt capitalization during a spell-service failure. The new global test seam also permits nondeterministic cross-suite interference.
+
+Full review comments:
+
+- [P1] Fail closed when the spell service stops responding — /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Sources/EnviousWisprPostProcessing/EnglishWordOracleRuntime.swift:115-118
+  If the spell-server request fails after preparation, such as an XPC connection invalidation, `availableLanguages` can still contain the chosen English identifier while `checkSpelling` returns `NSNotFound`, the same value used for a valid word. This then treats every affected word as ordinary and can lowercase names instead of preserving them. Add a runtime health check or another way to distinguish service failure and latch the oracle unavailable.
+
+- [P2] Isolate the process-global oracle state in tests — /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Tests/EnviousWisprTests/Pipeline/KernelFinalizationWiringTests.swift:33-39
+  When Swift Testing runs suites concurrently, this installation shares one process-global runtime with `EnglishWordOracleTests`, whose cases call `resetForTesting`, `installForTesting`, and `disableAfterTimeout`. Those mutations can overwrite this fake while a wiring test is suspended, causing the real repair calls to observe `oracle_warming` or `oracle_timed_out` and fail nondeterministically. Inject the oracle into the wiring tests or serialize every test that mutates this runtime.

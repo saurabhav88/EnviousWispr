@@ -1,0 +1,36 @@
+All five r4 corrections landed correctly, but four stale plan statements remain.
+
+Q1
+
+1. **LANDED**: scorer now uses only the shipped 12 words at [scorer.swift:27](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-artifacts/2026-07-26-score-real-labelled-pairs.swift:27). Correct figures appear at [plan:181](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:181), ship criterion at line 629, and open question at line 644.
+
+2. **LANDED**: expected-state write at plan lines 451–460, transition-table protection at line 477, and test obligation at line 480.
+
+3. **LANDED**: `@concurrent prewarm()` and awaited call site at plan lines 504–515.
+
+4. **LANDED**: complete 79-row safety audit at plan line 628.
+
+5. **LANDED**: seven changed telemetry names at plan line 553.
+
+Q2
+
+Four stale statements remain:
+
+- **Line 208:** still says the rejected discourse set was “worth one decision.” The corrected result is +27 agreements for the full set.
+- **Line 253:** correctly gives +3 and +27, but its final sentence still says “a set worth one case.”
+- **Line 55:** “1 of the 8 words this design disagrees with” is orphaned. The corrected production result has 14 disagreement rows.
+- **Line 191:** says only `Claude` is protected, but `Claude` is not among the 14 disagreement words listed in that same paragraph. That Custom Words measurement needs reconciliation or removal.
+
+The headline table, TL;DR, ship criterion, scorer, and open question no longer describe the rejected design.
+
+Q3
+
+One fix-created contradiction:
+
+- **Line 159** still says spell-checker work “runs on the main actor anyway.”
+- **Lines 506–513** now correctly require prewarm to run off the main actor.
+
+That does not invalidate the runtime fix, but it could mislead implementation. Remove the parenthetical at line 159 or replace it with: “Live decisions run on the main actor; launch prewarm runs off it, with runtime state preventing overlap.”
+
+No other new defect was introduced by the five fixes.
+

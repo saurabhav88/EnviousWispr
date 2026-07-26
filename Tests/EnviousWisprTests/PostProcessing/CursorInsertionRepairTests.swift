@@ -11,10 +11,10 @@ import Testing
 // misclassification, a mid-word stray period, and the opening-quote path that
 // previously reached the right answer for the wrong reason.
 //
-// Repair MECHANICS are tested against an injected lexicon matching the
-// prototype. The shipped production lexicon deliberately does not contain
-// arbitrary object nouns such as `store`, and it was not padded to preserve a
-// prototype illustration; `OrdinaryLowercaseLexiconTests` covers the real one.
+// Repair MECHANICS are tested against an injected oracle with fixed answers,
+// so these cases never touch the system dictionary or the part-of-speech model
+// and stay deterministic on every machine and CI image. `EnglishWordOracleTests`
+// covers the live oracle's own behaviour (#1803).
 @Suite("CursorInsertionRepair")
 struct CursorInsertionRepairTests {
 
@@ -30,16 +30,28 @@ struct CursorInsertionRepairTests {
     var description: String { "\(payload) @ \(caret)" }
   }
 
+  /// An oracle with fixed answers, standing in for the system dictionary.
+  ///
+  /// `isRecognizedName` always returns false so these cases test repair MECHANICS
+  /// exactly as they did against the old lexicon, which had no part-of-speech
+  /// layer. The word-class filter has its own coverage in `EnglishWordOracleTests`;
+  /// letting it fire here would silently change what these assertions mean.
+  static func oracle(_ words: Set<String>) -> EnglishWordOracle {
+    EnglishWordOracle(
+      unavailableReason: nil,
+      dictionaryVerdict: { words.contains($0) ? .ordinary : .notOrdinary },
+      isLearnedWord: { _ in false },
+      isRecognizedName: { _, _ in false })
+  }
+
   /// The prototype's representative word set. Proves the SHAPE of the rule
-  /// without depending on the production lexicon's membership decisions.
-  static let prototypeLexicon = OrdinaryLowercaseLexicon(
-    words: [
-      "store", "the", "and", "but", "so", "then", "because", "which", "that",
-      "what", "if", "when", "where", "while", "or", "just", "also", "really",
-      "testing", "yesterday", "today", "tomorrow", "it", "this", "we", "they",
-      "pricing", "integration", "legal", "next",
-    ],
-    isAvailable: true)
+  /// without depending on any real dictionary's membership decisions.
+  static let prototypeOracle = oracle([
+    "store", "the", "and", "but", "so", "then", "because", "which", "that",
+    "what", "if", "when", "where", "while", "or", "just", "also", "really",
+    "testing", "yesterday", "today", "tomorrow", "it", "this", "we", "they",
+    "pricing", "integration", "legal", "next",
+  ])
 
   static let protectedWords: Set<String> = ["TL;DR", "iPhone", "GitHub"]
 
@@ -495,7 +507,7 @@ struct CursorInsertionRepairTests {
       text: testCase.payload,
       context: CursorInsertionRepair.CaretText(left: testCase.left, right: testCase.right),
       protectedWords: Self.protectedWords,
-      lexicon: Self.prototypeLexicon)
+      oracle: Self.prototypeOracle)
 
     #expect(payloads.repairedText == testCase.expectedRepaired, "\(testCase)")
     if let expectedDocument = testCase.expectedDocument {
@@ -525,8 +537,8 @@ struct CursorInsertionRepairTests {
       ("iPhone", .alreadyLower),
       ("Monday", .alwaysCapitalized),
       ("TL;DR", .protectedWord),
-      ("Kubernetes", .notKnownLowercase),
-      ("Lindsay", .notKnownLowercase),
+      ("Kubernetes", .notOrdinaryWord),
+      ("Lindsay", .notOrdinaryWord),
     ]
 
   @Test(
@@ -539,7 +551,7 @@ struct CursorInsertionRepairTests {
       text: "\(testCase.word) is fine.",
       context: CursorInsertionRepair.CaretText(left: "I think ", right: ""),
       protectedWords: Self.protectedWords,
-      lexicon: Self.prototypeLexicon)
+      oracle: Self.prototypeOracle)
 
     #expect(
       payloads.repairedText?.hasPrefix(testCase.word) == true,
@@ -554,7 +566,7 @@ struct CursorInsertionRepairTests {
       text: "Kubernetes v2 shipped.",
       context: CursorInsertionRepair.CaretText(left: "I think ", right: ""),
       protectedWords: [],
-      lexicon: Self.prototypeLexicon)
+      oracle: Self.prototypeOracle)
     #expect(payloads.repairedText?.hasPrefix("Kubernetes") == true)
   }
 
@@ -573,7 +585,7 @@ struct CursorInsertionRepairTests {
   func legacyPayloadIsExact(_ testCase: (input: String, expected: String)) {
     let payloads = CursorInsertionRepair.repair(
       text: testCase.input, context: nil, protectedWords: [],
-      lexicon: Self.prototypeLexicon)
+      oracle: Self.prototypeOracle)
     #expect(payloads.legacyText == testCase.expected)
     // Only a single trailing space is ever appended, and never a second one.
     #expect(
@@ -588,7 +600,7 @@ struct CursorInsertionRepairTests {
   func nilContextYieldsNoCandidate() {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.", context: nil, protectedWords: [],
-      lexicon: Self.prototypeLexicon)
+      oracle: Self.prototypeOracle)
     #expect(payloads.repairedText == nil)
     #expect(payloads.candidateRules.isEmpty)
     #expect(
@@ -600,7 +612,7 @@ struct CursorInsertionRepairTests {
   func nilContextIsNotRawInput() {
     let payloads = CursorInsertionRepair.repair(
       text: "no trailing space", context: nil, protectedWords: [],
-      lexicon: Self.prototypeLexicon)
+      oracle: Self.prototypeOracle)
     #expect(payloads.legacyText != "no trailing space")
   }
 
@@ -609,7 +621,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.repairedText != nil)
     #expect(payloads.legacyText == "Store today. ")
     // Both payloads are offered; nothing here selects one.
@@ -627,13 +639,12 @@ struct CursorInsertionRepairTests {
   func pronounFamilyProtectedEvenWhenInjectedIntoLexicon(_ word: String) {
     // Deliberately poison the lexicon with every normalised pronoun spelling.
     // If the guard relied on absence, these would now lowercase.
-    let poisoned = OrdinaryLowercaseLexicon(
-      words: ["i", "i'm", "i've", "i'll", "i'd"], isAvailable: true)
+    let poisoned = Self.oracle(["i", "i'm", "i've", "i'll", "i'd"])
 
     let payloads = CursorInsertionRepair.repair(
       text: "\(word) went there.",
       context: CursorInsertionRepair.CaretText(left: "and so ", right: ""),
-      protectedWords: [], lexicon: poisoned)
+      protectedWords: [], oracle: poisoned)
 
     #expect(
       payloads.repairedText?.hasPrefix(word) == true,
@@ -656,11 +667,11 @@ struct CursorInsertionRepairTests {
 
   @Test("Protected spelling beats lexicon membership")
   func protectedBeatsLexicon() {
-    let lexicon = OrdinaryLowercaseLexicon(words: ["store"], isAvailable: true)
+    let lexicon = Self.oracle(["store"])
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
-      protectedWords: ["Store"], lexicon: lexicon)
+      protectedWords: ["Store"], oracle: lexicon)
     #expect(payloads.candidateRules.contains(.caseSkipped(.protectedWord)))
   }
 
@@ -672,7 +683,7 @@ struct CursorInsertionRepairTests {
       text: "The Who announced it.",
       context: CursorInsertionRepair.CaretText(left: "We discussed ", right: ""),
       protectedWords: ["The Who"],
-      lexicon: OrdinaryLowercaseLexicon(words: ["the"], isAvailable: true))
+      oracle: Self.oracle(["the"]))
 
     #expect(payloads.repairedText?.hasPrefix("The Who") == true)
     #expect(payloads.candidateRules.contains(.caseSkipped(.protectedWord)))
@@ -690,7 +701,7 @@ struct CursorInsertionRepairTests {
       text: "\(testCase.canonical) shipped it.",
       context: CursorInsertionRepair.CaretText(left: "I heard ", right: ""),
       protectedWords: [testCase.canonical],
-      lexicon: OrdinaryLowercaseLexicon(words: [testCase.firstWord], isAvailable: true))
+      oracle: Self.oracle([testCase.firstWord]))
 
     #expect(payloads.repairedText?.hasPrefix(testCase.canonical) == true)
     #expect(payloads.candidateRules.contains(.caseSkipped(.protectedWord)))
@@ -704,7 +715,7 @@ struct CursorInsertionRepairTests {
       text: "Storefront opened.",
       context: CursorInsertionRepair.CaretText(left: "I saw the ", right: ""),
       protectedWords: ["Store"],
-      lexicon: OrdinaryLowercaseLexicon(words: ["storefront"], isAvailable: true))
+      oracle: Self.oracle(["storefront"]))
 
     #expect(payloads.candidateRules.contains(.caseSkipped(.protectedWord)) == false)
     #expect(payloads.candidateRules.contains(.lowercasedFirst))
@@ -712,31 +723,31 @@ struct CursorInsertionRepairTests {
 
   @Test("Acronym guard beats lexicon membership")
   func acronymBeatsLexicon() {
-    let lexicon = OrdinaryLowercaseLexicon(words: ["nasa"], isAvailable: true)
+    let lexicon = Self.oracle(["nasa"])
     let payloads = CursorInsertionRepair.repair(
       text: "NASA said no.",
       context: CursorInsertionRepair.CaretText(left: "I think ", right: ""),
-      protectedWords: [], lexicon: lexicon)
+      protectedWords: [], oracle: lexicon)
     #expect(payloads.candidateRules.contains(.caseSkipped(.mixedCaseOrAcronym)))
   }
 
   @Test("Digit guard beats lexicon membership")
   func digitBeatsLexicon() {
-    let lexicon = OrdinaryLowercaseLexicon(words: ["s3"], isAvailable: true)
+    let lexicon = Self.oracle(["s3"])
     let payloads = CursorInsertionRepair.repair(
       text: "S3 is down.",
       context: CursorInsertionRepair.CaretText(left: "I think ", right: ""),
-      protectedWords: [], lexicon: lexicon)
+      protectedWords: [], oracle: lexicon)
     #expect(payloads.candidateRules.contains(.caseSkipped(.containsDigit)))
   }
 
   @Test("Weekday guard beats lexicon membership")
   func weekdayBeatsLexicon() {
-    let lexicon = OrdinaryLowercaseLexicon(words: ["monday"], isAvailable: true)
+    let lexicon = Self.oracle(["monday"])
     let payloads = CursorInsertionRepair.repair(
       text: "Monday works.",
       context: CursorInsertionRepair.CaretText(left: "I think ", right: ""),
-      protectedWords: [], lexicon: lexicon)
+      protectedWords: [], oracle: lexicon)
     #expect(payloads.candidateRules.contains(.caseSkipped(.alwaysCapitalized)))
   }
 
@@ -745,9 +756,9 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Zorbitrax launched.",
       context: CursorInsertionRepair.CaretText(left: "I think ", right: ""),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.repairedText?.hasPrefix("Zorbitrax") == true)
-    #expect(payloads.candidateRules.contains(.caseSkipped(.notKnownLowercase)))
+    #expect(payloads.candidateRules.contains(.caseSkipped(.notOrdinaryWord)))
   }
 
   // MARK: - An unusable lexicon disables case repair ONLY
@@ -769,9 +780,9 @@ struct CursorInsertionRepairTests {
       // and it is NOT mid-word, because a letter touching a letter would refuse
       // before any of this runs.
       context: CursorInsertionRepair.CaretText(left: "I went home,", right: "yesterday"),
-      protectedWords: [], lexicon: .unavailable)
+      protectedWords: [], oracle: .unavailable(.dictionaryUnavailable))
 
-    #expect(payloads.candidateRules.contains(.caseSkipped(.lexiconUnavailable)))
+    #expect(payloads.candidateRules.contains(.caseSkipped(.dictionaryUnavailable)))
     #expect(payloads.candidateRules.contains(.leadingSpace))
     #expect(payloads.candidateRules.contains(.trailingSpace))
     #expect(
@@ -796,7 +807,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: testCase.payload,
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "."),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(
       payloads.candidateRules.contains(.droppedTerminalPeriod) == testCase.dropped,
       "\(testCase.payload)")
@@ -807,7 +818,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "."),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.repairedText?.contains("..") == false)
     let document = "I went to the " + (payloads.repairedText ?? "") + "."
     #expect(document == "I went to the store today.")
@@ -828,7 +839,7 @@ struct CursorInsertionRepairTests {
       text: "That works.",
       context: CursorInsertionRepair.CaretText(left: testCase.left, right: ""),
       protectedWords: [],
-      lexicon: OrdinaryLowercaseLexicon(words: ["that"], isAvailable: true))
+      oracle: Self.oracle(["that"]))
     #expect(
       payloads.candidateRules.contains(.lowercasedFirst) == testCase.lowered,
       "\(testCase.left)")
@@ -841,7 +852,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.legacyText == " ")
     #expect(payloads.candidateRules.isEmpty)
   }
@@ -853,7 +864,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: payload,
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.caseSkipped(.alreadyLower)))
     #expect(payloads.candidateRules.contains(.lowercasedFirst) == false)
   }
@@ -863,7 +874,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "🚀 Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.repairedText?.contains("🚀") == true)
     #expect(payloads.candidateRules.contains(.lowercasedFirst) == false)
   }
@@ -874,9 +885,9 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "E\u{0301}cole opened.",
       context: CursorInsertionRepair.CaretText(left: "I saw ", right: ""),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.repairedText?.isEmpty == false)
-    #expect(payloads.candidateRules.contains(.caseSkipped(.notKnownLowercase)))
+    #expect(payloads.candidateRules.contains(.caseSkipped(.notOrdinaryWord)))
   }
 
   @Test("A tab to the left counts as separation")
@@ -884,7 +895,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the\t", right: ""),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.leadingSpace) == false)
   }
 
@@ -893,7 +904,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "First line.\n", right: ""),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.caseKept(.lineStart)))
     #expect(payloads.candidateRules.contains(.leadingSpace) == false)
   }
@@ -903,7 +914,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: " yesterday"),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.rightIsSpace)))
   }
 
@@ -914,7 +925,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: right),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(
       payloads.candidateRules.contains(.trailingSpaceSkipped(.rightIsPunctuation)),
       "\(right)")
@@ -925,7 +936,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today. ",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
-      protectedWords: [], lexicon: Self.prototypeLexicon)
+      protectedWords: [], oracle: Self.prototypeOracle)
     #expect(payloads.repairedText?.hasSuffix("  ") == false)
   }
 
@@ -934,7 +945,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
-      protectedWords: ["store"], lexicon: Self.prototypeLexicon)
+      protectedWords: ["store"], oracle: Self.prototypeOracle)
     #expect(
       payloads.candidateRules.contains(.caseSkipped(.protectedWord)) == false,
       "a lowercase protected entry must not shadow the capitalised token")
@@ -952,7 +963,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: left, right: ""),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.leadingSpace), "\(left)")
     #expect(payloads.repairedText?.hasPrefix(" ") == true, "\(left)")
   }
@@ -990,7 +1001,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: testCase.left, right: ""),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     let addedSpace = payloads.candidateRules.contains(.leadingSpace)
     #expect(
       addedSpace == !testCase.opening,
@@ -1004,7 +1015,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: left, right: ""),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.leadingSpace) == false, "\(left)")
     #expect(payloads.candidateRules.contains(.caseKept(.afterOpener)), "\(left)")
   }
@@ -1014,7 +1025,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "He said \u{201C}", right: "\u{201D}"),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.repairedText?.hasSuffix(" ") == false)
     #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.rightIsPunctuation)))
   }
@@ -1036,7 +1047,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: testCase.left, right: testCase.right),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.repairedText == nil, "\(testCase)")
     #expect(payloads.candidateRules == [.refusedInsideWord], "\(testCase)")
   }
@@ -1051,7 +1062,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: testCase.left, right: testCase.right),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(
       payloads.candidateRules.contains(.refusedInsideWord) == false, "\(testCase)")
   }
@@ -1074,7 +1085,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: payload,
       context: CursorInsertionRepair.CaretText(left: "I said ", right: "yesterday"),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     let delivered = payloads.repairedText ?? payloads.legacyText
     #expect(delivered.contains("."), "\(payload)")
     #expect(payloads.candidateRules.contains(.droppedTerminalPeriod) == false, "\(payload)")
@@ -1090,7 +1101,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: payload,
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "."),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.droppedTerminalPeriod), "\(payload)")
     #expect(payloads.repairedText?.hasSuffix("..") == false, "\(payload)")
   }
@@ -1109,7 +1120,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: testCase.left, right: testCase.right),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules == [.refusedInsideWord], "\(testCase)")
   }
 
@@ -1120,7 +1131,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "TL;DR.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "."),
-      protectedWords: Self.protectedWords, language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: Self.protectedWords, language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.droppedTerminalPeriod))
     #expect(payloads.repairedText == "TL;DR")
   }
@@ -1135,7 +1146,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: left, right: ""),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(
       payloads.candidateRules.contains(.leadingSpace) == false, "\(left.debugDescription)")
     #expect(payloads.candidateRules.contains(.lowercasedFirst), "still a continuation")
@@ -1153,7 +1164,7 @@ struct CursorInsertionRepairTests {
       text: "\u{6674}\u{308C}",
       context: CursorInsertionRepair.CaretText(
         left: "\u{4ECA}\u{65E5}", right: "\u{306F}\u{3044}\u{3044}"),
-      protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: language, oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.refusedInsideWord) == false, "\(language)")
     #expect(payloads.repairedText == "\u{6674}\u{308C}", "no space at either end")
   }
@@ -1163,7 +1174,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the sto", right: "re today"),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules == [.refusedInsideWord])
   }
 
@@ -1176,7 +1187,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "He said \"hello ", right: right),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.repairedText?.hasSuffix(" ") == false, "\(right.debugDescription)")
     #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.rightIsPunctuation)))
   }
@@ -1188,7 +1199,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "\"hello\""),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.trailingSpace))
   }
 
@@ -1200,7 +1211,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "\nyesterday"),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.droppedTerminalPeriod) == false)
     #expect(payloads.repairedText?.contains("today.") == true)
   }
@@ -1212,7 +1223,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: " yesterday"),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.rightIsSpace)))
     #expect(payloads.repairedText?.hasSuffix(" ") == false)
   }
@@ -1234,7 +1245,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Hello there.",
       context: CursorInsertionRepair.CaretText(left: "", right: "the store is closed."),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(
       payloads.repairedText == nil,
       "a caret we cannot place must not produce a contextual candidate")
@@ -1252,7 +1263,7 @@ struct CursorInsertionRepairTests {
       text: "Deploy the release now.",
       context: CursorInsertionRepair.CaretText(
         left: "", right: "Last login: Fri Jul 25 on ttys004"),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     let delivered = payloads.repairedText ?? payloads.legacyText
     #expect(delivered.contains("now."), "the dictated full stop must survive")
     #expect(delivered == "Deploy the release now. ")
@@ -1265,34 +1276,34 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Second thought.",
       context: CursorInsertionRepair.CaretText(left: "First thought.\n", right: "trailing text"),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.repairedText == nil)
     #expect(payloads.candidateRules == [.refusedNoLeftAnchor])
   }
 
   // MARK: - Language coverage
 
-  /// The five words measured in the SHIPPED lexicon that are ordinary English
-  /// lowercase words AND German nouns, which German capitalises mid-sentence
-  /// without exception. Each one is a wrong-case defect an English-only rule
-  /// would produce in the language spoken by the largest single share of our
-  /// users, so they are the proof the gate is load-bearing rather than
-  /// theoretical.
+  /// Five words that are ordinary English lowercase words AND German nouns,
+  /// which German capitalises mid-sentence without exception. Each one is a
+  /// wrong-case defect an English-only rule would produce in the language spoken
+  /// by the largest single share of our users, so they are the proof the gate is
+  /// load-bearing rather than theoretical.
   static let germanNounCollisions = ["See", "Start", "Test", "Team", "Most"]
 
   @Test(
     "A word that is English-lowercase and a German noun is recased only in English",
     arguments: germanNounCollisions)
   func germanNounsKeepTheirCapital(_ word: String) {
-    // The SHIPPED lexicon, not the prototype: the whole point is that these
-    // words really are in the list we ship.
-    let shipped = OrdinaryLowercaseLexicon.bundled
-    #expect(shipped.isAvailable, "the shipped lexicon must load for this test to mean anything")
+    // An oracle that AGREES these are ordinary English words, which is what the
+    // real dictionary says and what the deleted 799-word list said too. The
+    // contract under test is the LANGUAGE GATE, not dictionary membership: the
+    // English arm must lowercase, or the German arm proves nothing.
+    let agrees = Self.oracle(Set(Self.germanNounCollisions.map { $0.lowercased() }))
 
     let english = CursorInsertionRepair.repair(
       text: "\(word) is fine.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
-      protectedWords: [], language: "en", lexicon: shipped)
+      protectedWords: [], language: "en", oracle: agrees)
     #expect(
       english.candidateRules.contains(.lowercasedFirst),
       "\(word) must still be recased in English, or this test proves nothing")
@@ -1300,7 +1311,7 @@ struct CursorInsertionRepairTests {
     let german = CursorInsertionRepair.repair(
       text: "\(word) ist gut.",
       context: CursorInsertionRepair.CaretText(left: "Ich gehe zum ", right: ""),
-      protectedWords: [], language: "de", lexicon: shipped)
+      protectedWords: [], language: "de", oracle: agrees)
     #expect(german.repairedText?.hasPrefix(word) == true, "\(word) must keep its capital")
     #expect(german.candidateRules.contains(.caseSkipped(.languageNotSupported)))
     #expect(german.candidateRules.contains(.lowercasedFirst) == false)
@@ -1313,7 +1324,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
-      protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: language, oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.caseSkipped(.languageNotSupported)))
     #expect(payloads.repairedText?.contains("Store") == true)
   }
@@ -1323,7 +1334,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
-      protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: language, oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.lowercasedFirst))
   }
 
@@ -1332,7 +1343,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the", right: ""),
-      protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: language, oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.leadingSpace))
     #expect(payloads.candidateRules.contains(.caseSkipped(.languageNotSupported)))
   }
@@ -1344,7 +1355,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "\u{4ECA}\u{65E5}\u{306F}\u{6674}\u{308C}",
       context: CursorInsertionRepair.CaretText(left: "\u{79C1}\u{306F}", right: ""),
-      protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: language, oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.leadingSpace) == false)
     #expect(payloads.candidateRules.contains(.trailingSpace) == false)
     #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.unsegmentedScript)))
@@ -1357,7 +1368,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "\u{C548}\u{B155}\u{D558}\u{C138}\u{C694}",
       context: CursorInsertionRepair.CaretText(left: "\u{C81C}\u{AC00}", right: ""),
-      protectedWords: [], language: "ko", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "ko", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.leadingSpace))
     #expect(payloads.candidateRules.contains(.trailingSpace))
   }
@@ -1368,7 +1379,7 @@ struct CursorInsertionRepairTests {
       let payloads = CursorInsertionRepair.repair(
         text: "Store today.",
         context: nil,
-        protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+        protectedWords: [], language: language, oracle: Self.prototypeOracle)
       #expect(payloads.legacyText == "Store today. ", "\(language ?? "nil")")
       #expect(payloads.repairedText == nil, "\(language ?? "nil")")
     }
@@ -1384,7 +1395,7 @@ struct CursorInsertionRepairTests {
     CursorInsertionRepair.repair(
       text: payload,
       context: CursorInsertionRepair.CaretText(left: left, right: right),
-      protectedWords: protectedWords, language: language, lexicon: Self.prototypeLexicon)
+      protectedWords: protectedWords, language: language, oracle: Self.prototypeOracle)
   }
 
   @Test("The founder's reported case emits one word, not two")
@@ -1498,7 +1509,7 @@ struct CursorInsertionRepairTests {
       text: "The store is ready.",
       context: CursorInsertionRepair.CaretText(
         left: "the ", right: "", leftReachesDocumentStart: true),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.droppedDuplicateWord))
     #expect(payloads.repairedText == "store is ready. ")
   }
@@ -1508,7 +1519,7 @@ struct CursorInsertionRepairTests {
     let payloads = CursorInsertionRepair.repair(
       text: "The store is ready.",
       context: CursorInsertionRepair.CaretText(left: "the ", right: ""),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
     #expect(!payloads.candidateRules.contains(.droppedDuplicateWord))
   }
 

@@ -69,7 +69,10 @@ struct PasteExecutionMetricsTests {
       .caseSkipped(.alreadyLower), .caseSkipped(.protectedWord),
       .caseSkipped(.mixedCaseOrAcronym), .caseSkipped(.containsDigit),
       .caseSkipped(.pronounI), .caseSkipped(.alwaysCapitalized),
-      .caseSkipped(.notKnownLowercase), .caseSkipped(.lexiconUnavailable),
+      .caseSkipped(.notOrdinaryWord), .caseSkipped(.dictionaryUnavailable),
+      .caseSkipped(.recognizedName), .caseSkipped(.wordClassUnavailable),
+      .caseSkipped(.learnedWord), .caseSkipped(.oracleWarming),
+      .caseSkipped(.oracleTimedOut),
       .caseSkipped(.languageNotSupported),
       .caseKept(.lineStart), .caseKept(.nothingLeft), .caseKept(.afterOpener),
       .caseKept(.afterTerminator), .caseKept(.other),
@@ -91,7 +94,10 @@ struct PasteExecutionMetricsTests {
       text: "PostHog is down.",
       context: CursorInsertionRepair.CaretText(left: "I think ", right: ""),
       protectedWords: ["PostHog"],
-      language: "en")
+      language: "en",
+      // Any oracle: a protected spelling refuses before word knowledge is
+      // consulted at all, which is part of what this case proves.
+      oracle: .unavailable(.dictionaryUnavailable))
     let rules = payloads.candidateRules.map(\.telemetryName).joined(separator: ",")
     #expect(rules.contains("case_skipped:protected_word"))
     #expect(rules.localizedCaseInsensitiveContains("posthog") == false)

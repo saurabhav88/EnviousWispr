@@ -5,6 +5,8 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
+@testable import EnviousWisprPostProcessing
+
 @testable import EnviousWisprPipeline
 
 // MARK: - KernelFinalizationWiringTests (epic #827, PR-4 §11.4)
@@ -15,6 +17,24 @@ import Testing
 
 @MainActor
 @Suite struct KernelFinalizationWiringTests {
+
+  /// A deterministic word oracle, injected through the wiring's own seam.
+  ///
+  /// Six cases here drive the real production repair, which needs word
+  /// knowledge. This is INJECTED rather than installed into
+  /// `EnglishWordOracleRuntime`: mutating that process-global would race
+  /// `EnglishWordOracleTests`, which legitimately resets and latches it, and
+  /// Swift Testing runs suites concurrently — a flake that passes until it does
+  /// not (local diff review, P2).
+  ///
+  /// A FAKE rather than a real prewarm, because the live oracle reads the
+  /// machine's dictionaries, part-of-speech assets and the user's learned words;
+  /// gating CI on those would be flaky by construction (#1803 plan §11.2).
+  static let testOracle = EnglishWordOracle(
+    unavailableReason: nil,
+    dictionaryVerdict: { ["review", "the", "store", "testing"].contains($0) ? .ordinary : .notOrdinary },
+    isLearnedWord: { _ in false },
+    isRecognizedName: { _, _ in false })
 
   // MARK: Wedge tuning (PR-4 §3.6)
 
@@ -523,7 +543,8 @@ import Testing
           submittedPayload: .repaired)
       },
       registry: registry,
-      readCaretContext: { _ in Self.midSentenceCaret })
+      readCaretContext: { _ in Self.midSentenceCaret },
+      englishWordOracle: { Self.testOracle })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
     _ = await wiring.deliver(processed)
@@ -551,7 +572,8 @@ import Testing
           submittedPayload: .legacy)
       },
       registry: registry,
-      readCaretContext: { _ in Self.midSentenceCaret })
+      readCaretContext: { _ in Self.midSentenceCaret },
+      englishWordOracle: { Self.testOracle })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
     _ = await wiring.deliver(processed)
@@ -746,7 +768,8 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret })
+      readCaretContext: { _ in Self.midSentenceCaret },
+      englishWordOracle: { Self.testOracle })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
     try await wiring.store(processed, UUID())
@@ -1025,7 +1048,8 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret })
+      readCaretContext: { _ in Self.midSentenceCaret },
+      englishWordOracle: { Self.testOracle })
 
     let first = try await wiring.processText("Review this before the meeting") {}
     _ = await wiring.deliver(first)
@@ -1086,7 +1110,8 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret })
+      readCaretContext: { _ in Self.midSentenceCaret },
+      englishWordOracle: { Self.testOracle })
 
     _ = await wiring.deliver("Review this before the meeting ")
 
@@ -1110,7 +1135,8 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret })
+      readCaretContext: { _ in Self.midSentenceCaret },
+      englishWordOracle: { Self.testOracle })
 
     // The vocabulary is EMPTY while this dictation is processed, so nothing
     // protects the leading word.
@@ -1147,7 +1173,8 @@ import Testing
         secondCaptured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret })
+      readCaretContext: { _ in Self.midSentenceCaret },
+      englishWordOracle: { Self.testOracle })
 
     let secondProcessed = try await secondWiring.processText("Review this before the meeting") {}
     _ = await secondWiring.deliver(secondProcessed)
@@ -1189,7 +1216,10 @@ import Testing
     // Delivery only ever runs after a transcription produced the text being
     // delivered, so the adapter it reads has a result by then. The default
     // stands in for exactly that state; language tests vary the code.
-    adapter: (any ASREngineAdapter)? = nil
+    adapter: (any ASREngineAdapter)? = nil,
+    // Injected, never installed into the process-global runtime: mutating that
+    // would race `EnglishWordOracleTests` under concurrent suite execution.
+    englishWordOracle: @escaping @MainActor () -> EnglishWordOracle = { Self.testOracle }
   ) -> KernelFinalizationWiring {
     KernelFinalizationWiring(
       outcome: outcome,
@@ -1208,6 +1238,7 @@ import Testing
       save: save,
       deliverPaste: deliverPaste,
       readCaretContext: readCaretContext,
+      englishWordOracle: englishWordOracle,
       pasteCompletionRegistry: registry,
       currentTime: currentTime,
       telemetryState: telemetryState)
