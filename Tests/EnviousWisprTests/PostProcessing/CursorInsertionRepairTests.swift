@@ -914,4 +914,108 @@ struct CursorInsertionRepairTests {
       payloads.candidateRules.contains(.caseSkipped(.protectedWord)) == false,
       "a lowercase protected entry must not shadow the capitalised token")
   }
+
+  // MARK: - Language coverage
+
+  /// The five words measured in the SHIPPED lexicon that are ordinary English
+  /// lowercase words AND German nouns, which German capitalises mid-sentence
+  /// without exception. Each one is a wrong-case defect an English-only rule
+  /// would produce in the language spoken by the largest single share of our
+  /// users, so they are the proof the gate is load-bearing rather than
+  /// theoretical.
+  static let germanNounCollisions = ["See", "Start", "Test", "Team", "Most"]
+
+  @Test(
+    "A word that is English-lowercase and a German noun is recased only in English",
+    arguments: germanNounCollisions)
+  func germanNounsKeepTheirCapital(_ word: String) {
+    // The SHIPPED lexicon, not the prototype: the whole point is that these
+    // words really are in the list we ship.
+    let shipped = OrdinaryLowercaseLexicon.bundled
+    #expect(shipped.isAvailable, "the shipped lexicon must load for this test to mean anything")
+
+    let english = CursorInsertionRepair.repair(
+      text: "\(word) is fine.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
+      protectedWords: [], language: "en", lexicon: shipped)
+    #expect(
+      english.candidateRules.contains(.lowercasedFirst),
+      "\(word) must still be recased in English, or this test proves nothing")
+
+    let german = CursorInsertionRepair.repair(
+      text: "\(word) ist gut.",
+      context: CursorInsertionRepair.CaretText(left: "Ich gehe zum ", right: ""),
+      protectedWords: [], language: "de", lexicon: shipped)
+    #expect(german.repairedText?.hasPrefix(word) == true, "\(word) must keep its capital")
+    #expect(german.candidateRules.contains(.caseSkipped(.languageNotSupported)))
+    #expect(german.candidateRules.contains(.lowercasedFirst) == false)
+  }
+
+  @Test(
+    "Only English is recased; every other language keeps the capital it was given",
+    arguments: ["de", "fr", "es", "nl", "it", "pt", "ru", "sv", "tr", "ja", "zh"])
+  func nonEnglishIsNeverRecased(_ language: String) {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
+      protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.caseSkipped(.languageNotSupported)))
+    #expect(payloads.repairedText?.contains("Store") == true)
+  }
+
+  @Test("Region variants resolve to their base language", arguments: ["en-US", "en_GB", "EN"])
+  func englishVariantsStillRecase(_ language: String) {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
+      protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.lowercasedFirst))
+  }
+
+  @Test("An unknown language spaces the seam but never recases", arguments: [nil, "", "und"])
+  func unknownLanguageSpacesButDoesNotRecase(_ language: String?) {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the", right: ""),
+      protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.leadingSpace))
+    #expect(payloads.candidateRules.contains(.caseSkipped(.languageNotSupported)))
+  }
+
+  @Test(
+    "A script that writes without spaces gets no space at either end",
+    arguments: ["ja", "zh", "yue", "th", "lo", "my", "km"])
+  func unsegmentedScriptsGetNoSpaces(_ language: String) {
+    let payloads = CursorInsertionRepair.repair(
+      text: "\u{4ECA}\u{65E5}\u{306F}\u{6674}\u{308C}",
+      context: CursorInsertionRepair.CaretText(left: "\u{79C1}\u{306F}", right: ""),
+      protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.leadingSpace) == false)
+    #expect(payloads.candidateRules.contains(.trailingSpace) == false)
+    #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.unsegmentedScript)))
+    #expect(payloads.repairedText?.hasPrefix(" ") == false)
+    #expect(payloads.repairedText?.hasSuffix(" ") == false)
+  }
+
+  @Test("Korean spaces its words, so it keeps the seam space")
+  func koreanKeepsItsSpacing() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "\u{C548}\u{B155}\u{D558}\u{C138}\u{C694}",
+      context: CursorInsertionRepair.CaretText(left: "\u{C81C}\u{AC00}", right: ""),
+      protectedWords: [], language: "ko", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.leadingSpace))
+    #expect(payloads.candidateRules.contains(.trailingSpace))
+  }
+
+  @Test("An unreadable caret context still yields today's payload in every language")
+  func fallbackIsLanguageIndependent() {
+    for language in ["en", "de", "ja", nil] {
+      let payloads = CursorInsertionRepair.repair(
+        text: "Store today.",
+        context: nil,
+        protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+      #expect(payloads.legacyText == "Store today. ", "\(language ?? "nil")")
+      #expect(payloads.repairedText == nil, "\(language ?? "nil")")
+    }
+  }
 }

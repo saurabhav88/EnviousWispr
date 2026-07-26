@@ -655,6 +655,18 @@ import Testing
     AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier)
   }
 
+  /// An engine that has already transcribed, which is the only state delivery
+  /// runs in: the text being delivered exists BECAUSE a result was produced.
+  /// A pre-finalize adapter reports no language, and the repair reads a missing
+  /// language as "unknown" and declines to recase — correct behaviour against a
+  /// state production cannot reach, and a misleading test if left in place.
+  private static func transcribedEngine(language: String? = "en") -> FakeEngine {
+    let engine = FakeEngine(behavior: .batchSuccess(text: ""), clock: FakeClock())
+    engine.lastResult = ASRResult(
+      text: "", language: language, duration: 0, processingTime: 0, backendType: .parakeet)
+    return engine
+  }
+
   private static let midSentenceCaret = PasteService.CaretContext(
     leftWindow: "I went to the ",
     rightWindow: "",
@@ -694,6 +706,42 @@ import Testing
       "the contextual candidate must reach delivery, not be recomputed there")
     // The evidence the candidate was computed FROM travels with it.
     #expect(request.caretContext == Self.midSentenceCaret)
+  }
+
+  // The spoken language reaches the repair through the production wiring, not
+  // just through the pure function's own argument. Without this, the language
+  // could stop being read here and every unit test would still pass while
+  // German dictations were silently recased with English rules.
+  @Test(
+    "the language the engine reports decides whether the candidate is recased",
+    arguments: [
+      (language: "en", expected: "review this before the meeting "),
+      (language: "de", expected: "Review this before the meeting "),
+      (language: nil, expected: "Review this before the meeting "),
+    ] as [(language: String?, expected: String)])
+  func engineLanguageReachesTheRepair(
+    _ testCase: (language: String?, expected: String)
+  ) async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret },
+      adapter: Self.transcribedEngine(language: testCase.language))
+
+    let processed = try await wiring.processText("Review this before the meeting") {}
+    _ = await wiring.deliver(processed)
+
+    let request = try #require(captured.requests.first)
+    #expect(request.repairedText == testCase.expected, "\(testCase.language ?? "nil")")
+    // Today's payload never varies by language: the fallback stays identical.
+    #expect(request.legacyText == "Review this before the meeting ")
   }
 
   // The read gate is a closed 2x2: the surrounding document may be read ONLY
@@ -953,12 +1001,16 @@ import Testing
     // exactly today's behaviour and only tests that opt in see a candidate.
     readCaretContext: @escaping @MainActor (AXUIElement) -> PasteService.CaretContext? = { _ in
       nil
-    }
+    },
+    // Delivery only ever runs after a transcription produced the text being
+    // delivered, so the adapter it reads has a result by then. The default
+    // stands in for exactly that state; language tests vary the code.
+    adapter: (any ASREngineAdapter)? = nil
   ) -> KernelFinalizationWiring {
     KernelFinalizationWiring(
       outcome: outcome,
       context: context,
-      adapter: ParakeetEngineAdapter(asrManager: StubParakeetASRManager()),
+      adapter: adapter ?? Self.transcribedEngine(),
       steps: steps ?? makeSteps(),
       // #989: deterministic executor — this suite asserts chain SEMANTICS
       // (ordering, side channels, delivery), never step timing. The

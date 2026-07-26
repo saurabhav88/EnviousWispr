@@ -97,12 +97,14 @@ struct OrdinaryLowercaseLexiconTests {
     ])
   func bundledKnownOpenerActuallyLowercases(_ testCase: (input: String, expected: String)) {
     // Membership alone would pass even if production never consulted the
-    // bundled resource. This drives the DEFAULT `repair(text:context:
-    // protectedWords:)` overload, so it fails if that path stops loading it.
+    // bundled resource. This drives the PRODUCTION `repair(text:context:
+    // protectedWords:language:)` overload, so it fails if that path stops
+    // loading it.
     let payloads = CursorInsertionRepair.repair(
       text: testCase.input,
       context: CursorInsertionRepair.CaretText(left: "We were ", right: ""),
-      protectedWords: [])
+      protectedWords: [],
+      language: "en")
 
     #expect(payloads.repairedText == testCase.expected)
     #expect(payloads.candidateRules.contains(.lowercasedFirst))

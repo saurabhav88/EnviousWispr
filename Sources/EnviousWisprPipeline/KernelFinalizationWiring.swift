@@ -367,7 +367,13 @@ struct KernelFinalizationWiring {
           context: caretContext.map {
             CursorInsertionRepair.CaretText(left: $0.leftWindow, right: $0.rightWindow)
           },
-          protectedWords: context.protectedSpellings)
+          protectedWords: context.protectedSpellings,
+          // The SAME language the transcript is recorded with above, from the
+          // same reader, so a dictation can never be filed as one language and
+          // repaired as another. Locked mode is honoured because the engine
+          // reports the forced language here; Parakeet reports English, which
+          // is the only language it transcribes.
+          language: adapter.lastResult?.language)
 
         // Chunk 6 transports the candidate without using it. Every route below
         // still submits `legacyText`; plan §6 owns the switchover.

@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Deterministic repair of an outgoing dictation against the text either side of
@@ -46,6 +47,14 @@ public enum CursorInsertionRepair {
     case alwaysCapitalized
     case notKnownLowercase
     case lexiconUnavailable
+    /// The dictation is not in a language whose casing rules we know. The
+    /// lexicon is English, and applying it to another language is not merely
+    /// useless — it is actively wrong. `See`, `Start`, `Test`, `Team` and
+    /// `Most` are all ordinary English lowercase words AND German nouns, which
+    /// German capitalises mid-sentence without exception. Firing there would
+    /// lowercase a correctly-capitalised noun in the language spoken by the
+    /// largest single share of our users.
+    case languageNotSupported
   }
 
   /// Why the position itself meant no case change was appropriate.
@@ -61,6 +70,10 @@ public enum CursorInsertionRepair {
   public enum TrailingSkipReason: String, Equatable, Sendable {
     case rightIsSpace
     case rightIsPunctuation
+    /// The language writes without spaces between words (Japanese, Chinese,
+    /// Thai, Lao, Burmese, Khmer). A space at either end of the insertion is a
+    /// visible defect in those scripts, not a separator.
+    case unsegmentedScript
   }
 
   /// One decision the repair took, for tests and privacy-safe telemetry.
@@ -123,6 +136,34 @@ public enum CursorInsertionRepair {
     "September", "October", "November", "December",
   ]
 
+  // MARK: - Language policy
+
+  /// What this repair may do in the language actually being dictated.
+  ///
+  /// Both answers are per-language and neither is a detail of the other: Japanese
+  /// has no casing AND no word spacing, German has both but inverts the noun
+  /// rule, and Russian spaces its words while using an alphabet our lexicon has
+  /// never seen. Deciding them separately keeps every language in exactly one of
+  /// four honest states rather than one all-or-nothing switch.
+  struct LanguageRules: Equatable {
+    /// Words are separated by spaces, so a seam may need one.
+    let usesWordSpacing: Bool
+    /// We hold casing knowledge for this language. English only today.
+    let knowsCasing: Bool
+
+    /// Unknown language: space, do not recase. Spacing is what all but six of
+    /// Whisper's ninety-nine languages do, and a missing or extra space is a
+    /// far smaller error than a wrongly lowercased proper noun.
+    static let unknown = LanguageRules(usesWordSpacing: true, knowsCasing: false)
+
+    static func forLanguage(_ raw: String?) -> LanguageRules {
+      guard let base = LanguageNormalizer.baseCode(raw) else { return .unknown }
+      return LanguageRules(
+        usesWordSpacing: !LanguageTypes.isUnsegmentedScript(base),
+        knowsCasing: base == "en")
+    }
+  }
+
   // MARK: - Entry point
 
   /// Prepare both payloads for `text` at the caret described by `context`.
@@ -132,15 +173,21 @@ public enum CursorInsertionRepair {
   ///   - context: the document text either side of the caret, or `nil` when it
   ///     could not be read. `nil` yields today's payload only — NOT the raw input.
   ///   - protectedWords: canonical spellings that must never be recased.
+  ///   - language: what the engine says was spoken, raw. Required rather than
+  ///     defaulted: a call site that forgets it would silently get English
+  ///     casing rules applied to another language, which is the one outcome
+  ///     this parameter exists to prevent.
   public static func repair(
     text: String,
     context: CaretText?,
-    protectedWords: Set<String>
+    protectedWords: Set<String>,
+    language: String?
   ) -> PreparedPayloads {
     repair(
       text: text,
       context: context,
       protectedWords: protectedWords,
+      language: language,
       lexicon: OrdinaryLowercaseLexicon.bundled
     )
   }
@@ -150,6 +197,7 @@ public enum CursorInsertionRepair {
     text: String,
     context: CaretText?,
     protectedWords: Set<String>,
+    language: String? = "en",
     lexicon: OrdinaryLowercaseLexicon
   ) -> PreparedPayloads {
     let legacy = legacyPayload(text)
@@ -168,7 +216,11 @@ public enum CursorInsertionRepair {
         legacyText: legacy, repairedText: nil, candidateRules: [.refusedInsideWord])
     }
     let (repaired, rules) = contextualPayload(
-      text: text, context: context, protectedWords: protectedWords, lexicon: lexicon)
+      text: text,
+      context: context,
+      protectedWords: protectedWords,
+      language: LanguageRules.forLanguage(language),
+      lexicon: lexicon)
     return PreparedPayloads(
       legacyText: legacy, repairedText: repaired, candidateRules: rules)
   }
@@ -186,6 +238,7 @@ public enum CursorInsertionRepair {
     text: String,
     context: CaretText,
     protectedWords: Set<String>,
+    language: LanguageRules,
     lexicon: OrdinaryLowercaseLexicon
   ) -> (String, [AppliedRule]) {
     var out = text
@@ -195,8 +248,10 @@ public enum CursorInsertionRepair {
     let left = leftAnchor(of: context.left)
     let right = rightAnchor(of: context.right)
 
-    // Rule 1: a leading space, unless one side already supplies separation.
-    if let anchor = left.character, !left.crossedSpace, !openers.contains(anchor),
+    // Rule 1: a leading space, unless one side already supplies separation —
+    // or the language does not separate words with spaces at all.
+    if language.usesWordSpacing, let anchor = left.character, !left.crossedSpace,
+      !openers.contains(anchor),
       let firstCharacter = out.first, !firstCharacter.isWhitespace
     {
       out = " " + out
@@ -211,7 +266,12 @@ public enum CursorInsertionRepair {
         !left.atLineStart && (anchor.isLetter || anchor.isNumber || continuers.contains(anchor))
       } ?? false
 
-    if continuing {
+    if continuing, !language.knowsCasing {
+      // Positioned to lowercase, but not in a language whose casing we know.
+      // Recorded as a skip rather than silently omitted so the field can tell
+      // "we chose not to" from "the position did not call for it".
+      rules.append(.caseSkipped(.languageNotSupported))
+    } else if continuing {
       let (adjusted, caseRule) = applyLeadingCase(
         to: out, protectedWords: protectedWords, lexicon: lexicon)
       out = adjusted
@@ -242,7 +302,9 @@ public enum CursorInsertionRepair {
     }
 
     // Rule 3: a trailing space, unless what follows makes it wrong.
-    if let anchor = right {
+    if !language.usesWordSpacing {
+      rules.append(.trailingSpaceSkipped(.unsegmentedScript))
+    } else if let anchor = right {
       if anchor.isWhitespace {
         rules.append(.trailingSpaceSkipped(.rightIsSpace))
       } else if trailingSuppressors.contains(anchor) {
