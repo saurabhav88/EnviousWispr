@@ -343,10 +343,6 @@ internal final class PasteCascadeExecutor {
 
       if activated {
         tiersAttempted.append(.cgEvent)
-        let snapshot: ClipboardSnapshot? =
-          request.restoreClipboardAfterPaste
-          ? PasteService.saveClipboard()
-          : nil
         // Revalidated AFTER activation, because bringing the app frontmost is
         // itself capable of moving focus and selection.
         let payload = PasteService.payloadAtCommitBoundary(
@@ -354,6 +350,16 @@ internal final class PasteCascadeExecutor {
           repaired: request.repairedText,
           context: request.caretContext,
           element: request.targetElement)
+        // Snapshot AFTER that revalidation, immediately before the write. The
+        // re-check makes accessibility calls, and anything copied while they run
+        // would otherwise be captured as "the user's old clipboard" and then
+        // restored over (Codex review r5). The window is a fraction of a
+        // millisecond in practice, so this is narrowing rather than closing a
+        // proven gap — taken because it costs one moved line.
+        let snapshot: ClipboardSnapshot? =
+          request.restoreClipboardAfterPaste
+          ? PasteService.saveClipboard()
+          : nil
         submittedKind = payload.kind
         let dispatchResult = PasteService.pasteToActiveApp(payload.text)
         submittedClipboardChangeCount = dispatchResult.changeCount
@@ -387,15 +393,16 @@ internal final class PasteCascadeExecutor {
         _ = PasteService.forceActivateApp(pid: app.processIdentifier)
         app.activate()
         try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-        let snapshot: ClipboardSnapshot? =
-          request.restoreClipboardAfterPaste
-          ? PasteService.saveClipboard()
-          : nil
         let payload = PasteService.payloadAtCommitBoundary(
           legacy: request.legacyText,
           repaired: request.repairedText,
           context: request.caretContext,
           element: request.targetElement)
+        // Same ordering as Tier 2: snapshot after the re-check, before the write.
+        let snapshot: ClipboardSnapshot? =
+          request.restoreClipboardAfterPaste
+          ? PasteService.saveClipboard()
+          : nil
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
         submittedClipboardChangeCount = changeCount

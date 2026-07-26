@@ -1031,6 +1031,60 @@ struct CursorInsertionRepairTests {
       payloads.candidateRules.contains(.refusedInsideWord) == false, "\(testCase)")
   }
 
+  // MARK: - Abbreviations and Unicode whitespace (Codex review r5)
+
+  @Test(
+    "An abbreviation keeps the period that belongs to the word",
+    arguments: [
+      "We need milk, eggs, etc.", "I spoke to Dr.", "Ask Mr.", "Meet at 9 a.m.",
+      "Ship it to Acme Inc.",
+    ])
+  func abbreviationsKeepTheirPeriod(_ payload: String) {
+    // Losing a character the user dictated is the worst outcome this feature can
+    // produce. `etc.` inserted before existing text used to arrive as `etc`.
+    let payloads = CursorInsertionRepair.repair(
+      text: payload,
+      context: CursorInsertionRepair.CaretText(left: "I said ", right: "yesterday"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod) == false, "\(payload)")
+    #expect(payloads.repairedText?.contains(".") == true, "\(payload)")
+  }
+
+  @Test("An ordinary sentence still loses its redundant full stop")
+  func ordinarySentenceStillDropsThePeriod() {
+    // The abbreviation guard must not disable the rule it protects.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "yesterday"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod))
+  }
+
+  @Test(
+    "Unicode separators count as whitespace, not as an anchor",
+    arguments: ["I went to the\u{00A0}", "I went to the\u{2009}", "I went to the\u{2007}"])
+  func unicodeWhitespaceIsSkipped(_ left: String) {
+    // A non-breaking space is ordinary in text copied from a web page. Treating
+    // it as a real character made it an anchor, so the repair added a SECOND
+    // separator beside it.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: left, right: ""),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(
+      payloads.candidateRules.contains(.leadingSpace) == false, "\(left.debugDescription)")
+    #expect(payloads.candidateRules.contains(.lowercasedFirst), "still a continuation")
+  }
+
+  @Test("A non-breaking space on the right does not hide the following content")
+  func unicodeWhitespaceOnTheRightIsSkipped() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "\u{00A0}yesterday"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod))
+  }
+
   // MARK: - Unsegmented scripts and the mid-word refusal (Codex review r4)
 
   @Test(

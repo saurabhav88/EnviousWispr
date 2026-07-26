@@ -161,6 +161,34 @@ public enum CursorInsertionRepair {
   static let trailingSuppressors: Set<Character> = [
     ".", "!", "?", ",", ";", ":", ")", "]", "}", "\u{201D}", "\u{2019}",
   ]
+  /// Abbreviations whose final period belongs to the WORD, so it survives even
+  /// when existing content follows the caret.
+  ///
+  /// A closed, deliberately small English set: the abbreviations that actually
+  /// end a dictated clause. It is not a general abbreviation dictionary, and it
+  /// does not need to be — the cost of missing one is a dropped period, the same
+  /// as before, while the cost of a large fuzzy list is keeping periods that
+  /// genuinely should go.
+  ///
+  /// Compared WITHOUT the trailing period and case-insensitively; entries with
+  /// internal periods (`e.g.`, `a.m.`) are matched on their full token.
+  static let abbreviationsKeepingTheirPeriod: Set<String> = [
+    "etc", "vs", "e.g", "i.e", "a.m", "p.m", "approx", "est",
+    "dr", "mr", "mrs", "ms", "prof", "sr", "jr", "st",
+    "inc", "ltd", "co", "dept", "univ", "no", "vol", "fig",
+  ]
+
+  /// Whether the payload's final word is an abbreviation carrying its own period.
+  static func endsWithAbbreviation(_ body: String) -> Bool {
+    guard body.hasSuffix(".") else { return false }
+    let lastToken = body.split(whereSeparator: \.isWhitespace).last.map(String.init) ?? body
+    let bare = String(lastToken.dropLast()).lowercased()
+    guard !bare.isEmpty else { return false }
+    // Leading punctuation such as an opening bracket is not part of the word.
+    let trimmed = bare.drop(while: { !$0.isLetter && !$0.isNumber })
+    return abbreviationsKeepingTheirPeriod.contains(String(trimmed))
+  }
+
   /// Always capitalised regardless of position. Closed set, so it needs no lexicon.
   static let alwaysCapitalized: Set<String> = [
     "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
@@ -369,7 +397,13 @@ public enum CursorInsertionRepair {
       rightContent.map { $0.isLetter || $0.isNumber || terminators.contains($0) } ?? false
     if rightIsContent {
       let body = String(out.reversed().drop(while: \.isWhitespace).reversed())
-      if body.hasSuffix(".") {
+      // An abbreviation's period is part of the WORD, not the end of a sentence,
+      // so removing it corrupts the dictation: `we need milk, eggs, etc.`
+      // inserted before existing text became `etc yesterday` (Codex review r5).
+      // Losing a character the user dictated is the worst outcome this feature
+      // can produce, so an unrecognised trailing period is only dropped when the
+      // word carrying it is not one of these.
+      if body.hasSuffix("."), !endsWithAbbreviation(body) {
         let trailing = out.dropFirst(body.count)
         out = String(body.dropLast()) + trailing
         rules.append(.droppedTerminalPeriod)
@@ -610,13 +644,18 @@ public enum CursorInsertionRepair {
     while index > window.startIndex {
       index = window.index(before: index)
       let character = window[index]
-      if character == " " || character == "\t" {
-        crossed = true
-        continue
-      }
       if character.isNewline {
         return LeftAnchor(
           character: nil, crossedSpace: crossed, atLineStart: true, isOpener: false)
+      }
+      // ANY whitespace, not just the two ASCII ones. A non-breaking space is
+      // ordinary in text copied from a web page, and treating it as a real
+      // character made it an anchor — so the repair added a SECOND separator
+      // beside it (Codex review r5). The newline check runs first because a line
+      // break is a boundary, not a separator to skip over.
+      if character.isWhitespace {
+        crossed = true
+        continue
       }
       let opener =
         openers.contains(character)
@@ -645,8 +684,8 @@ public enum CursorInsertionRepair {
   /// sentence, and the user's full stop belongs to the one they just dictated.
   static func rightContentAnchor(of window: String) -> Character? {
     for character in window {
-      if character == " " || character == "\t" { continue }
       if character.isNewline { return nil }
+      if character.isWhitespace { continue }
       return character
     }
     return nil
