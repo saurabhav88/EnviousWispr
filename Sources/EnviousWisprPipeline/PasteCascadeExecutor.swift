@@ -51,6 +51,10 @@ internal struct PasteDeliveryResult {
   let tier: PasteTier
   let durationMs: Int
   let outcome: PasteDeliveryOutcome
+  /// Which payload the route that last attempted a write submitted, or nil when
+  /// no route reached its write (#1785). Records what was SUBMITTED, never
+  /// proof of what landed — Tier 2 only proves Cmd+V was posted.
+  var submittedPayload: PasteService.PastePayloadKind?
 
   var pasteTierLabel: String {
     if case .clipboardOnlyAccessibilityDenied = outcome {
@@ -534,7 +538,8 @@ internal final class PasteCascadeExecutor {
     emitPasteTelemetry(
       outcome: outcome, tierFailures: tierFailures, focusClass: menuProbe?.focusClassLabel)
 
-    return PasteDeliveryResult(tier: tier, durationMs: durationMs, outcome: outcome)
+    return PasteDeliveryResult(
+      tier: tier, durationMs: durationMs, outcome: outcome, submittedPayload: submittedKind)
   }
 
   /// #729 Tier 2c menu-paste probe outcome. Drives `paste.focus_class`.

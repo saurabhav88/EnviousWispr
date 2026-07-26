@@ -39,14 +39,14 @@ public enum CursorInsertionRepair {
 
   /// Why the leading capital was left alone.
   public enum CaseSkipReason: String, Equatable, Sendable {
-    case alreadyLower
-    case protectedWord
-    case mixedCaseOrAcronym
-    case containsDigit
-    case pronounI
-    case alwaysCapitalized
-    case notKnownLowercase
-    case lexiconUnavailable
+    case alreadyLower = "already_lower"
+    case protectedWord = "protected_word"
+    case mixedCaseOrAcronym = "mixed_case_or_acronym"
+    case containsDigit = "contains_digit"
+    case pronounI = "pronoun_i"
+    case alwaysCapitalized = "always_capitalized"
+    case notKnownLowercase = "not_known_lowercase"
+    case lexiconUnavailable = "lexicon_unavailable"
     /// The dictation is not in a language whose casing rules we know. The
     /// lexicon is English, and applying it to another language is not merely
     /// useless — it is actively wrong. `See`, `Start`, `Test`, `Team` and
@@ -54,26 +54,26 @@ public enum CursorInsertionRepair {
     /// German capitalises mid-sentence without exception. Firing there would
     /// lowercase a correctly-capitalised noun in the language spoken by the
     /// largest single share of our users.
-    case languageNotSupported
+    case languageNotSupported = "language_not_supported"
   }
 
   /// Why the position itself meant no case change was appropriate.
   public enum CaseKeptReason: String, Equatable, Sendable {
-    case lineStart
-    case nothingLeft
-    case afterOpener
-    case afterTerminator
+    case lineStart = "line_start"
+    case nothingLeft = "nothing_left"
+    case afterOpener = "after_opener"
+    case afterTerminator = "after_terminator"
     case other
   }
 
   /// Why no trailing space was added.
   public enum TrailingSkipReason: String, Equatable, Sendable {
-    case rightIsSpace
-    case rightIsPunctuation
+    case rightIsSpace = "right_is_space"
+    case rightIsPunctuation = "right_is_punctuation"
     /// The language writes without spaces between words (Japanese, Chinese,
     /// Thai, Lao, Burmese, Khmer). A space at either end of the insertion is a
     /// visible defect in those scripts, not a separator.
-    case unsegmentedScript
+    case unsegmentedScript = "unsegmented_script"
   }
 
   /// One decision the repair took, for tests and privacy-safe telemetry.
@@ -96,6 +96,27 @@ public enum CursorInsertionRepair {
     case droppedTerminalPeriod
     case trailingSpace
     case trailingSpaceSkipped(TrailingSkipReason)
+
+    /// A closed, privacy-safe name for telemetry.
+    ///
+    /// Deliberately carries the REASON and never the word it applied to: a
+    /// wrong-case report is unanswerable without knowing that the guard which
+    /// fired was `case_skipped:not_known_lowercase` rather than
+    /// `case_skipped:protected_word`, and neither name reveals a syllable of
+    /// what the user dictated.
+    public var telemetryName: String {
+      switch self {
+      case .refusedInsideWord: return "refused:inside_word"
+      case .refusedNoLeftAnchor: return "refused:no_left_anchor"
+      case .leadingSpace: return "leading_space"
+      case .lowercasedFirst: return "lowercased_first"
+      case .caseSkipped(let reason): return "case_skipped:\(reason.rawValue)"
+      case .caseKept(let reason): return "case_kept:\(reason.rawValue)"
+      case .droppedTerminalPeriod: return "dropped_terminal_period"
+      case .trailingSpace: return "trailing_space"
+      case .trailingSpaceSkipped(let reason): return "trailing_space_skipped:\(reason.rawValue)"
+      }
+    }
   }
 
   /// Both payloads, so the caller never has to reconstruct either one.

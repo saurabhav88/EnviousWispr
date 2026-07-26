@@ -7,6 +7,24 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var llmLatencySeconds: Double?
   public var pasteTier: String?
   public var pasteLatencyMs: Int?
+  /// Cursor-aware insertion (#1785). All four are optional and additive, so a
+  /// transcript written before this feature decodes with them nil rather than
+  /// failing. Shapes and closed-set names only — a wrong-case report carries no
+  /// text, and these are what make it answerable:
+  ///
+  /// - `smartInsertionEnabled`: the setting as frozen for that recording,
+  ///   separating "off" from "on but it could not act".
+  /// - `caretContextOutcome`: `setting_off` / `no_target` / `unreadable` /
+  ///   `read` — where the feature stopped, if it stopped early.
+  /// - `repairRules`: the rules the repair proposed, comma-joined
+  ///   (`leading_space,case_skipped:not_known_lowercase`). The reason travels
+  ///   without the word it applied to.
+  /// - `pastePayloadKind`: `legacy` / `repaired`, or nil when no route reached a
+  ///   write. What was SUBMITTED, never proof of what landed.
+  public var smartInsertionEnabled: Bool?
+  public var caretContextOutcome: String?
+  public var repairRules: String?
+  public var pastePayloadKind: String?
   public var targetApp: String?
   public var coldStart: Bool
   public var streamingMode: Bool
@@ -109,6 +127,10 @@ public struct ExecutionMetrics: Codable, Sendable {
     llmLatencySeconds: Double? = nil,
     pasteTier: String? = nil,
     pasteLatencyMs: Int? = nil,
+    smartInsertionEnabled: Bool? = nil,
+    caretContextOutcome: String? = nil,
+    repairRules: String? = nil,
+    pastePayloadKind: String? = nil,
     targetApp: String? = nil,
     coldStart: Bool = false,
     streamingMode: Bool = false,
@@ -157,6 +179,10 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.llmLatencySeconds = llmLatencySeconds
     self.pasteTier = pasteTier
     self.pasteLatencyMs = pasteLatencyMs
+    self.smartInsertionEnabled = smartInsertionEnabled
+    self.caretContextOutcome = caretContextOutcome
+    self.repairRules = repairRules
+    self.pastePayloadKind = pastePayloadKind
     self.targetApp = targetApp
     self.coldStart = coldStart
     self.streamingMode = streamingMode

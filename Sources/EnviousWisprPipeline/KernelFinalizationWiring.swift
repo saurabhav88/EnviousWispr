@@ -69,6 +69,17 @@ final class KernelFinalizationOutcome {
   var emojiRestored: Int?
   var emojiRestoreIncomplete: Bool?
   var emojiLatencyMs: Double?
+  /// #1785 cursor-aware insertion. Four facts, and only four, because a
+  /// wrong-case report arrives with no text attached and these are what make it
+  /// answerable: was the feature even on, could the field be read, what did the
+  /// repair decide, and what did the writing route actually submit.
+  ///
+  /// Shapes and closed-set names only, never a word of the user's document —
+  /// the rule names carry the WHY (`notKnownLowercase`, `protectedWord`,
+  /// `languageNotSupported`) without carrying the word it applied to.
+  var smartInsertionEnabled: Bool?
+  var caretContextOutcome: String?
+  var repairRules: String?
   /// #1167: whether the durable history save succeeded. `false` ⟺ the save
   /// threw but delivery still proceeded (best-effort save). Default `true` (the
   /// happy path); the `store` closure sets it explicitly on each save attempt,
@@ -375,8 +386,20 @@ struct KernelFinalizationWiring {
           // is the only language it transcribes.
           language: adapter.lastResult?.language)
 
-        // Chunk 6 transports the candidate without using it. Every route below
-        // still submits `legacyText`; plan §6 owns the switchover.
+        // Why this dictation was or was not repaired, recorded before delivery
+        // so it survives every route outcome. Names and shapes only (#1785 §8).
+        outcome.smartInsertionEnabled = config?.smartInsertion
+        outcome.caretContextOutcome = {
+          if config?.smartInsertion != true { return "setting_off" }
+          if context.targetElement == nil { return "no_target" }
+          return caretContext == nil ? "unreadable" : "read"
+        }()
+        outcome.repairRules =
+          payloads.candidateRules.isEmpty
+          ? nil : payloads.candidateRules.map(\.telemetryName).joined(separator: ",")
+
+        // The legacy payload is what a route falls back to; §6 decides per route
+        // whether the candidate may be committed instead.
         let pasteText = payloads.legacyText
         let result = await deliverPaste(
           PasteDeliveryRequest(
@@ -519,6 +542,13 @@ struct KernelFinalizationWiring {
       llmLatencySeconds: outcome.polishDurationSeconds,
       pasteTier: outcome.pasteResult?.pasteTierLabel,
       pasteLatencyMs: outcome.pasteResult?.durationMs,
+      // #1785: why this dictation was or was not repaired, and which payload the
+      // writing route submitted. `pastePayloadKind` stays nil when no route
+      // reached a write at all, which is distinct from submitting the legacy one.
+      smartInsertionEnabled: outcome.smartInsertionEnabled,
+      caretContextOutcome: outcome.caretContextOutcome,
+      repairRules: outcome.repairRules,
+      pastePayloadKind: outcome.pasteResult?.submittedPayload?.rawValue,
       targetApp: context.targetApp?.bundleIdentifier,
       coldStart: false,
       streamingMode: outcome.streamingMode,

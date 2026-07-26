@@ -243,7 +243,13 @@ public final class TelemetryService {
       )
     }
     if let tier = m?.pasteTier, let ms = m?.pasteLatencyMs {
-      pasteCompleted(tier: tier, targetApp: m?.targetApp, result: "success", latencyMs: ms)
+      pasteCompleted(
+        tier: tier, targetApp: m?.targetApp, result: "success", latencyMs: ms,
+        insertion: PasteInsertionTelemetry(
+          smartInsertionEnabled: m?.smartInsertionEnabled,
+          caretContextOutcome: m?.caretContextOutcome,
+          repairRules: m?.repairRules,
+          payloadKind: m?.pastePayloadKind))
     }
   }
 
@@ -1267,7 +1273,10 @@ public final class TelemetryService {
     PostHogSDK.shared.capture(event, properties: properties)
   }
 
-  public func pasteCompleted(tier: String, targetApp: String?, result: String, latencyMs: Int) {
+  public func pasteCompleted(
+    tier: String, targetApp: String?, result: String, latencyMs: Int,
+    insertion: PasteInsertionTelemetry = .init()
+  ) {
     var props: [String: Any] = [
       "tier": tier,
       "result": result,
@@ -1275,7 +1284,58 @@ public final class TelemetryService {
       "$value": Double(latencyMs),
     ]
     if let a = targetApp { props["target_app"] = a }
+    props.merge(insertion.properties) { current, _ in current }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "paste.completed",
+          stringProps: insertion.properties.compactMapValues { $0 as? String },
+          boolProps: insertion.properties.compactMapValues { $0 as? Bool }
+        ))
+    #endif
     PostHogSDK.shared.capture("paste.completed", properties: props)
+  }
+
+  /// Cursor-aware insertion fields for `paste.completed` (#1785).
+  ///
+  /// A separate value rather than four more parameters so the projection has one
+  /// owner and one test surface: `paste.completed` is emitted from a metrics
+  /// projection, and four loose optionals threaded through it is how one of them
+  /// eventually gets dropped without any test noticing.
+  ///
+  /// Every field is a shape or a closed-set name. `repairRules` carries reasons
+  /// (`case_skipped:protected_word`) and never the word a reason applied to,
+  /// which is what keeps a wrong-case report answerable without user text
+  /// (`sentry-operations.md` RULE: telemetry-privacy-boundary).
+  public struct PasteInsertionTelemetry: Sendable {
+    public let smartInsertionEnabled: Bool?
+    public let caretContextOutcome: String?
+    public let repairRules: String?
+    public let payloadKind: String?
+
+    public init(
+      smartInsertionEnabled: Bool? = nil,
+      caretContextOutcome: String? = nil,
+      repairRules: String? = nil,
+      payloadKind: String? = nil
+    ) {
+      self.smartInsertionEnabled = smartInsertionEnabled
+      self.caretContextOutcome = caretContextOutcome
+      self.repairRules = repairRules
+      self.payloadKind = payloadKind
+    }
+
+    /// Absent facts are OMITTED rather than sent as a placeholder, so a
+    /// dictation from before this feature and one where the feature genuinely
+    /// had nothing to say cannot be told apart in the data by accident.
+    public var properties: [String: Any] {
+      var out: [String: Any] = [:]
+      if let smartInsertionEnabled { out["smart_insertion"] = smartInsertionEnabled }
+      if let caretContextOutcome { out["caret_context"] = caretContextOutcome }
+      if let repairRules { out["repair_rules"] = repairRules }
+      if let payloadKind { out["payload_kind"] = payloadKind }
+      return out
+    }
   }
 
   // MARK: - Errors
