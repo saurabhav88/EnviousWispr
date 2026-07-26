@@ -396,7 +396,11 @@ struct KernelFinalizationWiring {
             }(),
             engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
             engineReportedLanguage: adapter.lastResult?.language,
-            text: text))
+            text: text,
+            // The caret windows we already read. A short mid-sentence
+            // continuation cannot be identified on its own, and that is exactly
+            // the insertion this feature exists for.
+            surroundingText: caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? ""))
 
         // Why this dictation was or was not repaired, recorded before delivery
         // so it survives every route outcome. Names and shapes only (#1785 §8).

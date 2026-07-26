@@ -60,15 +60,53 @@ struct DictationLanguageResolverTests {
   }
 
   @Test(
-    "Text too short to identify returns nothing rather than a guess",
+    "Text too short to identify, with nothing around it, returns nothing",
     arguments: ["Store today.", "Yes.", "Okay then", ""])
-  func shortTextAbstains(_ text: String) {
+  func shortTextAloneAbstains(_ text: String) {
     let resolved = DictationLanguageResolver.resolve(
       lockedLanguage: nil,
       engineDetectsLanguage: false,
       engineReportedLanguage: "en",
       text: text)
     #expect(resolved == nil, "\(text.debugDescription)")
+  }
+
+  @Test("A short continuation is identified from the document around it")
+  func shortTextUsesTheSurroundingDocument() {
+    // "Store is closed today" is 18 alphabetic scalars — under the floor. On the
+    // default engine that meant the feature never fired for exactly the short
+    // mid-sentence insertions it was built for (cloud review, PR #1802).
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: nil,
+      engineDetectsLanguage: false,
+      engineReportedLanguage: "en",
+      text: "Store is closed today",
+      surroundingText: "I went to the shop this morning and then walked back")
+    #expect(resolved == "en")
+  }
+
+  @Test("A short insertion into a German document is not called English")
+  func shortTextInAGermanDocumentIsGerman() {
+    // The case that matters: the dictation is too short to identify, the
+    // document says German, so casing is skipped rather than applied wrongly.
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: nil,
+      engineDetectsLanguage: false,
+      engineReportedLanguage: "en",
+      text: "Start ist heute",
+      surroundingText: "Ich gehe heute Abend zum See und danach in die Stadt")
+    #expect(resolved == "de")
+  }
+
+  @Test("An unidentifiable dictation in an unidentifiable document still abstains")
+  func shortTextWithShortSurroundingsAbstains() {
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: nil,
+      engineDetectsLanguage: false,
+      engineReportedLanguage: "en",
+      text: "Yes.",
+      surroundingText: "Ok, ")
+    #expect(resolved == nil)
   }
 
   @Test("A detecting engine that reported nothing falls through to the text")
