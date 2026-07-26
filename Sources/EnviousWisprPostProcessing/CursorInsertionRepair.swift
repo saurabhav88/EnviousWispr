@@ -236,6 +236,7 @@ public enum CursorInsertionRepair {
     guard let context else {
       return PreparedPayloads(legacyText: legacy, repairedText: nil, candidateRules: [])
     }
+    let rules = LanguageRules.forLanguage(language)
     // Inserting between two word characters cannot be repaired safely. The
     // spacing rules would wrap the payload in spaces and split the surrounding
     // word — `"the sto|re"` becomes `"the sto store today re"` — turning a
@@ -243,7 +244,16 @@ public enum CursorInsertionRepair {
     // no way to tell whether the user meant to split the word, so this refuses
     // rather than guesses, and §6 selects today's payload.
     // Founder decision 2026-07-25, correcting the frozen prototype.
-    guard !isInsideWord(context) else {
+    //
+    // The refusal does NOT apply to a script that writes without spaces
+    // (Codex review r4). Japanese, Chinese and Thai run their characters
+    // together, so "between two word characters" is where the caret NORMALLY
+    // sits — the guard fired on nearly every position and sent every such
+    // dictation to a payload that appends an ASCII space. There is also nothing
+    // to protect: with word spacing off and casing unknown, the candidate can
+    // only ever be the text unchanged, so it cannot split anything, not even a
+    // Latin word embedded in Japanese text.
+    if rules.usesWordSpacing, isInsideWord(context) {
       return PreparedPayloads(
         legacyText: legacy, repairedText: nil, candidateRules: [.refusedInsideWord])
     }
@@ -272,14 +282,14 @@ public enum CursorInsertionRepair {
       return PreparedPayloads(
         legacyText: legacy, repairedText: nil, candidateRules: [.refusedNoLeftAnchor])
     }
-    let (repaired, rules) = contextualPayload(
+    let (repaired, appliedRules) = contextualPayload(
       text: text,
       context: context,
       protectedWords: protectedWords,
-      language: LanguageRules.forLanguage(language),
+      language: rules,
       lexicon: lexicon)
     return PreparedPayloads(
-      legacyText: legacy, repairedText: repaired, candidateRules: rules)
+      legacyText: legacy, repairedText: repaired, candidateRules: appliedRules)
   }
 
   /// Today's delivery-stage rule, absorbed verbatim from
@@ -372,7 +382,9 @@ public enum CursorInsertionRepair {
     } else if let anchor = right {
       if anchor.isWhitespace {
         rules.append(.trailingSpaceSkipped(.rightIsSpace))
-      } else if trailingSuppressors.contains(anchor) {
+      } else if trailingSuppressors.contains(anchor)
+        || isClosingQuoteAhead(anchor, in: context.right)
+      {
         rules.append(.trailingSpaceSkipped(.rightIsPunctuation))
       } else if !out.hasSuffix(" ") {
         out += " "
@@ -540,6 +552,25 @@ public enum CursorInsertionRepair {
   /// dominant convention `,"` closes (`"hello," she said`), and a comma that
   /// introduces is written `, "`, which is settled by the whitespace rule first.
   static let quoteIntroducers: Set<Character> = [":", ";", "\u{2014}", "\u{2013}", "-"]
+
+  /// Whether the character just AFTER the caret is a straight quote that closes
+  /// the quotation we are inserting into.
+  ///
+  /// The mirror of `isOpeningQuote`, and the half the r2 enumeration missed: it
+  /// settled which quotes take a space BEFORE the insertion, and said nothing
+  /// about the one sitting immediately after it. Inserting into
+  /// `He said "hello |" and left` was therefore given a trailing space that
+  /// lands inside the quotation.
+  ///
+  /// A quote closes when what follows it is not more quoted words: whitespace,
+  /// punctuation, or the end of what we can see. A letter or digit right after
+  /// means the quote is opening the NEXT quotation, and the insertion does need
+  /// its space.
+  static func isClosingQuoteAhead(_ anchor: Character, in window: String) -> Bool {
+    guard ambiguousQuotes.contains(anchor) else { return false }
+    guard let following = window.dropFirst().first else { return true }
+    return !(following.isLetter || following.isNumber)
+  }
 
   /// Whether a straight quote at the caret's left is OPENING the quotation
   /// rather than closing it.

@@ -319,8 +319,15 @@ public enum PasteService {
   /// discards the dictation, and claiming nothing-happened wrongly pastes it
   /// twice. Neither character count nor read-back alone settles it.
   internal static func classifyInsertOutcome(_ probe: AXInsertProbe) -> AXInsertOutcome {
-    let expectedAfter =
-      probe.countBefore + probe.insertedUTF16Length - probe.selectionLengthBefore
+    // Overflow-checked, because every number here came from a foreign process
+    // and this file already treats them as hostile everywhere else. A malformed
+    // app reporting a character count near `Int.max` would otherwise TRAP on
+    // this addition and take the app down mid-paste (Codex review r4). An
+    // unusable count cannot prove the write did nothing, so it is unverifiable
+    // — the outcome that suppresses retries rather than inviting one.
+    let base = probe.countBefore - probe.selectionLengthBefore
+    let (expectedAfter, overflowed) = base.addingReportingOverflow(probe.insertedUTF16Length)
+    guard !overflowed else { return .unverifiable }
 
     guard let after = probe.countAfter else {
       // The write reported success and the result is entirely unreadable. It

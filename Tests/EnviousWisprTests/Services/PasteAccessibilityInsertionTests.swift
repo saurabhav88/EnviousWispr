@@ -231,4 +231,25 @@ struct PasteAccessibilityInsertionTests {
       probe(inserted: 3, selection: 0, before: 5, after: 40))
     #expect(outcome != .verified)
   }
+
+  // MARK: - Hostile counts from a foreign process
+
+  @Test("An absurd character count is unverifiable, not a crash")
+  func absurdCountDoesNotTrap() {
+    // Every number in the probe came from another application. A count near
+    // `Int.max` used to TRAP on the expected-length arithmetic and take the app
+    // down mid-paste. Unverifiable is the right answer: an unusable count cannot
+    // prove the write did nothing, and that outcome suppresses the retry rather
+    // than inviting one.
+    let outcome = PasteService.classifyInsertOutcome(
+      probe(inserted: 10, selection: 0, before: Int.max, after: Int.max))
+    #expect(outcome == .unverifiable)
+  }
+
+  @Test("A negative-leaning selection length cannot trap either")
+  func extremeSelectionDoesNotTrap() {
+    let outcome = PasteService.classifyInsertOutcome(
+      probe(inserted: Int.max, selection: 0, before: 10, after: 12))
+    #expect(outcome == .unverifiable)
+  }
 }

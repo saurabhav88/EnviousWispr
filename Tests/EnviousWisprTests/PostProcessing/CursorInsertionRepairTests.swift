@@ -1031,6 +1031,59 @@ struct CursorInsertionRepairTests {
       payloads.candidateRules.contains(.refusedInsideWord) == false, "\(testCase)")
   }
 
+  // MARK: - Unsegmented scripts and the mid-word refusal (Codex review r4)
+
+  @Test(
+    "A caret between two characters of an unsegmented script is not mid-word",
+    arguments: ["ja", "zh", "th"])
+  func unsegmentedScriptsHaveNoMidWordRefusal(_ language: String) {
+    // Japanese, Chinese and Thai run characters together, so the caret NORMALLY
+    // sits between two "word characters". Refusing there fired on nearly every
+    // position and sent every such dictation to a payload that appends an ASCII
+    // space — making the no-spaces-in-CJK work unreachable in practice.
+    let payloads = CursorInsertionRepair.repair(
+      text: "\u{6674}\u{308C}",
+      context: CursorInsertionRepair.CaretText(
+        left: "\u{4ECA}\u{65E5}", right: "\u{306F}\u{3044}\u{3044}"),
+      protectedWords: [], language: language, lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.refusedInsideWord) == false, "\(language)")
+    #expect(payloads.repairedText == "\u{6674}\u{308C}", "no space at either end")
+  }
+
+  @Test("A space-using language keeps its mid-word refusal")
+  func segmentedScriptsStillRefuseMidWord() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the sto", right: "re today"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules == [.refusedInsideWord])
+  }
+
+  @Test(
+    "No trailing space is left inside a closing straight quote",
+    arguments: ["\" and left", "\"", "\"."])
+  func noSpaceBeforeAClosingStraightQuote(_ right: String) {
+    // The mirror of the r2 enumeration, which settled which quotes take a space
+    // BEFORE the insertion and said nothing about one sitting right after it.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "He said \"hello ", right: right),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.repairedText?.hasSuffix(" ") == false, "\(right.debugDescription)")
+    #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.rightIsPunctuation)))
+  }
+
+  @Test("A quote OPENING the next quotation still takes its space")
+  func spaceKeptBeforeAnOpeningStraightQuote() {
+    // `"hello` after the caret is a new quotation starting, not one closing, so
+    // the insertion still needs separating from it.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "\"hello\""),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.trailingSpace))
+  }
+
   // MARK: - The right side, read two different ways (Codex review r3)
 
   @Test(
