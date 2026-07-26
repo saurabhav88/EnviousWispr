@@ -28,7 +28,9 @@ Primary persona: **Meera Patel** (Time-Pressed Parent), who has no proofreading 
 
 ## 0. TL;DR
 
-Delete the 799-word hand-authored allowlist. Decide "may this capital be lowered?" from two facilities already in macOS: the **system spelling dictionary** (is the lowercase form an ordinary English word at all?) and **`NLTagger` part-of-speech over the joined sentence** (is it behaving as an ordinary word *here*, or as a name?). Measured on a realistic corpus: coverage 23/35 → **34/35**, damage **1/34**, precision **97.1%**.
+Delete the 799-word hand-authored allowlist. Decide "may this capital be lowered?" from two facilities already in macOS: the **system spelling dictionary** (is the lowercase form an ordinary English word at all?) and **`NLTagger` part-of-speech over the joined sentence** (is it behaving as an ordinary word *here*, or as a name?), with a 15-word bounded exception set, a learned-word refusal, and a startup warm-up so the one-time 105 ms setup never lands on paste.
+
+On the largest realistic sample available — 11,562 continuation rows derived from the local dictation store — recall rises from **71.2% to 76.2%** at comparable agreement, and the founder's own reported case is fixed. Those are characterisation counts, not certified precision (P14); the ship gate is a blinded human review of a deterministic sample.
 
 ## 1. Problem
 
@@ -42,14 +44,15 @@ Delete the 799-word hand-authored allowlist. Decide "may this capital be lowered
 
 - Word knowledge comes from the operating system, not from a file we maintain.
 - The founder's reported case is fixed: `I can't wait to go to ` + `The museum tonight.` → `the museum tonight.`
-- Precision on the lowercase decision stays **≥ 90%** (the founder's stated bar, 2026-07-26).
+- Precision on the lowercase decision stays **≥ 90%** (the founder's stated bar, 2026-07-26), evidenced by a blinded sample review rather than by a self-labelled corpus.
+- The first paste after launch is not slowed: one-time setup moves off the paste path.
 - A wrong decision fails in the safe direction: keep the capital, which is today's behaviour.
 
 ### 2.2 Non-goals
 
 - **German and other languages.** Casing stays English-only. German is a separate, parked piece of work (branch `feat/1803-german-safe-words`) and inverts the rule; nothing here changes `LanguageRules.knowsCasing`.
 - **The terminal / Ghostty spacing bug.** Separate, undiagnosed, tracked in #1803.
-- **Brand names in general.** Covered by the existing Custom Words mechanism, unchanged.
+- **Brand names in general.** Custom Words remains the explicit protection path and is unchanged. It is a partial mitigation, not a complete one: measured against the real 32 entries, it covered only 1 of the 8 words this design disagrees with (P14).
 - **Removing the seam de-duplication or spacing rules** shipped in PR #1804.
 
 ## 2.5 Grounding brief
@@ -129,7 +132,7 @@ The two tests that appear to assert the old contract pass a right-context of `"y
 
 **P2 — part of speech in context supplies that signal.** Refusing when the first word tags as a noun, evaluated over `left + payload`, is the discriminator: names are always nouns, and the founder's verbs are not.
 
-**P3 — the existing 453-word exclusion class must NOT be reused as a production refusal list.** It contains `go`, `drive` and `cook`:
+**P3 — the existing 457-word exclusion class must NOT be reused as a production refusal list.** It contains `go`, `drive` and `cook`:
 ```
 $ grep -cw "\"go\"" Tests/EnviousWisprTests/PostProcessing/OrdinaryLowercaseExclusionClass.swift
 1
@@ -145,7 +148,7 @@ Reusing it unchanged would ship the entire change with the founder's own reporte
 | Gemini's proposal (`.nameType`, default-lowercase) | 35/35 | **20/38** | 63.6% |
 | **Dictionary + part of speech + safe-noun set** | **34/35** | **4/38** | **89.5%** |
 
-On the **realistic** corpus (names as the *subject* of the continuation, which is how a dictated second thought actually opens rather than as the object of an imperative): coverage 34/35, damage **1/34**, **precision 97.1%**. The adversarial 89.5% and the realistic 97.1% are both reported; the gate is set on the adversarial one.
+On a hand-built "realistic" corpus (names as the *subject* of the continuation): coverage 34/35, damage 1/34, 97.1%. **All of these author-written figures are DIAGNOSTICS ONLY and none of them gates anything** — P14 showed they mispredicted both precision and recall on realistic data. They are retained because they are useful for spotting failure shapes, not because they measure the shipped rule.
 
 **P5 — two extra layers were measured and REJECTED.** Adding an `.nameType` veto, and adding a "does the capital carry meaning?" check (re-tag with the first word lowercased, refuse if the tag changes), each changed **zero** decisions across all 73 cases. They are not in the design. Cost without benefit is not a safety margin.
 
@@ -164,19 +167,22 @@ Truncation costs nothing, because 20 units reliably captures the words immediate
 
 **P9 — the tagger has two contracts `NSSpellChecker` does not, both from the SDK headers.** `NLTagger` instances must not be used from more than one thread at a time (`NLTagger.h:56-60`), and a scheme/language pair may be **unsupported or its assets not yet loaded** on the current device, with asset requests completing asynchronously on an arbitrary queue (`NLTagger.h:40-42`, `:81-90`). CI never checks either (`.github/workflows/pr-check.yml`). Both are handled in §3: a fresh tagger per decision, and an availability probe that fails closed.
 
-**P10 — the app is NOT sandboxed, so there is no entitlement trap.** `EnviousWispr.entitlements:21-25` omits `com.apple.security.app-sandbox` and says so explicitly. Hardened runtime is on (`scripts/build-release-dmg.sh:282-344`), which does not restrict either framework.
+**P10 — the app is NOT sandboxed, so there is no entitlement trap.** `EnviousWispr.entitlements:19-25` omits `com.apple.security.app-sandbox` and says so explicitly. Hardened runtime is on (`scripts/build-release-dmg.sh:282-344`), which does not restrict either framework.
 
-**P14 — THE HEADLINE EVIDENCE: 11,562 real labelled continuation pairs, labelled by the founder, not by me.** The coverage round's strongest finding was that my gate rested on a corpus I wrote myself. There is a better source than the public-domain sampling it proposed. Each real dictation is split at a genuine mid-sentence word boundary: the left part becomes the caret context, the right part becomes the payload with its first letter capitalised exactly as the speech engine does. **The ground truth is the founder's own mid-sentence casing** — a capital there means a proper noun, lowercase means an ordinary word. Deterministic (`random.seed(1803)`), 11,562 pairs, 460 must-keep.
+**P14 — LARGE APP-OUTPUT CHARACTERISATION, NOT GROUND TRUTH.** An earlier draft of this section claimed 11,562 "founder-labelled" pairs and called them ground truth. **That claim was false and grounded review r1 was right to reject it.** The generator splits stored dictations at mid-sentence word boundaries and reads `polishedText` when present, otherwise the raw transcript; the label is inferred from the casing **already present in the app's own output** (`2026-07-26-build-real-labelled-pairs.py:27-35,54-60`). Those are not founder corrections and not observed two-recording seams. The circularity is real: a name our own pipeline already lowercased is automatically labelled "safe to lowercase", so agreeing with that error scores as correct.
 
-| Candidate | Lowercased | Damage | Precision | Recall |
+It remains the largest realistic sample available and is retained for **coverage characterisation and for surfacing suspicious words**, never as a precision certificate. Deterministic (`random.seed(1803)`), 11,562 rows, 460 carrying a generated capital.
+
+| Candidate | Lowered | Agrees with stored casing | Disagrees | Recall |
 |---|---|---|---|---|
-| Today's 799-word list | 7,915 | 5 | 99.94% | 71.2% |
-| **System dictionary + word type + carve-outs** | **8,505** | **16** | **99.81%** | **76.5%** |
-| …with Custom Words applied | 8,501 | 12 | 99.86% | 76.5% |
+| Today's 799-word list | 7,915 | 7,910 | 5 | 71.2% |
+| **System dictionary + word type + bounded exceptions** | **8,481** | **8,465** | **16** | **76.2%** |
 
-**The adversarial corpora were badly misleading in both directions.** They put this design at 89.5% precision; on real dictation it is 99.8%. Real continuations almost never open with a name that is also an ordinary word — that case is constructible but rare. Conversely the hand corpus flattered coverage: real recall is 76.5%, not 97%.
+Stated exactly, without inflating it: the new design attempts **566 more lowercases**, of which **555 agree** with the stored casing and **11 disagree**. Those are characterisation counts, not independently verified fixes or verified damage.
 
-**The trade, stated exactly:** +5.3 points of recall — **590 more real continuations silently fixed** — for 7 more damaged decisions in 11,562, which is 0.06 percentage points of precision. Both candidates sit far above the founder's 90% bar; the choice between them is not close.
+**The author-written corpora were misleading in both directions**, which is the durable lesson here: they predicted 89.5% precision and 97% coverage, against 99.8%-ish agreement and 76.2% recall on realistic data. Constructed examples over-represent the adversarial case and under-represent ordinary speech. They are demoted to diagnostics.
+
+The disagreements concentrate in product and technical vocabulary: `Claude`(4), `Polish`(4), `Bluetooth`(2), `German`(2), `Zoom`, `Vesper`, `Envious`, `Please`. **Correction to an earlier claim:** I wrote that brand homographs "fall through to the existing Custom Words mechanism". Measured against the real 32 custom words, only `Claude` is protected. An earlier revision of this table also carried a "with Custom Words applied" row that I derived by hand and presented among measured rows; it has been removed rather than re-dressed.
 
 The damaged words are the founder's product and tech vocabulary: `Claude`(4), `Polish`(4), `Bluetooth`(2), `German`(2), `Zoom`, `Vesper`, `Envious`, `Please`. **Correction to an earlier claim in this plan:** I wrote that brand homographs "fall through to the existing Custom Words mechanism". Measured against his actual 32 custom words, only `Claude` is protected. Custom Words covers what the user has already told it about and nothing more; it is a real mitigation but not a complete one, and the plan no longer implies otherwise.
 
@@ -204,7 +210,7 @@ The claim holds: without the refusal, a word the user taught macOS becomes "an o
 
 Zero additional damage, five real openers recovered. Artifacts: `2026-07-26-casing-discourse-carveout.swift`, `2026-07-26-casing-loss-diagnosis.swift`.
 
-**P12 — one class of case is provably unanswerable, and the founder's proposed dataset contains it.** A benchmark set supplied 2026-07-26 asks for `I am eating an ` + `Apple for snack.` to lowercase while `I am visiting the ` + `Apple store downtown.` keeps its capital, and the same split for `Please pay the Bill` versus `Please call Bill`. Measured, with both signals printed:
+**P12 — one class of case is unanswerable FROM THE TWO SIGNALS THIS DESIGN USES, and the founder's proposed dataset contains it.** A benchmark set supplied 2026-07-26 asks for `I am eating an ` + `Apple for snack.` to lowercase while `I am visiting the ` + `Apple store downtown.` keeps its capital, and the same split for `Please pay the Bill` versus `Please call Bill`. Measured, with both signals printed:
 
 | Case | Want | lexicalClass | nameType | We do |
 |---|---|---|---|---|
@@ -224,20 +230,21 @@ Both failures land on **keep the capital**, which is today's behaviour, so they 
 `OrdinaryLowercaseLexicon` is deleted. `applyLeadingCase` consults a new `EnglishWordOracle`, which answers one question — *may this capitalised word be lowered here?* — in four ordered steps. Every step fails toward keeping the capital.
 
 1. **Dictionary.** `NSSpellChecker.checkSpelling(of: word.lowercased(), language: <resolved English identifier>)` must report no misspelling. Refuse otherwise → `.notOrdinaryWord`.
-2. **Two closed carve-outs, checked before the tagger.** Both exist because their members tag `Noun` while never being proper nouns, and each is a closed class rather than a vocabulary guess:
-   - **Indefinite pronouns and deictic time words** — `everything, something, nothing, anything, everyone, someone, anyone, nobody, everybody, somebody, none, yesterday, today, tomorrow, tonight`.
-   - **Discourse markers** — greetings, acknowledgements and politeness formulae, derived from the highest-frequency real openers in the local dictation store (P13): `hey, hello, hi, yep, yup, yeah, yes, nope, okay, ok, thanks, thank, please, sorry, sure, welcome, goodbye, bye, question, answer, note, reminder, update, example`.
+2. **ONE bounded exception set, checked before the tagger** — 15 words the tagger classifies as nouns despite their ordinary continuation use: `everything, something, nothing, anything, everyone, someone, anyone, nobody, everybody, somebody, none, yesterday, today, tomorrow, tonight`. Indefinite pronouns and deictic time words: closed grammatical classes, not a vocabulary guess. `yesterday` is additionally an existing shipped contract (`OrdinaryLowercaseLexiconTests.swift:78-110`).
 
-   These are the only hand-maintained word data that survives, and the distinction from the deleted list matters: 799 entries tried to predict *what a user might say*; these ~39 are closed grammatical and discourse classes that the tagger systematically mis-serves. Growing either set is a deliberate act requiring a re-measurement, not a reflex.
+   **A second "discourse marker" set was designed, measured and CUT.** It held greetings and politeness formulae plus six open-class nouns (`question, answer, note, reminder, update, example`). Grounded review r1 correctly identified that those six are a vocabulary guess selected from observed data — a smaller version of exactly what the founder rejected. Before cutting it I measured what it actually bought on the 11,562-row corpus: recall 76.2% without it, 76.3% with. **One case in 11,562.** The 518 occurrences that motivated it were first words of whole dictations, not continuation openers, and barely arise in the population that reaches this rule. Cut entirely rather than defended, because a set worth one case in eleven thousand is not worth reintroducing the pattern.
+
+   Noun-led misses stay safe-direction misses. They are reported after release and do **not** automatically create new exceptions; if recall pressure ever produces repeated noun exceptions, this design has degenerated back into a word list and should be reconsidered wholesale.
 3. **Part of speech in context.** `NLTagger(.lexicalClass)` over `left + payload`, read at the payload's first word. Accept only `verb, adverb, conjunction, determiner, pronoun, adjective, preposition, particle, interjection, number`. `Noun`, `OtherWord`, and *no tag at all* refuse → `.wordClassNotSafe`.
 4. Existing guards (protected/custom words, mixed case, digits, pronoun `I`, weekdays and months) run **before** all of this and are unchanged.
 
-### The fail-open trap, and the canary that closes it
+### The fail-open trap, and what actually closes it
 
-Measured: `checkSpelling(language: "xx")` reports **every** word correctly spelled. An unrecognised or missing dictionary therefore does not degrade to "no answer", it degrades to **"yes to everything"** — which would lowercase names wholesale. Two guards, both required:
+Measured: `checkSpelling(language: "xx")` reports **every** word correctly spelled. An unrecognised or missing dictionary does not degrade to "no answer", it degrades to **"yes to everything"** — which would lowercase names wholesale.
 
-- **Resolve the language once**, choosing an identifier that `NSSpellChecker.availableLanguages` actually reports, never the raw dictation language string. Casing is English-only, so this asks for English and nothing else.
-- **A canary at resolution time.** Ask the checker about a word that cannot be in any dictionary (`qwertyuiopzxcv`). If it says that is spelled correctly, the checker is answering yes-to-everything and the oracle marks itself **unavailable**. This converts the dangerous failure into the safe one.
+The guard is to make that path unreachable: **resolve the language exactly once from `NSSpellChecker.availableLanguages`**, which Apple defines as the languages actually available (`NSSpellChecker.h:150-160`), and fail closed when no English identifier exists. An invalid identifier is then never passed at all.
+
+**A nonsense-word canary was designed and CUT.** It would have asked the checker about `qwertyuiopzxcv` and declared the oracle unavailable if that came back valid. Grounded review r1 was right on both counts: `availableLanguages` is the documented authority, and the canary is itself corruptible — any user can teach macOS that exact word via `learnWord`, turning the health check into a permanent false outage. Removing an event you can make impossible beats detecting it (`workflow-process.md` RULE: close-the-window-never-handle-it).
 
 Unavailable → `.caseSkipped(.dictionaryUnavailable)` → capital kept → today's behaviour. This is the same fail-closed contract the resource had, engineered against a different failure mode.
 
@@ -320,13 +327,18 @@ One authority in, one authority out. No concern gains a second home.
 | Symbol | Before | After |
 |---|---|---|
 | `OrdinaryLowercaseLexicon` | struct + bundled resource | **deleted** |
-| `ordinary-lowercase-words.txt` (799 lines) | committed resource | **deleted** |
+| `ordinary-lowercase-words.txt` | committed resource, **830 physical lines / 799 entries** | **deleted** |
 | `ordinary-lowercase-words.provenance.md` | committed record | **deleted** |
+| `OrdinaryLowercaseLexicon.normalizeApostrophes` | static on the deleted type | **relocated**, not deleted — two live PR #1804 consumers (`:538-540`, `:724-725`) |
 | `EnglishWordOracle` | — | new, internal to PostProcessing |
 | `CaseSkipReason.notKnownLowercase` | `not_known_lowercase` | **renamed** `.notOrdinaryWord` = `not_ordinary_word` |
 | `CaseSkipReason.lexiconUnavailable` | `lexicon_unavailable` | **renamed** `.dictionaryUnavailable` = `dictionary_unavailable` |
 | `CaseSkipReason.wordClassNotSafe` | — | new, `word_class_not_safe` |
+| `CaseSkipReason.wordClassUnavailable` | — | new, `word_class_unavailable` |
+| `CaseSkipReason.learnedWord` | — | new, `learned_word` |
 | `repair(…, lexicon:)` test seam | `OrdinaryLowercaseLexicon` | `EnglishWordOracle` |
+
+Corrections from grounded review r1, all verified: the new cases land on **`CaseSkipReason`, not `AppliedRule`** (`AppliedRule` only carries `.caseSkipped(reason)`); the resource is **830 physical lines** carrying 799 entries; and `.wordClassUnavailable` / `.learnedWord` were promised in §8 but missing from this table — the kind of split taxonomy that ships as a telemetry gap.
 
 Telemetry names change. They are privacy-safe reason codes with no dashboard alert bound to them; the rename is deliberate so that a dashboard reading `lexicon_unavailable` after this ships is visibly stale rather than silently wrong.
 
@@ -363,7 +375,29 @@ Telemetry names change. They are privacy-safe reason codes with no dashboard ale
 | Non-English dictation | `.languageNotSupported` before the oracle is consulted | none |
 | First-call model load is slow | see below | measured 1.33 ms; would land on paste latency |
 
-**On that last row, stated honestly.** `CursorInsertionRepair.repair` is called synchronously on the main actor with no timeout around it (`KernelFinalizationWiring.swift:373-412`), so any cold-start cost lands directly on stop-to-paste. Measured cold cost is 1.33 ms, far inside the 100 ms negligible threshold (`validation-discipline.md` RULE: capture-polish-latency-per-bucket). What is **not** measured is a machine where the lexical-class asset is absent and must be fetched — which is exactly why the design probes availability and never requests a download.
+**On that last row — an earlier draft of this plan was WRONG, and grounded review r1 caught it.** I wrote "measured cold cost is 1.33 ms, far inside the 100 ms negligible threshold." That number was only the spell-checker's first lookup. It omitted the two expensive calls. Measured properly in a cold process, everything that would land on the first stop-to-paste after launch:
+
+| First-call work | Cost |
+|---|---|
+| `NLTagger.availableTagSchemes` availability probe | **80.3 ms** |
+| Resolve English from `availableLanguages` (43 entries) | **20.2 ms** |
+| First `checkSpelling` | 1.4 ms |
+| First tagger decision | 3.7 ms |
+| **Cold total on the first paste** | **105.6 ms** |
+| Warm decision thereafter | 0.30 ms |
+
+`repair` runs synchronously on the main actor with no timeout (`KernelFinalizationWiring.swift:373-412`), so that 105 ms would be a real, reproducible regression on the first dictation after every launch — over the 100 ms negligible threshold, and on the heart path.
+
+**The fix is to remove the cost, not to bound it.** The 100 ms is entirely one-time setup, so the oracle resolves its language and probes scheme availability **once at app start, off the paste path**, and primes both services with one throwaway decision. Measured:
+
+| | Cost |
+|---|---|
+| Warm-up, once, at startup | 84.9 ms (off the paste path) |
+| **First paste after warm-up** | **0.50 ms** |
+
+**Grounded review r1 proposed an async 100 ms deadline around `repair` instead. Rejected, with reasons.** It bounds a cost that can be eliminated; it makes the heart-path delivery closure async and changes `repair`'s signature at the one caller, which is a far larger blast radius than the defect warrants once the 100 ms is gone; and a deadline whose budget is 200× the measured work would never fire, so it would be untested code guarding an unobservable event. The concern was right and is fully adopted — the proposed remedy is not. With warm-up, any stall risk moves to app start, where it is harmless and invisible, which is the correct place for it.
+
+Residual, stated plainly: a machine where the lexical-class asset is genuinely absent is still unmeasured. The design probes availability, never requests a download, and keeps the capital when the probe fails.
 
 Every failure lands on "keep the capital", which is exactly what the app did before this feature existed. The limb cannot damage the heart.
 
@@ -387,12 +421,14 @@ Telemetry distinguishes `.dictionaryUnavailable`, `.wordClassUnavailable` and `.
 | `Sources/EnviousWisprPostProcessing/Resources/ordinary-lowercase-words.provenance.md` | **delete** |
 | `Sources/EnviousWisprPostProcessing/EnglishWordOracle.swift` | **new** — dictionary + safe nouns + part of speech, with the canary |
 | `Sources/EnviousWisprPostProcessing/CursorInsertionRepair.swift` | delete `OrdinaryLowercaseLexicon`; `applyLeadingCase` takes the oracle and the joined context; rename two skip reasons, add one |
-| `Tests/.../OrdinaryLowercaseLexiconTests.swift` | **delete** — it tests a file-format parser that no longer exists |
+| `Tests/.../OrdinaryLowercaseLexiconTests.swift` | **delete** — it tests a file-format parser that no longer exists. Its 457-word exclusion assertion (`:61-64`) and 799-entry pin (`:27-32`) go with it |
 | `Tests/.../OrdinaryLowercaseExclusionClass.swift` | **delete** — it asserts absence from a resource that no longer exists |
-| `Tests/.../EnglishWordOracleTests.swift` | **new** — the measured corpus, run against the built rule |
-| `Tests/.../CursorInsertionRepairTests.swift` | update the prototype seam and the three renamed reasons |
-| `Tests/.../PasteExecutionMetricsTests.swift` | update the rule-name fixture |
-| `Tests/.../KernelFinalizationWiringTests.swift` | five tests use the real bundled word source (`:740-767`, `:906-929`, `:1009-1043`, `:1098-1158`, `:505-535`); audit each for whether `Review` is the contract under test or incidental input |
+| `Tests/.../EnglishWordOracleTests.swift` | **new** — deterministic injected contract tests ONLY. The transcript-derived corpus is never embedded; it is a local characterisation run (§11.2) |
+| `Tests/.../CursorInsertionRepairTests.swift` | update the prototype seam and the renamed reasons |
+| `Tests/.../PasteExecutionMetricsTests.swift:66-78` | enumerates every telemetry reason; must cover all five new/renamed names |
+| `Tests/.../KernelFinalizationWiringTests.swift` | **six** tests assert lowering through the real bundled source (`:505-535`, `:734-767`, `:906-929`, `:1009-1043`, `:1076-1096`, `:1098-1158`) — not five as an earlier draft said. Preserve each one's actual contract under the new oracle |
+| `Sources/EnviousWisprCore/Transcript.swift:20` | **missed by earlier drafts** — the `repairRules` doc comment quotes `case_skipped:not_known_lowercase` verbatim and must track the rename |
+| `docs/.../2026-07-26-casing-headtohead.swift`, `2026-07-26-score-real-labelled-pairs.swift` | both read the deleted resource to compute the baseline column; mark explicitly non-rerunnable after deletion, or archive a baseline copy beside them |
 | `.claude/knowledge/architecture.md:22` | PostProcessing documented as Core-only; record the two system frameworks. **Gitignored** (`.gitignore:33`), so this is a separate local `Docs/dev-tooling` edit and cannot appear in the PR |
 
 ## 11. Testing
@@ -454,8 +490,9 @@ fi
 The earlier draft of this section was **internally contradictory** and the coverage round was right to call it: it gated on an adversarial corpus scoring 89.5% against a ≥90% bar (so the gate failed its own corpus), while simultaneously claiming "zero damage is the contract" and allowing two damaged realistic cases. Replaced:
 
 1. The founder's case fixed, verified in Live UAT: `I can't wait to go to ` + `The museum tonight.` ships lowercase.
-2. On the frozen 11,562-pair real corpus, run on the shipping Mac, **precision on the lowercase decision ≥ 99.5% and recall strictly greater than the shipped list's 71.2%.** Record the environment and every damaged word. (Measured today: 99.81% / 76.5%.)
-3. The author-written slices are reported as diagnostics with no independent pass threshold, and cannot override item 2.
+2. **A blinded human review of a deterministic sample**, because the 11,562-row corpus is app-output-labelled and cannot certify precision (P14). The sample is every row carrying a generated capital that the oracle would lower, plus a fixed-seed random sample of generated-lowercase rows. Precision on that reviewed sample must be **≥ 90%**. The full corpus is reported alongside as coverage characterisation, explicitly not as ground-truth precision.
+3. Recall on the characterisation corpus strictly greater than the shipped list's 71.2%. (Measured today: 76.2%.) The author-written slices are diagnostics with no independent pass threshold and cannot override item 2.
+3a. **First paste after launch stays under 5 ms**, verified with the startup warm-up in place. Unwarmed it measures 105.6 ms, which is a heart-path regression.
 4. Deterministic CI tests cover every acceptance and refusal branch using injected answers, calling no machine-variable service.
 5. Zero change to spacing, de-duplication, terminal-period, and non-English behaviour.
 6. Xcode Debug + Release build, full suite green with a nonzero executed count.
@@ -469,7 +506,7 @@ Customer-facing copy for that note:
 
 ## 14. Open questions
 
-1. **Is 97.1% realistic precision acceptable given today is 100%?** The founder set the bar at 90% and asked for the coverage; this is above it. Flagged, not blocking.
+1. **Is the small precision cost acceptable given today's list is near-perfect?** On the characterisation corpus the new design disagrees with stored casing 16 times versus the list's 5, while lowering 566 more. The founder set the bar at 90% and asked for the coverage. Flagged, not blocking — but item 2 of the ship criteria (blinded sample review) is what actually answers it, and this plan should not be signed off on the assumption that the answer is already known.
 2. **Should a small name refusal list sit on top?** Measured as unnecessary to clear the bar, and it would reintroduce exactly what the founder rejected. Recommendation: no. Revisit only if real use produces a second `Olive`.
 
 ## 15. Related
