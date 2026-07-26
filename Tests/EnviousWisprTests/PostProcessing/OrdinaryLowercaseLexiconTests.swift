@@ -27,8 +27,8 @@ struct OrdinaryLowercaseLexiconTests {
   @Test("The production resource parses to exactly 800 unique entries")
   func bundledEntryCount() {
     #expect(
-      OrdinaryLowercaseLexicon.bundled.words.count == 800,
-      "The provenance record and the measured 92.7% recall both describe an 800-entry lexicon. A different count means the resource and its provenance have drifted apart."
+      OrdinaryLowercaseLexicon.bundled.words.count == 799,
+      "The provenance record describes a 799-entry lexicon: 800 authored, minus `general`, removed 2026-07-26 because it is a title as well as an ordinary word. A different count means the resource and its provenance have drifted apart."
     )
   }
 
@@ -58,9 +58,9 @@ struct OrdinaryLowercaseLexiconTests {
 
   // MARK: - The exclusion class, one word at a time
 
-  @Test("The exclusion class holds exactly 456 words across seven axes")
+  @Test("The exclusion class holds exactly 457 words across seven axes")
   func exclusionClassCount() {
-    #expect(OrdinaryLowercaseExclusionClass.words.count == 456)
+    #expect(OrdinaryLowercaseExclusionClass.words.count == 457)
   }
 
   @Test(
@@ -262,24 +262,30 @@ struct OrdinaryLowercaseLexiconTests {
 
   // MARK: - A broken lexicon degrades case repair only
 
-  @Test("Missing lexicon leaves spacing and terminal-period repair working")
-  func missingLexiconDegradesCaseOnly() {
+  @Test("Missing lexicon leaves spacing working and punctuation untouched")
+  func missingLexiconDegradesCaseAndPeriod() {
+    // CONTRACT CHANGED DELIBERATELY 2026-07-26 (Codex review r7). This used to
+    // assert that missing data degraded CASE repair only, with the terminal
+    // period still being removed. The period rule now requires positive word
+    // knowledge — guessing at abbreviations deleted characters the user
+    // dictated — so with no lexicon it correctly does nothing. Spacing, which
+    // needs no word knowledge, still repairs.
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
-      // Comma to the left, letter to the right: spacing and period rules fire
-      // and the caret is not inside a word.
+      // Comma to the left, letter to the right: the spacing rules fire and the
+      // caret is not inside a word.
       context: CursorInsertionRepair.CaretText(left: "I went home,", right: "yesterday"),
       protectedWords: [],
       lexicon: .unavailable)
 
     #expect(payloads.candidateRules.contains(.caseSkipped(.lexiconUnavailable)))
     #expect(payloads.candidateRules.contains(.leadingSpace))
-    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod))
     #expect(payloads.candidateRules.contains(.trailingSpace))
-    #expect(payloads.repairedText == " Store today ")
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod) == false)
+    #expect(payloads.repairedText == " Store today. ")
   }
 
-  @Test("Malformed lexicon data degrades case repair only")
+  @Test("Malformed lexicon data degrades case and punctuation repair, not spacing")
   func malformedLexiconDegradesCaseOnly() {
     let broken = OrdinaryLowercaseLexicon.parse("the\nNASA")
     #expect(broken.isAvailable == false)
@@ -291,8 +297,11 @@ struct OrdinaryLowercaseLexiconTests {
       lexicon: broken)
 
     #expect(payloads.candidateRules.contains(.caseSkipped(.lexiconUnavailable)))
-    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod))
+    // Same deliberate contract change: unusable data means no word knowledge,
+    // and the period rule refuses rather than guessing.
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod) == false)
     #expect(payloads.repairedText?.hasPrefix("The") == true, "case left alone")
+    #expect(payloads.repairedText?.contains("ready.") == true, "punctuation left alone")
   }
 
   @Test("An unavailable lexicon never changes legacyText")

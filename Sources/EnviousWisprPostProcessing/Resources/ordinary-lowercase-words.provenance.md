@@ -43,8 +43,16 @@ not to say. The corpus below validates the finished list. It never generated it.
 | contractions | 42 |
 
 A word can belong to more than one category, so the column sums above the total.
-Distinct entries: **800**.
-`sha256` of `ordinary-lowercase-words.txt`: `5912dc9d4d688ed224573ed094c73364c3f94618efe6de9f04d2441584724085`.
+Distinct entries: **799**.
+
+CORRECTED 2026-07-26 (Codex review r7): `general` was removed. It is a military
+and civil TITLE as well as an ordinary word, so `According to witnesses, General
+Smith agreed.` was recased to `general Smith`. Thirty-three rank and title
+homographs were audited when it was found — `general` was the only one present —
+and it now sits in the exclusion class so a regeneration cannot reintroduce it.
+The measured 92.7% recall predates this removal and was not re-run; one entry out
+of 800 cannot move it materially, and the direction is conservative.
+`sha256` of `ordinary-lowercase-words.txt`: `e1965f13834fa3b4e85a460c520f4c5de535ea975a1afcc7e3b859337d30b944`.
 
 ## The exclusion class
 
@@ -54,7 +62,7 @@ programming language, nationality, place, weekday, month, or the first-person
 pronoun, because the visible damage is a person's name or a product rendered in
 lowercase. Those axes are enumerated in
 `Tests/EnviousWisprTests/PostProcessing/OrdinaryLowercaseExclusionClass.swift`
-(456 entries) and a test fails if any of them reaches this lexicon.
+(457 entries) and a test fails if any of them reaches this lexicon.
 Overlap between the two sets is currently zero.
 
 Under-coverage is safe by construction: a word absent from the lexicon keeps its

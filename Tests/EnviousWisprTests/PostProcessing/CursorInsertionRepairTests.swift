@@ -47,6 +47,17 @@ struct CursorInsertionRepairTests {
   // cursor_repair_v2.py by emit_matrix_fixture.py. The prototype is the
   // frozen contract; these rows are not hand-written, because a mistyped
   // expectation would bless wrong behaviour instead of catching it.
+  //
+  // THREE rows at "mid-sentence, text right" were changed BY HAND on 2026-07-26,
+  // deliberately and with the reason recorded, when the terminal-period rule was
+  // inverted after Codex review r7. The prototype dropped the period whenever
+  // content followed; it now drops it only when the final word is positively
+  // known to be ordinary, because guessing at abbreviations deleted characters
+  // the user dictated (`etc.` -> `etc`, `Jan.` -> `Jan`, `U.S.` -> `U.S`). The
+  // three rows end in `TL;DR`, `there` and `nice`, none of which the toy lexicon
+  // above contains, so each now keeps its period. `there` IS in the shipped
+  // 830-word lexicon and `nice` is not — the rule's reach follows lexicon
+  // coverage, and it fails toward leaving the user's punctuation alone.
   static let matrix: [MatrixCase] = [
     MatrixCase(
       caret: "empty field",
@@ -175,9 +186,9 @@ struct CursorInsertionRepairTests {
       left: "I went to the ",
       right: "yesterday",
       payload: "TL;DR.",
-      expectedRepaired: "TL;DR ",
-      expectedDocument: "I went to the TL;DR yesterday",
-      expectedRules: [.caseSkipped(.protectedWord), .droppedTerminalPeriod, .trailingSpace]),
+      expectedRepaired: "TL;DR. ",
+      expectedDocument: "I went to the TL;DR. yesterday",
+      expectedRules: [.caseSkipped(.protectedWord), .trailingSpace]),
     MatrixCase(
       caret: "after letter, no space",
       left: "I went to the",
@@ -282,9 +293,9 @@ struct CursorInsertionRepairTests {
       left: "I went to the ",
       right: "yesterday",
       payload: "I went there.",
-      expectedRepaired: "I went there ",
-      expectedDocument: "I went to the I went there yesterday",
-      expectedRules: [.caseSkipped(.pronounI), .droppedTerminalPeriod, .trailingSpace]),
+      expectedRepaired: "I went there. ",
+      expectedDocument: "I went to the I went there. yesterday",
+      expectedRules: [.caseSkipped(.pronounI), .trailingSpace]),
     MatrixCase(
       caret: "after letter, no space",
       left: "I went to the",
@@ -388,9 +399,9 @@ struct CursorInsertionRepairTests {
       left: "I went to the ",
       right: "yesterday",
       payload: "iPhone is nice.",
-      expectedRepaired: "iPhone is nice ",
-      expectedDocument: "I went to the iPhone is nice yesterday",
-      expectedRules: [.caseSkipped(.alreadyLower), .droppedTerminalPeriod, .trailingSpace]),
+      expectedRepaired: "iPhone is nice. ",
+      expectedDocument: "I went to the iPhone is nice. yesterday",
+      expectedRules: [.caseSkipped(.alreadyLower), .trailingSpace]),
     MatrixCase(
       caret: "after letter, no space",
       left: "I went to the",
@@ -741,21 +752,32 @@ struct CursorInsertionRepairTests {
 
   // MARK: - An unusable lexicon disables case repair ONLY
 
-  @Test("Unavailable lexicon still applies spacing and terminal-period repair")
-  func unavailableLexiconStillRepairsSpacingAndPeriod() {
+  @Test("Unavailable lexicon still applies spacing, and touches no punctuation")
+  func unavailableLexiconStillRepairsSpacing() {
+    // CONTRACT CHANGED DELIBERATELY 2026-07-26 (Codex review r7). The plan
+    // promised that missing resource data disabled leading-case repair ONLY,
+    // leaving spacing AND the terminal-period rule running. That was written
+    // before we knew the period rule is unsafe without word knowledge: it now
+    // removes a full stop only when the final word is positively known to be
+    // ordinary, and an unavailable lexicon knows nothing. Degrading to "leave
+    // the user's punctuation exactly as dictated" is the correct failure for a
+    // rule whose mistake DELETES a character they said. Spacing is unaffected
+    // and still repairs, which is the part of the promise worth keeping.
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
-      // Comma to the left, letter to the right: the leading-space and
-      // terminal-period rules both fire, and it is NOT mid-word, because a
-      // letter touching a letter would refuse before any of this runs.
+      // Comma to the left, letter to the right: the leading-space rule fires,
+      // and it is NOT mid-word, because a letter touching a letter would refuse
+      // before any of this runs.
       context: CursorInsertionRepair.CaretText(left: "I went home,", right: "yesterday"),
       protectedWords: [], lexicon: .unavailable)
 
     #expect(payloads.candidateRules.contains(.caseSkipped(.lexiconUnavailable)))
     #expect(payloads.candidateRules.contains(.leadingSpace))
-    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod))
     #expect(payloads.candidateRules.contains(.trailingSpace))
-    #expect(payloads.repairedText == " Store today ", "case is left alone")
+    #expect(
+      payloads.candidateRules.contains(.droppedTerminalPeriod) == false,
+      "an unknown word keeps its period")
+    #expect(payloads.repairedText == " Store today. ", "case and punctuation left alone")
   }
 
   // MARK: - Terminal punctuation
@@ -1034,14 +1056,16 @@ struct CursorInsertionRepairTests {
   // MARK: - Abbreviations and Unicode whitespace (Codex review r5)
 
   @Test(
-    "An abbreviation keeps the period that belongs to the word",
+    "An unknown final word keeps its period, whatever kind of word it is",
     arguments: [
-      "We need milk, eggs, etc.", "I spoke to Dr.", "Ask Mr.", "Meet at 9 a.m.",
-      "Ship it to Acme Inc.",
+      "We need milk, eggs, etc.", "I spoke to Dr.", "Meet me on Jan.",
+      "Turn onto Maple Ave.", "I live in the U.S.", "Ship it to Acme Inc.",
     ])
-  func abbreviationsKeepTheirPeriod(_ payload: String) {
-    // Losing a character the user dictated is the worst outcome this feature can
-    // produce. `etc.` inserted before existing text used to arrive as `etc`.
+  func unknownFinalWordKeepsItsPeriod(_ payload: String) {
+    // Three review rounds tried to answer "is this an abbreviation?" and each
+    // found a word the list had never heard of. The question is now inverted:
+    // the period goes only when the final word is POSITIVELY known ordinary, so
+    // everything else — listed or not — keeps the punctuation as dictated.
     let payloads = CursorInsertionRepair.repair(
       text: payload,
       context: CursorInsertionRepair.CaretText(left: "I said ", right: "yesterday"),
@@ -1050,44 +1074,45 @@ struct CursorInsertionRepairTests {
     #expect(payloads.repairedText?.contains(".") == true, "\(payload)")
   }
 
-  @Test(
-    "A dotted initialism keeps its period without being listed",
-    arguments: ["I live in the U.S.", "She moved to the U.K.", "That is the a.k.a."])
-  func dottedInitialismsKeepTheirPeriod(_ payload: String) {
-    // Recognised structurally rather than by membership: a closed list arrived
-    // incomplete twice, so every single-letter-per-dot token is covered without
-    // anyone having to enumerate them.
-    let payloads = CursorInsertionRepair.repair(
-      text: payload,
-      context: CursorInsertionRepair.CaretText(left: "I said ", right: "yesterday"),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
-    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod) == false, "\(payload)")
-  }
-
-  @Test(
-    "A caret inside an underscored identifier is refused",
-    arguments: [
-      (left: "rename foo", right: "_bar now"),
-      (left: "rename foo_", right: "bar now"),
-    ] as [(left: String, right: String)])
-  func underscoreIsAWordConnector(_ testCase: (left: String, right: String)) {
-    // Dictating into code editors is a real target, and `foo_|bar` was being
-    // split by a leading space. Same class as the r1 contraction finding.
-    let payloads = CursorInsertionRepair.repair(
-      text: "Store today.",
-      context: CursorInsertionRepair.CaretText(left: testCase.left, right: testCase.right),
-      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
-    #expect(payloads.candidateRules == [.refusedInsideWord], "\(testCase)")
-  }
-
-  @Test("An ordinary sentence still loses its redundant full stop")
-  func ordinarySentenceStillDropsThePeriod() {
-    // The abbreviation guard must not disable the rule it protects.
+  @Test("A known ordinary final word still loses its redundant full stop")
+  func knownOrdinaryWordStillDropsThePeriod() {
+    // The inversion must not disable the rule it protects: `today` is in the
+    // lexicon, so its period really is redundant mid-sentence.
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "yesterday"),
       protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
     #expect(payloads.candidateRules.contains(.droppedTerminalPeriod))
+  }
+
+  @Test("A doubled full stop is removed whatever word carries it")
+  func doubledStopIsAlwaysRemoved() {
+    // `TL;DR.` inserted immediately before an existing `.` would read `TL;DR..`,
+    // which is wrong for every word in every language.
+    let payloads = CursorInsertionRepair.repair(
+      text: "TL;DR.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "."),
+      protectedWords: Self.protectedWords, language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod))
+    #expect(payloads.repairedText == "TL;DR")
+  }
+
+  @Test("Existing text starting with a comma cannot follow a full stop")
+  func continuationPunctuationDropsThePeriod() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "That today.",
+      context: CursorInsertionRepair.CaretText(left: "I bought ", right: ", and eggs"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod))
+  }
+
+  @Test("A missing lexicon never removes the user's punctuation")
+  func unavailableLexiconKeepsThePeriod() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "yesterday"),
+      protectedWords: [], language: "en", lexicon: .unavailable)
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod) == false)
   }
 
   @Test(

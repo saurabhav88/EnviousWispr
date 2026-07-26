@@ -161,49 +161,19 @@ public enum CursorInsertionRepair {
   static let trailingSuppressors: Set<Character> = [
     ".", "!", "?", ",", ";", ":", ")", "]", "}", "\u{201D}", "\u{2019}",
   ]
-  /// Abbreviations whose final period belongs to the WORD, so it survives even
-  /// when existing content follows the caret.
+  /// Whether the payload's final word, with its period removed, is a word the
+  /// ordinary-lowercase lexicon knows.
   ///
-  /// A closed, deliberately small English set: the abbreviations that actually
-  /// end a dictated clause. It is not a general abbreviation dictionary, and it
-  /// does not need to be — the cost of missing one is a dropped period, the same
-  /// as before, while the cost of a large fuzzy list is keeping periods that
-  /// genuinely should go.
-  ///
-  /// Compared WITHOUT the trailing period and case-insensitively; entries with
-  /// internal periods (`e.g.`, `a.m.`) are matched on their full token.
-  static let abbreviationsKeepingTheirPeriod: Set<String> = [
-    "etc", "vs", "e.g", "i.e", "a.m", "p.m", "approx", "est",
-    "dr", "mr", "mrs", "ms", "prof", "sr", "jr", "st",
-    "inc", "ltd", "co", "dept", "univ", "no", "vol", "fig",
-  ]
-
-  /// Whether the payload's final word is an abbreviation carrying its own period.
-  ///
-  /// TWO tests, because a closed list alone kept arriving incomplete: r5 added
-  /// the list for `etc.`, r6 then found `U.S.` — the same class again. A dotted
-  /// initialism is recognised STRUCTURALLY, so `U.S.`, `U.K.`, `a.k.a.` and any
-  /// other single-letter-per-dot token keep their period without anybody having
-  /// to list them.
-  static func endsWithAbbreviation(_ body: String) -> Bool {
-    guard body.hasSuffix(".") else { return false }
+  /// The positive-knowledge test that replaced three rounds of abbreviation
+  /// guessing. Unknown means keep the period, so a missing lexicon, a
+  /// non-English dictation, an abbreviation, an initialism, a surname or a
+  /// product name all leave the user's punctuation exactly as dictated.
+  static func lastWordIsKnownOrdinary(_ body: String, lexicon: OrdinaryLowercaseLexicon) -> Bool {
+    guard lexicon.isAvailable else { return false }
     let lastToken = body.split(whereSeparator: \.isWhitespace).last.map(String.init) ?? body
     let bare = String(lastToken.dropLast())
     guard !bare.isEmpty else { return false }
-    // Leading punctuation such as an opening bracket is not part of the word.
-    let trimmed = String(bare.drop(while: { !$0.isLetter && !$0.isNumber }))
-    guard !trimmed.isEmpty else { return false }
-    if isDottedInitialism(trimmed) { return true }
-    return abbreviationsKeepingTheirPeriod.contains(trimmed.lowercased())
-  }
-
-  /// Whether a token is an initialism written with periods: `U.S`, `U.K`,
-  /// `a.k.a` — every dot-separated part exactly one letter, and at least two
-  /// parts, so an ordinary word or a decimal cannot match.
-  static func isDottedInitialism(_ token: String) -> Bool {
-    let parts = token.split(separator: ".", omittingEmptySubsequences: false)
-    guard parts.count >= 2 else { return false }
-    return parts.allSatisfy { $0.count == 1 && ($0.first?.isLetter ?? false) }
+    return lexicon.contains(bare)
   }
 
   /// Always capitalised regardless of position. Closed set, so it needs no lexicon.
@@ -409,18 +379,44 @@ public enum CursorInsertionRepair {
     // period, producing `store today. yesterday` in the middle of a sentence
     // (Codex review r3). The skip stops at a newline: content on the NEXT line
     // is a new sentence, and the user's full stop belongs to this one.
+    // Continuation punctuation counts as content too: existing text starting
+    // with `, and eggs` cannot follow a full stop, so `Milk.` inserted before it
+    // has to lose the period (Codex review r7).
     let rightContent = rightContentAnchor(of: context.right)
     let rightIsContent =
-      rightContent.map { $0.isLetter || $0.isNumber || terminators.contains($0) } ?? false
+      rightContent.map {
+        $0.isLetter || $0.isNumber || terminators.contains($0) || continuers.contains($0)
+      } ?? false
     if rightIsContent {
       let body = String(out.reversed().drop(while: \.isWhitespace).reversed())
-      // An abbreviation's period is part of the WORD, not the end of a sentence,
-      // so removing it corrupts the dictation: `we need milk, eggs, etc.`
-      // inserted before existing text became `etc yesterday` (Codex review r5).
-      // Losing a character the user dictated is the worst outcome this feature
-      // can produce, so an unrecognised trailing period is only dropped when the
-      // word carrying it is not one of these.
-      if body.hasSuffix("."), !endsWithAbbreviation(body) {
+      // The period is removed ONLY when the word carrying it is positively known
+      // to be an ordinary word.
+      //
+      // THREE review rounds arrived at this rule the wrong way round. r5 added a
+      // closed abbreviation list for `etc.`; r6 added a structural test for
+      // `U.S.`; r7 produced `Jan.` and `Ave.`. Each fix asked "is this an
+      // abbreviation?", which cannot be answered without an unbounded dictionary
+      // — so every round found another word the list had never heard of, and
+      // each miss silently deleted a character the user dictated.
+      //
+      // Inverting it ends the class. We already ship an authority on ordinary
+      // English words, the same lexicon the casing rule consults, so the period
+      // goes only when the final word is IN it. Everything unknown — every
+      // abbreviation, initialism, name, brand and foreign word, listed or not —
+      // keeps its period, which is exactly today's behaviour. The abbreviation
+      // list, the initialism test and their tests are deleted rather than left
+      // beside this: 45 lines of guessing replaced by one lookup that fails in
+      // the safe direction.
+      //
+      // The one case where the carrying word does not matter: the next real
+      // character is ITSELF a full stop. Keeping ours would produce `TL;DR..`
+      // whatever kind of word precedes it, and a doubled stop is wrong for
+      // every word in every language. The frozen 52-case matrix caught this the
+      // moment the rule inverted.
+      let wouldDoubleTheStop = rightContent.map { terminators.contains($0) } ?? false
+      if body.hasSuffix("."),
+        wouldDoubleTheStop || lastWordIsKnownOrdinary(body, lexicon: lexicon)
+      {
         let trailing = out.dropFirst(body.count)
         out = String(body.dropLast()) + trailing
         rules.append(.droppedTerminalPeriod)

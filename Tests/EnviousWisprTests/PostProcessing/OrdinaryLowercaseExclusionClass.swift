@@ -17,6 +17,13 @@
 /// that makes each word unsafe to lowercase.
 enum OrdinaryLowercaseExclusionClass {
   static let words: Set<String> = [
+    // military and civil TITLES that are also ordinary words. `general` shipped
+    // in the lexicon by mistake and was caught by Codex review r7 (2026-07-26):
+    // `According to witnesses, General Smith agreed.` came out as `general
+    // Smith`. Thirty-three rank and title homographs were audited when it was
+    // found; `general` was the only one present, and it is listed here so a
+    // regeneration cannot quietly reintroduce it.
+    "general",
     // given names and surnames
     "amber", "april", "archer", "art", "august", "autumn", "baker", "barry", "bernard",
     "bill", "bishop", "bob", "buck", "bud", "carol", "carter", "chance", "chase",

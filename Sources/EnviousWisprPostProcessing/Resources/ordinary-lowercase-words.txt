@@ -252,7 +252,6 @@ from
 full
 funny
 furthermore
-general
 generally
 gently
 genuine
