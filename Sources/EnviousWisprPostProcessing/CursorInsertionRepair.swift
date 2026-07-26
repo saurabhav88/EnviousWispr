@@ -511,7 +511,20 @@ public enum CursorInsertionRepair {
     if alwaysCapitalized.contains(bare) {
       return (text, .caseSkipped(.alwaysCapitalized))
     }
-    if let refusal = oracle.mayLower(word: bare, left: leftWindow, payload: String(stripped)) {
+    // The tagger must see the seam AS IT WILL BE WRITTEN, separator included.
+    //
+    // Rule 1 has already prepended the leading space to `text`, so it lives in
+    // `leadingWhitespace`. Joining the raw left window straight to `stripped`
+    // fuses them into one token — `and` + `Mark` becomes `andMark`, which the
+    // tagger reads as a Verb, which is a SAFE class, which lowercases somebody's
+    // name. Measured on 10 name continuations whose caret sits directly after a
+    // word: 7 were wrongly authorised fused, 0 when separated correctly.
+    //
+    // Every corpus this design was measured against used left contexts that
+    // already ended in a space, so none of them could exercise this. Caught by
+    // local diff review r2 (P1).
+    let taggerLeft = leftWindow + String(leadingWhitespace)
+    if let refusal = oracle.mayLower(word: bare, left: taggerLeft, payload: String(stripped)) {
       return (text, .caseSkipped(refusal))
     }
 

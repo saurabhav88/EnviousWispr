@@ -49,6 +49,24 @@ struct EnglishWordOracleTests {
     }
   }
 
+
+  /// Records what the word-class closure was handed. `@Sendable`-safe for the
+  /// same reason `ConsultationSpy` is.
+  final class LeftContextRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+    var first: String? {
+      lock.lock()
+      defer { lock.unlock() }
+      return values.first
+    }
+    func record(_ value: String) {
+      lock.lock()
+      values.append(value)
+      lock.unlock()
+    }
+  }
+
   // MARK: - The decision, branch by branch
 
   @Test("An ordinary word acting as a non-noun may be lowered")
@@ -210,6 +228,44 @@ struct EnglishWordOracleTests {
       onServiceFailure: {})
     #expect(ordinary == false)
     #expect(probed == ["Zorbitrax"], "the sentinel must not be probed on a refusal")
+  }
+
+  // MARK: - The seam separator reaches the tagger
+
+  @Test("The word oracle sees the seam WITH its separator, not a fused token")
+  func taggerSeesTheInsertedSpace() {
+    // The caret sits directly after a word, so the repair inserts a leading
+    // space. If that space is not also handed to the tagger, it reads
+    // `and` + `Mark` as the single token `andMark` — which it classifies as a
+    // Verb, a SAFE class, which lowercases somebody's name.
+    //
+    // Measured on 10 name continuations with a no-space caret: 7 were wrongly
+    // authorised fused, 0 when separated. Every measurement corpus behind this
+    // design used left contexts already ending in a space, so none of them could
+    // catch it (local diff review r2, P1).
+    let seenLeft = LeftContextRecorder()
+    let recorder = EnglishWordOracle(
+      unavailableReason: nil,
+      isOrdinaryWord: { _ in true },
+      isLearnedWord: { _ in false },
+      wordClassIsSafe: { left, _ in
+        seenLeft.record(left)
+        return true
+      })
+
+    _ = CursorInsertionRepair.repair(
+      text: "Mark said he would be late.",
+      // NO trailing space: the caret is directly after `and`.
+      context: CursorInsertionRepair.CaretText(left: "I mentioned it and", right: ""),
+      protectedWords: [], oracle: recorder)
+
+    let left = try! #require(seenLeft.first)
+    #expect(
+      left.hasSuffix(" "),
+      "the tagger must receive the separator the repair inserts, got: '\(left)'")
+    #expect(
+      (left + "Mark").contains("andMark") == false,
+      "left and payload must not fuse into one token")
   }
 
   // MARK: - Runtime state machine
