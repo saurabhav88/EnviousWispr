@@ -179,14 +179,31 @@ public enum CursorInsertionRepair {
   ]
 
   /// Whether the payload's final word is an abbreviation carrying its own period.
+  ///
+  /// TWO tests, because a closed list alone kept arriving incomplete: r5 added
+  /// the list for `etc.`, r6 then found `U.S.` — the same class again. A dotted
+  /// initialism is recognised STRUCTURALLY, so `U.S.`, `U.K.`, `a.k.a.` and any
+  /// other single-letter-per-dot token keep their period without anybody having
+  /// to list them.
   static func endsWithAbbreviation(_ body: String) -> Bool {
     guard body.hasSuffix(".") else { return false }
     let lastToken = body.split(whereSeparator: \.isWhitespace).last.map(String.init) ?? body
-    let bare = String(lastToken.dropLast()).lowercased()
+    let bare = String(lastToken.dropLast())
     guard !bare.isEmpty else { return false }
     // Leading punctuation such as an opening bracket is not part of the word.
-    let trimmed = bare.drop(while: { !$0.isLetter && !$0.isNumber })
-    return abbreviationsKeepingTheirPeriod.contains(String(trimmed))
+    let trimmed = String(bare.drop(while: { !$0.isLetter && !$0.isNumber }))
+    guard !trimmed.isEmpty else { return false }
+    if isDottedInitialism(trimmed) { return true }
+    return abbreviationsKeepingTheirPeriod.contains(trimmed.lowercased())
+  }
+
+  /// Whether a token is an initialism written with periods: `U.S`, `U.K`,
+  /// `a.k.a` — every dot-separated part exactly one letter, and at least two
+  /// parts, so an ordinary word or a decimal cannot match.
+  static func isDottedInitialism(_ token: String) -> Bool {
+    let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+    guard parts.count >= 2 else { return false }
+    return parts.allSatisfy { $0.count == 1 && ($0.first?.isLetter ?? false) }
   }
 
   /// Always capitalised regardless of position. Closed set, so it needs no lexicon.
@@ -495,9 +512,24 @@ public enum CursorInsertionRepair {
       && isWordSide(right, otherSide: context.right.dropFirst().first)
   }
 
-  /// Characters that join one word rather than separating two: the apostrophe in
-  /// `can't` and the hyphen in `state-of-the-art`.
-  static let wordConnectors: Set<Character> = ["'", "\u{2019}", "-", "\u{2010}"]
+  /// Characters that join one word rather than separating two.
+  ///
+  /// ENUMERATED rather than grown one reviewer finding at a time: r1 added the
+  /// apostrophe and hyphen, r6 then found the underscore, which is the same
+  /// class arriving twice. The complete set, and what is deliberately outside it:
+  ///
+  /// | Character | In | Why |
+  /// |---|---|---|
+  /// | `'` `’` | yes | `can't`, `Jones's` — straight and curly both occur, cloud polish emits curly |
+  /// | `-` `‐` `‑` | yes | `state-of-the-art`, plus the Unicode and non-breaking hyphens |
+  /// | `_` | yes | `foo_bar` — dictation into code editors is a real target |
+  /// | `.` | NO | a period is also a sentence boundary; treating it as word-internal
+  ///   would make `home.Next` unrepairable, and the dotted-initialism case it
+  ///   would serve is handled by `endsWithAbbreviation` instead |
+  /// | `/` `,` `:` | NO | these separate; `and/or` splitting is not corruption |
+  static let wordConnectors: Set<Character> = [
+    "'", "\u{2019}", "-", "\u{2010}", "\u{2011}", "_",
+  ]
 
   /// Whether this character means "a word continues here".
   ///

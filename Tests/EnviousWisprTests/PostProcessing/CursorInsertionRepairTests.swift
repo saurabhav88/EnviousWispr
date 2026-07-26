@@ -1050,6 +1050,36 @@ struct CursorInsertionRepairTests {
     #expect(payloads.repairedText?.contains(".") == true, "\(payload)")
   }
 
+  @Test(
+    "A dotted initialism keeps its period without being listed",
+    arguments: ["I live in the U.S.", "She moved to the U.K.", "That is the a.k.a."])
+  func dottedInitialismsKeepTheirPeriod(_ payload: String) {
+    // Recognised structurally rather than by membership: a closed list arrived
+    // incomplete twice, so every single-letter-per-dot token is covered without
+    // anyone having to enumerate them.
+    let payloads = CursorInsertionRepair.repair(
+      text: payload,
+      context: CursorInsertionRepair.CaretText(left: "I said ", right: "yesterday"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.droppedTerminalPeriod) == false, "\(payload)")
+  }
+
+  @Test(
+    "A caret inside an underscored identifier is refused",
+    arguments: [
+      (left: "rename foo", right: "_bar now"),
+      (left: "rename foo_", right: "bar now"),
+    ] as [(left: String, right: String)])
+  func underscoreIsAWordConnector(_ testCase: (left: String, right: String)) {
+    // Dictating into code editors is a real target, and `foo_|bar` was being
+    // split by a leading space. Same class as the r1 contraction finding.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: testCase.left, right: testCase.right),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules == [.refusedInsideWord], "\(testCase)")
+  }
+
   @Test("An ordinary sentence still loses its redundant full stop")
   func ordinarySentenceStillDropsThePeriod() {
     // The abbreviation guard must not disable the rule it protects.
