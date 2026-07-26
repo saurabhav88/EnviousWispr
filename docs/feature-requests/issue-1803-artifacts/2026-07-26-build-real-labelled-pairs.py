@@ -73,8 +73,8 @@ with open(OUT, "w") as f:
     for case_id, left, payload, label in pairs:
         f.write(f"{case_id}\t{label}\t{left}\t{payload}\n")
 
-keep = sum(1 for p in pairs if p[2] == "keep")
-print(f"real labelled continuation pairs: {len(pairs)}")
-print(f"  MUST KEEP (capitalised mid-sentence): {keep}")
-print(f"  SHOULD LOWER (lowercase mid-sentence): {len(pairs) - keep}")
+keep = sum(1 for p in pairs if p[3] == "keep")
+print(f"app-output-labelled synthetic continuation pairs: {len(pairs)}")
+print(f"  STORED CAPITAL: {keep}")
+print(f"  STORED LOWERCASE: {len(pairs) - keep}")
 print(f"  skipped as too short: {skipped_short}")

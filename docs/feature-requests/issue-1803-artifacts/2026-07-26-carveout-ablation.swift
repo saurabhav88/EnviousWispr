@@ -63,9 +63,9 @@ for line
       "/private/tmp/claude-501/-Users-m4pro-sv-Developer-EnviousLabs-EnviousWispr/ff88b620-7ce1-43d3-99d0-8dc68323ee9e/scratchpad/pairs.tsv",
     encoding: .utf8)).split(separator: "\n")
 {
-  let f = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
-  if f.count == 3 {
-    pairs.append(Pair(keep: f[0] == "keep", left: String(f[1]), payload: String(f[2])))
+  let f = line.split(separator: "\t", maxSplits: 3, omittingEmptySubsequences: false)
+  if f.count == 4 {
+    pairs.append(Pair(keep: f[1] == "keep", left: String(f[2]), payload: String(f[3])))
   }
 }
 func run(_ carve: Set<String>) -> (lowered: Int, agree: Int, disagree: Int) {

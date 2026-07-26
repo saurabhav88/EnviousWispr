@@ -1,0 +1,295 @@
+## Q1. Verify every prior finding
+
+| Prior finding | Status | Grounding |
+|---|---|---|
+| Core direction: system dictionary + context + conservative refusal | **FIXED** | Ordered design remains clear at [plan:226-249](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:226). |
+| Remove the second carve-out | **FIXED** | Explicitly measured and cut at [plan:245-247](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:245). |
+| Remove canary as availability authority | **FIXED** | Remaining canary reference is correctly historical at [plan:251-259](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:251). Active lifecycle, failure and tests no longer use it. |
+| P0 sole ordinary-word consumer; preserve apostrophe helper | **FIXED** | P0 now accurately separates ordinary-word decisions from punctuation normalization at [plan:117-129](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:117). |
+| P1/P4 authored corpora are diagnostic only | **FIXED** | Correctly limited at plan lines 142-151 and 172-183. |
+| P2 is a safety filter, not a name recognizer | **FIXED** | Corrected at [plan:133](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:133). |
+| P3 says 457 and deletes the test-only class | **FIXED** | Correct at plan lines 135-140 and file row 459-460. |
+| P7 does not claim documented thread safety | **PARTIALLY FIXED** | The factual wording is fixed at [plan:157](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:157). But “all access is serialized” is only asserted. No serializer shape explains how timeout cleanup avoids waiting on the same lock as a stuck checker call. |
+| P8 no longer universalizes the 20-unit result | **FIXED** | Correctly scoped to 36 authored cases at [plan:159-166](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:159). |
+| P9 tagger contracts | **FIXED** | Fresh tagger and fail-closed availability remain at plan lines 290-293. |
+| P10 entitlement citation | **FIXED** | Correct at plan line 170. |
+| P11 checksum statement | **FIXED** | Correct at plan line 224. |
+| P12 limited to the two actual signals | **FIXED** | Correct at plan lines 211-222. |
+| P13 rejected discourse-set history | **NOT FIXED** | Lines [198-209](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:198) still say the result is a “closed set” and describe “adding” the second carve-out, contradicting the actual cut at line 245. |
+| P14 labels are app-output characterization, not ground truth | **PARTIALLY FIXED** | Plan wording and generator docstring are fixed. The generator’s new four-column format broke its own counters and every Swift reader, so the measurements are no longer rerunnable as committed. Details below. |
+| P15 learned-word positive control | **FIXED** | Correct at plan lines 187-196. |
+| Cold measurement corrected from 1.33 ms to 105.6 ms | **FIXED** | Correct table at plan lines 390-399. One stale failure-table row still says 1.33 ms at line 388. |
+| Startup warm-up has a caller and early-paste behavior | **FIXED** | `WisprBootstrapper` trigger and `.oracleWarming` behavior are specified at plan lines 427 and 432-434. |
+| Live deadline adopted on the already-async delivery path | **FIXED** | Correctly grounded at plan lines 410-415. `deliver` is async at [KernelFinalizationWiring.swift:153](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Sources/EnviousWisprPipeline/KernelFinalizationWiring.swift:153), and ordered timeout exists at [TaskTimeout.swift:106](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Sources/EnviousWisprCore/TaskTimeout.swift:106). |
+| Revalidate the selected language before each lookup | **FIXED** | Explicit at plan lines 428 and 383. |
+| Runtime owns readiness, availability, timeout and serialization | **PARTIALLY FIXED** | The ownership table exists at [plan:419-430](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:419), but the serialization/timeout interaction is incomplete. This is the third appearance of the same runtime-isolation root. |
+| Human review has an executable sample procedure | **FIXED** | Sample, seed, denominator, decoys, blind columns, `UNSURE`, and separate safety audit are specified at [plan:529-537](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-2026-07-26-system-dictionary-casing.md:529). |
+| Exception set ablated | **PARTIALLY FIXED** | The 0-versus-15 result and per-entry contributions appear at plan lines 235-243. But they are app-output agreements, and the committed artifact chain is currently broken. The 87 exception-dependent rows have not received independent human review. |
+| Telemetry taxonomy reconciled everywhere | **NOT FIXED** | §8 is correct at line 440. §4 omits `.oracleWarming` and `.oracleTimedOut` at lines 346-351; §6 still says three names at line 374; §10 still says “add one” at line 458; its test row says five new/renamed names at line 463, although the change is two renames plus five additions. |
+| Resource line count corrected everywhere | **NOT FIXED** | Main contract says 830/799 at line 342, but §10 still says “delete (799 lines)” at line 454. |
+| Six Kernel tests and `Transcript.swift` included | **FIXED** | Correct at plan lines 464-465. |
+| Historical scorers receive a decided disposition | **FIXED** | Explicitly retained as non-rerunnable historical artifacts at line 466. That does not cover the new ablation and ship-gate scripts, which must remain runnable. |
+| File/module blast radius accurate | **NOT FIXED** | Preface line 8 omits AppKit’s warm-up role. Line 507 still says “one function, one module, one caller,” although the plan changes PostProcessing, Pipeline and AppKit. |
+| Early paste should refuse rather than pay 105 ms | **FIXED, and correct product call** | The user receives today’s capital instead of a noticeable heart-path delay. Since warm-up is 85 ms and recording takes much longer, this should be an exceptional race, not normal behavior. |
+
+## Q2. New defects
+
+### 1. The serializer can defeat the deadline unless two locks are explicitly separated
+
+This is a blocker and the same runtime-isolation root again.
+
+Suppose serialization holds one lock while calling `NSSpellChecker`. If the checker stalls, the timeout handler tries to acquire that same lock to set `.unavailable(.oracleTimedOut)`. `withOrderedDeadline` waits for `onTimeout` to finish before resuming paste at [TaskTimeout.swift:127-133](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/Sources/EnviousWisprCore/TaskTimeout.swift:127). Paste would therefore hang behind the stalled checker despite having a deadline.
+
+The runtime needs two synchronization domains:
+
+- A short-lived state lock, never held during any system call.
+- A separate serial checker queue/gate, whose wait and system call are both inside the deadline.
+
+Timeout cleanup may touch only the state lock. Once disabled, later calls must refuse before entering the checker queue. An already queued call must recheck the runtime generation after acquiring the queue.
+
+The required transitions are:
+
+- Initial → warming.
+- Warming + preparation success → ready.
+- Warming + preparation failure → unavailable.
+- Warming + decision → refuse warming, state unchanged.
+- Ready + successful decision → ready.
+- Ready + dictionary disappears → unavailable.
+- Ready + timeout wins → unavailable before paste resumes.
+- Timeout winner + late result → result discarded; state stays unavailable.
+- Unavailable + any later decision/prewarm → refuse; no checker access.
+
+Those transitions are complete once the two-lock rule and late-result rule are binding.
+
+### 2. The corrected generator broke all measurements that read it
+
+The tuple is now:
+
+```text
+case_id, left, payload, label
+```
+
+But the generator still counts `p[2] == "keep"` at [build-real-labelled-pairs.py:76](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-artifacts/2026-07-26-build-real-labelled-pairs.py:76). Index 2 is the payload; the label is index 3. It also still prints “real labelled continuation pairs” at line 77.
+
+All three Swift readers still parse three columns:
+
+- [carveout-ablation.swift:66-69](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-artifacts/2026-07-26-carveout-ablation.swift:66)
+- [score-real-labelled-pairs.swift:87-90](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-artifacts/2026-07-26-score-real-labelled-pairs.swift:87)
+- [heartpath-warmup-and-carveout.swift:113-116](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-1803-dict/docs/feature-requests/issue-1803-artifacts/2026-07-26-heartpath-warmup-and-carveout.swift:113)
+
+With the new output, those readers interpret `case_id` as the label and combine the true label, left context and payload into the wrong fields. The reported ablation may have been valid before the schema edit, but it is not reproducible from the committed artifacts now.
+
+Fix the readers, rerun, and confirm all totals before relying on +87/+0 or 8,481/8,465/16.
+
+### 3. The 12 entries have coverage evidence, but not independent safety evidence
+
+The ablation proves that 12 entries change app-output agreement. It does not independently prove those lowercases are correct because the same casing circularity still applies.
+
+This is cheap to close: independently review all 87 rows whose lowercase decision depends on an exception. Keep the random 500-row precision denominator unchanged. Report the 87-row exception audit separately, just like the generated-capital safety audit.
+
+The set is then justified if every retained word has at least one reviewed correct application and no reviewed harmful application. Until then it is better justified than before, but not fully certified.
+
+### 4. Serialization is not itself a new stall surface if implemented correctly
+
+The queue wait and checker call must both be inside `withOrderedDeadline`. Timeout cleanup must not need the queue. With those constraints, serialization changes concurrent access into bounded raw-text fallback rather than an unbounded wait.
+
+### 5. The remaining stale prose is implementation-dangerous
+
+The following contradictions remain:
+
+- Old 15-word “closed class” claim at line 155.
+- Rejected discourse carve-out described as adopted at lines 198-209.
+- Runtime cases missing from §4.
+- Old concurrency story in §5 lines 361-366.
+- Three telemetry names in §6.
+- 1.33 ms cold row at line 388.
+- Incorrect §10 line count, reason count and module scope.
+- “Warm-up is not in PostProcessing” at line 311, although runtime preparation lives there and AppKit only schedules it. The intended distinction is scheduling versus execution.
+
+## Q3. Consolidation
+
+The owner is now correct in name and scope, but the root is not operationally closed.
+
+This is the third round naming the same root: system-service work is not yet proven unable to block the heart path. The missing piece is no longer ownership. It is the synchronization contract inside that owner.
+
+Per your stated rule, escalate this to the founder rather than doing another symptom-by-symptom review cycle. The decision to escalate is narrow:
+
+> Approve the two-lock, permanently fail-closed runtime contract, then implement it exactly; or accept that a stuck spell-check call can defeat paste.
+
+Custom Words still has one correct home. Warm-up scheduling has one correct home. No other consolidation is needed.
+
+## Q4. Drop-in edits
+
+### A. Make serialization compatible with timeout
+
+Add this immediately below the four-concern ownership table:
+
+> **Two synchronization domains are mandatory.** Runtime state and spell-checker execution must never share a lock. A short-held state lock owns only the current state and generation; it is never held while calling AppKit or NaturalLanguage. A separate serial checker queue owns every touch of `NSSpellChecker`. Queue acquisition, identifier revalidation and the system call all occur inside the caller’s ordered deadline.
+>
+> `onTimeout` touches only the state lock: it advances the generation and permanently sets `.unavailable(.oracleTimedOut)` before paste resumes. It never waits for the checker queue. An operation rechecks the generation after acquiring the checker queue and before its first system call. If timeout already won, it exits without touching the checker. If timeout wins during a system call, that late result is discarded and cannot change runtime state. Every later decision refuses before entering the checker queue.
+>
+> Binding transitions:
+>
+> | From | Event | To / result |
+> |---|---|---|
+> | initial | runtime constructed | `.warming(generation: 0)` |
+> | `.warming` | preparation succeeds | `.ready(oracle, same generation)` |
+> | `.warming` | preparation fails | `.unavailable(reason)` |
+> | `.warming` | paste arrives | refuse `.oracleWarming`; state unchanged |
+> | `.ready` | decision succeeds | return decision; state unchanged |
+> | `.ready` | English identifier no longer available | `.unavailable(.dictionaryUnavailable)` |
+> | `.ready` | ordered deadline wins | increment generation; `.unavailable(.oracleTimedOut)` before paste resumes |
+> | any prior generation | late completion | discard result; never mutate current state |
+> | `.unavailable` | any decision or repeated prewarm | refuse stored reason; no checker access |
+
+Implementation shape:
+
+```swift
+private struct RuntimeState: Sendable {
+  var generation = 0
+  var phase: Phase = .warming
+}
+
+private static let stateLock =
+  OSAllocatedUnfairLock(initialState: RuntimeState())
+
+private static let checkerQueue =
+  DispatchQueue(label: "co.enviouslabs.wispr.english-word-oracle")
+
+package static func disableAfterTimeout() {
+  stateLock.withLock { state in
+    state.generation += 1
+    state.phase = .unavailable(.oracleTimedOut)
+  }
+}
+```
+
+Before entering the checker queue:
+
+```swift
+guard case .ready = stateLock.withLock({ $0.phase }) else {
+  return refusalForCurrentState()
+}
+```
+
+Inside the checker queue, immediately before touching `NSSpellChecker`:
+
+```swift
+let stillCurrent = stateLock.withLock { state in
+  state.generation == generation && state.phase.isReady
+}
+guard stillCurrent, !Task.isCancelled else {
+  return .refuse(.oracleTimedOut)
+}
+```
+
+Add this test obligation:
+
+> A blocking fake holds the checker-execution gate past the deadline. Assert that `onTimeout` completes without acquiring that gate, paste resumes with `legacyText`, runtime state becomes permanently `.oracleTimedOut`, a second decision never enters the fake checker, and releasing the first call later cannot restore `.ready` or publish its result.
+
+### B. Fix the four-column artifacts
+
+Replace generator lines 76-79 with:
+
+```python
+keep = sum(1 for p in pairs if p[3] == "keep")
+print(f"app-output-labelled synthetic continuation pairs: {len(pairs)}")
+print(f"  STORED CAPITAL: {keep}")
+print(f"  STORED LOWERCASE: {len(pairs) - keep}")
+print(f"  skipped as too short: {skipped_short}")
+```
+
+In all three Swift readers, replace the parser with:
+
+```swift
+let fields = line.split(
+  separator: "\t",
+  maxSplits: 3,
+  omittingEmptySubsequences: false
+)
+if fields.count == 4 {
+  pairs.append(
+    Pair(
+      keep: fields[1] == "keep",
+      left: String(fields[2]),
+      payload: String(fields[3])
+    )
+  )
+}
+```
+
+Add to the plan:
+
+> After the four-column parser correction, regenerate the same sorted-seed corpus and rerun every active scorer. The plan’s 11,562-row total, 460 stored-capital rows, 8,481/8,465/16 characterization result, 0-versus-15 ablation and every per-entry delta must match before implementation begins. If any differs, replace the plan figures with the rerun rather than preserving the old output.
+
+### C. Independently audit the 12 exceptions
+
+Add after the ablation table:
+
+> The +87/+0 ablation is app-output characterization, not independent correctness evidence. The human gate therefore includes a separate audit of every row whose lowercase decision depends on bypassing the noun refusal through one of these 12 exceptions. These rows do not alter the random 500-row precision denominator. The audit reports results per word. Retain an exception only if it has at least one independently reviewed correct application and zero reviewed harmful applications; otherwise cut it before shipping.
+
+### D. Clarify the early-paste product contract
+
+Replace ship criterion 3a with:
+
+> 3a. Cold-start behavior is tested in both states:
+>
+> - A forced paste while runtime state is `.warming` completes under 5 ms, keeps the original capital, preserves the independent spacing/seam behavior, and records `.oracleWarming`.
+> - After preparation reports `.ready`, the founder’s continuation case completes under 5 ms and lowercases correctly.
+>
+> The product deliberately prefers one safe-direction miss over adding the measured 105.6 ms cold setup to paste.
+
+### E. Remove the stale contradictions
+
+Replace P6 line 155 with:
+
+> **P6 — a frozen compatibility-exception set requires both contribution and safety evidence.** The original 15 candidates are not claimed to be complete grammatical classes. §3 records the per-entry ablation, cuts three zero-contribution entries, and sends all exception-dependent decisions through a separate human safety audit.
+
+Replace P13 lines 198-209 with:
+
+> **P13 — real whole-dictation openers exposed a tempting but invalid exception source.** The store contains 15,879 real dictations, but whole-dictation first words are not genuine continuation pairs. An exploratory discourse-marker set improved an authored opener diagnostic, yet contributed only one decision in the 11,562-row continuation characterization and included open-class vocabulary. It is rejected, not part of the production design, and no transcript-derived word list is committed.
+
+Add the missing §4 rows:
+
+> | `CaseSkipReason.oracleWarming` | — | new, `oracle_warming` |
+>
+> | `CaseSkipReason.oracleTimedOut` | — | new, `oracle_timed_out` |
+
+Replace §5 with:
+
+> | Interrupted | ordered deadline wins during synchronous repair? | The result is abandoned; runtime is permanently disabled before paste resumes; late completion cannot publish. |
+>
+> | Concurrent | warm-up or another decision touches the shared checker? | One checker-execution queue serializes access. Runtime state uses a separate lock so timeout cleanup never waits for that queue. |
+>
+> | Stale | cached language disappears or an old operation finishes late? | Membership is revalidated before lookup; generation mismatch discards every late result. |
+
+Replace §6 telemetry row with:
+
+> | Telemetry | `AppliedRule.telemetryName` | two renamed and five new `CaseSkipReason` strings; `AppliedRule` gains none |
+
+Replace the cold failure row with:
+
+> | First-call setup is cold | `.warming` refuses casing; setup remains off paste | measured 105.6 ms off path; early paste keeps today’s capital |
+
+Replace §10’s stale rows with:
+
+> | `ordinary-lowercase-words.txt` | **delete**: 830 physical lines carrying 799 entries |
+>
+> | `CursorInsertionRepair.swift` | delete the old lexicon seam; inject the oracle; rename two skip reasons and add five |
+>
+> | `PasteExecutionMetricsTests.swift` | cover all seven changed telemetry names: two renames and five additions |
+
+Replace the warm-up ownership sentence with:
+
+> The app shell owns **when preparation starts**; PostProcessing owns preparation state and execution. `WisprBootstrapper` triggers the non-blocking launch prewarm but never reads, derives or mutates oracle availability.
+
+Replace the preface modules row with:
+
+> - **Modules:** PostProcessing (decision and runtime owner), Pipeline (deadline-bound caller), AppKit (launch-prewarm trigger)
+
+Replace the blast-radius sentence with:
+
+> The behavioral decision remains one PostProcessing consumer, but implementation touches three modules: PostProcessing owns the oracle/runtime, Pipeline applies the ordered deadline and fallback, and AppKit triggers prewarm. There is no migration, persisted state or schema.
+
+**PROCEED-WITH-REVISIONS**
+
