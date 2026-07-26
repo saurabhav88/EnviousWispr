@@ -386,10 +386,9 @@ struct KernelFinalizationWiring {
               // Without this the seam de-duplication refused every short field
               // (#1803, local diff review).
               leftReachesDocumentStart: $0.leftWindow.utf16.count == $0.selectionLocation,
-              // A terminal screen tells us roughly what precedes the cursor and
-              // cannot tell us WHERE the cursor is inside the line, so it may
-              // only authorise spacing (#1803 part 1).
-              repairScope: $0.isScreenDerived ? .spacingOnly : .full)
+              // A terminal screen tells us what precedes the cursor, which is
+              // everything the seam rules need (#1803 part 1).
+              repairScope: $0.isScreenDerived ? .terminalScreen : .full)
           },
           protectedWords: context.protectedSpellings,
           // Resolved from positive evidence, NOT read off the result.

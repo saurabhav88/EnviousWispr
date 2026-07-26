@@ -1558,40 +1558,55 @@ struct CursorInsertionRepairTests {
     CursorInsertionRepair.repair(
       text: payload,
       context: CursorInsertionRepair.CaretText(
-        left: left, right: right, repairScope: .spacingOnly),
+        left: left, right: right, repairScope: .terminalScreen),
       protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
   }
 
   @Test("Spacing still happens, because that is the whole point")
-  func spacingOnlyStillSpaces() {
+  func screenDerivedStillSpaces() {
     let payloads = Self.screen(left: "git commit -m fix", payload: "The store is ready.")
     #expect(payloads.repairedText?.hasPrefix(" ") == true)
   }
 
-  @Test("Screen-derived evidence never recases the first word")
-  func spacingOnlyNeverRecases() {
-    // The same input DOES lowercase under a real caret; only the evidence differs.
+  /// The founder's actual complaint, and the whole reason terminals matter:
+  /// he dictates a half-finished thought, dictates the continuation, and the
+  /// second one arrives with a capital it should not have. Screen-derived
+  /// evidence MUST fix that, exactly as a real caret does.
+  @Test("Screen-derived evidence fixes the leading capital, same as a real caret")
+  func screenDerivedFixesTheCapital() {
     let real = Self.seam(left: "I want to go to the", payload: "Store is ready.")
-    #expect(real.candidateRules.contains(.lowercasedFirst))
-
     let screened = Self.screen(left: "I want to go to the", payload: "Store is ready.")
+    #expect(real.candidateRules.contains(.lowercasedFirst))
+    #expect(screened.candidateRules.contains(.lowercasedFirst))
+    #expect(screened.repairedText == real.repairedText, "the evidence source must not change the answer")
+  }
+
+  @Test("A full stop to the left still means a new sentence, so the capital stays")
+  func screenDerivedKeepsCapitalAfterATerminator() {
+    let screened = Self.screen(left: "git status. ", payload: "Store is ready.")
     #expect(!screened.candidateRules.contains(.lowercasedFirst))
-    #expect(screened.candidateRules.contains(.caseSkipped(.screenDerivedContext)))
     #expect(screened.repairedText?.contains("Store") == true)
   }
 
-  @Test("Screen-derived evidence never deletes a duplicated word")
-  func spacingOnlyNeverDeduplicates() {
+  /// The founder's algorithm, end to end: no full stop to the left, take the
+  /// last word, compare it to our first word, drop OURS. Nothing on screen is
+  /// touched — we simply paste less — so there is no backspacing anywhere.
+  @Test("Screen-derived evidence removes a duplicated word, same as a real caret")
+  func terminalScreenAlsoDeduplicates() {
     let real = Self.seam(left: "go to the", payload: "The store is ready.")
-    #expect(real.candidateRules.contains(.droppedDuplicateWord))
-
     let screened = Self.screen(left: "go to the", payload: "The store is ready.")
+    #expect(screened.candidateRules.contains(.droppedDuplicateWord))
+    #expect(screened.repairedText == real.repairedText, "the evidence source must not change the answer")
+  }
+
+  @Test("A full stop to the left stops the de-duplication, as the founder specified")
+  func terminalScreenKeepsDuplicateAfterATerminator() {
+    let screened = Self.screen(left: "go to the store.", payload: "Store is ready.")
     #expect(!screened.candidateRules.contains(.droppedDuplicateWord))
-    #expect(screened.repairedText?.contains("The store") == true)
   }
 
   @Test("Screen-derived evidence never deletes a dictated full stop")
-  func spacingOnlyNeverDropsTerminalPeriod() {
+  func terminalScreenNeverDropsTerminalPeriod() {
     let screened = Self.screen(left: "some text", right: ".", payload: "Done.")
     #expect(!screened.candidateRules.contains(.droppedTerminalPeriod))
     #expect(screened.repairedText?.contains("Done.") == true)
@@ -1602,7 +1617,7 @@ struct CursorInsertionRepairTests {
   @Test(
     "A payload containing a line break refuses screen-derived repair outright",
     arguments: ["backup\n", "one\ntwo", "trailing\r", "a\u{2028}b"])
-  func spacingOnlyRefusesMultilinePayloads(payload: String) {
+  func terminalScreenRefusesMultilinePayloads(payload: String) {
     let screened = Self.screen(left: "rm -rf /tmp/safefile", payload: payload)
     #expect(screened.repairedText == nil, "\(payload.debugDescription)")
     #expect(screened.candidateRules == [.refusedScreenDerivedLineBreak])
@@ -1617,19 +1632,20 @@ struct CursorInsertionRepairTests {
   /// The invariant, asserted directly rather than trusted: strip the spaces we
   /// are allowed to add and nothing else may have changed.
   @Test(
-    "Spacing-only may add spaces at the seams and change nothing else",
+    "A terminal screen produces the SAME answer a real caret would",
     arguments: [
       ("go to the", "The store is ready."),
       ("I want to go to the", "Store is closed today."),
       ("echo foobar", "Foobar is ready."),
       ("some text", "Don't worry about it."),
       ("page 5", "5 is missing."),
+      ("git status.", "Store is ready."),
     ])
-  func spacingOnlyChangesOnlyWhitespace(left: String, payload: String) {
+  func terminalScreenMatchesARealCaret(left: String, payload: String) {
+    // The evidence SOURCE must never change the outcome. Whatever the rules do
+    // with a real caret, they do identically here.
+    let real = Self.seam(left: left, payload: payload)
     let screened = Self.screen(left: left, payload: payload)
-    let candidate = try! #require(screened.repairedText)
-    #expect(
-      candidate.trimmingCharacters(in: .whitespaces) == payload,
-      "only edge whitespace may differ: \(candidate.debugDescription)")
+    #expect(screened.repairedText == real.repairedText, "\(left) | \(payload)")
   }
 }

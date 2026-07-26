@@ -33,10 +33,14 @@ public enum CursorInsertionRepair {
   public enum RepairScope: Equatable, Sendable {
     /// Everything applies. Today's behaviour for a real caret.
     case full
-    /// Screen-derived evidence. The repair may ADD ASCII spaces at the two
-    /// seams and may not remove, replace, recase or otherwise change any
-    /// non-whitespace character of the dictation.
-    case spacingOnly
+    /// Read from a terminal's SCREEN rather than from a real caret.
+    ///
+    /// Named for the source rather than for a policy, because the policy has
+    /// moved twice and the source has not. Everything applies here except two
+    /// things, both of which act on text we cannot see: the touching-full-stops
+    /// rule (which needs a right-hand window a screen read never has), and any
+    /// payload containing a line break, which refuses outright.
+    case terminalScreen
   }
 
   public struct CaretText: Equatable, Sendable {
@@ -78,10 +82,6 @@ public enum CursorInsertionRepair {
     case alwaysCapitalized = "always_capitalized"
     case notKnownLowercase = "not_known_lowercase"
     case lexiconUnavailable = "lexicon_unavailable"
-    /// The context came from reading a terminal's screen, which cannot say
-    /// where the cursor is inside the line. Casing could produce a wrong
-    /// capital on evidence that may describe a different position.
-    case screenDerivedContext = "screen_derived_context"
     /// The dictation is not in a language whose casing rules we know. The
     /// lexicon is English, and applying it to another language is not merely
     /// useless — it is actively wrong. `See`, `Start`, `Test`, `Team` and
@@ -286,7 +286,7 @@ public enum CursorInsertionRepair {
     // a spacing artifact placed before it changes the command that runs
     // (`rm -rf /tmp/safe|file` + "backup\n" splits one path into two arguments
     // and then runs it). Bracketed paste cannot be assumed. Refuse outright.
-    if context.repairScope == .spacingOnly,
+    if context.repairScope == .terminalScreen,
       text.unicodeScalars.contains(where: { CharacterSet.newlines.contains($0) })
     {
       return PreparedPayloads(
@@ -390,11 +390,7 @@ public enum CursorInsertionRepair {
         !left.atLineStart && (anchor.isLetter || anchor.isNumber || continuers.contains(anchor))
       } ?? false
 
-    if context.repairScope == .spacingOnly {
-      // Screen evidence cannot say where in the line the cursor is, so the word
-      // we would be recasing may not be the word at the seam.
-      rules.append(.caseSkipped(.screenDerivedContext))
-    } else if continuing, !language.knowsCasing {
+    if continuing, !language.knowsCasing {
       // Positioned to lowercase, but not in a language whose casing we know.
       // Recorded as a skip rather than silently omitted so the field can tell
       // "we chose not to" from "the position did not call for it".
@@ -434,8 +430,7 @@ public enum CursorInsertionRepair {
     //
     // Guard order matches plan §3: spacing language, alphanumeric anchor, a left
     // token proven complete, a token-shaped match, and something surviving.
-    if context.repairScope == .full,
-      language.usesWordSpacing,
+    if language.usesWordSpacing,
       let anchor = left.character, anchor.isLetter || anchor.isNumber,
       let leftToken = completeLeftToken(
         in: context.left, reachesDocumentStart: context.leftReachesDocumentStart),
