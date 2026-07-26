@@ -149,11 +149,17 @@ public enum CursorInsertionRepair {
   static let terminators: Set<Character> = [".", "!", "?"]
   /// Mid-sentence punctuation: we are still inside a sentence after these.
   static let continuers: Set<Character> = [",", ";", ":", "-", "\u{2014}"]
-  /// Opening brackets and quotes: no leading space, and no case change.
-  static let openers: Set<Character> = ["(", "[", "{", "\"", "'", "\u{201C}", "\u{2018}"]
-  /// Right-hand characters that make a trailing space wrong.
+  /// Opening brackets and unambiguous opening quotes: no leading space, and no
+  /// case change. Straight quotes are NOT here — they are direction-ambiguous
+  /// and resolved by `isOpeningQuote`.
+  static let openers: Set<Character> = ["(", "[", "{", "\u{201C}", "\u{2018}"]
+  /// Quotes whose direction the character alone does not settle.
+  static let ambiguousQuotes: Set<Character> = ["\"", "'"]
+  /// Right-hand characters that make a trailing space wrong. Closing quotes
+  /// belong here for the same reason closing brackets do: a space before them
+  /// lands INSIDE the quotation.
   static let trailingSuppressors: Set<Character> = [
-    ".", "!", "?", ",", ";", ":", ")", "]", "}",
+    ".", "!", "?", ",", ";", ":", ")", "]", "}", "\u{201D}", "\u{2019}",
   ]
   /// Always capitalised regardless of position. Closed set, so it needs no lexicon.
   static let alwaysCapitalized: Set<String> = [
@@ -302,7 +308,7 @@ public enum CursorInsertionRepair {
     // Rule 1: a leading space, unless one side already supplies separation —
     // or the language does not separate words with spaces at all.
     if language.usesWordSpacing, let anchor = left.character, !left.crossedSpace,
-      !openers.contains(anchor),
+      !left.isOpener,
       let firstCharacter = out.first, !firstCharacter.isWhitespace
     {
       out = " " + out
@@ -331,7 +337,7 @@ public enum CursorInsertionRepair {
       // Nothing real to the left: an empty window means nothing precedes the
       // caret at all, a non-empty one means we walked back to a line start.
       rules.append(.caseKept(context.left.isEmpty ? .nothingLeft : .lineStart))
-    } else if let anchor = left.character, openers.contains(anchor) {
+    } else if left.isOpener {
       rules.append(.caseKept(.afterOpener))
     } else if let anchor = left.character, terminators.contains(anchor) {
       rules.append(.caseKept(.afterTerminator))
@@ -431,7 +437,29 @@ public enum CursorInsertionRepair {
     guard let left = context.left.last, let right = context.right.first else {
       return false
     }
-    return (left.isLetter || left.isNumber) && (right.isLetter || right.isNumber)
+    return isWordSide(left, otherSide: context.left.dropLast().last)
+      && isWordSide(right, otherSide: context.right.dropFirst().first)
+  }
+
+  /// Characters that join one word rather than separating two: the apostrophe in
+  /// `can't` and the hyphen in `state-of-the-art`.
+  static let wordConnectors: Set<Character> = ["'", "\u{2019}", "-", "\u{2010}"]
+
+  /// Whether this character means "a word continues here".
+  ///
+  /// A letter or digit always does. A connector does only when the character on
+  /// its far side is itself alphanumeric — `can|'t` is inside a word, while a
+  /// trailing possessive in `the Joneses'|` is not, and a dash in `- item` is a
+  /// bullet rather than a hyphenated word.
+  ///
+  /// Found by Codex review: without this, a caret at `can|'t` saw punctuation on
+  /// one side, decided it was between words, and inserted a space in the middle
+  /// of the contraction — the exact breakage `refusedInsideWord` exists to
+  /// prevent, reached through a character the guard did not recognise.
+  private static func isWordSide(_ character: Character, otherSide: Character?) -> Bool {
+    if character.isLetter || character.isNumber { return true }
+    guard wordConnectors.contains(character), let otherSide else { return false }
+    return otherSide.isLetter || otherSide.isNumber
   }
 
   /// Whether the payload OPENS with a complete protected canonical spelling.
@@ -486,6 +514,11 @@ public enum CursorInsertionRepair {
     let crossedSpace: Bool
     /// Whether a newline, or the start of the window, was reached first.
     let atLineStart: Bool
+    /// Whether that character OPENS something the insertion goes inside — a
+    /// bracket, or a quote resolved as opening. Computed here, where the
+    /// surrounding text is still in hand, because a straight quote's direction
+    /// cannot be read from the character alone.
+    let isOpener: Bool
   }
 
   /// Walk back over spaces and tabs to the last real character.
@@ -494,19 +527,43 @@ public enum CursorInsertionRepair {
   /// `"I went home. "` and `"I went home, "` both end in a space but need
   /// opposite case decisions. A newline is a sentence boundary, not something to
   /// skip over.
+  /// Whether a straight quote at the caret's left is OPENING the quotation
+  /// rather than closing it.
+  ///
+  /// Decidable, not guessed: a quote that opens is preceded by whitespace or by
+  /// nothing at all (`He said "`), and a quote that closes is preceded by the
+  /// text it encloses (`"hello"`). Both readings demand opposite spacing, and
+  /// before this the character alone decided — so a caret after a closing quote
+  /// suppressed the space and ran two words together as `hello"Next`.
+  ///
+  /// `window` is the left context; `quoteIndex` is where the quote sits in it.
+  static func isOpeningQuote(in window: String, at quoteIndex: String.Index) -> Bool {
+    guard quoteIndex > window.startIndex else { return true }
+    let preceding = window[window.index(before: quoteIndex)]
+    return preceding.isWhitespace || openers.contains(preceding)
+  }
+
   static func leftAnchor(of window: String) -> LeftAnchor {
     var crossed = false
-    for character in window.reversed() {
+    var index = window.endIndex
+    while index > window.startIndex {
+      index = window.index(before: index)
+      let character = window[index]
       if character == " " || character == "\t" {
         crossed = true
         continue
       }
       if character.isNewline {
-        return LeftAnchor(character: nil, crossedSpace: crossed, atLineStart: true)
+        return LeftAnchor(
+          character: nil, crossedSpace: crossed, atLineStart: true, isOpener: false)
       }
-      return LeftAnchor(character: character, crossedSpace: crossed, atLineStart: false)
+      let opener =
+        openers.contains(character)
+        || (ambiguousQuotes.contains(character) && isOpeningQuote(in: window, at: index))
+      return LeftAnchor(
+        character: character, crossedSpace: crossed, atLineStart: false, isOpener: opener)
     }
-    return LeftAnchor(character: nil, crossedSpace: crossed, atLineStart: true)
+    return LeftAnchor(character: nil, crossedSpace: crossed, atLineStart: true, isOpener: false)
   }
 
   /// The first character after the caret, whitespace included. Unlike the left

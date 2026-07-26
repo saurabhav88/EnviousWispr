@@ -915,6 +915,82 @@ struct CursorInsertionRepairTests {
       "a lowercase protected entry must not shadow the capitalised token")
   }
 
+  // MARK: - Quote direction and word connectors (Codex review r1)
+
+  @Test(
+    "A quote that CLOSES a quotation still gets its separating space",
+    arguments: ["He said \"hello\"", "She said 'no'"])
+  func closingQuoteStillSeparates(_ left: String) {
+    // The character alone cannot tell an opening quote from a closing one, and
+    // the two demand opposite spacing. Treating every straight quote as an
+    // opener ran the next word straight into the quotation: `hello"Store`.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: left, right: ""),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.leadingSpace), "\(left)")
+    #expect(payloads.repairedText?.hasPrefix(" ") == true, "\(left)")
+  }
+
+  @Test(
+    "A quote that OPENS a quotation still suppresses the space",
+    arguments: ["He said \"", "She said '", "He said \u{201C}"])
+  func openingQuoteStillSuppresses(_ left: String) {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: left, right: ""),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.candidateRules.contains(.leadingSpace) == false, "\(left)")
+    #expect(payloads.candidateRules.contains(.caseKept(.afterOpener)), "\(left)")
+  }
+
+  @Test("No trailing space is added just inside a closing quotation")
+  func noSpaceInsideAClosingQuote() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "He said \u{201C}", right: "\u{201D}"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.repairedText?.hasSuffix(" ") == false)
+    #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.rightIsPunctuation)))
+  }
+
+  @Test(
+    "A caret inside a contraction or hyphenated word is refused",
+    arguments: [
+      (left: "I can", right: "'t do it"),
+      (left: "I can'", right: "t do it"),
+      (left: "state", right: "-of-the-art"),
+      (left: "state-", right: "of-the-art"),
+      (left: "it\u{2019}", right: "s fine"),
+    ] as [(left: String, right: String)])
+  func connectorsAreWordInternal(_ testCase: (left: String, right: String)) {
+    // One side is punctuation, so the plain letter-or-digit test called this
+    // "between words" and inserted a space in the middle of one — the very
+    // breakage the mid-word refusal exists to prevent, reached through a
+    // character the guard did not recognise.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: testCase.left, right: testCase.right),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.repairedText == nil, "\(testCase)")
+    #expect(payloads.candidateRules == [.refusedInsideWord], "\(testCase)")
+  }
+
+  @Test(
+    "A connector that is not joining two words does not trigger the refusal",
+    arguments: [
+      (left: "the Joneses'", right: " house"),
+      (left: "- ", right: "bullet item"),
+    ] as [(left: String, right: String)])
+  func connectorsOnlyJoinRealWords(_ testCase: (left: String, right: String)) {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: testCase.left, right: testCase.right),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(
+      payloads.candidateRules.contains(.refusedInsideWord) == false, "\(testCase)")
+  }
+
   // MARK: - An unverifiable caret
 
   // MEASURED in Ghostty, 2026-07-25: the character count grows as the user

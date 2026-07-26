@@ -502,6 +502,64 @@ import Testing
     #expect(observer.events.first?.pastedText == "hello ")
   }
 
+  @Test("the completion event carries the payload the route actually committed")
+  func completionEventCarriesTheDeliveredPayload() async throws {
+    // #629's subscriber watches for edits to the pasted text and learns custom
+    // words from them. Announcing the legacy payload after a route committed the
+    // repaired one would make our own spacing and casing read as the user
+    // correcting us — teaching the app from its own output.
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in
+        PasteDeliveryResult(
+          tier: .cgEvent, durationMs: 5,
+          outcome: .delivered(tier: .cgEvent, durationMs: 5),
+          submittedPayload: .repaired)
+      },
+      registry: registry,
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    let processed = try await wiring.processText("Review this before the meeting") {}
+    _ = await wiring.deliver(processed)
+
+    let event = try #require(observer.events.first)
+    #expect(
+      event.pastedText == "review this before the meeting ",
+      "the repaired payload landed, so that is what the observer must be told")
+  }
+
+  @Test("a route that submitted today's payload still announces today's payload")
+  func completionEventFallsBackToLegacy() async throws {
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in
+        PasteDeliveryResult(
+          tier: .cgEvent, durationMs: 5,
+          outcome: .delivered(tier: .cgEvent, durationMs: 5),
+          submittedPayload: .legacy)
+      },
+      registry: registry,
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    let processed = try await wiring.processText("Review this before the meeting") {}
+    _ = await wiring.deliver(processed)
+
+    let event = try #require(observer.events.first)
+    #expect(event.pastedText == "Review this before the meeting ")
+  }
+
   @Test("a clipboard-only fallback emits no completion event")
   func completionEventSilentOnClipboardOnly() async {
     // Phase 7 auto-learn would otherwise watch a destination where nothing landed.

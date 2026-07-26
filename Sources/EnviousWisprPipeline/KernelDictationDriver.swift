@@ -1103,6 +1103,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.polishDurationSeconds = 0
         outcome.pasteDurationSeconds = 0
         outcome.pasteResult = nil
+        // #1785: these are written only inside the auto-paste branch, so without
+        // clearing them here an auto-copy or no-copy recording would file the
+        // PREVIOUS recording's insertion facts as its own.
+        outcome.smartInsertionEnabled = nil
+        outcome.caretContextOutcome = nil
+        outcome.repairRules = nil
         // #1167: a fresh session starts assuming the save will succeed; the
         // best-effort `store` closure flips these only on a real save throw.
         outcome.historySaved = true

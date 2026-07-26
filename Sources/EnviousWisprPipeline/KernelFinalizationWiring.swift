@@ -411,9 +411,20 @@ struct KernelFinalizationWiring {
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false))
         pasteResult = result
         if case .delivered = result.outcome {
+          // The text that actually LANDED, which is not always the one this
+          // closure passed in: a route may have committed the contextual
+          // candidate. `pasteCompletionRegistry`'s subscriber (#629) watches for
+          // later edits to the pasted text and learns custom words from them, so
+          // announcing the legacy payload after delivering the repaired one
+          // would make our own spacing and casing look like the user correcting
+          // us. Falls back to the legacy payload for `.legacy` and for a
+          // delivered route that reported no payload at all.
+          let deliveredText =
+            result.submittedPayload == .repaired
+            ? (payloads.repairedText ?? pasteText) : pasteText
           pasteCompletionRegistry?.emit(
             PasteCompletionEvent(
-              pastedText: pasteText,
+              pastedText: deliveredText,
               destinationBundleID: context.targetApp?.bundleIdentifier))
           deliveryOutcome = .pasted
         } else {
