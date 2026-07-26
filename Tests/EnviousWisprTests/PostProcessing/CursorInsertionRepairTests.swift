@@ -1445,6 +1445,12 @@ struct CursorInsertionRepairTests {
       ("go to the", "\nThe store is ready."),
       ("go to the", "The\nstore is ready."),
       ("go to the\n   ", "The store is ready."),
+      // Cloud review, PR #1804: the separator's FIRST character is horizontal
+      // and the run then ends at a newline. Checking only the first character
+      // deleted the token across a line break.
+      ("go to the", "The \nstore is ready."),
+      ("go to the", "The\t\nstore is ready."),
+      ("go to the", "The  \n  store is ready."),
     ])
   func newlineRefusesTheDrop(left: String, payload: String) {
     let payloads = Self.seam(left: left, payload: payload)

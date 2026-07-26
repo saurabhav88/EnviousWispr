@@ -626,6 +626,12 @@ public enum CursorInsertionRepair {
     while index < text.endIndex, isHorizontalWhitespace(text[index]) {
       index = text.index(after: index)
     }
+    // The ENTIRE separator must be horizontal, not just its first character.
+    // `The \nstore` passes the guard above on the space, and this loop then
+    // stops AT the newline — so without this the token would be deleted across
+    // a line break, which is precisely what the newline refusal exists to
+    // prevent (cloud review, PR #1804).
+    guard index < text.endIndex, !text[index].isNewline else { return nil }
 
     // Never empty the user's dictation. This is the guard the deleted
     // terminal-period rule never had.
