@@ -216,6 +216,21 @@ The claim holds: without the refusal, a word the user taught macOS becomes "an o
 
 Zero additional damage, five real openers recovered. Artifacts: `2026-07-26-casing-discourse-carveout.swift`, `2026-07-26-casing-loss-diagnosis.swift`.
 
+**P16 — EVERY corpus behind this plan shared one blind spot, and it hid a 6x defect.** All of them — head-to-head, realistic, 20-unit window, the 11,577-row characterisation — used left contexts that already ended in a space. None could exercise a caret sitting DIRECTLY after a word, which is ordinary and is precisely what the leading-space rule exists for.
+
+The confirming diff review found the consequence: the raw left window was joined straight to the payload, fusing `and` + `Mark` into `andMark`, which the tagger reads as a Verb — a SAFE class — so it lowercased names. Re-scored over the same 11,577 rows with the caret moved directly after the word:
+
+| | Lowered | Agree | Disagree | Recall |
+|---|---|---|---|---|
+| With the defect | 6,148 | 6,059 | **89** | 54.3% |
+| **Shipped (separator given to the tagger)** | **8,485** | **8,471** | **14** | **75.9%** |
+
+Six times the damage, and recall BELOW the 799-word list it replaces. Shipping it would have been worse than shipping nothing.
+
+The fixed no-space figures match the with-space corpus almost exactly (8,484/8,470/14), which is the invariant worth stating: **the decision no longer depends on where the caret happens to sit.**
+
+The lesson is about method, not the tagger. Five measurements agreed with each other while all being blind the same way, because I generated their inputs the same way. Artifact: `2026-07-26-nospace-caret-rescore.swift`.
+
 **P12 — one class of case is unanswerable FROM THE TWO SIGNALS THIS DESIGN USES, and the founder's proposed dataset contains it.** A benchmark set supplied 2026-07-26 asks for `I am eating an ` + `Apple for snack.` to lowercase while `I am visiting the ` + `Apple store downtown.` keeps its capital, and the same split for `Please pay the Bill` versus `Please call Bill`. Measured, with both signals printed:
 
 | Case | Want | lexicalClass | nameType | We do |
