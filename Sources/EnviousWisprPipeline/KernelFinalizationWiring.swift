@@ -379,12 +379,24 @@ struct KernelFinalizationWiring {
             CursorInsertionRepair.CaretText(left: $0.leftWindow, right: $0.rightWindow)
           },
           protectedWords: context.protectedSpellings,
-          // The SAME language the transcript is recorded with above, from the
-          // same reader, so a dictation can never be filed as one language and
-          // repaired as another. Locked mode is honoured because the engine
-          // reports the forced language here; Parakeet reports English, which
-          // is the only language it transcribes.
-          language: adapter.lastResult?.language)
+          // Resolved from positive evidence, NOT read off the result.
+          //
+          // The earlier version of this line took `adapter.lastResult?.language`
+          // and justified it as "Parakeet reports English, which is the only
+          // language it transcribes". That was wrong, and our own settings
+          // screen says so: Parakeet transcribes 25 European languages while
+          // `ParakeetBackend` stamps `"en"` on every result. Since Parakeet is
+          // the DEFAULT engine, a German dictation on the default path was being
+          // recased with English rules — the exact defect the language gate was
+          // built to prevent (cloud review, PR #1802).
+          language: DictationLanguageResolver.resolve(
+            lockedLanguage: {
+              if case .locked(let code) = context.config?.languageMode { return code }
+              return nil
+            }(),
+            engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
+            engineReportedLanguage: adapter.lastResult?.language,
+            text: text))
 
         // Why this dictation was or was not repaired, recorded before delivery
         // so it survives every route outcome. Names and shapes only (#1785 §8).

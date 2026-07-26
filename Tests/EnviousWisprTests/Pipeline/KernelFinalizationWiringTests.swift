@@ -766,20 +766,49 @@ import Testing
     #expect(request.caretContext == Self.midSentenceCaret)
   }
 
-  // The spoken language reaches the repair through the production wiring, not
-  // just through the pure function's own argument. Without this, the language
-  // could stop being read here and every unit test would still pass while
-  // German dictations were silently recased with English rules.
-  @Test(
-    "the language the engine reports decides whether the candidate is recased",
-    arguments: [
-      (language: "en", expected: "review this before the meeting "),
-      (language: "de", expected: "Review this before the meeting "),
-      (language: nil, expected: "Review this before the meeting "),
-    ] as [(language: String?, expected: String)])
-  func engineLanguageReachesTheRepair(
-    _ testCase: (language: String?, expected: String)
-  ) async throws {
+  // The language the repair acts on is RESOLVED, not read off the engine's
+  // result, and this proves it through the production wiring.
+  //
+  // The simulator stands in for Parakeet: `supportsLanguageDetection == false`
+  // and a hard-coded `"en"` on every result, which is exactly what the real
+  // backend does while transcribing 25 European languages. Believing that field
+  // recased German dictations with English rules on the DEFAULT engine (cloud
+  // review, PR #1802).
+  @Test("German text is not recased even when the engine claims English")
+  func germanTextIsNotRecasedOnAnEnglishClaimingEngine() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in
+        PasteService.CaretContext(
+          leftWindow: "Ich gehe zum ", rightWindow: "", selectionLocation: 13, selectionLength: 0)
+      },
+      adapter: Self.transcribedEngine(language: "en"))
+
+    // Long enough to identify, and unambiguous. `Start` is an ordinary English
+    // lowercase word AND a German noun — the collision the language gate exists
+    // for.
+    let processed = try await wiring.processText(
+      "Start ist heute Abend und danach gehen wir in die Stadt") {}
+    _ = await wiring.deliver(processed)
+
+    let request = try #require(captured.requests.first)
+    let delivered = request.repairedText ?? request.legacyText
+    #expect(
+      delivered.hasPrefix("Start"),
+      "a German noun must keep its capital even though the engine reported English")
+  }
+
+  @Test("English text on the same engine is still recased")
+  func englishTextIsStillRecased() async throws {
+    // The fix must not cost the majority case its feature.
     let captured = DeliveryRequestBox()
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
@@ -791,15 +820,14 @@ import Testing
         return Self.deliveredResult
       },
       readCaretContext: { _ in Self.midSentenceCaret },
-      adapter: Self.transcribedEngine(language: testCase.language))
+      adapter: Self.transcribedEngine(language: "en"))
 
-    let processed = try await wiring.processText("Review this before the meeting") {}
+    let processed = try await wiring.processText(
+      "Review this before the meeting and then send it along") {}
     _ = await wiring.deliver(processed)
 
     let request = try #require(captured.requests.first)
-    #expect(request.repairedText == testCase.expected, "\(testCase.language ?? "nil")")
-    // Today's payload never varies by language: the fallback stays identical.
-    #expect(request.legacyText == "Review this before the meeting ")
+    #expect(request.repairedText?.hasPrefix("review") == true)
   }
 
   // The read gate is a closed 2x2: the surrounding document may be read ONLY
