@@ -6,7 +6,16 @@ import Foundation
 /// Input for a paste delivery operation. Captures session-scoped target info.
 @MainActor
 internal struct PasteDeliveryRequest {
-  let text: String
+  /// Today's payload, including its trailing space. ALWAYS present, and until
+  /// Chunk 7 the only payload any route submits.
+  let legacyText: String
+  /// The contextual candidate, or nil when no safe one exists — unreadable caret
+  /// context, the setting off, or a deliberate mid-word refusal. Transported
+  /// only; plan §6 owns which route may commit it.
+  let repairedText: String?
+  /// The exact caret context the candidate was computed from, so a later route
+  /// can revalidate against the same evidence rather than re-reading.
+  let caretContext: PasteService.CaretContext?
   let targetApp: NSRunningApplication?
   let targetElement: AXUIElement?
   let restoreClipboardAfterPaste: Bool
@@ -240,7 +249,7 @@ internal final class PasteCascadeExecutor {
     if classification == .textField, let element = request.targetElement {
       tiersAttempted.append(.axDirect)
       let disposition = dispositionForAXDirect(
-        PasteService.insertViaAccessibility(request.text, element: element))
+        PasteService.insertViaAccessibility(request.legacyText, element: element))
       axAllowsRetry = disposition.allowsAutomaticRetry
       switch disposition {
       case .delivered:
@@ -274,7 +283,7 @@ internal final class PasteCascadeExecutor {
           request.restoreClipboardAfterPaste
           ? PasteService.saveClipboard()
           : nil
-        let dispatchResult = PasteService.pasteToActiveApp(request.text)
+        let dispatchResult = PasteService.pasteToActiveApp(request.legacyText)
         switch dispatchResult {
         case .dispatched:
           tier = .cgEvent
@@ -309,7 +318,7 @@ internal final class PasteCascadeExecutor {
           request.restoreClipboardAfterPaste
           ? PasteService.saveClipboard()
           : nil
-        let changeCount = PasteService.copyToClipboardReturningChangeCount(request.text)
+        let changeCount = PasteService.copyToClipboardReturningChangeCount(request.legacyText)
         if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
           tier = .appleScript
         } else {
@@ -343,7 +352,7 @@ internal final class PasteCascadeExecutor {
         // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste ? PasteService.saveClipboard() : nil
-        let changeCount = PasteService.copyToClipboardReturningChangeCount(request.text)
+        let changeCount = PasteService.copyToClipboardReturningChangeCount(request.legacyText)
         switch PasteService.findPasteMenuItem(pid: app.processIdentifier) {
         case .found(let menuItem):
           switch PasteService.isMenuItemEnabled(menuItem) {
@@ -359,14 +368,14 @@ internal final class PasteCascadeExecutor {
                 PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCount)
               }
             } else {
-              // Enabled but AXPress failed. Leave request.text on the clipboard
+              // Enabled but AXPress failed. Leave the payload on the clipboard
               // (do NOT restore) so the user's manual Cmd+V still works.
               tierFailures["menu_paste"] = "press_failed"
               emitTierFailureBreadcrumb(
                 stage: "menu_paste", reason: "press_failed", bundleId: bundleId)
             }
           case .disabled:
-            // Scenario A: item found but disabled. Leave request.text on the
+            // Scenario A: item found but disabled. Leave the payload on the
             // clipboard; Tier 3 overlay follows.
             menuProbe = .noTarget
           case .unreadable:
@@ -374,7 +383,7 @@ internal final class PasteCascadeExecutor {
             menuProbe = .unreadable
           }
         case .confirmedAbsent:
-          // Scenario A: no paste target. Leave request.text on the clipboard;
+          // Scenario A: no paste target. Leave the payload on the clipboard;
           // Tier 3 overlay follows.
           menuProbe = .noTarget
         case .unreadable:
@@ -397,7 +406,7 @@ internal final class PasteCascadeExecutor {
     // Tier 2 because a non-text element was focused (PR #220's void-protection
     // path). Nil-element paths reach Tier 2 and log their own tier=cgevent.
     if tier == .clipboardOnly {
-      PasteService.copyToClipboard(request.text)
+      PasteService.copyToClipboard(request.legacyText)
       if !canAttemptKeyPaste {
         Task {
           await AppLogger.shared.log(

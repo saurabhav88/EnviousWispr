@@ -1,6 +1,7 @@
 import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
 
@@ -97,6 +98,17 @@ final class KernelSessionContext {
   var targetApp: NSRunningApplication?
   /// The focused text element captured at recording start.
   var targetElement: AXUIElement?
+  /// Canonical protected spellings, snapshotted at `processText` entry.
+  ///
+  /// `WordCorrectionStep.correctorVocabulary` is MUTABLE and
+  /// `CustomWordsPropagator` can replace it mid-session, so reading it at
+  /// delivery time would let a custom-word broadcast change a decision for a
+  /// dictation already in flight. Captured once per session, before the first
+  /// suspension point, and retained for that session's delivery.
+  ///
+  /// Canonicals only. Aliases are recognition triggers — the misheard forms we
+  /// correct FROM — never protected output spellings.
+  var protectedSpellings: Set<String> = []
 
   init() {}
 }
@@ -143,6 +155,11 @@ struct KernelFinalizationWiring {
     textProcessingRunner: TextProcessingRunner,
     save: @escaping @MainActor (Transcript) throws -> Void,
     deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult,
+    // Caret reader seam. Production reads the live focused field; tests inject
+    // deterministic context so the real composition path can be driven without
+    // depending on whatever field happens to be focused on the machine.
+    readCaretContext: @escaping @MainActor (AXUIElement) -> PasteService.CaretContext? =
+      { PasteService.readCaretContext(element: $0) },
     pasteCompletionRegistry: PasteCompletionRegistry?,
     // #900 clock seam — defaults to today's live expression, so production
     // behavior is identical (the closure capture adds one call). A test injects
@@ -162,6 +179,14 @@ struct KernelFinalizationWiring {
     // `LLMPolishStep.onWillProcess` so the limb emits and the kernel observes
     // (D18 closed for Parakeet — PR-4 §3.8).
     processText = { raw, onPolishStarted in
+      // FIRST statement, before any suspension point: snapshot the canonical
+      // protected spellings for this session. `correctorVocabulary` is mutable
+      // and `CustomWordsPropagator` can replace it while this dictation is still
+      // being processed; reading it at delivery time would let that broadcast
+      // change a decision for text already in flight. Canonicals only — an alias
+      // is a misheard form we correct FROM, never a spelling to protect.
+      context.protectedSpellings = Set(
+        steps.wordCorrection.correctorVocabulary.terms.map(\.canonical))
       steps.llmPolish.onWillProcess = { onPolishStarted() }
       // PR-5 Rung 5 (#827): wire engine LID -> polish for engines that detect.
       // Parakeet (no LID) returns nil through the cast; polish-step stays nil
@@ -324,10 +349,34 @@ struct KernelFinalizationWiring {
       var pasteResult: PasteDeliveryResult?
       let deliveryOutcome: KernelDeliveryOutcome
       if config?.autoPasteToActiveApp == true {
-        let pasteText = PasteService.appendTrailingSpace(text)
+        // Read the caret ONCE, only when the frozen setting allows it and we
+        // actually have a target. `readCaretContext` fails open, so a nil result
+        // simply means no candidate.
+        let caretContext: PasteService.CaretContext? = {
+          guard config?.smartInsertion == true, let element = context.targetElement else {
+            return nil
+          }
+          return readCaretContext(element)
+        }()
+
+        // ONE call to the repair, which is the sole owner of the trailing-space
+        // rule. Even with no context it returns today's payload, so Pipeline
+        // never recreates that rule and the two can never drift apart.
+        let payloads = CursorInsertionRepair.repair(
+          text: text,
+          context: caretContext.map {
+            CursorInsertionRepair.CaretText(left: $0.leftWindow, right: $0.rightWindow)
+          },
+          protectedWords: context.protectedSpellings)
+
+        // Chunk 6 transports the candidate without using it. Every route below
+        // still submits `legacyText`; plan §6 owns the switchover.
+        let pasteText = payloads.legacyText
         let result = await deliverPaste(
           PasteDeliveryRequest(
-            text: pasteText,
+            legacyText: pasteText,
+            repairedText: payloads.repairedText,
+            caretContext: caretContext,
             targetApp: context.targetApp,
             targetElement: context.targetElement,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false))

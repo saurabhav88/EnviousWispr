@@ -401,7 +401,7 @@ import Testing
         throw WiringTestError.storage
       },
       deliverPaste: { request in
-        delivered.payloads.append(request.text)
+        delivered.payloads.append(request.legacyText)
         return Self.deliveredResult
       },
       telemetryState: telemetryState)
@@ -460,7 +460,7 @@ import Testing
         saves.last = $0
       },
       deliverPaste: { request in
-        delivered.payloads.append(request.text)
+        delivered.payloads.append(request.legacyText)
         return Self.deliveredResult
       })
 
@@ -638,6 +638,296 @@ import Testing
     tier: .clipboardOnly, durationMs: 1,
     outcome: .clipboardOnlyAccessibilityDenied(targetBundleID: nil))
 
+  // MARK: - Dual-payload composition (#1785 Chunk 6)
+  //
+  // `deliver` now composes BOTH payloads and hands the caret evidence along
+  // with them, so a later route-local decision can revalidate against the same
+  // reading rather than reading the field a second time and getting a different
+  // answer.
+  //
+  // These tests drive the real `KernelFinalizationWiring` and inspect what the
+  // injected delivery seam actually received. Constructing payloads in the test
+  // and comparing them would prove nothing about the production path.
+
+  /// A caret element the injected reader can be handed. Its identity is all
+  /// that matters — the reader is a fake and never touches the real field.
+  private static func stubCaretElement() -> AXUIElement {
+    AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier)
+  }
+
+  private static let midSentenceCaret = PasteService.CaretContext(
+    leftWindow: "I went to the ",
+    rightWindow: "",
+    selectionLocation: 14,
+    selectionLength: 0)
+
+  @Test(
+    "delivery carries today's payload, the contextual candidate, and the caret evidence")
+  func deliveryTransportsBothPayloadsAndTheCaretEvidence() async throws {
+    let captured = DeliveryRequestBox()
+    let saved = SavedTranscriptBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      save: { saved.transcript = $0 },
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    let processed = try await wiring.processText("Review this before the meeting") {}
+    try await wiring.store(processed, UUID())
+    _ = await wiring.deliver(processed)
+
+    #expect(captured.requests.count == 1, "delivery still runs exactly once")
+    let request = try #require(captured.requests.first)
+    // Today's payload is unchanged and always present, so a route that cannot
+    // use the candidate has the correct fallback already in hand.
+    #expect(request.legacyText == "Review this before the meeting ")
+    // The candidate lowercases the leading word: the caret sits mid-sentence
+    // after "the ", and "review" is an ordinary lowercase word.
+    #expect(
+      request.repairedText == "review this before the meeting ",
+      "the contextual candidate must reach delivery, not be recomputed there")
+    // The evidence the candidate was computed FROM travels with it.
+    #expect(request.caretContext == Self.midSentenceCaret)
+  }
+
+  // The read gate is a closed 2x2: the surrounding document may be read ONLY
+  // when the feature is on AND there is a field to read from. All four cells are
+  // enumerated rather than sampled, because three of them are silent — a read
+  // that happens when it shouldn't leaves no trace in the delivered text, so
+  // only a call counter can catch it. This is a privacy boundary, not a cost one.
+  @Test(
+    "the surrounding document is read only when the feature is on and a field exists",
+    arguments: [
+      (smartInsertion: true, hasTarget: true, expectedReads: 1),
+      (smartInsertion: true, hasTarget: false, expectedReads: 0),
+      (smartInsertion: false, hasTarget: true, expectedReads: 0),
+      (smartInsertion: false, hasTarget: false, expectedReads: 0),
+    ])
+  func caretReadGateIsClosed(
+    _ cell: (smartInsertion: Bool, hasTarget: Bool, expectedReads: Int)
+  ) async {
+    let reads = SaveCountBox()
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(
+      autoPasteToActiveApp: true, smartInsertion: cell.smartInsertion)
+    context.targetElement = cell.hasTarget ? Self.stubCaretElement() : nil
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in
+        reads.count += 1
+        return Self.midSentenceCaret
+      })
+
+    _ = await wiring.deliver("Review this before the meeting")
+
+    #expect(
+      reads.count == cell.expectedReads,
+      "reads for on=\(cell.smartInsertion) target=\(cell.hasTarget): expected \(cell.expectedReads), got \(reads.count)"
+    )
+    // Every cell that does not read must deliver exactly today's payload, with
+    // no candidate and no caret evidence attached.
+    let request = captured.requests.first
+    if cell.expectedReads == 0 {
+      #expect(request?.repairedText == nil)
+      #expect(request?.caretContext == nil)
+    } else {
+      #expect(request?.repairedText != nil)
+      #expect(request?.caretContext != nil)
+    }
+    #expect(
+      request?.legacyText == "Review this before the meeting ",
+      "today's payload is delivered unchanged in every cell")
+  }
+
+  @Test("an unreadable field yields no candidate, and today's payload still ships")
+  func unreadableFieldFallsBackToTodaysPayload() async {
+    // The accessibility read fails open. The distinction that matters is that it
+    // produces NO candidate rather than a wrong one, and never blocks delivery.
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in nil })
+
+    let outcome = await wiring.deliver("Review this before the meeting")
+
+    #expect(outcome == .pasted, "an unreadable field must never cost the user their delivery")
+    #expect(captured.requests.first?.repairedText == nil)
+    #expect(captured.requests.first?.caretContext == nil)
+    #expect(captured.requests.first?.legacyText == "Review this before the meeting ")
+  }
+
+  @Test("a later process refreshes canonicals and aliases never protect output")
+  func laterProcessRefreshesSnapshotAndExcludesAliases() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+
+    let steps = makeSteps()
+    steps.wordCorrection.correctorVocabulary = CorrectorVocabulary(
+      terms: [CustomWord(canonical: "Review")],
+      generation: 1)
+
+    let wiring = makeWiring(
+      context: context,
+      steps: steps,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    let first = try await wiring.processText("Review this before the meeting") {}
+    _ = await wiring.deliver(first)
+
+    steps.wordCorrection.correctorVocabulary = CorrectorVocabulary(
+      terms: [CustomWord(canonical: "Other", aliases: ["Review"])],
+      generation: 2)
+
+    let second = try await wiring.processText("Review this before the meeting") {}
+    _ = await wiring.deliver(second)
+
+    try #require(captured.requests.count == 2)
+    #expect(captured.requests[0].repairedText == "Review this before the meeting ")
+    #expect(captured.requests[1].repairedText == "review this before the meeting ")
+  }
+
+  @Test("mid-word refusal carries its evidence but no contextual candidate")
+  func midWordRefusalCarriesContextAndLegacyPayload() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+
+    let midWord = PasteService.CaretContext(
+      leftWindow: "sto",
+      rightWindow: "re",
+      selectionLocation: 3,
+      selectionLength: 0)
+
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in midWord })
+
+    _ = await wiring.deliver("Store today")
+
+    let request = try #require(captured.requests.first)
+    // The evidence still travels, so a route can tell a deliberate refusal apart
+    // from a field it could not read at all.
+    #expect(request.caretContext == midWord)
+    #expect(request.repairedText == nil)
+    #expect(request.legacyText == "Store today ")
+  }
+
+  @Test("input that already ends in a space is not double-spaced through the wiring")
+  func alreadySpacedInputIsNotDoubleSpaced() async throws {
+    // Kept separate from the gate matrix so a failure says which property broke.
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    _ = await wiring.deliver("Review this before the meeting ")
+
+    let request = try #require(captured.requests.first)
+    #expect(request.legacyText == "Review this before the meeting ")
+    #expect(request.repairedText == "review this before the meeting ")
+  }
+
+  @Test(
+    "custom words added mid-dictation do not change a decision for text already in flight")
+  func protectedSpellingsAreSnapshotAtProcessingStart() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+    let steps = makeSteps()
+    let wiring = makeWiring(
+      context: context,
+      steps: steps,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    // The vocabulary is EMPTY while this dictation is processed, so nothing
+    // protects the leading word.
+    #expect(steps.wordCorrection.correctorVocabulary.terms.isEmpty)
+    let processed = try await wiring.processText("Review this before the meeting") {}
+
+    // Now the user adds "Review" as a custom word — mid-dictation, exactly what
+    // `CustomWordsPropagator` does when a settings edit lands. The words the
+    // user is already saying must not be re-decided under them.
+    steps.wordCorrection.correctorVocabulary = CorrectorVocabulary(
+      terms: [CustomWord(canonical: "Review")], generation: 1)
+
+    _ = await wiring.deliver(processed)
+
+    let request = try #require(captured.requests.first)
+    #expect(
+      request.repairedText == "review this before the meeting ",
+      "the late custom word must not retroactively protect this dictation")
+
+    // Control, so the assertion above cannot pass for the wrong reason: with the
+    // SAME vocabulary present from the start, the word is protected and the
+    // candidate keeps its capital.
+    let secondCaptured = DeliveryRequestBox()
+    let secondContext = KernelSessionContext()
+    secondContext.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    secondContext.targetElement = Self.stubCaretElement()
+    let secondSteps = makeSteps()
+    secondSteps.wordCorrection.correctorVocabulary = CorrectorVocabulary(
+      terms: [CustomWord(canonical: "Review")], generation: 1)
+    let secondWiring = makeWiring(
+      context: secondContext,
+      steps: secondSteps,
+      deliverPaste: { request in
+        secondCaptured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _ in Self.midSentenceCaret })
+
+    let secondProcessed = try await secondWiring.processText("Review this before the meeting") {}
+    _ = await secondWiring.deliver(secondProcessed)
+
+    let secondRequest = try #require(secondCaptured.requests.first)
+    #expect(
+      secondRequest.repairedText == "Review this before the meeting ",
+      "a custom word present at processing time IS honoured")
+  }
+
+  // MARK: - Private helpers
+
   private func makeSteps(polish: LLMPolishStep? = nil) -> LimbSteps {
     LimbSteps(
       wordCorrection: WordCorrectionStep(),
@@ -658,7 +948,12 @@ import Testing
     },
     telemetryState: KernelTelemetryState = KernelTelemetryState(),
     registry: PasteCompletionRegistry? = nil,
-    currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    // Defaults to UNREADABLE, so every pre-existing test in this suite keeps
+    // exactly today's behaviour and only tests that opt in see a candidate.
+    readCaretContext: @escaping @MainActor (AXUIElement) -> PasteService.CaretContext? = { _ in
+      nil
+    }
   ) -> KernelFinalizationWiring {
     KernelFinalizationWiring(
       outcome: outcome,
@@ -676,6 +971,7 @@ import Testing
         timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),
       save: save,
       deliverPaste: deliverPaste,
+      readCaretContext: readCaretContext,
       pasteCompletionRegistry: registry,
       currentTime: currentTime,
       telemetryState: telemetryState)
@@ -809,6 +1105,13 @@ private final class DeliveredPayloadBox {
 @MainActor
 private final class RestoreFlagBox {
   var value: Bool?
+}
+
+/// The whole delivery request, not just its text. Chunk 6 transports three
+/// things now, so a box that keeps only the payload cannot see the other two.
+@MainActor
+private final class DeliveryRequestBox {
+  var requests: [PasteDeliveryRequest] = []
 }
 
 /// Cancels mid-polish. The runner absorbs this silently rather than surfacing

@@ -174,7 +174,8 @@ public enum CursorInsertionRepair {
   }
 
   /// Today's delivery-stage rule, absorbed verbatim from
-  /// `PasteService.appendTrailingSpace` so there is exactly one owner of it.
+  /// the retired `PasteService.appendTrailingSpace`, which is now deleted — this
+  /// is the single owner of the rule.
   static func legacyPayload(_ text: String) -> String {
     text.hasSuffix(" ") ? text : text + " "
   }

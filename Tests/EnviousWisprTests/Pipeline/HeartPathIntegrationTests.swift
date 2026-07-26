@@ -722,7 +722,7 @@ private final class CapturingPasteSink {
   private(set) var pastedTexts: [String] = []
 
   func deliver(_ request: PasteDeliveryRequest) async -> PasteDeliveryResult {
-    pastedTexts.append(request.text)
+    pastedTexts.append(request.legacyText)
     return PasteDeliveryResult(
       tier: .cgEvent,
       durationMs: 1,
