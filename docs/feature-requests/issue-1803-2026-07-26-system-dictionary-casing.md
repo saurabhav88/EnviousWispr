@@ -556,7 +556,7 @@ Telemetry distinguishes `.dictionaryUnavailable`, `.wordClassUnavailable`, `.lea
 | `Tests/.../KernelFinalizationWiringTests.swift` | **six** tests assert lowering through the real bundled source (`:505-535`, `:734-767`, `:906-929`, `:1009-1043`, `:1076-1096`, `:1098-1158`) — not five as an earlier draft said. Preserve each one's actual contract under the new oracle |
 | `Sources/EnviousWisprCore/Transcript.swift:20` | **missed by earlier drafts** — the `repairRules` doc comment quotes `case_skipped:not_known_lowercase` verbatim and must track the rename |
 | `docs/.../2026-07-26-casing-headtohead.swift`, `2026-07-26-score-real-labelled-pairs.swift` | both read the deleted resource for their baseline column. **Decided:** retained as historical, explicitly non-rerunnable artifacts; each gains a header stating the commit and resource version that produced its recorded baseline |
-| `Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift:1017-1023` | add the oracle warm-up beside the existing classifier prewarm, same `Task { }` shape, same off-heart-path call site |
+| `Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift` | trigger the oracle warm-up where the pipeline is built. **NOT the app shell** — see deviation 5 |
 | `.claude/knowledge/architecture.md:22` | PostProcessing documented as Core-only; record the two system frameworks. **Gitignored** (`.gitignore:33`), so this is a separate local `Docs/dev-tooling` edit and cannot appear in the PR |
 
 ## 11. Testing
@@ -602,6 +602,12 @@ Four, all narrowing rather than widening, recorded rather than left for a review
 2. **`WisprBootstrapper` gains `import EnviousWisprPostProcessing`.** Anticipated in §3b as a consequence of the prewarm trigger, but not spelled out in the file list.
 3. **`KernelFinalizationWiringTests` gains an `init()` installing a deterministic oracle.** Six of its cases drive the real production entry point; a test process never calls `prewarm()`, so the runtime is `.warming` and casing correctly refuses. Installing a *fake* rather than calling the real prewarm is deliberate — the live oracle reads machine state, and gating the required check on it would build a flaky test.
 4. **`ConsultationSpy` in the oracle tests.** The oracle's closures are `@Sendable`, so a captured `var` cannot record whether it was consulted; the spy is lock-backed.
+
+5. **The warm-up moved out of the app shell entirely, and the plan was wrong about its home.** §3b and §10 put the trigger on `WisprBootstrapper`, mirroring the classifier prewarm. Two architectural ceiling tests rejected that:
+   - `EnviousWisprAppCeilingsTests` failed on BOTH the line count (1342 > 1330) and the import allowlist. Its own doctrine says "lower-tier modules belong on AppDelegate or on specific @State home types, not on the composition root."
+   - Moved to `AppLifecycleCoordinator`, beside the existing LLM prewarm — and `AppLifecycleCoordinatorCeilingsTests` rejected the PostProcessing import too.
+
+   Two independent guardrails agreeing is an answer, not an obstacle: the app shell should not reach into PostProcessing for this. The trigger now lives in `KernelDictationDriverFactory`, which already imports PostProcessing and already builds everything the repair consumes. **No ceiling was bumped and the app shell is untouched** — `RULE: ceiling-bumps-need-bible-and-test` exists precisely so a ceiling is not widened to fit the first thing that trips it.
 
 Everything else matches §10 as written.
 
