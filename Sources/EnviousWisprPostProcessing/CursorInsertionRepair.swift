@@ -396,7 +396,19 @@ public enum CursorInsertionRepair {
       rightContent.map {
         $0.isLetter || $0.isNumber || terminators.contains($0) || continuers.contains($0)
       } ?? false
-    if rightIsContent {
+    // ...and only when the caret is actually MID-SENTENCE. The rule's premise is
+    // that our full stop is redundant because the user's sentence continues into
+    // the existing text — which is false when the insertion is a whole sentence
+    // dropped BETWEEN two others. Inserting `We can do that today.` between
+    // `Hello. ` and `Tomorrow...` produced `Hello. We can do that today
+    // Tomorrow...`, deleting a full stop that was doing real work (cloud review,
+    // PR #1802).
+    //
+    // `continuing` is the same left-side state the casing rule uses, so the two
+    // now agree by construction: we lowercase the first word and drop the final
+    // period in exactly the situations where the sentence carries on through the
+    // caret, and do neither when it does not.
+    if rightIsContent, continuing {
       let body = String(out.reversed().drop(while: \.isWhitespace).reversed())
       // The period is removed ONLY when the word carrying it is positively known
       // to be an ordinary word.

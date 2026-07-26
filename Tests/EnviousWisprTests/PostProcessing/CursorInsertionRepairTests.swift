@@ -1120,6 +1120,30 @@ struct CursorInsertionRepairTests {
     #expect(payloads.candidateRules == [.refusedInsideWord], "\(testCase)")
   }
 
+  @Test(
+    "A whole sentence dropped between two others keeps its full stop",
+    arguments: ["Hello. ", "Hello.", "Hello!  ", "First line.\n"])
+  func sentenceInsertedBetweenSentencesKeepsItsPeriod(_ left: String) {
+    // The rule's premise is that our period is redundant because the user's
+    // sentence CONTINUES into the existing text. That is false when the caret
+    // sits between two sentences: `We can do that today.` inserted between
+    // `Hello. ` and `Tomorrow...` produced `...today Tomorrow...`, deleting a
+    // full stop that was doing real work (cloud review, PR #1802).
+    let payloads = CursorInsertionRepair.repair(
+      text: "We can do that today.",
+      context: CursorInsertionRepair.CaretText(left: left, right: "Tomorrow is better."),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(
+      payloads.candidateRules.contains(.droppedTerminalPeriod) == false,
+      "\(left.debugDescription)")
+    // Assert what the user actually RECEIVES. A caret at a line start offers no
+    // candidate at all — it cannot place itself — so today's payload ships, and
+    // that keeps the period too. Asserting on `repairedText` alone would have
+    // read that correct outcome as a failure.
+    let delivered = payloads.repairedText ?? payloads.legacyText
+    #expect(delivered.contains("today."), "\(left.debugDescription)")
+  }
+
   @Test("A known ordinary final word still loses its redundant full stop")
   func knownOrdinaryWordStillDropsThePeriod() {
     // The inversion must not disable the rule it protects: `today` is in the
