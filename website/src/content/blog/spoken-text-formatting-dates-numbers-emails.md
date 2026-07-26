@@ -89,7 +89,7 @@ It only fires on the clear "name at domain dot something" shape, so an ordinary 
 
 - "github dot io" becomes "github.io"
 - "stackoverflow dot io slash blog" becomes "stackoverflow.io/blog"
-- Spoken "w w w dot example dot com" becomes "www.example.com"
+- Spoken "w w w dot example dot com" becomes "[www.example.com](http://www.example.com)"
 
 ## Spoken punctuation and breaks
 

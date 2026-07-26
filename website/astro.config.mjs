@@ -81,6 +81,32 @@ export default defineConfig({
   site: SITE,
   output: 'static',
   trailingSlash: 'always',
+  // Astro 7 ships Vite 8, which switched the default CSS minifier to Lightning
+  // CSS. Lightning CSS prunes vendor prefixes against browser targets, and it
+  // silently dropped two that this site's stylesheets ship on purpose:
+  //
+  //   -webkit-background-clip: text  Unprefixed `background-clip: text` only
+  //     landed in Safari 18. EnviousWispr supports macOS 14, which ships
+  //     Safari 17. Because `-webkit-text-fill-color: transparent` was KEPT,
+  //     losing the prefix renders every gradient heading completely INVISIBLE
+  //     on exactly the Macs we target.
+  //
+  //   backdrop-filter  It kept only the `-webkit-` form and dropped the
+  //     standard property, which is the one Firefox implements, so the nav
+  //     blur disappeared there.
+  //
+  // Declaring `browserslist` did not reach the minifier, and neither did
+  // `css.lightningcss.targets` (Vite reads those only for the transformer, not
+  // for `cssMinify`). Pinning the minifier back to esbuild — the pre-Vite-8
+  // default, and what Astro 6 used — restores byte-identical prefix output:
+  // verified 13 `-webkit-background-clip`, 1 standard `backdrop-filter`, and
+  // 1 `-webkit-backdrop-filter`, matching the Astro 6 baseline exactly.
+  //
+  // Revisit if Lightning CSS target plumbing lands properly in Astro/Vite; it
+  // minifies ~1% smaller. Correctness first.
+  vite: {
+    build: { cssMinify: 'esbuild' },
+  },
   integrations: [
     sitemap({
       serialize(item) {
