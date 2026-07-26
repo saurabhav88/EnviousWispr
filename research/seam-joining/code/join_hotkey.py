@@ -226,12 +226,10 @@ def terminal_text(value):
 def terminal_wraps(value):
     """How many times the input box wrapped the line onto a new row.
 
-    Each wrap is a place where the screen shows a line break and the buffer may
-    or may not hold a space — the two are indistinguishable when reading the
-    screen back. Every wrap is therefore a potential phantom character in any
-    count derived from the screen, and counting one too many deletes the space
-    in FRONT of the text being replaced: "…stage it. The tests" came back as
-    "…stage it.The tests".
+    Any wrap at all means the screen cannot be read back faithfully, so this is
+    now a REFUSAL signal rather than a number to compensate for. See the caller
+    for the three ambiguities a wrap introduces and why only refusing closes
+    them all.
     """
     body = input_box_body(value[-TERMINAL_WINDOW:].splitlines())
     return max(0, len(body) - 1) if body else 0
@@ -561,7 +559,31 @@ def do_join(client, model, system):
         raw_tail = before_caret
         before_caret = strip_chrome(after_shell_prompt(before_caret))
     elif isinstance(value, str) and value.strip():
-        # One reader for terminals, and it preserves trailing whitespace.
+        # THE WHOLE CLASS, closed at its source rather than patched again.
+        #
+        # A terminal shows a grid of cells, not the text buffer behind it, and
+        # reconstructing one from the other is ambiguous in at least three ways
+        # that each cost a review round:
+        #   1. trailing whitespace is indistinguishable from cell padding
+        #   2. a soft wrap may have replaced a space, or may not have
+        #   3. a soft wrap may fall MID-WORD, so joining rows with a space
+        #      invents text: "recognizing" reconstructs as "recog nizing"
+        # The third is unrecoverable. The invented text does not match the real
+        # recording, the code falls back to splitting on punctuation, and it
+        # then rewrites the user's sentence around a word that was never there.
+        #
+        # Every one of these exists only because the box wrapped. So refuse a
+        # wrapped box. A single-row box has no wrap, no phantom space and no
+        # invented word, and the earlier compensation arithmetic disappears with
+        # the ambiguity it was compensating for.
+        #
+        # Prototype-only. The shipped feature reads a real focused text field
+        # and never reconstructs anything from a screen.
+        if terminal_wraps(value):
+            print(f"  SKIPPED  {app}: the input box has wrapped onto more than "
+                  f"one line, and a wrapped terminal cannot be read back "
+                  f"faithfully\n")
+            return
         raw_tail = value[-TERMINAL_WINDOW:]
         before_caret = terminal_text(value)
         source = "end of the field (this app does not report a cursor position)"
@@ -658,16 +680,7 @@ def do_join(client, model, system):
         if not matches:
             print("  SKIPPED  cannot locate the text to replace in the field\n")
             return
-        # Deliberately delete FEWER than the count suggests, one per wrap, then
-        # let the check below finish the job. The two error directions are not
-        # equal: a character left behind is visible and can be removed, while a
-        # space eaten off the front is invisible to any comparison that strips
-        # whitespace, so it can never be detected and repaired. Bias towards the
-        # mistake that can be seen.
-        trimmed = terminal_wraps(value)
         span_text = before_caret[matches[-1].start():]
-        if trimmed:
-            span_text = span_text[:-trimmed]
         expected_after = before_caret[:matches[-1].start()].strip()
 
     # Screen content AFTER the match is not a problem: in a TUI the input box

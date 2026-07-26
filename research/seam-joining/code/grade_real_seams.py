@@ -67,6 +67,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pairs", default=None, help="jsonl of real pairs")
     ap.add_argument("--limit", type=int, default=400)
+    ap.add_argument("--predictions", default="",
+                    help="model decisions; grade only the MERGE ones")
     ap.add_argument("--max-gap", type=float, default=25.0,
                     help="only pairs closer together than this are plausible seams")
     ap.add_argument("--model", default="us.anthropic.claude-haiku-4-5-20251001-v1:0")
@@ -81,7 +83,34 @@ def main():
 
     rows = [json.loads(l) for l in open(pairs_path, encoding="utf-8")]
     rows = [r for r in rows if r["gap_seconds"] <= args.max_gap]
-    random.Random(1790).shuffle(rows)
+
+    # Targeting the dangerous direction requires knowing what the model decided,
+    # and that only exists in a predictions file. Without one this shuffles and
+    # samples, which measures BOTH directions weakly instead of the merge
+    # direction completely — so say which one is happening rather than claiming
+    # the targeted run and delivering the sample. Found by cloud review on
+    # PR #1793.
+    if args.predictions:
+        decided = {}
+        for line in open(args.predictions, encoding="utf-8"):
+            row = json.loads(line)
+            key = (row.get("rec1", ""), row.get("rec2", ""))
+            decided[key] = row.get("prediction") or row.get("label")
+        wanted = [r for r in rows
+                  if str(decided.get((r.get("rec1", ""), r.get("rec2", "")), ""))
+                  .startswith("MERGE")]
+        if not wanted:
+            print(f"no MERGE decisions found in {args.predictions}", file=sys.stderr)
+            return 1
+        rows = wanted
+        print(f"grading the {len(rows)} pairs the model chose to MERGE "
+              f"(the dangerous direction, measured completely)", file=sys.stderr)
+    else:
+        random.Random(1790).shuffle(rows)
+        print(f"NO --predictions given: grading a random sample of "
+              f"{min(args.limit, len(rows))} pairs, which measures both "
+              f"directions weakly rather than the merge direction completely",
+              file=sys.stderr)
     rows = rows[: args.limit]
     print(f"grading {len(rows)} real pairs (gap <= {args.max_gap:.0f}s)", file=sys.stderr)
 
