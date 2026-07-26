@@ -18,7 +18,8 @@ struct RecoverySpoolWriterTests {
     RecordingSettingsSnapshot(
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: .auto,
       wordCorrectionEnabled: false, fillerRemovalEnabled: false,
-      emojiFormatterEnabled: false, customWordsVersion: nil,
+      emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
+      customWordsVersion: nil,
       llmProvider: "none", llmModel: "none", polishPromptVersion: nil)
   }
 

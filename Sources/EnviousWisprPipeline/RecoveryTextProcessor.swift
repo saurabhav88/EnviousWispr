@@ -84,6 +84,11 @@ public final class RecoveryTextProcessor {
     steps.wordCorrection.wordCorrectionEnabled = snapshot.wordCorrectionEnabled
     steps.fillerRemoval.fillerRemovalEnabled = snapshot.fillerRemovalEnabled
     steps.emojiFormatter.emojiFormatterEnabled = snapshot.emojiFormatterEnabled
+    // #1794: a legacy spool records no preference for this setting, absence is not an
+    // affirmative opt-in, and the founder-directed default is OFF. Does NOT depend on
+    // whether the take was ever delivered.
+    steps.inverseTextNormalization.spokenPunctuationEnabled =
+      snapshot.spokenPunctuationEnabled ?? false
     // Match the live ITN language gate: a LID engine with unknown language skips
     // ITN rather than rewriting possibly-non-English text. Sourced from the
     // record-time capability, never an engine-identity literal (Codex PR0 P2).

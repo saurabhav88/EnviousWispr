@@ -30,6 +30,7 @@ enum SettingsProjection {
     case fillerRemoval = "filler_removal"
     case contactsSync = "contacts_sync"
     case emojiFormatter = "emoji_formatter"
+    case spokenPunctuation = "spoken_punctuation"
     case crashRecovery = "crash_recovery"
     case useExtendedThinking = "use_extended_thinking"
     case languageMode = "language_mode"
@@ -74,6 +75,7 @@ enum SettingsProjection {
     case .fillerRemovalEnabled: return .fillerRemoval
     case .contactsSyncOnLaunchEnabled: return .contactsSync
     case .emojiFormatterEnabled: return .emojiFormatter
+    case .spokenPunctuationEnabled: return .spokenPunctuation
     case .crashRecoveryEnabled: return .crashRecovery
     case .useExtendedThinking: return .useExtendedThinking
     case .languageMode: return .languageMode
@@ -117,6 +119,7 @@ enum SettingsProjection {
     case .fillerRemoval: return onOff(settings.fillerRemovalEnabled)
     case .contactsSync: return onOff(settings.contactsSyncOnLaunchEnabled)
     case .emojiFormatter: return onOff(settings.emojiFormatterEnabled)
+    case .spokenPunctuation: return onOff(settings.spokenPunctuationEnabled)
     case .crashRecovery: return onOff(settings.crashRecoveryEnabled)
     case .useExtendedThinking: return onOff(settings.useExtendedThinking)
     case .languageMode: return languageModeLabel(settings.languageMode)

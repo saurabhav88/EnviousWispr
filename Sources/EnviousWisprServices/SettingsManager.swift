@@ -29,6 +29,7 @@ public final class SettingsManager {
     case wordCorrectionEnabled
     case fillerRemovalEnabled
     case emojiFormatterEnabled
+    case spokenPunctuationEnabled
     case crashRecoveryEnabled
     case contactsSyncOnLaunchEnabled
     case isDebugModeEnabled
@@ -76,7 +77,8 @@ public final class SettingsManager {
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
     "restoreClipboardAfterPaste", "wordCorrectionEnabled", "fillerRemovalEnabled",
-    "emojiFormatterEnabled", "crashRecoveryEnabled", "contactsSyncOnLaunchEnabled",
+    "emojiFormatterEnabled", "spokenPunctuationEnabled", "crashRecoveryEnabled",
+    "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
@@ -345,6 +347,17 @@ public final class SettingsManager {
     didSet {
       defaults.set(emojiFormatterEnabled, forKey: "emojiFormatterEnabled")
       onChange?(.emojiFormatterEnabled)
+    }
+  }
+
+  /// Spoken-punctuation commands (#1794). Default OFF — the only Text-cleanup toggle
+  /// that ships off, because these rules compete with the punctuation both recognizers
+  /// already add and fire on content words. Canonical default in
+  /// `SettingsDefaultValues.spokenPunctuationEnabled`.
+  public var spokenPunctuationEnabled: Bool {
+    didSet {
+      defaults.set(spokenPunctuationEnabled, forKey: "spokenPunctuationEnabled")
+      onChange?(.spokenPunctuationEnabled)
     }
   }
 
@@ -667,6 +680,9 @@ public final class SettingsManager {
     emojiFormatterEnabled =
       defaults.object(forKey: "emojiFormatterEnabled") as? Bool
       ?? SettingsDefaultValues.emojiFormatterEnabled
+    spokenPunctuationEnabled =
+      defaults.object(forKey: "spokenPunctuationEnabled") as? Bool
+      ?? SettingsDefaultValues.spokenPunctuationEnabled
     crashRecoveryEnabled =
       defaults.object(forKey: "crashRecoveryEnabled") as? Bool
       ?? SettingsDefaultValues.crashRecoveryEnabled

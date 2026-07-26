@@ -50,7 +50,7 @@ struct InverseTextNormalizerParityTests {
     var perCategoryFail: [String: Int] = [:]
     for row in rows {
       perCategoryTotal[row.category, default: 0] += 1
-      let got = itn.normalize(row.input)
+      let got = itn.normalize(row.input, spokenPunctuation: true)
       if got != row.expected {
         perCategoryFail[row.category, default: 0] += 1
         if mismatches.count < 40 { mismatches.append((row, got)) }
@@ -112,8 +112,8 @@ struct InverseTextNormalizerParityTests {
     #expect(rows.isEmpty == false)
     let itn = InverseTextNormalizer()
     var corrupted: [(String, String)] = []
-    for row in rows where itn.normalize(row.input) != row.expected {
-      corrupted.append((row.input, itn.normalize(row.input)))
+    for row in rows where itn.normalize(row.input, spokenPunctuation: true) != row.expected {
+      corrupted.append((row.input, itn.normalize(row.input, spokenPunctuation: true)))
     }
     // Parity already pins these to the oracle; this is a focused readout of the safety floor.
     #expect(corrupted.isEmpty, "negatives diverged from oracle: \(corrupted.prefix(10))")
@@ -127,8 +127,8 @@ struct InverseTextNormalizerParityTests {
     let itn = InverseTextNormalizer()
     var unstable: [(String, String, String)] = []
     for row in rows where Self.knownNonIdempotentInputs.contains(row.input) == false {
-      let once = itn.normalize(row.input)
-      let twice = itn.normalize(once)
+      let once = itn.normalize(row.input, spokenPunctuation: true)
+      let twice = itn.normalize(once, spokenPunctuation: true)
       if twice != once {
         unstable.append((row.input, once, twice))
       }
@@ -176,7 +176,7 @@ struct InverseTextNormalizerParityTests {
       ("One Million Moms", "One Million Moms"),
     ])
   func categoryFixes(input: String, expected: String) {
-    #expect(InverseTextNormalizer().normalize(input) == expected)
+    #expect(InverseTextNormalizer().normalize(input, spokenPunctuation: true) == expected)
   }
 
   // AP-style number formatting (#1187). Spell one-nine; digits for 10+; always-digit exceptions
@@ -207,7 +207,7 @@ struct InverseTextNormalizerParityTests {
       ("we ate at Five Guys", "we ate at Five Guys"),
     ])
   func apNumberPolicy(input: String, expected: String) {
-    #expect(InverseTextNormalizer().normalize(input) == expected)
+    #expect(InverseTextNormalizer().normalize(input, spokenPunctuation: true) == expected)
   }
 
   // Codex-finding regressions from PR #1191's review. Fix 1: keep-magnitude must never rewrite
@@ -246,6 +246,6 @@ struct InverseTextNormalizerParityTests {
       ("she came 3rd - not bad", "she came 3rd - not bad"),
     ])
   func codexFindingRegressions(input: String, expected: String) {
-    #expect(InverseTextNormalizer().normalize(input) == expected)
+    #expect(InverseTextNormalizer().normalize(input, spokenPunctuation: true) == expected)
   }
 }

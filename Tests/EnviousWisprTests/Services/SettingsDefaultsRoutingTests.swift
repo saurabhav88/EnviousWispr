@@ -27,6 +27,8 @@ struct SettingsDefaultsRoutingTests {
     let settings = SettingsManager(defaults: Self.freshSuite())
     // The two #923 corrections:
     #expect(settings.emojiFormatterEnabled == true)
+    // #1794: the ONE Text-cleanup toggle that ships OFF.
+    #expect(settings.spokenPunctuationEnabled == false)
     #expect(settings.llmProvider == .appleIntelligence)
     // Unchanged canonical values (lock them so an accidental flip fails here):
     #expect(settings.recordingMode == .pushToTalk)
@@ -52,12 +54,15 @@ struct SettingsDefaultsRoutingTests {
     let settings = SettingsManager(defaults: suite)
     settings.toggleKeyCode = 99
     settings.emojiFormatterEnabled = false
+    settings.spokenPunctuationEnabled = true
     #expect(suite.object(forKey: "toggleKeyCode") as? Int == 99)
     #expect(suite.object(forKey: "emojiFormatterEnabled") as? Bool == false)
+    #expect(suite.object(forKey: "spokenPunctuationEnabled") as? Bool == true)
     // Reconstructing from the same suite round-trips the explicit values.
     let reloaded = SettingsManager(defaults: suite)
     #expect(reloaded.toggleKeyCode == 99)
     #expect(reloaded.emojiFormatterEnabled == false)
+    #expect(reloaded.spokenPunctuationEnabled == true)
   }
 
   // MARK: - Exclusions (adversarial — these MUST stay per-build)

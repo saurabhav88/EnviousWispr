@@ -59,6 +59,12 @@ enum SettingsDefaultValues {
   // sentiment (personas.md emoji-control-current), so uncustomized users see no
   // surprise emoji, just gain the explicit-trigger capability.
   static let emojiFormatterEnabled = true
+  // #1794: spoken-punctuation commands ("comma" -> ",") OFF by default — the only
+  // Text-cleanup toggle that ships off. These rules shipped always-on as a rider on
+  // #145 and #1367 measured them: they fight the punctuation both recognizers already
+  // add, and they fire on content words ("the grace period expires"). Founder
+  // direction 2026-07-25: off for everyone, opt in from Settings.
+  static let spokenPunctuationEnabled = false
 
   // #1063: crash-recovery audio safety copy. Default ON — every recording is
   // protected by an encrypted, auto-deleted-on-success spool. Off means never

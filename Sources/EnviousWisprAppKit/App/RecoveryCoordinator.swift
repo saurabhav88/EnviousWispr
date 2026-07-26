@@ -208,6 +208,7 @@ final class RecoveryCoordinator {
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
       fillerRemovalEnabled: settings.fillerRemovalEnabled,
       emojiFormatterEnabled: settings.emojiFormatterEnabled,
+      spokenPunctuationEnabled: settings.spokenPunctuationEnabled,
       llmProvider: settings.llmProvider.rawValue,
       llmModel: resolvedModel,
       useExtendedThinking: settings.useExtendedThinking)
