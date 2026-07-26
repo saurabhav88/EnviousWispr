@@ -932,6 +932,46 @@ struct CursorInsertionRepairTests {
     #expect(payloads.repairedText?.hasPrefix(" ") == true, "\(left)")
   }
 
+  // The COMPLETE quote-direction table. Two review rounds each found one wrong
+  // cell of this decision one at a time, so the space is enumerated here rather
+  // than sampled: every character class that can precede a straight quote, and
+  // the direction it implies. A new class added to the rule without a row here
+  // is the gap this table exists to close.
+  @Test(
+    "Quote direction is decided for every kind of preceding character",
+    arguments: [
+      // opening: nothing, whitespace, brackets, curly openers, introducers
+      (left: "\"", opening: true),
+      (left: "He said \"", opening: true),
+      (left: "(\"", opening: true),
+      (left: "\u{201C}\"", opening: true),
+      (left: "He said:\"", opening: true),
+      (left: "He said;\"", opening: true),
+      (left: "He said\u{2014}\"", opening: true),
+      (left: "He said\u{2013}\"", opening: true),
+      (left: "He said-\"", opening: true),
+      // closing: the quoted text, or terminal punctuation inside the quotation
+      (left: "\"hello\"", opening: false),
+      (left: "\"chapter 7\"", opening: false),
+      (left: "\"Stop!\"", opening: false),
+      (left: "\"Really?\"", opening: false),
+      (left: "\"hello.\"", opening: false),
+      (left: "\"hello,\"", opening: false),
+      // unknown punctuation defaults to closing: adding an unwanted space is
+      // cosmetic, omitting a needed one runs two words together
+      (left: "path/\"", opening: false),
+    ] as [(left: String, opening: Bool)])
+  func quoteDirectionTable(_ testCase: (left: String, opening: Bool)) {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: testCase.left, right: ""),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    let addedSpace = payloads.candidateRules.contains(.leadingSpace)
+    #expect(
+      addedSpace == !testCase.opening,
+      "\(testCase.left): an opening quote takes no space, a closing one needs one")
+  }
+
   @Test(
     "A quote that OPENS a quotation still suppresses the space",
     arguments: ["He said \"", "She said '", "He said \u{201C}"])

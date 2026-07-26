@@ -290,4 +290,61 @@ struct PasteCaretContextTests {
     #expect(context.selectionLocation == 14)
     #expect(context.selectionLength == 5)
   }
+
+  // MARK: - Revalidating against the whole-field image (Codex review r2)
+
+  /// The Tier 1 write holds the complete field microseconds before it writes, so
+  /// it revalidates the candidate's evidence against that image rather than
+  /// re-reading. Offsets alone are NOT the evidence: an editor or autoformatter
+  /// can rewrite nearby characters without moving the selection at all.
+  @Test("identical surroundings at the same offsets still match")
+  func windowsMatchWhenNothingChanged() {
+    let context = PasteService.CaretContext(
+      leftWindow: "I went to the ", rightWindow: "", selectionLocation: 14, selectionLength: 0)
+    #expect(
+      PasteService.contextWindowsStillMatch(context, inFieldBefore: "I went to the "))
+  }
+
+  @Test("a rewritten neighbour at the same offsets does NOT match")
+  func windowsRejectStalePunctuation() {
+    // The reviewer's case: `, ` became `. `, every offset identical, but the
+    // repair's whole decision — lowercase or keep the capital — inverts.
+    let context = PasteService.CaretContext(
+      leftWindow: "I went home, ", rightWindow: "", selectionLocation: 13, selectionLength: 0)
+    #expect(
+      PasteService.contextWindowsStillMatch(context, inFieldBefore: "I went home. ") == false)
+  }
+
+  @Test("text after the selection is compared too")
+  func windowsCompareTheRightSide() {
+    let context = PasteService.CaretContext(
+      leftWindow: "the ", rightWindow: "yesterday", selectionLocation: 4, selectionLength: 0)
+    #expect(PasteService.contextWindowsStillMatch(context, inFieldBefore: "the yesterday"))
+    #expect(
+      PasteService.contextWindowsStillMatch(context, inFieldBefore: "the tomorrow ") == false)
+  }
+
+  @Test("a field that shrank below the recorded selection fails closed")
+  func windowsFailClosedOnAShrunkField() {
+    let context = PasteService.CaretContext(
+      leftWindow: "I went to the ", rightWindow: "", selectionLocation: 14, selectionLength: 0)
+    #expect(PasteService.contextWindowsStillMatch(context, inFieldBefore: "I went") == false)
+  }
+
+  @Test("UTF-16 slicing survives an emoji straddling the window edge")
+  func windowSlicingIsUTF16() {
+    // "🚀" is two UTF-16 units and one Character; slicing in Characters would
+    // land mid-surrogate and compare the wrong text.
+    let context = PasteService.CaretContext(
+      leftWindow: "a🚀", rightWindow: "b", selectionLocation: 3, selectionLength: 0)
+    #expect(PasteService.contextWindowsStillMatch(context, inFieldBefore: "a🚀b"))
+  }
+
+  @Test("an out-of-range slice returns nil rather than trapping")
+  func sliceRefusesImpossibleRanges() {
+    #expect(PasteService.utf16Slice(of: "abc", from: 0, to: 3) == "abc")
+    #expect(PasteService.utf16Slice(of: "abc", from: 2, to: 1) == nil)
+    #expect(PasteService.utf16Slice(of: "abc", from: 0, to: 9) == nil)
+    #expect(PasteService.utf16Slice(of: "abc", from: -1, to: 2) == nil)
+  }
 }

@@ -527,20 +527,42 @@ public enum CursorInsertionRepair {
   /// `"I went home. "` and `"I went home, "` both end in a space but need
   /// opposite case decisions. A newline is a sentence boundary, not something to
   /// skip over.
+  /// Punctuation that INTRODUCES a quotation, so a straight quote right after
+  /// one is opening: `He said:"`, `— "`. A comma is deliberately absent: in the
+  /// dominant convention `,"` closes (`"hello," she said`), and a comma that
+  /// introduces is written `, "`, which is settled by the whitespace rule first.
+  static let quoteIntroducers: Set<Character> = [":", ";", "\u{2014}", "\u{2013}", "-"]
+
   /// Whether a straight quote at the caret's left is OPENING the quotation
   /// rather than closing it.
   ///
-  /// Decidable, not guessed: a quote that opens is preceded by whitespace or by
-  /// nothing at all (`He said "`), and a quote that closes is preceded by the
-  /// text it encloses (`"hello"`). Both readings demand opposite spacing, and
-  /// before this the character alone decided — so a caret after a closing quote
-  /// suppressed the space and ran two words together as `hello"Next`.
+  /// Two review rounds each found one wrong cell of this decision, so the space
+  /// is enumerated here in full rather than patched a case at a time. Every
+  /// character that can precede a straight quote, and the direction it implies:
+  ///
+  /// | Preceding | Direction | Example |
+  /// |---|---|---|
+  /// | nothing at all | opening | a quote starting the field |
+  /// | whitespace or newline | opening | `He said "` |
+  /// | bracket or curly open quote | opening | `("` |
+  /// | `:` `;` em/en dash, hyphen | opening | `He said:"` |
+  /// | letter or digit | closing | `"hello"` |
+  /// | `.` `!` `?` `,` | closing | `"Stop!"`, `"hello,"` |
+  /// | anything else | closing | unknown punctuation |
+  ///
+  /// Unknown defaults to CLOSING because the two errors are not equally bad:
+  /// wrongly closing adds a space inside a quotation, which is cosmetic, while
+  /// wrongly opening omits a needed space and runs two words together as
+  /// `hello"Store`. The cheaper mistake is the default.
   ///
   /// `window` is the left context; `quoteIndex` is where the quote sits in it.
   static func isOpeningQuote(in window: String, at quoteIndex: String.Index) -> Bool {
     guard quoteIndex > window.startIndex else { return true }
     let preceding = window[window.index(before: quoteIndex)]
-    return preceding.isWhitespace || openers.contains(preceding)
+    if preceding.isWhitespace { return true }
+    if openers.contains(preceding) { return true }
+    if quoteIntroducers.contains(preceding) { return true }
+    return false
   }
 
   static func leftAnchor(of window: String) -> LeftAnchor {

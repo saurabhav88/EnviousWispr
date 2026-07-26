@@ -537,18 +537,66 @@ public enum PasteService {
   }
 
   /// Whether the field is still EXACTLY as it was when a contextual candidate
-  /// was computed: same focused element, same selection, same length.
+  /// was computed: same focused element, same selection, and the same text on
+  /// either side of it.
   ///
   /// This is the last question asked before a route commits a repaired payload.
   /// It fails CLOSED — unreadable is treated as changed — because the cost of a
-  /// wrong "unchanged" is text repaired against a caret that has moved, while
-  /// the cost of a wrong "changed" is merely today's behaviour.
+  /// wrong "unchanged" is text repaired against evidence that no longer holds,
+  /// while the cost of a wrong "changed" is merely today's behaviour.
+  ///
+  /// The SURROUNDING TEXT is compared, not just the offsets (Codex review r2).
+  /// An editor, a collaborator, or an autoformatter can rewrite nearby
+  /// characters without moving the selection at all — turning a preceding `, `
+  /// into `. ` leaves every offset identical while inverting whether the next
+  /// word should be lowercased. Offsets alone would have called that unchanged
+  /// and committed a repair computed from punctuation that is no longer there.
   package static func caretUnchanged(element: AXUIElement, since context: CaretContext) -> Bool {
-    guard let fresh = freshFocusedElement(matching: element),
-      let range = selectedRange(of: fresh)
+    guard let fresh = readCaretContext(element: element) else { return false }
+    return fresh == context
+  }
+
+  /// Whether the text either side of the selection still matches the evidence a
+  /// candidate was computed from, checked against a whole-field image rather
+  /// than a fresh read.
+  ///
+  /// The Tier 1 write already holds the complete field, captured microseconds
+  /// before it writes, so it can answer this without another accessibility call
+  /// — and from an image closer to the write than any re-read could be.
+  ///
+  /// Fails CLOSED: a window that cannot be sliced, because the field shrank or
+  /// an offset lands inside a surrogate pair, counts as changed.
+  static func contextWindowsStillMatch(_ context: CaretContext, inFieldBefore field: String)
+    -> Bool
+  {
+    let units = field.utf16.count
+    let selectionEnd = context.selectionLocation + context.selectionLength
+    guard context.selectionLocation >= 0, context.selectionLength >= 0,
+      selectionEnd <= units
     else { return false }
-    return range.location == context.selectionLocation
-      && range.length == context.selectionLength
+
+    let leftStart = max(0, context.selectionLocation - context.leftWindow.utf16.count)
+    guard let left = utf16Slice(of: field, from: leftStart, to: context.selectionLocation),
+      left == context.leftWindow
+    else { return false }
+
+    let rightEnd = min(units, selectionEnd + context.rightWindow.utf16.count)
+    guard let right = utf16Slice(of: field, from: selectionEnd, to: rightEnd),
+      right == context.rightWindow
+    else { return false }
+    return true
+  }
+
+  /// A substring by UTF-16 offsets, or nil when the range is not addressable —
+  /// out of bounds, inverted, or landing inside a surrogate pair.
+  static func utf16Slice(of text: String, from start: Int, to end: Int) -> String? {
+    guard start >= 0, end >= start, end <= text.utf16.count else { return nil }
+    let utf16 = text.utf16
+    guard
+      let startIndex = utf16.index(utf16.startIndex, offsetBy: start, limitedBy: utf16.endIndex),
+      let endIndex = utf16.index(utf16.startIndex, offsetBy: end, limitedBy: utf16.endIndex)
+    else { return nil }
+    return String(utf16[startIndex..<endIndex])
   }
 
   package static func readCaretContext(
@@ -702,18 +750,8 @@ public enum PasteService {
     // committed ONLY when the selection is still exactly where it was when that
     // candidate was computed; anything else — no candidate, no evidence, or a
     // caret that moved — takes today's payload. Plan §6.
-    let payload: (text: String, kind: PastePayloadKind) = {
-      guard let repaired, let context,
-        rangeBefore.location == context.selectionLocation,
-        rangeBefore.length == context.selectionLength
-      else { return (legacy, .legacy) }
-      return (repaired, .repaired)
-    }()
-    let text = payload.text
-
     let insertionStart = rangeBefore.location
     let selectionLength = rangeBefore.length
-    let insertedLength = text.utf16.count
 
     // Whole-field before-image. Only this can later prove that NO mutation
     // landed, because the selection may move between AX calls and an
@@ -728,16 +766,47 @@ public enum PasteService {
     // is NOT flat past ~10k characters, it is roughly linear at 0.07 ms per 10k.
     // A 200,000-character field costs 1.5 ms per read, so about 3 ms for the
     // before and after pair. Acceptable against a sub-second pipeline budget.
+    //
+    // The read must return EXACTLY `countBefore` units. A foreign app that
+    // truncates the string yields a before-image that is not the field: if the
+    // write then lands beyond the truncated span, an equally-truncated after-read
+    // compares identical, `fieldUnchanged` says nothing happened, and Tier 2
+    // pastes the dictation a SECOND time into a field that already has it. The
+    // caret-context reader has always demanded this; the verification path had
+    // not (Codex review r2).
     let fieldBefore: String
     if countBefore == 0 {
       fieldBefore = ""
-    } else if let read = string(of: element, at: 0, length: countBefore) {
+    } else if let read = string(of: element, at: 0, length: countBefore),
+      read.utf16.count == countBefore
+    {
       fieldBefore = read
     } else {
-      // Without a before-image, a successful AX call could never be proven
-      // harmless. Bail while nothing has been mutated; Tier 2 is safe here.
+      // Without a trustworthy before-image, a successful AX call could never be
+      // proven harmless. Bail while nothing has been mutated; Tier 2 is safe.
       return (.noMutation, nil)
     }
+
+    // The payload choice, made from the range AND the surrounding text this
+    // function just read, rather than from anything the caller measured earlier.
+    // A contextual candidate is committed ONLY when the field still looks
+    // exactly as it did when that candidate was computed.
+    //
+    // The windows are sliced out of the before-image already in hand, so this
+    // strictness costs no extra accessibility call. Offsets alone are not
+    // enough (Codex review r2): rewriting a preceding `, ` as `. ` leaves every
+    // offset identical while inverting whether the next word should be
+    // lowercased.
+    let payload: (text: String, kind: PastePayloadKind) = {
+      guard let repaired, let context,
+        rangeBefore.location == context.selectionLocation,
+        rangeBefore.length == context.selectionLength,
+        contextWindowsStillMatch(context, inFieldBefore: fieldBefore)
+      else { return (legacy, .legacy) }
+      return (repaired, .repaired)
+    }()
+    let text = payload.text
+    let insertedLength = text.utf16.count
 
     // Insert at cursor via kAXSelectedTextAttribute.
     let err = AXUIElementSetAttributeValue(
@@ -763,11 +832,16 @@ public enum PasteService {
 
     // Positive proof of NO success: the complete field still has identical
     // UTF-16 code units.
+    // The after-read is held to the same exact length as the before-image: a
+    // truncated read that happens to match a truncated before-image is not proof
+    // that nothing changed, and this value is what AUTHORISES a second paste.
     let fieldUnchanged = countAfter.flatMap { after -> Bool? in
       guard after == countBefore else { return false }
       if after == 0 { return fieldBefore.isEmpty }
-      return string(of: element, at: 0, length: after)
-        .map { stringsHaveIdenticalUTF16($0, fieldBefore) }
+      guard let read = string(of: element, at: 0, length: after),
+        read.utf16.count == after
+      else { return nil }
+      return stringsHaveIdenticalUTF16(read, fieldBefore)
     }
 
     let outcome = classifyInsertOutcome(
