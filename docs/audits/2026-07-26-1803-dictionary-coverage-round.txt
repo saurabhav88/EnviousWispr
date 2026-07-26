@@ -1,0 +1,234 @@
+## 1. Up to 2 missing premises
+
+### Premise 1: “The system English dictionary” is not one stable thing
+
+The plan notices machine variance but never settles two behaviors:
+
+- A Mac may prefer French or German spell-checking while EnviousWispr positively identifies English dictation. The oracle must explicitly choose an installed English dictionary. It must never use the user’s currently selected spell-check language or pass `nil`.
+- `NSSpellChecker.learnWord` changes the shared per-user dictionary. Learned words are disproportionately likely to be names, brands, and technical spellings. Treating them as ordinary lowercase words weakens the exact safety boundary this design needs. EnviousWispr Custom Words already provide the explicit protection path.
+
+Drop this into §3 after “The fail-open trap”:
+
+> ### English selection and per-user dictionary state
+>
+> The oracle never uses `NSSpellChecker.language`, the user’s currently selected spell-check language, or a `nil` language argument. It filters `NSSpellChecker.availableLanguages` to identifiers whose normalized base language is `en`, sorts them for deterministic selection, and chooses the first. If no English identifier exists, the oracle is unavailable and keeps the capital. Therefore English dictation still uses an English dictionary when the Mac’s preferred spell-check language is French, German, or another language.
+>
+> Learned words are not treated as ordinary lowercase evidence. Before accepting the dictionary result, the oracle checks `NSSpellChecker.hasLearnedWord(lowercaseWord)` and refuses learned entries with `.learnedWord`. Learned entries are likely to be names, brands, and technical spellings; the explicit EnviousWispr Custom Words path remains the authority for preserving those spellings. The oracle owns a fresh spell-document tag and never imports another document’s ignored-word list.
+
+Add this exact enum case:
+
+```swift
+case learnedWord = "learned_word"
+```
+
+Use this exact resolver:
+
+```swift
+static func resolveEnglishLanguage(from availableLanguages: [String]) -> String? {
+  availableLanguages
+    .filter { identifier in
+      identifier
+        .replacingOccurrences(of: "_", with: "-")
+        .split(separator: "-", maxSplits: 1)
+        .first?
+        .lowercased() == "en"
+    }
+    .sorted()
+    .first
+}
+```
+
+And require this decision before accepting the spell result:
+
+```swift
+guard !spellChecker.hasLearnedWord(lowercaseWord) else {
+  return .refuse(.learnedWord)
+}
+```
+
+The grounded round should verify the exact API behavior, especially whether ignored words can affect a fresh document tag.
+
+### Premise 2: deleting the source file is not yet proof of update behavior
+
+§12 says there is no migration, but it does not state what happens when Sparkle replaces an already-installed app. The intended answer is probably benign because the resource lives inside the app bundle, not user storage. That still needs to become an explicit premise and a built-product check. Otherwise a stale resource-copy declaration or stale build can survive unnoticed.
+
+Drop this into §12:
+
+> The deleted word list has never been copied into Application Support, UserDefaults, the Keychain, or another persistent user location. It exists only inside the versioned app/module bundle. An update replaces that bundle, so an already-installed user needs no cleanup or data migration. Validation must inspect the rebuilt app and module resource bundle, not merely the source tree, and prove that neither deleted filename ships. A previous installed version may retain its own copy only until the update replaces that version; no running code reads across app versions.
+
+Add this ship check:
+
+```bash
+if find "build/EnviousWispr Local.app" \
+  \( -name 'ordinary-lowercase-words.txt' -o -name 'ordinary-lowercase-words.provenance.md' \) \
+  -print -quit | grep -q .; then
+  echo "Deleted lowercase-word resource still ships in the rebuilt app."
+  exit 1
+fi
+```
+
+Also tighten “keep the capital.” It should mean only that leading-case repair does not lowercase the word. Spacing, duplicate removal, or terminal-period placement may still change the candidate afterward.
+
+Add to §3:
+
+> “Keep the capital” is a leading-case guarantee, not a byte-identical-payload guarantee. Every refusal path must preserve the original first grapheme and omit `.lowercasedFirst`; independent spacing, seam de-duplication, and touching-period rules may still run afterward.
+
+## 2. One placement challenge
+
+The strongest alternative is a new leaf module containing the AppKit/NaturalLanguage implementation, with PostProcessing owning only a narrow protocol and Pipeline injecting the implementation at its one production caller.
+
+Its shape would be:
+
+```swift
+public enum EnglishWordDecision: Equatable, Sendable {
+  case mayLower
+  case refuse(CursorInsertionRepair.CaseSkipReason)
+}
+
+public protocol EnglishWordDeciding: Sendable {
+  func decide(
+    word: String,
+    leftContext: String,
+    payload: String
+  ) -> EnglishWordDecision
+}
+```
+
+A new `EnviousWisprLanguageServices` target would implement that protocol using `NSSpellChecker` and `NLTagger`. Pipeline would construct it and pass it into repair. PostProcessing and the alias CLI would remain free of AppKit and NaturalLanguage.
+
+The real cost is substantial:
+
+- A new target in both package/build definitions.
+- A new cross-module public protocol and decision type.
+- Pipeline composition changes at the heart-path caller.
+- A module-boundary change that raises this from MEDIUM to REFACTOR.
+- More wiring and build validation for one implementation and one consumer.
+
+It does not beat the current plan. The current owner is the actual casing feature owner, the system calls are synchronous and tiny, and the proposed test seam keeps unit tests isolated. The plan should nevertheless replace its weak “two-line import” argument with the real comparison.
+
+Replace §3b’s opening paragraph with:
+
+> `EnglishWordOracle` remains in PostProcessing because it implements PostProcessing’s own leading-case policy, has one consumer inside `CursorInsertionRepair`, holds no app or pipeline state, and returns a synchronous value. The strongest alternative is a new leaf `EnviousWisprLanguageServices` module implementing a public `EnglishWordDeciding` protocol, constructed and injected by Pipeline. That would preserve PostProcessing’s present framework purity, but it requires a new target in both build systems, new cross-module public API, Pipeline composition changes, and REFACTOR-tier validation for one implementation and one consumer. That structural cost is larger than the boundary benefit here. The AppKit and NaturalLanguage imports are therefore an intentional PostProcessing boundary expansion, not a convenience accident.
+
+## 3. Validation strategy
+
+### Finding: the planned precision gate is both self-authored and internally contradictory
+
+The plan currently says:
+
+- Adversarial precision is 89.5%.
+- The adversarial corpus is the gate.
+- The gate is at least 90%.
+- “Zero damage is the contract.”
+- The ship criteria permit two damaged realistic cases.
+
+Those cannot all be the contract.
+
+There is another unresolved fork: if CI runs the real system oracle, the result varies by runner dictionaries, learned words, and NaturalLanguage assets. If CI injects a fake oracle, the precision number no longer measures the system-backed design.
+
+The cheapest honest strengthening is:
+
+1. Freeze a corpus before implementation from an outside source, not examples selected to exercise the proposed rule. Deterministically sample sentence-internal seams from a public-domain English corpus. Original lowercase openers become “should lower”; original internal proper capitals become “must keep.” Preserve the real 20-unit window.
+2. Keep CI deterministic. Gate branch behavior, refusal behavior, routing, Custom Words precedence, and exact output using injected fixed answers.
+3. Run the real system-service characterization as a pre-ship measurement on the founder’s Mac. Make it advisory in CI. Record OS version, chosen English identifier, tag-scheme availability, counts, and damaged case IDs.
+4. Treat the current adversarial and realistic author corpora as diagnostics, not independent validation.
+
+Replace §11.2 from the metric paragraph onward with:
+
+> ### Deterministic tests versus system characterization
+>
+> CI does not gate a numeric precision score produced by `NSSpellChecker` or `NLTagger`. Those services vary by OS image, installed dictionaries, NaturalLanguage assets, and per-user learned words; making their exact output required would create a flaky gate.
+>
+> CI instead uses injected, fixed dictionary and lexical-class answers to gate the code contract: every guard order, every accepted word class, every refusal class, missing-service behavior, learned-word refusal, Custom Words precedence, the 20-unit context boundary, and the exact repaired text and rule names. Every refusal case must preserve the payload’s original first grapheme and must not emit `.lowercasedFirst`.
+>
+> Before implementation, freeze an independent characterization corpus built by deterministic sampling from a named, version-pinned public-domain English source. Sample sentence-internal split points rather than author-selected examples. An originally lowercase first word is a lower candidate; an originally capitalized internal proper word is a keep candidate. Store stable case IDs, the final 20 UTF-16 units of left context, payload, expected class, source/version, sampling seed, and license.
+>
+> Run the production oracle over that frozen corpus on the founder’s shipping Mac before release. Record the macOS version, selected English dictionary identifier, lexical-class availability, attempted decisions, lower coverage, damaged-name count, and precision. The existing adversarial and realistic author-written corpora remain diagnostic slices and do not independently certify the threshold. CI may run this characterization for information, but a different machine result does not fail CI.
+
+Replace §13 items 2 and 3 with:
+
+> 2. On the frozen independent corpus, the production oracle achieves at least 90% precision on decisions to lowercase when run on the founder’s shipping Mac. Record the exact environment and every damaged case ID.
+> 3. The author-written adversarial, realistic, and long-context slices are reported separately as diagnostics. They have no independent pass threshold and cannot override the frozen external corpus.
+> 4. Deterministic CI tests cover every acceptance and refusal branch without calling machine-variable system services.
+
+## 4. What else
+
+### Telemetry
+
+The plan renames reasons but conflates two different deployment failures: no usable English dictionary and no lexical-class service. Those need separate privacy-safe reasons. Existing telemetry can tell whether repair was attempted and which payload landed, but it cannot honestly measure semantic precision. Do not claim telemetry will detect every lowercased name.
+
+Add this enum case:
+
+```swift
+case wordClassUnavailable = "word_class_unavailable"
+```
+
+Drop this into §8:
+
+> Telemetry distinguishes `.dictionaryUnavailable`, `.wordClassUnavailable`, and `.learnedWord`; it never includes the word, surrounding text, selected dictionary identifier, or any other user content. Existing `repair_rules` plus `payload_kind` can report how often the feature applies and how often either system facility is unavailable. They cannot determine whether a lowercase decision was semantically correct, so post-release telemetry is an availability and application-rate check, not a precision claim.
+>
+> During the first release window, inspect the rates of `lowercased_first`, `case_skipped:dictionary_unavailable`, `case_skipped:word_class_unavailable`, `case_skipped:learned_word`, and repaired versus legacy payload delivery. Any correctness conclusion still requires local reproduced text or direct user reports.
+
+### Persona
+
+The plan names “Saurabh” and a nonexistent `personas.md` “power dictator.” This feature directly affects at least three real named personas.
+
+Replace the User Rubric persona line and cross-persona answer with:
+
+> Primary persona: **Meera Patel**, who has no proofreading budget and needs continuation dictation to work without setup. Safety persona: **Dr. Elena Vasquez**, whose names and formal notes make an incorrect lowercase materially worse than a stray capital. Custom-vocabulary persona: **Priya Ramachandran**, whose technical names and brands must remain protected through Your Words.
+>
+> 9. **Cross-persona check.** Meera gets the improvement silently with no setting or setup. Dr. Vasquez’s case makes name preservation and fail-closed behavior the safety priority. Priya’s Your Words entries must outrank both the system dictionary and lexical tagger. Non-English dictation remains unchanged.
+
+### Custom Words
+
+The ordering is described, but the user contract is not explicit enough. A user can reasonably assume macOS Learned Words and EnviousWispr Your Words are equivalent when they are not.
+
+Add to §3:
+
+> ### Your Words and macOS Learned Words
+>
+> EnviousWispr Your Words is the explicit preservation authority. A matching protected spelling refuses recasing before any system lookup, including when the system dictionary considers its lowercase form ordinary. This is tested with a normal name, a brand with internal capitals, and a multi-word protected spelling.
+>
+> macOS Learned Words is not a substitute for Your Words. Learned spellings are refused as lowercase evidence because they commonly contain personal names, brands, and technical vocabulary. No onboarding or settings copy should instruct users to manage the macOS dictionary for this feature.
+
+Add to §11.2:
+
+> Custom Words matrix: protect `Olive`, `PostHog`, and `The Who`; test exact spelling, case-insensitive matching where currently supported, and a nonmatching control. Each protected case must keep its original capital and emit `case_skipped:protected_word` without consulting the system oracle.
+
+### German branch
+
+The branch changes the same main file and will conflict mechanically and conceptually. “Parked” is not an integration plan.
+
+Add this subsection before §14:
+
+> ### German branch integration
+>
+> Land the English system-dictionary change first. Then rebase `feat/1803-german-safe-words` onto the resulting main branch before resuming German work. The rebase must preserve the English oracle as English-only, port the German logic onto the post-deletion repair seam, and must not resurrect `OrdinaryLowercaseLexicon`, its resource, or its test-only exclusion class.
+>
+> After the rebase, rerun the shared spacing, seam de-duplication, terminal-period, unknown-language, English casing, and German casing suites together. Resolve overlapping `CaseSkipReason`, `LanguageRules`, and `applyLeadingCase` changes as one language-routing contract rather than accepting a textual conflict resolution.
+
+### Onboarding
+
+No onboarding is needed, but the plan should say why.
+
+Add to §2.1 or §8:
+
+> **Onboarding: N/A.** This is a silent improvement inside the existing default-on Smart Insertion behavior. It adds no permission, model download, setting, user choice, or first-run delay. A machine lacking either system facility keeps today’s capital without prompting the user.
+
+### Customer communication and release reach
+
+The change is visible enough for release notes, especially because users previously had to correct continuations manually. It does not need a separate campaign or support article.
+
+Add to §13:
+
+> 7. Include the change in the next in-app What’s New entry and public release notes. No separate onboarding, email, or knowledge-base article is required.
+> 8. Verify the normal Sparkle update and Homebrew release artifacts contain the rebuilt app without the deleted resource.
+
+Use this exact customer-facing copy:
+
+> Smart Insertion now joins follow-up dictations more naturally. Words such as “the,” “go,” “send,” and “call” can continue the sentence with the right capitalization, while names and entries in Your Words remain protected.
+
+## 5. Drop-in replacement completeness
+
+Every finding above includes verbatim plan text, exact customer copy, an exact shell check, or exact Swift for the proposed new reason and language-selection behavior. No finding is diagnosis-only.
+
