@@ -84,6 +84,11 @@ public enum CursorInsertionRepair {
     /// caret context could not be READ — one is a deliberate refusal, the other
     /// an accessibility failure, and the field needs to tell them apart.
     case refusedInsideWord
+    /// Nothing real precedes the caret, so there is nothing to continue and no
+    /// way to confirm the position is even real. Distinct from
+    /// `refusedInsideWord`: that one knows exactly where it is and declines,
+    /// this one cannot place itself.
+    case refusedNoLeftAnchor
     case leadingSpace
     case lowercasedFirst
     case caseSkipped(CaseSkipReason)
@@ -214,6 +219,31 @@ public enum CursorInsertionRepair {
     guard !isInsideWord(context) else {
       return PreparedPayloads(
         legacyText: legacy, repairedText: nil, candidateRules: [.refusedInsideWord])
+    }
+    // Nothing real to the left means there is nothing to continue: the capital
+    // stays and no leading space is wanted, which is already today's payload.
+    // The only rules that could still act read the RIGHT window — and one of
+    // them deletes a full stop the user dictated.
+    //
+    // MEASURED in Ghostty, 2026-07-25: its character count grows as the user
+    // types (42 -> 179 -> 198) while `AXSelectedTextRange` stays pinned at 0.
+    // A caret of zero in a field holding a whole scrollback is not an insertion
+    // point, so that "right window" is the TOP of the buffer rather than the
+    // text after the cursor — and trusting it silently stripped the full stop
+    // from a sentence dictated into a terminal.
+    //
+    // Refusing here also fixes the honest version of the same position: text
+    // inserted at the very start of a document is not continuing the sentence
+    // that follows it, so its full stop is not redundant either.
+    //
+    // Scoped to a NON-EMPTY right window, which is the only case where the
+    // right side can change the answer. With nothing on either side there is
+    // nothing to distrust and the candidate is today's payload character for
+    // character, so refusing there would add a refusal that changes no text.
+    // Founder direction 2026-07-25 that this work in every tool.
+    if leftAnchor(of: context.left).character == nil, !context.right.isEmpty {
+      return PreparedPayloads(
+        legacyText: legacy, repairedText: nil, candidateRules: [.refusedNoLeftAnchor])
     }
     let (repaired, rules) = contextualPayload(
       text: text,

@@ -915,6 +915,59 @@ struct CursorInsertionRepairTests {
       "a lowercase protected entry must not shadow the capitalised token")
   }
 
+  // MARK: - An unverifiable caret
+
+  // MEASURED in Ghostty, 2026-07-25: the character count grows as the user
+  // types (42 -> 179 -> 198) while `AXSelectedTextRange` stays pinned at 0. The
+  // reported caret is not the insertion point at all, so the "right window" is
+  // the TOP of the terminal's scrollback rather than the text after the cursor.
+  //
+  // With nothing to the left there is nothing to repair — the capital stays and
+  // no leading space is added either way — so the only rules that could still
+  // act are the two that read the right window. Both would then be acting on
+  // text that is not next to the caret, and one of them DELETES a character the
+  // user dictated. That is why this refuses instead of trusting one side.
+  @Test("Nothing to the left means no contextual claim at all")
+  func noLeftAnchorRefusesTheCandidate() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Hello there.",
+      context: CursorInsertionRepair.CaretText(left: "", right: "the store is closed."),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(
+      payloads.repairedText == nil,
+      "a caret we cannot place must not produce a contextual candidate")
+    #expect(payloads.candidateRules == [.refusedNoLeftAnchor])
+    #expect(payloads.legacyText == "Hello there. ", "today's payload is unchanged")
+  }
+
+  @Test("The user's full stop survives a caret that cannot be placed")
+  func trailingPeriodSurvivesAnUnplaceableCaret() {
+    // The concrete Ghostty failure: dictating a finished sentence into a
+    // terminal used to arrive with its full stop removed, because the rule that
+    // drops a redundant period believed the scrollback's first line was sitting
+    // just after the caret.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Deploy the release now.",
+      context: CursorInsertionRepair.CaretText(
+        left: "", right: "Last login: Fri Jul 25 on ttys004"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    let delivered = payloads.repairedText ?? payloads.legacyText
+    #expect(delivered.contains("now."), "the dictated full stop must survive")
+    #expect(delivered == "Deploy the release now. ")
+  }
+
+  @Test("A line start is still a caret we cannot place")
+  func lineStartAlsoRefuses() {
+    // Same shape, honestly reached: the user pressed Return and dictated. There
+    // is nothing to continue, so today's payload is already the right answer.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Second thought.",
+      context: CursorInsertionRepair.CaretText(left: "First thought.\n", right: "trailing text"),
+      protectedWords: [], language: "en", lexicon: Self.prototypeLexicon)
+    #expect(payloads.repairedText == nil)
+    #expect(payloads.candidateRules == [.refusedNoLeftAnchor])
+  }
+
   // MARK: - Language coverage
 
   /// The five words measured in the SHIPPED lexicon that are ordinary English
