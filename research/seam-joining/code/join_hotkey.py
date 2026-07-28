@@ -600,20 +600,33 @@ def looks_unsafe(before, after):
     # Any script, not just Latin-1. `regex` is already imported for exactly
     # this reason; \p{L} is the platform's own letter property, so there is no
     # hand-maintained alphabet here to fall behind Unicode.
-    # \p{N} is NOT optional. A letters-only class leaves every number
-    # unchecked, and "Send 10 units" -> "Send 100 units" is the single worst
-    # thing this guard could wave through: same word count, same letters, a
-    # different instruction. Currency and percent signs count for the same
-    # reason — "5" and "5%" are different claims.
+    # Allowlist what may be IGNORED, never what may be kept.
+    #
+    # Every previous version listed the characters that carry meaning —
+    # letters, then numbers, then currency and percent — and every round found
+    # another one it had not thought of. The last was the minus sign: "-5" and
+    # "5" tokenized identically, so a temperature flipped sign and the guard
+    # said nothing. That set is open-ended and will keep losing this race.
+    #
+    # The complement is CLOSED and tiny: sentence punctuation is the only thing
+    # a polish pass is allowed to change. So strip that from token EDGES and
+    # keep everything else. "-5", "3:30", "1/2" and "x=5" survive intact
+    # because whatever is inside a token is, by definition, not formatting.
+    #
+    # Interior hyphens now make "well-known" one token where "well known" is
+    # two, so hyphenation refuses instead of passing silently. That is the safe
+    # direction and costs a keystroke.
     #
     # Coarse for scripts that do not space their words: Japanese or Chinese
-    # yields one token per run of letters, so the comparison becomes
-    # all-or-nothing rather than word-by-word. That is blunt, but it fails
-    # CLOSED (any edit trips it) where the old ASCII regex failed OPEN (no
-    # tokens at all, so everything passed). Real segmentation is the fix if
-    # this prototype ever targets those languages.
+    # yields one token per run, so the comparison becomes all-or-nothing rather
+    # than word-by-word. Blunt, but it fails CLOSED (any edit trips it) where
+    # the original ASCII regex failed OPEN (no tokens at all, so everything
+    # passed). Real segmentation is the fix if this ever targets those
+    # languages.
+    EDGE_FORMATTING = ".,;:!?…\"'()[]{}“”‘’«»—–"
+
     def tokens(text):
-        return [w.lower() for w in regex.findall(r"[\p{L}\p{M}\p{N}\p{Sc}%']+", text)]
+        return [t for t in (w.strip(EDGE_FORMATTING).lower() for w in text.split()) if t]
 
     # English contractions are a genuinely CLOSED set, unlike an open-ended
     # word list — so enumerating them is honest. Expanded on both sides, which
@@ -689,25 +702,42 @@ def looks_unsafe(before, after):
             return "; ".join(detail)
         return "reordered what was said without changing the words"
 
-    # Residual behaviour, swept for deliberately rather than discovered later:
-    #   - Emoji and pictographs are not tokenized, so an added one passes. The
-    #     contract forbids it, but a decorative character is not worth the
-    #     false positives that tokenizing every symbol class would cost.
-    #   - Digit GROUPING refuses: "1000" -> "1,000" reads as a changed token
-    #     and the join is abandoned. Fails CLOSED, costs one keystroke, and the
-    #     alternative is teaching this guard number formats so it can also be
-    #     fooled by them. "1.5" -> "15" is caught by the same bluntness, which
-    #     is the trade paying for itself.
-    #   - Hyphenation is invisible ("well-known" and "well known" tokenize
-    #     alike) and case is folded. Both are formatting, both are sanctioned.
+    # Residual behaviour, re-swept after inverting the token rule — these
+    # changed, so the list is measured rather than carried over:
+    #   - Emoji are now CAUGHT, since anything that is not edge punctuation is
+    #     a token. The contract forbids adding them, so this is the right way
+    #     round; it used to pass.
+    #   - Hyphenation now REFUSES ("well-known" is one token, "well known" is
+    #     two) where it used to be invisible. Same for a possessive apostrophe
+    #     appearing ("Marks" -> "Mark's") and for digit grouping ("1000" ->
+    #     "1,000"). All three abandon the join and cost one keystroke. That is
+    #     the price of not maintaining an open-ended list of which characters
+    #     matter — the list that lost this race four rounds running.
+    #   - Decimals, times, fractions and signs survive intact ("1.5", "3:30",
+    #     "1/2", "-5"), because interior characters are never stripped.
+    #   - Case, collapsed whitespace, quotes and em-dashes stay invisible.
+    #     All are formatting, all are sanctioned.
     #
-    # Connectives are exempt from the sequence check, so bound them separately:
-    # one added connective stitches two fragments, more than one is a rewrite.
+    # Connectives are exempt from the sequence check, so bound them separately —
+    # in BOTH directions. Bounding only additions left two holes: any number of
+    # spoken connectives could vanish, and a swap ("Tea or coffee" -> "Tea and
+    # coffee") read as merely one allowed addition while inverting the meaning.
+    #
+    # The contract sanctions dropping a connecting word the join made redundant,
+    # and joining two fragments may need one added. It never sanctions trading
+    # one for another, so an add together with a drop is a substitution and is
+    # refused outright.
     spoken_joins = Counter(w for w in expand(before) if w in CONNECTIVES)
     written_joins = Counter(w for w in expand(after) if w in CONNECTIVES)
     added_connectives = sorted((written_joins - spoken_joins).elements())
+    dropped_connectives = sorted((spoken_joins - written_joins).elements())
+    if added_connectives and dropped_connectives:
+        return (f"swapped a connecting word: {dropped_connectives} -> "
+                f"{added_connectives}")
     if len(added_connectives) > MAX_ADDED_CONNECTIVES:
         return f"stitched with too many added words: {added_connectives}"
+    if len(dropped_connectives) > MAX_ADDED_CONNECTIVES:
+        return f"dropped too many connecting words: {dropped_connectives}"
 
     lowered = after.lower()
     for tell in ("could you", "please share", "i need the", "the transcript you",
