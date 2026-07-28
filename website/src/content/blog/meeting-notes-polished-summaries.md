@@ -61,7 +61,7 @@ That's the difference between a wall of text you'll never revisit and a summary 
 
 Here's where this gets practical for anyone handling sensitive discussions. Board updates, personnel decisions, M&A conversations, compensation reviews, strategic pivots. This is exactly the kind of content that shouldn't be routed through a third-party cloud service.
 
-EnviousWispr processes everything locally. Your audio is transcribed on your Mac via on-device speech recognition and Core ML. The post-processing runs through the LLM (on-device via Apple Intelligence, EG-1, or Ollama, or cloud via OpenAI or Gemini). Your recordings never leave your device unless you explicitly configure an external API. No cloud backend, no telemetry on your dictation content, no transcripts leaving the building.
+EnviousWispr processes everything locally. Your audio is transcribed on your Mac via on-device speech recognition and Core ML. The post-processing runs through the LLM (on-device via Apple Intelligence, EG-1, or Ollama, or cloud via OpenAI or Gemini). Your recordings never leave your device, and unless you explicitly configure a cloud provider for polish, neither does your transcript. No cloud backend of ours, no telemetry on your dictation content, and no copy of your text on our infrastructure either way.
 
 For an exec who regularly discusses confidential business matters, this isn't a nice-to-have. It's a requirement. You shouldn't have to choose between capturing meeting outcomes efficiently and keeping sensitive information off someone else's servers. We break this down in detail in [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 

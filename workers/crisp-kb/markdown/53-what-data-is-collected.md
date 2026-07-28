@@ -6,7 +6,7 @@ Your transcripts are saved to your history so you can find them later. They sit 
 
 While you dictate, the app keeps an encrypted backup of the recording. It is deleted the moment your text is safely saved. If the app crashes first, that backup is what rescues your words on the next launch. You can switch it off in Settings.
 
-Your custom words, writing styles, settings, and API keys stay here too.
+Your custom words, writing styles, settings, and API keys live here too. They stay here unless you turn on cloud polish, which is covered below.
 
 ### What We Never Receive
 
@@ -27,6 +27,6 @@ If you would rather run without it, EnviousWispr is open source. Build it yourse
 
 ### If You Use Cloud AI Polish
 
-Polish runs on your Mac by default. Choose OpenAI, Gemini, or Claude instead and you add your own API key, and your transcript goes to them. The app tells you so when you set it up. That is your account with that company, on their terms.
+Polish runs on your Mac by default. Choose OpenAI, Gemini, or Claude instead and you add your own API key, and your transcript is sent to them, along with your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Audio is never sent. The app tells you this when you set it up. That is your account with that company, on their terms.
 
-We are not in the middle of it. Your text goes straight from your Mac to them, so we never see it either way. Audio is never sent, only text. See "AI Polish and Cloud Data" for what each one receives.
+We are not in the middle of it. Everything goes straight from your Mac to them, so we never see it either way. See "AI Polish and Cloud Data" for what each one receives.
