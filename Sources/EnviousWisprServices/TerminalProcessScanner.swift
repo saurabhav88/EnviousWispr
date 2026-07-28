@@ -251,11 +251,26 @@ package enum TerminalProcessScanner {
   /// reports true under a terminal and false outside one, so nothing but the
   /// terminal explains the difference.
   static func holdsControllingTerminal(_ pid: pid_t) -> Bool {
-    var info = proc_bsdinfo()
-    let size = Int32(MemoryLayout<proc_bsdinfo>.size)
-    guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return false }
+    guard let info = bsdInfo(pid) else { return false }
     // NODEV, the "no controlling terminal" sentinel, is all-bits-set.
     return Int32(bitPattern: info.e_tdev) != -1
+  }
+
+  /// When `pid` started, in seconds since the epoch.
+  ///
+  /// Pairs with the PID to make a key that survives PID REUSE. macOS recycles
+  /// PIDs, so a latch keyed on the number alone would keep punishing an
+  /// unrelated process that happened to inherit it.
+  package static func startTime(of pid: pid_t) -> UInt64? {
+    guard let info = bsdInfo(pid) else { return nil }
+    return UInt64(info.pbi_start_tvsec)
+  }
+
+  private static func bsdInfo(_ pid: pid_t) -> proc_bsdinfo? {
+    var info = proc_bsdinfo()
+    let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+    guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+    return info
   }
 
   // MARK: Darwin plumbing

@@ -705,7 +705,8 @@ public enum PasteService {
   static func terminalCaretContext(
     element: AXUIElement,
     budget: TerminalResolutionBudget,
-    breaker: TerminalCircuitBreaker
+    breaker: TerminalCircuitBreaker,
+    onRefusal: ((TerminalContextRefusal) -> Void)? = nil
   ) -> CaretContext? {
     var pid: pid_t = 0
     guard AXUIElementGetPid(element, &pid) == .success else { return nil }
@@ -715,11 +716,16 @@ public enum PasteService {
       scanProcesses: { TerminalProcessScanner.liveSnapshot() },
       readScreenTail: { terminalScreenTail(of: element) })
 
-    guard
-      let evidence = TerminalContextResolver.resolve(
-        targetPID: pid, budget: budget, breaker: breaker, dependencies: dependencies
-      ).evidence
-    else { return nil }
+    // The typed refusal is REPORTED, not discarded. §8 of the plan lists eight
+    // distinct outcomes, and cloud review found every one of them collapsing
+    // into "unreadable" at the caller — which is exactly the diagnosability gap
+    // that cost three rounds of guessing during founder testing on 2026-07-26.
+    let result = TerminalContextResolver.resolve(
+      targetPID: pid, budget: budget, breaker: breaker, dependencies: dependencies)
+    guard let evidence = result.evidence else {
+      if case .refused(let reason) = result { onRefusal?(reason) }
+      return nil
+    }
 
     // The right window is EMPTY BY CONSTRUCTION. Under the founder's
     // end-of-line assumption there is no text after the cursor to read, and this
@@ -736,7 +742,8 @@ public enum PasteService {
     element: AXUIElement,
     window: Int = caretContextWindow,
     terminalBudget: TerminalResolutionBudget? = nil,
-    terminalBreaker: TerminalCircuitBreaker = .shared
+    terminalBreaker: TerminalCircuitBreaker = .shared,
+    onTerminalRefusal: ((TerminalContextRefusal) -> Void)? = nil
   ) -> CaretContext? {
     // CLASS FIX, whole-diff review r2. The budget previously covered only the
     // resolver's own steps, so the FIVE accessibility reads that run before it —
@@ -755,6 +762,7 @@ public enum PasteService {
     var targetPID: pid_t = 0
     guard AXUIElementGetPid(element, &targetPID) == .success else { return nil }
     if terminalBreaker.isOpen(for: targetPID) {
+      onTerminalRefusal?(.breakerOpen)
       return caretDerivedContext(element: element, window: window)
     }
 
@@ -768,6 +776,7 @@ public enum PasteService {
       budget: terminalBudget, breaker: terminalBreaker, pid: targetPID)
     {
       // Whatever came back arrived too late to spend more time on.
+      onTerminalRefusal?(.deadline)
       return context
     }
 
@@ -783,8 +792,9 @@ public enum PasteService {
     guard looksLikeATerminal else { return context }
 
     context =
-      terminalCaretContext(element: element, budget: terminalBudget, breaker: terminalBreaker)
-      ?? context
+      terminalCaretContext(
+        element: element, budget: terminalBudget, breaker: terminalBreaker,
+        onRefusal: onTerminalRefusal) ?? context
     return context
   }
 

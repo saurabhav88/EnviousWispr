@@ -271,13 +271,22 @@ struct TerminalContextResolverTests {
     #expect(!breaker.isOpen(for: 901))
   }
 
-  @Test("A relaunched terminal resets")
-  func breakerResets() {
+  @Test("The breaker is keyed by process IDENTITY, so PID reuse cannot inherit it")
+  func breakerKeyedByProcessIdentity() {
+    // Cloud review found the gap: the latch lasts the whole process lifetime and
+    // nothing clears it, so once macOS recycled that PID an unrelated terminal
+    // would be refused forever with no way back.
+    //
+    // pid 900 does not exist here, so its start time is unreadable and it keys
+    // consistently. THIS process does exist, so it keys on a real start time —
+    // proving the key is more than the number.
     let breaker = TerminalCircuitBreaker()
-    breaker.trip(for: 900)
-    #expect(breaker.isOpen(for: 900))
-    breaker.reset(for: 900)
-    #expect(!breaker.isOpen(for: 900))
+    let live = getpid()
+    breaker.trip(for: live)
+    #expect(breaker.isOpen(for: live))
+    #expect(!breaker.isOpen(for: 900), "a different process must not inherit the latch")
+    #expect(TerminalProcessScanner.startTime(of: live) != nil)
+    #expect(TerminalProcessScanner.startTime(of: pid_t(Int32.max)) == nil)
   }
 
   @Test("A read that overruns the budget TRIPS the breaker, in production code")

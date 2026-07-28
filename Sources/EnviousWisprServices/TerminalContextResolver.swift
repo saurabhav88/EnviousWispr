@@ -93,24 +93,39 @@ package final class TerminalResolutionBudget: Sendable {
 /// CANNOT preempt a blocked thread, so the abandoned reads accumulate. Precedent
 /// is the oracle deadline, which already latches its failing dependency off.
 ///
-/// Keyed by target PID, so a relaunched terminal starts closed.
+/// Keyed by PID **and process start time**, so a relaunched terminal starts
+/// closed and PID REUSE cannot inherit a latch.
+///
+/// Cloud review found the gap: the latch lasts the whole process lifetime and
+/// nothing ever cleared it, so once macOS recycled that PID an unrelated
+/// terminal would be refused forever with no way back. Identity, not a number.
 package final class TerminalCircuitBreaker: Sendable {
   package static let shared = TerminalCircuitBreaker()
 
-  private let open = OSAllocatedUnfairLock(initialState: Set<pid_t>())
+  /// A process, not merely a PID.
+  struct Key: Hashable {
+    let pid: pid_t
+    /// Nil when the start time is unreadable — which cannot be conflated with a
+    /// known one, so an unreadable process gets its own distinct key.
+    let startedAt: UInt64?
+  }
+
+  private let open = OSAllocatedUnfairLock(initialState: Set<Key>())
 
   package init() {}
 
+  private func key(_ pid: pid_t) -> Key {
+    Key(pid: pid, startedAt: TerminalProcessScanner.startTime(of: pid))
+  }
+
   package func isOpen(for pid: pid_t) -> Bool {
-    open.withLock { $0.contains(pid) }
+    let key = key(pid)
+    return open.withLock { $0.contains(key) }
   }
 
   package func trip(for pid: pid_t) {
-    open.withLock { _ = $0.insert(pid) }
-  }
-
-  package func reset(for pid: pid_t) {
-    open.withLock { _ = $0.remove(pid) }
+    let key = key(pid)
+    open.withLock { _ = $0.insert(key) }
   }
 
   package func resetAll() {

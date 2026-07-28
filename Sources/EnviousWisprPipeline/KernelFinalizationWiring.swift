@@ -172,10 +172,11 @@ struct KernelFinalizationWiring {
     // Caret reader seam. Production reads the live focused field, and supplies
     // the per-delivery terminal budget so a terminal read is bounded by the same
     // cumulative allowance as its later revalidation.
-    readCaretContext: @escaping @MainActor (AXUIElement, TerminalResolutionBudget) ->
-      PasteService.CaretContext? = {
-        PasteService.readCaretContext(element: $0, terminalBudget: $1)
-      },
+    readCaretContext: @escaping @MainActor (
+      AXUIElement, TerminalResolutionBudget, ((TerminalContextRefusal) -> Void)?
+    ) -> PasteService.CaretContext? = {
+      PasteService.readCaretContext(element: $0, terminalBudget: $1, onTerminalRefusal: $2)
+    },
     // Word-oracle seam. Production takes the live runtime snapshot; tests inject
     // a fixed oracle so a case never depends on the machine's dictionaries — and
     // so no test has to MUTATE the process-global runtime, which would race the
@@ -381,11 +382,14 @@ struct KernelFinalizationWiring {
         // Read the caret ONCE, only when the frozen setting allows it and we
         // actually have a target. `readCaretContext` fails open, so a nil result
         // simply means no candidate.
+        // The specific terminal refusal, so a wrong-case report can be diagnosed
+        // from the log instead of guessed at. Names and shapes only.
+        var terminalRefusal: TerminalContextRefusal?
         let caretContext: PasteService.CaretContext? = {
           guard config?.smartInsertion == true, let element = context.targetElement else {
             return nil
           }
-          return readCaretContext(element, terminalBudget)
+          return readCaretContext(element, terminalBudget, { terminalRefusal = $0 })
         }()
 
         // ONE call to the repair, which is the sole owner of the trailing-space
@@ -465,7 +469,9 @@ struct KernelFinalizationWiring {
         outcome.caretContextOutcome = {
           if config?.smartInsertion != true { return "setting_off" }
           if context.targetElement == nil { return "no_target" }
-          return caretContext == nil ? "unreadable" : "read"
+          if let terminalRefusal { return terminalRefusal.rawValue }
+          if caretContext?.isScreenDerived == true { return "terminal_read" }
+          return caretContext == nil ? "unreadable" : "read_selected"
         }()
         outcome.repairRules =
           payloads.candidateRules.isEmpty
