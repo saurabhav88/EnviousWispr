@@ -2,7 +2,7 @@ Nothing you say ever reaches us. Not your audio, not your transcripts, not a wor
 
 ### What Stays On Your Mac
 
-Your transcripts are saved to your history so you can find them later. They sit in your user folder and are never uploaded.
+Your transcripts are saved to your history so you can find them later. They sit in your user folder, and we never receive a copy.
 
 While you dictate, the app keeps an encrypted backup of the recording. It is deleted the moment your text is safely saved. If the app crashes first, that backup is what rescues your words on the next launch. You can switch it off in Settings.
 
