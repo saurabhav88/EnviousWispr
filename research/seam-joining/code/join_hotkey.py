@@ -564,6 +564,30 @@ def looks_unsafe(before, after):
         return f"lost too many words ({len(before.split())} -> {len(after.split())})"
     if len(after.split()) > 1.6 * len(before.split()):
         return f"invented too many words ({len(before.split())} -> {len(after.split())})"
+    # COUNTS are not enough. A same-length substitution passes every check
+    # above: "It now passes ten" -> "It is now past ten" swaps a word for one
+    # that was never spoken while keeping the length plausible, and the field
+    # gets overwritten with words the user did not say. Tonight's real failure
+    # was caught only because the count also collapsed; a tidier rewrite would
+    # have sailed through. Found by cloud review on PR #1793.
+    #
+    # So check identity, not size: every word in the output must have been in
+    # the input. Joining may legitimately DROP a connective, and the polisher
+    # may contract "it is" into "it's", so those two directions are allowed.
+    JOINING_WORDS = {"and", "but", "so", "that", "which", "then", "as", "to",
+                     "a", "the", "of", "in", "for", "it", "is"}
+
+    def tokens(text):
+        return [w.lower().replace("'", "")
+                for w in re.findall(r"[A-Za-z']+", text)]
+
+    spoken = set(tokens(before))
+    invented = [w for w in tokens(after)
+                if w not in spoken and w not in JOINING_WORDS
+                and not any(w.startswith(s) or s.startswith(w) for s in spoken)]
+    if invented:
+        return f"used words that were never said: {sorted(set(invented))}"
+
     lowered = after.lower()
     for tell in ("could you", "please share", "i need the", "the transcript you",
                  "appears to be", "i don't see"):
