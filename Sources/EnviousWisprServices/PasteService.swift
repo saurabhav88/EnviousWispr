@@ -381,10 +381,39 @@ public enum PasteService {
     legacy: String,
     repaired: String?,
     context: CaretContext?,
-    element: AXUIElement?
+    element: AXUIElement?,
+    terminalBudget: TerminalResolutionBudget? = nil
   ) -> (text: String, kind: PastePayloadKind) {
     guard let repaired, let context, let element,
-      caretUnchanged(element: element, since: context)
+      caretUnchanged(element: element, since: context, terminalBudget: terminalBudget)
+    else { return (legacy, .legacy) }
+    return (repaired, .repaired)
+  }
+
+  /// Which payload the Tier 1 accessibility write may commit.
+  ///
+  /// Extracted so the rule can be tested. It was previously inline, where the
+  /// only reachable test had to pass a nil element and therefore passed for the
+  /// wrong reason — it proved "no element means legacy", not the rule itself.
+  package static func accessibilityWritePayload(
+    legacy: String,
+    repaired: String?,
+    context: CaretContext?,
+    rangeBefore: CFRange,
+    fieldBefore: String
+  ) -> (text: String, kind: PastePayloadKind) {
+    // Screen evidence can NEVER authorise this route. Tier 1's authorisation
+    // rests on real selection offsets and matching surrounding windows read from
+    // the field microseconds before it writes. A screen-derived context has
+    // neither — its offsets are synthesised from the parsed line and its right
+    // window is empty by construction — so every check below would compare
+    // against something that was never read from the field. Tier 1 always
+    // submits today's payload in a terminal.
+    guard context?.isScreenDerived != true else { return (legacy, .legacy) }
+    guard let repaired, let context,
+      rangeBefore.location == context.selectionLocation,
+      rangeBefore.length == context.selectionLength,
+      contextWindowsStillMatch(context, inFieldBefore: fieldBefore)
     else { return (legacy, .legacy) }
     return (repaired, .repaired)
   }
@@ -405,13 +434,30 @@ public enum PasteService {
     /// UTF-16 length of the selection. Zero for a plain caret.
     package let selectionLength: Int
 
+    /// Non-nil when this context came from a terminal's rendered SCREEN rather
+    /// than from a real caret, carrying the complete evidence all three gates
+    /// agreed on.
+    ///
+    /// Typed provenance is load-bearing in three places: repair enforces
+    /// terminal-only policy, screen evidence is barred from authorising the
+    /// Tier 1 accessibility write, and commit revalidation is source-aware. The
+    /// evidence participates in equality, so a screen that scrolled, a CLI that
+    /// exited, or focus that moved all fail revalidation — a screen-derived
+    /// context has no selection offsets to compare, so this IS its identity.
+    package let terminalEvidence: TerminalEvidence?
+
+    /// Whether this context was derived from a terminal screen.
+    package var isScreenDerived: Bool { terminalEvidence != nil }
+
     package init(
-      leftWindow: String, rightWindow: String, selectionLocation: Int, selectionLength: Int
+      leftWindow: String, rightWindow: String, selectionLocation: Int, selectionLength: Int,
+      terminalEvidence: TerminalEvidence? = nil
     ) {
       self.leftWindow = leftWindow
       self.rightWindow = rightWindow
       self.selectionLocation = selectionLocation
       self.selectionLength = selectionLength
+      self.terminalEvidence = terminalEvidence
     }
   }
 
@@ -558,8 +604,16 @@ public enum PasteService {
   /// into `. ` leaves every offset identical while inverting whether the next
   /// word should be lowercased. Offsets alone would have called that unchanged
   /// and committed a repair computed from punctuation that is no longer there.
-  package static func caretUnchanged(element: AXUIElement, since context: CaretContext) -> Bool {
-    guard let fresh = readCaretContext(element: element) else { return false }
+  package static func caretUnchanged(
+    element: AXUIElement,
+    since context: CaretContext,
+    terminalBudget: TerminalResolutionBudget? = nil
+  ) -> Bool {
+    // The SAME budget as the initial read, so resolution plus every commit check
+    // share one cumulative per-delivery bound rather than one bound each.
+    guard let fresh = readCaretContext(element: element, terminalBudget: terminalBudget) else {
+      return false
+    }
     return fresh == context
   }
 
@@ -606,9 +660,75 @@ public enum PasteService {
     return String(utf16[startIndex..<endIndex])
   }
 
+  /// How much of a terminal's rendered screen Gate 2 may read.
+  ///
+  /// 6,000 UTF-16 units, MEASURED rather than chosen: 2,000 lost the opening
+  /// boundary row on long Claude Code input, while 6,000 retained it at every
+  /// length up to 4,800 typed characters. Never a whole-field `AXValue` read —
+  /// on a terminal that is the ENTIRE scrollback.
+  package static let terminalScreenTailUnits = 6000
+
+  /// Read the bounded tail of a terminal's rendered screen.
+  ///
+  /// The returned length must EQUAL the requested length. A short or long
+  /// result, a boundary landing inside a surrogate pair, or an app with no
+  /// parameterized-range support all refuse — a partially-read screen would
+  /// silently produce a wrong input line.
+  static func terminalScreenTail(of element: AXUIElement) -> String? {
+    var countRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(
+        element, kAXNumberOfCharactersAttribute as CFString, &countRef) == .success,
+      let characterCount = countRef as? Int, characterCount > 0
+    else { return nil }
+
+    let length = min(characterCount, terminalScreenTailUnits)
+    let location = characterCount - length
+    guard let tail = string(of: element, at: location, length: length),
+      tail.utf16.count == length
+    else { return nil }
+    return tail
+  }
+
+  /// Resolve a terminal context for `element`, or nil.
+  ///
+  /// Gate 0 reads the bundle identifier from the element's OWN pid rather than
+  /// from anything the caller measured earlier.
+  static func terminalCaretContext(
+    element: AXUIElement,
+    budget: TerminalResolutionBudget,
+    breaker: TerminalCircuitBreaker
+  ) -> CaretContext? {
+    var pid: pid_t = 0
+    guard AXUIElementGetPid(element, &pid) == .success else { return nil }
+
+    let dependencies = TerminalContextResolver.Dependencies(
+      bundleIdentifier: { NSRunningApplication(processIdentifier: pid)?.bundleIdentifier },
+      scanProcesses: { TerminalProcessScanner.liveSnapshot() },
+      readScreenTail: { terminalScreenTail(of: element) })
+
+    guard
+      let evidence = TerminalContextResolver.resolve(
+        targetPID: pid, budget: budget, breaker: breaker, dependencies: dependencies
+      ).evidence
+    else { return nil }
+
+    // The right window is EMPTY BY CONSTRUCTION. Under the founder's
+    // end-of-line assumption there is no text after the cursor to read, and this
+    // is what keeps the drop-our-full-stop rule inert in terminals.
+    return CaretContext(
+      leftWindow: evidence.located.inputLine,
+      rightWindow: "",
+      selectionLocation: evidence.located.inputLine.utf16.count,
+      selectionLength: 0,
+      terminalEvidence: evidence)
+  }
+
   package static func readCaretContext(
     element: AXUIElement,
-    window: Int = caretContextWindow
+    window: Int = caretContextWindow,
+    terminalBudget: TerminalResolutionBudget? = nil,
+    terminalBreaker: TerminalCircuitBreaker = .shared
   ) -> CaretContext? {
     guard let fresh = freshFocusedElement(matching: element) else { return nil }
 
@@ -628,7 +748,7 @@ public enum PasteService {
 
     guard let range = selectedRange(of: fresh) else { return nil }
 
-    return assembleCaretContext(
+    let caretDerived = assembleCaretContext(
       characterCount: characterCount,
       selectionLocation: range.location,
       selectionLength: range.length,
@@ -636,6 +756,21 @@ public enum PasteService {
       readRange: { location, length in
         string(of: fresh, at: location, length: length)
       })
+
+    // The terminal signature, and the exact condition the shipped repair already
+    // refuses on: no usable left anchor with a non-empty right window. A
+    // terminal reports a caret pinned at 0 while its character count grows, so
+    // the "text after the caret" is really the TOP of the scrollback.
+    //
+    // Gate 0 inside the resolver is what stops this firing in an honest app
+    // whose user simply put the cursor at the very start of a document.
+    let looksLikeATerminal =
+      caretDerived == nil
+      || (caretDerived?.leftWindow.isEmpty == true && caretDerived?.rightWindow.isEmpty == false)
+    guard looksLikeATerminal, let terminalBudget else { return caretDerived }
+
+    return terminalCaretContext(
+      element: fresh, budget: terminalBudget, breaker: terminalBreaker) ?? caretDerived
   }
 
   /// Exact UTF-16 code-unit identity.
@@ -804,14 +939,9 @@ public enum PasteService {
     // enough (Codex review r2): rewriting a preceding `, ` as `. ` leaves every
     // offset identical while inverting whether the next word should be
     // lowercased.
-    let payload: (text: String, kind: PastePayloadKind) = {
-      guard let repaired, let context,
-        rangeBefore.location == context.selectionLocation,
-        rangeBefore.length == context.selectionLength,
-        contextWindowsStillMatch(context, inFieldBefore: fieldBefore)
-      else { return (legacy, .legacy) }
-      return (repaired, .repaired)
-    }()
+    let payload = accessibilityWritePayload(
+      legacy: legacy, repaired: repaired, context: context, rangeBefore: rangeBefore,
+      fieldBefore: fieldBefore)
     let text = payload.text
     let insertedLength = text.utf16.count
 

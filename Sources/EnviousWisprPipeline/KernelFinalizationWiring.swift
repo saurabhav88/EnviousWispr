@@ -169,8 +169,13 @@ struct KernelFinalizationWiring {
     // Caret reader seam. Production reads the live focused field; tests inject
     // deterministic context so the real composition path can be driven without
     // depending on whatever field happens to be focused on the machine.
-    readCaretContext: @escaping @MainActor (AXUIElement) -> PasteService.CaretContext? =
-      { PasteService.readCaretContext(element: $0) },
+    // Caret reader seam. Production reads the live focused field, and supplies
+    // the per-delivery terminal budget so a terminal read is bounded by the same
+    // cumulative allowance as its later revalidation.
+    readCaretContext: @escaping @MainActor (AXUIElement, TerminalResolutionBudget) ->
+      PasteService.CaretContext? = {
+        PasteService.readCaretContext(element: $0, terminalBudget: $1)
+      },
     // Word-oracle seam. Production takes the live runtime snapshot; tests inject
     // a fixed oracle so a case never depends on the machine's dictionaries — and
     // so no test has to MUTATE the process-global runtime, which would race the
@@ -367,6 +372,12 @@ struct KernelFinalizationWiring {
       var pasteResult: PasteDeliveryResult?
       let deliveryOutcome: KernelDeliveryOutcome
       if config?.autoPasteToActiveApp == true {
+        // ONE cumulative terminal-resolution budget for this whole delivery,
+        // created here and reused by every commit-boundary revalidation. A fresh
+        // budget per route would let the total the user waits for grow with the
+        // number of routes tried, which is the bound it exists to keep.
+        let terminalBudget = TerminalResolutionBudget()
+
         // Read the caret ONCE, only when the frozen setting allows it and we
         // actually have a target. `readCaretContext` fails open, so a nil result
         // simply means no candidate.
@@ -374,7 +385,7 @@ struct KernelFinalizationWiring {
           guard config?.smartInsertion == true, let element = context.targetElement else {
             return nil
           }
-          return readCaretContext(element)
+          return readCaretContext(element, terminalBudget)
         }()
 
         // ONE call to the repair, which is the sole owner of the trailing-space
@@ -399,7 +410,12 @@ struct KernelFinalizationWiring {
             // offset zero exactly when it is as long as the caret's offset.
             // Without this the seam de-duplication refused every short field
             // (#1803, local diff review).
-            leftReachesDocumentStart: $0.leftWindow.utf16.count == $0.selectionLocation)
+            leftReachesDocumentStart: $0.leftWindow.utf16.count == $0.selectionLocation,
+            // The narrow policy fact the repair needs. A screen-derived line is
+            // ONE rendered row, so a payload carrying a line break is refused
+            // rather than reasoned about — in a terminal a newline can submit
+            // the command.
+            isScreenDerived: $0.isScreenDerived)
         }
 
         // Resolved from positive evidence, NOT read off the result.
@@ -477,7 +493,8 @@ struct KernelFinalizationWiring {
             caretContext: caretContext,
             targetApp: context.targetApp,
             targetElement: context.targetElement,
-            restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false))
+            restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
+            terminalBudget: terminalBudget))
         pasteResult = result
         if case .delivered = result.outcome {
           // The text that actually LANDED, which is not always the one this

@@ -131,21 +131,26 @@ package enum TerminalContextResolver {
   /// Everything the resolver touches from the outside world, injected so the
   /// decision logic is testable without a terminal, a process table or an
   /// accessibility connection.
-  package struct Dependencies: Sendable {
+  /// Deliberately NOT `Sendable`: resolution is synchronous and single-threaded
+  /// per delivery, and the accessibility element these closures read is not
+  /// Sendable either. Marking them `@Sendable` would force the caller to smuggle
+  /// a foreign app's accessibility handle across an isolation boundary, which is
+  /// the opposite of what this type is for.
+  package struct Dependencies {
     /// Bundle identifier of the app being pasted into.
-    package let bundleIdentifier: @Sendable () -> String?
+    package let bundleIdentifier: () -> String?
     /// Every readable process, or `.unavailable`.
-    package let scanProcesses: @Sendable () -> TerminalProcessScan
+    package let scanProcesses: () -> TerminalProcessScan
     /// The bounded tail of the focused tab's rendered screen, or nil.
-    package let readScreenTail: @Sendable () -> String?
+    package let readScreenTail: () -> String?
     /// Seconds elapsed, for charging the budget.
-    package let now: @Sendable () -> Double
+    package let now: () -> Double
 
     package init(
-      bundleIdentifier: @escaping @Sendable () -> String?,
-      scanProcesses: @escaping @Sendable () -> TerminalProcessScan,
-      readScreenTail: @escaping @Sendable () -> String?,
-      now: @escaping @Sendable () -> Double = { Date().timeIntervalSinceReferenceDate }
+      bundleIdentifier: @escaping () -> String?,
+      scanProcesses: @escaping () -> TerminalProcessScan,
+      readScreenTail: @escaping () -> String?,
+      now: @escaping () -> Double = { Date().timeIntervalSinceReferenceDate }
     ) {
       self.bundleIdentifier = bundleIdentifier
       self.scanProcesses = scanProcesses
