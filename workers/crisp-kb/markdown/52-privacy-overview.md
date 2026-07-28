@@ -12,6 +12,8 @@ EnviousWispr does not require an account, login, or registration. You download t
 
 The source code is publicly available on GitHub under the GPLv3 license. You can inspect exactly what the app does.
 
-### Works Fully Offline
+### Dictation Works Fully Offline
 
-Out of the box, EnviousWispr works completely offline. AI polish is optional and off by default. With AI polish disabled, no network connection is used at any point in the pipeline.
+Recording, transcribing, and pasting need no network connection at all. AI polish is optional and off by default, so out of the box nothing you dictate travels anywhere.
+
+The app itself does send anonymous usage and crash diagnostics, which is on by default and contains no dictation content. See "What Data Is Collected".
