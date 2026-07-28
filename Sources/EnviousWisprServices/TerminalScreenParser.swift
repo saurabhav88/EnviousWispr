@@ -10,9 +10,11 @@ import Foundation
 /// — is a supported CLI actually running — is what authorises a read. This type
 /// only answers "where is the line", and only after that.
 ///
-/// Ported from the parked Level 3 prototype rather than reinvented
-/// (`research/seam-joining/code/join_hotkey.py`), which drove ten dictated chunks
-/// through Ghostty and paid for every rule here.
+/// Ported from the parked Level 3 prototype rather than reinvented — it drove
+/// ten dictated chunks through Ghostty and paid for every rule here. That
+/// prototype no longer lives in this repo; it is the git tag
+/// `parked/level3-seam-joining-2026-07-28` (issue #1795), whose message says
+/// how to check it out.
 package enum TerminalScreenParser {
 
   /// Where the input line is, and which tool drew it.
