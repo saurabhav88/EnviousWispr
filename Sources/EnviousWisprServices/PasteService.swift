@@ -461,6 +461,11 @@ public enum PasteService {
     }
   }
 
+  /// The accessibility messaging timeout applied to a destination before any
+  /// read. A failure bound, not a latency target — single owner, so the terminal
+  /// path can restore exactly this value after tightening it.
+  package static let axMessagingTimeoutSeconds: Double = 0.5
+
   /// How many UTF-16 units to read either side. One character is provably not
   /// enough — `"home. "` and `"home, "` both end in a space and need opposite
   /// decisions — so the reader takes a window and the rule walks back within it.
@@ -568,8 +573,8 @@ public enum PasteService {
 
     let application = AXUIElementCreateApplication(pid)
     // Bound every subsequent read. A wedged destination must not hang the
-    // dictation path; 0.5s is a failure bound, not a latency target.
-    AXUIElementSetMessagingTimeout(application, 0.5)
+    // dictation path; this is a failure bound, not a latency target.
+    AXUIElementSetMessagingTimeout(application, Float(axMessagingTimeoutSeconds))
 
     var focusedRef: CFTypeRef?
     guard
@@ -705,7 +710,23 @@ public enum PasteService {
     let dependencies = TerminalContextResolver.Dependencies(
       bundleIdentifier: { NSRunningApplication(processIdentifier: pid)?.bundleIdentifier },
       scanProcesses: { TerminalProcessScanner.liveSnapshot() },
-      readScreenTail: { terminalScreenTail(of: element) })
+      readScreenTail: {
+        // Bound the accessibility call ITSELF to what is left of the budget,
+        // rather than only noticing afterwards that it overran.
+        //
+        // The default messaging timeout is 0.5 s per call, so a wedged terminal
+        // would otherwise block delivery for five times the budget before
+        // anything could react. This is the one lever that shortens the call
+        // instead of just measuring it, and it needs no async ripple through a
+        // synchronous, main-actor read path.
+        //
+        // The breaker still matters: this bounds ONE call, while the breaker
+        // stops the next dictation paying the same cost again.
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, Float(max(0.010, budget.remaining)))
+        defer { AXUIElementSetMessagingTimeout(application, Float(axMessagingTimeoutSeconds)) }
+        return terminalScreenTail(of: element)
+      })
 
     guard
       let evidence = TerminalContextResolver.resolve(

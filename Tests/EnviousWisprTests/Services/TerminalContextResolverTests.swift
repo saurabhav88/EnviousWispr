@@ -280,6 +280,63 @@ struct TerminalContextResolverTests {
     #expect(!breaker.isOpen(for: 900))
   }
 
+  @Test("A read that overruns the budget TRIPS the breaker, in production code")
+  func overrunTripsTheBreaker() {
+    // Whole-diff review found the breaker was never armed: it was tested,
+    // documented, and inert, so a wedged terminal would have repeated its delay
+    // on every dictation forever. Tests that trip it by hand cannot catch that.
+    // This drives the PRODUCT path and asserts the breaker ends up open.
+    let clock = TestClock()
+    clock.perCallCost = 0.400  // one wedged accessibility call
+    let breaker = TerminalCircuitBreaker()
+    let budget = TerminalResolutionBudget(total: 0.100)
+
+    let result = resolve(dependencies(clock: clock), budget: budget, breaker: breaker, pid: 900)
+    #expect(result == .refused(.deadline))
+    #expect(breaker.isOpen(for: 900), "an overrun must arm the breaker, not merely refuse once")
+  }
+
+  @Test("Evidence that arrived AFTER the deadline is discarded, not used")
+  func overspentEvidenceIsRejected() {
+    // The read can complete perfectly and still be too late. Accepting it would
+    // make the promised bound meaningless, because the user already waited.
+    let clock = TestClock()
+    clock.perCallCost = 0.400
+    let result = resolve(
+      dependencies(clock: clock), budget: .init(total: 0.100), breaker: .init(), pid: 900)
+    #expect(result.evidence == nil)
+  }
+
+  @Test("The NEXT dictation after an overrun starts no read at all")
+  func breakerStopsTheFollowingDelivery() {
+    let clock = TestClock()
+    clock.perCallCost = 0.400
+    let breaker = TerminalCircuitBreaker()
+    _ = resolve(dependencies(clock: clock), budget: .init(total: 0.100), breaker: breaker, pid: 900)
+
+    // A fresh delivery: fresh budget, healthy clock, nothing wedged.
+    let scanned = Flag()
+    let healthy = TerminalContextResolver.Dependencies(
+      bundleIdentifier: { "com.mitchellh.ghostty" },
+      scanProcesses: {
+        scanned.raise()
+        return Self.runningClaude()
+      },
+      readScreenTail: { Self.claudeScreen })
+    #expect(
+      resolve(healthy, budget: .init(), breaker: breaker, pid: 900) == .refused(.breakerOpen))
+    #expect(!scanned.wasRaised, "the wedged terminal must not be touched again")
+  }
+
+  @Test("A healthy resolution leaves the breaker closed")
+  func healthyResolutionDoesNotTrip() {
+    // The two-way control: without this, a breaker that tripped on EVERY
+    // resolution would pass the tests above and disable the feature entirely.
+    let breaker = TerminalCircuitBreaker()
+    #expect(resolve(dependencies(), breaker: breaker, pid: 900).evidence != nil)
+    #expect(!breaker.isOpen(for: 900))
+  }
+
   // MARK: - Revalidation
 
   @Test("Unchanged evidence revalidates")

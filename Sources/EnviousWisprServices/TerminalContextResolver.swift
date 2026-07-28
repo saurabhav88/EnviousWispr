@@ -159,6 +159,25 @@ package enum TerminalContextResolver {
     }
   }
 
+  /// Charge a step, and decide whether the budget is now spent.
+  ///
+  /// Tripping the breaker HERE is what arms it. Whole-diff review found that
+  /// nothing in production ever called `trip`, so the breaker was tested,
+  /// documented, and inert — a wedged terminal would have repeated its delay on
+  /// every single dictation forever. Tests that only trip it by hand cannot
+  /// catch that; this is the one place the product itself does.
+  static func overspent(
+    by elapsed: Double,
+    budget: TerminalResolutionBudget,
+    breaker: TerminalCircuitBreaker,
+    pid: pid_t
+  ) -> Bool {
+    budget.charge(elapsed)
+    guard budget.isExhausted else { return false }
+    breaker.trip(for: pid)
+    return true
+  }
+
   /// Run all three gates.
   ///
   /// Order is deliberate and is a cost decision as much as a safety one: the
@@ -185,7 +204,9 @@ package enum TerminalContextResolver {
     // result is what keeps them apart.
     let scanStart = dependencies.now()
     let scan = dependencies.scanProcesses()
-    budget.charge(dependencies.now() - scanStart)
+    if overspent(by: dependencies.now() - scanStart, budget: budget, breaker: breaker, pid: targetPID) {
+      return .refused(.deadline)
+    }
 
     let running: [RunningTerminalCLI]
     switch scan {
@@ -195,12 +216,16 @@ package enum TerminalContextResolver {
       running = TerminalProcessScanner.supportedCLIs(in: snapshots, hostedBy: surface)
     }
     guard !running.isEmpty else { return .refused(.noSupportedCLI) }
-    if budget.isExhausted { return .refused(.deadline) }
 
     // Gate 2 — WHERE the line is. Never whether.
     let readStart = dependencies.now()
     let tail = dependencies.readScreenTail()
-    budget.charge(dependencies.now() - readStart)
+    if overspent(by: dependencies.now() - readStart, budget: budget, breaker: breaker, pid: targetPID) {
+      // The evidence may well be complete, and it is discarded anyway. A result
+      // that arrived after the deadline is a result the user already waited too
+      // long for, and accepting it would make the promised bound meaningless.
+      return .refused(.deadline)
+    }
 
     guard let tail else { return .refused(.screenUnreadable) }
     guard let located = TerminalScreenParser.locate(inScreenTail: tail) else {
