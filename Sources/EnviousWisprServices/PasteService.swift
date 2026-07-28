@@ -753,7 +753,7 @@ public enum PasteService {
     // read is bounded by the remaining budget. There are exactly four paths out
     // of this function, and each one states its bound:
     //
-    //   1. no budget            -> today's default. Not a terminal delivery.
+    //   1. not a terminal       -> today's default, unchanged.
     //   2. breaker already open -> BOUNDED. Round 3 found this returning to the
     //                              0.5 s default, so a terminal known to be
     //                              wedged still cost half a second on every
@@ -764,13 +764,34 @@ public enum PasteService {
     //
     // Rounds one and two each fixed one path and left the others; the fix is a
     // single place that computes the bound, not another branch that remembers to.
-    guard let terminalBudget else {
-      // Path 1. No budget means no terminal attempt, byte-identical to today.
+    //
+    // GATE 0 FIRST, and this ordering is load-bearing rather than tidy.
+    //
+    // Production supplies a budget on EVERY delivery, so gating the terminal
+    // policy on "was a budget passed" applied it to every app in the product.
+    // Cloud review caught both consequences: an ordinary app's caret read was
+    // being squeezed from the 0.5 s failure bound down to 100 ms, so a slow but
+    // perfectly honest field could start failing to read where it used to
+    // succeed; and an ordinary app with the caret at the start of a non-empty
+    // field matched the terminal signature, so Gate 0's refusal was reported as
+    // terminal telemetry for something that is not a terminal.
+    //
+    // Asking "is this app a terminal" costs one bundle-id lookup and no
+    // accessibility call, so it is asked BEFORE any policy is applied. A
+    // non-terminal delivery then takes exactly today's path: default timeout, no
+    // budget charged, no terminal outcome recorded.
+    var targetPID: pid_t = 0
+    let hasPID = AXUIElementGetPid(element, &targetPID) == .success
+    let surface =
+      hasPID
+      ? NSRunningApplication(processIdentifier: targetPID)?.bundleIdentifier
+        .flatMap(TerminalSurface.init(bundleIdentifier:))
+      : nil
+
+    guard let terminalBudget, surface != nil, hasPID else {
+      // Path 1. Not a terminal delivery — byte-identical to today.
       return caretDerivedContext(element: element, window: window)
     }
-
-    var targetPID: pid_t = 0
-    guard AXUIElementGetPid(element, &targetPID) == .success else { return nil }
 
     // ONE owner of the bound, so no path can forget it.
     let bound = max(0.010, min(terminalBudget.remaining, axMessagingTimeoutSeconds))

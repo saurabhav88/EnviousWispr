@@ -148,6 +148,29 @@ struct TerminalInsertionPolicyTests {
     #expect(PasteService.axMessagingTimeoutSeconds == 0.5)
   }
 
+  @Test("An ordinary app is untouched by terminal policy")
+  func ordinaryAppsKeepTodaysBehaviour() {
+    // Cloud review caught this as a REGRESSION I introduced: production supplies
+    // a budget on every delivery, so gating terminal policy on "was a budget
+    // passed" squeezed every app's caret read from the 0.5 s failure bound to
+    // 100 ms, and reported terminal refusals for apps that are not terminals.
+    //
+    // TextEdit is not a Gate 0 surface, so no terminal policy may apply to it.
+    #expect(TerminalSurface(bundleIdentifier: "com.apple.TextEdit") == nil)
+    #expect(TerminalSurface(bundleIdentifier: "com.microsoft.Word") == nil)
+    #expect(TerminalSurface(bundleIdentifier: "com.tinyspeck.slackmacgap") == nil)
+
+    // And an ordinary app's context carries no terminal provenance, so neither
+    // the multiline refusal nor the Tier 1 exclusion can reach it.
+    let ordinary = PasteService.CaretContext(
+      leftWindow: "notes: ", rightWindow: "", selectionLocation: 7, selectionLength: 0)
+    #expect(!ordinary.isScreenDerived)
+    let payload = PasteService.accessibilityWritePayload(
+      legacy: "Fix it ", repaired: "fix it ", context: ordinary,
+      rangeBefore: CFRange(location: 7, length: 0), fieldBefore: "notes: ")
+    #expect(payload.kind == .repaired, "an ordinary app must still get its repair")
+  }
+
   // MARK: - Tier 1 exclusion
 
   @Test("Screen evidence never authorises the accessibility-write route")
