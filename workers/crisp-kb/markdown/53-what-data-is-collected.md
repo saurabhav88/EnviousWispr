@@ -15,7 +15,7 @@ Your custom words, writing styles, settings, and API keys live here too. They st
 * Your prompts, custom words, or writing styles
 * The text around your cursor
 * Your API keys
-* Your name, email, or anything else that identifies you
+* Your name, email address, or any other personal detail
 
 ### What We Do Collect
 
