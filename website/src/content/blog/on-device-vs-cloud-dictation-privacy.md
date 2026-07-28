@@ -109,7 +109,7 @@ That entire pipeline, from your voice to polished text, ran locally on your Mac.
 
 A few specifics worth noting:
 
-- **No sign-up required.** No login, no telemetry, no account walls.
+- **No sign-up required.** No login, no account walls, and no telemetry on what you dictate.
 - **Free to download.** EnviousWispr is available on [GitHub](https://github.com/saurabhav88/EnviousWispr) at no cost.
 - **Hands-free mode.** Double-press the hotkey to lock recording for extended dictation sessions without holding a key.
 - **Custom word dictionary.** Add names, technical terms, and jargon. Multi-pass fuzzy matching corrects misrecognitions automatically.
