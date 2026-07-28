@@ -1,27 +1,32 @@
-EnviousWispr uses opt-in telemetry via PostHog to improve the product. No data is collected without your explicit consent.
+Nothing you say ever reaches us. Not your audio, not your transcripts, not a word of it.
 
-### Opt-In Only
+### What Stays On Your Mac
 
-Telemetry is only active if you explicitly opt in. No analytics are collected by default.
+Your transcripts are saved to your history so you can find them later. They sit in your user folder, and we never receive a copy.
 
-### What Is Collected (When Opted In)
+While you dictate, the app keeps an encrypted backup of the recording. Once your text is safely saved, the app deletes it. If the app crashes first, that backup is what rescues your words on the next launch. You can switch it off in Settings.
 
-If you choose to enable telemetry, the following anonymized events are collected:
+Your custom words, writing styles, settings, and API keys live here too. They stay here unless you turn on cloud polish, which is covered below.
 
-* **App launched**: App version, OS version, and hardware model (for retention metrics).
-* **Recording started**: Trigger method (hotkey or button) and which ASR backend was used.
-* **Transcription completed**: Duration in milliseconds, word count, and whether AI polish was used.
-* **Polish used**: Which LLM provider was used and latency in milliseconds.
-* **Settings changed**: Which setting key was changed (the value is never recorded).
+### What We Never Receive
 
-### Anonymized Identifiers
+* Your audio
+* Your transcripts, before or after polish
+* Your prompts, custom words, or writing styles
+* The text around your cursor
+* Your API keys
+* Your name or email address
 
-A random UUID is generated at install time for analytics. This is not tied to any hardware identifier, account, or personal information.
+### What We Do Collect
 
-### What Is Never Collected
+Anonymous usage and crash data. It tells us a release broke dictation on a particular macOS version, or that nobody has ever opened a setting we spent a month on. It is on by default and cannot be turned off.
 
-* Transcript text content
-* API keys or tokens
-* Microphone audio or samples
-* File paths or usernames
-* Email, name, or any personally identifying information
+It records how the app is used, never what you said. There is no account and nothing in it names you, though each install gets a random ID so we can count one Mac as one user. Our privacy policy has the full detail.
+
+If you would rather run without it, EnviousWispr is open source. Build it yourself and dictation works exactly the same.
+
+### If You Use Cloud AI Polish
+
+Polish runs on your Mac by default. Choose OpenAI, Gemini, or Claude instead and you add your own API key, and your transcript is sent to them, along with your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Audio is never sent. The app tells you this when you set it up. That is your account with that company, on their terms.
+
+We are not in the middle of it. Everything goes straight from your Mac to them, so we never see it either way.

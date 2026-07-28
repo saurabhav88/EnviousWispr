@@ -5,8 +5,13 @@
 
 set -uo pipefail
 
-CRISP_ID=$("$HOME/.claude/bin/get-key" crisp-plugin-identifier)
-CRISP_KEY=$("$HOME/.claude/bin/get-key" crisp-plugin-key)
+# Prefer values already bridged into the environment: get-key refuses to print a
+# value inside a Claude Code session, so an agent must wrap this script in
+#   get-key launch crisp-plugin-identifier CRISP_ID -- \
+#   get-key launch crisp-plugin-key CRISP_KEY -- bash upload.sh
+# A human running this outside Claude needs neither wrapper.
+CRISP_ID="${CRISP_ID:-$("$HOME/.claude/bin/get-key" crisp-plugin-identifier)}"
+CRISP_KEY="${CRISP_KEY:-$("$HOME/.claude/bin/get-key" crisp-plugin-key)}"
 WEBSITE_ID="6cfca684-ab92-4927-a1a3-6bf97eac13f9"
 LOCALE="en"
 BASE="https://api.crisp.chat/v1"
