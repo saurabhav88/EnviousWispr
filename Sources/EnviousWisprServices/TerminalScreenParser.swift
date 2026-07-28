@@ -108,6 +108,25 @@ package enum TerminalScreenParser {
     return String(body).replacingOccurrences(of: "\u{00A0}", with: " ")
   }
 
+  /// Whether a LIVE shell prompt sits below `index`, which proves the match was
+  /// scrollback: the user ran a full-screen tool, quit it, and is now at a shell.
+  ///
+  /// CLASS FIX, whole-diff review r2. This check existed only on the boxed path,
+  /// so an old Codex row with a shell prompt beneath it still matched — the
+  /// prompt merely counted as one of the two permitted status rows. Both layout
+  /// paths now share this one owner, because "which layouts apply the staleness
+  /// check" is exactly the kind of question that drifts when each path answers
+  /// it separately.
+  static func aLivePromptSits(below index: Int, in rows: [Substring]) -> Bool {
+    guard index + 1 < rows.count else { return false }
+    for row in rows[(index + 1)...] where !isBlank(row) {
+      if let opener = openingCharacter(of: row), shellPromptMarkers.contains(opener) {
+        return true
+      }
+    }
+    return false
+  }
+
   // MARK: - Entry point
 
   /// Locate the input line, or nil to refuse.
@@ -140,6 +159,9 @@ package enum TerminalScreenParser {
 
     let populatedBelow = rows[(index + 1)...].filter { !isBlank($0) }.count
     guard populatedBelow <= 2 else { return nil }
+    // Same staleness rule as the boxed layouts: a live shell prompt below means
+    // Codex has exited and this row is history.
+    guard !aLivePromptSits(below: index, in: rows) else { return nil }
 
     let line = stripLeadingMarker(rows[index], codexMarker)
     guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
@@ -165,13 +187,7 @@ package enum TerminalScreenParser {
     // rows reconstructs different text — a soft wrap can fall mid-word.
     guard body.count == 1, let row = body.first else { return nil }
 
-    // A LIVE shell prompt below the box proves the box is scrollback: the user
-    // ran a full-screen tool earlier, quit it, and is now at a shell.
-    for below in rows[(closing.0 + 1)...] where !isBlank(below) {
-      if let opener = openingCharacter(of: below), shellPromptMarkers.contains(opener) {
-        return nil
-      }
-    }
+    guard !aLivePromptSits(below: closing.0, in: rows) else { return nil }
 
     let cli: SupportedTerminalCLI = closing.1 == .block ? .geminiCLI : .claudeCode
     let marker = closing.1 == .block ? geminiMarker : claudeMarker

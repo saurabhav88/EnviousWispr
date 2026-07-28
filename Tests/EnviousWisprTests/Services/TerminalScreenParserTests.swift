@@ -264,6 +264,52 @@ struct TerminalScreenParserTests {
     #expect(TerminalScreenParser.locate(inScreenTail: blanksOnly) == nil)
   }
 
+  @Test("A stale Codex row with a shell prompt below it refuses")
+  func staleCodexRowBelowALivePromptRefuses() {
+    // CLASS FIX, whole-diff review r2: the staleness check lived only on the
+    // boxed path, so an exited Codex left its last input row matchable — the
+    // shell prompt beneath merely counted as one of the two permitted status
+    // rows. With another supported CLI open in a different tab, Gate 1 passes
+    // too, and dictation at the shell prompt would have been joined onto stale
+    // Codex text.
+    let stale = """
+      \u{203A} an old codex prompt
+      \u{276F} git commit -m fix the
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: stale) == nil)
+  }
+
+  @Test("Both layout paths apply the SAME staleness rule", arguments: ["\u{203A}", "boxed"])
+  func stalenessAppliesToEveryLayout(kind: String) {
+    // Enumerating the class rather than fixing the reported instance: there are
+    // exactly two layout paths, and both must refuse.
+    let screen =
+      kind == "boxed"
+      ? """
+        \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+        \u{276F} old boxed input
+        \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+        $ ls -la
+        """
+      : """
+        \u{203A} old codex input
+        $ ls -la
+        """
+    #expect(TerminalScreenParser.locate(inScreenTail: screen) == nil)
+  }
+
+  @Test("Codex still matches when only its own status bar sits below")
+  func codexStillMatchesWithItsStatusBar() {
+    // The two-way control: the staleness rule must not refuse Codex's normal
+    // screen, or the fix above would disable the tool entirely.
+    let live = """
+      earlier output
+      \u{203A} refactor the handler
+        weekly 63% left
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: live)?.cli == .codex)
+  }
+
   // MARK: - Character handling
 
   @Test("The box's non-breaking padding becomes an ordinary space")

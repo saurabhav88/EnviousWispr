@@ -562,7 +562,10 @@ public enum PasteService {
   ///
   /// Returns nil for untrusted accessibility, a dead process, an unreadable
   /// focus, or a different element — every one of which means "do not repair".
-  static func freshFocusedElement(matching element: AXUIElement) -> AXUIElement? {
+  static func freshFocusedElement(
+    matching element: AXUIElement,
+    messagingTimeout: Double = axMessagingTimeoutSeconds
+  ) -> AXUIElement? {
     guard AXIsProcessTrusted() else { return nil }
 
     // Resolve the owning process from the captured element itself — never from
@@ -574,7 +577,7 @@ public enum PasteService {
     let application = AXUIElementCreateApplication(pid)
     // Bound every subsequent read. A wedged destination must not hang the
     // dictation path; this is a failure bound, not a latency target.
-    AXUIElementSetMessagingTimeout(application, Float(axMessagingTimeoutSeconds))
+    AXUIElementSetMessagingTimeout(application, Float(messagingTimeout))
 
     var focusedRef: CFTypeRef?
     guard
@@ -710,23 +713,7 @@ public enum PasteService {
     let dependencies = TerminalContextResolver.Dependencies(
       bundleIdentifier: { NSRunningApplication(processIdentifier: pid)?.bundleIdentifier },
       scanProcesses: { TerminalProcessScanner.liveSnapshot() },
-      readScreenTail: {
-        // Bound the accessibility call ITSELF to what is left of the budget,
-        // rather than only noticing afterwards that it overran.
-        //
-        // The default messaging timeout is 0.5 s per call, so a wedged terminal
-        // would otherwise block delivery for five times the budget before
-        // anything could react. This is the one lever that shortens the call
-        // instead of just measuring it, and it needs no async ripple through a
-        // synchronous, main-actor read path.
-        //
-        // The breaker still matters: this bounds ONE call, while the breaker
-        // stops the next dictation paying the same cost again.
-        let application = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(application, Float(max(0.010, budget.remaining)))
-        defer { AXUIElementSetMessagingTimeout(application, Float(axMessagingTimeoutSeconds)) }
-        return terminalScreenTail(of: element)
-      })
+      readScreenTail: { terminalScreenTail(of: element) })
 
     guard
       let evidence = TerminalContextResolver.resolve(
@@ -751,7 +738,65 @@ public enum PasteService {
     terminalBudget: TerminalResolutionBudget? = nil,
     terminalBreaker: TerminalCircuitBreaker = .shared
   ) -> CaretContext? {
-    guard let fresh = freshFocusedElement(matching: element) else { return nil }
+    // CLASS FIX, whole-diff review r2. The budget previously covered only the
+    // resolver's own steps, so the FIVE accessibility reads that run before it —
+    // focused element, role, character count, selection, and the two windows —
+    // were each bounded at the 0.5 s failure timeout and charged nothing. A
+    // wedge in any of them returned nil before the resolver ran, so the breaker
+    // was never armed and every dictation repeated the delay.
+    //
+    // Every read on this path is now bounded at its single entry point, and the
+    // WHOLE operation is charged and can arm the breaker, not just its tail.
+    guard let terminalBudget else {
+      // No budget means no terminal attempt, byte-identical to today.
+      return caretDerivedContext(element: element, window: window)
+    }
+
+    var targetPID: pid_t = 0
+    guard AXUIElementGetPid(element, &targetPID) == .success else { return nil }
+    if terminalBreaker.isOpen(for: targetPID) {
+      return caretDerivedContext(element: element, window: window)
+    }
+
+    let started = Date().timeIntervalSinceReferenceDate
+    var context = caretDerivedContext(
+      element: element, window: window,
+      messagingTimeout: max(0.010, min(terminalBudget.remaining, axMessagingTimeoutSeconds)))
+
+    if TerminalContextResolver.overspent(
+      by: Date().timeIntervalSinceReferenceDate - started,
+      budget: terminalBudget, breaker: terminalBreaker, pid: targetPID)
+    {
+      // Whatever came back arrived too late to spend more time on.
+      return context
+    }
+
+    // The terminal signature, and the exact condition the shipped repair already
+    // refuses on: no usable left anchor with a non-empty right window. A
+    // terminal reports a caret pinned at 0 while its character count grows, so
+    // the "text after the caret" is really the TOP of the scrollback.
+    //
+    // Gate 0 inside the resolver is what stops this firing in an honest app
+    // whose user simply put the cursor at the very start of a document.
+    let looksLikeATerminal =
+      context == nil || (context?.leftWindow.isEmpty == true && context?.rightWindow.isEmpty == false)
+    guard looksLikeATerminal else { return context }
+
+    context =
+      terminalCaretContext(element: element, budget: terminalBudget, breaker: terminalBreaker)
+      ?? context
+    return context
+  }
+
+  /// Today's selected-range read, unchanged. Split out so the terminal path can
+  /// reuse it without duplicating a single accessibility call.
+  static func caretDerivedContext(
+    element: AXUIElement,
+    window: Int,
+    messagingTimeout: Double = axMessagingTimeoutSeconds
+  ) -> CaretContext? {
+    guard let fresh = freshFocusedElement(matching: element, messagingTimeout: messagingTimeout)
+    else { return nil }
 
     // Role is read from the FRESH element, never the captured handle.
     var roleRef: CFTypeRef?
@@ -769,7 +814,7 @@ public enum PasteService {
 
     guard let range = selectedRange(of: fresh) else { return nil }
 
-    let caretDerived = assembleCaretContext(
+    return assembleCaretContext(
       characterCount: characterCount,
       selectionLocation: range.location,
       selectionLength: range.length,
@@ -777,21 +822,6 @@ public enum PasteService {
       readRange: { location, length in
         string(of: fresh, at: location, length: length)
       })
-
-    // The terminal signature, and the exact condition the shipped repair already
-    // refuses on: no usable left anchor with a non-empty right window. A
-    // terminal reports a caret pinned at 0 while its character count grows, so
-    // the "text after the caret" is really the TOP of the scrollback.
-    //
-    // Gate 0 inside the resolver is what stops this firing in an honest app
-    // whose user simply put the cursor at the very start of a document.
-    let looksLikeATerminal =
-      caretDerived == nil
-      || (caretDerived?.leftWindow.isEmpty == true && caretDerived?.rightWindow.isEmpty == false)
-    guard looksLikeATerminal, let terminalBudget else { return caretDerived }
-
-    return terminalCaretContext(
-      element: fresh, budget: terminalBudget, breaker: terminalBreaker) ?? caretDerived
   }
 
   /// Exact UTF-16 code-unit identity.
