@@ -30,6 +30,7 @@ import re
 import sys
 import threading
 import time
+from collections import Counter
 
 import regex
 
@@ -599,6 +600,12 @@ def looks_unsafe(before, after):
     # Any script, not just Latin-1. `regex` is already imported for exactly
     # this reason; \p{L} is the platform's own letter property, so there is no
     # hand-maintained alphabet here to fall behind Unicode.
+    # \p{N} is NOT optional. A letters-only class leaves every number
+    # unchecked, and "Send 10 units" -> "Send 100 units" is the single worst
+    # thing this guard could wave through: same word count, same letters, a
+    # different instruction. Currency and percent signs count for the same
+    # reason — "5" and "5%" are different claims.
+    #
     # Coarse for scripts that do not space their words: Japanese or Chinese
     # yields one token per run of letters, so the comparison becomes
     # all-or-nothing rather than word-by-word. That is blunt, but it fails
@@ -606,7 +613,7 @@ def looks_unsafe(before, after):
     # tokens at all, so everything passed). Real segmentation is the fix if
     # this prototype ever targets those languages.
     def tokens(text):
-        return [w.lower() for w in regex.findall(r"[\p{L}\p{M}']+", text)]
+        return [w.lower() for w in regex.findall(r"[\p{L}\p{M}\p{N}\p{Sc}%']+", text)]
 
     # English contractions are a genuinely CLOSED set, unlike an open-ended
     # word list — so enumerating them is honest. Expanded on both sides, which
@@ -646,14 +653,61 @@ def looks_unsafe(before, after):
                    "which", "while", "although", "though"}
     MAX_ADDED_CONNECTIVES = 1
 
-    spoken = set(expand(before))
-    unspoken = [w for w in expand(after) if w not in spoken]
-    added_connectives = [w for w in unspoken if w in CONNECTIVES]
-    invented = [w for w in unspoken if w not in CONNECTIVES]
-    if invented:
-        return f"used words that were never said: {sorted(set(invented))}"
+    # Assert the CONTRACT rather than police exemptions one at a time.
+    #
+    # Three rounds of review found five separate leaks in a "no word in the
+    # output was absent from the input" test — an ASCII-only alphabet, a prefix
+    # rule, an unbounded connective exemption, unchecked DIGITS ("Send 10
+    # units" -> "Send 100 units"), and a set that lost multiplicity ("Please
+    # send it now" -> "Please please send it now"). A sixth, reordering
+    # ("Mark told Sam" -> "Sam told Mark"), was found by sweeping the axes
+    # afterwards. Every fix was another clause that the next case walked around,
+    # because a membership test is the wrong shape for the question.
+    #
+    # JOIN_NOTE already states the contract exactly: never drop a word, never
+    # replace a word with a different word, never reinterpret — the only
+    # sanctioned edit is a connecting word made redundant by the join. So
+    # compare the CONTENT SEQUENCE directly. Strip connectives from both sides
+    # and what remains must be identical, in order.
+    #
+    # That single assertion subsumes all six leaks: a substitution changes a
+    # token, a digit change changes a token, a repetition adds one, a reorder
+    # moves one, and a drop removes one. Nothing is exempt except the thing the
+    # contract actually exempts.
+    spoken_seq = [w for w in expand(before) if w not in CONNECTIVES]
+    written_seq = [w for w in expand(after) if w not in CONNECTIVES]
+    if written_seq != spoken_seq:
+        spoken_bag, written_bag = Counter(spoken_seq), Counter(written_seq)
+        added = sorted((written_bag - spoken_bag).elements())
+        lost = sorted((spoken_bag - written_bag).elements())
+        if added or lost:
+            detail = []
+            if added:
+                detail.append(f"used words that were never said: {added}")
+            if lost:
+                detail.append(f"dropped words that were said: {lost}")
+            return "; ".join(detail)
+        return "reordered what was said without changing the words"
+
+    # Residual behaviour, swept for deliberately rather than discovered later:
+    #   - Emoji and pictographs are not tokenized, so an added one passes. The
+    #     contract forbids it, but a decorative character is not worth the
+    #     false positives that tokenizing every symbol class would cost.
+    #   - Digit GROUPING refuses: "1000" -> "1,000" reads as a changed token
+    #     and the join is abandoned. Fails CLOSED, costs one keystroke, and the
+    #     alternative is teaching this guard number formats so it can also be
+    #     fooled by them. "1.5" -> "15" is caught by the same bluntness, which
+    #     is the trade paying for itself.
+    #   - Hyphenation is invisible ("well-known" and "well known" tokenize
+    #     alike) and case is folded. Both are formatting, both are sanctioned.
+    #
+    # Connectives are exempt from the sequence check, so bound them separately:
+    # one added connective stitches two fragments, more than one is a rewrite.
+    spoken_joins = Counter(w for w in expand(before) if w in CONNECTIVES)
+    written_joins = Counter(w for w in expand(after) if w in CONNECTIVES)
+    added_connectives = sorted((written_joins - spoken_joins).elements())
     if len(added_connectives) > MAX_ADDED_CONNECTIVES:
-        return f"stitched with too many added words: {sorted(added_connectives)}"
+        return f"stitched with too many added words: {added_connectives}"
 
     lowered = after.lower()
     for tell in ("could you", "please share", "i need the", "the transcript you",
