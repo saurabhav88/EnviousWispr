@@ -37,10 +37,23 @@ public enum CursorInsertionRepair {
     /// know cannot accidentally authorise a deletion.
     public let leftReachesDocumentStart: Bool
 
-    public init(left: String, right: String, leftReachesDocumentStart: Bool = false) {
+    /// Whether this context was parsed from a terminal's rendered SCREEN rather
+    /// than read from a real caret.
+    ///
+    /// The narrow POLICY fact, and nothing more: process and accessibility
+    /// evidence stay in Services. A screen-derived line is one rendered row, so
+    /// a payload containing a line break cannot be reasoned about here — see
+    /// the refusal in `prepare`.
+    public let isScreenDerived: Bool
+
+    public init(
+      left: String, right: String, leftReachesDocumentStart: Bool = false,
+      isScreenDerived: Bool = false
+    ) {
       self.left = left
       self.right = right
       self.leftReachesDocumentStart = leftReachesDocumentStart
+      self.isScreenDerived = isScreenDerived
     }
   }
 
@@ -316,6 +329,15 @@ public enum CursorInsertionRepair {
       return PreparedPayloads(
         legacyText: legacy, repairedText: nil, candidateRules: [.refusedNoLeftAnchor])
     }
+    // A screen-derived context describes ONE rendered row. A payload carrying a
+    // line break would submit a line the user never saw assembled, and in a
+    // terminal a newline can SUBMIT the command — so refuse rather than reason
+    // about it. Cheap, and it costs nothing real: dictation into a terminal
+    // prompt is a single line by construction.
+    if context.isScreenDerived, text.contains(where: \.isNewline) {
+      return PreparedPayloads(
+        legacyText: legacy, repairedText: nil, candidateRules: [.refusedNoLeftAnchor])
+    }
     let (repaired, appliedRules) = contextualPayload(
       text: text,
       context: context,
@@ -351,8 +373,24 @@ public enum CursorInsertionRepair {
 
     // Rule 1: a leading space, unless one side already supplies separation —
     // or the language does not separate words with spaces at all.
-    if language.usesWordSpacing, let anchor = left.character, !left.crossedSpace,
-      !left.isOpener,
+    //
+    // NEVER in a terminal (founder 2026-07-28, after live testing). A terminal
+    // truncates each rendered row at its last VISIBLE character — measured: an
+    // input row reported length 2 while the rules around it were 68 — because it
+    // draws a cursor where the trailing space would be. So `fix the` and
+    // `fix the ` are byte-identical on screen and this rule cannot tell them
+    // apart. Since every dictation already ends with a trailing space, it fired
+    // on every consecutive dictation and produced a double space every time.
+    //
+    // Dropping it rather than dropping the trailing space is the founder's call
+    // and the better one: the trailing space is a product promise users have
+    // already learned everywhere else, and removing it in terminals alone would
+    // make terminals the one inconsistent surface. The cost — typing a word,
+    // not typing a space, then dictating — is user-controlled and already how
+    // the app behaves next to a period, which users understand because they
+    // caused it.
+    if !context.isScreenDerived, language.usesWordSpacing, let anchor = left.character,
+      !left.crossedSpace, !left.isOpener,
       let firstCharacter = out.first, !firstCharacter.isWhitespace
     {
       out = " " + out

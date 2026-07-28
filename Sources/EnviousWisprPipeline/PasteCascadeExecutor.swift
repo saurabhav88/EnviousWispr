@@ -19,6 +19,12 @@ internal struct PasteDeliveryRequest {
   let targetApp: NSRunningApplication?
   let targetElement: AXUIElement?
   let restoreClipboardAfterPaste: Bool
+  /// The SAME cumulative terminal-resolution budget the caret read used.
+  ///
+  /// One per delivery, shared by the initial resolution and every commit
+  /// revalidation. A fresh budget per route would let the total wait grow with
+  /// the number of routes tried, which is the bound this exists to keep.
+  let terminalBudget: TerminalResolutionBudget?
 }
 
 /// Typed outcome of a paste delivery operation. Authoritative input for both
@@ -349,7 +355,8 @@ internal final class PasteCascadeExecutor {
           legacy: request.legacyText,
           repaired: request.repairedText,
           context: request.caretContext,
-          element: request.targetElement)
+          element: request.targetElement,
+          terminalBudget: request.terminalBudget)
         // Snapshot AFTER that revalidation, immediately before the write. The
         // re-check makes accessibility calls, and anything copied while they run
         // would otherwise be captured as "the user's old clipboard" and then
@@ -397,7 +404,8 @@ internal final class PasteCascadeExecutor {
           legacy: request.legacyText,
           repaired: request.repairedText,
           context: request.caretContext,
-          element: request.targetElement)
+          element: request.targetElement,
+          terminalBudget: request.terminalBudget)
         // Same ordering as Tier 2: snapshot after the re-check, before the write.
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste
@@ -447,7 +455,8 @@ internal final class PasteCascadeExecutor {
           legacy: request.legacyText,
           repaired: request.repairedText,
           context: request.caretContext,
-          element: request.targetElement)
+          element: request.targetElement,
+          terminalBudget: request.terminalBudget)
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
         submittedClipboardChangeCount = changeCount

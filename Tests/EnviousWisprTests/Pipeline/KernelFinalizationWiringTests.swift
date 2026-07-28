@@ -543,7 +543,7 @@ import Testing
           submittedPayload: .repaired)
       },
       registry: registry,
-      readCaretContext: { _ in Self.midSentenceCaret },
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
       englishWordOracle: { Self.testOracle })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
@@ -572,7 +572,7 @@ import Testing
           submittedPayload: .legacy)
       },
       registry: registry,
-      readCaretContext: { _ in Self.midSentenceCaret },
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
       englishWordOracle: { Self.testOracle })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
@@ -768,7 +768,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret },
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
       englishWordOracle: { Self.testOracle })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
@@ -809,7 +809,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in
+      readCaretContext: { _, _, _ in
         PasteService.CaretContext(
           leftWindow: "Ich gehe zum ", rightWindow: "", selectionLocation: 13, selectionLength: 0)
       },
@@ -849,7 +849,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in
+      readCaretContext: { _, _, _ in
         PasteService.CaretContext(
           leftWindow: "I want to go to the ", rightWindow: "", selectionLocation: 20,
           selectionLength: 0)
@@ -885,7 +885,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in
+      readCaretContext: { _, _, _ in
         PasteService.CaretContext(
           leftWindow: "\u{4ECA}\u{65E5}", rightWindow: "", selectionLocation: 2,
           selectionLength: 0)
@@ -914,7 +914,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in nil })
+      readCaretContext: { _, _, _ in nil })
 
     let processed = try await wiring.processText(
       "The store is closed today and I will go tomorrow instead"
@@ -939,7 +939,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret },
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
       adapter: Self.transcribedEngine(language: "en"))
 
     let processed = try await wiring.processText(
@@ -979,7 +979,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in
+      readCaretContext: { _, _, _ in
         reads.count += 1
         return Self.midSentenceCaret
       })
@@ -1019,7 +1019,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in nil })
+      readCaretContext: { _, _, _ in nil })
 
     let outcome = await wiring.deliver("Review this before the meeting")
 
@@ -1048,7 +1048,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret },
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
       englishWordOracle: { Self.testOracle })
 
     let first = try await wiring.processText("Review this before the meeting") {}
@@ -1085,7 +1085,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in midWord })
+      readCaretContext: { _, _, _ in midWord })
 
     _ = await wiring.deliver("Store today")
 
@@ -1110,7 +1110,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret },
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
       englishWordOracle: { Self.testOracle })
 
     _ = await wiring.deliver("Review this before the meeting ")
@@ -1135,7 +1135,7 @@ import Testing
         captured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret },
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
       englishWordOracle: { Self.testOracle })
 
     // The vocabulary is EMPTY while this dictation is processed, so nothing
@@ -1173,7 +1173,7 @@ import Testing
         secondCaptured.requests.append(request)
         return Self.deliveredResult
       },
-      readCaretContext: { _ in Self.midSentenceCaret },
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
       englishWordOracle: { Self.testOracle })
 
     let secondProcessed = try await secondWiring.processText("Review this before the meeting") {}
@@ -1210,7 +1210,7 @@ import Testing
     currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
     // Defaults to UNREADABLE, so every pre-existing test in this suite keeps
     // exactly today's behaviour and only tests that opt in see a candidate.
-    readCaretContext: @escaping @MainActor (AXUIElement) -> PasteService.CaretContext? = { _ in
+    readCaretContext: @escaping @MainActor (AXUIElement, TerminalResolutionBudget, ((TerminalContextRefusal) -> Void)?) -> PasteService.CaretContext? = { _, _, _ in
       nil
     },
     // Delivery only ever runs after a transcription produced the text being
