@@ -1,4 +1,4 @@
-EnviousWispr stores your transcriptions on your Mac, and it keeps a safety copy of your recording so a crash cannot cost you your words. Neither is ever sent to Envious Labs, and neither is ever included in our usage analytics. The app does send other information, which is described below and in our privacy policy.
+EnviousWispr never sends what you dictate to Envious Labs. Your transcriptions and a safety copy of your recording stay on your Mac. The app does send anonymous usage and crash data, which is described below and in our privacy policy.
 
 ### What Stays On Your Mac
 
@@ -18,7 +18,7 @@ EnviousWispr stores your transcriptions on your Mac, and it keeps a safety copy 
 * Your name, email, account, or any personally identifying information
 * File paths or your macOS username
 
-None of this reaches us, and none of it goes into our usage analytics. If you turn on cloud AI polish, some of it does go to the AI provider you picked, because that is how polishing works. It goes there directly from your Mac under your own API key, never through us. The section below says exactly what.
+We run our own analytics and our own crash reporting. That is the one place where we could have helped ourselves to what you dictate, and we deliberately built it so that we do not. None of the above goes into it.
 
 ### What Is Sent
 
@@ -28,6 +28,8 @@ It contains no dictation content of any kind: no audio, no transcripts, no polis
 
 If you would rather run without it, EnviousWispr is open source under GPLv3 and you can build it yourself. Dictation works exactly the same either way.
 
-### Cloud AI Polish
+### Cloud AI Polish Is Your Own Choice
 
-If you choose a cloud provider for AI polish, your transcribed text goes straight from your Mac to that provider, under your own API key. There is no Envious Labs server anywhere in that path, so there is nothing for us to see. Audio is never sent to a polish provider, only text. See "AI Polish and Cloud Data" for what each provider receives.
+AI polish runs on your Mac by default. If you would rather use OpenAI, Gemini, or Claude, you choose that provider and enter your own API key, and the app tells you at that moment that your transcribed text will be sent to them. Audio is never sent, only text.
+
+That is your account and your relationship with that vendor, on their terms. We are not in the middle of it. There is no Envious Labs server anywhere in that path, so we never receive a copy of your text, your prompts, or your polished output, whichever provider you pick. See "AI Polish and Cloud Data" for what each one receives.
