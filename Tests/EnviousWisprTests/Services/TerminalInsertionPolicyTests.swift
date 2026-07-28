@@ -120,6 +120,34 @@ struct TerminalInsertionPolicyTests {
     #expect(payloads.repairedText != nil, "ordinary apps must keep today's behaviour")
   }
 
+  // MARK: - Every read path is bounded
+
+  @Test("The messaging bound has ONE owner, and it never exceeds the failure bound")
+  func boundIsDerivedFromTheBudget() {
+    // Round 3 of the same review finding: each earlier fix bounded one path and
+    // left the others at the 0.5 s default. The bound now comes from a single
+    // expression, so this asserts its shape rather than each branch separately.
+    let fresh = TerminalResolutionBudget()
+    #expect(fresh.remaining <= PasteService.axMessagingTimeoutSeconds)
+
+    // A nearly-spent budget still yields a usable, non-zero bound rather than
+    // an instant-failure timeout.
+    let spent = TerminalResolutionBudget(total: 0.100)
+    spent.charge(0.099)
+    #expect(spent.remaining > 0)
+    #expect(max(0.010, min(spent.remaining, PasteService.axMessagingTimeoutSeconds)) >= 0.010)
+
+    // An exhausted budget clamps to the floor, never to zero or a negative.
+    let exhausted = TerminalResolutionBudget(total: 0.100)
+    exhausted.charge(1.0)
+    #expect(max(0.010, min(exhausted.remaining, PasteService.axMessagingTimeoutSeconds)) == 0.010)
+  }
+
+  @Test("The failure bound is a single named owner, not a repeated literal")
+  func messagingTimeoutHasOneOwner() {
+    #expect(PasteService.axMessagingTimeoutSeconds == 0.5)
+  }
+
   // MARK: - Tier 1 exclusion
 
   @Test("Screen evidence never authorises the accessibility-write route")

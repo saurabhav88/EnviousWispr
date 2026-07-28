@@ -745,43 +745,58 @@ public enum PasteService {
     terminalBreaker: TerminalCircuitBreaker = .shared,
     onTerminalRefusal: ((TerminalContextRefusal) -> Void)? = nil
   ) -> CaretContext? {
-    // CLASS FIX, whole-diff review r2. The budget previously covered only the
-    // resolver's own steps, so the FIVE accessibility reads that run before it —
-    // focused element, role, character count, selection, and the two windows —
-    // were each bounded at the 0.5 s failure timeout and charged nothing. A
-    // wedge in any of them returned nil before the resolver ran, so the breaker
-    // was never armed and every dictation repeated the delay.
+    // CLASS, enumerated rather than patched — this is the THIRD review round to
+    // find the same shape, so every path is accounted for here instead of the
+    // one that was reported.
     //
-    // Every read on this path is now bounded at its single entry point, and the
-    // WHOLE operation is charged and can arm the breaker, not just its tail.
+    // THE RULE: on a delivery that could touch a terminal, EVERY accessibility
+    // read is bounded by the remaining budget. There are exactly four paths out
+    // of this function, and each one states its bound:
+    //
+    //   1. no budget            -> today's default. Not a terminal delivery.
+    //   2. breaker already open -> BOUNDED. Round 3 found this returning to the
+    //                              0.5 s default, so a terminal known to be
+    //                              wedged still cost half a second on every
+    //                              later dictation — the exact cost the breaker
+    //                              exists to stop paying.
+    //   3. read overran         -> BOUNDED, charged, breaker armed.
+    //   4. normal               -> BOUNDED, charged.
+    //
+    // Rounds one and two each fixed one path and left the others; the fix is a
+    // single place that computes the bound, not another branch that remembers to.
     guard let terminalBudget else {
-      // No budget means no terminal attempt, byte-identical to today.
+      // Path 1. No budget means no terminal attempt, byte-identical to today.
       return caretDerivedContext(element: element, window: window)
     }
 
     var targetPID: pid_t = 0
     guard AXUIElementGetPid(element, &targetPID) == .success else { return nil }
+
+    // ONE owner of the bound, so no path can forget it.
+    let bound = max(0.010, min(terminalBudget.remaining, axMessagingTimeoutSeconds))
+
     if terminalBreaker.isOpen(for: targetPID) {
+      // Path 2. Still read the caret — every other app's behaviour depends on it
+      // — but never at the default timeout, because this target is known wedged.
       onTerminalRefusal?(.breakerOpen)
-      return caretDerivedContext(element: element, window: window)
+      return caretDerivedContext(element: element, window: window, messagingTimeout: bound)
     }
 
     let started = Date().timeIntervalSinceReferenceDate
     var context = caretDerivedContext(
-      element: element, window: window,
-      messagingTimeout: max(0.010, min(terminalBudget.remaining, axMessagingTimeoutSeconds)))
+      element: element, window: window, messagingTimeout: bound)
 
     if TerminalContextResolver.overspent(
       by: Date().timeIntervalSinceReferenceDate - started,
       budget: terminalBudget, breaker: terminalBreaker, pid: targetPID)
     {
-      // Whatever came back arrived too late to spend more time on.
+      // Path 3. Whatever came back arrived too late to spend more time on.
       onTerminalRefusal?(.deadline)
       return context
     }
 
-    // The terminal signature, and the exact condition the shipped repair already
-    // refuses on: no usable left anchor with a non-empty right window. A
+    // Path 4. The terminal signature, and the exact condition the shipped repair
+    // already refuses on: no usable left anchor with a non-empty right window. A
     // terminal reports a caret pinned at 0 while its character count grows, so
     // the "text after the caret" is really the TOP of the scrollback.
     //
