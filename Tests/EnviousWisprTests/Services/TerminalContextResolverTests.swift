@@ -1,3 +1,4 @@
+import ApplicationServices
 import Darwin
 import Foundation
 import Testing
@@ -234,6 +235,45 @@ struct TerminalContextResolverTests {
     // A negative charge cannot buy time back.
     budget.charge(-1.0)
     #expect(budget.isExhausted)
+  }
+
+  @Test("The cap is CUMULATIVE across calls, not applied to each one")
+  func budgetStepChargesEveryCall() {
+    // Founder 2026-07-28: "it has to be a 100 ms cap for all the questions."
+    // The defect this freezes: the same bound applied to each of five reads, so
+    // five could take five times the cap between them and no single call ever
+    // looked late.
+    let budget = TerminalResolutionBudget(total: 0.100)
+    let element = AXUIElementCreateSystemWide()
+
+    var calls = 0
+    for _ in 0..<5 {
+      _ = budget.step(applying: element) {
+        calls += 1
+        // Busy-wait rather than sleep: the charge must reflect real elapsed
+        // time, and a test that slept would prove only that sleeping works.
+        let until = DispatchTime.now().uptimeNanoseconds + 25_000_000
+        while DispatchTime.now().uptimeNanoseconds < until {}
+        return true
+      }
+      if budget.isExhausted { break }
+    }
+
+    #expect(calls >= 4, "each call must run until the SHARED budget is gone")
+    #expect(budget.isExhausted, "five 25 ms calls must exhaust a 100 ms cumulative cap")
+    #expect(budget.remaining == 0)
+  }
+
+  @Test("A healthy sequence of calls barely touches the budget")
+  func budgetStepIsFreeWhenCallsAreFast() {
+    // Measured live 2026-07-28: all five reads cost mean 0.78 ms in Ghostty and
+    // 1.79 ms in iTerm2. The cap is a failure bound, not a latency target, and
+    // must never bite healthy work.
+    let budget = TerminalResolutionBudget(total: 0.100)
+    let element = AXUIElementCreateSystemWide()
+    for _ in 0..<5 { _ = budget.step(applying: element) { true } }
+    #expect(!budget.isExhausted)
+    #expect(budget.remaining > 0.090, "five instant calls must leave the budget nearly whole")
   }
 
   // MARK: - Circuit breaker

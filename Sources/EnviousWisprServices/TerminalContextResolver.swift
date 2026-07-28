@@ -1,3 +1,4 @@
+import ApplicationServices
 import Darwin
 import Foundation
 import os
@@ -81,6 +82,33 @@ package final class TerminalResolutionBudget: Sendable {
   /// Charge the time a step made the caller wait.
   package func charge(_ seconds: Double) {
     spent.withLock { $0 += max(0, seconds) }
+  }
+
+  /// Run one bounded step: apply the remaining budget as the accessibility
+  /// messaging timeout, run the call, then charge what it actually took.
+  ///
+  /// This is what makes the cap CUMULATIVE rather than per-call (founder,
+  /// 2026-07-28: "it has to be a 100 ms cap for all the questions"). An earlier
+  /// version applied the same bound to each of the five reads, so five could
+  /// take five times the cap between them.
+  ///
+  /// Measured live the same day, which is why this is a FAILURE bound and not a
+  /// latency target: all five reads together cost mean 0.78 ms in Ghostty and
+  /// 1.79 ms in iTerm2, with the only spikes (19-35 ms) on a cold first call.
+  /// The cap is roughly fifty times the typical cost and three times the worst
+  /// observed — it exists to bound a wedge, and never bites healthy work.
+  package func step<T>(applying element: AXUIElement, _ body: () -> T) -> T {
+    let application = AXUIElementCreateApplication(processIdentifier(of: element))
+    AXUIElementSetMessagingTimeout(application, Float(max(0.005, remaining)))
+    let started = DispatchTime.now().uptimeNanoseconds
+    defer { charge(Double(DispatchTime.now().uptimeNanoseconds - started) / 1e9) }
+    return body()
+  }
+
+  private func processIdentifier(of element: AXUIElement) -> pid_t {
+    var pid: pid_t = 0
+    AXUIElementGetPid(element, &pid)
+    return pid
   }
 }
 
@@ -217,6 +245,9 @@ package enum TerminalContextResolver {
     // Gate 1 — the veto. An unreadable process list is NOT "nothing is
     // running": both refuse, but they are different facts, and the typed scan
     // result is what keeps them apart.
+    //
+    // Timed from out here because the process sweep is NOT an accessibility
+    // call, so nothing else charges it. Measured mean 3 ms / p95 7 ms.
     let scanStart = dependencies.now()
     let scan = dependencies.scanProcesses()
     if overspent(by: dependencies.now() - scanStart, budget: budget, breaker: breaker, pid: targetPID) {
@@ -233,9 +264,13 @@ package enum TerminalContextResolver {
     guard !running.isEmpty else { return .refused(.noSupportedCLI) }
 
     // Gate 2 — WHERE the line is. Never whether.
-    let readStart = dependencies.now()
+    //
+    // Charged with ZERO here: the read is an accessibility call and already
+    // charged itself through `budget.step`, which is what makes the cap
+    // cumulative. Timing it again from out here would double-count it and
+    // halve the effective budget.
     let tail = dependencies.readScreenTail()
-    if overspent(by: dependencies.now() - readStart, budget: budget, breaker: breaker, pid: targetPID) {
+    if overspent(by: 0, budget: budget, breaker: breaker, pid: targetPID) {
       // The evidence may well be complete, and it is discarded anyway. A result
       // that arrived after the deadline is a result the user already waited too
       // long for, and accepting it would make the promised bound meaningless.

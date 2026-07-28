@@ -91,6 +91,76 @@ struct TerminalInsertionPolicyTests {
     #expect(payloads.repairedText?.hasPrefix("Fix") != false)
   }
 
+  // MARK: - No leading space in a terminal
+
+  @Test("A terminal never gets a leading space, because the screen cannot show one")
+  func noLeadingSpaceInATerminal() {
+    // FOUND IN LIVE TESTING, 2026-07-28. A terminal truncates each rendered row
+    // at its last VISIBLE character — measured, an input row reported length 2
+    // while the box rules around it reported 68 — because it draws a cursor
+    // where the trailing space would be. So `fix the` and `fix the ` are
+    // byte-identical on screen.
+    //
+    // Every dictation already ends with a trailing space, so this rule fired on
+    // every consecutive dictation and produced a double space each time. The
+    // founder saw it on the first real test.
+    let payloads = CursorInsertionRepair.repair(
+      text: "handler",
+      context: .init(left: "git commit -m fix the", right: "", isScreenDerived: true),
+      protectedWords: [],
+      oracle: Self.ordinaryWords)
+    #expect(payloads.repairedText?.hasPrefix(" ") != true, "no leading space in a terminal")
+  }
+
+  @Test("An ordinary app STILL gets its leading space")
+  func leadingSpaceSurvivesOutsideTerminals() {
+    // The two-way control. Without it, disabling the rule everywhere would pass
+    // the test above while silently welding words together in every other app.
+    let payloads = CursorInsertionRepair.repair(
+      text: "handler",
+      context: .init(left: "fix the", right: "", isScreenDerived: false),
+      protectedWords: [],
+      oracle: Self.ordinaryWords)
+    #expect(payloads.repairedText?.hasPrefix(" ") == true, "ordinary apps keep the leading space")
+  }
+
+  @Test("The trailing space is KEPT in terminals — it is a learned product promise")
+  func trailingSpaceSurvivesInTerminals() {
+    // Founder 2026-07-28: users are already used to a space being added after
+    // every dictation. Removing it in terminals alone would make terminals the
+    // one inconsistent surface, so the leading rule was dropped instead.
+    let payloads = CursorInsertionRepair.repair(
+      text: "handler",
+      context: .init(left: "git commit -m fix the ", right: "", isScreenDerived: true),
+      protectedWords: [],
+      oracle: Self.ordinaryWords)
+    let delivered = payloads.repairedText ?? payloads.legacyText
+    #expect(delivered.hasSuffix(" "), "every dictation still ends with a space")
+  }
+
+  @Test("Consecutive terminal dictations produce exactly one space between them")
+  func consecutiveDictationsDoNotDoubleSpace() {
+    // The end-to-end shape of the bug, as the founder hit it: dictation one
+    // leaves a trailing space the screen cannot show, and dictation two used to
+    // add another one on top of it.
+    let first = CursorInsertionRepair.repair(
+      text: "fix the",
+      context: .init(left: "git commit -m ", right: "", isScreenDerived: true),
+      protectedWords: [], oracle: Self.ordinaryWords)
+    let afterFirst = "git commit -m " + (first.repairedText ?? first.legacyText)
+    #expect(afterFirst.hasSuffix(" "))
+
+    // What the SCREEN reports back: the trailing space is invisible.
+    let asScreenReportsIt = String(afterFirst.reversed().drop(while: { $0 == " " }).reversed())
+    let second = CursorInsertionRepair.repair(
+      text: "handler",
+      context: .init(left: asScreenReportsIt, right: "", isScreenDerived: true),
+      protectedWords: [], oracle: Self.ordinaryWords)
+    let joined = afterFirst + (second.repairedText ?? second.legacyText)
+    #expect(!joined.contains("  "), "no double space anywhere in the joined result")
+    #expect(joined == "git commit -m fix the handler ")
+  }
+
   // MARK: - The multiline refusal
 
   @Test(

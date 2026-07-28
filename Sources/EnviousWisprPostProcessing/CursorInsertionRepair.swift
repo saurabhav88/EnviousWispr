@@ -373,8 +373,24 @@ public enum CursorInsertionRepair {
 
     // Rule 1: a leading space, unless one side already supplies separation —
     // or the language does not separate words with spaces at all.
-    if language.usesWordSpacing, let anchor = left.character, !left.crossedSpace,
-      !left.isOpener,
+    //
+    // NEVER in a terminal (founder 2026-07-28, after live testing). A terminal
+    // truncates each rendered row at its last VISIBLE character — measured: an
+    // input row reported length 2 while the rules around it were 68 — because it
+    // draws a cursor where the trailing space would be. So `fix the` and
+    // `fix the ` are byte-identical on screen and this rule cannot tell them
+    // apart. Since every dictation already ends with a trailing space, it fired
+    // on every consecutive dictation and produced a double space every time.
+    //
+    // Dropping it rather than dropping the trailing space is the founder's call
+    // and the better one: the trailing space is a product promise users have
+    // already learned everywhere else, and removing it in terminals alone would
+    // make terminals the one inconsistent surface. The cost — typing a word,
+    // not typing a space, then dictating — is user-controlled and already how
+    // the app behaves next to a period, which users understand because they
+    // caused it.
+    if !context.isScreenDerived, language.usesWordSpacing, let anchor = left.character,
+      !left.crossedSpace, !left.isOpener,
       let firstCharacter = out.first, !firstCharacter.isWhitespace
     {
       out = " " + out
