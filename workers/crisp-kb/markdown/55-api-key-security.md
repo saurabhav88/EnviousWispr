@@ -10,7 +10,7 @@ If you used an early version of EnviousWispr, your key may have started out in a
 
 * Your key is never written to logs.
 * Your key is never included in usage or crash data.
-* Your key goes nowhere except the provider you chose, as the authentication header on your own polish requests.
+* Your key goes nowhere except the provider you chose, as authentication on requests to that provider.
 
 ### Removing A Key
 
