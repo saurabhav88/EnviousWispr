@@ -557,6 +557,36 @@ def paste(text):
 
 # ── the join ─────────────────────────────────────────────────────────────────
 
+def _one_edit_apart(a, b):
+    """Classify how two token sequences differ, giving up past a single edit.
+
+    Returns ("same", None), ("inserted", tok), ("deleted", tok),
+    ("substituted", (was, now)), or ("many", None).
+
+    Deliberately NOT a distance number: the caller has to know WHICH token
+    moved and whether the edit was a substitution, because inserting a
+    connecting word is sanctioned and swapping one for another is not.
+    """
+    if a == b:
+        return ("same", None)
+    if len(a) == len(b):
+        differing = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
+        if len(differing) == 1:
+            i = differing[0]
+            return ("substituted", (a[i], b[i]))
+        return ("many", None)
+    if abs(len(a) - len(b)) != 1:
+        return ("many", None)
+    shorter, longer = (a, b) if len(a) < len(b) else (b, a)
+    op = "inserted" if len(b) > len(a) else "deleted"
+    i = 0
+    while i < len(shorter) and shorter[i] == longer[i]:
+        i += 1
+    if shorter[i:] == longer[i + 1:]:
+        return (op, longer[i])
+    return ("many", None)
+
+
 def looks_unsafe(before, after):
     """Reasons to abandon rather than write. Each one was seen for real today."""
     if after.strip() == before.strip():
@@ -625,8 +655,20 @@ def looks_unsafe(before, after):
     # languages.
     EDGE_FORMATTING = ".,;:!?…\"'()[]{}“”‘’«»—–"
 
+    def strip_edges(w):
+        w = w.rstrip(EDGE_FORMATTING)
+        # Leading punctuation goes too, EXCEPT a decimal point carrying a
+        # value. Dictation routinely drops the leading zero, and ".5 mg" is
+        # not "5 mg" — a tenfold dose. It is the one character that is
+        # formatting at the end of a word and meaning at the start of a number.
+        while w and w[0] in EDGE_FORMATTING:
+            if w[0] in ".," and len(w) > 1 and w[1].isdigit():
+                break
+            w = w[1:]
+        return w
+
     def tokens(text):
-        return [t for t in (w.strip(EDGE_FORMATTING).lower() for w in text.split()) if t]
+        return [t for t in (strip_edges(w).lower() for w in text.split()) if t]
 
     # English contractions are a genuinely CLOSED set, unlike an open-ended
     # word list — so enumerating them is honest. Expanded on both sides, which
@@ -653,54 +695,61 @@ def looks_unsafe(before, after):
             out.extend(tokens(CONTRACTIONS[w]) if w in CONTRACTIONS else [w])
         return out
 
-    # A join may legitimately add ONE connective to stitch two fragments. More
-    # than one is a rewrite, not a join. Content words are deliberately absent.
+    # The ONLY sanctioned edit: one of these, inserted or deleted. There is no
+    # separate budget any more — the single-edit bound below is the budget, so
+    # "more than one" and "swapped for another" both fall out of it rather than
+    # needing their own clauses. Content words are deliberately absent.
     #
     # KNOWN AND ACCEPTED LIMIT: this cannot tell "Ship Monday, and release
-    # Tuesday" from "Ship Monday so release Tuesday". Both add exactly one
+    # Tuesday" from "Ship Monday so release Tuesday". Both insert exactly one
     # connective and invent no content word, so they are the same SHAPE; only
     # meaning separates them, and "so" quietly asserts a causation the speaker
     # did not. Refusing it would refuse every legitimate join, so the guard
     # accepts it. Narrowing this needs semantics, not a bigger word list.
     CONNECTIVES = {"and", "but", "so", "then", "or", "yet", "because",
                    "which", "while", "although", "though"}
-    MAX_ADDED_CONNECTIVES = 1
 
-    # Assert the CONTRACT rather than police exemptions one at a time.
+    # ONE assertion on the WHOLE sequence, not two checks on two subsets.
     #
-    # Three rounds of review found five separate leaks in a "no word in the
-    # output was absent from the input" test — an ASCII-only alphabet, a prefix
-    # rule, an unbounded connective exemption, unchecked DIGITS ("Send 10
-    # units" -> "Send 100 units"), and a set that lost multiplicity ("Please
-    # send it now" -> "Please please send it now"). A sixth, reordering
-    # ("Mark told Sam" -> "Sam told Mark"), was found by sweeping the axes
-    # afterwards. Every fix was another clause that the next case walked around,
-    # because a membership test is the wrong shape for the question.
+    # Five rounds of review found eight leaks here, and every one lived in the
+    # gap between two partial checks: an ASCII-only alphabet, a prefix rule, an
+    # unbounded connective exemption, unchecked digits, a set that lost
+    # multiplicity, a reorder, a dropped sign, and a connective swap. Round five
+    # found the last two of the shape — comparing a CONTENT sequence with
+    # connectives deleted, then counting connectives separately, means neither
+    # check can see a connective that merely MOVED.
     #
-    # JOIN_NOTE already states the contract exactly: never drop a word, never
-    # replace a word with a different word, never reinterpret — the only
-    # sanctioned edit is a connecting word made redundant by the join. So
-    # compare the CONTENT SEQUENCE directly. Strip connectives from both sides
-    # and what remains must be identical, in order.
+    # Deleting a token to compare, then counting it elsewhere, always loses its
+    # position. So stop splitting: compare the full expanded sequences and allow
+    # exactly what the contract allows, which JOIN_NOTE states outright — never
+    # drop a word, never replace a word, never reinterpret, except a connecting
+    # word the join made redundant.
     #
-    # That single assertion subsumes all six leaks: a substitution changes a
-    # token, a digit change changes a token, a repetition adds one, a reorder
-    # moves one, and a drop removes one. Nothing is exempt except the thing the
-    # contract actually exempts.
-    spoken_seq = [w for w in expand(before) if w not in CONNECTIVES]
-    written_seq = [w for w in expand(after) if w not in CONNECTIVES]
-    if written_seq != spoken_seq:
+    # That is: the two sequences must be IDENTICAL, or differ by exactly ONE
+    # inserted or deleted CONNECTIVE. A substitution is refused even when both
+    # sides are connectives ("or" -> "and" inverts the meaning). A move shows up
+    # as two edits. Nothing needs a separate budget, because the single-edit
+    # bound is the budget.
+    spoken_seq, written_seq = expand(before), expand(after)
+    kind, token = _one_edit_apart(spoken_seq, written_seq)
+    if not (kind == "same"
+            or (kind in ("inserted", "deleted") and token in CONNECTIVES)):
+        if kind == "inserted":
+            return f"added a word that was never said: {token!r}"
+        if kind == "deleted":
+            return f"dropped a word that was said: {token!r}"
+        if kind == "substituted":
+            was, now = token
+            return f"replaced {was!r} with {now!r}, which was never said"
         spoken_bag, written_bag = Counter(spoken_seq), Counter(written_seq)
         added = sorted((written_bag - spoken_bag).elements())
         lost = sorted((spoken_bag - written_bag).elements())
-        if added or lost:
-            detail = []
-            if added:
-                detail.append(f"used words that were never said: {added}")
-            if lost:
-                detail.append(f"dropped words that were said: {lost}")
-            return "; ".join(detail)
-        return "reordered what was said without changing the words"
+        detail = []
+        if added:
+            detail.append(f"used words that were never said: {added}")
+        if lost:
+            detail.append(f"dropped words that were said: {lost}")
+        return "; ".join(detail) or "reordered what was said without changing the words"
 
     # Residual behaviour, re-swept after inverting the token rule — these
     # changed, so the list is measured rather than carried over:
@@ -714,31 +763,11 @@ def looks_unsafe(before, after):
     #     the price of not maintaining an open-ended list of which characters
     #     matter — the list that lost this race four rounds running.
     #   - Decimals, times, fractions and signs survive intact ("1.5", "3:30",
-    #     "1/2", "-5"), because interior characters are never stripped.
+    #     "1/2", "-5", ".5"), because interior characters are never stripped
+    #     and a leading decimal point is kept when a digit follows it.
     #   - Case, collapsed whitespace, quotes and em-dashes stay invisible.
     #     All are formatting, all are sanctioned.
     #
-    # Connectives are exempt from the sequence check, so bound them separately —
-    # in BOTH directions. Bounding only additions left two holes: any number of
-    # spoken connectives could vanish, and a swap ("Tea or coffee" -> "Tea and
-    # coffee") read as merely one allowed addition while inverting the meaning.
-    #
-    # The contract sanctions dropping a connecting word the join made redundant,
-    # and joining two fragments may need one added. It never sanctions trading
-    # one for another, so an add together with a drop is a substitution and is
-    # refused outright.
-    spoken_joins = Counter(w for w in expand(before) if w in CONNECTIVES)
-    written_joins = Counter(w for w in expand(after) if w in CONNECTIVES)
-    added_connectives = sorted((written_joins - spoken_joins).elements())
-    dropped_connectives = sorted((spoken_joins - written_joins).elements())
-    if added_connectives and dropped_connectives:
-        return (f"swapped a connecting word: {dropped_connectives} -> "
-                f"{added_connectives}")
-    if len(added_connectives) > MAX_ADDED_CONNECTIVES:
-        return f"stitched with too many added words: {added_connectives}"
-    if len(dropped_connectives) > MAX_ADDED_CONNECTIVES:
-        return f"dropped too many connecting words: {dropped_connectives}"
-
     lowered = after.lower()
     for tell in ("could you", "please share", "i need the", "the transcript you",
                  "appears to be", "i don't see"):
