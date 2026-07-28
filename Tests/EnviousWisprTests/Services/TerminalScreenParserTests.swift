@@ -185,21 +185,83 @@ struct TerminalScreenParserTests {
     #expect(TerminalScreenParser.locate(inScreenTail: spoof) == nil)
   }
 
-  @Test("A file drawing two box rules, shown in a pager, does not become input")
-  func boxDrawingFileSpoofIsBoundedToOneLine() {
-    // MEASURED live: a file with two `────` rows displayed in vim and in less
-    // returned `text between rules`. Gate 2 CANNOT tell this from a real box —
-    // that is precisely why Gate 1 exists and why this test asserts the shape is
-    // matched rather than pretending a guard closes it.
-    let spoofed = """
+  @Test("Box-drawn output carrying no tool marker refuses")
+  func markerlessBoxDrawingOutputRefuses() {
+    // The MEASURED spoof: a file with two box rows shown in vim and in less,
+    // which was read as `text between rules`. It carries no marker, and both
+    // real input rows always do — so it refuses at no cost.
+    //
+    // This corrects my own reasoning, not just the code. I had argued that
+    // because screen matching is spoofable as a CLASS, refusing a measured
+    // INSTANCE was not worth it, and froze the false positive in a test that
+    // claimed Gate 2 "cannot tell". Gate 2 cannot defeat a FAITHFUL spoof; it
+    // can reject this one.
+    let claudeLike = """
       \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
       text between rules
       \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
       """
-    let located = TerminalScreenParser.locate(inScreenTail: spoofed)
+    let geminiLike = """
+      \u{2584}\u{2584}\u{2584}\u{2584}\u{2584}\u{2584}\u{2584}\u{2584}
+      text between rules
+      \u{2580}\u{2580}\u{2580}\u{2580}\u{2580}\u{2580}\u{2580}\u{2580}
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: claudeLike) == nil)
+    #expect(TerminalScreenParser.locate(inScreenTail: geminiLike) == nil)
+  }
+
+  @Test("A FAITHFUL spoof still passes — which is why Gate 1 is the authority")
+  func faithfulSpoofStillPasses() {
+    // A file that also reproduces the marker is indistinguishable from real
+    // input, by construction. Asserting this keeps the honest framing: Gate 2
+    // narrows, Gate 1 authorises.
+    let faithful = """
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      \u{276F} text between rules
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: faithful)?.inputLine == "text between rules")
+  }
+
+  @Test("A boundary must repeat ONE glyph")
+  func mixedBoundaryGlyphsRefuse() {
+    let mixed = """
+      \u{2500}\u{2501}\u{2500}\u{2501}
+      \u{276F} old text
+      \u{2500}\u{2501}\u{2500}\u{2501}
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: mixed) == nil)
+  }
+
+  @Test("Every row-boundary shape is index-safe")
+  func rowBoundaryShapesAreSafe() {
+    // Swift ranges TRAP on invalid bounds and this runs on the paste heart path,
+    // so a crash would be worse than a wrong answer.
+    #expect(TerminalScreenParser.locate(inScreenTail: "") == nil)
+    #expect(TerminalScreenParser.locate(inScreenTail: "ordinary row") == nil)
     #expect(
-      located?.inputLine == "text between rules",
-      "the screen alone cannot refuse this — Gate 1 is the gate that does")
+      TerminalScreenParser.locate(inScreenTail: "\u{203A} final row")?.inputLine == "final row")
+
+    let boundedAtEdges = """
+      \u{2500}\u{2500}\u{2500}\u{2500}
+      \u{276F} edge text
+      \u{2500}\u{2500}\u{2500}\u{2500}
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: boundedAtEdges)?.inputLine == "edge text")
+
+    let adjacent = """
+      \u{2500}\u{2500}\u{2500}\u{2500}
+      \u{2500}\u{2500}\u{2500}\u{2500}
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: adjacent) == nil)
+
+    let blanksOnly = """
+      \u{2500}\u{2500}\u{2500}\u{2500}
+
+
+      \u{2500}\u{2500}\u{2500}\u{2500}
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: blanksOnly) == nil)
   }
 
   // MARK: - Character handling

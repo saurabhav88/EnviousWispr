@@ -157,21 +157,32 @@ struct TerminalContextResolverTests {
       resolve(dependencies(screen: "just output\nand more")) == .refused(.screenRefused))
   }
 
-  @Test("The two live spoofs still need Gate 1 — the screen alone cannot refuse them")
-  func spoofRequiresTheVeto() {
-    // A file drawing two box rules, shown in a pager. Gate 2 matches it; Gate 1
-    // is what refuses, and only when nothing supported is running.
-    let spoof = """
+  @Test("A markerless box-drawn file refuses at Gate 2, before the veto matters")
+  func markerlessSpoofRefusesAtGate2() {
+    let markerless = """
       \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
       text between rules
       \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
       """
+    #expect(resolve(dependencies(screen: markerless)) == .refused(.screenRefused))
+  }
+
+  @Test("A FAITHFUL spoof needs Gate 1 — the screen alone cannot refuse it")
+  func faithfulSpoofRequiresTheVeto() {
+    // A file that reproduces the marker too is indistinguishable from real input
+    // by construction, which is exactly why the veto exists.
+    let faithful = """
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      \u{276F} text between rules
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      """
+    // Nothing supported running: the veto refuses it.
     #expect(
-      resolve(dependencies(scan: .available([]), screen: spoof)) == .refused(.noSupportedCLI))
-    // With a CLI genuinely running elsewhere in the same terminal, this is the
+      resolve(dependencies(scan: .available([]), screen: faithful)) == .refused(.noSupportedCLI))
+    // A supported CLI running in ANOTHER tab of the same terminal: this is the
     // founder's ACCEPTED residual risk, recorded as an observed outcome rather
     // than claimed closed.
-    #expect(resolve(dependencies(screen: spoof)).evidence != nil)
+    #expect(resolve(dependencies(screen: faithful)).evidence != nil)
   }
 
   // MARK: - Budget

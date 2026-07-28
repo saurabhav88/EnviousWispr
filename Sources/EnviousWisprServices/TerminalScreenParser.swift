@@ -58,9 +58,17 @@ package enum TerminalScreenParser {
   /// box. Requires four to avoid matching a short `---` in prose.
   static func boundaryClass(of row: Substring) -> BoundaryClass? {
     let trimmed = row.trimmingCharacters(in: .whitespaces)
-    guard trimmed.count >= 4 else { return nil }
-    if trimmed.allSatisfy({ lightBoxGlyphs.contains($0) }) { return .light }
-    if trimmed.allSatisfy({ blockBoxGlyphs.contains($0) }) { return .block }
+    // ONE repeated glyph, which is what the rule always claimed and did not
+    // enforce: a mixture such as `─━═─` was accepted, so ASCII art or another
+    // tool's output could be misread as a box.
+    guard
+      trimmed.count >= 4,
+      let glyph = trimmed.first,
+      trimmed.dropFirst().allSatisfy({ $0 == glyph })
+    else { return nil }
+
+    if lightBoxGlyphs.contains(glyph) { return .light }
+    if blockBoxGlyphs.contains(glyph) { return .block }
     return nil
   }
 
@@ -167,6 +175,18 @@ package enum TerminalScreenParser {
 
     let cli: SupportedTerminalCLI = closing.1 == .block ? .geminiCLI : .claudeCode
     let marker = closing.1 == .block ? geminiMarker : claudeMarker
+    // The row must carry its tool's marker.
+    //
+    // Grounded review caught a real error here, and the error was in my
+    // reasoning rather than the code: because screen matching is spoofable AS A
+    // CLASS, I concluded it was not worth refusing a measured INSTANCE. Wrong.
+    // The measured spoof — a file of box-drawing rows shown in vim or less —
+    // carries NO marker, while both real input rows always do, so this refuses
+    // it at no cost. A faithful spoof that reproduces the marker still passes,
+    // which is exactly why Gate 1 remains the authority; closing an instance is
+    // not a claim to have closed the class.
+    guard openingCharacter(of: row) == marker else { return nil }
+
     let line = stripLeadingMarker(row, marker)
     // An EMPTY box refuses. The prototype's exact failure was reading an empty
     // box back as the hint text printed below it, which would delete words
