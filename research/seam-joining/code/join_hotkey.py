@@ -567,26 +567,93 @@ def looks_unsafe(before, after):
     # COUNTS are not enough. A same-length substitution passes every check
     # above: "It now passes ten" -> "It is now past ten" swaps a word for one
     # that was never spoken while keeping the length plausible, and the field
-    # gets overwritten with words the user did not say. Tonight's real failure
-    # was caught only because the count also collapsed; a tidier rewrite would
-    # have sailed through. Found by cloud review on PR #1793.
+    # gets overwritten with words the user did not say. The real failure was
+    # caught only because the count also collapsed; a tidier rewrite would have
+    # sailed through. Found by cloud review on PR #1793.
     #
-    # So check identity, not size: every word in the output must have been in
-    # the input. Joining may legitimately DROP a connective, and the polisher
-    # may contract "it is" into "it's", so those two directions are allowed.
-    JOINING_WORDS = {"and", "but", "so", "that", "which", "then", "as", "to",
-                     "a", "the", "of", "in", "for", "it", "is"}
+    # So check identity, not size: every word written must have been spoken.
+    #
+    # The first attempt at that check leaked three ways, all found by review on
+    # PR #1819 and all REPRODUCED before being fixed. They are listed because
+    # each is the kind of hole that reads as safe:
+    #
+    #   1. ASCII-only tokenizing. `[A-Za-z']+` finds NO words in Cyrillic,
+    #      Greek or CJK, so the guard saw an empty list, concluded nothing was
+    #      invented, and waved every substitution through. Silent, and worst in
+    #      exactly the languages nobody spot-checks.
+    #      "Это правильный ответ" -> "Это выдуманный ответ" passed.
+    #   2. A bare prefix test. Meant to allow "pass"/"passes", it actually
+    #      accepted any word starting with ANY spoken token — and almost every
+    #      English sentence contains "I" or "a", which admit "invented" and
+    #      "absurd". It is gone rather than tightened: joining stitches two
+    #      transcripts, it does not re-inflect them, so nothing needs it.
+    #   3. Exempting connectives exempted INSERTING them. Dropping one never
+    #      needed an exemption, because this only inspects words in `after`.
+    #      The old set also smuggled in "it" and "is" — content words, present
+    #      only to paper over contractions — so "Ship Monday. Release Tuesday"
+    #      -> "Ship Monday so release Tuesday" passed.
+    #
+    # When this is unsure it REFUSES. Abandoning a join costs a keystroke;
+    # overwriting the field with words the user did not say costs their text.
 
+    # Any script, not just Latin-1. `regex` is already imported for exactly
+    # this reason; \p{L} is the platform's own letter property, so there is no
+    # hand-maintained alphabet here to fall behind Unicode.
+    # Coarse for scripts that do not space their words: Japanese or Chinese
+    # yields one token per run of letters, so the comparison becomes
+    # all-or-nothing rather than word-by-word. That is blunt, but it fails
+    # CLOSED (any edit trips it) where the old ASCII regex failed OPEN (no
+    # tokens at all, so everything passed). Real segmentation is the fix if
+    # this prototype ever targets those languages.
     def tokens(text):
-        return [w.lower().replace("'", "")
-                for w in re.findall(r"[A-Za-z']+", text)]
+        return [w.lower() for w in regex.findall(r"[\p{L}\p{M}']+", text)]
 
-    spoken = set(tokens(before))
-    invented = [w for w in tokens(after)
-                if w not in spoken and w not in JOINING_WORDS
-                and not any(w.startswith(s) or s.startswith(w) for s in spoken)]
+    # English contractions are a genuinely CLOSED set, unlike an open-ended
+    # word list — so enumerating them is honest. Expanded on both sides, which
+    # covers the polisher contracting "it is" -> "it's" and the reverse.
+    CONTRACTIONS = {
+        "it's": "it is", "that's": "that is", "there's": "there is",
+        "he's": "he is", "she's": "she is", "what's": "what is",
+        "who's": "who is", "let's": "let us", "i'm": "i am",
+        "you're": "you are", "we're": "we are", "they're": "they are",
+        "i've": "i have", "you've": "you have", "we've": "we have",
+        "they've": "they have", "i'll": "i will", "you'll": "you will",
+        "we'll": "we will", "they'll": "they will", "i'd": "i would",
+        "you'd": "you would", "we'd": "we would", "they'd": "they would",
+        "don't": "do not", "doesn't": "does not", "didn't": "did not",
+        "isn't": "is not", "aren't": "are not", "wasn't": "was not",
+        "weren't": "were not", "can't": "can not", "couldn't": "could not",
+        "won't": "will not", "wouldn't": "would not", "shouldn't": "should not",
+        "haven't": "have not", "hasn't": "has not", "hadn't": "had not",
+    }
+
+    def expand(text):
+        out = []
+        for w in tokens(text):
+            out.extend(tokens(CONTRACTIONS[w]) if w in CONTRACTIONS else [w])
+        return out
+
+    # A join may legitimately add ONE connective to stitch two fragments. More
+    # than one is a rewrite, not a join. Content words are deliberately absent.
+    #
+    # KNOWN AND ACCEPTED LIMIT: this cannot tell "Ship Monday, and release
+    # Tuesday" from "Ship Monday so release Tuesday". Both add exactly one
+    # connective and invent no content word, so they are the same SHAPE; only
+    # meaning separates them, and "so" quietly asserts a causation the speaker
+    # did not. Refusing it would refuse every legitimate join, so the guard
+    # accepts it. Narrowing this needs semantics, not a bigger word list.
+    CONNECTIVES = {"and", "but", "so", "then", "or", "yet", "because",
+                   "which", "while", "although", "though"}
+    MAX_ADDED_CONNECTIVES = 1
+
+    spoken = set(expand(before))
+    unspoken = [w for w in expand(after) if w not in spoken]
+    added_connectives = [w for w in unspoken if w in CONNECTIVES]
+    invented = [w for w in unspoken if w not in CONNECTIVES]
     if invented:
         return f"used words that were never said: {sorted(set(invented))}"
+    if len(added_connectives) > MAX_ADDED_CONNECTIVES:
+        return f"stitched with too many added words: {sorted(added_connectives)}"
 
     lowered = after.lower()
     for tell in ("could you", "please share", "i need the", "the transcript you",
