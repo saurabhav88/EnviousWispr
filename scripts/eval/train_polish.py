@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
 """QLoRA polish fine-tune (#1265). One run per base model on the 4090.
 
-Usage:
-  python train_polish.py --base ~/tuning/models/gemma-4-E4B-it --tag gemma4e4b \
-      --lr 2e-5 --epochs 2
+Usage (omit --lr/--epochs to get the shipped recipe; the defaults ARE the recipe):
   python train_polish.py --base ~/tuning/models/Qwen3-4B-Instruct-2507 --tag qwen4b \
-      --lr 2e-5 --epochs 2
+      --data ~/tuning/train_sft_v2.jsonl
+  python train_polish.py --base ~/tuning/models/gemma-4-E4B-it --tag gemma4e4b \
+      --data ~/tuning/train_sft_v2.jsonl
+
+`--data` is REQUIRED and deliberately has no default. Shipping EG-1 was trained
+on train_sft_v2.jsonl (5,656 pairs); an earlier arm used train_sft_v1.jsonl
+(3,036). A default silently picks one, and picking the smaller one produces a
+model that is quietly not the recipe. Name the corpus or the script refuses.
+
+The earlier usage block here passed `--lr 2e-5`, overriding the 5e-5 default.
+5e-5 is the recorded recipe that produced EG-1 (eg1-model-provenance.md FACT:
+eg1-training-config); 2e-5 was an exploratory arm. The flags are kept so an arm
+can still be run, but the documented command no longer contradicts the default.
 
 Outputs: ~/tuning/out/<tag>/merged16/ (merged fp16 HF weights) + training log.
 GGUF convert + quantize happen OUTSIDE this script (llama.cpp convert_hf_to_gguf.py
@@ -16,7 +26,9 @@ import argparse, json, os
 ap = argparse.ArgumentParser()
 ap.add_argument("--base", required=True)
 ap.add_argument("--tag", required=True)
-ap.add_argument("--data", default=os.path.expanduser("~/tuning/train_sft_v1.jsonl"))
+ap.add_argument("--data", required=True,
+                help="Training JSONL. No default on purpose — see the module "
+                     "docstring; a wrong corpus fails silently, not loudly.")
 ap.add_argument("--lr", type=float, default=5e-5)
 ap.add_argument("--epochs", type=float, default=2)
 ap.add_argument("--rank", type=int, default=16)
@@ -44,6 +56,20 @@ def _sft_config(**kw):
     if "max_seq_length" in kw and "max_seq_length" not in sig:
         kw["max_length"] = kw.pop("max_seq_length")
     return SFTConfig(**{k: v for k, v in kw.items() if k in sig})
+
+def _sft_trainer(**kw):
+    """Same trl-version shim as _sft_config, for the constructor.
+
+    trl renamed SFTTrainer's `tokenizer` to `processing_class` in the same
+    era it renamed SFTConfig's `max_seq_length` to `max_length`. Shimming one
+    and not the other means a newer trl raises an unexpected-keyword TypeError
+    before a single step runs — loud, but on a rig where a run is queued and
+    walked away from, still a wasted trip.
+    """
+    sig = set(inspect.signature(SFTTrainer.__init__).parameters)
+    if "tokenizer" in kw and "tokenizer" not in sig:
+        kw["processing_class"] = kw.pop("tokenizer")
+    return SFTTrainer(**kw)
 from unsloth.chat_templates import train_on_responses_only
 
 model, tokenizer = FastLanguageModel.from_pretrained(
@@ -75,7 +101,7 @@ def to_text(r):
 ds = Dataset.from_list([to_text(r) for r in rows]).shuffle(seed=1265)
 print(f"dataset: {len(ds)} rows | sample:\n{ds[0]['text'][:600]}")
 
-trainer = SFTTrainer(
+trainer = _sft_trainer(
     model=model,
     tokenizer=tokenizer,
     train_dataset=ds,
