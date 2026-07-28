@@ -1,20 +1,17 @@
-If you use a cloud LLM provider (OpenAI or Gemini) for AI polish, you provide your own API key. Here is how that key is stored.
+If you use OpenAI, Gemini, or Claude for AI polish, you bring your own API key. Here is how it is looked after.
 
-### POSIX-Secured File Storage
+### Stored In The macOS Keychain
 
-API keys are stored as files in `~/.enviouswispr-keys/` with strict POSIX permissions:
+Your key goes into the macOS Keychain, the same place the system keeps your other passwords. It is protected by your login and encrypted at rest, and no other account on the Mac can read it.
 
-* Directory permissions: `0700` (owner read/write/execute only)
-* File permissions: `0600` (owner read/write only)
-
-No other user on the system can read your keys.
-
-### Why Not macOS Keychain?
-
-The macOS Data Protection Keychain requires entitlements unavailable to non-sandboxed, ad-hoc-signed apps. The legacy Keychain causes password prompts on every app rebuild. File-based storage with strict POSIX permissions is standard practice for non-sandboxed macOS apps and avoids both issues.
+If you used an early version of EnviousWispr, your key may have started out in an older file store at `~/.enviouswispr-keys/`. The app moves it into the Keychain the next time it is used, and tidies up the old file afterwards.
 
 ### Key Safety
 
-* API keys are never logged.
-* API keys are never included in telemetry data.
-* API keys are never sent anywhere except to the provider you configured (OpenAI or Gemini) as part of the authentication header.
+* Your key is never written to logs.
+* Your key is never included in usage or crash data.
+* Your key goes nowhere except the provider you chose, as the authentication header on your own polish requests.
+
+### Removing A Key
+
+Clear the field in Settings and the stored key goes with it. You can also revoke the key from your provider's dashboard at any time, which takes effect immediately and independently of EnviousWispr.
