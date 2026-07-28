@@ -708,13 +708,25 @@ public enum PasteService {
     breaker: TerminalCircuitBreaker,
     onRefusal: ((TerminalContextRefusal) -> Void)? = nil
   ) -> CaretContext? {
+    // REVALIDATE FOCUS FIRST — the captured element may be a tab the user has
+    // since left.
+    //
+    // The caret path has always done this through `freshFocusedElement`, and the
+    // terminal path was reading the captured handle directly. So when the user
+    // switched tabs after recording started, the caret read correctly refused
+    // the stale element and the screen read then went to that same stale
+    // element anyway, describing a tab that is no longer in front of them.
+    // Cloud review found it; the discipline already existed one function away.
+    guard let fresh = freshFocusedElement(matching: element, messagingTimeout: budget.remaining)
+    else { return nil }
+
     var pid: pid_t = 0
-    guard AXUIElementGetPid(element, &pid) == .success else { return nil }
+    guard AXUIElementGetPid(fresh, &pid) == .success else { return nil }
 
     let dependencies = TerminalContextResolver.Dependencies(
       bundleIdentifier: { NSRunningApplication(processIdentifier: pid)?.bundleIdentifier },
       scanProcesses: { TerminalProcessScanner.liveSnapshot() },
-      readScreenTail: { terminalScreenTail(of: element) })
+      readScreenTail: { terminalScreenTail(of: fresh) })
 
     // The typed refusal is REPORTED, not discarded. §8 of the plan lists eight
     // distinct outcomes, and cloud review found every one of them collapsing
