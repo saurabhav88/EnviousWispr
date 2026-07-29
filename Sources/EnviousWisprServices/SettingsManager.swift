@@ -166,7 +166,13 @@ public final class SettingsManager {
         llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       }
     case .openAI, .gemini, .claude, .none:
+      // #1770: a WITHDRAWN id is well-formed, so the prefix check below waves
+      // it through and the user 404s on every dictation, forever. Discovery
+      // would repair it, but discovery does not run at launch and opening AI
+      // Polish settings only loads CACHED rows — the real rescan sits behind
+      // the manual refresh button, which a user has no reason to press.
       if fixedLiterals.contains(llmModel) || llmModel.isEmpty
+        || LLMProvider.retiredModelIDs.contains(llmModel)
         || !LLMProvider.modelIDLooksLikeCloudProvider(llmModel, llmProvider)
       {
         llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)

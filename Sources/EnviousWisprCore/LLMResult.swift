@@ -37,13 +37,52 @@ extension LLMProvider {
   {
     switch provider {
     case .openAI: return "gpt-4o-mini"
-    case .gemini: return "gemini-2.0-flash"
+    // #1770: was `gemini-2.0-flash`, which Google shut down 2026-06-01 (live
+    // 404 "no longer available"). `gemini-3.5-flash` is the only replacement
+    // candidate with a measured polish score on our own corpus (92.6% Type B).
+    // #1832 may swap it once 3.6 Flash and the cheap tier are benchmarked.
+    case .gemini: return "gemini-3.5-flash"
     case .claude: return "claude-haiku-4-5"
     case .ollama: return ollamaModel
     case .appleIntelligence: return "apple-intelligence"
     case .egOne: return LLMProvider.egOneModelName
     case .none: return ""
     }
+  }
+
+  /// Model ids the provider has WITHDRAWN, which must be swept off a user's
+  /// saved settings rather than left to fail forever (#1770).
+  ///
+  /// Lives in Core, not privately in `SettingsManager`, because a saved model
+  /// reaches the polish path through TWO production seams and both need the
+  /// same authority: the live setting (`SettingsManager
+  /// .canonicalizeLLMModelForProvider`) and a crash-recovery replay, which
+  /// deliberately restores the model recorded in the spool at capture time
+  /// (`RecoveryTextProcessor`). Duplicating the set in Pipeline would be the
+  /// exact drift this design removes.
+  ///
+  /// Deliberately an EXPLICIT set, never a predicate: we only ever replace ids
+  /// the provider has actually withdrawn, never a model the user legitimately
+  /// chose. Each was verified 404 against the live API on 2026-07-29.
+  ///
+  /// This is NOT a general staleness mechanism. When Google retires the next
+  /// model, a human adds it here — the same human gate that governs adding a
+  /// new model's thinking dialect.
+  public static let retiredModelIDs: Set<String> = [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-3-pro-preview",
+  ]
+
+  /// Substitute the provider's current default for a WITHDRAWN model id,
+  /// leaving every live id untouched (#1770).
+  ///
+  /// The shared authority is `retiredModelIDs` above, which both repair seams
+  /// read. This helper is `RecoveryTextProcessor`'s convenience for the
+  /// standalone substitution; `SettingsManager` tests the set directly inside
+  /// its larger canonicalization branch, which is clearer there.
+  public static func replacingRetiredModel(_ modelID: String, for provider: LLMProvider) -> String {
+    retiredModelIDs.contains(modelID) ? defaultModel(for: provider) : modelID
   }
 
   /// Coarse "does this model id look like it could belong to `provider`"

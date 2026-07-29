@@ -460,7 +460,12 @@ import Testing
       #expect(settings.llmModel == "gpt-4o-mini")
       settings.llmProvider = .egOne
       settings.llmProvider = .gemini
-      #expect(settings.llmModel == "gemini-2.0-flash")
+      // #1770: deliberately the EXACT id, not `defaultModel(for:)`. An earlier
+      // revision of this change replaced it with the constant to stop it
+      // "rotting" — which made it `x == x`, a tautology that can never fail and
+      // silently gave up the ability to catch a wrong shipped default. Breaking
+      // when a shipped default moves is the POINT: it forces a human to look.
+      #expect(settings.llmModel == "gemini-3.5-flash")
     }
 
     @Test("Language lock projects to mode only, never the code")

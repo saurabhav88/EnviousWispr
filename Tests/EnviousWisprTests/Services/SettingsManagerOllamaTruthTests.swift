@@ -158,6 +158,54 @@ struct SettingsManagerOllamaTruthTests {
     #expect(settings.llmModel == LLMProvider.defaultModel(for: .claude))
   }
 
+  // MARK: - Retired-model sweep (#1770)
+
+  /// Google shut down `gemini-2.0-flash` on 2026-06-01. It is a well-formed
+  /// Gemini id, so the foreign-provider check waves it through and a pinned
+  /// user 404s on every dictation forever — discovery does not run at launch,
+  /// and opening AI Polish settings only loads cached rows.
+  @Test("a persisted RETIRED model id is swept at launch")
+  func launchSweepsRetiredModel() {
+    let settings = freshSettings { suite in
+      suite.set("gemini", forKey: "llmProvider")
+      suite.set("gemini-2.0-flash", forKey: "llmModel")
+    }
+
+    #expect(settings.llmModel == LLMProvider.defaultModel(for: .gemini))
+  }
+
+  /// The direction that protects user choice. This sweep rewrites a persisted
+  /// setting, so it must touch ONLY ids the provider actually withdrew — a
+  /// predicate that caught legitimate models would silently override what the
+  /// user picked, which is far worse than the bug it fixes.
+  @Test("a persisted LIVE model id is NOT swept")
+  func launchPreservesLiveModel() {
+    for live in ["gemini-3.6-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite"] {
+      let settings = freshSettings { suite in
+        suite.set("gemini", forKey: "llmProvider")
+        suite.set(live, forKey: "llmModel")
+      }
+      #expect(settings.llmModel == live, "\(live) is live and must survive the sweep untouched")
+    }
+  }
+
+  /// The sweep runs during initialization, and this file persists
+  /// initialization-time values by write-through rather than relying on the
+  /// `didSet` observer. Without that, the repair would be forgotten on quit.
+  @Test("the swept value survives a reload")
+  func sweptValuePersistsAcrossReload() {
+    let suiteName = "ew-tests-\(UUID().uuidString)"
+    let suite = UserDefaults(suiteName: suiteName)!
+    suite.set("gemini", forKey: "llmProvider")
+    suite.set("gemini-2.0-flash", forKey: "llmModel")
+
+    _ = SettingsManager(defaults: suite)
+    let reloaded = SettingsManager(defaults: suite)
+
+    #expect(reloaded.llmModel == LLMProvider.defaultModel(for: .gemini))
+    suite.removePersistentDomain(forName: suiteName)
+  }
+
   @Test("turning polish off preserves the selected model (#158 Codex r5 P1 claim, verified false)")
   func polishOffPreservesSelectedModel() {
     let settings = freshSettings()
