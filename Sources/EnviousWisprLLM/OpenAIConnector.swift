@@ -122,8 +122,12 @@ public struct OpenAIConnector: TranscriptPolisher {
     if capabilities.temperaturePolicy == .include && !omitting.contains("temperature") {
       body["temperature"] = config.temperature
     }
-    if let reasoningEffort = config.reasoningEffort, !omitting.contains("reasoning_effort") {
-      body["reasoning_effort"] = reasoningEffort
+    // #1770: reasoning effort now travels in the shared `thinking` value.
+    // Only `.effort` is OpenAI's dialect — Gemini's `.budget`/`.level` can
+    // never reach here, and `nil` means send nothing. Behaviour is unchanged;
+    // the strip-and-retry allowlist still governs omission (#1330).
+    if case .effort(let value) = config.thinking, !omitting.contains("reasoning_effort") {
+      body["reasoning_effort"] = value
     }
     return body
   }

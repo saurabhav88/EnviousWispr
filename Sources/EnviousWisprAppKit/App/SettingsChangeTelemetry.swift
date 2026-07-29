@@ -214,6 +214,13 @@ enum SettingsProjection {
     "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b",
     "gemini-2.0-flash", "gemini-2.0-flash-lite",
     "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+    // #1770: the allowlist stopped at 2.5, so every Gemini 3.x user's
+    // configured model reconstructed as `custom` and the whole generation was
+    // invisible in settings snapshots. These eight are the ids the picker
+    // actually offers, verified reachable against the live API 2026-07-29.
+    "gemini-3-flash-preview", "gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-pro-preview", "gemini-3.1-pro-preview-customtools",
+    "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash",
     // Claude
     "claude-sonnet-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7",
     "claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-4-5", "claude-haiku-4-5",

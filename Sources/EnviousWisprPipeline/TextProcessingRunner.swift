@@ -15,7 +15,7 @@ internal struct TextProcessingRunResult {
 /// Runs the post-ASR text processing chain: word correction -> filler removal -> LLM polish.
 ///
 /// Does NOT own step instances. Steps are passed in by the pipeline, which retains
-/// ownership for PipelineSettingsSync mutation.
+/// ownership across the timeout await.
 /// The runner owns only the execution algorithm: ordering, timeout, cancellation,
 /// failure continuation (heart & limbs), and CORRECTION_DEBUG logging.
 ///
@@ -190,15 +190,26 @@ internal final class TextProcessingRunner {
       let stepName = step.name
       let input = context
       let stepStart = CFAbsoluteTimeGetCurrent()
+      // #1770: the context-aware form. Five steps inherit the default, which
+      // returns their fixed `maxDuration`; LLM polish scales with the text it
+      // is about to process, because its cost does. `input` is already the
+      // exact context that will be handed to `process(_:)` below, so the
+      // budget and the work can never disagree about what is being measured.
+      let stepBudget = step.maxDuration(for: input)
       let budgetSeconds =
-        Double(step.maxDuration.components.seconds)
-        + Double(step.maxDuration.components.attoseconds) / 1e18
-      // #1055: snapshot the polish provider BEFORE the await. `LLMPolishStep.
-      // llmProvider` is a mutable @MainActor property that PipelineSettingsSync
-      // can change while `process()` is in flight; reading it in the catch block
-      // (after the timeout suspension) would misclassify the timeout if the user
-      // switched providers mid-polish. Snapshotting here mirrors the step's own
-      // entry snapshot of `provider` and the `stepName` snapshot above.
+        Double(stepBudget.components.seconds)
+        + Double(stepBudget.components.attoseconds) / 1e18
+      // #1055: snapshot the polish provider BEFORE the await, so failure
+      // attribution in the catch block below reads a value fixed at dispatch
+      // rather than mutable post-await state. Mirrors the step's own entry
+      // snapshot of `provider` and the `stepName` snapshot above.
+      //
+      // #1770 note: an earlier version of this comment justified the snapshot
+      // by saying PipelineSettingsSync can change `llmProvider` mid-flight. It
+      // cannot — that case is an explicit no-op there, and the value is frozen
+      // per recording. The snapshot is kept because attribution should not
+      // depend on an invariant held in another file, not because a live writer
+      // exists.
       let polishProviderAtStart = (step as? LLMPolishStep)?.llmProvider
       // #945: snapshot the attempted model alongside the provider, pre-await. On
       // failure `context.llmModel` is never stamped (set only on success,

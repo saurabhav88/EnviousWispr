@@ -252,9 +252,6 @@ public enum LLMConstants {
   /// reasoning and emit a clean answer; `done_reason=stop` ends generation
   /// early for short transcripts so latency is bounded.
   public static let ollamaThinkingMaxTokens: Int = 2048
-
-  /// Default thinking budget for extended thinking models (Gemini 2.5 Flash/Pro).
-  public static let defaultThinkingBudget: Int = 8192
 }
 
 public enum FormattingConstants {

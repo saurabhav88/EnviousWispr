@@ -140,10 +140,10 @@ struct OpenAIParamStripTests {
     KeychainManager(backend: .legacyFiles, legacyStore: PopulatedKeyStore())
   }
 
-  private func config(model: String, reasoningEffort: String? = nil) -> LLMProviderConfig {
+  private func config(model: String, effort: String? = nil) -> LLMProviderConfig {
     LLMProviderConfig(
       model: model, apiKeyKeychainId: "openai-api-key", outputTokens: .capped(512),
-      temperature: 0, thinkingBudget: nil, reasoningEffort: reasoningEffort)
+      temperature: 0, thinking: effort.map { .effort($0) })
   }
 
   private static let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
@@ -233,7 +233,7 @@ struct OpenAIParamStripTests {
 
     let result = try await connector(transport).polish(
       text: "hello", instructions: .default,
-      config: config(model: model, reasoningEffort: "low"), onToken: nil)
+      config: config(model: model, effort: "low"), onToken: nil)
 
     #expect(result.polishedText == "Polished.")
     #expect(transport.requestCount == 3)

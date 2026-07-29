@@ -73,8 +73,7 @@ struct ClaudeLiveSweepTests {
         apiKeyKeychainId: KeychainManager.claudeKeyID,
         outputTokens: .capped(LLMConstants.claudeMaxOutputTokens),
         temperature: 0,
-        thinkingBudget: nil,
-        reasoningEffort: nil
+        thinking: nil
       )
 
       // One test-level retry on top of the connector's own internal retry
@@ -164,7 +163,7 @@ struct ClaudeLiveSweepTests {
           let config = LLMProviderConfig(
             model: model, apiKeyKeychainId: KeychainManager.claudeKeyID,
             outputTokens: .capped(LLMConstants.claudeMaxOutputTokens),
-            temperature: 0, thinkingBudget: nil, reasoningEffort: nil)
+            temperature: 0, thinking: nil)
           let envelope = Self.productionEnvelope(transcript: text, modelID: model)
           let start = ContinuousClock.now
           do {
@@ -268,7 +267,7 @@ struct ClaudeLiveSweepTests {
           let config = LLMProviderConfig(
             model: model, apiKeyKeychainId: KeychainManager.claudeKeyID,
             outputTokens: .capped(LLMConstants.claudeMaxOutputTokens),
-            temperature: 0, thinkingBudget: nil, reasoningEffort: nil)
+            temperature: 0, thinking: nil)
           let envelope = Self.productionEnvelope(transcript: input, modelID: model)
           let start = ContinuousClock.now
           do {

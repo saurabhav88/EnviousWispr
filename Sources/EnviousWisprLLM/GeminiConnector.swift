@@ -97,8 +97,21 @@ public struct GeminiConnector: TranscriptPolisher {
     if case .capped(let value) = config.outputTokens {
       generationConfig["maxOutputTokens"] = value
     }
-    if let budget = config.thinkingBudget {
-      generationConfig["thinkingConfig"] = ["thinkingBudget": budget]
+    // #1770: Gemini speaks TWO thinking dialects and refuses the other one.
+    // 2.5 takes an integer `thinkingBudget`; 3.x takes a string `thinkingLevel`
+    // and rejects `thinkingBudget: 0` outright (400) — which was exactly what
+    // the Deep-reasoning toggle sent in its default OFF position. Which dialect
+    // a model speaks is decided by `LLMModelCapabilities`, never here.
+    switch config.thinking {
+    case .budget(let value):
+      generationConfig["thinkingConfig"] = ["thinkingBudget": value]
+    case .level(let value):
+      generationConfig["thinkingConfig"] = ["thinkingLevel": value]
+    case .effort, .none:
+      // `.effort` is OpenAI's dialect and never reaches Gemini; `nil` is the
+      // deliberate "send no thinking field" case, which every measured Gemini
+      // model accepts.
+      break
     }
     return generationConfig
   }

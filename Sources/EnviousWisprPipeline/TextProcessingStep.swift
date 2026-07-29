@@ -67,7 +67,26 @@ protocol TextProcessingStep {
   /// Whether this step should run. Checked before each invocation.
   var isEnabled: Bool { get }
   /// Maximum time this step may run before being skipped.
+  ///
+  /// The FIXED policy for steps whose cost does not depend on the input. Five
+  /// of the six steps declare only this; the runner always calls
+  /// `maxDuration(for:)` below, whose default returns this value.
   var maxDuration: Duration { get }
+  /// Maximum time this step may run, given the text it is about to process
+  /// (#1770).
+  ///
+  /// Exists because LLM polish is the one step whose cost tracks input length:
+  /// measured live, a 10-minute dictation polishes in 6.1s and the longest
+  /// transcript we have recorded in 50.7s, against a former flat 5s budget that
+  /// timed out both (visibly, for cloud providers — the user gets the "AI
+  /// polish failed" notice). A single larger flat number is not the answer either
+  /// — it would make a 20-word dictation wait far longer than today before its
+  /// raw text appears.
+  ///
+  /// This is the SAME duration authority made context-aware, not a second one:
+  /// the default below delegates to `maxDuration`, so a step opts in only by
+  /// overriding.
+  func maxDuration(for context: TextProcessingContext) -> Duration
   /// Process the text and return an updated context.
   func process(_ context: TextProcessingContext) async throws -> TextProcessingContext
   /// How `TextProcessingRunner` should treat an error thrown by `process`.
@@ -77,4 +96,7 @@ protocol TextProcessingStep {
 
 extension TextProcessingStep {
   var errorSurfacePolicy: ErrorSurfacePolicy { .swallow }
+  /// Default: the step's cost does not depend on its input, so the fixed
+  /// policy applies. Only `LLMPolishStep` overrides this.
+  func maxDuration(for context: TextProcessingContext) -> Duration { maxDuration }
 }

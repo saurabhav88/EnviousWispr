@@ -29,12 +29,12 @@ struct OpenAIRequestBodyTests {
   // MARK: - Polish request body per family (#1330)
 
   private func config(
-    model: String, reasoningEffort: String? = nil,
+    model: String, effort: String? = nil,
     outputTokens: OutputTokenPolicy = .capped(512)
   ) -> LLMProviderConfig {
     LLMProviderConfig(
       model: model, apiKeyKeychainId: "openai-api-key", outputTokens: outputTokens,
-      temperature: 0, thinkingBudget: nil, reasoningEffort: reasoningEffort)
+      temperature: 0, thinking: effort.map { .effort($0) })
   }
 
   private let messages: [[String: String]] = [
@@ -52,7 +52,7 @@ struct OpenAIRequestBodyTests {
 
   @Test func reasoningModelOmitsTemperatureAndSendsEffort() {
     let body = OpenAIConnector.makeRequestBody(
-      config: config(model: "gpt-5.6-sol", reasoningEffort: "low"), messages: messages)
+      config: config(model: "gpt-5.6-sol", effort: "low"), messages: messages)
     #expect(body["temperature"] == nil)
     #expect(body["reasoning_effort"] as? String == "low")
   }
@@ -68,7 +68,7 @@ struct OpenAIRequestBodyTests {
 
   @Test func omittingSetRemovesParamsRegardlessOfFamily() {
     let body = OpenAIConnector.makeRequestBody(
-      config: config(model: "gpt-4o-mini", reasoningEffort: "low"),
+      config: config(model: "gpt-4o-mini", effort: "low"),
       messages: messages,
       omitting: ["temperature", "reasoning_effort"])
     #expect(body["temperature"] == nil)

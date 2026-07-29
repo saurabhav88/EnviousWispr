@@ -41,8 +41,7 @@ struct OpenAILiveSweepTests {
         apiKeyKeychainId: KeychainManager.openAIKeyID,
         outputTokens: .providerDefault,
         temperature: 0,
-        thinkingBudget: nil,
-        reasoningEffort: capabilities.supportsReasoning ? "low" : nil
+        thinking: capabilities.supportsReasoning ? .effort("low") : nil
       )
 
       let start = ContinuousClock.now

@@ -379,8 +379,7 @@ public actor EGOneServerManager {
         apiKeyKeychainId: nil,
         outputTokens: .capped(128),
         temperature: 0,
-        thinkingBudget: nil,
-        reasoningEffort: nil,
+        thinking: nil,
         detectedLanguage: nil
       )
       let start = ContinuousClock.now

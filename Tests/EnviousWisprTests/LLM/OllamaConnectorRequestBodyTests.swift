@@ -153,8 +153,7 @@ struct OllamaConnectorRequestBodyTests {
       apiKeyKeychainId: nil,
       outputTokens: .capped(128),
       temperature: 0.3,
-      thinkingBudget: nil,
-      reasoningEffort: nil
+      thinking: nil
     )
     await #expect(throws: LLMError.self) {
       _ = try await connector.polish(
@@ -186,8 +185,7 @@ struct OllamaConnectorRequestBodyTests {
       apiKeyKeychainId: nil,
       outputTokens: .capped(431),
       temperature: 0.3,
-      thinkingBudget: nil,
-      reasoningEffort: nil
+      thinking: nil
     )
     _ = try? await connector.polish(
       text: "hello",
@@ -214,8 +212,7 @@ struct OllamaConnectorRequestBodyTests {
       apiKeyKeychainId: nil,
       outputTokens: .providerDefault,
       temperature: 0.3,
-      thinkingBudget: nil,
-      reasoningEffort: nil
+      thinking: nil
     )
     let expected = LLMError.requestFailed(
       "Local polish requires an explicit output-token cap")

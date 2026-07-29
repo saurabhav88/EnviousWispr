@@ -37,13 +37,68 @@ extension LLMProvider {
   {
     switch provider {
     case .openAI: return "gpt-4o-mini"
-    case .gemini: return "gemini-2.0-flash"
+    // #1770: was `gemini-2.0-flash`, which Google shut down 2026-06-01 (live
+    // 404 "no longer available"). `gemini-3.5-flash` is the only replacement
+    // candidate with a measured polish score on our own corpus (92.6% Type B).
+    // #1832 may swap it once 3.6 Flash and the cheap tier are benchmarked.
+    case .gemini: return "gemini-3.5-flash"
     case .claude: return "claude-haiku-4-5"
     case .ollama: return ollamaModel
     case .appleIntelligence: return "apple-intelligence"
     case .egOne: return LLMProvider.egOneModelName
     case .none: return ""
     }
+  }
+
+  /// Model ids the provider has WITHDRAWN, which must be swept off a user's
+  /// saved settings rather than left to fail forever (#1770).
+  ///
+  /// Lives in Core, not privately in `SettingsManager`, because a saved model
+  /// reaches the polish path through TWO production seams and both need the
+  /// same authority: the live setting (`SettingsManager
+  /// .canonicalizeLLMModelForProvider`) and a crash-recovery replay, which
+  /// deliberately restores the model recorded in the spool at capture time
+  /// (`RecoveryTextProcessor`). Duplicating the set in Pipeline would be the
+  /// exact drift this design removes.
+  ///
+  /// Deliberately an EXPLICIT set, never a predicate: we only ever replace ids
+  /// the provider has actually withdrawn, never a model the user legitimately
+  /// chose. Each was verified 404 against the live API on 2026-07-29.
+  ///
+  /// KEYED BY PROVIDER, not a flat set of ids. An Ollama model is named by the
+  /// user, so a local model called `gemini-2.0-flash` is a perfectly legitimate
+  /// choice that a flat set would silently rewrite to `llama3.2` on a recovery
+  /// replay. Keying also keeps the next entry honest: under a flat set plus a
+  /// `provider == .gemini` guard, a future OpenAI retirement added here would be
+  /// silently ignored — it would LOOK registered and do nothing.
+  ///
+  /// This is NOT a general staleness mechanism. When Google retires the next
+  /// model, a human adds it here — the same human gate that governs adding a
+  /// new model's thinking dialect.
+  public static let retiredModelIDs: [LLMProvider: Set<String>] = [
+    .gemini: [
+      "gemini-2.0-flash",
+      "gemini-2.0-flash-lite",
+      "gemini-3-pro-preview",
+    ]
+  ]
+
+  /// Whether `provider` has WITHDRAWN `modelID`. The single membership test both
+  /// repair seams read, so neither can drift from the other.
+  public static func isRetiredModel(_ modelID: String, for provider: LLMProvider) -> Bool {
+    retiredModelIDs[provider]?.contains(modelID) ?? false
+  }
+
+  /// Substitute the provider's current default for a WITHDRAWN model id,
+  /// leaving every live id untouched (#1770).
+  ///
+  /// The shared authority is `retiredModelIDs` above, which both repair seams
+  /// read through `isRetiredModel`. This helper is `RecoveryTextProcessor`'s
+  /// convenience for the standalone substitution; `SettingsManager` calls the
+  /// membership test directly inside its larger canonicalization branch, which
+  /// is clearer there.
+  public static func replacingRetiredModel(_ modelID: String, for provider: LLMProvider) -> String {
+    isRetiredModel(modelID, for: provider) ? defaultModel(for: provider) : modelID
   }
 
   /// Coarse "does this model id look like it could belong to `provider`"
@@ -125,14 +180,31 @@ public enum OutputTokenPolicy: Codable, Sendable, Equatable {
   case capped(Int)
 }
 
+/// The resolved "how hard to think" value for ONE request (#1770).
+///
+/// Replaces the previous sibling optionals `thinkingBudget: Int?` and
+/// `reasoningEffort: String?`, which let a request carry BOTH a budget and an
+/// effort — two dialects at once, which no provider accepts. One value makes
+/// that unconstructible. `nil` still means "deliberately send no thinking
+/// field", a declared decision in the same spirit as `OutputTokenPolicy`
+/// above; it is a legal state, not an impossible one.
+public enum ResolvedThinking: Codable, Sendable, Equatable {
+  /// Gemini 2.5 dialect: integer token budget.
+  case budget(Int)
+  /// Gemini 3 dialect: string level (minimal/low/medium/high).
+  case level(String)
+  /// OpenAI dialect: `reasoning_effort`.
+  case effort(String)
+}
+
 /// Configuration for an LLM provider.
 public struct LLMProviderConfig: Codable, Sendable {
   public let model: String
   public let apiKeyKeychainId: String?
   public let outputTokens: OutputTokenPolicy
   public let temperature: Double
-  public let thinkingBudget: Int?
-  public let reasoningEffort: String?
+  /// Nil means no thinking field is sent at all.
+  public let thinking: ResolvedThinking?
   /// Detected input language (ISO 639-1 base code). Nil for the Parakeet
   /// highway, pre-W2 callsites, or when no language hint is available.
   /// Consumed by providers that gate or condition behavior on input language
@@ -144,16 +216,14 @@ public struct LLMProviderConfig: Codable, Sendable {
     apiKeyKeychainId: String?,
     outputTokens: OutputTokenPolicy,
     temperature: Double,
-    thinkingBudget: Int?,
-    reasoningEffort: String?,
+    thinking: ResolvedThinking?,
     detectedLanguage: String? = nil
   ) {
     self.model = model
     self.apiKeyKeychainId = apiKeyKeychainId
     self.outputTokens = outputTokens
     self.temperature = temperature
-    self.thinkingBudget = thinkingBudget
-    self.reasoningEffort = reasoningEffort
+    self.thinking = thinking
     self.detectedLanguage = detectedLanguage
   }
 }

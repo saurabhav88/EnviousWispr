@@ -67,8 +67,7 @@ struct GeminiResponseParsingTests {
   private func config() -> LLMProviderConfig {
     LLMProviderConfig(
       model: "gemini-2.5-flash", apiKeyKeychainId: "gemini-api-key",
-      outputTokens: .providerDefault, temperature: 0, thinkingBudget: nil,
-      reasoningEffort: nil)
+      outputTokens: .providerDefault, temperature: 0, thinking: nil)
   }
 
   private final class StatusBox: @unchecked Sendable {
