@@ -7,12 +7,13 @@ import Foundation
 /// that scores an (instruction, polished-output) pair and flags cases where
 /// Apple Intelligence composed an artifact instead of cleaning the dictation.
 ///
-/// Provenance (durable artifact tree, not committed here):
-///   `~/Developer/EnviousLabs/EnviousWispr-artifacts/issue-832-classifier-probe/`
-///   - model:     `phase3-models/MiniLM-L6-reformat2-13/fixed.mlpackage` (#949 retrain)
-///   - tokenizer: `phase2-models/MiniLM-L6-13/checkpoint-best/{tokenizer.json,tokenizer_config.json}`
+/// Provenance (gitignored artifact tree in this repo, `.gitignore:219-220`):
+///   `artifacts/issue-832-classifier-probe/`
+///   - checkpoint: `phase2-models/MiniLM-L6-reformat2-13/checkpoint-best` (#949 retrain)
+///   - tokenizer:  `phase2-models/MiniLM-L6-13/checkpoint-best/{tokenizer.json,tokenizer_config.json}`
 ///     (UNCHANGED — same base; tokenizer folder + contract not re-shipped)
-///   - threshold: `phase2-models/MiniLM-L6-reformat2-13/eval.json` → `T_clf`
+///   - threshold:  `phase2-models/MiniLM-L6-reformat2-13/eval.json` → `T_clf`
+/// The conversion recipe is tracked at `scripts/convert-output-classifier.py`.
 ///
 /// #949 retrain (2026-06-02): same MiniLM-L6 seed 13, fine-tuned one gentle epoch
 /// (lr 2e-5) on the v5 corpus + ~3.1k synthesized faithful-reformat KEEP pairs and
@@ -22,10 +23,16 @@ import Foundation
 /// FPR-95 2.77%, reformat false-discard 67.5% → 3.0%, Core ML drift 0 band-flips.
 ///
 /// The model ships as `OutputClassifier.mlpackage` in the APP bundle's
-/// `Contents/Resources` (an app-target folder reference) and is compiled to a
-/// `.mlmodelc` on-device at prewarm. See the PR8 runbook refresh addendum for
-/// why the compile is load-time rather than build-time (Tuist `.mlpackage`
-/// build-phase limitation).
+/// `Contents/Resources` (an app-target folder reference). Xcode compiles it to
+/// `OutputClassifier.mlmodelc` at BUILD time — verified present in the built
+/// bundle — and the runtime loads that; compiling the `.mlpackage` on-device is
+/// the defensive fallback only (`CoreMLOutputClassifier.swift:95-97`).
+///
+/// #1226 (2026-07-28): converted at FLOAT32, not FLOAT16. At FLOAT16 the
+/// attention arithmetic overflows whenever Core ML does not place the model on
+/// the Neural Engine — CPU-only scoring returns NaN and CPU+GPU returns one
+/// constant logit — which silently disabled the classifier on M5 hardware.
+/// FLOAT32 makes it placement-independent. Recipe: `scripts/convert-output-classifier.py`.
 public enum OutputClassifierManifest {
   public static let modelName = "MiniLM-L6"
   public static let modelSeed = 13
@@ -73,7 +80,7 @@ public enum OutputClassifierManifest {
   /// `mlpackageSHA256` = sha256 over sorted "<relpath> <filesha256>" lines of
   /// the committed `OutputClassifier.mlpackage` directory.
   public static let mlpackageSHA256 =
-    "0770ab0559ac90f95358a85a19845fa2745fc182ab06637ecb005b52d7bdce2d"
+    "09474a9cc09c9b8447ff8682c97f54a4d4a9a21d62fa67a9da2114571f88cbf2"
   /// The shipped `tokenizer-contract.json` `contractHash` (canonical contract
   /// bytes ++ tokenizer.json ++ tokenizer_config.json). Recomputed and verified
   /// at runtime; mismatch ⇒ classifier disabled, fail open.

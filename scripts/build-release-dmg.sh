@@ -276,6 +276,27 @@ test -d "$BUNDLE/$VAD_MODEL_REL" || {
 }
 echo "    VAD model present in the app bundle"
 
+# The output-safety classifier had no packaging gate at all until #1226, so a
+# dropped resource would have shipped silently: the classifier fails OPEN, so
+# the app keeps working and the only symptom is that the safety net is gone.
+# Mirror the runtime's own requirement (CoreMLOutputClassifier.load) rather than
+# a stricter one — it loads the build-compiled .mlmodelc when present and falls
+# back to compiling the source .mlpackage on-device, so either form is valid and
+# demanding only the compiled one would fail a bundle that works.
+CLASSIFIER_TOKENIZER_REL="Contents/Resources/OutputClassifierTokenizer"
+for CLASSIFIER_FILE in tokenizer.json tokenizer_config.json tokenizer-contract.json; do
+    test -f "$BUNDLE/$CLASSIFIER_TOKENIZER_REL/$CLASSIFIER_FILE" || {
+        echo "::error::Output-safety classifier tokenizer file missing from app bundle at $CLASSIFIER_TOKENIZER_REL/$CLASSIFIER_FILE (#1226)"; exit 1;
+    }
+done
+if [[ -d "$BUNDLE/Contents/Resources/OutputClassifier.mlmodelc" ]]; then
+    echo "    output-safety classifier present in the app bundle (compiled .mlmodelc + tokenizer)"
+elif [[ -d "$BUNDLE/Contents/Resources/OutputClassifier.mlpackage" ]]; then
+    echo "    WARNING: output-safety classifier ships as an uncompiled .mlpackage — the app will compile it on-device at prewarm"
+else
+    echo "::error::Output-safety classifier model missing from app bundle: neither OutputClassifier.mlmodelc nor OutputClassifier.mlpackage in Contents/Resources (#1226)"; exit 1
+fi
+
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
     echo "==> CODESIGN_IDENTITY not set — skipping signing (unsigned assembly only)"
 else
@@ -533,6 +554,21 @@ for HELPER in \
     fi
 done
 echo "    all 4 Sparkle update helpers present (Updater, Installer, Downloader, Autoupdate)"
+
+# #1226: re-assert the classifier from the consumer's side. The pre-sign check
+# above proves it was assembled; this proves it survived signing and packaging
+# into what a user actually mounts.
+APP_IN_DMG="$PRECHECK_MOUNT/EnviousWispr.app"
+for CLASSIFIER_FILE in tokenizer.json tokenizer_config.json tokenizer-contract.json; do
+    if [[ ! -f "$APP_IN_DMG/Contents/Resources/OutputClassifierTokenizer/$CLASSIFIER_FILE" ]]; then
+        echo "::error::Output-safety classifier tokenizer file missing from shipped app: OutputClassifierTokenizer/$CLASSIFIER_FILE (#1226)"; exit 1
+    fi
+done
+if [[ ! -d "$APP_IN_DMG/Contents/Resources/OutputClassifier.mlmodelc" \
+    && ! -d "$APP_IN_DMG/Contents/Resources/OutputClassifier.mlpackage" ]]; then
+    echo "::error::Output-safety classifier model missing from shipped app (#1226)"; exit 1
+fi
+echo "    output-safety classifier present in the shipped app (model + tokenizer)"
 
 # GPLv3 §6 / MIT / BSD / Apache: assert the license material travels INSIDE the
 # signed app bundle (content checks, not just presence) — a stale/empty/wrong

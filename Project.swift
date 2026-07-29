@@ -358,9 +358,12 @@ let project = Project(
       // target so its files land in EnviousWispr.app/Contents/Resources and
       // resolve at runtime via Bundle.main — NOT a SwiftPM module bundle.
       // Both are FOLDER REFERENCES: Tuist 4.195.11 recurses into a globbed
-      // .mlpackage and fails to place its inner model.mlmodel in a build phase,
-      // so the package ships verbatim and is compiled on-device at prewarm via
-      // MLModel.compileModel(at:) (off the heart path) instead of at build time.
+      // .mlpackage and fails to place its inner model.mlmodel in a build phase.
+      // Xcode's Core ML build rule still compiles the referenced .mlpackage, so
+      // what actually ships is OutputClassifier.mlmodelc and NOT the package —
+      // verified against a built bundle (#1226, 2026-07-28). The on-device
+      // MLModel.compileModel(at:) path in CoreMLOutputClassifier is therefore a
+      // fallback that does not run in a normal build, not the normal route.
       // The tokenizer folder reference preserves the OutputClassifierTokenizer/
       // subdirectory verbatim. EnviousWisprLLM stays hasResources:false to
       // avoid double-bundling the same files into Bundle.module.

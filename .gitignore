@@ -154,6 +154,11 @@ scripts/*
 !scripts/lid-perf-bench.sh
 !scripts/lid-perf-bench.py
 !scripts/generate-recording-sounds.py
+# Output-safety classifier: conversion recipe + its numerical gates (#1226).
+# Tracked because these settings ship to users inside the model bytes.
+!scripts/convert-output-classifier.py
+!scripts/gate-output-classifier.py
+!scripts/emit-output-classifier-golden.py
 # UAT helpers (per-PR Swift CLIs invoked during Live UAT, e.g. issue #845 keychain verifier)
 !scripts/uat/
 !scripts/uat/**

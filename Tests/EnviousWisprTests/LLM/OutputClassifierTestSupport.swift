@@ -31,6 +31,9 @@ enum OutputClassifierTestPaths {
     path: "MiniLM-L6.parity50.pretokenized.jsonl")
   static let paritySource = fixturesFolder.appending(path: "MiniLM-L6.parity-source-50.jsonl")
   static let goldenScores = fixturesFolder.appending(path: "MiniLM-L6.golden-scores.jsonl")
+  /// The one known knife-edge row (#1226) — pinned by probability, never by
+  /// decision. See `OutputClassifierGoldenScoreTests`.
+  static let boundaryRow = fixturesFolder.appending(path: "MiniLM-L6.boundary-row.jsonl")
 }
 
 /// A deterministic stand-in tokenizer: one id per whitespace-token, ids start at
