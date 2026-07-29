@@ -67,7 +67,7 @@ public enum RecoveryTelemetryReason: String, Sendable {
   case saveFailed = "save_failed"
   case markerWriteFailed = "marker_write_failed"
   case markerClearFailed = "marker_clear_failed"
-  case crashLoop = "crash_loop"
+  case attemptAlreadySpent = "attempt_already_spent"
   /// #1707 Phase 3 — a Keychain read returned a transient OSStatus (device
   /// locked / keychain daemon not yet unlocked); the spool is retained and
   /// retried, not deleted. Bypass, not Failure.
@@ -1037,6 +1037,30 @@ public final class TelemetryService {
 
   /// A record-press landed while recovery held the engine, so NO session was
   /// minted (the user saw the "recovering" pill). Mirrors `coldstart.press_blocked`.
+  /// #1740: did the cleanup of a SPENT recovery attempt actually happen?
+  ///
+  /// After #1740 deletion is the only outcome for a spent attempt, so a
+  /// regression that silently stopped deleting — or a deletion that reliably
+  /// fails on real disks — would look exactly like healthy telemetry. This is
+  /// the only signal that would show it.
+  ///
+  /// Deliberately NOT emitted for `durable_save`, which fires on every
+  /// successful dictation and would swamp the signal for a path this change
+  /// does not touch (founder Gate 2, 2026-07-29: "light telemetry"). Only the
+  /// two spent-attempt sources emit.
+  ///
+  /// Privacy: shape only — a source label, a component label, and a boolean.
+  /// Never the recovery id, a path, or an error string.
+  public func recoveryCleanup(source: String, component: String, succeeded: Bool) {
+    PostHogSDK.shared.capture(
+      "recovery.cleanup",
+      properties: [
+        "source": source,
+        "component": component,
+        "succeeded": succeeded,
+      ])
+  }
+
   public func recoveryPressBlocked(asrBackend: String) {
     PostHogSDK.shared.capture(
       "recovery.press_blocked", properties: ["asr_backend": asrBackend])

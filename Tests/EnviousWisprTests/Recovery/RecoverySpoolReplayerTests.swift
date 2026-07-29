@@ -13,12 +13,13 @@ import Testing
 
 /// The per-orphan `RecoverySpoolReplayer` (#1063 PR2 / #1464): decrypt →
 /// transcribe → polish → save a non-auto-pasting "Recovered" transcript, ONE
-/// attempt with a crash-loop marker, and a generation guard that drops a
-/// discarded-but-in-flight result before saving. #1464: the replayer NO LONGER
-/// destroys the spool/key — the coordinator (sole destructor) does that after
-/// `replay()` returns — so these tests assert the outcome + typed telemetry + that
-/// the spool/key REMAIN. The one exception is the §3.3 save-failure fix: the
-/// replayer clears its OWN attempt marker so a retained spool replays next launch.
+/// guarded attempt, and a generation guard that drops a discarded-but-in-flight
+/// result before saving. #1464: the replayer NO LONGER destroys the spool/key —
+/// the coordinator (sole destructor) does that after `replay()` returns — so
+/// these tests assert the outcome + typed telemetry + that the spool/key REMAIN.
+/// #1740: a History-save failure now LEAVES the attempt marker committed, so a
+/// second replay abandons before ASR; the marker is cleared only where no ASR
+/// ran (the transient-Keychain deferral).
 /// `.serialized` — the telemetry tests set the process-global `testEventHook`.
 @MainActor
 @Suite("Recovery spool replayer (#1063 PR2, #1464)", .serialized)
@@ -216,13 +217,13 @@ struct RecoverySpoolReplayerTests {
     try h.spoolStore.writeAttemptMarker(for: id)
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
     #expect(outcome == .abandoned)
-    #expect(h.asr.transcribeCallCount == 0, "never re-transcribe a recording that crashed us")
+    #expect(h.asr.transcribeCallCount == 0, "never re-transcribe a spool whose attempt already began")
     #expect(h.transcriptCoordinator.transcripts.isEmpty)
     // The coordinator deletes on `.abandoned`; the replayer leaves the spool.
     #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
   }
 
-  @Test("the attempt marker is written BEFORE transcribe (crash-loop guard armed)")
+  @Test("the attempt marker is written BEFORE transcribe (one-attempt guard armed)")
   func markerWrittenBeforeTranscribe() async throws {
     let h = Self.makeHarness()
     let id = "armed-\(UUID().uuidString)"
@@ -265,9 +266,9 @@ struct RecoverySpoolReplayerTests {
       #expect(outcome == .deferred)
       #expect(h.asr.transcribeCallCount == 0, "never reaches transcribe on a deferred key read")
       #expect(h.transcriptCoordinator.transcripts.isEmpty)
-      // Bypass, not failure: the spool + key are retained for a retry, and the
-      // marker is cleared so a later attempt does not misread this as a
-      // crashed attempt (the exact regression this fix prevents).
+      // Bypass, not failure: no ASR ran, so the attempt is UNSPENT. The spool +
+      // key are retained and the marker is cleared so a later attempt remains
+      // eligible instead of being abandoned as already spent.
       #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
       #expect(
         (try? h.keyStore.retrieve(for: id)) != nil, "the ARMED fault is one-shot and consumed")
@@ -376,36 +377,30 @@ struct RecoverySpoolReplayerTests {
     #expect(saved.llmModel == nil)
   }
 
-  // MARK: - #1464 §3.3 save-failure retains + clears marker
+  // MARK: - #1740 save failure is a SPENT attempt: marker stays committed
 
-  @Test("save failure RETAINS the spool + key and clears the marker → .failed(.save)")
-  func saveFailureRetainsAndClearsMarker() async throws {
+  @Test("save failure KEEPS the spent-attempt marker and cannot run ASR twice")
+  func saveFailureKeepsSpentAttemptMarkerAndCannotRunASRTwice() async throws {
     let h = Self.makeHarness(transcriptDir: try Self.unwritableTranscriptDir())
     let id = "savefail-\(UUID().uuidString)"
     try await Self.seedSpool(h, id: id, samples: [0.2, 0.4])
-    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
-    #expect(outcome == .failed(.save(.other)))
-    // The audio is still good — RETAIN it for a next-launch retry, and the marker
-    // must be cleared so the retained spool replays (not read as abandoned).
-    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
-    #expect((try? h.keyStore.retrieve(for: id)) != nil)
-    #expect(!h.spoolStore.hasAttemptMarker(for: id), "marker cleared so next launch replays")
-  }
 
-  @Test("save failure whose marker-clear ALSO throws → .failed(.saveMarkerClearFailed), retained")
-  func saveFailureMarkerClearAlsoFails() async throws {
-    let h = Self.makeHarness(transcriptDir: try Self.unwritableTranscriptDir())
-    let id = "markerfail-\(UUID().uuidString)"
-    try await Self.seedSpool(h, id: id, samples: [0.5])
-    defer { _ = chmod(h.spoolDir.path, 0o700) }  // restore so temp cleanup/GC can proceed
-    // The marker is written before transcribe; flip the spool dir read-only DURING
-    // transcribe so the post-save `deleteAttemptMarker` (removeItem) throws EACCES.
-    h.asr.onTranscribe = { _ = chmod(h.spoolDir.path, 0o500) }
-    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
-    #expect(outcome == .failed(.saveMarkerClearFailed(.other)))
-    // Retained THIS launch even though next-launch durability is not guaranteed.
-    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
-    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+    let first = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    #expect(first == .failed(.save(.other)))
+    #expect(h.asr.transcribeCallCount == 1)
+    // #1740: the marker is NOT cleared. It used to be, so that a later launch
+    // would replay; that retry is exactly what the one-attempt rule removes.
+    #expect(
+      h.spoolStore.hasAttemptMarker(for: id),
+      "the spent attempt's marker must stay committed")
+
+    // The coordinator deletes on `.failed(.save)`, but deletion is best-effort.
+    // Simulate a failed cleanup by leaving the spool in place and replaying
+    // again: the committed marker must abandon BEFORE ASR, so one attempt does
+    // not depend on the deletion having succeeded.
+    let second = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    #expect(second == .abandoned)
+    #expect(h.asr.transcribeCallCount == 1, "a surviving spool must never transcribe twice")
   }
 
   // MARK: - #1464 root-cause telemetry

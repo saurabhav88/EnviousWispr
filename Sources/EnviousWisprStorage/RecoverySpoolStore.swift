@@ -51,15 +51,6 @@ public struct RecoverySpoolStore: Sendable {
       .sorted()
   }
 
-  /// Read just the provenance header without decoding frames. Returns nil when
-  /// the header JSON is unreadable but the file is still a spool (recovery can
-  /// then proceed on frames alone). Throws `notASpool` for a non-spool file.
-  public func readHeader(for recoverySessionID: String) throws -> RecoverySpoolHeader? {
-    let url = spoolURL(for: recoverySessionID)
-    let data = try Data(contentsOf: url, options: .mappedIfSafe)
-    return try RecoverySpoolFileFormat.decodeHeader(from: data).header
-  }
-
   /// Reconstruct the valid continuous prefix of a spool. Walks frames in order,
   /// stopping at the first torn, out-of-sequence, or authentication-failing
   /// frame (the recovered duration is honest about where it stopped). The
@@ -159,16 +150,18 @@ public struct RecoverySpoolStore: Sendable {
     try deleteAttemptMarker(for: recoverySessionID)
   }
 
-  // MARK: - One-attempt crash-loop marker (#1063 PR2)
+  // MARK: - One-attempt marker (#1063 PR2)
 
   /// Sidecar marker path for a spool's recovery attempt (`<id>.attempt`).
-  public func attemptMarkerURL(for recoverySessionID: String) -> URL {
+  private func attemptMarkerURL(for recoverySessionID: String) -> URL {
     directory.appendingPathComponent(
       "\(recoverySessionID).\(RecoveryConstants.attemptFileExtension)")
   }
 
-  /// Whether a recovery-attempt marker exists for this spool. Present on the next
-  /// launch ⇒ a prior recovery attempt crashed the app ⇒ abandon, do not retry.
+  /// Whether a recovery-attempt marker exists for this spool. Presence means a
+  /// prior attempt already began and may not run again, whether that attempt
+  /// crashed, failed after ASR (#1740), or otherwise ended before cleanup
+  /// completed ⇒ abandon, do not retry.
   public func hasAttemptMarker(for recoverySessionID: String) -> Bool {
     FileManager.default.fileExists(atPath: attemptMarkerURL(for: recoverySessionID).path)
   }
@@ -275,7 +268,7 @@ public struct RecoveredSpool: Sendable {
 
 /// Errors thrown by `RecoverySpoolStore` host-side operations (#1063 PR2).
 public enum RecoverySpoolStoreError: Error, Equatable {
-  /// The one-attempt crash-loop marker could not be written durably (carries
+  /// The one-attempt marker could not be written durably (carries
   /// `errno`). The caller treats this as fail-closed: skip recovering this spool
   /// this launch rather than risk an un-guarded retry.
   case attemptMarkerWriteFailed(Int32)

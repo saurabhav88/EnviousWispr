@@ -266,6 +266,8 @@ final class RecoveryCoordinator {
     case historyDedup = "history_dedup"
     case replayOutcome = "replay_outcome"
     case userDiscard = "user_discard"
+    /// #1740: a live `.complete` dictation whose History write failed.
+    case historySaveFailed = "history_save_failed"
   }
 
   /// #1755 chunk 4 test seams (internal; nil in production — the real spool
@@ -283,6 +285,13 @@ final class RecoveryCoordinator {
   // periphery:ignore - test seam
   var deletionFailureBreadcrumbForTesting:
     (@MainActor @Sendable (_ stage: String, _ message: String, _ data: [String: String]) -> Void)?
+  /// #1740 cleanup-telemetry seam. INSTANCE-scoped, never the process-global
+  /// `TelemetryService.testEventHook`: this suite runs in parallel, and a
+  /// sibling test's `defer` clearing that global raced this one's emits
+  /// (whole-diff review P1). `tests-no-process-global-mutable-delegate`.
+  // periphery:ignore - test seam
+  var cleanupTelemetryForTesting:
+    (@MainActor @Sendable (_ source: String, _ component: String, _ succeeded: Bool) -> Void)?
 
   /// #1755 chunk 4: one failure-only breadcrumb per failed component per
   /// destruction call. Never includes the recovery ID, path, or raw error —
@@ -293,6 +302,28 @@ final class RecoveryCoordinator {
       sink("recovery", "deletion_failed", data)
     } else {
       SentryBreadcrumb.add(stage: "recovery", message: "deletion_failed", data: data)
+    }
+  }
+
+  /// #1740 (founder Gate 2): did a SPENT attempt's cleanup actually happen?
+  /// Emitted for both outcomes, success and failure, but ONLY for the two
+  /// spent-attempt sources — `durable_save` fires on every successful
+  /// dictation and would swamp a signal for a path this change does not touch.
+  /// Shape only: source, component, succeeded. Never the id, path, or error.
+  private func emitCleanupOutcome(
+    component: String, source: DestructionSource, succeeded: Bool
+  ) {
+    switch source {
+    case .replayOutcome, .historySaveFailed:
+      if let sink = cleanupTelemetryForTesting {
+        sink(source.rawValue, component, succeeded)
+      } else {
+        TelemetryService.shared.recoveryCleanup(
+          source: source.rawValue, component: component, succeeded: succeeded)
+      }
+    case .durableSave, .liveEnding, .preStartAbort, .historyDedup, .userDiscard:
+      // Not a spent recovery attempt — no cleanup-coverage question to answer.
+      break
     }
   }
 
@@ -316,8 +347,10 @@ final class RecoveryCoordinator {
       } else {
         try makeSpoolStore().delete(recoverySessionID: id)
       }
+      emitCleanupOutcome(component: "spool", source: source, succeeded: true)
     } catch {
       emitDeletionFailed(component: "spool", source: source)
+      emitCleanupOutcome(component: "spool", source: source, succeeded: false)
     }
     // Key deletion ALWAYS runs, detached, even after a spool failure.
     let keyStore = self.keyStore
@@ -343,9 +376,13 @@ final class RecoveryCoordinator {
         } else {
           try keyStore.delete(for: id)
         }
+        await MainActor.run {
+          self.emitCleanupOutcome(component: "key", source: source, succeeded: true)
+        }
       } catch {
         await MainActor.run {
           self.emitDeletionFailed(component: "key", source: source)
+          self.emitCleanupOutcome(component: "key", source: source, succeeded: false)
         }
       }
     }
@@ -378,23 +415,29 @@ final class RecoveryCoordinator {
     }
   }
 
-  /// Delete-versus-retain after a launch replay attempt (#1464). Delete a recovered
-  /// (saved) or unrecoverable orphan and a crash-loop `.abandoned` one; RETAIN a
-  /// History-save failure (the audio is still good, §3.3). `.aborted` (the user
-  /// discarded — already deleted by `discardActiveRecovery`), `.deferred` (the
-  /// marker was never written — keep for a future launch), and #1707 Phase 3's
-  /// `.deferredMarkerClearFailed` (Keychain-transient, marker survives — keep for
-  /// a future launch) delete nothing here. Static + internal for direct
-  /// adversarial testing.
+  /// Delete-versus-retain after a launch replay attempt (#1464; #1740 cutover).
+  /// EVERY spent attempt deletes: an attempt that actually ran is the user's one
+  /// rescue, whatever its outcome. Only outcomes where ASR never ran retain.
+  /// Static + internal for direct adversarial testing.
   static func shouldDeleteAfterReplay(_ outcome: RecoveryReplayOutcome) -> Bool {
     switch outcome {
     case .recovered, .abandoned:
       return true
-    case .failed(.unrecoverable):
+    case .failed(.unrecoverable), .failed(.save):
+      // #1740: the ATTEMPT is spent. Recovering the audio and failing only the
+      // History write is still an attempt; retaining it for a later launch is
+      // the safety net the one-attempt rule removes. The committed attempt
+      // marker — not this deletion — is what makes "one attempt" structural: a
+      // spool that survives a failed delete still abandons at the entry guard.
       return true
-    case .failed(.save), .failed(.saveMarkerClearFailed):
+    case .aborted:
+      // `discardActiveRecovery` already requested destruction. NOT a claim that
+      // no attempt ran — a Discard can land after transcription.
       return false
-    case .aborted, .deferred, .deferredMarkerClearFailed:
+    case .deferred, .deferredMarkerClearFailed:
+      // ASR never ran, so the attempt is unspent. `.deferredMarkerClearFailed`
+      // is the transient-Keychain case #1360 closed — never treat it as a
+      // permanent deletion trigger.
       return false
     }
   }
@@ -408,20 +451,27 @@ final class RecoveryCoordinator {
     return destroySpoolAndKey(id: id, source: .durableSave)
   }
 
-  /// A `.complete` dictation whose History save FAILED (GitHub cloud review,
-  /// PR #1732 round 6): `onDurableSave` never fires for this case (correctly
-  /// — nothing to delete, the spool must be retained), but this session's own
-  /// terminal transition ALSO fires `onDictationEndedForRecovery` moments
-  /// later via the SAME synchronous `fireStateChangeIfNeeded()` call that
-  /// dispatches to the caller of this method first — without this
-  /// suppression, that same-launch wake-up could immediately rescan and
-  /// destructively replay the spool this failure meant to retain for a
-  /// healthier future launch. (#1755: this History-save self-heal case is now
-  /// the ONLY live path that retains.) No-op when `id` is nil (armed only
-  /// when recovery was on for this take).
-  func suppressUntilNextLaunch(recoverySessionID id: String?) {
-    guard let id else { return }
+  /// A `.complete` dictation whose History save FAILED (#1740). The live path
+  /// still delivers the text because the save error is absorbed, so retaining
+  /// this spool would buy only a later History row. Request best-effort
+  /// destruction instead: #1740 removed the last live retention path.
+  ///
+  /// Suppress BEFORE the best-effort delete, matching
+  /// `handleRecordingEndedWithoutDurableSave`: the same terminal transition
+  /// fires `onDictationEndedForRecovery` moments later via the SAME synchronous
+  /// `fireStateChangeIfNeeded()` call, and that same-launch wake must not
+  /// rediscover a spool whose deletion failed.
+  ///
+  /// NOTE: unlike launch replay, this spool carries NO attempt marker — no
+  /// replay ever ran for it. If deletion fails, a later launch gives it its
+  /// FIRST crash-recovery attempt, which is consistent with the one-attempt
+  /// rule. No-op when `id` is nil (armed only when recovery was on).
+  @discardableResult
+  func handleHistorySaveFailed(recoverySessionID id: String?) -> Task<Void, Never>? {
+    guard let id else { return nil }
+    if armedSessionID == id { armedSessionID = nil }
     nextLaunchOnlyRecoveryIDs.insert(id)
+    return destroySpoolAndKey(id: id, source: .historySaveFailed)
   }
 
   /// A recording ended at a terminal state WITHOUT a durable transcript save
@@ -661,7 +711,7 @@ final class RecoveryCoordinator {
       // #1707 Phase 3 (§3.3): a marker-clear failure under either deferred
       // outcome means only a genuinely new launch may safely re-check this id.
       switch outcome {
-      case .deferredMarkerClearFailed, .failed(.saveMarkerClearFailed):
+      case .deferredMarkerClearFailed:
         nextLaunchOnlyRecoveryIDs.insert(id)
       default:
         break

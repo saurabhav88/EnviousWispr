@@ -162,6 +162,142 @@ struct RecoveryCoordinatorTests {
     #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
   }
 
+  // MARK: - #1740 live History-save failure destroys instead of deferring
+
+  @Test("live History-save failure destroys the spool AND the key")
+  func historySaveFailureDestroysSpoolAndKey() async throws {
+    let h = Self.makeHarness()
+    let id = "histsavefail-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    let task = h.coordinator.handleHistorySaveFailed(recoverySessionID: id)
+    await task?.value
+    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+  }
+
+  /// Two-way control (`a-guard-nothing-arms-is-not-a-guard`): a handler that
+  /// fired unconditionally would pass the test above while destroying a
+  /// perfectly good take. A SUCCESSFUL save must route through
+  /// `handleDurableSave`, never through this handler, and nil must be inert.
+  @Test("live History-save failure: nil is a no-op and a healthy save is untouched")
+  func historySaveFailureNilIsNoOp() async throws {
+    let h = Self.makeHarness()
+    let id = "healthy-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    #expect(h.coordinator.handleHistorySaveFailed(recoverySessionID: nil) == nil)
+    // The unrelated healthy take is still on disk — nil destroyed nothing.
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+  }
+
+  /// PR #1761 invariant, ported to the new handler: the SAME terminal
+  /// transition requests a recovery scan moments later, so a FAILED delete must
+  /// not be rediscovered and replayed within this launch.
+  @Test("live History-save failure suppresses same-launch rediscovery even when delete throws")
+  func historySaveFailureSuppressesBeforeDestroying() async throws {
+    let h = Self.makeHarness()
+    let id = "suppress-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    struct InjectedDeleteFailure: Error {}
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+    // The spool survived the failed delete...
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    // ...but this launch must not replay it.
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs.isEmpty, "a survivor of a failed delete is suppressed")
+  }
+
+  // MARK: - #1740 cleanup telemetry (founder Gate 2: "light telemetry")
+
+  /// Instance-scoped sink. Deliberately NOT the process-global
+  /// `TelemetryService.testEventHook`: this suite runs in parallel, and a
+  /// sibling test's `defer` clearing that global raced these emits, dropping
+  /// the detached key result (whole-diff review P1). See
+  /// `swift-patterns.md` RULE: tests-no-process-global-mutable-delegate.
+  private final class CleanupSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [(source: String, component: String, succeeded: Bool)] = []
+    func add(_ source: String, _ component: String, _ succeeded: Bool) {
+      lock.withLock { stored.append((source, component, succeeded)) }
+    }
+    var all: [(source: String, component: String, succeeded: Bool)] { lock.withLock { stored } }
+  }
+
+  /// `a-guard-nothing-arms-is-not-a-guard`: the instrument must fire from the
+  /// PRODUCTION path, and the two-way control is that a NON-spent source stays
+  /// silent — an emitter firing for every source would pass a one-way test
+  /// while swamping the signal it exists to provide.
+  @Test("cleanup telemetry fires for spent-attempt sources and is SILENT for durable save")
+  func cleanupTelemetryOnlyForSpentAttempts() async throws {
+    let h = Self.makeHarness()
+    let sink = CleanupSink()
+    h.coordinator.cleanupTelemetryForTesting = { source, component, ok in
+      sink.add(source, component, ok)
+    }
+
+    // Spent attempt: the live History-save-failure path.
+    let spent = "tele-spent-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, spent)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: spent)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: spent)?.value
+
+    // NOT a spent attempt: an ordinary successful dictation.
+    let healthy = "tele-healthy-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, healthy)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: healthy)
+    await h.coordinator.handleDurableSave(recoverySessionID: healthy).value
+
+    let emitted = sink.all
+    #expect(
+      Set(emitted.map { $0.source }) == ["history_save_failed"],
+      "durable_save must NOT emit — it fires on every successful dictation")
+    #expect(Set(emitted.map { $0.component }) == ["spool", "key"], "one result per component")
+    #expect(emitted.allSatisfy { $0.succeeded }, "both components deleted cleanly here")
+  }
+
+  @Test("cleanup telemetry reports succeeded=false when the delete throws")
+  func cleanupTelemetryReportsFailure() async throws {
+    struct InjectedDeleteFailure: Error {}
+    let h = Self.makeHarness()
+    let sink = CleanupSink()
+    h.coordinator.cleanupTelemetryForTesting = { source, component, ok in
+      sink.add(source, component, ok)
+    }
+    let id = "tele-fail-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+
+    let emitted = sink.all
+    #expect(
+      emitted.first(where: { $0.component == "spool" })?.succeeded == false,
+      "a thrown spool delete reports failure")
+    #expect(
+      emitted.first(where: { $0.component == "key" })?.succeeded == true,
+      "the key delete still ran and succeeded")
+  }
+
+  // MARK: - #1740 launch-replay save failure deletes
+
+  @Test("launch-replay .failed(.save) destroys the spool AND the key")
+  func launchReplaySaveFailureDestroysSpoolAndKey() async throws {
+    let h = Self.makeHarness()
+    let id = "replaysavefail-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    h.replayer.outcomeByID[id] = .failed(.save(.other))
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs == [id])
+    await Self.awaitKeyDeleted(h.keyStore, id: id)
+    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+  }
+
   // MARK: - Non-saved terminal routing (#1464 live-ending predicate)
 
   @Test("EVERY concluded live ending physically deletes the spool + key (#1755 discard doctrine)")
@@ -228,17 +364,30 @@ struct RecoveryCoordinatorTests {
     #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrRetryExhausted), "unchanged")
   }
 
-  @Test(
-    "shouldDeleteAfterReplay: recovered/abandoned/unrecoverable delete; save/aborted/deferred retain"
-  )
+  /// #1740: EVERY spent attempt deletes; only outcomes where ASR never ran
+  /// retain. All SEVEN leaf outcomes are asserted — a new case is a compile
+  /// error in the predicate's `default`-less switch, and an existing case
+  /// silently flipping is caught here (`matcher-set-adversarial-tests`).
+  @Test("shouldDeleteAfterReplay: every SPENT attempt deletes; only unspent attempts retain")
   func replayOutcomePredicate() {
+    // Spent — ASR ran, or the attempt was already spent by a prior run.
     #expect(RecoveryCoordinator.shouldDeleteAfterReplay(.recovered))
     #expect(RecoveryCoordinator.shouldDeleteAfterReplay(.abandoned))
     #expect(RecoveryCoordinator.shouldDeleteAfterReplay(.failed(.unrecoverable)))
-    #expect(!RecoveryCoordinator.shouldDeleteAfterReplay(.failed(.save(.other))))
-    #expect(!RecoveryCoordinator.shouldDeleteAfterReplay(.failed(.saveMarkerClearFailed(.other))))
-    #expect(!RecoveryCoordinator.shouldDeleteAfterReplay(.aborted))
-    #expect(!RecoveryCoordinator.shouldDeleteAfterReplay(.deferred))
+    #expect(
+      RecoveryCoordinator.shouldDeleteAfterReplay(.failed(.save(.other))),
+      "#1740: recovering the audio and failing only the History write is still a spent attempt")
+    // Unspent — ASR never ran. Explicit negatives per matcher-set-adversarial-tests:
+    // these are the rows a later 'consistency' edit would wrongly flip to delete.
+    #expect(
+      !RecoveryCoordinator.shouldDeleteAfterReplay(.aborted),
+      "discardActiveRecovery already destroyed it; deleting again is not this predicate's job")
+    #expect(
+      !RecoveryCoordinator.shouldDeleteAfterReplay(.deferred),
+      "the attempt marker was never written — the one attempt is unspent")
+    #expect(
+      !RecoveryCoordinator.shouldDeleteAfterReplay(.deferredMarkerClearFailed),
+      "#1360: a transient Keychain failure must never trigger permanent deletion")
   }
 
   // MARK: - #1464 sole destructor: post-replay deletion + success notice + pre-start abort
@@ -276,20 +425,6 @@ struct RecoveryCoordinatorTests {
     await Self.awaitKeyDeleted(h.keyStore, id: id)
     #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
     #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
-  }
-
-  @Test("the coordinator RETAINS the spool + key after a save-failure replay (§3.3)")
-  func saveFailureReplayRetains() async throws {
-    let h = Self.makeHarness()
-    let id = "save-\(UUID().uuidString)"
-    try Self.writeSpool(h.spoolStore, id)
-    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
-    h.replayer.outcomeByDefault = .failed(.save(.other))
-    await h.coordinator.scanAndRecover()
-    #expect(
-      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
-      "a History-save failure retains the spool for next-launch retry")
-    #expect((try? h.keyStore.retrieve(for: id)) != nil, "and retains the key")
   }
 
   @Test("onRecoverySucceeded fires once per .recovered orphan, never on failure")
@@ -402,27 +537,23 @@ struct RecoveryCoordinatorTests {
 
   // MARK: - #1707 Phase 3: nextLaunchOnlyRecoveryIDs
 
-  @Test(
-    ".deferredMarkerClearFailed and .failed(.saveMarkerClearFailed) both suppress same-launch rescan"
-  )
-  func markerClearFailureOutcomesSuppressSameLaunchRescan() async throws {
+  /// #1740 narrowed this to ONE case: `.failed(.saveMarkerClearFailed)` no longer
+  /// exists, and launch-replay `.failed(.save)` now DELETES and relies on its
+  /// committed marker rather than on this set.
+  @Test(".deferredMarkerClearFailed retains AND suppresses the same-launch rescan")
+  func deferredMarkerClearFailedStillSuppressedWithinLaunch() async throws {
     let h = Self.makeHarness()
     let deferredID = "deferred-markerfail-\(UUID().uuidString)"
-    let saveID = "save-markerfail-\(UUID().uuidString)"
     try Self.writeSpool(h.spoolStore, deferredID)
-    try Self.writeSpool(h.spoolStore, saveID)
     h.replayer.outcomeByID[deferredID] = .deferredMarkerClearFailed
-    h.replayer.outcomeByID[saveID] = .failed(.saveMarkerClearFailed(.other))
     await h.coordinator.scanAndRecover()
-    #expect(Set(h.replayer.replayedIDs) == Set([deferredID, saveID]))
-    // Both outcomes RETAIN — neither spool is deleted.
+    #expect(h.replayer.replayedIDs == [deferredID])
+    // RETAINS — no ASR ran, so the attempt is unspent.
     #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: deferredID).path))
-    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: saveID).path))
-    // A same-launch rescan (the SAME coordinator instance) must not re-attempt
-    // either id — they are next-launch-only.
+    // A same-launch rescan (the SAME coordinator instance) must not re-attempt it.
     h.replayer.replayedIDs = []
     await h.coordinator.scanAndRecover()
-    #expect(h.replayer.replayedIDs.isEmpty, "both ids suppressed on this instance's rescan")
+    #expect(h.replayer.replayedIDs.isEmpty, "id suppressed on this instance's rescan")
   }
 
   @Test("nextLaunchOnlyRecoveryIDs is never cleared within one coordinator instance's lifetime")
@@ -522,9 +653,11 @@ struct RecoveryCoordinatorTests {
     let second = "second-\(UUID().uuidString)"
     try Self.writeSpool(h.spoolStore, first)
     try Self.writeSpool(h.spoolStore, second)
-    // `second` is RETAINED (not deleted) so it would still be on disk for an
-    // improper immediate re-pass to (incorrectly) rediscover and re-attempt.
-    h.replayer.outcomeByID[second] = .failed(.save(.other))
+    // `second` must stay on disk so an improper immediate re-pass could
+    // (incorrectly) rediscover and re-attempt it. #1740 made `.failed(.save)`
+    // DELETE, so this fixture now uses `.deferred` — an outcome where no ASR
+    // ran, which is the only remaining class that retains.
+    h.replayer.outcomeByID[second] = .deferred
     h.replayer.onReplay = { [coordinator = h.coordinator] id in
       if id == second {
         coordinator.pendingLiveStartSignal = true
@@ -586,10 +719,11 @@ struct RecoveryCoordinatorTests {
     let second = "second-\(UUID().uuidString)"
     try Self.writeSpool(h.spoolStore, first)
     try Self.writeSpool(h.spoolStore, second)
-    // A RETAINED (not deleted) outcome for `first`, so it is still on disk
-    // for pass 2 — isolating the assertion to the signal-clearing behavior,
-    // not to whether a successfully-recovered item gets deleted.
-    h.replayer.outcomeByID[first] = .failed(.save(.other))
+    // `first` must still be on disk for pass 2, isolating the assertion to the
+    // signal-clearing behaviour. #1740 made `.failed(.save)` DELETE, so this
+    // fixture uses `.deferred` — no ASR ran, so it retains and is not
+    // suppressed (only `.deferredMarkerClearFailed` is next-launch-only).
+    h.replayer.outcomeByID[first] = .deferred
     h.replayer.onReplay = { [coordinator = h.coordinator] id in
       if id == first { coordinator.pendingLiveStartSignal = true }
     }

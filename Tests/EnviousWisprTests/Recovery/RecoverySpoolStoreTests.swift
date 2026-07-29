@@ -237,7 +237,7 @@ struct RecoverySpoolStoreTests {
     try store.delete(recoverySessionID: "alpha")
   }
 
-  // MARK: - One-attempt crash-loop marker (#1063 PR2)
+  // MARK: - One-attempt marker (#1063 PR2; broader meaning since #1740)
 
   @Test("attempt marker: write makes it present, delete removes it (idempotent)")
   func attemptMarkerLifecycle() throws {

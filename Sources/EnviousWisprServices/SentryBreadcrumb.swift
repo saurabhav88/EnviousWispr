@@ -406,8 +406,8 @@ public enum SentryBreadcrumb {
     /// recover."
     case recoveryTranscribeFailed = "recovery_transcribe_failed"
     /// #1063 PR2: a spool whose attempt marker was already present on launch — a
-    /// prior recovery attempt crashed the app — so it is abandoned (deleted, never
-    /// retried) by the one-attempt crash-loop guard rather than risking a loop.
+    /// prior recovery attempt already STARTED for that spool — so it is abandoned
+    /// (deleted, never retried) by the one-attempt guard rather than risking a loop.
     case recoveryAbandonedAfterAttempt = "recovery_abandoned_after_attempt"
     /// #761: the deterministic post-polish emoji-restore guard re-inserted fewer
     /// glyphs than AFM dropped (`restored < dropped`). Impossible by construction
