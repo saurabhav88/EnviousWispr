@@ -326,6 +326,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     return AudioConstants.minimumTranscriptionSamples
   }
 
+  /// Uptime at which the input engine became live for this attempt (end of
+  /// `startEnginePhase`). Used only by the #1788 wake diagnostic. 0 before the
+  /// first engine phase.
+  private var engineOpenUptimeNs: UInt64 = 0
+
   #if DEBUG
     /// One-shot per capture generation so the zero-prefix line is emitted once,
     /// not on every subsequent batch. Reset in `beginCapturePhase`.
@@ -375,6 +380,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     if let halSource = source as? HALDeviceInputSource {
       refreshResolvedRoute(actualBoundTransport: halSource.actualBoundTransport)
     }
+    // #1788: the moment the input engine is running, which is the only timebase
+    // for wake measurement that a saturating pre-roll ring cannot corrupt.
+    engineOpenUptimeNs = DispatchTime.now().uptimeNanoseconds
     onLifecycleSignal?("manager_prepare_completed")
   }
 
@@ -1059,13 +1067,24 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       else { return }
       didLogZeroPrefixThisSession = true
       let zeroPrefixMs = Double(zeroPrefixSamples) / AudioConstants.sampleRate * 1000
-      let wallMs =
-        Double(DispatchTime.now().uptimeNanoseconds &- captureStartUptimeNs) / 1_000_000
+      let now = DispatchTime.now().uptimeNanoseconds
+      let wallMs = Double(now &- captureStartUptimeNs) / 1_000_000
+      // THE authoritative wake number. `zero_prefix_ms` is derived from samples
+      // the detector RECEIVED, and the pre-roll ring holds only 500ms
+      // (`PreRollForwarder` capacity 8,000) with a saturating count — so when
+      // capture activates more than 500ms after the engine opened, the oldest
+      // zeros were overwritten and the sample-derived value is a LOWER BOUND
+      // (cloud review, PR #1843). Wall clock from engine-open cannot lose data
+      // to a ring, so read this one when the two disagree.
+      let wakeFromOpenMs =
+        engineOpenUptimeNs == 0
+        ? Double.nan : Double(now &- engineOpenUptimeNs) / 1_000_000
       let transport = currentResolvedRoute?.effective ?? "unknown"
       let ceiling = allZeroCeilingSamples
       Task {
         await AppLogger.shared.log(
           "ZERO_PREFIX_MEASURE transport=\(transport) "
+            + "wake_from_open_ms=\(String(format: "%.0f", wakeFromOpenMs)) "
             + "zero_prefix_samples=\(zeroPrefixSamples) "
             + "zero_prefix_ms=\(String(format: "%.0f", zeroPrefixMs)) "
             + "wall_ms=\(String(format: "%.0f", wallMs)) "
