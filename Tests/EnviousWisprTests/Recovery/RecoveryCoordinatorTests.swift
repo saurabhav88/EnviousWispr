@@ -211,6 +211,77 @@ struct RecoveryCoordinatorTests {
     #expect(h.replayer.replayedIDs.isEmpty, "a survivor of a failed delete is suppressed")
   }
 
+  // MARK: - #1740 cleanup telemetry (founder Gate 2: "light telemetry")
+
+  /// Instance-scoped sink. Deliberately NOT the process-global
+  /// `TelemetryService.testEventHook`: this suite runs in parallel, and a
+  /// sibling test's `defer` clearing that global raced these emits, dropping
+  /// the detached key result (whole-diff review P1). See
+  /// `swift-patterns.md` RULE: tests-no-process-global-mutable-delegate.
+  private final class CleanupSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [(source: String, component: String, succeeded: Bool)] = []
+    func add(_ source: String, _ component: String, _ succeeded: Bool) {
+      lock.withLock { stored.append((source, component, succeeded)) }
+    }
+    var all: [(source: String, component: String, succeeded: Bool)] { lock.withLock { stored } }
+  }
+
+  /// `a-guard-nothing-arms-is-not-a-guard`: the instrument must fire from the
+  /// PRODUCTION path, and the two-way control is that a NON-spent source stays
+  /// silent — an emitter firing for every source would pass a one-way test
+  /// while swamping the signal it exists to provide.
+  @Test("cleanup telemetry fires for spent-attempt sources and is SILENT for durable save")
+  func cleanupTelemetryOnlyForSpentAttempts() async throws {
+    let h = Self.makeHarness()
+    let sink = CleanupSink()
+    h.coordinator.cleanupTelemetryForTesting = { source, component, ok in
+      sink.add(source, component, ok)
+    }
+
+    // Spent attempt: the live History-save-failure path.
+    let spent = "tele-spent-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, spent)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: spent)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: spent)?.value
+
+    // NOT a spent attempt: an ordinary successful dictation.
+    let healthy = "tele-healthy-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, healthy)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: healthy)
+    await h.coordinator.handleDurableSave(recoverySessionID: healthy).value
+
+    let emitted = sink.all
+    #expect(
+      Set(emitted.map { $0.source }) == ["history_save_failed"],
+      "durable_save must NOT emit — it fires on every successful dictation")
+    #expect(Set(emitted.map { $0.component }) == ["spool", "key"], "one result per component")
+    #expect(emitted.allSatisfy { $0.succeeded }, "both components deleted cleanly here")
+  }
+
+  @Test("cleanup telemetry reports succeeded=false when the delete throws")
+  func cleanupTelemetryReportsFailure() async throws {
+    struct InjectedDeleteFailure: Error {}
+    let h = Self.makeHarness()
+    let sink = CleanupSink()
+    h.coordinator.cleanupTelemetryForTesting = { source, component, ok in
+      sink.add(source, component, ok)
+    }
+    let id = "tele-fail-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+
+    let emitted = sink.all
+    #expect(
+      emitted.first(where: { $0.component == "spool" })?.succeeded == false,
+      "a thrown spool delete reports failure")
+    #expect(
+      emitted.first(where: { $0.component == "key" })?.succeeded == true,
+      "the key delete still ran and succeeded")
+  }
+
   // MARK: - #1740 launch-replay save failure deletes
 
   @Test("launch-replay .failed(.save) destroys the spool AND the key")

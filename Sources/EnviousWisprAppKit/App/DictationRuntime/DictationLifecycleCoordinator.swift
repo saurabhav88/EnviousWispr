@@ -113,11 +113,13 @@ final class DictationLifecycleCoordinator {
   /// `onRecordingEndedWithoutDurableSave` (which never fires for `.complete`)
   /// and from `onDurableSave` (which only fires on a SUCCESSFUL save).
   /// `DictationRuntime` sets it to
-  /// `RecoveryCoordinator.suppressUntilNextLaunch(recoverySessionID:)` so this
-  /// session's spool is protected from THIS SAME terminal transition's own
-  /// `onDictationEndedForRecovery` wake-up before that wake-up fires (both
-  /// calls happen synchronously, in this order, from the kernel's single
-  /// `fireStateChangeIfNeeded()` turn). Off-cap `var` closure, default no-op.
+  /// `RecoveryCoordinator.handleHistorySaveFailed(recoverySessionID:)`, which
+  /// (#1740) DESTROYS this session's spool rather than deferring it, after
+  /// suppressing THIS SAME terminal transition's own
+  /// `onDictationEndedForRecovery` wake-up so a failed deletion cannot be
+  /// rediscovered this launch (both calls happen synchronously, in this order,
+  /// from the kernel's single `fireStateChangeIfNeeded()` turn). Off-cap `var`
+  /// closure, default no-op.
   var onDurableSaveFailed: (String?) -> Void = { _ in }
 
   /// #1171 — fired on every pipeline state change (both drivers). The composition

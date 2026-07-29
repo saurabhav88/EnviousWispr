@@ -285,6 +285,13 @@ final class RecoveryCoordinator {
   // periphery:ignore - test seam
   var deletionFailureBreadcrumbForTesting:
     (@MainActor @Sendable (_ stage: String, _ message: String, _ data: [String: String]) -> Void)?
+  /// #1740 cleanup-telemetry seam. INSTANCE-scoped, never the process-global
+  /// `TelemetryService.testEventHook`: this suite runs in parallel, and a
+  /// sibling test's `defer` clearing that global raced this one's emits
+  /// (whole-diff review P1). `tests-no-process-global-mutable-delegate`.
+  // periphery:ignore - test seam
+  var cleanupTelemetryForTesting:
+    (@MainActor @Sendable (_ source: String, _ component: String, _ succeeded: Bool) -> Void)?
 
   /// #1755 chunk 4: one failure-only breadcrumb per failed component per
   /// destruction call. Never includes the recovery ID, path, or raw error —
@@ -303,13 +310,17 @@ final class RecoveryCoordinator {
   /// spent-attempt sources — `durable_save` fires on every successful
   /// dictation and would swamp a signal for a path this change does not touch.
   /// Shape only: source, component, succeeded. Never the id, path, or error.
-  @MainActor private static func emitCleanupOutcome(
+  private func emitCleanupOutcome(
     component: String, source: DestructionSource, succeeded: Bool
   ) {
     switch source {
     case .replayOutcome, .historySaveFailed:
-      TelemetryService.shared.recoveryCleanup(
-        source: source.rawValue, component: component, succeeded: succeeded)
+      if let sink = cleanupTelemetryForTesting {
+        sink(source.rawValue, component, succeeded)
+      } else {
+        TelemetryService.shared.recoveryCleanup(
+          source: source.rawValue, component: component, succeeded: succeeded)
+      }
     case .durableSave, .liveEnding, .preStartAbort, .historyDedup, .userDiscard:
       // Not a spent recovery attempt — no cleanup-coverage question to answer.
       break
@@ -336,10 +347,10 @@ final class RecoveryCoordinator {
       } else {
         try makeSpoolStore().delete(recoverySessionID: id)
       }
-      Self.emitCleanupOutcome(component: "spool", source: source, succeeded: true)
+      emitCleanupOutcome(component: "spool", source: source, succeeded: true)
     } catch {
       emitDeletionFailed(component: "spool", source: source)
-      Self.emitCleanupOutcome(component: "spool", source: source, succeeded: false)
+      emitCleanupOutcome(component: "spool", source: source, succeeded: false)
     }
     // Key deletion ALWAYS runs, detached, even after a spool failure.
     let keyStore = self.keyStore
@@ -366,12 +377,12 @@ final class RecoveryCoordinator {
           try keyStore.delete(for: id)
         }
         await MainActor.run {
-          Self.emitCleanupOutcome(component: "key", source: source, succeeded: true)
+          self.emitCleanupOutcome(component: "key", source: source, succeeded: true)
         }
       } catch {
         await MainActor.run {
           self.emitDeletionFailed(component: "key", source: source)
-          Self.emitCleanupOutcome(component: "key", source: source, succeeded: false)
+          self.emitCleanupOutcome(component: "key", source: source, succeeded: false)
         }
       }
     }
