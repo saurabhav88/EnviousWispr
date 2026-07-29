@@ -9,6 +9,9 @@ compatibility_date = "2026-07-09"
 
 [vars]
 POSTHOG_PROJECT_ID = "354235"
+# Public repo, so the version scorecard's release lookup needs no token and no
+# secret - the same unauthenticated pattern workers/weekly-digest already uses.
+GITHUB_REPO = "saurabhav88/EnviousWispr"
 
 # Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
 #   POSTHOG_PERSONAL_API_KEY  - GCP secret `posthog-personal-api-key`

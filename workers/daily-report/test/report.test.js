@@ -10,6 +10,16 @@ import {
 // #1838 chunk 2: the adoption domain has its own owner. Tests import from it
 // directly - a re-export from index.js would be a forwarding shim.
 import { fetchReportData, resolveBuckets } from "../src/adoption.js";
+import {
+  normalizeReleaseVersion,
+  compareVersions,
+  selectReleases,
+  resolveReleases,
+  telemetryContractFor,
+  decideComparability,
+  COMPARABILITY_REASONS,
+  ReleaseResolutionError,
+} from "../src/version-scorecard.js";
 // #1838 chunk 1: the PostHog transport/concurrency/production-filter
 // infrastructure now has ONE owner. Tests import it from there directly - a
 // re-export from index.js would be a forwarding shim kept alive solely for
@@ -1065,4 +1075,555 @@ test("worst-case explicit fetch count stays under Cloudflare's 50-subrequest cap
 
   assert.equal(worstCase, 25);
   assert.ok(worstCase < 50, "worst-case fetch count must stay under Cloudflare's 50-subrequest-per-request cap");
+});
+
+
+// ---- #1838 chunk 3: release selection + telemetry comparability ------------
+// Publication decides WHICH releases are judged; usage decides only order and
+// coverage. Comparability depends solely on declared contracts, never on which
+// event codes happen to appear.
+
+function ghResponse(status, body, { headers = {}, onCancel } = {}) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (k) => headers[k.toLowerCase()] ?? null },
+    json: async () => body,
+    body: onCancel ? { cancel: async () => onCancel() } : undefined,
+  };
+}
+const release = (tag, publishedAt, extra = {}) => ({
+  tag_name: tag,
+  published_at: publishedAt,
+  draft: false,
+  prerelease: false,
+  ...extra,
+});
+const usage = (v, n) => ({ app_version: v, dictations: n });
+/** A sparse array whose PROTOTYPE supplies the missing index. `i in arr` walks
+ * the prototype and reads true, so this looks dense while owning no element -
+ * the combination of two acceptance mechanisms, not either alone. */
+function protoBackedSparse(length, protoValue) {
+  const proto = [];
+  for (let i = 0; i < length; i += 1) proto[i] = protoValue;
+  const arr = new Array(length);
+  Object.setPrototypeOf(arr, proto);
+  return arr;
+}
+
+test("normalizeReleaseVersion: maps a GitHub tag to a telemetry version", () => {
+  for (const [input, expected] of [
+    ["v2.4.1", "2.4.1"],
+    ["2.4.1", "2.4.1"],
+    ["  v2.4.1  ", "2.4.1"],
+    ["v02.04.01", "2.4.1"],
+  ]) {
+    assert.equal(normalizeReleaseVersion(input), expected, `input ${input}`);
+  }
+});
+
+test("compareVersions: orders numerically, so 2.4.10 is newer than 2.4.9", () => {
+  assert.ok(compareVersions("2.4.10", "2.4.9") > 0, "2.4.10 must outrank 2.4.9");
+  assert.ok(compareVersions("2.4.9", "2.4.10") < 0);
+  assert.equal(compareVersions("2.4.1", "2.4.1"), 0);
+  assert.ok(compareVersions("3.0.0", "2.99.99") > 0);
+  // Lexicographic ordering would invert the first case and quietly drop the
+  // newest release off the table.
+  assert.ok("2.4.10" < "2.4.9", "guard: string ordering really is wrong here");
+});
+
+test("malformed tags, versions and usage rows are refused, never silently absorbed", async () => {
+  // Non-strings are refused rather than coerced: String(x) would have accepted
+  // an object or number as a version the rest of the module treats as a string.
+  for (const bad of ["", "v2.4", "2.4.1-beta", "latest", "v2.4.1.1", null, undefined, "vX.Y.Z",
+                     241, {}, [], { toString: () => "2.4.1" }, true]) {
+    assert.equal(normalizeReleaseVersion(bad), null, `expected refusal for ${String(bad)}`);
+  }
+  assert.throws(() => compareVersions("2.4", "2.4.1"), ReleaseResolutionError);
+
+  // Silently skipping a malformed row would drop real dictations from the
+  // coverage DENOMINATOR while still printing a high coverage percentage - a
+  // better-looking number produced by losing data.
+  const published = [{ version: "2.4.1", publishedAt: "2026-07-24T00:00:00Z" }];
+  assert.throws(
+    () => selectReleases(published, [usage("2.4.1", 10), usage("not-a-version", 500)]),
+    ReleaseResolutionError,
+    "a malformed version must fail loud, not shrink the denominator"
+  );
+  for (const badRow of [null, "2.4.1", ["2.4.1", 5], 42]) {
+    assert.throws(
+      () => selectReleases(published, [badRow]),
+      ReleaseResolutionError,
+      `usage row ${JSON.stringify(badRow)} must be refused`
+    );
+  }
+  for (const badCount of ["500", 1.5, -1, null, undefined, NaN]) {
+    assert.throws(
+      () => selectReleases(published, [{ app_version: "2.4.1", dictations: badCount }]),
+      ReleaseResolutionError,
+      `count ${String(badCount)} must be refused, not coerced to 0`
+    );
+  }
+  assert.throws(() => selectReleases(published, null), ReleaseResolutionError);
+  assert.throws(() => selectReleases(published, new Array(2)), ReleaseResolutionError,
+    "a sparse usageRows array must be refused, not silently skipped");
+  assert.throws(
+    () => selectReleases(published, protoBackedSparse(2, usage("2.4.1", 1))),
+    ReleaseResolutionError,
+    "prototype-backed indices must not read as owned elements"
+  );
+
+  // SOURCE GUARDRAIL, matching this suite's existing dev-exclusion guards. The
+  // strict parser must be the ONLY date authority. A second `new Date(...)` in
+  // the sort is not observably wrong today - both agree on every input that
+  // survives validation - so no behavioural test can catch it. It is still a
+  // second authority that would drift, which is exactly what a source guard is
+  // for. Permitted occurrences are inside parseGitHubTimestamp only.
+  const fs = await import("node:fs");
+  const scSrc = fs.readFileSync(new URL("../src/version-scorecard.js", import.meta.url), "utf8");
+  const dateUses = scSrc
+    .split("\n")
+    .map((line, i) => [i + 1, line])
+    .filter(([, line]) => line.includes("new Date(") && !line.trimStart().startsWith("*"));
+  assert.equal(
+    dateUses.length,
+    1,
+    `expected exactly one new Date( - inside parseGitHubTimestamp - found: ${JSON.stringify(dateUses)}`
+  );
+  assert.ok(
+    scSrc.slice(0, scSrc.indexOf("new Date(", scSrc.indexOf("function parseGitHubTimestamp")))
+      .includes("function parseGitHubTimestamp"),
+    "the sole new Date( must live inside parseGitHubTimestamp"
+  );
+
+  // selectReleases is exported and pure, so it revalidates its own release
+  // input rather than trusting that a caller went through resolveReleases.
+  for (const badReleases of [
+    null,
+    [{ version: "nope", publishedAt: "2026-07-24T00:00:00Z" }],
+    [{ version: "2.4.1", publishedAt: "not-a-date" }],
+    [{ version: "2.4.1" }],
+    [
+      { version: "2.4.1", publishedAt: "2026-07-24T00:00:00Z" },
+      { version: "2.4.1", publishedAt: "2026-07-25T00:00:00Z" },
+    ],
+    // CANONICALIZATION: "v2.4.1" and "2.4.1" are the SAME release. Validating
+    // the normalized form while storing the raw one accepted them as two, giving
+    // duplicate columns and usage that attached to neither.
+    [
+      { version: "v2.4.1", publishedAt: "2026-07-24T00:00:00Z" },
+      { version: "2.4.1", publishedAt: "2026-07-25T00:00:00Z" },
+    ],
+    [null],
+    ["not-an-object"],
+    [{ version: 241, publishedAt: "2026-07-24T00:00:00Z" }],
+    [{ version: "2.4.1", publishedAt: 1753300000000 }],
+    // Permissive date parsing: "0" becomes the year 2000, "July 24, 2026"
+    // parses in LOCAL time, and "2026-02-30" silently rolls to March 2nd. Any
+    // of these would be accepted as a publication date and could reorder the
+    // displayed set.
+    [{ version: "2.4.1", publishedAt: "0" }],
+    [{ version: "2.4.1", publishedAt: "July 24, 2026" }],
+    [{ version: "2.4.1", publishedAt: "2026-02-30T00:00:00Z" }],
+    [{ version: "2.4.1", publishedAt: "2026-07-24" }],
+    [{ version: "2.4.1", publishedAt: "2026-07-24T17:10:48.000Z" }],
+    // SPARSE: .map and .some SKIP holes, so a hole passes every null check and
+    // then surfaces as undefined downstream. Length is not proof of contents.
+    new Array(1),
+    Object.assign([{ version: "2.4.1", publishedAt: "2026-07-24T00:00:00Z" }], { length: 2 }),
+    protoBackedSparse(1, { version: "2.4.1", publishedAt: "2026-07-24T00:00:00Z" }),
+  ]) {
+    assert.throws(
+      () => selectReleases(badReleases, [usage("2.4.1", 1)]),
+      ReleaseResolutionError,
+      `expected refusal for ${JSON.stringify(badReleases)}`
+    );
+  }
+});
+
+test("resolveReleases: uses GITHUB_REPO + User-Agent, drops draft/prerelease, newest by published_at", async () => {
+  let seenUrl = null;
+  let seenUA = null;
+  const body = [
+    // Deliberately NOT in published_at order - array order must not decide.
+    release("v2.3.2", "2026-07-10T10:00:00Z"),
+    release("v2.4.1", "2026-07-24T17:00:00Z"),
+    release("v9.9.9", "2026-07-28T00:00:00Z", { draft: true }),
+    release("v8.8.8", "2026-07-27T00:00:00Z", { prerelease: true }),
+    release("v2.4.0", "2026-07-18T21:00:00Z"),
+  ];
+  const out = await resolveReleases(
+    { GITHUB_REPO: "saurabhav88/EnviousWispr" },
+    [usage("2.4.1", 100)],
+    {
+      fetchFn: async (url, init) => {
+        seenUrl = url;
+        seenUA = init.headers["User-Agent"];
+        return ghResponse(200, body);
+      },
+      sleepFn: async () => {},
+    }
+  );
+  assert.ok(seenUrl.includes("/repos/saurabhav88/EnviousWispr/releases"), seenUrl);
+  assert.equal(seenUA, "EnviousWispr-Daily-Report");
+  assert.equal(out.releases[0].version, "2.4.1", "newest by published_at must lead");
+  const shown = out.releases.map((r) => r.version);
+  assert.ok(!shown.includes("9.9.9"), "draft must be excluded");
+  assert.ok(!shown.includes("8.8.8"), "prerelease must be excluded");
+});
+
+test("resolveReleases: bad configuration and malformed release data fail loud, never silently", async () => {
+  // Configuration is checked before any request, and validated as a real
+  // owner/repo slug - "EnviousWispr" alone would build a URL that 404s and read
+  // as a genuine API failure.
+  // URL syntax and path traversal are not repository names: each of these
+  // previously built a request URL that meant something else entirely.
+  for (const repo of [undefined, "", "   ", "EnviousWispr", "owner/repo/extra", "owner /repo",
+                      "owner/repo?per_page=1", "owner#fragment/repo", "../repo", "owner/..",
+                      "./repo", "owner/.", 42, null, {}]) {
+    let called = false;
+    await assert.rejects(
+      () =>
+        resolveReleases(repo === undefined ? {} : { GITHUB_REPO: repo }, [], {
+          fetchFn: async () => { called = true; return ghResponse(200, []); },
+        }),
+      (err) => err instanceof ReleaseResolutionError && err.transient === false,
+      `repo ${JSON.stringify(repo)}`
+    );
+    assert.equal(called, false, `config error for ${JSON.stringify(repo)} must not make a request`);
+  }
+
+  // A malformed NEWEST release must never be silently filtered out: dropping it
+  // crowns the second-newest and changes the entire displayed set with nothing
+  // reporting a problem.
+  const env = { GITHUB_REPO: "o/r" };
+  const bodies = [
+    [release("v9.9.9", null), release("v2.4.1", "2026-07-24T00:00:00Z")],
+    [release("v9.9.9", "not-a-date"), release("v2.4.1", "2026-07-24T00:00:00Z")],
+    [release("v9.9.9", "2026-07-29T00:00:00Z", { draft: "yes" })],
+    [release("bad-tag", "2026-07-29T00:00:00Z")],
+    ["not-an-object"],
+    [null],
+    [release("v2.4.1", "2026-07-24T00:00:00Z"), release("2.4.1", "2026-07-25T00:00:00Z")],
+    { not: "an array" },
+    [release("v2.4.1", "July 24, 2026")],
+    [release("v2.4.1", "2026-02-30T00:00:00Z")],
+    [release("v2.4.1", "0")],
+    new Array(1),
+    protoBackedSparse(1, release("v2.4.1", "2026-07-24T00:00:00Z")),
+  ];
+  for (const body of bodies) {
+    await assert.rejects(
+      () => resolveReleases(env, [usage("2.4.1", 1)], {
+        fetchFn: async () => ghResponse(200, body),
+        sleepFn: async () => {},
+      }),
+      (err) => err instanceof ReleaseResolutionError && err.transient === false,
+      `body ${JSON.stringify(body)}`
+    );
+  }
+
+  // Invalid JSON is a contract failure, not a transient blip.
+  await assert.rejects(
+    () => resolveReleases(env, [], {
+      fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null },
+        json: async () => { throw new SyntaxError("bad json"); } }),
+      sleepFn: async () => {},
+    }),
+    (err) => err instanceof ReleaseResolutionError && err.transient === false
+  );
+});
+
+test("resolveReleases: rate-limited 403, 429 and 5xx retry to exactly 3 attempts then signal transient", async () => {
+  // A network-level rejection produces no response to inspect, so without
+  // explicit handling it escapes unretried AND unclassified.
+  let netAttempts = 0;
+  await assert.rejects(
+    () =>
+      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        fetchFn: async () => {
+          netAttempts += 1;
+          throw new TypeError("network failure");
+        },
+        sleepFn: async () => {},
+      }),
+    (err) => err instanceof ReleaseResolutionError && err.transient === true,
+    "network rejection"
+  );
+  assert.equal(netAttempts, 3, "a network rejection must retry to exactly 3 attempts");
+
+  for (const [status, headers] of [
+    [403, { "x-ratelimit-remaining": "0" }],
+    [429, {}],
+    [503, {}],
+  ]) {
+    let attempts = 0;
+    await assert.rejects(
+      () =>
+        resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+          fetchFn: async () => {
+            attempts += 1;
+            return ghResponse(status, null, { headers });
+          },
+          sleepFn: async () => {},
+        }),
+      (err) => err instanceof ReleaseResolutionError && err.transient === true,
+      `status ${status}`
+    );
+    assert.equal(attempts, 3, `status ${status} must make exactly 3 attempts`);
+  }
+});
+
+test("resolveReleases: a non-transient 4xx fails loud after ONE attempt", async () => {
+  for (const [status, headers] of [
+    [404, {}],
+    // A forbidden response that is NOT rate-limit exhaustion is a real failure,
+    // not a blip - retrying it would report a permission problem as temporary.
+    [403, { "x-ratelimit-remaining": "57" }],
+  ]) {
+    let attempts = 0;
+    await assert.rejects(
+      () =>
+        resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+          fetchFn: async () => {
+            attempts += 1;
+            return ghResponse(status, null, { headers });
+          },
+          sleepFn: async () => {},
+        }),
+      (err) => err instanceof ReleaseResolutionError && err.transient === false,
+      `status ${status}`
+    );
+    assert.equal(attempts, 1, `status ${status} must not retry`);
+  }
+});
+
+test("selectReleases: newest is always included at 1% share, then fills by descending share to 80%", () => {
+  // Deliberately NOT in publication order: the pure selector must derive
+  // "newest" from published_at, never from the caller's array position.
+  const published = [
+    { version: "2.3.2", publishedAt: "2026-07-10T00:00:00Z" },
+    { version: "2.4.2", publishedAt: "2026-07-29T00:00:00Z" },
+    { version: "2.4.0", publishedAt: "2026-07-18T00:00:00Z" },
+    { version: "2.4.1", publishedAt: "2026-07-24T00:00:00Z" },
+  ];
+  const out = selectReleases(published, [
+    usage("2.4.2", 10),
+    usage("2.4.1", 440),
+    usage("2.4.0", 410),
+    usage("2.3.2", 140),
+  ]);
+  assert.equal(out.releases[0].version, "2.4.2", "newest leads even at ~1% share");
+  assert.deepEqual(out.releases.map((r) => r.version), ["2.4.2", "2.4.1", "2.4.0"]);
+  assert.ok(out.coverage >= 0.8, `expected >=80% coverage, got ${out.coverage}`);
+  assert.equal(out.capReached, false);
+});
+
+test("selectReleases: cap stops selection, and equal shares break toward the newer version", () => {
+  // The tied group SHARES one publishedAt, so the publication-date sort cannot
+  // decide their order and only the newer-version tie-break can. With distinct
+  // dates this assertion passes even with the tie-break deleted - verified by
+  // negative control - so identical timestamps are what makes it bite.
+  const TIED_AT = "2026-06-01T00:00:00Z";
+  const published = [
+    { version: "2.3.1", publishedAt: TIED_AT },
+    { version: "2.4.0", publishedAt: TIED_AT },
+    { version: "2.2.0", publishedAt: TIED_AT },
+    { version: "2.5.0", publishedAt: "2026-07-20T00:00:00Z" },
+    { version: "2.3.2", publishedAt: TIED_AT },
+    { version: "2.4.1", publishedAt: TIED_AT },
+  ];
+  // Every non-newest release also has an IDENTICAL share, and the rows are
+  // scrambled. Asserting length alone would pass with no tie-break at all.
+  const out = selectReleases(published, [
+    usage("2.3.1", 100),
+    usage("2.4.0", 100),
+    usage("2.2.0", 100),
+    usage("2.5.0", 1),
+    usage("2.3.2", 100),
+    usage("2.4.1", 100),
+  ]);
+  assert.equal(out.releases.length, 4);
+  assert.deepEqual(
+    out.releases.map((r) => r.version),
+    ["2.5.0", "2.4.1", "2.4.0", "2.3.2"],
+    "newest first, then equal shares ordered by newer version"
+  );
+  assert.ok(out.coverage < 0.8, `expected <80%, got ${out.coverage}`);
+  assert.equal(out.capReached, true, "must say the cap stopped us short of the target");
+
+  // Using all four slots is NOT a degraded state when coverage is already met.
+  const met = selectReleases(
+    ["2.5.0", "2.4.1", "2.4.0", "2.3.2", "2.3.1"].map((v, i) => ({
+      version: v,
+      publishedAt: `2026-0${7 - i}-01T00:00:00Z`,
+    })),
+    [usage("2.5.0", 25), usage("2.4.1", 25), usage("2.4.0", 25), usage("2.3.2", 20), usage("2.3.1", 5)]
+  );
+  assert.equal(met.releases.length, 4);
+  assert.ok(met.coverage >= 0.8, `expected >=80%, got ${met.coverage}`);
+  assert.equal(met.capReached, false, "four slots at or above target is not a cap failure");
+});
+
+test("selectReleases: a newest release with NO events is 'no data', never an observed zero", () => {
+  const out = selectReleases(
+    [
+      { version: "2.4.2", publishedAt: "2026-07-29T00:00:00Z" },
+      { version: "2.4.1", publishedAt: "2026-07-24T00:00:00Z" },
+    ],
+    [usage("2.4.1", 500)]
+  );
+  const newest = out.releases[0];
+  assert.equal(newest.version, "2.4.2");
+  assert.equal(newest.observed, false, "absent from telemetry must be distinguishable from zero");
+  assert.equal(newest.dictations, 0);
+  // A release that IS present with zero is a genuine measured zero.
+  const measured = selectReleases(
+    [
+      { version: "2.4.2", publishedAt: "2026-07-29T00:00:00Z" },
+      { version: "2.4.1", publishedAt: "2026-07-24T00:00:00Z" },
+    ],
+    [usage("2.4.2", 0), usage("2.4.1", 500)]
+  );
+  assert.equal(measured.releases[0].observed, true);
+});
+
+test("selectReleases: coverage denominator includes versions that are never displayed", () => {
+  const out = selectReleases(
+    [
+      { version: "2.4.1", publishedAt: "2026-07-24T00:00:00Z" },
+      { version: "2.4.0", publishedAt: "2026-07-18T00:00:00Z" },
+    ],
+    [usage("2.4.1", 40), usage("2.4.0", 40), usage("2.1.1", 20)]
+  );
+  assert.equal(out.totalDictations, 100, "unselected 2.1.1 must still count in the denominator");
+  assert.ok(Math.abs(out.coverage - 0.8) < 1e-9, `expected 0.8, got ${out.coverage}`);
+});
+
+test("selectReleases: day-grain rows for one version are aggregated before share", () => {
+  const published = [
+    { version: "2.4.1", publishedAt: "2026-07-24T00:00:00Z" },
+    { version: "2.4.0", publishedAt: "2026-07-18T00:00:00Z" },
+  ];
+  // Without aggregation a version's share would be its busiest DAY, not its week.
+  const out = selectReleases(published, [
+    usage("2.4.1", 10), usage("2.4.1", 10), usage("2.4.1", 10),
+    usage("2.4.0", 25),
+  ]);
+  assert.equal(out.releases.find((r) => r.version === "2.4.1").dictations, 30);
+  assert.equal(out.totalDictations, 55);
+
+  // Usage must ATTACH across tag forms, not merely be rejected as a duplicate.
+  // A release carried as "v2.4.1" while telemetry says "2.4.1" would otherwise
+  // look up an unnormalized key, miss every row, and report 0 dictations and
+  // observed:false - a real release rendering as "no production data yet".
+  const tagged = selectReleases(
+    [
+      { version: "v2.4.1", publishedAt: "2026-07-24T00:00:00Z" },
+      { version: "v2.4.0", publishedAt: "2026-07-18T00:00:00Z" },
+    ],
+    // Deliberately below the 80% target on the newest alone, so selection must
+    // continue and BOTH releases appear - otherwise this asserts nothing about
+    // the second one.
+    [usage("2.4.1", 40), usage("2.4.0", 40)]
+  );
+  assert.deepEqual(tagged.releases.map((r) => r.version), ["2.4.1", "2.4.0"],
+    "stored versions must be canonical, not the raw tag form");
+  assert.equal(tagged.releases[0].dictations, 40, "usage must attach across tag forms");
+  assert.equal(tagged.releases[0].observed, true);
+});
+
+test("telemetryContractFor: resolves stable and boundary contracts", () => {
+  for (const [metric, version, expected] of [
+    ["people", "2.1.1", "people-v1-distinct-successful-dictators"],
+    ["speed_p50", "2.4.1", "speed-v1-e2e-seconds"],
+    ["speed_p95", "2.4.1", "speed-v1-e2e-seconds"],
+    ["transcription_failed", "2.3.2", "trans-v1-prose-codes"],
+    ["transcription_failed", "2.4.0", "trans-v2-typed-codes"],
+    ["transcription_failed", "2.4.1", "trans-v2-typed-codes"],
+    ["polish_kept", "2.3.0", null],
+    ["polish_kept", "2.3.1", "polish-v2-fallback-reason"],
+    ["polish_kept", "2.4.1", "polish-v2-fallback-reason"],
+  ]) {
+    assert.equal(telemetryContractFor(metric, version), expected, `${metric} @ ${version}`);
+  }
+  assert.throws(() => telemetryContractFor("no_such_metric", "2.4.1"), ReleaseResolutionError);
+  // Inherited Object.prototype keys are truthy on any object, so a plain
+  // lookup let these past the unknown-metric guard and threw a raw TypeError
+  // rather than our typed error.
+  for (const inherited of ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"]) {
+    assert.throws(
+      () => telemetryContractFor(inherited, "2.4.1"),
+      ReleaseResolutionError,
+      `${inherited} must be refused as an unknown metric, with the typed error`
+    );
+  }
+  for (const notAString of [42, null, undefined, {}, ["people"]]) {
+    assert.throws(() => telemetryContractFor(notAString, "2.4.1"), ReleaseResolutionError);
+  }
+  assert.throws(() => telemetryContractFor("people", "not-a-version"), ReleaseResolutionError);
+});
+
+test("decideComparability: comparable when every release shares one non-null contract", () => {
+  const out = decideComparability("transcription_failed", ["2.4.1", "2.4.0"]);
+  assert.equal(out.comparable, true);
+  assert.equal(out.contract, "trans-v2-typed-codes");
+});
+
+test("decideComparability: not comparable for differing IDs, or for any null ID", () => {
+  const changed = decideComparability("transcription_failed", ["2.4.1", "2.3.2"]);
+  assert.equal(changed.comparable, false);
+  assert.equal(changed.reason, COMPARABILITY_REASONS.definitionChanged);
+
+  const unavailable = decideComparability("polish_kept", ["2.4.1", "2.3.0"]);
+  assert.equal(unavailable.comparable, false);
+  assert.equal(unavailable.reason, COMPARABILITY_REASONS.definitionUnavailable);
+
+  assert.equal(decideComparability("people", []).comparable, false);
+  // null must NOT silently become an empty set: that would report a programming
+  // error as a legitimate "definition unavailable" data state.
+  // new Array(1) has length 1 and NO element: .map skips the hole, .some never
+  // sees it, and the result was comparable:true with an undefined contract.
+  for (const bad of [null, undefined, "2.4.1", 42, {}, new Array(1),
+                     Object.assign(["2.4.1"], { length: 3 }),
+                     protoBackedSparse(2, "2.4.1")]) {
+    assert.throws(() => decideComparability("people", bad), ReleaseResolutionError,
+      `versions ${JSON.stringify(bad)} must be refused`);
+  }
+});
+
+test("a release's contract assignment never changes when OTHER releases are added or removed", () => {
+  // The rejected design derived comparability from which event codes happened to
+  // appear, so changing the displayed set changed a metric with no product
+  // change. Chunk 3 can prove the half it owns: each release's own contract is a
+  // function of that release alone. (The stronger claim - that metric VALUES are
+  // unaffected by the displayed set - needs chunk 4's calculations and is
+  // asserted there, not faked here.)
+  const metrics = ["transcription_failed", "polish_kept", "people", "speed_p95"];
+  const perRelease = {};
+  for (const metric of metrics) {
+    for (const version of ["2.3.0", "2.3.1", "2.3.2", "2.4.0", "2.4.1"]) {
+      perRelease[`${metric}@${version}`] = telemetryContractFor(metric, version);
+    }
+  }
+  // Re-resolve each one while wildly different sets are notionally displayed.
+  for (const displayed of [
+    ["2.4.1"],
+    ["2.4.1", "2.4.0"],
+    ["2.4.1", "2.4.0", "2.3.2", "2.3.1", "2.3.0"],
+    ["2.3.0", "2.4.1"],
+  ]) {
+    for (const metric of metrics) {
+      for (const version of displayed) {
+        assert.equal(
+          telemetryContractFor(metric, version),
+          perRelease[`${metric}@${version}`],
+          `${metric}@${version} changed when the displayed set was ${displayed.join(",")}`
+        );
+      }
+    }
+  }
+  // And the derived verdict follows only from that set's own contracts.
+  assert.equal(decideComparability("transcription_failed", ["2.4.1", "2.4.0"]).comparable, true);
+  assert.equal(decideComparability("transcription_failed", ["2.4.1", "2.3.2"]).comparable, false);
 });
