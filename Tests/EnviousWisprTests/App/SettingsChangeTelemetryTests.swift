@@ -307,6 +307,33 @@ import Testing
       #expect(project("someones-finetune") == "custom")
     }
 
+    /// #1770: the allowlist stopped at Gemini 2.5, so every 3.x user's
+    /// configured model reconstructed as `custom` and the generation was
+    /// invisible in settings snapshots. Public model names only — this is
+    /// cardinality, not content.
+    @Test("Gemini 3.x ids are recognised, and unknown ids still collapse to custom")
+    func geminiThreeIsRecognised() {
+      func project(_ model: String) -> String? {
+        let suite = UserDefaults(suiteName: "SCT-g3-\(UUID().uuidString)")!
+        let settings = SettingsManager(defaults: suite)
+        settings.llmProvider = .gemini
+        settings.llmModel = model
+        return SettingsProjection.value(for: .llmModel, settings: settings)
+      }
+      for id in [
+        "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview",
+        "gemini-3.1-pro-preview", "gemini-3.1-pro-preview-customtools",
+        "gemini-3-flash-preview",
+      ] {
+        #expect(project(id) == id, "\(id) is offered by the picker and must not read as custom")
+      }
+      // The deny-by-default anchor still holds: anything unlisted is `custom`,
+      // so no private or unknown string can leak through this dimension.
+      #expect(project("gemini-4.0-flash-imaginary") == "custom")
+      #expect(project("gemini-my-private-tune") == "custom")
+    }
+
     @Test("Ollama discovery correction emits one source=system delta")
     func ollamaDiscoveryIsSystem() {
       let (settings, telemetry, box, _) = makeHarness()
