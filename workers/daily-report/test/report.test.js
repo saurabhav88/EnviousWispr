@@ -6,14 +6,23 @@ import {
   easternYesterdayWindowUTC,
   resolveBuckets,
   buildMessage,
-  hogql,
-  runLimited,
   fetchReportData,
   runReport,
+} from "../src/index.js";
+// #1838 chunk 1: the PostHog transport/concurrency/production-filter
+// infrastructure now has ONE owner. Tests import it from there directly - a
+// re-export from index.js would be a forwarding shim kept alive solely for
+// tests, which this REFACTOR-tier change forbids.
+import {
+  hogql,
+  runLimited,
   resolveDevIds,
   productionClauseFor,
+  querySection,
+  rowsToObjects,
+  sqlIdList,
   PostHogQueryError,
-} from "../src/index.js";
+} from "../src/lib/posthog.js";
 
 // ---- easternYesterdayWindowUTC ----
 
@@ -309,37 +318,223 @@ test("source guardrail: every per-user GROUP BY query has an explicit LIMIT", as
 
 // ---- runLimited (#1588 - PostHog's 3-concurrent-query project limit) ----
 
+/** Signal-based async waits. Each task announces that it started and waits
+ * to be released, so every asserted ordering follows an observed signal
+ * instead of elapsed wall-clock time. */
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 test("runLimited: never exceeds the given concurrency and preserves input order", async () => {
   let inFlight = 0;
   let maxInFlight = 0;
-  const tasks = [1, 2, 3, 4, 5].map(
-    (n) => () =>
-      new Promise((resolve) => {
-        inFlight += 1;
-        maxInFlight = Math.max(maxInFlight, inFlight);
-        setTimeout(() => {
-          inFlight -= 1;
-          resolve(n);
-        }, 5);
-      })
-  );
-  const results = await runLimited(tasks, 2);
-  assert.deepEqual(results, [1, 2, 3, 4, 5]);
+  const controls = [1, 2, 3, 4, 5].map((value) => ({
+    value,
+    started: deferred(),
+    release: deferred(),
+  }));
+  const tasks = controls.map(({ value, started, release }) => async () => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    started.resolve();
+    try {
+      await release.promise;
+      return value;
+    } finally {
+      inFlight -= 1;
+    }
+  });
+
+  const run = runLimited(tasks, 2);
+  await Promise.all([controls[0].started.promise, controls[1].started.promise]);
+
+  controls[0].release.resolve();
+  await controls[2].started.promise;
+  controls[1].release.resolve();
+  await controls[3].started.promise;
+  controls[2].release.resolve();
+  await controls[4].started.promise;
+  controls[3].release.resolve();
+  controls[4].release.resolve();
+
+  assert.deepEqual(await run, [1, 2, 3, 4, 5]);
   assert.ok(maxInFlight <= 2, `expected at most 2 concurrent tasks, saw ${maxInFlight}`);
 });
 
-test("runLimited: a failed wave rejects and never starts a later wave", async () => {
-  let laterWaveStarted = false;
+// #1838 chunk 1 REPLACES the former "a failed wave rejects and never starts a
+// later wave" test with its deliberate opposite. The old fail-fast contract is
+// incompatible with the merged report's section isolation: one failing adoption
+// query would strand the version scorecard's queued work and blank a section
+// that could have rendered. Replaced, never deleted - the behaviour it locked is
+// now asserted in the other direction so a silent regression to waves fails.
+test("runLimited: a rejected task releases its slot and later work STILL runs", async () => {
+  let laterWorkStarted = false;
   const tasks = [
     () => Promise.resolve("ok"),
     () => Promise.reject(new Error("boom")),
     () => {
-      laterWaveStarted = true;
-      return Promise.resolve("should not run");
+      laterWorkStarted = true;
+      return Promise.resolve("must still run");
     },
   ];
   await assert.rejects(() => runLimited(tasks, 2), /boom/);
-  assert.equal(laterWaveStarted, false);
+  assert.equal(
+    laterWorkStarted,
+    true,
+    "queued work after a rejection must still start - see #1838 section isolation"
+  );
+});
+
+test("runLimited: reports the FIRST failure in input order, not arrival order", async () => {
+  // The later-indexed task rejects FIRST in wall-clock terms. Which failure a
+  // caller sees must depend on input position, never on scheduling, or a
+  // fail-loud caller's error would vary run to run.
+  const firstByIndex = deferred();
+  const firstByTime = deferred();
+  const run = runLimited([() => firstByIndex.promise, () => firstByTime.promise], 2);
+
+  firstByTime.reject(new Error("first-by-time"));
+  firstByIndex.reject(new Error("first-by-index"));
+
+  await assert.rejects(run, /first-by-index/);
+});
+
+test("runLimited: honours the concurrency ceiling even when tasks reject", async () => {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const controls = Array.from({ length: 6 }, (_, index) => ({
+    index,
+    started: deferred(),
+    release: deferred(),
+  }));
+  const tasks = controls.map(({ index, started, release }) => async () => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    started.resolve();
+    try {
+      await release.promise;
+      if (index % 2 === 0) throw new Error(`boom-${index}`);
+      return index;
+    } finally {
+      inFlight -= 1;
+    }
+  });
+
+  const run = runLimited(tasks, 2);
+  await Promise.all([controls[0].started.promise, controls[1].started.promise]);
+
+  for (let index = 0; index < 4; index += 1) {
+    controls[index].release.resolve();
+    await controls[index + 2].started.promise;
+  }
+  controls[4].release.resolve();
+  controls[5].release.resolve();
+
+  await assert.rejects(run, /boom-0/);
+  assert.ok(maxInFlight <= 2, `expected at most 2 concurrent tasks, saw ${maxInFlight}`);
+});
+
+test("runLimited: every task settles before the failure is reported", async () => {
+  const secondStarted = deferred();
+  const thirdStarted = deferred();
+  const secondRelease = deferred();
+  const thirdRelease = deferred();
+  const secondFinished = deferred();
+  const finished = [];
+  let rejectionReported = false;
+
+  const run = runLimited(
+    [
+      () => Promise.reject(new Error("boom")),
+      async () => {
+        secondStarted.resolve();
+        await secondRelease.promise;
+        finished.push(1);
+        secondFinished.resolve();
+      },
+      async () => {
+        thirdStarted.resolve();
+        await thirdRelease.promise;
+        finished.push(2);
+      },
+    ],
+    2
+  );
+  const rejection = assert.rejects(run, /boom/).then(() => {
+    rejectionReported = true;
+  });
+
+  await Promise.all([secondStarted.promise, thirdStarted.promise]);
+  secondRelease.resolve();
+  await secondFinished.promise;
+  assert.equal(rejectionReported, false, "failure must wait for the remaining task");
+  thirdRelease.resolve();
+
+  await rejection;
+  assert.deepEqual(finished, [1, 2]);
+});
+
+// ---- querySection / rowsToObjects / sqlIdList characterization (#1838 chunk 1) ----
+// These three moved with the rest of the PostHog infrastructure but had NO
+// direct coverage, so an extraction defect in them would have been invisible.
+// Characterizing them here makes the refactor provable independently of the
+// feature work that follows.
+
+test("querySection: degrades ONLY on an exhausted retryable status", async () => {
+  const env = { POSTHOG_PROJECT_ID: "1", POSTHOG_PERSONAL_API_KEY: "k" };
+  const opts = {
+    fetchFn: async () => fakeResponse(503, null),
+    sleepFn: async () => {},
+    randomFn: () => 0,
+  };
+  const out = await querySection(env, "SELECT 1", "geo", opts);
+  assert.equal(out.degraded, true);
+  assert.equal(out.response, null);
+});
+
+test("querySection: a NON-retryable status still throws, never degrades", async () => {
+  const env = { POSTHOG_PROJECT_ID: "1", POSTHOG_PERSONAL_API_KEY: "k" };
+  const opts = { fetchFn: async () => fakeResponse(401, null), sleepFn: async () => {}, randomFn: () => 0 };
+  await assert.rejects(() => querySection(env, "SELECT 1", "geo", opts), PostHogQueryError);
+});
+
+test("querySection: a malformed 200 response throws rather than degrading", async () => {
+  // A programming/contract error must stay loud - degrading it would render a
+  // section as "temporarily unavailable" and hide a real bug indefinitely.
+  const env = { POSTHOG_PROJECT_ID: "1", POSTHOG_PERSONAL_API_KEY: "k" };
+  const opts = { fetchFn: async () => fakeResponse(200, {}), sleepFn: async () => {}, randomFn: () => 0 };
+  await assert.rejects(() => querySection(env, "SELECT 1", "geo", opts), /returned no results array/);
+});
+
+test("querySection: passes through a successful response undegraded", async () => {
+  const env = { POSTHOG_PROJECT_ID: "1", POSTHOG_PERSONAL_API_KEY: "k" };
+  const body = { results: [[1]], columns: ["n"] };
+  const opts = { fetchFn: async () => fakeResponse(200, body), sleepFn: async () => {}, randomFn: () => 0 };
+  const out = await querySection(env, "SELECT 1", "geo", opts);
+  assert.equal(out.degraded, false);
+  assert.deepEqual(out.response, body);
+});
+
+test("rowsToObjects: zips columns to rows, and tolerates absent columns/results", () => {
+  assert.deepEqual(
+    rowsToObjects({ columns: ["a", "b"], results: [[1, 2], [3, 4]] }),
+    [{ a: 1, b: 2 }, { a: 3, b: 4 }]
+  );
+  assert.deepEqual(rowsToObjects({}), []);
+  assert.deepEqual(rowsToObjects({ columns: ["a"], results: [] }), []);
+});
+
+test("sqlIdList: doubles single quotes so an id cannot break out of its literal", () => {
+  assert.equal(sqlIdList(["abc"]), "'abc'");
+  assert.equal(sqlIdList(["a'b"]), "'a''b'");
+  assert.equal(sqlIdList(["a", "b"]), "'a', 'b'");
+  assert.equal(sqlIdList([]), "");
 });
 
 test("runLimited: rejects a non-positive-integer limit", async () => {

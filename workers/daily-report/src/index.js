@@ -20,19 +20,25 @@
  * trigger secret.
  */
 
-const POSTHOG_HOST = "https://us.posthog.com";
+import {
+  ENV_ONLY,
+  PER_USER_LIST_LIMIT,
+  PostHogQueryError,
+  RETRYABLE_POSTHOG_STATUSES,
+  hogql,
+  productionClauseFor,
+  querySection,
+  resolveDevIds,
+  rowsToObjects,
+  runLimited,
+  sqlIdList,
+} from "./lib/posthog.js";
 
 // Shipped app defaults (SettingsDefaultValues.swift) - the tier-of-last-resort
 // when a user has neither a settings record nor any dictation carrying a
 // signal. See plan §3.3 row 4.
 const DEFAULT_ENGINE = "parakeet";
 const DEFAULT_PROVIDER = "appleIntelligence";
-
-// Per-worker distinct_id list bound. Genuinely a defense-in-depth ceiling,
-// never the primary correctness mechanism - see resolveDevIds/completeness
-// check below and plan §3.3a. 5000 is far above any realistic single-day
-// population.
-const PER_USER_LIST_LIMIT = 5000;
 
 export default {
   async fetch(request, env) {
@@ -129,55 +135,6 @@ function sqlTimestamp(date) {
 
 // ----- PostHog ---------------------------------------------------------------
 
-// Environment predicate alone, no whole-history dev-ID exclusion applied
-// here. See productionClauseFor() below for the report's shared,
-// resolved-once dev-exclusion predicate, and each ENV_ONLY call site's local
-// comment for why omitting the exclusion there is separately safe.
-const ENV_ONLY = "properties.environment = 'production'";
-
-/** Converts a resolved dev-tainted distinct_id list (from resolveDevIds
- * below) into the reusable production-filter predicate: environment =
- * production, AND (only if any dev ids exist) NOT IN that literal list.
- * Resolving the list ONCE per report run and threading the result through
- * every query that needs it replaces the old per-query inline dev-exclusion
- * subquery, which independently re-scanned the same whole-history data in
- * every one of the 6 primary queries - the duplicated-subquery shape that
- * measurably timed out production PostHog for polish tier-a (#1655) and
- * onboard_activate (#1716). An empty list is a legitimate state (genuinely
- * zero dev-tainted ids found across event history) and must not produce
- * invalid `NOT IN ()` SQL, hence the empty-list branch below (#1720). */
-export function productionClauseFor(devIds) {
-  if (devIds.length === 0) return ENV_ONLY;
-  return `${ENV_ONLY}
-    AND distinct_id NOT IN (${sqlIdList(devIds)})`;
-}
-
-/** Resolves the day's whole-history dev-tainted distinct_id list ONCE per
- * report run (analytics-operations.md RULE: founder-machine-tell-in-
- * distinct-id: a dev build anywhere in an id's history marks the whole id
- * as dogfood, so this is an unbounded scan, not day-windowed). Queried at
- * PER_USER_LIST_LIMIT+1 to detect overflow: if the true count exceeds the
- * ceiling, this throws rather than silently building a truncated exclusion
- * list that would under-exclude dev accounts from production totals - fail
- * loud, not warn-and-continue (#1720). This is itself a fail-loud query: an
- * unresolved dev-id list can never safely be treated as "no dev accounts,"
- * so callers must never wrap it in querySection's fail-soft catch. */
-export async function resolveDevIds(env, hogqlOpts = {}) {
-  const result = await hogql(
-    env,
-    `SELECT DISTINCT distinct_id FROM events
-     WHERE properties.app_version LIKE '%-dev%'
-     LIMIT ${PER_USER_LIST_LIMIT + 1}`,
-    "dev_ids",
-    hogqlOpts
-  );
-  const devIds = (result.results || []).map((row) => row[0]);
-  if (devIds.length > PER_USER_LIST_LIMIT) {
-    throw new Error(`dev-id completeness check failed: more than ${PER_USER_LIST_LIMIT} ids`);
-  }
-  return devIds;
-}
-
 function windowClause(startUTC, endUTC) {
   return `timestamp >= '${sqlTimestamp(startUTC)}' AND timestamp < '${sqlTimestamp(endUTC)}'`;
 }
@@ -200,13 +157,6 @@ function activeUsersSubquery(win) {
   return `SELECT DISTINCT distinct_id FROM events
     WHERE event = 'dictation.completed' AND properties.result = 'success'
       AND ${ENV_ONLY} AND ${win}`;
-}
-
-/** Escapes a distinct_id for a HogQL string literal (single-quote doubling,
- * the standard SQL escape - distinct_ids are opaque PostHog-generated ids,
- * never user-authored text, so this is a closed, low-risk input class). */
-function sqlIdList(ids) {
-  return ids.map((id) => `'${String(id).replace(/'/g, "''")}'`).join(", ");
 }
 
 /** Polish tier-a: latest llm_provider across settings.snapshot and
@@ -241,155 +191,6 @@ function tierASqlFor(activeIds, endTs) {
     )
     GROUP BY distinct_id
     LIMIT ${PER_USER_LIST_LIMIT}`;
-}
-
-// PostHog's project-level rate limit allows only 3 concurrent queries, up to
-// 10s execution time per query, and queues/cancels/times-out (HTTP
-// 502/503/504) anything beyond that; 429 is the documented, distinct
-// concurrency-limit-reached status (posthog.com/docs/api/queries,
-// posthog.com/docs/endpoints/troubleshooting - #1588, #1720). `runLimited`
-// below caps our own concurrency under that ceiling; this retry is the
-// second, complementary layer for genuine transient contention (e.g. the
-// project is shared with EnviousStaging - analytics-operations.md FACT:
-// posthog-project-is-shared-with-enviousstaging). It retries up to twice
-// (3 attempts total), only on this documented status class, and only ever
-// before any Discord post happens - unlike the deliberately-rejected outer
-// GitHub-Actions-level retry (see the comment in daily-report-ping.yml),
-// this cannot produce a duplicate or confusing failure notice.
-const RETRYABLE_POSTHOG_STATUSES = new Set([429, 502, 503, 504]);
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Randomized backoff windows for retry attempts 2 and 3, informed by (not a
-// guarantee derived from) PostHog's documented up-to-30s queue-wait: once a
-// request has already queued, waited, and failed, its original window is
-// already over, so this is conservative contention backoff, not a claim
-// that a fixed wait "clears" any specific prior window (#1720).
-const RETRY_DELAY_RANGES_MS = [
-  [12_000, 18_000],
-  [30_000, 45_000],
-];
-
-function retryDelayMs(range, randomFn) {
-  const [min, max] = range;
-  return Math.floor(min + randomFn() * (max - min + 1));
-}
-
-/** Carries the query name and HTTP status alongside the message, so a caller
- * can distinguish an exhausted transient failure (which tier-a is allowed to
- * degrade on) from an auth failure, a malformed query, or a bad response
- * shape (which must stay loud). Message text is unchanged from the plain
- * Error it replaces - existing assertions and the production failure notice
- * both depend on it (#1655). */
-export class PostHogQueryError extends Error {
-  constructor(queryName, status) {
-    super(`PostHog query ${queryName} HTTP ${status}`);
-    this.name = "PostHogQueryError";
-    this.queryName = queryName;
-    this.status = status;
-  }
-}
-
-export async function hogql(
-  env,
-  sql,
-  queryName,
-  { fetchFn = fetch, sleepFn = sleep, randomFn = Math.random } = {}
-) {
-  const url = `${POSTHOG_HOST}/api/projects/${env.POSTHOG_PROJECT_ID}/query/`;
-  const maxAttempts = RETRY_DELAY_RANGES_MS.length + 1;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const res = await fetchFn(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.POSTHOG_PERSONAL_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query: { kind: "HogQLQuery", query: sql },
-        refresh: "blocking",
-        name: `daily_report_${queryName}`,
-      }),
-    });
-
-    if (res.ok) {
-      const json = await res.json();
-      if (!json.results) throw new Error(`PostHog query ${queryName} returned no results array`);
-      return json;
-    }
-
-    const status = res.status;
-    if (res.body) {
-      try {
-        await res.body.cancel();
-      } catch (_) {
-        // Best effort: the status remains the authoritative failure, and a
-        // failed cancel must not mask it. Draining/cancelling the failed
-        // body here matters specifically because a retry immediately opens
-        // a NEW outbound request on the same wave - an uncancelled body can
-        // hold its Cloudflare subrequest connection open, and enough of
-        // those piling up across retries could exhaust Cloudflare's own
-        // outbound-connection ceiling and recreate the stall this change
-        // exists to fix (Codex code-diff review, round 2, #1588).
-      }
-    }
-
-    if (attempt === maxAttempts || !RETRYABLE_POSTHOG_STATUSES.has(status)) {
-      throw new PostHogQueryError(queryName, status);
-    }
-    await sleepFn(retryDelayMs(RETRY_DELAY_RANGES_MS[attempt - 1], randomFn));
-  }
-}
-
-// Runs `tasks` (zero-arg async thunks) in fixed waves of at most `limit`
-// concurrently, preserving input order in the returned results. Exists
-// because PostHog's project-level query-concurrency ceiling is 3 (#1588) -
-// firing more than that at once gets the excess queued for up to 30s before
-// PostHog cancels/times it out. A failed wave stops later waves from
-// starting, matching `Promise.all`'s existing all-or-nothing contract for
-// the whole batch (already-started requests within a wave still run to
-// completion; a new wave simply never starts).
-export async function runLimited(tasks, limit) {
-  if (!Number.isInteger(limit) || limit < 1) {
-    throw new TypeError("limit must be a positive integer");
-  }
-  const results = [];
-  for (let start = 0; start < tasks.length; start += limit) {
-    const wave = tasks.slice(start, start + limit);
-    results.push(...(await Promise.all(wave.map((task) => task()))));
-  }
-  return results;
-}
-
-/** Runs one hogql() call and reports whether it degraded instead of
- * throwing, for any of the 5 non-essential primary queries (installs,
- * onboard_activate, engineAndTierB, geo, top5). Only an EXHAUSTED retryable
- * status (RETRYABLE_POSTHOG_STATUSES, after hogql's own retries) degrades;
- * anything else - auth, bad SQL, a malformed response, a programming error -
- * still throws, matching tier_a's existing degrade philosophy (#1655,
- * extended report-wide by #1720). `totals` deliberately does NOT go through
- * this helper - it stays fail-loud, see its call site in fetchReportData. */
-async function querySection(env, sql, queryName, hogqlOpts) {
-  try {
-    return { response: await hogql(env, sql, queryName, hogqlOpts), degraded: false };
-  } catch (err) {
-    const isExpectedTransientFailure =
-      err instanceof PostHogQueryError &&
-      err.queryName === queryName &&
-      RETRYABLE_POSTHOG_STATUSES.has(err.status);
-    if (!isExpectedTransientFailure) throw err;
-    console.log(`daily-report ${queryName} degraded after retries: HTTP ${err.status}`);
-    return { response: null, degraded: true };
-  }
-}
-
-function rowsToObjects(res) {
-  const cols = res.columns || [];
-  return (res.results || []).map((row) => {
-    const o = {};
-    cols.forEach((c, i) => (o[c] = row[i]));
-    return o;
-  });
 }
 
 // `hogqlOpts` forwards the same injection bag `hogql` already accepts, so tests
@@ -450,13 +251,14 @@ export async function fetchReportData(env, win, endUTC, hogqlOpts = {}) {
     LIMIT 5`;
 
   // These 6 primary queries are independent, but PostHog allows only 3
-  // concurrent queries per project (#1588) - `runLimited(..., 2)` runs them
-  // in 3 fixed waves of 2, leaving one slot of headroom for the shared
-  // project's other traffic (EnviousStaging) rather than firing all 6 at
-  // once and getting the excess queued/timed-out. Polish tier-a (below)
-  // runs sequentially *after* all 3 waves finish - it does not need reserved
-  // concurrency. `totals` is the sole fail-loud query in this batch (it
-  // anchors resolveBuckets's completeness check and supplies the report's
+  // concurrent queries per project (#1588). `runLimited(..., 2)` keeps at
+  // most 2 requests in flight, leaving one slot of headroom for the shared
+  // project's other traffic (EnviousStaging). A rejected task releases its
+  // slot and queued work continues (#1838), so one failure cannot strand
+  // later work. Polish tier-a (below) runs sequentially *after* the entire
+  // limited batch settles - it does not need reserved concurrency.
+  // `totals` is the sole fail-loud query in this batch (it anchors
+  // resolveBuckets's completeness check and supplies the report's
   // headline numbers); the other five go through querySection and degrade
   // to "temporarily unavailable" instead of discarding the whole report on
   // an exhausted transient failure (#1720).
