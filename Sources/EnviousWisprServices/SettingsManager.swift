@@ -172,7 +172,7 @@ public final class SettingsManager {
       // Polish settings only loads CACHED rows — the real rescan sits behind
       // the manual refresh button, which a user has no reason to press.
       if fixedLiterals.contains(llmModel) || llmModel.isEmpty
-        || LLMProvider.retiredModelIDs.contains(llmModel)
+        || LLMProvider.isRetiredModel(llmModel, for: llmProvider)
         || !LLMProvider.modelIDLooksLikeCloudProvider(llmModel, llmProvider)
       {
         llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)

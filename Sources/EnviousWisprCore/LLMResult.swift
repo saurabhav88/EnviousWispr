@@ -65,24 +65,40 @@ extension LLMProvider {
   /// the provider has actually withdrawn, never a model the user legitimately
   /// chose. Each was verified 404 against the live API on 2026-07-29.
   ///
+  /// KEYED BY PROVIDER, not a flat set of ids. An Ollama model is named by the
+  /// user, so a local model called `gemini-2.0-flash` is a perfectly legitimate
+  /// choice that a flat set would silently rewrite to `llama3.2` on a recovery
+  /// replay. Keying also keeps the next entry honest: under a flat set plus a
+  /// `provider == .gemini` guard, a future OpenAI retirement added here would be
+  /// silently ignored — it would LOOK registered and do nothing.
+  ///
   /// This is NOT a general staleness mechanism. When Google retires the next
   /// model, a human adds it here — the same human gate that governs adding a
   /// new model's thinking dialect.
-  public static let retiredModelIDs: Set<String> = [
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-3-pro-preview",
+  public static let retiredModelIDs: [LLMProvider: Set<String>] = [
+    .gemini: [
+      "gemini-2.0-flash",
+      "gemini-2.0-flash-lite",
+      "gemini-3-pro-preview",
+    ]
   ]
+
+  /// Whether `provider` has WITHDRAWN `modelID`. The single membership test both
+  /// repair seams read, so neither can drift from the other.
+  public static func isRetiredModel(_ modelID: String, for provider: LLMProvider) -> Bool {
+    retiredModelIDs[provider]?.contains(modelID) ?? false
+  }
 
   /// Substitute the provider's current default for a WITHDRAWN model id,
   /// leaving every live id untouched (#1770).
   ///
   /// The shared authority is `retiredModelIDs` above, which both repair seams
-  /// read. This helper is `RecoveryTextProcessor`'s convenience for the
-  /// standalone substitution; `SettingsManager` tests the set directly inside
-  /// its larger canonicalization branch, which is clearer there.
+  /// read through `isRetiredModel`. This helper is `RecoveryTextProcessor`'s
+  /// convenience for the standalone substitution; `SettingsManager` calls the
+  /// membership test directly inside its larger canonicalization branch, which
+  /// is clearer there.
   public static func replacingRetiredModel(_ modelID: String, for provider: LLMProvider) -> String {
-    retiredModelIDs.contains(modelID) ? defaultModel(for: provider) : modelID
+    isRetiredModel(modelID, for: provider) ? defaultModel(for: provider) : modelID
   }
 
   /// Coarse "does this model id look like it could belong to `provider`"

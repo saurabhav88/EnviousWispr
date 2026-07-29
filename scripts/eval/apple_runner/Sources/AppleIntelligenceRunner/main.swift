@@ -144,8 +144,10 @@ struct RunnerMain {
       apiKeyKeychainId: nil,
       outputTokens: .capped(2048),
       temperature: 0,
-      thinkingBudget: nil,
-      reasoningEffort: nil,
+      // #1770: the two sibling optionals collapsed into one `ResolvedThinking?`.
+      // Apple Intelligence has no thinking dialect, so this stays nil — the same
+      // "send no thinking field" decision the two nils encoded before.
+      thinking: nil,
       // Empty string maps to nil so the bench can mirror the DEFAULT Parakeet
       // production path (no LID → language nil → LeadingMarkerRepair does NOT
       // fire). Passing "en" forces the repair on, which inflates onset numbers

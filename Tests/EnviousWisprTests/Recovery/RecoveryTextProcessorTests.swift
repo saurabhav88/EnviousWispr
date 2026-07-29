@@ -215,6 +215,25 @@ struct RecoveryTextProcessorTests {
     }
   }
 
+  /// The retirement is Google's, so it may only ever apply to Google's provider.
+  /// An Ollama model is named by the USER: `ollama cp` will happily produce a
+  /// local model called `gemini-2.0-flash`, and that is a legitimate choice.
+  /// A provider-blind membership test would rewrite it to `llama3.2` on replay,
+  /// so a recovered take would polish through the wrong local model — or skip
+  /// polish entirely if `llama3.2` is not installed.
+  @Test("a retired GEMINI id is left alone under a different provider")
+  func retiredIDIsScopedToItsProvider() {
+    for foreign in [LLMProvider.ollama, .openAI, .claude] {
+      #expect(
+        LLMProvider.replacingRetiredModel("gemini-2.0-flash", for: foreign) == "gemini-2.0-flash",
+        "\(foreign) never had this id withdrawn — only Gemini did")
+    }
+    // And the membership test itself, so the scoping is pinned at the authority
+    // rather than only at one caller.
+    #expect(LLMProvider.isRetiredModel("gemini-2.0-flash", for: .gemini))
+    #expect(LLMProvider.isRetiredModel("gemini-2.0-flash", for: .ollama) == false)
+  }
+
   /// The WIRING, proved without adding a production test seam — `steps` is
   /// private by design, and the established pattern in this file is a static
   /// source check (see the `.silent` tests above).
