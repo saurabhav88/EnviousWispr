@@ -177,7 +177,13 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     llmProvider != .none
   }
 
-  /// Provider-aware timeout budget. Cloud providers respond in <2s so 5s is generous.
+  /// Provider-aware timeout budget for providers whose cost does not scale here.
+  /// (#1770 corrected an older claim on this line that "cloud providers respond
+  /// in <2s so 5s is generous": false for Gemini on the measured long
+  /// dictations (11,324 chars took 6.12s, 66,896 took 50.65s), and #158 already
+  /// measured a 9.16s Claude call. Gemini now
+  /// scales via `maxDuration(for:)` below; the rest keep fixed budgets, and
+  /// OpenAI/Claude are #1833.)
   /// Local models (Ollama 12B) generate ~18 tok/s and need 10-15s for long dictations.
   /// Apple Intelligence runs on-device with variable latency depending on model size.
   public var maxDuration: Duration {
@@ -212,8 +218,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// A fixed 5 s was timing out long dictations. Measured live against
   /// real dictations, Gemini in fast mode: 1,709 chars -> 1.33 s, 4,605 -> 2.69 s,
   /// 11,324 (a 10-minute dictation) -> 6.12 s, 66,896 (the longest transcript we
-  /// have recorded) -> 50.65 s. Everything past roughly 5,000 chars lost its
-  /// polish and showed the failure notice. Production corroborates it: Gemini's
+  /// have recorded) -> 50.65 s. The last measurement under the old 5 s budget was
+  /// 4,605 chars at 2.69 s, so the crossing lies between 4,605 and 11,324 chars;
+  /// the measured long cases lost their polish and showed the failure notice. Production corroborates it: Gemini's
   /// `llm_seconds` maxes at 5.05 s against the 5 s cap — a censored distribution.
   ///
   /// A larger FIXED number is not the fix. It would make a 20-word dictation

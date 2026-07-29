@@ -100,7 +100,8 @@ struct LLMProviderCapabilityTests {
         == .budget(fast: 128, deep: 8192))
 
     // Unknown / untested / retired ids reach the fallback and send NOTHING —
-    // the one request shape measured to succeed on every offered model.
+    // the shape that succeeded on all eleven working Gemini models measured
+    // 2026-07-28/29, not a guarantee about models that do not exist yet.
     for unknown in ["gemini-3-flash", "gemini-3.7-flash", "gemini-2.0-flash", "nonsense"] {
       #expect(
         LLMProvider.gemini.modelCapabilities(model: unknown).thinkingControl == .unsupported,

@@ -60,7 +60,9 @@ struct GeminiRequestBodyTests {
   }
 
   /// The fail-open case, asserted positively: an unknown model sends no
-  /// `thinkingConfig` at all — the one shape measured to work on every model.
+  /// `thinkingConfig` at all — the shape that succeeded on all eleven working
+  /// Gemini models measured 2026-07-28/29. Future models are unverified by
+  /// construction; this is the safest first attempt, not a guarantee.
   @Test func unsupportedSendsNoThinkingKeyAtAll() {
     let generationConfig = GeminiConnector.makeGenerationConfig(config: config(thinking: nil))
     #expect(generationConfig["thinkingConfig"] == nil)

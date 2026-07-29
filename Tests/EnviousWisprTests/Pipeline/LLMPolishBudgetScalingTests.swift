@@ -8,8 +8,8 @@ import Testing
 
 /// #1770: the polish deadline scales with the transcript for Gemini.
 ///
-/// A flat 5 s was timing out every dictation past roughly 5,000
-/// characters — measured live, a 10-minute dictation polishes in 6.12 s and the
+/// A flat 5 s was timing out the measured long dictations (11,324 chars at
+/// 6.12 s, 66,896 at 50.65 s; the last case under budget was 4,605 at 2.69 s) — measured live, a 10-minute dictation polishes in 6.12 s and the
 /// longest transcript we have recorded in 50.65 s. A flat LARGER number was
 /// rejected because it would slow the common case (p50 is 8 seconds of speech)
 /// down to rescue the 0.1% tail.
