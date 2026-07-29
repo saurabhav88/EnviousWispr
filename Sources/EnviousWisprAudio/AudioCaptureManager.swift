@@ -299,6 +299,39 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// fresh `beginCapturePhase`.
   private var deadAirDetector = DeadAirStreamingDetector()
 
+  /// How many leading exact-zero samples the mid-take all-zero detector tolerates
+  /// before it concludes the microphone is dead. ONE owner, ONE code path in every
+  /// configuration — release and DEBUG differ only in whether an override is
+  /// consulted, never in how the verdict is computed (#1788).
+  ///
+  /// Release, and DEBUG with no override set, is `minimumTranscriptionSamples`
+  /// (16,000 = 1.0s), byte-identical to shipped behaviour.
+  ///
+  /// The DEBUG override exists because a Bluetooth wake slower than the ceiling is
+  /// otherwise CENSORED — the take aborts before the wake completes, so the tail we
+  /// most need to see is the one we structurally cannot observe. Raising it makes
+  /// that tail measurable. Diagnostic recipe: gotchas-audio.md
+  /// FACT: bt-mic-warmup-delay-is-industry-wide-not-eviouswispr-specific.
+  ///
+  ///     defaults write com.enviouswispr.app.dev EWDebugAllZeroCeilingSamples -int 160000
+  ///
+  /// A non-positive or absent value yields the shipping ceiling, so an
+  /// unconfigured DEBUG build cannot behave differently from production.
+  var allZeroCeilingSamples: Int {
+    #if DEBUG
+      let override = UserDefaults.standard.integer(
+        forKey: "EWDebugAllZeroCeilingSamples")
+      if override > 0 { return override }
+    #endif
+    return AudioConstants.minimumTranscriptionSamples
+  }
+
+  #if DEBUG
+    /// One-shot per capture generation so the zero-prefix line is emitted once,
+    /// not on every subsequent batch. Reset in `beginCapturePhase`.
+    private var didLogZeroPrefixThisSession = false
+  #endif
+
   /// The ONE shared latch the HAL no-buffer watchdog and the dead-air detector
   /// both check-and-set before calling `onCaptureStalled`, so the callback's
   /// documented at-most-once-per-session contract holds across the two
@@ -367,6 +400,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     deadAirDetector = DeadAirStreamingDetector()
     sawIneligibleZeroSignalDuringSession = false
     captureStallReported = false
+    #if DEBUG
+      didLogZeroPrefixThisSession = false
+    #endif
 
     // Wire source callbacks → manager state.
     // Source identity check prevents stale callbacks from a replaced source
@@ -976,9 +1012,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     if deadAirDetector.consecutiveExactZeroSuffix != suffixBefore + samples.count {
       sawIneligibleZeroSignalDuringSession = false
     }
+    #if DEBUG
+      emitZeroPrefixDiagnosticIfNeeded()
+    #endif
 
     let mode: CaptureStallFailureMode
-    if deadAirDetector.isAllZeroFromStart {
+    if deadAirDetector.isAllZeroFromStart(ceilingSamples: allZeroCeilingSamples) {
       mode = .allZeroFromStart
     } else if deadAirDetector.isBecameZeroMidCapture {
       mode = .becameZeroMidCapture
@@ -1003,6 +1042,38 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     deadAirDetector.fired = true
     fireDeadAirStall(mode: mode)
   }
+
+  #if DEBUG
+    /// Report the exact-zero prefix once per capture generation (#1788).
+    ///
+    /// On Bluetooth this is the A2DP->SCO/HFP link wake time. It is a DEBUG
+    /// diagnostic on purpose and permanently: production telemetry carries no
+    /// such field, and without this line a future Bluetooth investigation has to
+    /// re-derive wake timing by hand, which is how #1788 started. Writes to
+    /// `app.log` only (requires in-app Debug Mode) — never PostHog, never Sentry,
+    /// never the network. Emits a duration, a sample count and a transport label,
+    /// so it is inside the privacy boundary by construction.
+    private func emitZeroPrefixDiagnosticIfNeeded() {
+      guard !didLogZeroPrefixThisSession,
+        let zeroPrefixSamples = deadAirDetector.zeroPrefixSampleCount
+      else { return }
+      didLogZeroPrefixThisSession = true
+      let zeroPrefixMs = Double(zeroPrefixSamples) / AudioConstants.sampleRate * 1000
+      let wallMs =
+        Double(DispatchTime.now().uptimeNanoseconds &- captureStartUptimeNs) / 1_000_000
+      let transport = currentResolvedRoute?.effective ?? "unknown"
+      let ceiling = allZeroCeilingSamples
+      Task {
+        await AppLogger.shared.log(
+          "ZERO_PREFIX_MEASURE transport=\(transport) "
+            + "zero_prefix_samples=\(zeroPrefixSamples) "
+            + "zero_prefix_ms=\(String(format: "%.0f", zeroPrefixMs)) "
+            + "wall_ms=\(String(format: "%.0f", wallMs)) "
+            + "ceiling_samples=\(ceiling)",
+          level: .info, category: "Audio")
+      }
+    }
+  #endif
 
   /// Overlay the manager's app-lifetime session id + frozen route decision onto
   /// a HAL-built stall context before forwarding (#1543 Codex review P2). The

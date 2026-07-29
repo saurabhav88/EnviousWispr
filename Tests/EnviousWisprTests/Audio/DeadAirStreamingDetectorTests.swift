@@ -42,14 +42,14 @@ struct DeadAirStreamingDetectorTests {
   @Test("every sample exactly zero, at threshold → allZeroFromStart")
   func allZeroFromStartAtThreshold() {
     let detector = ingestWhole([Float](repeating: 0, count: threshold))
-    #expect(detector.isAllZeroFromStart)
+    #expect(detector.isAllZeroFromStart(ceilingSamples: threshold))
     #expect(!detector.isBecameZeroMidCapture)
   }
 
   @Test("every sample exactly zero, BELOW threshold → not yet confident")
   func allZeroBelowThresholdNotYetConfident() {
     let detector = ingestWhole([Float](repeating: 0, count: threshold - 1))
-    #expect(!detector.isAllZeroFromStart)
+    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
   }
 
   // MARK: - No false alarm on genuine quiet-room noise
@@ -62,7 +62,7 @@ struct DeadAirStreamingDetectorTests {
   @Test("uniform tiny non-zero noise never triggers allZeroFromStart")
   func quietRoomNoiseNeverFalseAlarms() {
     let detector = ingestWhole([Float](repeating: 0.001, count: threshold * 2))
-    #expect(!detector.isAllZeroFromStart)
+    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
     #expect(!detector.isBecameZeroMidCapture)
   }
 
@@ -71,7 +71,7 @@ struct DeadAirStreamingDetectorTests {
     var samples = [Float](repeating: 0, count: threshold)
     samples[threshold / 2] = 0.01
     let detector = ingestWhole(samples)
-    #expect(!detector.isAllZeroFromStart)
+    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
   }
 
   // MARK: - becameZeroMidCapture
@@ -83,7 +83,7 @@ struct DeadAirStreamingDetectorTests {
     let detector = ingestWhole(samples)
     #expect(detector.meaningfulSignalSeen)
     #expect(detector.isBecameZeroMidCapture)
-    #expect(!detector.isAllZeroFromStart)
+    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
   }
 
   @Test("meaningful signal then a zero suffix BELOW threshold → not yet confident")
@@ -110,14 +110,14 @@ struct DeadAirStreamingDetectorTests {
     let detector = ingestWhole([Float](repeating: 0, count: threshold))
     #expect(!detector.meaningfulSignalSeen)
     #expect(!detector.isBecameZeroMidCapture)
-    #expect(detector.isAllZeroFromStart)
+    #expect(detector.isAllZeroFromStart(ceilingSamples: threshold))
   }
 
   @Test("meaningful signal that never goes to zero triggers neither mode")
   func continuousSignalTriggersNeitherMode() {
     let detector = ingestWhole([Float](repeating: 0.1, count: threshold * 2))
     #expect(detector.meaningfulSignalSeen)
-    #expect(!detector.isAllZeroFromStart)
+    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
     #expect(!detector.isBecameZeroMidCapture)
   }
 
@@ -140,7 +140,7 @@ struct DeadAirStreamingDetectorTests {
     let chunked = ingestChunked(samples, chunkSize: 500)
 
     #expect(whole.meaningfulSignalSeen == chunked.meaningfulSignalSeen)
-    #expect(whole.isAllZeroFromStart == chunked.isAllZeroFromStart)
+    #expect(whole.isAllZeroFromStart(ceilingSamples: threshold) == chunked.isAllZeroFromStart(ceilingSamples: threshold))
     #expect(whole.isBecameZeroMidCapture == chunked.isBecameZeroMidCapture)
     #expect(whole.totalSampleCount == chunked.totalSampleCount)
     #expect(whole.consecutiveExactZeroSuffix == chunked.consecutiveExactZeroSuffix)
@@ -162,8 +162,8 @@ struct DeadAirStreamingDetectorTests {
     let samples = [Float](repeating: 0, count: threshold + 500)
     let whole = ingestWhole(samples)
     let chunked = ingestChunked(samples, chunkSize: 333)  // deliberately not a 640 divisor
-    #expect(whole.isAllZeroFromStart == chunked.isAllZeroFromStart)
-    #expect(whole.isAllZeroFromStart)
+    #expect(whole.isAllZeroFromStart(ceilingSamples: threshold) == chunked.isAllZeroFromStart(ceilingSamples: threshold))
+    #expect(whole.isAllZeroFromStart(ceilingSamples: threshold))
   }
 
   // MARK: - RawAudioDeadAirClassifier.isDeadAir generic-slice equivalence
@@ -213,5 +213,96 @@ struct DeadAirStreamingDetectorTests {
     let sliceResult = RawAudioDeadAirClassifier.isDeadAir(slice, peak: peak)
     #expect(arrayResult == sliceResult)
     #expect(!arrayResult)  // the loud window must be found, not silently missed
+  }
+
+  // MARK: - Caller-supplied ceiling (#1788)
+  //
+  // The ceiling is a PARAMETER so the mid-take owner can raise it for a
+  // transport that legitimately needs longer, without the detector knowing
+  // anything about transports. These tests pin the boundary at an arbitrary
+  // custom ceiling so they cannot silently pass just because it happens to
+  // equal `minimumTranscriptionSamples`.
+
+  @Test("custom ceiling: below it, all-zero is not yet confident")
+  func customCeilingBelowIsNotConfident() {
+    let ceiling = 48_000
+    let detector = ingestWhole([Float](repeating: 0, count: ceiling - 1))
+    #expect(!detector.isAllZeroFromStart(ceilingSamples: ceiling))
+    // ...and the SAME samples DO trip the shipping 1.0s ceiling, proving the
+    // parameter is what moved the verdict rather than the sample shape.
+    #expect(detector.isAllZeroFromStart(ceilingSamples: threshold))
+  }
+
+  @Test("custom ceiling: exactly at it, all-zero fires")
+  func customCeilingAtFires() {
+    let ceiling = 48_000
+    let detector = ingestWhole([Float](repeating: 0, count: ceiling))
+    #expect(detector.isAllZeroFromStart(ceilingSamples: ceiling))
+  }
+
+  @Test("custom ceiling: one sample above it, all-zero fires")
+  func customCeilingAboveFires() {
+    let ceiling = 48_000
+    let detector = ingestWhole([Float](repeating: 0, count: ceiling + 1))
+    #expect(detector.isAllZeroFromStart(ceilingSamples: ceiling))
+  }
+
+  /// THE case the #1788 fix exists to protect: a link that wakes up late.
+  /// Once any real sample arrives, all-zero-from-start must be false FOREVER
+  /// for that generation, at every ceiling — otherwise a woken microphone
+  /// could still be aborted later in the same take.
+  @Test("a late wake makes all-zero-from-start permanently false at every ceiling")
+  func lateWakeIsPermanentlyNotAllZero() {
+    let ceiling = 48_000
+    var samples = [Float](repeating: 0, count: ceiling - 1)
+    samples.append(0.05)  // the link comes up
+    samples.append(contentsOf: [Float](repeating: 0, count: ceiling * 2))  // then quiet again
+    let detector = ingestWhole(samples)
+    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
+    #expect(!detector.isAllZeroFromStart(ceilingSamples: ceiling))
+    #expect(!detector.isAllZeroFromStart(ceilingSamples: 1))
+  }
+
+  // MARK: - Zero-prefix diagnostic (#1788)
+
+  @Test("zero prefix is nil while the capture is still entirely zeros")
+  func zeroPrefixNilWhileAllZero() {
+    let detector = ingestWhole([Float](repeating: 0, count: 5_000))
+    #expect(detector.zeroPrefixSampleCount == nil)
+  }
+
+  @Test("zero prefix reports the leading zero count once real audio arrives")
+  func zeroPrefixReportsLeadingZeroCount() {
+    var samples = [Float](repeating: 0, count: 9_600)  // 600ms at 16kHz
+    samples.append(0.02)
+    let detector = ingestWhole(samples)
+    #expect(detector.zeroPrefixSampleCount == 9_600)
+  }
+
+  @Test("zero prefix latches the FIRST wake, not a later one")
+  func zeroPrefixLatchesFirstWake() {
+    var samples = [Float](repeating: 0, count: 1_000)
+    samples.append(0.02)
+    samples.append(contentsOf: [Float](repeating: 0, count: 5_000))
+    samples.append(0.03)
+    let detector = ingestWhole(samples)
+    #expect(detector.zeroPrefixSampleCount == 1_000)
+  }
+
+  @Test("zero prefix is 0 when audio flows from the very first sample")
+  func zeroPrefixZeroWhenImmediatelyLive() {
+    let detector = ingestWhole([Float](repeating: 0.02, count: 1_000))
+    #expect(detector.zeroPrefixSampleCount == 0)
+  }
+
+  @Test("zero prefix is identical whole vs chunked (buffer boundaries must not matter)")
+  func zeroPrefixSurvivesChunking() {
+    var samples = [Float](repeating: 0, count: 7_777)
+    samples.append(0.02)
+    samples.append(contentsOf: [Float](repeating: 0.01, count: 500))
+    let whole = ingestWhole(samples)
+    let chunked = ingestChunked(samples, chunkSize: 513)  // deliberately not tile-aligned
+    #expect(whole.zeroPrefixSampleCount == chunked.zeroPrefixSampleCount)
+    #expect(whole.zeroPrefixSampleCount == 7_777)
   }
 }

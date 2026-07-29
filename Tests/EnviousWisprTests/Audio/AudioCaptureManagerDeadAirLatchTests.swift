@@ -62,4 +62,42 @@ struct AudioCaptureManagerDeadAirLatchTests {
       [Float](repeating: 0.5, count: AudioConstants.minimumTranscriptionSamples), level: 0.5)
     #expect(!manager.zeroSignalDiscriminatorSawIneligible)
   }
+
+  // MARK: - #1788 — the mid-take all-zero ceiling has ONE owner
+
+  /// The production-critical claim: with no DEBUG override set, the ceiling is
+  /// the shipping 1.0s value, so release behaviour is unchanged by the #1788
+  /// instrument. This is the assertion that must never regress — if the default
+  /// ever drifts, every transport silently changes how long it tolerates silence.
+  @Test("no override -> ceiling is the shipping minimumTranscriptionSamples")
+  func ceilingDefaultsToShippingValue() {
+    UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples")
+    let manager = AudioCaptureManager()
+    #expect(manager.allZeroCeilingSamples == AudioConstants.minimumTranscriptionSamples)
+    #expect(manager.allZeroCeilingSamples == 16_000)
+  }
+
+  /// A non-positive override must be IGNORED rather than producing a zero or
+  /// negative ceiling — a 0 ceiling would abort every capture instantly, which is
+  /// the worst possible failure for a debug knob to be able to cause by typo.
+  @Test("non-positive override is ignored, never applied")
+  func nonPositiveOverrideIsIgnored() {
+    defer { UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples") }
+    for bad in [0, -1, -160_000] {
+      UserDefaults.standard.set(bad, forKey: "EWDebugAllZeroCeilingSamples")
+      let manager = AudioCaptureManager()
+      #expect(manager.allZeroCeilingSamples == AudioConstants.minimumTranscriptionSamples)
+    }
+  }
+
+  /// DEBUG-only: a positive override is honoured. This is what made the #1788
+  /// hardware measurement possible — without it a slow Bluetooth wake is censored
+  /// by the abort rather than observed.
+  @Test("positive override is honoured in DEBUG")
+  func positiveOverrideIsHonoured() {
+    defer { UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples") }
+    UserDefaults.standard.set(160_000, forKey: "EWDebugAllZeroCeilingSamples")
+    let manager = AudioCaptureManager()
+    #expect(manager.allZeroCeilingSamples == 160_000)
+  }
 }
