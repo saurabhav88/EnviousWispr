@@ -90,14 +90,34 @@ struct AudioCaptureManagerDeadAirLatchTests {
     }
   }
 
-  /// DEBUG-only: a positive override is honoured. This is what made the #1788
-  /// hardware measurement possible — without it a slow Bluetooth wake is censored
-  /// by the abort rather than observed.
-  @Test("positive override is honoured in DEBUG")
-  func positiveOverrideIsHonoured() {
-    defer { UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples") }
-    UserDefaults.standard.set(160_000, forKey: "EWDebugAllZeroCeilingSamples")
-    let manager = AudioCaptureManager()
-    #expect(manager.allZeroCeilingSamples == 160_000)
-  }
+  // The override exists ONLY in DEBUG, so these two tests are mirror images and
+  // both must be compiled — asserting the override works where it exists, and
+  // asserting it is genuinely ABSENT where it must not exist. A single
+  // unconditional test would fail the `scripts/xcode-test.sh --release` lane,
+  // which strips `#if DEBUG` and returns the shipping ceiling (Codex review r1).
+
+  #if DEBUG
+    /// A positive override is honoured. This is what made the #1788 hardware
+    /// measurement possible — without it a slow Bluetooth wake is censored by the
+    /// abort rather than observed.
+    @Test("positive override is honoured in DEBUG")
+    func positiveOverrideIsHonoured() {
+      defer { UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples") }
+      UserDefaults.standard.set(160_000, forKey: "EWDebugAllZeroCeilingSamples")
+      let manager = AudioCaptureManager()
+      #expect(manager.allZeroCeilingSamples == 160_000)
+    }
+  #else
+    /// The release-lane twin, and the more important of the two: it proves the
+    /// debug knob cannot influence a shipped build. Setting the key must change
+    /// NOTHING — if this ever fails, a diagnostic override has leaked into
+    /// production and can alter how long every capture tolerates silence.
+    @Test("override key has NO effect in release — the knob cannot ship")
+    func overrideIsInertInRelease() {
+      defer { UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples") }
+      UserDefaults.standard.set(160_000, forKey: "EWDebugAllZeroCeilingSamples")
+      let manager = AudioCaptureManager()
+      #expect(manager.allZeroCeilingSamples == AudioConstants.minimumTranscriptionSamples)
+    }
+  #endif
 }
