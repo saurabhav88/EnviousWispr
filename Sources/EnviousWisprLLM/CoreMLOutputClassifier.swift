@@ -27,6 +27,16 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
     self.adapter = adapter
   }
 
+  /// The compute-unit policy this model was actually loaded with. Exists so a
+  /// test can pin it (#1226): the numerical suites cannot catch a reversion to
+  /// `.all`, because `.all` is numerically CORRECT — its cost is memory, which
+  /// no assertion here would notice. Internal and actor-isolated, so it widens
+  /// nothing public. Reports the REQUESTED policy, not Core ML's undisclosed
+  /// physical placement.
+  var configuredComputeUnits: MLComputeUnits {
+    model.configuration.computeUnits
+  }
+
   /// Load + verify + self-test from a bundle resource directory (normally
   /// `Bundle.main.resourceURL`). `nonisolated`-by-default async means the heavy
   /// compile/load runs off the caller's actor (off main) per SE-0338.
@@ -90,7 +100,26 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
     //    if only the source .mlpackage shipped, compile it on-device.
     let model: MLModel
     do {
-      let configuration = MLModelConfiguration()  // computeUnits = .all (ANE/GPU/CPU)
+      // #1226: exclude the GPU. Measured on Mac16,8 by loading the compiled model
+      // and scoring 20 rows — at FLOAT32 the default `.all` places this model on
+      // the GPU and costs 203.8 MB resident, against 3.6 MB on `.cpuAndNeuralEngine`
+      // and 3.4 MB on `.cpuOnly`. (FLOAT16 showed the same shape: 158.4 MB on the
+      // GPU.) It is a GPU-backend cost, not a precision cost. The holder keeps this
+      // model for the process lifetime, so that would be permanent background memory
+      // in a menu-bar app, and Apple Intelligence is the DEFAULT provider
+      // (`SettingsDefaultValues.llmProvider`) so most installs would pay it.
+      //
+      // Accepted risk, stated plainly rather than argued away: `.cpuAndNeuralEngine`
+      // removes the GPU from Core ML's allowed devices, but Apple does not guarantee
+      // CPU fallback, load success, or equivalent placement across OS versions and
+      // hardware. On an unseen system this policy could disable or time out the
+      // classifier where `.all` could have used the GPU. `selfTest()` below and the
+      // 50 ms budget in `EnviousOutputFilter` contain that: both fail OPEN, so the
+      // worst case is the polish limb losing its safety net, never wrong text. We
+      // take that bounded risk because CPU and Neural Engine are both numerically
+      // correct in testing while GPU placement carries a measured permanent cost.
+      let configuration = MLModelConfiguration()
+      configuration.computeUnits = .cpuAndNeuralEngine
       if fileManager.fileExists(atPath: compiledModel.path) {
         model = try MLModel(contentsOf: compiledModel, configuration: configuration)
       } else if fileManager.fileExists(atPath: mlpackage.path) {
