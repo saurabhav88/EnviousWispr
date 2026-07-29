@@ -142,8 +142,8 @@ public enum RecoveryConstants {
   public static let fileExtension = "ewrec"
   /// File extension for a per-spool recovery-ATTEMPT marker (#1063 PR2). Written
   /// durably (fsync + atomic rename) BEFORE the risky load/transcribe step; its
-  /// presence on the next launch means a prior recovery attempt crashed the app,
-  /// so that spool is abandoned rather than retried (the one-attempt crash-loop
+  /// presence on the next launch means a prior recovery attempt already STARTED
+  /// for that spool, so it is abandoned rather than retried (the one-attempt
   /// guard). Named `<recoverySessionID>.attempt`.
   public static let attemptFileExtension = "attempt"
   /// On-disk format version recorded in the header.
@@ -164,8 +164,6 @@ public enum RecoveryConstants {
   /// Stop spooling when free space drops below this, so recovery never consumes
   /// the last disk the heart path needs (History save / ASR temp / model cache).
   public static let lowDiskWatermarkBytes: Int64 = 1_500_000_000
-  /// Orphan spools older than this are purged on launch (TTL backstop).
-  public static let retentionDays = 30
 }
 
 // MARK: - Timing Constants

@@ -14,9 +14,8 @@ import Security
 /// (the sole destructor) applies the delete-versus-retain predicate.
 enum RecoveryReplayOutcome: Equatable {
   case recovered
-  /// The attempt failed. The payload tells the coordinator whether to delete
-  /// (Camp A / a Camp B *candidate* Phase 1 does not yet retain) or RETAIN (a
-  /// History-write failure — the audio is still good, §3.3).
+  /// The attempt failed. The coordinator deletes on every `.failed` payload
+  /// (#1740: an attempt that ran is spent, whatever its outcome).
   case failed(RecoveryReplayFailure)
   case abandoned
   /// A Discard bumped the recovery generation mid-flight: drop the result, save
@@ -42,13 +41,10 @@ enum RecoveryReplayFailure: Equatable {
   /// The recording could not be turned into text — key / decrypt / reconstruct /
   /// empty-samples / model-load / transcribe / empty-text. DELETE.
   case unrecoverable
-  /// The transcript was produced but the History write threw; the audio is still
-  /// good. RETAIN for a next-launch retry — the attempt marker was cleared.
+  /// Recovery produced text, but the History write failed. The attempt marker
+  /// stays COMMITTED (#1740): the attempt is spent, so no later scan may run
+  /// ASR for this spool again even if best-effort deletion fails.
   case save(RecoveryFailureClass)
-  /// As `.save`, but clearing the attempt marker ALSO threw — RETAIN this launch,
-  /// next-launch retry durability not guaranteed (the marker survives, so a
-  /// future launch may treat the spool as a crashed attempt).
-  case saveMarkerClearFailed(RecoveryFailureClass)
 }
 
 /// Per-orphan recovery execution seam — lets `RecoveryCoordinator` drive scan /
@@ -72,11 +68,12 @@ protocol RecoverySpoolReplaying: AnyObject {
 /// telemetry/breadcrumb and never throws into the heart path. #1464: it no longer
 /// destroys the spool/key — it returns a typed outcome and `RecoveryCoordinator`
 /// (the sole destructor) deletes or retains. It KEEPS the attempt-marker lifecycle
-/// (the crash-loop guard): one attempt only — a per-spool marker written BEFORE the
-/// risky load/transcribe means a recovery that crashed the app is abandoned (not
-/// retried) on the next launch. On a History-save failure it clears that marker
-/// itself so the RETAINED spool replays next launch rather than reading as
-/// abandoned (§3.3).
+/// (the one-attempt guard): a per-spool marker written BEFORE the risky
+/// load/transcribe means a spool whose attempt already started is abandoned (not
+/// retried) on the next launch. #1740: a History-save failure LEAVES that marker
+/// committed — the attempt is spent — so a spool that survives a failed cleanup
+/// cannot run ASR twice. The marker is cleared only where no ASR ran (the
+/// transient-Keychain deferral).
 @MainActor
 final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// #1386 PR-2: recovery used to call `ASRManagerInterface.loadModel()`, which for
@@ -148,14 +145,17 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   {
     let spoolStore = makeSpoolStore()
 
-    // One-attempt crash-loop guard: a marker already present means a prior attempt
-    // crashed the app — abandon (log + emit), never retry. #1464: the coordinator
+    // One-attempt guard: a marker already present means a recovery attempt was
+    // already STARTED for this spool and may not run again — whether it crashed,
+    // or completed ASR and failed the History save (#1740), or ended before
+    // cleanup finished. Abandon (log + emit), never retry. #1464: the coordinator
     // deletes on `.abandoned`; the replayer no longer destroys.
     if spoolStore.hasAttemptMarker(for: id) {
       SentryBreadcrumb.captureError(
         RecoveryReplayError.abandonedAfterAttempt,
         category: .recoveryAbandonedAfterAttempt, stage: "recovery")
-      TelemetryService.shared.recoveryCompleted(outcome: "abandoned", reason: .crashLoop)
+      TelemetryService.shared.recoveryCompleted(
+        outcome: "abandoned", reason: .attemptAlreadySpent)
       return .abandoned
     }
     // Write the marker DURABLY before any risky load/transcribe (warm-up included).
@@ -314,27 +314,22 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     do {
       try transcriptStore.save(transcript)
     } catch {
-      // §3.3 (#1464) — a History-write failure is NOT audio loss. RETAIN the spool
-      // (the coordinator does not delete `.save`) and clear the attempt marker so
-      // the next launch REPLAYS instead of reading the spool as a crashed attempt.
-      // The clear can throw (`RecoverySpoolStore.deleteAttemptMarker`); if it does,
-      // retain THIS launch but do not claim durable next-launch retry.
+      // #1740 — the ATTEMPT is spent. ASR ran and produced text; only the
+      // History write failed. The attempt marker written above stays
+      // COMMITTED (it used to be cleared here so the next launch would
+      // replay), so if the coordinator's best-effort deletion fails, the
+      // surviving spool abandons at the entry guard instead of running ASR a
+      // second time. One attempt is therefore a property of the file, not a
+      // consequence of a deletion succeeding. The coordinator deletes on
+      // `.save` (`shouldDeleteAfterReplay`).
       let failureClass = Self.classify(error)
       SentryBreadcrumb.add(
-        stage: "recovery", message: "recovered transcript save failed — retaining spool",
+        stage: "recovery", message: "recovered transcript save failed — attempt spent",
         level: .warning, data: ["error": String(describing: error)])
-      do {
-        try spoolStore.deleteAttemptMarker(for: id)
-        TelemetryService.shared.recoveryCompleted(
-          outcome: "failed", reason: .saveFailed, failureClass: failureClass,
-          audioDecrypted: true, spoolSeconds: spoolSeconds)
-        return .failed(.save(failureClass))
-      } catch {
-        TelemetryService.shared.recoveryCompleted(
-          outcome: "failed", reason: .markerClearFailed, failureClass: failureClass,
-          audioDecrypted: true, spoolSeconds: spoolSeconds)
-        return .failed(.saveMarkerClearFailed(failureClass))
-      }
+      TelemetryService.shared.recoveryCompleted(
+        outcome: "failed", reason: .saveFailed, failureClass: failureClass,
+        audioDecrypted: true, spoolSeconds: spoolSeconds)
+      return .failed(.save(failureClass))
     }
     transcriptCoordinator.append(transcript)
 
@@ -377,13 +372,11 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
 
   /// #1707 Phase 3 (§3.3): a Keychain read failed with a status expected to
   /// clear on its own — defer this attempt WITHOUT treating it as
-  /// unrecoverable. Clears the attempt marker written above (mirrors the
-  /// existing `.save`/`.saveMarkerClearFailed` retention path, RULE:
-  /// port-proven-patterns-wholesale) so a same-launch or next-launch retry
-  /// sees a clean spool, not a crashed one. If the clear itself throws, the
-  /// marker survives and `RecoveryCoordinator` must treat this id as
-  /// next-launch-only — a same-launch rescan would otherwise misread the
-  /// surviving marker as a crashed attempt and abandon (delete) it.
+  /// unrecoverable. ASR never ran, so the attempt is UNSPENT: clear the marker
+  /// written above so a later retry remains eligible. If the clear itself
+  /// throws, the marker survives and the next-launch guard reads the attempt as
+  /// already spent, abandoning before ASR; `RecoveryCoordinator` therefore
+  /// treats this id as next-launch-only so a same-launch rescan cannot burn it.
   private func deferForTransientKeychainFailure(
     spoolStore: RecoverySpoolStore, id: String
   ) -> RecoveryReplayOutcome {
