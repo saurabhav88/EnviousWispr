@@ -2,14 +2,15 @@
 // production PostHog, asserts they resolve and the §3.3a completeness check
 // passes, prints the would-be Discord message, posts NOTHING.
 //
-// Usage:
-//   ~/.claude/bin/get-key launch posthog-personal-api-key POSTHOG_KEY -- \
-//     node workers/daily-report/live-query-smoke.mjs [YYYY-MM-DD]
+// Usage (with POSTHOG_KEY already injected):
+//   node workers/daily-report/live-query-smoke.mjs [YYYY-MM-DD]
+// See workers/daily-report/README.md for the secret-safe launcher.
 //
 // An optional date argument overrides "yesterday" (same override the
 // deployed worker's ?date= param uses) for testing against a known day.
 
-import { easternYesterdayWindowUTC, fetchReportData, resolveBuckets, buildMessage } from "./src/index.js";
+import { easternYesterdayWindowUTC, buildMessage } from "./src/index.js";
+import { fetchReportData, resolveBuckets } from "./src/adoption.js";
 
 const env = {
   POSTHOG_PROJECT_ID: "354235",

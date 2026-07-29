@@ -253,4 +253,17 @@ export function rowsToObjects(res) {
   });
 }
 
+/** HogQL timestamp literal. Kept beside `sqlIdList` because it is generic SQL
+ * construction with no adoption-specific population or product judgement in it —
+ * the version scorecard needs its own window predicate too, so a single owner
+ * here keeps both consumers off an index.js <-> adoption.js import cycle
+ * (#1838 chunk 2). */
+export function sqlTimestamp(date) {
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
+export function windowClause(startUTC, endUTC) {
+  return `timestamp >= '${sqlTimestamp(startUTC)}' AND timestamp < '${sqlTimestamp(endUTC)}'`;
+}
+
 export { ENV_ONLY, PER_USER_LIST_LIMIT, RETRYABLE_POSTHOG_STATUSES };

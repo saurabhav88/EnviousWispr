@@ -4,11 +4,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   easternYesterdayWindowUTC,
-  resolveBuckets,
   buildMessage,
-  fetchReportData,
   runReport,
 } from "../src/index.js";
+// #1838 chunk 2: the adoption domain has its own owner. Tests import from it
+// directly - a re-export from index.js would be a forwarding shim.
+import { fetchReportData, resolveBuckets } from "../src/adoption.js";
 // #1838 chunk 1: the PostHog transport/concurrency/production-filter
 // infrastructure now has ONE owner. Tests import it from there directly - a
 // re-export from index.js would be a forwarding shim kept alive solely for
@@ -21,6 +22,8 @@ import {
   querySection,
   rowsToObjects,
   sqlIdList,
+  sqlTimestamp,
+  windowClause,
   PostHogQueryError,
 } from "../src/lib/posthog.js";
 
@@ -300,7 +303,7 @@ test("source guardrail: every per-user GROUP BY query has an explicit LIMIT", as
   // query when it was refactored into a function during live-smoke-test
   // debugging.
   const fs = await import("node:fs");
-  const src = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const src = fs.readFileSync(new URL("../src/adoption.js", import.meta.url), "utf8");
   const templateLiterals = src.match(/`[^`]*`/gs) || [];
   const groupByQueries = templateLiterals.filter((q) => /GROUP BY distinct_id/.test(q));
   assert.ok(groupByQueries.length >= 3, "expected to find at least 3 per-user GROUP BY queries in the source");
@@ -314,7 +317,7 @@ test("source guardrail: every per-user GROUP BY query has an explicit LIMIT", as
 // over the combined stream) and cannot be exercised by a pure JS unit test
 // without mocking the HogQL engine. It is verified by the pre-deploy
 // live-query smoke (live-query-smoke.mjs) against real production data, and
-// by code review of the tierASql query text in src/index.js.
+// by code review of the tierASql query text in src/adoption.js.
 
 // ---- runLimited (#1588 - PostHog's 3-concurrent-query project limit) ----
 
@@ -528,6 +531,28 @@ test("rowsToObjects: zips columns to rows, and tolerates absent columns/results"
   );
   assert.deepEqual(rowsToObjects({}), []);
   assert.deepEqual(rowsToObjects({ columns: ["a"], results: [] }), []);
+});
+
+test("sqlTimestamp: renders a HogQL timestamp literal in UTC, second precision", () => {
+  assert.equal(sqlTimestamp(new Date("2026-07-08T04:00:00.000Z")), "2026-07-08 04:00:00");
+  // Sub-second precision is deliberately dropped; the window boundaries this
+  // builds are whole-second instants.
+  assert.equal(sqlTimestamp(new Date("2026-07-08T04:00:00.937Z")), "2026-07-08 04:00:00");
+});
+
+test("windowClause: builds a half-open range, start inclusive and end exclusive", () => {
+  const clause = windowClause(
+    new Date("2026-07-08T04:00:00.000Z"),
+    new Date("2026-07-09T04:00:00.000Z")
+  );
+  assert.equal(
+    clause,
+    "timestamp >= '2026-07-08 04:00:00' AND timestamp < '2026-07-09 04:00:00'"
+  );
+  // Half-open matters: an inclusive end would double-count the boundary
+  // instant across two consecutive daily reports.
+  assert.ok(clause.includes(">="), "start must be inclusive");
+  assert.ok(clause.includes("< '"), "end must be exclusive");
 });
 
 test("sqlIdList: doubles single quotes so an id cannot break out of its literal", () => {
@@ -970,7 +995,7 @@ test("no degraded note on a clean run", () => {
 
 test("source guardrail: tier-a may omit dev exclusion only while active ids come from the full production predicate", async () => {
   const fs = await import("node:fs");
-  const src = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const src = fs.readFileSync(new URL("../src/adoption.js", import.meta.url), "utf8");
 
   const engineQuery = src.match(/const engineAndTierBSql = `([\s\S]*?)`;/)?.[1];
   assert.ok(engineQuery, "expected engineAndTierBSql");
@@ -989,7 +1014,7 @@ test("source guardrail: tier-a may omit dev exclusion only while active ids come
 
 test("source guardrail: onboard-activate's active-user lookup may omit dev exclusion only while its own outer WHERE keeps the full predicate", async () => {
   const fs = await import("node:fs");
-  const src = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const src = fs.readFileSync(new URL("../src/adoption.js", import.meta.url), "utf8");
 
   const activeUsersFunction = src.match(/function activeUsersSubquery\([\s\S]*?\n}\n/)?.[0];
   assert.ok(activeUsersFunction, "expected activeUsersSubquery");
@@ -1007,7 +1032,7 @@ test("source guardrail: onboard-activate's active-user lookup may omit dev exclu
 
 test("source guardrail: all 6 primary *Sql builders reference the shared ${prod} predicate, none re-embeds a raw dev-exclusion subquery", async () => {
   const fs = await import("node:fs");
-  const src = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const src = fs.readFileSync(new URL("../src/adoption.js", import.meta.url), "utf8");
 
   for (const name of ["installsSql", "onboardActivateSql", "totalsSql", "engineAndTierBSql", "geoSql", "top5Sql"]) {
     const query = src.match(new RegExp(`const ${name} = \`([\\s\\S]*?)\`;`))?.[1];
