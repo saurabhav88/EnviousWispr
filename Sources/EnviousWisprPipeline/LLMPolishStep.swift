@@ -206,6 +206,76 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     }
   }
 
+  /// Gemini's budget scales with the transcript; every other provider keeps its
+  /// fixed one (#1770).
+  ///
+  /// A fixed 5 s was timing out long dictations. Measured live against
+  /// real dictations, Gemini in fast mode: 1,709 chars -> 1.33 s, 4,605 -> 2.69 s,
+  /// 11,324 (a 10-minute dictation) -> 6.12 s, 66,896 (the longest transcript we
+  /// have recorded) -> 50.65 s. Everything past roughly 5,000 chars lost its
+  /// polish and showed the failure notice. Production corroborates it: Gemini's
+  /// `llm_seconds` maxes at 5.05 s against the 5 s cap — a censored distribution.
+  ///
+  /// A larger FIXED number is not the fix. It would make a 20-word dictation
+  /// wait far longer than today before its raw text appears, degrading the
+  /// common case (p50 is 8 seconds of speech) to rescue the 0.1% tail.
+  ///
+  /// So: `base + inputChars / 500`. Throughput measured 1,285 / 1,712 / 1,850 /
+  /// 1,320 chars per second across those four long buckets, so budgeting 500
+  /// chars/second leaves ~2.6x margin on the variable part alone. Headroom
+  /// lands at 6x / 6x / 4.5x / 2.7x across the table above.
+  ///
+  /// `base` is 5 s normally — preserving today's short-dictation failure speed
+  /// almost exactly (110 chars -> 5.22 s) — and 60 s when the resolved request
+  /// carries a deep-thinking value, because deep mode spends a measured
+  /// 42.2-42.4 s thinking BEFORE the first byte, a fixed cost rather than a
+  /// per-character one. It keys off the resolved `ThinkingControl`, not the raw
+  /// toggle: an `.unsupported` model sends no thinking field at all, so it must
+  /// not inherit the deep base merely because the toggle is on.
+  ///
+  /// Capped at 180 s to match `URLSession`'s `timeoutIntervalForResource`
+  /// (`LLMNetworkSession`): beyond that the transport terminates the attempt
+  /// anyway, so a larger logical budget buys another long attempt rather than
+  /// preserving the first response.
+  ///
+  /// Transport liveness is NOT reimplemented here — the shared session already
+  /// provides a 60 s inter-data idle timer and the 180 s resource cap.
+  /// Reads `llmProvider` / `llmModel` / `useExtendedThinking` live, exactly as
+  /// the existing `maxDuration` above already reads `llmProvider` live at this
+  /// same call site. Safe because `PipelineSettingsSync` deliberately does NOT
+  /// mirror these three onto a live step — `.llmProvider` ("live steps are
+  /// seeded per recording, so nothing to mirror here") and `.useExtendedThinking`
+  /// ("Frozen per recording") are explicit no-ops there, and the values are
+  /// frozen into `DictationSessionConfig` at record start. The only writers are
+  /// session start and `RecoveryTextProcessor.applySettings`, neither of which
+  /// runs while a `process()` is in flight.
+  ///
+  /// KNOWN LIMIT, recorded rather than engineered around: this is an invariant
+  /// held elsewhere, not a guarantee of this function. If mirroring is ever
+  /// added for these fields, the budget and the request could be computed for
+  /// different settings — a deep request could inherit the 5 s fast budget.
+  /// Closing that properly means giving the runner and the step one shared
+  /// snapshot, which is a change to the execution boundary and not warranted
+  /// for a window no current code can open.
+  public func maxDuration(for context: TextProcessingContext) -> Duration {
+    guard llmProvider == .gemini else { return maxDuration }
+    let control = llmProvider.modelCapabilities(model: llmModel).thinkingControl
+    let isDeep = useExtendedThinking && control != .unsupported
+    let base = isDeep ? Self.geminiDeepBaseSeconds : Self.geminiFastBaseSeconds
+    let scaled = base + Double(context.text.count) / Self.geminiCharsPerSecond
+    return .seconds(min(Self.geminiMaxBudgetSeconds, scaled))
+  }
+
+  /// Fast-mode base: preserves today's 5 s short-dictation failure speed.
+  private static let geminiFastBaseSeconds: Double = 5
+  /// Deep-mode base: covers the measured 42.2-42.4 s of pre-first-byte thinking.
+  private static let geminiDeepBaseSeconds: Double = 60
+  /// Budgeted throughput, ~2.6x slower than the slowest measured rate.
+  private static let geminiCharsPerSecond: Double = 500
+  /// Matches `URLSession.timeoutIntervalForResource`; beyond it the transport
+  /// kills the attempt regardless.
+  private static let geminiMaxBudgetSeconds: Double = 180
+
   public init(keychainManager: KeychainManager) {
     self.keychainManager = keychainManager
     self.telemetry = .live
@@ -290,8 +360,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
     onWillProcess?()
     // #827 PR-8: snapshot the mutable provider/model at entry. process()
-    // suspends at the polish await; a concurrent PipelineSettingsSync mutation
-    // on the shared re-polish step would otherwise tear the post-await reads
+    // suspends at the polish await, so every read after it must come from
+    // these locals or the post-await reads could tear
     // (provider/model attribution in ctx, the family label, and the two
     // telemetry helpers). Mirrors WordCorrectionStep's entry snapshot. Every
     // read below uses these locals, never `self`, so reentrancy cannot tear it.
@@ -417,9 +487,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     // Resolved from the ENTRY snapshot, never from `self` — this function's
     // own contract above ("every read below uses these locals") applies to the
-    // thinking value too: a concurrent PipelineSettingsSync mutation between
-    // entry and here would otherwise let the deadline, the request and the
-    // telemetry disagree about which model they are for.
+    // thinking value too, so the request, the deadline and the telemetry all
+    // describe one model. (#1770 verified that no production code mutates
+    // these three on a live step: PipelineSettingsSync no-ops all of them and
+    // the values are frozen per recording. The discipline is kept because
+    // internal consistency should not depend on an invariant held elsewhere.)
     let thinking = Self.resolveThinking(
       control: provider.modelCapabilities(model: model).thinkingControl,
       useExtendedThinking: extendedThinking
