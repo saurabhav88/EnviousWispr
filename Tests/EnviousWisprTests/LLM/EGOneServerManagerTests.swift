@@ -199,8 +199,7 @@ struct EGOneConnectorResponseTests {
       apiKeyKeychainId: nil,
       outputTokens: .capped(963),
       temperature: 0,
-      thinkingBudget: nil,
-      reasoningEffort: nil
+      thinking: nil
     )
     let body = try EGOneConnector.makeRequestBody(system: "sys", user: "hello", config: config)
     #expect(body["max_tokens"] as? Int == 963)
@@ -214,8 +213,7 @@ struct EGOneConnectorResponseTests {
       apiKeyKeychainId: nil,
       outputTokens: .providerDefault,
       temperature: 0,
-      thinkingBudget: nil,
-      reasoningEffort: nil
+      thinking: nil
     )
     let expected = LLMError.requestFailed(
       "Local polish requires an explicit output-token cap")

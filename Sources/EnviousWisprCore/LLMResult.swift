@@ -125,14 +125,31 @@ public enum OutputTokenPolicy: Codable, Sendable, Equatable {
   case capped(Int)
 }
 
+/// The resolved "how hard to think" value for ONE request (#1770).
+///
+/// Replaces the previous sibling optionals `thinkingBudget: Int?` and
+/// `reasoningEffort: String?`, which let a request carry BOTH a budget and an
+/// effort — two dialects at once, which no provider accepts. One value makes
+/// that unconstructible. `nil` still means "deliberately send no thinking
+/// field", a declared decision in the same spirit as `OutputTokenPolicy`
+/// above; it is a legal state, not an impossible one.
+public enum ResolvedThinking: Codable, Sendable, Equatable {
+  /// Gemini 2.5 dialect: integer token budget.
+  case budget(Int)
+  /// Gemini 3 dialect: string level (minimal/low/medium/high).
+  case level(String)
+  /// OpenAI dialect: `reasoning_effort`.
+  case effort(String)
+}
+
 /// Configuration for an LLM provider.
 public struct LLMProviderConfig: Codable, Sendable {
   public let model: String
   public let apiKeyKeychainId: String?
   public let outputTokens: OutputTokenPolicy
   public let temperature: Double
-  public let thinkingBudget: Int?
-  public let reasoningEffort: String?
+  /// Nil means no thinking field is sent at all.
+  public let thinking: ResolvedThinking?
   /// Detected input language (ISO 639-1 base code). Nil for the Parakeet
   /// highway, pre-W2 callsites, or when no language hint is available.
   /// Consumed by providers that gate or condition behavior on input language
@@ -144,16 +161,14 @@ public struct LLMProviderConfig: Codable, Sendable {
     apiKeyKeychainId: String?,
     outputTokens: OutputTokenPolicy,
     temperature: Double,
-    thinkingBudget: Int?,
-    reasoningEffort: String?,
+    thinking: ResolvedThinking?,
     detectedLanguage: String? = nil
   ) {
     self.model = model
     self.apiKeyKeychainId = apiKeyKeychainId
     self.outputTokens = outputTokens
     self.temperature = temperature
-    self.thinkingBudget = thinkingBudget
-    self.reasoningEffort = reasoningEffort
+    self.thinking = thinking
     self.detectedLanguage = detectedLanguage
   }
 }

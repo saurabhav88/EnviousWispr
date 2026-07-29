@@ -148,8 +148,7 @@ struct LLMProviderConfigDetectedLanguageTests {
       apiKeyKeychainId: nil,
       outputTokens: .capped(100),
       temperature: 0,
-      thinkingBudget: nil,
-      reasoningEffort: nil
+      thinking: nil
     )
     #expect(config.detectedLanguage == nil)
   }
@@ -161,8 +160,7 @@ struct LLMProviderConfigDetectedLanguageTests {
       apiKeyKeychainId: nil,
       outputTokens: .capped(100),
       temperature: 0,
-      thinkingBudget: nil,
-      reasoningEffort: nil,
+      thinking: nil,
       detectedLanguage: "de"
     )
     #expect(config.detectedLanguage == "de")
@@ -196,8 +194,7 @@ struct LLMProviderConfigDetectedLanguageTests {
       apiKeyKeychainId: nil,
       outputTokens: .capped(100),
       temperature: 0,
-      thinkingBudget: nil,
-      reasoningEffort: nil,
+      thinking: nil,
       detectedLanguage: "ja"
     )
     let encoded = try JSONEncoder().encode(original)
@@ -318,8 +315,7 @@ struct UnsupportedBaseCodeTests {
         apiKeyKeychainId: nil,
         outputTokens: .capped(500),
         temperature: 0,
-        thinkingBudget: nil,
-        reasoningEffort: nil,
+        thinking: nil,
         detectedLanguage: detectedLanguage
       )
     }

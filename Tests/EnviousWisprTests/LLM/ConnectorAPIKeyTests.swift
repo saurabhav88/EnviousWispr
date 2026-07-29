@@ -54,7 +54,7 @@ struct ConnectorAPIKeyTests {
   private func config(keychainId: String?) -> LLMProviderConfig {
     LLMProviderConfig(
       model: "test-model", apiKeyKeychainId: keychainId, outputTokens: .capped(64),
-      temperature: 0, thinkingBudget: nil, reasoningEffort: nil)
+      temperature: 0, thinking: nil)
   }
 
   // MARK: - No key was ever saved: the user's setup, not a defect

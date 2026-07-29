@@ -297,6 +297,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // read below uses these locals, never `self`, so reentrancy cannot tear it.
     let provider = llmProvider
     let model = llmModel
+    let extendedThinking = useExtendedThinking
     telemetry.breadcrumbStarted(
       "LLM polish started",
       [
@@ -414,7 +415,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       default: nil
       }
 
-    let (thinkingBudget, reasoningEffort) = resolveThinkingConfig()
+    // Resolved from the ENTRY snapshot, never from `self` — this function's
+    // own contract above ("every read below uses these locals") applies to the
+    // thinking value too: a concurrent PipelineSettingsSync mutation between
+    // entry and here would otherwise let the deadline, the request and the
+    // telemetry disagree about which model they are for.
+    let thinking = Self.resolveThinking(
+      control: provider.modelCapabilities(model: model).thinkingControl,
+      useExtendedThinking: extendedThinking
+    )
     let outputTokens = Self.outputTokenPolicy(
       provider: provider, model: model, textCount: context.text.count)
 
@@ -431,18 +440,19 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       apiKeyKeychainId: keychainId,
       outputTokens: outputTokens,
       temperature: 0,
-      thinkingBudget: thinkingBudget,
-      reasoningEffort: reasoningEffort,
+      thinking: thinking,
       detectedLanguage: detectedLanguage
     )
 
     // #1710 request-shape receipt for Live UAT: policy only, never content.
+    // #1770 makes the DIALECT visible here — which wire key we chose, not just
+    // its value — because sending the wrong dialect is the defect this receipt
+    // now has to be able to prove absent.
+    let thinkingReceipt = Self.thinkingReceipt(thinking)
     Task {
       await AppLogger.shared.log(
         "LLM request budget: provider=\(provider.rawValue), model=\(model), "
-          + "output_tokens=\(outputTokens), "
-          + "thinking_budget=\(thinkingBudget.map(String.init) ?? "nil"), "
-          + "reasoning_effort=\(reasoningEffort ?? "nil")",
+          + "output_tokens=\(outputTokens), thinking=\(thinkingReceipt)",
         level: .info, category: "LLM"
       )
     }
@@ -834,18 +844,40 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     }
   }
 
-  /// Resolve thinking/reasoning config based on provider, model, and user toggle.
-  private func resolveThinkingConfig() -> (thinkingBudget: Int?, reasoningEffort: String?) {
-    guard llmProvider.modelCapabilities(model: llmModel).supportsReasoning else {
-      return (nil, nil)
+  /// Shape-only receipt of the resolved thinking value for the debug log
+  /// (#1770). Names the dialect as well as the value, since sending the wrong
+  /// KEY is the failure this line exists to make visible. No user content.
+  private static func thinkingReceipt(_ thinking: ResolvedThinking?) -> String {
+    switch thinking {
+    case .none: return "none"
+    case .budget(let v): return "budget=\(v)"
+    case .level(let v): return "level=\(v)"
+    case .effort(let v): return "effort=\(v)"
     }
-    switch llmProvider {
-    case .gemini:
-      return (useExtendedThinking ? LLMConstants.defaultThinkingBudget : 0, nil)
-    case .openAI:
-      return (nil, useExtendedThinking ? "medium" : "low")
-    case .ollama, .appleIntelligence, .egOne, .claude, .none:
-      return (nil, nil)
+  }
+
+  /// Resolve the thinking value for this request from the per-model capability
+  /// authority and the user's toggle (#1770).
+  ///
+  /// This function knows NO model ids. Providers disagree on both the wire key
+  /// and the legal values per model — Gemini 2.5 wants an integer budget,
+  /// Gemini 3 wants a string level and rejects budget 0 — and encoding that
+  /// here is what shipped `thinkingBudget: 0` to models that refuse it. The
+  /// dialect and its fast/deep values live together in
+  /// `LLMModelCapabilities.thinkingControl`; this only picks which of the two.
+  ///
+  /// Static and fed from `process()`'s entry snapshot, never from `self`, so a
+  /// concurrent settings change cannot tear it away from the model the rest of
+  /// the request was built for.
+  private static func resolveThinking(
+    control: LLMModelCapabilities.ThinkingControl,
+    useExtendedThinking: Bool
+  ) -> ResolvedThinking? {
+    switch control {
+    case .unsupported: return nil
+    case .budget(let fast, let deep): return .budget(useExtendedThinking ? deep : fast)
+    case .level(let fast, let deep): return .level(useExtendedThinking ? deep : fast)
+    case .effort(let fast, let deep): return .effort(useExtendedThinking ? deep : fast)
     }
   }
 }

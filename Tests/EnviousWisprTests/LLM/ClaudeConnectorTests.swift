@@ -278,8 +278,7 @@ struct ClaudeConnectorTests {
   private func truncConfig() -> LLMProviderConfig {
     LLMProviderConfig(
       model: "claude-haiku-4-5", apiKeyKeychainId: "claude-api-key",
-      outputTokens: .capped(8192), temperature: 0, thinkingBudget: nil,
-      reasoningEffort: nil)
+      outputTokens: .capped(8192), temperature: 0, thinking: nil)
   }
 
   @Test("stop_reason=max_tokens rejects through the production decision seam")

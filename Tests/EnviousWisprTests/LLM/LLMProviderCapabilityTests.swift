@@ -75,14 +75,44 @@ struct LLMProviderCapabilityTests {
 
   // MARK: - Other providers
 
-  @Test func geminiReasoningPrefixesPreserved() {
-    #expect(LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-pro").supportsReasoning)
-    #expect(LLMProvider.gemini.modelCapabilities(model: "gemini-3-flash").supportsReasoning)
-    #expect(!LLMProvider.gemini.modelCapabilities(model: "gemini-2.0-flash").supportsReasoning)
+  /// #1770 REPLACES `geminiReasoningPrefixesPreserved`, which asserted that
+  /// `gemini-3-flash` supports reasoning. That id does not exist — the real one
+  /// is `gemini-3-flash-preview` — and the assertion only passed because the old
+  /// implementation prefix-matched `gemini-3`. That is precisely the defect this
+  /// change removes: a prefix silently claims authority over ids nobody tested.
+  /// Under exact matching a fictional id correctly resolves to `.unsupported`.
+  @Test func geminiDialectIsKeyedOnExactIDs() {
+    // Gemini 3 Flash tier: string level, `minimal` is a real thinking-off.
+    #expect(
+      LLMProvider.gemini.modelCapabilities(model: "gemini-3.6-flash").thinkingControl
+        == .level(fast: "minimal", deep: "high"))
+    // Gemini 3 Pro tier: rejects `minimal`, so `low` is the floor.
+    #expect(
+      LLMProvider.gemini.modelCapabilities(model: "gemini-3.1-pro-preview").thinkingControl
+        == .level(fast: "low", deep: "high"))
+    // Gemini 2.5 Flash tier: integer budget, 0 is legal.
+    #expect(
+      LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-flash").thinkingControl
+        == .budget(fast: 0, deep: 8192))
+    // Gemini 2.5 Pro: rejects budget 0, documented minimum 128.
+    #expect(
+      LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-pro").thinkingControl
+        == .budget(fast: 128, deep: 8192))
+
+    // Unknown / untested / retired ids reach the fallback and send NOTHING —
+    // the one request shape measured to succeed on every offered model.
+    for unknown in ["gemini-3-flash", "gemini-3.7-flash", "gemini-2.0-flash", "nonsense"] {
+      #expect(
+        LLMProvider.gemini.modelCapabilities(model: unknown).thinkingControl == .unsupported,
+        "\(unknown) must fall through to .unsupported, not inherit an untested value")
+      #expect(LLMProvider.gemini.modelCapabilities(model: unknown).supportsReasoning == false)
+    }
+
     // Gemini models always keep temperature.
     #expect(
       LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-pro").temperaturePolicy == .include)
   }
+
 
   @Test func localProvidersNeverReasonAndKeepTemperature() {
     for provider in [LLMProvider.ollama, .appleIntelligence, .egOne, .none] {
