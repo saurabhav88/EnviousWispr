@@ -62,7 +62,7 @@ struct AudioCaptureManagerMaxDurationBackstopTests {
 
     // stopCapture has no isCapturing guard: the capped recording's audio is
     // still the user's words and still comes back for transcription.
-    let result = await manager.stopCapture()
+    let result = await manager.stopCapture(sessionID: manager.currentCaptureSessionID)
     #expect(result.samples == [1, 2, 3, 4])
   }
 
