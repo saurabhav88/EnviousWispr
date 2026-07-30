@@ -57,15 +57,22 @@ export function formatScorecard({ ranking }) {
   // The formatter takes ONLY the ranking. It has no access to the raw selection
   // at all, so a raw tag form, a stale coverage figure or a stale cap flag
   // cannot reach the page - the previous shape merely asked it not to look.
-  const { releases, coverage, capReached } = ranking.summary;
+  const { releases, coverage, capReached, minVersion } = ranking.summary;
   requireNumber(coverage, "ranking.summary.coverage");
+  if (typeof minVersion !== "string" || minVersion.length === 0) {
+    throw new TypeError(`ranking.summary.minVersion must be a version string, got ${String(minVersion)}`);
+  }
 
   lines.push("Version scorecard, last 7 complete Eastern days");
   lines.push(
-    `Covering ${pct(coverage)} of successful dictations across ` +
+    `Covering ${pct(coverage)} of measured dictations across ` +
       `${releases.length} release${releases.length === 1 ? "" : "s"}.`
   );
   lines.push("The newest release is always included, whatever its share.");
+  lines.push(
+    `Builds before ${minVersion} are not measured: they did not record every reason ` +
+      "polished text was rejected, so their score would read a false 100%."
+  );
   if (capReached) lines.push("4-version cap reached before the coverage target.");
   lines.push("People counts are non-additive: one person can appear under more than one release.");
 
@@ -93,7 +100,7 @@ export function formatScorecard({ ranking }) {
             .map((c) =>
               c.shareOfWindow === null
                 ? `${c.version} share unavailable`
-                : `${c.version} ${pct(c.shareOfWindow)} of the week`
+                : `${c.version} ${pct(c.shareOfWindow)} of the measured week`
             )
             .join("  |  ")
       );

@@ -32,6 +32,7 @@ import {
   WINDOW_COUNT,
   rankMovers,
   createScorecardSection,
+  isScorecardEligible,
   ScorecardSectionError,
   releaseAgeInWindow,
 } from "../src/version-scorecard.js";
@@ -1738,7 +1739,9 @@ test("telemetryContractFor: resolves stable and boundary contracts", () => {
     ["transcription_failed", "2.3.2", "trans-v1-prose-codes"],
     ["transcription_failed", "2.4.0", "trans-v2-typed-codes"],
     ["transcription_failed", "2.4.1", "trans-v2-typed-codes"],
-    ["polish_kept", "2.3.0", null],
+    ["polish_kept", "2.1.4", null],
+    ["polish_kept", "2.2.0", "polish-v2-fallback-reason"],
+    ["polish_kept", "2.3.0", "polish-v2-fallback-reason"],
     ["polish_kept", "2.3.1", "polish-v2-fallback-reason"],
     ["polish_kept", "2.4.1", "polish-v2-fallback-reason"],
   ]) {
@@ -1772,7 +1775,15 @@ test("decideComparability: not comparable for differing IDs, or for any null ID"
   assert.equal(changed.comparable, false);
   assert.equal(changed.reason, COMPARABILITY_REASONS.definitionChanged);
 
-  const unavailable = decideComparability("polish_kept", ["2.4.1", "2.3.0"]);
+  // 2.2.0 and 2.3.0 both emit fallback_reason, so they ARE comparable: the
+  // table used to claim 2.3.1 and would have marked these non-comparable and
+  // dropped their weeks from historical variation.
+  const acrossPolishV2 = decideComparability("polish_kept", ["2.3.0", "2.2.0"]);
+  assert.equal(acrossPolishV2.comparable, true);
+
+  // Below the floor the metric is genuinely unmeasurable, and null must read as
+  // unavailable rather than as a zero.
+  const unavailable = decideComparability("polish_kept", ["2.4.1", "2.1.4"]);
   assert.equal(unavailable.comparable, false);
   assert.equal(unavailable.reason, COMPARABILITY_REASONS.definitionUnavailable);
 
@@ -2630,7 +2641,7 @@ test("scorecard formatting freezes coverage release age rows reasons and missing
   assert.match(text, /last 7 complete Eastern days/);
   assert.ok(!/[\u2013\u2014]/.test(text),
     "user-facing copy must contain no em-dashes or en-dashes");
-  assert.match(text, /84\.8% of successful dictations across 2 releases/,
+  assert.match(text, /84\.8% of measured dictations across 2 releases/,
     "coverage must name its denominator, not just say 'of use'");
   assert.match(text, /newest release is always included/);
   assert.match(text, /4-version cap reached/);
@@ -3503,4 +3514,84 @@ test("only a declared scorecard contract failure can trigger the whole-run path"
   } finally {
     mock.restore();
   }
+});
+
+test("builds below the measurement floor are hidden everywhere, not shown with a caveat", async () => {
+  // Releases before 2.2.0 never emitted a discard reason, so their AI-polish
+  // figure reads a flat, false 100%. Measured on 56 production days: 2.1.0
+  // reports 100% where the truth is 88.7%. The founder chose to hide those
+  // builds rather than print a known-wrong number beside a footnote, because a
+  // perfect score with a footnote still reads as a perfect score.
+  assert.equal(isScorecardEligible("2.2.0"), true, "the floor itself is eligible");
+  assert.equal(isScorecardEligible("2.1.9"), false);
+  assert.equal(isScorecardEligible("1.9.9"), false);
+  assert.equal(isScorecardEligible(null), false);
+  // Lexical string comparison would put 2.10.0 BELOW 2.2.0 and silently start
+  // hiding future releases. This is the case a string floor gets wrong.
+  assert.equal(isScorecardEligible("2.10.0"), true, "version order is numeric, never lexical");
+
+  // An old row is DROPPED before validation, not refused: it is a different
+  // producer schema, not malformed data. Before this, one 2.1.4 row from a real
+  // 56-day window failed the whole scorecard on a cross-field invariant that
+  // only holds for 2.2.0 and later.
+  const measurements = buildMeasurements({
+    additiveRows: [
+      addRow("2026-07-28", "2.4.1", 3, { dictations: 10, afm_attempts: 4, afm_discards: 1, afm_classifier_discards: 1 }),
+      // classifier EXCEEDS discards, exactly as production emits for 2.1.x
+      addRow("2026-07-28", "2.1.4", 3, { dictations: 5, afm_attempts: 4, afm_discards: 0, afm_classifier_discards: 4 }),
+      addRow("2026-07-28", "1.9.9", 3, { dictations: 2, afm_attempts: 1, afm_discards: 0, afm_classifier_discards: 1 }),
+    ],
+    nonAdditiveRows: [
+      naRow(0, "2.4.1", 3, { dictations: 10, people: 3 }),
+      naRow(0, "2.1.4", 3, { dictations: 5, people: 2 }),
+      naRow(0, "1.9.9", 3, { dictations: 2, people: 1 }),
+    ],
+    windowEndExclusive: "2026-07-29",
+  });
+  const window0 = measurements.windows.get(0).versions;
+  assert.deepEqual([...window0.keys()], ["2.4.1"], "only eligible builds are measured");
+  assert.deepEqual(measurements.usageRows, [{ app_version: "2.4.1", dictations: 10 }],
+    "and only eligible builds can be selected");
+  assert.equal(measurements.windows.get(0).totalDictations, 10,
+    "the share denominator counts measured builds only, so shares still sum to 100%");
+
+  // A published old release is never crowned newest and never displayed.
+  // selectReleases takes ALREADY-PARSED releases, the shape fetchPublishedReleases
+  // returns, not the raw GitHub payload.
+  const pub = (version, publishedAt) => ({ version, publishedAt });
+  const selection = selectReleases(
+    [pub("2.1.4", "2026-07-20T12:00:00Z"), pub("2.4.1", "2026-07-10T12:00:00Z")],
+    [{ app_version: "2.4.1", dictations: 10 }]
+  );
+  assert.deepEqual(selection.releases.map((r) => r.version), ["2.4.1"],
+    "a NEWER but ineligible release must not be crowned");
+  assert.ok(!selection.releaseCatalog.some((r) => r.version === "2.1.4"),
+    "and must not be pooled for historical variation");
+
+  // Every published release below the floor is a hard failure, not an empty
+  // scorecard that reads as "nothing shipped".
+  assert.throws(
+    () => selectReleases([pub("2.1.4", "2026-07-20T12:00:00Z")], []),
+    /no eligible published releases to judge at or above 2\.2\.0/
+  );
+
+  // The floor is DISCLOSED, and it travels with the displayed set rather than
+  // being re-derived by the formatter: reading it from a field the ranker never
+  // supplied rendered "Builds before undefined are not measured", green.
+  const ranking = rankMovers({ measurements, selection });
+  assert.equal(ranking.summary.minVersion, "2.2.0");
+  const text = formatScorecard({ ranking }).join("\n");
+  assert.match(text, /Builds before 2\.2\.0 are not measured/);
+  // Those builds DID record filter_tripped; production shows classifier_discard
+  // on them. What they did not record was every fallback reason.
+  assert.match(text, /did not record every reason polished text was rejected/);
+  assert.doesNotMatch(text, /never recorded why/);
+  // The floor exists BECAUSE of the polish boundary, so the two must not drift.
+  assert.equal(telemetryContractFor("polish_kept", "2.2.0"), "polish-v2-fallback-reason");
+  assert.equal(telemetryContractFor("polish_kept", "2.1.9"), null);
+  assert.doesNotMatch(text, /undefined/);
+  assert.throws(
+    () => formatScorecard({ ranking: { ...ranking, summary: { ...ranking.summary, minVersion: undefined } } }),
+    /minVersion must be a version string/
+  );
 });

@@ -49,6 +49,34 @@ const GITHUB_MAX_ATTEMPTS = 3;
 // than the plan agreed.
 const TARGET_COVERAGE = 0.8;
 const MAX_RELEASES = 4;
+
+/** When `fallback_reason` first shipped, verified against the tags rather than
+ * remembered: `git show v2.1.4:...TelemetryService.swift | grep 'props\["fallback_reason"\]'`
+ * finds nothing, and the same command on v2.2.0 finds it. The contract table
+ * below carried v2.3.1, which was wrong and would have marked 2.2.x and 2.3.0
+ * non-comparable on polish and dropped their weeks from historical variation. */
+const POLISH_FALLBACK_REASON_FROM = "2.2.0";
+
+/** The oldest release the scorecard will measure at all.
+ *
+ * Releases before 2.2.0 never emitted `fallback_reason`, so their discards
+ * count as zero and their AI-polish figure reads a flat, false 100%. Measured
+ * over 56 production days: 2.1.0 reports 100% where the truth is 88.7%, 2.1.3
+ * 100% against 95.9%, 2.1.4 100% against 96.5%. Every release from 2.2.0
+ * onward is unaffected - zero orphaned discards on all of them, so this floor
+ * changes no number the founder actually reads.
+ *
+ * The founder's decision (2026-07-29) was to hide those builds rather than
+ * print a figure known to be wrong beside a caveat, because a perfect score
+ * with a footnote still reads as a perfect score. Applied in JS via
+ * compareVersions, never as a SQL string comparison: '2.10.0' < '2.2.0'
+ * lexically, so a string floor would silently start hiding future releases. */
+const SCORECARD_MIN_VERSION = POLISH_FALLBACK_REASON_FROM;
+
+/** True when a canonical version is at or above the measurement floor. */
+export function isScorecardEligible(version) {
+  return version !== null && compareVersions(version, SCORECARD_MIN_VERSION) >= 0;
+}
 // Constrained to GitHub's own slug charset, not merely "no slashes or spaces".
 // A looser pattern let "owner/repo?per_page=1", "../repo" and "owner/.." through
 // into a URL, where they mean something entirely different from a repo name.
@@ -354,6 +382,11 @@ export function selectReleases(publishedReleases, usageRows) {
     // publishedMs is carried from the strict parse and used for ordering, so no
     // downstream code reparses a date. Stripped from the returned objects below
     // to keep the public shape exactly as the plan approved.
+    // Below the measurement floor: not an error, and not a release with "no
+    // production data yet" either. It is simply outside what the scorecard
+    // measures, so it must not be crowned newest, displayed, or pooled for
+    // historical variation.
+    if (!isScorecardEligible(version)) continue;
     canonical.push({ ...r, version, publishedAt: r.publishedAt, publishedMs });
   }
 
@@ -365,9 +398,10 @@ export function selectReleases(publishedReleases, usageRows) {
       y.publishedMs - x.publishedMs || compareVersions(y.version, x.version)
   );
   if (eligible.length === 0) {
-    throw new ReleaseResolutionError("no eligible published releases to judge", {
-      transient: false,
-    });
+    throw new ReleaseResolutionError(
+      `no eligible published releases to judge at or above ${SCORECARD_MIN_VERSION}`,
+      { transient: false }
+    );
   }
 
   // Newest FIRST and unconditionally. On release day the newest build may hold
@@ -449,10 +483,12 @@ export const METRIC_CONTRACTS = {
     { from: "2.4.0", id: "trans-v2-typed-codes" },
     { from: "0.0.0", id: "trans-v1-prose-codes" },
   ],
-  // `fallback_reason` first ships in v2.3.1. Before that the metric is not
-  // measurable at all - null, never a zero.
+  // Before `fallback_reason` the metric is not measurable at all - null, never
+  // a zero. The floor is DERIVED from this boundary, not the reverse: this row
+  // records what we shipped, which is a closed fact checkable against git tags,
+  // while the floor is the policy we chose because of it.
   polish_kept: [
-    { from: "2.3.1", id: "polish-v2-fallback-reason" },
+    { from: POLISH_FALLBACK_REASON_FROM, id: "polish-v2-fallback-reason" },
     { from: "0.0.0", id: null },
   ],
 };
@@ -711,6 +747,7 @@ function parseAdditiveRows(rows, windowEndExclusiveMs) {
         transient: false,
       });
     }
+    if (!isScorecardEligible(version)) continue;
     const dayMs = parseEasternDay(ownField(row, "day", "additive row"));
     if (dayMs === null) {
       throw new ReleaseResolutionError(`additive: malformed day ${String(row.day)}`, {
@@ -805,6 +842,7 @@ function parseNonAdditiveRows(rows) {
         `non-additive: malformed app_version ${String(row.app_version)}`, { transient: false }
       );
     }
+    if (!isScorecardEligible(version)) continue;
     const windowIndex = ownField(row, "window_index", "non-additive row");
     if (!Number.isSafeInteger(windowIndex) || windowIndex < 0 || windowIndex >= WINDOW_COUNT) {
       throw new ReleaseResolutionError(
@@ -1304,6 +1342,10 @@ export function rankMovers({ measurements, selection }) {
     releases: displayed,
     coverage: selection.coverage,
     capReached: selection.capReached === true,
+    // The floor travels WITH the displayed set, from its one definition. The
+    // formatter needing it and the ranker not supplying it rendered "Builds
+    // before undefined are not measured" with every test green.
+    minVersion: SCORECARD_MIN_VERSION,
   };
   if (typeof summary.coverage !== "number" || !Number.isFinite(summary.coverage) ||
       summary.coverage < 0 || summary.coverage > 1) {
