@@ -1439,6 +1439,19 @@ def fetch_take_rates(
 
     rate = distinct AFFECTED take IDs / |affected ∪ successful| takes, per release.
 
+    TWO DIFFERENT POPULATIONS, deliberately, per plan §5:
+      - The TAKE rate is CONDITIONAL on affected installs — the plan scopes its
+        denominator to "the same install, release and window", so it answers
+        "among people who hit this, how much of their dictation failed". It is
+        NOT a fleet-wide share and the render says so explicitly.
+      - The affected-USER rate is POPULATION-WIDE, over every install carrying an
+        eligible take on that release.
+    A whole-diff review argued the take rate should also be population-wide. That
+    is a defensible but DIFFERENT metric, and changing an approved metric on a
+    reviewer's say-so is plan expansion, so it is recorded as a founder question
+    rather than silently swapped. What was genuinely wrong — the render calling
+    this an upper bound on the POPULATION rate — is fixed.
+
     SQL computes the case-normalized successful-set cardinality and its overlap
     with the affected IDs, without shipping every successful take ID back — this
     install's `dictation.completed` takes could number in the thousands over the
@@ -1874,7 +1887,14 @@ def render_take_rates(
     lines.append(
         "  The affected Sentry takes retain the original boundary events. Because "
         "the success window cannot extend beyond them and may exclude boundary "
-        "successes, this is an UPPER BOUND on the population rate."
+        "successes, this take rate is an UPPER BOUND."
+    )
+    lines.append(
+        "  SCOPE: the take rate is CONDITIONAL on installs this fingerprint "
+        "affected — its denominator is those installs' own takes (plan §5). Read it "
+        "as \"among people who hit this, how much of their dictation failed\", NOT "
+        "as a fleet-wide share. The installs-affected figure beside it IS "
+        "population-wide, over every install carrying an eligible take."
     )
     for row in rates:
         rate = row.affected_takes / row.union_takes if row.union_takes else 0.0
@@ -3327,6 +3347,15 @@ def run_self_test() -> int:
     assert "2/11 takes affected (18.2%)" in rate_lines, rate_lines
     assert "1/10 installs affected" in rate_lines, rate_lines
     assert "UPPER BOUND" in rate_lines, "the window bias must be stated, not implied"
+    # The take rate is CONDITIONAL on affected installs (plan §5 scopes its
+    # denominator to "the same install"), while the installs figure beside it is
+    # population-wide. Printing them together without saying which is which reads
+    # the conditional number as a fleet-wide share — the render must name the scope.
+    assert "CONDITIONAL on installs this fingerprint" in rate_lines, rate_lines
+    assert "population-wide" in rate_lines, rate_lines
+    assert "UPPER BOUND on the population rate" not in rate_lines, (
+        "the take rate is not a population rate: " + rate_lines
+    )
     passed("a take on both sides is counted once, over a denominator that is not itself")
 
     # Overlap is RELEASE-scoped. A partition-wide take-id list let a take affected
