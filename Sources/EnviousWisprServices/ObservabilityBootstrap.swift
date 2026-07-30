@@ -144,8 +144,22 @@ public enum ObservabilityBootstrap {
   /// Pure and testable: no SDK, no process-global state, so every accepted and
   /// rejected shape is a unit test rather than a bootstrap integration test.
   ///
-  /// Returns the canonical lowercase hyphenated UUID PostHog produces
-  /// (`UUIDUtils.postHogUuidString` = `uuidString.lowercased()`), or nil.
+  /// Returns the canonical hyphenated UUID PostHog stores, VERBATIM, or nil.
+  ///
+  /// BOTH CASES ARE ACCEPTED, and the value is never normalized. The PostHog SDK
+  /// lowercases ids it MINTS (`UUIDUtils.postHogUuidString` =
+  /// `uuidString.lowercased()`), but `PostHogStorageManager.getAnonymousId()`
+  /// returns a PERSISTED id unchanged, so an install whose id was written by an
+  /// older SDK keeps its uppercase spelling forever. Measured against production
+  /// 2026-07-30: **94 of 692 distinct installs (13.6%) carry an uppercase id.**
+  /// A lowercase-only predicate silently drops every one of them, and the absence
+  /// is indistinguishable from "PostHog was skipped" — a permanent blind spot with
+  /// no way to diagnose it.
+  ///
+  /// Returning it VERBATIM is equally load-bearing: the tag has to equal the
+  /// string PostHog actually stores, so lowercasing an uppercase id would leave
+  /// the join just as broken, only less obviously.
+  ///
   /// Three things this rejects, each for its own reason:
   ///  - `""`, which is what `getDistinctId()` returns when PostHog was skipped
   ///    for a missing key. Setting no tag at all means a join query never
@@ -160,14 +174,15 @@ public enum ObservabilityBootstrap {
   ///    hex run is 12, so it provably survives. Anything else is omitted here
   ///    rather than transmitted as `[REDACTED]`.
   ///
-  /// The exact-equality check is load-bearing: `UUID(uuidString:)` alone accepts
-  /// an uppercase representation, which is not what PostHog stamps on events.
+  /// The exact-equality check is still load-bearing: `UUID(uuidString:)` alone
+  /// also accepts a compact 32-hex form, which the sanitizer destroys. Comparing
+  /// against the two CANONICAL hyphenated spellings admits exactly those and
+  /// nothing else. A hyphenated UUID's longest hex run is 12 in either case, well
+  /// under the sanitizer's `[0-9a-fA-F]{32,}` rule, so both survive transmission.
   static func canonicalAnonymousPostHogID(_ raw: String) -> String? {
-    guard let uuid = UUID(uuidString: raw),
-      raw == uuid.uuidString.lowercased()
-    else {
-      return nil
-    }
+    guard let uuid = UUID(uuidString: raw) else { return nil }
+    let upper = uuid.uuidString
+    guard raw == upper || raw == upper.lowercased() else { return nil }
     return raw
   }
 

@@ -21,17 +21,29 @@ struct TelemetryJoinKeyTests {
       "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
       "00000000-0000-0000-0000-000000000000",
       "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      // UPPERCASE IS REAL, AND IT IS 13.6% OF THE FLEET. The SDK lowercases ids
+      // it MINTS, but `PostHogStorageManager.getAnonymousId()` returns a
+      // PERSISTED id unchanged, so an install whose id predates that lowercasing
+      // keeps its spelling forever. Measured against production 2026-07-30:
+      // 94 of 692 distinct installs carry an uppercase id, including this
+      // machine's dev install. Rejecting them dropped 13.6% of the join into a
+      // blind spot indistinguishable from "PostHog was skipped".
+      "0198A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B",
+      "019E2DB1-63F5-7776-A7E4-9ACD568A81F5",
     ])
   func acceptsCanonicalAnonymousID(raw: String) {
+    // Returned VERBATIM, never normalized: the tag has to equal the string
+    // PostHog actually stores, so lowercasing an uppercase id would leave the
+    // join just as broken and much harder to see.
     #expect(ObservabilityBootstrap.canonicalAnonymousPostHogID(raw) == raw)
   }
 
   /// Each rejection is a distinct reason, not one class:
   /// - compact 32-hex would arrive as `[REDACTED]` (see the two-way control below);
-  /// - an uppercase representation is not what PostHog stamps on its own events,
-  ///   so joining on it would silently match nothing — and `UUID(uuidString:)`
-  ///   accepts it, which is why the predicate also demands exact equality with
-  ///   the lowercased round-trip;
+  /// - MIXED case is not a spelling PostHog ever produces: it mints lowercase and
+  ///   persists whatever it stored, so only the two canonical spellings are real.
+  ///   `UUID(uuidString:)` accepts mixed case, which is why the predicate demands
+  ///   exact equality with one of those two;
   /// - email-shaped and arbitrary values are the shapes a future `identify()`
   ///   could introduce, and copying a caller-supplied string into Sentry is not
   ///   a decision the bootstrap seam may make silently;
@@ -41,7 +53,7 @@ struct TelemetryJoinKeyTests {
     "every non-canonical or unsafe shape is rejected",
     arguments: [
       "0198a1b2c3d47e5f8a9b0c1d2e3f4a5b",
-      "0198A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B",
+      "0198A1B2-c3d4-7E5F-8a9b-0C1D2E3F4A5B",
       "someone@example.com",
       "install-1846",
       "",

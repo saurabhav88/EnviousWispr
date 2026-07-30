@@ -595,14 +595,29 @@ def _parse_iso8601(value: object) -> float | None:
         return None
 
 
+_LOWER_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_UPPER_UUID = re.compile(r"[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}")
+
+
 def canonical_join_key(raw: object) -> str | None:
     """Mirror of `ObservabilityBootstrap.canonicalAnonymousPostHogID`. A value
     the app would never have emitted is not a join key; treating it as one would
     query PostHog for an install that cannot exist.
+
+    BOTH CASES, VERBATIM — and mixed case rejected, exactly as the Swift side.
+    The SDK lowercases ids it MINTS, but returns a PERSISTED id unchanged, so an
+    install whose id predates that lowercasing keeps its uppercase spelling.
+    Measured against production 2026-07-30: 94 of 692 distinct installs (13.6%)
+    carry an uppercase id. A lowercase-only matcher drops all of them, and here
+    that would read as an unjoinable legacy population rather than as a bug.
+
+    Not case-FOLDED, unlike `canonical_take_id`: this value is used to query
+    PostHog by `distinct_id`, so it must match the stored string exactly. The take
+    id is only ever compared between two sources, so normalizing it is safe.
     """
     if not isinstance(raw, str) or len(raw) != 36:
         return None
-    if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", raw):
+    if not (_LOWER_UUID.fullmatch(raw) or _UPPER_UUID.fullmatch(raw)):
         return None
     return raw
 
@@ -3223,9 +3238,18 @@ def run_self_test() -> int:
     # Reusing the join-key canonicalizer would have rejected every real take ID
     # and reported take coverage as a confident 0%.
     upper_take = "D3B6682C-A4F7-47DB-A6D9-F6B0283DD651"
-    assert canonical_join_key(upper_take) is None, (
-        "the join-key matcher is lowercase-only — this is the trap being frozen"
-    )
+    # THE JOIN KEY ACCEPTS BOTH CASES AND NORMALIZES NEITHER. Measured against
+    # production 2026-07-30: 94 of 692 distinct installs (13.6%) carry an
+    # uppercase `distinct_id`, because the SDK lowercases only ids it MINTS and
+    # returns a PERSISTED id unchanged. It is used to QUERY PostHog by
+    # distinct_id, so it must match the stored string exactly.
+    assert canonical_join_key(upper_take) == upper_take
+    assert canonical_join_key(upper_take.lower()) == upper_take.lower()
+    # Mixed case is a spelling PostHog never produces.
+    assert canonical_join_key("0198A1B2-c3d4-7E5F-8a9b-0C1D2E3F4A5B") is None
+    # The take id, by contrast, is only ever compared BETWEEN two sources, so it
+    # is case-folded to make that comparison robust.
+    assert canonical_take_id(upper_take.lower()) == upper_take
     assert canonical_take_id(upper_take) == upper_take
     assert canonical_take_id(upper_take.lower()) == upper_take, "normalized to upper"
     for junk in (None, "", "not-a-uuid", upper_take[:-1], upper_take + "0", 42):
