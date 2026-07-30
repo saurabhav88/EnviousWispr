@@ -32,7 +32,13 @@ struct DictationInvokedPipelineWiringTests {
       to: "case .recordingStopped"
     )
 
-    #expect(body.contains("dictationInvoked(triggerSource, inputMode, targetApp)"))
+    // #1846 added the take key as a fourth argument. Frozen with the key included
+    // rather than loosened to a prefix match: the point of this assertion is that
+    // the sink forwards EXACTLY these values, and a prefix match would stop
+    // noticing if a later change dropped an argument.
+    #expect(
+      body.contains("dictationInvoked(triggerSource, inputMode, targetApp, telemetryState.takeID)")
+    )
     // #723: trigger_source and input_mode are distinct schema slots; sink
     // must read them from distinct config fields.
     #expect(body.contains("context.config?.triggerSource.rawValue"))

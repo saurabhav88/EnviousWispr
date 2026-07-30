@@ -41,8 +41,11 @@ final class KernelLifecycleTelemetrySink {
 
   typealias AudioRouteSink = @MainActor (_ route: String) -> Void
 
+  /// `takeID` (#1846) names WHICH dictation the event belongs to. Threaded as a
+  /// parameter rather than read from `telemetryState` inside the default closure so
+  /// a test observing this seam sees the exact value that reaches PostHog.
   typealias DictationInvokedSink = @MainActor (
-    _ triggerSource: String, _ inputMode: String, _ targetApp: String?
+    _ triggerSource: String, _ inputMode: String, _ targetApp: String?, _ takeID: String?
   ) -> Void
 
   typealias ModelLoadWedgedSink = @MainActor (
@@ -78,7 +81,8 @@ final class KernelLifecycleTelemetrySink {
   /// like every other sink so tests observe the emission without PostHog.
   typealias AudioCaptureInterruptedSink = @MainActor (
     _ cause: String, _ salvageAttempted: Bool, _ salvageSucceeded: Bool,
-    _ terminalState: String, _ backend: String, _ recordingDurationMs: Int?
+    _ terminalState: String, _ backend: String, _ recordingDurationMs: Int?,
+    _ takeID: String?
   ) -> Void
 
   // MARK: Identity + read sources
@@ -151,9 +155,9 @@ final class KernelLifecycleTelemetrySink {
     updateAudioRoute: @escaping AudioRouteSink = { route in
       SentryBreadcrumb.updateAudioRoute(route)
     },
-    dictationInvoked: @escaping DictationInvokedSink = { trigger, mode, target in
+    dictationInvoked: @escaping DictationInvokedSink = { trigger, mode, target, takeID in
       TelemetryService.shared.dictationInvoked(
-        triggerSource: trigger, inputMode: mode, targetApp: target)
+        triggerSource: trigger, inputMode: mode, targetApp: target, takeID: takeID)
     },
     modelLoadWedged: @escaping ModelLoadWedgedSink = { backend, telemetry in
       TelemetryService.shared.modelLoadWedged(
@@ -175,10 +179,11 @@ final class KernelLifecycleTelemetrySink {
     },
     noAudioCapturedRich: NoAudioCapturedSink? = nil,
     audioCaptureInterrupted: @escaping AudioCaptureInterruptedSink = {
-      cause, attempted, succeeded, terminal, backend, durationMs in
+      cause, attempted, succeeded, terminal, backend, durationMs, takeID in
       TelemetryService.shared.audioCaptureInterrupted(
         cause: cause, salvageAttempted: attempted, salvageSucceeded: succeeded,
-        terminalState: terminal, backend: backend, recordingDurationMs: durationMs)
+        terminalState: terminal, backend: backend, recordingDurationMs: durationMs,
+        takeID: takeID)
     },
     deadMicRecovered: @escaping @MainActor (DeadMicRecoveryOutcome) -> Void = { _ in }
   ) {
@@ -238,7 +243,7 @@ final class KernelLifecycleTelemetrySink {
       let triggerSource = context.config?.triggerSource.rawValue ?? "unknown"
       let inputMode = context.config?.inputMode.rawValue ?? "unknown"
       let targetApp = context.targetApp?.localizedName
-      dictationInvoked(triggerSource, inputMode, targetApp)
+      dictationInvoked(triggerSource, inputMode, targetApp, telemetryState.takeID)
       // Mirror old TP:546-553 — the breadcrumb data dict carries both
       // `backend` and `streaming`, and `updateRecordingState` carries the
       // real streaming flag (Codex review #11 r2 — earlier draft hardcoded
@@ -456,7 +461,8 @@ final class KernelLifecycleTelemetrySink {
       terminal == "completed",
       terminal,
       backend.rawValue,
-      telemetryState.recordingSnapshot?.durationMs)
+      telemetryState.recordingSnapshot?.durationMs,
+      telemetryState.takeID)
   }
 
   /// The terminal each lifecycle event represents, or `nil` for a non-terminal

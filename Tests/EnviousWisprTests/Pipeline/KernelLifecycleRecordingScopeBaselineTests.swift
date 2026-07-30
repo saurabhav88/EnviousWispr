@@ -57,9 +57,23 @@ import Testing
       // break baseline compilation and destroy this file's only purpose. It is
       // safe because that seam's default is INERT (`{ _ in }`), which is the
       // reason the sink breaks convention there; production wires it in
-      // `KernelDictationDriverFactory`. So this file still reaches no real vendor
-      // scope. If anyone ever restores a real default on that seam, this file
-      // starts mutating global Sentry state silently.
+      // `KernelDictationDriverFactory`. If anyone ever restores a real default on
+      // that seam, this file starts mutating global Sentry state silently.
+      //
+      // `dictationInvoked` and `audioCaptureInterrupted` are ALSO not named, and
+      // that is load-bearing rather than an oversight. Chunk 5 widened both seams
+      // with a `takeID` parameter; naming either one would pin this file to the
+      // post-Chunk-5 arity and it would stop compiling on `origin/main`. They are
+      // safe UNNAMED because neither is reachable from these two tests, which is a
+      // stronger guarantee than injecting a no-op: `dictationInvoked` fires only
+      // from the `.recordingCommitted` arm, and `audioCaptureInterrupted` is
+      // guarded on `telemetryState.interruptionCause != nil`. Neither test emits
+      // that event or sets that cause.
+      //
+      // WARNING for whoever adds the third test here: if it emits
+      // `.recordingCommitted` or sets `interruptionCause`, it WILL reach the real
+      // PostHog SDK through those defaults. Inject them then, and accept that doing
+      // so ends this file's `origin/main` compatibility.
       KernelLifecycleTelemetrySink(
         backend: .parakeet,
         audioCapture: FakeAudioCapture(),
@@ -73,12 +87,8 @@ import Testing
               active: active, backend: backend, isStreaming: isStreaming))
         },
         updateAudioRoute: { _ in },
-        dictationInvoked: { _, _, _ in },
         modelLoadWedged: { _, _ in },
         captureError: { _, _, _, _ in },
-        // Injected so these two tests do not reach the real PostHog SDK
-        // (`tests-no-process-global-mutable-delegate`).
-        audioCaptureInterrupted: { _, _, _, _, _, _ in },
         deadMicRecovered: { _ in }
       )
     }

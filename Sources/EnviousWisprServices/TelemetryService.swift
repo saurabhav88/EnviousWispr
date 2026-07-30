@@ -413,12 +413,23 @@ public final class TelemetryService {
 
   // MARK: - Dictation Lifecycle
 
-  public func dictationInvoked(triggerSource: String, inputMode: String, targetApp: String?) {
+  /// #1846: `takeID` names WHICH dictation this event belongs to, so an error in
+  /// Sentry can be joined to this person's usage. Omitted when nil rather than sent
+  /// as an empty string — a query must be able to tell "no take" from "a take
+  /// whose id we lost", and a release predating this change omits it entirely.
+  public func dictationInvoked(
+    triggerSource: String, inputMode: String, targetApp: String?, takeID: String? = nil
+  ) {
     var props: [String: Any] = ["trigger_source": triggerSource, "input_mode": inputMode]
     if let app = targetApp { props["target_app"] = app }
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
-      var stringProps = ["trigger_source": triggerSource, "input_mode": inputMode]
-      if let app = targetApp { stringProps["target_app"] = app }
+      // DERIVED from `props`, not rebuilt beside it (#1846). A parallel dictionary
+      // is a second implementation, so a test reading it proves nothing about what
+      // PostHog receives: deleting the real `props["take_id"]` line above would
+      // have left every wire-level test green. Every value on this event is a
+      // String, so the projection is lossless here.
+      let stringProps = props.compactMapValues { $0 as? String }
       testEventHook?(
         CapturedTelemetryEvent(name: "dictation.invoked", stringProps: stringProps))
     #endif
@@ -517,10 +528,13 @@ public final class TelemetryService {
   /// this must never page, email, or file a ticket (`sentry-vs-posthog-routing`).
   /// It ships as an observational counter with no threshold, because a threshold
   /// needs a baseline and we have none yet. Metadata only, never audio-derived.
+  /// `takeID` (#1846) names WHICH dictation was interrupted. Omit-when-nil, same
+  /// contract as `dictationInvoked`.
   public func audioCaptureInterrupted(
     cause: String, salvageAttempted: Bool, salvageSucceeded: Bool,
     terminalState: String, backend: String,
-    recordingDurationMs: Int? = nil
+    recordingDurationMs: Int? = nil,
+    takeID: String? = nil
   ) {
     var props: [String: Any] = [
       "cause": cause,
@@ -530,17 +544,26 @@ public final class TelemetryService {
       "backend": backend,
     ]
     if let ms = recordingDurationMs { props["recording_duration_ms"] = ms }
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       var intProps: [String: Int] = [:]
       if let ms = recordingDurationMs { intProps["recording_duration_ms"] = ms }
+      var stringProps = [
+        "cause": cause, "terminal_state": terminalState, "backend": backend,
+        "salvage_attempted": String(salvageAttempted),
+        "salvage_succeeded": String(salvageSucceeded),
+      ]
+      // Read BACK OUT of `props` (#1846) so the test observes the value that
+      // reaches PostHog, not a parallel copy. A blanket `compactMapValues` is wrong
+      // here: this event's Bools are deliberately stringified above and an
+      // as-String projection would silently drop them.
+      if let takeID = props["take_id"] as? String {
+        stringProps["take_id"] = takeID
+      }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "audio.capture_interrupted",
-          stringProps: [
-            "cause": cause, "terminal_state": terminalState, "backend": backend,
-            "salvage_attempted": String(salvageAttempted),
-            "salvage_succeeded": String(salvageSucceeded),
-          ],
+          stringProps: stringProps,
           intProps: intProps))
     #endif
     PostHogSDK.shared.capture("audio.capture_interrupted", properties: props)

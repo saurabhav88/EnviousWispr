@@ -41,6 +41,8 @@ import Testing
       let triggerSource: String
       let inputMode: String
       let targetApp: String?
+      /// #1846: the take key that reached PostHog with this event.
+      let takeID: String?
     }
     struct CaptureErrorCall: Equatable {
       let category: SentryBreadcrumb.ErrorCategory
@@ -56,6 +58,8 @@ import Testing
       let salvageSucceeded: Bool
       let terminalState: String
       let backend: String
+      /// #1846: the take key that reached PostHog with this event.
+      let takeID: String?
     }
 
     var breadcrumbs: [BreadcrumbCall] = []
@@ -120,10 +124,10 @@ import Testing
         recorder.timeline.append(takeID.map { "take:set:\($0)" } ?? "take:remove")
       },
       updateAudioRoute: { route in recorder.audioRoutes.append(route) },
-      dictationInvoked: { trigger, mode, target in
+      dictationInvoked: { trigger, mode, target, takeID in
         recorder.dictationsInvoked.append(
           Recorder.DictationInvokedCall(
-            triggerSource: trigger, inputMode: mode, targetApp: target))
+            triggerSource: trigger, inputMode: mode, targetApp: target, takeID: takeID))
       },
       modelLoadWedged: { backend, _ in recorder.modelLoadWedgedBackends.append(backend) },
       captureError: { error, category, stage, extra in
@@ -139,11 +143,11 @@ import Testing
       },
       // #1408: injected so no test ever reaches the real PostHog SDK
       // (`tests-no-process-global-mutable-delegate`).
-      audioCaptureInterrupted: { cause, attempted, succeeded, terminal, backend, _ in
+      audioCaptureInterrupted: { cause, attempted, succeeded, terminal, backend, _, takeID in
         recorder.audioCaptureInterruptions.append(
           Recorder.AudioCaptureInterruptedCall(
             cause: cause, salvageAttempted: attempted, salvageSucceeded: succeeded,
-            terminalState: terminal, backend: backend))
+            terminalState: terminal, backend: backend, takeID: takeID))
         recorder.timeline.append("interruptionCounter:\(terminal)")
       },
       deadMicRecovered: { recorder.deadMicRecoveries.append($0) })
@@ -184,7 +188,9 @@ import Testing
     sink.emit(.recordingCommitted(isStreaming: false))
     #expect(
       recorder.dictationsInvoked == [
-        .init(triggerSource: "ptt_hotkey", inputMode: "pushToTalk", targetApp: nil)
+        // takeID nil: this test constructs a bare KernelTelemetryState with no
+        // session, so there is genuinely no take to name (#1846).
+        .init(triggerSource: "ptt_hotkey", inputMode: "pushToTalk", targetApp: nil, takeID: nil)
       ])
     // Breadcrumb data dict carries both `backend` and `streaming` keys —
     // mirrors old TP:548-551.
@@ -528,7 +534,8 @@ import Testing
       recorder.audioCaptureInterruptions == [
         .init(
           cause: "engine_lost", salvageAttempted: true, salvageSucceeded: true,
-          terminalState: "completed", backend: "parakeet")
+          // takeID nil: this suite's bare KernelTelemetryState has no session.
+          terminalState: "completed", backend: "parakeet", takeID: nil)
       ])
     #expect(
       recorder.captureErrors.isEmpty,
@@ -548,7 +555,7 @@ import Testing
       recorder.audioCaptureInterruptions == [
         .init(
           cause: "engine_lost", salvageAttempted: true, salvageSucceeded: false,
-          terminalState: "audio_interrupted", backend: "parakeet")
+          terminalState: "audio_interrupted", backend: "parakeet", takeID: nil)
       ])
     #expect(recorder.captureErrors.count == 1, "the lost dictation is still a real loss")
   }
@@ -1382,6 +1389,72 @@ import Testing
     // anything would fail loudly above, but a regex that matches EVERYTHING would
     // pass silently.
     #expect("updateTakeID: { _ in },".firstMatch(of: wiring) == nil)
+  }
+
+  // MARK: - Take key routed onto the two sink-owned PostHog events (#1846 chunk 5)
+
+  /// `dictation.invoked` is the event that opens a take, so its take key is what
+  /// lets a Sentry error be traced back to the dictation the user actually started.
+  @Test("dictation.invoked carries the take key of the session that produced it")
+  func dictationInvokedCarriesTheTakeKey() {
+    let recorder = Recorder()
+    let telemetryState = KernelTelemetryState()
+    telemetryState.resetForNewSession(takeID: Self.takeA, polishEnabled: false)
+    let context = KernelSessionContext()
+    context.config = .testDefault(inputMode: .pushToTalk, triggerSource: .pttHotkey)
+    let sink = makeSink(recorder: recorder, context: context, telemetryState: telemetryState)
+
+    sink.emit(.recordingCommitted(isStreaming: false))
+
+    #expect(
+      recorder.dictationsInvoked == [
+        .init(
+          triggerSource: "ptt_hotkey", inputMode: "pushToTalk", targetApp: nil,
+          takeID: Self.takeA)
+      ])
+  }
+
+  /// The counter that gives salvage a denominator has to name WHICH take was
+  /// interrupted, or a Bluetooth-drop investigation can count interruptions but
+  /// cannot tie any of them to the errors that take raised.
+  @Test("audio.capture_interrupted carries the take key of the interrupted session")
+  func audioCaptureInterruptedCarriesTheTakeKey() throws {
+    let recorder = Recorder()
+    let telemetryState = KernelTelemetryState()
+    telemetryState.resetForNewSession(takeID: Self.takeA, polishEnabled: false)
+    telemetryState.interruptionCause = .engineLost
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+
+    sink.emit(.pipelineCompleted)
+
+    #expect(recorder.audioCaptureInterruptions.count == 1)
+    let interruption = try #require(recorder.audioCaptureInterruptions.first)
+    #expect(interruption.takeID == Self.takeA)
+  }
+
+  /// Both events must send NO take key rather than a placeholder when no session
+  /// produced them. A sentinel would be indistinguishable from a real id in a query
+  /// and would silently inflate any per-take count.
+  @Test("both sink events omit the take key entirely when no session is in flight")
+  func sinkEventsOmitTheTakeKeyWithNoSession() throws {
+    let recorder = Recorder()
+    // A bare state: `takeID` is nil because no session was ever accepted.
+    let telemetryState = KernelTelemetryState()
+    telemetryState.interruptionCause = .engineLost
+    let context = KernelSessionContext()
+    context.config = .testDefault()
+    let sink = makeSink(recorder: recorder, context: context, telemetryState: telemetryState)
+
+    sink.emit(.recordingCommitted(isStreaming: false))
+    sink.emit(.pipelineCompleted)
+
+    let invocation = try #require(recorder.dictationsInvoked.first)
+    let interruption = try #require(recorder.audioCaptureInterruptions.first)
+    #expect(invocation.takeID == nil)
+    #expect(interruption.takeID == nil)
+    // Both events still fired — the absent key must not suppress the emission.
+    #expect(recorder.dictationsInvoked.count == 1)
+    #expect(recorder.audioCaptureInterruptions.count == 1)
   }
 
   /// Resolve a `Sources/EnviousWisprPipeline` file from this test file's own path.
