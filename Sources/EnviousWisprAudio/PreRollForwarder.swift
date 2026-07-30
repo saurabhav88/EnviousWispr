@@ -33,6 +33,18 @@ final class PreRollForwarder: @unchecked Sendable {
     var ring: [Float]
     var writeIdx: Int = 0
     var count: Int = 0
+    /// #1788: total samples routed since `prepare()`, INCLUDING ones the ring
+    /// later overwrote. The ring's `count` saturates at capacity, so it cannot
+    /// answer "how far into the stream are we" — this can.
+    var routedCount: Int = 0
+    /// #1788: index (from the first routed sample) of the first non-zero sample
+    /// ever routed while pre-rolling. Latched at ARRIVAL, so an overwritten
+    /// pre-roll sample still contributes its position. `nil` if the pre-roll
+    /// window was entirely silent.
+    var firstNonZeroRoutedIndex: Int?
+    /// #1788: `routedCount` at the moment activation drained the ring, so the
+    /// manager can convert a live-phase index into a stream-absolute one.
+    var routedCountAtActivation: Int?
     var onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)?
     var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
@@ -86,6 +98,11 @@ final class PreRollForwarder: @unchecked Sendable {
         appendToRing(samples, state: &state)
         return .store
       case .capturing:
+        // #1788: keep the stream-absolute counter advancing. An integer add only
+        // — no per-sample scan is added to the live path, because nothing is
+        // dropped here: the detector's own index is already exact for live
+        // samples and the manager rebases it onto `routedCountAtActivation`.
+        state.routedCount += samples.count
         return .forward(
           onSamples: state.onSamples,
           onBuffer: state.onBuffer,
@@ -155,6 +172,10 @@ final class PreRollForwarder: @unchecked Sendable {
       state.continuation = continuation
 
       let result = drainRing(&state)
+      // #1788: the rebase point for converting a live-phase index into a
+      // stream-absolute one. Recorded BEFORE the mode flip so it reflects
+      // exactly the samples handed to the detector as pre-roll.
+      state.routedCountAtActivation = state.routedCount - result.count
       state.mode = .activating
       return result
     }
@@ -168,6 +189,13 @@ final class PreRollForwarder: @unchecked Sendable {
       state.mode = .capturing
       return delta
     }
+  }
+
+  /// #1788 wake diagnostic: the stream-absolute position of the first non-zero
+  /// sample latched during pre-roll, plus the pre-roll/live rebase point. Both
+  /// are `nil` when unavailable. Read on the MainActor after capture is live.
+  func wakeDiagnosticSnapshot() -> (firstNonZeroRoutedIndex: Int?, routedCountAtActivation: Int?) {
+    lock.withLock { ($0.firstNonZeroRoutedIndex, $0.routedCountAtActivation) }
   }
 
   /// Return to pre-rolling mode. Called when recording stops but engine stays warm.
@@ -193,6 +221,12 @@ final class PreRollForwarder: @unchecked Sendable {
       state.onBuffer = nil
       state.count = 0
       state.writeIdx = 0
+      // #1788: per-generation wake state MUST reset with the ring. A warm engine
+      // returns here between takes (`prepareForNextRecording`), so without this
+      // the latch stays set and every later take reports the FIRST take's wake.
+      state.routedCount = 0
+      state.firstNonZeroRoutedIndex = nil
+      state.routedCountAtActivation = nil
       state.mode = targetMode
       return c
     }
@@ -307,6 +341,26 @@ final class PreRollForwarder: @unchecked Sendable {
 
   /// Append samples to the circular ring buffer. MUST be called under lock.
   private func appendToRing(_ samples: [Float], state: inout State) {
+    // #1788: latch the first non-zero at ARRIVAL. Doing it here rather than at
+    // drain time is the whole point — the ring overwrites its oldest samples, so
+    // a wake that happened more than 500ms before activation would otherwise be
+    // erased before anyone could observe it. One comparison per sample, added to
+    // a loop already writing every sample, and skipped entirely once latched.
+    //
+    // KNOWN LIMIT, r9: `debugZeroFillController` transforms samples at DRAIN and
+    // live-forward time, i.e. AFTER this latch, so under an armed fault injection
+    // the latch sees real audio while the detector sees zeros and `wake_ms` becomes
+    // meaningless. NOT fixed, because the fix would move the latch after the
+    // transform and reintroduce the ring-overwrite bug this line exists to prevent,
+    // and because a wake measured during a simulated dead mic is meaningless by
+    // construction anyway. IGNORE `wake_ms` on any `EW_FAULT_INJECTION=1` run.
+    if state.firstNonZeroRoutedIndex == nil {
+      for (offset, sample) in samples.enumerated() where sample != 0 {
+        state.firstNonZeroRoutedIndex = state.routedCount + offset
+        break
+      }
+    }
+    state.routedCount += samples.count
     for sample in samples {
       state.ring[state.writeIdx] = sample
       state.writeIdx = (state.writeIdx + 1) % capacity

@@ -299,6 +299,39 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// fresh `beginCapturePhase`.
   private var deadAirDetector = DeadAirStreamingDetector()
 
+  /// How many leading exact-zero samples the mid-take all-zero detector tolerates
+  /// before it concludes the microphone is dead. ONE owner, ONE code path in every
+  /// configuration — release and DEBUG differ only in whether an override is
+  /// consulted, never in how the verdict is computed (#1788).
+  ///
+  /// Release, and DEBUG with no override set, is `minimumTranscriptionSamples`
+  /// (16,000 = 1.0s), byte-identical to shipped behaviour.
+  ///
+  /// The DEBUG override exists because a Bluetooth wake slower than the ceiling is
+  /// otherwise CENSORED — the take aborts before the wake completes, so the tail we
+  /// most need to see is the one we structurally cannot observe. Raising it makes
+  /// that tail measurable. Diagnostic recipe: gotchas-audio.md
+  /// FACT: bt-mic-warmup-delay-is-industry-wide-not-eviouswispr-specific.
+  ///
+  ///     defaults write com.enviouswispr.app.dev EWDebugAllZeroCeilingSamples -int 160000
+  ///
+  /// A non-positive or absent value yields the shipping ceiling, so an
+  /// unconfigured DEBUG build cannot behave differently from production.
+  var allZeroCeilingSamples: Int {
+    #if DEBUG
+      let override = UserDefaults.standard.integer(
+        forKey: "EWDebugAllZeroCeilingSamples")
+      if override > 0 { return override }
+    #endif
+    return AudioConstants.minimumTranscriptionSamples
+  }
+
+  #if DEBUG
+    /// One-shot per capture generation so the zero-prefix line is emitted once,
+    /// not on every subsequent batch. Reset in `beginCapturePhase`.
+    private var didLogZeroPrefixThisSession = false
+  #endif
+
   /// The ONE shared latch the HAL no-buffer watchdog and the dead-air detector
   /// both check-and-set before calling `onCaptureStalled`, so the callback's
   /// documented at-most-once-per-session contract holds across the two
@@ -367,6 +400,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     deadAirDetector = DeadAirStreamingDetector()
     sawIneligibleZeroSignalDuringSession = false
     captureStallReported = false
+    #if DEBUG
+      didLogZeroPrefixThisSession = false
+    #endif
 
     // Wire source callbacks → manager state.
     // Source identity check prevents stale callbacks from a replaced source
@@ -976,9 +1012,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     if deadAirDetector.consecutiveExactZeroSuffix != suffixBefore + samples.count {
       sawIneligibleZeroSignalDuringSession = false
     }
+    #if DEBUG
+      emitZeroPrefixDiagnosticIfNeeded()
+    #endif
 
     let mode: CaptureStallFailureMode
-    if deadAirDetector.isAllZeroFromStart {
+    if deadAirDetector.isAllZeroFromStart(ceilingSamples: allZeroCeilingSamples) {
       mode = .allZeroFromStart
     } else if deadAirDetector.isBecameZeroMidCapture {
       mode = .becameZeroMidCapture
@@ -1003,6 +1042,120 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     deadAirDetector.fired = true
     fireDeadAirStall(mode: mode)
   }
+
+  #if DEBUG
+    /// Is the wake a clean measurement OF THE DELIVERED STREAM? True only when the
+    /// stream lost nothing AND at least one sample was routed before the first
+    /// non-zero one. Both failure modes under-report, never over-report, so the
+    /// fallback label is `floor`.
+    ///
+    /// The label deliberately says `stream_measured`, NOT `exact`. r7 pointed out
+    /// that a callback-free startup followed by a few zeros still satisfies
+    /// `wakeSamples > 0` while covering only the zeros AFTER callbacks began, so a
+    /// true press-to-audio figure would need a second timebase. That was tried in
+    /// r2 and deleted for being late by the whole pre-roll batch, and two numbers
+    /// that disagree is how a future session trusts the wrong one. So the honest fix
+    /// is naming: NO sample-derived wake can be exact with respect to press-to-audio,
+    /// and a word that claimed otherwise was the actual defect. Every value here is
+    /// a lower bound; `stream_measured` says only that the delivered stream was
+    /// gap-free and carried an observed silent prefix.
+    ///
+    /// The second condition is the whole of r5 and r6, and it reduces to
+    /// `wakeSamples > 0`. A sample clock cannot measure an interval containing no
+    /// samples: a wake of zero means the first sample that ever existed was already
+    /// non-zero, so a link that woke during a callback-free startup is
+    /// indistinguishable from one that was awake all along. A measured zero prefix
+    /// is the only evidence that the stream was running while the link was still
+    /// silent.
+    ///
+    /// r6 killed the previous formulation, which asked `routedCountAtActivation > 0`
+    /// — that field is the rebase offset for pre-roll the ring OVERWROTE, not a
+    /// count of samples that preceded activation, so it is legitimately 0 whenever
+    /// nothing was dropped. It also treated a pre-roll latch at index 0 as proof,
+    /// when index 0 is exactly the ambiguous case. Both errors are gone rather than
+    /// special-cased, because the quantity actually being asked about is the wake
+    /// itself. An unknown gap count or an unavailable wake fails CLOSED.
+    nonisolated static func wakeIsStreamMeasured(gapCount: Int?, wakeSamples: Int?) -> Bool {
+      guard let gapCount, let wakeSamples else { return false }
+      return gapCount == 0 && wakeSamples > 0
+    }
+
+    /// Report the exact-zero prefix once per capture generation (#1788).
+    ///
+    /// On Bluetooth this is the A2DP->SCO/HFP link wake time. It is a DEBUG
+    /// diagnostic on purpose and permanently: production telemetry carries no
+    /// such field, and without this line a future Bluetooth investigation has to
+    /// re-derive wake timing by hand, which is how #1788 started. Writes to
+    /// `app.log` only (requires in-app Debug Mode) — never PostHog, never Sentry,
+    /// never the network. Emits a duration, a sample count and a transport label,
+    /// so it is inside the privacy boundary by construction.
+    private func emitZeroPrefixDiagnosticIfNeeded() {
+      guard !didLogZeroPrefixThisSession,
+        let zeroPrefixSamples = deadAirDetector.zeroPrefixSampleCount
+      else { return }
+      didLogZeroPrefixThisSession = true
+      let zeroPrefixMs = Double(zeroPrefixSamples) / AudioConstants.sampleRate * 1000
+      // #1788, after THREE review rounds on the same class: every earlier version
+      // of this line measured when the diagnostic OBSERVED the wake, not when the
+      // wake happened. A sample count taken from the detector misses pre-roll the
+      // ring overwrote; a wall clock read here is late by the whole pre-roll batch,
+      // because pre-roll arrives all at once AT activation. The only quantity that
+      // corresponds to occurrence is the sample's own position in the stream,
+      // latched by `PreRollForwarder` the moment it arrived — and that holds only
+      // while the stream is gap-free, which the `gaps` field below reports.
+      let wake =
+        activeSource?.wakeDiagnostic
+        ?? (firstNonZeroRoutedIndex: nil, routedCountAtActivation: nil)
+      let wakeSamples: Int? = {
+        // Latched during pre-roll: already stream-absolute and immune to the ring.
+        if let preRoll = wake.firstNonZeroRoutedIndex { return preRoll }
+        // Otherwise the wake was live; rebase the detector's exact live index onto
+        // the stream. Nothing is dropped in the live phase.
+        guard let base = wake.routedCountAtActivation else { return nil }
+        return base + zeroPrefixSamples
+      }()
+      let wakeMs = wakeSamples.map { Double($0) / AudioConstants.sampleRate * 1000 }
+      let wakeField =
+        wakeMs.map { String(format: "%.0f", $0) } ?? "unavailable"
+      let transport = currentResolvedRoute?.effective ?? "unknown"
+      let ceiling = allZeroCeilingSamples
+      // EVERY value on this line is a LOWER BOUND on press-to-audio latency: a
+      // sample clock cannot see an interval in which no samples exist, and no
+      // second clock is carried (see `wakeIsStreamMeasured`). `wake_is` reports
+      // only whether the DELIVERED stream was a clean measurement, which needs two
+      // things — cloud review found one per round until both were stated here
+      // rather than assumed:
+      //  1. the stream lost nothing — `CaptureStopMetadata.inputTimelineGapCount`
+      //     owns that enumeration and its window (r3, r4, r5), so a new lossy
+      //     edge needs no new field here;
+      //  2. at least one sample was routed BEFORE the first non-zero one, i.e.
+      //     `wakeSamples > 0` (r5, corrected in r6 — see
+      //     `wakeIsStreamMeasured`). A sample
+      //     clock cannot measure an interval containing no samples, so a zero wake
+      //     cannot distinguish a link that was already awake from one that woke
+      //     during a callback-free startup. No second clock: that was tried in r2
+      //     and deleted for being late by the whole pre-roll batch.
+      // Both failures under-report, never over-report, so the honest label is
+      // `floor` and `exact` is claimed only when both hold. Of 13 Bluetooth
+      // readings taken before this, 8 read 0 and the log alone could NOT tell a
+      // genuinely warm link from a delayed first buffer — that ambiguity is what
+      // this closes.
+      let gaps = activeSource?.captureStopMetadata?.inputTimelineGapCount
+      let gapField = gaps.map(String.init) ?? "unknown"
+      let basis =
+        Self.wakeIsStreamMeasured(gapCount: gaps, wakeSamples: wakeSamples)
+        ? "stream_measured" : "floor"
+      Task {
+        await AppLogger.shared.log(
+          "ZERO_PREFIX_MEASURE transport=\(transport) "
+            + "wake_ms=\(wakeField) wake_is=\(basis) timeline_gaps=\(gapField) "
+            + "detector_zero_prefix_ms=\(String(format: "%.0f", zeroPrefixMs)) "
+            + "detector_zero_prefix_samples=\(zeroPrefixSamples) "
+            + "ceiling_samples=\(ceiling)",
+          level: .info, category: "Audio")
+      }
+    }
+  #endif
 
   /// Overlay the manager's app-lifetime session id + frozen route decision onto
   /// a HAL-built stall context before forwarding (#1543 Codex review P2). The

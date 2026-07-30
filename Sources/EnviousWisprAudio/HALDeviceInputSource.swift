@@ -110,13 +110,36 @@ private final class HALSessionCounters: Sendable {
     var ringDrops = 0
     var converterErrors = 0
     var zeroOutputs = 0
+    var renderFailures = 0
+    var oversizedSlices = 0
+    var lostChunks = 0
   }
   private let state = OSAllocatedUnfairLock(initialState: Snapshot())
   func incrementRingDrop() { state.withLock { $0.ringDrops += 1 } }
   func incrementConverterError() { state.withLock { $0.converterErrors += 1 } }
   func incrementZeroOutput() { state.withLock { $0.zeroOutputs += 1 } }
+  func incrementRenderFailure() { state.withLock { $0.renderFailures += 1 } }
+  func incrementOversizedSlice() { state.withLock { $0.oversizedSlices += 1 } }
+  /// A popped chunk that left `drainAndForward` without reaching `route` and
+  /// without being a benign priming call. Deliberately a CATCH-ALL rather than one
+  /// counter per cause: #1788 r3/r5/r7 each found another silent exit, so the
+  /// bookkeeping is now at the single place a chunk can die instead of at each
+  /// reason it might.
+  func incrementLostChunk() { state.withLock { $0.lostChunks += 1 } }
   func snapshot() -> Snapshot { state.withLock { $0 } }
   func reset() { state.withLock { $0 = Snapshot() } }
+  /// Read and clear under ONE lock acquisition. A separate `snapshot()` then
+  /// `reset()` leaves a window in which the RT and consumer threads can increment
+  /// a counter that neither the returned snapshot nor the cleared state contains,
+  /// so the gap is erased from both — the wake would then be labelled `exact`
+  /// over a lossy stream (#1788 cloud review r5).
+  func snapshotAndReset() -> Snapshot {
+    state.withLock { current in
+      let taken = current
+      current = Snapshot()
+      return taken
+    }
+  }
 }
 
 /// The RT-callback-reachable context, passed by raw pointer via `Unmanaged`
@@ -213,7 +236,13 @@ private final class HALRenderContext: @unchecked Sendable {
       guard
         let nativeBuffer = AVAudioPCMBuffer(
           pcmFormat: nativeFormat, frameCapacity: AVAudioFrameCount(count))
-      else { continue }
+      else {
+        // A popped chunk that cannot be wrapped is lost audio (#1788 r7). Every
+        // exit from this loop that is not `.routed` or `.benignZeroOutput` must
+        // count, or the gap enumeration silently reopens.
+        counters.incrementLostChunk()
+        continue
+      }
       nativeBuffer.frameLength = AVAudioFrameCount(count)
       if let channelData = nativeBuffer.floatChannelData {
         popScratch.withUnsafeBufferPointer { src in
@@ -232,24 +261,48 @@ private final class HALRenderContext: @unchecked Sendable {
       // session reset landing between the mark and the flag-set left the flag
       // true while liveness was reset false, falsely tripping the watchdog
       // (#1540, Codex r1 P2). Deleting the flag closes that race.
-      if forward(nativeBuffer: nativeBuffer) {
+      switch forward(nativeBuffer: nativeBuffer) {
+      case .routed:
         liveness.markReceived()
+      case .benignZeroOutput:
+        break  // priming: input is buffered and emitted next call, nothing lost
+      case .lost:
+        counters.incrementLostChunk()
       }
     }
   }
 
+  /// What became of one popped chunk. A three-way result rather than `Bool`
+  /// BECAUSE the enumeration kept reopening (#1788 r3, r5, r7 each found another
+  /// silent `return false`): a bool lets a new early exit mean "not routed" without
+  /// the author deciding whether audio was LOST, and the caller then cannot tell.
+  /// Every exit from `forward` must now pick a case, and only `.benignZeroOutput`
+  /// is loss-free.
+  private enum ForwardOutcome {
+    /// Converted samples reached `forwarder.route` — the only success.
+    case routed
+    /// Converter consumed the input and emitted no frames yet. Priming does this
+    /// once; the input is buffered internally and emitted on the following call,
+    /// so the output timeline stays continuous and nothing is lost.
+    case benignZeroOutput
+    /// The chunk is gone. Counts toward `inputTimelineGapCount`.
+    case lost
+  }
+
   /// Resample `nativeBuffer` (the device's real rate) to `targetFormat`
   /// (16kHz mono, what the pipeline expects) and forward the converted
-  /// samples — never the raw native-rate ones (cloud review P2). Returns
-  /// whether a converted buffer actually reached `forwarder.route`.
-  @discardableResult
-  private func forward(nativeBuffer: AVAudioPCMBuffer) -> Bool {
+  /// samples — never the raw native-rate ones (cloud review P2).
+  private func forward(nativeBuffer: AVAudioPCMBuffer) -> ForwardOutcome {
     let ratio = targetFormat.sampleRate / nativeFormat.sampleRate
     let outputFrameCount = AVAudioFrameCount(Double(nativeBuffer.frameLength) * ratio) + 1
     guard outputFrameCount > 0,
       let convertedBuffer = AVAudioPCMBuffer(
         pcmFormat: targetFormat, frameCapacity: outputFrameCount)
-    else { return false }
+    else {
+      // Output-buffer allocation failed (memory pressure) — the chunk dies here,
+      // and until #1788 r7 nothing recorded it.
+      return .lost
+    }
 
     var error: NSError?
     nonisolated(unsafe) var inputConsumed = false
@@ -270,19 +323,24 @@ private final class HALRenderContext: @unchecked Sendable {
     // zero-frame output; more than ~1 per session is a signal.
     if error != nil {
       counters.incrementConverterError()
-      return false
+      return .lost
     }
     guard convertedBuffer.frameLength > 0 else {
       counters.incrementZeroOutput()
-      return false
+      return .benignZeroOutput
     }
 
     let level = AudioBufferProcessor.calculateRMS(convertedBuffer)
-    guard let channelData = convertedBuffer.floatChannelData else { return false }
+    guard let channelData = convertedBuffer.floatChannelData else {
+      // Converted frames exist but are unreadable — the chunk is lost exactly
+      // like a converter error, so it counts as one rather than vanishing.
+      counters.incrementConverterError()
+      return .lost
+    }
     let frameCount = Int(convertedBuffer.frameLength)
     let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
     forwarder.route(samples: samples, level: level, buffer: convertedBuffer)
-    return true
+    return .routed
   }
 
 }
@@ -376,6 +434,14 @@ final class HALDeviceInputSource: AudioInputSource {
   private var forwarder: PreRollForwarder?
 
   #if DEBUG
+    /// #1788: forward the forwarder's arrival-latched wake facts. Nil-safe — a
+    /// source with no forwarder yet has measured nothing.
+    var wakeDiagnostic: (firstNonZeroRoutedIndex: Int?, routedCountAtActivation: Int?) {
+      forwarder?.wakeDiagnosticSnapshot() ?? (nil, nil)
+    }
+  #endif
+
+  #if DEBUG
     var debugZeroFillController: DebugZeroFillController?
   #endif
   /// Dedicated thread draining `HALRenderContext.ring` off the HAL IO thread.
@@ -422,6 +488,11 @@ final class HALDeviceInputSource: AudioInputSource {
   /// prior session's metadata.
   private var cachedStopMetadata: CaptureStopMetadata?
 
+  /// Gaps carried in from the idle pre-roll window, snapshotted at the top of
+  /// `startCapture` before the per-session counter reset (#1788 r4). Assigned
+  /// fresh every session, so it never accumulates across takes.
+  private var preRollGapCount = 0
+
   private func computeStopMetadataFromLiveState() -> CaptureStopMetadata? {
     guard let context = renderContext else { return nil }
     let snap = context.counters.snapshot()
@@ -430,6 +501,10 @@ final class HALDeviceInputSource: AudioInputSource {
       ringDropCount: snap.ringDrops,
       converterErrorCount: snap.converterErrors,
       zeroOutputCount: snap.zeroOutputs,
+      renderFailureCount: snap.renderFailures,
+      oversizedSliceCount: snap.oversizedSlices,
+      preRollGapCount: preRollGapCount,
+      lostChunkCount: snap.lostChunks,
       rateDivergenceDetected: formatDivergenceObserved,
       nativeChannelCount: boundNativeChannelCount
     )
@@ -675,6 +750,26 @@ final class HALDeviceInputSource: AudioInputSource {
         source: "HALDeviceInputSource.startCapture.missing_forwarder")
     }
 
+    // Carry the idle pre-roll's gaps forward and clear the session counters in
+    // ONE atomic step, BEFORE `fwd.activate(...)` drains the pre-roll (#1788
+    // cloud review r4 + r5). Three things have to be true at once here:
+    //   - clearing is right for #1434, whose counters must mean "this session";
+    //   - the wake measurement begins inside retained pre-roll, so a gap in
+    //     there is inside its window and must survive the clear;
+    //   - read-then-clear as two calls leaves a window where the RT and consumer
+    //     threads (still running) increment a counter that lands in neither, so
+    //     the gap is erased from both and a wake reads `exact` over a lossy
+    //     stream. Hence `snapshotAndReset`, and hence doing it before activate:
+    //     every increment after this line belongs to the live session.
+    preRollGapCount =
+      renderContext.map {
+        let s = $0.counters.snapshotAndReset()
+        // Mirrors `CaptureStopMetadata.inputTimelineGapCount`: one addend per death
+        // point, and `converterErrors` is excluded because it is a subset of
+        // `lostChunks` (r8). If that sum changes, change this with it.
+        return s.ringDrops + s.renderFailures + s.oversizedSlices + s.lostChunks
+      } ?? 0
+
     let stream = AsyncStream<AVAudioPCMBuffer> { continuation in
       self.streamContinuation = continuation
     }
@@ -689,9 +784,10 @@ final class HALDeviceInputSource: AudioInputSource {
     captureGeneration &+= 1
     captureLiveness.reset()
     // #1434: per-session capture-health state. The warm unit outlives sessions
-    // (deactivateCapture keeps it pre-rolling), so an idle-time format change
-    // or pre-roll ring drop must not bleed into the next recording's telemetry.
-    renderContext?.counters.reset()
+    // (deactivateCapture keeps it pre-rolling), so an idle-time format change or
+    // pre-roll ring drop must not bleed into the next recording's telemetry. The
+    // counter half of that clear moved ABOVE `fwd.activate` as an atomic
+    // snapshot-and-reset (#1788 r5); only the format flag is cleared here.
     formatDivergenceObserved = false
     // #1523: a fresh session must never serve the previous session's cached
     // stop-metadata; the live path repopulates it via teardownUnit().
@@ -780,7 +876,10 @@ final class HALDeviceInputSource: AudioInputSource {
         "HAL session stats: native=\(Int(context.nativeFormat.sampleRate)) "
           + "target=\(Int(context.targetFormat.sampleRate)) "
           + "ringDrops=\(snap.ringDrops) convErrors=\(snap.converterErrors) "
-          + "zeroConvOut=\(snap.zeroOutputs) rateDivergence=\(formatDivergenceObserved)"
+          + "zeroConvOut=\(snap.zeroOutputs) renderFails=\(snap.renderFailures) "
+          + "oversizedSlices=\(snap.oversizedSlices) "
+          + "lostChunks=\(snap.lostChunks) preRollGaps=\(preRollGapCount) "
+          + "rateDivergence=\(formatDivergenceObserved)"
       )
     }
     AudioCaptureManager.btRouteLog(
@@ -1240,6 +1339,13 @@ private func halRenderProc(
   // scratch buffer actually holds; a device that oversizes its slice loses
   // the excess of that one callback rather than overflowing.
   let clampedFrames = min(inNumberFrames, UInt32(context.capacityFrames))
+  if inNumberFrames > UInt32(context.capacityFrames) {
+    // The clamp above is a SAFETY behaviour that discards audio, and until
+    // #1788 nothing recorded it (cloud review r3 named the class: every gap
+    // between the microphone and the sample counter must be countable, or a
+    // sample index silently stops being an elapsed time).
+    context.counters.incrementOversizedSlice()
+  }
   let byteCapacity = Int(clampedFrames) * MemoryLayout<Float>.size
   // Reset every render — `AudioUnitRender` can shrink `mDataByteSize` to the
   // actual bytes written, so a stale smaller value from a prior callback
@@ -1249,7 +1355,12 @@ private func halRenderProc(
   let status = AudioUnitRender(
     context.audioUnit, ioActionFlags, inTimeStamp, 1, clampedFrames,
     context.scratch.unsafeMutablePointer)
-  guard status == noErr else { return status }
+  guard status == noErr else {
+    // This callback's frames are gone — same gap class as a ring drop, and
+    // likewise uncounted before #1788.
+    context.counters.incrementRenderFailure()
+    return status
+  }
   guard !context.stopped.isSet() else { return noErr }
 
   guard let data = context.scratch[0].mData else { return noErr }
@@ -1257,6 +1368,13 @@ private func halRenderProc(
   // trust the requested frame count alone.
   let renderedFrames = Int(context.scratch[0].mDataByteSize) / MemoryLayout<Float>.size
   let frameCount = min(Int(clampedFrames), renderedFrames)
+  // A SHORT RENDER IS NOT A GAP, and #1788 r9 proposed counting it as one.
+  // `noErr` with a reduced `mDataByteSize` means the device had fewer frames than
+  // the slice asked for — those frames never existed, so nothing was lost. Counting
+  // them would inflate `inputTimelineGapCount` on healthy captures and mark every
+  // reading `floor`, making the instrument worse rather than more honest. Declined
+  // deliberately, not overlooked; revisit only with evidence that a short render
+  // accompanies actual audio loss.
   guard frameCount > 0 else { return noErr }
   let floatPtr = data.assumingMemoryBound(to: Float.self)
 

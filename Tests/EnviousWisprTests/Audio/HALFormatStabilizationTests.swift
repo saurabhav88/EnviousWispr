@@ -181,5 +181,132 @@ struct CaptureStopMetadataTransportTests {
     let decoded = try JSONDecoder().decode(CaptureStopMetadata.self, from: data)
     #expect(decoded.nativeChannelCount == nil)
     #expect(decoded.nativeRateHz == 24000)
+    // #1788: the same blob predates the two gap counters, which are NOT optional.
+    // Absent-means-zero keeps the boundary decoding instead of throwing.
+    #expect(decoded.renderFailureCount == 0)
+    #expect(decoded.oversizedSliceCount == 0)
+    #expect(decoded.preRollGapCount == 0)
+    #expect(decoded.inputTimelineGapCount == 1)  // the one ring drop above
+  }
+
+  @Test("#1788: the new gap counters survive the round trip")
+  func gapCountersRoundTrip() throws {
+    let original = CaptureStopMetadata(
+      nativeRateHz: 48000, renderFailureCount: 2, oversizedSliceCount: 5,
+      preRollGapCount: 7)
+    let data = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(CaptureStopMetadata.self, from: data)
+    #expect(decoded == original)
+    #expect(decoded.renderFailureCount == 2)
+    #expect(decoded.oversizedSliceCount == 5)
+    #expect(decoded.preRollGapCount == 7)
+  }
+}
+
+// MARK: - #1788 input-timeline gap enumeration
+
+/// The wake instrument reads a sample INDEX as an elapsed time, which holds only
+/// while the stream lost nothing. `inputTimelineGapCount` is the single owner of
+/// "did it lose anything", so these tests pin every edge it must count — and the
+/// one it must not. Cloud review found a fresh missing edge in three consecutive
+/// rounds; the point of a freeze test here is that a fourth edge added without a
+/// line in the sum fails loudly instead of silently under-reporting.
+@Suite("CaptureStopMetadata — input-timeline gap enumeration (#1788)")
+struct CaptureStopMetadataGapTests {
+
+  @Test("a clean session reports zero gaps, so a wake is exact")
+  func cleanSessionHasNoGaps() {
+    let clean = CaptureStopMetadata(nativeRateHz: 24000)
+    #expect(clean.inputTimelineGapCount == 0)
+  }
+
+  @Test("each lossy edge contributes exactly one gap")
+  func everyLossyEdgeCounts() {
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, ringDropCount: 1)
+        .inputTimelineGapCount == 1)
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, renderFailureCount: 1)
+        .inputTimelineGapCount == 1)
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, oversizedSliceCount: 1)
+        .inputTimelineGapCount == 1)
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, lostChunkCount: 1)
+        .inputTimelineGapCount == 1)
+  }
+
+  @Test("a converter error is a SUBSET of lost chunks, never a second gap (r8)")
+  func converterErrorIsNotAnIndependentAddend() {
+    // Every converter failure also returns `.lost`, so the real pairing is
+    // (converterErrorCount: 1, lostChunkCount: 1) for ONE lost chunk. Summing both
+    // reported 2 — the double count r7's catch-all introduced beside the per-cause
+    // counters. The gap total must follow death points, not causes.
+    let oneChunkLostToConverter = CaptureStopMetadata(
+      nativeRateHz: 24000, converterErrorCount: 1, lostChunkCount: 1)
+    #expect(oneChunkLostToConverter.inputTimelineGapCount == 1)
+    // And the diagnostic breakdown is still available on its own.
+    #expect(oneChunkLostToConverter.converterErrorCount == 1)
+    // A converter error alone contributes nothing: it cannot occur without the
+    // matching lost chunk, so this shape only appears in a hand-built fixture.
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, converterErrorCount: 1)
+        .inputTimelineGapCount == 0)
+  }
+
+  @Test("a zero-frame converter output is NOT a gap — the input is emitted later")
+  func zeroConverterOutputIsNotAGap() {
+    // Cloud review r3 named this as a third loss source. It is not one: a priming
+    // call consumes its input and emits it on the following call, so the output
+    // timeline stays continuous. Counting it would report a floor on every
+    // session, since priming legitimately yields one.
+    let primed = CaptureStopMetadata(nativeRateHz: 24000, zeroOutputCount: 1)
+    #expect(primed.inputTimelineGapCount == 0)
+  }
+
+  @Test("gaps sum across edges rather than saturating at one")
+  func gapsSumAcrossEdges() {
+    // 3 of the lost chunks were converter failures, so `converterErrorCount: 3`
+    // describes part of `lostChunkCount: 5` rather than adding to it.
+    let messy = CaptureStopMetadata(
+      nativeRateHz: 16000, ringDropCount: 4, converterErrorCount: 3,
+      zeroOutputCount: 9, renderFailureCount: 2, oversizedSliceCount: 1,
+      lostChunkCount: 5)
+    // 4 + 2 + 1 + 5; zeroOutput and converterError both excluded.
+    #expect(messy.inputTimelineGapCount == 12)
+  }
+
+  @Test("a gap carried in from idle pre-roll still counts (r4: the WINDOW)")
+  func preRollGapIsInsideTheWakeWindow() {
+    // The four session counters are reset before the retained pre-roll is
+    // drained, and a measured wake begins inside that pre-roll. If the carry-in
+    // were excluded, every one of those gaps would report as `exact` — the
+    // instrument confidently wrong in exactly the window it measures. Cloud
+    // review found this AFTER three rounds of edge-hunting, so the window is
+    // frozen here separately from the edge list.
+    let carried = CaptureStopMetadata(nativeRateHz: 24000, preRollGapCount: 2)
+    #expect(carried.inputTimelineGapCount == 2)
+    #expect(carried.ringDropCount == 0)  // not folded into a session counter
+    #expect(carried.converterErrorCount == 0)
+  }
+
+  @Test("pre-roll carry-in adds to session gaps rather than replacing them")
+  func preRollGapAddsToSessionGaps() {
+    let both = CaptureStopMetadata(
+      nativeRateHz: 24000, ringDropCount: 1, preRollGapCount: 3)
+    #expect(both.inputTimelineGapCount == 4)
+  }
+
+  @Test("the catch-all lost-chunk count is a gap too (r7)")
+  func lostChunkCountsAsAGap() {
+    // r7 found TWO more silent exits on the pop->route path: buffer allocation
+    // failure under memory pressure, and an unreadable converted buffer. Rather
+    // than add a counter per cause — the list had already reopened in r3 and r5 —
+    // `ForwardOutcome` now forces every exit to declare loss and this one counter
+    // catches all of them, including exits not yet written.
+    let lost = CaptureStopMetadata(nativeRateHz: 24000, lostChunkCount: 2)
+    #expect(lost.inputTimelineGapCount == 2)
+    #expect(lost.ringDropCount == 0)
+    #expect(lost.converterErrorCount == 0)
   }
 }

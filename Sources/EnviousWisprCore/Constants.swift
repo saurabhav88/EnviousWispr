@@ -59,11 +59,48 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   public let nativeRateHz: Double?
   /// Chunks the RT ring refused because the consumer lagged (drop = lost audio).
   public let ringDropCount: Int
-  /// AVAudioConverter calls that returned an error (converted chunk lost).
+  /// AVAudioConverter calls that returned an error (converted chunk lost). A SUBSET
+  /// of `lostChunkCount`, never an independent addend in `inputTimelineGapCount` —
+  /// every converter failure also returns `.lost`, so summing both counts the same
+  /// chunk twice (r8).
   public let converterErrorCount: Int
   /// Converter calls that produced zero output frames (expected once at
-  /// priming; more than ~1 per session is a signal).
+  /// priming; more than ~1 per session is a signal). Deliberately NOT part of
+  /// `inputTimelineGapCount`: a priming call CONSUMES its input and emits it on
+  /// the following call, so the output timeline stays continuous.
   public let zeroOutputCount: Int
+  /// `AudioUnitRender` calls that returned a non-`noErr` status (that whole
+  /// callback's frames never reached the ring = lost audio).
+  public let renderFailureCount: Int
+  /// Render callbacks whose hardware slice exceeded the scratch allocation, so
+  /// the excess frames of that callback were clamped away = lost audio.
+  ///
+  /// This and `renderFailureCount` are dev-log + `inputTimelineGapCount` only.
+  /// The three older counters also travel to `dictation.completed`; these two
+  /// deliberately do NOT yet, because that chain spans four layers and a PostHog
+  /// property-naming decision that is a separate change, not a deferred half of
+  /// this one. The asymmetry is recorded so it reads as chosen, not forgotten,
+  /// and tracked in #1847.
+  public let oversizedSliceCount: Int
+  /// Gaps that accrued while the warm unit was PRE-ROLLING, before this session's
+  /// counters were reset (#1788 cloud review r4). The other counters are reset per
+  /// session on purpose, so idle-time faults cannot bleed into a recording's
+  /// #1434 telemetry — but the wake measurement spans retained pre-roll, so for
+  /// IT those gaps are inside the window and erasing them would let the line
+  /// claim `exact` over a stream that provably lost frames. Carried separately
+  /// rather than folded into the four counters above, which must keep meaning
+  /// "this session". Deliberately CONSERVATIVE: it spans the whole idle stretch
+  /// rather than only the ~500ms the ring still holds, so it can say `floor` when
+  /// `exact` was defensible. A measurement authority fails closed.
+  public let preRollGapCount: Int
+  /// Popped chunks that died between the ring and `PreRollForwarder.route` for any
+  /// reason other than a benign converter priming call — buffer allocation failure
+  /// under memory pressure, an unreadable converted buffer, or any future early
+  /// exit. A CATCH-ALL by design: #1788 rounds 3, 5 and 7 each uncovered another
+  /// silent `return false` on that path, so the count now lives at the single point
+  /// a chunk can die rather than at each reason it might, and a new exit has to
+  /// declare itself through `ForwardOutcome`.
+  public let lostChunkCount: Int
   /// A stream-format / nominal-rate change notification fired for the bound
   /// device while capturing (#1434 — log-and-telemetry only in v1; never
   /// interrupts the recording).
@@ -75,11 +112,52 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// source doesn't read a channel count (e.g. proxy-origin stalls).
   public let nativeChannelCount: Int?
 
+  /// Every way the captured stream can lose frames between the microphone and
+  /// the pipeline, summed. THE point of this property is to be the one place
+  /// that enumerates them, so anything measuring positions in the sample stream
+  /// asks one question instead of rediscovering the edges one review round at a
+  /// time (#1788 took three rounds of exactly that). Zero means the sample
+  /// stream is a faithful, gap-free timeline of what the device delivered, so a
+  /// sample INDEX is an exact elapsed time; nonzero makes any such index a lower
+  /// bound. The four edges, all in `HALDeviceInputSource`:
+  /// ONE ADDEND PER DEATH POINT, which is what keeps this sum honest:
+  ///   1. `AudioUnitRender` returned an error   -> `renderFailureCount`
+  ///   2. slice larger than the scratch buffer  -> `oversizedSliceCount`
+  ///   3. RT ring full, consumer lagging        -> `ringDropCount`
+  ///   4. ANY death on the pop->route path      -> `lostChunkCount`
+  /// 1-3 are separate because each is a distinct death point in the RT callback,
+  /// before a chunk ever reaches the consumer. 4 is a single catch-all because that
+  /// path kept sprouting new silent exits (r3, r5, r7 each found one), so
+  /// `ForwardOutcome` now forces every exit to declare loss and this counts them all.
+  ///
+  /// `converterErrorCount` is deliberately NOT an addend: every converter failure
+  /// also returns `.lost`, so it is a SUBSET of `lostChunkCount` kept for #1434
+  /// diagnostic breakdown. Adding both double-counted the same lost chunk (r8 —
+  /// introduced by r7's own fix, which is the hazard of a catch-all landing beside
+  /// per-cause counters). A zero-frame converter output is not a gap at all (see
+  /// `zeroOutputCount`). Before adding an addend here, ask whether its chunk already
+  /// dies at an existing death point.
+  ///
+  /// The WINDOW matters as much as the edge list: a measured wake starts inside
+  /// retained pre-roll, so `preRollGapCount` is part of the sum even though the
+  /// four session counters are reset before that pre-roll is drained. Counting
+  /// the right edges over the wrong window was cloud review r4 on #1788, after
+  /// r1-r3 each found a different edge — the same root cause four times, which
+  /// is why both halves are stated here rather than in a call site.
+  public var inputTimelineGapCount: Int {
+    renderFailureCount + oversizedSliceCount + ringDropCount + lostChunkCount
+      + preRollGapCount
+  }
+
   public init(
     nativeRateHz: Double?,
     ringDropCount: Int = 0,
     converterErrorCount: Int = 0,
     zeroOutputCount: Int = 0,
+    renderFailureCount: Int = 0,
+    oversizedSliceCount: Int = 0,
+    preRollGapCount: Int = 0,
+    lostChunkCount: Int = 0,
     rateDivergenceDetected: Bool = false,
     nativeChannelCount: Int? = nil
   ) {
@@ -87,8 +165,33 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     self.ringDropCount = ringDropCount
     self.converterErrorCount = converterErrorCount
     self.zeroOutputCount = zeroOutputCount
+    self.renderFailureCount = renderFailureCount
+    self.oversizedSliceCount = oversizedSliceCount
+    self.preRollGapCount = preRollGapCount
+    self.lostChunkCount = lostChunkCount
     self.rateDivergenceDetected = rateDivergenceDetected
     self.nativeChannelCount = nativeChannelCount
+  }
+
+  /// Counters decode as ABSENT-MEANS-ZERO rather than as required keys, so a stop
+  /// reply produced before a given counter existed still decodes. The synthesized
+  /// decoder would instead throw on the missing key, which is how #1788's two new
+  /// gap counters would have broken the #1523 forward-compatibility test. Adding
+  /// another counter therefore needs a line here as well as in
+  /// `inputTimelineGapCount` — both are deliberate, both fail loudly in tests.
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    nativeRateHz = try c.decodeIfPresent(Double.self, forKey: .nativeRateHz)
+    ringDropCount = try c.decodeIfPresent(Int.self, forKey: .ringDropCount) ?? 0
+    converterErrorCount = try c.decodeIfPresent(Int.self, forKey: .converterErrorCount) ?? 0
+    zeroOutputCount = try c.decodeIfPresent(Int.self, forKey: .zeroOutputCount) ?? 0
+    renderFailureCount = try c.decodeIfPresent(Int.self, forKey: .renderFailureCount) ?? 0
+    oversizedSliceCount = try c.decodeIfPresent(Int.self, forKey: .oversizedSliceCount) ?? 0
+    preRollGapCount = try c.decodeIfPresent(Int.self, forKey: .preRollGapCount) ?? 0
+    lostChunkCount = try c.decodeIfPresent(Int.self, forKey: .lostChunkCount) ?? 0
+    rateDivergenceDetected =
+      try c.decodeIfPresent(Bool.self, forKey: .rateDivergenceDetected) ?? false
+    nativeChannelCount = try c.decodeIfPresent(Int.self, forKey: .nativeChannelCount)
   }
 }
 
