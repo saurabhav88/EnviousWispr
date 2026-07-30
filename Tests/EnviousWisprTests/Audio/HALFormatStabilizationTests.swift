@@ -185,18 +185,21 @@ struct CaptureStopMetadataTransportTests {
     // Absent-means-zero keeps the boundary decoding instead of throwing.
     #expect(decoded.renderFailureCount == 0)
     #expect(decoded.oversizedSliceCount == 0)
+    #expect(decoded.preRollGapCount == 0)
     #expect(decoded.inputTimelineGapCount == 1)  // the one ring drop above
   }
 
-  @Test("#1788: the two new gap counters survive the round trip")
+  @Test("#1788: the new gap counters survive the round trip")
   func gapCountersRoundTrip() throws {
     let original = CaptureStopMetadata(
-      nativeRateHz: 48000, renderFailureCount: 2, oversizedSliceCount: 5)
+      nativeRateHz: 48000, renderFailureCount: 2, oversizedSliceCount: 5,
+      preRollGapCount: 7)
     let data = try JSONEncoder().encode(original)
     let decoded = try JSONDecoder().decode(CaptureStopMetadata.self, from: data)
     #expect(decoded == original)
     #expect(decoded.renderFailureCount == 2)
     #expect(decoded.oversizedSliceCount == 5)
+    #expect(decoded.preRollGapCount == 7)
   }
 }
 
@@ -249,5 +252,26 @@ struct CaptureStopMetadataGapTests {
       nativeRateHz: 16000, ringDropCount: 4, converterErrorCount: 3,
       zeroOutputCount: 9, renderFailureCount: 2, oversizedSliceCount: 1)
     #expect(messy.inputTimelineGapCount == 10)  // 4+3+2+1, zeroOutput excluded
+  }
+
+  @Test("a gap carried in from idle pre-roll still counts (r4: the WINDOW)")
+  func preRollGapIsInsideTheWakeWindow() {
+    // The four session counters are reset before the retained pre-roll is
+    // drained, and a measured wake begins inside that pre-roll. If the carry-in
+    // were excluded, every one of those gaps would report as `exact` — the
+    // instrument confidently wrong in exactly the window it measures. Cloud
+    // review found this AFTER three rounds of edge-hunting, so the window is
+    // frozen here separately from the edge list.
+    let carried = CaptureStopMetadata(nativeRateHz: 24000, preRollGapCount: 2)
+    #expect(carried.inputTimelineGapCount == 2)
+    #expect(carried.ringDropCount == 0)  // not folded into a session counter
+    #expect(carried.converterErrorCount == 0)
+  }
+
+  @Test("pre-roll carry-in adds to session gaps rather than replacing them")
+  func preRollGapAddsToSessionGaps() {
+    let both = CaptureStopMetadata(
+      nativeRateHz: 24000, ringDropCount: 1, preRollGapCount: 3)
+    #expect(both.inputTimelineGapCount == 4)
   }
 }

@@ -439,6 +439,11 @@ final class HALDeviceInputSource: AudioInputSource {
   /// prior session's metadata.
   private var cachedStopMetadata: CaptureStopMetadata?
 
+  /// Gaps carried in from the idle pre-roll window, snapshotted at the top of
+  /// `startCapture` before the per-session counter reset (#1788 r4). Assigned
+  /// fresh every session, so it never accumulates across takes.
+  private var preRollGapCount = 0
+
   private func computeStopMetadataFromLiveState() -> CaptureStopMetadata? {
     guard let context = renderContext else { return nil }
     let snap = context.counters.snapshot()
@@ -449,6 +454,7 @@ final class HALDeviceInputSource: AudioInputSource {
       zeroOutputCount: snap.zeroOutputs,
       renderFailureCount: snap.renderFailures,
       oversizedSliceCount: snap.oversizedSlices,
+      preRollGapCount: preRollGapCount,
       rateDivergenceDetected: formatDivergenceObserved,
       nativeChannelCount: boundNativeChannelCount
     )
@@ -694,6 +700,18 @@ final class HALDeviceInputSource: AudioInputSource {
         source: "HALDeviceInputSource.startCapture.missing_forwarder")
     }
 
+    // Read the idle pre-roll's gaps BEFORE `counters.reset()` below discards
+    // them (#1788 cloud review r4). The reset is right for #1434 per-session
+    // telemetry, but the wake measurement starts inside retained pre-roll, so a
+    // gap in there is inside its window: dropping it would let the diagnostic
+    // print `exact` over a stream that provably lost frames. Read before
+    // `fwd.activate` too, which drains the pre-roll on this same call.
+    preRollGapCount =
+      renderContext.map {
+        let s = $0.counters.snapshot()
+        return s.ringDrops + s.converterErrors + s.renderFailures + s.oversizedSlices
+      } ?? 0
+
     let stream = AsyncStream<AVAudioPCMBuffer> { continuation in
       self.streamContinuation = continuation
     }
@@ -801,6 +819,7 @@ final class HALDeviceInputSource: AudioInputSource {
           + "ringDrops=\(snap.ringDrops) convErrors=\(snap.converterErrors) "
           + "zeroConvOut=\(snap.zeroOutputs) renderFails=\(snap.renderFailures) "
           + "oversizedSlices=\(snap.oversizedSlices) "
+          + "preRollGaps=\(preRollGapCount) "
           + "rateDivergence=\(formatDivergenceObserved)"
       )
     }

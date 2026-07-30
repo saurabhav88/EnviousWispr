@@ -79,6 +79,17 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// this one. The asymmetry is recorded so it reads as chosen, not forgotten,
   /// and tracked in #1847.
   public let oversizedSliceCount: Int
+  /// Gaps that accrued while the warm unit was PRE-ROLLING, before this session's
+  /// counters were reset (#1788 cloud review r4). The other counters are reset per
+  /// session on purpose, so idle-time faults cannot bleed into a recording's
+  /// #1434 telemetry — but the wake measurement spans retained pre-roll, so for
+  /// IT those gaps are inside the window and erasing them would let the line
+  /// claim `exact` over a stream that provably lost frames. Carried separately
+  /// rather than folded into the four counters above, which must keep meaning
+  /// "this session". Deliberately CONSERVATIVE: it spans the whole idle stretch
+  /// rather than only the ~500ms the ring still holds, so it can say `floor` when
+  /// `exact` was defensible. A measurement authority fails closed.
+  public let preRollGapCount: Int
   /// A stream-format / nominal-rate change notification fired for the bound
   /// device while capturing (#1434 — log-and-telemetry only in v1; never
   /// interrupts the recording).
@@ -104,8 +115,16 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   ///   4. `AVAudioConverter` returned an error  -> `converterErrorCount`
   /// A fifth candidate, a zero-frame converter output, is NOT a gap (see
   /// `zeroOutputCount`). Adding a new lossy edge means adding it here too.
+  ///
+  /// The WINDOW matters as much as the edge list: a measured wake starts inside
+  /// retained pre-roll, so `preRollGapCount` is part of the sum even though the
+  /// four session counters are reset before that pre-roll is drained. Counting
+  /// the right edges over the wrong window was cloud review r4 on #1788, after
+  /// r1-r3 each found a different edge — the same root cause four times, which
+  /// is why both halves are stated here rather than in a call site.
   public var inputTimelineGapCount: Int {
     renderFailureCount + oversizedSliceCount + ringDropCount + converterErrorCount
+      + preRollGapCount
   }
 
   public init(
@@ -115,6 +134,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     zeroOutputCount: Int = 0,
     renderFailureCount: Int = 0,
     oversizedSliceCount: Int = 0,
+    preRollGapCount: Int = 0,
     rateDivergenceDetected: Bool = false,
     nativeChannelCount: Int? = nil
   ) {
@@ -124,6 +144,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     self.zeroOutputCount = zeroOutputCount
     self.renderFailureCount = renderFailureCount
     self.oversizedSliceCount = oversizedSliceCount
+    self.preRollGapCount = preRollGapCount
     self.rateDivergenceDetected = rateDivergenceDetected
     self.nativeChannelCount = nativeChannelCount
   }
@@ -142,6 +163,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     zeroOutputCount = try c.decodeIfPresent(Int.self, forKey: .zeroOutputCount) ?? 0
     renderFailureCount = try c.decodeIfPresent(Int.self, forKey: .renderFailureCount) ?? 0
     oversizedSliceCount = try c.decodeIfPresent(Int.self, forKey: .oversizedSliceCount) ?? 0
+    preRollGapCount = try c.decodeIfPresent(Int.self, forKey: .preRollGapCount) ?? 0
     rateDivergenceDetected =
       try c.decodeIfPresent(Bool.self, forKey: .rateDivergenceDetected) ?? false
     nativeChannelCount = try c.decodeIfPresent(Int.self, forKey: .nativeChannelCount)
