@@ -208,6 +208,7 @@ final class RecordingSessionKernel {
     /// controller (unarmed = every hook is a no-op); tests inject an isolated
     /// instance. Compiled out of release entirely.
     var crashBoundaryController: CrashBoundaryFaultController = .shared
+
   #endif
 
   /// Logical-time seam (PR-3 plan §14a). Production wiring of a real clock is
@@ -1358,12 +1359,16 @@ final class RecordingSessionKernel {
     // truer figure anyway (audio kept arriving until `stopCapture()` below).
     freezeRecordingSnapshot()
     markPipelineTimingStart()
+    // #1579: snapshot the capture session this stop OWNS at the stop-ownership
+    // point, immediately before the synchronous transition. Nothing between here
+    // and `stopCapture` suspends, so the value cannot go stale before it is used.
+    let ownedCaptureSessionID = audioCapture.currentCaptureSessionID
     transition(to: .stopping)
     // PR-4.5 #4 (Codex r1): latch the tick BEFORE `stopCapture()`'s await so
     // capture-teardown latency does not count as visible-recording time.
     stoppingStartedAtTick = currentTick()
     captureLifecycle = .stopping
-    var captureResult = await audioCapture.stopCapture()
+    var captureResult = await audioCapture.stopCapture(sessionID: ownedCaptureSessionID)
     // Guard BEFORE touching kernel state — if a new session started while
     // `stopCapture()` was suspended, these fields belong to that session now
     // (Codex P2-round4 stale-completion guard).
@@ -3423,10 +3428,15 @@ final class RecordingSessionKernel {
       // No stop in flight — this terminal owns it.
       captureLifecycle = .stopping
       resourcesReleased = false
+      // #1579: snapshot the owned capture session SYNCHRONOUSLY, before the Task
+      // is created. The scheduling window between task creation and task body is
+      // exactly this site's exposure; re-reading the id inside the Task would
+      // return the newer session's value and defeat the fence entirely.
+      let ownedCaptureSessionID = audioCapture.currentCaptureSessionID
       Task { @MainActor [weak self] in
         guard let self else { return }
         self.bump()
-        _ = await self.audioCapture.stopCapture()
+        _ = await self.audioCapture.stopCapture(sessionID: ownedCaptureSessionID)
         // Gate on the capture lifecycle, not `SessionID`. A new session that
         // started while this stop was suspended sets `captureLifecycle` to
         // `.active` via `beginCapturePhase()`, so this guard refuses to
@@ -3435,6 +3445,12 @@ final class RecordingSessionKernel {
         // `SessionID` but leaves `captureLifecycle` at `.stopping`, so this
         // task completes its own bookkeeping rather than being orphaned
         // (Codex P2-round6).
+        //
+        // #1579 NOTE: the pre-stop lifecycle gate that belongs here was split out
+        // to its own issue. Two review rounds each found a hole in it, both in the
+        // direction of refusing a legitimate stop (which loses a dictation), and
+        // the correct shape needs an explicit capture handoff in the forward path
+        // rather than a refusal here.
         guard self.captureLifecycle == .stopping else { return }
         self.captureLifecycle = .stopped
         self.resourcesReleased = true

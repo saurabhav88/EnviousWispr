@@ -172,7 +172,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
     return try await beginCapturePhase()
   }
 
-  func stopCapture() async -> CaptureResult {
+  func stopCapture(sessionID: UInt64) async -> CaptureResult {
     stopCaptureCallCount += 1
     isCapturing = false
     bufferContinuation?.finish()

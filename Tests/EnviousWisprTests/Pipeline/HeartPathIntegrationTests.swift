@@ -299,7 +299,7 @@ private final class HeartPathHarness {
   func run() async throws -> HeartPathHarnessResult {
     try await audioCapture.startEnginePhase()
     _ = try await audioCapture.beginCapturePhase()
-    let captureResult = await audioCapture.stopCapture()
+    let captureResult = await audioCapture.stopCapture(sessionID: audioCapture.currentCaptureSessionID)
 
     // ONE adapter drives both transcription and the wiring, so the stored
     // language, duration and processing time come from the same result the
@@ -557,7 +557,7 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
     return try await beginCapturePhase()
   }
 
-  func stopCapture() async -> CaptureResult {
+  func stopCapture(sessionID: UInt64) async -> CaptureResult {
     stopCaptureCallCount += 1
     isCapturing = false
     isActivelyCapturing = false

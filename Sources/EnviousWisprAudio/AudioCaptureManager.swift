@@ -449,6 +449,16 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         source: "AudioCaptureManager.beginCapturePhase.no_active_source")
     }
 
+    // #1579: retire any predecessor spool FIRST — before the sample reset below
+    // and before the `await source.startCapture()` further down. Two reasons, and
+    // the order matters for both. During that await an unstopped predecessor's
+    // feed still sees `isCapturing == true` and could reach the new take's
+    // buffer; and `capturedSamples` is cleared on the very next line, so anything
+    // the predecessor's 1s poll had not yet consumed would be unrecoverable if
+    // this ran afterwards (cloud review P2 — the previous placement was below the
+    // reset while its own comment claimed otherwise).
+    retirePredecessorRecoverySpool()
+
     // Pre-allocate sample buffer
     capturedSamples = []
     capturedSamples.reserveCapacity(16000 * 30)
@@ -561,10 +571,34 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     return try await beginCapturePhase()
   }
 
-  public func stopCapture() async -> CaptureResult {
+  public func stopCapture(sessionID: UInt64) async -> CaptureResult {
+    // #1579 layer 2: ARMED-session identity fence. MUST precede every existing
+    // stop-path read and mutation — a stale stop that got this far would clear a
+    // newer take's samples and deactivate its source. A mismatch returns empty and
+    // changes nothing; both production callers discard a stale result. `0` stays
+    // valid: it is the id of a prepared-but-never-armed engine, whose cleanup must
+    // be allowed through or the engine leaks. This guard cannot identify that
+    // prepared interval; callers must separately gate it using lifecycle ownership.
+    guard sessionID == captureSessionCounter else {
+      Self.btRouteLog("Stop skipped: stale capture session")
+      return CaptureResult(samples: [])
+    }
+
     guard let source = activeSource else {
       let samples = capturedSamples
       capturedSamples = []
+      // #1579 (defect 1c): finalize the spool HERE too. This early return used to
+      // skip `stopRecoverySpooling` entirely, leaving an armed spool with no
+      // terminal marker. Reachable in production: an engine interruption clears
+      // `isCapturing` without clearing `activeSource`, the user then switches
+      // "Keep engine warm" off, reconciliation is now permitted and tears the
+      // source down — and the kernel's stop lands here. `RecoverySpoolStore`
+      // scans every file without requiring a marker and the replayer accepts a
+      // truncated prefix, so the leftover could be replayed as a real recording.
+      // Only best-effort deletion on the live ending masked it, and that does not
+      // run if the process dies first. Reached only after the identity fence, so
+      // this is always THIS session's spool. Idempotent via `recoveryFinalized`.
+      stopRecoverySpooling(tail: samples)
       return CaptureResult(samples: samples)
     }
 
@@ -740,6 +774,28 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     func clearActiveSourceForTesting() {
       activeSource = nil
     }
+
+    /// Test seam (#1579): arm the recovery spool directly. `startRecoverySpooling`
+    /// is private and only reachable through `beginCapturePhase`, which needs a
+    /// real device format a stub cannot provide — the same constraint that forced
+    /// `installCapturedSourceForTesting`. Lets the predecessor-retirement tests
+    /// assert against the REAL spool files rather than manager internals.
+    func armRecoverySpoolingForTesting(payload: Data?) {
+      startRecoverySpooling(payload: payload)
+    }
+
+    /// Test oracle (#1579): whether a live feed task is currently retained. A
+    /// retired predecessor must leave none.
+    var debugHasLiveRecoveryFeedTask: Bool {
+      guard let task = recoveryFeedTask else { return false }
+      return !task.isCancelled
+    }
+
+    /// Test oracle (#1579): the currently armed writer, so a test can hold a
+    /// reference across the action under test and then barrier on its write queue.
+    /// The manager clears its own reference on every finalize path, so a test that
+    /// grabs the writer afterwards would get nil and silently assert nothing.
+    var debugRecoverySpoolWriter: RecoverySpoolWriter? { recoverySpoolWriter }
   #endif
 
   public func preWarm() async throws {
@@ -1287,7 +1343,42 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   /// Decode the directive and arm the spool writer + feed loop. Fail-open: any
   /// decode/preflight failure leaves recovery off and capture byte-identical.
+  /// Retire any live predecessor spool: write its terminal marker and cancel its
+  /// feed. Single owner (#1579 §3c), called from BOTH the start of
+  /// `beginCapturePhase` (so nothing of the new take can reach an old writer) and
+  /// the top of `startRecoverySpooling` (so a direct arm is safe on its own).
+  /// Idempotent — `finalizeRecovery` no-ops once the writer is gone.
+  private func retirePredecessorRecoverySpool() {
+    // Feed the tail the poll loop had not reached yet, so a superseded spool is
+    // still complete up to the moment it was superseded. `finalizeRecovery` marks
+    // it `.interrupted` rather than `.cleanFinalized`: this session did not end
+    // cleanly, and the marker must not claim it did.
+    if let writer = recoverySpoolWriter, !recoveryFinalized,
+      capturedSamples.count > recoveryFedSampleCount
+    {
+      writer.append(Array(capturedSamples[recoveryFedSampleCount...]))
+      recoveryFedSampleCount = capturedSamples.count
+    }
+    if recoverySpoolWriter != nil { finalizeRecovery(.interrupted) }
+    // A task can outlive its writer (the writer is cleared on every finalize
+    // path); cancel unconditionally so no stale feed survives.
+    recoveryFeedTask?.cancel()
+    recoveryFeedTask = nil
+  }
+
   private func startRecoverySpooling(payload: Data?) {
+    // #1579 (defect 1b): RETIRE any predecessor before resetting, never drop it.
+    // The old code nil'd `recoverySpoolWriter` and left `recoveryFeedTask` alive.
+    // That task holds its writer strongly and guards only on `isCapturing` +
+    // `writer.isHealthy` — both true again once this new session arms — so it
+    // would wake and append THIS session's samples into the PREVIOUS session's
+    // encrypted spool. Worse, it advances the shared `recoveryFedSampleCount`,
+    // so the new writer then skips the range the stale task consumed:
+    // contamination in both directions. Routed through `finalizeRecovery` rather
+    // than repeated inline — that is the single owner of "cancel the feed, write
+    // the terminal marker, clear the writer" (#1579 §3c).
+    retirePredecessorRecoverySpool()
+
     recoveryFinalized = false
     recoveryFedSampleCount = 0
     recoverySpoolWriter = nil

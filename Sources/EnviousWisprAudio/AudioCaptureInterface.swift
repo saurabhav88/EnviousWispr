@@ -118,7 +118,28 @@ public protocol AudioCaptureInterface: AnyObject {
   /// convenience in the extension below.
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer>
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>  // periphery:ignore - convenience method combining engine + capture phases
-  func stopCapture() async -> CaptureResult
+  /// Stop the capture session identified by `sessionID`, returning its samples.
+  /// Fenced on the armed capture generation (#1579): a mismatched ID is a total
+  /// no-op returning empty samples, so an older armed generation cannot clear a
+  /// newer armed take's samples, deactivate its source, or finalize its spool.
+  ///
+  /// Deliberately fenced ONLY on the armed capture counter. It does NOT identify
+  /// prepared-but-unarmed ownership — the counter advances in `beginCapturePhase`,
+  /// so an engine prepared and then cancelled is still session 0 (#1579 P9).
+  /// Callers must separately gate that interval using lifecycle ownership. Unlike
+  /// `retireCapturingSource(sessionID:)` below, this must not copy the
+  /// source-identity checks: retire is destructive on a specific retained source
+  /// object, stop is not. Requiring
+  /// source identity or a non-nil source here would refuse a legitimate stop
+  /// after a route change, a format restabilisation, a zero-signal retire, or an
+  /// idle teardown — and would break the nil-source salvage path that still owes
+  /// the caller its accumulated samples.
+  ///
+  /// Callers pass the id they observed when they took ownership of the stop, NOT
+  /// a value re-read at call time. `0` is a legitimate argument: an engine that
+  /// was prepared but never armed has not advanced the counter, and that cleanup
+  /// must still be allowed through or the prepared engine leaks.
+  func stopCapture(sessionID: UInt64) async -> CaptureResult
   func rebuildEngine()
   /// Retire (tear down) the source that captured the session identified by
   /// `sessionID`, so the next press opens a fresh one. Fenced + idempotent: a

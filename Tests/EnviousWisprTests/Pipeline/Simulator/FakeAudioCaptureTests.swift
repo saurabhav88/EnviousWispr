@@ -24,7 +24,7 @@ struct FakeAudioCaptureTests {
     await Task.yield()
     capture.deliverBuffer()
     capture.deliverBuffer()
-    _ = await capture.stopCapture()
+    _ = await capture.stopCapture(sessionID: capture.currentCaptureSessionID)
     await consumer.value
 
     #expect(callbackCount.value == 2, "onBufferCaptured fires once per delivered buffer")
@@ -38,7 +38,7 @@ struct FakeAudioCaptureTests {
     #expect(capture.stopCaptureCallCount == 0)
     _ = try await capture.beginCapturePhase()
     #expect(capture.isCapturing == true)
-    _ = await capture.stopCapture()
+    _ = await capture.stopCapture(sessionID: capture.currentCaptureSessionID)
     #expect(capture.stopCaptureCallCount == 1)
     #expect(capture.isCapturing == false, "capture must not be left hot after stop")
   }
@@ -67,7 +67,7 @@ struct FakeAudioCaptureTests {
     _ = try await capture.beginCapturePhase()
     capture.deliverBuffer(frameCount: 100)
     capture.addSpeechSegment(startSample: 0, endSample: 80)
-    let result = await capture.stopCapture()
+    let result = await capture.stopCapture(sessionID: capture.currentCaptureSessionID)
     #expect(result.samples.count == 100)
     #expect(result.vadSegments.count == 1)
   }

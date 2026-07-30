@@ -193,7 +193,7 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
     try await startEnginePhase()
     return try await beginCapturePhase()
   }
-  func stopCapture() async -> CaptureResult {
+  func stopCapture(sessionID: UInt64) async -> CaptureResult {
     continuation?.finish()
     continuation = nil
     isCapturing = false
