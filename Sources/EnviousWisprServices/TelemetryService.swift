@@ -2209,8 +2209,10 @@ public final class TelemetryService {
   /// the flush regardless of whether the scheduled delivery completes before a
   /// relaunch/quit). PostHog `flush()` only schedules async delivery and returns
   /// immediately — it never blocks the caller, and it exposes no delivery result
-  /// (G3 is not observable app-side; delivery health is watched by the
-  /// product-health integrity heartbeat, not here).
+  /// (G3 is not observable app-side, and nothing app-side watches delivery
+  /// health: the worker that carried that heartbeat was retired with #1838,
+  /// and a dead app surfaces through Sentry rather than through telemetry
+  /// volume).
   public func flushTelemetry(reason: FlushReason) {
     // #1173: drain any pending debounced settings delta first, so a change made
     // just before quit/relaunch is captured (sync-to-disk) within this flush.

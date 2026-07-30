@@ -23,7 +23,7 @@ never a UTC-day approximation).
 | New installs | Unique `distinct_id`s with `app.launched{is_fresh_install=true}` that day. |
 | People who finished setup | Unique `distinct_id`s with `onboarding.completed` that day. |
 | Of those, also dictated | Same-day activation: of the users who onboarded THAT day, how many ALSO had a successful dictation that same day. Deliberately same-day, not open-ended — a stated simplification, not an oversight. |
-| Total users | Unique `distinct_id`s with a **successful** `dictation.completed` that day. This deliberately EXCLUDES people who launched the app, or attempted a dictation that failed (ASR/paste failure). It is not "everyone who touched the app," it is "everyone who got a working dictation." This worker does not duplicate `workers/product-health`'s separate failure-rate tracking. |
+| Total users | Unique `distinct_id`s with a **successful** `dictation.completed` that day. This deliberately EXCLUDES people who launched the app, or attempted a dictation that failed (ASR/paste failure). It is not "everyone who touched the app," it is "everyone who got a working dictation." Per-version failure rates live in the version scorecard section, not here. |
 | Transcription engine, by user | Each user's LATEST dictation that day (`argMax` by timestamp) determines their engine bucket (Parakeet / WhisperKit). Grounded entirely in real per-dictation usage — `asr_backend` is a required, never-null field, so this needs no settings lookup or fallback chain. |
 | AI polishing, by user | Each user's **configured** polish provider, not the runtime outcome of any single dictation. A dictation that silently skipped polish (too-short bypass, EG-1-not-ready, Apple Intelligence permanently unavailable on that Mac, etc. — all legitimate by-design behaviors, not bugs) is NOT counted as "AI off"; it's attributed to whatever the user has selected. "Polish turned off" means only a user whose actual configured setting is `none`. Resolution order: (1) latest value across the union of `settings.snapshot.llm_provider` and `settings.changed{setting='llm_provider'}` — a provider switch mid-session, without relaunching, is picked up correctly; (2) if neither was ever recorded, any non-null provider that actually appears on one of their dictations that day; (3) if neither exists (a brand-new user who dictated before their first settings event fired), the shipped default `appleIntelligence`. |
 | Net total dictations | Total successful-dictation COUNT for the day (volume, not user count — reported separately from the per-user buckets above, never used as their percentage denominator). |
@@ -137,7 +137,7 @@ so the public `workers.dev` URL cannot be crawled into spamming Discord.
 
 ## Endpoint contract
 
-- Any HTTP method (unrestricted, matches `workers/product-health`).
+- Any HTTP method (unrestricted).
 - Auth: `x-trigger-secret` header OR `?token=` query param.
 - Optional `?date=YYYY-MM-DD` — Eastern-calendar-date override, for manual
   recovery after a missed scheduled run (see Failure visibility below). The
@@ -166,17 +166,34 @@ cron trigger time. Same secret lives as repo secret
 
 ## Failure visibility (how you'd know if this breaks)
 
-Two independent signals, matching `workers/product-health`'s posture:
+Three independent signals:
 
-1. **A `totals` failure, an auth failure, a malformed query/response, a
-   completeness-check mismatch, or a dev-id-list overflow** posts an explicit
-   "Daily report failed to generate for `<date>`: `<error>`" notice to
-   Discord (EnviousNotes) AND makes the worker return a non-2xx status, which
-   turns the GitHub Actions job red. You will see BOTH the Discord notice and
-   a GitHub Actions failure. `totals` is deliberately the ONE primary query
-   that never degrades — it anchors `resolveBuckets`' completeness check and
-   supplies the report's headline numbers, so there is no safe partial
-   substitute for it.
+1. **Section-local failures still deliver a report, then fail the run.** A
+   `totals` failure, an auth failure, a malformed query/response, or a
+   completeness-check mismatch inside adoption loses THAT SECTION only: the
+   message is still posted, with "Adoption, unavailable today" in place of the
+   figures and the version scorecard intact beside it, and then the worker
+   returns non-2xx so the GitHub Actions job goes red. The scorecard behaves
+   the same way in reverse, including when GitHub's release list is
+   unreachable after its retries. If both sections fail you get one message
+   with both marked unavailable — never two messages, and never silence.
+
+   `totals` is deliberately the ONE adoption query that never degrades to
+   "temporarily unavailable" — it anchors `resolveBuckets`' completeness check
+   and supplies the headline numbers, so there is no safe partial substitute.
+   It costs the adoption section rather than the whole report.
+
+   **Whole-run failures post a fixed notice and no report at all.** An invalid
+   `?date=` override, a dev-ID resolution failure or overflow, and a release
+   -resolution CONTRACT failure (misconfigured `GITHUB_REPO`, auth, malformed
+   response, no eligible stable release) all mean there is nothing honest to
+   send: at most one fixed "could not be generated" notice goes to Discord,
+   carrying no error text, status code or response body, and the run rejects.
+   A dev-ID list that will not resolve is never treated as "no dev accounts".
+
+   **An over-budget payload sends NOTHING**, with zero webhook requests and no
+   fallback notice. The report goes whole or not at all: a silently truncated
+   report reads as complete, which is worse than a missing one.
 
    **Six deliberate exceptions degrade instead of failing (#1655, #1716,
    #1720).** `tier_a` (the polish-provider *settings* lookup) and 5 of the 6
@@ -213,7 +230,7 @@ Two independent signals, matching `workers/product-health`'s posture:
 **Duplicate posts remain possible for a genuinely separate trigger, not a
 bug.** A manual `workflow_dispatch` on a day the scheduled run already
 posted will still post a second, real, duplicate report — same accepted
-tradeoff as `workers/product-health`'s own manual-trigger runbook. No
+tradeoff the retired product-health runbook carried. No
 idempotency/dedup mechanism is built (would need new stateful infrastructure
 — a Workers KV namespace — for a low-stakes internal report). What #1720
 DOES prevent: `daily-report-ping.yml`'s own `concurrency: {group:
