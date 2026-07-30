@@ -292,6 +292,14 @@ final class RecordingSessionKernel {
   /// genuine mute.
   private let zeroSignalDeviceEligible: @MainActor () -> Bool
   private let recordingStoppedTelemetry: @MainActor (_ sampleCount: Int) -> Void
+
+  /// #1846: called SYNCHRONOUSLY the moment a session is accepted, before any
+  /// work is spawned. The lifecycle sink also refreshes the take tag on every
+  /// event, but that path arrives through an unstructured `Task { @MainActor }`
+  /// with no ordering guarantee against `runForwardPath` — so an early
+  /// model-load or capture-start failure could be raised before the tag existed.
+  /// Defaulted to a no-op: only the production composition root wires it.
+  private let sessionAcceptedTelemetry: @MainActor (_ takeID: String) -> Void
   private let markPipelineTimingStart: @MainActor () -> Void
   private let markASRTimingStart: @MainActor (_ streaming: Bool) -> Void
   private let markASRTimingEnd: @MainActor () -> Void
@@ -741,6 +749,7 @@ final class RecordingSessionKernel {
     // `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`).
     zeroSignalDeviceEligible: (@MainActor () -> Bool)? = nil,
     recordingStoppedTelemetry: @escaping @MainActor (_ sampleCount: Int) -> Void = { _ in },
+    sessionAcceptedTelemetry: @escaping @MainActor (_ takeID: String) -> Void = { _ in },
     markPipelineTimingStart: @escaping @MainActor () -> Void = {},
     markASRTimingStart: @escaping @MainActor (_ streaming: Bool) -> Void = { _ in },
     markASRTimingEnd: @escaping @MainActor () -> Void = {},
@@ -789,6 +798,7 @@ final class RecordingSessionKernel {
         return ZeroSignalDeviceDiscriminator.isEligible(bound: bound)
       }
     self.recordingStoppedTelemetry = recordingStoppedTelemetry
+    self.sessionAcceptedTelemetry = sessionAcceptedTelemetry
     self.markPipelineTimingStart = markPipelineTimingStart
     self.markASRTimingStart = markASRTimingStart
     self.markASRTimingEnd = markASRTimingEnd
@@ -821,6 +831,10 @@ final class RecordingSessionKernel {
       takeID: sid.raw.uuidString,
       polishEnabled: config.llmProvider != .none
     )
+    // #1846 cloud review: publish the take tag NOW, in this same turn, before
+    // `spawn` queues anything. Waiting for the observer's first lifecycle event
+    // would leave a scheduling window in which an early failure ships untagged.
+    sessionAcceptedTelemetry(sid.raw.uuidString)
     transition(to: .arming)
     spawn(sid) { [weak self] in
       await self?.runForwardPath(sid)

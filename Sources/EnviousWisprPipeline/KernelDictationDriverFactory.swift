@@ -224,9 +224,16 @@ public enum KernelDictationDriverFactory {
   private final class TelemetryRelay {
     var kernel: RecordingSessionKernel?
     var recordingStopped: (@MainActor (Int) -> Void)?
+    /// #1846: set after the lifecycle sink exists (the kernel is built first),
+    /// then called synchronously from `start(config:)` on every accepted session.
+    var sessionAccepted: (@MainActor (String) -> Void)?
 
     func emitRecordingStopped(sampleCount: Int) {
       recordingStopped?(sampleCount)
+    }
+
+    func establishTakeID(_ takeID: String) {
+      sessionAccepted?(takeID)
     }
 
     func modelLoadWedgeTelemetry() -> KernelModelLoadWedgeTelemetry? {
@@ -476,6 +483,11 @@ public enum KernelDictationDriverFactory {
       recordingStoppedTelemetry: { sampleCount in
         telemetryRelay.emitRecordingStopped(sampleCount: sampleCount)
       },
+      // #1846 cloud review: routed through the relay for the same reason as the
+      // line above — the kernel is constructed BEFORE the lifecycle sink.
+      sessionAcceptedTelemetry: { takeID in
+        telemetryRelay.establishTakeID(takeID)
+      },
       markPipelineTimingStart: {
         outcome.pipelineStartedAtSeconds = CFAbsoluteTimeGetCurrent()
       },
@@ -541,6 +553,11 @@ public enum KernelDictationDriverFactory {
     )
     telemetryRelay.recordingStopped = { [lifecycleSink] sampleCount in
       lifecycleSink.emitRecordingStopped(sampleCount: sampleCount)
+    }
+    // #1846: the sink stays the SINGLE writer of `dictation.take_id`; this only
+    // gives the kernel a synchronous way to reach it at session acceptance.
+    telemetryRelay.sessionAccepted = { [lifecycleSink] takeID in
+      lifecycleSink.establishTakeID(takeID)
     }
 
     // 9. Observer (constructed AFTER kernel — needs the kernel ref). The

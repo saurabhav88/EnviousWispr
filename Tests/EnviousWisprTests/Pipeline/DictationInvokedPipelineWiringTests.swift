@@ -211,6 +211,59 @@ struct DictationInvokedPipelineWiringTests {
     #expect(codeOnly.contains("takeID: runSessionID.raw.uuidString"))
   }
 
+  /// #1846 cloud review: the take tag must be published SYNCHRONOUSLY at session
+  /// acceptance, not on the first observed lifecycle event.
+  ///
+  /// `observeKernelState` delivers that first event through an unstructured
+  /// `Task { @MainActor }`, which has no ordering guarantee against the kernel's
+  /// own spawned `runForwardPath`. A model-load or capture-start failure — the
+  /// errors most likely to fire early, and precisely the ones this feature exists
+  /// to join — could therefore be raised before the tag existed.
+  ///
+  /// Frozen as a source scan because the defect is about WHEN the call happens
+  /// relative to `spawn`, which a behavioural assertion after an await cannot
+  /// distinguish from the async path it is meant to rule out.
+  @Test("the take tag is established synchronously at session acceptance")
+  func takeTagIsEstablishedSynchronouslyOnAcceptance() throws {
+    let kernelSource = try Self.read(
+      "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift")
+    let accept = try Self.slice(
+      kernelSource,
+      from: "telemetryState.resetForNewSession(",
+      to: "transition(to: .arming)"
+    )
+    #expect(
+      accept.contains("sessionAcceptedTelemetry(sid.raw.uuidString)"),
+      "the tag must be published in the same turn that accepts the session"
+    )
+    // And it must precede the first `spawn`, or the window is not closed.
+    let startBody = try Self.slice(
+      kernelSource, from: "let sid = SessionID()", to: "awaitRecordingExit")
+    let hookAt = try #require(startBody.range(of: "sessionAcceptedTelemetry("))
+    let spawnAt = try #require(startBody.range(of: "spawn("))
+    #expect(
+      hookAt.lowerBound < spawnAt.lowerBound,
+      "publishing after the first spawn would leave exactly the window this closes"
+    )
+
+    // The sink remains the single writer of the scope tag.
+    let sinkSource = try Self.read(
+      "Sources/EnviousWisprPipeline/KernelLifecycleTelemetrySink.swift")
+    #expect(sinkSource.contains("func establishTakeID(_ takeID: String) {"))
+    let establish = try Self.slice(
+      sinkSource, from: "func establishTakeID(_ takeID: String) {", to: "\n  }")
+    #expect(
+      establish.contains("updateTakeID(takeID)"),
+      "must route through the same writer as the per-event refresh and terminal clear"
+    )
+
+    // And production actually wires it — an unwired hook is a dead guard.
+    let factorySource = try Self.read(
+      "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift")
+    #expect(factorySource.contains("telemetryRelay.establishTakeID(takeID)"))
+    #expect(factorySource.contains("lifecycleSink.establishTakeID(takeID)"))
+  }
+
   private static func read(_ relativePath: String) throws -> String {
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()

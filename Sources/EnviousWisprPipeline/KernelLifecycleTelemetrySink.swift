@@ -212,6 +212,25 @@ final class KernelLifecycleTelemetrySink {
   /// (stage / message / category / event name). Payload fidelity per §3.7
   /// mapping table — preserved where the sink can read, deferred where rich
   /// kernel-side wiring would be required (§2.2 non-goals).
+  /// #1846 cloud review: establish the take tag SYNCHRONOUSLY at session
+  /// acceptance, before the kernel spawns any work.
+  ///
+  /// `emit` refreshes the tag on every lifecycle event, but the first such event
+  /// arrives through `observeKernelState`'s unstructured `Task { @MainActor }`,
+  /// which has no ordering guarantee against the kernel's own spawned
+  /// `runForwardPath`. Model-load and capture-start failures — the errors most
+  /// likely to fire early in a session, and exactly the ones this feature exists
+  /// to join — could therefore be raised before the tag existed and ship
+  /// untagged. The kernel calls this inside `start(config:)` itself, so the
+  /// window is closed by construction rather than by scheduling luck.
+  ///
+  /// Deliberately routed through the SAME `updateTakeID` writer as the per-event
+  /// refresh and the terminal clear: this type stays the single owner of that
+  /// scope tag.
+  func establishTakeID(_ takeID: String) {
+    updateTakeID(takeID)
+  }
+
   func emit(_ event: KernelLifecycleEvent) {
     // #1846: establish the take key FIRST, before the pre-switch interruption
     // counter and before any breadcrumb, error or PostHog emission. Required on
