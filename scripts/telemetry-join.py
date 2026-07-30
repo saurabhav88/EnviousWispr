@@ -132,6 +132,15 @@ REQUEST_TIMEOUT_SECONDS = 30.0
 RETRY_BURST_WINDOW_SECONDS = 300
 RETRY_BURST_MIN_EVENTS = 3
 
+# Explicit ceiling for the one query that returns a LIST rather than an aggregate.
+# PostHog defaults a HogQL result to 100 rows and reports `hasMore`, which
+# `PostHogClient.query` refuses — correct for every aggregate here, but it would
+# abort the whole report the day this project passes 100 dev installs. The proven
+# worker shape (`workers/daily-report/src/lib/posthog.js` `resolveDevIds`) asks for
+# LIMIT n+1 and treats the overflow row as the completeness failure, so the bound
+# is explicit and the failure is about the DATA, not about a default.
+DEV_ID_LIST_LIMIT = 5000
+
 # Installs per sequential PostHog partition. Small enough to stay well inside
 # the documented 10s execution ceiling with a literal IN list.
 PARTITION_SIZE = 25
@@ -817,9 +826,14 @@ class PostHogClient:
         return clause
 
     def resolve_dev_ids(self) -> tuple[str, ...]:
+        """The ONE query here that returns a list rather than an aggregate, so it
+        carries its own explicit bound. `LIMIT n+1` makes the overflow row the
+        completeness signal — the shape `workers/daily-report` already runs daily.
+        """
         rows, _ = self.query(
             "SELECT DISTINCT distinct_id FROM events "
-            "WHERE properties.app_version LIKE '%-dev%'",
+            "WHERE properties.app_version LIKE '%-dev%' "
+            f"LIMIT {DEV_ID_LIST_LIMIT + 1}",
             "dev_ids",
         )
         ids = []
@@ -827,6 +841,12 @@ class PostHogClient:
             if len(row) != 1 or not isinstance(row[0], str):
                 raise ProtocolError("dev_ids: expected exactly one string column per row")
             ids.append(row[0])
+        if len(ids) > DEV_ID_LIST_LIMIT:
+            raise IncompleteError(
+                f"dev_ids: more than {DEV_ID_LIST_LIMIT} dev-tainted installs. The "
+                "exclusion list would be incomplete and every production total would "
+                "carry dev traffic — refusing to measure."
+            )
         self.dev_ids = tuple(ids)
         return self.dev_ids
 
@@ -1629,13 +1649,30 @@ def fetch_take_rates(
         AND toUnixTimestamp64Milli(timestamp) >= {window.start_millis}
         AND toUnixTimestamp64Milli(timestamp) <= {window.end_millis}
     """
+    # RELEASE-SCOPED, the same way the take overlap is. A global affected-install
+    # list counts an install affected only on release A as affected overlap on
+    # release B, which either understates B's denominator or trips the
+    # impossible-pair guard. This is the install-level twin of the take-level
+    # release scoping above — I fixed one and left the other, which is a partial
+    # port, not two accidents.
+    affected_installs_by_release: dict[str, set[str]] = defaultdict(set)
+    for (affected_install, affected_release) in report.affected_takes_by_install_release:
+        affected_installs_by_release[affected_release].add(affected_install)
+    affected_install_predicate = "\n OR ".join(
+        f"""(
+            properties.app_version = {sql_id_list([release_name])}
+            AND distinct_id IN ({sql_id_list(sorted(install_ids))})
+        )"""
+        for release_name, install_ids in sorted(affected_installs_by_release.items())
+    )
+
     population_rows, _ = client.query(
         f"""
         SELECT properties.app_version AS release,
                uniqExact(distinct_id) AS eligible_installs,
                uniqExactIf(
                    distinct_id,
-                   distinct_id IN ({sql_id_list(installs)})
+                   ({affected_install_predicate})
                ) AS affected_eligible_installs,
                countIf(
                    match(
@@ -3403,6 +3440,80 @@ def run_self_test() -> int:
         f"properties.app_version = \'2.7.0\' "
         f"AND upper(properties.{TAKE_PROPERTY}) IN (\'{take_b}\')"
     ) in overlap_sql, overlap_sql
+    # The install-level twin: the affected-install predicate in the POPULATION query
+    # must also pair each release with only its own installs. `cross_release_report`
+    # has one install affected on both releases, so widen it — a second install
+    # affected on 2.6.0 only must not be counted as affected overlap on 2.7.0.
+    other_install = _fixture_install_uuid("a02")
+    two_install_report = aggregate_fingerprint(
+        "X",
+        [
+            SentryEvent(
+                "ti1", "2.6.0", install, None, 1000.0,
+                environment="production", take_id=take_a,
+            ),
+            SentryEvent(
+                "ti2", "2.6.0", other_install, None, 1500.0,
+                environment="production", take_id=take_b,
+            ),
+            SentryEvent(
+                "ti3", "2.7.0", install, None, 2000.0,
+                environment="production",
+                take_id="22222222-3333-4444-5555-666666666666",
+            ),
+        ],
+        "production",
+    )
+    ph, two_install_transport = _posthog_client(
+        [
+            _posthog_response(
+                [[install, "2.6.0", 1, 1, 0], [other_install, "2.6.0", 1, 1, 0],
+                 [install, "2.7.0", 1, 1, 0]]
+            ),
+            _posthog_response([[3]]),
+            _posthog_response([["2.6.0", 2, 2, 0], ["2.7.0", 1, 1, 0]]),
+            _posthog_response([[2]]),
+        ]
+    )
+    ph.dev_ids = ()
+    fetch_take_rates(ph, two_install_report)
+    population_scoped_sql = re.sub(
+        r"\s+", " ",
+        json.loads(
+            [r for r in two_install_transport.seen
+             if b"take_rate_user_population" in (r.body or b"")][0].body or b"{}"
+        )["query"]["query"],
+    )
+    # 2.7.0 must name ONLY the install affected there, not both.
+    assert (
+        f"properties.app_version = \'2.7.0\' AND distinct_id IN (\'{install}\')"
+        in population_scoped_sql
+    ), population_scoped_sql
+    assert (
+        f"properties.app_version = \'2.6.0\' AND distinct_id IN "
+        f"({sql_id_list(sorted([install, other_install]))})"
+        in population_scoped_sql
+    ), population_scoped_sql
+    passed("affected-install overlap is release-scoped too, not just the take overlap")
+
+    # The dev-id list is the one query returning a LIST, so it carries an explicit
+    # bound. Without it the shared truncation guard would abort every production
+    # report the day this project passes PostHog's 100-row default — a guard that
+    # breaks the thing it protects.
+    over_limit = [[f"id-{i}"] for i in range(DEV_ID_LIST_LIMIT + 1)]
+    ph, dev_transport = _posthog_client([_posthog_response(over_limit)])
+    _expect_raises(
+        IncompleteError, lambda: ph.resolve_dev_ids(), "dev-id overflow",
+        "dev-tainted installs",
+    )
+    assert f"LIMIT {DEV_ID_LIST_LIMIT + 1}" in str(dev_transport.seen[0].body), (
+        "the query must ask for one MORE than the ceiling, so overflow is detectable"
+    )
+    # At the ceiling exactly, it succeeds.
+    ph, _ = _posthog_client([_posthog_response([[f"id-{i}"] for i in range(DEV_ID_LIST_LIMIT)])])
+    assert len(ph.resolve_dev_ids()) == DEV_ID_LIST_LIMIT
+    passed("the dev-id list is explicitly bounded and fails on overflow, not on a default")
+
     passed("overlap subtraction is scoped to the release that take was affected on")
 
     # An overlap larger than the successes it is drawn from is impossible.
