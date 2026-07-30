@@ -130,7 +130,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     /// EG-1, context-window, Ollama preflight) remains the runner's
     /// responsibility, routed through its own, separate `recordPolishSkipped`
     /// seam — this field does not duplicate that.
-    let recordPolishSkipped: @MainActor (String, String) -> Void
+    /// `takeID` (#1846) is the LIVE in-flight take — polish runs before the session
+    /// terminal, so the concluded key is not yet stamped.
+    let recordPolishSkipped: @MainActor (String, String, String?) -> Void
 
     static let live = TelemetrySeams(
       limbFailureObserved: { limb, op, result, cat, dur in
@@ -149,8 +151,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       breadcrumbCompleted: { message, data in
         SentryBreadcrumb.add(stage: "polish", message: message, data: data)
       },
-      recordPolishSkipped: { provider, reason in
-        TelemetryService.shared.polishSkipped(provider: provider, reason: reason)
+      recordPolishSkipped: { provider, reason, takeID in
+        TelemetryService.shared.polishSkipped(provider: provider, reason: reason, takeID: takeID)
       })
 
     /// Returns a seam that discards every signal unconditionally — `seams` is
@@ -169,7 +171,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         captureProviderInitError: { _ in },
         captureAFMPolishError: { _ in },
         breadcrumbCompleted: { _, _ in },
-        recordPolishSkipped: { _, _ in })
+        recordPolishSkipped: { _, _, _ in })
     }
   }
 
@@ -405,7 +407,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           )
         }
         let skipReason = PolishSkipReason.tooShort(provider)
-        telemetry.recordPolishSkipped(skipReason.provider.rawValue, skipReason.telemetryTag)
+        telemetry.recordPolishSkipped(
+          skipReason.provider.rawValue, skipReason.telemetryTag, context.takeID)
         return Self.bypassedContext(context)
       }
     } else {
@@ -418,7 +421,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           )
         }
         let skipReason = PolishSkipReason.tooShort(provider)
-        telemetry.recordPolishSkipped(skipReason.provider.rawValue, skipReason.telemetryTag)
+        telemetry.recordPolishSkipped(
+          skipReason.provider.rawValue, skipReason.telemetryTag, context.takeID)
         return Self.bypassedContext(context)
       }
     }

@@ -185,7 +185,7 @@ struct OllamaReadinessGateTests {
     // test here can never reach the real PostHog client (#1446).
     let runner = TextProcessingRunner(
       telemetry: .init(
-        captureError: spy.sink, recordPolishFailed: { _, _, _, _ in },
+        captureError: spy.sink, recordPolishFailed: { _, _, _, _, _ in },
         // This suite asserts on the real `llm.polish_skipped` via testEventHook.
         recordPolishSkipped: TextProcessingRunner.TelemetrySeams.live.recordPolishSkipped),
       timeoutExecutor: executor.run)

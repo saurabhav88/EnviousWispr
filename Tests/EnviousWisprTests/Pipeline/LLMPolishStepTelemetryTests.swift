@@ -42,7 +42,7 @@ struct LLMPolishStepTelemetryTests {
     private(set) var providerInitErrorCalls: [any Error] = []
     private(set) var afmPolishErrorCalls: [any Error] = []
     private(set) var completedCalls: [(message: String, data: [String: Any]?)] = []
-    private(set) var skipCalls: [(provider: String, reason: String)] = []
+    private(set) var skipCalls: [(provider: String, reason: String, takeID: String?)] = []
 
     var seams: LLMPolishStep.TelemetrySeams {
       LLMPolishStep.TelemetrySeams(
@@ -61,8 +61,8 @@ struct LLMPolishStepTelemetryTests {
         breadcrumbCompleted: { message, data in
           self.completedCalls.append((message, data))
         },
-        recordPolishSkipped: { provider, reason in
-          self.skipCalls.append((provider, reason))
+        recordPolishSkipped: { provider, reason, takeID in
+          self.skipCalls.append((provider, reason, takeID))
         })
     }
   }
@@ -98,19 +98,25 @@ struct LLMPolishStepTelemetryTests {
   // MARK: - Too-short bypass (#1448)
 
   @Test(
-    "too-short bypass (CJK char-count path) emits its own skip tag; started already fired, nothing else does"
+    "too-short bypass (CJK char-count path) emits its own skip tag with the take key; started already fired, nothing else does"
   )
   func tooShortBypassCJK() async throws {
     let spy = Spy()
     let step = makeStep(provider: .openAI, telemetry: spy.seams)
-    let context = TextProcessingContext(text: "短い", language: "ja")
+    var context = TextProcessingContext(text: "短い", language: "ja")
+    // #1846: this route returns from `process()` BEFORE the runner sees it, so the
+    // step's own seam family is the only thing that can carry the key here. The
+    // runner-side test cannot cover it.
+    context.takeID = "9f2c1d84-6b3a-4e07-9c51-0a7d2e6f1b33"
 
     _ = try await step.process(context)
 
     #expect(spy.startedCalls.count == 1)
     #expect(spy.skipCalls.count == 1)
-    #expect(spy.skipCalls.first?.provider == "openAI")
-    #expect(spy.skipCalls.first?.reason == "too_short")
+    let skip = try #require(spy.skipCalls.first)
+    #expect(skip.provider == "openAI")
+    #expect(skip.reason == "too_short")
+    #expect(skip.takeID == "9f2c1d84-6b3a-4e07-9c51-0a7d2e6f1b33")
     #expect(spy.completedCalls.isEmpty)
     #expect(spy.providerInitErrorCalls.isEmpty)
     #expect(spy.afmPolishErrorCalls.isEmpty)
@@ -317,7 +323,7 @@ struct LLMPolishStepTelemetryTests {
       live.captureProviderInitError(LLMError.modelNotReady("probe"))
       live.captureAFMPolishError(LLMError.modelNotReady("probe"))
       live.breadcrumbCompleted("live probe", nil)
-      live.recordPolishSkipped("openAI", "probe")
+      live.recordPolishSkipped("openAI", "probe", nil)
       #expect(
         recorder.telemetryEvents.count == 2, "live must fire limbFailureObserved + polishSkipped")
       #expect(
@@ -336,7 +342,7 @@ struct LLMPolishStepTelemetryTests {
       silent.captureProviderInitError(LLMError.modelNotReady("probe"))
       silent.captureAFMPolishError(LLMError.modelNotReady("probe"))
       silent.breadcrumbCompleted("silent probe", nil)
-      silent.recordPolishSkipped("openAI", "probe")
+      silent.recordPolishSkipped("openAI", "probe", nil)
 
       #expect(
         recorder.telemetryEvents.isEmpty,

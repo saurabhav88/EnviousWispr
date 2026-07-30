@@ -1269,17 +1269,19 @@ public final class TelemetryService {
   /// (an output was accepted) and from a surfaced attempted failure recorded
   /// by `llm.polish_failed`. `reason` is a `PolishSkipReason.telemetryTag` —
   /// a closed, content-free set (`EnviousWisprPipeline`).
-  public func polishSkipped(provider: String, reason: String) {
-    let props: [String: Any] = [
+  public func polishSkipped(provider: String, reason: String, takeID: String? = nil) {
+    var props: [String: Any] = [
       "provider": provider,
       "skip_reason": reason,
     ]
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
+      // #1846: derived from the emitted payload, never a parallel dictionary.
       testEventHook?(
         CapturedTelemetryEvent(
           name: "llm.polish_skipped",
-          stringProps: ["provider": provider, "skip_reason": reason],
-          boolProps: [:]))
+          stringProps: props.compactMapValues { $0 as? String },
+          boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
     PostHogSDK.shared.capture("llm.polish_skipped", properties: props)
   }
@@ -1297,19 +1299,23 @@ public final class TelemetryService {
   /// `reason` is a `PolishFailureReason.telemetryTag` — a closed, content-free set.
   /// `model` is catalog metadata, matching what `llm.polish_completed` already
   /// sends. No transcript, prompt, provider error body, key, or endpoint URL.
-  public func polishFailed(provider: String, model: String, reason: String, isTimeout: Bool) {
-    let props: [String: Any] = [
+  public func polishFailed(
+    provider: String, model: String, reason: String, isTimeout: Bool, takeID: String? = nil
+  ) {
+    var props: [String: Any] = [
       "provider": provider,
       "model": model,
       "reason": reason,
       "is_timeout": isTimeout,
     ]
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
+      // #1846: derived from the emitted payload, never a parallel dictionary.
       testEventHook?(
         CapturedTelemetryEvent(
           name: "llm.polish_failed",
-          stringProps: ["provider": provider, "model": model, "reason": reason],
-          boolProps: ["is_timeout": isTimeout]))
+          stringProps: props.compactMapValues { $0 as? String },
+          boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
     PostHogSDK.shared.capture("llm.polish_failed", properties: props)
   }

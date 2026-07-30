@@ -97,6 +97,54 @@ struct DictationInvokedPipelineWiringTests {
   // `KernelDictationDriverFactoryWhisperKitTests
   // .makeForWhisperKitReturnsDriverWithWhisperKitIdentity`.
 
+  /// #1846 chunk 7: the SECOND production bridge, written proactively because chunk 6
+  /// shipped without its equivalent and the reviewer had to find it.
+  ///
+  /// `TextProcessingRunnerCaptureTests` proves the runner freezes a supplied key into
+  /// the context and that both polish outcome events carry it. Nothing else covers the
+  /// one expression that supplies it in production. Delete `takeID: telemetryState.takeID`
+  /// and every polish test stays green while `llm.polish_failed` and
+  /// `llm.polish_skipped` ship with no take key at all.
+  ///
+  /// It also freezes WHICH key: the live in-flight one. Polish runs before the session
+  /// terminal, so `lastTakeID` is not yet stamped for this take — swapping in the
+  /// concluded key here would silently label every polish event with the PREVIOUS
+  /// dictation, or with nothing.
+  @Test("live polish reporting uses the in-flight take key, not the concluded one")
+  func polishReportingUsesInFlightTakeKey() throws {
+    let wiringSource = try Self.read(
+      "Sources/EnviousWisprPipeline/KernelFinalizationWiring.swift")
+    let runCall = try Self.slice(
+      wiringSource,
+      from: "let result = try await textProcessingRunner.run(",
+      to: "let ctx = result.context"
+    )
+    #expect(
+      runCall.contains("takeID: telemetryState.takeID)"),
+      "the live finalization path must supply the in-flight take key to the polish chain"
+    )
+
+    // The negative check runs over CODE ONLY. Its first version scanned the whole
+    // slice and failed on the explanatory comment right above the argument, which
+    // legitimately names `kernel.lastTakeID` to say why it is NOT used here. A
+    // matcher that cannot tell an action from prose about the action is the
+    // imprecise thing; the fix is the matcher, never rewording the comment to
+    // appease it (`false-positives-not-gates-train-evasion`).
+    let codeOnly =
+      runCall
+      .split(separator: "\n", omittingEmptySubsequences: false)
+      .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+      .joined(separator: "\n")
+    #expect(
+      codeOnly.contains("lastTakeID") == false,
+      """
+      the concluded key is the WRONG one here — polish runs before the terminal that \
+      stamps it, so this would label polish events with the previous dictation or nothing.
+      """)
+    // Prove the filter did not strip the line under test along with the comments.
+    #expect(codeOnly.contains("takeID: telemetryState.takeID)"))
+  }
+
   private static func read(_ relativePath: String) throws -> String {
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()
