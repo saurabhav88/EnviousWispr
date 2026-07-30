@@ -461,8 +461,30 @@ export function selectReleases(publishedReleases, usageRows) {
  * that would silently restore the version-blind behaviour this issue exists to
  * remove, and it would do so invisibly. */
 export async function resolveReleases(env, usageRows, opts = {}) {
+  // REQUIRED, not defaulted. GitHub returns every published release including
+  // ones published AFTER the window being reported: a build shipped at 08:00
+  // would be crowned newest in the 09:12 report covering yesterday, and a
+  // backfill would crown a release that did not exist during the reported week
+  // at all. Both print "0/7 days publicly available, no production data yet"
+  // for the build supposedly most worth watching, and displace one that has
+  // data. Defaulting this to "no filter" would let a forgotten caller silently
+  // restore exactly that.
+  const anchorMs = parseEasternDay(opts.windowEndExclusive);
+  if (anchorMs === null) {
+    throw new ReleaseResolutionError(
+      `resolveReleases requires opts.windowEndExclusive as YYYY-MM-DD, got ${String(opts.windowEndExclusive)}`,
+      { transient: false }
+    );
+  }
   const published = await fetchPublishedReleases(env, opts);
-  return selectReleases(published, usageRows);
+  // Published DURING the window is fine - it has partial data and its age line
+  // says so. Published at or after the window end cannot have any.
+  const withinWindow = published.filter((r) => {
+    const ms = parseGitHubTimestamp(r.publishedAt);
+    if (ms === null) return true; // malformed dates fail loudly in selectReleases
+    return easternDayOf(ms).dayMs < anchorMs;
+  });
+  return selectReleases(withinWindow, usageRows);
 }
 
 /** Which producer schema each app release emitted, newest range first.
@@ -1549,7 +1571,8 @@ export function createScorecardSection(env, context, opts = {}) {
       // telemetry happens to show. There is deliberately no all-version
       // fallback: it would silently restore the version-blind behaviour this
       // issue exists to remove.
-      return [() => resolveReleasesFn(env, measurements.usageRows, releaseOpts)];
+      return [() => resolveReleasesFn(env, measurements.usageRows,
+        { ...releaseOpts, windowEndExclusive: day })];
     },
 
     finish(_primary, followUp) {

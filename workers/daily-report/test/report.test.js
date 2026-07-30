@@ -1454,7 +1454,8 @@ test("resolveReleases: uses GITHUB_REPO + User-Agent, drops draft/prerelease, ne
     { GITHUB_REPO: "saurabhav88/EnviousWispr" },
     [usage("2.4.1", 100)],
     {
-      fetchFn: async (url, init) => {
+      windowEndExclusive: "2026-07-29",
+        fetchFn: async (url, init) => {
         seenUrl = url;
         seenUA = init.headers["User-Agent"];
         return ghResponse(200, body);
@@ -1483,7 +1484,8 @@ test("resolveReleases: bad configuration and malformed release data fail loud, n
     await assert.rejects(
       () =>
         resolveReleases(repo === undefined ? {} : { GITHUB_REPO: repo }, [], {
-          fetchFn: async () => { called = true; return ghResponse(200, []); },
+          windowEndExclusive: "2026-07-29",
+        fetchFn: async () => { called = true; return ghResponse(200, []); },
         }),
       (err) => err instanceof ReleaseResolutionError && err.transient === false,
       `repo ${JSON.stringify(repo)}`
@@ -1513,6 +1515,7 @@ test("resolveReleases: bad configuration and malformed release data fail loud, n
   for (const body of bodies) {
     await assert.rejects(
       () => resolveReleases(env, [usage("2.4.1", 1)], {
+        windowEndExclusive: "2026-07-29",
         fetchFn: async () => ghResponse(200, body),
         sleepFn: async () => {},
       }),
@@ -1524,7 +1527,8 @@ test("resolveReleases: bad configuration and malformed release data fail loud, n
   // Invalid JSON is a contract failure, not a transient blip.
   await assert.rejects(
     () => resolveReleases(env, [], {
-      fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null },
+      windowEndExclusive: "2026-07-29",
+        fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null },
         json: async () => { throw new SyntaxError("bad json"); } }),
       sleepFn: async () => {},
     }),
@@ -1539,6 +1543,7 @@ test("resolveReleases: rate-limited 403, 429 and 5xx retry to exactly 3 attempts
   await assert.rejects(
     () =>
       resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        windowEndExclusive: "2026-07-29",
         fetchFn: async () => {
           netAttempts += 1;
           throw new TypeError("network failure");
@@ -1559,7 +1564,8 @@ test("resolveReleases: rate-limited 403, 429 and 5xx retry to exactly 3 attempts
     await assert.rejects(
       () =>
         resolveReleases({ GITHUB_REPO: "o/r" }, [], {
-          fetchFn: async () => {
+          windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
             attempts += 1;
             return ghResponse(status, null, { headers });
           },
@@ -1583,7 +1589,8 @@ test("resolveReleases: a non-transient 4xx fails loud after ONE attempt", async 
     await assert.rejects(
       () =>
         resolveReleases({ GITHUB_REPO: "o/r" }, [], {
-          fetchFn: async () => {
+          windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
             attempts += 1;
             return ghResponse(status, null, { headers });
           },
@@ -3603,4 +3610,54 @@ test("builds below the measurement floor are hidden everywhere, not shown with a
     () => formatScorecard({ ranking: { ...ranking, summary: { ...ranking.summary, minVersion: undefined } } }),
     /minVersion must be a version string/
   );
+});
+
+test("a release published after the reported window is never crowned newest", async () => {
+  // GitHub returns every published release, including ones published AFTER the
+  // window being reported. A build shipped at 08:00 would otherwise be crowned
+  // newest in the 09:12 report covering yesterday, and a backfill would crown a
+  // release that did not exist during the reported week at all - both printing
+  // "0/7 days publicly available, no production data yet" for the build
+  // supposedly most worth watching, while displacing one that has real data.
+  const body = [
+    release("v2.4.0", "2026-07-18T21:00:00Z"),
+    release("v2.4.1", "2026-07-24T17:00:00Z"),
+    release("v2.5.0", "2026-07-29T08:00:00Z"), // published the morning of the run
+  ];
+  const opts = {
+    fetchFn: async () => ghResponse(200, body),
+    sleepFn: async () => {},
+  };
+  const env = { GITHUB_REPO: "saurabhav88/EnviousWispr" };
+  const usageRows = [usage("2.4.1", 100), usage("2.4.0", 60)];
+
+  const excluded = await resolveReleases(env, usageRows,
+    { ...opts, windowEndExclusive: "2026-07-29" });
+  assert.equal(excluded.releases[0].version, "2.4.1",
+    "the newest release that existed during the window is crowned");
+  assert.ok(!excluded.releases.some((r) => r.version === "2.5.0"));
+  assert.ok(!excluded.releaseCatalog.some((r) => r.version === "2.5.0"),
+    "and it is not pooled for historical variation either");
+
+  // The SAME release IS crowned once the window it shipped in is the one being
+  // reported - a two-way control, so the filter cannot simply be hiding
+  // everything.
+  const included = await resolveReleases(env, usageRows,
+    { ...opts, windowEndExclusive: "2026-07-30" });
+  assert.equal(included.releases[0].version, "2.5.0",
+    "a release published inside the window IS the newest, with no data yet");
+  assert.equal(included.releases[0].observed, false);
+
+  // A backfill for an older day must not see July releases at all.
+  const backfill = await resolveReleases(env, [usage("2.4.0", 60)],
+    { ...opts, windowEndExclusive: "2026-07-19" });
+  assert.deepEqual(backfill.releases.map((r) => r.version), ["2.4.0"]);
+
+  // The anchor is REQUIRED, never defaulted to "no filter": a forgotten caller
+  // would silently restore the defect this closes.
+  await assert.rejects(() => resolveReleases(env, usageRows, opts),
+    /requires opts.windowEndExclusive/);
+  await assert.rejects(
+    () => resolveReleases(env, usageRows, { ...opts, windowEndExclusive: "July 29" }),
+    /requires opts.windowEndExclusive/);
 });

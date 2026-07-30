@@ -166,17 +166,34 @@ cron trigger time. Same secret lives as repo secret
 
 ## Failure visibility (how you'd know if this breaks)
 
-Two independent signals:
+Three independent signals:
 
-1. **A `totals` failure, an auth failure, a malformed query/response, a
-   completeness-check mismatch, or a dev-id-list overflow** posts an explicit
-   "Daily report failed to generate for `<date>`: `<error>`" notice to
-   Discord (EnviousNotes) AND makes the worker return a non-2xx status, which
-   turns the GitHub Actions job red. You will see BOTH the Discord notice and
-   a GitHub Actions failure. `totals` is deliberately the ONE primary query
-   that never degrades — it anchors `resolveBuckets`' completeness check and
-   supplies the report's headline numbers, so there is no safe partial
-   substitute for it.
+1. **Section-local failures still deliver a report, then fail the run.** A
+   `totals` failure, an auth failure, a malformed query/response, or a
+   completeness-check mismatch inside adoption loses THAT SECTION only: the
+   message is still posted, with "Adoption, unavailable today" in place of the
+   figures and the version scorecard intact beside it, and then the worker
+   returns non-2xx so the GitHub Actions job goes red. The scorecard behaves
+   the same way in reverse, including when GitHub's release list is
+   unreachable after its retries. If both sections fail you get one message
+   with both marked unavailable — never two messages, and never silence.
+
+   `totals` is deliberately the ONE adoption query that never degrades to
+   "temporarily unavailable" — it anchors `resolveBuckets`' completeness check
+   and supplies the headline numbers, so there is no safe partial substitute.
+   It costs the adoption section rather than the whole report.
+
+   **Whole-run failures post a fixed notice and no report at all.** An invalid
+   `?date=` override, a dev-ID resolution failure or overflow, and a release
+   -resolution CONTRACT failure (misconfigured `GITHUB_REPO`, auth, malformed
+   response, no eligible stable release) all mean there is nothing honest to
+   send: at most one fixed "could not be generated" notice goes to Discord,
+   carrying no error text, status code or response body, and the run rejects.
+   A dev-ID list that will not resolve is never treated as "no dev accounts".
+
+   **An over-budget payload sends NOTHING**, with zero webhook requests and no
+   fallback notice. The report goes whole or not at all: a silently truncated
+   report reads as complete, which is worse than a missing one.
 
    **Six deliberate exceptions degrade instead of failing (#1655, #1716,
    #1720).** `tier_a` (the polish-provider *settings* lookup) and 5 of the 6
