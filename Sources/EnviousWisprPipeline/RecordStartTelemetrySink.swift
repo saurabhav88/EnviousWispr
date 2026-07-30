@@ -30,17 +30,22 @@ final class RecordStartTelemetrySink {
     _ stage: String, _ message: String, _ data: [String: Any]
   ) -> Void
 
+  /// `takeID` (#1846) is supplied PER CALL, never stored — this type stays
+  /// stateless by design (see the type doc), so the caller owns the attribution
+  /// just as it already owns the monitor-generation validity check.
   typealias PreparationSink = @MainActor (
-    _ backend: String, _ inputRoute: String, _ ready: Bool, _ modelReused: Bool
+    _ backend: String, _ inputRoute: String, _ ready: Bool, _ modelReused: Bool,
+    _ takeID: String?
   ) -> Void
 
   typealias ChunkStartedSink = @MainActor (
-    _ backend: String, _ inputRoute: String, _ monitorToFirstChunkMs: Double
+    _ backend: String, _ inputRoute: String, _ monitorToFirstChunkMs: Double,
+    _ takeID: String?
   ) -> Void
 
   typealias ChunkCompletedSink = @MainActor (
     _ backend: String, _ inputRoute: String, _ chunkProcessingLatencyMs: Double,
-    _ shouldStop: Bool
+    _ shouldStop: Bool, _ takeID: String?
   ) -> Void
 
   private let breadcrumb: BreadcrumbSink
@@ -55,19 +60,22 @@ final class RecordStartTelemetrySink {
     breadcrumb: @escaping BreadcrumbSink = { stage, message, data in
       SentryBreadcrumb.add(stage: stage, message: message, level: .info, data: data)
     },
-    emitPreparation: @escaping PreparationSink = { backend, inputRoute, ready, modelReused in
+    emitPreparation: @escaping PreparationSink = {
+      backend, inputRoute, ready, modelReused, takeID in
       TelemetryService.shared.dictationVADPreparationCompleted(
-        backend: backend, inputRoute: inputRoute, ready: ready, modelReused: modelReused)
+        backend: backend, inputRoute: inputRoute, ready: ready, modelReused: modelReused,
+        takeID: takeID)
     },
-    emitChunkStarted: @escaping ChunkStartedSink = { backend, inputRoute, monitorMs in
+    emitChunkStarted: @escaping ChunkStartedSink = { backend, inputRoute, monitorMs, takeID in
       TelemetryService.shared.dictationFirstVADChunkStarted(
-        backend: backend, inputRoute: inputRoute, monitorToFirstChunkMs: monitorMs)
+        backend: backend, inputRoute: inputRoute, monitorToFirstChunkMs: monitorMs,
+        takeID: takeID)
     },
     emitChunkCompleted: @escaping ChunkCompletedSink = {
-      backend, inputRoute, latencyMs, shouldStop in
+      backend, inputRoute, latencyMs, shouldStop, takeID in
       TelemetryService.shared.dictationFirstVADChunkCompleted(
         backend: backend, inputRoute: inputRoute,
-        chunkProcessingLatencyMs: latencyMs, shouldStop: shouldStop)
+        chunkProcessingLatencyMs: latencyMs, shouldStop: shouldStop, takeID: takeID)
     }
   ) {
     self.breadcrumb = breadcrumb
@@ -81,7 +89,8 @@ final class RecordStartTelemetrySink {
     backend: String,
     inputRoute: String,
     ready: Bool,
-    modelReused: Bool
+    modelReused: Bool,
+    takeID: String?
   ) {
     breadcrumb(
       "vad", "vad#preparation_completed",
@@ -91,14 +100,15 @@ final class RecordStartTelemetrySink {
         "ready": ready,
         "model_reused": modelReused,
       ])
-    emitPreparation(backend, inputRoute, ready, modelReused)
+    emitPreparation(backend, inputRoute, ready, modelReused, takeID)
   }
 
   /// Immediately before the first `SilenceDetector.processChunk` await.
   func firstChunkStarted(
     backend: String,
     inputRoute: String,
-    monitorToFirstChunkMs: Double
+    monitorToFirstChunkMs: Double,
+    takeID: String?
   ) {
     breadcrumb(
       "vad", "vad#first_chunk_started",
@@ -107,7 +117,7 @@ final class RecordStartTelemetrySink {
         "input_route": inputRoute,
         "monitor_to_first_chunk_ms": monitorToFirstChunkMs,
       ])
-    emitChunkStarted(backend, inputRoute, monitorToFirstChunkMs)
+    emitChunkStarted(backend, inputRoute, monitorToFirstChunkMs, takeID)
   }
 
   /// Immediately after that await returns.
@@ -115,7 +125,8 @@ final class RecordStartTelemetrySink {
     backend: String,
     inputRoute: String,
     chunkProcessingLatencyMs: Double,
-    shouldStop: Bool
+    shouldStop: Bool,
+    takeID: String?
   ) {
     breadcrumb(
       "vad", "vad#first_chunk_completed",
@@ -125,6 +136,6 @@ final class RecordStartTelemetrySink {
         "chunk_processing_latency_ms": chunkProcessingLatencyMs,
         "should_stop": shouldStop,
       ])
-    emitChunkCompleted(backend, inputRoute, chunkProcessingLatencyMs, shouldStop)
+    emitChunkCompleted(backend, inputRoute, chunkProcessingLatencyMs, shouldStop, takeID)
   }
 }

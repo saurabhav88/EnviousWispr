@@ -200,8 +200,8 @@ final class DictationLifecycleCoordinator {
       self?.showOverlayIntent(intent)
     }
     // #1060: approaching-cap warning — display-only banner, no lifecycle authority.
-    let onApproaching: (TimeInterval) -> Void = { [weak self] r in
-      self?.showApproachingCapWarning(remainingSeconds: r)
+    let onApproaching: (TimeInterval, String) -> Void = { [weak self] r, takeID in
+      self?.showApproachingCapWarning(remainingSeconds: r, takeID: takeID)
     }
     kernelDriver.onApproachingMaxDuration = onApproaching
     whisperKitKernelDriver.onApproachingMaxDuration = onApproaching
@@ -232,11 +232,15 @@ final class DictationLifecycleCoordinator {
   /// transition out of recording. "Under a minute" reads accurately for the whole
   /// window, so no countdown or late-fire guard is needed. `DictationNarrator`
   /// owns the copy.
-  private func showApproachingCapWarning(remainingSeconds: TimeInterval) {
+  /// #1846: `takeID` arrives from the kernel's warning stream, already validated
+  /// against the recording session that produced it — the coordinator forwards it
+  /// and never re-derives one from an active driver.
+  private func showApproachingCapWarning(remainingSeconds: TimeInterval, takeID: String) {
     recordingOverlay.flashRecordingNotice(reason: .approachingCap)
     TelemetryService.shared.recordingCapWarningShown(
       backend: lastCapturingBackend == .whisperKit ? "whisperKit" : "parakeet",
-      capSeconds: TimingConstants.maxRecordingDuration)
+      capSeconds: TimingConstants.maxRecordingDuration,
+      takeID: takeID)
   }
 
   // MARK: - Per-pipeline state-change handling

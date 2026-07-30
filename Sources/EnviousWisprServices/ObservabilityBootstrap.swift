@@ -121,7 +121,69 @@ public enum ObservabilityBootstrap {
       if ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1" {
         scope.setTag(value: "true", key: "synthetic")
       }
+      // #1846: the cross-vendor join key. PostHog is initialized first
+      // (`initialize()` above) and its setup is synchronous, so the stored
+      // anonymous ID is readable here. Sentry adopts PostHog's ID rather than
+      // the reverse because Sentry's own `user.id` is `SentryInstallation`'s
+      // machine-wide `~/Library/Caches/INSTALLATION` UUID — shared across
+      // unsandboxed Sentry apps and purgeable — while PostHog's lives in
+      // bundle-scoped Application Support. Additive tag, never `user.id`:
+      // replacing that would double-count one person across the changeover and
+      // disturb the sentry-triage worker's userCount severity thresholds.
+      // A scope tag set here is present on every later event including fatal
+      // crashes, and a replayed crash carries its own launch's value.
+      if let joinKey = canonicalAnonymousPostHogID(PostHogSDK.shared.getDistinctId()) {
+        scope.setTag(value: joinKey, key: "analytics.distinct_id")
+      }
     }
+  }
+
+  // MARK: - Cross-vendor join key (#1846)
+
+  /// The ONLY acceptance predicate for the `analytics.distinct_id` join key.
+  /// Pure and testable: no SDK, no process-global state, so every accepted and
+  /// rejected shape is a unit test rather than a bootstrap integration test.
+  ///
+  /// Returns the canonical hyphenated UUID PostHog stores, VERBATIM, or nil.
+  ///
+  /// BOTH CASES ARE ACCEPTED, and the value is never normalized. The PostHog SDK
+  /// lowercases ids it MINTS (`UUIDUtils.postHogUuidString` =
+  /// `uuidString.lowercased()`), but `PostHogStorageManager.getAnonymousId()`
+  /// returns a PERSISTED id unchanged, so an install whose id was written by an
+  /// older SDK keeps its uppercase spelling forever. Measured against production
+  /// 2026-07-30: **94 of 692 distinct installs (13.6%) carry an uppercase id.**
+  /// A lowercase-only predicate silently drops every one of them, and the absence
+  /// is indistinguishable from "PostHog was skipped" — a permanent blind spot with
+  /// no way to diagnose it.
+  ///
+  /// Returning it VERBATIM is equally load-bearing: the tag has to equal the
+  /// string PostHog actually stores, so lowercasing an uppercase id would leave
+  /// the join just as broken, only less obviously.
+  ///
+  /// Three things this rejects, each for its own reason:
+  ///  - `""`, which is what `getDistinctId()` returns when PostHog was skipped
+  ///    for a missing key. Setting no tag at all means a join query never
+  ///    matches a keyless install; an empty tag value would.
+  ///  - a non-canonical or caller-supplied shape. The value must stay
+  ///    ANONYMOUS, which it is today only because we never call `identify()`.
+  ///    A future `identify` could make it user-supplied, and copying an
+  ///    arbitrary user-supplied string into Sentry is not a decision this seam
+  ///    may make silently.
+  ///  - a compact 32-hex UUID, which `SentryEventSanitizer.redactString`
+  ///    destroys under its 32+-contiguous-hex rule. A hyphenated UUID's longest
+  ///    hex run is 12, so it provably survives. Anything else is omitted here
+  ///    rather than transmitted as `[REDACTED]`.
+  ///
+  /// The exact-equality check is still load-bearing: `UUID(uuidString:)` alone
+  /// also accepts a compact 32-hex form, which the sanitizer destroys. Comparing
+  /// against the two CANONICAL hyphenated spellings admits exactly those and
+  /// nothing else. A hyphenated UUID's longest hex run is 12 in either case, well
+  /// under the sanitizer's `[0-9a-fA-F]{32,}` rule, so both survive transmission.
+  static func canonicalAnonymousPostHogID(_ raw: String) -> String? {
+    guard let uuid = UUID(uuidString: raw) else { return nil }
+    let upper = uuid.uuidString
+    guard raw == upper || raw == upper.lowercased() else { return nil }
+    return raw
   }
 
   // MARK: - Privacy seam (single source of truth in EnviousWisprObservabilityCore)

@@ -238,7 +238,13 @@ struct KernelFinalizationWiring {
         steps: [
           steps.wordCorrection, steps.fillerRemoval, steps.emojiFormatter,
           steps.inverseTextNormalization, steps.llmPolish, steps.emojiRestore,
-        ])
+        ],
+        // #1846: the LIVE in-flight take, not the concluded one. Polish runs before
+        // the session terminal, and starting a session CLEARS `kernel.lastTakeID`,
+        // so it is nil here — substituting it would emit no take key at all. Same
+        // key as the completion events, read at a different point; swapping the two
+        // reads would silently blank one family.
+        takeID: telemetryState.takeID)
       let ctx = result.context
       // #145: thread the ITN run outcome onto `dictation.completed` (metadata
       // only — `telemetry-privacy-boundary`). Read on the same actor right after

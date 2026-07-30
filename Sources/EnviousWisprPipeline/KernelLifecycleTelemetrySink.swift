@@ -36,10 +36,16 @@ final class KernelLifecycleTelemetrySink {
     _ active: Bool, _ backend: String?, _ isStreaming: Bool?
   ) -> Void
 
+  /// #1846. Optional-taking so `nil` means REMOVE, never a sentinel value.
+  typealias TakeIDSink = @MainActor (_ takeID: String?) -> Void
+
   typealias AudioRouteSink = @MainActor (_ route: String) -> Void
 
+  /// `takeID` (#1846) names WHICH dictation the event belongs to. Threaded as a
+  /// parameter rather than read from `telemetryState` inside the default closure so
+  /// a test observing this seam sees the exact value that reaches PostHog.
   typealias DictationInvokedSink = @MainActor (
-    _ triggerSource: String, _ inputMode: String, _ targetApp: String?
+    _ triggerSource: String, _ inputMode: String, _ targetApp: String?, _ takeID: String?
   ) -> Void
 
   typealias ModelLoadWedgedSink = @MainActor (
@@ -75,7 +81,8 @@ final class KernelLifecycleTelemetrySink {
   /// like every other sink so tests observe the emission without PostHog.
   typealias AudioCaptureInterruptedSink = @MainActor (
     _ cause: String, _ salvageAttempted: Bool, _ salvageSucceeded: Bool,
-    _ terminalState: String, _ backend: String, _ recordingDurationMs: Int?
+    _ terminalState: String, _ backend: String, _ recordingDurationMs: Int?,
+    _ takeID: String?
   ) -> Void
 
   // MARK: Identity + read sources
@@ -89,6 +96,7 @@ final class KernelLifecycleTelemetrySink {
   private let modelLoadWedgeTelemetry: @MainActor () -> KernelModelLoadWedgeTelemetry?
   private let breadcrumb: BreadcrumbSink
   private let updateRecordingState: RecordingStateSink
+  private let updateTakeID: TakeIDSink
   private let updateAudioRoute: AudioRouteSink
   private let dictationInvoked: DictationInvokedSink
   private let modelLoadWedged: ModelLoadWedgedSink
@@ -124,12 +132,32 @@ final class KernelLifecycleTelemetrySink {
       SentryBreadcrumb.updateRecordingState(
         active: active, backend: backend, isStreaming: isStreaming)
     },
+    // #1846: INERT by default, unlike every sibling seam here, which defaults to
+    // the real SDK call. The asymmetry is deliberate and it is the safer default
+    // for a NEW seam: `KernelLifecycleRecordingScopeBaselineTests` must compile
+    // against `origin/main`, so it cannot name this argument, and a real-SDK
+    // default would make that file mutate process-global Sentry scope while
+    // claiming in its own header that it touches no vendor scope. Production
+    // wires it explicitly in `KernelDictationDriverFactory`.
+    //
+    // Scope of that protection, stated exactly: it covers DIRECT sink
+    // constructions in unit tests, which the terminal postamble below would
+    // otherwise drag onto the real scope. Tests that build a driver through the
+    // factory still get production wiring, as they already do for the five sibling
+    // seams whose defaults call the real SDK.
+    //
+    // An inert default is a footgun — a dropped factory line would leave the
+    // feature tested, documented and dead. That is closed by
+    // `productionFactoryWiresTheTakeKey` in `KernelLifecycleTelemetrySinkTests`,
+    // which fails if the factory stops wiring this seam. Do not delete that test
+    // without restoring a real default here.
+    updateTakeID: @escaping TakeIDSink = { _ in },
     updateAudioRoute: @escaping AudioRouteSink = { route in
       SentryBreadcrumb.updateAudioRoute(route)
     },
-    dictationInvoked: @escaping DictationInvokedSink = { trigger, mode, target in
+    dictationInvoked: @escaping DictationInvokedSink = { trigger, mode, target, takeID in
       TelemetryService.shared.dictationInvoked(
-        triggerSource: trigger, inputMode: mode, targetApp: target)
+        triggerSource: trigger, inputMode: mode, targetApp: target, takeID: takeID)
     },
     modelLoadWedged: @escaping ModelLoadWedgedSink = { backend, telemetry in
       TelemetryService.shared.modelLoadWedged(
@@ -151,10 +179,11 @@ final class KernelLifecycleTelemetrySink {
     },
     noAudioCapturedRich: NoAudioCapturedSink? = nil,
     audioCaptureInterrupted: @escaping AudioCaptureInterruptedSink = {
-      cause, attempted, succeeded, terminal, backend, durationMs in
+      cause, attempted, succeeded, terminal, backend, durationMs, takeID in
       TelemetryService.shared.audioCaptureInterrupted(
         cause: cause, salvageAttempted: attempted, salvageSucceeded: succeeded,
-        terminalState: terminal, backend: backend, recordingDurationMs: durationMs)
+        terminalState: terminal, backend: backend, recordingDurationMs: durationMs,
+        takeID: takeID)
     },
     deadMicRecovered: @escaping @MainActor (DeadMicRecoveryOutcome) -> Void = { _ in }
   ) {
@@ -167,6 +196,7 @@ final class KernelLifecycleTelemetrySink {
     self.modelLoadWedgeTelemetry = modelLoadWedgeTelemetry
     self.breadcrumb = breadcrumb
     self.updateRecordingState = updateRecordingState
+    self.updateTakeID = updateTakeID
     self.updateAudioRoute = updateAudioRoute
     self.dictationInvoked = dictationInvoked
     self.modelLoadWedged = modelLoadWedged
@@ -182,7 +212,34 @@ final class KernelLifecycleTelemetrySink {
   /// (stage / message / category / event name). Payload fidelity per §3.7
   /// mapping table — preserved where the sink can read, deferred where rich
   /// kernel-side wiring would be required (§2.2 non-goals).
+  /// #1846 cloud review: establish the take tag SYNCHRONOUSLY at session
+  /// acceptance, before the kernel spawns any work.
+  ///
+  /// `emit` refreshes the tag on every lifecycle event, but the first such event
+  /// arrives through `observeKernelState`'s unstructured `Task { @MainActor }`,
+  /// which has no ordering guarantee against the kernel's own spawned
+  /// `runForwardPath`. Model-load and capture-start failures — the errors most
+  /// likely to fire early in a session, and exactly the ones this feature exists
+  /// to join — could therefore be raised before the tag existed and ship
+  /// untagged. The kernel calls this inside `start(config:)` itself, so the
+  /// window is closed by construction rather than by scheduling luck.
+  ///
+  /// Deliberately routed through the SAME `updateTakeID` writer as the per-event
+  /// refresh and the terminal clear: this type stays the single owner of that
+  /// scope tag.
+  func establishTakeID(_ takeID: String) {
+    updateTakeID(takeID)
+  }
+
   func emit(_ event: KernelLifecycleEvent) {
+    // #1846: establish the take key FIRST, before the pre-switch interruption
+    // counter and before any breadcrumb, error or PostHog emission. Required on
+    // EVERY event, not just the start one: `withObservationTracking` is not a
+    // lossless queue (`KernelHeartPathTelemetryObserver.handleObservationChange`
+    // dispatches every coalesced delta event), so a terminal can be handled in
+    // the same fire as its start — and if the tag were only set at start, a
+    // coalesced fire would leave the terminal error untagged.
+    updateTakeID(telemetryState.takeID)
     emitAudioCaptureInterruptedIfNeeded(for: event)
     switch event {
     case .pipelineStartingUp:
@@ -205,7 +262,7 @@ final class KernelLifecycleTelemetrySink {
       let triggerSource = context.config?.triggerSource.rawValue ?? "unknown"
       let inputMode = context.config?.inputMode.rawValue ?? "unknown"
       let targetApp = context.targetApp?.localizedName
-      dictationInvoked(triggerSource, inputMode, targetApp)
+      dictationInvoked(triggerSource, inputMode, targetApp, telemetryState.takeID)
       // Mirror old TP:546-553 — the breadcrumb data dict carries both
       // `backend` and `streaming`, and `updateRecordingState` carries the
       // real streaming flag (Codex review #11 r2 — earlier draft hardcoded
@@ -292,7 +349,8 @@ final class KernelLifecycleTelemetrySink {
           ["was_recording": true, "backend": backend.rawValue],
           snapshot: snapshot)
       }
-      updateRecordingState(false, nil, nil)
+    // Arm-local clear REMOVED (#1846): the generic terminal postamble below is
+    // now the single owner, so every terminal clears on exactly one path.
 
     case .asrInterrupted(let wasRecording):
       // Bridge matrix #3 — old TP:1145 emitted `was_recording == state == .recording`
@@ -322,7 +380,7 @@ final class KernelLifecycleTelemetrySink {
         .xpcServiceError, "asr",
         extra,
         snapshot: recordingSnapshot())
-      updateRecordingState(false, nil, nil)
+    // Arm-local clear REMOVED (#1846) — see the terminal postamble below.
 
     case .discarded(let reason):
       // PR-1 §B.7.4 — the ONE new event the epic introduces. Old code was
@@ -366,6 +424,40 @@ final class KernelLifecycleTelemetrySink {
       // only the telemetry emission is omitted.
       break
     }
+
+    // #1846: ONE generic terminal postamble, reached after the event-specific arm
+    // so the terminal event itself still carries the take key. `terminalStateLabel`
+    // is the closed seven-terminal authority, so a new terminal cannot silently
+    // skip cleanup — it has to decide there first.
+    //
+    // This is the single owner of the terminal `recording.active` clear ON THIS
+    // PATH. Measured before this change: five terminal arms had no arm-local
+    // clear (`.pipelineCompleted`, `.failed`, `.discarded`, `.noSpeech`,
+    // `.cancelled`) and two did (`.audioInterrupted`, `.asrInterrupted`); those
+    // two arm-local calls were REMOVED rather than left as duplicates.
+    // `.pipelineCompleted` normally follows the `.recordingStopped` marker, which
+    // clears capture scope at `emitRecordingStopped`, but the postamble
+    // deliberately does not depend on that route.
+    //
+    // Measured, not remembered — `grep -rn "updateRecordingState(" Sources/`
+    // returns exactly three CLEAR sites: this postamble, `emitRecordingStopped`
+    // below, and one OUTSIDE this file.
+    //
+    // The outside site is deliberate, and it is an EARLIER EMERGENCY CLEAR rather
+    // than a competing terminal-arm owner:
+    // `KernelDictationDriver.handleEngineInterruption` clears `recording.active`
+    // immediately for `.arming`, `.stopping` and `.delivering`, then routes the
+    // session toward a later `.cancelled` terminal. Keeping that earlier write
+    // preserves its synchronous freshness guarantee while this postamble provides
+    // route-independent terminal cleanup. The writes are idempotent, but the
+    // redundancy is not free — it is one extra process-global scope mutation, and
+    // that cost is accepted in exchange for closing the stale window before the
+    // asynchronously observed terminal arrives. The take key needs no early clear
+    // there because it must stay live through the terminal event itself.
+    if Self.terminalStateLabel(for: event) != nil {
+      updateTakeID(nil)
+      updateRecordingState(false, nil, nil)
+    }
   }
 
   /// #1408: emit the interruption counter exactly once per interrupted session,
@@ -388,7 +480,8 @@ final class KernelLifecycleTelemetrySink {
       terminal == "completed",
       terminal,
       backend.rawValue,
-      telemetryState.recordingSnapshot?.durationMs)
+      telemetryState.recordingSnapshot?.durationMs,
+      telemetryState.takeID)
   }
 
   /// The terminal each lifecycle event represents, or `nil` for a non-terminal

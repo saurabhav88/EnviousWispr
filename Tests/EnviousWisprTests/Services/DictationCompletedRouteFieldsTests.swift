@@ -46,6 +46,92 @@ struct DictationCompletedRouteFieldsTests {
       #expect(props?["route_fallback_reason"] == nil)
     }
 
+    // MARK: - #1846 take key on all four completion events
+
+    /// ONE argument to `reportDictationCompleted` has to reach all FOUR events it
+    /// fans out to. `asr.completed`, `llm.polish_completed` and `paste.completed` are
+    /// each gated on their own metric being present, so this supplies metrics that
+    /// open all three gates and asserts every event carries the same key.
+    ///
+    /// Observed through the DEBUG hook, which as of #1846 derives from the payload
+    /// PostHog actually receives. Before that, `reportDictationCompleted` emitted a
+    /// parallel dictionary under the `dictation.completed` name while the real payload
+    /// was built with no hook at all — a test here could have passed with the
+    /// production line deleted.
+    @Test("the take key reaches all four completion events from one argument")
+    func takeKeyReachesAllFourCompletionEvents() throws {
+      let seen = EventsBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { seen.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Self.transcriptOpeningAllFourGates(),
+        inputMode: "ptt",
+        takeID: Self.takeID)
+
+      let names = Set(seen.events.map(\.name))
+      #expect(
+        names == [
+          "dictation.completed", "asr.completed", "llm.polish_completed", "paste.completed",
+        ],
+        "all four gates must open, or the assertions below cover fewer events than claimed — saw \(names.sorted())"
+      )
+      for event in seen.events {
+        #expect(
+          event.stringProps["take_id"] == Self.takeID,
+          "\(event.name) must carry the take key")
+      }
+    }
+
+    /// Absent on every one of the four, never an empty string.
+    @Test("all four completion events omit the take key entirely when there is no take")
+    func allFourOmitTheTakeKeyWhenNil() throws {
+      let seen = EventsBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { seen.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Self.transcriptOpeningAllFourGates(),
+        inputMode: "ptt",
+        takeID: nil)
+
+      #expect(seen.events.count == 4, "same four events, so the nil suppressed nothing")
+      for event in seen.events {
+        #expect(
+          event.stringProps["take_id"] == nil,
+          "\(event.name) must OMIT take_id, not send an empty string")
+      }
+    }
+
+    private final class EventsBox: @unchecked Sendable {
+      var events: [CapturedTelemetryEvent] = []
+    }
+
+    private static let takeID = "9f2c1d84-6b3a-4e07-9c51-0a7d2e6f1b33"
+
+    /// A transcript whose metrics open the `asr.completed`, `llm.polish_completed`
+    /// and `paste.completed` gates inside `reportDictationCompleted`: a non-nil ASR
+    /// latency, a positive LLM latency with a provider, and a paste tier plus
+    /// latency. Without all three, a test claiming four-event coverage would
+    /// silently assert over one event.
+    private static func transcriptOpeningAllFourGates() -> Transcript {
+      Transcript(
+        text: "hello",
+        polishedText: "Hello.",
+        llmProvider: "openai",
+        llmModel: "gpt-4o-mini",
+        metrics: ExecutionMetrics(
+          asrLatencySeconds: 0.4,
+          llmLatencySeconds: 0.3,
+          pasteTier: "cgevent",
+          pasteLatencyMs: 12,
+          e2eSeconds: 1.0))
+    }
+
     @Test("Auto dictation omits route fields when nil")
     func autoOmitsFields() {
       let box = Box()

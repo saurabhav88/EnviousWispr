@@ -398,12 +398,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   public var onOverlayIntentChange: ((OverlayIntent) -> Void)?
 
   /// Fired at most once per recording when the recording approaches the
-  /// max-duration cap (#1060), carrying remaining seconds. Display-only, like
-  /// `onOverlayIntentChange`: carries NO lifecycle authority; wire ONLY to the
-  /// overlay banner path, never to anything that mutates recording state. The
-  /// App layer owns the user-facing copy.
+  /// max-duration cap (#1060), carrying remaining seconds and the take key this
+  /// warning belongs to (#1846). Display-only, like `onOverlayIntentChange`:
+  /// carries NO lifecycle authority; wire ONLY to the overlay banner path, never
+  /// to anything that mutates recording state. The App layer owns the
+  /// user-facing copy.
   @ObservationIgnored
-  public var onApproachingMaxDuration: ((TimeInterval) -> Void)?
+  public var onApproachingMaxDuration: ((TimeInterval, String) -> Void)?
 
   /// #1339 — the single active sessionless load-wedge guard, or nil when no
   /// sessionless warm-up attempt is in flight. The driver-level single-flight
@@ -652,8 +653,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   func start() {
     observeKernelState()
     observeDisplayOnlyOverlay()
-    kernel.onApproachingMaxDuration = { [weak self] remaining in
-      self?.onApproachingMaxDuration?(remaining)
+    // #1846: forward the take key unchanged. The driver also exposes
+    // `lastTakeID`, but that is the CONCLUDED key and is cleared when a new
+    // session starts. A cap warning fires before the terminal stamps it, so
+    // substituting it here would emit no take key.
+    kernel.onApproachingMaxDuration = { [weak self] remaining, takeID in
+      self?.onApproachingMaxDuration?(remaining, takeID)
     }
   }
 
@@ -936,6 +941,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
   /// kernel; never persisted. Reason strings only, never user content.
   public var lastStopReason: String? { kernel.lastStopReason }
+  /// #1846: the id of the take that most recently CONCLUDED, for `dictation.completed`
+  /// and its three sibling completion events. LIVE pass-through of a value the kernel
+  /// FROZE at the accepted terminal — not a live read of the in-flight take key, which
+  /// would name the next take once the user started talking again. Rationale and the
+  /// absent-vs-wrong argument live on `RecordingSessionKernel.lastTakeID`.
+  public var lastTakeID: String? { kernel.lastTakeID }
   public var lastRecordingDurationSeconds: Double? { kernel.lastRecordingDurationSeconds }
   /// #1408: non-nil when the most recent recording's capture was interrupted
   /// mid-flight (device died, cap reached). Drives the disconnect disclosure pill

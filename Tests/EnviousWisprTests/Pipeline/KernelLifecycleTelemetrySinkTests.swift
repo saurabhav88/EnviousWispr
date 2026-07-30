@@ -41,6 +41,8 @@ import Testing
       let triggerSource: String
       let inputMode: String
       let targetApp: String?
+      /// #1846: the take key that reached PostHog with this event.
+      let takeID: String?
     }
     struct CaptureErrorCall: Equatable {
       let category: SentryBreadcrumb.ErrorCategory
@@ -56,6 +58,8 @@ import Testing
       let salvageSucceeded: Bool
       let terminalState: String
       let backend: String
+      /// #1846: the take key that reached PostHog with this event.
+      let takeID: String?
     }
 
     var breadcrumbs: [BreadcrumbCall] = []
@@ -66,6 +70,24 @@ import Testing
     var captureErrors: [CaptureErrorCall] = []
     var audioCaptureInterruptions: [AudioCaptureInterruptedCall] = []
     var deadMicRecoveries: [DeadMicRecoveryOutcome] = []
+
+    /// #1846: every `updateTakeID` argument in order. `nil` is a REMOVE, so the
+    /// element type has to stay optional — collapsing it would erase the one
+    /// distinction the seam exists to carry.
+    var takeIDUpdates: [String?] = []
+
+    /// #1846: an ORDERED cross-seam log, because the per-seam arrays above can
+    /// prove that two things happened but not which happened first. The take key
+    /// has to be established BEFORE any emission or a terminal error lands
+    /// untagged, and that claim is only checkable against an interleaved record.
+    var timeline: [String] = []
+
+    /// #1846: the key that would be on the Sentry scope RIGHT NOW — the last
+    /// value written, not the history. Models what a real Sentry event emitted at
+    /// this instant would actually carry, which `takeIDUpdates` cannot show: an
+    /// ordered list proves the writes happened, never that an error landed inside
+    /// the window they open.
+    var effectiveTakeID: String?
   }
 
   // MARK: - Sink construction with recorder seams
@@ -92,12 +114,20 @@ import Testing
       updateRecordingState: { active, backend, isStreaming in
         recorder.recordingStates.append(
           Recorder.RecordingStateCall(active: active, backend: backend, isStreaming: isStreaming))
+        recorder.timeline.append("recordingState:\(active)")
+      },
+      // #1846: injected so direct sink tests using this helper do not reach the
+      // real Sentry scope.
+      updateTakeID: { takeID in
+        recorder.effectiveTakeID = takeID
+        recorder.takeIDUpdates.append(takeID)
+        recorder.timeline.append(takeID.map { "take:set:\($0)" } ?? "take:remove")
       },
       updateAudioRoute: { route in recorder.audioRoutes.append(route) },
-      dictationInvoked: { trigger, mode, target in
+      dictationInvoked: { trigger, mode, target, takeID in
         recorder.dictationsInvoked.append(
           Recorder.DictationInvokedCall(
-            triggerSource: trigger, inputMode: mode, targetApp: target))
+            triggerSource: trigger, inputMode: mode, targetApp: target, takeID: takeID))
       },
       modelLoadWedged: { backend, _ in recorder.modelLoadWedgedBackends.append(backend) },
       captureError: { error, category, stage, extra in
@@ -105,14 +135,20 @@ import Testing
           Recorder.CaptureErrorCall(
             category: category, stage: stage, errorDescription: error.localizedDescription,
             extraKeys: (extra?.keys.map { $0 } ?? []).sorted()))
+        // #1846: stamp the key that is live AT EMISSION. This is what makes the
+        // post-capture window testable — a Sentry error emitted here would carry
+        // exactly this value.
+        recorder.timeline.append(
+          "captureError:\(stage):take:\(recorder.effectiveTakeID ?? "none")")
       },
       // #1408: injected so no test ever reaches the real PostHog SDK
       // (`tests-no-process-global-mutable-delegate`).
-      audioCaptureInterrupted: { cause, attempted, succeeded, terminal, backend, _ in
+      audioCaptureInterrupted: { cause, attempted, succeeded, terminal, backend, _, takeID in
         recorder.audioCaptureInterruptions.append(
           Recorder.AudioCaptureInterruptedCall(
             cause: cause, salvageAttempted: attempted, salvageSucceeded: succeeded,
-            terminalState: terminal, backend: backend))
+            terminalState: terminal, backend: backend, takeID: takeID))
+        recorder.timeline.append("interruptionCounter:\(terminal)")
       },
       deadMicRecovered: { recorder.deadMicRecoveries.append($0) })
   }
@@ -152,7 +188,9 @@ import Testing
     sink.emit(.recordingCommitted(isStreaming: false))
     #expect(
       recorder.dictationsInvoked == [
-        .init(triggerSource: "ptt_hotkey", inputMode: "pushToTalk", targetApp: nil)
+        // takeID nil: this test constructs a bare KernelTelemetryState with no
+        // session, so there is genuinely no take to name (#1846).
+        .init(triggerSource: "ptt_hotkey", inputMode: "pushToTalk", targetApp: nil, takeID: nil)
       ])
     // Breadcrumb data dict carries both `backend` and `streaming` keys —
     // mirrors old TP:548-551.
@@ -496,7 +534,8 @@ import Testing
       recorder.audioCaptureInterruptions == [
         .init(
           cause: "engine_lost", salvageAttempted: true, salvageSucceeded: true,
-          terminalState: "completed", backend: "parakeet")
+          // takeID nil: this suite's bare KernelTelemetryState has no session.
+          terminalState: "completed", backend: "parakeet", takeID: nil)
       ])
     #expect(
       recorder.captureErrors.isEmpty,
@@ -516,7 +555,7 @@ import Testing
       recorder.audioCaptureInterruptions == [
         .init(
           cause: "engine_lost", salvageAttempted: true, salvageSucceeded: false,
-          terminalState: "audio_interrupted", backend: "parakeet")
+          terminalState: "audio_interrupted", backend: "parakeet", takeID: nil)
       ])
     #expect(recorder.captureErrors.count == 1, "the lost dictation is still a real loss")
   }
@@ -721,16 +760,33 @@ import Testing
       "no heart_path_finalization Sentry capture for a quiet no-speech outcome")
   }
 
-  @Test(".cancelled emits NOTHING (PR-1 §B.7.4 only-one-new-event rule)")
+  /// #1846 CHANGED THE `recordingStates` HALF OF THIS TEST, deliberately.
+  ///
+  /// The invariant this test protects is the §B.7.4 only-one-new-event rule: a
+  /// cancel must not produce a breadcrumb, a Sentry error, or a PostHog event.
+  /// That half is untouched. `updateRecordingState` is neither — it is an
+  /// idempotent write to the `recording.active` SCOPE TAG, and asserting it was
+  /// empty was asserting the #1846 defect: a cancelled take left
+  /// `recording.active=true` on the scope, so the next unrelated Sentry event in
+  /// that process inherited it and read as "crashed while recording".
+  ///
+  /// The oracle was not fitted to the change. The defect is proved independently
+  /// by `KernelLifecycleRecordingScopeBaselineTests`, which is RED on unmodified
+  /// `origin/main` for exactly this reason.
+  @Test(".cancelled emits no event, and now clears recording scope (#1846)")
   func cancelledEmitsNothing() {
     let recorder = Recorder()
     let sink = makeSink(recorder: recorder)
     sink.emit(.cancelled)
     #expect(recorder.breadcrumbs.isEmpty)
     #expect(recorder.captureErrors.isEmpty)
-    #expect(recorder.recordingStates.isEmpty)
     #expect(recorder.audioRoutes.isEmpty)
     #expect(recorder.dictationsInvoked.isEmpty)
+    // The generic terminal postamble, and only it — exactly one inactive write.
+    #expect(
+      recorder.recordingStates == [
+        Recorder.RecordingStateCall(active: false, backend: nil, isStreaming: nil)
+      ])
   }
 
   // MARK: - Per-failure-reason coverage (10 positive + 2 r8 negative)
@@ -796,6 +852,10 @@ import Testing
       context: KernelSessionContext(),
       captureTelemetry: CaptureTelemetryState(),
       telemetryState: KernelTelemetryState(),
+      // #1846: injected inert so the terminal postamble cannot reach the real
+      // Sentry scope from a direct construction.
+      updateRecordingState: { _, _, _ in },
+      updateTakeID: { _ in },
       captureError: { error, _, _, _ in
         captureCount += 1
         capturedIdentity = error.sentrySemanticID
@@ -955,6 +1015,10 @@ import Testing
       context: KernelSessionContext(),
       captureTelemetry: CaptureTelemetryState(),
       telemetryState: state,
+      // #1846: injected inert so the terminal postamble cannot reach the real
+      // Sentry scope from a direct construction.
+      updateRecordingState: { _, _, _ in },
+      updateTakeID: { _ in },
       captureError: { error, _, _, _ in
         captureCount += 1
         capturedIdentity = error.sentrySemanticID
@@ -994,17 +1058,31 @@ import Testing
   // the sink (proved by `KernelHeartPathTelemetryObserverTests`); the sink
   // intentionally produces zero side-effect.
 
-  @Test(".failed(.captureStalled) emits NOTHING — rich emitter owns this terminal (r8)")
+  /// #1846 CHANGED THE `recordingStates` HALF OF THIS TEST, deliberately, and the
+  /// r8 invariant it exists for is intact.
+  ///
+  /// r8 is about DUPLICATION: `HeartPathTelemetryEmitter` owns the rich Sentry
+  /// emission for this terminal, so a second `captureError` here would double
+  /// every stall's Sentry count. That still holds. It does NOT extend to the
+  /// recording-scope clear, because the rich emitter never wrote that tag. Before
+  /// #1846, the four production clear sites were this sink's two interruption
+  /// arms, its `.recordingStopped` marker, and `KernelDictationDriver`'s direct
+  /// engine-interruption write. A stall therefore left `recording.active=true` on
+  /// the scope with nothing to clear it, which is the defect, not the contract.
+  @Test(".failed(.captureStalled) emits no duplicate, and now clears recording scope (#1846)")
   func failedCaptureStalledEmitsNothing() {
     let recorder = Recorder()
     let sink = makeSink(recorder: recorder)
     sink.emit(.failed(.captureStalled))
     #expect(recorder.captureErrors.isEmpty)
     #expect(recorder.breadcrumbs.isEmpty)
-    #expect(recorder.recordingStates.isEmpty)
     #expect(recorder.audioRoutes.isEmpty)
     #expect(recorder.dictationsInvoked.isEmpty)
     #expect(recorder.modelLoadWedgedBackends.isEmpty)
+    #expect(
+      recorder.recordingStates == [
+        Recorder.RecordingStateCall(active: false, backend: nil, isStreaming: nil)
+      ])
   }
 
   @Test(
@@ -1043,6 +1121,10 @@ import Testing
       audioCapture: FakeAudioCapture(),
       context: KernelSessionContext(),
       captureTelemetry: CaptureTelemetryState(),
+      // #1846: injected inert so the terminal postamble cannot reach the real
+      // Sentry scope from a direct construction.
+      updateRecordingState: { _, _, _ in },
+      updateTakeID: { _ in },
       captureError: { error, category, stage, extra in
         recorder.captureErrors.append(
           Recorder.CaptureErrorCall(
@@ -1070,5 +1152,327 @@ import Testing
     // updateRecordingState argument must come from the injected backend, not
     // a hardcoded literal.
     #expect(recorder.recordingStates.first?.backend == "whisperKit")
+  }
+
+  // MARK: - Per-dictation take key (#1846)
+
+  /// Two fixed, distinct ids. Literal rather than `UUID()` so a failure message
+  /// names a stable value and the assertions cannot pass by comparing a freshly
+  /// generated id to itself.
+  private static let takeA = "9f2c1d84-6b3a-4e07-9c51-0a7d2e6f1b33"
+  private static let takeB = "1e5b7a90-2c46-4d18-8f03-6b9e4a2c7d51"
+
+  /// Every `KernelLifecycleEvent` the sink can receive, with one representative
+  /// payload per case.
+  ///
+  /// MAINTENANCE: `isTerminalMirror` below is an exhaustive switch, so adding a
+  /// case to `KernelLifecycleEvent` breaks THIS FILE at compile time. When that
+  /// happens, add the new case to this list as well and bump the two count
+  /// assertions in `everyTerminalClearsTheTakeKeyExactlyOnce`. The count
+  /// assertions exist so the bump is a deliberate edit rather than a silent
+  /// omission — a new terminal that nobody added here would otherwise be
+  /// untested while the suite stayed green.
+  private static let allEvents: [KernelLifecycleEvent] = [
+    // Non-terminal.
+    .pipelineStartingUp,
+    .modelLoading,
+    .recordingCommitted(isStreaming: false),
+    .recordingStopped,
+    .transcriptionStarted,
+    .asrCompleted,
+    // Terminal — the seven `terminalStateLabel` recognises.
+    .pipelineCompleted,
+    .failed(.asrEmpty),
+    .audioInterrupted(cause: .engineLost),
+    .asrInterrupted(wasRecording: true),
+    .discarded(.tooShort),
+    .noSpeech(.vadGate),
+    .cancelled,
+  ]
+
+  /// A deliberate COMPILE-TIME MIRROR of the production `terminalStateLabel`
+  /// switch. Duplicating a production switch is normally the defect, not the
+  /// test — the justification here is that the duplicate is the detector: it is
+  /// exhaustive, so it cannot compile once a case is added, which is what drags
+  /// the author into this file to decide whether the new event clears the key.
+  /// It is never consulted by production code.
+  private static func isTerminalMirror(_ event: KernelLifecycleEvent) -> Bool {
+    switch event {
+    case .pipelineCompleted, .failed, .audioInterrupted, .asrInterrupted,
+      .discarded, .noSpeech, .cancelled:
+      true
+    case .pipelineStartingUp, .modelLoading, .recordingCommitted, .recordingStopped,
+      .transcriptionStarted, .asrCompleted:
+      false
+    }
+  }
+
+  /// ONE generic postamble owns the terminal cleanup, so every terminal removes
+  /// the take key and clears `recording.active` exactly once — including the five
+  /// that had no cleanup of their own before #1846
+  /// (`.pipelineCompleted`, `.failed`, `.discarded`, `.noSpeech`, `.cancelled`).
+  ///
+  /// "Exactly once" is the load-bearing half. The two arms that DID clear
+  /// (`.audioInterrupted`, `.asrInterrupted`) had their arm-local calls removed
+  /// rather than left beside the postamble; if either came back, this test fails
+  /// on the count, not on a missing call.
+  @Test("every terminal removes the take key and clears recording state exactly once")
+  func everyTerminalClearsTheTakeKeyExactlyOnce() {
+    let events = Self.allEvents
+    #expect(events.count == 13, "one representative per KernelLifecycleEvent case")
+
+    let terminals = events.filter { Self.isTerminalMirror($0) }
+    #expect(terminals.count == 7, "the closed terminal set `terminalStateLabel` recognises")
+
+    for event in events {
+      let recorder = Recorder()
+      let telemetryState = KernelTelemetryState()
+      telemetryState.resetForNewSession(takeID: Self.takeA, polishEnabled: false)
+      let context = KernelSessionContext()
+      context.config = .testDefault()
+      let sink = makeSink(recorder: recorder, context: context, telemetryState: telemetryState)
+
+      sink.emit(event)
+
+      let removals = recorder.takeIDUpdates.filter { $0 == nil }
+      let inactive = recorder.recordingStates.filter { !$0.active }
+
+      if Self.isTerminalMirror(event) {
+        #expect(
+          removals.count == 1,
+          "\(event) is a terminal and must remove the take key exactly once, got \(removals.count)"
+        )
+        #expect(
+          inactive.count == 1,
+          """
+          \(event) is a terminal and must clear recording.active exactly once, got \
+          \(inactive.count). More than one means an arm-local clear survived beside \
+          the postamble; zero means the postamble did not run.
+          """)
+        // The removal is LAST: the terminal event's own emission still has to
+        // carry the key, so the clear cannot precede it.
+        #expect(
+          recorder.takeIDUpdates.last == .some(.none),
+          "\(event) must remove the key after its own emission, not before")
+      } else {
+        #expect(
+          removals.isEmpty,
+          "\(event) is not a terminal and must not remove the take key")
+      }
+    }
+  }
+
+  /// The key is established BEFORE anything is emitted, on every event rather
+  /// than only on the start one.
+  ///
+  /// This is not defensive. `withObservationTracking` is not a lossless queue:
+  /// `KernelHeartPathTelemetryObserver.handleObservationChange` dispatches every
+  /// coalesced delta from one fire, so the sink can legitimately receive a
+  /// terminal without ever having received the start event. If the tag were set
+  /// only at the start, that fire's error would land untagged — and an untagged
+  /// error is exactly the one worth attributing.
+  @Test("the take key is established before any emission, even on a coalesced terminal")
+  func takeKeyIsEstablishedBeforeAnyEmission() {
+    let recorder = Recorder()
+    let telemetryState = KernelTelemetryState()
+    telemetryState.resetForNewSession(takeID: Self.takeA, polishEnabled: false)
+    // An interrupted session, so the pre-switch counter fires too — that counter
+    // runs before the event-specific arm and must also be inside the tagged window.
+    telemetryState.interruptionCause = .engineLost
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+
+    // No start event was ever delivered: this is the coalesced case.
+    sink.emit(.failed(.asrFailed))
+
+    #expect(
+      recorder.timeline.first == "take:set:\(Self.takeA)",
+      "the key must be the FIRST thing that happens, got timeline \(recorder.timeline)")
+    #expect(recorder.timeline.contains("interruptionCounter:failed"))
+    #expect(recorder.timeline.contains { $0.hasPrefix("captureError:") })
+    // The postamble's own order: remove the key, then clear capture state. Both
+    // are after every emission, which is the point.
+    #expect(
+      Array(recorder.timeline.suffix(2)) == ["take:remove", "recordingState:false"],
+      "the postamble must close the window last, got timeline \(recorder.timeline)")
+  }
+
+  /// The take key survives capture stop, is still live for a POST-CAPTURE error,
+  /// and only then is removed. `KernelTelemetryState.takeID` deliberately KEEPS its
+  /// value past the terminal so late work stays attributable in the state object;
+  /// only the Sentry scope is cleared. Asserting both halves stops a future "tidy
+  /// up" from adding a second clearer there, which would blank the key while the
+  /// highest-volume errors are still being raised.
+  ///
+  /// The post-capture half is the whole reason the key is tied to the kernel take
+  /// rather than to capture. `recording.active` clears at the `.recordingStopped`
+  /// marker, but polish and paste run after that — and `polish_provider_failed` is
+  /// one of our highest-volume Sentry issues. A capture-scoped key would have left
+  /// exactly the errors most worth joining without one.
+  ///
+  /// An ordered list of writes cannot prove that. It shows the writes happened,
+  /// not that an error landed inside the window they open, so this asserts against
+  /// `effectiveTakeID` — the value a real Sentry event emitted at that instant
+  /// would carry.
+  @Test("the take key survives capture stop through a post-capture error, then is removed")
+  func takeKeyLifetime() {
+    let recorder = Recorder()
+    let telemetryState = KernelTelemetryState()
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+
+    // Before any session: no key exists, so the seam is told to REMOVE rather
+    // than handed a placeholder.
+    sink.emit(.transcriptionStarted)
+    #expect(recorder.takeIDUpdates == [nil])
+    #expect(recorder.effectiveTakeID == nil)
+
+    telemetryState.resetForNewSession(takeID: Self.takeA, polishEnabled: false)
+
+    // Capture has stopped; the kernel take has NOT concluded.
+    sink.emit(.recordingStopped)
+    #expect(recorder.effectiveTakeID == Self.takeA)
+    #expect(telemetryState.takeID == Self.takeA)
+
+    // A post-capture error must observe the exact key, before the postamble.
+    sink.emit(.failed(.asrFailed))
+    #expect(
+      recorder.timeline.contains("captureError:transcription:take:\(Self.takeA)"),
+      """
+      the post-capture error must be emitted while the take key is still live. \
+      Timeline was \(recorder.timeline).
+      """)
+
+    // Removed only after that error, so a later unrelated event in this process
+    // cannot inherit the concluded take.
+    #expect(recorder.takeIDUpdates == [nil, Self.takeA, Self.takeA, nil])
+    #expect(recorder.effectiveTakeID == nil)
+
+    // The routing projection deliberately outlives the scope clear, so
+    // concluded-session consumers can still read it.
+    #expect(telemetryState.takeID == Self.takeA)
+
+    telemetryState.resetForNewSession(takeID: Self.takeB, polishEnabled: true)
+    #expect(telemetryState.takeID == Self.takeB, "a reset replaces the id")
+    sink.emit(.transcriptionStarted)
+    #expect(recorder.takeIDUpdates == [nil, Self.takeA, Self.takeA, nil, Self.takeB])
+    #expect(recorder.effectiveTakeID == Self.takeB)
+  }
+
+  /// The `updateTakeID` seam defaults to INERT, so direct sink constructions that
+  /// omit it do not mutate the real Sentry scope. The production factory wiring is
+  /// therefore what activates this feature, and a dropped line would leave it
+  /// tested, documented and dead with every test above still green —
+  /// `a-guard-nothing-arms-is-not-a-guard`.
+  ///
+  /// Existing integration tests DO construct drivers through that factory, so this
+  /// is not a claim that nothing reaches production wiring. They neither expose
+  /// this injected seam nor safely observe the process-global Sentry tag, so they
+  /// cannot detect the dropped line. This source check proves only that the
+  /// production wiring is present, and it is checked in both directions below so an
+  /// empty result cannot read as a pass.
+  @Test("the production factory wires the take key, so the inert default is never shipped")
+  func productionFactoryWiresTheTakeKey() throws {
+    let factory = try Self.pipelineSourceFile("KernelDictationDriverFactory.swift")
+
+    let wiring = try Regex(
+      #"updateTakeID:\s*\{\s*takeID in\s*\n\s*SentryBreadcrumb\.updateTakeID\(takeID\)"#)
+    #expect(
+      factory.firstMatch(of: wiring) != nil,
+      """
+      KernelDictationDriverFactory no longer wires `updateTakeID` to \
+      SentryBreadcrumb. The sink's default is inert, so dictation.take_id would \
+      never be set in production while every other #1846 test stayed green. \
+      Restore the wiring, or give the sink a real default again.
+      """)
+
+    // Positive control on the instrument itself: the same pattern must NOT match a
+    // string it should not match. Without this, a regex that can never match
+    // anything would fail loudly above, but a regex that matches EVERYTHING would
+    // pass silently.
+    #expect("updateTakeID: { _ in },".firstMatch(of: wiring) == nil)
+  }
+
+  // MARK: - Take key routed onto the two sink-owned PostHog events (#1846 chunk 5)
+
+  /// `dictation.invoked` is the event that opens a take, so its take key is what
+  /// lets a Sentry error be traced back to the dictation the user actually started.
+  @Test("dictation.invoked carries the take key of the session that produced it")
+  func dictationInvokedCarriesTheTakeKey() {
+    let recorder = Recorder()
+    let telemetryState = KernelTelemetryState()
+    telemetryState.resetForNewSession(takeID: Self.takeA, polishEnabled: false)
+    let context = KernelSessionContext()
+    context.config = .testDefault(inputMode: .pushToTalk, triggerSource: .pttHotkey)
+    let sink = makeSink(recorder: recorder, context: context, telemetryState: telemetryState)
+
+    sink.emit(.recordingCommitted(isStreaming: false))
+
+    #expect(
+      recorder.dictationsInvoked == [
+        .init(
+          triggerSource: "ptt_hotkey", inputMode: "pushToTalk", targetApp: nil,
+          takeID: Self.takeA)
+      ])
+  }
+
+  /// The counter that gives salvage a denominator has to name WHICH take was
+  /// interrupted, or a Bluetooth-drop investigation can count interruptions but
+  /// cannot tie any of them to the errors that take raised.
+  @Test("audio.capture_interrupted carries the take key of the interrupted session")
+  func audioCaptureInterruptedCarriesTheTakeKey() throws {
+    let recorder = Recorder()
+    let telemetryState = KernelTelemetryState()
+    telemetryState.resetForNewSession(takeID: Self.takeA, polishEnabled: false)
+    telemetryState.interruptionCause = .engineLost
+    let sink = makeSink(recorder: recorder, telemetryState: telemetryState)
+
+    sink.emit(.pipelineCompleted)
+
+    #expect(recorder.audioCaptureInterruptions.count == 1)
+    let interruption = try #require(recorder.audioCaptureInterruptions.first)
+    #expect(interruption.takeID == Self.takeA)
+  }
+
+  /// Both events must send NO take key rather than a placeholder when no session
+  /// produced them. A sentinel would be indistinguishable from a real id in a query
+  /// and would silently inflate any per-take count.
+  @Test("both sink events omit the take key entirely when no session is in flight")
+  func sinkEventsOmitTheTakeKeyWithNoSession() throws {
+    let recorder = Recorder()
+    // A bare state: `takeID` is nil because no session was ever accepted.
+    let telemetryState = KernelTelemetryState()
+    telemetryState.interruptionCause = .engineLost
+    let context = KernelSessionContext()
+    context.config = .testDefault()
+    let sink = makeSink(recorder: recorder, context: context, telemetryState: telemetryState)
+
+    sink.emit(.recordingCommitted(isStreaming: false))
+    sink.emit(.pipelineCompleted)
+
+    let invocation = try #require(recorder.dictationsInvoked.first)
+    let interruption = try #require(recorder.audioCaptureInterruptions.first)
+    #expect(invocation.takeID == nil)
+    #expect(interruption.takeID == nil)
+    // Both events still fired — the absent key must not suppress the emission.
+    #expect(recorder.dictationsInvoked.count == 1)
+    #expect(recorder.audioCaptureInterruptions.count == 1)
+  }
+
+  /// Resolve a `Sources/EnviousWisprPipeline` file from this test file's own path.
+  /// `#filePath` rather than a working-directory guess: a filtered run's cwd is
+  /// the harness's, not the repo root.
+  private static func pipelineSourceFile(_ name: String) throws -> String {
+    let testFile = URL(fileURLWithPath: #filePath)
+    // .../Tests/EnviousWisprTests/Pipeline/<this file>
+    let repoRoot =
+      testFile
+      .deletingLastPathComponent()  // Pipeline
+      .deletingLastPathComponent()  // EnviousWisprTests
+      .deletingLastPathComponent()  // Tests
+      .deletingLastPathComponent()  // repo root
+    let source =
+      repoRoot
+      .appendingPathComponent("Sources/EnviousWisprPipeline")
+      .appendingPathComponent(name)
+    return try String(contentsOf: source, encoding: .utf8)
   }
 }

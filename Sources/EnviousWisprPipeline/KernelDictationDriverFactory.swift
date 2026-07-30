@@ -224,9 +224,16 @@ public enum KernelDictationDriverFactory {
   private final class TelemetryRelay {
     var kernel: RecordingSessionKernel?
     var recordingStopped: (@MainActor (Int) -> Void)?
+    /// #1846: set after the lifecycle sink exists (the kernel is built first),
+    /// then called synchronously from `start(config:)` on every accepted session.
+    var sessionAccepted: (@MainActor (String) -> Void)?
 
     func emitRecordingStopped(sampleCount: Int) {
       recordingStopped?(sampleCount)
+    }
+
+    func establishTakeID(_ takeID: String) {
+      sessionAccepted?(takeID)
     }
 
     func modelLoadWedgeTelemetry() -> KernelModelLoadWedgeTelemetry? {
@@ -476,6 +483,11 @@ public enum KernelDictationDriverFactory {
       recordingStoppedTelemetry: { sampleCount in
         telemetryRelay.emitRecordingStopped(sampleCount: sampleCount)
       },
+      // #1846 cloud review: routed through the relay for the same reason as the
+      // line above — the kernel is constructed BEFORE the lifecycle sink.
+      sessionAcceptedTelemetry: { takeID in
+        telemetryRelay.establishTakeID(takeID)
+      },
       markPipelineTimingStart: {
         outcome.pipelineStartedAtSeconds = CFAbsoluteTimeGetCurrent()
       },
@@ -504,6 +516,22 @@ public enum KernelDictationDriverFactory {
       captureTelemetry: captureTelemetry,
       telemetryState: telemetryState,
       modelLoadWedgeTelemetry: { telemetryRelay.modelLoadWedgeTelemetry() },
+      // #1846: the ONLY production wiring of the per-dictation take key, so this
+      // line is what makes the feature exist at all —
+      // `KernelLifecycleTelemetrySinkTests.productionFactoryWiresTheTakeKey` fails
+      // if it is removed.
+      //
+      // The sink defaults this seam to inert, unlike its sibling scope seams. That
+      // keeps DIRECT sink constructions in unit tests off the real Sentry scope,
+      // which the new terminal postamble would otherwise drag them onto. It does
+      // NOT mean no test reaches the real scope: a test that builds a driver
+      // through this factory gets the full production wiring by design, and
+      // already did for `breadcrumb`, `updateRecordingState`, `updateAudioRoute`,
+      // `dictationInvoked` and `modelLoadWedged`, all of which default to the real
+      // SDK here. The take key is the sixth, not a new exposure.
+      updateTakeID: { takeID in
+        SentryBreadcrumb.updateTakeID(takeID)
+      },
       // Route both lifecycle captureError variants through the same injected
       // sink so a test observing one sink sees every error this sink can emit
       // (Codex review #875). Production stays byte-identical: the default sink
@@ -525,6 +553,11 @@ public enum KernelDictationDriverFactory {
     )
     telemetryRelay.recordingStopped = { [lifecycleSink] sampleCount in
       lifecycleSink.emitRecordingStopped(sampleCount: sampleCount)
+    }
+    // #1846: the sink stays the SINGLE writer of `dictation.take_id`; this only
+    // gives the kernel a synchronous way to reach it at session acceptance.
+    telemetryRelay.sessionAccepted = { [lifecycleSink] takeID in
+      lifecycleSink.establishTakeID(takeID)
     }
 
     // 9. Observer (constructed AFTER kernel — needs the kernel ref). The

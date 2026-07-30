@@ -94,9 +94,10 @@ public final class TelemetryService {
   private init() {}
 
   #if DEBUG
-    /// Test-only observation seam. Fired at the entry of each top-level facade
-    /// method selected for focused tests. Nil in release builds; tests set this
-    /// to capture emissions without reaching PostHog.
+    /// Test-only observation seam for selected telemetry emissions.
+    /// Each emitter owns when it fires and which typed property buckets it exposes;
+    /// callers must not infer one hook call per facade call. Nil in release builds;
+    /// tests use it to inspect the typed projection exposed alongside normal capture.
     public var testEventHook: (@Sendable (CapturedTelemetryEvent) -> Void)?
   #endif
 
@@ -132,35 +133,13 @@ public final class TelemetryService {
     // retry over a post-capture decode failure — always `retry_succeeded`
     // here, since a `.retryExhausted`/preempted retry never reaches a
     // completed transcript.
-    asrRetryOutcome: String? = nil
+    asrRetryOutcome: String? = nil,
+    /// #1846: which dictation this completion belongs to. Forwarded to all FOUR
+    /// events this function fans out to, so one argument covers
+    /// `dictation.completed`, `asr.completed`, `llm.polish_completed` and
+    /// `paste.completed`.
+    takeID: String? = nil
   ) {
-    #if DEBUG
-      var hookStringProps: [String: String] = [
-        "input_mode": inputMode,
-        "asr_backend": t.backendType.rawValue,
-      ]
-      if let ib = interruptedBy { hookStringProps["interrupted_by"] = ib }
-      if let aso = asrSalvageOutcome { hookStringProps["asr_salvage_outcome"] = aso }
-      if let aro = asrRetryOutcome { hookStringProps["asr_retry_outcome"] = aro }
-      // #1376: mirror the emitted route keys' presence-only semantics so the
-      // App → Telemetry threading is unit-testable.
-      if let st = selectedTransport { hookStringProps["selected_transport"] = st }
-      if let et = effectiveTransport { hookStringProps["effective_transport"] = et }
-      if let rr = routeReason { hookStringProps["route_reason"] = rr }
-      if let rfr = routeFallbackReason { hookStringProps["route_fallback_reason"] = rfr }
-      if let ism = inputSelectionMode { hookStringProps["input_selection_mode"] = ism }
-      if let ot = outputTransport { hookStringProps["output_transport"] = ot }
-      if let rrs = routeResolutionSource { hookStringProps["route_resolution_source"] = rrs }
-      // #1523: mirror the emitted int key's presence-only semantics so the
-      // channel-count threading is unit-testable by exact production spelling.
-      var hookIntProps: [String: Int] = [:]
-      if let channels = captureNativeChannelCount {
-        hookIntProps["capture_native_channel_count"] = channels
-      }
-      testEventHook?(
-        CapturedTelemetryEvent(
-          name: "dictation.completed", stringProps: hookStringProps, intProps: hookIntProps))
-    #endif
     let m = t.metrics
     dictationCompleted(
       result: "success",
@@ -207,7 +186,8 @@ public final class TelemetryService {
       salvagedLeadTrimMs: salvagedLeadTrimMs,
       interruptedBy: interruptedBy,
       asrSalvageOutcome: asrSalvageOutcome,
-      asrRetryOutcome: asrRetryOutcome
+      asrRetryOutcome: asrRetryOutcome,
+      takeID: takeID
     )
     if let asrLat = m?.asrLatencySeconds {
       asrCompleted(
@@ -231,7 +211,8 @@ public final class TelemetryService {
         streamingCoveredSec: m?.streamingCoveredSec,
         tailDecodeSec: m?.tailDecodeSec,
         maxUnconfirmedWindowSec: m?.maxUnconfirmedWindowSec,
-        stopWhileDecodeInFlight: m?.stopWhileDecodeInFlight)
+        stopWhileDecodeInFlight: m?.stopWhileDecodeInFlight,
+        takeID: takeID)
     }
     if let llmLat = m?.llmLatencySeconds, llmLat > 0, t.llmProvider != nil {
       llmPolishCompleted(
@@ -239,7 +220,8 @@ public final class TelemetryService {
         result: t.polishedText != nil ? "success" : "skipped", latencySeconds: llmLat,
         filterTripped: m?.polishFilterTripped,
         fellBackToRaw: m?.polishFellBackToRaw,
-        fallbackReason: m?.polishFallbackReason
+        fallbackReason: m?.polishFallbackReason,
+        takeID: takeID
       )
     }
     if let tier = m?.pasteTier, let ms = m?.pasteLatencyMs {
@@ -249,7 +231,8 @@ public final class TelemetryService {
           smartInsertionEnabled: m?.smartInsertionEnabled,
           caretContextOutcome: m?.caretContextOutcome,
           repairRules: m?.repairRules,
-          payloadKind: m?.pastePayloadKind))
+          payloadKind: m?.pastePayloadKind),
+        takeID: takeID)
     }
   }
 
@@ -413,12 +396,23 @@ public final class TelemetryService {
 
   // MARK: - Dictation Lifecycle
 
-  public func dictationInvoked(triggerSource: String, inputMode: String, targetApp: String?) {
+  /// #1846: `takeID` names WHICH dictation this event belongs to, so an error in
+  /// Sentry can be joined to this person's usage. Omitted when nil rather than sent
+  /// as an empty string — a query must be able to tell "no take" from "a take
+  /// whose id we lost", and a release predating this change omits it entirely.
+  public func dictationInvoked(
+    triggerSource: String, inputMode: String, targetApp: String?, takeID: String? = nil
+  ) {
     var props: [String: Any] = ["trigger_source": triggerSource, "input_mode": inputMode]
     if let app = targetApp { props["target_app"] = app }
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
-      var stringProps = ["trigger_source": triggerSource, "input_mode": inputMode]
-      if let app = targetApp { stringProps["target_app"] = app }
+      // DERIVED from `props`, not rebuilt beside it (#1846). A parallel dictionary
+      // is a second implementation, so a test reading it proves nothing about what
+      // PostHog receives: deleting the real `props["take_id"]` line above would
+      // have left every wire-level test green. Every value on this event is a
+      // String, so the projection is lossless here.
+      let stringProps = props.compactMapValues { $0 as? String }
       testEventHook?(
         CapturedTelemetryEvent(name: "dictation.invoked", stringProps: stringProps))
     #endif
@@ -517,10 +511,13 @@ public final class TelemetryService {
   /// this must never page, email, or file a ticket (`sentry-vs-posthog-routing`).
   /// It ships as an observational counter with no threshold, because a threshold
   /// needs a baseline and we have none yet. Metadata only, never audio-derived.
+  /// `takeID` (#1846) names WHICH dictation was interrupted. Omit-when-nil, same
+  /// contract as `dictationInvoked`.
   public func audioCaptureInterrupted(
     cause: String, salvageAttempted: Bool, salvageSucceeded: Bool,
     terminalState: String, backend: String,
-    recordingDurationMs: Int? = nil
+    recordingDurationMs: Int? = nil,
+    takeID: String? = nil
   ) {
     var props: [String: Any] = [
       "cause": cause,
@@ -530,17 +527,26 @@ public final class TelemetryService {
       "backend": backend,
     ]
     if let ms = recordingDurationMs { props["recording_duration_ms"] = ms }
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       var intProps: [String: Int] = [:]
       if let ms = recordingDurationMs { intProps["recording_duration_ms"] = ms }
+      var stringProps = [
+        "cause": cause, "terminal_state": terminalState, "backend": backend,
+        "salvage_attempted": String(salvageAttempted),
+        "salvage_succeeded": String(salvageSucceeded),
+      ]
+      // Read BACK OUT of `props` (#1846) so the test observes the value that
+      // reaches PostHog, not a parallel copy. A blanket `compactMapValues` is wrong
+      // here: this event's Bools are deliberately stringified above and an
+      // as-String projection would silently drop them.
+      if let takeID = props["take_id"] as? String {
+        stringProps["take_id"] = takeID
+      }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "audio.capture_interrupted",
-          stringProps: [
-            "cause": cause, "terminal_state": terminalState, "backend": backend,
-            "salvage_attempted": String(salvageAttempted),
-            "salvage_succeeded": String(salvageSucceeded),
-          ],
+          stringProps: stringProps,
           intProps: intProps))
     #endif
     PostHogSDK.shared.capture("audio.capture_interrupted", properties: props)
@@ -578,7 +584,9 @@ public final class TelemetryService {
     warmPolicy: String,
     retireAction: String,
     msSinceLastGood: Int?,
-    routeFallbackReason: String?
+    routeFallbackReason: String?,
+    /// #1846: which dictation this retire happened during. Omit-when-nil.
+    takeID: String? = nil
   ) {
     let event = "audio.dead_mic_retire_attempted"
     var props: [String: Any] = [
@@ -591,6 +599,7 @@ public final class TelemetryService {
     if let selectedTransport { props["selected_transport"] = selectedTransport }
     if let msSinceLastGood { props["ms_since_last_good"] = msSinceLastGood }
     if let routeFallbackReason { props["route_fallback_reason"] = routeFallbackReason }
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       var stringProps: [String: String] = [
         "transport": transport,
@@ -600,6 +609,10 @@ public final class TelemetryService {
       ]
       if let selectedTransport { stringProps["selected_transport"] = selectedTransport }
       if let routeFallbackReason { stringProps["route_fallback_reason"] = routeFallbackReason }
+      // #1846: read BACK OUT of the emitted payload so the test observes what
+      // PostHog receives. Not a blanket as-String projection: this event's Bool and
+      // Int values are deliberately split across typed buckets below.
+      if let takeID = props["take_id"] as? String { stringProps["take_id"] = takeID }
       var intProps: [String: Int] = [:]
       if let msSinceLastGood { intProps["ms_since_last_good"] = msSinceLastGood }
       testEventHook?(
@@ -686,7 +699,9 @@ public final class TelemetryService {
     salvagedLeadTrimMs: Int? = nil,
     interruptedBy: String? = nil,
     asrSalvageOutcome: String? = nil,
-    asrRetryOutcome: String? = nil
+    asrRetryOutcome: String? = nil,
+    /// #1846: which dictation this event belongs to. Omit-when-nil.
+    takeID: String? = nil
   ) {
     var props: [String: Any] = [
       "result": result,
@@ -756,6 +771,23 @@ public final class TelemetryService {
     if let ism = inputSelectionMode { props["input_selection_mode"] = ism }
     if let ot = outputTransport { props["output_transport"] = ot }
     if let rrs = routeResolutionSource { props["route_resolution_source"] = rrs }
+    if let takeID { props["take_id"] = takeID }
+    #if DEBUG
+      // #1846: the hook now DERIVES from the payload that PostHog receives.
+      // `reportDictationCompleted` previously built a parallel `hookStringProps`
+      // dictionary and emitted it under this event's name while the real payload was
+      // assembled here with no hook at all — so a test could assert a key and pass
+      // with the production line deleted. The mirror is gone; this is the one
+      // authority. Every key the mirror carried is present in `props`, verified key
+      // by key before the swap, so this is strictly wider than what tests could see.
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "dictation.completed",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
     PostHogSDK.shared.capture("dictation.completed", properties: props)
   }
 
@@ -772,10 +804,26 @@ public final class TelemetryService {
   /// recording-duration cap). Counts the population that records long enough to
   /// near the cap — near-zero today; a rising count is the signal to invest in
   /// full long-form mode (#344). Metadata only.
-  public func recordingCapWarningShown(backend: String, capSeconds: Double) {
-    PostHogSDK.shared.capture(
-      "recording.cap_warning_shown",
-      properties: ["asr_backend": backend, "cap_seconds": capSeconds])
+  public func recordingCapWarningShown(
+    backend: String,
+    capSeconds: Double,
+    /// #1846: which dictation neared the cap. Omit-when-nil, matching every other
+    /// take-keyed event — the caller on the live warning path always supplies one.
+    takeID: String? = nil
+  ) {
+    // #1846: ONE payload, with the DEBUG hook derived from it. A second literal
+    // for the hook is how a wire test comes to assert a key the real capture
+    // never sent — the shape this epic found in four separate emitter families.
+    var props: [String: Any] = ["asr_backend": backend, "cap_seconds": capSeconds]
+    if let takeID { props["take_id"] = takeID }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "recording.cap_warning_shown",
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double }))
+    #endif
+    PostHogSDK.shared.capture("recording.cap_warning_shown", properties: props)
   }
 
   // MARK: - Pipeline Steps
@@ -1139,7 +1187,9 @@ public final class TelemetryService {
     streamingDegradeReason: String? = nil, streamingFinalPath: String? = nil,
     streamingDecodeCount: Int? = nil, streamingCoveredSec: Double? = nil,
     tailDecodeSec: Double? = nil, maxUnconfirmedWindowSec: Double? = nil,
-    stopWhileDecodeInFlight: Bool? = nil
+    stopWhileDecodeInFlight: Bool? = nil,
+    /// #1846: which dictation this event belongs to. Omit-when-nil.
+    takeID: String? = nil
   ) {
     var properties: [String: Any] = [
       "backend": backend,
@@ -1180,6 +1230,17 @@ public final class TelemetryService {
     if let stopWhileDecodeInFlight {
       properties["stop_while_decode_in_flight"] = stopWhileDecodeInFlight
     }
+    if let takeID { properties["take_id"] = takeID }
+    #if DEBUG
+      // #1846: derived from the emitted payload, never a parallel dictionary.
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "asr.completed",
+          stringProps: properties.compactMapValues { $0 as? String },
+          intProps: properties.compactMapValues { $0 as? Int },
+          doubleProps: properties.compactMapValues { $0 as? Double },
+          boolProps: properties.compactMapValues { $0 as? Bool }))
+    #endif
     PostHogSDK.shared.capture("asr.completed", properties: properties)
   }
 
@@ -1188,7 +1249,9 @@ public final class TelemetryService {
     result: String, latencySeconds: Double,
     filterTripped: String? = nil,
     fellBackToRaw: Bool? = nil,
-    fallbackReason: String? = nil
+    fallbackReason: String? = nil,
+    /// #1846: which dictation this event belongs to. Omit-when-nil.
+    takeID: String? = nil
   ) {
     var props: [String: Any] = [
       "provider": provider,
@@ -1200,6 +1263,7 @@ public final class TelemetryService {
     if let ft = filterTripped { props["filter_tripped"] = ft }
     if let fb = fellBackToRaw { props["fell_back_to_raw"] = fb }
     if let fr = fallbackReason { props["fallback_reason"] = fr }
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       var stringProps: [String: String] = [
         "provider": provider, "result": result,
@@ -1207,6 +1271,9 @@ public final class TelemetryService {
       if let m = model { stringProps["model"] = m }
       if let ft = filterTripped { stringProps["filter_tripped"] = ft }
       if let fr = fallbackReason { stringProps["fallback_reason"] = fr }
+      // #1846: read BACK OUT of the emitted payload so the test observes what
+      // PostHog receives, not a parallel copy.
+      if let takeID = props["take_id"] as? String { stringProps["take_id"] = takeID }
       var boolProps: [String: Bool] = [:]
       if let fb = fellBackToRaw { boolProps["fell_back_to_raw"] = fb }
       testEventHook?(
@@ -1225,17 +1292,19 @@ public final class TelemetryService {
   /// (an output was accepted) and from a surfaced attempted failure recorded
   /// by `llm.polish_failed`. `reason` is a `PolishSkipReason.telemetryTag` —
   /// a closed, content-free set (`EnviousWisprPipeline`).
-  public func polishSkipped(provider: String, reason: String) {
-    let props: [String: Any] = [
+  public func polishSkipped(provider: String, reason: String, takeID: String? = nil) {
+    var props: [String: Any] = [
       "provider": provider,
       "skip_reason": reason,
     ]
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
+      // #1846: derived from the emitted payload, never a parallel dictionary.
       testEventHook?(
         CapturedTelemetryEvent(
           name: "llm.polish_skipped",
-          stringProps: ["provider": provider, "skip_reason": reason],
-          boolProps: [:]))
+          stringProps: props.compactMapValues { $0 as? String },
+          boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
     PostHogSDK.shared.capture("llm.polish_skipped", properties: props)
   }
@@ -1253,19 +1322,23 @@ public final class TelemetryService {
   /// `reason` is a `PolishFailureReason.telemetryTag` — a closed, content-free set.
   /// `model` is catalog metadata, matching what `llm.polish_completed` already
   /// sends. No transcript, prompt, provider error body, key, or endpoint URL.
-  public func polishFailed(provider: String, model: String, reason: String, isTimeout: Bool) {
-    let props: [String: Any] = [
+  public func polishFailed(
+    provider: String, model: String, reason: String, isTimeout: Bool, takeID: String? = nil
+  ) {
+    var props: [String: Any] = [
       "provider": provider,
       "model": model,
       "reason": reason,
       "is_timeout": isTimeout,
     ]
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
+      // #1846: derived from the emitted payload, never a parallel dictionary.
       testEventHook?(
         CapturedTelemetryEvent(
           name: "llm.polish_failed",
-          stringProps: ["provider": provider, "model": model, "reason": reason],
-          boolProps: ["is_timeout": isTimeout]))
+          stringProps: props.compactMapValues { $0 as? String },
+          boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
     PostHogSDK.shared.capture("llm.polish_failed", properties: props)
   }
@@ -1299,7 +1372,9 @@ public final class TelemetryService {
 
   public func pasteCompleted(
     tier: String, targetApp: String?, result: String, latencyMs: Int,
-    insertion: PasteInsertionTelemetry = .init()
+    insertion: PasteInsertionTelemetry = .init(),
+    /// #1846: which dictation this event belongs to. Omit-when-nil.
+    takeID: String? = nil
   ) {
     var props: [String: Any] = [
       "tier": tier,
@@ -1309,12 +1384,19 @@ public final class TelemetryService {
     ]
     if let a = targetApp { props["target_app"] = a }
     props.merge(insertion.properties) { current, _ in current }
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
+      // #1846: projected from `props`, not from `insertion.properties`. The old
+      // projection could not see `tier`, `result`, `latency_ms` or `target_app` at
+      // all, so it could not have seen `take_id` either — and a hook that cannot
+      // observe the payload is not a test seam. Strictly wider; nothing removed.
       testEventHook?(
         CapturedTelemetryEvent(
           name: "paste.completed",
-          stringProps: insertion.properties.compactMapValues { $0 as? String },
-          boolProps: insertion.properties.compactMapValues { $0 as? Bool }
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }
         ))
     #endif
     PostHogSDK.shared.capture("paste.completed", properties: props)
@@ -2352,45 +2434,52 @@ public final class TelemetryService {
     backend: String,
     inputRoute: String,
     ready: Bool,
-    modelReused: Bool
+    modelReused: Bool,
+    /// #1846: which dictation this VAD work belongs to. Omit-when-nil.
+    takeID: String? = nil
   ) {
+    // #1846: ONE payload, with the hook derived from it. These three emitters
+    // previously built the hook event and the PostHog properties as two separate
+    // literals, so a test could assert a key that the real capture never sent.
+    var props: [String: Any] = [
+      "backend": backend,
+      "input_route": inputRoute,
+      "ready": ready,
+      "model_reused": modelReused,
+    ]
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "dictation.vad_preparation_completed",
-          stringProps: ["backend": backend, "input_route": inputRoute],
-          boolProps: ["ready": ready, "model_reused": modelReused]))
+          stringProps: props.compactMapValues { $0 as? String },
+          boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
-    PostHogSDK.shared.capture(
-      "dictation.vad_preparation_completed",
-      properties: [
-        "backend": backend,
-        "input_route": inputRoute,
-        "ready": ready,
-        "model_reused": modelReused,
-      ])
+    PostHogSDK.shared.capture("dictation.vad_preparation_completed", properties: props)
   }
 
   /// Immediately BEFORE the first `SilenceDetector.processChunk` await.
   package func dictationFirstVADChunkStarted(
     backend: String,
     inputRoute: String,
-    monitorToFirstChunkMs: Double
+    monitorToFirstChunkMs: Double,
+    /// #1846: which dictation this VAD work belongs to. Omit-when-nil.
+    takeID: String? = nil
   ) {
+    var props: [String: Any] = [
+      "backend": backend,
+      "input_route": inputRoute,
+      "monitor_to_first_chunk_ms": monitorToFirstChunkMs,
+    ]
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "dictation.first_vad_chunk_started",
-          stringProps: ["backend": backend, "input_route": inputRoute],
-          doubleProps: ["monitor_to_first_chunk_ms": monitorToFirstChunkMs]))
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double }))
     #endif
-    PostHogSDK.shared.capture(
-      "dictation.first_vad_chunk_started",
-      properties: [
-        "backend": backend,
-        "input_route": inputRoute,
-        "monitor_to_first_chunk_ms": monitorToFirstChunkMs,
-      ])
+    PostHogSDK.shared.capture("dictation.first_vad_chunk_started", properties: props)
   }
 
   /// Immediately AFTER that await returns. `started` present with `completed`
@@ -2400,24 +2489,26 @@ public final class TelemetryService {
     backend: String,
     inputRoute: String,
     chunkProcessingLatencyMs: Double,
-    shouldStop: Bool
+    shouldStop: Bool,
+    /// #1846: which dictation this VAD work belongs to. Omit-when-nil.
+    takeID: String? = nil
   ) {
+    var props: [String: Any] = [
+      "backend": backend,
+      "input_route": inputRoute,
+      "chunk_processing_latency_ms": chunkProcessingLatencyMs,
+      "should_stop": shouldStop,
+    ]
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "dictation.first_vad_chunk_completed",
-          stringProps: ["backend": backend, "input_route": inputRoute],
-          doubleProps: ["chunk_processing_latency_ms": chunkProcessingLatencyMs],
-          boolProps: ["should_stop": shouldStop]))
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
-    PostHogSDK.shared.capture(
-      "dictation.first_vad_chunk_completed",
-      properties: [
-        "backend": backend,
-        "input_route": inputRoute,
-        "chunk_processing_latency_ms": chunkProcessingLatencyMs,
-        "should_stop": shouldStop,
-      ])
+    PostHogSDK.shared.capture("dictation.first_vad_chunk_completed", properties: props)
   }
 }
 

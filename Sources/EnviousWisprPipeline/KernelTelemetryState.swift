@@ -48,6 +48,14 @@ public enum ASRRetryOutcome: String, Sendable {
 @MainActor
 final class KernelTelemetryState {
   var polishEnabled = false
+  /// #1846: the kernel session's `SessionID.raw.uuidString`, projected here so
+  /// telemetry can name WHICH dictation an event belongs to. Observation-only:
+  /// never persisted, never `Codable`, and it never influences a kernel decision.
+  /// Replaced by the next accepted session's reset, never cleared mid-session —
+  /// Sentry scope clearing is the lifecycle sink's terminal postamble's job, and
+  /// a second clearer here would blank the tag while polish and paste are still
+  /// running, which is exactly where the highest-volume errors are raised.
+  var takeID: String?
   var recordingSnapshot: KernelRecordingSnapshotTelemetry?
   var noSpeechTelemetry: KernelNoSpeechTelemetry?
   var asrEmptyDiagnostics: ASREmptyResultDiagnostics?
@@ -108,7 +116,10 @@ final class KernelTelemetryState {
   /// `nil` if no Phase-2 retry ever started. See `ASRRetryOutcome`.
   var asrRetryOutcome: ASRRetryOutcome?
 
-  func resetForNewSession(polishEnabled: Bool) {
+  /// `takeID` has NO default on purpose: an accepted session must state its own
+  /// identity. A default would let a caller silently start a take with no key.
+  func resetForNewSession(takeID: String, polishEnabled: Bool) {
+    self.takeID = takeID
     self.polishEnabled = polishEnabled
     recordingSnapshot = nil
     noSpeechTelemetry = nil

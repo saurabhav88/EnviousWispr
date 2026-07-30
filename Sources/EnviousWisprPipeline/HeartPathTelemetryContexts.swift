@@ -78,4 +78,9 @@ struct DeadMicRetireAttemptContext: Sendable {
   /// `ZeroSignalRetireResult.rawValue` — whether teardown actually ran.
   let retireAction: String
   let routeFallbackReason: String?
+  /// #1846: which dictation the retire happened during. The LIVE in-flight key:
+  /// a retire fires before the terminal stamps the concluded key. Non-defaulted
+  /// so every caller must make the attribution choice explicitly; production's
+  /// sole construction site supplies `KernelTelemetryState.takeID`.
+  let takeID: String?
 }

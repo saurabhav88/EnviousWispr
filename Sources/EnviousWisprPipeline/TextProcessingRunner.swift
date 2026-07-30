@@ -61,7 +61,11 @@ internal final class TextProcessingRunner {
   /// `captureError`, which fires only for the regression-capable subset. That
   /// asymmetry is what lets a test assert "the durable record exists AND no alert
   /// fired." Parameters: provider, model, reason tag, isTimeout.
-  typealias RecordPolishFailed = @MainActor (String, String, String, Bool) -> Void
+  /// `takeID` (#1846) is the LIVE in-flight take, not the concluded one: polish runs
+  /// before the session terminal, so the frozen `lastTakeID` would still be nil here
+  /// (or hold the PREVIOUS take). Same key, different read point from the completion
+  /// events, and swapping them would mislabel one family or the other.
+  typealias RecordPolishFailed = @MainActor (String, String, String, Bool, String?) -> Void
 
   /// Durable record that AI polish produced no accepted output under an
   /// explicit skip contract (#1055, #1271, #1305, #1448) — the AFM
@@ -70,7 +74,7 @@ internal final class TextProcessingRunner {
   /// pre-attempt bypasses and post-generation rejection (`outputLanguageDrift`);
   /// distinct from `llm.polish_failed` (attempted and threw). Parameters:
   /// provider, skip reason — both sourced from `PolishSkipReason`.
-  typealias RecordPolishSkipped = @MainActor (String, String) -> Void
+  typealias RecordPolishSkipped = @MainActor (String, String, String?) -> Void
 
   /// Every POLISH telemetry seam the runner owns, as ONE value (#1446).
   ///
@@ -106,7 +110,7 @@ internal final class TextProcessingRunner {
           category: category, stage: stage, extra: extra, tags: tags,
           fingerprintDetail: fingerprintDetail)
       },
-      recordPolishFailed: { provider, model, reason, isTimeout in
+      recordPolishFailed: { provider, model, reason, isTimeout, takeID in
         // Sibling of LLMPolishStep's "LLM polish started" / "LLM polish completed"
         // crumbs; the distinct wording keeps this trail entry legible next to
         // theirs (they also carry `model`).
@@ -116,10 +120,11 @@ internal final class TextProcessingRunner {
           data: ["provider": provider, "model": model, "is_timeout": isTimeout]
         )
         TelemetryService.shared.polishFailed(
-          provider: provider, model: model, reason: reason, isTimeout: isTimeout)
+          provider: provider, model: model, reason: reason, isTimeout: isTimeout,
+          takeID: takeID)
       },
-      recordPolishSkipped: { provider, reason in
-        TelemetryService.shared.polishSkipped(provider: provider, reason: reason)
+      recordPolishSkipped: { provider, reason, takeID in
+        TelemetryService.shared.polishSkipped(provider: provider, reason: reason, takeID: takeID)
       })
 
     /// Crash recovery (#945, #1446): a recovered take still returns its
@@ -133,8 +138,8 @@ internal final class TextProcessingRunner {
     /// already has.
     static let silent = TelemetrySeams(
       captureError: { _, _, _, _, _, _ in },
-      recordPolishFailed: { _, _, _, _ in },
-      recordPolishSkipped: { _, _ in })
+      recordPolishFailed: { _, _, _, _, _ in },
+      recordPolishSkipped: { _, _, _ in })
   }
 
   private let logger: any PipelineLogging
@@ -172,10 +177,15 @@ internal final class TextProcessingRunner {
     rawText: String,
     language: String?,
     targetAppName: String?,
-    steps: [any TextProcessingStep]
+    steps: [any TextProcessingStep],
+    /// #1846: the live in-flight take. Frozen into the context below so every
+    /// emission in this chain names the same dictation even if the session state
+    /// moves on mid-chain.
+    takeID: String? = nil
   ) async throws -> TextProcessingRunResult {
     var context = TextProcessingContext(text: rawText, language: language)
     context.targetAppName = targetAppName
+    context.takeID = takeID
     var polishError: String?
 
     let logger = self.logger
@@ -370,7 +380,8 @@ internal final class TextProcessingRunner {
             // #1446: EVERY attempted-and-failed polish gets a durable counted
             // record, whatever its channel. Sentry alerting is the interrupting
             // SUBSET below, not the record itself.
-            recordPolishFailed(provider.rawValue, model, reason.telemetryTag, isTimeout)
+            recordPolishFailed(
+              provider.rawValue, model, reason.telemetryTag, isTimeout, context.takeID)
             // #1446: alert only where a spike could plausibly mean WE regressed.
             // A user out of credits, over quota, with no key, or with Ollama shut
             // down is not a defect: those reasons are counted, never paged. The
@@ -412,7 +423,7 @@ internal final class TextProcessingRunner {
             // `isAppleIntelligencePolishTimeout` above.
             recordPolishFailed(
               LLMProvider.appleIntelligence.rawValue, model,
-              PolishFailureReason.from(error).telemetryTag, isTimeout)
+              PolishFailureReason.from(error).telemetryTag, isTimeout, context.takeID)
           } else {
             // No polish-provider snapshot: a non-LLMPolishStep surfacing step
             // (only reachable in tests; production's sole `.surface` step is
@@ -428,21 +439,22 @@ internal final class TextProcessingRunner {
         if let cw = contextWindowSkip {
           let reason: PolishSkipReason =
             cw.stage == .predicted ? .contextWindowPredicted : .contextWindowCaught
-          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag)
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
         } else if isAppleIntelligencePolishTimeout {
           let reason = PolishSkipReason.contextWindowTimeout
-          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag)
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
         } else if isEGOnePolishTimeout {
           // #1271: one `local_polish_` prefix family for every EG-1 skip mode.
           let reason = PolishSkipReason.localPolishTimeout
-          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag)
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
         } else if let silentPolishSkipReason {
           // #1448: covers all 3 AFM cases (frameworkUnavailable,
           // unsupportedInputLanguage, outputLanguageDrift) AND .egOneSkipped in
           // one branch — both tag and provider come from PolishSkipReason itself,
           // never a separately-snapshotted value.
           recordPolishSkipped(
-            silentPolishSkipReason.provider.rawValue, silentPolishSkipReason.telemetryTag)
+            silentPolishSkipReason.provider.rawValue, silentPolishSkipReason.telemetryTag,
+            context.takeID)
         } else if let localPolishSkipReason,
           let reason = PolishSkipReason(ollamaPreflight: localPolishSkipReason)
         {
@@ -450,7 +462,7 @@ internal final class TextProcessingRunner {
           // reason family as EG-1 — the observability split between "preflight
           // said not ready" (here) and "mid-flight failure on a running
           // server" (the capture path above) falls out of the reason strings.
-          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag)
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
         }
         // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
         // exceeds its 3s `maxDuration`. The step's result was discarded; raw

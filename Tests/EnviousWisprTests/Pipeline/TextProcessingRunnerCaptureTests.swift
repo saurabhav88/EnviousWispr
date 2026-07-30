@@ -58,10 +58,18 @@ struct TextProcessingRunnerCaptureTests {
       let model: String
       let reason: String
       let isTimeout: Bool
+      /// #1846: which dictation this failure belongs to.
+      let takeID: String?
     }
     private(set) var calls: [Call] = []
-    func sink(_ provider: String, _ model: String, _ reason: String, _ isTimeout: Bool) {
-      calls.append(Call(provider: provider, model: model, reason: reason, isTimeout: isTimeout))
+    func sink(
+      _ provider: String, _ model: String, _ reason: String, _ isTimeout: Bool,
+      _ takeID: String?
+    ) {
+      calls.append(
+        Call(
+          provider: provider, model: model, reason: reason, isTimeout: isTimeout,
+          takeID: takeID))
     }
   }
 
@@ -70,9 +78,9 @@ struct TextProcessingRunnerCaptureTests {
   /// crash recovery alongside the other two (#1446, cloud review of PR #1460).
   @MainActor
   final class SkipSpy {
-    private(set) var calls: [(provider: String, reason: String)] = []
-    func sink(_ provider: String, _ reason: String) {
-      calls.append((provider: provider, reason: reason))
+    private(set) var calls: [(provider: String, reason: String, takeID: String?)] = []
+    func sink(_ provider: String, _ reason: String, _ takeID: String?) {
+      calls.append((provider: provider, reason: reason, takeID: takeID))
     }
   }
 
@@ -432,7 +440,7 @@ struct TextProcessingRunnerCaptureTests {
     let runner = TextProcessingRunner(
       telemetry: .init(
         captureError: spy.sink, recordPolishFailed: records.sink,
-        recordPolishSkipped: { _, _ in }),
+        recordPolishSkipped: { _, _, _ in }),
       timeoutExecutor: executor.run)
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
       LLMError.requestFailed("unused")
@@ -636,13 +644,17 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step],
+      takeID: Self.takeA)
 
     // An on-device timeout on a long dictation degrades quietly to raw text.
     #expect(result.polishError == nil)
     #expect(spy.calls.isEmpty)
     #expect(records.calls.isEmpty)  // never attempted-and-failed; it was skipped
     #expect(skips.calls.count == 1)
+    #expect(
+      skips.calls.first?.takeID == Self.takeA,
+      "the runner-owned llm.polish_skipped route must carry the frozen take key")
     #expect(skips.calls.first?.provider == "appleIntelligence")
     #expect(skips.calls.first?.reason == "context_window_timeout")
   }
@@ -738,7 +750,6 @@ struct TextProcessingRunnerCaptureTests {
     #expect(records.calls.first?.isTimeout == false)
   }
 
-
   /// Pass-through step that records the text it receives, proving the
   /// pipeline continues downstream with the complete pre-polish text after
   /// a rejected polish (#1710).
@@ -754,4 +765,78 @@ struct TextProcessingRunnerCaptureTests {
     }
   }
 
+  // MARK: - Take key on the polish outcome events (#1846 chunk 7)
+
+  private static let takeA = "9f2c1d84-6b3a-4e07-9c51-0a7d2e6f1b33"
+
+  /// `llm.polish_failed` must name the dictation whose polish failed.
+  /// `polish_provider_failed` is one of our highest-volume Sentry issues, so this is
+  /// the join that turns "N failures" into "N failures across M people's dictations".
+  @Test("a polish failure carries the take key of the dictation being polished")
+  func polishFailureCarriesTheTakeKey() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let runner = makeRunner(spy, records)
+    let step = makeStep(provider: .openAI, model: "gpt-4o-mini") { LLMError.invalidAPIKey }
+
+    _ = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step],
+      takeID: Self.takeA)
+
+    #expect(records.calls.count == 1)
+    #expect(records.calls.first?.takeID == Self.takeA)
+  }
+
+  /// The runner FREEZES the key into the context at the start of the chain rather
+  /// than reading session state at each emit. A chain can span an await during which
+  /// the session moves on, and an emission that read live state then would name a
+  /// different dictation than the one whose text it is describing.
+  @Test("the take key is frozen into the processing context, so every step sees the same one")
+  func takeKeyIsFrozenIntoTheContext() async throws {
+    let spy = CaptureSpy()
+    let observer = ContextObservingStep()
+    let runner = makeRunner(spy)
+
+    _ = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [observer],
+      takeID: Self.takeA)
+
+    #expect(observer.callCount == 1, "the observer must run exactly once")
+    #expect(observer.observedTakeID == Self.takeA)
+  }
+
+  /// Absent, never a placeholder — the re-polish and recovery paths legitimately have
+  /// no take, and a sentinel would be indistinguishable from a real id in a query.
+  @Test("omitting the take key leaves it nil through the whole chain")
+  func omittedTakeKeyStaysNil() async throws {
+    let spy = CaptureSpy()
+    let records = RecordSpy()
+    let observer = ContextObservingStep()
+    let runner = makeRunner(spy, records)
+
+    _ = try await runner.run(
+      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [observer])
+
+    #expect(observer.callCount == 1, "the observer must run exactly once")
+    #expect(observer.observedTakeID == nil)
+  }
+
+  /// Reads the take key off the context the runner hands each step. Same shape as
+  /// `RecordingStep` above, which is this file's established conformer pattern.
+  private final class ContextObservingStep: TextProcessingStep {
+    let name = "Take Key Observer"
+    let isEnabled = true
+    let maxDuration: Duration = .seconds(5)
+    /// #1846: `observedTakeID` STARTS nil, so a test asserting nil would pass if the
+    /// runner never invoked this step at all — a check that cannot reach its subject.
+    /// The call count is what makes the nil assertion mean something.
+    private(set) var callCount = 0
+    private(set) var observedTakeID: String?
+
+    func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+      callCount += 1
+      observedTakeID = context.takeID
+      return context
+    }
+  }
 }

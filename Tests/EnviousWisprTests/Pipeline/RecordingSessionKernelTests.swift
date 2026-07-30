@@ -232,6 +232,10 @@ import Testing
         context: KernelSessionContext(),
         captureTelemetry: CaptureTelemetryState(),
         telemetryState: wrapper.telemetryState,
+        // #1846: injected inert so the terminal postamble cannot reach the real
+        // Sentry scope from a direct construction.
+        updateRecordingState: { _, _, _ in },
+        updateTakeID: { _ in },
         captureError: { error, _, _, _ in
           captureCount += 1
           capturedIdentity = error.sentrySemanticID
@@ -377,6 +381,84 @@ import Testing
       // the prior session's elapsed time forward.
       await startToLive(context, wrapper)
       #expect(kernel.recordingElapsedSeconds == 0)
+    }
+
+    // MARK: Invariant 6 — the telemetry take key IS the session id (#1846)
+
+    /// The take key must be the kernel's OWN `SessionID`, not a second identity
+    /// minted for telemetry. A separate mint would let an error and that same
+    /// dictation's usage events disagree about which take they belong to, which
+    /// is the whole defect #1846 exists to close.
+    @Test("the telemetry take key is the session id, and each session replaces it")
+    func takeIDProjectsTheSessionID() async {
+      let (context, wrapper) = makeWrapper()
+      let kernel = wrapper.testKernel
+
+      // `currentSessionID` is non-optional and already holds a never-used value
+      // before the first start, so the absence of a take is read from the
+      // telemetry state, not from the kernel's id.
+      #expect(wrapper.telemetryState.takeID == nil, "no take is in flight before the first start")
+
+      await startToLive(context, wrapper)
+      let first = kernel.currentSessionID
+      #expect(wrapper.telemetryState.takeID == first.raw.uuidString)
+
+      await apply(.cancel, to: wrapper)  // recording → cancelled (terminal)
+      await apply(.reset, to: wrapper)  // cancelled → idle
+
+      await startToLive(context, wrapper)
+      let second = kernel.currentSessionID
+      #expect(second != first, "the FSM must mint a fresh id, or this test proves nothing")
+      #expect(
+        wrapper.telemetryState.takeID == second.raw.uuidString,
+        "the second session must carry its OWN id, not the first session's")
+    }
+
+    // MARK: Invariant 7 — the concluded take key is FROZEN, and degrades to absent (#1846)
+
+    /// The completion-reporting chain reads `lastTakeID` after a take ends, so what
+    /// it degrades to when the next take starts is the whole design question.
+    ///
+    /// Every sibling marker (`lastStopReason`, `lastRecordingDurationSeconds`) goes
+    /// nil in `resetSessionState()`. A live read of `KernelTelemetryState.takeID`
+    /// would instead return the NEW take's id, because `resetForNewSession` REPLACES
+    /// it — so a completion filed after the user started talking again would be
+    /// stamped with the wrong dictation and would join cleanly to it. That is worse
+    /// than a missing value, and this test is the control that proves the freeze is
+    /// load-bearing: a live read fails the third assertion below.
+    @Test("the concluded take key is frozen at the terminal and goes ABSENT, never stale")
+    func lastTakeIDIsFrozenAtTerminalAndDegradesToAbsent() async {
+      let (context, wrapper) = makeWrapper()
+      let kernel = wrapper.testKernel
+
+      #expect(kernel.lastTakeID == nil, "nothing has concluded yet")
+
+      await startToLive(context, wrapper)
+      let firstSessionID = kernel.currentSessionID
+      #expect(
+        kernel.lastTakeID == nil,
+        "in flight is not concluded — this names the CONCLUDED take, like lastStopReason")
+
+      await apply(.cancel, to: wrapper)  // recording → cancelled (a terminal)
+      #expect(
+        kernel.lastTakeID == firstSessionID.raw.uuidString,
+        "the accepted terminal must stamp the take that concluded")
+
+      // The next take starts. This is the assertion a live read fails.
+      await apply(.reset, to: wrapper)
+      await startToLive(context, wrapper)
+      let secondSessionID = kernel.currentSessionID
+      #expect(secondSessionID != firstSessionID, "a fresh id, or this proves nothing")
+      #expect(
+        kernel.lastTakeID == nil,
+        """
+        starting a new take must clear the concluded key to ABSENT. A live read of \
+        telemetryState.takeID would return the new take's id here, silently \
+        attributing the previous completion to this dictation.
+        """)
+      #expect(
+        kernel.lastTakeID != secondSessionID.raw.uuidString,
+        "and specifically it must NOT be the new take's id")
     }
 
     // Note: the r3 checked-comparison guard (`guard now >= start else { return

@@ -293,6 +293,14 @@ final class RecordingSessionKernel {
   /// genuine mute.
   private let zeroSignalDeviceEligible: @MainActor () -> Bool
   private let recordingStoppedTelemetry: @MainActor (_ sampleCount: Int) -> Void
+
+  /// #1846: called SYNCHRONOUSLY the moment a session is accepted, before any
+  /// work is spawned. The lifecycle sink also refreshes the take tag on every
+  /// event, but that path arrives through an unstructured `Task { @MainActor }`
+  /// with no ordering guarantee against `runForwardPath` — so an early
+  /// model-load or capture-start failure could be raised before the tag existed.
+  /// Defaulted to a no-op: only the production composition root wires it.
+  private let sessionAcceptedTelemetry: @MainActor (_ takeID: String) -> Void
   private let markPipelineTimingStart: @MainActor () -> Void
   private let markASRTimingStart: @MainActor (_ streaming: Bool) -> Void
   private let markASRTimingEnd: @MainActor () -> Void
@@ -538,11 +546,17 @@ final class RecordingSessionKernel {
   private var recordingStartedAtUptimeNs: UInt64?
 
   /// Fired at most once per recording when the VAD seam reports the recording is
-  /// approaching `maxRecordingDuration` (#1060), carrying the remaining seconds.
+  /// approaching `maxRecordingDuration` (#1060), carrying the remaining seconds
+  /// and, since #1846, the take key this warning belongs to.
   /// ADVISORY: the kernel does NOT stop on this (that is the separate stop
   /// stream); it forwards a semantic event the driver maps to a UI banner. No
   /// user-facing copy lives here — copy stays in the App layer.
-  var onApproachingMaxDuration: (@MainActor (TimeInterval) -> Void)?
+  ///
+  /// The take key is NON-optional because the identity always exists at the
+  /// source: `VADWarningSignal` carries a `SessionID`, and the forwarding site
+  /// validates it against the current session before this fires. Nothing on this
+  /// path has to invent or look up a key, so nothing should be able to omit one.
+  var onApproachingMaxDuration: (@MainActor (TimeInterval, String) -> Void)?
 
   /// #1707 Phase 3 (§3.2, row 21) / #1741 Chunk 9 — the shared
   /// `EngineMutationScope` constructed once by the composition root, injected
@@ -562,6 +576,23 @@ final class RecordingSessionKernel {
   /// on `"max_duration"`) and by the App layer for `dictation.completed`
   /// telemetry (`stop_reason`). A reason string, never user content.
   private(set) var lastStopReason: String?
+  /// #1846: the id of the take that most recently CONCLUDED, for the App layer's
+  /// `dictation.completed` reporting chain. Observation-only; never persisted.
+  ///
+  /// Deliberately NOT a live read of `KernelTelemetryState.takeID`, and the
+  /// difference is the whole point. Both change at the same instant — the next
+  /// session's `start(config:)` — but not to the same kind of value: every sibling
+  /// marker here degrades to `nil` in `resetSessionState()`, while
+  /// `resetForNewSession` REPLACES the take key with the NEW session's id. A live
+  /// read would therefore stamp take N's completion with take N+1's id if a user
+  /// started talking again before the report was filed: not a missing value but a
+  /// confidently wrong one, indistinguishable from a correct join. Wrong
+  /// attribution is strictly worse than absent attribution, and this epic exists
+  /// because two investigations were misled by data that looked trustworthy.
+  ///
+  /// So it is stamped at the accepted terminal and cleared at the next session
+  /// start, giving it exactly `lastStopReason`'s honest-absence semantics.
+  private(set) var lastTakeID: String?
 
   /// Wall-clock length of the most recent recording in seconds (#1060), captured
   /// when the recording-exit latches and cleared at session start. LIVE metadata
@@ -719,6 +750,7 @@ final class RecordingSessionKernel {
     // `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`).
     zeroSignalDeviceEligible: (@MainActor () -> Bool)? = nil,
     recordingStoppedTelemetry: @escaping @MainActor (_ sampleCount: Int) -> Void = { _ in },
+    sessionAcceptedTelemetry: @escaping @MainActor (_ takeID: String) -> Void = { _ in },
     markPipelineTimingStart: @escaping @MainActor () -> Void = {},
     markASRTimingStart: @escaping @MainActor (_ streaming: Bool) -> Void = { _ in },
     markASRTimingEnd: @escaping @MainActor () -> Void = {},
@@ -767,6 +799,7 @@ final class RecordingSessionKernel {
         return ZeroSignalDeviceDiscriminator.isEligible(bound: bound)
       }
     self.recordingStoppedTelemetry = recordingStoppedTelemetry
+    self.sessionAcceptedTelemetry = sessionAcceptedTelemetry
     self.markPipelineTimingStart = markPipelineTimingStart
     self.markASRTimingStart = markASRTimingStart
     self.markASRTimingEnd = markASRTimingEnd
@@ -793,7 +826,16 @@ final class RecordingSessionKernel {
     currentSessionID = sid
     resetSessionState()
     sessionConfig = config
-    telemetryState.resetForNewSession(polishEnabled: config.llmProvider != .none)
+    // #1846: project the session id just minted above. No second identity is
+    // created; `transcriptID` keeps its own independent mint.
+    telemetryState.resetForNewSession(
+      takeID: sid.raw.uuidString,
+      polishEnabled: config.llmProvider != .none
+    )
+    // #1846 cloud review: publish the take tag NOW, in this same turn, before
+    // `spawn` queues anything. Waiting for the observer's first lifecycle event
+    // would leave a scheduling window in which an early failure ships untagged.
+    sessionAcceptedTelemetry(sid.raw.uuidString)
     transition(to: .arming)
     spawn(sid) { [weak self] in
       await self?.runForwardPath(sid)
@@ -1558,7 +1600,9 @@ final class RecordingSessionKernel {
           healthGuessRefused: healthGuessRefused,
           warmPolicy: audioCapture.warmEnginePolicy.rawValue,
           retireAction: retireResult.rawValue,
-          routeFallbackReason: takeRoute?.routeFallbackReason))
+          routeFallbackReason: takeRoute?.routeFallbackReason,
+          // #1846: live, not concluded — a retire fires mid-session.
+          takeID: telemetryState.takeID))
       // Arm the recovery watch ONLY when teardown actually ran — a fenced no-op
       // can never be credited a later recovery. A watch already pending means the
       // previous retire's later take also retired: emit that as recovered=false.
@@ -2976,7 +3020,13 @@ final class RecordingSessionKernel {
           continue
         }
         guard self.state == .live else { continue }
-        self.onApproachingMaxDuration?(warning.remainingSeconds)
+        // #1846: forward the identity the guard immediately above just accepted,
+        // rather than performing a second read. `telemetryState.takeID` holds the
+        // same value on this path — `start(config:)` projects it from the very
+        // `SessionID` that `isCurrent(sid)` and the stamp check both require — but
+        // the signal's own id is the one this warning was fenced against.
+        self.onApproachingMaxDuration?(
+          warning.remainingSeconds, warning.sessionID.raw.uuidString)
       }
     }
   }
@@ -3362,6 +3412,13 @@ final class RecordingSessionKernel {
     }
     let terminal = outcome  // local alias for the existing telemetry logs below
     recordingOutcome = outcome
+    // #1846: stamp the concluded take INSIDE the set-once barrier, so it is
+    // first-wins under the same condition as the outcome itself and can only ever
+    // name the session this terminal actually accepted (`audit-all-terminal-paths-
+    // for-state-reading-telemetry`). `sid` rather than `currentSessionID`: the
+    // `isCurrent(sid)` guard above already proved they match, and `sid` is
+    // unambiguously the session being concluded.
+    lastTakeID = sid.raw.uuidString
     #if DEBUG
       // #1755 chunk 6: crash-boundary hold — immediately after the set-once
       // outcome write, before the idle transition and downstream cleanup.
@@ -3532,6 +3589,7 @@ final class RecordingSessionKernel {
     // sets `lastStopReason`/`lastRecordingDurationSeconds` before Live — keeps its
     // reason instead of having it wiped when the session reaches `.live`.
     lastStopReason = nil  // #1060
+    lastTakeID = nil  // #1846 — absent, never the new session's id
     lastSalvagedLeadTrimMs = nil  // #1434
     lastCaptureHealth = nil  // #1434
     lastRecordingDurationSeconds = nil  // #1060

@@ -9,6 +9,15 @@ public struct TextProcessingContext: Sendable {
   public var polishedText: String?
   /// Detected language from ASR.
   public let language: String?
+  /// #1846: which dictation this text belongs to, frozen by `TextProcessingRunner`
+  /// at the start of the chain. Observation-only: never persisted, never `Codable`,
+  /// and it never influences a processing decision.
+  ///
+  /// Optional because two real paths genuinely have no take: re-polish of an
+  /// existing transcript, and crash recovery, which replays audio that outlived the
+  /// session that produced it. Those emit no live polish telemetry anyway (both use
+  /// the `.silent` seam presets), so nil here is honest rather than a gap.
+  public var takeID: String?
   /// LLM provider used for polishing (e.g. "openai", "ollama").
   public var llmProvider: String?
   /// LLM model used for polishing (e.g. "gpt-4o-mini").

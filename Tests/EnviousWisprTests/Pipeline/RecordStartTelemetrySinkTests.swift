@@ -18,24 +18,28 @@ import Testing
 @Suite("Record-start VAD telemetry parity (#1780)")
 struct RecordStartTelemetrySinkTests {
 
+  /// #1846: a fixed take key so failures name a stable value.
+  private static let takeID = "9f2c1d84-6b3a-4e07-9c51-0a7d2e6f1b33"
+
   @MainActor
   private final class Spy {
     var breadcrumbs: [(stage: String, message: String, data: [String: Any])] = []
-    var preparation: [(String, String, Bool, Bool)] = []
-    var chunkStarted: [(String, String, Double)] = []
-    var chunkCompleted: [(String, String, Double, Bool)] = []
+    /// #1846: the trailing `String?` on each tuple is the take key.
+    var preparation: [(String, String, Bool, Bool, String?)] = []
+    var chunkStarted: [(String, String, Double, String?)] = []
+    var chunkCompleted: [(String, String, Double, Bool, String?)] = []
 
     func makeSink() -> RecordStartTelemetrySink {
       RecordStartTelemetrySink(
         breadcrumb: { [self] stage, message, data in
           breadcrumbs.append((stage, message, data))
         },
-        emitPreparation: { [self] b, r, ready, reused in
-          preparation.append((b, r, ready, reused))
+        emitPreparation: { [self] b, r, ready, reused, take in
+          preparation.append((b, r, ready, reused, take))
         },
-        emitChunkStarted: { [self] b, r, ms in chunkStarted.append((b, r, ms)) },
-        emitChunkCompleted: { [self] b, r, ms, stop in
-          chunkCompleted.append((b, r, ms, stop))
+        emitChunkStarted: { [self] b, r, ms, take in chunkStarted.append((b, r, ms, take)) },
+        emitChunkCompleted: { [self] b, r, ms, stop, take in
+          chunkCompleted.append((b, r, ms, stop, take))
         })
     }
   }
@@ -44,7 +48,8 @@ struct RecordStartTelemetrySinkTests {
   func preparationParity() {
     let spy = Spy()
     spy.makeSink().vadPreparationCompleted(
-      backend: "parakeet", inputRoute: "built_in_mic", ready: true, modelReused: true)
+      backend: "parakeet", inputRoute: "built_in_mic", ready: true, modelReused: true,
+      takeID: Self.takeID)
 
     #expect(spy.breadcrumbs.count == 1)
     #expect(spy.preparation.count == 1)
@@ -71,7 +76,7 @@ struct RecordStartTelemetrySinkTests {
   func chunkStartedParity() {
     let spy = Spy()
     spy.makeSink().firstChunkStarted(
-      backend: "whisperKit", inputRoute: "bluetooth", monitorToFirstChunkMs: 7.5)
+      backend: "whisperKit", inputRoute: "bluetooth", monitorToFirstChunkMs: 7.5, takeID: Self.takeID)
 
     #expect(spy.breadcrumbs.count == 1)
     #expect(spy.chunkStarted.count == 1)
@@ -97,7 +102,8 @@ struct RecordStartTelemetrySinkTests {
     let spy = Spy()
     spy.makeSink().firstChunkCompleted(
       backend: "parakeet", inputRoute: "built_in_mic",
-      chunkProcessingLatencyMs: 2.25, shouldStop: true)
+      chunkProcessingLatencyMs: 2.25, shouldStop: true,
+      takeID: Self.takeID)
 
     #expect(spy.breadcrumbs.count == 1)
     #expect(spy.chunkCompleted.count == 1)

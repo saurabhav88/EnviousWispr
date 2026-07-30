@@ -247,10 +247,10 @@ package final class CaptureVADSignalSource: VADSignalSource {
 
     invalidateMonitor()
 
-    // Snapshot every telemetry identity fact SYNCHRONOUSLY, before the task
-    // exists (#1780). Reading these inside the task is unsafe: the task may
-    // first execute after a later session has been stamped, which would
-    // silently attribute this run's markers to the next recording.
+    // Snapshot run-scoped telemetry facts SYNCHRONOUSLY before the task exists
+    // (#1780). Every later marker guard validates `runSessionID` and
+    // `runGeneration` against live state; emissions forward that same validated
+    // session ID rather than performing a second mutable read.
     let runSessionID = currentSessionID
     let runGeneration = monitorGeneration
     let runBackend = backend
@@ -320,7 +320,11 @@ package final class CaptureVADSignalSource: VADSignalSource {
       }
       self.recordStartTelemetry.vadPreparationCompleted(
         backend: runBackend, inputRoute: runInputRoute,
-        ready: ready, modelReused: modelReused)
+        ready: ready, modelReused: modelReused,
+        // #1846: forward the same frozen session ID validated by the guard
+        // immediately above. A superseded run emits nothing; using this value
+        // keeps attribution tied to the run the guard accepted.
+        takeID: runSessionID.raw.uuidString)
 
       await self.runMonitor(
         detector: ready ? directDetector : nil,
@@ -453,7 +457,8 @@ package final class CaptureVADSignalSource: VADSignalSource {
         else { return }
         self.recordStartTelemetry.firstChunkStarted(
           backend: runBackend, inputRoute: runInputRoute,
-          monitorToFirstChunkMs: monitorMs)
+          monitorToFirstChunkMs: monitorMs,
+          takeID: runSessionID.raw.uuidString)
       },
       onFirstChunkCompleted: { [weak self] latencyMs, shouldStop in
         guard let self,
@@ -462,7 +467,8 @@ package final class CaptureVADSignalSource: VADSignalSource {
         else { return }
         self.recordStartTelemetry.firstChunkCompleted(
           backend: runBackend, inputRoute: runInputRoute,
-          chunkProcessingLatencyMs: latencyMs, shouldStop: shouldStop)
+          chunkProcessingLatencyMs: latencyMs, shouldStop: shouldStop,
+          takeID: runSessionID.raw.uuidString)
       }
     )
   }

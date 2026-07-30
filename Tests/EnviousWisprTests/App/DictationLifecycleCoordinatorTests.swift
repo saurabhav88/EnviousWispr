@@ -179,7 +179,62 @@ import Testing
       #expect(calls[1].0 == nil && calls[1].1 == .failed)
     }
   }
+
+  #if DEBUG
+    /// #1846 chunk 10: the cap-warning bridge, BEHAVIOURAL.
+    ///
+    /// `CapWarningTakeIDTests` proves the kernel and driver carry the key;
+    /// `CapWarningTakeIDTelemetryTests` proves a supplied key reaches the payload.
+    /// This covers the App-layer expression joining them — remove `takeID: takeID`
+    /// from the coordinator's telemetry call and every one of those stays green
+    /// while real cap warnings ship with no take key
+    /// (`a-guard-nothing-arms-is-not-a-guard`).
+    ///
+    /// My first version froze the source text instead, justified by "the
+    /// coordinator has no construction seam". That was false — `makeCoordinator`
+    /// right above builds one, and the sibling tests already drive installed
+    /// driver callbacks directly. Caught in review; an unchecked premise in a
+    /// justification is the defect, not the test shape it produced.
+    ///
+    /// Both drivers are exercised because they share ONE closure: a regression
+    /// that wired only Parakeet would otherwise pass.
+    @Test("cap warnings from both drivers forward their take keys to telemetry")
+    func capWarningsForwardTakeKeysToTelemetry() throws {
+      let fixtures = Self.makeCoordinator()
+      fixtures.coordinator.install()
+
+      let box = CapturedEventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        if event.name == "recording.cap_warning_shown" { box.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      let parakeetTakeID = "3c7e5a11-92d4-4f60-b8a7-51e0c6d3f284"
+      let whisperKitTakeID = "8e1b67a4-3fa2-49dc-9478-962df325e10a"
+
+      fixtures.kernelDriver.onApproachingMaxDuration?(45, parakeetTakeID)
+      fixtures.whisperKitKernelDriver.onApproachingMaxDuration?(30, whisperKitTakeID)
+
+      let events = box.values
+      #expect(events.count == 2, "both installed driver callbacks must emit")
+      #expect(
+        events.compactMap { $0.stringProps["take_id"] } == [parakeetTakeID, whisperKitTakeID],
+        "the coordinator must forward each callback's supplied key unchanged"
+      )
+    }
+  #endif
 }
+
+#if DEBUG
+  /// Thread-safe capture sink for `TelemetryService.testEventHook`, whose closure
+  /// is `@Sendable`.
+  final class CapturedEventBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [CapturedTelemetryEvent] = []
+    func append(_ event: CapturedTelemetryEvent) { lock.withLock { stored.append(event) } }
+    var values: [CapturedTelemetryEvent] { lock.withLock { stored } }
+  }
+#endif
 
 /// PR9 of #763 — mutable lock-state stand-in used by the
 /// `recordingLockedAccess` closure pair in tests. Lets the test verify both

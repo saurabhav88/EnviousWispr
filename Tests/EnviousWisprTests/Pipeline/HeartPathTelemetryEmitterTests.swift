@@ -41,6 +41,10 @@ struct HeartPathTelemetryEmitterTests {
     var breadcrumbs: [CapturedBreadcrumb] = []
   }
 
+  /// #1846: a fixed take key so a failure message names a stable value and the
+  /// assertion cannot pass by comparing a freshly generated id to itself.
+  private static let takeID = "9f2c1d84-6b3a-4e07-9c51-0a7d2e6f1b33"
+
   private static func makeEmitter(
     backend: ASRBackendType,
     captureTelemetry: CaptureTelemetryState = CaptureTelemetryState(),
@@ -543,7 +547,7 @@ struct HeartPathTelemetryEmitterTests {
   // reference the DEBUG-only hook).
   #if DEBUG
     @Test("deadMicRetireAttempted adds one breadcrumb AND one PostHog event with full props")
-    func deadMicRetireAttemptedFansOut() {
+    func deadMicRetireAttemptedFansOut() throws {
       let recorder = Recorder()
       let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
 
@@ -561,7 +565,8 @@ struct HeartPathTelemetryEmitterTests {
           healthGuessRefused: true,
           warmPolicy: "seconds30",
           retireAction: "retired",
-          routeFallbackReason: nil))
+          routeFallbackReason: nil,
+          takeID: Self.takeID))
 
       #expect(recorder.breadcrumbs.count == 1)
       #expect(recorder.breadcrumbs.first?.message == "Dead mic retire attempted")
@@ -572,13 +577,48 @@ struct HeartPathTelemetryEmitterTests {
       #expect(recorder.breadcrumbs.first?.data["health_guess_refused"] as? Bool == true)
       #expect(recorder.errors.isEmpty)  // breadcrumb only, no standalone Sentry event
 
-      let captured = box.event
-      #expect(captured?.name == "audio.dead_mic_retire_attempted")
-      #expect(captured?.stringProps["transport"] == "bluetooth")
-      #expect(captured?.stringProps["failure_shape"] == "all_zero_from_start")
-      #expect(captured?.stringProps["warm_policy"] == "seconds30")
-      #expect(captured?.stringProps["retire_action"] == "retired")
-      #expect(captured?.boolProps["health_guess_refused"] == true)
+      let captured = try #require(box.event)
+      #expect(captured.name == "audio.dead_mic_retire_attempted")
+      #expect(captured.stringProps["transport"] == "bluetooth")
+      #expect(captured.stringProps["failure_shape"] == "all_zero_from_start")
+      #expect(captured.stringProps["warm_policy"] == "seconds30")
+      #expect(captured.stringProps["retire_action"] == "retired")
+      #expect(captured.boolProps["health_guess_refused"] == true)
+      // #1846: which dictation the retire happened during. Asserted on the payload
+      // PostHog receives (the hook reads it back out of `props`), not on a mirror.
+      #expect(captured.stringProps["take_id"] == Self.takeID)
+    }
+
+    /// Defensive omit-when-nil schema contract. Production's sole kernel caller
+    /// explicitly supplies the live take projection; this case proves that an
+    /// absent optional value never becomes a placeholder or suppresses the event.
+    @Test("dead mic retire omits take_id when the optional take projection is nil")
+    func deadMicRetireOmitsTakeIDWhenNil() throws {
+      let recorder = Recorder()
+      let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
+
+      let box = CapturedEventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      emitter.deadMicRetireAttempted(
+        ctx: DeadMicRetireAttemptContext(
+          transport: "bluetooth",
+          selectedTransport: "bluetooth",
+          failureShape: "all_zero_from_start",
+          healthGuessRefused: true,
+          warmPolicy: "seconds30",
+          retireAction: "retired",
+          routeFallbackReason: nil,
+          takeID: nil))
+
+      let captured = try #require(box.event)
+      #expect(captured.stringProps["take_id"] == nil)
+      // The event still fired, so the nil suppressed nothing.
+      #expect(captured.name == "audio.dead_mic_retire_attempted")
+      #expect(captured.stringProps["transport"] == "bluetooth")
     }
 
     @Test("deadMicRecovered adds one breadcrumb AND one PostHog event with full props")

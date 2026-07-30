@@ -264,9 +264,11 @@ import Testing
   struct PrepFailure: Error {}
 
   @MainActor final class SinkSpy {
-    var prep: [(backend: String, route: String, ready: Bool, reused: Bool)] = []
-    var started: [(backend: String, route: String, ms: Double)] = []
-    var completed: [(backend: String, route: String, ms: Double, stop: Bool)] = []
+    /// #1846: `take` is the take key each marker carried.
+    var prep: [(backend: String, route: String, ready: Bool, reused: Bool, take: String?)] = []
+    var started: [(backend: String, route: String, ms: Double, take: String?)] = []
+    var completed:
+      [(backend: String, route: String, ms: Double, stop: Bool, take: String?)] = []
     /// Fired by the markers waiters actually block on, so a wait resolves on a
     /// real event and never a yield count (`test-timing.md`: wait for a
     /// signal, not a clock).
@@ -276,15 +278,15 @@ import Testing
     func makeSink() -> RecordStartTelemetrySink {
       RecordStartTelemetrySink(
         breadcrumb: { _, _, _ in },
-        emitPreparation: { [self] b, r, ready, reused in
-          prep.append((b, r, ready, reused))
+        emitPreparation: { [self] b, r, ready, reused, take in
+          prep.append((b, r, ready, reused, take))
           prepMarker.release()
         },
-        emitChunkStarted: { [self] b, r, ms in
-          started.append((b, r, ms))
+        emitChunkStarted: { [self] b, r, ms, take in
+          started.append((b, r, ms, take))
         },
-        emitChunkCompleted: { [self] b, r, ms, stop in
-          completed.append((b, r, ms, stop))
+        emitChunkCompleted: { [self] b, r, ms, stop, take in
+          completed.append((b, r, ms, stop, take))
           completedMarker.release()
         })
     }
@@ -412,6 +414,44 @@ import Testing
     #expect(spy.started.allSatisfy { $0.backend == "backendA" && $0.route == "routeA" })
     #expect(spy.completed.allSatisfy { $0.backend == "backendA" && $0.route == "routeA" })
     #expect(spy.completed.first?.stop == false)
+  }
+
+  /// #1846: all three VAD markers must name the take they belong to.
+  ///
+  /// MY FIRST VERSION OF THIS TEST ASSERTED SOMETHING UNREACHABLE, and the correction
+  /// is worth recording. I stamped a LATER session id after the run began, expecting
+  /// the markers to keep the original — the freeze the run's `runSessionID` capture
+  /// exists for. The run emitted nothing at all instead: `monitorIsCurrent` refuses a
+  /// superseded run outright, which `staleSessionBeforeFirstExecution` below already
+  /// proves. So a later session cannot MISLABEL these markers, because it terminates
+  /// the run rather than relabelling it — the window is closed, not handled.
+  ///
+  /// What remains testable, and what this asserts, is that every marker carries the
+  /// run's own key rather than nothing.
+  @Test("all three VAD markers carry the run's own take key")
+  func vadMarkersCarryTheRunsOwnTakeKey() async throws {
+    let spy = SinkSpy()
+    let capture = FakeAudioCapture()
+    Self.feedChunks(capture, 1)
+    let live = Box(true)
+    let source = Self.makeSource(spy: spy, vad: { OpenVad() })
+
+    let runSID = SessionID()
+    Self.begin(source, capture: capture, sid: runSID, backend: "backendA", live: live)
+
+    try #require(
+      await Self.awaitSignal(spy.completedMarker),
+      "the run never completed its first chunk — the test would be vacuous")
+    live.value = false
+    await source.finalizeAtStop(rawSampleCount: capture.capturedSamples.count)
+
+    let expected = runSID.raw.uuidString
+    #expect(spy.prep.count == 1)
+    #expect(spy.started.count == 1)
+    #expect(spy.completed.count == 1)
+    #expect(spy.prep.allSatisfy { $0.take == expected })
+    #expect(spy.started.allSatisfy { $0.take == expected })
+    #expect(spy.completed.allSatisfy { $0.take == expected })
   }
 
   @Test("a run superseded before it first executes emits nothing")
