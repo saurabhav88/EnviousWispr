@@ -159,6 +159,8 @@ scripts/*
 !scripts/convert-output-classifier.py
 !scripts/gate-output-classifier.py
 !scripts/emit-output-classifier-golden.py
+# Cross-vendor telemetry join instrument (#1846).
+!scripts/telemetry-join.py
 # UAT helpers (per-PR Swift CLIs invoked during Live UAT, e.g. issue #845 keychain verifier)
 !scripts/uat/
 !scripts/uat/**
