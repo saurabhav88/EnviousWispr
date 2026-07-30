@@ -131,50 +131,41 @@ struct AudioCaptureManagerDeadAirLatchTests {
   @Suite("AudioCaptureManager — wake exactness rule (#1788)")
   struct AudioCaptureManagerWakeExactnessTests {
 
-    @Test("a pre-roll latch proves the stream predated the wake")
-    func preRollLatchProvesStreamCameFirst() {
-      #expect(
-        AudioCaptureManager.wakeStreamStartedBeforeWake(
-          firstNonZeroRoutedIndex: 9591, routedCountAtActivation: nil))
-      // Even index 0 counts: a latch existing at all means route() saw the sample.
-      #expect(
-        AudioCaptureManager.wakeStreamStartedBeforeWake(
-          firstNonZeroRoutedIndex: 0, routedCountAtActivation: 0))
+    @Test("a measured zero prefix is what makes a wake exact")
+    func measuredPrefixMakesItExact() {
+      // Samples were routed while the link was still silent, so the interval is
+      // observed rather than inferred.
+      #expect(AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: 9591))
+      #expect(AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: 1))
     }
 
-    @Test("samples routed before activation prove it too")
-    func routedBeforeActivationProvesStreamCameFirst() {
-      #expect(
-        AudioCaptureManager.wakeStreamStartedBeforeWake(
-          firstNonZeroRoutedIndex: nil, routedCountAtActivation: 8000))
+    @Test("a zero wake is ALWAYS a floor, never exact")
+    func zeroWakeIsNeverExact() {
+      // THE r5/r6 CASE. A wake of 0 means the first sample that ever existed was
+      // already non-zero, so an already-awake link and one that woke during a
+      // callback-free startup are indistinguishable. r6 caught the previous version
+      // of this suite ASSERTING THE OPPOSITE for a pre-roll latch at index 0 — the
+      // bug was written into its own oracle, which is why the rule is now expressed
+      // over the wake itself rather than over a proxy field.
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: 0))
     }
 
-    @Test("nothing routed before activation means the wake is unmeasurable below")
-    func noPriorSamplesMeansNotExact() {
-      // THE r5 CASE: AUHAL delivers no callback for a while, then its first sample
-      // is already nonzero. Index 0 reads as wake_ms=0 and no gap counter moves, so
-      // without this the line would claim `exact` over a real link delay.
-      #expect(
-        !AudioCaptureManager.wakeStreamStartedBeforeWake(
-          firstNonZeroRoutedIndex: nil, routedCountAtActivation: 0))
-      #expect(
-        !AudioCaptureManager.wakeStreamStartedBeforeWake(
-          firstNonZeroRoutedIndex: nil, routedCountAtActivation: nil))
-    }
-
-    @Test("exact requires a gap-free stream AND a stream that came first")
+    @Test("gaps and a measured prefix are both required")
     func exactRequiresBothConditions() {
-      #expect(AudioCaptureManager.wakeIsExact(gapCount: 0, streamStartedFirst: true))
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 1, streamStartedFirst: true))
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 0, streamStartedFirst: false))
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 3, streamStartedFirst: false))
+      #expect(AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: 8000))
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 1, wakeSamples: 8000))
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: 0))
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 3, wakeSamples: 0))
     }
 
-    @Test("an unreadable gap count fails CLOSED, never as zero")
-    func unknownGapCountIsNotExact() {
+    @Test("an unreadable gap count or wake fails CLOSED, never as zero")
+    func unknownInputsAreNotExact() {
       // A measurement authority that cannot read its own inputs must not print the
-      // confident label; nil here means the source had no stop metadata to offer.
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: nil, streamStartedFirst: true))
+      // confident label. nil gaps = the source offered no stop metadata; nil wake =
+      // the stream position could not be reconstructed at all.
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: nil, wakeSamples: 8000))
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: nil))
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: nil, wakeSamples: nil))
     }
   }
 #endif

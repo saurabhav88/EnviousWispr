@@ -1044,29 +1044,28 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   #if DEBUG
-    /// Did the sample stream exist before the wake happened? A sample clock cannot
-    /// measure an interval containing no samples, so when nothing was routed prior
-    /// to activation the first delivered sample sits at index 0 and a link that woke
-    /// during a callback-free startup is indistinguishable from one that was already
-    /// awake (#1788 cloud review r5). A wake latched during pre-roll proves the
-    /// stream predated it outright; otherwise the proof is that samples had been
-    /// routed before activation. Pure and static so the rule is unit-testable
-    /// without opening hardware.
-    nonisolated static func wakeStreamStartedBeforeWake(
-      firstNonZeroRoutedIndex: Int?,
-      routedCountAtActivation: Int?
-    ) -> Bool {
-      if firstNonZeroRoutedIndex != nil { return true }
-      return (routedCountAtActivation ?? 0) > 0
-    }
-
-    /// `exact` is claimed only when the stream lost nothing AND predated the wake.
-    /// Both failure modes under-report, never over-report, so the fallback label is
-    /// `floor`. An unknown gap count is NOT treated as zero: an unreadable
-    /// measurement authority must fail closed.
-    nonisolated static func wakeIsExact(gapCount: Int?, streamStartedFirst: Bool) -> Bool {
-      guard let gapCount else { return false }
-      return gapCount == 0 && streamStartedFirst
+    /// `exact` is claimed only when the stream lost nothing AND at least one sample
+    /// was routed BEFORE the first non-zero one. Both failure modes under-report,
+    /// never over-report, so the fallback label is `floor`.
+    ///
+    /// The second condition is the whole of r5 and r6, and it reduces to
+    /// `wakeSamples > 0`. A sample clock cannot measure an interval containing no
+    /// samples: a wake of zero means the first sample that ever existed was already
+    /// non-zero, so a link that woke during a callback-free startup is
+    /// indistinguishable from one that was awake all along. A measured zero prefix
+    /// is the only evidence that the stream was running while the link was still
+    /// silent.
+    ///
+    /// r6 killed the previous formulation, which asked `routedCountAtActivation > 0`
+    /// — that field is the rebase offset for pre-roll the ring OVERWROTE, not a
+    /// count of samples that preceded activation, so it is legitimately 0 whenever
+    /// nothing was dropped. It also treated a pre-roll latch at index 0 as proof,
+    /// when index 0 is exactly the ambiguous case. Both errors are gone rather than
+    /// special-cased, because the quantity actually being asked about is the wake
+    /// itself. An unknown gap count or an unavailable wake fails CLOSED.
+    nonisolated static func wakeIsExact(gapCount: Int?, wakeSamples: Int?) -> Bool {
+      guard let gapCount, let wakeSamples else { return false }
+      return gapCount == 0 && wakeSamples > 0
     }
 
     /// Report the exact-zero prefix once per capture generation (#1788).
@@ -1114,12 +1113,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       //  1. the stream lost nothing — `CaptureStopMetadata.inputTimelineGapCount`
       //     owns that enumeration and its window (r3, r4, r5), so a new lossy
       //     edge needs no new field here;
-      //  2. the stream STARTED before the wake did. A sample clock cannot measure
-      //     an interval containing no samples: if nothing had been routed before
-      //     activation, the first delivered sample sits at index 0, so a link that
-      //     woke during a callback-free startup reads `wake_ms=0` (r5). Whether
-      //     samples preceded activation is exactly `routedCountAtActivation > 0`,
-      //     already latched — no second clock, which was tried and deleted in r2.
+      //  2. at least one sample was routed BEFORE the first non-zero one, i.e.
+      //     `wakeSamples > 0` (r5, corrected in r6 — see `wakeIsExact`). A sample
+      //     clock cannot measure an interval containing no samples, so a zero wake
+      //     cannot distinguish a link that was already awake from one that woke
+      //     during a callback-free startup. No second clock: that was tried in r2
+      //     and deleted for being late by the whole pre-roll batch.
       // Both failures under-report, never over-report, so the honest label is
       // `floor` and `exact` is claimed only when both hold. Of 13 Bluetooth
       // readings taken before this, 8 read 0 and the log alone could NOT tell a
@@ -1127,17 +1126,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       // this closes.
       let gaps = activeSource?.captureStopMetadata?.inputTimelineGapCount
       let gapField = gaps.map(String.init) ?? "unknown"
-      let streamStartedFirst = Self.wakeStreamStartedBeforeWake(
-        firstNonZeroRoutedIndex: wake.firstNonZeroRoutedIndex,
-        routedCountAtActivation: wake.routedCountAtActivation)
       let exactness =
-        Self.wakeIsExact(gapCount: gaps, streamStartedFirst: streamStartedFirst)
-        ? "exact" : "floor"
+        Self.wakeIsExact(gapCount: gaps, wakeSamples: wakeSamples) ? "exact" : "floor"
       Task {
         await AppLogger.shared.log(
           "ZERO_PREFIX_MEASURE transport=\(transport) "
             + "wake_ms=\(wakeField) wake_is=\(exactness) timeline_gaps=\(gapField) "
-            + "stream_started_first=\(streamStartedFirst) "
             + "detector_zero_prefix_ms=\(String(format: "%.0f", zeroPrefixMs)) "
             + "detector_zero_prefix_samples=\(zeroPrefixSamples) "
             + "ceiling_samples=\(ceiling)",
