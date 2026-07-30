@@ -110,11 +110,15 @@ private final class HALSessionCounters: Sendable {
     var ringDrops = 0
     var converterErrors = 0
     var zeroOutputs = 0
+    var renderFailures = 0
+    var oversizedSlices = 0
   }
   private let state = OSAllocatedUnfairLock(initialState: Snapshot())
   func incrementRingDrop() { state.withLock { $0.ringDrops += 1 } }
   func incrementConverterError() { state.withLock { $0.converterErrors += 1 } }
   func incrementZeroOutput() { state.withLock { $0.zeroOutputs += 1 } }
+  func incrementRenderFailure() { state.withLock { $0.renderFailures += 1 } }
+  func incrementOversizedSlice() { state.withLock { $0.oversizedSlices += 1 } }
   func snapshot() -> Snapshot { state.withLock { $0 } }
   func reset() { state.withLock { $0 = Snapshot() } }
 }
@@ -278,7 +282,12 @@ private final class HALRenderContext: @unchecked Sendable {
     }
 
     let level = AudioBufferProcessor.calculateRMS(convertedBuffer)
-    guard let channelData = convertedBuffer.floatChannelData else { return false }
+    guard let channelData = convertedBuffer.floatChannelData else {
+      // Converted frames exist but are unreadable — the chunk is lost exactly
+      // like a converter error, so it counts as one rather than vanishing.
+      counters.incrementConverterError()
+      return false
+    }
     let frameCount = Int(convertedBuffer.frameLength)
     let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
     forwarder.route(samples: samples, level: level, buffer: convertedBuffer)
@@ -438,6 +447,8 @@ final class HALDeviceInputSource: AudioInputSource {
       ringDropCount: snap.ringDrops,
       converterErrorCount: snap.converterErrors,
       zeroOutputCount: snap.zeroOutputs,
+      renderFailureCount: snap.renderFailures,
+      oversizedSliceCount: snap.oversizedSlices,
       rateDivergenceDetected: formatDivergenceObserved,
       nativeChannelCount: boundNativeChannelCount
     )
@@ -788,7 +799,9 @@ final class HALDeviceInputSource: AudioInputSource {
         "HAL session stats: native=\(Int(context.nativeFormat.sampleRate)) "
           + "target=\(Int(context.targetFormat.sampleRate)) "
           + "ringDrops=\(snap.ringDrops) convErrors=\(snap.converterErrors) "
-          + "zeroConvOut=\(snap.zeroOutputs) rateDivergence=\(formatDivergenceObserved)"
+          + "zeroConvOut=\(snap.zeroOutputs) renderFails=\(snap.renderFailures) "
+          + "oversizedSlices=\(snap.oversizedSlices) "
+          + "rateDivergence=\(formatDivergenceObserved)"
       )
     }
     AudioCaptureManager.btRouteLog(
@@ -1248,6 +1261,13 @@ private func halRenderProc(
   // scratch buffer actually holds; a device that oversizes its slice loses
   // the excess of that one callback rather than overflowing.
   let clampedFrames = min(inNumberFrames, UInt32(context.capacityFrames))
+  if inNumberFrames > UInt32(context.capacityFrames) {
+    // The clamp above is a SAFETY behaviour that discards audio, and until
+    // #1788 nothing recorded it (cloud review r3 named the class: every gap
+    // between the microphone and the sample counter must be countable, or a
+    // sample index silently stops being an elapsed time).
+    context.counters.incrementOversizedSlice()
+  }
   let byteCapacity = Int(clampedFrames) * MemoryLayout<Float>.size
   // Reset every render — `AudioUnitRender` can shrink `mDataByteSize` to the
   // actual bytes written, so a stale smaller value from a prior callback
@@ -1257,7 +1277,12 @@ private func halRenderProc(
   let status = AudioUnitRender(
     context.audioUnit, ioActionFlags, inTimeStamp, 1, clampedFrames,
     context.scratch.unsafeMutablePointer)
-  guard status == noErr else { return status }
+  guard status == noErr else {
+    // This callback's frames are gone — same gap class as a ring drop, and
+    // likewise uncounted before #1788.
+    context.counters.incrementRenderFailure()
+    return status
+  }
   guard !context.stopped.isSet() else { return noErr }
 
   guard let data = context.scratch[0].mData else { return noErr }

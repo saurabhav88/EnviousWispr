@@ -62,8 +62,23 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// AVAudioConverter calls that returned an error (converted chunk lost).
   public let converterErrorCount: Int
   /// Converter calls that produced zero output frames (expected once at
-  /// priming; more than ~1 per session is a signal).
+  /// priming; more than ~1 per session is a signal). Deliberately NOT part of
+  /// `inputTimelineGapCount`: a priming call CONSUMES its input and emits it on
+  /// the following call, so the output timeline stays continuous.
   public let zeroOutputCount: Int
+  /// `AudioUnitRender` calls that returned a non-`noErr` status (that whole
+  /// callback's frames never reached the ring = lost audio).
+  public let renderFailureCount: Int
+  /// Render callbacks whose hardware slice exceeded the scratch allocation, so
+  /// the excess frames of that callback were clamped away = lost audio.
+  ///
+  /// This and `renderFailureCount` are dev-log + `inputTimelineGapCount` only.
+  /// The three older counters also travel to `dictation.completed`; these two
+  /// deliberately do NOT yet, because that chain spans four layers and a PostHog
+  /// property-naming decision that is a separate change, not a deferred half of
+  /// this one. The asymmetry is recorded so it reads as chosen, not forgotten,
+  /// and tracked in #1847.
+  public let oversizedSliceCount: Int
   /// A stream-format / nominal-rate change notification fired for the bound
   /// device while capturing (#1434 — log-and-telemetry only in v1; never
   /// interrupts the recording).
@@ -75,11 +90,31 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// source doesn't read a channel count (e.g. proxy-origin stalls).
   public let nativeChannelCount: Int?
 
+  /// Every way the captured stream can lose frames between the microphone and
+  /// the pipeline, summed. THE point of this property is to be the one place
+  /// that enumerates them, so anything measuring positions in the sample stream
+  /// asks one question instead of rediscovering the edges one review round at a
+  /// time (#1788 took three rounds of exactly that). Zero means the sample
+  /// stream is a faithful, gap-free timeline of what the device delivered, so a
+  /// sample INDEX is an exact elapsed time; nonzero makes any such index a lower
+  /// bound. The four edges, all in `HALDeviceInputSource`:
+  ///   1. `AudioUnitRender` returned an error   -> `renderFailureCount`
+  ///   2. slice larger than the scratch buffer  -> `oversizedSliceCount`
+  ///   3. RT ring full, consumer lagging        -> `ringDropCount`
+  ///   4. `AVAudioConverter` returned an error  -> `converterErrorCount`
+  /// A fifth candidate, a zero-frame converter output, is NOT a gap (see
+  /// `zeroOutputCount`). Adding a new lossy edge means adding it here too.
+  public var inputTimelineGapCount: Int {
+    renderFailureCount + oversizedSliceCount + ringDropCount + converterErrorCount
+  }
+
   public init(
     nativeRateHz: Double?,
     ringDropCount: Int = 0,
     converterErrorCount: Int = 0,
     zeroOutputCount: Int = 0,
+    renderFailureCount: Int = 0,
+    oversizedSliceCount: Int = 0,
     rateDivergenceDetected: Bool = false,
     nativeChannelCount: Int? = nil
   ) {
@@ -87,8 +122,29 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     self.ringDropCount = ringDropCount
     self.converterErrorCount = converterErrorCount
     self.zeroOutputCount = zeroOutputCount
+    self.renderFailureCount = renderFailureCount
+    self.oversizedSliceCount = oversizedSliceCount
     self.rateDivergenceDetected = rateDivergenceDetected
     self.nativeChannelCount = nativeChannelCount
+  }
+
+  /// Counters decode as ABSENT-MEANS-ZERO rather than as required keys, so a stop
+  /// reply produced before a given counter existed still decodes. The synthesized
+  /// decoder would instead throw on the missing key, which is how #1788's two new
+  /// gap counters would have broken the #1523 forward-compatibility test. Adding
+  /// another counter therefore needs a line here as well as in
+  /// `inputTimelineGapCount` — both are deliberate, both fail loudly in tests.
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    nativeRateHz = try c.decodeIfPresent(Double.self, forKey: .nativeRateHz)
+    ringDropCount = try c.decodeIfPresent(Int.self, forKey: .ringDropCount) ?? 0
+    converterErrorCount = try c.decodeIfPresent(Int.self, forKey: .converterErrorCount) ?? 0
+    zeroOutputCount = try c.decodeIfPresent(Int.self, forKey: .zeroOutputCount) ?? 0
+    renderFailureCount = try c.decodeIfPresent(Int.self, forKey: .renderFailureCount) ?? 0
+    oversizedSliceCount = try c.decodeIfPresent(Int.self, forKey: .oversizedSliceCount) ?? 0
+    rateDivergenceDetected =
+      try c.decodeIfPresent(Bool.self, forKey: .rateDivergenceDetected) ?? false
+    nativeChannelCount = try c.decodeIfPresent(Int.self, forKey: .nativeChannelCount)
   }
 }
 

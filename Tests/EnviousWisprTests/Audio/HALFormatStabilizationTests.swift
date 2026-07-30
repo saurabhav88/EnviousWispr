@@ -181,5 +181,73 @@ struct CaptureStopMetadataTransportTests {
     let decoded = try JSONDecoder().decode(CaptureStopMetadata.self, from: data)
     #expect(decoded.nativeChannelCount == nil)
     #expect(decoded.nativeRateHz == 24000)
+    // #1788: the same blob predates the two gap counters, which are NOT optional.
+    // Absent-means-zero keeps the boundary decoding instead of throwing.
+    #expect(decoded.renderFailureCount == 0)
+    #expect(decoded.oversizedSliceCount == 0)
+    #expect(decoded.inputTimelineGapCount == 1)  // the one ring drop above
+  }
+
+  @Test("#1788: the two new gap counters survive the round trip")
+  func gapCountersRoundTrip() throws {
+    let original = CaptureStopMetadata(
+      nativeRateHz: 48000, renderFailureCount: 2, oversizedSliceCount: 5)
+    let data = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(CaptureStopMetadata.self, from: data)
+    #expect(decoded == original)
+    #expect(decoded.renderFailureCount == 2)
+    #expect(decoded.oversizedSliceCount == 5)
+  }
+}
+
+// MARK: - #1788 input-timeline gap enumeration
+
+/// The wake instrument reads a sample INDEX as an elapsed time, which holds only
+/// while the stream lost nothing. `inputTimelineGapCount` is the single owner of
+/// "did it lose anything", so these tests pin every edge it must count — and the
+/// one it must not. Cloud review found a fresh missing edge in three consecutive
+/// rounds; the point of a freeze test here is that a fourth edge added without a
+/// line in the sum fails loudly instead of silently under-reporting.
+@Suite("CaptureStopMetadata — input-timeline gap enumeration (#1788)")
+struct CaptureStopMetadataGapTests {
+
+  @Test("a clean session reports zero gaps, so a wake is exact")
+  func cleanSessionHasNoGaps() {
+    let clean = CaptureStopMetadata(nativeRateHz: 24000)
+    #expect(clean.inputTimelineGapCount == 0)
+  }
+
+  @Test("each lossy edge contributes exactly one gap")
+  func everyLossyEdgeCounts() {
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, ringDropCount: 1)
+        .inputTimelineGapCount == 1)
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, converterErrorCount: 1)
+        .inputTimelineGapCount == 1)
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, renderFailureCount: 1)
+        .inputTimelineGapCount == 1)
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, oversizedSliceCount: 1)
+        .inputTimelineGapCount == 1)
+  }
+
+  @Test("a zero-frame converter output is NOT a gap — the input is emitted later")
+  func zeroConverterOutputIsNotAGap() {
+    // Cloud review r3 named this as a third loss source. It is not one: a priming
+    // call consumes its input and emits it on the following call, so the output
+    // timeline stays continuous. Counting it would report a floor on every
+    // session, since priming legitimately yields one.
+    let primed = CaptureStopMetadata(nativeRateHz: 24000, zeroOutputCount: 1)
+    #expect(primed.inputTimelineGapCount == 0)
+  }
+
+  @Test("gaps sum across edges rather than saturating at one")
+  func gapsSumAcrossEdges() {
+    let messy = CaptureStopMetadata(
+      nativeRateHz: 16000, ringDropCount: 4, converterErrorCount: 3,
+      zeroOutputCount: 9, renderFailureCount: 2, oversizedSliceCount: 1)
+    #expect(messy.inputTimelineGapCount == 10)  // 4+3+2+1, zeroOutput excluded
   }
 }

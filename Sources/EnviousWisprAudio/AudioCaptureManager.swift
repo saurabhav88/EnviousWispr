@@ -1059,13 +1059,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       else { return }
       didLogZeroPrefixThisSession = true
       let zeroPrefixMs = Double(zeroPrefixSamples) / AudioConstants.sampleRate * 1000
-      // #1788, after two review rounds on the SAME class: every earlier version
+      // #1788, after THREE review rounds on the same class: every earlier version
       // of this line measured when the diagnostic OBSERVED the wake, not when the
       // wake happened. A sample count taken from the detector misses pre-roll the
       // ring overwrote; a wall clock read here is late by the whole pre-roll batch,
       // because pre-roll arrives all at once AT activation. The only quantity that
       // corresponds to occurrence is the sample's own position in the stream,
-      // latched by `PreRollForwarder` the moment it arrived.
+      // latched by `PreRollForwarder` the moment it arrived — and that holds only
+      // while the stream is gap-free, which the `gaps` field below reports.
       let wake =
         activeSource?.wakeDiagnostic
         ?? (firstNonZeroRoutedIndex: nil, routedCountAtActivation: nil)
@@ -1082,10 +1083,20 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         wakeMs.map { String(format: "%.0f", $0) } ?? "unavailable"
       let transport = currentResolvedRoute?.effective ?? "unknown"
       let ceiling = allZeroCeilingSamples
+      // A sample index is an elapsed time only while the stream that produced it
+      // lost nothing. Rather than answer that per-edge (three review rounds each
+      // found one more edge upstream of the last fix), the instrument REPORTS the
+      // answer: `CaptureStopMetadata.inputTimelineGapCount` owns the enumeration
+      // of every lossy edge, and `gaps=0` — the only value seen in 3,111 logged
+      // sessions — means `wake_ms` is exact. Any nonzero value makes it a floor,
+      // says so on the line, and needs no new field when an edge is added.
+      let gaps = activeSource?.captureStopMetadata?.inputTimelineGapCount
+      let gapField = gaps.map(String.init) ?? "unknown"
+      let exactness = (gaps == 0) ? "exact" : "floor"
       Task {
         await AppLogger.shared.log(
           "ZERO_PREFIX_MEASURE transport=\(transport) "
-            + "wake_ms=\(wakeField) "
+            + "wake_ms=\(wakeField) wake_is=\(exactness) timeline_gaps=\(gapField) "
             + "detector_zero_prefix_ms=\(String(format: "%.0f", zeroPrefixMs)) "
             + "detector_zero_prefix_samples=\(zeroPrefixSamples) "
             + "ceiling_samples=\(ceiling)",
