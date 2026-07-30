@@ -1574,9 +1574,15 @@ def fetch_take_rates(
     # itself and the rate was a structural 100% on every affected release — a
     # denominator drawn from its own numerator. The first version of the
     # arithmetic case froze that as `1/1`.
-    # Built once and reused by the population query and its completeness check.
+    # ELIGIBLE, not SUCCESSFUL. Plan section 5 defines the affected-user rate over
+    # "installs with >=1 ELIGIBLE take" — any of the 13 keyed events — while the
+    # TAKE-level rate above deliberately uses successful `dictation.completed`
+    # takes. One filter served both and quietly narrowed this denominator: an
+    # install with keyed VAD, invocation or failure events but no successful
+    # completion vanished from it, inflating the rate. The two populations are
+    # different by design and now have different filters.
     population_filter = f"""
-        event = '{SUCCESS_TAKE_EVENT}'
+        event IN ({sql_id_list(TAKE_KEYED_EVENTS)})
         AND {client.environment_clause()}
         AND properties.{TAKE_PROPERTY} IS NOT NULL
         AND properties.{TAKE_PROPERTY} != ''
@@ -1586,7 +1592,11 @@ def fetch_take_rates(
     population_rows, _ = client.query(
         f"""
         SELECT properties.app_version AS release,
-               uniqExact(distinct_id) AS successful_installs,
+               uniqExact(distinct_id) AS eligible_installs,
+               uniqExactIf(
+                   distinct_id,
+                   distinct_id IN ({sql_id_list(installs)})
+               ) AS affected_eligible_installs,
                countIf(
                    match(
                        toString(properties.{TAKE_PROPERTY}),
@@ -1599,13 +1609,14 @@ def fetch_take_rates(
         """,
         "take_rate_user_population",
     )
-    successful_install_counts: dict[str, int] = defaultdict(int)
+    eligible_install_counts: dict[str, int] = defaultdict(int)
+    affected_eligible_install_counts: dict[str, int] = defaultdict(int)
     for row in population_rows:
-        if len(row) != 3:
+        if len(row) != 4:
             raise ProtocolError(
-                f"take_rate_user_population: expected 3 columns, got {len(row)}"
+                f"take_rate_user_population: expected 4 columns, got {len(row)}"
             )
-        release_raw, successful_installs, invalid_take_rows = row
+        release_raw, eligible_installs, affected_eligible_installs, invalid_take_rows = row
         release = canonical_app_version(release_raw, "take_rate_user_population")
         # This query INDEPENDENTLY produces the affected-user denominator, so it
         # needs its own validity check — inheriting the bucket query's would be
@@ -1617,9 +1628,13 @@ def fetch_take_rates(
                 f"take_rate_user_population: rows on {release} carry a non-canonical "
                 "take_id — refusing to include fabricated take identities"
             )
-        successful_install_counts[release] += required_count(
-            successful_installs,
-            f"take_rate_user_population: successful_installs on {release}",
+        eligible_install_counts[release] += required_count(
+            eligible_installs,
+            f"take_rate_user_population: eligible_installs on {release}",
+        )
+        affected_eligible_install_counts[release] += required_count(
+            affected_eligible_installs,
+            f"take_rate_user_population: affected_eligible_installs on {release}",
         )
 
     # Independent identical-filter total for THIS grouped result. Without it a
@@ -1651,7 +1666,6 @@ def fetch_take_rates(
     per_release_affected: dict[str, int] = defaultdict(int)
     per_release_union: dict[str, int] = defaultdict(int)
     affected_installs: dict[str, set[str]] = defaultdict(set)
-    successful_affected_installs: dict[str, set[str]] = defaultdict(set)
 
     # Report only releases on which this fingerprint HAS an affected take. A
     # successful take on some other release is not a zero-rate row for this
@@ -1669,8 +1683,6 @@ def fetch_take_rates(
         per_release_union[release] += union
         if affected:
             affected_installs[release].add(install)
-        if successes[(install, release)]:
-            successful_affected_installs[release].add(install)
 
     # A checked loop, not a comprehension: the install arithmetic draws from two
     # SEPARATE query results, so it can produce an impossible pair that a
@@ -1678,21 +1690,24 @@ def fetch_take_rates(
     result: list[TakeRateRow] = []
     for release in sorted(per_release_union, key=version_key):
         affected_count = len(affected_installs[release])
-        successful_count = successful_install_counts[release]
-        overlap_count = len(successful_affected_installs[release])
+        eligible_population_count = eligible_install_counts[release]
+        # The overlap comes from the population query itself rather than from the
+        # bucket results, so both sides of the subtraction are drawn from the same
+        # eligible population — deriving it from `successes` would mix two filters.
+        overlap_count = affected_eligible_install_counts[release]
 
-        if overlap_count > successful_count:
+        if overlap_count > affected_count or overlap_count > eligible_population_count:
             raise ProtocolError(
-                f"affected-user rate on {release}: {overlap_count} affected installs "
-                f"also succeeded, but the population query returned only "
-                f"{successful_count} successful installs"
+                f"affected-user rate on {release}: affected/eligible overlap "
+                f"{overlap_count} exceeds affected={affected_count} or "
+                f"eligible={eligible_population_count}"
             )
 
-        # |affected ∪ successful| installs. Subtracting the installs counted on
-        # BOTH sides keeps an install that both failed and succeeded from being
+        # |affected ∪ eligible| installs. Subtracting the installs counted on BOTH
+        # sides keeps an install that is both affected and eligible from being
         # counted twice — the install-level twin of the take-level overlap
         # subtraction above.
-        eligible_count = affected_count + successful_count - overlap_count
+        eligible_count = affected_count + eligible_population_count - overlap_count
         if eligible_count < affected_count:
             raise ProtocolError(
                 f"affected-user rate on {release}: eligible denominator "
@@ -3190,11 +3205,11 @@ def run_self_test() -> int:
     )
     # Queue order: bucket rows, the bucket completeness total, then the
     # POPULATION query for the affected-user denominator.
-    ph, _ = _posthog_client(
+    ph, _rate_transport = _posthog_client(
         [
             _posthog_response([[install, "2.6.0", 10, 1, 0]]),
             _posthog_response([[1]]),
-            _posthog_response([["2.6.0", 10, 0]]),
+            _posthog_response([["2.6.0", 10, 1, 0]]),
             _posthog_response([[1]]),
         ]
     )
@@ -3208,6 +3223,24 @@ def run_self_test() -> int:
     # in this window, not the affected installs it contains. The first version of
     # this assertion read `== 1` and froze a structurally tautological 100%.
     assert rates[0].eligible_installs == 10, rates[0]
+    # THE POPULATION QUERY MUST SPAN ALL 13 EVENTS, not just successful
+    # completions. Plan section 5 defines this denominator over ELIGIBLE takes;
+    # scoping it to `dictation.completed` drops any install with keyed VAD,
+    # invocation or failure events but no successful completion, inflating the
+    # rate. Asserted on the emitted SQL because both forms return plausible
+    # numbers and only the query text distinguishes them.
+    population_sql = json.loads(
+        [r for r in _rate_transport.seen if b"take_rate_user_population" in (r.body or b"")][0]
+        .body or b"{}"
+    )["query"]["query"]
+    assert f"event IN ({sql_id_list(TAKE_KEYED_EVENTS)})" in population_sql, population_sql
+    assert f"event = '{SUCCESS_TAKE_EVENT}'" not in population_sql, population_sql
+    # The TAKE-level union keeps `dictation.completed` — a different population by
+    # design, and the bug was serving both from one filter.
+    bucket_sql = json.loads(
+        [r for r in _rate_transport.seen if b"take_rate_p0" in (r.body or b"")][0].body or b"{}"
+    )["query"]["query"]
+    assert f"event = '{SUCCESS_TAKE_EVENT}'" in bucket_sql, bucket_sql
     rate_lines = "\n".join(render_take_rates(rates, take_report.take_window, True))
     assert "2/11 takes affected (18.2%)" in rate_lines, rate_lines
     assert "1/10 installs affected" in rate_lines, rate_lines
@@ -3237,7 +3270,7 @@ def run_self_test() -> int:
         [
             _posthog_response([[install, "2.6.0", 2, 1, 0], [install, "2.7.0", 2, 1, 0]]),
             _posthog_response([[2]]),
-            _posthog_response([["2.6.0", 1, 0], ["2.7.0", 1, 0]]),
+            _posthog_response([["2.6.0", 1, 1, 0], ["2.7.0", 1, 1, 0]]),
             _posthog_response([[2]]),
         ]
     )
@@ -3283,7 +3316,7 @@ def run_self_test() -> int:
         [
             _posthog_response([[install, "2.6.0", 10, 1, 0]]),
             _posthog_response([[2]]),
-            _posthog_response([["2.6.0", 10, 0]]),
+            _posthog_response([["2.6.0", 10, 1, 0]]),
             _posthog_response([[1]]),
         ]
     )
@@ -3318,7 +3351,7 @@ def run_self_test() -> int:
         [
             _posthog_response([[install, "2.6.0", 10, 1, 0]]),
             _posthog_response([[1]]),
-            _posthog_response([["2.6.0", 10, 0]]),
+            _posthog_response([["2.6.0", 10, 1, 0]]),
             _posthog_response([[1]]),
         ]
     )
@@ -3368,7 +3401,7 @@ def run_self_test() -> int:
         [
             _posthog_response([[install, "2.6.0", 10, 1, 1]]),
             _posthog_response([[1]]),
-            _posthog_response([["2.6.0", 10, 0]]),
+            _posthog_response([["2.6.0", 10, 1, 0]]),
             _posthog_response([[1]]),
         ]
     )
@@ -3385,7 +3418,7 @@ def run_self_test() -> int:
         [
             _posthog_response([[install, "2.6.0", 10, 1, 0]]),
             _posthog_response([[1]]),
-            _posthog_response([["2.6.0", 10, 3]]),
+            _posthog_response([["2.6.0", 10, 1, 3]]),
             _posthog_response([[1]]),
         ]
     )
@@ -3404,7 +3437,7 @@ def run_self_test() -> int:
         [
             _posthog_response([[install, "2.6.0", 10, 1, 0]]),
             _posthog_response([[1]]),
-            _posthog_response([["2.6.0", 10, 0]]),
+            _posthog_response([["2.6.0", 10, 1, 0]]),
             _posthog_response([[2]]),
         ]
     )
@@ -3415,13 +3448,15 @@ def run_self_test() -> int:
         "truncated population buckets",
         "received 1 release buckets",
     )
-    # And an impossible pair across the two result sets is refused rather than
-    # returned: more affected-and-successful installs than successful installs.
+    # And an impossible pair WITHIN the population result is refused rather than
+    # returned: more affected-and-eligible installs than eligible installs. Both
+    # numbers come from the same query, so this can only mean a parse or query
+    # defect — and it would produce a denominator below its own numerator.
     ph, _ = _posthog_client(
         [
             _posthog_response([[install, "2.6.0", 10, 1, 0]]),
             _posthog_response([[1]]),
-            _posthog_response([["2.6.0", 0, 0]]),
+            _posthog_response([["2.6.0", 0, 1, 0]]),
             _posthog_response([[1]]),
         ]
     )
@@ -3429,8 +3464,8 @@ def run_self_test() -> int:
     _expect_raises(
         ProtocolError,
         lambda: fetch_take_rates(ph, take_report),
-        "affected-and-successful exceeds successful",
-        "affected installs",
+        "affected-eligible overlap exceeds the eligible population",
+        "exceeds affected=",
     )
     passed("the affected-user denominator fails closed on truncation or an impossible pair")
 
