@@ -2040,6 +2040,14 @@ def render_report(
 
     lines.append("Per-install configuration and that install's OWN success record.")
     lines.append("This is the denominator Sentry cannot show.")
+    lines.append(
+        "CONFIGURATION IS CURRENT, NOT AS-OF-THE-FAILURE. It is reconstructed by the "
+        "documented method (analytics-operations.md FACT: settings-config-reconstruction): "
+        "the latest snapshot with later changes overlaid, across all releases. An install "
+        "that switched backend or provider AFTER the events below will show its NEW "
+        "setting beside OLD failures. Do not read the pairing as causal without checking "
+        "`settings.changed` timestamps for that install."
+    )
     lines.append("")
     for install_id in report.joined_install_ids:
         entry = usage.get(install_id)
@@ -3064,6 +3072,12 @@ def run_self_test() -> int:
     )
     assert "466 successful dictations" in packaged_render, packaged_render
     assert "18 pipeline.failed" in packaged_render, packaged_render
+    # The configuration shown is CURRENT, not as-of-the-failure: the documented
+    # reconstruction takes the latest snapshot plus later changes across all
+    # releases, so an install that changed backend after these events shows its
+    # new setting beside old failures. Printed next to a failure list that reads
+    # as causal, an unlabelled "current config" invites exactly that misreading.
+    assert "CONFIGURATION IS CURRENT, NOT AS-OF-THE-FAILURE" in packaged_render
     passed("Sentry packaged releases join PostHog raw app versions, including dev versions")
 
     # Counts are measurements: malformed values must not be rounded or truncated.
