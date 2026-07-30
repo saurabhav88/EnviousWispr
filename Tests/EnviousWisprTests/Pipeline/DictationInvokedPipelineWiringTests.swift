@@ -107,9 +107,8 @@ struct DictationInvokedPipelineWiringTests {
   /// `llm.polish_skipped` ship with no take key at all.
   ///
   /// It also freezes WHICH key: the live in-flight one. Polish runs before the session
-  /// terminal, so `lastTakeID` is not yet stamped for this take — swapping in the
-  /// concluded key here would silently label every polish event with the PREVIOUS
-  /// dictation, or with nothing.
+  /// terminal, and starting a session clears `lastTakeID`, so it is nil here —
+  /// swapping in the concluded key would ship every polish event with NO take key.
   @Test("live polish reporting uses the in-flight take key, not the concluded one")
   func polishReportingUsesInFlightTakeKey() throws {
     let wiringSource = try Self.read(
@@ -139,7 +138,7 @@ struct DictationInvokedPipelineWiringTests {
       codeOnly.contains("lastTakeID") == false,
       """
       the concluded key is the WRONG one here — polish runs before the terminal that \
-      stamps it, so this would label polish events with the previous dictation or nothing.
+      stamps it, and a new session clears it, so this would emit no take key at all.
       """)
     // Prove the filter did not strip the line under test along with the comments.
     #expect(codeOnly.contains("takeID: telemetryState.takeID)"))

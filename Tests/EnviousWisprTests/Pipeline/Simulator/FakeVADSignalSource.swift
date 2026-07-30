@@ -83,7 +83,7 @@ final class FakeVADSignalSource: VADSignalSource {
     for continuation in warningSubscribers.values { continuation.yield(signal) }
   }
 
-  /// Emit a warning stamped with a PRIOR session's id — the stale-drop case.
+  /// Emit a warning stamped with a non-current session id — the stale-drop case.
   func emitStaleWarning(remainingSeconds: TimeInterval = 60) {
     emittedWarningCount += 1
     let signal = VADWarningSignal(remainingSeconds: remainingSeconds, sessionID: SessionID())

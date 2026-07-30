@@ -804,10 +804,26 @@ public final class TelemetryService {
   /// recording-duration cap). Counts the population that records long enough to
   /// near the cap — near-zero today; a rising count is the signal to invest in
   /// full long-form mode (#344). Metadata only.
-  public func recordingCapWarningShown(backend: String, capSeconds: Double) {
-    PostHogSDK.shared.capture(
-      "recording.cap_warning_shown",
-      properties: ["asr_backend": backend, "cap_seconds": capSeconds])
+  public func recordingCapWarningShown(
+    backend: String,
+    capSeconds: Double,
+    /// #1846: which dictation neared the cap. Omit-when-nil, matching every other
+    /// take-keyed event — the caller on the live warning path always supplies one.
+    takeID: String? = nil
+  ) {
+    // #1846: ONE payload, with the DEBUG hook derived from it. A second literal
+    // for the hook is how a wire test comes to assert a key the real capture
+    // never sent — the shape this epic found in four separate emitter families.
+    var props: [String: Any] = ["asr_backend": backend, "cap_seconds": capSeconds]
+    if let takeID { props["take_id"] = takeID }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "recording.cap_warning_shown",
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double }))
+    #endif
+    PostHogSDK.shared.capture("recording.cap_warning_shown", properties: props)
   }
 
   // MARK: - Pipeline Steps

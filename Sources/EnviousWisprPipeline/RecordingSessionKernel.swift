@@ -537,11 +537,17 @@ final class RecordingSessionKernel {
   private var recordingStartedAtUptimeNs: UInt64?
 
   /// Fired at most once per recording when the VAD seam reports the recording is
-  /// approaching `maxRecordingDuration` (#1060), carrying the remaining seconds.
+  /// approaching `maxRecordingDuration` (#1060), carrying the remaining seconds
+  /// and, since #1846, the take key this warning belongs to.
   /// ADVISORY: the kernel does NOT stop on this (that is the separate stop
   /// stream); it forwards a semantic event the driver maps to a UI banner. No
   /// user-facing copy lives here — copy stays in the App layer.
-  var onApproachingMaxDuration: (@MainActor (TimeInterval) -> Void)?
+  ///
+  /// The take key is NON-optional because the identity always exists at the
+  /// source: `VADWarningSignal` carries a `SessionID`, and the forwarding site
+  /// validates it against the current session before this fires. Nothing on this
+  /// path has to invent or look up a key, so nothing should be able to omit one.
+  var onApproachingMaxDuration: (@MainActor (TimeInterval, String) -> Void)?
 
   /// #1707 Phase 3 (§3.2, row 21) / #1741 Chunk 9 — the shared
   /// `EngineMutationScope` constructed once by the composition root, injected
@@ -2995,7 +3001,13 @@ final class RecordingSessionKernel {
           continue
         }
         guard self.state == .live else { continue }
-        self.onApproachingMaxDuration?(warning.remainingSeconds)
+        // #1846: forward the identity the guard immediately above just accepted,
+        // rather than performing a second read. `telemetryState.takeID` holds the
+        // same value on this path — `start(config:)` projects it from the very
+        // `SessionID` that `isCurrent(sid)` and the stamp check both require — but
+        // the signal's own id is the one this warning was fenced against.
+        self.onApproachingMaxDuration?(
+          warning.remainingSeconds, warning.sessionID.raw.uuidString)
       }
     }
   }
