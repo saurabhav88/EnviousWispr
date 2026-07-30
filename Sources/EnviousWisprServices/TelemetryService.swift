@@ -2418,45 +2418,52 @@ public final class TelemetryService {
     backend: String,
     inputRoute: String,
     ready: Bool,
-    modelReused: Bool
+    modelReused: Bool,
+    /// #1846: which dictation this VAD work belongs to. Omit-when-nil.
+    takeID: String? = nil
   ) {
+    // #1846: ONE payload, with the hook derived from it. These three emitters
+    // previously built the hook event and the PostHog properties as two separate
+    // literals, so a test could assert a key that the real capture never sent.
+    var props: [String: Any] = [
+      "backend": backend,
+      "input_route": inputRoute,
+      "ready": ready,
+      "model_reused": modelReused,
+    ]
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "dictation.vad_preparation_completed",
-          stringProps: ["backend": backend, "input_route": inputRoute],
-          boolProps: ["ready": ready, "model_reused": modelReused]))
+          stringProps: props.compactMapValues { $0 as? String },
+          boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
-    PostHogSDK.shared.capture(
-      "dictation.vad_preparation_completed",
-      properties: [
-        "backend": backend,
-        "input_route": inputRoute,
-        "ready": ready,
-        "model_reused": modelReused,
-      ])
+    PostHogSDK.shared.capture("dictation.vad_preparation_completed", properties: props)
   }
 
   /// Immediately BEFORE the first `SilenceDetector.processChunk` await.
   package func dictationFirstVADChunkStarted(
     backend: String,
     inputRoute: String,
-    monitorToFirstChunkMs: Double
+    monitorToFirstChunkMs: Double,
+    /// #1846: which dictation this VAD work belongs to. Omit-when-nil.
+    takeID: String? = nil
   ) {
+    var props: [String: Any] = [
+      "backend": backend,
+      "input_route": inputRoute,
+      "monitor_to_first_chunk_ms": monitorToFirstChunkMs,
+    ]
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "dictation.first_vad_chunk_started",
-          stringProps: ["backend": backend, "input_route": inputRoute],
-          doubleProps: ["monitor_to_first_chunk_ms": monitorToFirstChunkMs]))
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double }))
     #endif
-    PostHogSDK.shared.capture(
-      "dictation.first_vad_chunk_started",
-      properties: [
-        "backend": backend,
-        "input_route": inputRoute,
-        "monitor_to_first_chunk_ms": monitorToFirstChunkMs,
-      ])
+    PostHogSDK.shared.capture("dictation.first_vad_chunk_started", properties: props)
   }
 
   /// Immediately AFTER that await returns. `started` present with `completed`
@@ -2466,24 +2473,26 @@ public final class TelemetryService {
     backend: String,
     inputRoute: String,
     chunkProcessingLatencyMs: Double,
-    shouldStop: Bool
+    shouldStop: Bool,
+    /// #1846: which dictation this VAD work belongs to. Omit-when-nil.
+    takeID: String? = nil
   ) {
+    var props: [String: Any] = [
+      "backend": backend,
+      "input_route": inputRoute,
+      "chunk_processing_latency_ms": chunkProcessingLatencyMs,
+      "should_stop": shouldStop,
+    ]
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "dictation.first_vad_chunk_completed",
-          stringProps: ["backend": backend, "input_route": inputRoute],
-          doubleProps: ["chunk_processing_latency_ms": chunkProcessingLatencyMs],
-          boolProps: ["should_stop": shouldStop]))
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
-    PostHogSDK.shared.capture(
-      "dictation.first_vad_chunk_completed",
-      properties: [
-        "backend": backend,
-        "input_route": inputRoute,
-        "chunk_processing_latency_ms": chunkProcessingLatencyMs,
-        "should_stop": shouldStop,
-      ])
+    PostHogSDK.shared.capture("dictation.first_vad_chunk_completed", properties: props)
   }
 }
 

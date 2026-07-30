@@ -179,6 +179,39 @@ struct DictationInvokedPipelineWiringTests {
     #expect(codeOnly.contains("takeID: telemetryState.takeID))"))
   }
 
+  /// #1846 chunk 9: the VAD marker bridge. `VADMarkerTakeIDTelemetryTests` proves a
+  /// supplied key reaches all three payloads. `CaptureVADSignalSourceTests`
+  /// behaviourally proves every marker carries the run's key, so replacing one
+  /// argument with `nil` fails that test too. This source scan additionally freezes
+  /// all three call sites and the exact identity expression used at each one.
+  ///
+  /// It also freezes WHICH value: `runSessionID`, captured once at run start and
+  /// validated by `monitorIsCurrent` immediately before each emission. A superseded
+  /// run emits nothing; forwarding the validated snapshot avoids a second live read
+  /// and keeps the marker tied to the authority the guard accepted.
+  @Test("VAD markers supply the run's frozen session id, not a live read")
+  func vadMarkersSupplyFrozenRunSessionID() throws {
+    let source = try Self.read(
+      "Sources/EnviousWisprPipeline/CaptureVADSignalSource.swift")
+
+    // All three call sites, each supplying the frozen run id.
+    let supplied = source.components(separatedBy: "takeID: runSessionID.raw.uuidString").count - 1
+    #expect(
+      supplied == 3,
+      "all three VAD markers must supply the run's frozen session id, found \(supplied)")
+
+    // And none of them reads the live property at emit time.
+    let codeOnly =
+      source
+      .split(separator: "\n", omittingEmptySubsequences: false)
+      .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+      .joined(separator: "\n")
+    #expect(codeOnly.contains("takeID: currentSessionID") == false)
+    #expect(codeOnly.contains("takeID: self.currentSessionID") == false)
+    // Prove the filter did not strip the lines under test along with the comments.
+    #expect(codeOnly.contains("takeID: runSessionID.raw.uuidString"))
+  }
+
   private static func read(_ relativePath: String) throws -> String {
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()
