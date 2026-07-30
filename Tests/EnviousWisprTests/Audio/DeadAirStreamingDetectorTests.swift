@@ -140,7 +140,9 @@ struct DeadAirStreamingDetectorTests {
     let chunked = ingestChunked(samples, chunkSize: 500)
 
     #expect(whole.meaningfulSignalSeen == chunked.meaningfulSignalSeen)
-    #expect(whole.isAllZeroFromStart(ceilingSamples: threshold) == chunked.isAllZeroFromStart(ceilingSamples: threshold))
+    #expect(
+      whole.isAllZeroFromStart(ceilingSamples: threshold)
+        == chunked.isAllZeroFromStart(ceilingSamples: threshold))
     #expect(whole.isBecameZeroMidCapture == chunked.isBecameZeroMidCapture)
     #expect(whole.totalSampleCount == chunked.totalSampleCount)
     #expect(whole.consecutiveExactZeroSuffix == chunked.consecutiveExactZeroSuffix)
@@ -162,7 +164,9 @@ struct DeadAirStreamingDetectorTests {
     let samples = [Float](repeating: 0, count: threshold + 500)
     let whole = ingestWhole(samples)
     let chunked = ingestChunked(samples, chunkSize: 333)  // deliberately not a 640 divisor
-    #expect(whole.isAllZeroFromStart(ceilingSamples: threshold) == chunked.isAllZeroFromStart(ceilingSamples: threshold))
+    #expect(
+      whole.isAllZeroFromStart(ceilingSamples: threshold)
+        == chunked.isAllZeroFromStart(ceilingSamples: threshold))
     #expect(whole.isAllZeroFromStart(ceilingSamples: threshold))
   }
 
@@ -304,5 +308,33 @@ struct DeadAirStreamingDetectorTests {
     let chunked = ingestChunked(samples, chunkSize: 513)  // deliberately not tile-aligned
     #expect(whole.zeroPrefixSampleCount == chunked.zeroPrefixSampleCount)
     #expect(whole.zeroPrefixSampleCount == 7_777)
+  }
+
+  // MARK: - #1788 sibling-threshold freeze
+
+  /// THIS TEST EXISTS TO STOP A FUTURE MAINTAINER "HARMONISING" THE TWO THRESHOLDS.
+  /// #1788 raises the all-zero-FROM-START ceiling on Bluetooth to 3.0s, and the two
+  /// predicates now read as inconsistent — one takes a ceiling parameter, the other
+  /// keeps a hard 1.0s. That is deliberate and they answer different questions:
+  /// `isAllZeroFromStart` asks "did audio ever start" (Bluetooth negotiates, so it
+  /// needs longer), while `isBecameZeroMidCapture` asks "did working audio DIE"
+  /// (nothing negotiates mid-stream, so the longer bar would only delay a real
+  /// failure the user is already living through).
+  @Test("#1788: becameZeroMidCapture keeps 1.0s and ignores the all-zero ceiling")
+  func becameZeroMidCaptureIsNotAffectedByTheCeiling() {
+    var samples: [Float] = [0.5, 0.5, 0.5]  // meaningful signal first
+    samples.append(
+      contentsOf: [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples))
+    let detector = ingestWhole(samples)
+
+    // Fires at 1.0s of trailing zeros, well under the 3.0s Bluetooth ceiling...
+    #expect(detector.isBecameZeroMidCapture)
+    // ...and passing that ceiling to the SIBLING predicate changes nothing here,
+    // because real signal was seen, so `isAllZeroFromStart` is permanently false.
+    #expect(
+      !detector.isAllZeroFromStart(
+        ceilingSamples: AudioConstants.bluetoothAllZeroMidTakeCeilingSamples))
+    #expect(
+      !detector.isAllZeroFromStart(ceilingSamples: AudioConstants.minimumTranscriptionSamples))
   }
 }

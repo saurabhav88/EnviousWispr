@@ -90,6 +90,50 @@ struct AudioCaptureManagerDeadAirLatchTests {
     }
   }
 
+  // MARK: - #1788 — the Bluetooth-only ceiling
+
+  /// The fix: Bluetooth alone waits 3.0s for the link to wake.
+  @Test("bluetooth gets the 3.0s ceiling")
+  func bluetoothGetsTheLongerCeiling() {
+    #expect(
+      AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport: "bluetooth")
+        == AudioConstants.bluetoothAllZeroMidTakeCeilingSamples)
+    #expect(
+      AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport: "bluetooth")
+        == 48_000)
+  }
+
+  /// THE WIRED-UNCHANGED GUARANTEE, asserted rather than assumed. This is the test
+  /// that must be GREEN on both pre-fix and post-fix code — that is what proves the
+  /// change is Bluetooth-scoped instead of a universal ceiling raise, which is the
+  /// design coverage review rejected. A nil or unreadable transport falls to TODAY's
+  /// behaviour, never to the longer one: an unknown route must not silently buy
+  /// every user three seconds of tolerated silence.
+  @Test("every non-bluetooth transport, including nil and unknown, keeps 1.0s")
+  func everyOtherTransportKeepsTheShippingCeiling() {
+    for transport in ["built_in", "usb", "unknown", "", "Bluetooth", "BLUETOOTH"] {
+      #expect(
+        AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport: transport)
+          == AudioConstants.minimumTranscriptionSamples,
+        "\(transport) must keep the shipping ceiling")
+    }
+    #expect(
+      AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport: nil)
+        == AudioConstants.minimumTranscriptionSamples)
+  }
+
+  /// The two ceilings must stay DISTINCT constants. A future maintainer collapsing
+  /// them would silently apply 3.0s everywhere (or 1.0s to Bluetooth), which is the
+  /// exact regression the transport branch exists to prevent.
+  @Test("the two ceilings are separate values, 1.0s and 3.0s")
+  func ceilingsAreDistinct() {
+    #expect(AudioConstants.minimumTranscriptionSamples == 16_000)
+    #expect(AudioConstants.bluetoothAllZeroMidTakeCeilingSamples == 48_000)
+    #expect(
+      AudioConstants.bluetoothAllZeroMidTakeCeilingSamples
+        > AudioConstants.minimumTranscriptionSamples)
+  }
+
   // The override exists ONLY in DEBUG, so these two tests are mirror images and
   // both must be compiled — asserting the override works where it exists, and
   // asserting it is genuinely ABSENT where it must not exist. A single
