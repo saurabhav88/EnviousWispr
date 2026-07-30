@@ -3,12 +3,13 @@
  * (issue #1838 chunk 1).
  *
  * Extracted from `../index.js`, where it was duplicated function-for-function
- * with `workers/product-health/src/index.js` and hand-ported between the two
- * (#1720 -> #1775). That hand-porting demonstrably does not converge: the same
+ * with the since-retired product-health worker and hand-ported between the two
+ * (#1720 -> #1775). That hand-porting demonstrably did not converge: the same
  * fix is still unported to `workers/weekly-digest`. This module is the single
- * owner for the daily report; product-health is retired by this issue, so it is
- * deliberately NOT promoted to a repo-global `workers/shared/` for a consumer
- * that would not exist (plan §3b).
+ * owner for the daily report, and is deliberately NOT promoted to a
+ * repo-global `workers/shared/`: after that retirement the daily report is its
+ * only consumer, and a shared module with one consumer is indirection, not
+ * reuse (plan §3b).
  *
  * Infrastructure ONLY - transport, retry, concurrency, dev-ID resolution, the
  * production predicate, SQL literal escaping, and row conversion. Metric SQL

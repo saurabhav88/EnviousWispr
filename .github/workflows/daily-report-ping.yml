@@ -10,7 +10,7 @@ name: Daily Report
 
 on:
   schedule:
-    - cron: "12 13 * * *"  # ~9:12am EDT / ~8:12am EST daily. Offset minute (not :00): GitHub flags top-of-hour as a high-load window where scheduled runs are delayed/dropped (#1131, product-health precedent).
+    - cron: "12 13 * * *"  # ~9:12am EDT / ~8:12am EST daily. Offset minute (not :00): GitHub flags top-of-hour as a high-load window where scheduled runs are delayed/dropped (#1131).
   workflow_dispatch:
     inputs:
       date:
@@ -57,8 +57,8 @@ jobs:
           if [ -n "$DATE_OVERRIDE" ]; then
             URL="${URL}?date=${DATE_OVERRIDE}"
           fi
-          # No --retry here (product-health-ping.yml's own --retry 3 was
-          # removed for the identical reason, issue #1589): this
+          # No --retry here (the retired product-health ping dropped its own
+          # --retry 3 for the identical reason, issue #1589): this
           # worker posts a Discord failure notice as a SIDE EFFECT before
           # returning a non-2xx (src/index.js runReport's catch block), so a
           # blind curl retry on a transient 500/504 could post a duplicate or
