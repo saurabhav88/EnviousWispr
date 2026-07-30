@@ -346,6 +346,14 @@ final class PreRollForwarder: @unchecked Sendable {
     // a wake that happened more than 500ms before activation would otherwise be
     // erased before anyone could observe it. One comparison per sample, added to
     // a loop already writing every sample, and skipped entirely once latched.
+    //
+    // KNOWN LIMIT, r9: `debugZeroFillController` transforms samples at DRAIN and
+    // live-forward time, i.e. AFTER this latch, so under an armed fault injection
+    // the latch sees real audio while the detector sees zeros and `wake_ms` becomes
+    // meaningless. NOT fixed, because the fix would move the latch after the
+    // transform and reintroduce the ring-overwrite bug this line exists to prevent,
+    // and because a wake measured during a simulated dead mic is meaningless by
+    // construction anyway. IGNORE `wake_ms` on any `EW_FAULT_INJECTION=1` run.
     if state.firstNonZeroRoutedIndex == nil {
       for (offset, sample) in samples.enumerated() where sample != 0 {
         state.firstNonZeroRoutedIndex = state.routedCount + offset

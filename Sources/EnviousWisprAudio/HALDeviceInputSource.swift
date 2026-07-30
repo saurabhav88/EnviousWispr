@@ -1368,6 +1368,13 @@ private func halRenderProc(
   // trust the requested frame count alone.
   let renderedFrames = Int(context.scratch[0].mDataByteSize) / MemoryLayout<Float>.size
   let frameCount = min(Int(clampedFrames), renderedFrames)
+  // A SHORT RENDER IS NOT A GAP, and #1788 r9 proposed counting it as one.
+  // `noErr` with a reduced `mDataByteSize` means the device had fewer frames than
+  // the slice asked for — those frames never existed, so nothing was lost. Counting
+  // them would inflate `inputTimelineGapCount` on healthy captures and mark every
+  // reading `floor`, making the instrument worse rather than more honest. Declined
+  // deliberately, not overlooked; revisit only with evidence that a short render
+  // accompanies actual audio loss.
   guard frameCount > 0 else { return noErr }
   let floatPtr = data.assumingMemoryBound(to: Float.self)
 
