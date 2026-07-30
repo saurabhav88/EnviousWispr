@@ -121,3 +121,60 @@ struct AudioCaptureManagerDeadAirLatchTests {
     }
   #endif
 }
+
+#if DEBUG
+  /// The wake instrument's honesty rule (#1788 cloud review r5). Five review rounds
+  /// on this one diagnostic all reduced to reading a quantity over an interval it
+  /// does not describe, so the rule that decides `exact` vs `floor` is frozen here
+  /// as pure logic rather than left inside the emitter where each round found it
+  /// again. Both failure modes UNDER-report, so the safe label is always `floor`.
+  @Suite("AudioCaptureManager — wake exactness rule (#1788)")
+  struct AudioCaptureManagerWakeExactnessTests {
+
+    @Test("a pre-roll latch proves the stream predated the wake")
+    func preRollLatchProvesStreamCameFirst() {
+      #expect(
+        AudioCaptureManager.wakeStreamStartedBeforeWake(
+          firstNonZeroRoutedIndex: 9591, routedCountAtActivation: nil))
+      // Even index 0 counts: a latch existing at all means route() saw the sample.
+      #expect(
+        AudioCaptureManager.wakeStreamStartedBeforeWake(
+          firstNonZeroRoutedIndex: 0, routedCountAtActivation: 0))
+    }
+
+    @Test("samples routed before activation prove it too")
+    func routedBeforeActivationProvesStreamCameFirst() {
+      #expect(
+        AudioCaptureManager.wakeStreamStartedBeforeWake(
+          firstNonZeroRoutedIndex: nil, routedCountAtActivation: 8000))
+    }
+
+    @Test("nothing routed before activation means the wake is unmeasurable below")
+    func noPriorSamplesMeansNotExact() {
+      // THE r5 CASE: AUHAL delivers no callback for a while, then its first sample
+      // is already nonzero. Index 0 reads as wake_ms=0 and no gap counter moves, so
+      // without this the line would claim `exact` over a real link delay.
+      #expect(
+        !AudioCaptureManager.wakeStreamStartedBeforeWake(
+          firstNonZeroRoutedIndex: nil, routedCountAtActivation: 0))
+      #expect(
+        !AudioCaptureManager.wakeStreamStartedBeforeWake(
+          firstNonZeroRoutedIndex: nil, routedCountAtActivation: nil))
+    }
+
+    @Test("exact requires a gap-free stream AND a stream that came first")
+    func exactRequiresBothConditions() {
+      #expect(AudioCaptureManager.wakeIsExact(gapCount: 0, streamStartedFirst: true))
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 1, streamStartedFirst: true))
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 0, streamStartedFirst: false))
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 3, streamStartedFirst: false))
+    }
+
+    @Test("an unreadable gap count fails CLOSED, never as zero")
+    func unknownGapCountIsNotExact() {
+      // A measurement authority that cannot read its own inputs must not print the
+      // confident label; nil here means the source had no stop metadata to offer.
+      #expect(!AudioCaptureManager.wakeIsExact(gapCount: nil, streamStartedFirst: true))
+    }
+  }
+#endif

@@ -1044,6 +1044,31 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   #if DEBUG
+    /// Did the sample stream exist before the wake happened? A sample clock cannot
+    /// measure an interval containing no samples, so when nothing was routed prior
+    /// to activation the first delivered sample sits at index 0 and a link that woke
+    /// during a callback-free startup is indistinguishable from one that was already
+    /// awake (#1788 cloud review r5). A wake latched during pre-roll proves the
+    /// stream predated it outright; otherwise the proof is that samples had been
+    /// routed before activation. Pure and static so the rule is unit-testable
+    /// without opening hardware.
+    nonisolated static func wakeStreamStartedBeforeWake(
+      firstNonZeroRoutedIndex: Int?,
+      routedCountAtActivation: Int?
+    ) -> Bool {
+      if firstNonZeroRoutedIndex != nil { return true }
+      return (routedCountAtActivation ?? 0) > 0
+    }
+
+    /// `exact` is claimed only when the stream lost nothing AND predated the wake.
+    /// Both failure modes under-report, never over-report, so the fallback label is
+    /// `floor`. An unknown gap count is NOT treated as zero: an unreadable
+    /// measurement authority must fail closed.
+    nonisolated static func wakeIsExact(gapCount: Int?, streamStartedFirst: Bool) -> Bool {
+      guard let gapCount else { return false }
+      return gapCount == 0 && streamStartedFirst
+    }
+
     /// Report the exact-zero prefix once per capture generation (#1788).
     ///
     /// On Bluetooth this is the A2DP->SCO/HFP link wake time. It is a DEBUG
@@ -1083,20 +1108,36 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         wakeMs.map { String(format: "%.0f", $0) } ?? "unavailable"
       let transport = currentResolvedRoute?.effective ?? "unknown"
       let ceiling = allZeroCeilingSamples
-      // A sample index is an elapsed time only while the stream that produced it
-      // lost nothing. Rather than answer that per-edge (three review rounds each
-      // found one more edge upstream of the last fix), the instrument REPORTS the
-      // answer: `CaptureStopMetadata.inputTimelineGapCount` owns the enumeration
-      // of every lossy edge, and `gaps=0` — the only value seen in 3,111 logged
-      // sessions — means `wake_ms` is exact. Any nonzero value makes it a floor,
-      // says so on the line, and needs no new field when an edge is added.
+      // A sample index is an elapsed time only if TWO things hold, and cloud
+      // review found one per round until both were stated here rather than
+      // assumed:
+      //  1. the stream lost nothing — `CaptureStopMetadata.inputTimelineGapCount`
+      //     owns that enumeration and its window (r3, r4, r5), so a new lossy
+      //     edge needs no new field here;
+      //  2. the stream STARTED before the wake did. A sample clock cannot measure
+      //     an interval containing no samples: if nothing had been routed before
+      //     activation, the first delivered sample sits at index 0, so a link that
+      //     woke during a callback-free startup reads `wake_ms=0` (r5). Whether
+      //     samples preceded activation is exactly `routedCountAtActivation > 0`,
+      //     already latched — no second clock, which was tried and deleted in r2.
+      // Both failures under-report, never over-report, so the honest label is
+      // `floor` and `exact` is claimed only when both hold. Of 13 Bluetooth
+      // readings taken before this, 8 read 0 and the log alone could NOT tell a
+      // genuinely warm link from a delayed first buffer — that ambiguity is what
+      // this closes.
       let gaps = activeSource?.captureStopMetadata?.inputTimelineGapCount
       let gapField = gaps.map(String.init) ?? "unknown"
-      let exactness = (gaps == 0) ? "exact" : "floor"
+      let streamStartedFirst = Self.wakeStreamStartedBeforeWake(
+        firstNonZeroRoutedIndex: wake.firstNonZeroRoutedIndex,
+        routedCountAtActivation: wake.routedCountAtActivation)
+      let exactness =
+        Self.wakeIsExact(gapCount: gaps, streamStartedFirst: streamStartedFirst)
+        ? "exact" : "floor"
       Task {
         await AppLogger.shared.log(
           "ZERO_PREFIX_MEASURE transport=\(transport) "
             + "wake_ms=\(wakeField) wake_is=\(exactness) timeline_gaps=\(gapField) "
+            + "stream_started_first=\(streamStartedFirst) "
             + "detector_zero_prefix_ms=\(String(format: "%.0f", zeroPrefixMs)) "
             + "detector_zero_prefix_samples=\(zeroPrefixSamples) "
             + "ceiling_samples=\(ceiling)",

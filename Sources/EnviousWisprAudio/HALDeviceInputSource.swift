@@ -121,6 +121,18 @@ private final class HALSessionCounters: Sendable {
   func incrementOversizedSlice() { state.withLock { $0.oversizedSlices += 1 } }
   func snapshot() -> Snapshot { state.withLock { $0 } }
   func reset() { state.withLock { $0 = Snapshot() } }
+  /// Read and clear under ONE lock acquisition. A separate `snapshot()` then
+  /// `reset()` leaves a window in which the RT and consumer threads can increment
+  /// a counter that neither the returned snapshot nor the cleared state contains,
+  /// so the gap is erased from both — the wake would then be labelled `exact`
+  /// over a lossy stream (#1788 cloud review r5).
+  func snapshotAndReset() -> Snapshot {
+    state.withLock { current in
+      let taken = current
+      current = Snapshot()
+      return taken
+    }
+  }
 }
 
 /// The RT-callback-reachable context, passed by raw pointer via `Unmanaged`
@@ -700,15 +712,20 @@ final class HALDeviceInputSource: AudioInputSource {
         source: "HALDeviceInputSource.startCapture.missing_forwarder")
     }
 
-    // Read the idle pre-roll's gaps BEFORE `counters.reset()` below discards
-    // them (#1788 cloud review r4). The reset is right for #1434 per-session
-    // telemetry, but the wake measurement starts inside retained pre-roll, so a
-    // gap in there is inside its window: dropping it would let the diagnostic
-    // print `exact` over a stream that provably lost frames. Read before
-    // `fwd.activate` too, which drains the pre-roll on this same call.
+    // Carry the idle pre-roll's gaps forward and clear the session counters in
+    // ONE atomic step, BEFORE `fwd.activate(...)` drains the pre-roll (#1788
+    // cloud review r4 + r5). Three things have to be true at once here:
+    //   - clearing is right for #1434, whose counters must mean "this session";
+    //   - the wake measurement begins inside retained pre-roll, so a gap in
+    //     there is inside its window and must survive the clear;
+    //   - read-then-clear as two calls leaves a window where the RT and consumer
+    //     threads (still running) increment a counter that lands in neither, so
+    //     the gap is erased from both and a wake reads `exact` over a lossy
+    //     stream. Hence `snapshotAndReset`, and hence doing it before activate:
+    //     every increment after this line belongs to the live session.
     preRollGapCount =
       renderContext.map {
-        let s = $0.counters.snapshot()
+        let s = $0.counters.snapshotAndReset()
         return s.ringDrops + s.converterErrors + s.renderFailures + s.oversizedSlices
       } ?? 0
 
@@ -726,9 +743,10 @@ final class HALDeviceInputSource: AudioInputSource {
     captureGeneration &+= 1
     captureLiveness.reset()
     // #1434: per-session capture-health state. The warm unit outlives sessions
-    // (deactivateCapture keeps it pre-rolling), so an idle-time format change
-    // or pre-roll ring drop must not bleed into the next recording's telemetry.
-    renderContext?.counters.reset()
+    // (deactivateCapture keeps it pre-rolling), so an idle-time format change or
+    // pre-roll ring drop must not bleed into the next recording's telemetry. The
+    // counter half of that clear moved ABOVE `fwd.activate` as an atomic
+    // snapshot-and-reset (#1788 r5); only the format flag is cleared here.
     formatDivergenceObserved = false
     // #1523: a fresh session must never serve the previous session's cached
     // stop-metadata; the live path repopulates it via teardownUnit().
