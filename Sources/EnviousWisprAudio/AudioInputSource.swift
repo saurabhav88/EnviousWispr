@@ -39,7 +39,20 @@ protocol AudioInputSource: AnyObject {
   var captureSourceType: String { get }
 
   // Lifecycle (mirrors AudioCaptureManager's two-phase start)
-  func prepare() async throws
+
+  /// Prepare the hardware and RETURN the device actually opened (#1844).
+  ///
+  /// Returning the bind — rather than exposing it as a property — is the point:
+  /// a caller cannot adopt a device before the operation that binds it has
+  /// completed, because the value does not exist until then. Do NOT add a
+  /// defaulted property mirror; that would reintroduce the read-too-early shape.
+  ///
+  /// NON-OPTIONAL deliberately. A successful `prepare()` that could answer "no
+  /// device" would preserve exactly the silent failure this issue exists to kill:
+  /// a conformer forgetting the warm early-return path would compile, publish no
+  /// bind, and suppress every later health verdict with all tests green. Success
+  /// means bound; anything else throws.
+  func prepare() async throws -> BoundInputDevice
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>
   func stop() async -> [Float]
 

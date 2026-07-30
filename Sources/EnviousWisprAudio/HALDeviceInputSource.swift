@@ -466,12 +466,66 @@ final class HALDeviceInputSource: AudioInputSource {
 
   var actualBoundTransport: String? { boundTransport }
 
+  /// #1844: the committed bind, or nil before `prepare()` succeeded / after
+  /// teardown. All three fields are assigned together in the cold commit block
+  /// and cleared together in `teardownUnit()`, so this reads one fact, not three
+  /// that could drift.
+  private var currentBoundInputDevice: BoundInputDevice? {
+    guard let boundDeviceID else { return nil }
+    return BoundInputDevice(
+      deviceID: boundDeviceID, deviceUID: boundUID, transportLabel: boundTransport)
+  }
+
   func resolvedDeviceIDForTesting() -> AudioDeviceID? {
     resolveDeviceID()
   }
 
   func setBoundDeviceIDForTesting(_ deviceID: AudioDeviceID?) {
     boundDeviceID = deviceID
+  }
+
+  /// #1844: sets or clears ALL THREE committed bind fields together, the way the
+  /// cold commit block and `teardownUnit()` each do. `setBoundDeviceIDForTesting`
+  /// moves only the numeric id, which is right for the numeric reuse predicate but
+  /// would let a warm-reuse test pass on a correct id with a stale UID — and the
+  /// UID is exactly what the health check's identity re-check depends on.
+  func setBoundInputDeviceForTesting(_ bound: BoundInputDevice?) {
+    boundDeviceID = bound?.deviceID
+    boundUID = bound?.deviceUID
+    boundTransport = bound?.transportLabel
+  }
+
+  /// #1844: the warm-reuse DECISION, split from the hardware that answers
+  /// "is a unit live" so it is testable without fabricating an `AudioUnit`.
+  ///
+  /// Non-nil ⇒ reuse the still-live bind. nil ⇒ cold preparation must run, and
+  /// the caller falls through to it in the SAME call (no recursion).
+  ///
+  /// Verified on real hardware 2026-07-30: this path runs on EVERY dictation, not
+  /// only on a second take — `preWarm()` opens the unit cold, then the recording's
+  /// own `prepare()` reuses it (bt-route.log shows one "prepared with device" from
+  /// pre-warm followed by "Reusing warm HALDeviceInput source" for the take). A
+  /// wrong answer here would be SILENT: capture keeps working from the live unit
+  /// and only the health-check identity would be wrong. Hot path plus silent
+  /// failure is why this decision is unit-frozen rather than left to review.
+  private func warmReuseBind(hasLiveUnit: Bool) -> BoundInputDevice? {
+    guard hasLiveUnit else { return nil }
+    if let bound = currentBoundInputDevice { return bound }
+    // Unreachable today: `teardownUnit()` clears `audioUnit` and every bound
+    // field in ONE block, so a live unit always has a bind. If the invariant is
+    // ever broken, repairing costs one engine rebuild; publishing nil as a BIND
+    // would silently disable the health check for every later take, and throwing
+    // would kill a recording that would have worked. Heart path is sacred, so
+    // repair and let the caller prepare cold.
+    teardownUnit()
+    return nil
+  }
+
+  /// #1844 test seam: drives `warmReuseBind` directly, so the decision that runs
+  /// on every dictation is frozen without a real `AudioUnit`. Follows this file's
+  /// existing `*ForTesting()` convention.
+  func warmReuseBindForTesting(hasLiveUnit: Bool) -> BoundInputDevice? {
+    warmReuseBind(hasLiveUnit: hasLiveUnit)
   }
 
   func boundDeviceMatchesResolvedTargetForReuse() -> Bool {
@@ -533,10 +587,10 @@ final class HALDeviceInputSource: AudioInputSource {
 
   // MARK: - Lifecycle
 
-  func prepare() async throws {
-    guard audioUnit == nil else {
+  func prepare() async throws -> BoundInputDevice {
+    if let warm = warmReuseBind(hasLiveUnit: audioUnit != nil) {
       onLifecycleSignal?("hal_prepare_already_running")
-      return
+      return warm
     }
 
     onLifecycleSignal?("hal_find_device_entered")
@@ -741,6 +795,12 @@ final class HALDeviceInputSource: AudioInputSource {
         + "ratio=\(String(format: "%.3f", ratio)) "
         + "nativeChannels=\(boundNativeChannelCount.map(String.init) ?? "nil")"
     )
+
+    // #1844: the bind this attempt established, handed straight back to the
+    // caller. Built from the same three fields committed above, so there is no
+    // window in which a caller could observe a device this attempt did not open.
+    return BoundInputDevice(
+      deviceID: deviceID, deviceUID: boundUID, transportLabel: boundTransport)
   }
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {

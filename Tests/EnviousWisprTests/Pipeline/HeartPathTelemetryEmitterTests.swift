@@ -95,7 +95,10 @@ struct HeartPathTelemetryEmitterTests {
       "capture.time_since_last_successful_recording_ms"
     ])
 
-  private static func stallContext(sessionID: UInt64 = 42) -> CaptureStallContext {
+  private static func stallContext(
+    sessionID: UInt64 = 42,
+    failureMode: CaptureStallFailureMode = .noBuffers
+  ) -> CaptureStallContext {
     CaptureStallContext(
       sessionID: sessionID,
       armedAtUptimeNs: 1_000,
@@ -107,7 +110,7 @@ struct HeartPathTelemetryEmitterTests {
       formatMismatchObserved: false,
       inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice",
-      failureMode: .noBuffers
+      failureMode: failureMode
     )
   }
 
@@ -411,6 +414,82 @@ struct HeartPathTelemetryEmitterTests {
     #expect(
       actualKeys == Self.stallExtraKeys,
       "stall extras key-set drift: \(actualKeys.symmetricDifference(Self.stallExtraKeys))")
+  }
+
+  // MARK: - #1844: elapsed-since-last-good on EVERY stall mode
+  //
+  // `stallFired` is the SHARED stall emitter, so this field lands on all three
+  // failure modes, not only the classified zero-signal pair. That is a wider blast
+  // radius than the coverage finding asked for and is deliberate: the key is
+  // optional and omitted when nil, it breaks no schema, and "how long since this
+  // user last had a working recording" is diagnostic on any capture stall.
+  //
+  // Both tests drive ALL THREE modes, because `capturedStallModes` dedups per mode
+  // within a session — one passing mode cannot stand in for the others.
+
+  @Test("every stall mode carries elapsed ms when a prior success is known (#1844)")
+  func allStallsCarryElapsedWhenKnown() {
+    let clock = ManualInstantClock()
+    let recorder = Recorder()
+    let captureTelemetry = CaptureTelemetryState(currentInstant: { clock.now })
+    let emitter = Self.makeEmitter(
+      backend: .parakeet, captureTelemetry: captureTelemetry, recorder: recorder)
+
+    captureTelemetry.recordSuccessfulRecording(recoveryTransport: "built_in_mic", sessionID: 1)
+    clock.advance(by: .milliseconds(4_500))  // fake clock: no real wait
+
+    let modes: [CaptureStallFailureMode] = [
+      .noBuffers, .allZeroFromStart, .becameZeroMidCapture,
+    ]
+    for mode in modes {
+      _ = emitter.stallFired(
+        ctx: Self.stallContext(failureMode: mode), isActivelyCapturing: true)
+    }
+
+    // All three modes genuinely emitted — otherwise a per-mode dedup regression
+    // would leave this test asserting over fewer events than it claims to cover.
+    #expect(recorder.errors.count == modes.count)
+    // Exact enriched key set per MODE, matching the nil test's per-mode sweep, so
+    // a key added or renamed on only one mode's payload cannot hide behind
+    // another mode's.
+    let expectedKeys =
+      Self.stallExtraKeys.union(["capture.time_since_last_successful_recording_ms"])
+    for (index, mode) in modes.enumerated() {
+      let extra = recorder.errors[index].extra
+      #expect(
+        extra["capture.time_since_last_successful_recording_ms"] as? Int == 4_500,
+        "mode \(mode.rawValue) lost the elapsed-time field")
+      #expect(extra["capture.failure_mode"] as? String == mode.rawValue)
+      #expect(
+        Set(extra.keys) == expectedKeys,
+        "mode \(mode.rawValue) key drift: \(Set(extra.keys).symmetricDifference(expectedKeys))")
+    }
+  }
+
+  @Test("every stall mode omits elapsed ms before the first success (#1844)")
+  func allStallsOmitElapsedBeforeFirstSuccess() {
+    let recorder = Recorder()
+    // Fresh state: no successful recording has ever been recorded.
+    let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
+
+    let modes: [CaptureStallFailureMode] = [
+      .noBuffers, .allZeroFromStart, .becameZeroMidCapture,
+    ]
+    for mode in modes {
+      _ = emitter.stallFired(
+        ctx: Self.stallContext(failureMode: mode), isActivelyCapturing: true)
+    }
+
+    #expect(recorder.errors.count == modes.count)
+    for (index, mode) in modes.enumerated() {
+      let extra = recorder.errors[index].extra
+      // ABSENT, not zero and not a placeholder — zero would read as "this user
+      // had a working recording a moment ago," the opposite of the truth.
+      #expect(
+        extra["capture.time_since_last_successful_recording_ms"] == nil,
+        "mode \(mode.rawValue) emitted a placeholder instead of omitting the field")
+      #expect(Set(extra.keys) == Self.stallExtraKeys)
+    }
   }
 
   /// Codex code-review gap #1 (noAudio fresh): exact key-set when no prior

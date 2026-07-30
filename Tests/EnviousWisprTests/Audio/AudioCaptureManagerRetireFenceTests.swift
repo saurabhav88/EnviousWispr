@@ -51,7 +51,20 @@ import Testing
         }
       #endif
 
-      func prepare() async throws {}
+      /// #1844: the bind this stub publishes. Controllable so a test can assert
+      /// the manager adopts what `prepare()` RETURNED rather than anything it
+      /// could have derived from settings.
+      var boundToReturn = BoundInputDevice(
+        deviceID: 1, deviceUID: "stub-uid", transportLabel: "stub")
+      /// When set, `prepare()` throws it instead of returning a bind.
+      var prepareError: Error?
+      private(set) var prepareCallCount = 0
+
+      func prepare() async throws -> BoundInputDevice {
+        prepareCallCount += 1
+        if let prepareError { throw prepareError }
+        return boundToReturn
+      }
       func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
         AsyncStream { $0.finish() }
       }

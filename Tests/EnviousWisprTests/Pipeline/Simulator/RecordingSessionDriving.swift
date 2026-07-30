@@ -208,7 +208,11 @@ final class KernelRecordingSession: RecordingSessionDriving {
     // every other test in the 37-scenario inventory depending on the test
     // machine's real microphone/mute state via the kernel's production
     // default (real CoreAudio calls).
-    zeroSignalDeviceEligible: @escaping @MainActor () -> Bool = { true }
+    // #1844: OPTIONAL so a test can pass nil and reach the kernel's PRODUCTION
+    // default closure, which is the only way to prove that closure reads the frozen
+    // bind. Still defaults to `{ true }`, so all 37 existing scenarios are unchanged
+    // and none of them starts depending on this machine's real microphone.
+    zeroSignalDeviceEligible: (@MainActor () -> Bool)? = { true }
   ) {
     self.vad = vad
     let limb = self.limb

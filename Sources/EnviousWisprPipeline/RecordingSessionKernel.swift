@@ -278,11 +278,11 @@ final class RecordingSessionKernel {
   /// injected (not a direct `AudioDeviceEnumerator`/`ZeroSignalDeviceDiscriminator`
   /// call) so deterministic kernel tests can substitute a fake instead of
   /// depending on the test machine's real microphone state. The production
-  /// default checks `audioCapture.zeroSignalDiscriminatorDeviceID` — the
-  /// device the CAPTURE LAYER froze at its own engine-start moment (cloud
-  /// review P2 round 2, PR #1512: only that layer sees its own internal
-  /// retries, so the kernel defers to it instead of independently freezing
-  /// its own snapshot, which could still race a mid-startup device switch).
+  /// default checks `audioCapture.zeroSignalDiscriminatorDevice` — the
+  /// device the CAPTURE LAYER's `prepare()` actually OPENED (#1844; only that
+  /// layer sees its own internal retries, so the kernel defers to it instead of
+  /// independently freezing its own snapshot, which could still race a
+  /// mid-startup device switch or name a microphone HAL never opened).
   /// Alive/mute status is still re-checked live against that frozen device
   /// on every call — only the device IDENTITY is frozen, not its mute
   /// state — EXCEPT that `zeroSignalDiscriminatorSawIneligible` (cloud
@@ -711,12 +711,11 @@ final class RecordingSessionKernel {
     },
     deadMicRecoveryTelemetry: @escaping @MainActor (DeadMicRecoveryOutcome) -> Void = { _ in },
     stopTimeZeroSignalTelemetry: @escaping @MainActor (CaptureStallContext) -> Void = { _ in },
-    // #1317 (cloud review P2 round 2, PR #1512): nil default resolves inside
-    // `init` against the `audioCapture` PARAMETER's own
-    // `zeroSignalDiscriminatorDeviceID` — the device the capture layer
-    // itself froze at its engine-start moment (see that protocol property's
-    // doc for why the kernel defers to it instead of independently
-    // resolving `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`).
+    // #1844: nil default resolves inside `init` against the `audioCapture`
+    // PARAMETER's own `zeroSignalDiscriminatorDevice` — the device the capture
+    // layer's `prepare()` actually opened (see that protocol property's doc for
+    // why the kernel defers to it instead of independently resolving
+    // `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`).
     zeroSignalDeviceEligible: (@MainActor () -> Bool)? = nil,
     recordingStoppedTelemetry: @escaping @MainActor (_ sampleCount: Int) -> Void = { _ in },
     markPipelineTimingStart: @escaping @MainActor () -> Void = {},
@@ -748,23 +747,23 @@ final class RecordingSessionKernel {
     self.deadMicRetireAttemptTelemetry = deadMicRetireAttemptTelemetry
     self.deadMicRecoveryTelemetry = deadMicRecoveryTelemetry
     self.stopTimeZeroSignalTelemetry = stopTimeZeroSignalTelemetry
-    // #1317 (cloud review P2 round 2, PR #1512): the default reads
-    // `audioCapture.zeroSignalDiscriminatorDeviceID` — the device the
-    // capture layer itself froze at the moment its engine actually started
-    // (including any of ITS OWN retries, which this kernel cannot see) —
-    // instead of independently re-resolving `preferredInputDeviceIDOverride`/
-    // `selectedInputDeviceUID`, which only reflects the kernel's OWN view
-    // and can already differ from what actually got captured. Also checks
-    // `zeroSignalDiscriminatorSawIneligible` FIRST (cloud review round 2,
-    // second P2): a live re-check here would only see the device's CURRENT
-    // mute state, which can already have changed since a genuinely-muted
-    // silent stretch — that earlier ineligible result must stick.
+    // #1844: the default reads `audioCapture.zeroSignalDiscriminatorDevice` —
+    // the device the capture source ACTUALLY OPENED for the attempt that
+    // recorded (including any of the capture layer's OWN retries, which this
+    // kernel cannot see) — instead of independently re-resolving
+    // `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`, which only
+    // reflects the kernel's OWN view and can already differ from what actually
+    // got captured. Also checks `zeroSignalDiscriminatorSawIneligible` FIRST
+    // (#1317 cloud review round 2, second P2): a live re-check here would only
+    // see the device's CURRENT mute state, which can already have changed since
+    // a genuinely-muted silent stretch — that earlier ineligible result must
+    // stick.
     self.zeroSignalDeviceEligible =
       zeroSignalDeviceEligible
       ?? {
         guard !audioCapture.zeroSignalDiscriminatorSawIneligible else { return false }
-        guard let deviceID = audioCapture.zeroSignalDiscriminatorDeviceID else { return false }
-        return ZeroSignalDeviceDiscriminator.isEligible(deviceID: deviceID)
+        guard let bound = audioCapture.zeroSignalDiscriminatorDevice else { return false }
+        return ZeroSignalDeviceDiscriminator.isEligible(bound: bound)
       }
     self.recordingStoppedTelemetry = recordingStoppedTelemetry
     self.markPipelineTimingStart = markPipelineTimingStart

@@ -141,11 +141,44 @@ public enum CoreAudioDeviceMute {
 /// classification read through this ONE function so the discriminator has a
 /// single authority, not two independent alive+mute combinations.
 public enum ZeroSignalDeviceDiscriminator {
+  /// Production entry point. Public, with no default arguments or injected seams
+  /// — a `public` function's default argument cannot reference the internal
+  /// `AudioDeviceEnumerator.inputDeviceUID(for:)`, so the injected form is a
+  /// separate `package` overload below rather than defaults on this one.
+  ///
   /// Fails closed: any non-`.alive` liveness or non-`.unmuted` mute state —
   /// including `.unverified` — returns false. #1317 adds no hardware-mute
   /// UX; ambiguity must never be read as "safe to run harness recovery."
-  public static func isEligible(deviceID: AudioDeviceID) -> Bool {
-    CoreAudioDeviceLiveness.classify(deviceID: deviceID) == .alive
-      && CoreAudioDeviceMute.classify(deviceID: deviceID) == .unmuted
+  ///
+  /// Callers must pass the FROZEN bind (`prepare()`'s return value, #1844), never
+  /// a freshly resolved device.
+  public static func isEligible(bound: BoundInputDevice) -> Bool {
+    isEligible(
+      bound: bound,
+      inputDeviceUID: AudioDeviceEnumerator.inputDeviceUID(for:),
+      liveness: CoreAudioDeviceLiveness.classify(deviceID:),
+      muteState: CoreAudioDeviceMute.classify(deviceID:))
+  }
+
+  /// Same-package, fully injected — the deterministic seam the identity matrix
+  /// drives, so no case depends on the test machine's microphones. `package`
+  /// rather than `internal` because the test target is a separate module in this
+  /// package and would otherwise need `@testable`.
+  package static func isEligible(
+    bound: BoundInputDevice,
+    inputDeviceUID: (AudioDeviceID) -> String?,
+    liveness: (AudioDeviceID) -> DeviceLiveness,
+    muteState: (AudioDeviceID) -> DeviceMuteState
+  ) -> Bool {
+    // #1844: an AudioDeviceID is a runtime handle CoreAudio MAY reuse, so a
+    // numeric match is not physical identity — liveness on a recycled id would
+    // answer ALIVE about the WRONG microphone. Confirm the id still resolves to
+    // the UID captured at bind before trusting any answer about it.
+    // Unknown-at-bind or changed-since ⇒ fail closed, same as `.unverified`.
+    // NOTE: ID reuse is HYPOTHETICAL — never observed here. This guard is
+    // retained as a fail-closed identity check, not because reuse was measured.
+    guard let boundUID = bound.deviceUID, inputDeviceUID(bound.deviceID) == boundUID
+    else { return false }
+    return liveness(bound.deviceID) == .alive && muteState(bound.deviceID) == .unmuted
   }
 }

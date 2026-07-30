@@ -100,6 +100,13 @@ final class HeartPathTelemetryEmitter {
       inputDeviceUIDSystemDefault: ctx.inputDeviceUIDSystemDefault,
       failureMode: ctx.failureMode.rawValue,
       stallContext: ctx,
+      // #1844: "how long since this user last had a working recording" is
+      // diagnostic on EVERY capture stall, not only a classified zero-signal one,
+      // so it lands on all three failure modes this shared emitter serves. Same
+      // expression the zombie path already uses below; omitted when nil, so a
+      // user with no prior success is not reported as zero.
+      timeSinceLastSuccessfulRecordingMs:
+        captureTelemetry.timeSinceLastSuccessfulRecordingMs(),
       selectedTransport: ctx.selectedTransport,
       effectiveTransport: ctx.effectiveTransport,
       routeReason: ctx.routeReason,

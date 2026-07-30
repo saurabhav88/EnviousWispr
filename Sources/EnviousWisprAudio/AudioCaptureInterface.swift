@@ -75,16 +75,22 @@ public protocol AudioCaptureInterface: AnyObject {
   /// mode; constant for the proxy.
   var captureSourceType: String { get }
 
-  /// #1317 (cloud review P2, PR #1512, round 2): input device resolved and
-  /// frozen at the moment THIS session's engine actually started capturing
-  /// (including any internal retry) — not a live re-read of
-  /// `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`, which a
-  /// mid-session settings change can already have moved past. The pipeline
-  /// layer's zero-signal device discriminator (§3.0) reads this so its
-  /// STOP-time backstop evaluates the device the session actually captured
-  /// from — only the concrete capture layer knows exactly when and how many
-  /// times an engine-start attempt actually ran. Default `nil` (fail closed).
-  var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { get }
+  /// #1844: the device the capture source ACTUALLY OPENED for the attempt that
+  /// recorded — the value its `prepare()` returned — plus the UID needed to
+  /// re-verify that identity later. NOT a settings-derived resolution, and not a
+  /// live re-read of `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`,
+  /// which a mid-session settings change can already have moved past and which
+  /// names a microphone HAL may never have opened (it falls back to the system
+  /// default when the explicit device is absent). The pipeline layer's
+  /// zero-signal device discriminator (§3.0) reads this so its STOP-time backstop
+  /// evaluates the device the session actually captured from — only the concrete
+  /// capture layer knows exactly when and how many times an engine-start attempt
+  /// actually ran. Default `nil` (fail closed).
+  ///
+  /// COPY this value; do not re-read the source later. Teardown clears the
+  /// source's bind, and several teardown paths precede the STOP-time read. Never
+  /// treat a `deviceID` match alone as identity — that is what `deviceUID` is for.
+  var zeroSignalDiscriminatorDevice: BoundInputDevice? { get }
 
   /// #1317 (cloud review round 2, P2; scope narrowed round 3, P2): true
   /// once a reactive zero-signal check observed a candidate buffer,
@@ -148,8 +154,8 @@ extension AudioCaptureInterface {
   /// #1317: fail-closed default so every existing conformer (test fakes,
   /// simulator doubles) that has no reason to track this stays
   /// source-compatible. The real capture backend (`AudioCaptureManager`)
-  /// overrides it with the device frozen at its own engine-start moment.
-  public var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { nil }
+  /// overrides it with the bind its own `prepare()` returned (#1844).
+  public var zeroSignalDiscriminatorDevice: BoundInputDevice? { nil }
 
   /// #1317 (cloud review round 2, P2): default `false` — test fakes and
   /// simulator doubles have no reactive per-buffer detector, so nothing to
