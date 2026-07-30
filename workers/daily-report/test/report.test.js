@@ -26,7 +26,10 @@ import {
   calculationId,
   METRIC_CALCULATIONS,
   WINDOW_COUNT,
+  rankMovers,
+  releaseAgeInWindow,
 } from "../src/version-scorecard.js";
+import { formatScorecard, formatScorecardUnavailable } from "../src/report-format.js";
 // #1838 chunk 1: the PostHog transport/concurrency/production-filter
 // infrastructure now has ONE owner. Tests import it from there directly - a
 // re-export from index.js would be a forwarding shim kept alive solely for
@@ -1194,7 +1197,7 @@ test("malformed tags, versions and usage rows are refused, never silently absorb
   // does not track closing braces, so a loose call placed AFTER a parser's body
   // gets attributed to that already-closed parser. This extracts each parser's
   // bounded body, then requires zero operational uses anywhere else.
-  const STRICT_PARSERS = ["parseGitHubTimestamp", "parseEasternDay"];
+  const STRICT_PARSERS = ["parseGitHubTimestamp", "parseEasternDay", "easternDayOf"];
   const operational = (text) =>
     text.split("\n").filter((l) => l.includes("new Date(") && !l.trimStart().startsWith("*")).length;
 
@@ -2027,4 +2030,528 @@ test("METRIC_CALCULATIONS is a separate authority from METRIC_CONTRACTS", () => 
   // with product-performance changes.
   assert.equal(METRIC_CALCULATIONS.people.moverEligible, false);
   assert.equal(METRIC_CALCULATIONS.dictations.moverEligible, false);
+});
+
+// ---- #1838 chunk 5: movers and scorecard presentation ---------------------
+// The report is a SCORECARD, not an alarm. Movers guide the eye; they never
+// render a verdict, and nothing here carries a threshold or a health state.
+
+const ANCHOR_MS = Date.UTC(2026, 6, 29);
+const rel = (v, publishedAt) => ({ version: v, publishedAt, observed: true, dictations: 100 });
+const stamp = (daysBeforeAnchor) =>
+  new Date(ANCHOR_MS - daysBeforeAnchor * 86400000).toISOString().replace(/\.\d{3}Z$/, "Z");
+
+/** Builds a measurements-shaped object directly, so mover tests exercise the
+ * ranker rather than re-running the measurement engine. */
+function fakeMeasurements(spec, opts = {}) {
+  const windows = new Map();
+  for (let w = 0; w < WINDOW_COUNT; w += 1) {
+    const versions = new Map();
+    for (const [version, perWindow] of Object.entries(spec)) {
+      const v = perWindow[w];
+      if (v === undefined) continue;
+      const bump = opts.contextSwing && version === Object.keys(spec)[0] ? 1e6 : 0;
+      versions.set(version, {
+        // Context rows carry a denominator deliberately: without it, sample
+        // disclosure alone would exclude them and the moverEligible check would
+        // never be exercised.
+        people: { value: 10 + bump, missing: null, denominator: 100 },
+        dictations: { value: 100 + bump, missing: null, shareOfWindow: 0.5, denominator: 200 },
+        speed_p50: { value: 1, missing: null, samples: 100 },
+        speed_p95: v === null
+          ? { value: null, missing: "no timed dictations" }
+          : { value: v, missing: null, samples: 100 },
+        autopaste_direct: { value: 0.98, missing: null, numerator: 98, denominator: 100 },
+        polish_kept: { value: 0.84, missing: null, numerator: 84, denominator: 100,
+                       classifierDiscards: 7, otherDiscards: 1 },
+        transcription_failed: { value: 0.01, missing: null, numerator: 1, denominator: 100 },
+      });
+    }
+    windows.set(w, { windowIndex: w, versions, totalDictations: 200 });
+  }
+  return { windows, usageRows: [], windowEndExclusive: "2026-07-29" };
+}
+
+test("selection exposes the complete canonical release catalog without changing the displayed set", () => {
+  const published = [
+    { version: "2.4.1", publishedAt: "2026-07-24T00:00:00Z" },
+    { version: "2.4.0", publishedAt: "2026-07-18T00:00:00Z" },
+    { version: "2.3.2", publishedAt: "2026-07-10T00:00:00Z" },
+    { version: "2.3.1", publishedAt: "2026-07-06T00:00:00Z" },
+  ];
+  const out = selectReleases(published, [usage("2.4.1", 45), usage("2.4.0", 40),
+                                         usage("2.3.2", 10), usage("2.3.1", 5)]);
+  assert.deepEqual(out.releases.map((r) => r.version), ["2.4.1", "2.4.0"],
+    "displayed set must be unchanged by the catalog addition");
+  // History pools same-contract releases that are NOT displayed: a two-release
+  // history is far too thin to describe normal movement.
+  assert.deepEqual(out.releaseCatalog.map((r) => r.version),
+    ["2.4.1", "2.4.0", "2.3.2", "2.3.1"]);
+  for (const entry of out.releaseCatalog) {
+    assert.ok(!("publishedMs" in entry), "internal fields must not leak into the catalog");
+  }
+});
+
+test("release age counts Eastern publication days and clamps to zero through seven", () => {
+  const at = (iso) => Date.parse(iso);
+  // Anchor is 2026-07-29 exclusive, so window 0 is Eastern July 22..28.
+  for (const [iso, expected, why] of [
+    ["2026-07-28T12:00:00Z", 1, "published on the last day of the window"],
+    // 02:00 UTC is 22:00 EASTERN THE PREVIOUS DAY. Flooring to UTC days read
+    // this as July 29 and reported zero; in Eastern terms it is July 28, so it
+    // was publicly available for one day of the window.
+    ["2026-07-29T02:00:00Z", 1, "22:00 Eastern on the last day"],
+    ["2026-07-27T12:00:00Z", 2, "two days"],
+    ["2026-07-22T12:00:00Z", 7, "first day of the window"],
+    ["2026-07-22T04:00:00Z", 7, "exactly Eastern midnight on the first day"],
+    ["2026-07-01T12:00:00Z", 7, "long before the window, clamped to 7"],
+    ["2026-07-29T12:00:00Z", 0, "published at the anchor, not yet in the window"],
+  ]) {
+    assert.equal(releaseAgeInWindow(at(iso), ANCHOR_MS), expected, `${iso}: ${why}`);
+  }
+  // A malformed instant must fail loudly rather than default to a confident 7/7.
+  assert.throws(() => releaseAgeInWindow(NaN, ANCHOR_MS), ReleaseResolutionError);
+});
+
+test("historical windows require full release availability", () => {
+  // The decisive case: published at NOON Eastern on a window's first day. The
+  // release existed for most of that week, which is exactly why it is tempting
+  // to count it, but it missed part of the window so its value is not a
+  // like-for-like weekly observation. Only publication at or before Eastern
+  // midnight on the first day qualifies.
+  //
+  // The fixture gives 2.4.0 values in EXACTLY four windows (4..7), which is the
+  // minimum for normalisation. Excluding window 7 therefore drops it to three
+  // observations and two adjacent differences, and the basis must visibly
+  // change from normalised to raw. A median comparison would not discriminate
+  // here: medians are robust, and dropping one difference leaves it unchanged.
+  const boundarySpec = {
+    "2.4.1": Array(8).fill(5),
+    // Values in windows 0..3 only: window 0 supplies the comparison, and all
+    // four together are the minimum for normalisation.
+    "2.4.0": [1, 3, 1, 3, undefined, undefined, undefined, undefined],
+  };
+  const mB = fakeMeasurements(boundarySpec);
+  // Window 3 starts 28 days before the anchor; Eastern midnight is 04:00Z (EDT),
+  // noon Eastern is 16:00Z.
+  const w7Midnight = new Date(ANCHOR_MS - 28 * 86400000 + 4 * 3600000)
+    .toISOString().replace(/\.\d{3}Z$/, "Z");
+  const w7Noon = new Date(ANCHOR_MS - 28 * 86400000 + 16 * 3600000)
+    .toISOString().replace(/\.\d{3}Z$/, "Z");
+  const basisFor = (publishedAt) => {
+    const out = rankMovers({ measurements: mB, selection: {
+      releases: [rel("2.4.1", w7Midnight), rel("2.4.0", publishedAt)],
+      releaseCatalog: [{ version: "2.4.1", publishedAt: w7Midnight },
+                       { version: "2.4.0", publishedAt }],
+      coverage: 0.9, capReached: false } });
+    return out.movers.find((m) => m.metricKey === "speed_p95")?.basis ?? "absent";
+  };
+  assert.equal(basisFor(w7Midnight), "median-historical-movement",
+    "Eastern midnight on the first day makes that window a complete observation");
+  assert.equal(basisFor(w7Noon), "raw-absolute-movement",
+    "a noon publication must NOT count that window, dropping below sufficiency");
+
+  const spec = { "2.4.1": [5, 5, 5, 5, 5, 5, 5, 5], "2.4.0": [1, 2, 1, 2, 1, 2, 1, 2] };
+  const measurements = fakeMeasurements(spec);
+  // 2.4.0 published mid-history: windows before it existed cannot contribute.
+  const selection = {
+    releases: [rel("2.4.1", stamp(30)), rel("2.4.0", stamp(21))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(30) },
+                     { version: "2.4.0", publishedAt: stamp(21) }],
+    coverage: 0.9, capReached: false,
+  };
+  const out = rankMovers({ measurements, selection });
+  assert.ok(Array.isArray(out.movers));
+  // A release published partway through window 2 contributes windows 0 and 1
+  // only; its partial week is not an observation.
+  const partial = { ...selection,
+    releases: [rel("2.4.1", stamp(30)), rel("2.4.0", stamp(10))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(30) },
+                     { version: "2.4.0", publishedAt: stamp(10) }] };
+  const limited = rankMovers({ measurements, selection: partial });
+  assert.ok(limited.movers.every((m) => m.basis === "raw-absolute-movement"),
+    "too few complete windows must fall back rather than normalise");
+});
+
+test("rankMovers compares the first two selected releases and checks every displayed contract", () => {
+  const measurements = fakeMeasurements({ "2.4.1": Array(8).fill(5), "2.4.0": Array(8).fill(3) });
+  const two = {
+    releases: [rel("2.4.1", stamp(40)), rel("2.4.0", stamp(45))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(40) },
+                     { version: "2.4.0", publishedAt: stamp(45) }],
+    coverage: 0.9, capReached: false,
+  };
+  const out = rankMovers({ measurements, selection: two });
+  assert.deepEqual(out.comparisonPair, ["2.4.1", "2.4.0"]);
+
+  // A THIRD displayed release on a different telemetry contract makes the row
+  // non-comparable even though the compared pair agree.
+  // transcription_failed is given a large movement so it WOULD rank if only the
+  // compared pair were checked; both 2.4.x releases share the typed-code
+  // contract, and only the third displayed release breaks comparability.
+  const m3 = fakeMeasurements({ "2.4.1": Array(8).fill(5), "2.4.0": Array(8).fill(3),
+                                "2.3.2": Array(8).fill(4) });
+  m3.windows.get(0).versions.get("2.4.1").transcription_failed =
+    { value: 0.40, missing: null, numerator: 40, denominator: 100 };
+  m3.windows.get(0).versions.get("2.4.0").transcription_failed =
+    { value: 0.01, missing: null, numerator: 1, denominator: 100 };
+  const three = {
+    releases: [rel("2.4.1", stamp(40)), rel("2.4.0", stamp(45)), rel("2.3.2", stamp(50))],
+    releaseCatalog: three_catalog(),
+    coverage: 0.95, capReached: false,
+  };
+  const out3 = rankMovers({ measurements: m3, selection: three });
+  assert.ok(!out3.movers.some((mv) => mv.metricKey === "transcription_failed"),
+    "a third release on a different contract must exclude that row from movers");
+
+  // Fewer than two displayed releases: no movers, nothing invented - and the
+  // grid must still RENDER. Returning early without row decisions crashed the
+  // formatter outright, and one displayed release is a legitimate production
+  // state (a fresh release before its predecessor drops off, say).
+  const one = { releases: [rel("2.4.1", stamp(40))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(40) }], coverage: 1, capReached: false };
+  const oneRanking = rankMovers({ measurements, selection: one });
+  assert.deepEqual(oneRanking.movers, []);
+  assert.equal(oneRanking.comparisonPair, null);
+  assert.equal(oneRanking.rows.length, 7, 'all seven rows must exist with one release');
+  for (const row of oneRanking.rows) {
+    assert.equal(row.cells.length, 1, 'one release means one column');
+  }
+  const oneText = formatScorecard({ ranking: oneRanking }).join('\n');
+  assert.match(oneText, /No comparable ranked changes were available/);
+  assert.match(oneText, /Dictations ending without a completed transcript/);
+
+  // Duplicate catalog entries multiply observations and can manufacture enough
+  // history to normalise a ranking that should fall back.
+  const dup = { releases: [rel("2.4.1", stamp(40)), rel("2.4.0", stamp(45))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(40) },
+                     { version: "v2.4.1", publishedAt: stamp(40) }],
+    coverage: 0.9, capReached: false };
+  assert.throws(() => rankMovers({ measurements, selection: dup }), ReleaseResolutionError,
+    'v2.4.1 and 2.4.1 are the SAME release and must be refused as a duplicate');
+});
+function three_catalog() {
+  return [{ version: "2.4.1", publishedAt: stamp(40) },
+          { version: "2.4.0", publishedAt: stamp(45) },
+          { version: "2.3.2", publishedAt: stamp(50) }];
+}
+
+test("mover eligibility consumes METRIC_CALCULATIONS and never admits context rows", () => {
+  // People and Dictations swing by a million here and carry valid sample
+  // disclosure, so they would DOMINATE the ranking if eligibility were bypassed.
+  // Only METRIC_CALCULATIONS.moverEligible keeps adoption out of a performance
+  // ranking.
+  const measurements = fakeMeasurements(
+    { "2.4.1": Array(8).fill(5), "2.4.0": Array(8).fill(3) }, { contextSwing: true });
+  const selection = {
+    releases: [rel("2.4.1", stamp(40)), rel("2.4.0", stamp(45))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(40) },
+                     { version: "2.4.0", publishedAt: stamp(45) }],
+    coverage: 0.9, capReached: false,
+  };
+  const out = rankMovers({ measurements, selection });
+  assert.ok(out.movers.length > 0, "something must rank, or this asserts nothing");
+  for (const m of out.movers) {
+    assert.notEqual(m.metricKey, "people", "adoption context must never compete with performance");
+    assert.notEqual(m.metricKey, "dictations");
+    assert.equal(METRIC_CALCULATIONS[m.metricKey].moverEligible, true);
+    assert.ok(m.direction === "lower-is-better" || m.direction === "higher-is-better");
+  }
+});
+
+test("historical variation pools every same-contract catalog release", () => {
+  // BOTH DISPLAYED releases have too little history on their own. The history
+  // that makes normalisation possible lives ONLY on a third, UNSELECTED
+  // same-contract catalog release. If history were restricted to the displayed
+  // pair, this must fall back to raw movement.
+  const spec = {
+    "2.4.1": [10, 5, undefined, undefined, undefined, undefined, undefined, undefined],
+    "2.4.0": [4, 3, undefined, undefined, undefined, undefined, undefined, undefined],
+    "2.4.2": [4, 5, 4, 5, 4, 5, 4, 5],
+  };
+  const measurements = fakeMeasurements(spec);
+  const selection = {
+    releases: [rel("2.4.1", stamp(20)), rel("2.4.0", stamp(20))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(20) },
+                     { version: "2.4.0", publishedAt: stamp(20) },
+                     // Not displayed, same contract, and the sole source of the
+                     // eight-window history the ranking needs.
+                     { version: "2.4.2", publishedAt: stamp(60) }],
+    coverage: 0.9, capReached: false,
+  };
+  const out = rankMovers({ measurements, selection });
+  const p95 = out.movers.find((m) => m.metricKey === "speed_p95");
+  assert.ok(p95, "speed_p95 should rank");
+  assert.equal(p95.basis, "median-historical-movement",
+    "an UNSELECTED same-contract catalog release must supply the history");
+});
+
+test("historical differences require same-version adjacent complete windows", () => {
+  // A gap in the middle must not be bridged: windows 0 and 2 are not adjacent.
+  const spec = { "2.4.1": [10, null, 5, null, 10, null, 5, null],
+                 "2.4.0": [3, 3, 3, 3, 3, 3, 3, 3] };
+  const measurements = fakeMeasurements(spec);
+  const selection = {
+    releases: [rel("2.4.1", stamp(60)), rel("2.4.0", stamp(60))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(60) },
+                     { version: "2.4.0", publishedAt: stamp(60) }],
+    coverage: 0.9, capReached: false,
+  };
+  const out = rankMovers({ measurements, selection });
+  const p95 = out.movers.find((m) => m.metricKey === "speed_p95");
+  assert.equal(p95.basis, "raw-absolute-movement",
+    "gapped windows yield no adjacent differences, so it must fall back");
+});
+
+test("historical sufficiency requires four windows and three adjacent differences", () => {
+  // Four observations that are NOT adjacent produce fewer than three diffs.
+  const spec = { "2.4.1": [5, null, 5, null, 5, null, 5, null], "2.4.0": [3, 3, 3, 3, 3, 3, 3, 3] };
+  const measurements = fakeMeasurements(spec);
+  const selection = {
+    releases: [rel("2.4.1", stamp(60)), rel("2.4.0", stamp(60))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(60) },
+                     { version: "2.4.0", publishedAt: stamp(60) }],
+    coverage: 0.9, capReached: false,
+  };
+  const p95 = rankMovers({ measurements, selection }).movers.find((m) => m.metricKey === "speed_p95");
+  assert.equal(p95.basis, "raw-absolute-movement", "observation count alone must not qualify");
+});
+
+test("historical variation uses the median and resists an outlier", () => {
+  // Weekly movements of 1,1,1 and one freak 100. Mean would be ~25 and would
+  // suppress a real mover; median stays 1.
+  const spec = { "2.4.1": [5, 4, 3, 2, 1, 0, 100, 0], "2.4.0": [3, 3, 3, 3, 3, 3, 3, 3] };
+  const measurements = fakeMeasurements(spec);
+  const selection = {
+    releases: [rel("2.4.1", stamp(60)), rel("2.4.0", stamp(60))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(60) },
+                     { version: "2.4.0", publishedAt: stamp(60) }],
+    coverage: 0.9, capReached: false,
+  };
+  const p95 = rankMovers({ measurements, selection }).movers.find((m) => m.metricKey === "speed_p95");
+  assert.equal(p95.basis, "median-historical-movement");
+  // 2.4.1 contributes weekly movements of 1,1,1,1,1 plus two freak 100s; the
+  // companion release contributes a flat history of zeros. Pooled, the median
+  // is 0.5. The mean would be about 14.6, which would bury every real mover.
+  assert.equal(p95.historicalVariation, 0.5,
+    "one freak week must not inflate the denominator");
+  assert.ok(p95.historicalVariation < 2,
+    "the median must stay near the typical weekly movement, not the outlier");
+});
+
+test("zero or insufficient variation uses the explicit raw fallback without epsilon", () => {
+  // A perfectly flat history has a median of exactly zero. No epsilon: it falls
+  // back rather than dividing by an invented constant.
+  const spec = { "2.4.1": [5, 5, 5, 5, 5, 5, 5, 5], "2.4.0": [3, 3, 3, 3, 3, 3, 3, 3] };
+  const measurements = fakeMeasurements(spec);
+  const selection = {
+    releases: [rel("2.4.1", stamp(60)), rel("2.4.0", stamp(60))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(60) },
+                     { version: "2.4.0", publishedAt: stamp(60) }],
+    coverage: 0.9, capReached: false,
+  };
+  const p95 = rankMovers({ measurements, selection }).movers.find((m) => m.metricKey === "speed_p95");
+  assert.equal(p95.basis, "raw-absolute-movement");
+  assert.equal(p95.historicalVariation, null);
+  assert.ok(typeof p95.fallbackReason === "string" && p95.fallbackReason.length > 0);
+  assert.ok(Number.isFinite(p95.score), "score must never be Infinity from a zero denominator");
+});
+
+test("rankMovers returns a deterministic top two with complete sample disclosure", () => {
+  const measurements = fakeMeasurements({ "2.4.1": Array(8).fill(9), "2.4.0": Array(8).fill(3) });
+  const selection = {
+    releases: [rel("2.4.1", stamp(60)), rel("2.4.0", stamp(60))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(60) },
+                     { version: "2.4.0", publishedAt: stamp(60) }],
+    coverage: 0.9, capReached: false,
+  };
+  const a = rankMovers({ measurements, selection });
+  const b = rankMovers({ measurements, selection });
+  assert.ok(a.movers.length <= 2, "at most two movers");
+  assert.deepEqual(a.movers.map((m) => m.metricKey), b.movers.map((m) => m.metricKey),
+    "ranking must be deterministic across identical calls");
+  for (const m of a.movers) {
+    for (const field of ["newestValue", "previousValue", "signedDifference",
+                         "newestSamples", "previousSamples"]) {
+      assert.ok(m[field] !== undefined && m[field] !== null, `mover must disclose ${field}`);
+    }
+    assert.ok(Number.isSafeInteger(m.newestSamples) && Number.isSafeInteger(m.previousSamples));
+  }
+});
+
+test("mover and formatter boundaries refuse silent acceptance mechanisms", () => {
+  const measurements = fakeMeasurements({ "2.4.1": Array(8).fill(5), "2.4.0": Array(8).fill(3) });
+  const good = {
+    releases: [rel("2.4.1", stamp(60)), rel("2.4.0", stamp(60))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(60) },
+                     { version: "2.4.0", publishedAt: stamp(60) }],
+    coverage: 0.9, capReached: false,
+  };
+  for (const [input, label] of [
+    [{ measurements: null, selection: good }, "null measurements"],
+    [{ measurements: {}, selection: good }, "measurements without windows"],
+    [{ measurements, selection: null }, "null selection"],
+    [{ measurements, selection: { ...good, releases: null } }, "non-array releases"],
+    [{ measurements, selection: { ...good, releases: new Array(2) } }, "sparse releases"],
+    [{ measurements, selection: { ...good, releaseCatalog: new Array(1) } }, "sparse catalog"],
+    [{ measurements: { ...measurements, windowEndExclusive: "2026-02-30" }, selection: good },
+      "impossible anchor date"],
+    // Silent-default paths: each of these previously became "missing data" or a
+    // confident zero rather than failing.
+    [{ measurements, selection: { ...good,
+       releases: [{ version: "2.4.1", publishedAt: "not-a-date" }, rel("2.4.0", stamp(60))] } },
+      "malformed publication timestamp"],
+    [{ measurements, selection: { ...good,
+       releases: [{ version: "2.4.1" }, rel("2.4.0", stamp(60))] } },
+      "release missing publishedAt"],
+    [{ measurements, selection: { ...good,
+       releases: [Object.create(rel("2.4.1", stamp(60))), rel("2.4.0", stamp(60))] } },
+      "prototype-backed release fields"],
+    [{ measurements: { ...measurements, windows: new Map([[0, measurements.windows.get(0)]]) },
+       selection: good }, "incomplete window set"],
+    // A displayed release absent from the catalog silently changes real ranking
+    // numbers: with it missing, a metric fell back to raw movement scoring 6;
+    // with it present it normalised to 12.
+    [{ measurements, selection: { ...good, releaseCatalog: [] } },
+      "displayed release missing from the catalog"],
+    [{ measurements, selection: { ...good,
+       releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(60) }] } },
+      "second displayed release missing from the catalog"],
+    [{ measurements, selection: { ...good,
+       releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(59) },
+                        { version: "2.4.0", publishedAt: stamp(60) }] } },
+      "catalog publication time disagrees with the displayed release"],
+    [{ measurements, selection: { ...good, releases: [] } }, "empty displayed set"],
+    [{ measurements, selection: { ...good, coverage: 1.5 } }, "coverage above 1"],
+    [{ measurements, selection: { ...good, coverage: "0.9" } }, "coverage as a string"],
+  ]) {
+    assert.throws(() => rankMovers(input), ReleaseResolutionError, `must refuse: ${label}`);
+  }
+  // A coerced or inherited sample count must not pass as a real disclosure.
+  const coerced = fakeMeasurements({ "2.4.1": Array(8).fill(5), "2.4.0": Array(8).fill(3) });
+  coerced.windows.get(0).versions.get("2.4.1").speed_p95.samples = "100";
+  assert.throws(() => rankMovers({ measurements: coerced, selection: good }),
+    ReleaseResolutionError, "a stringified sample count must be refused");
+
+  // A MEASURED value whose disclosure is absent must not silently vanish from
+  // the ranking - that hides a broken measurement as an ordinary quiet week.
+  const undisclosed = fakeMeasurements({ "2.4.1": Array(8).fill(5), "2.4.0": Array(8).fill(3) });
+  delete undisclosed.windows.get(0).versions.get("2.4.1").speed_p95.samples;
+  // Asserts the SPECIFIC message: an absent field and a malformed one are
+  // different faults, and the numeric check alone would catch both with wording
+  // that misdescribes the first. Without this the own-property check is
+  // untestable defence-in-depth.
+  assert.throws(
+    () => rankMovers({ measurements: undisclosed, selection: good }),
+    (err) => err instanceof ReleaseResolutionError && /missing its required samples/.test(err.message),
+    "an absent sample count must be reported as absent, not as malformed"
+  );
+});
+
+test("scorecard formatting freezes coverage release age rows reasons and missing data", () => {
+  const measurements = fakeMeasurements({ "2.4.1": Array(8).fill(5), "2.3.2": Array(8).fill(3) });
+  const selection = {
+    releases: [{ ...rel("2.4.1", stamp(3)), observed: true },
+               { ...rel("2.3.2", stamp(60)), observed: false }],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(3) },
+                     { version: "2.3.2", publishedAt: stamp(60) }],
+    coverage: 0.848, capReached: true,
+  };
+  const ranking = rankMovers({ measurements, selection });
+  const text = formatScorecard({ measurements, selection, ranking }).join("\n");
+
+  assert.match(text, /last 7 complete Eastern days/);
+  assert.ok(!/[\u2013\u2014]/.test(text),
+    "user-facing copy must contain no em-dashes or en-dashes");
+  assert.match(text, /84\.8% of successful dictations across 2 releases/,
+    "coverage must name its denominator, not just say 'of use'");
+  assert.match(text, /newest release is always included/);
+  assert.match(text, /4-version cap reached/);
+  assert.match(text, /non-additive/, "people counts must be declared non-additive");
+  // stamp(3) is 2026-07-26T00:00:00Z, which is 20:00 EASTERN on July 25, so the
+  // release was publicly available for July 25-28: FOUR days of window 0. Under
+  // the previous UTC flooring this read as three. That difference is the bug.
+  assert.match(text, /2\.4\.1: 4\/7 days publicly available/);
+  assert.match(text, /no production data yet/, "an unobserved release must say so, not show zero");
+  assert.match(text, /Dictations ending without a completed transcript/);
+  assert.ok(!text.includes("Transcription failed"),
+    "must never label the row as speech-engine reliability");
+  assert.match(text, /by the safety classifier/, "classifier split sits under Polish kept");
+  // 2.4.1 and 2.3.2 straddle the typed-code boundary, so that row is not
+  // comparable - and must still PRINT, with the reason in plain words.
+  assert.match(text, /not compared, definition changed between these releases/);
+  for (const label of Object.values({ p: "People", d: "Dictations", s: "Typical speed",
+      x: "Slowest 5%", a: "Auto-paste landed directly", k: "Polish kept" })) {
+    assert.ok(text.includes(label), `row ${label} must be present`);
+  }
+});
+
+test("ranked-change formatting freezes normalized raw-fallback and unavailable copy", async () => {
+  const measurements = fakeMeasurements({ "2.4.1": [9, 1, 2, 1, 2, 1, 2, 1],
+                                          "2.4.0": Array(8).fill(3) });
+  const selection = {
+    releases: [rel("2.4.1", stamp(60)), rel("2.4.0", stamp(60))],
+    releaseCatalog: [{ version: "2.4.1", publishedAt: stamp(60) },
+                     { version: "2.4.0", publishedAt: stamp(60) }],
+    coverage: 0.9, capReached: false,
+  };
+  const ranking = rankMovers({ measurements, selection });
+  const text = formatScorecard({ measurements, selection, ranking }).join("\n");
+
+  assert.match(text, /ranked changes, not alerts/,
+    "the section must state plainly that it is not an alarm");
+  assert.match(text, /samples\)/, "every mover must disclose both sample counts");
+  assert.match(text, /median week-to-week movement|size of change only/,
+    "each mover must say which basis ranked it");
+
+  // Prohibited copy: this is a scorecard, not a verdict. The only permitted
+  // occurrence of "alert" is the explicit not-alerts statement.
+  for (const banned of ["healthy", "unhealthy", "warning", "regression", "improvement",
+                        "threshold", "better", "worse"]) {
+    assert.ok(!text.toLowerCase().includes(banned), `must not use verdict language: ${banned}`);
+  }
+  assert.equal((text.toLowerCase().match(/alert/g) || []).length, 1,
+    "the only 'alert' must be the not-alerts statement");
+
+  // SOURCE GUARD: the formatter must consume decisions, never re-derive them.
+  // Importing a metric authority here would create a second opinion on row
+  // order, units or comparability that could silently disagree with the ranker.
+  const fs2 = await import("node:fs");
+  const fmtSrc = fs2.readFileSync(new URL("../src/report-format.js", import.meta.url), "utf8");
+  const codeOnly = fmtSrc
+    .split("\n")
+    .filter((l) => !l.trimStart().startsWith("*") && !l.trimStart().startsWith("//"))
+    .join("\n");
+  for (const authority of ["METRIC_CALCULATIONS", "decideComparability", "telemetryContractFor",
+                           "METRIC_CONTRACTS"]) {
+    assert.ok(!codeOnly.includes(authority),
+      `report-format.js must not reference ${authority} - it would become a second authority`);
+  }
+  assert.ok(!/^import .* from "\.\/version-scorecard\.js"/m.test(codeOnly),
+    "the formatter must not import from version-scorecard.js at all");
+
+  const unavailable = formatScorecardUnavailable().join("\n");
+  // A missing release age must fail rather than print a confident 0/7 for a
+  // release we simply failed to measure.
+  const badRanking = { ...ranking, ages: new Map() };
+  assert.throws(() => formatScorecard({ ranking: badRanking }), TypeError);
+
+  // The formatter must render the CANONICAL displayed set from the ranker, not
+  // the raw selection list. Feeding it a selection whose tags differ must not
+  // change a single header: otherwise headers and rows can disagree, or a raw
+  // tag reaches the page.
+  // The formatter no longer receives the selection at all, so no raw field can
+  // reach the page. The real guard is the source check below asserting zero code
+  // references; a mutation test here would compare two identical calls and
+  // assert nothing, which is the kind of hollow test this suite exists to avoid.
+  assert.equal(formatScorecard.length, 1,
+    "formatScorecard must take a single argument, so no selection can be passed in");
+  assert.throws(() => formatScorecard({ ranking: { ...ranking, summary: undefined } }),
+    TypeError, "the formatter must require the canonical release set");
+
+  assert.match(unavailable, /unavailable/);
+  assert.match(unavailable, /adoption figures above are unaffected/);
+  for (const leak of ["http", "Error", "https://", "500", "PostHog"]) {
+    assert.ok(!unavailable.includes(leak), `failure copy must not leak ${leak}`);
+  }
 });

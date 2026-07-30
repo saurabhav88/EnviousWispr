@@ -407,6 +407,11 @@ export function selectReleases(publishedReleases, usageRows) {
 
   return {
     releases: selected,
+    // Every eligible published release, not just the displayed ones. Historical
+    // variation pools same-contract releases that are NOT on the table: a
+    // two-release history is far too thin to describe what "normal movement"
+    // looks like for a metric.
+    releaseCatalog: eligible.map(strip),
     coverage,
     totalDictations,
     // True only when the cap stopped us SHORT of the target - the honest signal
@@ -1039,4 +1044,361 @@ export function buildMeasurements({ additiveRows, nonAdditiveRows, windowEndExcl
   }));
 
   return { windows, usageRows, windowEndExclusive };
+}
+
+
+// ===========================================================================
+// #1838 chunk 5 — movers
+// ===========================================================================
+
+const DAY_MS = 86_400_000;
+
+const EASTERN_PARTS = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+});
+
+/** An instant's EASTERN calendar day, as a UTC-midnight ms value, plus whether
+ * it fell exactly at Eastern midnight.
+ *
+ * Flooring the raw timestamp to a UTC day was wrong: a release published at
+ * 22:00 Eastern is 02:00 UTC the NEXT day, so it reported zero available days
+ * instead of one, and could be treated as public for a whole window it was
+ * published inside. Both change the displayed set and the mover ranking. */
+function easternDayOf(ms) {
+  const parts = Object.fromEntries(
+    EASTERN_PARTS.formatToParts(new Date(ms)).map((p) => [p.type, p.value])
+  );
+  const dayMs = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+  const atMidnight = parts.hour === "00" && parts.minute === "00" && parts.second === "00";
+  return { dayMs, atMidnight };
+}
+
+/** Eastern day boundaries of a window, as inclusive [firstDay, lastDay] ms. */
+function windowBounds(anchorMs, windowIndex) {
+  const lastDay = anchorMs - (windowIndex * WINDOW_DAYS + 1) * DAY_MS;
+  const firstDay = anchorMs - ((windowIndex + 1) * WINDOW_DAYS) * DAY_MS;
+  return { firstDay, lastDay };
+}
+
+/** Eastern calendar days inside window 0 on which the release was public for any
+ * part of the day, publication day counting as one, clamped to 0..7. Counted in
+ * DAYS, not elapsed 24-hour periods: an evening publication still makes that
+ * calendar day one available day. */
+export function releaseAgeInWindow(publishedAtMs, anchorMs) {
+  if (!Number.isFinite(publishedAtMs)) {
+    // Never defaulted: a malformed timestamp silently becoming 0 rendered as a
+    // confident "7/7 days publicly available" for a release we know nothing about.
+    throw new ReleaseResolutionError("release publication timestamp is not a finite instant", {
+      transient: false,
+    });
+  }
+  const { firstDay, lastDay } = windowBounds(anchorMs, 0);
+  const { dayMs: pubDay } = easternDayOf(publishedAtMs);
+  if (pubDay > lastDay) return 0;
+  const start = Math.max(pubDay, firstDay);
+  return Math.min(WINDOW_DAYS, Math.max(0, Math.round((lastDay - start) / DAY_MS) + 1));
+}
+
+/** A release contributes a HISTORICAL observation only when it was public for
+ * the ENTIRE window. Being published partway through the first day counts toward
+ * displayed release age but does not make that window a complete observation -
+ * a partial week's ramp is not a movement. */
+function publicForWholeWindow(publishedAtMs, anchorMs, windowIndex) {
+  const { firstDay } = windowBounds(anchorMs, windowIndex);
+  const { dayMs, atMidnight } = easternDayOf(publishedAtMs);
+  if (dayMs < firstDay) return true;
+  // Published ON the window's first Eastern day counts only at exactly Eastern
+  // midnight; any later time means the release missed part of that week.
+  return dayMs === firstDay && atMidnight;
+}
+
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function metricValue(entry) {
+  if (entry === undefined) return null;
+  if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+    throw new ReleaseResolutionError("measurement entry must be an object", { transient: false });
+  }
+  if (!Object.hasOwn(entry, "value")) {
+    throw new ReleaseResolutionError("measurement entry missing own property value", {
+      transient: false,
+    });
+  }
+  const v = entry.value;
+  if (v === null) return null;
+  if (typeof v !== "number" || !Number.isFinite(v)) {
+    throw new ReleaseResolutionError(`measurement value must be finite, got ${String(v)}`, {
+      transient: false,
+    });
+  }
+  return v;
+}
+
+/** Sample disclosure: percentiles disclose their sample count, rates disclose
+ * their denominator. Refused rather than defaulted - a missing count silently
+ * treated as zero would present a one-sample percentile as a real movement. */
+function sampleCount(entry, metricKey) {
+  const calc = METRIC_CALCULATIONS[metricKey];
+  const field = calc.unit === "seconds" ? "samples" : "denominator";
+  if (!Object.hasOwn(entry, field)) {
+    // A measured value whose disclosure is absent must not silently drop out of
+    // ranking - that hides a broken measurement as an ordinary quiet week.
+    throw new ReleaseResolutionError(
+      `${metricKey}: measured value is missing its required ${field}`,
+      { transient: false }
+    );
+  }
+  const n = entry[field];
+  if (!Number.isSafeInteger(n) || n < 0) {
+    throw new ReleaseResolutionError(
+      `${metricKey}: ${field} must be a non-negative safe integer, got ${String(n)}`,
+      { transient: false }
+    );
+  }
+  return n;
+}
+
+/** Sole owner of mover composition. Consumes comparability, direction and
+ * eligibility from their existing authorities and never re-derives them. */
+export function rankMovers({ measurements, selection }) {
+  if (measurements === null || typeof measurements !== "object" || !(measurements.windows instanceof Map)) {
+    throw new ReleaseResolutionError("measurements must carry a windows Map", { transient: false });
+  }
+  if (selection === null || typeof selection !== "object") {
+    throw new ReleaseResolutionError("selection must be an object", { transient: false });
+  }
+  assertDenseArray(selection.releases, "selection.releases");
+  assertDenseArray(selection.releaseCatalog, "selection.releaseCatalog");
+
+  const anchorMs = parseEasternDay(measurements.windowEndExclusive);
+  if (anchorMs === null) {
+    throw new ReleaseResolutionError("measurements.windowEndExclusive must be YYYY-MM-DD", {
+      transient: false,
+    });
+  }
+
+  // Every window must exist with the expected shape; optional chaining would
+  // turn a missing window into empty history and quietly change the ranking.
+  for (let w = 0; w < WINDOW_COUNT; w += 1) {
+    const win = measurements.windows.get(w);
+    if (!win || !(win.versions instanceof Map)) {
+      throw new ReleaseResolutionError(`measurements is missing window ${w}`, { transient: false });
+    }
+  }
+  // Returns the CANONICAL version alongside the timestamp, and every caller uses
+  // that form. Validating the normalized version while continuing to use the raw
+  // one is the same defect that made a live release read as "no production data
+  // yet" in chunk 3; duplicates on top of it multiply observations and can
+  // manufacture enough history to normalise a ranking that should fall back.
+  const requireRelease = (r, label) => {
+    if (r === null || typeof r !== "object" || Array.isArray(r)) {
+      throw new ReleaseResolutionError(`${label} entry must be an object`, { transient: false });
+    }
+    for (const field of ["version", "publishedAt"]) {
+      if (!Object.hasOwn(r, field)) {
+        throw new ReleaseResolutionError(`${label} entry missing own property ${field}`, {
+          transient: false,
+        });
+      }
+    }
+    if (normalizeReleaseVersion(r.version) === null) {
+      throw new ReleaseResolutionError(`${label} entry has a malformed version`, {
+        transient: false,
+      });
+    }
+    const ms = parseGitHubTimestamp(r.publishedAt);
+    if (ms === null) {
+      throw new ReleaseResolutionError(`${label} entry has a malformed publishedAt`, {
+        transient: false,
+      });
+    }
+    return { version: normalizeReleaseVersion(r.version), publishedAtMs: ms };
+  };
+
+  const requireUnique = (entries, label) => {
+    const seen = new Set();
+    return entries.map((r) => {
+      const canonical = requireRelease(r, label);
+      if (seen.has(canonical.version)) {
+        throw new ReleaseResolutionError(
+          `${label} contains duplicate release ${canonical.version}`,
+          { transient: false }
+        );
+      }
+      seen.add(canonical.version);
+      return canonical;
+    });
+  };
+
+  const displayedCanonical = requireUnique(selection.releases, "selection.releases");
+  const catalogCanonical = requireUnique(selection.releaseCatalog, "selection.releaseCatalog");
+  if (displayedCanonical.length === 0) {
+    throw new ReleaseResolutionError("selection.releases must not be empty", { transient: false });
+  }
+  // A displayed release absent from the catalog silently changes real ranking
+  // numbers: with an empty catalog a metric fell back to raw movement with a
+  // score of 6, and with the release present it normalised to 12.
+  const catalogByVersion = new Map(catalogCanonical.map((c) => [c.version, c]));
+  for (const d of displayedCanonical) {
+    const inCatalog = catalogByVersion.get(d.version);
+    if (!inCatalog) {
+      throw new ReleaseResolutionError(
+        `displayed release ${d.version} is missing from the release catalog`,
+        { transient: false }
+      );
+    }
+    if (inCatalog.publishedAtMs !== d.publishedAtMs) {
+      throw new ReleaseResolutionError(
+        `displayed release ${d.version} has a different publication time in the catalog`,
+        { transient: false }
+      );
+    }
+  }
+  const displayed = selection.releases.map((r, i) => ({
+    ...r, version: displayedCanonical[i].version,
+  }));
+  const ages = new Map(
+    displayedCanonical.map((c) => [c.version, releaseAgeInWindow(c.publishedAtMs, anchorMs)])
+  );
+  const displayedVersions = displayed.map((r) => r.version);
+  const current = measurements.windows.get(0).versions;
+
+  // Row decisions are built for EVERY case, including a single displayed
+  // release: one column and no movers is a legitimate production state, and
+  // returning early without rows crashed the formatter outright.
+  const buildRows = () =>
+    Object.entries(METRIC_CALCULATIONS).map(([metricKey, calc]) => {
+      const verdict = decideComparability(metricKey, displayedVersions);
+      return {
+        metricKey,
+        unit: calc.unit,
+        comparable: verdict.comparable,
+        reason: verdict.comparable ? null : verdict.reason,
+        cells: displayedVersions.map((v) => {
+          const entry = current.get(v)?.[metricKey];
+          return {
+            version: v,
+            value: entry === undefined ? null : metricValue(entry),
+            shareOfWindow: metricKey === "dictations" ? (entry?.shareOfWindow ?? null) : null,
+            classifierDiscards:
+              metricKey === "polish_kept" ? (entry?.classifierDiscards ?? null) : null,
+            otherDiscards: metricKey === "polish_kept" ? (entry?.otherDiscards ?? null) : null,
+          };
+        }),
+      };
+    });
+
+  // The ranker owns the ENTIRE displayed summary. The formatter is given only
+  // this, so no raw selection field can reach the page - the previous fix
+  // carried versions across but left coverage and cap status behind, and
+  // changing those alone still printed a different report.
+  const summary = {
+    releases: displayed,
+    coverage: selection.coverage,
+    capReached: selection.capReached === true,
+  };
+  if (typeof summary.coverage !== "number" || !Number.isFinite(summary.coverage) ||
+      summary.coverage < 0 || summary.coverage > 1) {
+    throw new ReleaseResolutionError(
+      `selection.coverage must be a share between 0 and 1, got ${String(selection.coverage)}`,
+      { transient: false }
+    );
+  }
+
+  if (displayed.length < 2) {
+    // Fewer than two displayed releases: render the grid, invent no comparison.
+    return { movers: [], ages, rows: buildRows(), summary, comparisonPair: null };
+  }
+
+  const [newest, previous] = displayed;
+  const candidates = [];
+
+  for (const [metricKey, calc] of Object.entries(METRIC_CALCULATIONS)) {
+    if (calc.moverEligible !== true || calc.direction === null) continue;
+    // Comparability of the ENTIRE displayed set, from its own authority. A third
+    // release on a different contract makes the row non-comparable even though
+    // the compared pair agree.
+    const verdict = decideComparability(metricKey, displayedVersions);
+    if (!verdict.comparable) continue;
+
+    const newEntry = current.get(newest.version)?.[metricKey];
+    const prevEntry = current.get(previous.version)?.[metricKey];
+    const newValue = metricValue(newEntry);
+    const prevValue = metricValue(prevEntry);
+    if (newValue === null || prevValue === null) continue;
+    const newSamples = sampleCount(newEntry, metricKey);
+    const prevSamples = sampleCount(prevEntry, metricKey);
+    if (newSamples === null || prevSamples === null) continue;
+
+    // History pools EVERY catalog release on the same contract, across all eight
+    // windows - never just the displayed pair.
+    const diffs = [];
+    let observations = 0;
+    for (const release of catalogCanonical) {
+      if (telemetryContractFor(metricKey, release.version) !== verdict.contract) continue;
+      const pubMs = release.publishedAtMs;
+      const series = [];
+      for (let w = 0; w < WINDOW_COUNT; w += 1) {
+        const entry = measurements.windows.get(w).versions.get(release.version)?.[metricKey];
+        const value = metricValue(entry);
+        series.push(value !== null && publicForWholeWindow(pubMs, anchorMs, w) ? value : null);
+      }
+      observations += series.filter((v) => v !== null).length;
+      for (let w = 0; w + 1 < WINDOW_COUNT; w += 1) {
+        // Adjacent, same version, both present, both fully available. Never
+        // bridges a gap, a version, or a contract boundary.
+        if (series[w] !== null && series[w + 1] !== null) {
+          diffs.push(Math.abs(series[w] - series[w + 1]));
+        }
+      }
+    }
+
+    const rawMovement = Math.abs(newValue - prevValue);
+    const enoughHistory = observations >= 4 && diffs.length >= 3;
+    const variation = enoughHistory ? median(diffs) : null;
+    // No epsilon: a zero median falls back rather than dividing by an invented
+    // small constant.
+    const normalized = enoughHistory && variation > 0;
+    candidates.push({
+      metricKey,
+      newestVersion: newest.version, previousVersion: previous.version,
+      newestValue: newValue, previousValue: prevValue,
+      newestSamples: newSamples, previousSamples: prevSamples,
+      rawMovement, signedDifference: newValue - prevValue,
+      direction: calc.direction, unit: calc.unit,
+      historicalVariation: normalized ? variation : null,
+      score: normalized ? rawMovement / variation : rawMovement,
+      basis: normalized ? "median-historical-movement" : "raw-absolute-movement",
+      fallbackReason: normalized
+        ? null
+        : observations < 4
+          ? `only ${observations} complete same-definition windows, needs 4`
+          : diffs.length < 3
+            ? `only ${diffs.length} adjacent comparable weeks, needs 3`
+            : "this measure has not moved between weeks before",
+    });
+  }
+
+  const order = Object.keys(METRIC_CALCULATIONS);
+  const normalizedFirst = candidates.filter((c) => c.historicalVariation !== null);
+  const rawOnly = candidates.filter((c) => c.historicalVariation === null);
+  const byScore = (a, b) =>
+    b.score - a.score || order.indexOf(a.metricKey) - order.indexOf(b.metricKey);
+  // Normalized candidates always precede raw-fallback ones. The two scores are
+  // in DIFFERENT UNITS - "3x this measure's usual weekly movement" against "5
+  // percentage points" - so sorting them into one list would be meaningless
+  // arithmetic. The founder approved ranking against a measure's own normal
+  // movement, so a measure that HAS that history is the better-founded signal;
+  // a measure without it still appears, ranked among its peers and explicitly
+  // labelled with the basis used. Founder may overrule.
+  const movers = [...normalizedFirst.sort(byScore), ...rawOnly.sort(byScore)].slice(0, 2);
+
+  return { movers, ages, rows: buildRows(), summary,
+           comparisonPair: [newest.version, previous.version] };
 }
