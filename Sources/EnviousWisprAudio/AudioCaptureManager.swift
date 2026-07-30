@@ -21,30 +21,38 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// production writes stay inside this file.
   public internal(set) var isCapturing = false
 
-  /// #1317 (cloud review P2, PR #1512, round 2): device resolved via
-  /// `AudioDeviceEnumerator.resolveEffectiveInputDevice` and frozen at the
-  /// TOP of `startEnginePhase()` — the same synchronous turn `resolveSource()`
-  /// itself reads `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`
-  /// to build/reuse a source, so this mirrors the device the engine actually
-  /// binds to for THIS attempt (re-freezes naturally on a kernel-driven
-  /// rebuild retry, since that re-invokes `startEnginePhase()`). Exposed via
-  /// `AudioCaptureInterface.zeroSignalDiscriminatorDeviceID` so the pipeline
-  /// layer's STOP-time backstop reads this SAME frozen value instead of
-  /// independently re-resolving (which cannot see this class's retries) —
-  /// it does so AFTER capture has already ended — a normal `stopCapture()`
-  /// OR any interruption teardown path, both of which run their own
-  /// cleanup BEFORE the kernel's read happens (the kernel falls through a
-  /// salvageable interruption into the SAME normal stop tail that reads
-  /// this). INVARIANT: no teardown path may clear this field — the next
-  /// `startEnginePhase()` overwrites it for the next session, and nothing
-  /// ever reads a stale cross-session value in between, so clearing it
-  /// early only ever loses the CURRENT session's read (cloud review round
-  /// 6 P1 caught this in `stopCapture()`; round 7 P2 caught the same class
-  /// in the interruption path — audit every write site against this
-  /// invariant before adding a new one).
-  private var effectiveDiscriminatorDeviceID: AudioDeviceID?
+  /// #1844: the device the active source ACTUALLY OPENED for this attempt — the
+  /// value `prepare()` returned, adopted in `adoptBoundState(_:)`. It is no
+  /// longer derived from settings, and it can no longer be adopted before the
+  /// bind exists: the awaited call produces it (#1317's PR #1512 froze a
+  /// settings-derived device one synchronous turn BEFORE `prepare()` committed,
+  /// so a HAL fallback bind — the user's explicit microphone absent, HAL opening
+  /// the system default instead — produced a health verdict about a microphone
+  /// the session never recorded from, or none at all).
+  ///
+  /// Exposed via `AudioCaptureInterface.zeroSignalDiscriminatorDevice` so the
+  /// pipeline layer's STOP-time backstop reads this SAME frozen value instead of
+  /// independently re-resolving (which cannot see this class's retries) — it does
+  /// so AFTER capture has already ended, on a normal `stopCapture()` OR any
+  /// interruption teardown path, both of which run their own cleanup BEFORE the
+  /// kernel's read happens (the kernel falls through a salvageable interruption
+  /// into the SAME normal stop tail that reads this).
+  ///
+  /// INVARIANT: no teardown path may clear this field — the next
+  /// `startEnginePhase()` overwrites it for the next session, and nothing ever
+  /// reads a stale cross-session value in between, so clearing it early only ever
+  /// loses the CURRENT session's read (cloud review round 6 P1 caught this in
+  /// `stopCapture()`; round 7 P2 caught the same class in the interruption path —
+  /// audit every write site against this invariant before adding a new one). The
+  /// per-attempt invalidation in `startEnginePhase()` is the ONE exception and is
+  /// not a teardown: it runs before the attempt, not after it.
+  ///
+  /// nil means "no attempt has succeeded yet" and fails closed. It can only come
+  /// from that explicit invalidation, never from a source — a successful
+  /// `prepare()` cannot answer "no device" (`BoundInputDevice` is non-optional).
+  private var effectiveDiscriminatorDevice: BoundInputDevice?
 
-  public var zeroSignalDiscriminatorDeviceID: AudioDeviceID? { effectiveDiscriminatorDeviceID }
+  public var zeroSignalDiscriminatorDevice: BoundInputDevice? { effectiveDiscriminatorDevice }
 
   /// #1317 (ported in-process from the former app-side capture proxy at the C1
   /// collapse, #1543): true once the CURRENT trailing all-zero run has been observed
@@ -55,7 +63,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// session-wide: a non-zero sample that breaks the trailing zero-run clears
   /// it (`feedDeadAirDetector`), so an earlier resolved mute cannot blind the
   /// backstop to a later, unrelated genuine zero-signal failure. Reset in
-  /// `beginCapturePhase`; per the `effectiveDiscriminatorDeviceID` invariant no
+  /// `beginCapturePhase`; per the `effectiveDiscriminatorDevice` invariant no
   /// teardown path may clear it early.
   private var sawIneligibleZeroSignalDuringSession = false
 
@@ -176,6 +184,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// capture-session id (which advances per capture even on warm reuse). Increments
     /// only on new-source install and destructive `rebuildEngine()`.
     private(set) var debugSourceIncarnation: UInt64 = 0
+
+    /// #1844 test seam: when set, `resolveSource()` builds its source from this
+    /// closure instead of constructing a real `HALDeviceInputSource`, so the
+    /// bound-device adoption tests can drive `startEnginePhase()` against a stub
+    /// with a controlled `prepare()` return. Installed via
+    /// `installSourceFactoryForTesting`; nil in production, always.
+    private var debugSourceFactory: (() -> any AudioInputSource)?
 
     /// #1317 proof-bench (DEBUG only): arm the injector from the in-process
     /// DEBUG fault endpoint (#1543). Translates the Core wire enum into the
@@ -398,20 +413,27 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   // MARK: - AudioCaptureInterface
 
   public func startEnginePhase() async throws {
-    // #1317 (cloud review P2, round 2): freeze the discriminator device NOW,
-    // same synchronous turn `resolveSource()` reads the live UID properties.
-    effectiveDiscriminatorDeviceID = AudioDeviceEnumerator.resolveEffectiveInputDevice(
-      preferredOverride: preferredInputDeviceIDOverride)
+    // #1844: invalidate FIRST, so a throwing `prepare()` cannot leave a prior
+    // session's device observable. Safe against the #1317 round-6 invariant
+    // because a new `startEnginePhase()` requires the kernel to be `.idle`,
+    // reached only through `finishTerminal` — after the stop-time read.
+    effectiveDiscriminatorDevice = nil
     // Re-evaluate route on every recording start — BT state may have changed.
     onLifecycleSignal?("manager_resolve_source_entered")
     let source = resolveSource()
     source.onLifecycleSignal = onLifecycleSignal
     onLifecycleSignal?("manager_prepare_entered")
-    try await source.prepare()
-    if let halSource = source as? HALDeviceInputSource {
-      refreshResolvedRoute(actualBoundTransport: halSource.actualBoundTransport)
-    }
+    // The awaited call PRODUCES the value adopted below: the ordering #1844
+    // existed to fix is now a data dependency, not a convention.
+    adoptBoundState(try await source.prepare())
     onLifecycleSignal?("manager_prepare_completed")
+  }
+
+  /// #1844: the ONE place the manager adopts post-bind facts. Takes the value, not
+  /// the source, so there is nothing to downcast and no way to read a stale bind.
+  private func adoptBoundState(_ bound: BoundInputDevice) {
+    effectiveDiscriminatorDevice = bound
+    refreshResolvedRoute(actualBoundTransport: bound.transportLabel)
   }
 
   /// In-process capture path. `recoveryPayload` is an opaque encoded
@@ -513,7 +535,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       // REQUEST (backend + requested device) with each source's own
       // `CAPTURE_EVIDENCE` (actual bound device). Capture is in-process, so
       // `captureSourceType` is always the real backend.
-      let requestedUID = effectiveInputDeviceUID()
+      // #1844 instance 3: the REQUESTED device is the one HAL was actually
+      // handed — `CaptureRouteResolver`'s `effectiveDeviceUID`, written on both
+      // `resolveSource()` branches. The old expression read the raw settings
+      // pair, which is not what the source receives, so the manager's evidence
+      // line could disagree with the source's own on the very fallback case
+      // this issue is about.
+      let requestedUID = lastRouteDecision?.effectiveDeviceUID ?? ""
       Self.btRouteLog(
         "CAPTURE_EVIDENCE [manager] backend=\(source.captureSourceType) requestedUID=\(requestedUID.isEmpty ? "auto" : requestedUID) generation=\(source.captureGeneration)"
       )
@@ -550,10 +578,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     let stopMetadata = source.captureStopMetadata
 
     isCapturing = false
-    // #1317 (cloud review P1, round 6): do NOT clear `effectiveDiscriminatorDeviceID`
-    // here — the kernel's STOP-time backstop reads `zeroSignalDiscriminatorDeviceID`
+    // #1317 (cloud review P1, round 6): do NOT clear `effectiveDiscriminatorDevice`
+    // here — the kernel's STOP-time backstop reads `zeroSignalDiscriminatorDevice`
     // AFTER this `stopCapture()` call returns. The next `startEnginePhase()`
-    // already overwrites it for the next session.
+    // already invalidates and re-adopts it for the next session.
     audioLevel = 0.0
 
     // Deactivate capture but keep engine warm. The tap stays installed and the
@@ -696,6 +724,15 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       captureSessionCounter = sessionID
     }
 
+    /// Test seam (#1844): force `resolveSource()` to build its source from
+    /// `factory` instead of a real `HALDeviceInputSource`, so the adoption tests drive
+    /// `startEnginePhase()` with a stub whose `prepare()` returns a controlled
+    /// bind — no hardware, no real AUHAL unit. nil restores normal resolution.
+    /// Consumed in `resolveSource()`; production never sets it.
+    func installSourceFactoryForTesting(_ factory: (() -> any AudioInputSource)?) {
+      debugSourceFactory = factory
+    }
+
     /// Test seam (heartpath 5b): drop the live active source while KEEPING the
     /// retained capture-session source, so `retireCapturingSource` reaches the
     /// `.activeSourceGone` branch. The installer's optional `active` argument
@@ -715,7 +752,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       return
     }
     do {
-      try await source.prepare()
+      // #1844: pre-warm runs OUTSIDE any session, so it must not adopt a
+      // health-check snapshot — the discarded bind is a visible decision.
+      _ = try await source.prepare()
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -920,12 +959,15 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
 
     let source: any AudioInputSource
-    switch decision.sourceType {
-    case .halDeviceInput:
-      let halSource = HALDeviceInputSource()
-      halSource.targetDeviceUID = decision.effectiveDeviceUID
-      source = halSource
-    }
+    #if DEBUG
+      if let debugSourceFactory {
+        source = debugSourceFactory()  // #1844 test seam; nil in production
+      } else {
+        source = Self.makeSource(for: decision)
+      }
+    #else
+      source = Self.makeSource(for: decision)
+    #endif
 
     // heartpath 5b: a stopped prior source overwritten here must not stay retained
     // by the capture-session fence.
@@ -938,6 +980,18 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     #endif
     activeSource = source
     return source
+  }
+
+  /// Builds the concrete source a route decision selects. Extracted from
+  /// `resolveSource()` so the #1844 DEBUG factory seam has exactly one production
+  /// path to stand in for, rather than duplicating the construction switch.
+  private static func makeSource(for decision: CaptureRouteDecision) -> any AudioInputSource {
+    switch decision.sourceType {
+    case .halDeviceInput:
+      let halSource = HALDeviceInputSource()
+      halSource.targetDeviceUID = decision.effectiveDeviceUID
+      return halSource
+    }
   }
 
   /// Maps a concrete `any AudioInputSource` instance to its `CaptureSourceType`
@@ -958,16 +1012,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     case .halDeviceInput: return "HALDeviceInput"
     }
   }
-
-  #if DEBUG
-    /// Effective input-device UID: the explicit override takes priority, else the
-    /// selected device — the same order the warm-reuse device comparison uses.
-    /// DEBUG-only: read by the manager-side `CAPTURE_EVIDENCE` companion log.
-    private func effectiveInputDeviceUID() -> String {
-      preferredInputDeviceIDOverride.isEmpty
-        ? selectedInputDeviceUID : preferredInputDeviceIDOverride
-    }
-  #endif
 
   // MARK: - BT Route Logging (Step 6 instrumentation)
 
@@ -1061,12 +1105,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       return
     }
 
-    // Evaluate against the device FROZEN at engine-start (`startEnginePhase`),
+    // Evaluate against the bind this attempt's `prepare()` RETURNED (#1844),
     // not a live re-read — the live UID properties can already reflect a device
-    // the user switched to mid-recording.
+    // the user switched to mid-recording, and a settings-derived value can name
+    // a microphone HAL never opened.
     guard
-      let deviceID = effectiveDiscriminatorDeviceID,
-      ZeroSignalDeviceDiscriminator.isEligible(deviceID: deviceID)
+      let bound = effectiveDiscriminatorDevice,
+      ZeroSignalDeviceDiscriminator.isEligible(bound: bound)
     else {
       // A zero-signal-candidate batch observed while ineligible (muted) — latch
       // it so the STOP-time backstop can't later see a since-unmuted live state

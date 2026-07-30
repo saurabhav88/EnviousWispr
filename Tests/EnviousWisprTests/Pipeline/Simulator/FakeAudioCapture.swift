@@ -103,6 +103,29 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var isActivelyCapturing: Bool { isCapturing }
   var captureSourceType: String { "hal_device_input" }
 
+  // MARK: #1844 — observing what the kernel's PRODUCTION eligibility closure reads
+  //
+  // Overriding the protocol's nil default lets a test hand the kernel a frozen bind
+  // and, crucially, COUNT whether the closure consulted it. The count is the only
+  // way to discriminate "read the frozen bind and refused" from "refused for some
+  // other reason" — the closure returns false either way, so its boolean output
+  // proves nothing on its own.
+
+  /// The frozen bind this fake publishes. nil models an invalidated attempt.
+  var stubbedZeroSignalDiscriminatorDevice: BoundInputDevice?
+  /// Incremented on every read of `zeroSignalDiscriminatorDevice`.
+  private(set) var zeroSignalDiscriminatorDeviceReadCount = 0
+  /// Set true to model an earlier muted observation, which must short-circuit
+  /// BEFORE the device is consulted.
+  var stubbedZeroSignalDiscriminatorSawIneligible = false
+
+  var zeroSignalDiscriminatorDevice: BoundInputDevice? {
+    zeroSignalDiscriminatorDeviceReadCount += 1
+    return stubbedZeroSignalDiscriminatorDevice
+  }
+
+  var zeroSignalDiscriminatorSawIneligible: Bool { stubbedZeroSignalDiscriminatorSawIneligible }
+
   // MARK: AudioCaptureInterface — callbacks
 
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?

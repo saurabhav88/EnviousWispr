@@ -143,6 +143,73 @@ struct HALDeviceInputSourceDeviceTargetTests {
     #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
   }
 
+  // MARK: - #1844: the warm-reuse decision
+  //
+  // Why this is unit-frozen rather than left to review: verified on real hardware
+  // 2026-07-30, this decision runs on EVERY dictation, not just a second take.
+  // `preWarm()` opens the unit cold, then the recording's own `prepare()` reuses
+  // it — bt-route.log showed one "prepared with device 121" from pre-warm followed
+  // by "Reusing warm HALDeviceInput source" for the take, with the same bound UID
+  // on both. And a wrong answer here would be SILENT: capture keeps working from
+  // the live unit, only the health-check identity would be wrong.
+  //
+  // `warmReuseBindForTesting` drives the decision with the "is a unit live" fact
+  // supplied, so no `AudioUnit` is fabricated. WHICH device a cold open binds
+  // remains hardware-dependent and stays Live UAT's job, as noted above.
+
+  @Test("live unit + committed bind → reuse that complete bind (#1844 positive control)")
+  func warmReuseReturnsCommittedBind() {
+    let source = HALDeviceInputSource()
+    let committed = BoundInputDevice(
+      deviceID: 121,
+      deviceUID: "BC-87-FA-9C-7E-71:input",
+      transportLabel: "bluetooth"
+    )
+    source.setBoundInputDeviceForTesting(committed)
+
+    let reused = source.warmReuseBindForTesting(hasLiveUnit: true)
+
+    // WHOLE value, not just the id: a warm return that handed back the right
+    // number with a stale UID would defeat the identity re-check the health
+    // verdict depends on, and an id-only assertion would pass it.
+    #expect(reused == committed, "the warm return must hand back the complete live bind")
+  }
+
+  @Test("no live unit → no reuse, so cold preparation runs (#1844 negative control)")
+  func noLiveUnitRefusesReuse() {
+    let source = HALDeviceInputSource()
+    // A complete, stale bind is still NOT grounds for reuse without a live unit.
+    source.setBoundInputDeviceForTesting(
+      BoundInputDevice(
+        deviceID: 121, deviceUID: "BC-87-FA-9C-7E-71:input", transportLabel: "bluetooth"))
+
+    #expect(source.warmReuseBindForTesting(hasLiveUnit: false) == nil)
+  }
+
+  @Test("live unit with no bind → no reuse; repair, never a nil bind (#1844)")
+  func liveUnitWithoutBindRefusesReuse() {
+    let source = HALDeviceInputSource()
+    // The broken-invariant state: a unit is live but no bind was committed.
+    #expect(source.warmReuseBindForTesting(hasLiveUnit: true) == nil)
+  }
+
+  @Test("bind cleared by teardown → no reuse (#1844)")
+  func clearedBindEndsReuse() {
+    let source = HALDeviceInputSource()
+    let committed = BoundInputDevice(
+      deviceID: 121,
+      deviceUID: "BC-87-FA-9C-7E-71:input",
+      transportLabel: "bluetooth"
+    )
+    source.setBoundInputDeviceForTesting(committed)
+    #expect(source.warmReuseBindForTesting(hasLiveUnit: true) == committed)
+
+    // All three fields at once, the way `teardownUnit()` clears them.
+    source.setBoundInputDeviceForTesting(nil)
+
+    #expect(source.warmReuseBindForTesting(hasLiveUnit: true) == nil)
+  }
+
   @Test("warm explicit source follows fallback default when target is missing")
   func explicitMissingTargetReuseTracksFallbackDefault() {
     let source = HALDeviceInputSource()
