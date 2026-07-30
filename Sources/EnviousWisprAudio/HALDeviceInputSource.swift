@@ -764,8 +764,10 @@ final class HALDeviceInputSource: AudioInputSource {
     preRollGapCount =
       renderContext.map {
         let s = $0.counters.snapshotAndReset()
-        return s.ringDrops + s.converterErrors + s.renderFailures + s.oversizedSlices
-          + s.lostChunks
+        // Mirrors `CaptureStopMetadata.inputTimelineGapCount`: one addend per death
+        // point, and `converterErrors` is excluded because it is a subset of
+        // `lostChunks` (r8). If that sum changes, change this with it.
+        return s.ringDrops + s.renderFailures + s.oversizedSlices + s.lostChunks
       } ?? 0
 
     let stream = AsyncStream<AVAudioPCMBuffer> { continuation in

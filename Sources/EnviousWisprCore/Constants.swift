@@ -59,7 +59,10 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   public let nativeRateHz: Double?
   /// Chunks the RT ring refused because the consumer lagged (drop = lost audio).
   public let ringDropCount: Int
-  /// AVAudioConverter calls that returned an error (converted chunk lost).
+  /// AVAudioConverter calls that returned an error (converted chunk lost). A SUBSET
+  /// of `lostChunkCount`, never an independent addend in `inputTimelineGapCount` —
+  /// every converter failure also returns `.lost`, so summing both counts the same
+  /// chunk twice (r8).
   public let converterErrorCount: Int
   /// Converter calls that produced zero output frames (expected once at
   /// priming; more than ~1 per session is a signal). Deliberately NOT part of
@@ -117,15 +120,23 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// stream is a faithful, gap-free timeline of what the device delivered, so a
   /// sample INDEX is an exact elapsed time; nonzero makes any such index a lower
   /// bound. The four edges, all in `HALDeviceInputSource`:
+  /// ONE ADDEND PER DEATH POINT, which is what keeps this sum honest:
   ///   1. `AudioUnitRender` returned an error   -> `renderFailureCount`
   ///   2. slice larger than the scratch buffer  -> `oversizedSliceCount`
   ///   3. RT ring full, consumer lagging        -> `ringDropCount`
-  ///   4. `AVAudioConverter` returned an error  -> `converterErrorCount`
-  ///   5. anything else on the pop->route path  -> `lostChunkCount`
-  /// A further candidate, a zero-frame converter output, is NOT a gap (see
-  /// `zeroOutputCount`). Edge 5 is the catch-all that stopped this list needing an
-  /// entry per newly-discovered exit: three separate review rounds each found one,
-  /// so `ForwardOutcome` now forces every exit to declare loss and edge 5 counts it.
+  ///   4. ANY death on the pop->route path      -> `lostChunkCount`
+  /// 1-3 are separate because each is a distinct death point in the RT callback,
+  /// before a chunk ever reaches the consumer. 4 is a single catch-all because that
+  /// path kept sprouting new silent exits (r3, r5, r7 each found one), so
+  /// `ForwardOutcome` now forces every exit to declare loss and this counts them all.
+  ///
+  /// `converterErrorCount` is deliberately NOT an addend: every converter failure
+  /// also returns `.lost`, so it is a SUBSET of `lostChunkCount` kept for #1434
+  /// diagnostic breakdown. Adding both double-counted the same lost chunk (r8 —
+  /// introduced by r7's own fix, which is the hazard of a catch-all landing beside
+  /// per-cause counters). A zero-frame converter output is not a gap at all (see
+  /// `zeroOutputCount`). Before adding an addend here, ask whether its chunk already
+  /// dies at an existing death point.
   ///
   /// The WINDOW matters as much as the edge list: a measured wake starts inside
   /// retained pre-roll, so `preRollGapCount` is part of the sum even though the
@@ -134,8 +145,8 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// r1-r3 each found a different edge — the same root cause four times, which
   /// is why both halves are stated here rather than in a call site.
   public var inputTimelineGapCount: Int {
-    renderFailureCount + oversizedSliceCount + ringDropCount + converterErrorCount
-      + lostChunkCount + preRollGapCount
+    renderFailureCount + oversizedSliceCount + ringDropCount + lostChunkCount
+      + preRollGapCount
   }
 
   public init(

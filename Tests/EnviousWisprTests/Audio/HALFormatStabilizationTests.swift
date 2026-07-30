@@ -226,14 +226,32 @@ struct CaptureStopMetadataGapTests {
       CaptureStopMetadata(nativeRateHz: nil, ringDropCount: 1)
         .inputTimelineGapCount == 1)
     #expect(
-      CaptureStopMetadata(nativeRateHz: nil, converterErrorCount: 1)
-        .inputTimelineGapCount == 1)
-    #expect(
       CaptureStopMetadata(nativeRateHz: nil, renderFailureCount: 1)
         .inputTimelineGapCount == 1)
     #expect(
       CaptureStopMetadata(nativeRateHz: nil, oversizedSliceCount: 1)
         .inputTimelineGapCount == 1)
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, lostChunkCount: 1)
+        .inputTimelineGapCount == 1)
+  }
+
+  @Test("a converter error is a SUBSET of lost chunks, never a second gap (r8)")
+  func converterErrorIsNotAnIndependentAddend() {
+    // Every converter failure also returns `.lost`, so the real pairing is
+    // (converterErrorCount: 1, lostChunkCount: 1) for ONE lost chunk. Summing both
+    // reported 2 — the double count r7's catch-all introduced beside the per-cause
+    // counters. The gap total must follow death points, not causes.
+    let oneChunkLostToConverter = CaptureStopMetadata(
+      nativeRateHz: 24000, converterErrorCount: 1, lostChunkCount: 1)
+    #expect(oneChunkLostToConverter.inputTimelineGapCount == 1)
+    // And the diagnostic breakdown is still available on its own.
+    #expect(oneChunkLostToConverter.converterErrorCount == 1)
+    // A converter error alone contributes nothing: it cannot occur without the
+    // matching lost chunk, so this shape only appears in a hand-built fixture.
+    #expect(
+      CaptureStopMetadata(nativeRateHz: nil, converterErrorCount: 1)
+        .inputTimelineGapCount == 0)
   }
 
   @Test("a zero-frame converter output is NOT a gap — the input is emitted later")
@@ -248,10 +266,14 @@ struct CaptureStopMetadataGapTests {
 
   @Test("gaps sum across edges rather than saturating at one")
   func gapsSumAcrossEdges() {
+    // 3 of the lost chunks were converter failures, so `converterErrorCount: 3`
+    // describes part of `lostChunkCount: 5` rather than adding to it.
     let messy = CaptureStopMetadata(
       nativeRateHz: 16000, ringDropCount: 4, converterErrorCount: 3,
-      zeroOutputCount: 9, renderFailureCount: 2, oversizedSliceCount: 1)
-    #expect(messy.inputTimelineGapCount == 10)  // 4+3+2+1, zeroOutput excluded
+      zeroOutputCount: 9, renderFailureCount: 2, oversizedSliceCount: 1,
+      lostChunkCount: 5)
+    // 4 + 2 + 1 + 5; zeroOutput and converterError both excluded.
+    #expect(messy.inputTimelineGapCount == 12)
   }
 
   @Test("a gap carried in from idle pre-roll still counts (r4: the WINDOW)")
