@@ -217,4 +217,34 @@ struct RecordingSessionKernelDeadAirFloorTests {
       [SpeechSegment(startSample: 20_000, endSample: 24_000)], to: 8_000)
     #expect(result.isEmpty)
   }
+
+  // MARK: - #1788 stop-time parity: the honest failure survives the longer ceiling
+
+  /// THE TEST THAT PROVES A DEAD BLUETOOTH MIC STILL FAILS HONESTLY. #1788 raises the
+  /// MID-TAKE ceiling to 3.0s on Bluetooth, and the obvious worry is that a genuinely
+  /// dead mic released before 3.0s now slips through silently. It does not: the
+  /// stop-time classifier is untouched and keeps `minimumTranscriptionSamples` on
+  /// EVERY transport, so a 2.5s all-zero capture ended by release still classifies as
+  /// `.allZeroFromStart` and reaches the same terminal it always did.
+  @Test("#1788: a 2.5s all-zero capture still classifies at stop, below the 3.0s ceiling")
+  func stopTimeClassifierUnaffectedByBluetoothCeiling() {
+    let twoPointFiveSeconds = 40_000  // < 48_000, the new Bluetooth mid-take ceiling
+    #expect(twoPointFiveSeconds < AudioConstants.bluetoothAllZeroMidTakeCeilingSamples)
+    let allZero = [Float](repeating: 0, count: twoPointFiveSeconds)
+    #expect(RecordingSessionKernel.classifyZeroSignalAtStop(allZero) == .allZeroFromStart)
+  }
+
+  /// The floor is unchanged too: shorter than 1.0s still classifies as nothing, on
+  /// every transport. Pins that #1788 moved the mid-take ceiling ONLY.
+  @Test("#1788: the stop-time floor is still 1.0s, not the Bluetooth ceiling")
+  func stopTimeFloorIsStillTheShippingMinimum() {
+    let justUnderOneSecond = AudioConstants.minimumTranscriptionSamples - 1
+    #expect(
+      RecordingSessionKernel.classifyZeroSignalAtStop(
+        [Float](repeating: 0, count: justUnderOneSecond)) == nil)
+    #expect(
+      RecordingSessionKernel.classifyZeroSignalAtStop(
+        [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples))
+        == .allZeroFromStart)
+  }
 }

@@ -1,18 +1,30 @@
 import CoreAudio
 
-/// A pure, per-recording OBSERVATION of the resolver's route decision, derived
-/// into the low-cardinality transport facts the telemetry layer emits (#1376,
-/// Bluetooth-capture epic Phase 1). Never a control input — nothing branches
-/// capture on it; both sinks (`dictation.completed` PostHog + `SentryAudioExtras`)
-/// read this one value instead of re-deriving from raw inputs
+/// A pure, per-recording derivation of the resolver's route decision into the
+/// low-cardinality transport facts the telemetry layer emits (#1376,
+/// Bluetooth-capture epic Phase 1). Both sinks (`dictation.completed` PostHog +
+/// `SentryAudioExtras`) read this one value instead of re-deriving from raw inputs
 /// (`telemetry-observes-resolved-value-deny-by-default`).
+///
+/// **`effective` IS A CONTROL INPUT as of #1788** — it selects the mid-take all-zero
+/// ceiling in `AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport:)`,
+/// so Bluetooth tolerates 3.0s of silence where every other transport keeps 1.0s.
+/// This header previously said the type was never a control input; that is no longer
+/// true and a reader trusting it would conclude the branch can never fire. The other
+/// fields remain observation-only. Anything that changes what `effective` reports now
+/// changes capture BEHAVIOUR, not just telemetry.
 ///
 /// `routeResolutionSource` is `"app_derived"` unless the caller supplies the
 /// actual transport reported by the bound capture source.
 public struct ResolvedRouteTransports: Sendable, Equatable {
   /// Transport of the user's picked device, or `"unknown"` on Auto / unmappable.
   public let selected: String
-  /// Transport the decision binds (built-in for the capture-session path today).
+  /// Transport the decision actually BINDS: the bound source's own reported transport
+  /// when readable, otherwise the app-derived one, otherwise `"unknown"`. The former
+  /// comment here said "built-in for the capture-session path today" — that path is
+  /// retired and `.halDeviceInput` is the only source type, so the old wording both
+  /// described dead code and implied this can only ever be built-in. It cannot: the
+  /// #1788 Bluetooth ceiling branches on this exact string being `"bluetooth"`.
   public let effective: String
   /// `CaptureRouteReason.rawValue` — the machine-readable route reason.
   public let routeReason: String

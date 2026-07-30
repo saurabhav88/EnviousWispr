@@ -254,7 +254,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// input-device setting change (which `PipelineSettingsSync` applies for the
   /// NEXT recording while the current source keeps its old device) cannot make a
   /// later failure-terminal telemetry read report the wrong transport. Nil
-  /// before the first resolution. Telemetry-only observation.
+  /// before the first resolution.
+  ///
+  /// NO LONGER TELEMETRY-ONLY (#1788): `effective` is now a CAPTURE-POLICY input,
+  /// selecting the mid-take all-zero ceiling via `allZeroCeilingSamples`. The
+  /// freezing described above is what makes that safe — the ceiling is chosen from
+  /// the route the session actually bound, not from a live re-read that a mid-take
+  /// device switch could have already changed. Nil still falls to the shipping 1.0s
+  /// ceiling, so a session that never resolved behaves exactly as before.
   public private(set) var currentResolvedRoute: ResolvedRouteTransports?
 
   /// Adopt a fresh route decision: freeze it plus its derived transports (using
@@ -305,7 +312,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// consulted, never in how the verdict is computed (#1788).
   ///
   /// Release, and DEBUG with no override set, is `minimumTranscriptionSamples`
-  /// (16,000 = 1.0s), byte-identical to shipped behaviour.
+  /// (16,000 = 1.0s) on every transport EXCEPT Bluetooth, which gets 3.0s (#1788 —
+  /// see `allZeroFromStartCeilingSamples(forEffectiveTransport:)` for why, and note
+  /// the DEBUG override still wins over both so a measurement run can see past
+  /// either).
   ///
   /// The DEBUG override exists because a Bluetooth wake slower than the ceiling is
   /// otherwise CENSORED — the take aborts before the wake completes, so the tail we
@@ -323,7 +333,33 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         forKey: "EWDebugAllZeroCeilingSamples")
       if override > 0 { return override }
     #endif
-    return AudioConstants.minimumTranscriptionSamples
+    return Self.allZeroFromStartCeilingSamples(
+      forEffectiveTransport: currentResolvedRoute?.effective)
+  }
+
+  /// THE #1788 FIX, and the only transport conditional in it.
+  ///
+  /// Bluetooth alone negotiates a voice link before audio flows, so it alone tolerates
+  /// 3.0s of exact silence mid-take instead of 1.0s. Every other value — `"built_in"`,
+  /// `"usb"`, `"unknown"`, and `nil` — returns the shipping ceiling, so a wired user's
+  /// behaviour is byte-identical to before and an UNREADABLE transport fails to
+  /// today's behaviour rather than to the longer one.
+  ///
+  /// Pure and static so the wired-unchanged guarantee is unit-testable without opening
+  /// real hardware: `currentResolvedRoute` is `private(set)` with only private
+  /// production writers, so a test cannot inject a route through the manager.
+  ///
+  /// Scope, deliberately narrow: this governs the MID-TAKE all-zero abort only.
+  /// `RecordingSessionKernel.classifyZeroSignalAtStop` is untouched and keeps 1.0s on
+  /// every transport, so a genuinely dead Bluetooth mic released before 3.0s still
+  /// ends with the same honest failure. `.becameZeroMidCapture` also keeps its own
+  /// threshold — do not "harmonise" the two.
+  nonisolated static func allZeroFromStartCeilingSamples(
+    forEffectiveTransport effectiveTransport: String?
+  ) -> Int {
+    effectiveTransport == "bluetooth"
+      ? AudioConstants.bluetoothAllZeroMidTakeCeilingSamples
+      : AudioConstants.minimumTranscriptionSamples
   }
 
   #if DEBUG
