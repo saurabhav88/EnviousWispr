@@ -123,23 +123,28 @@ struct AudioCaptureManagerDeadAirLatchTests {
 }
 
 #if DEBUG
-  /// The wake instrument's honesty rule (#1788 cloud review r5). Five review rounds
-  /// on this one diagnostic all reduced to reading a quantity over an interval it
-  /// does not describe, so the rule that decides `exact` vs `floor` is frozen here
-  /// as pure logic rather than left inside the emitter where each round found it
-  /// again. Both failure modes UNDER-report, so the safe label is always `floor`.
-  @Suite("AudioCaptureManager — wake exactness rule (#1788)")
+  /// The wake instrument's honesty rule (#1788, cloud review r5-r7). SEVEN review
+  /// rounds on this one diagnostic all reduced to reading a quantity over an interval
+  /// it does not describe, so the rule deciding `stream_measured` vs `floor` is
+  /// frozen here as pure logic rather than left inside the emitter where each round
+  /// found it again. Both failure modes UNDER-report, so the safe label is `floor`.
+  ///
+  /// Note the label is `stream_measured`, not `exact`: no sample-derived wake can be
+  /// exact with respect to press-to-audio, because a callback-free startup is
+  /// invisible to a sample clock (r7). These tests pin the delivered-stream claim,
+  /// which is the only claim the instrument makes.
+  @Suite("AudioCaptureManager — wake measurement basis (#1788)")
   struct AudioCaptureManagerWakeExactnessTests {
 
-    @Test("a measured zero prefix is what makes a wake exact")
+    @Test("a measured zero prefix is what makes a wake stream-measured")
     func measuredPrefixMakesItExact() {
       // Samples were routed while the link was still silent, so the interval is
       // observed rather than inferred.
-      #expect(AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: 9591))
-      #expect(AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: 1))
+      #expect(AudioCaptureManager.wakeIsStreamMeasured(gapCount: 0, wakeSamples: 9591))
+      #expect(AudioCaptureManager.wakeIsStreamMeasured(gapCount: 0, wakeSamples: 1))
     }
 
-    @Test("a zero wake is ALWAYS a floor, never exact")
+    @Test("a zero wake is ALWAYS a floor, never stream-measured")
     func zeroWakeIsNeverExact() {
       // THE r5/r6 CASE. A wake of 0 means the first sample that ever existed was
       // already non-zero, so an already-awake link and one that woke during a
@@ -147,15 +152,15 @@ struct AudioCaptureManagerDeadAirLatchTests {
       // of this suite ASSERTING THE OPPOSITE for a pre-roll latch at index 0 — the
       // bug was written into its own oracle, which is why the rule is now expressed
       // over the wake itself rather than over a proxy field.
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: 0))
+      #expect(!AudioCaptureManager.wakeIsStreamMeasured(gapCount: 0, wakeSamples: 0))
     }
 
     @Test("gaps and a measured prefix are both required")
     func exactRequiresBothConditions() {
-      #expect(AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: 8000))
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 1, wakeSamples: 8000))
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: 0))
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 3, wakeSamples: 0))
+      #expect(AudioCaptureManager.wakeIsStreamMeasured(gapCount: 0, wakeSamples: 8000))
+      #expect(!AudioCaptureManager.wakeIsStreamMeasured(gapCount: 1, wakeSamples: 8000))
+      #expect(!AudioCaptureManager.wakeIsStreamMeasured(gapCount: 0, wakeSamples: 0))
+      #expect(!AudioCaptureManager.wakeIsStreamMeasured(gapCount: 3, wakeSamples: 0))
     }
 
     @Test("an unreadable gap count or wake fails CLOSED, never as zero")
@@ -163,9 +168,9 @@ struct AudioCaptureManagerDeadAirLatchTests {
       // A measurement authority that cannot read its own inputs must not print the
       // confident label. nil gaps = the source offered no stop metadata; nil wake =
       // the stream position could not be reconstructed at all.
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: nil, wakeSamples: 8000))
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: 0, wakeSamples: nil))
-      #expect(!AudioCaptureManager.wakeIsExact(gapCount: nil, wakeSamples: nil))
+      #expect(!AudioCaptureManager.wakeIsStreamMeasured(gapCount: nil, wakeSamples: 8000))
+      #expect(!AudioCaptureManager.wakeIsStreamMeasured(gapCount: 0, wakeSamples: nil))
+      #expect(!AudioCaptureManager.wakeIsStreamMeasured(gapCount: nil, wakeSamples: nil))
     }
   }
 #endif

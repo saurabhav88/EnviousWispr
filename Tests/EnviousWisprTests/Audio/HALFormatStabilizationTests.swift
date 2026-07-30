@@ -274,4 +274,17 @@ struct CaptureStopMetadataGapTests {
       nativeRateHz: 24000, ringDropCount: 1, preRollGapCount: 3)
     #expect(both.inputTimelineGapCount == 4)
   }
+
+  @Test("the catch-all lost-chunk count is a gap too (r7)")
+  func lostChunkCountsAsAGap() {
+    // r7 found TWO more silent exits on the pop->route path: buffer allocation
+    // failure under memory pressure, and an unreadable converted buffer. Rather
+    // than add a counter per cause — the list had already reopened in r3 and r5 —
+    // `ForwardOutcome` now forces every exit to declare loss and this one counter
+    // catches all of them, including exits not yet written.
+    let lost = CaptureStopMetadata(nativeRateHz: 24000, lostChunkCount: 2)
+    #expect(lost.inputTimelineGapCount == 2)
+    #expect(lost.ringDropCount == 0)
+    #expect(lost.converterErrorCount == 0)
+  }
 }

@@ -1044,9 +1044,21 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   #if DEBUG
-    /// `exact` is claimed only when the stream lost nothing AND at least one sample
-    /// was routed BEFORE the first non-zero one. Both failure modes under-report,
-    /// never over-report, so the fallback label is `floor`.
+    /// Is the wake a clean measurement OF THE DELIVERED STREAM? True only when the
+    /// stream lost nothing AND at least one sample was routed before the first
+    /// non-zero one. Both failure modes under-report, never over-report, so the
+    /// fallback label is `floor`.
+    ///
+    /// The label deliberately says `stream_measured`, NOT `exact`. r7 pointed out
+    /// that a callback-free startup followed by a few zeros still satisfies
+    /// `wakeSamples > 0` while covering only the zeros AFTER callbacks began, so a
+    /// true press-to-audio figure would need a second timebase. That was tried in
+    /// r2 and deleted for being late by the whole pre-roll batch, and two numbers
+    /// that disagree is how a future session trusts the wrong one. So the honest fix
+    /// is naming: NO sample-derived wake can be exact with respect to press-to-audio,
+    /// and a word that claimed otherwise was the actual defect. Every value here is
+    /// a lower bound; `stream_measured` says only that the delivered stream was
+    /// gap-free and carried an observed silent prefix.
     ///
     /// The second condition is the whole of r5 and r6, and it reduces to
     /// `wakeSamples > 0`. A sample clock cannot measure an interval containing no
@@ -1063,7 +1075,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// when index 0 is exactly the ambiguous case. Both errors are gone rather than
     /// special-cased, because the quantity actually being asked about is the wake
     /// itself. An unknown gap count or an unavailable wake fails CLOSED.
-    nonisolated static func wakeIsExact(gapCount: Int?, wakeSamples: Int?) -> Bool {
+    nonisolated static func wakeIsStreamMeasured(gapCount: Int?, wakeSamples: Int?) -> Bool {
       guard let gapCount, let wakeSamples else { return false }
       return gapCount == 0 && wakeSamples > 0
     }
@@ -1107,14 +1119,18 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         wakeMs.map { String(format: "%.0f", $0) } ?? "unavailable"
       let transport = currentResolvedRoute?.effective ?? "unknown"
       let ceiling = allZeroCeilingSamples
-      // A sample index is an elapsed time only if TWO things hold, and cloud
-      // review found one per round until both were stated here rather than
-      // assumed:
+      // EVERY value on this line is a LOWER BOUND on press-to-audio latency: a
+      // sample clock cannot see an interval in which no samples exist, and no
+      // second clock is carried (see `wakeIsStreamMeasured`). `wake_is` reports
+      // only whether the DELIVERED stream was a clean measurement, which needs two
+      // things — cloud review found one per round until both were stated here
+      // rather than assumed:
       //  1. the stream lost nothing — `CaptureStopMetadata.inputTimelineGapCount`
       //     owns that enumeration and its window (r3, r4, r5), so a new lossy
       //     edge needs no new field here;
       //  2. at least one sample was routed BEFORE the first non-zero one, i.e.
-      //     `wakeSamples > 0` (r5, corrected in r6 — see `wakeIsExact`). A sample
+      //     `wakeSamples > 0` (r5, corrected in r6 — see
+      //     `wakeIsStreamMeasured`). A sample
       //     clock cannot measure an interval containing no samples, so a zero wake
       //     cannot distinguish a link that was already awake from one that woke
       //     during a callback-free startup. No second clock: that was tried in r2
@@ -1126,12 +1142,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       // this closes.
       let gaps = activeSource?.captureStopMetadata?.inputTimelineGapCount
       let gapField = gaps.map(String.init) ?? "unknown"
-      let exactness =
-        Self.wakeIsExact(gapCount: gaps, wakeSamples: wakeSamples) ? "exact" : "floor"
+      let basis =
+        Self.wakeIsStreamMeasured(gapCount: gaps, wakeSamples: wakeSamples)
+        ? "stream_measured" : "floor"
       Task {
         await AppLogger.shared.log(
           "ZERO_PREFIX_MEASURE transport=\(transport) "
-            + "wake_ms=\(wakeField) wake_is=\(exactness) timeline_gaps=\(gapField) "
+            + "wake_ms=\(wakeField) wake_is=\(basis) timeline_gaps=\(gapField) "
             + "detector_zero_prefix_ms=\(String(format: "%.0f", zeroPrefixMs)) "
             + "detector_zero_prefix_samples=\(zeroPrefixSamples) "
             + "ceiling_samples=\(ceiling)",

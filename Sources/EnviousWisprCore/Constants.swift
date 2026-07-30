@@ -90,6 +90,14 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// rather than only the ~500ms the ring still holds, so it can say `floor` when
   /// `exact` was defensible. A measurement authority fails closed.
   public let preRollGapCount: Int
+  /// Popped chunks that died between the ring and `PreRollForwarder.route` for any
+  /// reason other than a benign converter priming call — buffer allocation failure
+  /// under memory pressure, an unreadable converted buffer, or any future early
+  /// exit. A CATCH-ALL by design: #1788 rounds 3, 5 and 7 each uncovered another
+  /// silent `return false` on that path, so the count now lives at the single point
+  /// a chunk can die rather than at each reason it might, and a new exit has to
+  /// declare itself through `ForwardOutcome`.
+  public let lostChunkCount: Int
   /// A stream-format / nominal-rate change notification fired for the bound
   /// device while capturing (#1434 — log-and-telemetry only in v1; never
   /// interrupts the recording).
@@ -113,8 +121,11 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   ///   2. slice larger than the scratch buffer  -> `oversizedSliceCount`
   ///   3. RT ring full, consumer lagging        -> `ringDropCount`
   ///   4. `AVAudioConverter` returned an error  -> `converterErrorCount`
-  /// A fifth candidate, a zero-frame converter output, is NOT a gap (see
-  /// `zeroOutputCount`). Adding a new lossy edge means adding it here too.
+  ///   5. anything else on the pop->route path  -> `lostChunkCount`
+  /// A further candidate, a zero-frame converter output, is NOT a gap (see
+  /// `zeroOutputCount`). Edge 5 is the catch-all that stopped this list needing an
+  /// entry per newly-discovered exit: three separate review rounds each found one,
+  /// so `ForwardOutcome` now forces every exit to declare loss and edge 5 counts it.
   ///
   /// The WINDOW matters as much as the edge list: a measured wake starts inside
   /// retained pre-roll, so `preRollGapCount` is part of the sum even though the
@@ -124,7 +135,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// is why both halves are stated here rather than in a call site.
   public var inputTimelineGapCount: Int {
     renderFailureCount + oversizedSliceCount + ringDropCount + converterErrorCount
-      + preRollGapCount
+      + lostChunkCount + preRollGapCount
   }
 
   public init(
@@ -135,6 +146,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     renderFailureCount: Int = 0,
     oversizedSliceCount: Int = 0,
     preRollGapCount: Int = 0,
+    lostChunkCount: Int = 0,
     rateDivergenceDetected: Bool = false,
     nativeChannelCount: Int? = nil
   ) {
@@ -145,6 +157,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     self.renderFailureCount = renderFailureCount
     self.oversizedSliceCount = oversizedSliceCount
     self.preRollGapCount = preRollGapCount
+    self.lostChunkCount = lostChunkCount
     self.rateDivergenceDetected = rateDivergenceDetected
     self.nativeChannelCount = nativeChannelCount
   }
@@ -164,6 +177,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     renderFailureCount = try c.decodeIfPresent(Int.self, forKey: .renderFailureCount) ?? 0
     oversizedSliceCount = try c.decodeIfPresent(Int.self, forKey: .oversizedSliceCount) ?? 0
     preRollGapCount = try c.decodeIfPresent(Int.self, forKey: .preRollGapCount) ?? 0
+    lostChunkCount = try c.decodeIfPresent(Int.self, forKey: .lostChunkCount) ?? 0
     rateDivergenceDetected =
       try c.decodeIfPresent(Bool.self, forKey: .rateDivergenceDetected) ?? false
     nativeChannelCount = try c.decodeIfPresent(Int.self, forKey: .nativeChannelCount)

@@ -112,6 +112,7 @@ private final class HALSessionCounters: Sendable {
     var zeroOutputs = 0
     var renderFailures = 0
     var oversizedSlices = 0
+    var lostChunks = 0
   }
   private let state = OSAllocatedUnfairLock(initialState: Snapshot())
   func incrementRingDrop() { state.withLock { $0.ringDrops += 1 } }
@@ -119,6 +120,12 @@ private final class HALSessionCounters: Sendable {
   func incrementZeroOutput() { state.withLock { $0.zeroOutputs += 1 } }
   func incrementRenderFailure() { state.withLock { $0.renderFailures += 1 } }
   func incrementOversizedSlice() { state.withLock { $0.oversizedSlices += 1 } }
+  /// A popped chunk that left `drainAndForward` without reaching `route` and
+  /// without being a benign priming call. Deliberately a CATCH-ALL rather than one
+  /// counter per cause: #1788 r3/r5/r7 each found another silent exit, so the
+  /// bookkeeping is now at the single place a chunk can die instead of at each
+  /// reason it might.
+  func incrementLostChunk() { state.withLock { $0.lostChunks += 1 } }
   func snapshot() -> Snapshot { state.withLock { $0 } }
   func reset() { state.withLock { $0 = Snapshot() } }
   /// Read and clear under ONE lock acquisition. A separate `snapshot()` then
@@ -229,7 +236,13 @@ private final class HALRenderContext: @unchecked Sendable {
       guard
         let nativeBuffer = AVAudioPCMBuffer(
           pcmFormat: nativeFormat, frameCapacity: AVAudioFrameCount(count))
-      else { continue }
+      else {
+        // A popped chunk that cannot be wrapped is lost audio (#1788 r7). Every
+        // exit from this loop that is not `.routed` or `.benignZeroOutput` must
+        // count, or the gap enumeration silently reopens.
+        counters.incrementLostChunk()
+        continue
+      }
       nativeBuffer.frameLength = AVAudioFrameCount(count)
       if let channelData = nativeBuffer.floatChannelData {
         popScratch.withUnsafeBufferPointer { src in
@@ -248,24 +261,48 @@ private final class HALRenderContext: @unchecked Sendable {
       // session reset landing between the mark and the flag-set left the flag
       // true while liveness was reset false, falsely tripping the watchdog
       // (#1540, Codex r1 P2). Deleting the flag closes that race.
-      if forward(nativeBuffer: nativeBuffer) {
+      switch forward(nativeBuffer: nativeBuffer) {
+      case .routed:
         liveness.markReceived()
+      case .benignZeroOutput:
+        break  // priming: input is buffered and emitted next call, nothing lost
+      case .lost:
+        counters.incrementLostChunk()
       }
     }
   }
 
+  /// What became of one popped chunk. A three-way result rather than `Bool`
+  /// BECAUSE the enumeration kept reopening (#1788 r3, r5, r7 each found another
+  /// silent `return false`): a bool lets a new early exit mean "not routed" without
+  /// the author deciding whether audio was LOST, and the caller then cannot tell.
+  /// Every exit from `forward` must now pick a case, and only `.benignZeroOutput`
+  /// is loss-free.
+  private enum ForwardOutcome {
+    /// Converted samples reached `forwarder.route` — the only success.
+    case routed
+    /// Converter consumed the input and emitted no frames yet. Priming does this
+    /// once; the input is buffered internally and emitted on the following call,
+    /// so the output timeline stays continuous and nothing is lost.
+    case benignZeroOutput
+    /// The chunk is gone. Counts toward `inputTimelineGapCount`.
+    case lost
+  }
+
   /// Resample `nativeBuffer` (the device's real rate) to `targetFormat`
   /// (16kHz mono, what the pipeline expects) and forward the converted
-  /// samples — never the raw native-rate ones (cloud review P2). Returns
-  /// whether a converted buffer actually reached `forwarder.route`.
-  @discardableResult
-  private func forward(nativeBuffer: AVAudioPCMBuffer) -> Bool {
+  /// samples — never the raw native-rate ones (cloud review P2).
+  private func forward(nativeBuffer: AVAudioPCMBuffer) -> ForwardOutcome {
     let ratio = targetFormat.sampleRate / nativeFormat.sampleRate
     let outputFrameCount = AVAudioFrameCount(Double(nativeBuffer.frameLength) * ratio) + 1
     guard outputFrameCount > 0,
       let convertedBuffer = AVAudioPCMBuffer(
         pcmFormat: targetFormat, frameCapacity: outputFrameCount)
-    else { return false }
+    else {
+      // Output-buffer allocation failed (memory pressure) — the chunk dies here,
+      // and until #1788 r7 nothing recorded it.
+      return .lost
+    }
 
     var error: NSError?
     nonisolated(unsafe) var inputConsumed = false
@@ -286,11 +323,11 @@ private final class HALRenderContext: @unchecked Sendable {
     // zero-frame output; more than ~1 per session is a signal.
     if error != nil {
       counters.incrementConverterError()
-      return false
+      return .lost
     }
     guard convertedBuffer.frameLength > 0 else {
       counters.incrementZeroOutput()
-      return false
+      return .benignZeroOutput
     }
 
     let level = AudioBufferProcessor.calculateRMS(convertedBuffer)
@@ -298,12 +335,12 @@ private final class HALRenderContext: @unchecked Sendable {
       // Converted frames exist but are unreadable — the chunk is lost exactly
       // like a converter error, so it counts as one rather than vanishing.
       counters.incrementConverterError()
-      return false
+      return .lost
     }
     let frameCount = Int(convertedBuffer.frameLength)
     let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
     forwarder.route(samples: samples, level: level, buffer: convertedBuffer)
-    return true
+    return .routed
   }
 
 }
@@ -467,6 +504,7 @@ final class HALDeviceInputSource: AudioInputSource {
       renderFailureCount: snap.renderFailures,
       oversizedSliceCount: snap.oversizedSlices,
       preRollGapCount: preRollGapCount,
+      lostChunkCount: snap.lostChunks,
       rateDivergenceDetected: formatDivergenceObserved,
       nativeChannelCount: boundNativeChannelCount
     )
@@ -727,6 +765,7 @@ final class HALDeviceInputSource: AudioInputSource {
       renderContext.map {
         let s = $0.counters.snapshotAndReset()
         return s.ringDrops + s.converterErrors + s.renderFailures + s.oversizedSlices
+          + s.lostChunks
       } ?? 0
 
     let stream = AsyncStream<AVAudioPCMBuffer> { continuation in
@@ -837,7 +876,7 @@ final class HALDeviceInputSource: AudioInputSource {
           + "ringDrops=\(snap.ringDrops) convErrors=\(snap.converterErrors) "
           + "zeroConvOut=\(snap.zeroOutputs) renderFails=\(snap.renderFailures) "
           + "oversizedSlices=\(snap.oversizedSlices) "
-          + "preRollGaps=\(preRollGapCount) "
+          + "lostChunks=\(snap.lostChunks) preRollGaps=\(preRollGapCount) "
           + "rateDivergence=\(formatDivergenceObserved)"
       )
     }
