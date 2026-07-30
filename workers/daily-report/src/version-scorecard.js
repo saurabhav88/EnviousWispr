@@ -1093,10 +1093,17 @@ export function buildMeasurements({ additiveRows, nonAdditiveRows, windowEndExcl
 
 const DAY_MS = 86_400_000;
 
+// hourCycle "h23", NOT hour12: false. They are not synonyms: `hour12: false`
+// leaves the locale free to pick h23 or h24, and under h24 exact midnight
+// formats as "24:00:00" - so the midnight test below would never fire and a
+// release published exactly at Eastern midnight would silently lose a complete
+// window of history. It does not reproduce on this Node build, but the worker
+// runs on a different engine, and `easternOffsetMinutesAt` in index.js already
+// states h23 explicitly for the same job.
 const EASTERN_PARTS = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/New_York",
   year: "numeric", month: "2-digit", day: "2-digit",
-  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
 });
 
 /** An instant's EASTERN calendar day, as a UTC-midnight ms value, plus whether

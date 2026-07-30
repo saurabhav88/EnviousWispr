@@ -2303,8 +2303,17 @@ test("historical windows require full release availability", () => {
   // observations and two adjacent differences, and the basis must visibly
   // change from normalised to raw. A median comparison would not discriminate
   // here: medians are robust, and dropping one difference leaves it unchanged.
+  //
+  // 2.4.1 is deliberately given ONE window. Historical variation pools every
+  // same-contract catalog release, so an eight-window 2.4.1 series fed its own
+  // observations into the same pool: measured, that padding carried sufficiency
+  // on its own, and this test could have passed without 2.4.0's window count
+  // mattering at all. One window supplies the comparison value and contributes
+  // ZERO adjacent differences, so the basis flip below is attributable to 2.4.0
+  // and nothing else. Sufficiency needs three differences; 2.4.0 supplies
+  // exactly three with window 3 counted and two without it.
   const boundarySpec = {
-    "2.4.1": Array(8).fill(5),
+    "2.4.1": [5, undefined, undefined, undefined, undefined, undefined, undefined, undefined],
     // Values in windows 0..3 only: window 0 supplies the comparison, and all
     // four together are the minimum for normalisation.
     "2.4.0": [1, 3, 1, 3, undefined, undefined, undefined, undefined],
