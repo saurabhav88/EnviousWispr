@@ -145,6 +145,40 @@ struct DictationInvokedPipelineWiringTests {
     #expect(codeOnly.contains("takeID: telemetryState.takeID)"))
   }
 
+  /// #1846 chunk 8: the dead-mic retire bridge. `HeartPathTelemetryEmitterTests`
+  /// proves a supplied key reaches the payload; nothing else covers the expression
+  /// that supplies it in production. Replace `telemetryState.takeID` with `nil` and
+  /// that emitter test stays green while every real retire loses its take key.
+  ///
+  /// Also freezes WHICH key: live, not concluded. A retire fires mid-session, before
+  /// any terminal stamps `lastTakeID`.
+  @Test("dead mic retire supplies the in-flight take key from the kernel")
+  func deadMicRetireSuppliesInFlightTakeKey() throws {
+    let kernelSource = try Self.read(
+      "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift")
+    let construction = try Self.slice(
+      kernelSource,
+      from: "DeadMicRetireAttemptContext(",
+      to: "// Arm the recovery watch ONLY when teardown actually ran"
+    )
+    #expect(
+      construction.contains("takeID: telemetryState.takeID))"),
+      "the kernel must stamp the in-flight take key onto every dead-mic retire context"
+    )
+
+    // Code only — the comment above the argument names the concluded key to explain
+    // why it is not used, and a matcher that cannot tell an action from prose about
+    // it is the imprecise thing (`false-positives-not-gates-train-evasion`).
+    let codeOnly =
+      construction
+      .split(separator: "\n", omittingEmptySubsequences: false)
+      .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+      .joined(separator: "\n")
+    #expect(codeOnly.contains("lastTakeID") == false)
+    // Prove the filter did not strip the line under test along with the comments.
+    #expect(codeOnly.contains("takeID: telemetryState.takeID))"))
+  }
+
   private static func read(_ relativePath: String) throws -> String {
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()

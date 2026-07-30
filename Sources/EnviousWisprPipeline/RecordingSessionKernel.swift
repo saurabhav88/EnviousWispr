@@ -1575,7 +1575,9 @@ final class RecordingSessionKernel {
           healthGuessRefused: healthGuessRefused,
           warmPolicy: audioCapture.warmEnginePolicy.rawValue,
           retireAction: retireResult.rawValue,
-          routeFallbackReason: takeRoute?.routeFallbackReason))
+          routeFallbackReason: takeRoute?.routeFallbackReason,
+          // #1846: live, not concluded — a retire fires mid-session.
+          takeID: telemetryState.takeID))
       // Arm the recovery watch ONLY when teardown actually ran — a fenced no-op
       // can never be credited a later recovery. A watch already pending means the
       // previous retire's later take also retired: emit that as recovered=false.

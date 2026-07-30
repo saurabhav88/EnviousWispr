@@ -266,7 +266,8 @@ final class HeartPathTelemetryEmitter {
       warmPolicy: ctx.warmPolicy,
       retireAction: ctx.retireAction,
       msSinceLastGood: msSinceLastGood,
-      routeFallbackReason: ctx.routeFallbackReason)
+      routeFallbackReason: ctx.routeFallbackReason,
+      takeID: ctx.takeID)
   }
 
   /// Heartpath 5b (#1520): a pending dead-mic watch resolved (a later take

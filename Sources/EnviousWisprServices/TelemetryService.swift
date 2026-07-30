@@ -584,7 +584,9 @@ public final class TelemetryService {
     warmPolicy: String,
     retireAction: String,
     msSinceLastGood: Int?,
-    routeFallbackReason: String?
+    routeFallbackReason: String?,
+    /// #1846: which dictation this retire happened during. Omit-when-nil.
+    takeID: String? = nil
   ) {
     let event = "audio.dead_mic_retire_attempted"
     var props: [String: Any] = [
@@ -597,6 +599,7 @@ public final class TelemetryService {
     if let selectedTransport { props["selected_transport"] = selectedTransport }
     if let msSinceLastGood { props["ms_since_last_good"] = msSinceLastGood }
     if let routeFallbackReason { props["route_fallback_reason"] = routeFallbackReason }
+    if let takeID { props["take_id"] = takeID }
     #if DEBUG
       var stringProps: [String: String] = [
         "transport": transport,
@@ -606,6 +609,10 @@ public final class TelemetryService {
       ]
       if let selectedTransport { stringProps["selected_transport"] = selectedTransport }
       if let routeFallbackReason { stringProps["route_fallback_reason"] = routeFallbackReason }
+      // #1846: read BACK OUT of the emitted payload so the test observes what
+      // PostHog receives. Not a blanket as-String projection: this event's Bool and
+      // Int values are deliberately split across typed buckets below.
+      if let takeID = props["take_id"] as? String { stringProps["take_id"] = takeID }
       var intProps: [String: Int] = [:]
       if let msSinceLastGood { intProps["ms_since_last_good"] = msSinceLastGood }
       testEventHook?(
