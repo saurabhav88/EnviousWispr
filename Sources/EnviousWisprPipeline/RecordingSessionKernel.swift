@@ -792,7 +792,12 @@ final class RecordingSessionKernel {
     currentSessionID = sid
     resetSessionState()
     sessionConfig = config
-    telemetryState.resetForNewSession(polishEnabled: config.llmProvider != .none)
+    // #1846: project the session id just minted above. No second identity is
+    // created; `transcriptID` keeps its own independent mint.
+    telemetryState.resetForNewSession(
+      takeID: sid.raw.uuidString,
+      polishEnabled: config.llmProvider != .none
+    )
     transition(to: .arming)
     spawn(sid) { [weak self] in
       await self?.runForwardPath(sid)

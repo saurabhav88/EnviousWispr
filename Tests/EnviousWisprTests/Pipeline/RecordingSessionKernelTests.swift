@@ -232,6 +232,10 @@ import Testing
         context: KernelSessionContext(),
         captureTelemetry: CaptureTelemetryState(),
         telemetryState: wrapper.telemetryState,
+        // #1846: injected inert so the terminal postamble cannot reach the real
+        // Sentry scope from a direct construction.
+        updateRecordingState: { _, _, _ in },
+        updateTakeID: { _ in },
         captureError: { error, _, _, _ in
           captureCount += 1
           capturedIdentity = error.sentrySemanticID
@@ -377,6 +381,37 @@ import Testing
       // the prior session's elapsed time forward.
       await startToLive(context, wrapper)
       #expect(kernel.recordingElapsedSeconds == 0)
+    }
+
+    // MARK: Invariant 6 — the telemetry take key IS the session id (#1846)
+
+    /// The take key must be the kernel's OWN `SessionID`, not a second identity
+    /// minted for telemetry. A separate mint would let an error and that same
+    /// dictation's usage events disagree about which take they belong to, which
+    /// is the whole defect #1846 exists to close.
+    @Test("the telemetry take key is the session id, and each session replaces it")
+    func takeIDProjectsTheSessionID() async {
+      let (context, wrapper) = makeWrapper()
+      let kernel = wrapper.testKernel
+
+      // `currentSessionID` is non-optional and already holds a never-used value
+      // before the first start, so the absence of a take is read from the
+      // telemetry state, not from the kernel's id.
+      #expect(wrapper.telemetryState.takeID == nil, "no take is in flight before the first start")
+
+      await startToLive(context, wrapper)
+      let first = kernel.currentSessionID
+      #expect(wrapper.telemetryState.takeID == first.raw.uuidString)
+
+      await apply(.cancel, to: wrapper)  // recording → cancelled (terminal)
+      await apply(.reset, to: wrapper)  // cancelled → idle
+
+      await startToLive(context, wrapper)
+      let second = kernel.currentSessionID
+      #expect(second != first, "the FSM must mint a fresh id, or this test proves nothing")
+      #expect(
+        wrapper.telemetryState.takeID == second.raw.uuidString,
+        "the second session must carry its OWN id, not the first session's")
     }
 
     // Note: the r3 checked-comparison guard (`guard now >= start else { return

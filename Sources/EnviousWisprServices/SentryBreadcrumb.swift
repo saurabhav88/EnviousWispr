@@ -76,6 +76,26 @@ public enum SentryBreadcrumb {
     }
   }
 
+  /// Set or REMOVE the per-dictation take key on the global scope (#1846).
+  ///
+  /// One optional-taking function rather than a set/clear pair, so this call path
+  /// represents "no take in flight" with `nil` instead of a magic string. `nil` calls
+  /// `scope.removeTag(key:)` — genuine removal, NOT a sentinel value. That
+  /// distinction is load-bearing: `recording.active` next door always writes
+  /// `"true"`/`"false"` and never removes, so for THAT tag absence means "never
+  /// set in this process" while a value means capture state. Reusing the same
+  /// shape here would make "this event belongs to no take" indistinguishable
+  /// from "this release predates the key".
+  public static func updateTakeID(_ takeID: String?) {
+    SentrySDK.configureScope { scope in
+      if let takeID {
+        scope.setTag(value: takeID, key: "dictation.take_id")
+      } else {
+        scope.removeTag(key: "dictation.take_id")
+      }
+    }
+  }
+
   /// Update recording state on global scope. Present on fatal crashes.
   /// - Parameters:
   ///   - active: Whether recording is in progress.
