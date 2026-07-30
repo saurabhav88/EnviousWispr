@@ -376,6 +376,14 @@ final class HALDeviceInputSource: AudioInputSource {
   private var forwarder: PreRollForwarder?
 
   #if DEBUG
+    /// #1788: forward the forwarder's arrival-latched wake facts. Nil-safe — a
+    /// source with no forwarder yet has measured nothing.
+    var wakeDiagnostic: (firstNonZeroRoutedIndex: Int?, routedCountAtActivation: Int?) {
+      forwarder?.wakeDiagnosticSnapshot() ?? (nil, nil)
+    }
+  #endif
+
+  #if DEBUG
     var debugZeroFillController: DebugZeroFillController?
   #endif
   /// Dedicated thread draining `HALRenderContext.ring` off the HAL IO thread.

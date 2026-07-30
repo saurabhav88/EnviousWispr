@@ -66,6 +66,13 @@ protocol AudioInputSource: AnyObject {
     /// compiler forces every conformer to participate — a newly-added source cannot
     /// silently bypass the injector. Compiled out of release.
     var debugZeroFillController: DebugZeroFillController? { get set }
+
+    /// #1788 wake diagnostic: the stream-absolute index of the first non-zero
+    /// sample, latched at ARRIVAL by the source's `PreRollForwarder`, plus the
+    /// pre-roll/live rebase point. A REQUIREMENT rather than a defaulted member,
+    /// same reasoning as the injector above: a newly-added source must not
+    /// silently report a wake it never measured. Compiled out of release.
+    var wakeDiagnostic: (firstNonZeroRoutedIndex: Int?, routedCountAtActivation: Int?) { get }
   #endif
 
   /// #1434: stop-time capture-health facts (native rate, drop/error counters,

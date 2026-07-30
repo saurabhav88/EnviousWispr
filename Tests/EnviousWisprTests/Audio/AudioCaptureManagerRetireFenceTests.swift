@@ -43,6 +43,12 @@ import Testing
       private(set) var rebuildCallCount = 0
       #if DEBUG
         var debugZeroFillController: DebugZeroFillController?
+        /// #1788: this stub has no forwarder, so it measured no wake. Nil is the
+        /// honest answer and the manager renders it as `unavailable` rather than
+        /// inventing a 0ms wake.
+        var wakeDiagnostic: (firstNonZeroRoutedIndex: Int?, routedCountAtActivation: Int?) {
+          (nil, nil)
+        }
       #endif
 
       func prepare() async throws {}
