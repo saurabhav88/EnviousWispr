@@ -19,6 +19,13 @@ import {
   decideComparability,
   COMPARABILITY_REASONS,
   ReleaseResolutionError,
+  scorecardSql,
+  scorecardSqlTemplate,
+  assertCompleteScorecardRows,
+  buildMeasurements,
+  calculationId,
+  METRIC_CALCULATIONS,
+  WINDOW_COUNT,
 } from "../src/version-scorecard.js";
 // #1838 chunk 1: the PostHog transport/concurrency/production-filter
 // infrastructure now has ONE owner. Tests import it from there directly - a
@@ -1181,19 +1188,39 @@ test("malformed tags, versions and usage rows are refused, never silently absorb
   // for. Permitted occurrences are inside parseGitHubTimestamp only.
   const fs = await import("node:fs");
   const scSrc = fs.readFileSync(new URL("../src/version-scorecard.js", import.meta.url), "utf8");
-  const dateUses = scSrc
-    .split("\n")
-    .map((line, i) => [i + 1, line])
-    .filter(([, line]) => line.includes("new Date(") && !line.trimStart().startsWith("*"));
+  // Every `new Date(` must sit inside a declared STRICT parser. Counting
+  // occurrences was the wrong shape (chunk 4 legitimately added a second strict
+  // parser), and a backward scan for the nearest `function` was ALSO wrong: it
+  // does not track closing braces, so a loose call placed AFTER a parser's body
+  // gets attributed to that already-closed parser. This extracts each parser's
+  // bounded body, then requires zero operational uses anywhere else.
+  const STRICT_PARSERS = ["parseGitHubTimestamp", "parseEasternDay"];
+  const operational = (text) =>
+    text.split("\n").filter((l) => l.includes("new Date(") && !l.trimStart().startsWith("*")).length;
+
+  let remaining = scSrc;
+  for (const parser of STRICT_PARSERS) {
+    const start = scSrc.indexOf(`function ${parser}(`);
+    assert.ok(start !== -1, `${parser} must exist`);
+    // Walk braces from the body's opening brace to its matching close.
+    let depth = 0;
+    let end = -1;
+    for (let i = scSrc.indexOf("{", start); i < scSrc.length; i += 1) {
+      if (scSrc[i] === "{") depth += 1;
+      else if (scSrc[i] === "}") {
+        depth -= 1;
+        if (depth === 0) { end = i + 1; break; }
+      }
+    }
+    assert.ok(end !== -1, `could not bound ${parser}`);
+    const body = scSrc.slice(start, end);
+    assert.equal(operational(body), 1, `${parser} must contain exactly one new Date(`);
+    remaining = remaining.replace(body, "");
+  }
   assert.equal(
-    dateUses.length,
-    1,
-    `expected exactly one new Date( - inside parseGitHubTimestamp - found: ${JSON.stringify(dateUses)}`
-  );
-  assert.ok(
-    scSrc.slice(0, scSrc.indexOf("new Date(", scSrc.indexOf("function parseGitHubTimestamp")))
-      .includes("function parseGitHubTimestamp"),
-    "the sole new Date( must live inside parseGitHubTimestamp"
+    operational(remaining),
+    0,
+    "new Date( outside a strict parser body - every date must go through one"
   );
 
   // selectReleases is exported and pure, so it revalidates its own release
@@ -1626,4 +1653,378 @@ test("a release's contract assignment never changes when OTHER releases are adde
   // And the derived verdict follows only from that set's own contracts.
   assert.equal(decideComparability("transcription_failed", ["2.4.1", "2.4.0"]).comparable, true);
   assert.equal(decideComparability("transcription_failed", ["2.4.1", "2.3.2"]).comparable, false);
+});
+
+// ---- #1838 chunk 4: scorecard measurement engine ---------------------------
+// Two queries, deliberately. Additive counts at day grain are freely summable;
+// people and percentiles are computed by PostHog at WINDOW grain because they
+// cannot be derived from daily rows at all.
+
+const ANCHOR = "2026-07-29"; // resolved window end, exclusive
+const SQL_ARGS = { prod: "env='production'", historyStart: "'2026-06-03 00:00:00'",
+                   windowEndExclusive: "'2026-07-29 00:00:00'" };
+
+/** Day N days before the anchor (0 = the day immediately before it). */
+function dayBefore(n) {
+  const d = new Date(Date.UTC(2026, 6, 29) - (n + 1) * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+const addRow = (day, version, over, extra = {}) => ({
+  day, app_version: version, total_group_rows: over,
+  dictations: 0, paste_attempts: 0, paste_fallbacks: 0, afm_attempts: 0,
+  afm_discards: 0, afm_classifier_discards: 0, terminal_failures: 0, ...extra,
+});
+const naRow = (windowIndex, version, over, extra = {}) => ({
+  window_index: windowIndex, app_version: version, total_group_rows: over,
+  people: 0, dictations: 0, speed_samples: 0, speed_p50: null, speed_p95: null, ...extra,
+});
+
+test("scorecardSql: renders both templates from the RESOLVED anchor, never the clock", () => {
+  const additive = scorecardSql("additive", SQL_ARGS);
+  const nonAdditive = scorecardSql("nonAdditive", SQL_ARGS);
+  for (const sql of [additive, nonAdditive]) {
+    assert.ok(!sql.includes("now()"), "no query may anchor to now() - it breaks backfilled runs");
+    assert.ok(!sql.includes("${"), "every placeholder must be rendered");
+    assert.ok(sql.includes("America/New_York"), "windows are Eastern calendar days");
+    assert.ok(sql.includes("count() OVER ()"), "completeness needs the true group count");
+    assert.ok(sql.includes("LIMIT 5000"));
+  }
+  assert.ok(nonAdditive.includes("intDiv(dateDiff("), "window index derived in-query");
+  // String#replaceAll interprets `$&`, "$`" and `$'` inside a STRING
+  // replacement, so a predicate containing them would render the placeholder
+  // back into the SQL instead of the predicate - a silently wrong query against
+  // a silently wrong population.
+  for (const token of ["$&", "$`", "$'", "$$"]) {
+    const predicate = `env='production' AND note='${token}'`;
+    const rendered = scorecardSql("additive", { ...SQL_ARGS, prod: predicate });
+    assert.ok(rendered.includes(predicate),
+      `predicate containing ${token} must render literally, got: ${rendered.slice(0, 200)}`);
+    assert.ok(!rendered.includes("${prod}"), `${token} must not resurrect the placeholder`);
+  }
+  assert.throws(() => scorecardSql("nope", SQL_ARGS), ReleaseResolutionError);
+  for (const bad of [{ ...SQL_ARGS, prod: "" }, { ...SQL_ARGS, historyStart: 42 },
+                     { ...SQL_ARGS, windowEndExclusive: null }]) {
+    assert.throws(() => scorecardSql("additive", bad), ReleaseResolutionError);
+  }
+});
+
+test("query 1 CANNOT expose people or percentiles - the non-additive law in SQL shape", () => {
+  const additive = scorecardSqlTemplate("additive");
+  for (const forbidden of ["uniqExact", "quantile", "people", "speed_p50", "speed_p95",
+                           "speed_samples"]) {
+    assert.ok(!additive.includes(forbidden),
+      `the additive query must not compute ${forbidden} - it is not summable across days`);
+  }
+  const nonAdditive = scorecardSqlTemplate("nonAdditive");
+  for (const required of ["uniqExact(distinct_id)", "quantileIf(0.50)", "quantileIf(0.95)"]) {
+    assert.ok(nonAdditive.includes(required), `the window query must compute ${required}`);
+  }
+  // And the additive query must not silently acquire them later either.
+  assert.ok(!additive.includes("distinct_id"), "no distinct-count of any kind at day grain");
+});
+
+test("assertCompleteScorecardRows: rejects truncation, disagreement and empty results", () => {
+  assertCompleteScorecardRows([addRow(dayBefore(0), "2.4.1", 1)], "additive");
+  // PostHog silently caps results; a truncated response renders as a healthy
+  // report with missing history, so it must never be absorbed.
+  assert.throws(() => assertCompleteScorecardRows([addRow(dayBefore(0), "2.4.1", 2)], "additive"),
+    /truncated: received 1 of 2/);
+  assert.throws(() => assertCompleteScorecardRows(
+    [addRow(dayBefore(0), "2.4.1", 2), addRow(dayBefore(1), "2.4.1", 3)], "additive"),
+    /disagree on total_group_rows/);
+  assert.throws(() => assertCompleteScorecardRows([], "additive"), /returned no rows/);
+  for (const bad of [null, undefined, "rows", new Array(1), 42,
+                     [{ ...addRow(dayBefore(0), "2.4.1", 1), total_group_rows: 0 }],
+                     [{ ...addRow(dayBefore(0), "2.4.1", 1), total_group_rows: 1.5 }],
+                     [{ ...addRow(dayBefore(0), "2.4.1", 1), total_group_rows: "1" }]]) {
+    assert.throws(() => assertCompleteScorecardRows(bad, "additive"), ReleaseResolutionError,
+      `expected refusal for ${JSON.stringify(bad)}`);
+  }
+});
+
+test("both responses are validated INDEPENDENTLY for truncation", () => {
+  const good = { additiveRows: [addRow(dayBefore(0), "2.4.1", 1, { dictations: 5 })],
+                 nonAdditiveRows: [naRow(0, "2.4.1", 1, { people: 3, dictations: 5 })],
+                 windowEndExclusive: ANCHOR };
+  assert.ok(buildMeasurements(good));
+  assert.throws(() => buildMeasurements({ ...good,
+    additiveRows: [addRow(dayBefore(0), "2.4.1", 9, { dictations: 5 })] }), /additive truncated/);
+  assert.throws(() => buildMeasurements({ ...good,
+    nonAdditiveRows: [naRow(0, "2.4.1", 9, { people: 3, dictations: 5 })] }),
+    /non-additive truncated/);
+});
+
+test("windows are eight consecutive, non-overlapping, exactly-7-Eastern-day buckets", () => {
+  const rows = [];
+  for (let d = 0; d < 56; d += 1) rows.push(addRow(dayBefore(d), "2.4.1", 56, { dictations: 1 }));
+  // Every window carrying additive dictations needs its window-grain row: a
+  // version with real usage and no window row would otherwise render as
+  // unmeasured while it was in fact being used.
+  const naRows = [];
+  for (let w = 0; w < WINDOW_COUNT; w += 1) {
+    naRows.push(naRow(w, "2.4.1", WINDOW_COUNT, { dictations: 7, people: 1 }));
+  }
+  const out = buildMeasurements({ additiveRows: rows, nonAdditiveRows: naRows,
+    windowEndExclusive: ANCHOR });
+  assert.equal(out.windows.size, WINDOW_COUNT);
+  for (let w = 0; w < WINDOW_COUNT; w += 1) {
+    assert.equal(out.windows.get(w).versions.get("2.4.1").dictations.value, 7,
+      `window ${w} must hold exactly 7 days`);
+  }
+});
+
+test("BACKFILL anchor: window 0 cannot absorb dates after its target, nor become 13 days", () => {
+  // The defect this proves: anchoring to now() made a backfilled window 0 span
+  // 2026-07-08..07-20 - thirteen days straddling the target, including events
+  // from AFTER it - because days past the anchor give a negative dateDiff that
+  // intDiv folds into window zero.
+  const backfill = "2026-07-16";
+  const rows = [];
+  for (let d = 0; d < 7; d += 1) {
+    const day = new Date(Date.UTC(2026, 6, 16) - (d + 1) * 86400000).toISOString().slice(0, 10);
+    rows.push(addRow(day, "2.4.1", 8, { dictations: 1 }));
+  }
+  rows.push(addRow("2026-07-16", "2.4.1", 8, { dictations: 1 })); // AT the anchor
+  assert.throws(
+    () => buildMeasurements({ additiveRows: rows, nonAdditiveRows:
+      [naRow(0, "2.4.1", 1, { dictations: 7, people: 1 })], windowEndExclusive: backfill }),
+    /falls at or after the window anchor/
+  );
+  const ok = buildMeasurements({ additiveRows: rows.slice(0, 7).map((r) =>
+    ({ ...r, total_group_rows: 7 })), nonAdditiveRows:
+    [naRow(0, "2.4.1", 1, { dictations: 7, people: 1 })], windowEndExclusive: backfill });
+  assert.equal(ok.windows.get(0).versions.get("2.4.1").dictations.value, 7);
+  assert.equal(ok.windows.get(1).versions.size, 0, "nothing may leak into window 1");
+});
+
+test("NON-ADDITIVE LAW: window people/p95 come from query 2, never a daily rollup", () => {
+  // Synthetic event-level truth: ONE person dictating on 3 days, with wildly
+  // different daily latency distributions.
+  const dailyPeople = [1, 1, 1];       // sums to 3
+  const trueWindowPeople = 1;          // the SAME person all three days
+  const dailyP95 = [1.0, 2.0, 9.0];    // mean 4.0
+  const trueWindowP95 = 6.5;           // the real 95th percentile of the pooled sample
+  assert.ok(trueWindowPeople < dailyPeople.reduce((a, b) => a + b, 0),
+    "true distinct people MUST be strictly less than the sum of daily distincts");
+  assert.notEqual(trueWindowP95, dailyP95.reduce((a, b) => a + b, 0) / dailyP95.length,
+    "true window p95 MUST differ from the mean of daily p95s");
+
+  const additiveRows = [0, 1, 2].map((d) => addRow(dayBefore(d), "2.4.1", 3, { dictations: 10 }));
+  const out = buildMeasurements({
+    additiveRows,
+    nonAdditiveRows: [naRow(0, "2.4.1", 1, { people: trueWindowPeople, dictations: 30,
+      speed_samples: 30, speed_p50: 2.0, speed_p95: trueWindowP95 })],
+    windowEndExclusive: ANCHOR,
+  });
+  const m = out.windows.get(0).versions.get("2.4.1");
+  assert.equal(m.people.value, trueWindowPeople, "people must come from the window query");
+  assert.equal(m.speed_p95.value, trueWindowP95, "p95 must come from the window query");
+  assert.equal(m.dictations.value, 30, "dictations stay additive");
+});
+
+test("the two queries must AGREE on dictations, in every window not just window 0", () => {
+  const additiveRows = [addRow(dayBefore(0), "2.4.1", 2, { dictations: 5 }),
+                        addRow(dayBefore(8), "2.4.1", 2, { dictations: 4 })];
+  const agree = buildMeasurements({ additiveRows, nonAdditiveRows: [
+    naRow(0, "2.4.1", 2, { dictations: 5, people: 2 }),
+    naRow(1, "2.4.1", 2, { dictations: 4, people: 2 })], windowEndExclusive: ANCHOR });
+  assert.ok(agree);
+  // A disagreement in a LATER window must still fail: checking only window 0
+  // would let a mismatched population through into the mover history.
+  assert.throws(() => buildMeasurements({ additiveRows, nonAdditiveRows: [
+    naRow(0, "2.4.1", 2, { dictations: 5, people: 2 }),
+    naRow(1, "2.4.1", 2, { dictations: 99, people: 2 })], windowEndExclusive: ANCHOR }),
+    /queries disagree for window 1/);
+
+  // The agreement must be BIDIRECTIONAL. A version with real additive
+  // dictations and NO window-grain row would otherwise render with missing
+  // people and speed - silently reported as unmeasured while it was being used.
+  assert.throws(() => buildMeasurements({ additiveRows, nonAdditiveRows:
+    [naRow(0, "2.4.1", 1, { dictations: 5, people: 2 })], windowEndExclusive: ANCHOR }),
+    /has 4 additive dictations but no non-additive row/);
+
+  // Query 2 carries HAVING dictations > 0, so a zero row did not come from it.
+  assert.throws(() => buildMeasurements({
+    additiveRows: [addRow(dayBefore(0), "2.4.1", 1, { dictations: 0 })],
+    nonAdditiveRows: [naRow(0, "2.4.1", 1, { dictations: 0, people: 0 })],
+    windowEndExclusive: ANCHOR }), /dictations must exceed 0/);
+});
+
+test("zero denominators and zero samples are MISSING, never a fabricated zero", () => {
+  // Query 2 carries `HAVING dictations > 0`, so a version with no successful
+  // dictations returns NO window row at all - which is exactly why people and
+  // speed must read as missing rather than zero.
+  const out = buildMeasurements({
+    additiveRows: [addRow(dayBefore(0), "2.4.1", 2, { dictations: 0 }),
+                   addRow(dayBefore(0), "2.4.0", 2, { dictations: 3 })],
+    nonAdditiveRows: [naRow(0, "2.4.0", 1, { dictations: 3, people: 2 })],
+    windowEndExclusive: ANCHOR,
+  });
+  const m = out.windows.get(0).versions.get("2.4.1");
+  assert.equal(m.people.value, null, "no window row means people is missing, not zero");
+  for (const key of ["autopaste_direct", "polish_kept", "transcription_failed",
+                     "speed_p50", "speed_p95"]) {
+    assert.equal(m[key].value, null, `${key} must be missing, not 0`);
+    assert.ok(typeof m[key].missing === "string" && m[key].missing.length > 0,
+      `${key} must say WHY it is missing`);
+    assert.ok(!Number.isNaN(m[key].value), `${key} must never be NaN`);
+  }
+});
+
+test("metric values are computed from the approved definitions", () => {
+  const out = buildMeasurements({
+    additiveRows: [addRow(dayBefore(0), "2.4.1", 1, {
+      dictations: 100, paste_attempts: 100, paste_fallbacks: 2,
+      afm_attempts: 50, afm_discards: 8, afm_classifier_discards: 7, terminal_failures: 25 })],
+    nonAdditiveRows: [naRow(0, "2.4.1", 1, { dictations: 100, people: 40,
+      speed_samples: 100, speed_p50: 0.8, speed_p95: 5.9 })],
+    windowEndExclusive: ANCHOR,
+  });
+  const m = out.windows.get(0).versions.get("2.4.1");
+  assert.equal(m.autopaste_direct.value, 0.98);
+  assert.equal(m.polish_kept.value, 0.84);
+  assert.equal(m.polish_kept.classifierDiscards, 7);
+  assert.equal(m.polish_kept.otherDiscards, 1);
+  assert.equal(m.transcription_failed.value, 25 / 125);
+  assert.equal(m.people.value, 40);
+  assert.equal(m.speed_p50.value, 0.8);
+  assert.equal(m.dictations.shareOfWindow, 1);
+});
+
+test("impossible cross-field relationships are refused", () => {
+  const base = { nonAdditiveRows: [naRow(0, "2.4.1", 1, { dictations: 5, people: 3 })],
+                 windowEndExclusive: ANCHOR };
+  const cases = [
+    [{ dictations: 5, paste_attempts: 1, paste_fallbacks: 2 }, /paste_fallbacks exceeds/],
+    [{ dictations: 5, afm_attempts: 1, afm_discards: 2 }, /afm_discards exceeds/],
+    [{ dictations: 5, afm_attempts: 5, afm_discards: 1, afm_classifier_discards: 2 },
+      /afm_classifier_discards exceeds/],
+  ];
+  for (const [extra, pattern] of cases) {
+    assert.throws(() => buildMeasurements({ ...base,
+      additiveRows: [addRow(dayBefore(0), "2.4.1", 1, extra)] }), pattern);
+  }
+  assert.throws(() => buildMeasurements({ additiveRows:
+    [addRow(dayBefore(0), "2.4.1", 1, { dictations: 5 })],
+    nonAdditiveRows: [naRow(0, "2.4.1", 1, { dictations: 5, people: 9 })],
+    windowEndExclusive: ANCHOR }), /people exceeds dictations/);
+  assert.throws(() => buildMeasurements({ additiveRows:
+    [addRow(dayBefore(0), "2.4.1", 1, { dictations: 5 })],
+    nonAdditiveRows: [naRow(0, "2.4.1", 1, { dictations: 5, people: 1, speed_samples: 9 })],
+    windowEndExclusive: ANCHOR }), /speed_samples exceeds dictations/);
+});
+
+test("the PostHog response boundary refuses every silent-acceptance mechanism", () => {
+  const ok = { additiveRows: [addRow(dayBefore(0), "2.4.1", 1, { dictations: 1 })],
+               nonAdditiveRows: [naRow(0, "2.4.1", 1, { dictations: 1, people: 1 })],
+               windowEndExclusive: ANCHOR };
+  const bad = [
+    [{ ...ok, windowEndExclusive: "2026-02-30" }, "impossible calendar date"],
+    [{ ...ok, windowEndExclusive: "July 29, 2026" }, "non-canonical date"],
+    [{ ...ok, windowEndExclusive: 20260729 }, "non-string anchor"],
+    [{ ...ok, additiveRows: [addRow("2026-02-30", "2.4.1", 1)] }, "impossible day"],
+    [{ ...ok, additiveRows: [addRow(dayBefore(0), "v2.4.1x", 1)] }, "malformed version"],
+    [{ ...ok, additiveRows: [addRow(dayBefore(0), "2.4.1", 1, { dictations: "5" })] }, "coerced count"],
+    [{ ...ok, additiveRows: [addRow(dayBefore(0), "2.4.1", 1, { dictations: -1 })] }, "negative"],
+    [{ ...ok, additiveRows: [addRow(dayBefore(0), "2.4.1", 1, { dictations: 1.5 })] }, "fraction"],
+    [{ ...ok, additiveRows: [addRow(dayBefore(0), "2.4.1", 1, { dictations: Infinity })] }, "infinity"],
+    [{ ...ok, additiveRows: [addRow(dayBefore(0), "2.4.1", 2), addRow(dayBefore(0), "2.4.1", 2)] },
+      "duplicate day/version key"],
+    [{ ...ok, nonAdditiveRows: [naRow(WINDOW_COUNT, "2.4.1", 1, { dictations: 1 })] },
+      "window index out of range"],
+    [{ ...ok, nonAdditiveRows: [naRow(-1, "2.4.1", 1, { dictations: 1 })] }, "negative window"],
+    [{ ...ok, nonAdditiveRows: [naRow(0, "2.4.1", 1, { dictations: 1, people: 1,
+      speed_samples: 1, speed_p50: 2, speed_p95: 1 })] }, "p95 below p50"],
+    [{ ...ok, additiveRows: new Array(1) }, "sparse"],
+    [{ ...ok, additiveRows: [null] }, "null row"],
+    // Inherited fields: a row whose PROTOTYPE supplies every column reads as
+    // complete while owning nothing, and those values then flow into real
+    // measurements.
+    [{ ...ok, additiveRows: [Object.create(addRow(dayBefore(0), "2.4.1", 1, { dictations: 1 }))] },
+      "prototype-backed additive row"],
+    [{ ...ok, nonAdditiveRows: [Object.create(naRow(0, "2.4.1", 1, { dictations: 1, people: 1 }))] },
+      "prototype-backed non-additive row"],
+    // Aggregate arithmetic beyond the safe-integer range silently loses
+    // precision and then divides into shares and rates.
+    [{ additiveRows: [
+        addRow(dayBefore(0), "2.4.1", 2, { dictations: Number.MAX_SAFE_INTEGER - 1 }),
+        addRow(dayBefore(0), "2.4.0", 2, { dictations: Number.MAX_SAFE_INTEGER - 1 })],
+       nonAdditiveRows: [
+        naRow(0, "2.4.1", 2, { dictations: Number.MAX_SAFE_INTEGER - 1, people: 1 }),
+        naRow(0, "2.4.0", 2, { dictations: Number.MAX_SAFE_INTEGER - 1, people: 1 })],
+       windowEndExclusive: ANCHOR }, "cross-version dictation overflow"],
+    [{ additiveRows: [addRow(dayBefore(0), "2.4.1", 1, {
+        dictations: Number.MAX_SAFE_INTEGER - 1, terminal_failures: Number.MAX_SAFE_INTEGER - 1 })],
+       nonAdditiveRows: [naRow(0, "2.4.1", 1, {
+        dictations: Number.MAX_SAFE_INTEGER - 1, people: 1 })],
+       windowEndExclusive: ANCHOR }, "transcription denominator overflow"],
+  ];
+  for (const [input, label] of bad) {
+    assert.throws(() => buildMeasurements(input), ReleaseResolutionError, `must refuse: ${label}`);
+  }
+});
+
+test("calculationId is stable under formatting and independent of rendered values", async () => {
+  // FROZEN BASELINE. Self-derived once, then independently reproduced by the
+  // reviewer using Node's separate createHash implementation - so this is a
+  // second implementation agreeing, not an oracle agreeing with itself. Its job
+  // is to make later SEMANTIC drift visible: if a query's meaning changes and
+  // nobody bumps a definition, one of these stops matching.
+  const FROZEN = {
+    people: "sha256:c69cd94d49fb654f28078b98879ce94f3ab5ba61f88e2930904c00ca3cb3b403",
+    dictations: "sha256:d20ab223c879bf71a5f0b187cc62772522be0fb674eb45d7000c5d3122821b53",
+    speed_p50: "sha256:8a4da84fcbdda2531a9027cbb7eb9534072dc2cccc06d64e824f27948f9f94e2",
+    speed_p95: "sha256:757c4e9dee47c5f111d5ab9607a6c9e21ccff347b3105deb47ddb5c8d245d2a1",
+    autopaste_direct: "sha256:6c11fc48f2ac8ee1fb5384b953b4fd4dc03d1ab30575fa1571945818787de912",
+    polish_kept: "sha256:1fb2bd4239d81cdfe52f2f5320447d33d6bbdcc87aa91b6804dc1d15503ab4a3",
+    transcription_failed: "sha256:512754ab0f3d3925e37e6ac22ac90b0c89f8d2a45d1c5cf10ceb52f7a7418c3b",
+  };
+  for (const [metric, expected] of Object.entries(FROZEN)) {
+    assert.equal(await calculationId(metric), expected, `${metric} calculation drifted`);
+  }
+  assert.equal(Object.keys(FROZEN).length, Object.keys(METRIC_CALCULATIONS).length,
+    "every declared metric must carry a frozen calculation id");
+
+  const id = await calculationId("polish_kept");
+  assert.match(id, /^sha256:[0-9a-f]{64}$/);
+  // Two different renderings of the same template must not change the identity:
+  // the hash covers the TEMPLATE, not dates, dev ids or the production predicate.
+  const again = await calculationId("polish_kept");
+  assert.equal(id, again);
+  // Metrics reading different queries must differ; metrics sharing a query and
+  // differing in declaration must also differ.
+  assert.notEqual(await calculationId("polish_kept"), await calculationId("speed_p95"));
+  assert.notEqual(await calculationId("speed_p50"), await calculationId("speed_p95"));
+  await assert.rejects(() => calculationId("no_such_metric"), ReleaseResolutionError);
+  for (const inherited of ["constructor", "toString", "__proto__"]) {
+    await assert.rejects(() => calculationId(inherited), ReleaseResolutionError);
+  }
+});
+
+test("METRIC_CALCULATIONS is a separate authority from METRIC_CONTRACTS", () => {
+  const metrics = ["people", "dictations", "speed_p50", "speed_p95", "autopaste_direct",
+                   "polish_kept", "transcription_failed"];
+  for (const key of metrics) {
+    const c = METRIC_CALCULATIONS[key];
+    assert.ok(c, `${key} must declare a calculation`);
+    for (const field of ["population", "numerator", "denominator", "aggregation", "unit", "source"]) {
+      assert.ok(typeof c[field] === "string" && c[field].length > 0,
+        `${key}.${field} must be declared`);
+    }
+    assert.ok(["additive", "nonAdditive"].includes(c.source));
+    // The two authorities answer different questions and must not be merged:
+    // one describes what an APP RELEASE emitted, the other how the WORKER
+    // computes today. Blurring them would let a worker refactor rewrite release
+    // history.
+    assert.ok(!("from" in c) && !("id" in c),
+      `${key} calculation must not carry telemetry-contract fields`);
+  }
+  // people and percentiles must be sourced from the window query, by declaration.
+  assert.equal(METRIC_CALCULATIONS.people.source, "nonAdditive");
+  assert.equal(METRIC_CALCULATIONS.speed_p95.source, "nonAdditive");
+  assert.equal(METRIC_CALCULATIONS.polish_kept.source, "additive");
+  // Context rows must not be mover-eligible: adoption shifts must never compete
+  // with product-performance changes.
+  assert.equal(METRIC_CALCULATIONS.people.moverEligible, false);
+  assert.equal(METRIC_CALCULATIONS.dictations.moverEligible, false);
 });
