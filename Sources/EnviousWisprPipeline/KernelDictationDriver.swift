@@ -936,6 +936,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
   /// kernel; never persisted. Reason strings only, never user content.
   public var lastStopReason: String? { kernel.lastStopReason }
+  /// #1846: the id of the take that most recently CONCLUDED, for `dictation.completed`
+  /// and its three sibling completion events. LIVE pass-through of a value the kernel
+  /// FROZE at the accepted terminal — not a live read of the in-flight take key, which
+  /// would name the next take once the user started talking again. Rationale and the
+  /// absent-vs-wrong argument live on `RecordingSessionKernel.lastTakeID`.
+  public var lastTakeID: String? { kernel.lastTakeID }
   public var lastRecordingDurationSeconds: Double? { kernel.lastRecordingDurationSeconds }
   /// #1408: non-nil when the most recent recording's capture was interrupted
   /// mid-flight (device died, cap reached). Drives the disconnect disclosure pill

@@ -46,6 +46,45 @@ struct DictationInvokedPipelineWiringTests {
     #expect(body.contains("context.targetApp?.localizedName"))
   }
 
+  /// #1846: the BRIDGE between two things that are each tested and neither of which
+  /// covers the line joining them. `RecordingSessionKernelTests` proves the kernel
+  /// freezes `lastTakeID`; `DictationCompletedRouteFieldsTests` proves a supplied
+  /// `takeID` reaches all four completion events. Delete `takeID: driver.lastTakeID`
+  /// and BOTH stay green while production emits no completion take keys at all —
+  /// `a-guard-nothing-arms-is-not-a-guard`.
+  ///
+  /// Asserted by a narrow source scan because this is a pure forwarding bridge
+  /// between two independently behaviour-tested endpoints. Unit tests can construct
+  /// a driver, but driving full finalization here would duplicate both endpoint tests
+  /// without isolating this one removable expression. The scan proves only that the
+  /// accessor and forwarding wiring remain present.
+  @Test("completion reporting uses the kernel's frozen concluded take key")
+  func completionReportingUsesFrozenConcludedTakeKey() throws {
+    let driverSource = try Self.read(
+      "Sources/EnviousWisprPipeline/KernelDictationDriver.swift")
+    let accessor = try Self.slice(
+      driverSource,
+      from: "public var lastStopReason",
+      to: "public var lastRecordingDurationSeconds"
+    )
+    #expect(
+      accessor.contains("public var lastTakeID: String? { kernel.lastTakeID }"),
+      "the driver must expose the kernel's frozen concluded key, never the live in-flight key"
+    )
+
+    let reportingSource = try Self.read(
+      "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationCompletedReporting.swift")
+    let reportCall = try Self.slice(
+      reportingSource,
+      from: "TelemetryService.shared.reportDictationCompleted(",
+      to: "\n  }\n\n  private static func positive"
+    )
+    #expect(
+      reportCall.contains("takeID: driver.lastTakeID)"),
+      "the App completion bridge must forward the concluded key into the four-event fan-out"
+    )
+  }
+
   // PR-5 Rung 5 (#827) rewrite: WhisperKit now flows through the same kernel
   // sink as Parakeet — `parakeetPipelineEmitsAfterRecordingStarts` above
   // covers the shared dictation.invoked path for both engines. The legacy

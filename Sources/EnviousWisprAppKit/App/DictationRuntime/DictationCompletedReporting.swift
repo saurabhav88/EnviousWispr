@@ -54,7 +54,14 @@ enum DictationCompletedReporting {
       // is invisible — it never reaches either Sentry capture site (those
       // only fire on `.asrFailed`/`.asrInterrupted`), so this read-through
       // chain is a successful retry's ONLY visibility.
-      asrRetryOutcome: driver.asrRetryOutcome?.rawValue)
+      asrRetryOutcome: driver.asrRetryOutcome?.rawValue,
+      // #1846: the take this completion belongs to. `lastTakeID` is FROZEN at the
+      // accepted terminal, not a live read of the in-flight take key — if the user
+      // started talking again before this report was filed, a live read would stamp
+      // this event with the NEXT take's id, which is worse than absent because it
+      // joins cleanly to the wrong dictation. Rationale on
+      // `RecordingSessionKernel.lastTakeID`.
+      takeID: driver.lastTakeID)
   }
 
   private static func positive(_ value: Int?) -> Int? {

@@ -561,6 +561,23 @@ final class RecordingSessionKernel {
   /// on `"max_duration"`) and by the App layer for `dictation.completed`
   /// telemetry (`stop_reason`). A reason string, never user content.
   private(set) var lastStopReason: String?
+  /// #1846: the id of the take that most recently CONCLUDED, for the App layer's
+  /// `dictation.completed` reporting chain. Observation-only; never persisted.
+  ///
+  /// Deliberately NOT a live read of `KernelTelemetryState.takeID`, and the
+  /// difference is the whole point. Both change at the same instant — the next
+  /// session's `start(config:)` — but not to the same kind of value: every sibling
+  /// marker here degrades to `nil` in `resetSessionState()`, while
+  /// `resetForNewSession` REPLACES the take key with the NEW session's id. A live
+  /// read would therefore stamp take N's completion with take N+1's id if a user
+  /// started talking again before the report was filed: not a missing value but a
+  /// confidently wrong one, indistinguishable from a correct join. Wrong
+  /// attribution is strictly worse than absent attribution, and this epic exists
+  /// because two investigations were misled by data that looked trustworthy.
+  ///
+  /// So it is stamped at the accepted terminal and cleared at the next session
+  /// start, giving it exactly `lastStopReason`'s honest-absence semantics.
+  private(set) var lastTakeID: String?
 
   /// Wall-clock length of the most recent recording in seconds (#1060), captured
   /// when the recording-exit latches and cleared at session start. LIVE metadata
@@ -3362,6 +3379,13 @@ final class RecordingSessionKernel {
     }
     let terminal = outcome  // local alias for the existing telemetry logs below
     recordingOutcome = outcome
+    // #1846: stamp the concluded take INSIDE the set-once barrier, so it is
+    // first-wins under the same condition as the outcome itself and can only ever
+    // name the session this terminal actually accepted (`audit-all-terminal-paths-
+    // for-state-reading-telemetry`). `sid` rather than `currentSessionID`: the
+    // `isCurrent(sid)` guard above already proved they match, and `sid` is
+    // unambiguously the session being concluded.
+    lastTakeID = sid.raw.uuidString
     #if DEBUG
       // #1755 chunk 6: crash-boundary hold — immediately after the set-once
       // outcome write, before the idle transition and downstream cleanup.
@@ -3521,6 +3545,7 @@ final class RecordingSessionKernel {
     // sets `lastStopReason`/`lastRecordingDurationSeconds` before Live — keeps its
     // reason instead of having it wiped when the session reaches `.live`.
     lastStopReason = nil  // #1060
+    lastTakeID = nil  // #1846 — absent, never the new session's id
     lastSalvagedLeadTrimMs = nil  // #1434
     lastCaptureHealth = nil  // #1434
     lastRecordingDurationSeconds = nil  // #1060
