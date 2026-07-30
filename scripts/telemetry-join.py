@@ -756,6 +756,27 @@ class PostHogClient:
                 results = payload.get("results")
                 if not isinstance(results, list):
                     raise ProtocolError(f"query {name}: response has no `results` array")
+                # TRUNCATION IS THE ONE FAILURE THIS INSTRUMENT CANNOT SEE IN ITS
+                # OWN OUTPUT. PostHog caps a HogQL result at 100 rows and reports
+                # it — MEASURED 2026-07-30: `SELECT number FROM numbers(200000)`
+                # returns 100 rows with `hasMore: true, limit: 100`. A truncated
+                # DISTINCT id list silently drops installs from an exclusion; a
+                # truncated grouped result silently reads as an absent bucket, which
+                # this tool renders as `not observed` or as zero. Both are confident
+                # wrong answers of exactly the kind it exists to prevent.
+                #
+                # Enforced HERE, once, rather than as a per-query completeness check:
+                # the server is authoritative about its own truncation, it costs no
+                # extra query, and no future caller can forget it. Every query in
+                # this file is either an aggregate or a bounded id list, so `hasMore`
+                # is always a defect, never an expected paging signal.
+                if payload.get("hasMore") is True:
+                    raise IncompleteError(
+                        f"query {name}: PostHog truncated the result "
+                        f"(limit={payload.get('limit')}, offset={payload.get('offset')}, "
+                        f"hasMore=true). Refusing to measure from a partial result — "
+                        "narrow the query, partition it, or aggregate server-side."
+                    )
                 rows: list[list[object]] = []
                 for row in results:
                     if not isinstance(row, list):
@@ -1359,18 +1380,24 @@ def fetch_take_coverage(client: PostHogClient) -> list[TakeCoverageRow]:
     "is the take key actually landing on this event," which wants the widest view
     available, not one fingerprint's slice.
 
-    `take_id` is tested for NULL *and* empty string. The emitters use
-    omit-when-nil so a missing key is absent rather than blank, but a future
-    caller passing `""` would otherwise be counted as covered — the one way this
-    metric could report success while shipping nothing.
+    Coverage counts only CANONICAL take ids, using the same pattern the rate
+    queries reject on. Testing merely for NULL-or-empty would report an emitter
+    that regressed to a malformed non-empty value as fully covered, while that
+    value cannot join to Sentry at all and the rate queries refuse it — coverage
+    would say 100% for a key that joins nothing. What is measured here is a
+    USABLE join key, not the presence of a property.
     """
     rows, _ = client.query(
         f"""
         SELECT properties.app_version AS release,
                event AS event_name,
                count() AS total,
-               countIf(properties.{TAKE_PROPERTY} IS NOT NULL
-                       AND properties.{TAKE_PROPERTY} != '') AS with_take
+               countIf(
+                   match(
+                       toString(properties.{TAKE_PROPERTY}),
+                       '{TAKE_ID_HOGQL_PATTERN}'
+                   ) = 1
+               ) AS with_take
         FROM events
         WHERE event IN ({sql_id_list(TAKE_KEYED_EVENTS)})
           AND {client.environment_clause()}
@@ -3184,6 +3211,61 @@ def run_self_test() -> int:
     ph.dev_ids = ()
     _expect_raises(ProtocolError, lambda: fetch_take_coverage(ph), "unlisted event name")
     passed("take coverage fails closed on an impossible subset or an unlisted event")
+
+    # TRUNCATION. Measured 2026-07-30: PostHog caps a HogQL result at 100 rows and
+    # sets `hasMore: true`. Every query in this file is an aggregate or a bounded
+    # id list, so `hasMore` can only mean a partial answer — and a partial answer
+    # here renders as `not observed`, as `unset`, or as zero, none of which is
+    # distinguishable from the real thing in the output.
+    truncated = HTTPResponse(
+        200,
+        {"Content-Type": "application/json"},
+        json.dumps(
+            {"results": [["2.6.0", "dictation.completed", 400, 400]],
+             "columns": [], "hasMore": True, "limit": 100, "offset": 0}
+        ).encode(),
+    )
+    ph, _ = _posthog_client([truncated])
+    ph.dev_ids = ()
+    _expect_raises(
+        IncompleteError,
+        lambda: fetch_take_coverage(ph),
+        "truncated coverage result",
+        "PostHog truncated the result",
+    )
+    # The guard lives on the CLIENT, so it covers every caller — including the
+    # unbounded dev-id list, whose own truncation would silently let dev installs
+    # survive the production exclusion and contaminate every total.
+    ph, _ = _posthog_client([truncated])
+    _expect_raises(
+        IncompleteError, lambda: ph.resolve_dev_ids(), "truncated dev-id list",
+        "PostHog truncated the result",
+    )
+    # `hasMore: false` and an absent key are both legitimate complete results.
+    for flag in (False, None):
+        payload: dict[str, object] = {"results": [[1]], "columns": []}
+        if flag is not None:
+            payload["hasMore"] = flag
+        ph, _ = _posthog_client(
+            [HTTPResponse(200, {"Content-Type": "application/json"}, json.dumps(payload).encode())]
+        )
+        assert ph.query("SELECT 1", "complete") == ([[1]], []), flag
+    passed("a truncated PostHog result fails closed for every query, not just some")
+
+    # Coverage counts USABLE join keys. A malformed non-empty value cannot join to
+    # Sentry and the rate queries reject it, so counting it as covered would report
+    # 100% for a key that joins nothing.
+    coverage_sql_probe, coverage_transport = _posthog_client(
+        [_posthog_response([["2.6.0", "dictation.completed", 5, 5]])]
+    )
+    coverage_sql_probe.dev_ids = ()
+    fetch_take_coverage(coverage_sql_probe)
+    coverage_sql = json.loads(coverage_transport.seen[0].body or b"{}")["query"]["query"]
+    assert TAKE_ID_HOGQL_PATTERN in coverage_sql, coverage_sql
+    assert "!= ''" not in coverage_sql, (
+        "presence-only counting would report a malformed key as covered: " + coverage_sql
+    )
+    passed("take coverage counts canonical take ids, not merely non-empty ones")
 
     # THE UNION ARITHMETIC. A take on BOTH sides is counted once: two failed
     # takes, ten successful takes, one of which is the same take, is a union of
