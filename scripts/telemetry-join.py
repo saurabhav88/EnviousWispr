@@ -2,16 +2,17 @@
 """Join one Sentry fingerprint to PostHog usage, per anonymous install (#1846).
 
 Sentry records only failures, so every field on a failing event looks universal
-there. This instrument answers the two questions that repeatedly went wrong
-without it (#1788, #1809):
+there. This instrument answers the four questions that repeatedly went wrong without it
+(#1788, #1809):
 
   1. How many PEOPLE, not events, does this fingerprint affect, per release?
   2. What was each affected install configured as, and what is that install's
      own success record on the same release?
+  3. Is the take key landing on every intended event and release?
+  4. What share of eligible takes and installs does this fingerprint affect?
 
-Phase 1 scope. It reports install-level event counts, distinct installs and
-per-install configuration only. Per-take coverage and the fingerprint take rate
-require the Phase 2 `take_id` and are deliberately absent.
+Phase 1 provides the install join and configuration reconstruction. Phase 2 adds
+per-event take coverage and the fingerprint take and affected-user rates.
 
 Usage:
   telemetry-join.py --issue ENVIOUSWISPR-2F
@@ -72,6 +73,47 @@ ASR_HELPER_ROLE = "asr_xpc"
 JOIN_TAG = "analytics.distinct_id"
 JOINED_IDENTITY_LABEL = "analytics.distinct_id (joined install identity)"
 LEGACY_IDENTITY_LABEL = "legacy Sentry identity"
+
+# Phase 2. The Sentry tag and the PostHog property both carry the SAME value:
+# `SessionID.raw.uuidString`, the kernel's per-take identity.
+TAKE_TAG = "dictation.take_id"
+TAKE_PROPERTY = "take_id"
+
+# The 13 events Phase 2 routes the take key to. MEASURED from the emitter, not
+# remembered: every name here has a `["take_id"] = takeID` assignment in
+# `TelemetryService.swift`. Match the FIELD, not a `props`/`properties` variable
+# name — a pattern pinned to `props[...]` structurally cannot match the
+# `asr.completed` emitter and silently reports 12. A name absent from this tuple
+# is not measured, and a name here that the app never emits reads `not observed`.
+TAKE_KEYED_EVENTS = (
+    "asr.completed",
+    "audio.capture_interrupted",
+    "audio.dead_mic_retire_attempted",
+    "dictation.completed",
+    "dictation.first_vad_chunk_completed",
+    "dictation.first_vad_chunk_started",
+    "dictation.invoked",
+    "dictation.vad_preparation_completed",
+    "llm.polish_completed",
+    "llm.polish_failed",
+    "llm.polish_skipped",
+    "paste.completed",
+    "recording.cap_warning_shown",
+)
+
+# The event whose take IDs are the SUCCESS side of the fingerprint take rate.
+SUCCESS_TAKE_EVENT = "dictation.completed"
+
+# Applied INSIDE the PostHog queries. `canonical_take_id` guards the Sentry side;
+# without this the PostHog side accepted any non-empty string, so a junk value
+# would enter `success_takes`, enlarge both denominators and produce a confidently
+# LOWER failure rate. (`match` measured against the live API 2026-07-30.)
+TAKE_ID_HOGQL_PATTERN = (
+    r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
+    r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+)
+
+NOT_OBSERVED = "not observed"
 
 NO_USAGE_ROWS = "no usage rows for this install"
 NOT_SHIPPED = "not shipped on this release"
@@ -353,6 +395,10 @@ class SentryEvent:
     environment: str | None = None
     synthetic: bool = False
     process_role: str | None = None
+    #: Phase 2. `None` is NON-DIAGNOSTIC (plan §7): the release may predate the
+    #: tag, no kernel session may have existed, or the terminal postamble may
+    #: already have cleared the scope. Never read absence as "no dictation".
+    take_id: str | None = None
 
 
 @dataclass
@@ -515,6 +561,10 @@ class SentryClient:
             environment=by_key.get("environment"),
             synthetic=by_key.get("synthetic") == "true",
             process_role=by_key.get("process.role"),
+            # Phase 2. Unlike the join key, a missing or malformed take tag is NOT
+            # an error: this tag ships from #1846 onward, so every older event
+            # legitimately lacks it and the report must still be produced.
+            take_id=canonical_take_id(by_key.get(TAKE_TAG)),
         )
 
 
@@ -546,6 +596,36 @@ def canonical_join_key(raw: object) -> str | None:
     if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", raw):
         return None
     return raw
+
+
+_TAKE_ID_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+
+
+def canonical_take_id(raw: object) -> str | None:
+    """A SEPARATE canonicalizer from `canonical_join_key`, and the case handling is
+    the whole reason.
+
+    The two identities are produced by different code and differ in CASE:
+      - `analytics.distinct_id` comes from the PostHog SDK and is LOWERCASE.
+      - `dictation.take_id` / `take_id` is Swift `UUID.uuidString`, which
+        Foundation renders UPPERCASE (measured: `D3B6682C-A4F7-47DB-...`).
+
+    Reusing the lowercase-only join-key matcher here would reject every real take
+    ID and report take coverage as 0% — a confident, silent wrong answer of
+    exactly the kind this instrument exists to prevent. Accept both cases.
+
+    Returns the UPPERCASED form so set membership across the two vendors cannot
+    fail on case alone. Both sides serialize the same `uuidString` today, so this
+    is belt-and-braces rather than a known divergence, but a case-sensitive union
+    would fail silently as a 0% rate rather than loudly.
+    """
+    if not isinstance(raw, str) or len(raw) != 36:
+        return None
+    if not _TAKE_ID_PATTERN.fullmatch(raw):
+        return None
+    return raw.upper()
 
 
 _APP_VERSION_PATTERN = re.compile(r"^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$")
@@ -838,6 +918,80 @@ class FingerprintReport:
     joined_install_ids: list[str]
     joined_releases_by_install: dict[str, set[str]]
     unjoined_events: int
+    #: Phase 2. Distinct take IDs seen on THIS fingerprint, keyed by
+    #: (install, release). Empty for a pre-#1846 population, which is data, not
+    #: an error.
+    affected_takes_by_install_release: dict[tuple[str, str], set[str]] = field(
+        default_factory=dict
+    )
+    #: Phase 2. The span the take rate is computed over — see `TakeWindow`.
+    take_window: TakeWindow | None = None
+
+
+@dataclass(frozen=True)
+class TakeCoverageRow:
+    """One (event, release) cell of the per-event take coverage table. Deliberately
+    NOT pooled across events: a high-volume event at 100% would otherwise hide a
+    low-volume one at 0%, which is precisely the failure this metric watches for.
+    """
+    event: str
+    release: str
+    with_take: int
+    total: int
+
+
+@dataclass(frozen=True)
+class TakeRateRow:
+    """Per release. `affected` and `union` are counts of DISTINCT take IDs, never
+    of raw events — the #1809 mistake was reading six events from one retrying
+    person as six independent failures.
+    """
+    release: str
+    affected_takes: int
+    union_takes: int
+    affected_installs: int
+    eligible_installs: int
+
+
+@dataclass(frozen=True)
+class TakeWindow:
+    """The span the take rate is computed over, derived from the eligible Sentry
+    events rather than declared, so the successful side is never widened beyond
+    the failures that define the numerator.
+
+    MILLISECOND PostHog bounds, rounded INWARD. Sentry timestamps keep fractions,
+    while the PostHog comparison uses whole milliseconds. `ceil` the start and
+    `floor` the end so the successful-take query cannot include events outside
+    the measured Sentry failure span. (The first version compared whole seconds
+    via `int(epoch)`, so a .900 .. 1.100 window admitted nearly two full seconds.
+    `toUnixTimestamp64Milli` measured against the live API 2026-07-30.)
+
+    This means the two sides are deliberately NOT claimed to have identical
+    boundary precision: affected Sentry takes retain their original timestamps,
+    while the successful side uses the largest whole-millisecond interval
+    contained inside that span. Excluding possible boundary successes makes the
+    reported rate conservative — an upper bound — rather than enlarging its
+    denominator with out-of-window events.
+
+    `degenerate` marks an interval with no positive width at PostHog's
+    millisecond precision. Successful events could coincide with that timestamp,
+    but a rate determined by timestamp coincidence is not a meaningful population
+    measurement, so it is refused.
+    """
+    start_epoch: float
+    end_epoch: float
+
+    @property
+    def start_millis(self) -> int:
+        return math.ceil(self.start_epoch * 1000)
+
+    @property
+    def end_millis(self) -> int:
+        return math.floor(self.end_epoch * 1000)
+
+    @property
+    def degenerate(self) -> bool:
+        return self.end_millis <= self.start_millis
 
 
 @dataclass(frozen=True)
@@ -897,6 +1051,11 @@ def aggregate_fingerprint(
     joined_releases_by_install: dict[str, set[str]] = defaultdict(set)
     all_joined: set[str] = set()
     all_legacy: set[str] = set()
+    # Phase 2. Only JOINED events can contribute a take to the rate: an event with
+    # no install identity cannot be paired with that install's successes, so
+    # including its take would inflate the numerator against a denominator it is
+    # not part of.
+    affected_takes: dict[tuple[str, str], set[str]] = defaultdict(set)
 
     for event in events:
         release = event.release
@@ -905,6 +1064,8 @@ def aggregate_fingerprint(
             joined_identities[release].add(event.join_key)
             joined_releases_by_install[event.join_key].add(release)
             all_joined.add(event.join_key)
+            if event.take_id:
+                affected_takes[(event.join_key, release)].add(event.take_id)
             continue
 
         if not event.legacy_identity:
@@ -981,6 +1142,15 @@ def aggregate_fingerprint(
             install: set(rels) for install, rels in joined_releases_by_install.items()
         },
         unjoined_events=legacy_total_events,
+        affected_takes_by_install_release={
+            pair: set(takes) for pair, takes in affected_takes.items()
+        },
+        # Derived from the eligible events, never declared. `events` is non-empty
+        # by the caller's contract (`build_report` raises before reaching here).
+        take_window=TakeWindow(
+            start_epoch=min(event.timestamp_epoch for event in events),
+            end_epoch=max(event.timestamp_epoch for event in events),
+        ),
     )
 
 
@@ -1183,6 +1353,364 @@ def verify_bucket_completeness(
         )
 
 
+def fetch_take_coverage(client: PostHogClient) -> list[TakeCoverageRow]:
+    """Per-event take coverage — plan §5. POPULATION-WIDE and deliberately NOT
+    bounded to this fingerprint's installs or window: the question it answers is
+    "is the take key actually landing on this event," which wants the widest view
+    available, not one fingerprint's slice.
+
+    `take_id` is tested for NULL *and* empty string. The emitters use
+    omit-when-nil so a missing key is absent rather than blank, but a future
+    caller passing `""` would otherwise be counted as covered — the one way this
+    metric could report success while shipping nothing.
+    """
+    rows, _ = client.query(
+        f"""
+        SELECT properties.app_version AS release,
+               event AS event_name,
+               count() AS total,
+               countIf(properties.{TAKE_PROPERTY} IS NOT NULL
+                       AND properties.{TAKE_PROPERTY} != '') AS with_take
+        FROM events
+        WHERE event IN ({sql_id_list(TAKE_KEYED_EVENTS)})
+          AND {client.environment_clause()}
+        GROUP BY release, event_name
+        """,
+        "take_coverage",
+    )
+    coverage: list[TakeCoverageRow] = []
+    for row in rows:
+        if len(row) != 4:
+            raise ProtocolError(f"take_coverage: expected 4 columns, got {len(row)}")
+        release_raw, event_name, total, with_take = row
+        if not isinstance(event_name, str) or event_name not in TAKE_KEYED_EVENTS:
+            raise ProtocolError(f"take_coverage: unexpected event {event_name!r}")
+        total_count = required_count(total, "take_coverage: total")
+        with_take_count = required_count(with_take, "take_coverage: with_take")
+        if with_take_count > total_count:
+            raise ProtocolError(
+                f"take_coverage: {event_name} on {release_raw!r} reports "
+                f"{with_take_count} keyed rows out of {total_count} — a subset "
+                "cannot exceed its set, so the query or the parse is wrong"
+            )
+        coverage.append(
+            TakeCoverageRow(
+                event=event_name,
+                release=canonical_app_version(release_raw, "take_coverage"),
+                with_take=with_take_count,
+                total=total_count,
+            )
+        )
+    return coverage
+
+
+def fetch_take_rates(
+    client: PostHogClient,
+    report: FingerprintReport,
+) -> list[TakeRateRow]:
+    """Fingerprint take rate and affected-user rate — plan §5.
+
+    rate = distinct AFFECTED take IDs / |affected ∪ successful| takes, per release.
+
+    SQL computes the case-normalized successful-set cardinality and its overlap
+    with the affected IDs, without shipping every successful take ID back — this
+    install's `dictation.completed` takes could number in the thousands over the
+    window. Python then computes the union from those validated counts:
+
+        union = affected + successes - overlap
+
+    A take appearing on both sides is therefore counted ONCE, which is the plan's
+    explicit requirement.
+
+    The successful PostHog side is bounded to the inward-rounded millisecond
+    interval contained within the eligible Sentry event span. It is never widened
+    beyond the failures that define the numerator. Possible boundary successes
+    can therefore be excluded, which is why the rendered result is explicitly an
+    upper bound rather than a claim of identical boundary precision.
+
+    Returns [] when the window is degenerate or no affected takes exist. A rate is
+    REFUSED rather than fabricated; the renderer says which.
+    """
+    window = report.take_window
+    if window is None or window.degenerate or not report.affected_takes_by_install_release:
+        return []
+
+    # Only installs that actually carry an affected take need querying.
+    installs = sorted({install for install, _ in report.affected_takes_by_install_release})
+    parts = partition(installs)
+    expected_indexes = {index for index, _ in parts}
+    completed_indexes: set[int] = set()
+
+    successes: dict[tuple[str, str], int] = defaultdict(int)
+    overlaps: dict[tuple[str, str], int] = defaultdict(int)
+
+    for index, chunk in parts:
+        chunk_set = set(chunk)
+        # Scope the affected-id list to THIS partition's installs. A global list
+        # would grow the query text without changing any result.
+        # Overlap must match install AND release. A partition-wide take-id list
+        # lets a take affected on release A subtract from release B's union — the
+        # rest of this function pairs (install, release) everywhere, so a flat
+        # list was an inconsistency waiting to be exercised.
+        chunk_take_ids_by_release: dict[str, set[str]] = defaultdict(set)
+        for (affected_install, affected_release), takes in (
+            report.affected_takes_by_install_release.items()
+        ):
+            if affected_install in chunk_set:
+                chunk_take_ids_by_release[affected_release].update(takes)
+
+        if not chunk_take_ids_by_release:
+            completed_indexes.add(index)
+            continue
+
+        overlap_predicate = "\n OR ".join(
+            f"""(
+                properties.app_version = {sql_id_list([release_name])}
+                AND upper(properties.{TAKE_PROPERTY})
+                    IN ({sql_id_list(sorted(take_ids))})
+            )"""
+            for release_name, take_ids in sorted(chunk_take_ids_by_release.items())
+        )
+
+        # Built ONCE and reused by the bucket query and its completeness check, so
+        # "identical filter" is guaranteed by construction rather than by two
+        # hand-copied WHERE clauses that can drift apart.
+        take_rate_filter = f"""
+            event = '{SUCCESS_TAKE_EVENT}'
+            AND {client.environment_clause()}
+            AND distinct_id IN ({sql_id_list(chunk)})
+            AND properties.{TAKE_PROPERTY} IS NOT NULL
+            AND properties.{TAKE_PROPERTY} != ''
+            AND toUnixTimestamp64Milli(timestamp) >= {window.start_millis}
+            AND toUnixTimestamp64Milli(timestamp) <= {window.end_millis}
+        """
+
+        # `upper(...)` on BOTH distinct operations. Without it the total counts an
+        # upper- and a lowercase spelling of one take as two successes while the
+        # overlap normalizes them to one — inflating the union by the difference.
+        rows, _ = client.query(
+            f"""
+            SELECT distinct_id,
+                   properties.app_version AS release,
+                   uniqExact(upper(properties.{TAKE_PROPERTY})) AS success_takes,
+                   uniqExactIf(
+                       upper(properties.{TAKE_PROPERTY}),
+                       ({overlap_predicate})
+                   ) AS overlap_takes,
+                   countIf(
+                       match(
+                           toString(properties.{TAKE_PROPERTY}),
+                           '{TAKE_ID_HOGQL_PATTERN}'
+                       ) = 0
+                   ) AS invalid_take_rows
+            FROM events
+            WHERE {take_rate_filter}
+            GROUP BY distinct_id, release
+            """,
+            f"take_rate_p{index}",
+        )
+
+        # Independent identical-filter total, the same discipline
+        # `verify_bucket_completeness` applies to install usage. A truncated
+        # response would silently drop success buckets and INFLATE the rate.
+        completeness_rows, _ = client.query(
+            f"""
+            SELECT uniqExact(
+                concat(
+                    toString(distinct_id),
+                    '|',
+                    toString(properties.app_version)
+                )
+            )
+            FROM events
+            WHERE {take_rate_filter}
+            """,
+            f"take_rate_completeness_p{index}",
+        )
+        if len(completeness_rows) != 1 or len(completeness_rows[0]) != 1:
+            raise ProtocolError(
+                f"take_rate_completeness_p{index}: expected one row with one count"
+            )
+        independent_buckets = required_count(
+            completeness_rows[0][0], f"take_rate_completeness_p{index}"
+        )
+        if len(rows) != independent_buckets:
+            raise IncompleteError(
+                f"take_rate_p{index}: received {len(rows)} install-release buckets "
+                f"but an independent identical-filter uniqExact returned "
+                f"{independent_buckets} — refusing a potentially truncated rate"
+            )
+        for row in rows:
+            if len(row) != 5:
+                raise ProtocolError(f"take_rate_p{index}: expected 5 columns, got {len(row)}")
+            install, release_raw, success_takes, overlap_takes, invalid_take_rows = row
+            invalid_count = required_count(
+                invalid_take_rows, f"take_rate_p{index}: invalid_take_rows"
+            )
+            if invalid_count:
+                raise ProtocolError(
+                    f"take_rate_p{index}: {invalid_count} successful rows carry a "
+                    "non-canonical take_id — refusing to include fabricated take identities"
+                )
+            if not isinstance(install, str) or install not in chunk_set:
+                raise ProtocolError(f"take_rate_p{index}: unexpected distinct_id in results")
+            release = canonical_app_version(release_raw, f"take_rate_p{index}")
+            success_count = required_count(success_takes, f"take_rate_p{index}: success_takes")
+            overlap_count = required_count(overlap_takes, f"take_rate_p{index}: overlap_takes")
+            if overlap_count > success_count:
+                raise ProtocolError(
+                    f"take_rate_p{index}: overlap {overlap_count} exceeds successes "
+                    f"{success_count} — a subset cannot exceed its set"
+                )
+            successes[(install, release)] += success_count
+            overlaps[(install, release)] += overlap_count
+        completed_indexes.add(index)
+
+    require_complete_partitions(expected_indexes, completed_indexes)
+
+    # THE AFFECTED-USER DENOMINATOR IS POPULATION-WIDE, and it has to be queried
+    # separately. Every query above is scoped to installs that ALREADY carry an
+    # affected take, so deriving the denominator from them made it a superset of
+    # itself and the rate was a structural 100% on every affected release — a
+    # denominator drawn from its own numerator. The first version of the
+    # arithmetic case froze that as `1/1`.
+    # Built once and reused by the population query and its completeness check.
+    population_filter = f"""
+        event = '{SUCCESS_TAKE_EVENT}'
+        AND {client.environment_clause()}
+        AND properties.{TAKE_PROPERTY} IS NOT NULL
+        AND properties.{TAKE_PROPERTY} != ''
+        AND toUnixTimestamp64Milli(timestamp) >= {window.start_millis}
+        AND toUnixTimestamp64Milli(timestamp) <= {window.end_millis}
+    """
+    population_rows, _ = client.query(
+        f"""
+        SELECT properties.app_version AS release,
+               uniqExact(distinct_id) AS successful_installs,
+               countIf(
+                   match(
+                       toString(properties.{TAKE_PROPERTY}),
+                       '{TAKE_ID_HOGQL_PATTERN}'
+                   ) = 0
+               ) AS invalid_take_rows
+        FROM events
+        WHERE {population_filter}
+        GROUP BY release
+        """,
+        "take_rate_user_population",
+    )
+    successful_install_counts: dict[str, int] = defaultdict(int)
+    for row in population_rows:
+        if len(row) != 3:
+            raise ProtocolError(
+                f"take_rate_user_population: expected 3 columns, got {len(row)}"
+            )
+        release_raw, successful_installs, invalid_take_rows = row
+        release = canonical_app_version(release_raw, "take_rate_user_population")
+        # This query INDEPENDENTLY produces the affected-user denominator, so it
+        # needs its own validity check — inheriting the bucket query's would be
+        # trusting a different result set.
+        if required_count(
+            invalid_take_rows, f"take_rate_user_population: invalid_take_rows on {release}"
+        ):
+            raise ProtocolError(
+                f"take_rate_user_population: rows on {release} carry a non-canonical "
+                "take_id — refusing to include fabricated take identities"
+            )
+        successful_install_counts[release] += required_count(
+            successful_installs,
+            f"take_rate_user_population: successful_installs on {release}",
+        )
+
+    # Independent identical-filter total for THIS grouped result. Without it a
+    # truncated response loses a release row, `defaultdict(int)` substitutes zero,
+    # and the eligible denominator can come back smaller than its own numerator.
+    population_completeness_rows, _ = client.query(
+        f"""
+        SELECT uniqExact(toString(properties.app_version))
+        FROM events
+        WHERE {population_filter}
+        """,
+        "take_rate_user_population_completeness",
+    )
+    if len(population_completeness_rows) != 1 or len(population_completeness_rows[0]) != 1:
+        raise ProtocolError(
+            "take_rate_user_population_completeness: expected one row with one count"
+        )
+    independent_releases = required_count(
+        population_completeness_rows[0][0], "take_rate_user_population_completeness"
+    )
+    if len(population_rows) != independent_releases:
+        raise IncompleteError(
+            f"take_rate_user_population: received {len(population_rows)} release buckets "
+            f"but an independent identical-filter uniqExact returned {independent_releases}"
+        )
+
+    # Per release. Take IDs are UUIDs, so different installs' sets are disjoint and
+    # their union sizes add.
+    per_release_affected: dict[str, int] = defaultdict(int)
+    per_release_union: dict[str, int] = defaultdict(int)
+    affected_installs: dict[str, set[str]] = defaultdict(set)
+    successful_affected_installs: dict[str, set[str]] = defaultdict(set)
+
+    # Report only releases on which this fingerprint HAS an affected take. A
+    # successful take on some other release is not a zero-rate row for this
+    # fingerprint; it is a release this fingerprint was never seen on.
+    pairs = set(report.affected_takes_by_install_release)
+    for install, release in sorted(pairs):
+        affected = len(report.affected_takes_by_install_release.get((install, release), set()))
+        union = affected + successes[(install, release)] - overlaps[(install, release)]
+        if union < affected:
+            raise ProtocolError(
+                f"take rate for {install} on {release}: union {union} is smaller than the "
+                f"{affected} affected takes it must contain — refusing to render"
+            )
+        per_release_affected[release] += affected
+        per_release_union[release] += union
+        if affected:
+            affected_installs[release].add(install)
+        if successes[(install, release)]:
+            successful_affected_installs[release].add(install)
+
+    # A checked loop, not a comprehension: the install arithmetic draws from two
+    # SEPARATE query results, so it can produce an impossible pair that a
+    # comprehension would silently return.
+    result: list[TakeRateRow] = []
+    for release in sorted(per_release_union, key=version_key):
+        affected_count = len(affected_installs[release])
+        successful_count = successful_install_counts[release]
+        overlap_count = len(successful_affected_installs[release])
+
+        if overlap_count > successful_count:
+            raise ProtocolError(
+                f"affected-user rate on {release}: {overlap_count} affected installs "
+                f"also succeeded, but the population query returned only "
+                f"{successful_count} successful installs"
+            )
+
+        # |affected ∪ successful| installs. Subtracting the installs counted on
+        # BOTH sides keeps an install that both failed and succeeded from being
+        # counted twice — the install-level twin of the take-level overlap
+        # subtraction above.
+        eligible_count = affected_count + successful_count - overlap_count
+        if eligible_count < affected_count:
+            raise ProtocolError(
+                f"affected-user rate on {release}: eligible denominator "
+                f"{eligible_count} is smaller than affected numerator {affected_count}"
+            )
+
+        result.append(
+            TakeRateRow(
+                release=release,
+                affected_takes=per_release_affected[release],
+                union_takes=per_release_union[release],
+                affected_installs=affected_count,
+                eligible_installs=eligible_count,
+            )
+        )
+    return result
+
+
 def normalize_setting(name: str, value: object) -> object:
     """`filler_removal` shipped as a legacy Bool before becoming on/off, so the
     same setting arrives in two vocabularies
@@ -1204,8 +1732,122 @@ def normalize_setting(name: str, value: object) -> object:
 # failure cannot leave a half-table that reads as complete
 # (PROC: measurement-tool-hardening).
 # --------------------------------------------------------------------------
+def render_take_coverage(coverage: Sequence[TakeCoverageRow]) -> list[str]:
+    """Render the COMPLETE event x observed-release grid.
+
+    A missing cell is `not observed`, never silently omitted. The first version
+    printed `not observed` only when an event had no rows on ANY release, so an
+    event present on 2.6.0 and gone on 2.7.0 lost its 2.7.0 row entirely — a
+    blackout invisible in exactly the table built to catch blackouts.
+    """
+    lines = ["Take coverage by event and release (Phase 2). Never pooled across events:"]
+    by_cell: dict[tuple[str, str], TakeCoverageRow] = {}
+
+    for row in coverage:
+        key = (row.event, row.release)
+        if key in by_cell:
+            raise ProtocolError(
+                f"take coverage contains duplicate rows for {row.event} on {row.release}"
+            )
+        by_cell[key] = row
+
+    unexpected = sorted({event for event, _ in by_cell} - set(TAKE_KEYED_EVENTS))
+    if unexpected:
+        raise ProtocolError(
+            f"take coverage contains unlisted events: {', '.join(unexpected)}"
+        )
+
+    releases = sorted({release for _, release in by_cell}, key=version_key)
+    if not releases:
+        for event in TAKE_KEYED_EVENTS:
+            lines.append(f"  {event}: {NOT_OBSERVED}")
+        return lines
+
+    for event in TAKE_KEYED_EVENTS:
+        for release in releases:
+            row = by_cell.get((event, release))
+            if row is None:
+                lines.append(f"  {event} on {release}: {NOT_OBSERVED}")
+                continue
+            marker = "   <- no take keys" if row.with_take == 0 else ""
+            lines.append(
+                f"  {event} on {release}: "
+                f"{row.with_take}/{row.total} rows carry {TAKE_PROPERTY}{marker}"
+            )
+
+    return lines
+
+
+def render_take_rates(
+    rates: Sequence[TakeRateRow], window: TakeWindow | None, has_affected_takes: bool
+) -> list[str]:
+    """Prints counts alongside every percentage. A bare rate cannot be checked;
+    `12/400` can.
+    """
+    lines = ["Fingerprint take rate (Phase 2) — distinct TAKES, never raw events:"]
+    if window is None:
+        lines.append(f"  {NOT_OBSERVED} — no eligible events, so no window exists")
+        return lines
+    if not has_affected_takes:
+        # Deliberately does NOT say why. The tool cannot tell a population that
+        # predates the tag from one that shipped it and is broken, and guessing
+        # would be the same fabrication the join-coverage block refuses to make.
+        # It says only what it measured: no key was seen. That is not a zero rate.
+        lines.append(
+            f"  {NOT_OBSERVED} — no event on this fingerprint carries {TAKE_TAG}. "
+            "Absence is non-diagnostic (plan §7) and is not a failure rate of zero."
+        )
+        return lines
+    if window.degenerate:
+        # The explanation deliberately carries NO numeral. A refusal that prints
+        # the figure it is refusing invites exactly the misreading it exists to
+        # prevent — a skimming human takes the number and drops the refusal.
+        lines.append(
+            "  REFUSED — the eligible events produce no positive-width observation "
+            "interval at PostHog precision. A rate from one timestamp would be "
+            "dominated by coincident event timing, not a measured population span."
+        )
+        return lines
+    if not rates:
+        lines.append(f"  {NOT_OBSERVED} — no release produced a non-empty take union")
+        return lines
+
+    # Render the bounds ACTUALLY QUERIED, at the precision actually used. Printing
+    # `start_epoch` through a whole-second formatter displayed a window the query
+    # never ran — a caption for a different measurement.
+    start = (
+        datetime.datetime.fromtimestamp(window.start_millis / 1000, tz=datetime.timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+    end = (
+        datetime.datetime.fromtimestamp(window.end_millis / 1000, tz=datetime.timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+    lines.append(
+        f"  PostHog success window {start} .. {end}, rounded inward from the "
+        "eligible Sentry event span."
+    )
+    lines.append(
+        "  The affected Sentry takes retain the original boundary events. Because "
+        "the success window cannot extend beyond them and may exclude boundary "
+        "successes, this is an UPPER BOUND on the population rate."
+    )
+    for row in rates:
+        rate = row.affected_takes / row.union_takes if row.union_takes else 0.0
+        lines.append(
+            f"  {row.release}: {row.affected_takes}/{row.union_takes} takes affected "
+            f"({rate:.1%}); {row.affected_installs}/{row.eligible_installs} installs affected"
+        )
+    return lines
+
+
 def render_report(
-    report: FingerprintReport, usage: Mapping[str, InstallUsage]
+    report: FingerprintReport,
+    usage: Mapping[str, InstallUsage],
+    take_coverage: Sequence[TakeCoverageRow] = (),
+    take_rates: Sequence[TakeRateRow] = (),
 ) -> str:
     lines: list[str] = []
     lines.append(f"Sentry fingerprint {report.issue} — joined to PostHog usage (#1846)")
@@ -1260,6 +1902,17 @@ def render_report(
         )
     lines.append("")
 
+    lines.extend(render_take_coverage(take_coverage))
+    lines.append("")
+    lines.extend(
+        render_take_rates(
+            take_rates,
+            report.take_window,
+            has_affected_takes=bool(report.affected_takes_by_install_release),
+        )
+    )
+    lines.append("")
+
     if report.bursts:
         lines.append("Retry bursts (one person retrying, not a trend):")
         for burst in report.bursts:
@@ -1310,7 +1963,9 @@ def render_report(
 
 def build_report(
     issue: str, sentry: SentryClient, posthog: PostHogClient, environment: str = "production"
-) -> tuple[FingerprintReport, dict[str, InstallUsage]]:
+) -> tuple[
+    FingerprintReport, dict[str, InstallUsage], list[TakeCoverageRow], list[TakeRateRow]
+]:
     numeric = sentry.resolve_issue_id(issue)
     events = sentry.fetch_events(numeric)
     if not events:
@@ -1331,7 +1986,9 @@ def build_report(
     if environment == "production":
         posthog.resolve_dev_ids()
     usage = fetch_install_usage(posthog, report.joined_install_ids)
-    return report, usage
+    take_coverage = fetch_take_coverage(posthog)
+    take_rates = fetch_take_rates(posthog, report)
+    return report, usage, take_coverage, take_rates
 
 
 # ==========================================================================
@@ -2231,10 +2888,20 @@ def run_self_test() -> int:
     assert "2.3.1: 0/1 events carry" in coverage_render, coverage_render
     assert "<- no joined events" in coverage_render, coverage_render
     assert "2.5.0: 1/1 events carry" in coverage_render, coverage_render
-    assert "%" not in coverage_render, "no overall percentage may be printed"
-    assert "predates" not in coverage_render, (
+    # SCOPED to the join-coverage block. The founder ruling forbids an overall
+    # JOIN-coverage percentage; it does not forbid the Phase 2 take rate, which
+    # reports per release alongside its counts. A whole-render scan for "%" was
+    # the original form and it false-fired on the take-rate section's own prose —
+    # re-aimed at what it means rather than reworded around
+    # (`false-positives-not-gates-train-evasion`).
+    join_block = coverage_render.split("Join coverage by release")[1].split("Take coverage")[0]
+    assert "%" not in join_block, "no overall join-coverage percentage may be printed"
+    assert "predates" not in join_block, (
         "the tool must not claim to know WHY a release has zero coverage"
     )
+    # Positive control: the scoped slice must be capable of catching a percentage,
+    # or "found none" is indistinguishable from a slice that captured nothing.
+    assert "events carry" in join_block, "the scoped slice must contain the coverage lines"
     passed("join coverage is per-release, marks zeroes, and prints no overall figure")
 
     # The app gives Sentry a packaged release and PostHog the raw app version.
@@ -2415,6 +3082,488 @@ def run_self_test() -> int:
     assert re.findall(r"urlopen", "urllib.request.urlopen(x)"), "the matcher itself is broken"
     passed("exactly one function in the production half can open a network connection")
 
+    # ----------------------------------------------------------------------
+    # Phase 2 — take coverage and the fingerprint take rate
+    # ----------------------------------------------------------------------
+
+    # THE CASE-MISMATCH TRAP, frozen. The two identities differ in case because
+    # they are produced by different code: the PostHog SDK emits a lowercase
+    # distinct_id, while `SessionID.raw.uuidString` is Foundation's UPPERCASE
+    # form (measured 2026-07-30: `D3B6682C-A4F7-47DB-A6D9-F6B0283DD651`).
+    # Reusing the join-key canonicalizer would have rejected every real take ID
+    # and reported take coverage as a confident 0%.
+    upper_take = "D3B6682C-A4F7-47DB-A6D9-F6B0283DD651"
+    assert canonical_join_key(upper_take) is None, (
+        "the join-key matcher is lowercase-only — this is the trap being frozen"
+    )
+    assert canonical_take_id(upper_take) == upper_take
+    assert canonical_take_id(upper_take.lower()) == upper_take, "normalized to upper"
+    for junk in (None, "", "not-a-uuid", upper_take[:-1], upper_take + "0", 42):
+        assert canonical_take_id(junk) is None, f"canonical_take_id({junk!r})"
+    passed("take IDs accept Swift's UPPERCASE uuidString, which the join-key matcher rejects")
+
+    # A Sentry event carries the take tag; an event WITHOUT it is not an error,
+    # because every pre-#1846 event legitimately lacks one.
+    def _sentry_event_with(tags: list[dict[str, str]]) -> SentryEvent:
+        return SentryClient._parse_event(
+            {
+                "id": "take-evt",
+                "dateCreated": "2026-07-30T00:00:00Z",
+                "tags": [
+                    {"key": "release", "value": "2.6.0"},
+                    {"key": "environment", "value": "production"},
+                    {"key": JOIN_TAG, "value": install},
+                    *tags,
+                ],
+            },
+            1,
+        )
+
+    assert _sentry_event_with([{"key": TAKE_TAG, "value": upper_take}]).take_id == upper_take
+    assert _sentry_event_with([]).take_id is None, "an absent take tag must not raise"
+    assert _sentry_event_with([{"key": TAKE_TAG, "value": "junk"}]).take_id is None
+    passed("the Sentry take tag parses when present and is non-fatal when absent or malformed")
+
+    # Per-event coverage: an event with rows reports its ratio; an event with NO
+    # rows reports `not observed`. Never 0% and never 100% — zero rows is an
+    # absence of evidence, and the whole point of the per-event shape is that a
+    # busy event cannot mask a silent one.
+    ph, _ = _posthog_client(
+        [
+            _posthog_response(
+                [
+                    ["2.6.0", "dictation.completed", 400, 400],
+                    ["2.6.0", "recording.cap_warning_shown", 3, 0],
+                    ["2.7.0", "dictation.completed", 500, 500],
+                ]
+            )
+        ]
+    )
+    ph.dev_ids = ()
+    observed_coverage = fetch_take_coverage(ph)
+    coverage_lines = "\n".join(render_take_coverage(observed_coverage))
+    assert "dictation.completed on 2.6.0: 400/400 rows carry take_id" in coverage_lines
+    assert "dictation.completed on 2.7.0: 500/500 rows carry take_id" in coverage_lines
+    assert "recording.cap_warning_shown on 2.6.0: 0/3 rows carry take_id" in coverage_lines
+    assert "<- no take keys" in coverage_lines, "a zero must be marked"
+    # THE BLACKOUT CELL. `recording.cap_warning_shown` was observed on 2.6.0 and is
+    # absent on 2.7.0. The first renderer printed `not observed` only for events
+    # missing from EVERY release, so this cell vanished silently — a per-release
+    # blackout invisible in the table built to catch blackouts.
+    assert "recording.cap_warning_shown on 2.7.0: not observed" in coverage_lines, coverage_lines
+    # Every event the fixture never returned gets a cell on BOTH observed releases.
+    for name in TAKE_KEYED_EVENTS:
+        if name in ("dictation.completed", "recording.cap_warning_shown"):
+            continue
+        for rel in ("2.6.0", "2.7.0"):
+            assert f"  {name} on {rel}: {NOT_OBSERVED}" in coverage_lines, (name, rel)
+    assert "100%" not in coverage_lines and "0%" not in coverage_lines
+    passed("take coverage renders the full event x release grid, blackout cells included")
+
+    # A subset larger than its set is impossible; it means the query or the parse
+    # is wrong, and a wrong coverage number is worse than none.
+    ph, _ = _posthog_client([_posthog_response([["2.6.0", "dictation.completed", 5, 9]])])
+    ph.dev_ids = ()
+    _expect_raises(ProtocolError, lambda: fetch_take_coverage(ph), "keyed exceeds total")
+    ph, _ = _posthog_client([_posthog_response([["2.6.0", "not.an.event", 5, 5]])])
+    ph.dev_ids = ()
+    _expect_raises(ProtocolError, lambda: fetch_take_coverage(ph), "unlisted event name")
+    passed("take coverage fails closed on an impossible subset or an unlisted event")
+
+    # THE UNION ARITHMETIC. A take on BOTH sides is counted once: two failed
+    # takes, ten successful takes, one of which is the same take, is a union of
+    # eleven — not twelve.
+    take_a, take_b = upper_take, "11111111-2222-3333-4444-555555555555"
+    take_report = aggregate_fingerprint(
+        "X",
+        [
+            SentryEvent(
+                "e1", "2.6.0", install, None, 1000.0,
+                environment="production", take_id=take_a,
+            ),
+            SentryEvent(
+                "e2", "2.6.0", install, None, 2000.0,
+                environment="production", take_id=take_b,
+            ),
+        ],
+        "production",
+    )
+    # Queue order: bucket rows, the bucket completeness total, then the
+    # POPULATION query for the affected-user denominator.
+    ph, _ = _posthog_client(
+        [
+            _posthog_response([[install, "2.6.0", 10, 1, 0]]),
+            _posthog_response([[1]]),
+            _posthog_response([["2.6.0", 10, 0]]),
+            _posthog_response([[1]]),
+        ]
+    )
+    ph.dev_ids = ()
+    rates = fetch_take_rates(ph, take_report)
+    assert len(rates) == 1, rates
+    assert rates[0].affected_takes == 2, rates[0]
+    assert rates[0].union_takes == 11, f"2 + 10 - 1 overlap = 11, got {rates[0].union_takes}"
+    assert rates[0].affected_installs == 1
+    # 10, NOT 1. The denominator is the population of installs with a keyed take
+    # in this window, not the affected installs it contains. The first version of
+    # this assertion read `== 1` and froze a structurally tautological 100%.
+    assert rates[0].eligible_installs == 10, rates[0]
+    rate_lines = "\n".join(render_take_rates(rates, take_report.take_window, True))
+    assert "2/11 takes affected (18.2%)" in rate_lines, rate_lines
+    assert "1/10 installs affected" in rate_lines, rate_lines
+    assert "UPPER BOUND" in rate_lines, "the window bias must be stated, not implied"
+    passed("a take on both sides is counted once, over a denominator that is not itself")
+
+    # Overlap is RELEASE-scoped. A partition-wide take-id list let a take affected
+    # on 2.6.0 subtract from 2.7.0's union merely because the same partition held
+    # both. Latent rather than observed — one take belongs to one session on one
+    # build, so the same id should never appear under two app versions — but every
+    # other step here pairs (install, release), and the SQL must say what it means.
+    cross_release_report = aggregate_fingerprint(
+        "X",
+        [
+            SentryEvent(
+                "cr1", "2.6.0", install, None, 1000.0,
+                environment="production", take_id=take_a,
+            ),
+            SentryEvent(
+                "cr2", "2.7.0", install, None, 2000.0,
+                environment="production", take_id=take_b,
+            ),
+        ],
+        "production",
+    )
+    ph, cross_release_transport = _posthog_client(
+        [
+            _posthog_response([[install, "2.6.0", 2, 1, 0], [install, "2.7.0", 2, 1, 0]]),
+            _posthog_response([[2]]),
+            _posthog_response([["2.6.0", 1, 0], ["2.7.0", 1, 0]]),
+            _posthog_response([[2]]),
+        ]
+    )
+    ph.dev_ids = ()
+    cross_release_rates = fetch_take_rates(ph, cross_release_report)
+    assert {row.release: row.union_takes for row in cross_release_rates} == {
+        "2.6.0": 2,
+        "2.7.0": 2,
+    }, cross_release_rates
+
+    # And the emitted predicate must pair each release with ONLY its own take ids.
+    envelope = json.loads(cross_release_transport.seen[0].body or b"{}")
+    overlap_sql = re.sub(r"\s+", " ", envelope["query"]["query"])
+    assert (
+        f"properties.app_version = \'2.6.0\' "
+        f"AND upper(properties.{TAKE_PROPERTY}) IN (\'{take_a}\')"
+    ) in overlap_sql, overlap_sql
+    assert (
+        f"properties.app_version = \'2.7.0\' "
+        f"AND upper(properties.{TAKE_PROPERTY}) IN (\'{take_b}\')"
+    ) in overlap_sql, overlap_sql
+    passed("overlap subtraction is scoped to the release that take was affected on")
+
+    # An overlap larger than the successes it is drawn from is impossible.
+    ph, _ = _posthog_client(
+        [_posthog_response([[install, "2.6.0", 3, 7, 0]]), _posthog_response([[1]])]
+    )
+    ph.dev_ids = ()
+    _expect_raises(
+        ProtocolError, lambda: fetch_take_rates(ph, take_report), "overlap exceeds successes"
+    )
+    passed("the take rate fails closed when the overlap exceeds the successes")
+
+    # A truncated bucket response silently drops successes and INFLATES the rate.
+    # The independent identical-filter total is what makes that impossible.
+    # COMPLETE queue, including the population response the guard never reaches.
+    # With a short queue this control failed on "fixture queue exhausted" — a real
+    # failure for an incidental reason, which would equally mask a genuine
+    # regression. The same trap is recorded on the `required_count` case above.
+    # With the full queue, removing the guard lets the call SUCCEED, so the
+    # assertion is specific to the guard rather than to the fixture.
+    ph, _ = _posthog_client(
+        [
+            _posthog_response([[install, "2.6.0", 10, 1, 0]]),
+            _posthog_response([[2]]),
+            _posthog_response([["2.6.0", 10, 0]]),
+            _posthog_response([[1]]),
+        ]
+    )
+    ph.dev_ids = ()
+    _expect_raises(
+        IncompleteError,
+        lambda: fetch_take_rates(ph, take_report),
+        "truncated take-rate buckets",
+        # The message is REQUIRED, not decorative: four separate guards in this
+        # file raise `IncompleteError`, so a bare type assertion cannot say which
+        # one fired. Control D earlier in this chunk failed for exactly that
+        # reason — an unrelated guard tripped and looked like proof.
+        "received 1 install-release buckets",
+    )
+    passed("take-rate buckets require an independent completeness total")
+
+    # SUB-SECOND WINDOW BOUNDS. `int(epoch)` compared whole seconds, so a window of
+    # .900 -> 1.100 admitted nearly two full seconds of PostHog events and quietly
+    # enlarged the denominator. Rounding INWARD makes the success query narrower
+    # than the measured failure span, never wider — conservative by construction.
+    fractional_window = TakeWindow(start_epoch=1000.900, end_epoch=1001.100)
+    assert fractional_window.start_millis == 1_000_900, fractional_window.start_millis
+    assert fractional_window.end_millis == 1_001_100, fractional_window.end_millis
+    assert fractional_window.degenerate is False
+    # A window with no positive width can contain coincident events, but it is not
+    # a meaningful population interval. Refuse instead of reporting a rate whose
+    # denominator is determined by timestamp coincidence.
+    assert TakeWindow(start_epoch=1000.0001, end_epoch=1000.0002).degenerate is True
+    # And the emitted SQL must carry the exact bounds — a correct property that
+    # never reaches the query is not a fix.
+    ph, tr = _posthog_client(
+        [
+            _posthog_response([[install, "2.6.0", 10, 1, 0]]),
+            _posthog_response([[1]]),
+            _posthog_response([["2.6.0", 10, 0]]),
+            _posthog_response([[1]]),
+        ]
+    )
+    ph.dev_ids = ()
+    fetch_take_rates(ph, take_report)
+    window = take_report.take_window
+    assert window is not None
+    sent = "\n".join(str(request.body) for request in tr.seen)
+    assert f"toUnixTimestamp64Milli(timestamp) >= {window.start_millis}" in sent
+    assert f"toUnixTimestamp64Milli(timestamp) <= {window.end_millis}" in sent
+    # The RENDERED window must be the one queried. Formatting `start_epoch` through
+    # a whole-second formatter printed a caption for a different measurement.
+    # A SUB-MILLISECOND fixture, chosen so the rounded and unrounded renderings
+    # DIFFER. The first version used the .900/.100 window above, where both forms
+    # print identically — the control that reverted this to `start_epoch` passed
+    # all 55 cases, proving the assertion could not detect the defect it named.
+    sub_milli_window = TakeWindow(start_epoch=1000.9001, end_epoch=1001.1006)
+    assert sub_milli_window.start_millis == 1_000_901, sub_milli_window.start_millis
+    assert sub_milli_window.end_millis == 1_001_100, sub_milli_window.end_millis
+    displayed_window = "\n".join(
+        render_take_rates(
+            [
+                TakeRateRow(
+                    release="2.6.0", affected_takes=1, union_takes=1,
+                    affected_installs=1, eligible_installs=1,
+                )
+            ],
+            sub_milli_window,
+            True,
+        )
+    )
+    assert (
+        "1970-01-01T00:16:40.901Z .. 1970-01-01T00:16:41.100Z" in displayed_window
+    ), displayed_window
+    # The unrounded start would print .900 — assert its ABSENCE, so rendering the
+    # raw epoch fails here instead of passing silently.
+    assert "00:16:40.900Z" not in displayed_window, displayed_window
+    assert "SAME span" not in displayed_window
+    passed("the take-rate window is bounded, and displayed, at the precision queried")
+
+    # A malformed PostHog take id must not become a successful take. It would
+    # enlarge both denominators and produce a confidently LOWER failure rate — the
+    # direction that reads as "the bug is rarer than you feared".
+    # COMPLETE queue: absent the guard this call SUCCEEDS, so the assertion is
+    # specific to the guard rather than to queue exhaustion.
+    ph, _ = _posthog_client(
+        [
+            _posthog_response([[install, "2.6.0", 10, 1, 1]]),
+            _posthog_response([[1]]),
+            _posthog_response([["2.6.0", 10, 0]]),
+            _posthog_response([[1]]),
+        ]
+    )
+    ph.dev_ids = ()
+    _expect_raises(
+        ProtocolError,
+        lambda: fetch_take_rates(ph, take_report),
+        "malformed successful take id",
+        "non-canonical take_id",
+    )
+    # Same guard on the population query, which independently produces the
+    # affected-user denominator.
+    ph, _ = _posthog_client(
+        [
+            _posthog_response([[install, "2.6.0", 10, 1, 0]]),
+            _posthog_response([[1]]),
+            _posthog_response([["2.6.0", 10, 3]]),
+            _posthog_response([[1]]),
+        ]
+    )
+    ph.dev_ids = ()
+    _expect_raises(
+        ProtocolError,
+        lambda: fetch_take_rates(ph, take_report),
+        "malformed take id in the population query",
+        "non-canonical take_id",
+    )
+    passed("malformed PostHog take IDs cannot enter either rate denominator")
+
+    # A truncated POPULATION response loses a release row; `defaultdict(int)` would
+    # substitute zero and the denominator could come back below its own numerator.
+    ph, _ = _posthog_client(
+        [
+            _posthog_response([[install, "2.6.0", 10, 1, 0]]),
+            _posthog_response([[1]]),
+            _posthog_response([["2.6.0", 10, 0]]),
+            _posthog_response([[2]]),
+        ]
+    )
+    ph.dev_ids = ()
+    _expect_raises(
+        IncompleteError,
+        lambda: fetch_take_rates(ph, take_report),
+        "truncated population buckets",
+        "received 1 release buckets",
+    )
+    # And an impossible pair across the two result sets is refused rather than
+    # returned: more affected-and-successful installs than successful installs.
+    ph, _ = _posthog_client(
+        [
+            _posthog_response([[install, "2.6.0", 10, 1, 0]]),
+            _posthog_response([[1]]),
+            _posthog_response([["2.6.0", 0, 0]]),
+            _posthog_response([[1]]),
+        ]
+    )
+    ph.dev_ids = ()
+    _expect_raises(
+        ProtocolError,
+        lambda: fetch_take_rates(ph, take_report),
+        "affected-and-successful exceeds successful",
+        "affected installs",
+    )
+    passed("the affected-user denominator fails closed on truncation or an impossible pair")
+
+    # The renderer's own fail-closed paths. Both are reachable only from a
+    # hand-built list today, but an untested raise is an untested raise.
+    _expect_raises(
+        ProtocolError,
+        lambda: render_take_coverage(
+            [
+                TakeCoverageRow(event="dictation.completed", release="2.6.0",
+                                with_take=1, total=1),
+                TakeCoverageRow(event="dictation.completed", release="2.6.0",
+                                with_take=2, total=2),
+            ]
+        ),
+        "duplicate coverage cell",
+        "duplicate rows",
+    )
+    _expect_raises(
+        ProtocolError,
+        lambda: render_take_coverage(
+            [TakeCoverageRow(event="not.an.event", release="2.6.0", with_take=1, total=1)]
+        ),
+        "unlisted event in the renderer",
+        "unlisted events",
+    )
+    # And the empty case still names every intended event rather than printing
+    # an empty table that reads as "nothing to report".
+    empty_grid = "\n".join(render_take_coverage([]))
+    for name in TAKE_KEYED_EVENTS:
+        assert f"  {name}: {NOT_OBSERVED}" in empty_grid, name
+    passed("the coverage renderer fails closed on duplicate or unlisted cells")
+
+    # A window with no positive width can contain coincident events, but it is not
+    # a meaningful population interval. Refuse instead of reporting a rate whose
+    # denominator is determined by timestamp coincidence.
+    point_report = aggregate_fingerprint(
+        "X",
+        [
+            SentryEvent(
+                "e1", "2.6.0", install, None, 1000.0,
+                environment="production", take_id=take_a,
+            )
+        ],
+        "production",
+    )
+    assert point_report.take_window is not None and point_report.take_window.degenerate
+    # The fixture is a client that WOULD succeed. An empty-response client was the
+    # first form and it proved nothing: removing the guard made the run fail on
+    # "dev ids never resolved" instead of on this assertion, so the control fired
+    # for an unrelated reason — the Python twin of a compile error passing for RED.
+    # With a complete queue, the ONLY thing standing between this call and a
+    # computed rate is the degenerate-window guard.
+    ph, _ = _posthog_client([_posthog_response([[install, "2.6.0", 4, 0, 0]])])
+    ph.dev_ids = ()
+    assert fetch_take_rates(ph, point_report) == []
+    point_rendered = render_take_rates([], point_report.take_window, True)
+    refusal = [line for line in point_rendered if "REFUSED" in line]
+    assert len(refusal) == 1, point_rendered
+    # Scoped to the refusal LINE, not the block: the section header legitimately
+    # contains "Phase 2", and a whole-block digit scan flagged that label as if it
+    # were a reported figure. Aim the matcher at the claim it is checking.
+    assert not re.search(r"\d", refusal[0]), (
+        "a refusal must not print a figure — a skimming reader takes the number "
+        f"and drops the refusal: {refusal[0]!r}"
+    )
+    passed("a zero-width take window is refused rather than reported as a certainty")
+
+    # A pre-Phase-2 population carries no take tags at all. That reads
+    # `not observed`, NEVER a 0% failure rate.
+    legacy_report = aggregate_fingerprint(
+        "X",
+        [
+            SentryEvent("e1", "2.5.0", install, None, 1000.0, environment="production"),
+            SentryEvent("e2", "2.5.0", install, None, 5000.0, environment="production"),
+        ],
+        "production",
+    )
+    assert legacy_report.affected_takes_by_install_release == {}
+    assert fetch_take_rates(_posthog_client([])[0], legacy_report) == []
+    legacy_lines = "\n".join(
+        render_take_rates([], legacy_report.take_window, has_affected_takes=False)
+    )
+    assert NOT_OBSERVED in legacy_lines
+    assert "0%" not in legacy_lines, "absence of the tag is not a zero rate"
+    passed("a population with no take tags reads not-observed, never a 0% rate")
+
+    # Only JOINED events contribute a take. An unjoined event's take cannot be
+    # paired with any install's successes, so counting it would inflate the
+    # numerator against a denominator it is not part of.
+    unjoined_report = aggregate_fingerprint(
+        "X",
+        [
+            SentryEvent(
+                "e1", "2.6.0", None, "legacy-user", 1000.0,
+                environment="production", take_id=take_a,
+            ),
+            SentryEvent(
+                "e2", "2.6.0", install, None, 2000.0,
+                environment="production", take_id=take_b,
+            ),
+        ],
+        "production",
+    )
+    assert unjoined_report.affected_takes_by_install_release == {(install, "2.6.0"): {take_b}}
+    passed("an unjoined event's take never enters the rate it has no denominator for")
+
+    # COMPOSITION, through the real entry point. Every case above calls
+    # `render_take_coverage` / `render_take_rates` directly, so deleting the two
+    # lines that splice them into `render_report` would leave all of them green
+    # while the shipped report printed neither section
+    # (`a-guard-nothing-arms-is-not-a-guard`).
+    composed = render_report(
+        take_report,
+        {},
+        take_coverage=[
+            TakeCoverageRow(
+                event="dictation.completed", release="2.6.0", with_take=400, total=400
+            )
+        ],
+        take_rates=[
+            TakeRateRow(
+                release="2.6.0", affected_takes=2, union_takes=11,
+                affected_installs=1, eligible_installs=1,
+            )
+        ],
+    )
+    assert "Take coverage by event and release" in composed, composed
+    assert "dictation.completed on 2.6.0: 400/400" in composed, composed
+    assert "Fingerprint take rate" in composed, composed
+    assert "2/11 takes affected" in composed, composed
+    passed("render_report splices both Phase 2 sections into the shipped output")
+
     print("")
     print(f"Self-test: {len(cases)} cases passed, 0 failed")
     return 0
@@ -2467,14 +3616,14 @@ def main(argv: Sequence[str]) -> int:
                 f"missing credential(s) in the environment: {', '.join(missing)}. "
                 "Bridge them with `~/.claude/bin/get-key launch` — see the module docstring."
             )
-        report, usage = build_report(
+        report, usage, take_coverage, take_rates = build_report(
             args.issue,
             SentryClient(str(sentry_key)),
             PostHogClient(str(posthog_key), environment=args.environment),
             environment=args.environment,
         )
         # Rendered only after every page, partition and completeness check passed.
-        print(render_report(report, usage))
+        print(render_report(report, usage, take_coverage, take_rates))
         return 0
     except InstrumentError as exc:
         print(f"error: {exc}", file=sys.stderr)
