@@ -6,10 +6,10 @@
  * populations, result shapes, degradation behaviour and rendered content are
  * byte-for-byte what they were - this chunk moves ownership, nothing else.
  *
- * Owns the seven adoption queries and `resolveBuckets`. Deliberately does NOT
- * own presentation: `buildMessage` and its label/percentage/date helpers stay
- * with the presentation owner until a later chunk moves that whole concern once,
- * rather than relocating it twice.
+ * Owns the seven adoption queries, `resolveBuckets`, and the interpretation of
+ * every adoption result. Deliberately does NOT own presentation, scheduling, or
+ * the report window: it describes its outbound work and reads the window and
+ * production predicate the orchestrator resolved once (#1838 chunk 6).
  */
 
 import {
@@ -18,11 +18,8 @@ import {
   PostHogQueryError,
   RETRYABLE_POSTHOG_STATUSES,
   hogql,
-  productionClauseFor,
   querySection,
-  resolveDevIds,
   rowsToObjects,
-  runLimited,
   sqlIdList,
   sqlTimestamp,
 } from "./lib/posthog.js";
@@ -87,15 +84,24 @@ function tierASqlFor(activeIds, endTs) {
     LIMIT ${PER_USER_LIST_LIMIT}`;
 }
 
-// `hogqlOpts` forwards the same injection bag `hogql` already accepts, so tests
-// can drive the retry path without real backoff delays - the pattern the
-// hogql unit tests already use. Production passes nothing.
-export async function fetchReportData(env, win, endUTC, hogqlOpts = {}) {
-  const endTs = sqlTimestamp(endUTC);
-  // Resolved ONCE per report run and threaded through every query below,
-  // replacing the old per-query inline dev-exclusion subquery (#1720).
-  const devIds = await resolveDevIds(env, hogqlOpts);
-  const prod = productionClauseFor(devIds);
+/**
+ * Describes the adoption section's outbound work and interprets its results.
+ * It does NOT schedule anything: the orchestrator owns the single limiter, so
+ * a per-module queue here would silently double the global in-flight ceiling.
+ *
+ * `context` is the orchestrator's one resolved report context. This module
+ * never reads the clock, never derives a second window, and never sees the raw
+ * dev-ID list - only the production predicate built from it once.
+ *
+ * `hogqlOpts` forwards the same injection bag `hogql` already accepts, so tests
+ * can drive the retry path without real backoff delays. Production passes
+ * nothing.
+ */
+export function createAdoptionSection(env, context, opts = {}) {
+  const hogqlOpts = opts.hogqlOpts || {};
+  const resolveBucketsFn = opts.resolveBucketsFn || resolveBuckets;
+  const { win, prod } = context;
+  const endTs = sqlTimestamp(context.endUTC);
   const activeUsers = activeUsersSubquery(win);
 
   const installsSql = `
@@ -144,78 +150,130 @@ export async function fetchReportData(env, win, endUTC, hogqlOpts = {}) {
     ORDER BY n DESC
     LIMIT 5`;
 
-  // These 6 primary queries are independent, but PostHog allows only 3
-  // concurrent queries per project (#1588). `runLimited(..., 2)` keeps at
-  // most 2 requests in flight, leaving one slot of headroom for the shared
-  // project's other traffic (EnviousStaging). A rejected task releases its
-  // slot and queued work continues (#1838), so one failure cannot strand
-  // later work. Polish tier-a (below) runs sequentially *after* the entire
-  // limited batch settles - it does not need reserved concurrency.
-  // `totals` is the sole fail-loud query in this batch (it anchors
-  // resolveBuckets's completeness check and supplies the report's
-  // headline numbers); the other five go through querySection and degrade
-  // to "temporarily unavailable" instead of discarding the whole report on
-  // an exhausted transient failure (#1720).
-  const [installsResult, onboardActivateResult, totals, engineAndTierBResult, geoResult, top5Result] =
-    await runLimited(
-      [
-        () => querySection(env, installsSql, "installs", hogqlOpts),
-        () => querySection(env, onboardActivateSql, "onboard_activate", hogqlOpts),
-        () => hogql(env, totalsSql, "totals", hogqlOpts),
-        () => querySection(env, engineAndTierBSql, "engine_and_tier_b", hogqlOpts),
-        () => querySection(env, geoSql, "geo", hogqlOpts),
-        () => querySection(env, top5Sql, "top5", hogqlOpts),
-      ],
-      2
-    );
+  // These 6 primary queries are independent and are handed to the orchestrator
+  // as descriptors. `totals` is the sole fail-loud query (it anchors
+  // resolveBuckets's completeness check and supplies the report's headline
+  // numbers); the other five go through querySection and degrade to
+  // "temporarily unavailable" instead of discarding the whole report on an
+  // exhausted transient failure (#1720). Polish tier-a is a dependent
+  // follow-up: it needs the active-user ids these queries return.
+  const primaryTasks = [
+    () => querySection(env, installsSql, "installs", hogqlOpts),
+    () => querySection(env, onboardActivateSql, "onboard_activate", hogqlOpts),
+    () => hogql(env, totalsSql, "totals", hogqlOpts),
+    () => querySection(env, engineAndTierBSql, "engine_and_tier_b", hogqlOpts),
+    () => querySection(env, geoSql, "geo", hogqlOpts),
+    () => querySection(env, top5Sql, "top5", hogqlOpts),
+  ];
 
-  const engineAndTierB = engineAndTierBResult.degraded ? [] : rowsToObjects(engineAndTierBResult.response);
-  const activeIds = engineAndTierB.map((row) => row.distinct_id);
-  // tier-a is an ENRICHMENT: resolveBuckets already falls back
-  // tierA -> tier_b_provider -> DEFAULT_PROVIDER per user, so an empty tier-a
-  // still yields a complete breakdown. A tier-a failure must therefore degrade
-  // that one attribution tier rather than discard an otherwise-complete report.
-  // On 2026-07-18 all six batched queries succeeded and were discarded because
-  // tier-a timed out (#1655). When engineAndTierB itself is degraded,
-  // activeIds is empty, so tier-a is naturally skipped below - runReport
-  // separately skips resolveBuckets entirely in that case (#1720), since a
-  // completeness check has nothing real to verify against.
-  //
-  // ONLY an exhausted retryable status degrades. Anything else - auth, bad SQL,
-  // a malformed response, a programming error - stays loud: a silently
-  // "approximate" report that hides a real defect is worse than no report.
-  let tierA = { results: [], columns: [] };
-  let tierADegraded = false;
-  if (activeIds.length) {
-    try {
-      tierA = await hogql(env, tierASqlFor(activeIds, endTs), "tier_a", hogqlOpts);
-    } catch (err) {
-      const isExpectedTransientFailure =
-        err instanceof PostHogQueryError &&
-        err.queryName === "tier_a" &&
-        RETRYABLE_POSTHOG_STATUSES.has(err.status);
-      if (!isExpectedTransientFailure) throw err;
-      tierADegraded = true;
-      console.log(`daily-report tier_a degraded after retries: HTTP ${err.status}`);
-    }
-  }
+  // Carried between the two stages. querySection already absorbed every
+  // expected transient failure into a `degraded` flag, so anything that
+  // REJECTS above is a genuine fault and fails the whole adoption section.
+  let carried = null;
+  // How many follow-up results this section ASKED for. Without it, a tier-A
+  // lookup that was requested and then lost reads as "tier A was unnecessary":
+  // attribution silently drops to the weaker tier with no "approximate" note,
+  // so the polish breakdown looks authoritative while being computed from a
+  // different source than it claims.
+  let expectedFollowUpCount = null;
+
+  const requireValue = (outcome) => {
+    if (outcome.status !== "fulfilled") throw outcome.reason;
+    return outcome.value;
+  };
 
   return {
-    freshInstalls: installsResult.degraded ? null : installsResult.response.results[0][0],
-    installsDegraded: installsResult.degraded,
-    onboarded: onboardActivateResult.degraded ? null : rowsToObjects(onboardActivateResult.response)[0]?.onboarded ?? 0,
-    activated: onboardActivateResult.degraded ? null : rowsToObjects(onboardActivateResult.response)[0]?.activated ?? 0,
-    onboardActivateDegraded: onboardActivateResult.degraded,
-    netDictations: rowsToObjects(totals)[0]?.net_dictations ?? 0,
-    totalUsers: rowsToObjects(totals)[0]?.total_users ?? 0,
-    engineAndTierB,
-    engineAndTierBDegraded: engineAndTierBResult.degraded,
-    tierA: rowsToObjects(tierA),
-    tierADegraded,
-    geo: geoResult.degraded ? [] : rowsToObjects(geoResult.response),
-    geoDegraded: geoResult.degraded,
-    top5: top5Result.degraded ? [] : rowsToObjects(top5Result.response),
-    top5Degraded: top5Result.degraded,
+    name: "adoption",
+    primaryTasks,
+
+    followUpTasks(primary) {
+      const [installsResult, onboardActivateResult, totals, engineAndTierBResult, geoResult, top5Result] =
+        primary.map(requireValue);
+      const engineAndTierB = engineAndTierBResult.degraded
+        ? []
+        : rowsToObjects(engineAndTierBResult.response);
+
+      carried = {
+        freshInstalls: installsResult.degraded ? null : installsResult.response.results[0][0],
+        installsDegraded: installsResult.degraded,
+        onboarded: onboardActivateResult.degraded ? null : rowsToObjects(onboardActivateResult.response)[0]?.onboarded ?? 0,
+        activated: onboardActivateResult.degraded ? null : rowsToObjects(onboardActivateResult.response)[0]?.activated ?? 0,
+        onboardActivateDegraded: onboardActivateResult.degraded,
+        netDictations: rowsToObjects(totals)[0]?.net_dictations ?? 0,
+        totalUsers: rowsToObjects(totals)[0]?.total_users ?? 0,
+        engineAndTierB,
+        engineAndTierBDegraded: engineAndTierBResult.degraded,
+        geo: geoResult.degraded ? [] : rowsToObjects(geoResult.response),
+        geoDegraded: geoResult.degraded,
+        top5: top5Result.degraded ? [] : rowsToObjects(top5Result.response),
+        top5Degraded: top5Result.degraded,
+      };
+
+      // When engineAndTierB itself degraded, activeIds is empty and tier-a is
+      // skipped entirely - `finish` separately skips resolveBuckets in that
+      // case (#1720), since its completeness check has nothing real to verify.
+      const activeIds = engineAndTierB.map((row) => row.distinct_id);
+      expectedFollowUpCount = activeIds.length > 0 ? 1 : 0;
+      if (expectedFollowUpCount === 0) return [];
+      return [() => hogql(env, tierASqlFor(activeIds, endTs), "tier_a", hogqlOpts)];
+    },
+
+    finish(_primary, followUp) {
+      // Refused rather than spread: `{ ...null }` is `{}`, so a finish that ran
+      // without its predecessor would render a complete-looking report of
+      // `undefined` people and `undefined` dictations instead of failing.
+      if (carried === null || expectedFollowUpCount === null) {
+        throw new Error("adoption finish ran before its query results were interpreted");
+      }
+      if (!Array.isArray(followUp) || followUp.length !== expectedFollowUpCount) {
+        throw new Error(
+          `adoption expected ${expectedFollowUpCount} follow-up result(s), received ` +
+            `${Array.isArray(followUp) ? followUp.length : "a non-array"}`
+        );
+      }
+      // tier-a is an ENRICHMENT: resolveBuckets already falls back
+      // tierA -> tier_b_provider -> DEFAULT_PROVIDER per user, so an empty
+      // tier-a still yields a complete breakdown. A tier-a failure must
+      // therefore degrade that one attribution tier rather than discard an
+      // otherwise-complete report. On 2026-07-18 all six batched queries
+      // succeeded and were discarded because tier-a timed out (#1655).
+      //
+      // ONLY an exhausted retryable status degrades. Anything else - auth, bad
+      // SQL, a malformed response, a programming error - stays loud: a silently
+      // "approximate" report that hides a real defect is worse than no report.
+      let tierA = { results: [], columns: [] };
+      let tierADegraded = false;
+      if (followUp.length === 1) {
+        const outcome = followUp[0];
+        if (outcome.status === "fulfilled") {
+          tierA = outcome.value;
+        } else {
+          const err = outcome.reason;
+          const isExpectedTransientFailure =
+            err instanceof PostHogQueryError &&
+            err.queryName === "tier_a" &&
+            RETRYABLE_POSTHOG_STATUSES.has(err.status);
+          if (!isExpectedTransientFailure) throw err;
+          tierADegraded = true;
+          console.log(`daily-report tier_a degraded after retries: HTTP ${err.status}`);
+        }
+      }
+
+      const data = { ...carried, tierA: rowsToObjects(tierA), tierADegraded };
+      const buckets = data.engineAndTierBDegraded
+        ? { engineBuckets: {}, polishBuckets: {}, resolutionSource: { settings: 0, actual_dictation: 0, shipped_default: 0 } }
+        : resolveBucketsFn(data);
+
+      // Resolution-tier logging (Cloudflare log only, never the Discord
+      // message) - plan §3.3a. A spike in shipped_default's share vs
+      // settings/actual_dictation is the telemetry-drift canary.
+      console.log(
+        `daily-report resolution tiers: settings=${buckets.resolutionSource.settings} ` +
+          `actual_dictation=${buckets.resolutionSource.actual_dictation} ` +
+          `shipped_default=${buckets.resolutionSource.shipped_default}`
+      );
+      return { data, buckets };
+    },
   };
 }
 

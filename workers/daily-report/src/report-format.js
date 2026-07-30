@@ -153,6 +153,21 @@ function formatMovers(ranking) {
 export function formatScorecardUnavailable() {
   return [
     "Version scorecard, unavailable today.",
-    "Yesterday's adoption figures above are unaffected.",
+    "Version measurements could not be completed, so this is not a report of zero.",
+  ];
+}
+
+/** The adoption twin of the above. Both unavailable messages live here, in one
+ * place, so a failing section can never be described in two different voices
+ * depending on which half broke. Says nothing was measured rather than letting
+ * a missing section read as a quiet zero.
+ *
+ * Neither message comments on the OTHER section. Both can fail in the same run,
+ * and cross-references then produce a report in which each half calmly reports
+ * the other as unaffected. A section describes only itself. */
+export function formatAdoptionUnavailable() {
+  return [
+    "Adoption, unavailable today.",
+    "Yesterday's figures could not be measured, so this is not a report of zero.",
   ];
 }

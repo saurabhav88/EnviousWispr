@@ -2,14 +2,18 @@
 // logic (no network). Run: node --test (from workers/daily-report/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
+import worker, {
   easternYesterdayWindowUTC,
-  buildMessage,
+  resolveReportWindow,
+  formatAdoption,
+  reportHeader,
+  driveSections,
   runReport,
 } from "../src/index.js";
 // #1838 chunk 2: the adoption domain has its own owner. Tests import from it
 // directly - a re-export from index.js would be a forwarding shim.
-import { fetchReportData, resolveBuckets } from "../src/adoption.js";
+import { createAdoptionSection, resolveBuckets } from "../src/adoption.js";
+import { DISCORD_LIMITS, DiscordPayloadError, deliverReport } from "../src/lib/discord.js";
 import {
   normalizeReleaseVersion,
   compareVersions,
@@ -27,6 +31,8 @@ import {
   METRIC_CALCULATIONS,
   WINDOW_COUNT,
   rankMovers,
+  createScorecardSection,
+  ScorecardSectionError,
   releaseAgeInWindow,
 } from "../src/version-scorecard.js";
 import { formatScorecard, formatScorecardUnavailable } from "../src/report-format.js";
@@ -172,7 +178,7 @@ test("productionClauseFor: non-empty list appends a literal NOT IN exclusion", (
   assert.match(clause, /NOT IN \('dev-1', 'dev-2'\)/);
 });
 
-// ---- buildMessage ----
+// ---- adoption section formatting ----
 // Golden fixture: real production numbers from a live-query-smoke.mjs run
 // against the ACTUAL implemented queries (2026-07-08 Eastern calendar day,
 // captured post-implementation, not the earlier hand-verified planning-time
@@ -205,10 +211,14 @@ const GOLDEN_BUCKETS = {
   polishBuckets: { appleIntelligence: 64, egOne: 36, gemini: 4, none: 3, ollama: 2, openAI: 1 },
 };
 
-test("buildMessage: golden fixture matches the founder-approved report shape", () => {
-  const msg = buildMessage("2026-07-08", GOLDEN_DATA, GOLDEN_BUCKETS);
+test("adoption section: golden fixture matches the founder-approved report shape", () => {
+  const msg = formatAdoption(GOLDEN_DATA, GOLDEN_BUCKETS).join("\n");
 
-  assert.match(msg, /^EnviousWispr Daily Report, Wednesday, July 8, 2026/);
+  // The report title is the Discord message's `content` line and has exactly
+  // one producer; the adoption embed titles itself and never repeats it.
+  assert.equal(reportHeader("2026-07-08"), "EnviousWispr Daily Report, Wednesday, July 8, 2026");
+  assert.match(msg, /^Adoption\n/);
+  assert.doesNotMatch(msg, /EnviousWispr Daily Report/);
   assert.match(msg, /New installs: 90\. People who finished setup that day: 82\. Of those, 60 also dictated that day\./);
   assert.doesNotMatch(msg, /for the first time/);
   assert.doesNotMatch(msg, /out of 90/); // no funnel-bleed wording (r1 fix)
@@ -227,84 +237,82 @@ test("buildMessage: golden fixture matches the founder-approved report shape", (
   assert.doesNotMatch(msg, /temporarily unavailable/);
 });
 
-test("buildMessage: zero-count buckets are omitted, not shown as '(0%)'", () => {
-  const msg = buildMessage("2026-07-08", GOLDEN_DATA, {
+test("adoption section: zero-count buckets are omitted, not shown as '(0%)'", () => {
+  const msg = formatAdoption(GOLDEN_DATA, {
     engineBuckets: { parakeet: 110, whisperKit: 0 },
     polishBuckets: { appleIntelligence: 110, gemini: 0 },
-  });
+  }).join("\n");
   assert.doesNotMatch(msg, /WhisperKit 0/);
   assert.doesNotMatch(msg, /Gemini 0/);
 });
 
-test("buildMessage: zero total_users omits the engine/polish section entirely (no divide-by-zero)", () => {
-  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, totalUsers: 0 }, { engineBuckets: {}, polishBuckets: {} });
+test("adoption section: zero total_users omits the engine/polish section entirely (no divide-by-zero)", () => {
+  const msg = formatAdoption({ ...GOLDEN_DATA, totalUsers: 0 }, { engineBuckets: {}, polishBuckets: {} }).join("\n");
   assert.doesNotMatch(msg, /Transcription engine/);
   assert.doesNotMatch(msg, /AI polishing/);
   assert.match(msg, /Total users: 0 people used the app that day\./);
 });
 
-// ---- buildMessage: per-section fail-soft degradation (#1720) ----
+// ---- adoption section: per-section fail-soft degradation (#1720) ----
 //
 // Each of the 5 non-essential primary queries can independently degrade to
 // "temporarily unavailable" - never a fabricated zero or empty list shown as
 // real data - while the rest of the report still ships. `totals` never
 // degrades (verified separately below via fetchReportData/runReport).
 
-test("buildMessage: installsDegraded omits the freshInstalls number, keeps onboarding intact", () => {
-  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, installsDegraded: true }, GOLDEN_BUCKETS);
+test("adoption section: installsDegraded omits the freshInstalls number, keeps onboarding intact", () => {
+  const msg = formatAdoption({ ...GOLDEN_DATA, installsDegraded: true }, GOLDEN_BUCKETS).join("\n");
   assert.match(msg, /New installs: temporarily unavailable\./);
   assert.doesNotMatch(msg, /New installs: 90/);
   assert.match(msg, /People who finished setup that day: 82\. Of those, 60 also dictated that day\./);
   assert.match(msg, /Note: .*new installs/);
 });
 
-test("buildMessage: onboardActivateDegraded omits onboarding, keeps installs intact", () => {
-  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, onboardActivateDegraded: true }, GOLDEN_BUCKETS);
+test("adoption section: onboardActivateDegraded omits onboarding, keeps installs intact", () => {
+  const msg = formatAdoption({ ...GOLDEN_DATA, onboardActivateDegraded: true }, GOLDEN_BUCKETS).join("\n");
   assert.match(msg, /New installs: 90\./);
   assert.match(msg, /Onboarding and activation: temporarily unavailable\./);
   assert.doesNotMatch(msg, /People who finished setup that day/);
   assert.match(msg, /Note: .*onboarding\/activation/);
 });
 
-test("buildMessage: engineAndTierBDegraded omits both engine and polish lines, never fabricates a bucket", () => {
-  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, engineAndTierBDegraded: true }, GOLDEN_BUCKETS);
+test("adoption section: engineAndTierBDegraded omits both engine and polish lines, never fabricates a bucket", () => {
+  const msg = formatAdoption({ ...GOLDEN_DATA, engineAndTierBDegraded: true }, GOLDEN_BUCKETS).join("\n");
   assert.match(msg, /Transcription engine and AI-polish breakdown: temporarily unavailable\./);
   assert.doesNotMatch(msg, /Parakeet/);
   assert.doesNotMatch(msg, /Apple Intelligence/);
   assert.match(msg, /Note: .*transcription engine and AI-polish breakdown/);
 });
 
-test("buildMessage: geoDegraded omits the countries line, not an empty list shown as zero data", () => {
-  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, geoDegraded: true }, GOLDEN_BUCKETS);
+test("adoption section: geoDegraded omits the countries line, not an empty list shown as zero data", () => {
+  const msg = formatAdoption({ ...GOLDEN_DATA, geoDegraded: true }, GOLDEN_BUCKETS).join("\n");
   assert.match(msg, /Where they are: temporarily unavailable\./);
   assert.doesNotMatch(msg, /Germany/);
   assert.match(msg, /Note: .*where they are/);
 });
 
-test("buildMessage: top5Degraded omits the top-users line", () => {
-  const msg = buildMessage("2026-07-08", { ...GOLDEN_DATA, top5Degraded: true }, GOLDEN_BUCKETS);
+test("adoption section: top5Degraded omits the top-users line", () => {
+  const msg = formatAdoption({ ...GOLDEN_DATA, top5Degraded: true }, GOLDEN_BUCKETS).join("\n");
   assert.match(msg, /Top 5 users by dictation volume: temporarily unavailable\./);
   assert.doesNotMatch(msg, /557, 139/);
   assert.match(msg, /Note: .*top 5 users/);
 });
 
-test("buildMessage: multiple degraded sections all appear in one combined note", () => {
-  const msg = buildMessage(
-    "2026-07-08",
-    { ...GOLDEN_DATA, installsDegraded: true, geoDegraded: true },
+test("adoption section: multiple degraded sections all appear in one combined note", () => {
+  const msg = formatAdoption({ ...GOLDEN_DATA, installsDegraded: true, geoDegraded: true },
     GOLDEN_BUCKETS
-  );
+  ).join("\n");
   const noteLine = msg.split("\n").find((l) => l.startsWith("Note:"));
   assert.ok(noteLine, "expected one combined Note line");
   assert.match(noteLine, /new installs/);
   assert.match(noteLine, /where they are/);
 });
 
-test("buildMessage: totals never has a degrade flag - no such branch exists", () => {
-  // totals staying fail-loud means fetchReportData/runReport throw before
-  // buildMessage is ever called with degraded totals data - there is no
-  // totalsDegraded field to test here by design (see fetchReportData tests).
-  const msg = buildMessage("2026-07-08", GOLDEN_DATA, GOLDEN_BUCKETS);
+test("adoption section: totals never has a degrade flag - no such branch exists", () => {
+  // totals staying fail-loud means the adoption section throws before
+  // formatAdoption is ever called with degraded totals data - there is no
+  // totalsDegraded field to test here by design (see the section tests).
+  const msg = formatAdoption(GOLDEN_DATA, GOLDEN_BUCKETS).join("\n");
   assert.doesNotMatch(msg, /Total users: temporarily unavailable/);
 });
 
@@ -735,30 +743,96 @@ test("resolveDevIds: an empty result is a valid, non-throwing state", async () =
 
 // ---- fail-soft boundary: tier-a (#1655) and all 6 primary queries (#1720) ----
 //
-// These MUST drive fetchReportData, not hogql in isolation: the defect they
-// guard against (a blanket catch silently swallowing real errors) lives in
-// fetchReportData's catch, so a test that only exercises hogql would pass even
-// with the guard broken. fetchReportData calls hogql without an injectable
-// fetchFn, so the mock is installed on globalThis.fetch and dispatches on the
-// query name the worker puts in the request body.
+// These MUST drive the real section and orchestrator, not hogql in isolation:
+// the defect they guard against (a blanket catch silently swallowing real
+// errors) lives in the section's own interpretation step, so a test that only
+// exercises hogql would pass even with the guard broken. The sections call
+// hogql without an injectable fetchFn, so the mock is installed on
+// globalThis.fetch and dispatches on the query name the worker puts in the
+// request body, on the GitHub host, or on the Discord webhook.
 
-/** Installs a global fetch that lets every batch query (including the new
- * dev_ids preflight) succeed and lets the caller decide what one named query
- * does. Also transparently succeeds any non-PostHog call (the Discord
- * webhook POST runReport makes after a successful report - its body is
- * `{content}`, with no `.name` field, unlike every hogql() request body) so
- * tests can drive runReport end-to-end, not just fetchReportData. Returns a
- * restore fn. */
-function mockPostHog({ failQuery, failWith }) {
+// ---- #1838 chunk 6 fixtures: one internally consistent production picture ----
+//
+// The two scorecard queries measure the SAME successful dictations, so their
+// dictation counts must agree per window and version or buildMeasurements
+// refuses them. `total_group_rows` must equal the row count or the truncation
+// check refuses them. Both are deliberate: a fixture that could not satisfy
+// them would be measuring a shape production can never produce.
+const SCORECARD_ADDITIVE_COLUMNS = ["day", "app_version", "total_group_rows", "dictations",
+  "paste_attempts", "paste_fallbacks", "afm_attempts", "afm_discards",
+  "afm_classifier_discards", "terminal_failures"];
+const SCORECARD_ADDITIVE_ROWS = [
+  ["2026-07-17", "2.4.1", 2, 60, 60, 6, 40, 4, 1, 2],
+  ["2026-07-17", "2.4.0", 2, 40, 40, 8, 20, 4, 2, 1],
+];
+const SCORECARD_NON_ADDITIVE_COLUMNS = ["window_index", "app_version", "total_group_rows",
+  "people", "dictations", "speed_samples", "speed_p50", "speed_p95"];
+const SCORECARD_NON_ADDITIVE_ROWS = [
+  [0, "2.4.1", 2, 12, 60, 60, 1.2, 2.4],
+  [0, "2.4.0", 2, 9, 40, 40, 1.3, 2.9],
+];
+const PUBLISHED_RELEASES = [
+  { tag_name: "v2.4.1", published_at: "2026-07-10T12:00:00Z", draft: false, prerelease: false },
+  { tag_name: "v2.4.0", published_at: "2026-06-28T12:00:00Z", draft: false, prerelease: false },
+];
+
+const GITHUB_HOST = "https://api.github.com";
+
+function githubResponse(status, body) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => null },
+    json: async () => body,
+  };
+}
+
+/** Installs a global fetch that lets every query (including the dev_ids
+ * preflight, both scorecard queries, the GitHub release list and the Discord
+ * post) succeed, and lets the caller redirect any one of them. `seen` records
+ * every PostHog query name in order; `requests` records every outbound call so
+ * a test can count what actually left the worker. Returns a restore fn. */
+function mockPostHog({ failQuery, failWith, github, discordStatus, onDiscord } = {}) {
   const realFetch = globalThis.fetch;
   const seen = [];
-  globalThis.fetch = async (_url, init) => {
+  const requests = [];
+  const discordPayloads = [];
+  const sqlByName = new Map();
+  // Real overlap, not a synthetic counter: every call yields to the event loop
+  // before answering, so two tasks genuinely coexist and a raised ceiling shows
+  // up here instead of being invisible to an instantly-resolving mock.
+  let inFlight = 0;
+  const state = { maxInFlight: 0 };
+  globalThis.fetch = async (url, init) => {
+    const target = String(url);
+    requests.push(target);
+    inFlight += 1;
+    state.maxInFlight = Math.max(state.maxInFlight, inFlight);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return await answer(target, init);
+    } finally {
+      inFlight -= 1;
+    }
+  };
+
+  async function answer(target, init) {
+    if (target.startsWith(GITHUB_HOST)) {
+      if (github instanceof Error) throw github;
+      if (typeof github === "number") return githubResponse(github, null);
+      return githubResponse(200, github ?? PUBLISHED_RELEASES);
+    }
+
     const body = init?.body ? JSON.parse(init.body) : {};
     if (!body.name) {
-      return fakeResponse(204); // Discord webhook success shape, not a PostHog call
+      // Discord webhook: its body carries `content`, never a query `name`.
+      discordPayloads.push(body);
+      if (onDiscord) onDiscord(body);
+      return fakeResponse(discordStatus ?? 204);
     }
     const queryName = body.name.replace(/^daily_report_/, "");
     seen.push(queryName);
+    sqlByName.set(queryName, body.query.query);
     if (queryName === failQuery) {
       if (failWith instanceof Error) throw failWith;
       return fakeResponse(failWith);
@@ -783,19 +857,74 @@ function mockPostHog({ failQuery, failWith }) {
     if (queryName === "tier_a") {
       return fakeResponse(200, { results: [["u1", "openai"]], columns: ["distinct_id", "provider"] });
     }
+    if (queryName === "scorecard_additive") {
+      return fakeResponse(200, { results: SCORECARD_ADDITIVE_ROWS, columns: SCORECARD_ADDITIVE_COLUMNS });
+    }
+    if (queryName === "scorecard_non_additive") {
+      return fakeResponse(200, { results: SCORECARD_NON_ADDITIVE_ROWS, columns: SCORECARD_NON_ADDITIVE_COLUMNS });
+    }
     return fakeResponse(200, { results: [[0]], columns: ["c"] });
+  }
+  return {
+    restore: () => (globalThis.fetch = realFetch),
+    seen, requests, discordPayloads, sqlByName, state,
   };
-  return { restore: () => (globalThis.fetch = realFetch), seen };
 }
 
-const TEST_ENV = { POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" };
+const TEST_ENV = {
+  POSTHOG_PROJECT_ID: "x",
+  POSTHOG_PERSONAL_API_KEY: "k",
+  GITHUB_REPO: "saurabhav88/EnviousWispr",
+  DISCORD_WEBHOOK_URL: "https://discord.example/webhook",
+};
 const TEST_WIN = "timestamp >= '2026-07-17 04:00:00' AND timestamp < '2026-07-18 04:00:00'";
 const TEST_END = new Date("2026-07-18T04:00:00Z");
+
+// The orchestrator's resolved context for the 2026-07-17 Eastern day, exactly
+// as resolveReportWindow builds it (asserted below, so a drift in either
+// direction fails rather than letting these tests measure a window production
+// never uses).
+const TEST_CONTEXT = Object.freeze({
+  ...resolveReportWindow(new Date("2026-07-18T12:00:00Z"), "2026-07-17"),
+  prod: "properties.environment = 'production'",
+});
+
+/**
+ * Drives the adoption section through the REAL orchestrator. A hand-rolled
+ * stand-in here would be a second staging authority: it would pass while
+ * production ran a different path, which is the whole class of defect this
+ * chunk exists to make impossible.
+ */
+const SECRET_ENV = { ...TEST_ENV, TRIGGER_SECRET: "s3cret" };
+
+/** Drives the worker's HTTP entry point, so the trigger STATUS is part of the
+ * assertion rather than an inference from runReport's return value. */
+function trigger(search = "", env = SECRET_ENV) {
+  return worker.fetch(new Request(`https://worker.example/?token=s3cret${search}`), env);
+}
+
+async function fetchAdoption(sectionOpts = {}) {
+  const driver = createAdoptionSection(TEST_ENV, TEST_CONTEXT, {
+    hogqlOpts: { sleepFn: async () => {} },
+    ...sectionOpts,
+  });
+  let captured;
+  const [outcome] = await driveSections(
+    [{
+      driver,
+      describe: (result) => { captured = result; return ["Adoption", "body"]; },
+      unavailable: () => ["Adoption", "unavailable"],
+    }],
+    2
+  );
+  if (outcome.status === "rejected") throw outcome.reason;
+  return captured;
+}
 
 test("tier-a: an exhausted 504 degrades instead of failing the whole report", async () => {
   const mock = mockPostHog({ failQuery: "tier_a", failWith: 504 });
   try {
-    const data = await fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} });
+    const { data } = await fetchAdoption();
     assert.equal(data.tierADegraded, true, "expected the degraded flag to be set");
     assert.deepEqual(data.tierA, [], "expected tier-a to fall back to empty rows");
     // The report itself must still be intact - this is the whole point.
@@ -809,7 +938,7 @@ test("tier-a: 502 and 503 also degrade (the note wording covers all three)", asy
   for (const status of [502, 503]) {
     const mock = mockPostHog({ failQuery: "tier_a", failWith: status });
     try {
-      const data = await fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} });
+      const { data } = await fetchAdoption();
       assert.equal(data.tierADegraded, true, `expected HTTP ${status} to degrade`);
     } finally {
       mock.restore();
@@ -821,7 +950,7 @@ test("tier-a: a NON-retryable HTTP failure still throws (no silent swallow)", as
   const mock = mockPostHog({ failQuery: "tier_a", failWith: 401 });
   try {
     await assert.rejects(
-      () => fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} }),
+      () => fetchAdoption(),
       (err) => {
         assert.ok(err instanceof PostHogQueryError, "expected the original structured error");
         assert.equal(err.status, 401);
@@ -839,7 +968,7 @@ test("tier-a: an ordinary Error still throws (no silent swallow)", async () => {
   const mock = mockPostHog({ failQuery: "tier_a", failWith: boom });
   try {
     await assert.rejects(
-      () => fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} }),
+      () => fetchAdoption(),
       (err) => {
         assert.equal(err, boom, "expected the ORIGINAL error, unwrapped and unswallowed");
         return true;
@@ -855,7 +984,7 @@ test("totals: an exhausted 504 still fails the whole report - the sole fail-loud
   const mock = mockPostHog({ failQuery: "totals", failWith: 504 });
   try {
     await assert.rejects(
-      () => fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} }),
+      () => fetchAdoption(),
       /PostHog query totals HTTP 504/,
       "totals must never degrade - it anchors resolveBuckets' completeness check"
     );
@@ -865,12 +994,16 @@ test("totals: an exhausted 504 still fails the whole report - the sole fail-loud
 });
 
 test("resolveDevIds: an exhausted 504 fails the whole report, never silently treated as 'no dev ids'", async () => {
+  // Now a SHARED-preflight failure: without a resolved exclusion there is no
+  // honest production population for either section, so neither may start.
   const mock = mockPostHog({ failQuery: "dev_ids", failWith: 504 });
   try {
     await assert.rejects(
-      () => fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} }),
+      () => runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } }),
       /PostHog query dev_ids HTTP 504/
     );
+    assert.ok(!mock.seen.includes("totals"), "no adoption query may start");
+    assert.ok(!mock.seen.includes("scorecard_additive"), "no scorecard query may start");
   } finally {
     mock.restore();
   }
@@ -879,7 +1012,7 @@ test("resolveDevIds: an exhausted 504 fails the whole report, never silently tre
 test("a clean run leaves tierADegraded false and every other degraded flag false", async () => {
   const mock = mockPostHog({ failQuery: null });
   try {
-    const data = await fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} });
+    const { data } = await fetchAdoption();
     assert.equal(data.tierADegraded, false);
     assert.equal(data.tierA.length, 1);
     for (const key of ["installsDegraded", "onboardActivateDegraded", "engineAndTierBDegraded", "geoDegraded", "top5Degraded"]) {
@@ -896,7 +1029,7 @@ for (const queryName of ["installs", "onboard_activate", "engine_and_tier_b", "g
   test(`${queryName}: an exhausted 504 degrades that section instead of failing the whole report`, async () => {
     const mock = mockPostHog({ failQuery: queryName, failWith: 504 });
     try {
-      const data = await fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} });
+      const { data } = await fetchAdoption();
       const degradedKey = {
         installs: "installsDegraded",
         onboard_activate: "onboardActivateDegraded",
@@ -914,7 +1047,7 @@ for (const queryName of ["installs", "onboard_activate", "engine_and_tier_b", "g
     const mock = mockPostHog({ failQuery: queryName, failWith: 401 });
     try {
       await assert.rejects(
-        () => fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} }),
+        () => fetchAdoption(),
         (err) => err instanceof PostHogQueryError && err.status === 401
       );
     } finally {
@@ -926,7 +1059,7 @@ for (const queryName of ["installs", "onboard_activate", "engine_and_tier_b", "g
 test("engineAndTierBDegraded also empties activeIds, so tier_a is naturally skipped (not separately queried)", async () => {
   const mock = mockPostHog({ failQuery: "engine_and_tier_b", failWith: 504 });
   try {
-    const data = await fetchReportData(TEST_ENV, TEST_WIN, TEST_END, { sleepFn: async () => {} });
+    const { data } = await fetchAdoption();
     assert.equal(data.engineAndTierBDegraded, true);
     assert.deepEqual(data.engineAndTierB, []);
     assert.equal(data.tierADegraded, false, "tier_a was never attempted, so it is not itself degraded");
@@ -957,7 +1090,12 @@ test("runReport: engineAndTierBDegraded means resolveBuckets is never called, an
       hogqlOpts: { sleepFn: async () => {} },
     });
     assert.equal(resolveBucketsCalls, 0, "resolveBuckets must not be called when engineAndTierB degraded");
-    assert.match(message, /Transcription engine and AI-polish breakdown: temporarily unavailable\./);
+    // runReport returns the message's content line; the sections travel as
+    // embeds, so the degraded wording is asserted where it is actually sent.
+    assert.equal(message, reportHeader("2026-07-17"));
+    assert.equal(mock.discordPayloads.length, 1, "exactly one Discord request");
+    assert.match(mock.discordPayloads[0].embeds[0].description,
+      /Transcription engine and AI-polish breakdown: temporarily unavailable\./);
   } finally {
     mock.restore();
   }
@@ -983,24 +1121,30 @@ test("runReport: a clean run DOES call resolveBuckets (the spy is a real trigger
 
 // ---- degraded note placement (#1655/#1720) ----
 
-test("degraded note appears near the top, above the truncation point", () => {
-  // A long report: enough geo/top5 volume to push the tail past the 1990-char
-  // cap, proving the note survives exactly when it matters most.
+test("degraded note appears near the top, and a long report is never truncated", () => {
+  // A long report: far more geography than any real day produces. The old
+  // transport sliced content at 1990 characters, which could cut the tail off
+  // exactly on the busiest days; the section now travels in an embed and is
+  // sent WHOLE or not at all (an over-budget payload is refused before any
+  // request, never shortened into something that reads as complete).
   const data = {
     ...GOLDEN_DATA,
     tierADegraded: true,
     geo: Array.from({ length: 60 }, (_, i) => ({ country: `Country-With-A-Long-Name-${i}`, n: i })),
   };
-  const msg = buildMessage("2026-07-17", data, GOLDEN_BUCKETS);
+  const msg = formatAdoption(data, GOLDEN_BUCKETS).join("\n");
 
   assert.match(msg, /polish-provider breakdown is approximate/);
-  assert.ok(msg.length <= 1990, "message must respect the Discord cap");
+  assert.ok(msg.length > 1990, "fixture must be long enough to have tripped the old cap");
+  assert.doesNotMatch(msg, /\.\.\.$/, "the section must never be truncated");
+  assert.match(msg, /Top 5 users by dictation volume: 557, 139, 113, 94, 70\.$/,
+    "the LAST line must survive in full");
   const noteIndex = msg.indexOf("Note: the polish-provider breakdown is approximate");
   assert.ok(noteIndex >= 0 && noteIndex < 200, `note must be near the top, was at ${noteIndex}`);
 });
 
 test("no degraded note on a clean run", () => {
-  const msg = buildMessage("2026-07-17", { ...GOLDEN_DATA, tierADegraded: false }, GOLDEN_BUCKETS);
+  const msg = formatAdoption({ ...GOLDEN_DATA, tierADegraded: false }, GOLDEN_BUCKETS).join("\n");
   assert.doesNotMatch(msg, /approximate/);
   assert.doesNotMatch(msg, /^Note:/m);
 });
@@ -1073,18 +1217,41 @@ test("source guardrail: all 6 primary *Sql builders reference the shared ${prod}
 // subrequests (50) and concurrent subrequests (6) per incoming request.
 // This test locks the arithmetic, not a wall-clock duration.
 
-test("worst-case explicit fetch count stays under Cloudflare's 50-subrequest cap", () => {
-  const PRIMARY_QUERIES = 6; // installs, onboard_activate, totals, engine_and_tier_b, geo, top5
+test("worst-case explicit fetch count stays under Cloudflare's 50-subrequest cap", async () => {
+  // Both halves are asserted EXACTLY, not just against the 50 ceiling: a
+  // ceiling-only check passes while an accidental extra query per run goes
+  // unnoticed for months, and query count is the resource this worker is
+  // actually scarce in (PostHog concurrency, not Cloudflare subrequests).
   const PREFLIGHT_QUERIES = 1; // resolveDevIds
-  const CONDITIONAL_QUERIES = 1; // tier_a, only when activeIds is non-empty
-  const MAX_ATTEMPTS_PER_QUERY = 3; // #1720 raised this from 2
-  const DISCORD_POSTS = 1;
+  const ADOPTION_QUERIES = 7; // installs, onboard_activate, totals, engine_and_tier_b, geo, top5, tier_a
+  const SCORECARD_QUERIES = 2; // additive (day grain) + non-additive (window grain)
+  const GITHUB_REQUESTS = 1; // the published release list
+  const MAX_ATTEMPTS_PER_REQUEST = 3;
+  const DISCORD_POSTS = 1; // one atomic payload, one attempt, never a retry
 
   const worstCase =
-    (PRIMARY_QUERIES + PREFLIGHT_QUERIES + CONDITIONAL_QUERIES) * MAX_ATTEMPTS_PER_QUERY + DISCORD_POSTS;
+    (PREFLIGHT_QUERIES + ADOPTION_QUERIES + SCORECARD_QUERIES + GITHUB_REQUESTS) *
+      MAX_ATTEMPTS_PER_REQUEST +
+    DISCORD_POSTS;
 
-  assert.equal(worstCase, 25);
+  assert.equal(worstCase, 34, "the designed worst case is exactly 34 outbound requests");
   assert.ok(worstCase < 50, "worst-case fetch count must stay under Cloudflare's 50-subrequest-per-request cap");
+
+  // And the CLEAN case, measured against the real worker rather than restated:
+  // one attempt each, tier A included because the fixture has active ids.
+  const mock = mockPostHog({});
+  try {
+    await runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } });
+    assert.equal(mock.requests.length, 12, `expected 12 clean-run requests, got ${mock.requests.length}`);
+    assert.deepEqual(
+      [...mock.seen].sort(),
+      ["dev_ids", "engine_and_tier_b", "geo", "installs", "onboard_activate",
+       "scorecard_additive", "scorecard_non_additive", "tier_a", "top5", "totals"],
+      "the clean run's ten PostHog queries, each asked exactly once"
+    );
+  } finally {
+    mock.restore();
+  }
 });
 
 
@@ -2550,8 +2717,790 @@ test("ranked-change formatting freezes normalized raw-fallback and unavailable c
     TypeError, "the formatter must require the canonical release set");
 
   assert.match(unavailable, /unavailable/);
-  assert.match(unavailable, /adoption figures above are unaffected/);
+  assert.match(unavailable, /not a report of zero/);
+  // A section describes only ITSELF. Both halves can fail in the same run, and
+  // a cross-reference then prints two calm sentences each declaring the other
+  // fine (#1838 chunk 6 round 3).
+  assert.doesNotMatch(unavailable, /unaffected/);
   for (const leak of ["http", "Error", "https://", "500", "PostHog"]) {
     assert.ok(!unavailable.includes(leak), `failure copy must not leak ${leak}`);
+  }
+});
+
+// ===========================================================================
+// #1838 chunk 6 — orchestration and atomic delivery
+// ===========================================================================
+//
+// One resolved window, one dev-ID resolution, one production predicate, one
+// limiter, one payload, one request. Every test below exists because the
+// alternative is a report that looks entirely reasonable and is not.
+
+test("a clean run resolves ONE context and posts ONE payload carrying both sections", async () => {
+  const mock = mockPostHog({});
+  try {
+    const content = await runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } });
+
+    assert.equal(mock.discordPayloads.length, 1, "exactly one Discord request");
+    const payload = mock.discordPayloads[0];
+    assert.equal(payload.content, content);
+    assert.equal(payload.content, reportHeader("2026-07-17"));
+    assert.equal(payload.embeds.length, 2, "exactly two embeds");
+    assert.equal(payload.embeds[0].title, "Adoption");
+    assert.match(payload.embeds[1].title, /^Version scorecard/);
+    // Real sections, not the unavailable copy.
+    assert.match(payload.embeds[0].description, /Total users: 1 people used the app that day\./);
+    assert.match(payload.embeds[1].description, /2\.4\.1: 7\/7 days publicly available/);
+    assert.match(payload.embeds[1].description, /2\.4\.0: 7\/7 days publicly available/);
+    assert.doesNotMatch(payload.embeds[0].description, /unavailable today/);
+    assert.doesNotMatch(payload.embeds[1].description, /unavailable today/);
+    for (const embed of payload.embeds) {
+      assert.ok(embed.description.length > 0, "an embed description is never empty");
+      assert.doesNotMatch(embed.description, /[–—]/, "no en-dashes or em-dashes");
+    }
+  } finally {
+    mock.restore();
+  }
+});
+
+test("a clean run's twelve requests go to the expected queries, repository and webhook", async () => {
+  const mock = mockPostHog({});
+  try {
+    await runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } });
+
+    assert.equal(mock.requests.length, 12);
+    const posthog = mock.requests.filter((u) => u.includes("posthog.com"));
+    const github = mock.requests.filter((u) => u.startsWith(GITHUB_HOST));
+    const discord = mock.requests.filter((u) => u === TEST_ENV.DISCORD_WEBHOOK_URL);
+    assert.equal(posthog.length, 10, "1 dev-ID + 7 adoption + 2 scorecard");
+    assert.equal(github.length, 1, "the release list is fetched exactly once");
+    assert.equal(discord.length, 1, "one delivery");
+    assert.equal(posthog.length + github.length + discord.length, mock.requests.length,
+      "no unaccounted outbound request");
+    // GITHUB_REPO is OBSERVED, not assumed: a hard-coded repository would still
+    // pass a count check while reading somebody else's release history.
+    assert.equal(github[0], `${GITHUB_HOST}/repos/${TEST_ENV.GITHUB_REPO}/releases`);
+    assert.equal(mock.seen.filter((n) => n === "dev_ids").length, 1);
+    assert.equal(mock.seen.filter((n) => n.startsWith("scorecard_")).length, 2);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("a backfill override moves BOTH sections' windows to the same resolved anchor", async () => {
+  // The scorecard anchored to `now()` once made a backfilled run's newest
+  // window thirteen days long, absorbing events from after the target day.
+  for (const [date, win, anchor, history] of [
+    ["2026-07-17", "timestamp >= '2026-07-17 04:00:00' AND timestamp < '2026-07-18 04:00:00'",
+     "2026-07-18", "2026-05-23"],
+    ["2026-07-15", "timestamp >= '2026-07-15 04:00:00' AND timestamp < '2026-07-16 04:00:00'",
+     "2026-07-16", "2026-05-21"],
+  ]) {
+    const mock = mockPostHog({});
+    try {
+      // The 2026-07-15 run's scorecard legitimately fails: the fixture's rows
+      // sit AFTER that anchor, which is exactly what the anchor must refuse.
+      await runReport(TEST_ENV, date, { hogqlOpts: { sleepFn: async () => {} } }).catch(() => {});
+
+      assert.ok(mock.sqlByName.get("totals").includes(win), `adoption window for ${date}`);
+      for (const q of ["scorecard_additive", "scorecard_non_additive"]) {
+        const sql = mock.sqlByName.get(q);
+        assert.ok(sql.includes(`'${anchor} 00:00:00'`), `${q} end anchor for ${date}`);
+        assert.ok(sql.includes(`'${history} 00:00:00'`), `${q} history start for ${date}`);
+        assert.ok(!sql.includes("now()"), `${q} must never anchor to the clock`);
+      }
+    } finally {
+      mock.restore();
+    }
+  }
+});
+
+test("dev IDs resolve ONCE and both sections share that one production predicate", async () => {
+  const mock = mockPostHog({});
+  const inner = globalThis.fetch;
+  // A non-empty dev list, so the predicate is distinctive rather than the
+  // plain environment clause every query would carry anyway.
+  let devIdCalls = 0;
+  globalThis.fetch = async (url, init) => {
+    const body = init?.body ? JSON.parse(init.body) : {};
+    if (body.name === "daily_report_dev_ids") {
+      devIdCalls += 1;
+      return fakeResponse(200, { results: [["dev-alpha"], ["dev-beta"]] });
+    }
+    return inner(url, init);
+  };
+  try {
+    await runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } });
+
+    assert.equal(devIdCalls, 1, "one resolution per run, never one per section");
+    const predicate = "distinct_id NOT IN ('dev-alpha', 'dev-beta')";
+    for (const q of ["totals", "installs", "scorecard_additive", "scorecard_non_additive"]) {
+      assert.ok(mock.sqlByName.get(q).includes(predicate),
+        `${q} must carry the shared exclusion`);
+    }
+    // The raw ids never leave the orchestrator: the sections receive a
+    // predicate string, so there is nothing for them to rebuild differently.
+    const adoption = createAdoptionSection(TEST_ENV, TEST_CONTEXT, {});
+    const scorecard = createScorecardSection(TEST_ENV, TEST_CONTEXT, {});
+    for (const section of [adoption, scorecard]) {
+      assert.ok(!("devIds" in section), "a section must not hold raw dev ids");
+    }
+  } finally {
+    mock.restore(); // restores the ORIGINAL fetch, discarding both layers
+  }
+});
+
+test("concurrency never exceeds two ACROSS both sections, not two per section", async () => {
+  const mock = mockPostHog({});
+  try {
+    await runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } });
+    assert.equal(mock.state.maxInFlight, 2,
+      `PostHog allows three concurrent project queries; observed ${mock.state.maxInFlight}`);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("an adoption rejection releases its slot and the scorecard still runs and renders", async () => {
+  // installs fails NON-retryably, so the adoption section is lost early. If a
+  // failure could cancel queued work, the scorecard would never be asked.
+  const mock = mockPostHog({ failQuery: "installs", failWith: 401 });
+  try {
+    await assert.rejects(() => runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } }));
+    assert.ok(mock.seen.includes("scorecard_additive"), "the scorecard's queries must still run");
+    assert.ok(mock.seen.includes("scorecard_non_additive"));
+    assert.ok(mock.requests.some((u) => u.startsWith(GITHUB_HOST)),
+      "stage-2 release resolution must still run for the surviving section");
+    assert.equal(mock.discordPayloads.length, 1);
+    assert.match(mock.discordPayloads[0].embeds[1].description, /2\.4\.1: 7\/7 days publicly available/);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("an adoption-only failure posts the scorecard beside an unavailable adoption, then fails the trigger", async () => {
+  const mock = mockPostHog({ failQuery: "totals", failWith: 401 });
+  try {
+    const res = await trigger("&date=2026-07-17");
+    assert.equal(res.status, 500, "a lost section must never report a healthy run");
+    assert.equal(mock.discordPayloads.length, 1, "one combined report, not one message per section");
+    const [adoption, scorecard] = mock.discordPayloads[0].embeds;
+    assert.match(adoption.description, /could not be measured, so this is not a report of zero/);
+    assert.match(scorecard.description, /2\.4\.1: 7\/7 days publicly available/);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("a scorecard-only failure posts the real adoption beside an unavailable scorecard, then fails the trigger", async () => {
+  const mock = mockPostHog({ failQuery: "scorecard_non_additive", failWith: 401 });
+  try {
+    const res = await trigger("&date=2026-07-17");
+    assert.equal(res.status, 500);
+    assert.equal(mock.discordPayloads.length, 1);
+    const [adoption, scorecard] = mock.discordPayloads[0].embeds;
+    assert.match(adoption.description, /Total users: 1 people used the app that day\./);
+    assert.match(scorecard.title, /unavailable today/);
+    assert.match(scorecard.description,
+      /Version measurements could not be completed, so this is not a report of zero/);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("both sections failing still posts exactly one message, with both marked unavailable", async () => {
+  const mock = mockPostHog({});
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const body = init?.body ? JSON.parse(init.body) : {};
+    if (body.name === "daily_report_totals" || body.name === "daily_report_scorecard_additive") {
+      return fakeResponse(401);
+    }
+    return realFetch(url, init);
+  };
+  try {
+    const res = await trigger("&date=2026-07-17");
+    assert.equal(res.status, 500);
+    assert.equal(mock.discordPayloads.length, 1, "one message, never one per failure");
+    const [adoption, scorecard] = mock.discordPayloads[0].embeds;
+    assert.match(adoption.title, /unavailable today/);
+    assert.match(scorecard.title, /unavailable today/);
+    // Still a report, still two embeds: the founder learns that nothing was
+    // measured, which is not the same as learning that everything was zero.
+    assert.equal(mock.discordPayloads[0].embeds.length, 2);
+    // Neither half may reassure the founder about the other. Both failed, so a
+    // cross-reference would print two calm, mutually contradicting sentences.
+    assert.doesNotMatch(adoption.description, /unaffected/);
+    assert.doesNotMatch(scorecard.description, /unaffected/);
+  } finally {
+    globalThis.fetch = realFetch;
+    mock.restore();
+  }
+});
+
+test("exhausted TRANSIENT release resolution loses only the scorecard, and never falls back to telemetry versions", async () => {
+  const mock = mockPostHog({ github: 503 });
+  try {
+    const res = await trigger("&date=2026-07-17");
+    assert.equal(res.status, 500);
+    assert.equal(mock.requests.filter((u) => u.startsWith(GITHUB_HOST)).length, 3,
+      "three attempts, then give up");
+    assert.equal(mock.discordPayloads.length, 1);
+    const [adoption, scorecard] = mock.discordPayloads[0].embeds;
+    assert.match(adoption.description, /Total users: 1 people used the app that day\./,
+      "a GitHub outage costs the scorecard, never adoption");
+    assert.match(scorecard.title, /unavailable today/);
+    // The versions ARE in the telemetry we already hold. Printing them anyway
+    // would silently restore the version-blind report this issue removed.
+    assert.doesNotMatch(scorecard.description, /2\.4\.1/);
+    assert.doesNotMatch(scorecard.description, /2\.4\.0/);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("a release-resolution CONTRACT failure fails the whole run and never posts a normal report", async () => {
+  for (const [label, opts, env] of [
+    ["a 404 from the release list", { github: 404 }, TEST_ENV],
+    ["an unusable GITHUB_REPO", {}, { ...TEST_ENV, GITHUB_REPO: "EnviousWispr" }],
+  ]) {
+    const mock = mockPostHog(opts);
+    try {
+      await assert.rejects(
+        () => runReport(env, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } }),
+        (err) => err instanceof ScorecardSectionError && err.wholeRun === true,
+        label
+      );
+      // Exactly one message, and it is the fixed notice: no embeds, so the
+      // adoption half is NOT quietly published beside a broken scorecard. A
+      // misconfigured worker must not read as a healthy morning for months.
+      assert.equal(mock.discordPayloads.length, 1, label);
+      assert.ok(!("embeds" in mock.discordPayloads[0]), `${label}: no combined report`);
+      assert.match(mock.discordPayloads[0].content, /could not be generated/);
+      assert.doesNotMatch(mock.discordPayloads[0].content, /404|GITHUB_REPO|http/i,
+        "the notice discloses no technical detail");
+    } finally {
+      mock.restore();
+    }
+  }
+});
+
+test("a shared-preflight failure starts NEITHER section", async () => {
+  for (const [label, search] of [
+    ["a malformed date override", "&date=not-a-date"],
+    ["an impossible calendar date", "&date=2026-02-30"],
+  ]) {
+    const mock = mockPostHog({});
+    try {
+      const res = await trigger(search);
+      assert.equal(res.status, 500, label);
+      assert.match(await res.text(), /date override/,
+        `${label}: must be refused AS a bad override, not by an incidental
+         downstream crash - a report for a day nobody asked for is the failure`);
+      assert.equal(mock.seen.length, 0, `${label}: no PostHog query may start`);
+      assert.ok(!mock.requests.some((u) => u.startsWith(GITHUB_HOST)), `${label}: no GitHub call`);
+      assert.equal(mock.discordPayloads.length, 1, `${label}: one fixed notice`);
+      assert.ok(!("embeds" in mock.discordPayloads[0]), `${label}: never a partial report`);
+    } finally {
+      mock.restore();
+    }
+  }
+  // And an unauthenticated trigger does none of it, not even the notice.
+  const mock = mockPostHog({});
+  try {
+    const res = await worker.fetch(new Request("https://worker.example/?token=wrong"), SECRET_ENV);
+    assert.equal(res.status, 401);
+    assert.equal(mock.requests.length, 0, "a rejected trigger makes no outbound request at all");
+  } finally {
+    mock.restore();
+  }
+});
+
+test("Discord delivery sends exactly one request at the exact budget boundaries", async () => {
+  const calls = [];
+  const okFetch = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) });
+    return { status: 204 };
+  };
+  // Every field exactly at its limit, and the combined embed text exactly at
+  // 6000: the boundary must be inclusive, or a legitimate busy day is refused.
+  const title = "T".repeat(DISCORD_LIMITS.embedTitle);
+  const payload = {
+    content: "c".repeat(DISCORD_LIMITS.content),
+    embeds: [
+      { title, description: "a".repeat(DISCORD_LIMITS.embedDescription) },
+      { title, description: "b".repeat(DISCORD_LIMITS.combinedText - DISCORD_LIMITS.embedDescription - title.length * 2) },
+    ],
+  };
+  await deliverReport("https://discord.example/webhook", payload, { fetchFn: okFetch });
+  assert.equal(calls.length, 1, "one request, one attempt");
+  assert.deepEqual(calls[0].body, payload, "the object validated is the object sent");
+  assert.equal(calls[0].url, "https://discord.example/webhook");
+
+  // 200 is also success (Discord answers 200 when `wait` is requested).
+  await deliverReport("https://discord.example/webhook", { content: "x" },
+    { fetchFn: async () => ({ status: 200 }) });
+
+  // A rejected or unreachable webhook is ONE attempt, never a retry and never
+  // a second consolation message.
+  for (const [label, fetchFn] of [
+    ["a non-2xx response", async () => { calls.push({}); return { status: 500 }; }],
+    ["an unrecognised 2xx", async () => { calls.push({}); return { status: 202 }; }],
+    ["a network rejection", async () => { calls.push({}); throw new TypeError("network"); }],
+  ]) {
+    const before = calls.length;
+    await assert.rejects(() => deliverReport("https://d/w", { content: "x" }, { fetchFn }), label);
+    assert.equal(calls.length - before, 1, `${label}: exactly one attempt`);
+  }
+});
+
+test("Discord refuses every over-budget or malformed payload BEFORE any request", async () => {
+  const title = "T";
+  const ok = (extra) => ({ content: "hello", embeds: [{ title, description: "d" }], ...extra });
+  const sparse = [{ title, description: "d" }, { title, description: "d" }];
+  delete sparse[0];
+
+  const refused = [
+    ["content one character over", { content: "c".repeat(DISCORD_LIMITS.content + 1), embeds: [{ title, description: "d" }] }],
+    ["empty content", ok({ content: "" })],
+    ["missing content", { embeds: [{ title, description: "d" }] }],
+    ["non-string content", ok({ content: 42 })],
+    ["a description one character over", ok({ embeds: [{ title, description: "d".repeat(DISCORD_LIMITS.embedDescription + 1) }] })],
+    ["combined embed text one character over", ok({ embeds: [
+      { title, description: "a".repeat(DISCORD_LIMITS.embedDescription) },
+      { title, description: "b".repeat(DISCORD_LIMITS.combinedText - DISCORD_LIMITS.embedDescription - 2 * title.length + 1) },
+    ] })],
+    ["a title one character over", ok({ embeds: [{ title: "T".repeat(DISCORD_LIMITS.embedTitle + 1), description: "d" }] })],
+    ["one embed too many", ok({ embeds: Array.from({ length: DISCORD_LIMITS.embeds + 1 }, () => ({ title, description: "d" })) })],
+    ["an empty embed list", ok({ embeds: [] })],
+    ["a non-array embed list", ok({ embeds: { title, description: "d" } })],
+    ["a sparse embed list", ok({ embeds: sparse })],
+    ["a null embed", ok({ embeds: [null] })],
+    ["an embed missing its title", ok({ embeds: [{ description: "d" }] })],
+    ["an embed with an empty description", ok({ embeds: [{ title, description: "" }] })],
+    // An INHERITED field serializes to nothing, so the sent object would lack
+    // exactly the field that was validated.
+    ["an inherited content", Object.create({ content: "hello" })],
+    ["an inherited embed description", ok({ embeds: [Object.assign(Object.create({ description: "d" }), { title })] })],
+    // An unknown textual field cannot be counted toward the 6000 budget, so it
+    // is refused rather than passed through uncounted.
+    ["an uncountable extra embed field", ok({ embeds: [{ title, description: "d", footer: "x".repeat(9000) }] })],
+    ["a payload that is not an object", "just a string"],
+  ];
+
+  // ---- validated-by-read, consumed-by-serialization ------------------------
+  //
+  // JSON.stringify is a DIFFERENT consumption mechanism from a property read:
+  // it calls toJSON and it invokes getters. Every fixture below passed the
+  // read-based validator while putting different bytes on the wire. The one
+  // that proved it: a toJSON returning 3,000 characters of content and no
+  // embeds at all.
+  const withToJSON = (target, replacement) => {
+    Object.defineProperty(target, "toJSON", { value: () => replacement, configurable: true });
+    return target;
+  };
+  const accessor = (target, field, value) => {
+    Object.defineProperty(target, field, { get: () => value, configurable: true, enumerable: true });
+    return target;
+  };
+  const goodEmbed = () => ({ title, description: "d" });
+
+  refused.push(
+    ["a payload toJSON that replaces everything",
+     withToJSON({ content: "ok", embeds: [goodEmbed()] }, { content: "x".repeat(3000) })],
+    ["an embed toJSON", ok({ embeds: [withToJSON(goodEmbed(), { title: "T", description: "x".repeat(9000) })] })],
+    ["an embeds-array toJSON", ok({ embeds: withToJSON([goodEmbed()], [{ title: "T", description: "x".repeat(9000) }]) })],
+    ["a content accessor", accessor({ embeds: [goodEmbed()] }, "content", "ok")],
+    ["an embeds accessor", accessor({ content: "ok" }, "embeds", [goodEmbed()])],
+    ["an embed title accessor", ok({ embeds: [accessor({ description: "d" }, "title", title)] })],
+    ["an embed description accessor", ok({ embeds: [accessor({ title }, "description", "d")] })],
+    ["a non-enumerable extra payload field",
+     Object.defineProperty({ content: "ok", embeds: [goodEmbed()] }, "hidden",
+       { value: "x", enumerable: false, configurable: true })],
+    ["a symbol-keyed extra payload field",
+     Object.defineProperty({ content: "ok", embeds: [goodEmbed()] }, Symbol("s"),
+       { value: "x", configurable: true })],
+    ["a symbol-keyed extra embed field",
+     ok({ embeds: [Object.defineProperty(goodEmbed(), Symbol("s"), { value: "x", configurable: true })] })],
+    ["a payload with a custom prototype",
+     Object.assign(Object.create({ toJSON: () => ({ content: "x".repeat(3000) }) }),
+       { content: "ok", embeds: [goodEmbed()] })],
+    ["an embed with a custom prototype",
+     ok({ embeds: [Object.assign(Object.create({ toJSON: () => ({ title: "T", description: "x".repeat(9000) }) }),
+       goodEmbed())] })],
+    ["an embeds array with a custom prototype",
+     ok({ embeds: Object.setPrototypeOf([goodEmbed()],
+       Object.assign(Object.create(Array.prototype), { toJSON: () => [{ title: "T", description: "x".repeat(9000) }] })) })],
+    ["an extra own key on the embeds array",
+     ok({ embeds: Object.assign([goodEmbed()], { extra: "x" }) })]
+  );
+
+  // JSON.stringify serializes only ENUMERABLE own properties of an object. A
+  // non-enumerable field validates perfectly and is then simply absent from the
+  // body: checked, and not sent.
+  const hidden = (target, field, value) => {
+    Object.defineProperty(target, field, { value, enumerable: false, configurable: true });
+    return target;
+  };
+  refused.push(
+    ["a non-enumerable content", hidden({ embeds: [goodEmbed()] }, "content", "ok")],
+    ["a non-enumerable embeds", hidden({ content: "ok" }, "embeds", [goodEmbed()])],
+    ["a non-enumerable embed title", ok({ embeds: [hidden({ description: "d" }, "title", title)] })],
+    ["a non-enumerable embed description", ok({ embeds: [hidden({ title }, "description", "d")] })]
+  );
+
+  for (const [label, payload] of refused) {
+    let attempts = 0;
+    await assert.rejects(
+      () => deliverReport("https://d/w", payload, { fetchFn: async () => { attempts += 1; return { status: 204 }; } }),
+      (err) => err instanceof DiscordPayloadError,
+      label
+    );
+    assert.equal(attempts, 0, `${label}: nothing may be sent`);
+  }
+
+  // MUTABLE PROTOTYPES. Knowing which prototype an object uses is not the same
+  // as knowing that prototype is clean: both Object.prototype and
+  // Array.prototype are writable, so a toJSON planted on either replaces the
+  // whole serialized payload while every own-property check still passes.
+  //
+  // The pollution is restored in a `finally` that runs BEFORE the returned
+  // promise is awaited, which is safe precisely because deliverReport validates
+  // synchronously: the checks run while the prototype is still dirty, and no
+  // other test ever sees it.
+  async function assertPrototypeToJSONRefused(prototype, replacement, label, payload) {
+    const previous = Object.getOwnPropertyDescriptor(prototype, "toJSON");
+    let attempts = 0;
+    let result;
+    Object.defineProperty(prototype, "toJSON", { value: replacement, configurable: true });
+    try {
+      result = deliverReport(
+        "https://d/w",
+        payload ?? { content: "ok", embeds: [{ title: "T", description: "D" }] },
+        { fetchFn: async () => { attempts += 1; return { status: 204 }; } }
+      );
+    } finally {
+      if (previous) Object.defineProperty(prototype, "toJSON", previous);
+      else delete prototype.toJSON;
+    }
+    await assert.rejects(result, (error) => error instanceof DiscordPayloadError, label);
+    assert.equal(attempts, 0, `${label}: nothing may be sent`);
+  }
+
+  await assertPrototypeToJSONRefused(Object.prototype, () => ({ content: "x".repeat(3000) }),
+    "Object.prototype toJSON");
+  await assertPrototypeToJSONRefused(Array.prototype, () => [], "Array.prototype toJSON");
+  // The failure notice carries no embeds, so the array check cannot cover it:
+  // only the object-level prototype check stands between a planted toJSON and a
+  // replaced notice. Without this case the two checks mask each other.
+  await assertPrototypeToJSONRefused(Object.prototype, () => ({ content: "x".repeat(3000) }),
+    "Object.prototype toJSON on a content-only notice", { content: "ok" });
+
+  // A missing webhook is refused the same way, before anything is built.
+  let attempts = 0;
+  await assert.rejects(
+    () => deliverReport("", ok(), { fetchFn: async () => { attempts += 1; return { status: 204 }; } }),
+    (err) => err instanceof DiscordPayloadError
+  );
+  assert.equal(attempts, 0);
+});
+
+test("an over-budget report is refused whole, with zero requests and no fallback message", async () => {
+  // The founder gets nothing rather than something that reads as complete.
+  const mock = mockPostHog({});
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const body = init?.body ? JSON.parse(init.body) : {};
+    if (body.name === "daily_report_geo") {
+      // Far more geography than a real day produces: enough to push the
+      // adoption embed past Discord's 4096-character description limit.
+      return fakeResponse(200, {
+        results: Array.from({ length: 400 }, (_, i) => [`Country-With-A-Very-Long-Name-${i}`, i]),
+        columns: ["country", "n"],
+      });
+    }
+    return realFetch(url, init);
+  };
+  try {
+    const res = await trigger("&date=2026-07-17");
+    assert.equal(res.status, 500);
+    assert.equal(mock.discordPayloads.length, 0,
+      "no partial report, no split, no truncation, and no failure notice either");
+  } finally {
+    globalThis.fetch = realFetch;
+    mock.restore();
+  }
+});
+
+test("a truncated scorecard response, and an unrenderable section, each lose only that section", async () => {
+  // (a) PostHog silently caps a result at 100 rows. A truncated response
+  // renders as a perfectly healthy report with missing history, which is the
+  // defect that made a "56 days, every version" planning measurement read as
+  // complete while holding 100 of 227 rows. The completeness check must be
+  // WIRED, not merely present: this drives it through the real section.
+  const mock = mockPostHog({});
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const body = init?.body ? JSON.parse(init.body) : {};
+    if (body.name === "daily_report_scorecard_additive") {
+      return fakeResponse(200, {
+        // Two rows returned, three claimed: exactly what truncation looks like.
+        results: SCORECARD_ADDITIVE_ROWS.map((r) => [...r.slice(0, 2), 3, ...r.slice(3)]),
+        columns: SCORECARD_ADDITIVE_COLUMNS,
+      });
+    }
+    return inner(url, init);
+  };
+  try {
+    const res = await trigger("&date=2026-07-17");
+    assert.equal(res.status, 500);
+    assert.equal(mock.discordPayloads.length, 1);
+    const [adoption, scorecard] = mock.discordPayloads[0].embeds;
+    assert.match(adoption.description, /Total users: 1 people used the app that day\./);
+    assert.match(scorecard.title, /unavailable today/);
+  } finally {
+    mock.restore();
+  }
+
+  // (b) A section that computes cleanly but cannot be RENDERED is still an
+  // unavailable section, not a crashed report. Rendering therefore happens
+  // inside the settled outcome, which this drives through the real driver.
+  const outcomes = await driveSections(
+    [
+      {
+        driver: { name: "broken", primaryTasks: [], followUpTasks: () => [], finish: () => "computed" },
+        describe: () => { throw new TypeError("cannot render"); },
+        unavailable: () => ["Title", "unused"],
+      },
+      {
+        driver: { name: "healthy", primaryTasks: [], followUpTasks: () => [], finish: () => "computed" },
+        describe: (v) => ["Title", v],
+        unavailable: () => ["Title", "unused"],
+      },
+    ],
+    2
+  );
+  assert.equal(outcomes[0].status, "rejected", "a render failure is a lost section");
+  assert.deepEqual(outcomes[1],
+    { status: "fulfilled", value: { title: "Title", description: "computed" } },
+    "and it costs the other section nothing");
+});
+
+test("a section refuses to finish before its own results were interpreted", async () => {
+  // Not a hypothetical tidiness check: `{ ...null }` is `{}`, so skipping the
+  // interpretation step renders a complete-looking report of `undefined`
+  // people and `undefined` dictations rather than failing. The orchestrator
+  // makes the order impossible today; this keeps it impossible to get wrong
+  // quietly if the staging is ever changed.
+  for (const [label, section] of [
+    ["adoption", createAdoptionSection(TEST_ENV, TEST_CONTEXT, {})],
+    ["scorecard", createScorecardSection(TEST_ENV, TEST_CONTEXT, {})],
+  ]) {
+    assert.throws(() => section.finish([], []), /ran before/, label);
+  }
+});
+
+test("a falsy rejection value is still a failure, never a healthy section", async () => {
+  // `throw undefined` is legal JavaScript. Using the reason itself as the
+  // failure flag reports a LOST section as a fine one, which is the worst
+  // possible direction for this report to be wrong in.
+  for (const thrown of [undefined, null, false, 0, ""]) {
+    const outcomes = await driveSections(
+      [
+        {
+          driver: {
+            name: "falsy-thrower",
+            primaryTasks: [],
+            followUpTasks: () => { throw thrown; },
+            finish: () => "never reached",
+          },
+          describe: () => ["Title", "apparently healthy"],
+          unavailable: () => ["Title", "unavailable"],
+        },
+        {
+          driver: { name: "healthy", primaryTasks: [], followUpTasks: () => [], finish: () => "fine" },
+          describe: (v) => ["Title", v],
+          unavailable: () => ["Title", "unavailable"],
+        },
+      ],
+      2
+    );
+    assert.equal(outcomes[0].status, "rejected", `throw ${String(thrown)} must reject`);
+    assert.ok(outcomes[0].reason instanceof Error,
+      "a non-Error rejection is normalised, so downstream .message is always safe");
+    assert.equal(outcomes[1].status, "fulfilled", "and the other section is untouched");
+  }
+
+  // The same normalisation applies to a task that rejects falsily, so a lost
+  // QUERY cannot read as a successful one either.
+  const [outcome] = await driveSections(
+    [{
+      driver: {
+        name: "falsy-task",
+        primaryTasks: [() => Promise.reject(undefined)],
+        followUpTasks: (primary) => {
+          assert.equal(primary[0].status, "rejected", "a falsy rejection stays rejected");
+          assert.ok(primary[0].reason instanceof Error);
+          throw primary[0].reason;
+        },
+        finish: () => "never reached",
+      },
+      describe: () => ["Title", "body"],
+      unavailable: () => ["Title", "unavailable"],
+    }],
+    2
+  );
+  assert.equal(outcome.status, "rejected");
+});
+
+test("a requested tier-A lookup cannot silently vanish into default attribution", async () => {
+  // If the settings lookup was ASKED for and its result is missing, the polish
+  // breakdown would quietly fall back to the weaker tier while still printing
+  // as authoritative, with no "approximate" note. That is a wrong number that
+  // looks right, so it fails loudly instead.
+  const mock = mockPostHog({});
+  try {
+    const section = createAdoptionSection(TEST_ENV, TEST_CONTEXT, { hogqlOpts: { sleepFn: async () => {} } });
+    const primary = await Promise.all(section.primaryTasks.map(async (t) => ({
+      status: "fulfilled", value: await t(),
+    })));
+    const followUp = section.followUpTasks(primary);
+    assert.equal(followUp.length, 1, "the fixture has active ids, so tier A is requested");
+    assert.throws(() => section.finish(primary, []), /expected 1 follow-up result/);
+    assert.throws(() => section.finish(primary, [{ status: "fulfilled", value: { results: [], columns: [] } },
+                                                  { status: "fulfilled", value: { results: [], columns: [] } }]),
+      /expected 1 follow-up result/, "an extra result is equally wrong");
+    assert.throws(() => section.finish(primary, undefined), /a non-array/);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("a malformed formatter loses only its own section, never the whole report", async () => {
+  // Validated at DELIVERY, a bad embed shape fails the entire payload and costs
+  // the other, perfectly good, section its place in the report.
+  // A hole is not merely a missing string: Array#every SKIPS holes, so a sparse
+  // result reads as valid and joins into a description with a blank line where a
+  // whole section should have been. And a hole masked by a prototype index
+  // reads as a perfectly good line that is not the caller's own.
+  const sparse = ["Title"];
+  sparse.length = 3;
+  sparse[2] = "Body";
+
+  const inherited = ["Title"];
+  inherited.length = 3;
+  inherited[2] = "Body";
+  const inheritedPrototype = Object.create(Array.prototype);
+  Object.defineProperty(inheritedPrototype, "1", { value: "inherited body", configurable: true });
+  Object.setPrototypeOf(inherited, inheritedPrototype);
+
+  // A formatter result whose ITERATOR disagrees with its indices: the checks
+  // read lines[i], and destructuring would re-read through Symbol.iterator.
+  // Same class as the Discord toJSON case, different consumption mechanism.
+  const lyingIterator = ["Title", "Body"];
+  lyingIterator[Symbol.iterator] = function* () { yield "Other"; yield "x".repeat(9000); };
+
+  // The expected MESSAGE is part of each case. Without it the too-few-lines
+  // check is unarmed: a one-line result still fails later on an empty
+  // description, so only the wording distinguishes a formatter that returned
+  // the wrong SHAPE from one that returned an empty section.
+  for (const [bad, expected] of [
+    [[], /title and body as string lines/],
+    [["only a title"], /title and body as string lines/],
+    [["", "empty title"], /non-empty title and description/],
+    [["Title", ""], /non-empty title and description/],
+    [["Title", 42], /title and body as string lines/],
+    ["not an array", /title and body as string lines/],
+    [sparse, /title and body as string lines/],
+    [inherited, /title and body as string lines/],
+  ]) {
+    const outcomes = await driveSections(
+      [
+        {
+          driver: { name: "bad-format", primaryTasks: [], followUpTasks: () => [], finish: () => "computed" },
+          describe: () => bad,
+          unavailable: () => ["Title", "unavailable"],
+        },
+        {
+          driver: { name: "healthy", primaryTasks: [], followUpTasks: () => [], finish: () => "computed" },
+          describe: (v) => ["Title", v],
+          unavailable: () => ["Title", "unavailable"],
+        },
+      ],
+      2
+    );
+    assert.equal(outcomes[0].status, "rejected", `${JSON.stringify(bad)} must be refused`);
+    assert.match(outcomes[0].reason.message, expected,
+      `${JSON.stringify(bad)} must say WHICH contract it broke`);
+    assert.deepEqual(outcomes[1], { status: "fulfilled", value: { title: "Title", description: "computed" } },
+      "the healthy section survives a malformed sibling");
+  }
+
+  // The embed must be built from the values that were CHECKED, so a lying
+  // iterator changes nothing rather than smuggling a 9,000-character line past
+  // the per-index string check.
+  const [lying] = await driveSections(
+    [{
+      driver: { name: "lying-iterator", primaryTasks: [], followUpTasks: () => [], finish: () => null },
+      describe: () => lyingIterator,
+      unavailable: () => ["Title", "unavailable"],
+    }],
+    2
+  );
+  assert.deepEqual(lying, { status: "fulfilled", value: { title: "Title", description: "Body" } },
+    "the embed comes from the indexed values, never a second read of the container");
+
+  // ONE observation per value. A second read of the same index lets an accessor
+  // answer the check and the consumer differently, and the oversized line would
+  // then fail the WHOLE payload at delivery instead of losing one section.
+  const changing = ["Title"];
+  changing.length = 2;
+  let reads = 0;
+  Object.defineProperty(changing, "1", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      reads += 1;
+      return reads === 1 ? "Body" : "x".repeat(9000);
+    },
+  });
+
+  const [changingOutcome] = await driveSections(
+    [{
+      driver: { name: "changing-format", primaryTasks: [], followUpTasks: () => [], finish: () => null },
+      describe: () => changing,
+      unavailable: () => ["Unavailable", "Body"],
+    }],
+    2
+  );
+  assert.deepEqual(changingOutcome,
+    { status: "fulfilled", value: { title: "Title", description: "Body" } });
+  assert.equal(reads, 1, "each formatter line is observed exactly once");
+});
+
+test("only a declared scorecard contract failure can trigger the whole-run path", async () => {
+  // An adoption error that happened to carry a `wholeRun` property would
+  // otherwise discard a perfectly good scorecard and post only the notice.
+  const mock = mockPostHog({});
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const body = init?.body ? JSON.parse(init.body) : {};
+    if (body.name === "daily_report_totals") {
+      const err = new Error("adoption blew up");
+      err.wholeRun = true; // the impostor
+      throw err;
+    }
+    return inner(url, init);
+  };
+  try {
+    const res = await trigger("&date=2026-07-17");
+    assert.equal(res.status, 500);
+    assert.equal(mock.discordPayloads.length, 1);
+    const payload = mock.discordPayloads[0];
+    assert.ok("embeds" in payload, "an adoption failure must still produce a combined report");
+    assert.match(payload.embeds[0].title, /unavailable today/);
+    assert.match(payload.embeds[1].description, /2\.4\.1: 7\/7 days publicly available/,
+      "the scorecard is real, not discarded by an impostor property");
+  } finally {
+    mock.restore();
   }
 });

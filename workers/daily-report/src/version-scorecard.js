@@ -25,6 +25,8 @@
  * returns a GitHub response body.
  */
 
+import { hogql, rowsToObjects } from "./lib/posthog.js";
+
 /** Distinguishes an exhausted TRANSIENT failure - which the scorecard section
  * may degrade on while adoption still renders - from a contract failure
  * (missing configuration, malformed release data, an unknown metric), which must
@@ -1401,4 +1403,116 @@ export function rankMovers({ measurements, selection }) {
 
   return { movers, ages, rows: buildRows(), summary,
            comparisonPair: [newest.version, previous.version] };
+}
+
+// ===========================================================================
+// #1838 chunk 6 — section driver
+// ===========================================================================
+
+/**
+ * The scorecard could not be produced.
+ *
+ * `wholeRun` is TRUE only for a release-resolution CONTRACT failure:
+ * misconfiguration, auth, a malformed response, a duplicate release, or no
+ * eligible stable release. In that state we do not know which releases the
+ * report is even about, so there is no honest combined report to send.
+ *
+ * It is FALSE for everything the section can survive as a missing section: a
+ * query failure, a truncated response, a measurement or ranking fault, or an
+ * exhausted TRANSIENT GitHub failure. Collapsing the two directions would
+ * either lose the adoption half to a blip, or let a misconfigured worker
+ * report "scorecard temporarily unavailable" every morning for months.
+ */
+export class ScorecardSectionError extends Error {
+  constructor(message, { wholeRun = false, cause } = {}) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.name = "ScorecardSectionError";
+    this.wholeRun = wholeRun === true;
+  }
+}
+
+const SCORECARD_QUERIES = [
+  { kind: "additive", name: "scorecard_additive", key: "additiveRows" },
+  { kind: "nonAdditive", name: "scorecard_non_additive", key: "nonAdditiveRows" },
+];
+
+/** Classification is by TYPE, never by message text: a substring match on an
+ * error message is a contract nobody declared and every reword breaks. */
+function releaseFailure(reason) {
+  const transient = reason instanceof ReleaseResolutionError && reason.transient === true;
+  return new ScorecardSectionError(
+    transient
+      ? "release resolution exhausted its retries"
+      : "release resolution failed its contract",
+    { wholeRun: !transient, cause: reason }
+  );
+}
+
+/**
+ * Describes the scorecard's outbound work and interprets its results. Like the
+ * adoption section it schedules NOTHING: the orchestrator owns the one limiter.
+ *
+ * The window anchor exists in two forms, and BOTH are derived here from the
+ * single Eastern day the orchestrator resolved - the quoted SQL literal the two
+ * queries interpolate, and the plain day the measurement engine buckets by.
+ * Accepting either form from the caller is how the queries would come to
+ * measure one window while the engine bucketed another, with every number on
+ * the page looking entirely reasonable.
+ */
+export function createScorecardSection(env, context, opts = {}) {
+  const hogqlFn = opts.hogqlFn || hogql;
+  const resolveReleasesFn = opts.resolveReleasesFn || resolveReleases;
+  const hogqlOpts = opts.hogqlOpts || {};
+  const releaseOpts = opts.releaseOpts || {};
+
+  const day = context.windowEndExclusiveDay;
+  const sqlArgs = {
+    prod: context.prod,
+    historyStart: `'${context.historyStartDay} 00:00:00'`,
+    windowEndExclusive: `'${day} 00:00:00'`,
+  };
+
+  const primaryTasks = SCORECARD_QUERIES.map(
+    (q) => () => hogqlFn(env, scorecardSql(q.kind, sqlArgs), q.name, hogqlOpts)
+  );
+
+  let measurements = null;
+
+  return {
+    name: "scorecard",
+    primaryTasks,
+
+    followUpTasks(primary) {
+      const rowsByKey = {};
+      SCORECARD_QUERIES.forEach((q, i) => {
+        const outcome = primary[i];
+        if (outcome.status !== "fulfilled") {
+          throw new ScorecardSectionError(`${q.name} failed`, { cause: outcome.reason });
+        }
+        // Truncation is checked by buildMeasurements below, independently per
+        // query. A second check here would be a second authority on the same
+        // rule, free to disagree with it after a later edit; the wiring is
+        // proved by a section-level test rather than by repeating the check.
+        rowsByKey[q.key] = rowsToObjects(outcome.value);
+      });
+      measurements = buildMeasurements({ ...rowsByKey, windowEndExclusive: day });
+      // Release membership comes from what we PUBLISHED, never from what
+      // telemetry happens to show. There is deliberately no all-version
+      // fallback: it would silently restore the version-blind behaviour this
+      // issue exists to remove.
+      return [() => resolveReleasesFn(env, measurements.usageRows, releaseOpts)];
+    },
+
+    finish(_primary, followUp) {
+      // The twin of adoption's guard: rankMovers would otherwise be handed a
+      // null measurements object and refuse it with a confusing message, or a
+      // later edit would make that null mean "no history."
+      if (measurements === null) {
+        throw new ScorecardSectionError("scorecard finish ran before its measurements were built");
+      }
+      const outcome = followUp[0];
+      if (outcome.status !== "fulfilled") throw releaseFailure(outcome.reason);
+      return rankMovers({ measurements, selection: outcome.value });
+    },
+  };
 }

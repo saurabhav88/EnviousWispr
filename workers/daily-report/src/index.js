@@ -1,33 +1,54 @@
 /**
- * EnviousWispr Daily Performance Report - Cloudflare Worker (issue #1433)
+ * EnviousWispr Daily Report - Cloudflare Worker (issues #1433, #1838)
  *
  * Runs once a day via a secret-gated HTTP trigger (scheduling lives in
  * .github/workflows/daily-report-ping.yml, not a Cloudflare cron - the CF
- * account is at its 5-cron free-plan limit, see #1092). Reads PostHog events
- * over the previous COMPLETE Eastern calendar day and posts a plain-English
- * summary to Discord (EnviousNotes): installs/onboarding/activation, total
- * active users, transcription-engine choice by user, AI-polish choice by
- * user (their CONFIGURED choice, not per-dictation runtime outcome - a
- * dictation that silently skipped polish for a by-design reason still
- * counts toward whatever provider the user has selected), net dictation
- * volume, top-5 countries, and the top-5 heaviest users by volume.
+ * account is at its 5-cron free-plan limit, see #1092) and posts ONE Discord
+ * message with two sections:
  *
- * Gates nothing, alerts on nothing - purely a daily digest. Plan + full
- * metric-definition rationale: docs/feature-requests/issue-1433-2026-07-09-daily-report.md
+ *   Adoption          - yesterday's installs, onboarding, activation, engine
+ *                       and polish choice, volume, geography, heaviest users.
+ *   Version scorecard - the last complete Eastern week, per release, with the
+ *                       two largest ranked changes against each measure's own
+ *                       normal week-to-week movement (#1838).
+ *
+ * Gates nothing and alerts on nothing. Defect detection belongs to the Sentry
+ * triage routines; this is a digest, and the threshold-alarm shape it replaced
+ * is exactly what made the old separate health check useless to its one reader.
+ *
+ * ORCHESTRATION OWNERSHIP. This file resolves the report window ONCE, resolves
+ * the dev-ID exclusion ONCE, builds ONE production predicate, schedules every
+ * outbound query itself, assembles ONE payload, and decides whether the run was
+ * clean. The two section modules own their own SQL, calculations and results,
+ * and cannot reach the clock, the raw dev IDs, or a scheduler of their own.
+ *
+ * Plan: docs/feature-requests/issue-1838-2026-07-29-daily-report-version-scorecard.md
  *
  * Privacy: output and logs are counts / rates / labels only. Never a raw
- * transcript, a PostHog response body, a Discord response body, or the
+ * transcript, a PostHog or Discord response body, a distinct id, or the
  * trigger secret.
  */
 
-import { windowClause } from "./lib/posthog.js";
-import { fetchReportData, resolveBuckets } from "./adoption.js";
+import { productionClauseFor, resolveDevIds, runLimited, windowClause } from "./lib/posthog.js";
+import { deliverReport } from "./lib/discord.js";
+import { createAdoptionSection } from "./adoption.js";
+import {
+  ScorecardSectionError,
+  WINDOW_COUNT,
+  WINDOW_DAYS,
+  createScorecardSection,
+} from "./version-scorecard.js";
+import {
+  formatAdoptionUnavailable,
+  formatScorecard,
+  formatScorecardUnavailable,
+} from "./report-format.js";
 
 export default {
   async fetch(request, env) {
     // Manual trigger is secret-gated: the workers.dev URL is public, so an
     // unauthenticated request must NOT run the report or post to Discord.
-    // Fail closed. Mirrors workers/product-health/src/index.js exactly.
+    // Fail closed, before any outbound work.
     const url = new URL(request.url);
     const provided = url.searchParams.get("token") || request.headers.get("x-trigger-secret");
     if (!env.TRIGGER_SECRET || provided !== env.TRIGGER_SECRET) {
@@ -38,6 +59,9 @@ export default {
       const message = await runReport(env, dateOverride);
       return new Response(message + "\n", { status: 200 });
     } catch (err) {
+      // Deliberately does NOT post here. runReport owns every Discord request;
+      // a second post from this layer is how a failed run ends up telling the
+      // founder twice, or telling him after he already has the report.
       return new Response("daily report failed: " + err.message + "\n", { status: 500 });
     }
   },
@@ -46,20 +70,63 @@ export default {
 // ----- Eastern calendar-day boundary ---------------------------------------
 
 const EASTERN_TZ = "America/New_York";
+const EASTERN_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Returns { dateStr, startUTC, endUTC } for the target Eastern calendar day:
  * yesterday relative to `now`, or the explicit `dateOverride` (YYYY-MM-DD)
- * when provided (manual recovery after a missed scheduled run - plan §4-9
- * failure-mode table). startUTC/endUTC are the true UTC instants of that
- * day's midnight-to-midnight boundary in America/New_York, computed via the
- * Intl timezone API (handles EST/EDT correctly, no library dependency).
+ * when provided (manual recovery after a missed scheduled run). startUTC and
+ * endUTC are the true UTC instants of that day's midnight-to-midnight boundary
+ * in America/New_York, computed via the Intl timezone API (handles EST/EDT
+ * correctly, no library dependency).
  */
 export function easternYesterdayWindowUTC(now = new Date(), dateOverride = null) {
   const targetDateStr = dateOverride || shiftDateString(easternDateString(now), -1);
   const startUTC = findUTCForEasternMidnight(targetDateStr);
   const endUTC = findUTCForEasternMidnight(shiftDateString(targetDateStr, 1));
   return { dateStr: targetDateStr, startUTC, endUTC };
+}
+
+/**
+ * The ONE resolved report context. Both sections read their window from this
+ * object and nothing else: neither may call the clock, re-read the override, or
+ * derive a second window. Anchoring the scorecard to `now()` instead of the
+ * resolved end made a backfilled run's newest window thirteen days long and let
+ * it absorb events from AFTER the day being reported.
+ *
+ * The scorecard anchor exists in two forms - a plain Eastern day and a quoted
+ * SQL literal - and BOTH are derived from `windowEndExclusiveDay` inside the
+ * scorecard module, so the queries can never measure a different window from
+ * the one the measurement engine buckets.
+ */
+export function resolveReportWindow(now = new Date(), dateOverride = null) {
+  if (dateOverride !== null && dateOverride !== undefined) {
+    // A malformed override is shared-fatal, never a silent fall-through to
+    // yesterday: a recovery run that quietly reports the wrong day is worse
+    // than one that reports nothing, because nobody re-runs it.
+    if (typeof dateOverride !== "string" || !EASTERN_DAY.test(dateOverride)) {
+      throw new Error("date override must be YYYY-MM-DD");
+    }
+    const [y, m, d] = dateOverride.split("-").map(Number);
+    // Date.UTC rolls an impossible date forward (2026-02-30 becomes March 2),
+    // so the round-trip is what refuses it rather than reporting a day nobody
+    // asked for.
+    if (new Date(Date.UTC(y, m - 1, d, 12)).toISOString().slice(0, 10) !== dateOverride) {
+      throw new Error("date override is not a real calendar date");
+    }
+  }
+  const { dateStr, startUTC, endUTC } = easternYesterdayWindowUTC(now, dateOverride || null);
+  const windowEndExclusiveDay = shiftDateString(dateStr, 1);
+  return Object.freeze({
+    dateStr,
+    startUTC,
+    endUTC,
+    win: windowClause(startUTC, endUTC),
+    windowEndExclusiveDay,
+    // Eight 7-day windows back from the exclusive end. Window 7's first day is
+    // exactly this date, so a day earlier would fall outside the grid entirely.
+    historyStartDay: shiftDateString(windowEndExclusiveDay, -(WINDOW_DAYS * WINDOW_COUNT)),
+  });
 }
 
 function easternDateString(date) {
@@ -112,7 +179,7 @@ function easternOffsetMinutesAt(date) {
   return (localAsUTC - date.getTime()) / 60000;
 }
 
-// ----- Message ---------------------------------------------------------------
+// ----- Adoption presentation -------------------------------------------------
 
 const ENGINE_LABELS = { parakeet: "Parakeet", whisperKit: "WhisperKit" };
 const PROVIDER_LABELS = {
@@ -148,8 +215,13 @@ function formatWeekdayDate(dateStr) {
   }).format(noonUTC);
 }
 
+/** The one line above both embeds. Sole producer of the report's own title. */
+export function reportHeader(dateStr) {
+  return `EnviousWispr Daily Report, ${formatWeekdayDate(dateStr)}`;
+}
+
 // Names for the "some sections were unavailable" summary note, keyed to the
-// same booleans fetchReportData returns. `totals` is deliberately absent -
+// same booleans the adoption section returns. `totals` is deliberately absent -
 // it never degrades (#1720).
 const DEGRADED_SECTION_LABELS = [
   ["installsDegraded", "new installs"],
@@ -159,15 +231,23 @@ const DEGRADED_SECTION_LABELS = [
   ["top5Degraded", "top 5 users"],
 ];
 
-export function buildMessage(dateStr, data, buckets) {
-  const lines = [`EnviousWispr Daily Report, ${formatWeekdayDate(dateStr)}`, ""];
+/**
+ * The adoption section, as LINES whose FIRST line titles its embed - the same
+ * shape every section formatter returns, so the payload assembler never
+ * authors a sentence of its own.
+ *
+ * The unavailable counterpart lives in report-format.js beside the scorecard's,
+ * because that file is the single home for failure wording.
+ */
+export function formatAdoption(data, buckets) {
+  // Just "Adoption": the day is on the message's content line, and a backfilled
+  // run is not reporting yesterday.
+  const lines = ["Adoption"];
 
-  // Near the TOP deliberately: the tail is truncated at 1990 chars below, so a
-  // note appended at the end could be silently cut off on exactly the busy days
-  // when the report is longest (#1655). Distinct from the per-section inline
-  // "temporarily unavailable" wording below - this is a fast-skim summary,
-  // never a substitute for it, and never fabricates a zero for a degraded
-  // section (#1720).
+  // Near the TOP deliberately: a fast-skim summary of which sections could not
+  // be measured. Distinct from the per-section inline "temporarily unavailable"
+  // wording below, never a substitute for it, and never a fabricated zero for a
+  // degraded section (#1720).
   const notes = [];
   if (data.tierADegraded) {
     notes.push("the polish-provider breakdown is approximate because the settings lookup was temporarily unavailable when this report ran");
@@ -214,70 +294,247 @@ export function buildMessage(dateStr, data, buckets) {
     lines.push(`Top 5 users by dictation volume: ${data.top5.map((u) => u.n).join(", ")}.`);
   }
 
-  const content = lines.join("\n").trim();
-  // Discord content cap is 2000 chars.
-  return content.length > 1990 ? content.slice(0, 1987) + "..." : content;
+  return lines;
 }
 
-// ----- Discord + run ---------------------------------------------------------
+// ----- Orchestration ---------------------------------------------------------
 
-async function postToDiscord(webhookUrl, content) {
-  const res = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+/** PostHog allows only 3 concurrent queries per project (#1588). Two in flight
+ * leaves a slot of headroom for the shared project's other traffic
+ * (EnviousStaging). This is the GLOBAL ceiling across both sections, which is
+ * why the sections cannot own limiters of their own: two limiters of 2 is a
+ * limiter of 4. */
+const CONCURRENCY_LIMIT = 2;
+
+/**
+ * Runs `tasks` through the ONE limiter, converting every outcome into a settled
+ * record so a rejection can never cancel queued work belonging to the other
+ * section. Without this, one adoption query failing early would strand the
+ * scorecard's queries behind it and both halves of the report would be lost to
+ * a single blip.
+ */
+function settleAll(tasks, limit) {
+  return runLimited(
+    tasks.map((task) => async () => {
+      try {
+        return { status: "fulfilled", value: await task() };
+      } catch (reason) {
+        return { status: "rejected", reason: asError(reason, "outbound task") };
+      }
+    }),
+    limit
+  );
+}
+
+/** `throw undefined` is legal JavaScript, and a falsy rejection value used as a
+ * failure flag reads as success - a lost section reported as a healthy one.
+ * Deliberately does NOT interpolate the thrown value: it reaches the trigger's
+ * response body, and an arbitrary thrown value is not known to be content-free. */
+function asError(reason, label) {
+  return reason instanceof Error ? reason : new Error(`${label} rejected without an Error`);
+}
+
+/**
+ * Drives both sections through two dependency-ordered stages under one shared
+ * ceiling. The sections DESCRIBE their outbound work; they never schedule it.
+ *
+ * Exported so section tests drive the REAL orchestrator rather than a
+ * hand-rolled stand-in: a test harness that re-implements the staging is a
+ * second authority, and it passes happily while production takes another path.
+ *
+ * Stage 1 is every query that needs nothing but the shared context. Stage 2 is
+ * the work that depends on stage 1 (adoption's settings lookup, the scorecard's
+ * release resolution). Because the stages are sequential and each is a single
+ * limiter call, the global in-flight count is exactly `limit` throughout.
+ */
+export async function driveSections(sections, limit) {
+  // `failure` is null, or a real Error - never a raw thrown value. `throw
+  // undefined` is legal JavaScript, and a falsy rejection used as the sentinel
+  // reports a LOST section as a healthy one. `asError` is the single mechanism
+  // that closes that: a separate boolean flag beside it could not be armed by
+  // any input, so it is not carried.
+  const state = sections.map(() => ({ failure: null, primary: [], follow: [] }));
+
+  const stage1 = [];
+  const spans1 = sections.map((s) => {
+    const start = stage1.length;
+    stage1.push(...s.driver.primaryTasks);
+    return [start, stage1.length];
   });
-  return res.status === 204 || res.status === 200;
+  const settled1 = await settleAll(stage1, limit);
+  spans1.forEach(([from, to], i) => {
+    state[i].primary = settled1.slice(from, to);
+  });
+
+  const stage2 = [];
+  const spans2 = sections.map((s, i) => {
+    const start = stage2.length;
+    try {
+      stage2.push(...s.driver.followUpTasks(state[i].primary));
+    } catch (reason) {
+      // This section is finished, and failed. The other one still gets its
+      // stage-2 slot: one section's failure must never shorten the other's run.
+      state[i].failure = asError(reason, `${s.driver.name} follow-up preparation`);
+    }
+    return [start, stage2.length];
+  });
+  const settled2 = await settleAll(stage2, limit);
+  spans2.forEach(([from, to], i) => {
+    state[i].follow = settled2.slice(from, to);
+  });
+
+  return Promise.allSettled(
+    sections.map(async (s, i) => {
+      try {
+        if (state[i].failure) throw state[i].failure;
+        // Rendering AND its shape check both sit inside the settled outcome. A
+        // section that computes cleanly but renders badly is an unavailable
+        // section; validated later, at delivery, it would fail the whole
+        // payload and cost the OTHER section its place in the report too.
+        return toEmbed(s.describe(s.driver.finish(state[i].primary, state[i].follow)));
+      } catch (reason) {
+        throw asError(reason, `${s.driver.name} section`);
+      }
+    })
+  );
 }
 
-async function safePost(env, content) {
+/** One embed per section. Every formatter returns lines whose first line is the
+ * title, so this function chooses no words of its own - but it does REFUSE a
+ * shape Discord would reject, because that refusal has to happen while the
+ * failure still belongs to one section. */
+function toEmbed(lines) {
+  if (!Array.isArray(lines)) {
+    throw new TypeError("section formatter must return a title and body as string lines");
+  }
+  const lineCount = lines.length;
+  if (lineCount < 2) {
+    throw new TypeError("section formatter must return a title and body as string lines");
+  }
+  // Indexed, not `every`: Array#every SKIPS holes and visits inherited indices,
+  // so a sparse ["Title", <hole>, "Body"] passes it and then joins into a
+  // description with a silently blank line where a section should have been.
+  //
+  // EACH LINE IS READ EXACTLY ONCE and the embed is built from that copy. Two
+  // reads of the same index let an accessor answer "Body" to the check and
+  // 9,000 characters to the consumer; destructuring `lines` again would re-read
+  // through Symbol.iterator, which an own iterator can redefine. Same defect,
+  // three different mechanisms - so the rule is one observation per value.
+  const checked = [];
+  for (let i = 0; i < lineCount; i += 1) {
+    if (!Object.hasOwn(lines, i)) {
+      throw new TypeError("section formatter must return a title and body as string lines");
+    }
+    const line = lines[i];
+    if (typeof line !== "string") {
+      throw new TypeError("section formatter must return a title and body as string lines");
+    }
+    checked.push(line);
+  }
+  const [title, ...body] = checked;
+  const description = body.join("\n");
+  if (title.length === 0 || description.length === 0) {
+    throw new TypeError("section formatter must return a non-empty title and description");
+  }
+  return { title, description };
+}
+
+/** Best-effort fixed notice for a run that produced no report at all. Carries
+ * no error text, status code or response body: it goes to a Discord channel,
+ * and the exception itself surfaces through the trigger's non-2xx status. */
+async function postFailureNotice(env, dateStr) {
+  if (!env.DISCORD_WEBHOOK_URL) return;
   try {
-    if (env.DISCORD_WEBHOOK_URL) await postToDiscord(env.DISCORD_WEBHOOK_URL, content);
+    await deliverReport(env.DISCORD_WEBHOOK_URL, {
+      content:
+        `EnviousWispr Daily Report for ${dateStr} could not be generated. ` +
+        `Nothing was measured, so this is not a report of zero.`,
+    });
   } catch (_) {
-    // best-effort failure notice; the caller's throw is what surfaces the failure in logs/CI
+    // The caller's rethrow is what surfaces the failure.
   }
 }
 
-// `deps` is a test-only injection seam (production passes nothing, both
-// defaults apply): `deps.resolveBuckets` lets a degraded-engine test spy on
-// resolveBuckets and assert it was never called (proving the skip below
-// actually happened, not just that its output looks empty); `deps.hogqlOpts`
-// forwards into fetchReportData so the same test can force an exhausted
-// retry deterministically instead of waiting through real backoff delays
-// (#1720).
+// `deps` is a test-only injection seam (production passes nothing, every
+// default applies): `deps.resolveBuckets` lets a degraded-engine test prove
+// resolveBuckets was never CALLED rather than that its output merely looks
+// empty; `deps.hogqlOpts` and `deps.releaseOpts` drive retry paths without
+// sitting through real backoff delays.
 export async function runReport(env, dateOverride = null, deps = {}) {
-  const resolveBucketsFn = deps.resolveBuckets || resolveBuckets;
   const hogqlOpts = deps.hogqlOpts || {};
-  const { dateStr, startUTC, endUTC } = easternYesterdayWindowUTC(new Date(), dateOverride);
-  const win = windowClause(startUTC, endUTC);
+  const releaseOpts = deps.releaseOpts || {};
 
-  let data, buckets;
+  // ---- Shared preflight. Anything failing here is fatal to BOTH sections:
+  // there is no window to measure, or no honest production population to
+  // measure it over. An unresolved dev-ID list is never "no dev accounts."
+  let context;
+  let noticeDate = "the requested day";
   try {
-    data = await fetchReportData(env, win, endUTC, hogqlOpts);
-    // engineAndTierB degraded => no real per-user rows to check completeness
-    // against; resolveBucketsFn's completeness check would throw against
-    // absent data, so it is skipped entirely rather than called with a
-    // guaranteed-mismatched anchor (#1720). Empty placeholders let
-    // buildMessage omit the breakdown cleanly (see its own degraded branch).
-    buckets = data.engineAndTierBDegraded
-      ? { engineBuckets: {}, polishBuckets: {}, resolutionSource: { settings: 0, actual_dictation: 0, shipped_default: 0 } }
-      : resolveBucketsFn(data);
-    // Resolution-tier logging (Cloudflare log only, never the Discord
-    // message) - plan §3.3a. A spike in shipped_default's share vs
-    // settings/actual_dictation is the telemetry-drift canary.
-    console.log(
-      `daily-report resolution tiers: settings=${buckets.resolutionSource.settings} ` +
-        `actual_dictation=${buckets.resolutionSource.actual_dictation} ` +
-        `shipped_default=${buckets.resolutionSource.shipped_default}`
-    );
+    const window = resolveReportWindow(new Date(), dateOverride);
+    noticeDate = window.dateStr;
+    const devIds = await resolveDevIds(env, hogqlOpts);
+    // The raw ids stop here. Both sections receive only the predicate, so
+    // neither can rebuild the exclusion differently or leak an id into a log.
+    context = Object.freeze({ ...window, prod: productionClauseFor(devIds) });
   } catch (err) {
-    // Loud failure: never let a partial/failed run read as a normal report.
-    await safePost(env, `Daily report failed to generate for ${dateStr}: ${err.message}`);
+    await postFailureNotice(env, noticeDate);
     throw err;
   }
 
-  const message = buildMessage(dateStr, data, buckets);
-  const ok = await postToDiscord(env.DISCORD_WEBHOOK_URL, message);
-  if (!ok) throw new Error("Discord post failed");
-  return message;
+  const sections = [
+    {
+      driver: createAdoptionSection(env, context, {
+        hogqlOpts,
+        resolveBucketsFn: deps.resolveBuckets,
+      }),
+      describe: ({ data, buckets }) => formatAdoption(data, buckets),
+      unavailable: formatAdoptionUnavailable,
+    },
+    {
+      driver: createScorecardSection(env, context, { hogqlOpts, releaseOpts }),
+      describe: (ranking) => formatScorecard({ ranking }),
+      unavailable: formatScorecardUnavailable,
+    },
+  ];
+
+  const outcomes = await driveSections(sections, CONCURRENCY_LIMIT);
+
+  // A release-resolution CONTRACT failure - misconfiguration, a malformed
+  // response, no eligible release - means we cannot know which releases this
+  // report is even about. There is no honest combined report to send, so it is
+  // fail-loud for the whole run rather than a quietly unavailable section that
+  // could persist for months.
+  const fatal = outcomes.find(
+    (outcome) =>
+      outcome.status === "rejected" &&
+      // The declared TYPE, not a `wholeRun` property any error could carry: an
+      // adoption failure that happened to own that field would discard a
+      // perfectly good scorecard and post only the fatal notice.
+      outcome.reason instanceof ScorecardSectionError &&
+      outcome.reason.wholeRun === true
+  );
+  if (fatal) {
+    await postFailureNotice(env, context.dateStr);
+    throw fatal.reason;
+  }
+
+  const payload = {
+    content: reportHeader(context.dateStr),
+    // A fulfilled outcome is ALREADY an embed, validated inside its own
+    // section. Only the fixed unavailable copy is rendered here.
+    embeds: sections.map((s, i) =>
+      outcomes[i].status === "fulfilled" ? outcomes[i].value : toEmbed(s.unavailable())
+    ),
+  };
+
+  // Validated and sent as ONE object inside deliverReport. An over-budget
+  // payload throws here with zero requests made: the report is sent whole or
+  // not at all, and no fallback notice follows it.
+  await deliverReport(env.DISCORD_WEBHOOK_URL, payload);
+
+  // The founder has the report; the trigger still has to fail, or a section
+  // that silently stopped working would look like a healthy run forever.
+  const failed = outcomes.find((o) => o.status === "rejected");
+  if (failed) throw failed.reason;
+  return payload.content;
 }
