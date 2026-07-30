@@ -1400,6 +1400,17 @@ def fetch_take_coverage(client: PostHogClient) -> list[TakeCoverageRow]:
     "is the take key actually landing on this event," which wants the widest view
     available, not one fingerprint's slice.
 
+    ONE QUERY PER EVENT, not one grouped query over all 13. A single
+    `GROUP BY release, event` returns one row per observed combination, and that
+    grid is ALREADY 127 rows in production (measured 2026-07-30) — over PostHog's
+    100-row cap, so the shared truncation guard would have aborted the entire
+    report on its first real run. Per event, each result is bounded by the number
+    of releases instead, which is an order of magnitude smaller.
+
+    Sequential and index-accounted like the install partitions, so a dropped query
+    cannot pass as an event with no rows — which the renderer would print as
+    `not observed`, turning a missing query into a fabricated blackout.
+
     Coverage counts only CANONICAL take ids, using the same pattern the rate
     queries reject on. Testing merely for NULL-or-empty would report an emitter
     that regressed to a malformed non-empty value as fully covered, while that
@@ -1407,47 +1418,53 @@ def fetch_take_coverage(client: PostHogClient) -> list[TakeCoverageRow]:
     would say 100% for a key that joins nothing. What is measured here is a
     USABLE join key, not the presence of a property.
     """
-    rows, _ = client.query(
-        f"""
-        SELECT properties.app_version AS release,
-               event AS event_name,
-               count() AS total,
-               countIf(
-                   match(
-                       toString(properties.{TAKE_PROPERTY}),
-                       '{TAKE_ID_HOGQL_PATTERN}'
-                   ) = 1
-               ) AS with_take
-        FROM events
-        WHERE event IN ({sql_id_list(TAKE_KEYED_EVENTS)})
-          AND {client.environment_clause()}
-        GROUP BY release, event_name
-        """,
-        "take_coverage",
-    )
     coverage: list[TakeCoverageRow] = []
-    for row in rows:
-        if len(row) != 4:
-            raise ProtocolError(f"take_coverage: expected 4 columns, got {len(row)}")
-        release_raw, event_name, total, with_take = row
-        if not isinstance(event_name, str) or event_name not in TAKE_KEYED_EVENTS:
-            raise ProtocolError(f"take_coverage: unexpected event {event_name!r}")
-        total_count = required_count(total, "take_coverage: total")
-        with_take_count = required_count(with_take, "take_coverage: with_take")
-        if with_take_count > total_count:
-            raise ProtocolError(
-                f"take_coverage: {event_name} on {release_raw!r} reports "
-                f"{with_take_count} keyed rows out of {total_count} — a subset "
-                "cannot exceed its set, so the query or the parse is wrong"
-            )
-        coverage.append(
-            TakeCoverageRow(
-                event=event_name,
-                release=canonical_app_version(release_raw, "take_coverage"),
-                with_take=with_take_count,
-                total=total_count,
-            )
+    expected_indexes = set(range(len(TAKE_KEYED_EVENTS)))
+    completed_indexes: set[int] = set()
+
+    for index, event_name in enumerate(TAKE_KEYED_EVENTS):
+        rows, _ = client.query(
+            f"""
+            SELECT properties.app_version AS release,
+                   count() AS total,
+                   countIf(
+                       match(
+                           toString(properties.{TAKE_PROPERTY}),
+                           '{TAKE_ID_HOGQL_PATTERN}'
+                       ) = 1
+                   ) AS with_take
+            FROM events
+            WHERE event = {sql_id_list([event_name])}
+              AND {client.environment_clause()}
+            GROUP BY release
+            """,
+            f"take_coverage_{index}",
         )
+        for row in rows:
+            if len(row) != 3:
+                raise ProtocolError(
+                    f"take_coverage_{index}: expected 3 columns, got {len(row)}"
+                )
+            release_raw, total, with_take = row
+            total_count = required_count(total, f"take_coverage_{index}: total")
+            with_take_count = required_count(with_take, f"take_coverage_{index}: with_take")
+            if with_take_count > total_count:
+                raise ProtocolError(
+                    f"take_coverage_{index}: {event_name} on {release_raw!r} reports "
+                    f"{with_take_count} keyed rows out of {total_count} — a subset "
+                    "cannot exceed its set, so the query or the parse is wrong"
+                )
+            coverage.append(
+                TakeCoverageRow(
+                    event=event_name,
+                    release=canonical_app_version(release_raw, f"take_coverage_{index}"),
+                    with_take=with_take_count,
+                    total=total_count,
+                )
+            )
+        completed_indexes.add(index)
+
+    require_complete_partitions(expected_indexes, completed_indexes)
     return coverage
 
 
@@ -3227,16 +3244,18 @@ def run_self_test() -> int:
     # rows reports `not observed`. Never 0% and never 100% — zero rows is an
     # absence of evidence, and the whole point of the per-event shape is that a
     # busy event cannot mask a silent one.
+    # ONE response per event now, in TAKE_KEYED_EVENTS order. The grouped
+    # single-query form returned 127 rows in production — over PostHog's cap.
+    def _coverage_fixture(per_event: dict[str, list[list[object]]]) -> list[HTTPResponse]:
+        return [_posthog_response(per_event.get(name, [])) for name in TAKE_KEYED_EVENTS]
+
     ph, _ = _posthog_client(
-        [
-            _posthog_response(
-                [
-                    ["2.6.0", "dictation.completed", 400, 400],
-                    ["2.6.0", "recording.cap_warning_shown", 3, 0],
-                    ["2.7.0", "dictation.completed", 500, 500],
-                ]
-            )
-        ]
+        _coverage_fixture(
+            {
+                "dictation.completed": [["2.6.0", 400, 400], ["2.7.0", 500, 500]],
+                "recording.cap_warning_shown": [["2.6.0", 3, 0]],
+            }
+        )
     )
     ph.dev_ids = ()
     observed_coverage = fetch_take_coverage(ph)
@@ -3261,13 +3280,39 @@ def run_self_test() -> int:
 
     # A subset larger than its set is impossible; it means the query or the parse
     # is wrong, and a wrong coverage number is worse than none.
-    ph, _ = _posthog_client([_posthog_response([["2.6.0", "dictation.completed", 5, 9]])])
+    ph, _ = _posthog_client(
+        _coverage_fixture({"asr.completed": [["2.6.0", 5, 9]]})
+    )
     ph.dev_ids = ()
     _expect_raises(ProtocolError, lambda: fetch_take_coverage(ph), "keyed exceeds total")
-    ph, _ = _posthog_client([_posthog_response([["2.6.0", "not.an.event", 5, 5]])])
+    # Wrong column count fails closed too — the per-event shape has 3, not 4.
+    ph, _ = _posthog_client(
+        _coverage_fixture({"asr.completed": [["2.6.0", "dictation.completed", 5, 5]]})
+    )
     ph.dev_ids = ()
-    _expect_raises(ProtocolError, lambda: fetch_take_coverage(ph), "unlisted event name")
-    passed("take coverage fails closed on an impossible subset or an unlisted event")
+    _expect_raises(ProtocolError, lambda: fetch_take_coverage(ph), "wrong column count")
+    passed("take coverage fails closed on an impossible subset or a malformed row")
+
+    # EVERY event must be queried. A dropped query would return no rows for that
+    # event, which the renderer prints as `not observed` — a missing query
+    # rendered as a real telemetry blackout.
+    ph, coverage_transport = _posthog_client(_coverage_fixture({}))
+    ph.dev_ids = ()
+    assert fetch_take_coverage(ph) == []
+    # Decode the body rather than `str(bytes)`: the repr escapes the single quotes
+    # the SQL uses, so the first version of this matcher found nothing and reported
+    # an empty list. A matcher that cannot match is not a check.
+    sent_queries = [
+        json.loads(request.body or b"{}")["query"]["query"]
+        for request in coverage_transport.seen
+    ]
+    queried = [
+        name for name in TAKE_KEYED_EVENTS
+        if any(f"event = '{name}'" in sql for sql in sent_queries)
+    ]
+    assert queried == list(TAKE_KEYED_EVENTS), queried
+    assert len(coverage_transport.seen) == len(TAKE_KEYED_EVENTS), len(coverage_transport.seen)
+    passed("take coverage queries every one of the 13 events, one bounded query each")
 
     # TRUNCATION. Measured 2026-07-30: PostHog caps a HogQL result at 100 rows and
     # sets `hasMore: true`. Every query in this file is an aggregate or a bounded
@@ -3278,7 +3323,7 @@ def run_self_test() -> int:
         200,
         {"Content-Type": "application/json"},
         json.dumps(
-            {"results": [["2.6.0", "dictation.completed", 400, 400]],
+            {"results": [["2.6.0", 400, 400]],
              "columns": [], "hasMore": True, "limit": 100, "offset": 0}
         ).encode(),
     )
@@ -3312,12 +3357,14 @@ def run_self_test() -> int:
     # Coverage counts USABLE join keys. A malformed non-empty value cannot join to
     # Sentry and the rate queries reject it, so counting it as covered would report
     # 100% for a key that joins nothing.
-    coverage_sql_probe, coverage_transport = _posthog_client(
-        [_posthog_response([["2.6.0", "dictation.completed", 5, 5]])]
+    coverage_sql_probe, coverage_sql_transport = _posthog_client(
+        _coverage_fixture({"asr.completed": [["2.6.0", 5, 5]]})
     )
     coverage_sql_probe.dev_ids = ()
     fetch_take_coverage(coverage_sql_probe)
-    coverage_sql = json.loads(coverage_transport.seen[0].body or b"{}")["query"]["query"]
+    coverage_sql = json.loads(
+        coverage_sql_transport.seen[0].body or b"{}"
+    )["query"]["query"]
     assert TAKE_ID_HOGQL_PATTERN in coverage_sql, coverage_sql
     assert "!= ''" not in coverage_sql, (
         "presence-only counting would report a malformed key as covered: " + coverage_sql
