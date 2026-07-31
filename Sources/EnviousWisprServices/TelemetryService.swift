@@ -842,10 +842,24 @@ public final class TelemetryService {
       testEventHook?(
         CapturedTelemetryEvent(
           name: event, stringProps: stringProps, intProps: intProps, doubleProps: doubleProps))
+      // The attribution fields are logged as ABSENT-or-value rather than
+      // omitted, because their absence is the thing worth reading: a signal-free
+      // terminal that logs `peak=absent` is a wiring defect, and a terminal that
+      // logs `peak=0.0` is the #1809 dead-channel finding. Rendered from
+      // `doubleProps`, so a value dropped at the vendor boundary is dropped here
+      // too and Live UAT sees the same payload PostHog will.
+      let energy: String =
+        ["peak_audio_level", "whole_buffer_rms", "max_window_rms"]
+        .map { (key: String) -> String in
+          let value = doubleProps[key].map { String($0) } ?? "absent"
+          return "\(key)=\(value)"
+        }
+        .joined(separator: " ")
       Task {
         await AppLogger.shared.log(
           "dictation_terminal result=\(result) reason=\(reason ?? "nil") "
-            + "take=\(takeID) backend=\(backend)",
+            + "take=\(takeID) backend=\(backend) "
+            + "device=\(stringProps["input_device_kind"] ?? "absent") \(energy)",
           level: .info, category: "Telemetry")
       }
     #endif
