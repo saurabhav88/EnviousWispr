@@ -38,8 +38,19 @@ enum InputDeviceSnapshot: Sendable, Equatable {
 
 /// Enumerates audio input devices using CoreAudio HAL.
 public enum AudioDeviceEnumerator {
-  /// Returns all audio input devices currently connected.
-  public static func allInputDevices() -> [AudioInputDevice] {
+  /// The system's current device-ID list, or nil when either HAL read fails.
+  ///
+  /// SOLE owner of the size-then-read sequence for `kAudioHardwarePropertyDevices`
+  /// (#1714 cloud review P2). The two are separate calls, so the list can shrink
+  /// between them — a microphone unplugged in that window makes
+  /// `AudioObjectGetPropertyData` write back a SMALLER `dataSize` while the
+  /// buffer keeps its original length and a zero-filled tail. Iterating the
+  /// whole buffer then treats `kAudioObjectUnknown` (0) as a real device. Both
+  /// callers get the truncation for free rather than each remembering it.
+  ///
+  /// An empty list is a successful read of a machine with no devices; only a
+  /// nonzero HAL status is a failure. Callers own how failure collapses.
+  private static func systemDeviceIDs() -> [AudioDeviceID]? {
     var propertyAddress = AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyDevices,
       mScope: kAudioObjectPropertyScopeGlobal,
@@ -54,7 +65,8 @@ public enum AudioDeviceEnumerator {
       nil,
       &dataSize
     )
-    guard status == noErr, dataSize > 0 else { return [] }
+    guard status == noErr else { return nil }
+    guard dataSize > 0 else { return [] }
 
     let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
     var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
@@ -67,7 +79,17 @@ public enum AudioDeviceEnumerator {
       &dataSize,
       &deviceIDs
     )
-    guard status == noErr else { return [] }
+    guard status == noErr else { return nil }
+
+    // `dataSize` now holds the bytes CoreAudio ACTUALLY wrote. `prefix` clamps,
+    // so a list that grew between the calls cannot read past the buffer either.
+    let returnedCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+    return Array(deviceIDs.prefix(returnedCount))
+  }
+
+  /// Returns all audio input devices currently connected.
+  public static func allInputDevices() -> [AudioInputDevice] {
+    guard let deviceIDs = systemDeviceIDs() else { return [] }
 
     return deviceIDs.compactMap { deviceID -> AudioInputDevice? in
       let channelCount = inputChannelCount(for: deviceID)
@@ -102,37 +124,10 @@ public enum AudioDeviceEnumerator {
   /// failure-collapses-to-empty behaviour, capture resolution needs transports
   /// and cannot. Two owners for two questions, not an accident to tidy up.
   static func inputDeviceSnapshot() -> InputDeviceSnapshot {
-    var propertyAddress = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwarePropertyDevices,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
-
-    var dataSize: UInt32 = 0
-    var status = AudioObjectGetPropertyDataSize(
-      AudioObjectID(kAudioObjectSystemObject),
-      &propertyAddress,
-      0,
-      nil,
-      &dataSize
-    )
-    guard status == noErr else { return .readFailed }
-    // A zero-byte device list is a SUCCESSFUL read of an empty machine, not a
-    // failure — the size call already returned noErr.
-    guard dataSize > 0 else { return .success([]) }
-
-    let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
-    var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
-
-    status = AudioObjectGetPropertyData(
-      AudioObjectID(kAudioObjectSystemObject),
-      &propertyAddress,
-      0,
-      nil,
-      &dataSize,
-      &deviceIDs
-    )
-    guard status == noErr else { return .readFailed }
+    // A successful read of an empty machine yields `.success([])`; only a HAL
+    // failure is uncertainty. Truncation to what CoreAudio actually returned is
+    // `systemDeviceIDs()`'s job — this reader must never re-derive it.
+    guard let deviceIDs = systemDeviceIDs() else { return .readFailed }
 
     var candidates: [InputDeviceCandidate] = []
     for deviceID in deviceIDs {
