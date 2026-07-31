@@ -165,7 +165,11 @@ struct CoreAudioEnvironmentCollector: AudioEnvironmentCollecting {
     let dataStatus = AudioObjectGetPropertyData(
       AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &processIDs)
     guard dataStatus == noErr else { return nil }
-    return processIDs
+    // The list can shrink between the size call and this one, which shrinks
+    // `dataSize` but not the buffer, leaving a zero-filled tail that would be
+    // counted as phantom audio-using processes (#1714 cloud review P2, third
+    // instance of the class). Iterate only what CoreAudio actually wrote.
+    return Array(processIDs.prefix(Int(dataSize) / MemoryLayout<AudioObjectID>.size))
   }
 
   private static func defaultDeviceID(selector: AudioObjectPropertySelector) -> AudioDeviceID? {

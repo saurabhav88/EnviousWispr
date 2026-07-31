@@ -107,6 +107,23 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var routeOverride: String = "fake"
   var currentAudioRoute: String { routeOverride }
   var currentResolvedRoute: ResolvedRouteTransports? { nil }
+
+  // MARK: #1714 — scripted input-resolution attribution
+  //
+  // The fake only PUBLISHES what the interface would report at each attempt; it
+  // never decides when the kernel reads or freezes. Keeping that decision solely
+  // in the kernel is what makes the freeze tests meaningful.
+
+  /// What `currentInputResolutionSource` reports, per `startEnginePhase()`
+  /// attempt, 1-indexed. A shorter list means later attempts reuse the last
+  /// entry; an explicit `nil` entry models an attempt with no attribution.
+  var inputResolutionSourcePerAttempt: [String?] = []
+  private(set) var currentInputResolutionSource: String?
+
+  /// When set, that 1-indexed attempt throws `engineStartFailed`, so the retry
+  /// and failing-terminal paths are reachable without `failEngineStart`
+  /// failing every attempt.
+  var failEngineStartOnAttempt: Int?
   private(set) var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool { isCapturing }
   var captureSourceType: String { "hal_device_input" }
@@ -182,8 +199,17 @@ final class FakeAudioCapture: AudioCaptureInterface {
 
   func startEnginePhase() async throws {
     startEnginePhaseCallCount += 1
+    // #1714: publish this attempt's attribution BEFORE any throw, the way the
+    // real manager stores it synchronously inside `prepare()`.
+    if !inputResolutionSourcePerAttempt.isEmpty {
+      let index = min(startEnginePhaseCallCount, inputResolutionSourcePerAttempt.count) - 1
+      currentInputResolutionSource = inputResolutionSourcePerAttempt[index]
+    }
     if permissionDenied { throw FakeCaptureError.permissionDenied }
     if failEngineStart { throw FakeCaptureError.engineStartFailed }
+    if failEngineStartOnAttempt == startEnginePhaseCallCount {
+      throw FakeCaptureError.engineStartFailed
+    }
   }
 
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {

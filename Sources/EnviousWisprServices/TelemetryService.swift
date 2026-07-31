@@ -112,6 +112,7 @@ public final class TelemetryService {
     routeReason: String? = nil, routeFallbackReason: String? = nil,
     inputSelectionMode: String? = nil, outputTransport: String? = nil,
     routeResolutionSource: String? = nil,
+    inputResolutionSource: String? = nil,
     // #1434: capture-health facts + degraded-lead salvage marker. Hardware-
     // class numbers and flags only (telemetry-privacy-boundary).
     captureNativeRateHz: Double? = nil, captureRingDropCount: Int? = nil,
@@ -175,6 +176,7 @@ public final class TelemetryService {
       inputSelectionMode: inputSelectionMode,
       outputTransport: outputTransport,
       routeResolutionSource: routeResolutionSource,
+      inputResolutionSource: inputResolutionSource,
       captureNativeRateHz: captureNativeRateHz,
       captureRingDropCount: captureRingDropCount,
       captureConverterErrorCount: captureConverterErrorCount,
@@ -720,6 +722,7 @@ public final class TelemetryService {
     routeReason: String? = nil, routeFallbackReason: String? = nil,
     inputSelectionMode: String? = nil, outputTransport: String? = nil,
     routeResolutionSource: String? = nil,
+    inputResolutionSource: String? = nil,
     // #1434: capture-health + salvage (absent -> keys omitted).
     captureNativeRateHz: Double? = nil, captureRingDropCount: Int? = nil,
     captureConverterErrorCount: Int? = nil, captureZeroOutputCount: Int? = nil,
@@ -801,6 +804,11 @@ public final class TelemetryService {
     if let ot = outputTransport { props["output_transport"] = ot }
     if let rrs = routeResolutionSource { props["route_resolution_source"] = rrs }
     if let takeID { props["take_id"] = takeID }
+    // #1714: WHY the microphone was chosen. One word from
+    // `route_resolution_source` above and a different question entirely.
+    // Set BEFORE the hook below, which now DERIVES from `props` — a line added
+    // after it would ship to PostHog and be invisible to every test.
+    if let irs = inputResolutionSource { props["input_resolution_source"] = irs }
     #if DEBUG
       // #1846: the hook now DERIVES from the payload that PostHog receives.
       // `reportDictationCompleted` previously built a parallel `hookStringProps`
@@ -1473,11 +1481,65 @@ public final class TelemetryService {
     }
   }
 
+  // MARK: - Input resolution (#1714)
+
+  /// Cold-attempt diagnostic only. Never use this event as the denominator for
+  /// dictation.completed or pipeline.failed rates because one cold prepare may
+  /// serve many warm dictations.
+  ///
+  /// One event per COLD prepare, including ordinary system-default attempts, so
+  /// the population is complete rather than branch-selected. Warm reuse emits
+  /// nothing.
+  public func audioInputResolution(
+    defaultPresent: Bool,
+    enumerationOutcome: String,
+    inputDeviceCount: Int?,
+    eligibleDeviceCount: Int?,
+    inputResolutionSource: String?,
+    selectedTransport: String?,
+    bindOutcome: String,
+    prepareOutcome: String
+  ) {
+    #if DEBUG
+      var hookStrings: [String: String] = [
+        "enumeration_outcome": enumerationOutcome,
+        "bind_outcome": bindOutcome,
+        "prepare_outcome": prepareOutcome,
+      ]
+      if let s = inputResolutionSource { hookStrings["input_resolution_source"] = s }
+      if let t = selectedTransport { hookStrings["selected_transport"] = t }
+      var hookInts: [String: Int] = [:]
+      if let c = inputDeviceCount { hookInts["input_device_count"] = c }
+      if let c = eligibleDeviceCount { hookInts["eligible_device_count"] = c }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "audio.input_resolution",
+          stringProps: hookStrings,
+          intProps: hookInts,
+          boolProps: ["default_present": defaultPresent]
+        ))
+    #endif
+    var props: [String: Any] = [
+      "default_present": defaultPresent,
+      "enumeration_outcome": enumerationOutcome,
+      "bind_outcome": bindOutcome,
+      "prepare_outcome": prepareOutcome,
+    ]
+    // Omitted when nil because nil means NOT KNOWN. An explicit zero is a real
+    // answer and must ride as zero.
+    if let c = inputDeviceCount { props["input_device_count"] = c }
+    if let c = eligibleDeviceCount { props["eligible_device_count"] = c }
+    if let s = inputResolutionSource { props["input_resolution_source"] = s }
+    if let t = selectedTransport { props["selected_transport"] = t }
+    PostHogSDK.shared.capture("audio.input_resolution", properties: props)
+  }
+
   // MARK: - Errors
 
   public func pipelineFailed(
     stage: String, errorCategory: String, errorCode: String,
-    recoverable: Bool, backend: String?
+    recoverable: Bool, backend: String?,
+    inputResolutionSource: String? = nil
   ) {
     #if DEBUG
       var hookStrings: [String: String] = [
@@ -1486,6 +1548,7 @@ public final class TelemetryService {
         "error_code": errorCode,
       ]
       if let b = backend { hookStrings["backend"] = b }
+      if let s = inputResolutionSource { hookStrings["input_resolution_source"] = s }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "pipeline.failed",
@@ -1500,6 +1563,9 @@ public final class TelemetryService {
       "recoverable": recoverable,
     ]
     if let b = backend { props["backend"] = b }
+    // #1714: WHY the microphone was chosen. Distinct from
+    // `route_resolution_source`, which is how a TRANSPORT LABEL was derived.
+    if let s = inputResolutionSource { props["input_resolution_source"] = s }
     PostHogSDK.shared.capture("pipeline.failed", properties: props)
   }
 

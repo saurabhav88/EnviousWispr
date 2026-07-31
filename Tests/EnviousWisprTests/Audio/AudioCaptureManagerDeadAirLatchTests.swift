@@ -397,7 +397,7 @@ struct AudioCaptureManagerDeadAirLatchTests {
       -> AudioCaptureManager
     {
       let manager = AudioCaptureManager()
-      manager.installSourceFactoryForTesting { stub }
+      manager.installSourceFactoryForTesting { _ in stub }
       return manager
     }
 

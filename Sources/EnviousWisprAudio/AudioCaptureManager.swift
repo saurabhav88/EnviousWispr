@@ -245,7 +245,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// bound-device adoption tests can drive `startEnginePhase()` against a stub
     /// with a controlled `prepare()` return. Installed via
     /// `installSourceFactoryForTesting`; nil in production, always.
-    private var debugSourceFactory: (() -> any AudioInputSource)?
+    /// Takes the already-resolved route decision so an armed factory can honour
+    /// the user's actual device choice instead of re-reading settings — a second
+    /// read there would be the stale-selection defect this whole issue avoids.
+    private var debugSourceFactory: ((CaptureRouteDecision) -> any AudioInputSource)?
 
     /// #1317 proof-bench (DEBUG only): arm the injector from the in-process
     /// DEBUG fault endpoint (#1543). Translates the Core wire enum into the
@@ -480,8 +483,70 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     onLifecycleSignal?("manager_prepare_entered")
     // The awaited call PRODUCES the value adopted below: the ordering #1844
     // existed to fix is now a data dependency, not a convention.
-    adoptBoundState(try await source.prepare())
+    adoptBoundState(try await prepareAndAttribute(source))
     onLifecycleSignal?("manager_prepare_completed")
+  }
+
+  // MARK: - #1714: input-resolution attribution
+
+  /// The latest COLD attempt, kept because a THROWING prepare returns no bind at
+  /// all — without this, a resolution or bind failure could never be attributed.
+  private var latestInputResolutionAttempt: FinalizedInputResolutionAttempt?
+
+  /// #1714: the outbound observer, installed once by the composition root so
+  /// this module never imports Services. Separate from the SOURCE-level
+  /// callback above, which the manager consumes for its own state — one
+  /// callback cannot serve both without the manager losing ownership.
+  ///
+  /// Synchronous, nonthrowing, observation-only.
+  package var onFinalizedInputResolutionAttempt:
+    (@MainActor (InputResolutionAttemptTelemetry) -> Void)?
+
+  /// #1714: forward the RETAINED attempt, never the callback argument.
+  ///
+  /// Reading `latestInputResolutionAttempt` rather than the parameter is
+  /// deliberate: it makes the manager's own state the single authority for what
+  /// gets reported, so an emitted event can never describe an attempt the
+  /// manager did not itself record.
+  private func forwardLatestInputResolutionAttempt() {
+    guard let attempt = latestInputResolutionAttempt else { return }
+    onFinalizedInputResolutionAttempt?(InputResolutionAttemptTelemetry(attempt))
+  }
+
+  /// WHY the current session's microphone was chosen. Manager-owned writes only.
+  public private(set) var currentInputResolutionSource: String?
+
+  /// The ONE place a source is prepared (#1714). Both production call sites —
+  /// recording start and pre-warm — route through here so the clear, the
+  /// callback wiring, retention across a throw, and successful-bind adoption
+  /// cannot drift apart.
+  ///
+  /// Ordering is the whole point, and it is this:
+  ///   1. clear BOTH prior facts, so a failure can never expose a previous
+  ///      session's answer;
+  ///   2. install the callback, which stores the attempt SYNCHRONOUSLY — that is
+  ///      what survives a throw;
+  ///   3. on success, the RETURNED BIND wins over the callback's provisional
+  ///      value (`RULE: read-the-bind-prepare-returned-never-re-derive-it`), and
+  ///      it is also the only source of truth on the warm path, which fires no
+  ///      callback at all.
+  private func prepareAndAttribute(_ source: any AudioInputSource) async throws -> BoundInputDevice {
+    latestInputResolutionAttempt = nil
+    currentInputResolutionSource = nil
+    source.onInputResolutionAttemptFinalized = { [weak self] attempt in
+      guard let self else { return }
+      self.latestInputResolutionAttempt = attempt
+      // Provisional: nil when resolution selected nothing, which is honest —
+      // there is no device to attribute. The returned bind overwrites this on
+      // success.
+      self.currentInputResolutionSource = attempt.resolution.resolutionSource?.rawValue
+      // The manager's own state is stored FIRST, so an external observer can
+      // never see the manager mid-update.
+      self.forwardLatestInputResolutionAttempt()
+    }
+    let bound = try await source.prepare()
+    currentInputResolutionSource = bound.resolutionSource
+    return bound
   }
 
   /// #1844: the ONE place the manager adopts post-bind facts. Takes the value, not
@@ -821,8 +886,67 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// `startEnginePhase()` with a stub whose `prepare()` returns a controlled
     /// bind — no hardware, no real AUHAL unit. nil restores normal resolution.
     /// Consumed in `resolveSource()`; production never sets it.
-    func installSourceFactoryForTesting(_ factory: (() -> any AudioInputSource)?) {
+    func installSourceFactoryForTesting(
+      _ factory: ((CaptureRouteDecision) -> any AudioInputSource)?
+    ) {
       debugSourceFactory = factory
+    }
+
+    /// #1714 Live UAT seam: force the resolver to see NO system default, so the
+    /// list-fallback rung — the whole point of this issue — actually runs on a
+    /// real build with real hardware.
+    ///
+    /// Recording a normal dictation proves nothing about the fallback: with a
+    /// working default present, resolution returns at the unchanged default rung
+    /// and the new code never executes. This is the only way the Live UAT can
+    /// reach its own subject.
+    ///
+    /// Everything except the default lookup stays REAL — a real
+    /// `HALDeviceInputSource`, real enumeration, real AUHAL binding. Only the
+    /// one question "what is the default input device?" is forced to nil.
+    ///
+    /// Returns `false` and changes nothing while capture is active. Otherwise it
+    /// tears down any idle warm source SYNCHRONOUSLY before returning, because
+    /// `warmReuseBind` returns before resolution — an armed-but-warm source
+    /// would skip the branch entirely and the UAT would report a pass having
+    /// tested nothing.
+    @discardableResult
+    package func debugSetDefaultInputAbsent(_ absent: Bool) -> Bool {
+      guard !isCapturing else { return false }
+      warmEngineTeardownTask?.cancel()
+      warmEngineTeardownTask = nil
+      if let existing = activeSource {
+        rebuildActiveSource(existing)
+        activeSource = nil
+      }
+      debugSourceFactory =
+        absent
+        ? { decision in
+          let source = HALDeviceInputSource()
+          source.targetDeviceUID = decision.effectiveDeviceUID
+          source.inputDeviceResolver = InputDeviceResolver(
+            defaultInputDeviceID: { nil },
+            inputDeviceSnapshot: AudioDeviceEnumerator.inputDeviceSnapshot
+          )
+          return source
+        } : nil
+      return true
+    }
+
+    /// #1714 test seam: build a source from a GIVEN decision.
+    ///
+    /// Lets the arming tests observe the factory by its EFFECT — does the built
+    /// source have its default lookup forced? — rather than by peeking at a
+    /// stored closure. A test that only checked the closure was stored would
+    /// pass even if nothing ever consumed it.
+    ///
+    /// Deliberately NOT a wrapper around `resolveSource()`: that runs
+    /// `CaptureRouteResolver.resolve()`, which reads the live default OUTPUT
+    /// device. On a CI runner with no audio hardware those tests could pass
+    /// vacuously or fail for reasons unrelated to arming. Taking the decision as
+    /// an argument keeps the seam to exactly the construction step under test.
+    func buildSourceForTesting(_ decision: CaptureRouteDecision) -> any AudioInputSource {
+      buildSource(for: decision)
     }
 
     /// Test seam (heartpath 5b): drop the live active source while KEEPING the
@@ -868,7 +992,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     do {
       // #1844: pre-warm runs OUTSIDE any session, so it must not adopt a
       // health-check snapshot — the discarded bind is a visible decision.
-      _ = try await source.prepare()
+      //
+      // #1714: but it MUST still attribute. Pre-warm is where cold resolution
+      // normally happens; the recording that follows usually takes warm reuse,
+      // so attributing only on the recording's own prepare would report almost
+      // nothing. The bind is discarded for HEALTH purposes only — the shared
+      // helper still retains the attempt and exposes its source.
+      _ = try await prepareAndAttribute(source)
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -1000,6 +1130,18 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   /// Resolve and create the appropriate capture source based on BT state and user preference.
   /// Re-evaluates on every call — BT state may change between recordings.
+  /// The ONE place a capture source is constructed (#1714). Extracted so the
+  /// DEBUG arming tests can exercise construction from a given decision without
+  /// running `CaptureRouteResolver.resolve()`, which reads live output hardware.
+  private func buildSource(for decision: CaptureRouteDecision) -> any AudioInputSource {
+    #if DEBUG
+      if let debugSourceFactory {
+        return debugSourceFactory(decision)  // #1844/#1714 seam; nil in production
+      }
+    #endif
+    return Self.makeSource(for: decision)
+  }
+
   private func resolveSource() -> any AudioInputSource {
     // Cancel idle teardown — we're about to record
     warmEngineTeardownTask?.cancel()
@@ -1072,16 +1214,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       )
     }
 
-    let source: any AudioInputSource
-    #if DEBUG
-      if let debugSourceFactory {
-        source = debugSourceFactory()  // #1844 test seam; nil in production
-      } else {
-        source = Self.makeSource(for: decision)
-      }
-    #else
-      source = Self.makeSource(for: decision)
-    #endif
+    let source = buildSource(for: decision)
 
     // heartpath 5b: a stopped prior source overwritten here must not stay retained
     // by the capture-session fence.

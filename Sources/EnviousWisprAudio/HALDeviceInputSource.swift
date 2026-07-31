@@ -403,9 +403,19 @@ final class HALDeviceInputSource: AudioInputSource {
   /// Target capture device UID. Nil means follow the live system default input.
   var targetDeviceUID: String?
 
-  var resolveDeviceIDForUID: (String) -> AudioDeviceID? = AudioDeviceEnumerator.deviceID(forUID:)
-  var defaultInputDeviceIDProvider: () -> AudioDeviceID? =
-    AudioDeviceEnumerator.defaultInputDeviceID
+  /// The single capture device-selection authority (#1714). Injected so the
+  /// whole ladder — and the warm-compatibility projection below — is testable
+  /// without hardware. This REPLACED two narrower seams
+  /// (`resolveDeviceIDForUID`, `defaultInputDeviceIDProvider`) that let this
+  /// file hold selection policy of its own.
+  var inputDeviceResolver = InputDeviceResolver()
+
+  /// Fires exactly once per COLD attempt, synchronously, before `prepare()`
+  /// returns or throws. Never fires on warm reuse because a reused bind is not a
+  /// new resolution. Nil changes nothing. `AudioCaptureManager` consumes this
+  /// callback for lifetime ownership, then exposes a separate package projection
+  /// to AppKit so `EnviousWisprAudio` never imports Services.
+  var onInputResolutionAttemptFinalized: ((FinalizedInputResolutionAttempt) -> Void)?
 
   // MARK: - Private state
 
@@ -425,9 +435,8 @@ final class HALDeviceInputSource: AudioInputSource {
   /// Log-and-telemetry only in v1 — never interrupts the recording. Reset
   /// per session in `startCapture()`.
   private var formatDivergenceObserved = false
-  /// #1434 test seam: injectable native-rate reader (mirrors the existing
-  /// `resolveDeviceIDForUID` injection pattern). Defaults to the real
-  /// HAL property query.
+  /// #1434 test seam: injectable native-rate reader (mirrors this file's other
+  /// injected readers). Defaults to the real HAL property query.
   var nativeRateReader: (AudioDeviceID) -> Double? = { deviceID in
     HALDeviceInputSource.queryNativeStreamFormat(deviceID: deviceID)?.mSampleRate
   }
@@ -455,6 +464,9 @@ final class HALDeviceInputSource: AudioInputSource {
   private var boundDeviceID: AudioDeviceID?
   private var boundUID: String?
   private var boundTransport: String?
+  /// #1714: WHY this bind's device was chosen. Committed and cleared with the
+  /// other three, so the four are one fact with one lifetime.
+  private var boundResolutionSource: String?
   private var lastBindOK = true
   /// #1523: the bound device's total native input channel count, read once at
   /// prepare from the single channel-count authority
@@ -467,32 +479,29 @@ final class HALDeviceInputSource: AudioInputSource {
   var actualBoundTransport: String? { boundTransport }
 
   /// #1844: the committed bind, or nil before `prepare()` succeeded / after
-  /// teardown. All three fields are assigned together in the cold commit block
-  /// and cleared together in `teardownUnit()`, so this reads one fact, not three
+  /// teardown. All four fields are assigned together in the cold commit block
+  /// and cleared together in `teardownUnit()`, so this reads one fact, not four
   /// that could drift.
   private var currentBoundInputDevice: BoundInputDevice? {
-    guard let boundDeviceID else { return nil }
+    guard let boundDeviceID, let boundResolutionSource else { return nil }
     return BoundInputDevice(
-      deviceID: boundDeviceID, deviceUID: boundUID, transportLabel: boundTransport)
+      deviceID: boundDeviceID, deviceUID: boundUID, transportLabel: boundTransport,
+      resolutionSource: boundResolutionSource)
   }
 
-  func resolvedDeviceIDForTesting() -> AudioDeviceID? {
-    resolveDeviceID()
-  }
-
-  func setBoundDeviceIDForTesting(_ deviceID: AudioDeviceID?) {
-    boundDeviceID = deviceID
-  }
-
-  /// #1844: sets or clears ALL THREE committed bind fields together, the way the
-  /// cold commit block and `teardownUnit()` each do. `setBoundDeviceIDForTesting`
-  /// moves only the numeric id, which is right for the numeric reuse predicate but
-  /// would let a warm-reuse test pass on a correct id with a stale UID — and the
-  /// UID is exactly what the health check's identity re-check depends on.
+  /// #1844: sets or clears ALL FOUR committed bind fields together, the way the
+  /// cold commit block and `teardownUnit()` each do.
+  ///
+  /// This is the ONLY bind-setting seam. A partial-bind setter used to sit
+  /// beside it, moving just the numeric id; #1714 deleted it once the warm
+  /// predicate started reading the whole bind, because a test could otherwise
+  /// pass on a correct id with a stale UID — and the UID is exactly what the
+  /// health check's identity re-check depends on. Do not reintroduce one.
   func setBoundInputDeviceForTesting(_ bound: BoundInputDevice?) {
     boundDeviceID = bound?.deviceID
     boundUID = bound?.deviceUID
     boundTransport = bound?.transportLabel
+    boundResolutionSource = bound?.resolutionSource
   }
 
   /// #1844: the warm-reuse DECISION, split from the hardware that answers
@@ -528,9 +537,13 @@ final class HALDeviceInputSource: AudioInputSource {
     warmReuseBind(hasLiveUnit: hasLiveUnit)
   }
 
+  /// #1714: the POLICY moved to `InputDeviceResolver`; this stays as the narrow
+  /// predicate `AudioCaptureManager` already calls, and only supplies the
+  /// committed bind. HAL must not own selection rules — that was the defect
+  /// that let a private selector drift from the cold ladder.
   func boundDeviceMatchesResolvedTargetForReuse() -> Bool {
-    guard let boundDeviceID else { return false }
-    return boundDeviceID == resolveDeviceID()
+    guard let bound = currentBoundInputDevice else { return false }
+    return inputDeviceResolver.isWarmBindCompatible(bound, preferredUID: targetDeviceUID)
   }
 
   /// #1523: the last live stop-metadata, cached in `teardownUnit()` right before
@@ -594,8 +607,35 @@ final class HALDeviceInputSource: AudioInputSource {
     }
 
     onLifecycleSignal?("hal_find_device_entered")
-    let deviceID = resolveDeviceID()
-    guard let deviceID else { throw AudioError.noBuiltInMicrophoneFound }
+
+    // #1714: the ONE resolution for this cold attempt. Nothing below re-reads
+    // the default, the device list, a UID or a transport to decide WHICH device
+    // to open — a second read would describe different hardware than the one
+    // this attempt resolved against.
+    let resolution = inputDeviceResolver.resolve(preferredUID: targetDeviceUID)
+
+    // #1714: finalise exactly once on EVERY cold exit — resolution failure,
+    // bind failure, a later setup failure, or success. Declared immediately
+    // after resolution and before the first `throw` below, so no cold path can
+    // leave without a record. Warm reuse returned above and never reaches here,
+    // which is why a reused bind reports no new attempt.
+    var attemptState = InputResolutionAttemptState()
+    defer {
+      onInputResolutionAttemptFinalized?(attemptState.finalized(resolution: resolution))
+    }
+
+    // Exhaustive on purpose: a `?? .noBuiltInMicrophoneFound` fallback here
+    // would be a second, unreachable error authority that could go wrong
+    // silently. The resolver already decided which error is truthful.
+    let deviceID: AudioDeviceID
+    let selectedSource: InputResolutionSource
+    switch resolution.outcome {
+    case .selected(let id, let source):
+      deviceID = id
+      selectedSource = source
+    case .failed(let error):
+      throw error
+    }
     onLifecycleSignal?("hal_find_device_completed")
 
     onLifecycleSignal?("hal_configure_entered")
@@ -641,6 +681,12 @@ final class HALDeviceInputSource: AudioInputSource {
       &pinnedDevice, UInt32(MemoryLayout<AudioDeviceID>.size))
     let bindOK = status == noErr
     lastBindOK = bindOK
+    // #1714: recorded from the authoritative current-device result, BEFORE the
+    // guard below can throw. Everything after this point that fails leaves
+    // `bind_outcome = succeeded` with `prepare_outcome = failed`, which is what
+    // separates "could not open the microphone" from "opened it, then a later
+    // setup step failed".
+    attemptState.recordBind(succeeded: bindOK)
     guard bindOK else {
       AudioComponentInstanceDispose(unit)
       throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.set_device")
@@ -777,6 +823,10 @@ final class HALDeviceInputSource: AudioInputSource {
     boundDeviceID = deviceID
     boundUID = AudioDeviceEnumerator.inputDeviceUID(for: deviceID)
     boundTransport = AudioDeviceEnumerator.transportLabel(for: deviceID)
+    // #1714: the fourth committed field, taken from the same switch that chose
+    // the device — so there is no defaulted or optional path by which a bind
+    // could claim a source this attempt did not actually use.
+    boundResolutionSource = selectedSource.rawValue
     // #1523: read the device's total native channel count once at prepare from
     // the single channel-count authority. We capture mono (client format
     // channels: 1 above) and AUHAL down-mixes by TAKING CHANNEL 0 — so a device
@@ -797,10 +847,14 @@ final class HALDeviceInputSource: AudioInputSource {
     )
 
     // #1844: the bind this attempt established, handed straight back to the
-    // caller. Built from the same three fields committed above, so there is no
+    // caller. Built from the same four fields committed above, so there is no
     // window in which a caller could observe a device this attempt did not open.
+    // #1714: only NOW is the attempt a success — every fallible step above
+    // returned and the four-field bind is committed.
+    attemptState.recordPrepareSucceeded()
     return BoundInputDevice(
-      deviceID: deviceID, deviceUID: boundUID, transportLabel: boundTransport)
+      deviceID: deviceID, deviceUID: boundUID, transportLabel: boundTransport,
+      resolutionSource: selectedSource.rawValue)
   }
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
@@ -1168,19 +1222,8 @@ final class HALDeviceInputSource: AudioInputSource {
     boundDeviceID = nil
     boundUID = nil
     boundTransport = nil
+    boundResolutionSource = nil
     boundNativeChannelCount = nil
-  }
-
-  // MARK: - Private: device resolution
-
-  /// Resolve the pinned target device, falling back to the live system default.
-  private func resolveDeviceID() -> AudioDeviceID? {
-    if let uid = targetDeviceUID, !uid.isEmpty {
-      if let id = resolveDeviceIDForUID(uid) { return id }
-      AudioCaptureManager.btRouteLog(
-        "HALDeviceInputSource: target device uid=\(uid) not found — falling back to system default")
-    }
-    return defaultInputDeviceIDProvider()
   }
 
   /// Read the device's OWN native stream format directly from the HAL device

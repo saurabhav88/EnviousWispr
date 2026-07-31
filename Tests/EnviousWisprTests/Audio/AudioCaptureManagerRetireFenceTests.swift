@@ -55,7 +55,13 @@ import Testing
       /// the manager adopts what `prepare()` RETURNED rather than anything it
       /// could have derived from settings.
       var boundToReturn = BoundInputDevice(
-        deviceID: 1, deviceUID: "stub-uid", transportLabel: "stub")
+        deviceID: 1, deviceUID: "stub-uid", transportLabel: "stub",
+        resolutionSource: "system_default")
+      /// #1714: the undefaulted protocol witness. This suite is about retire
+      /// behaviour and never fires it; declaring it explicitly is exactly what
+      /// the undefaulted requirement is for.
+      var onInputResolutionAttemptFinalized: ((FinalizedInputResolutionAttempt) -> Void)?
+
       /// When set, `prepare()` throws it instead of returning a bind.
       var prepareError: Error?
       private(set) var prepareCallCount = 0

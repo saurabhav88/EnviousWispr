@@ -240,5 +240,43 @@ struct DictationCompletedRouteFieldsTests {
 
       #expect(box.event?.stringProps["asr_retry_outcome"] == nil)
     }
+
+    // MARK: - #1714 input resolution source
+
+    @Test("input and ROUTE resolution sources ride the SAME event with distinct values")
+    func inputAndRouteResolutionSourcesCoexist() {
+      // These two keys are one word apart and answer different questions. If a
+      // future edit ever collapses them, this is the test that fails.
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        routeResolutionSource: "app_derived",
+        inputResolutionSource: "list_fallback")
+
+      let props = box.event?.stringProps
+      #expect(props?["route_resolution_source"] == "app_derived")
+      #expect(props?["input_resolution_source"] == "list_fallback")
+      #expect(props?.keys.contains("resolution_source") == false)
+    }
+
+    @Test("dictation.completed omits the input resolution source when nil")
+    func inputResolutionSourceOmittedWhenNil() {
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt")
+
+      #expect(box.event?.stringProps.keys.contains("input_resolution_source") == false)
+    }
+
   #endif
 }

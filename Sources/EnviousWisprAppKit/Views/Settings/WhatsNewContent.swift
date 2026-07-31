@@ -24,6 +24,15 @@ enum WhatsNewContent {
       version: "2.4.2"
     ),
 
+    Entry(
+      id: "automatic-microphone-fallback",
+      icon: "mic.fill",
+      title: "Dictation finds another microphone automatically",
+      description:
+        "When macOS temporarily has no default microphone, EnviousWispr now finds another connected physical microphone so you can keep dictating instead of being told to connect one.",
+      version: "2.4.2"
+    ),
+
     // MARK: - v2.4.1
 
     Entry(

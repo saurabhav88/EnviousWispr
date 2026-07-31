@@ -113,4 +113,132 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
       interruptionDisclosure: nil)
     #expect(box.reasons.isEmpty)
   }
+
+  // MARK: - #1714: the terminal stamps, driven through the PRODUCTION owners
+  //
+  // Asserting `TelemetryService` directly proves the SERVICE carries the field.
+  // It says nothing about whether the two production call sites actually pass
+  // it. These drive a real kernel to a frozen source, build a real driver, and
+  // go through the factory handler — so deleting either stamp turns them red.
+  //
+  // `#if DEBUG` because `testEventHook` and `CapturedTelemetryEvent` are compiled
+  // out of release builds, and CI compiles the test target in Release as well as
+  // running it in Debug — so an unguarded reference passes every local Debug run
+  // and fails `build-release` only. Same gate and same reason as
+  // `OllamaReadinessGateTests` and `HeartPathTelemetryWiringTests`.
+  #if DEBUG
+    private final class EventBox: @unchecked Sendable {
+      var event: CapturedTelemetryEvent?
+    }
+
+    /// A factory handler whose driver's kernel has really frozen `source`.
+    private func makeAttributedHandler(source: String?) async -> PipelineStateChangeHandler {
+      let clock = FakeClock()
+      let engine = FakeEngine(behavior: .batchSuccess(text: "x"), clock: clock)
+      let capture = FakeAudioCapture()
+      capture.stabilizationResults = [true]
+      capture.inputResolutionSourcePerAttempt = [source]
+      let wrapper = KernelRecordingSession(
+        engine: engine, capture: capture, vad: FakeVADSignalSource(), clock: clock,
+        paste: FakePasteTarget())
+
+      await wrapper.apply(.start)
+      await wrapper.drainReadyWork()
+      #expect(wrapper.testKernel.lastInputResolutionSource == source)
+
+      let steps = LimbSteps(
+        wordCorrection: WordCorrectionStep(),
+        fillerRemoval: FillerRemovalStep(),
+        emojiFormatter: EmojiFormatterStep(),
+        inverseTextNormalization: InverseTextNormalizationStep(),
+        llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+        emojiRestore: EmojiRestoreStep())
+      let observer = KernelHeartPathTelemetryObserver(
+        kernel: wrapper.testKernel, audioCapture: capture,
+        emitter: HeartPathTelemetryEmitter(
+          backend: .parakeet, captureTelemetry: CaptureTelemetryState()),
+        emitLifecycleEvent: { _ in })
+      let driver = KernelDictationDriver(
+        kernel: wrapper.testKernel, observer: observer,
+        outcome: KernelFinalizationOutcome(), context: KernelSessionContext(),
+        steps: steps, adapter: engine,
+        engineMutationScope: .alwaysAllowedForTesting)
+      let box = WarningBox()
+      let deps = PipelineStateChangeHandlerFactory.Deps(
+        showOverlay: { _ in },
+        cancelPendingWarning: {},
+        schedulePostCompletionWarning: { box.reasons.append($0) },
+        appendTranscript: { _ in },
+        onDurableSave: { _ in },
+        inputMode: { "ptt" },
+        driver: driver)
+      return PipelineStateChangeHandlerFactory.make(backendLabel: "parakeet", deps: deps)
+    }
+
+    @Test("factory completion stamps the driver's final input source")
+    func completionStampsFinalInputSource() async {
+      let handler = await makeAttributedHandler(source: "list_fallback")
+      let box = EventBox()
+      let previous = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = previous }
+
+      handler.handle(
+        to: PipelineState.complete,
+        pipelineOverlayIntent: .hidden,
+        lastPolishError: nil,
+        currentTranscript: Transcript(text: "hello", backendType: .parakeet),
+        historySaved: true,
+        historySaveReason: nil)
+
+      #expect(box.event?.name == "dictation.completed")
+      #expect(box.event?.stringProps["input_resolution_source"] == "list_fallback")
+    }
+
+    @Test("factory failure stamps the driver's final input source")
+    func failureStampsFinalInputSource() async {
+      let handler = await makeAttributedHandler(source: "list_fallback")
+      let box = EventBox()
+      let previous = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = previous }
+
+      handler.handle(
+        to: PipelineState.error(.deviceRemoved),
+        pipelineOverlayIntent: .error(reason: .deviceRemoved),
+        lastPolishError: nil,
+        currentTranscript: nil,
+        historySaved: true,
+        historySaveReason: nil)
+
+      #expect(box.event?.name == "pipeline.failed")
+      #expect(box.event?.stringProps["input_resolution_source"] == "list_fallback")
+    }
+
+    @Test("factory failure omits an unavailable input source")
+    func failureOmitsUnavailableInputSource() async {
+      let handler = await makeAttributedHandler(source: nil)
+      let box = EventBox()
+      let previous = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = previous }
+
+      handler.handle(
+        to: PipelineState.error(.deviceRemoved),
+        pipelineOverlayIntent: .error(reason: .deviceRemoved),
+        lastPolishError: nil,
+        currentTranscript: nil,
+        historySaved: true,
+        historySaveReason: nil)
+
+      #expect(box.event?.name == "pipeline.failed")
+      #expect(box.event?.stringProps.keys.contains("input_resolution_source") == false)
+    }
+  #endif  // DEBUG (#1714 terminal-stamp tests — TelemetryService.testEventHook)
 }

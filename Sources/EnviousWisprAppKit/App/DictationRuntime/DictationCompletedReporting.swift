@@ -31,6 +31,9 @@ enum DictationCompletedReporting {
       inputSelectionMode: route?.inputSelectionMode,
       outputTransport: route?.outputTransport,
       routeResolutionSource: route?.routeResolutionSource,
+      // #1714: WHY this session's microphone was chosen, frozen by the kernel
+      // after the final engine-start attempt.
+      inputResolutionSource: driver.lastInputResolutionSource,
       // #1434: capture-health facts + salvage marker. Counters/flags ride
       // only when non-zero/true (omit-when-zero keeps the event lean).
       captureNativeRateHz: health?.nativeRateHz,

@@ -424,14 +424,28 @@ import Testing
   /// composition-root residue as the entries above; no domain logic moved
   /// here. Cap by deterministic rule (actual 1326 + ~2, rounded up to
   /// nearest 5 = 1330).
+  /// #1714 (input-device resolution telemetry): 1330 → 1335 for ONE line —
+  /// wrapping the capture manager in `InputResolutionTelemetryReporting
+  /// .observing(_:)` so the resolver's per-attempt outcome reaches
+  /// `TelemetryService`. The wiring cannot live anywhere else: `EnviousWisprAudio`
+  /// must not import `EnviousWisprServices` (that boundary is the reason the
+  /// resolver reports through a closure at all), and only the composition root
+  /// holds the concrete `AudioCaptureManager`. The installer was already
+  /// extracted to its own type earlier in #1714 precisely to keep this to two
+  /// lines instead of three; the inline form measured 1331 then and the
+  /// extraction bought a line back. This entry spends that line again because
+  /// main reached 1329 on its own before this branch merged, so the two changes
+  /// together, not either alone, exhaust the budget. No domain logic moved here —
+  /// same class of irreducible composition-root residue as every entry above.
+  /// Cap by deterministic rule (actual 1331 + ~2, rounded up to nearest 5 = 1335).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1330,
+      lineCount <= 1335,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1330. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1335. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

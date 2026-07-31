@@ -38,7 +38,8 @@ struct KernelFrozenBindGuardTests {
   private static let syntheticBind = BoundInputDevice(
     deviceID: 121,
     deviceUID: "synthetic-uid-no-real-device-carries-this",
-    transportLabel: "bluetooth"
+    transportLabel: "bluetooth",
+    resolutionSource: "system_default"
   )
 
   private struct Context {
@@ -91,7 +92,9 @@ struct KernelFrozenBindGuardTests {
       else { continue }
       // `AudioInputDevice.uid` is already public, so this needs no `@testable`
       // widening of `AudioDeviceEnumerator.inputDeviceUID(for:)`, which is internal.
-      return BoundInputDevice(deviceID: device.id, deviceUID: device.uid, transportLabel: nil)
+      return BoundInputDevice(
+        deviceID: device.id, deviceUID: device.uid, transportLabel: nil,
+        resolutionSource: "system_default")
     }
     return nil
   }

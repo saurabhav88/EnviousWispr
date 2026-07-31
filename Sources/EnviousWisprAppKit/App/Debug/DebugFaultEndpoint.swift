@@ -36,7 +36,11 @@
   ///   route to the ONE `BatchDecodeFaultController`); `force_recovery_key_fault(status)`
   ///   (#1707 Phase 3 — arms the NEXT crash-recovery Keychain read to fail
   ///   with the given OSStatus, simulating a locked-keychain-state read
-  ///   without a real signed-release Data-Protection-Keychain).
+  ///   without a real signed-release Data-Protection-Keychain);
+  ///   `force_default_input_absent`, `clear_default_input_absent` (#1714 —
+  ///   force the input resolver to see no system default so the list-fallback
+  ///   rung actually runs in Live UAT; both refuse while capture is active and
+  ///   tear down any idle warm source first).
   /// - Each command dispatches to `@MainActor` via `Task { @MainActor in ... }`
   ///   so command handling matches the actor isolation of the seams it drives.
   ///
@@ -218,6 +222,14 @@
 
     /// Parse a two-line request and dispatch to the matching seam. Returns the
     /// reply line (without trailing newline).
+    /// #1714 test seam: drive command routing without a live socket. The whole
+    /// file is already `#if DEBUG`, so this widens nothing in a release build.
+    /// Prepends the endpoint's own token so a test cannot accidentally assert
+    /// the auth failure while believing it tested routing.
+    func handleForTesting(command: String) async -> String {
+      await handle(request: "\(token)\n\(command)")
+    }
+
     private func handle(request: String) async -> String {
       let lines = request.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
       guard lines.count == 2 else { return "ERR malformed" }
@@ -236,6 +248,18 @@
         guard let asrProxy else { return "ERR no_dependency" }
         asrProxy.forceConnectionTerminationNow()
         return "OK"
+
+      // #1714: force / clear "no system default input". Both refuse while
+      // capture is active and tear the warm source down before acknowledging,
+      // because a still-warm source would skip resolution entirely and the UAT
+      // would report a pass having tested nothing.
+      case "force_default_input_absent":
+        guard let audioCapture else { return "ERR no_dependency" }
+        return audioCapture.debugSetDefaultInputAbsent(true) ? "OK" : "ERR capture_active"
+
+      case "clear_default_input_absent":
+        guard let audioCapture else { return "ERR no_dependency" }
+        return audioCapture.debugSetDefaultInputAbsent(false) ? "OK" : "ERR capture_active"
 
       case "query_state":
         let p = kernelDriver.state

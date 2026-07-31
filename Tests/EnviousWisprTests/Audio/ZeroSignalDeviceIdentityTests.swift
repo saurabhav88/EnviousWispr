@@ -25,7 +25,8 @@ struct ZeroSignalDeviceIdentityTests {
   private static let bound = BoundInputDevice(
     deviceID: 121,
     deviceUID: "BC-87-FA-9C-7E-71:input",
-    transportLabel: "bluetooth"
+    transportLabel: "bluetooth",
+    resolutionSource: "system_default"
   )
 
   /// Counts hardware classifications so a test can prove a guard short-circuited
@@ -128,7 +129,8 @@ struct ZeroSignalDeviceIdentityTests {
   func nilUIDAtBindRefuses() {
     let counter = ReadCounter()
     let bindWithoutUID = BoundInputDevice(
-      deviceID: 121, deviceUID: nil, transportLabel: "bluetooth")
+      deviceID: 121, deviceUID: nil, transportLabel: "bluetooth",
+      resolutionSource: "system_default")
 
     let eligible = Self.evaluate(bound: bindWithoutUID, counter: counter)
 
@@ -251,7 +253,8 @@ struct ZeroSignalDeviceIdentityTests {
   @Test("#1578: isEligible equals classify == .eligible for every non-nil outcome")
   func booleanWrapperMatchesClassificationForEveryOutcome() {
     let bindWithoutUID = BoundInputDevice(
-      deviceID: 121, deviceUID: nil, transportLabel: "bluetooth")
+      deviceID: 121, deviceUID: nil, transportLabel: "bluetooth",
+      resolutionSource: "system_default")
 
     // (bind, uidNow, liveness, mute) → the outcome each row is here to cover.
     let rows: [(BoundInputDevice, String??, DeviceLiveness, DeviceMuteState)] = [

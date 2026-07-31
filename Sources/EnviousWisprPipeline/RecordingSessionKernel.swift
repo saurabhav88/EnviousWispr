@@ -624,6 +624,28 @@ final class RecordingSessionKernel {
   /// mid-flight device change cannot tear the recorded value. Overwritten each
   /// session; never persisted.
   private(set) var lastResolvedRoute: ResolvedRouteTransports?
+  /// #1714: WHY this session's microphone was chosen — `pinned_uid`,
+  /// `system_default` or `list_fallback`. Frozen after the FINAL engine-start
+  /// attempt, including the failing ones, because an engine-start failure never
+  /// reaches Live and those failures are the population #1714 exists to measure.
+  ///
+  /// FINAL-ATTEMPT semantics across the one permitted rebuild retry: exactly one
+  /// of the three mutually exclusive freeze sites executes per session, and it
+  /// reads only after the retry decision is final. That is not in tension with
+  /// terminal first-wins, which decides which competing OUTCOME owns the
+  /// session; this field describes the attempt that established or terminated
+  /// the take.
+  ///
+  /// The freeze helper deliberately uses plain assignment. With today's
+  /// topology, reset clears the field and only one freeze executes, so
+  /// assignment and `??` are behaviorally equivalent. Plain assignment encodes
+  /// the required ownership if another freeze site is ever introduced: the final
+  /// attempt must win.
+  ///
+  /// Observation-only. Nothing may branch capture, retry, routing, error
+  /// classification or terminal selection on it. `nil` degrades attribution,
+  /// never the recording.
+  private(set) var lastInputResolutionSource: String?
   /// #1434: non-nil when the most recent completion was a degraded-lead
   /// salvage — the winning trim in ms. Cleared with `lastStopReason` at the
   /// next `→ recording` transition (the App layer reads it at `.complete`).
@@ -1160,6 +1182,11 @@ final class RecordingSessionKernel {
       try await audioCapture.startEnginePhase()
     } catch {
       guard isCurrent(sid) else { return }
+      // #1714: this attempt was the last one, so freeze its attribution BEFORE
+      // the terminal is published. Without this, every engine-start failure —
+      // the exact population this issue exists to measure — would be reported
+      // with no device source at all.
+      freezeFinalInputResolutionSource()
       // #1525 PR J-1: the write-site static type is `any Error` (an untyped
       // `throws` surface), so an intersection cast is required before
       // narrowing — a miss leaves the property nil and the read-side
@@ -1199,6 +1226,10 @@ final class RecordingSessionKernel {
         try await audioCapture.startEnginePhase()
       } catch {
         guard isCurrent(sid) else { return }
+        // #1714: the rebuild was the final attempt — freeze ITS source, not the
+        // first attempt's. A retry that lands on a different device would
+        // otherwise file the failure against the wrong microphone.
+        freezeFinalInputResolutionSource()
         // #1525 PR J-1: see the identical cast note at the first
         // `startEnginePhase()` catch above.
         telemetryState.captureFailureError = error as? (any Error & StableSentryErrorIdentity)
@@ -1225,6 +1256,11 @@ final class RecordingSessionKernel {
       guard isCurrent(sid) else { return }
       formatStabilizedThisSession = reverified
     }
+    // #1714: the single success-path freeze, placed AFTER the optional rebuild
+    // and its re-verification so it reads the final attempt's device. Freezing
+    // right after the first successful attempt would miss a rebuild that
+    // resolved differently.
+    freezeFinalInputResolutionSource()
     // The capture engine is up — every terminal from here must stop capture.
     captureLifecycle = .active
     // First-wins invariant (Codex code-diff P2): a stop/cancel and a latched
@@ -3658,6 +3694,16 @@ final class RecordingSessionKernel {
     currentSessionID == sid
   }
 
+  /// #1714: snapshot WHY the final engine-start attempt's microphone was chosen.
+  ///
+  /// A plain assignment, never `??` or an `if let` guard. Today that is not
+  /// observable — one freeze per session, on an already-cleared field — but it
+  /// encodes the ownership rule if a second freeze site is ever added: the final
+  /// attempt must win, and a final `nil` must not inherit an earlier device.
+  private func freezeFinalInputResolutionSource() {
+    lastInputResolutionSource = audioCapture.currentInputResolutionSource
+  }
+
   private func resetSessionState() {
     stopLatched = false
     cancelRequested = false
@@ -3696,6 +3742,10 @@ final class RecordingSessionKernel {
     lastTakeID = nil  // #1846 — absent, never the new session's id
     lastSalvagedLeadTrimMs = nil  // #1434
     lastCaptureHealth = nil  // #1434
+    // #1714: cleared with the other prior-session facts so a new session cannot
+    // inherit the previous take's device attribution before its own final
+    // engine-start attempt publishes one.
+    lastInputResolutionSource = nil
     lastRecordingDurationSeconds = nil  // #1060
     deliveredTranscript = nil
     deliveryOutcome = nil

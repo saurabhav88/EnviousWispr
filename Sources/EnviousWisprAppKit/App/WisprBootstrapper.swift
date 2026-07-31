@@ -150,7 +150,8 @@ public final class WisprBootstrapper {
 
     // Audio capture runs in-process (#1543, D-028 — the separate XPC audio
     // helper was collapsed away). The ASR helper below stays isolated.
-    let audioCapture: any AudioCaptureInterface = AudioCaptureManager()
+    let audioCapture: any AudioCaptureInterface = InputResolutionTelemetryReporting.observing(
+      AudioCaptureManager())
 
     // #1707 Phase 3 (§3.2): the atomic mutual-exclusion primitive between
     // crash-recovery replay and every OTHER engine-mutating operation. One

@@ -97,36 +97,35 @@ struct HALDeviceInputSourceDeviceTargetTests {
     #expect(source.targetDeviceUID == "BC-87-FA-9C-7E-71:input")
   }
 
-  @Test("nil target resolves to current system default input")
-  func nilTargetResolvesToDefaultInput() {
-    let source = HALDeviceInputSource()
-    source.defaultInputDeviceIDProvider = { 42 }
-    #expect(source.resolvedDeviceIDForTesting() == 42)
-  }
+  // MARK: - #1714: warm compatibility, delegated to InputDeviceResolver
+  //
+  // The three PURE resolution behaviours that used to live here — nil target
+  // resolves to the default, a missing pinned target falls back to the default,
+  // a present pinned target wins — moved to `InputDeviceResolverTests` when
+  // `resolvedDeviceIDForTesting()` was deleted. They are behaviours of the
+  // resolver now, not of this file. The three WARM behaviours stay here, because
+  // they are about what THIS source does with its committed bind, and are
+  // rewritten against the injected resolver plus a complete four-field bind.
 
-  @Test("unresolvable target falls back to current system default input")
-  func missingTargetFallsBackToDefaultInput() {
-    let source = HALDeviceInputSource()
-    source.targetDeviceUID = "gone"
-    source.resolveDeviceIDForUID = { _ in nil }
-    source.defaultInputDeviceIDProvider = { 42 }
-    #expect(source.resolvedDeviceIDForTesting() == 42)
-  }
-
-  @Test("resolvable target wins over system default input")
-  func resolvedTargetWins() {
-    let source = HALDeviceInputSource()
-    source.targetDeviceUID = "present"
-    source.resolveDeviceIDForUID = { uid in uid == "present" ? 99 : nil }
-    source.defaultInputDeviceIDProvider = { 42 }
-    #expect(source.resolvedDeviceIDForTesting() == 99)
+  /// A committed bind, stated in full. A partial setter used to sit beside the
+  /// complete one and moved only the numeric id; #1714 deleted it, because a
+  /// partial value can no longer express a four-field #1844 bind.
+  private func committedBind(
+    _ deviceID: AudioDeviceID, source: String = "system_default"
+  ) -> BoundInputDevice {
+    BoundInputDevice(
+      deviceID: deviceID, deviceUID: "uid-\(deviceID)", transportLabel: "built_in",
+      resolutionSource: source)
   }
 
   @Test("warm automatic source is reusable while bound to current system default")
   func automaticReuseMatchesCurrentDefault() {
     let source = HALDeviceInputSource()
-    source.defaultInputDeviceIDProvider = { 42 }
-    source.setBoundDeviceIDForTesting(42)
+    source.inputDeviceResolver = InputDeviceResolver(
+      defaultInputDeviceID: { 42 },
+      inputDeviceSnapshot: { Issue.record("Auto must not enumerate"); return .complete([]) }
+    )
+    source.setBoundInputDeviceForTesting(committedBind(42))
 
     #expect(source.boundDeviceMatchesResolvedTargetForReuse())
   }
@@ -134,11 +133,27 @@ struct HALDeviceInputSourceDeviceTargetTests {
   @Test("warm automatic source rejects stale system default")
   func automaticReuseRejectsStaleDefault() {
     let source = HALDeviceInputSource()
-    var currentDefault: AudioDeviceID = 42
-    source.defaultInputDeviceIDProvider = { currentDefault }
-    source.setBoundDeviceIDForTesting(42)
+    nonisolated(unsafe) var currentDefault: AudioDeviceID = 42
+    source.inputDeviceResolver = InputDeviceResolver(
+      defaultInputDeviceID: { currentDefault },
+      inputDeviceSnapshot: { Issue.record("Auto must not enumerate"); return .complete([]) }
+    )
+    source.setBoundInputDeviceForTesting(committedBind(42))
+
+    #expect(source.boundDeviceMatchesResolvedTargetForReuse())
 
     currentDefault = 43
+
+    #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
+  }
+
+  @Test("a source with no committed bind is never warm-compatible")
+  func noBindIsNeverCompatible() {
+    // Guards the delegation: the predicate now reads the whole bind, so an
+    // absent one must refuse rather than pass a partial value to the resolver.
+    let source = HALDeviceInputSource()
+    source.inputDeviceResolver = InputDeviceResolver(
+      defaultInputDeviceID: { 42 }, inputDeviceSnapshot: { .complete([]) })
 
     #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
   }
@@ -163,7 +178,8 @@ struct HALDeviceInputSourceDeviceTargetTests {
     let committed = BoundInputDevice(
       deviceID: 121,
       deviceUID: "BC-87-FA-9C-7E-71:input",
-      transportLabel: "bluetooth"
+      transportLabel: "bluetooth",
+      resolutionSource: "system_default"
     )
     source.setBoundInputDeviceForTesting(committed)
 
@@ -181,7 +197,8 @@ struct HALDeviceInputSourceDeviceTargetTests {
     // A complete, stale bind is still NOT grounds for reuse without a live unit.
     source.setBoundInputDeviceForTesting(
       BoundInputDevice(
-        deviceID: 121, deviceUID: "BC-87-FA-9C-7E-71:input", transportLabel: "bluetooth"))
+        deviceID: 121, deviceUID: "BC-87-FA-9C-7E-71:input", transportLabel: "bluetooth",
+        resolutionSource: "system_default"))
 
     #expect(source.warmReuseBindForTesting(hasLiveUnit: false) == nil)
   }
@@ -199,12 +216,13 @@ struct HALDeviceInputSourceDeviceTargetTests {
     let committed = BoundInputDevice(
       deviceID: 121,
       deviceUID: "BC-87-FA-9C-7E-71:input",
-      transportLabel: "bluetooth"
+      transportLabel: "bluetooth",
+      resolutionSource: "system_default"
     )
     source.setBoundInputDeviceForTesting(committed)
     #expect(source.warmReuseBindForTesting(hasLiveUnit: true) == committed)
 
-    // All three fields at once, the way `teardownUnit()` clears them.
+    // All four fields at once, the way `teardownUnit()` clears them.
     source.setBoundInputDeviceForTesting(nil)
 
     #expect(source.warmReuseBindForTesting(hasLiveUnit: true) == nil)
@@ -214,15 +232,213 @@ struct HALDeviceInputSourceDeviceTargetTests {
   func explicitMissingTargetReuseTracksFallbackDefault() {
     let source = HALDeviceInputSource()
     source.targetDeviceUID = "missing"
-    source.resolveDeviceIDForUID = { _ in nil }
-    var currentDefault: AudioDeviceID = 42
-    source.defaultInputDeviceIDProvider = { currentDefault }
-    source.setBoundDeviceIDForTesting(42)
+    nonisolated(unsafe) var currentDefault: AudioDeviceID = 42
+    source.inputDeviceResolver = InputDeviceResolver(
+      defaultInputDeviceID: { currentDefault },
+      // The pinned device is genuinely absent from the list.
+      inputDeviceSnapshot: {
+        .complete([
+          InputDeviceCandidate(
+            id: 42, uid: "something-else", rawTransport: kAudioDeviceTransportTypeBuiltIn)
+        ])
+      }
+    )
+    source.setBoundInputDeviceForTesting(committedBind(42))
 
     #expect(source.boundDeviceMatchesResolvedTargetForReuse())
 
     currentDefault = 43
 
     #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
+  }
+
+  @Test("a reconnected pinned device rejects the warm fallback bind (founder decision)")
+  func reconnectedPinnedDeviceRejectsFallbackBind() {
+    // The founder's rule running forwards: AirPods come back, so the take they
+    // lost is theirs again. Refusing compatibility here is what makes the
+    // manager tear the warm source down so the next open is cold and pinned.
+    let source = HALDeviceInputSource()
+    source.targetDeviceUID = "airpods"
+    source.inputDeviceResolver = InputDeviceResolver(
+      defaultInputDeviceID: { nil },
+      inputDeviceSnapshot: {
+        .complete([
+          InputDeviceCandidate(
+            id: 77, uid: "airpods", rawTransport: kAudioDeviceTransportTypeBluetooth)
+        ])
+      }
+    )
+    // Bound to the built-in mic the fallback picked while they were gone.
+    source.setBoundInputDeviceForTesting(committedBind(30, source: "list_fallback"))
+
+    #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
+  }
+}
+
+// #1714 — freezes the cold-attempt finalisation contract.
+//
+// Every cold `prepare()` exit must produce exactly one finalised attempt, and
+// warm reuse must produce none. Two fields, not one, because binding is a single
+// step and several fallible setup steps follow it: collapsing them would make
+// "could not open the microphone" indistinguishable from "opened it, then the
+// converter failed", which are different bugs with different owners.
+//
+// Scope stated honestly: the resolution-failure exit is driven through the REAL
+// `prepare()` with an injected failing resolver. The three post-resolution rows
+// need a live `AudioUnit` no seam can construct, so they are frozen as the
+// outcome matrix here and confirmed by structural audit plus Live UAT rather
+// than by fabricating hardware.
+@MainActor
+@Suite("HAL cold-attempt finalisation — #1714")
+struct HALInputResolutionFinalizationTests {
+
+  @Test("a cold attempt that fails at resolution finalises exactly once, before the throw")
+  func resolutionFailureFinalisesOnceBeforeThrow() async {
+    let source = HALDeviceInputSource()
+    // Successful but empty enumeration: the resolver's proven-absence path.
+    source.inputDeviceResolver = InputDeviceResolver(
+      defaultInputDeviceID: { nil }, inputDeviceSnapshot: { .complete([]) })
+
+    nonisolated(unsafe) var finalised: [FinalizedInputResolutionAttempt] = []
+    source.onInputResolutionAttemptFinalized = { finalised.append($0) }
+
+    await #expect(throws: AudioError.self) { try await source.prepare() }
+
+    #expect(finalised.count == 1, "exactly one finalised attempt per cold exit")
+    #expect(finalised.first?.bindOutcome == .notAttempted)
+    #expect(finalised.first?.prepareOutcome == .failed)
+    // The frozen facts travel with it, so no consumer re-reads hardware.
+    #expect(finalised.first?.resolution.enumerationOutcome == .succeeded)
+    #expect(finalised.first?.resolution.inputDeviceCount == 0)
+    #expect(finalised.first?.resolution.defaultPresent == false)
+  }
+
+  @Test("a device-list read failure with no default also finalises exactly once")
+  func readFailureFinalisesOnce() async {
+    let source = HALDeviceInputSource()
+    source.inputDeviceResolver = InputDeviceResolver(
+      defaultInputDeviceID: { nil }, inputDeviceSnapshot: { .readFailed })
+
+    nonisolated(unsafe) var finalised: [FinalizedInputResolutionAttempt] = []
+    source.onInputResolutionAttemptFinalized = { finalised.append($0) }
+
+    await #expect(throws: AudioError.self) { try await source.prepare() }
+
+    #expect(finalised.count == 1)
+    #expect(finalised.first?.bindOutcome == .notAttempted)
+    #expect(finalised.first?.prepareOutcome == .failed)
+    #expect(finalised.first?.resolution.enumerationOutcome == .readFailed)
+  }
+
+  @Test("warm reuse finalises nothing — a reused bind is not a new resolution")
+  func warmReuseFinalisesNothing() {
+    let source = HALDeviceInputSource()
+    source.setBoundInputDeviceForTesting(
+      BoundInputDevice(
+        deviceID: 121, deviceUID: "uid-121", transportLabel: "bluetooth",
+        resolutionSource: "list_fallback"))
+
+    nonisolated(unsafe) var finalised: [FinalizedInputResolutionAttempt] = []
+    source.onInputResolutionAttemptFinalized = { finalised.append($0) }
+
+    // The warm early return, driven through the same seam #1844 froze.
+    let reused = source.warmReuseBindForTesting(hasLiveUnit: true)
+
+    #expect(reused != nil)
+    #expect(reused?.resolutionSource == "list_fallback", "warm reuse carries the ORIGINAL source")
+    #expect(finalised.isEmpty)
+  }
+
+  @Test("a nil callback changes nothing — observability is a limb")
+  func nilCallbackIsHarmless() async {
+    let source = HALDeviceInputSource()
+    source.inputDeviceResolver = InputDeviceResolver(
+      defaultInputDeviceID: { nil }, inputDeviceSnapshot: { .complete([]) })
+    source.onInputResolutionAttemptFinalized = nil
+
+    await #expect(throws: AudioError.self) { try await source.prepare() }
+  }
+
+  // MARK: - The outcome matrix, driven through the PRODUCTION accumulator
+  //
+  // These instantiate `InputResolutionAttemptState` — the same type `prepare()`
+  // mutates — so deleting or inverting a transition turns them red. An earlier
+  // version asserted a table this suite wrote itself, which proved only that the
+  // copy agreed with the copy and stayed green when the success transition was
+  // removed.
+
+  private func selectedResolution() -> InputDeviceResolution {
+    InputDeviceResolution(
+      outcome: .selected(42, source: .systemDefault),
+      defaultPresent: true,
+      enumerationOutcome: .notAttempted,
+      inputDeviceCount: nil,
+      eligibleDeviceCount: nil,
+      selectedTransport: nil
+    )
+  }
+
+  @Test("an exit before binding is not_attempted / failed")
+  func preBindOutcome() {
+    let state = InputResolutionAttemptState()
+    let result = state.finalized(resolution: selectedResolution())
+
+    #expect(result.bindOutcome == .notAttempted)
+    #expect(result.prepareOutcome == .failed)
+  }
+
+  @Test("a failed bind is failed / failed")
+  func bindFailureOutcome() {
+    var state = InputResolutionAttemptState()
+    state.recordBind(succeeded: false)
+    let result = state.finalized(resolution: selectedResolution())
+
+    #expect(result.bindOutcome == .failed)
+    #expect(result.prepareOutcome == .failed)
+  }
+
+  @Test("a successful bind followed by setup failure is succeeded / failed")
+  func postBindFailureOutcome() {
+    var state = InputResolutionAttemptState()
+    state.recordBind(succeeded: true)
+    let result = state.finalized(resolution: selectedResolution())
+
+    #expect(result.bindOutcome == .succeeded)
+    #expect(result.prepareOutcome == .failed)
+  }
+
+  @Test("full preparation success is succeeded / succeeded")
+  func prepareSuccessOutcome() {
+    var state = InputResolutionAttemptState()
+    state.recordBind(succeeded: true)
+    state.recordPrepareSucceeded()
+    let result = state.finalized(resolution: selectedResolution())
+
+    #expect(result.bindOutcome == .succeeded)
+    #expect(result.prepareOutcome == .succeeded)
+  }
+
+  @Test("a prepare can never report success on a device that was never bound")
+  func successWithoutBindIsUnrepresentable() {
+    // The invariant is structural, not a test-only assertion: `prepareOutcome`
+    // is derived from the bind, so this combination cannot be constructed even
+    // by calling the transitions out of order.
+    var neverBound = InputResolutionAttemptState()
+    neverBound.recordPrepareSucceeded()
+    #expect(neverBound.finalized(resolution: selectedResolution()).prepareOutcome == .failed)
+
+    var bindFailed = InputResolutionAttemptState()
+    bindFailed.recordBind(succeeded: false)
+    bindFailed.recordPrepareSucceeded()
+    #expect(bindFailed.finalized(resolution: selectedResolution()).prepareOutcome == .failed)
+  }
+
+  @Test("the wire values telemetry will carry are frozen")
+  func wireValuesAreFrozen() {
+    #expect(InputBindOutcome.notAttempted.rawValue == "not_attempted")
+    #expect(InputBindOutcome.failed.rawValue == "failed")
+    #expect(InputBindOutcome.succeeded.rawValue == "succeeded")
+    #expect(InputPrepareOutcome.failed.rawValue == "failed")
+    #expect(InputPrepareOutcome.succeeded.rawValue == "succeeded")
   }
 }

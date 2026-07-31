@@ -55,13 +55,26 @@ import Testing
       /// The bind this stub publishes from `prepare()`. Mutate between attempts to
       /// model a retry that lands on a different device.
       var boundToReturn = BoundInputDevice(
-        deviceID: 99, deviceUID: "stub-uid-99", transportLabel: "usb")
+        deviceID: 99, deviceUID: "stub-uid-99", transportLabel: "usb",
+        resolutionSource: "system_default")
       /// When set, `prepare()` throws this instead of returning a bind.
       var prepareError: Error?
       private(set) var prepareCallCount = 0
 
+      /// #1714: the undefaulted protocol witness. Explicit rather than inherited
+      /// so a conformer cannot silently report no attribution.
+      var onInputResolutionAttemptFinalized: ((FinalizedInputResolutionAttempt) -> Void)?
+
+      /// When set, `prepare()` fires this SYNCHRONOUSLY before returning or
+      /// throwing, modelling a real cold attempt. Nil models warm reuse, which
+      /// finalises nothing.
+      var finalizedAttemptToFire: FinalizedInputResolutionAttempt?
+
       func prepare() async throws -> BoundInputDevice {
         prepareCallCount += 1
+        if let finalizedAttemptToFire {
+          onInputResolutionAttemptFinalized?(finalizedAttemptToFire)
+        }
         if let prepareError { throw prepareError }
         return boundToReturn
       }
@@ -90,7 +103,7 @@ import Testing
       let manager = AudioCaptureManager()
       manager.preferredInputDeviceIDOverride = preferredOverride
       manager.selectedInputDeviceUID = rememberedSelection
-      manager.installSourceFactoryForTesting { stub }
+      manager.installSourceFactoryForTesting { _ in stub }
       return manager
     }
 
@@ -100,7 +113,8 @@ import Testing
     func adoptsTheReturnedBind() async throws {
       let stub = StubSource()
       stub.boundToReturn = BoundInputDevice(
-        deviceID: 99, deviceUID: "stub-uid-99", transportLabel: "usb")
+        deviceID: 99, deviceUID: "stub-uid-99", transportLabel: "usb",
+        resolutionSource: "system_default")
       let manager = Self.makeManager(stub)
 
       try await manager.startEnginePhase()
@@ -117,7 +131,8 @@ import Testing
     func adoptionIgnoresRememberedSelection() async throws {
       let stub = StubSource()
       stub.boundToReturn = BoundInputDevice(
-        deviceID: 7, deviceUID: "actually-bound-uid", transportLabel: "built_in")
+        deviceID: 7, deviceUID: "actually-bound-uid", transportLabel: "built_in",
+        resolutionSource: "system_default")
       let manager = Self.makeManager(
         stub, rememberedSelection: "remembered-but-never-opened-uid")
 
@@ -152,7 +167,8 @@ import Testing
     func finalAttemptWins() async throws {
       let stub = StubSource()
       stub.boundToReturn = BoundInputDevice(
-        deviceID: 99, deviceUID: "first-attempt-uid", transportLabel: "usb")
+        deviceID: 99, deviceUID: "first-attempt-uid", transportLabel: "usb",
+        resolutionSource: "system_default")
       let manager = Self.makeManager(stub)
 
       try await manager.startEnginePhase()
@@ -161,7 +177,8 @@ import Testing
       // The real manager rebuild path, then a second real attempt binding elsewhere.
       manager.rebuildEngine()
       stub.boundToReturn = BoundInputDevice(
-        deviceID: 42, deviceUID: "final-attempt-uid", transportLabel: "built_in")
+        deviceID: 42, deviceUID: "final-attempt-uid", transportLabel: "built_in",
+        resolutionSource: "system_default")
       try await manager.startEnginePhase()
 
       #expect(manager.zeroSignalDiscriminatorDevice == stub.boundToReturn)
@@ -182,6 +199,217 @@ import Testing
       #expect(
         manager.zeroSignalDiscriminatorDevice == nil,
         "pre-warm runs outside any session and must not publish a health-check device")
+    }
+
+    // MARK: - 6. #1714 attribution lifetime
+    //
+    // The manager is the LIFETIME owner because a THROWING cold attempt returns
+    // no bind at all — without retention, a resolution or bind failure could
+    // never be attributed, and the previous session's answer would still be
+    // sitting there looking current.
+
+    /// A finalised cold attempt that SELECTED a device but failed later, so its
+    /// source is non-nil and distinguishable from any earlier one.
+    private static func finalizedAttempt(
+      _ source: InputResolutionSource, bind: InputBindOutcome = .succeeded
+    ) -> FinalizedInputResolutionAttempt {
+      var state = InputResolutionAttemptState()
+      state.recordBind(succeeded: bind == .succeeded)
+      return state.finalized(
+        resolution: InputDeviceResolution(
+          outcome: .selected(42, source: source),
+          defaultPresent: source == .systemDefault,
+          enumerationOutcome: source == .systemDefault ? .notAttempted : .succeeded,
+          inputDeviceCount: nil,
+          eligibleDeviceCount: nil,
+          selectedTransport: nil))
+    }
+
+    @Test("a successful prepare with NO cold callback still exposes the returned bind's source")
+    func warmSuccessExposesReturnedBindSource() async throws {
+      // Warm reuse fires no finalisation but returns a bind carrying the
+      // ORIGINAL source, so the returned bind is the only authority here.
+      let stub = StubSource()
+      stub.finalizedAttemptToFire = nil
+      stub.boundToReturn = BoundInputDevice(
+        deviceID: 30, deviceUID: "fallback-uid", transportLabel: "built_in",
+        resolutionSource: "list_fallback")
+      let manager = Self.makeManager(stub)
+
+      try await manager.startEnginePhase()
+
+      #expect(manager.currentInputResolutionSource == "list_fallback")
+    }
+
+    @Test("on success the RETURNED BIND wins over the cold callback's provisional value")
+    func returnedBindWinsOverCallback() async throws {
+      // Deliberately disagreeing values. #1844's rule is that the bind
+      // `prepare()` returned is the authority; the callback is provisional
+      // because it fires before the attempt is known to have succeeded.
+      let stub = StubSource()
+      stub.finalizedAttemptToFire = Self.finalizedAttempt(.systemDefault)
+      stub.boundToReturn = BoundInputDevice(
+        deviceID: 30, deviceUID: "fallback-uid", transportLabel: "built_in",
+        resolutionSource: "list_fallback")
+      let manager = Self.makeManager(stub)
+
+      try await manager.startEnginePhase()
+
+      #expect(manager.currentInputResolutionSource == "list_fallback")
+    }
+
+    @Test("a throwing cold attempt exposes THIS attempt's source, never the previous one")
+    func throwingAttemptReplacesPriorSource() async throws {
+      let stub = StubSource()
+      // First attempt succeeds on the system default.
+      stub.boundToReturn = BoundInputDevice(
+        deviceID: 42, deviceUID: "default-uid", transportLabel: "built_in",
+        resolutionSource: "system_default")
+      let manager = Self.makeManager(stub)
+      try await manager.startEnginePhase()
+      #expect(manager.currentInputResolutionSource == "system_default")
+
+      // Second attempt resolves to the FALLBACK, then throws after the bind.
+      // Two distinct non-nil sources, so replacement is proven by the value
+      // changing rather than by comparing nil with nil.
+      stub.finalizedAttemptToFire = Self.finalizedAttempt(.listFallback)
+      stub.prepareError = AudioError.formatCreationFailed(source: "test.after_bind")
+
+      await #expect(throws: AudioError.self) { try await manager.startEnginePhase() }
+
+      #expect(manager.currentInputResolutionSource == "list_fallback")
+    }
+
+    @Test("a throwing attempt that finalises NOTHING clears the prior source")
+    func throwingAttemptWithoutFinalisationClearsSource() async throws {
+      // Proves the clear happens BEFORE prepare, so stale attribution cannot
+      // survive an attempt that never got far enough to report anything.
+      let stub = StubSource()
+      stub.boundToReturn = BoundInputDevice(
+        deviceID: 42, deviceUID: "default-uid", transportLabel: "built_in",
+        resolutionSource: "system_default")
+      let manager = Self.makeManager(stub)
+      try await manager.startEnginePhase()
+      #expect(manager.currentInputResolutionSource == "system_default")
+
+      stub.finalizedAttemptToFire = nil
+      stub.prepareError = AudioError.noBuiltInMicrophoneFound
+
+      await #expect(throws: AudioError.self) { try await manager.startEnginePhase() }
+
+      #expect(manager.currentInputResolutionSource == nil)
+    }
+
+    @Test("successful preWarm attributes without publishing a health-check device")
+    func preWarmAttributesWithoutAdopting() async throws {
+      // Pre-warm is where cold resolution normally happens, so attributing only
+      // on the recording's own prepare would report almost nothing.
+      let stub = StubSource()
+      stub.finalizedAttemptToFire = Self.finalizedAttempt(.listFallback)
+      stub.boundToReturn = BoundInputDevice(
+        deviceID: 30, deviceUID: "fallback-uid", transportLabel: "built_in",
+        resolutionSource: "list_fallback")
+      let manager = Self.makeManager(stub)
+
+      try await manager.preWarm()
+
+      #expect(manager.currentInputResolutionSource == "list_fallback")
+      #expect(
+        manager.zeroSignalDiscriminatorDevice == nil,
+        "pre-warm still must not publish a health-check device")
+    }
+
+    @Test("a throwing preWarm retains the new attempt's source before rethrowing")
+    func throwingPreWarmRetainsSource() async throws {
+      let stub = StubSource()
+      stub.finalizedAttemptToFire = Self.finalizedAttempt(.listFallback, bind: .failed)
+      stub.prepareError = AudioError.formatCreationFailed(source: "test.prewarm")
+      let manager = Self.makeManager(stub)
+
+      await #expect(throws: AudioError.self) { try await manager.preWarm() }
+
+      #expect(manager.currentInputResolutionSource == "list_fallback")
+      #expect(manager.zeroSignalDiscriminatorDevice == nil)
+    }
+
+    // MARK: - 7. #1714 outbound telemetry projection
+
+    @Test("a cold attempt forwards ONE projection built from the retained attempt")
+    func coldAttemptForwardsOneProjection() async throws {
+      let stub = StubSource()
+      stub.finalizedAttemptToFire = Self.finalizedAttempt(.listFallback)
+      stub.boundToReturn = BoundInputDevice(
+        deviceID: 30, deviceUID: "fallback-uid", transportLabel: "built_in",
+        resolutionSource: "list_fallback")
+      let manager = Self.makeManager(stub)
+
+      var forwarded: [InputResolutionAttemptTelemetry] = []
+      manager.onFinalizedInputResolutionAttempt = { forwarded.append($0) }
+
+      try await manager.startEnginePhase()
+
+      #expect(forwarded.count == 1, "exactly one projection per cold attempt")
+      #expect(forwarded.first?.inputResolutionSource == "list_fallback")
+      #expect(forwarded.first?.bindOutcome == "succeeded")
+      #expect(forwarded.first?.prepareOutcome == "failed", "the attempt was finalised pre-success")
+      #expect(forwarded.first?.defaultPresent == false)
+    }
+
+    @Test("a WARM success forwards nothing — a reused bind is not a new resolution")
+    func warmSuccessForwardsNothing() async throws {
+      let stub = StubSource()
+      stub.finalizedAttemptToFire = nil
+      stub.boundToReturn = BoundInputDevice(
+        deviceID: 30, deviceUID: "fallback-uid", transportLabel: "built_in",
+        resolutionSource: "list_fallback")
+      let manager = Self.makeManager(stub)
+
+      var forwarded: [InputResolutionAttemptTelemetry] = []
+      manager.onFinalizedInputResolutionAttempt = { forwarded.append($0) }
+
+      try await manager.startEnginePhase()
+
+      #expect(forwarded.isEmpty)
+      // Attribution still updates from the returned bind.
+      #expect(manager.currentInputResolutionSource == "list_fallback")
+    }
+
+    @Test("a THROWING cold attempt still forwards before the throw escapes")
+    func throwingColdAttemptStillForwards() async throws {
+      let stub = StubSource()
+      stub.finalizedAttemptToFire = Self.finalizedAttempt(.listFallback, bind: .failed)
+      stub.prepareError = AudioError.formatCreationFailed(source: "test.set_device")
+      let manager = Self.makeManager(stub)
+
+      var forwarded: [InputResolutionAttemptTelemetry] = []
+      manager.onFinalizedInputResolutionAttempt = { forwarded.append($0) }
+
+      await #expect(throws: AudioError.self) { try await manager.startEnginePhase() }
+
+      // The failing population is the one #1714 exists to measure, so it must
+      // still be reported.
+      #expect(forwarded.count == 1)
+      #expect(forwarded.first?.bindOutcome == "failed")
+      #expect(forwarded.first?.prepareOutcome == "failed")
+    }
+
+    @Test("nil counts survive the projection as nil, never as zero")
+    func nilCountsSurviveProjection() async throws {
+      // The attempt fixture uses a not-attempted enumeration, whose counts are
+      // unknown. Flattening them to 0 here would claim the machine listed no
+      // input devices.
+      let stub = StubSource()
+      stub.finalizedAttemptToFire = Self.finalizedAttempt(.systemDefault)
+      let manager = Self.makeManager(stub)
+
+      var forwarded: [InputResolutionAttemptTelemetry] = []
+      manager.onFinalizedInputResolutionAttempt = { forwarded.append($0) }
+
+      try await manager.startEnginePhase()
+
+      #expect(forwarded.first?.inputDeviceCount == nil)
+      #expect(forwarded.first?.eligibleDeviceCount == nil)
+      #expect(forwarded.first?.enumerationOutcome == "not_attempted")
     }
 
     // MARK: - Fail-closed lives with the CONSUMER, not here

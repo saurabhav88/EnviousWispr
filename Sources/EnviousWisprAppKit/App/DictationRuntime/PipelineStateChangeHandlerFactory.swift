@@ -58,7 +58,10 @@ enum PipelineStateChangeHandlerFactory {
       reportPipelineFailed: { msg in
         TelemetryService.shared.pipelineFailed(
           stage: "transcription", errorCategory: "pipeline_error", errorCode: msg,
-          recoverable: false, backend: backendLabel)
+          recoverable: false, backend: backendLabel,
+          // #1714: the failing population is the one this issue exists to
+          // measure, so a failed take must still say which microphone it used.
+          inputResolutionSource: deps.driver.lastInputResolutionSource)
       },
       // #1167: history-save-failed pill (post-completion warning slot, ~400 ms).
       scheduleHistorySaveFailedWarning: { reason in

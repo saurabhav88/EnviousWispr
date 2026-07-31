@@ -200,4 +200,58 @@ struct SentryAudioExtrasTests {
     )
     #expect(extras["capture.time_since_last_successful_recording_ms"] as? Int == 45_000)
   }
+
+  // MARK: - #1714 input-resolution source
+
+  @Test("input resolution source rides under the settled capture. key")
+  func inputResolutionSourceEmitted() {
+    let extras = SentryAudioExtras.buildCaptureExtras(
+      route: "built_in",
+      sourceType: "hal_device_input",
+      sessionID: 1,
+      isActivelyCapturing: false,
+      inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: nil,
+      failureMode: "no_microphone_found",
+      inputResolutionSource: "list_fallback"
+    )
+    #expect(extras["capture.input_resolution_source"] as? String == "list_fallback")
+  }
+
+  @Test("a nil input resolution source omits the key entirely")
+  func nilInputResolutionSourceOmitted() {
+    // Absent, not NSNull, not "unknown", not empty — an omitted key is what
+    // lets a query distinguish "no attribution" from "attributed as unknown".
+    let extras = SentryAudioExtras.buildCaptureExtras(
+      route: "built_in",
+      sourceType: "hal_device_input",
+      sessionID: 1,
+      isActivelyCapturing: false,
+      inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: nil,
+      failureMode: "no_microphone_found"
+    )
+    #expect(extras["capture.input_resolution_source"] == nil)
+    #expect(extras.keys.contains("capture.input_resolution_source") == false)
+  }
+
+  @Test("input and ROUTE resolution sources are distinct keys carrying distinct values")
+  func inputAndRouteResolutionSourcesAreDistinct() {
+    // The two names are one word apart and answer different questions. Freezing
+    // them together is what stops a future edit collapsing them, which would
+    // make every query over either one ambiguous.
+    let extras = SentryAudioExtras.buildCaptureExtras(
+      route: "built_in",
+      sourceType: "hal_device_input",
+      sessionID: 1,
+      isActivelyCapturing: false,
+      inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: nil,
+      failureMode: "no_microphone_found",
+      routeResolutionSource: "app_derived",
+      inputResolutionSource: "pinned_uid"
+    )
+    #expect(extras["capture.route_resolution_source"] as? String == "app_derived")
+    #expect(extras["capture.input_resolution_source"] as? String == "pinned_uid")
+  }
 }

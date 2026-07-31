@@ -53,8 +53,12 @@ import Testing
         }
       #endif
 
+      /// #1714: the undefaulted protocol witness. This suite never fires it;
+      /// declaring it explicitly is exactly what the undefaulted requirement is for.
+      var onInputResolutionAttemptFinalized: ((FinalizedInputResolutionAttempt) -> Void)?
       var boundToReturn = BoundInputDevice(
-        deviceID: 1, deviceUID: "stub-uid", transportLabel: "stub")
+        deviceID: 1, deviceUID: "stub-uid", transportLabel: "stub",
+        resolutionSource: "system_default")
       private(set) var prepareCallCount = 0
 
       func prepare() async throws -> BoundInputDevice {
@@ -143,7 +147,7 @@ import Testing
     func preparedButUnarmedEngineIsStoppable() async throws {
       let manager = AudioCaptureManager()
       let stub = StubSource()
-      manager.installSourceFactoryForTesting { stub }
+      manager.installSourceFactoryForTesting { _ in stub }
       // `.off` BEFORE preparation: setting it afterwards would trip
       // `reconcileWarmEnginePolicy()` and tear the engine down before the stop,
       // leaving this test asserting against a state it never reached.
