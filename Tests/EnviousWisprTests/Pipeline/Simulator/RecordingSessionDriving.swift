@@ -210,9 +210,15 @@ final class KernelRecordingSession: RecordingSessionDriving {
     // default (real CoreAudio calls).
     // #1844: OPTIONAL so a test can pass nil and reach the kernel's PRODUCTION
     // default closure, which is the only way to prove that closure reads the frozen
-    // bind. Still defaults to `{ true }`, so all 37 existing scenarios are unchanged
-    // and none of them starts depending on this machine's real microphone.
-    zeroSignalDeviceEligible: (@MainActor () -> Bool)? = { true }
+    // bind. #1578 widened it from a Boolean to the decision snapshot; the default
+    // is the eligible/not-yet-classified pair, which is exactly what `{ true }`
+    // meant before, so every existing scenario is unchanged and none of them
+    // starts depending on this machine's real microphone.
+    zeroSignalDecisionSnapshot: (@MainActor () -> ZeroSignalDecisionSnapshot)? = {
+      ZeroSignalDecisionSnapshot(eligibility: .eligible, currentRunWasClassifiedReactively: false)
+    },
+    /// #1578: collects refusals the kernel drains or classifies at STOP.
+    zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in }
   ) {
     self.vad = vad
     let limb = self.limb
@@ -269,7 +275,8 @@ final class KernelRecordingSession: RecordingSessionDriving {
       stopTimeZeroSignalTelemetry: { [stopTimeTelemetryLog] ctx in
         stopTimeTelemetryLog.fired.append(ctx)
       },
-      zeroSignalDeviceEligible: zeroSignalDeviceEligible,
+      zeroSignalDecisionSnapshot: zeroSignalDecisionSnapshot,
+      zeroSignalRefusalSink: zeroSignalRefusalSink,
       telemetryState: telemetryState)
   }
 

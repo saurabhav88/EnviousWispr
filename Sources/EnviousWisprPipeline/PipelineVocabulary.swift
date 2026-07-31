@@ -190,4 +190,9 @@ public enum RecordingRecoveryEnding: Equatable, Sendable {
 @MainActor
 public protocol HeartPathTelemetryTarget: AnyObject {
   func handleCaptureStall(_ ctx: CaptureStallContext)
+
+  /// #1578: the zero-signal discriminator refused to fire capture-stall
+  /// recovery, and this is WHY. Observation only — unlike `handleCaptureStall`,
+  /// nothing on this path may move the recording state machine.
+  func handleZeroSignalRefusal(_ context: ZeroSignalRefusalContext)
 }

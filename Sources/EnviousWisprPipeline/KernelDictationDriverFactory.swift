@@ -480,6 +480,22 @@ public enum KernelDictationDriverFactory {
       stopTimeZeroSignalTelemetry: { ctx in
         emitter.stallFired(ctx: ctx, isActivelyCapturing: false)
       },
+      // #1578: the DELAYED path's only route to the emitter — both the drained
+      // backlog of rejected reactive refusals AND a STOP-time refusal for a run
+      // the reactive detector never classified. The immediate path (reactive →
+      // router → driver → observer) reaches the same method through its own
+      // wiring; without THIS line everything upstream still works and production
+      // emits nothing, with every other test green, because every other test
+      // drives the sink directly.
+      //
+      // One call per context, in order. The take returns an array; the emitter
+      // takes one context. Batching or de-duplicating here would silently
+      // undercount runs the producer already proved distinct.
+      zeroSignalRefusalSink: { contexts in
+        for context in contexts {
+          emitter.zeroSignalRefused(context)
+        }
+      },
       recordingStoppedTelemetry: { sampleCount in
         telemetryRelay.emitRecordingStopped(sampleCount: sampleCount)
       },

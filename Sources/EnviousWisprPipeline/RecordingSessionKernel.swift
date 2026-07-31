@@ -275,23 +275,40 @@ final class RecordingSessionKernel {
   /// uses. The emitter's per-mode dedup makes a duplicate submission (both
   /// paths agreeing on the same session + mode) safe.
   private let stopTimeZeroSignalTelemetry: @MainActor (CaptureStallContext) -> Void
-  /// #1317 §3.0/§3.6: the STOP-time device-alive/not-muted discriminator,
+  /// #1317 §3.0/§3.6, widened at #1578: the STOP-time zero-signal decision,
   /// injected (not a direct `AudioDeviceEnumerator`/`ZeroSignalDeviceDiscriminator`
   /// call) so deterministic kernel tests can substitute a fake instead of
-  /// depending on the test machine's real microphone state. The production
-  /// default checks `audioCapture.zeroSignalDiscriminatorDevice` — the
-  /// device the CAPTURE LAYER's `prepare()` actually OPENED (#1844; only that
+  /// depending on the test machine's real microphone state.
+  ///
+  /// It returns a SNAPSHOT, not a Boolean, because STOP needs two facts and they
+  /// answer different questions. `eligibility` is the categorical reason — only
+  /// `.eligible` may reach the stall path, and every other case names WHY it did
+  /// not. `currentRunWasClassifiedReactively` says whether the reactive producer
+  /// already classified this run, which is what stops STOP re-classifying and
+  /// re-emitting the same run; it NEVER means the reactive forward was accepted,
+  /// because a rejected forward is emitted from the backlog instead.
+  ///
+  /// The production default reads `audioCapture.zeroSignalDiscriminatorDevice` —
+  /// the device the CAPTURE LAYER's `prepare()` actually OPENED (#1844; only that
   /// layer sees its own internal retries, so the kernel defers to it instead of
   /// independently freezing its own snapshot, which could still race a
-  /// mid-startup device switch or name a microphone HAL never opened).
-  /// Alive/mute status is still re-checked live against that frozen device
-  /// on every call — only the device IDENTITY is frozen, not its mute
-  /// state — EXCEPT that `zeroSignalDiscriminatorSawIneligible` (cloud
-  /// review round 2, second P2) short-circuits to ineligible if the device
-  /// was EVER seen muted during this session's own zero-signal candidate
-  /// buffers, so a since-unmuted live re-check can't override an earlier
-  /// genuine mute.
-  private let zeroSignalDeviceEligible: @MainActor () -> Bool
+  /// mid-startup device switch or name a microphone HAL never opened). Device
+  /// state is re-read live against that frozen identity — EXCEPT when the run was
+  /// already classified reactively, in which case the FROZEN reason wins, so a
+  /// device that has since become healthy cannot overwrite what was genuinely
+  /// observed during the silent stretch.
+  private let zeroSignalDecisionSnapshot: @MainActor () -> ZeroSignalDecisionSnapshot
+
+  /// #1578: where a zero-signal REFUSAL goes. Deliberately separate from
+  /// `stopTimeZeroSignalTelemetry` above: that one carries a
+  /// `CaptureStallContext` to the stall authority, and a refusal is not a stall.
+  ///
+  /// TWO producers feed it, and both matter. The terminal drain hands over the
+  /// backlog of reactive refusals whose forward was rejected; the STOP-time
+  /// branch hands over a single newly classified refusal for a run the reactive
+  /// path never saw. It takes an array because the atomic take returns one, and
+  /// the factory maps each element to exactly one emitted event.
+  private let zeroSignalRefusalSink: @MainActor ([ZeroSignalRefusalContext]) -> Void
   private let recordingStoppedTelemetry: @MainActor (_ sampleCount: Int) -> Void
 
   /// #1846: called SYNCHRONOUSLY the moment a session is accepted, before any
@@ -748,7 +765,8 @@ final class RecordingSessionKernel {
     // layer's `prepare()` actually opened (see that protocol property's doc for
     // why the kernel defers to it instead of independently resolving
     // `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`).
-    zeroSignalDeviceEligible: (@MainActor () -> Bool)? = nil,
+    zeroSignalDecisionSnapshot: (@MainActor () -> ZeroSignalDecisionSnapshot)? = nil,
+    zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in },
     recordingStoppedTelemetry: @escaping @MainActor (_ sampleCount: Int) -> Void = { _ in },
     sessionAcceptedTelemetry: @escaping @MainActor (_ takeID: String) -> Void = { _ in },
     markPipelineTimingStart: @escaping @MainActor () -> Void = {},
@@ -786,18 +804,36 @@ final class RecordingSessionKernel {
     // kernel cannot see) — instead of independently re-resolving
     // `preferredInputDeviceIDOverride`/`selectedInputDeviceUID`, which only
     // reflects the kernel's OWN view and can already differ from what actually
-    // got captured. Also checks `zeroSignalDiscriminatorSawIneligible` FIRST
-    // (#1317 cloud review round 2, second P2): a live re-check here would only
-    // see the device's CURRENT mute state, which can already have changed since
-    // a genuinely-muted silent stretch — that earlier ineligible result must
-    // stick.
-    self.zeroSignalDeviceEligible =
-      zeroSignalDeviceEligible
+    // got captured. #1578: it checks `zeroSignalRunWasClassifiedReactively`
+    // FIRST and takes the frozen `zeroSignalRefusalReason` when that is true —
+    // a live re-check would see only the device's CURRENT state, which can
+    // already have changed since the silent stretch, so the earlier categorical
+    // answer must stick. The legacy Boolean is no longer read here.
+    self.zeroSignalDecisionSnapshot =
+      zeroSignalDecisionSnapshot
       ?? {
-        guard !audioCapture.zeroSignalDiscriminatorSawIneligible else { return false }
-        guard let bound = audioCapture.zeroSignalDiscriminatorDevice else { return false }
-        return ZeroSignalDeviceDiscriminator.isEligible(bound: bound)
+        // #1578: the reactive producer already froze this run's reason, so read
+        // it rather than re-deriving. A live re-read here would only see the
+        // device's CURRENT state, which can already have changed since the
+        // silent stretch — that earlier answer must stick.
+        let wasClassifiedReactively = audioCapture.zeroSignalRunWasClassifiedReactively
+        let eligibility =
+          if wasClassifiedReactively {
+            // The flag and the reason are written together, so a true flag with
+            // no reason is a broken invariant. Fail closed THROUGH the one
+            // authority rather than manufacturing a case here — §3c's whole
+            // point is that the kernel never invents an outcome.
+            audioCapture.zeroSignalRefusalReason
+              ?? ZeroSignalDeviceDiscriminator.classify(bound: nil)
+          } else {
+            ZeroSignalDeviceDiscriminator.classify(
+              bound: audioCapture.zeroSignalDiscriminatorDevice)
+          }
+        return ZeroSignalDecisionSnapshot(
+          eligibility: eligibility,
+          currentRunWasClassifiedReactively: wasClassifiedReactively)
       }
+    self.zeroSignalRefusalSink = zeroSignalRefusalSink
     self.recordingStoppedTelemetry = recordingStoppedTelemetry
     self.sessionAcceptedTelemetry = sessionAcceptedTelemetry
     self.markPipelineTimingStart = markPipelineTimingStart
@@ -1410,6 +1446,15 @@ final class RecordingSessionKernel {
     // capture-teardown latency does not count as visible-recording time.
     stoppingStartedAtTick = currentTick()
     captureLifecycle = .stopping
+    // #1578 drain ownership point 1 of 2, and it MUST precede the await. A cancel
+    // can conclude the session while `stopCapture()` is suspended, return the FSM
+    // to idle, and let a NEW session start before this continuation resumes — at
+    // which point a drain here would either find the backlog already cleared or,
+    // worse, consume the new session's contexts. Claiming it before suspending
+    // makes this path the unambiguous owner of everything queued so far. Covers
+    // user, VAD and max-duration STOP plus every recoverable audio interruption,
+    // which falls through this same tail by the #1408 salvage design.
+    drainPendingZeroSignalRefusals()
     var captureResult = await audioCapture.stopCapture(sessionID: ownedCaptureSessionID)
     // Guard BEFORE touching kernel state — if a new session started while
     // `stopCapture()` was suspended, these fields belong to that session now
@@ -1515,48 +1560,42 @@ final class RecordingSessionKernel {
     // down (independent of eligibility — the #1520 gap).
     let signalZeroMode = Self.classifyZeroSignalAtStop(captureResult.samples)
 
-    // #1317 §3.6 STOP-win row: only when the reactive detector never fired
-    // for this session (raced by STOP, or the capture was too short to reach
-    // its own confidence threshold). MUST run before the no-speech gate
-    // below (N1) — that gate would otherwise swallow an all-zero capture as
-    // ordinary quiet-room silence. `zeroSignalDeviceEligible` resolves the
-    // SAME bound/selected/default precedence the reactive detector uses —
-    // the device the session actually captured from (Codex code-diff
-    // review: checking unconditionally the system default would misclassify
-    // a selected non-default mic that's genuinely muted while the system
-    // default happens to be alive+unmuted).
-    if telemetryState.zeroSignalFailureMode == nil,
-      let mode = signalZeroMode,
-      zeroSignalDeviceEligible()
-    {
-      telemetryState.zeroSignalFailureMode = mode
-      stopTimeZeroSignalTelemetry(
-        CaptureStallContext(
-          sessionID: audioCapture.currentCaptureSessionID,
-          armedAtUptimeNs: recordingStartedAtUptimeNs ?? DispatchTime.now().uptimeNanoseconds,
-          firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
-          route: audioCapture.currentAudioRoute,
-          sourceType: "stop_time_classification",
-          engineStartedSuccessfully: true,
-          tapInstalled: true,
-          formatMismatchObserved: false,
-          inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
-            ? nil : audioCapture.preferredInputDeviceIDOverride,
-          inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
-          failureMode: mode,
-          selectedTransport: audioCapture.currentResolvedRoute?.selected,
-          effectiveTransport: audioCapture.currentResolvedRoute?.effective,
-          routeReason: audioCapture.currentResolvedRoute?.routeReason,
-          routeFallbackReason: audioCapture.currentResolvedRoute?.routeFallbackReason,
-          inputSelectionMode: audioCapture.currentResolvedRoute?.inputSelectionMode,
-          outputTransport: audioCapture.currentResolvedRoute?.outputTransport,
-          routeResolutionSource: audioCapture.currentResolvedRoute?.routeResolutionSource,
-          // #1523: stamp the bound device's channel count on the zero-signal
-          // terminal. This is the near-silent-capture event §3a correlates a
-          // >1-channel count against (voice on a later channel → AUHAL takes
-          // channel 0 → silence), so the count belongs precisely here.
-          nativeChannelCount: captureResult.metadata?.nativeChannelCount
-        ))
+    // #1317 §3.6 STOP-win row: only when the reactive detector never classified
+    // this run (raced by STOP, or the capture was too short to reach its own
+    // confidence threshold). MUST run before the no-speech gate below (N1) —
+    // that gate would otherwise swallow an all-zero capture as ordinary
+    // quiet-room silence. `zeroSignalDecisionSnapshot` resolves the SAME
+    // bound-device precedence the reactive detector uses — the device the
+    // session actually captured from (Codex code-diff review: checking the
+    // system default unconditionally would misclassify a selected non-default
+    // mic that is genuinely unusable while the system default happens to be
+    // alive and unmuted).
+    //
+    // #1578: ONE snapshot read, then a three-way split. Reading it once matters —
+    // the production closure consults live capture state, so two reads could
+    // disagree within the same STOP.
+    if telemetryState.zeroSignalFailureMode == nil, let mode = signalZeroMode {
+      let decision = zeroSignalDecisionSnapshot()
+      if decision.currentRunWasClassifiedReactively {
+        // The reactive producer already owns this run's observation — whether it
+        // was delivered immediately or is waiting in the backlog for a drain.
+        // STOP adds nothing, or the same run counts twice.
+      } else if decision.eligibility == .eligible {
+        stampEligibleStopTimeZeroSignal(mode: mode, captureResult: captureResult)
+      } else {
+        // A run the reactive path never classified — too short to reach its
+        // threshold, or raced by STOP — and the device is not eligible. This is
+        // the ONLY new event STOP itself produces, and it deliberately does not
+        // stamp `zeroSignalFailureMode`: a refusal is an observation, not the
+        // stall confirmation that stamp represents.
+        zeroSignalRefusalSink([
+          ZeroSignalRefusalContext(
+            sessionID: audioCapture.currentCaptureSessionID,
+            reason: decision.eligibility,
+            transport: audioCapture.currentResolvedRoute?.effective ?? "unknown",
+            failureShape: mode)
+        ])
+      }
     }
 
     // Map the eligibility-gated stamp ONCE — it drives both the retire's stamp arm
@@ -1589,8 +1628,8 @@ final class RecordingSessionKernel {
       let effectiveTransport = takeRoute?.effective ?? "unknown"
       // The retire ran on the sample fact alone (no eligibility-gated stamp) —
       // the #1520 signature. Derived from the already-computed stamp outcome,
-      // never a re-call of `zeroSignalDeviceEligible()` (which reads a
-      // possibly-changed live mute state).
+      // never a re-call of `zeroSignalDecisionSnapshot()` (which can read a
+      // since-changed live device state).
       let healthGuessRefused = signalZeroMode != nil && zeroSignalRecoveryMode == nil
       deadMicRetireAttemptTelemetry(
         DeadMicRetireAttemptContext(
@@ -3391,15 +3430,72 @@ final class RecordingSessionKernel {
     }
   }
 
-  /// Conclude the session: set the ending `recordingOutcome`, return the FSM to
-  /// `.idle`, run nonblocking cleanup, drain the task bag (PR-1 §B.1.6, PR-3
-  /// plan §3.1a — cancel + clear, never `await`). Discards the adapter's open
-  /// session and stops the capture engine if either is still in flight (PR-1
-  /// §B.1.3 cleanup column; Codex P1b / P2-r3). `recordingOutcome != nil` is
-  /// the session-concluded barrier (#1548 D1).
+  /// #1317 §3.6, extracted at #1578: the ELIGIBLE STOP-time zero-signal stamp,
+  /// byte-for-byte the behaviour that shipped — same stamp, same context, same
+  /// authority. It moved into its own method only because the call site now
+  /// branches three ways, and an inline 40-line arm would have buried the
+  /// branch that matters.
+  @MainActor
+  private func stampEligibleStopTimeZeroSignal(
+    mode: CaptureStallFailureMode, captureResult: CaptureResult
+  ) {
+    telemetryState.zeroSignalFailureMode = mode
+    stopTimeZeroSignalTelemetry(
+      CaptureStallContext(
+        sessionID: audioCapture.currentCaptureSessionID,
+        armedAtUptimeNs: recordingStartedAtUptimeNs ?? DispatchTime.now().uptimeNanoseconds,
+        firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
+        route: audioCapture.currentAudioRoute,
+        sourceType: "stop_time_classification",
+        engineStartedSuccessfully: true,
+        tapInstalled: true,
+        formatMismatchObserved: false,
+        inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
+          ? nil : audioCapture.preferredInputDeviceIDOverride,
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+        failureMode: mode,
+        selectedTransport: audioCapture.currentResolvedRoute?.selected,
+        effectiveTransport: audioCapture.currentResolvedRoute?.effective,
+        routeReason: audioCapture.currentResolvedRoute?.routeReason,
+        routeFallbackReason: audioCapture.currentResolvedRoute?.routeFallbackReason,
+        inputSelectionMode: audioCapture.currentResolvedRoute?.inputSelectionMode,
+        outputTransport: audioCapture.currentResolvedRoute?.outputTransport,
+        routeResolutionSource: audioCapture.currentResolvedRoute?.routeResolutionSource,
+        // #1523: stamp the bound device's channel count on the zero-signal
+        // terminal. This is the near-silent-capture event §3a correlates a
+        // >1-channel count against (voice on a later channel → AUHAL takes
+        // channel 0 → silence), so the count belongs precisely here.
+        nativeChannelCount: captureResult.metadata?.nativeChannelCount
+      ))
+  }
+
+  /// #1578: hand every rejected reactive refusal to the sink, exactly once.
+  /// This is ONE of the sink's two producers — the STOP-time branch submits its
+  /// own single newly classified refusal directly.
   ///
-  /// Fixed order (§5.3 r4): floor + `isLegalConclusion` validate → set
-  /// `recordingOutcome` → `→ .idle` → drain.
+  /// Synchronous by contract. `takePendingZeroSignalRefusals()` is an atomic
+  /// MainActor take-and-clear, so a second caller — a cancel landing while
+  /// `stopCapture()` is suspended — finds an empty array instead of a duplicate.
+  /// Adding an `await`, a `Task`, or a lock here would reopen exactly the window
+  /// that contract closes.
+  @MainActor
+  private func drainPendingZeroSignalRefusals() {
+    let contexts = audioCapture.takePendingZeroSignalRefusals()
+    guard !contexts.isEmpty else { return }
+    zeroSignalRefusalSink(contexts)
+  }
+
+  /// Conclude the session: set the ending `recordingOutcome`, drain pending
+  /// zero-signal refusals, return the FSM to `.idle`, run nonblocking cleanup,
+  /// and drain the task bag (PR-1 §B.1.6, PR-3 plan §3.1a — cancel + clear,
+  /// never `await`). Discards the adapter's open session and stops the capture
+  /// engine if either is still in flight (PR-1 §B.1.3 cleanup column; Codex
+  /// P1b / P2-r3). `recordingOutcome != nil` is the session-concluded barrier
+  /// (#1548 D1).
+  ///
+  /// Fixed order (§5.3 r4, #1578): validate the floor and legal conclusion →
+  /// set `recordingOutcome` → stamp `lastTakeID` (#1846) → drain pending
+  /// zero-signal refusals → transition to `.idle` → drain the task bag.
   private func finishTerminal(_ rawOutcome: RecordingOutcome, sid: SessionID) {
     // Set-once barrier: `isCurrent` fences stale sessions; `recordingOutcome ==
     // nil` prevents a double conclusion.
@@ -3419,6 +3515,14 @@ final class RecordingSessionKernel {
     // `isCurrent(sid)` guard above already proved they match, and `sid` is
     // unambiguously the session being concluded.
     lastTakeID = sid.raw.uuidString
+    // #1578 drain ownership point 2 of 2 — cancellation, non-recoverable
+    // interruption, and every other direct terminal. Placed AFTER the set-once
+    // outcome write so a stale or losing terminal (both bail on the guard above)
+    // cannot consume a backlog it does not own, and BEFORE the idle transition
+    // below so a newly started session cannot clear or repopulate capture state
+    // first. When a normal STOP already claimed the backlog, the atomic take
+    // returns empty here and the helper does nothing.
+    drainPendingZeroSignalRefusals()
     #if DEBUG
       // #1755 chunk 6: crash-boundary hold — immediately after the set-once
       // outcome write, before the idle transition and downstream cleanup.

@@ -132,9 +132,12 @@ final class KernelHeartPathTelemetryObserver {
 
   // MARK: Capture-diagnostic callbacks (the kernel does not consume these)
   //
-  // These three method names match `HeartPathTelemetryTarget`; the
-  // App-facing `KernelDictationDriver` conforms to that protocol and forwards
-  // its three methods here. The observer is the single telemetry brain.
+  // These method names match `HeartPathTelemetryTarget`; the App-facing
+  // `KernelDictationDriver` conforms to that protocol and forwards its two
+  // methods here. The observer is the single telemetry brain.
+  //
+  // The two are NOT symmetric, and the difference lives in the driver: a stall
+  // also reaches `kernel.externalCaptureStalled`, a refusal never does.
 
   /// Capture-stall telemetry. Reached through the driver's
   /// `HeartPathTelemetryTarget` conformance (PR-4 §3.9).
@@ -151,6 +154,14 @@ final class KernelHeartPathTelemetryObserver {
       captureRebuiltForFormat: stabilization.rebuiltForFormat
     )
     emitter.stallFired(ctx: enriched, isActivelyCapturing: audioCapture.isActivelyCapturing)
+  }
+
+  /// #1578: zero-signal refusal telemetry. A pure forward — unlike the stall
+  /// above it reads no kernel state, enriches nothing, and creates no error.
+  /// The context arrives complete from the capture layer, which is the only
+  /// layer that knows which device it classified.
+  func handleZeroSignalRefusal(_ context: ZeroSignalRefusalContext) {
+    emitter.zeroSignalRefused(context)
   }
 
   // MARK: Raw-state observation

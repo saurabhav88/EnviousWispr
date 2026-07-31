@@ -1214,6 +1214,18 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     kernel.externalCaptureStalled(ctx)
   }
 
+  /// #1578: ONE arm, deliberately — the observer only.
+  ///
+  /// This is the asymmetry with `handleCaptureStall` directly above, and the
+  /// single easiest mistake in this change. A refusal means the discriminator
+  /// DECLINED to treat the silence as a harness glitch, so the take stays on
+  /// today's silent no-speech path. Calling `kernel.externalCaptureStalled`
+  /// here would latch a recording exit and turn an observability change into a
+  /// behaviour regression.
+  public func handleZeroSignalRefusal(_ context: ZeroSignalRefusalContext) {
+    observer.handleZeroSignalRefusal(context)
+  }
+
   // MARK: DEBUG
 
   #if DEBUG
