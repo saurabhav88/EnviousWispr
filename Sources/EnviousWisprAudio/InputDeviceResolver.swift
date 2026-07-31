@@ -20,6 +20,11 @@ enum InputResolutionSource: String, Sendable, Equatable {
 enum InputEnumerationOutcome: String, Sendable, Equatable {
   case notAttempted = "not_attempted"
   case succeeded
+  /// The list read, but at least one device in it did not (#1714 cloud review
+  /// r2). Its own case rather than a flag because it is the one field that makes
+  /// this path visible in the field, and the race that produces it — a device
+  /// unplugged between two CoreAudio calls — cannot be constructed in a test.
+  case succeededPartial = "succeeded_partial"
   case readFailed = "read_failed"
 }
 
@@ -124,7 +129,7 @@ struct InputDeviceResolver {
     // The only enumeration in this function.
     let snapshot = inputDeviceSnapshot()
 
-    guard case .success(let candidates) = snapshot else {
+    guard case .success(let candidates, let listComplete) = snapshot else {
       // Founder decision 2026-07-30, overriding plan §3 rung 7: a pinned device
       // we cannot find — dead AirPods, out of range, unplugged, or a list we
       // could not even read — swaps to auto, and that behaviour must not be
@@ -172,7 +177,7 @@ struct InputDeviceResolver {
       InputDeviceResolution(
         outcome: outcome,
         defaultPresent: defaultID != nil,
-        enumerationOutcome: .succeeded,
+        enumerationOutcome: listComplete ? .succeeded : .succeededPartial,
         inputDeviceCount: candidates.count,
         eligibleDeviceCount: eligible.count,
         selectedTransport: AudioDeviceEnumerator.transportLabel(forTransportType: transport)
@@ -209,9 +214,18 @@ struct InputDeviceResolver {
 
     // Nothing eligible. Which error depends on whether the list PROVES there is
     // no microphone, or merely fails to prove there is one.
-    let provesAbsence = candidates.allSatisfy {
-      AudioDeviceEnumerator.isKnownNonMicrophoneTransport($0.rawTransport)
-    }
+    //
+    // `listComplete` is the first term for two reasons. An INCOMPLETE list can
+    // never prove absence — the device we failed to read is exactly the one that
+    // might have been a microphone. And `allSatisfy` is vacuously TRUE on an
+    // empty array, so without this gate an enumeration where every single device
+    // failed its read would sail into "connect a microphone", which is the
+    // strongest possible false claim from the weakest possible evidence.
+    let provesAbsence =
+      listComplete
+      && candidates.allSatisfy {
+        AudioDeviceEnumerator.isKnownNonMicrophoneTransport($0.rawTransport)
+      }
     return resolution(
       .failed(
         provesAbsence
@@ -252,7 +266,13 @@ struct InputDeviceResolver {
     }
 
     // Pinned: one snapshot, purely to ask "is the chosen device back?".
-    guard case .success(let candidates) = inputDeviceSnapshot() else {
+    //
+    // Completeness is deliberately ignored here, unlike the cold ladder. This
+    // asks only whether the pinned device was SEEN, and a partial list either
+    // contains it or does not. Not finding it already falls through to the
+    // conservative answer below, which is the same answer an unreadable device
+    // deserves — so there is nothing for a completeness check to change.
+    guard case .success(let candidates, _) = inputDeviceSnapshot() else {
       // The read failed, so it has NOT shown the pinned device returned. Fall
       // back to the same question Auto asks rather than guessing.
       return matchesDefaultOrKeepsFallback(bound, defaultID: defaultID)

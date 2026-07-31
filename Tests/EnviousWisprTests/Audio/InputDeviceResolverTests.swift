@@ -4,6 +4,23 @@ import Testing
 
 @testable import EnviousWisprAudio
 
+/// Names the completeness axis at every construction site (#1714 cloud review
+/// r2). Deliberately NOT a defaulted parameter: `complete` decides whether an
+/// unusable list may tell the user to connect a microphone, so a test must say
+/// which world it is describing rather than inherit one silently.
+extension InputDeviceSnapshot {
+  /// Every enumerated device was readable — the ordinary case.
+  static func complete(_ candidates: [InputDeviceCandidate]) -> InputDeviceSnapshot {
+    .success(candidates: candidates, complete: true)
+  }
+
+  /// At least one enumerated device could not be read, so the list can no
+  /// longer prove that a microphone is absent.
+  static func partial(_ candidates: [InputDeviceCandidate]) -> InputDeviceSnapshot {
+    .success(candidates: candidates, complete: false)
+  }
+}
+
 // #1714 — freezes the capture device-selection ladder.
 //
 // Entirely hardware-free: every fact arrives through the resolver's two injected
@@ -99,7 +116,7 @@ struct InputDeviceResolverTests {
 
   @Test("default present on Auto selects it and never enumerates")
   func defaultPresentSkipsEnumeration() {
-    let spy = SnapshotSpy(.success([candidate(7, "built-in", kAudioDeviceTransportTypeBuiltIn)]))
+    let spy = SnapshotSpy(.complete([candidate(7, "built-in", kAudioDeviceTransportTypeBuiltIn)]))
     let result = resolve(defaultID: 42, spy: spy)
 
     #expect(result.selectedDeviceID == 42)
@@ -114,7 +131,7 @@ struct InputDeviceResolverTests {
 
   @Test("an empty preferred UID is treated as Auto, not as a device named empty")
   func emptyPreferredUIDIsAuto() {
-    let spy = SnapshotSpy(.success([candidate(110, "", kAudioDeviceTransportTypeVirtual)]))
+    let spy = SnapshotSpy(.complete([candidate(110, "", kAudioDeviceTransportTypeVirtual)]))
     let result = resolve(preferredUID: "", defaultID: 42, spy: spy)
 
     // Auto with a present default: no enumeration, and crucially NOT a match
@@ -129,7 +146,7 @@ struct InputDeviceResolverTests {
   @Test("pinned UID present in the frozen snapshot wins over the system default")
   func pinnedUIDWins() {
     let spy = SnapshotSpy(
-      .success([
+      .complete([
         candidate(10, "other", kAudioDeviceTransportTypeUSB),
         candidate(11, "wanted", kAudioDeviceTransportTypeUSB),
       ]))
@@ -150,7 +167,7 @@ struct InputDeviceResolverTests {
     let result = resolve(
       preferredUID: "my-aggregate",
       defaultID: nil,
-      snapshot: .success([
+      snapshot: .complete([
         candidate(20, "my-aggregate", kAudioDeviceTransportTypeAggregate)
       ]))
 
@@ -165,7 +182,7 @@ struct InputDeviceResolverTests {
   @Test("pinned UID absent falls through to the system default")
   func pinnedUIDAbsentFallsBackToDefault() {
     let spy = SnapshotSpy(
-      .success([
+      .complete([
         candidate(10, "something-else", kAudioDeviceTransportTypeUSB),
         candidate(42, "system-default", kAudioDeviceTransportTypeBuiltIn),
       ]))
@@ -187,7 +204,7 @@ struct InputDeviceResolverTests {
     let result = resolve(
       preferredUID: "gone",
       defaultID: 999,
-      snapshot: .success([candidate(10, "something-else", kAudioDeviceTransportTypeUSB)]))
+      snapshot: .complete([candidate(10, "something-else", kAudioDeviceTransportTypeUSB)]))
 
     #expect(result.selectedDeviceID == 999)
     #expect(result.resolutionSource == .systemDefault)
@@ -198,7 +215,7 @@ struct InputDeviceResolverTests {
 
   @Test("default absent selects the built-in microphone from the frozen list")
   func defaultAbsentSelectsBuiltIn() {
-    let spy = SnapshotSpy(.success([candidate(30, "builtin", kAudioDeviceTransportTypeBuiltIn)]))
+    let spy = SnapshotSpy(.complete([candidate(30, "builtin", kAudioDeviceTransportTypeBuiltIn)]))
     let result = resolve(defaultID: nil, spy: spy)
 
     #expect(result.selectedDeviceID == 30)
@@ -214,7 +231,7 @@ struct InputDeviceResolverTests {
   func defaultAbsentSelectsUSB() {
     let result = resolve(
       defaultID: nil,
-      snapshot: .success([candidate(31, "usb-mic", kAudioDeviceTransportTypeUSB)]))
+      snapshot: .complete([candidate(31, "usb-mic", kAudioDeviceTransportTypeUSB)]))
 
     #expect(result.selectedDeviceID == 31)
     #expect(result.resolutionSource == .listFallback)
@@ -226,7 +243,7 @@ struct InputDeviceResolverTests {
     // Ordering matters: "first eligible" alone would pick the USB device.
     let result = resolve(
       defaultID: nil,
-      snapshot: .success([
+      snapshot: .complete([
         candidate(40, "usb-mic", kAudioDeviceTransportTypeUSB),
         candidate(41, "builtin", kAudioDeviceTransportTypeBuiltIn),
       ]))
@@ -242,7 +259,7 @@ struct InputDeviceResolverTests {
     // alongside the real microphone. Binding either records digital silence.
     let result = resolve(
       defaultID: nil,
-      snapshot: .success([
+      snapshot: .complete([
         candidate(50, "BlackHole2ch", kAudioDeviceTransportTypeVirtual),
         candidate(51, "TeamsAudio", kAudioDeviceTransportTypeVirtual),
         candidate(52, "aggregate", kAudioDeviceTransportTypeAggregate),
@@ -258,7 +275,7 @@ struct InputDeviceResolverTests {
   func unclassifiableDoesNotBlockAnEligibleDevice() {
     let result = resolve(
       defaultID: nil,
-      snapshot: .success([
+      snapshot: .complete([
         candidate(80, "mystery", nil),
         candidate(81, "usb-mic", kAudioDeviceTransportTypeUSB),
       ]))
@@ -273,7 +290,7 @@ struct InputDeviceResolverTests {
 
   @Test("successful but empty enumeration reports no microphone")
   func emptyEnumerationIsAbsence() {
-    let result = resolve(defaultID: nil, snapshot: .success([]))
+    let result = resolve(defaultID: nil, snapshot: .complete([]))
 
     #expect(result.selectedDeviceID == nil)
     #expect(isNoMicrophoneFound(result.thrownError))
@@ -286,13 +303,69 @@ struct InputDeviceResolverTests {
   func onlyKnownNonMicrophonesIsAbsence() {
     let result = resolve(
       defaultID: nil,
-      snapshot: .success([
+      snapshot: .complete([
         candidate(60, "BlackHole2ch", kAudioDeviceTransportTypeVirtual),
         candidate(61, "aggregate", kAudioDeviceTransportTypeAggregate),
       ]))
 
     #expect(isNoMicrophoneFound(result.thrownError))
     #expect(result.eligibleDeviceCount == 0)
+  }
+
+  // MARK: - Partial enumeration: one device unreadable, the rest still usable
+
+  @Test("an unreadable device never costs the user the microphones that ARE readable")
+  func partialEnumerationStillSelectsAReadableDevice() {
+    // #1714 cloud review r2. A USB stick pulled mid-enumeration makes its own
+    // properties unreadable; the built-in microphone beside it is untouched.
+    // Refusing to dictate here would break founder priority 1.
+    let result = resolve(
+      defaultID: nil,
+      snapshot: .partial([candidate(80, "builtin", kAudioDeviceTransportTypeBuiltIn)]))
+
+    #expect(result.selectedDeviceID == 80)
+    #expect(result.resolutionSource == .listFallback)
+    #expect(result.thrownError == nil)
+    #expect(result.enumerationOutcome == .succeededPartial)
+  }
+
+  @Test("an incomplete list never claims the microphone is missing")
+  func partialEnumerationWithNothingLeftIsUncertaintyNotAbsence() {
+    // The vacuous-truth trap: `allSatisfy` on an EMPTY array returns true, so
+    // without the completeness gate an enumeration where every device failed
+    // its read would produce the strongest possible claim from the weakest
+    // possible evidence.
+    let result = resolve(defaultID: nil, snapshot: .partial([]))
+
+    #expect(result.selectedDeviceID == nil)
+    #expect(isNoMicrophoneFound(result.thrownError) == false)
+    #expect(result.enumerationOutcome == .succeededPartial)
+  }
+
+  @Test("an incomplete list of only virtual devices is still uncertainty")
+  func partialEnumerationOfNonMicrophonesDoesNotProveAbsence() {
+    // The same list COMPLETE proves absence (see `onlyKnownNonMicrophonesIsAbsence`).
+    // Completeness is the only difference, so this pins the gate itself rather
+    // than the transport classification.
+    let result = resolve(
+      defaultID: nil,
+      snapshot: .partial([candidate(81, "BlackHole2ch", kAudioDeviceTransportTypeVirtual)]))
+
+    #expect(isNoMicrophoneFound(result.thrownError) == false)
+    #expect(result.enumerationOutcome == .succeededPartial)
+  }
+
+  @Test("a complete enumeration still reports plain succeeded")
+  func completeEnumerationReportsSucceeded() {
+    // Two-way control for the telemetry field: without this, a bug that marked
+    // every enumeration partial would pass all three tests above while making
+    // the "connect a microphone" message unreachable forever.
+    let result = resolve(
+      defaultID: nil,
+      snapshot: .complete([candidate(82, "builtin", kAudioDeviceTransportTypeBuiltIn)]))
+
+    #expect(result.selectedDeviceID == 82)
+    #expect(result.enumerationOutcome == .succeeded)
   }
 
   // MARK: - Uncertainty: the list fails to prove anything
@@ -330,7 +403,7 @@ struct InputDeviceResolverTests {
   func unreadableTransportIsUncertainty() {
     let result = resolve(
       defaultID: nil,
-      snapshot: .success([candidate(70, "mystery", nil)]))
+      snapshot: .complete([candidate(70, "mystery", nil)]))
 
     #expect(
       diagnosticSource(result.thrownError) == "InputDeviceResolver.unclassifiable_input_transport")
@@ -341,7 +414,7 @@ struct InputDeviceResolverTests {
   func unknownTransportIsUncertainty() {
     let result = resolve(
       defaultID: nil,
-      snapshot: .success([candidate(71, "unknown", kAudioDeviceTransportTypeUnknown)]))
+      snapshot: .complete([candidate(71, "unknown", kAudioDeviceTransportTypeUnknown)]))
 
     #expect(
       diagnosticSource(result.thrownError) == "InputDeviceResolver.unclassifiable_input_transport")
@@ -351,7 +424,7 @@ struct InputDeviceResolverTests {
   func futureTransportIsUncertainty() {
     let result = resolve(
       defaultID: nil,
-      snapshot: .success([candidate(72, "future", Self.futureUnknownTransport)]))
+      snapshot: .complete([candidate(72, "future", Self.futureUnknownTransport)]))
 
     #expect(
       diagnosticSource(result.thrownError) == "InputDeviceResolver.unclassifiable_input_transport")
@@ -364,7 +437,7 @@ struct InputDeviceResolverTests {
     // microphone exists, so the user must not be told to connect one.
     let result = resolve(
       defaultID: nil,
-      snapshot: .success([candidate(73, "airplay", kAudioDeviceTransportTypeAirPlay)]))
+      snapshot: .complete([candidate(73, "airplay", kAudioDeviceTransportTypeAirPlay)]))
 
     #expect(
       diagnosticSource(result.thrownError) == "InputDeviceResolver.unclassifiable_input_transport")
@@ -382,7 +455,7 @@ struct InputDeviceResolverTests {
     // And end to end: a lone device on this transport is selectable.
     let result = resolve(
       defaultID: nil,
-      snapshot: .success([candidate(90, entry.name, entry.raw)]))
+      snapshot: .complete([candidate(90, entry.name, entry.raw)]))
     #expect(result.selectedDeviceID == 90)
     #expect(result.resolutionSource == .listFallback)
   }
@@ -429,10 +502,10 @@ struct InputDeviceResolverTests {
   func enumeratesAtMostOnce() {
     let snapshots: [InputDeviceSnapshot] = [
       .readFailed,
-      .success([]),
-      .success([candidate(100, "builtin", kAudioDeviceTransportTypeBuiltIn)]),
-      .success([candidate(101, "virtual", kAudioDeviceTransportTypeVirtual)]),
-      .success([candidate(102, "mystery", nil)]),
+      .complete([]),
+      .complete([candidate(100, "builtin", kAudioDeviceTransportTypeBuiltIn)]),
+      .complete([candidate(101, "virtual", kAudioDeviceTransportTypeVirtual)]),
+      .complete([candidate(102, "mystery", nil)]),
     ]
     var enumeratedAtLeastOnce = false
     for snapshot in snapshots {
@@ -478,7 +551,7 @@ struct InputDeviceResolverTests {
   // MIGRATED: "nil target resolves to current system default input".
   @Test("Auto: a bind on the current default stays compatible, and never enumerates")
   func warmAutoMatchesDefault() {
-    let spy = SnapshotSpy(.success([candidate(1, "anything", kAudioDeviceTransportTypeUSB)]))
+    let spy = SnapshotSpy(.complete([candidate(1, "anything", kAudioDeviceTransportTypeUSB)]))
 
     #expect(warmCompatible(bind(42, .systemDefault), defaultID: 42, spy: spy))
     #expect(spy.callCount == 0, "Auto must answer from the default alone")
@@ -487,7 +560,7 @@ struct InputDeviceResolverTests {
   // MIGRATED: the stale-default half of the old Auto reuse pair.
   @Test("Auto: a bind on a stale default is rejected")
   func warmAutoRejectsStaleDefault() {
-    let spy = SnapshotSpy(.success([]))
+    let spy = SnapshotSpy(.complete([]))
 
     #expect(!warmCompatible(bind(42, .systemDefault), defaultID: 43, spy: spy))
     #expect(spy.callCount == 0)
@@ -497,7 +570,7 @@ struct InputDeviceResolverTests {
   @Test("Pinned: a bind on the pinned device stays compatible")
   func warmPinnedMatches() {
     let spy = SnapshotSpy(
-      .success([candidate(99, "present", kAudioDeviceTransportTypeUSB)]))
+      .complete([candidate(99, "present", kAudioDeviceTransportTypeUSB)]))
 
     #expect(
       warmCompatible(bind(99, .pinnedUID), preferredUID: "present", defaultID: 42, spy: spy))
@@ -509,7 +582,7 @@ struct InputDeviceResolverTests {
     // The founder's rule forwards: the chosen mic is back, so it takes the take
     // back. Rejecting here is what forces the next open to be cold and pinned.
     let spy = SnapshotSpy(
-      .success([candidate(77, "airpods", kAudioDeviceTransportTypeBluetooth)]))
+      .complete([candidate(77, "airpods", kAudioDeviceTransportTypeBluetooth)]))
 
     #expect(
       !warmCompatible(
@@ -520,36 +593,36 @@ struct InputDeviceResolverTests {
   @Test("Pinned but absent: compatibility falls through to the current default")
   func warmPinnedAbsentTracksDefault() {
     let spy = SnapshotSpy(
-      .success([candidate(1, "something-else", kAudioDeviceTransportTypeUSB)]))
+      .complete([candidate(1, "something-else", kAudioDeviceTransportTypeUSB)]))
 
     #expect(
       warmCompatible(bind(42, .systemDefault), preferredUID: "gone", defaultID: 42, spy: spy))
 
     let spy2 = SnapshotSpy(
-      .success([candidate(1, "something-else", kAudioDeviceTransportTypeUSB)]))
+      .complete([candidate(1, "something-else", kAudioDeviceTransportTypeUSB)]))
     #expect(
       !warmCompatible(bind(42, .systemDefault), preferredUID: "gone", defaultID: 43, spy: spy2))
   }
 
   @Test("Auto with no default: only a list_fallback bind survives")
   func warmAutoNoDefaultKeepsFallbackOnly() {
-    let spy = SnapshotSpy(.success([]))
+    let spy = SnapshotSpy(.complete([]))
     #expect(warmCompatible(bind(30, .listFallback), defaultID: nil, spy: spy))
     #expect(spy.callCount == 0)
 
     // A bind that came from a since-vanished default is NOT made correct by the
     // default vanishing. Only a bind chosen BECAUSE none existed still holds.
-    let spy2 = SnapshotSpy(.success([]))
+    let spy2 = SnapshotSpy(.complete([]))
     #expect(!warmCompatible(bind(30, .systemDefault), defaultID: nil, spy: spy2))
 
-    let spy3 = SnapshotSpy(.success([]))
+    let spy3 = SnapshotSpy(.complete([]))
     #expect(!warmCompatible(bind(30, .pinnedUID), defaultID: nil, spy: spy3))
   }
 
   @Test("Pinned absent with no default: a list_fallback bind survives")
   func warmPinnedAbsentNoDefaultKeepsFallback() {
     let spy = SnapshotSpy(
-      .success([candidate(1, "something-else", kAudioDeviceTransportTypeUSB)]))
+      .complete([candidate(1, "something-else", kAudioDeviceTransportTypeUSB)]))
 
     #expect(
       warmCompatible(
@@ -578,7 +651,7 @@ struct InputDeviceResolverTests {
     // A snapshot holding an eligible built-in mic must NOT make an incompatible
     // bind compatible. Ranking belongs to cold opens only.
     let spy = SnapshotSpy(
-      .success([
+      .complete([
         candidate(55, "builtin", kAudioDeviceTransportTypeBuiltIn),
         candidate(56, "usb", kAudioDeviceTransportTypeUSB),
       ]))
@@ -601,7 +674,8 @@ struct InputDeviceResolverTests {
     // down. The enumerator now returns `.readFailed` instead, which lands here.
     let result = resolve(defaultID: nil, snapshot: .readFailed)
 
-    #expect(isNoMicrophoneFound(result.thrownError) == false, "never claim absence on a failed read")
+    #expect(
+      isNoMicrophoneFound(result.thrownError) == false, "never claim absence on a failed read")
     #expect(diagnosticSource(result.thrownError) == "InputDeviceResolver.enumerate_input_devices")
     #expect(result.enumerationOutcome == .readFailed)
     // Counts stay unknown rather than zero: 0 would read as an empty machine.

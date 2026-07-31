@@ -32,7 +32,20 @@ struct InputDeviceCandidate: Sendable, Equatable {
 /// telling the user to connect a microphone after a failed READ would be a
 /// false statement.
 enum InputDeviceSnapshot: Sendable, Equatable {
-  case success([InputDeviceCandidate])
+  /// Devices we could read, plus whether we managed to read them ALL.
+  ///
+  /// The two facts are separate because a per-device read failure must not cost
+  /// the user the devices that ARE readable (#1714 cloud review r2). A USB stick
+  /// pulled mid-enumeration makes its own properties unreadable while the
+  /// built-in microphone beside it stays perfectly usable, and refusing to
+  /// dictate there would break founder priority 1 — dictation works whenever it
+  /// physically can.
+  ///
+  /// `complete: false` narrows to exactly one thing: the list can no longer
+  /// PROVE absence. Candidates in hand stay fully usable; an EMPTY incomplete
+  /// list is uncertainty, never grounds for "connect a microphone".
+  case success(candidates: [InputDeviceCandidate], complete: Bool)
+  /// The device LIST itself could not be read, so we hold no candidates at all.
   case readFailed
 }
 
@@ -130,14 +143,20 @@ public enum AudioDeviceEnumerator {
     guard let deviceIDs = systemDeviceIDs() else { return .readFailed }
 
     var candidates: [InputDeviceCandidate] = []
+    var complete = true
     for deviceID in deviceIDs {
-      // #1714 whole-diff review: a FAILED channel-count read must not be dropped
-      // like an output-only device. If it were the only microphone, the snapshot
-      // would come back successfully empty and the resolver would treat that as
-      // PROOF no microphone exists — the exact failure-vs-empty conflation this
-      // type exists to prevent, one level down. Fail the whole snapshot to
-      // uncertainty instead.
-      guard let channels = inputChannelCountRaw(for: deviceID) else { return .readFailed }
+      // A FAILED channel-count read is not an output-only device (#1714
+      // whole-diff review) and is not grounds for discarding the devices we CAN
+      // read (#1714 cloud review r2). It means exactly one thing: we do not know
+      // what this device is. So it becomes neither a candidate nor evidence —
+      // it is skipped, and the snapshot records that it can no longer prove
+      // absence. Collapsing this to a candidate would risk binding a device we
+      // never verified; collapsing it to a whole-snapshot failure would throw
+      // away working microphones.
+      guard let channels = inputChannelCountRaw(for: deviceID) else {
+        complete = false
+        continue
+      }
       guard channels > 0 else { continue }
       candidates.append(
         InputDeviceCandidate(
@@ -146,7 +165,7 @@ public enum AudioDeviceEnumerator {
           rawTransport: transportTypeRaw(for: deviceID)
         ))
     }
-    return .success(candidates)
+    return .success(candidates: candidates, complete: complete)
   }
 
   /// The closed allow-list of transports we will bind a microphone on (#1714).

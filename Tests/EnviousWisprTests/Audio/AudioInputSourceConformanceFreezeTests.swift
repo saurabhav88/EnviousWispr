@@ -123,7 +123,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
     let source = HALDeviceInputSource()
     source.inputDeviceResolver = InputDeviceResolver(
       defaultInputDeviceID: { 42 },
-      inputDeviceSnapshot: { Issue.record("Auto must not enumerate"); return .success([]) }
+      inputDeviceSnapshot: { Issue.record("Auto must not enumerate"); return .complete([]) }
     )
     source.setBoundInputDeviceForTesting(committedBind(42))
 
@@ -136,7 +136,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
     nonisolated(unsafe) var currentDefault: AudioDeviceID = 42
     source.inputDeviceResolver = InputDeviceResolver(
       defaultInputDeviceID: { currentDefault },
-      inputDeviceSnapshot: { Issue.record("Auto must not enumerate"); return .success([]) }
+      inputDeviceSnapshot: { Issue.record("Auto must not enumerate"); return .complete([]) }
     )
     source.setBoundInputDeviceForTesting(committedBind(42))
 
@@ -153,7 +153,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
     // absent one must refuse rather than pass a partial value to the resolver.
     let source = HALDeviceInputSource()
     source.inputDeviceResolver = InputDeviceResolver(
-      defaultInputDeviceID: { 42 }, inputDeviceSnapshot: { .success([]) })
+      defaultInputDeviceID: { 42 }, inputDeviceSnapshot: { .complete([]) })
 
     #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
   }
@@ -237,7 +237,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
       defaultInputDeviceID: { currentDefault },
       // The pinned device is genuinely absent from the list.
       inputDeviceSnapshot: {
-        .success([
+        .complete([
           InputDeviceCandidate(
             id: 42, uid: "something-else", rawTransport: kAudioDeviceTransportTypeBuiltIn)
         ])
@@ -262,7 +262,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
     source.inputDeviceResolver = InputDeviceResolver(
       defaultInputDeviceID: { nil },
       inputDeviceSnapshot: {
-        .success([
+        .complete([
           InputDeviceCandidate(
             id: 77, uid: "airpods", rawTransport: kAudioDeviceTransportTypeBluetooth)
         ])
@@ -297,7 +297,7 @@ struct HALInputResolutionFinalizationTests {
     let source = HALDeviceInputSource()
     // Successful but empty enumeration: the resolver's proven-absence path.
     source.inputDeviceResolver = InputDeviceResolver(
-      defaultInputDeviceID: { nil }, inputDeviceSnapshot: { .success([]) })
+      defaultInputDeviceID: { nil }, inputDeviceSnapshot: { .complete([]) })
 
     nonisolated(unsafe) var finalised: [FinalizedInputResolutionAttempt] = []
     source.onInputResolutionAttemptFinalized = { finalised.append($0) }
@@ -353,7 +353,7 @@ struct HALInputResolutionFinalizationTests {
   func nilCallbackIsHarmless() async {
     let source = HALDeviceInputSource()
     source.inputDeviceResolver = InputDeviceResolver(
-      defaultInputDeviceID: { nil }, inputDeviceSnapshot: { .success([]) })
+      defaultInputDeviceID: { nil }, inputDeviceSnapshot: { .complete([]) })
     source.onInputResolutionAttemptFinalized = nil
 
     await #expect(throws: AudioError.self) { try await source.prepare() }
