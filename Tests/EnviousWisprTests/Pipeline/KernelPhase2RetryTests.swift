@@ -45,7 +45,16 @@ struct KernelPhase2RetryTests {
     ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 48000)]
   }
 
-  private func runToTerminal(_ ctx: Context) async {
+  /// #1857: the post-`stop` wait is on the kernel's own conclusion signal, not
+  /// on epoch quiescence — a resumed-but-unscheduled continuation could settle
+  /// the epoch while the session was still in flight, so every terminal
+  /// assertion read `nil` (`retryRescuedCompletionSurvivesClipboardFallback`,
+  /// one failure in 4344 tests, never reproducible on demand).
+  ///
+  /// `awaitTerminal: false` is for the one scenario whose terminal is published
+  /// by a REAL wall-clock deadline the fake clock never advances. Yields alone
+  /// can never satisfy that, so it keeps its own declared deadline poll.
+  private func runToTerminal(_ ctx: Context, awaitTerminal: Bool = true) async {
     await ctx.wrapper.apply(.start)
     await ctx.wrapper.drainReadyWork()
     deliverVoicedCapture(ctx)
@@ -53,7 +62,11 @@ struct KernelPhase2RetryTests {
     // @MainActor hop — drain so the commit lands before stop.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    if awaitTerminal {
+      await ctx.wrapper.drainUntilConcluded()
+    } else {
+      await ctx.wrapper.drainReadyWork()
+    }
   }
 
   /// #1755 chunk 3 helper: stop with the held finalize suspended, await the
@@ -318,7 +331,11 @@ struct KernelPhase2RetryTests {
     // `withOrderedDeadline`'s `onTimeout` fires for real.
     ctx.engine.retryDecodeTimeoutSeconds = 0.05
     ctx.engine.retryDecodeDelayTicks = 1
-    await runToTerminal(ctx)
+    // #1857: the ONLY caller that opts out of the conclusion wait. This
+    // terminal is published by the real 50ms deadline above, which no number
+    // of `Task.yield()`s can advance, so a yield-only wait would exhaust the
+    // livelock cap and report a false give-up.
+    await runToTerminal(ctx, awaitTerminal: false)
     let kernel = ctx.wrapper.testKernel
 
     // `drainReadyWork()`'s epoch-stability heuristic settles immediately
