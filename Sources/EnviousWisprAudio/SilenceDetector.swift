@@ -252,13 +252,26 @@ public actor SilenceDetector {
     // (`guard !segments.isEmpty else { return allSamples }`), clamps at buffer
     // edges, and merges overlapping ranges, any of which absorbs part of it.
     //
-    // SETTLED, do not flip back. Codex round-2 (2026-05-04) raised the
-    // hypothetical that 0.0 clips soft leading phonemes; the same-day corpus run
-    // did not show it. Of four English cases, three were wrong before the change
-    // and all four were correct after (two of the three had lost a LEADING word,
-    // which is the edge this setting governs; the third lost a trailing clause).
-    // Eight French cases kept their leading words; PT and PL spot-checks were
-    // clean (#604 / PR #613 — see that PR's per-phrase table, the primary source).
+    // Why 0.0 and not FluidAudio's 0.1, and what that evidence does NOT cover.
+    // Codex round-2 (2026-05-04) raised the hypothetical that 0.0 clips soft
+    // leading phonemes; the same-day corpus run did not show it. Of four English
+    // cases, three were wrong before the change and all four were correct after
+    // (two of the three had lost a LEADING word, the edge this setting governs;
+    // the third lost a trailing clause). Eight French cases kept their leading
+    // words; PT and PL spot-checks were clean (#604 / PR #613 — see that PR's
+    // per-phrase table, the primary source).
+    //
+    // That corpus predates a REAL leading-loss case it never tested. #843 later
+    // found soft vowel-initial words ("Actually", "Overall") sitting just before
+    // the first VAD segment and being trimmed anyway, despite SampleFilter's
+    // 100 ms — mitigated downstream by the raw-capture fallback documented in
+    // `CapturedAudioConditioner` (see its Step 2a). Whether segmentation padding
+    // here would ALSO help that case was never measured.
+    //
+    // So: do not flip this to 0.1 on the old hypothetical, which was tested and
+    // not shown. Do not treat the question as closed either — a change here needs
+    // its own measurement against the #843 case, and must account for the second
+    // 100 ms expansion it would add at each retained boundary.
     // Re-audited 2026-07-30 (#1784) with no change.
     let segConfig = VadSegmentationConfig(
       minSpeechDuration: 0.3,
