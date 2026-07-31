@@ -338,18 +338,39 @@ fi
 DECLARED=""
 if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
   echo "==> Plan: $PLAN_FILE"
-  # Try EVERY matching line, not just the first. The pattern is bounded to real
-  # declaration shapes, but a plan that quotes the preface format before
-  # declaring its own lane would otherwise hard-fail on the quotation. Failing
-  # only when NO matching line yields a canonical lane keeps the check strict
-  # about genuinely-wrong declarations without being brittle about prose.
+  # Read EVERY matching line, then decide once — never first-wins. Taking the
+  # first line that happens to parse means a plan quoting a valid declaration
+  # above its real preface silently wins with the quotation. Taking the first
+  # line unconditionally means a quotation that does NOT parse hard-fails a plan
+  # whose real declaration is fine two lines down. Neither is safe to guess at,
+  # so this collects the DISTINCT canonical lanes the file declares:
+  #
+  #   exactly one  -> use it (repeats of the same lane are not a conflict)
+  #   more than one -> AMBIGUOUS, refuse, same rule as two plans for one issue
+  #   none, but a declaration line exists -> the declaration is invalid
   FIRST_LANE_LINE=""
+  LANE_HITS=()
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
     [ -n "$FIRST_LANE_LINE" ] || FIRST_LANE_LINE="$candidate"
-    if DECLARED=$(match_canonical_lane "$candidate"); then break; fi
-    DECLARED=""
+    if hit=$(match_canonical_lane "$candidate"); then LANE_HITS+=("$hit"); fi
   done < <(grep -iE "$LANE_LINE_PATTERN" "$PLAN_FILE" 2>/dev/null || true)
+
+  DISTINCT_LANES=()
+  while IFS= read -r lane; do
+    [ -n "$lane" ] && DISTINCT_LANES+=("$lane")
+  done < <(if [ "${#LANE_HITS[@]}" -gt 0 ]; then printf '%s\n' "${LANE_HITS[@]}" | sort -u; fi)
+
+  if [ "${#DISTINCT_LANES[@]}" -gt 1 ]; then
+    echo "FAIL: plan declares ${#DISTINCT_LANES[@]} different lanes; refusing to guess which is the PR's." >&2
+    echo "      $PLAN_FILE" >&2
+    for lane in "${DISTINCT_LANES[@]}"; do echo "      - $lane" >&2; done
+    echo "      Keep ONE lane declaration. If the plan quotes the preface format" >&2
+    echo "      as an example, reword the quotation so it is not a bare" >&2
+    echo "      'Lane: <name>' line." >&2
+    exit 2
+  fi
+  [ "${#DISTINCT_LANES[@]}" -eq 1 ] && DECLARED="${DISTINCT_LANES[0]}"
 
   if [ -n "$FIRST_LANE_LINE" ] && [ -z "$DECLARED" ]; then
     echo "FAIL: plan declares a lane that is not one of: $CANONICAL_LANES" >&2
