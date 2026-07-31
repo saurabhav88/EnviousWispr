@@ -287,8 +287,20 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // transcription failure that must not vanish into a "silence" bucket.
       // So the buffer is classified with the same primitive the live path uses,
       // and only a dead-air verdict earns the silent category.
-      let peak = recovered.samples.reduce(Float(0)) { Swift.max($0, Swift.abs($1)) }
-      let measurement = RawAudioDeadAirClassifier.measure(recovered.samples, peak: peak)
+      //
+      // OFF THE MAIN ACTOR, for the same reason the decrypt above is: a
+      // supported 60-minute spool is ~57.6M samples (~230 MB), and this walks it
+      // twice — once for the peak, once inside `measure`. On the MainActor that
+      // is a visible launch stall for the longest recordings, which are exactly
+      // the ones a user most wants back. Detached rather than plain `Task`
+      // because this is CPU work that must leave the main actor entirely
+      // (`task-detached-proof`), mirroring `keyStore.retrieve` and `recover`.
+      let samples = recovered.samples
+      let measurement = await Task.detached(priority: .utility) {
+        let peak = samples.reduce(Float(0)) { Swift.max($0, Swift.abs($1)) }
+        return RawAudioDeadAirClassifier.measure(samples, peak: peak)
+      }.value
+      if isAborted() { return .aborted }
       return failUnrecoverable(
         reason: .emptyText, reconstructedSampleCount: recovered.samples.count,
         emptyDecodeHadSignal: !measurement.isDeadAir)
