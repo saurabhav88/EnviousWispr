@@ -53,28 +53,61 @@ struct ContactsImportCorrectorBenchmark {
     // A ratio cannot be inflated by machine load: contention scales both
     // buckets together, so it divides out. Measured, rather than assumed:
     //
-    //   idle, 10 paired samples   ratio 2000/500 = 2.85 … 3.93 (median 3.77)
-    //   4 further idle runs                       3.55, 4.21, 4.41
-    //   14-core busy-loop load                    3.65  (inside the idle range)
-    //   inside a full 4346-test suite run         3.87
+    // Sequentially-measured buckets (the sweep above) span 2.85 … 4.41 across 14
+    // samples. TIME-ADJACENT pairs, measured below, are tighter because load
+    // that starts or stops between two distant measurements no longer leaks in:
     //
-    // 14 samples, full range 2.85 … 4.41. 4x the terms costs ~4x the time, i.e.
-    // this is linear. The threshold of 8 sits at ~1.8x the worst observed ratio
-    // and at half of the 16x an O(n^2) regression would produce, so it
-    // discriminates the thing the gate exists for while staying unreachable by
-    // contention. If a future run ever lands near 8 on unmodified main, widen
-    // the sweep instead of nudging the bar — a drifting ratio IS the signal.
-    let baseline = msBySize[500] ?? 0
-    let atScale = msBySize[2000] ?? 0
-    if baseline > 0 {
-      let growth = atScale / baseline
-      print(String(format: "[#636 corrector-latency] growth 2000/500: %.2fx (bar: 8.0x)", growth))
+    //   idle                    median 3.84  (min 3.29, max 4.13, n=9)
+    //   14-core busy-loop load  median 3.62  (min 2.82, max 3.97, n=9)
+    //
+    // The loaded run took 28 s against 13 s idle, so the contention was real and
+    // the ratio still held. 4x the terms costs ~4x the time: linear. The
+    // threshold of 8 sits at ~2x the worst paired ratio and at half of the 16x
+    // an O(n^2) regression would produce, so it discriminates the thing the gate
+    // exists for while staying unreachable by contention. If a future run ever
+    // lands near 8 on unmodified main, widen the sample count instead of nudging
+    // the bar — a drifting ratio IS the signal.
+    // The two buckets above are measured SEQUENTIALLY, so load that starts or
+    // stops between them does NOT divide out — a quiet 500-term measurement
+    // followed by a contended 2000-term one inflates the ratio for reasons that
+    // have nothing to do with the algorithm. Pair them in time instead:
+    // alternate the two sizes round by round and take the MEDIAN ratio, so a
+    // contention spike has to land on the same phase of most rounds to matter.
+    let lookups500 = WordCorrector.buildLookups(words: personVocab(500))
+    let lookups2000 = WordCorrector.buildLookups(words: personVocab(2000))
+    _ = WordCorrector().correct(sentence, using: lookups500)  // warm
+    _ = WordCorrector().correct(sentence, using: lookups2000)  // warm
+
+    func timeOne(_ lookups: WordCorrector.Lookups) -> Double {
+      let start = Date()
+      _ = WordCorrector().correct(sentence, using: lookups)
+      return Date().timeIntervalSince(start) * 1000.0
+    }
+
+    var pairedRatios: [Double] = []
+    for _ in 0..<9 {
+      // Adjacent in time, so both see the same machine.
+      let small = timeOne(lookups500)
+      let large = timeOne(lookups2000)
+      if small > 0 { pairedRatios.append(large / small) }
+    }
+
+    if !pairedRatios.isEmpty {
+      let sorted = pairedRatios.sorted()
+      let growth = sorted[sorted.count / 2]
+      print(
+        String(
+          format: "[#636 corrector-latency] paired growth 2000/500: median %.2fx "
+            + "(min %.2f, max %.2f, n=%d, bar 8.0x)",
+          growth, sorted[0], sorted[sorted.count - 1], sorted.count))
       #expect(
         growth < 8.0,
         """
-        Corrector cost grew \(String(format: "%.2f", growth))x for 4x the vocabulary. \
-        Worst measured is 3.93x; 16x would mean quadratic. This ratio is immune to \
-        machine load, so a failure here is an algorithmic regression, not contention.
+        Corrector cost grew \(String(format: "%.2f", growth))x for 4x the vocabulary \
+        (median of \(sorted.count) time-adjacent pairs). Worst measured on healthy \
+        code is 4.41x; 16x would mean quadratic. Pairing the samples in time is what \
+        makes this robust to contention, so a failure here is an algorithmic \
+        regression rather than a busy machine.
         """)
     }
 
