@@ -173,7 +173,7 @@ private final class DefaultsOnlyAudioCapture: AudioCaptureInterface {
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
     AsyncStream { $0.finish() }
   }
-  func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
+  func stopCapture(sessionID _: UInt64) async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
   func preWarm() async throws {}

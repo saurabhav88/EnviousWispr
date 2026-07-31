@@ -535,7 +535,10 @@ struct HeartPathTelemetryWiringTests {
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
       try await beginCapturePhase(recoveryPayload: nil)
     }
-    func stopCapture() async -> CaptureResult {
+    // #1579 fence parameter deliberately ignored: this fixture never starts a
+    // second capture session, so a stale stop cannot arise here. The backlog
+    // route under test is orthogonal to the fence.
+    func stopCapture(sessionID _: UInt64) async -> CaptureResult {
       isCapturing = false
       isActivelyCapturing = false
       // Real audio, so the take is an ordinary recording rather than a
