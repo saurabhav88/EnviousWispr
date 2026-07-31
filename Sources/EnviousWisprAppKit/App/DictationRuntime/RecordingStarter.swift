@@ -379,7 +379,8 @@ final class RecordingStarter {
       // running (Codex code-diff P1). `preWarm` already started the engine, so
       // tear it down exactly like the pre-warm-release guard above does (Codex
       // code-diff r2 P2) — a bare hide/unlock would leave the mic engine running.
-      // Any key armed above is swept by the launch purge's orphan-key pass.
+      // The key armed above is cleaned inline below; the launch recovery scan's
+      // orphan-key sweep is only the backstop if this process dies first.
       if let lastStop = lastUserStopAccess.read(), lastStop > pttStart {
         audioCapture.abortPreWarm()
         // A key was armed for this take but no session will start — no terminal
