@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr support languages other than English?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Parakeet TDT handles English. For other languages, EnviousWispr switches to WhisperKit, which supports 90+ languages. VoiceInk supports 100+ languages through whisper.cpp."
+        "text": "Yes. Parakeet TDT covers 25 European languages. For wider coverage, EnviousWispr switches to WhisperKit, which supports 90+ languages. VoiceInk supports 100+ languages through whisper.cpp."
       }
     },
     {
@@ -438,7 +438,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Speech engines</td>
-            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a></td>
+            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a></td>
             <td><a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a></td>
           </tr>
           <tr>
@@ -498,7 +498,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Multi-language</td>
-            <td>English (Parakeet), 90+ via WhisperKit</td>
+            <td>25 European (Parakeet), 90+ via WhisperKit</td>
             <td>100+ languages</td>
           </tr>
           <tr>
@@ -561,7 +561,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#9889;</div>
         <div class="advantage-title">Faster English transcription</div>
-        <p class="advantage-desc">Parakeet TDT is purpose-built for English and runs on Apple's Neural Engine. 0.43s median latency. WhisperKit handles 90+ other languages when you need them.</p>
+        <p class="advantage-desc">Parakeet TDT covers 25 European languages and runs on Apple's Neural Engine. 0.43s median latency. WhisperKit handles 90+ languages when you need wider coverage.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#129504;</div>
@@ -742,7 +742,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#127758;</div>
         <div class="advantage-title">Broader multilingual support</div>
-        <p class="advantage-desc">VoiceInk supports 100+ languages through whisper.cpp and has been tuned for multilingual workflows. EnviousWispr supports 90+ via WhisperKit, but Parakeet TDT (the fast engine) is English-only. If you dictate heavily in non-English languages, VoiceInk may be more polished for that use case.</p>
+        <p class="advantage-desc">VoiceInk supports 100+ languages through whisper.cpp and has been tuned for multilingual workflows. EnviousWispr supports 90+ via WhisperKit, and Parakeet TDT (the fast engine) covers 25 European languages. If you dictate heavily in non-European languages, VoiceInk may be more polished for that use case.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#9201;</div>
@@ -772,7 +772,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr support languages other than English?</div>
-        <p class="faq-a">Yes. Parakeet TDT handles English. For other languages, EnviousWispr switches to WhisperKit, which supports 90+ languages. VoiceInk supports 100+ languages through whisper.cpp.</p>
+        <p class="faq-a">Yes. Parakeet TDT covers 25 European languages. For wider coverage, EnviousWispr switches to WhisperKit, which supports 90+ languages. VoiceInk supports 100+ languages through whisper.cpp.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How does custom vocabulary compare between the two apps?</div>
@@ -784,7 +784,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which app is better for non-English languages?</div>
-        <p class="faq-a">VoiceInk supports 100+ languages through whisper.cpp and has been optimized for multilingual use. EnviousWispr supports 90+ via WhisperKit but its fastest engine (Parakeet TDT) is English-only. For non-English dictation, VoiceInk may have an edge in language breadth and tuning.</p>
+        <p class="faq-a">VoiceInk supports 100+ languages through whisper.cpp and has been optimized for multilingual use. EnviousWispr supports 90+ via WhisperKit, and its fastest engine (Parakeet TDT) covers 25 European languages. For languages outside those, VoiceInk may have an edge in breadth and tuning.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does VoiceInk have AI text enhancement?</div>
