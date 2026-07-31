@@ -117,7 +117,26 @@ public struct AIGateSet: Sendable, Codable {
 /// `AppleIntelligenceDiagnosticsService.launchSnapshot()`.
 public struct LaunchAvailabilitySnapshot: Sendable {
   /// `hw.machine` (e.g. "arm64"). Live sysctl, always real — never "unknown" via a missing cache.
+  ///
+  /// This is the ARCHITECTURE, and it is the same string for every Apple Silicon
+  /// Mac we ship to. It cannot answer "which Macs", only "is it ARM" — see
+  /// `deviceModel`.
   public let hardwareClass: String
+  /// `hw.model` (e.g. "Mac16,8"). The specific machine.
+  ///
+  /// Separate field rather than a redefinition of `hardwareClass`: that one is
+  /// already emitted and already charted, and silently changing what a shipped
+  /// property means corrupts its own history.
+  ///
+  /// Why it exists (#1572): Sentry records the exact model but only on failures,
+  /// so it has no denominator, and PostHog had the whole population reporting
+  /// `arm64`. Neither could answer "do M5 users get worse transcription than
+  /// everyone else", because one side had no population and the other had no
+  /// model. Founder-approved 2026-07-28.
+  ///
+  /// Metadata, not content: it describes the machine, never anything the user
+  /// said or typed, so it sits inside the privacy boundary (CLAUDE.md § Privacy).
+  public let deviceModel: String
   /// Framework compiled in AND macOS 26+ AND the device is hardware-eligible (NOT
   /// `.deviceNotEligible`): the device CAN run Apple Intelligence. The user may
   /// still have it switched off or the model may be downloading — see `isEnabled`.
@@ -125,8 +144,9 @@ public struct LaunchAvailabilitySnapshot: Sendable {
   /// `SystemLanguageModel.default.availability == .available`: eligible + enabled + model-ready right now.
   public let isEnabled: Bool
 
-  public init(hardwareClass: String, isCapable: Bool, isEnabled: Bool) {
+  public init(hardwareClass: String, deviceModel: String, isCapable: Bool, isEnabled: Bool) {
     self.hardwareClass = hardwareClass
+    self.deviceModel = deviceModel
     self.isCapable = isCapable
     self.isEnabled = isEnabled
   }

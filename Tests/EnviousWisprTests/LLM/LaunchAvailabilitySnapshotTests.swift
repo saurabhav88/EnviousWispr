@@ -65,6 +65,32 @@ struct LaunchAvailabilitySnapshotTests {
     #expect(afterPoison.hardwareClass != "poisoned-fake-hw")
   }
 
+  /// #1572. The whole point of this field is that it is NOT the architecture:
+  /// `hardwareClass` reads `arm64` on every Mac we ship to, so it can never
+  /// answer "which Macs". Asserting only that the field is populated would pass
+  /// on a copy of `hardwareClass`, which is the mistake worth freezing against.
+  @Test("device model is the specific machine, not the architecture")
+  func deviceModelIsTheMachineNotTheArchitecture() {
+    let snap = AppleIntelligenceDiagnosticsService.launchSnapshot()
+    #expect(snap.deviceModel.isEmpty == false)
+    #expect(
+      snap.deviceModel != snap.hardwareClass,
+      "device_model must not be a second copy of the architecture")
+    // Stable across calls, same as the architecture read.
+    #expect(AppleIntelligenceDiagnosticsService.launchSnapshot().deviceModel == snap.deviceModel)
+  }
+
+  /// A failed read reports `unknown` rather than an empty string, so it groups
+  /// separately in the data instead of merging with every other empty value.
+  /// Real hardware answers `hw.model`, so on a healthy machine this is the
+  /// model — the assertion accepts either and rejects the empty string, which is
+  /// the only genuinely unusable answer.
+  @Test("a device model is either a real model string or the explicit unknown")
+  func deviceModelIsNeverEmpty() {
+    let value = AppleIntelligenceDiagnosticsService.launchSnapshot().deviceModel
+    #expect(value == "unknown" || value.contains(","), "saw \(value)")
+  }
+
   @Test("isEnabled implies isCapable")
   func isEnabledImpliesCapable() {
     let snap = AppleIntelligenceDiagnosticsService.launchSnapshot()

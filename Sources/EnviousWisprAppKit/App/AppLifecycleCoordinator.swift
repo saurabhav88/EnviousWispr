@@ -245,7 +245,8 @@ final class AppLifecycleCoordinator {
       let snap = AppleIntelligenceDiagnosticsService.launchSnapshot()
       await TelemetryService.shared.appLaunched(
         version: version, build: build, osVersion: osVersion,
-        hardware: snap.hardwareClass, isFreshInstall: isFreshInstall,
+        hardware: snap.hardwareClass, deviceModel: snap.deviceModel,
+        isFreshInstall: isFreshInstall,
         aiCapable: snap.isCapable, aiEnabled: snap.isEnabled)
     }
 
