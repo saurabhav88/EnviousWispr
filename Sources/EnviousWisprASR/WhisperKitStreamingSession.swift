@@ -152,13 +152,6 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   private var lastConfirmedSec: Float = 0
   /// Sample count at the last decode, to gate the >= 1s-new-audio check.
   private var lastDecodeSampleCount: Int = 0
-
-  /// How far the decoded WORDS have reached, in samples (#1308). Distinct from
-  /// `lastDecodeSampleCount`, which records how much audio a decode was HANDED.
-  /// Finalize's caught-up check reads this one: a decode that produced words
-  /// covering 6s of an 11s buffer has not heard the last 5s, however much audio
-  /// it was given.
-  private var lastWordCoverageSampleCount: Int = 0
   private var decodeCount: Int = 0
   private var totalDecodeTimeMs: Int = 0
 
@@ -285,7 +278,6 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     confirmedText = ""
     lastConfirmedSec = 0
     lastDecodeSampleCount = 0
-    lastWordCoverageSampleCount = 0
     decodeCount = 0
     totalDecodeTimeMs = 0
     retainedUnconfirmedSegments = []
@@ -434,12 +426,25 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     // `streamingResult` trims the edges.
     let releaseText = confirmedText + retainedUnconfirmedSegments.map(\.text).joined()
 
-    // Exact bookkeeping: audio the decoded WORDS never reached (#1308). Reads
-    // `lastWordCoverageSampleCount`, NOT `lastDecodeSampleCount` — the latter is
-    // how much audio a decode was handed, and handing a decoder 11s of audio that
-    // yields 6s of words does not make the last 5s heard. Using it here released
-    // without the tail decode below and dropped the user's final words.
-    let unheardStart = max(0, min(count, lastWordCoverageSampleCount))
+    // Exact bookkeeping (#1308): audio that the text we are ABOUT TO RELEASE does
+    // not cover. Derived from `releaseText`'s own words — `lastConfirmedSec` for
+    // the committed prefix, the last retained segment for the held-back tail —
+    // never from `lastDecodeSampleCount`.
+    //
+    // That marker records how much audio a decode was HANDED, and handing a
+    // decoder 11s that yields 6s of words does not make the last 5s heard. Using
+    // it here skipped the tail decode below and dropped the user's final words.
+    //
+    // Deriving it here rather than caching it during the loop is deliberate, and
+    // whole-diff review is why. A cached high-water mark went wrong twice: it read
+    // UNFILTERED words, so a hallucinated timestamp in the 30s window's silence
+    // padding claimed full coverage even though `applyLocalAgreement` discarded
+    // that word; and being monotonic it held an older, farther endpoint after a
+    // later hypothesis retracted its final word, hiding real audio from the
+    // unheard slice. Both recreate the exact silent tail loss this fixes. The
+    // release hypothesis cannot disagree with itself.
+    let releasedEndSec = max(lastConfirmedSec, retainedUnconfirmedSegments.last?.end ?? 0)
+    let unheardStart = max(0, min(count, Int(releasedEndSec * 16_000)))
     let unheardSlice = unheardStart < count ? Array(samples[unheardStart..<count]) : []
     let unheardSec = Float(unheardSlice.count) / 16_000.0
     if unheardSec < minVoicedTailSec || rms(unheardSlice) <= tailEnergyFloor || samples.isEmpty {
@@ -627,15 +632,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
         // instant-release over voiced audio that never transcribed (its energy
         // gate routes genuine silence to release, fresh speech to the bounded
         // buffer decode).
-        //
-        // #1308: this marker answers "how much audio has a decode SEEN", which is
-        // the right question for the cadence gate above and the WRONG one for
-        // finalize's caught-up check. Both are recorded, separately.
-        if heard {
-          lastDecodeSampleCount = count
-          lastWordCoverageSampleCount = max(
-            lastWordCoverageSampleCount, wordCoverageSampleCount(from: results, cap: count))
-        }
+        if heard { lastDecodeSampleCount = count }
         decodeCount += 1
         let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - decodeStart) * 1000)
         totalDecodeTimeMs += elapsedMs
@@ -648,30 +645,6 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
         }
       }
     }
-  }
-
-  /// How far this decode's WORDS actually reached, in samples (#1308).
-  ///
-  /// Deliberately NOT folded into `lastDecodeSampleCount`. That marker also gates
-  /// the live decode cadence at the top of the loop, so lagging it behind the fed
-  /// audio would make the loop re-decode unchanged audio on every cycle whenever
-  /// the words trail by a second. Two questions, two values: how much audio a
-  /// decode has SEEN drives cadence, how far the WORDS reached drives whether
-  /// finalize still owes a tail decode.
-  ///
-  /// `min(cap, …)` because a decoder can stamp a word past the buffer, into the
-  /// 30s window's silence padding — the same hallucination `applyLocalAgreement`
-  /// already clamps against. Monotonic at the call site, so a later cycle whose
-  /// words happen to end earlier cannot drag it back and make every finalize pay
-  /// a redundant tail decode.
-  ///
-  /// Buffer mode only; the segment path keeps reporting the full count, because
-  /// its own finalize does not consult this.
-  private func wordCoverageSampleCount(from results: [TranscriptionResult], cap: Int) -> Int {
-    guard localAgreement else { return cap }
-    let words = results.flatMap { $0.segments }.flatMap { $0.words ?? [] }
-    guard let lastEnd = words.last?.end else { return cap }
-    return max(0, min(cap, Int(lastEnd * 16_000)))
   }
 
   /// Freeze the confirmable prefix of this cycle's segments into `confirmedText`
@@ -818,10 +791,17 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       }
     }
 
-    // Retain the uncommitted remainder for the benchmark's release-only arm
-    // (set before the commitCount>0 guard, mirroring the segment path).
-    // Retained text is the RAW token (self-spacing, see the commit loop) —
-    // the release path concatenates these without a separator.
+    // The held-back tail of the current hypothesis. Set before the commitCount>0
+    // guard (mirroring the segment path) so a cycle that commits nothing still
+    // records everything as retained. Retained text is the RAW token
+    // (self-spacing, see the commit loop) — the release path concatenates these
+    // without a separator.
+    //
+    // SHIPPED FINALIZE READS THIS. It builds `releaseText` from it (`:435`) and,
+    // since #1308, derives the release hypothesis's audio coverage from its last
+    // segment. An earlier comment here said "Shipped finalize never reads this",
+    // which was false and was quoted as evidence in the #1308 plan before the
+    // grep caught it.
     retainedUnconfirmedSegments = words[commitCount...].map {
       BenchmarkSegment(text: $0.word, start: $0.start, end: $0.end)
     }

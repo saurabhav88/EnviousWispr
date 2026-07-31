@@ -346,6 +346,55 @@ import Testing
     await s.cancel()
   }
 
+  /// Whole-diff review P1, frozen. A decoder stamps words into the 30s window's
+  /// silence PADDING — a word at 99s on an 11s clip. `applyLocalAgreement`
+  /// discards those (`start < realAudioEndSec`), so they never reach the
+  /// transcript. An earlier version of this fix read the UNFILTERED word list, so
+  /// the hallucination claimed coverage of the whole buffer and finalize skipped
+  /// the tail decode — recreating the exact silent loss this issue is about.
+  ///
+  /// Deriving coverage from the release hypothesis makes that unrepresentable:
+  /// a word the transcript does not contain cannot vouch for audio.
+  @Test("a hallucinated word past the buffer does not claim coverage of it")
+  func paddingHallucinationDoesNotClaimCoverage() async throws {
+    let liveCount = 176_000  // 11s
+    // Real words to 6s, plus a hallucination stamped at 40s in the silence pad.
+    let partial = result(
+      "the meeting went rather well today",
+      [
+        seg(0, 40, "the meeting went rather well today spurious").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 3, "went"),
+          word(3, 4, "rather"), word(4, 5, "well"), word(5, 6, "today"),
+          word(39, 40, "spurious"),
+        ])
+      ])
+    let withTail = result(
+      "the meeting went rather well today everyone agreed",
+      [
+        seg(0, 11, "the meeting went rather well today everyone agreed").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 3, "went"),
+          word(3, 4, "rather"), word(4, 5, "well"), word(5, 6, "today"),
+          word(6, 9, "everyone"), word(9, 11, "agreed"),
+        ])
+      ])
+
+    let fake = TailCoverageDecoder(
+      liveCount: liveCount, loopResult: [partial], tailResult: [withTail])
+    let s = WhisperKitStreamingSession(
+      whisperKit: fake, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1),
+      localAgreement: true)
+    await s.start(audioSamplesProvider: fixedProvider([Float](repeating: 0.4, count: liveCount)))
+    await waitForDecode(1, s)
+
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(
+      await fake.paddedCalls == 1,
+      "a discarded padding word must not vouch for the 5s it never covered")
+    #expect((r.text ?? "").contains("agreed"), "the real tail is recovered")
+    await s.cancel()
+  }
+
   /// The two-way control. A hypothesis that reaches the end of the buffer must
   /// still mark it heard, or every dictation pays a redundant tail decode and the
   /// streaming speed win is spent on nothing.
