@@ -21,11 +21,11 @@ import Testing
 
   // MARK: - The split itself
 
-  @Test("an empty transcript is NOT filed as a transcription failure")
-  func emptyTextGetsItsOwnCategory() {
-    let empty = RecoverySpoolReplayer.category(for: .emptyText)
+  @Test("an empty transcript on DEAD AIR is not filed as a transcription failure")
+  func emptyTextOnDeadAirGetsItsOwnCategory() {
+    let empty = RecoverySpoolReplayer.category(for: .emptyText, emptyDecodeHadSignal: false)
 
-    // POSITIVE — it has its own bucket.
+    // POSITIVE — measured silence has its own bucket.
     #expect(empty == .recoveryEmptyText)
 
     // NEGATIVE, and this is the whole point of #1897: it must not be the
@@ -34,6 +34,31 @@ import Testing
     #expect(empty != .recoveryTranscribeFailed)
     #expect(RecoverySpoolReplayer.category(for: .transcribeError) == .recoveryTranscribeFailed)
     #expect(empty != RecoverySpoolReplayer.category(for: .transcribeError))
+  }
+
+  @Test("an empty transcript on audio that HAD signal stays a transcription failure")
+  func emptyTextWithSignalStaysATranscriptionFailure() {
+    // The first cut of #1897 routed EVERY empty decode to the silent bucket on
+    // aggregate evidence (158/161 under ten seconds, all decrypted fine). Local
+    // review killed it: no aggregate can say whether THESE samples held speech,
+    // and an empty decode on audio that did carry signal is a real transcription
+    // failure. Burying those inside "silence" would hide exactly the decode
+    // regression the metric exists to catch.
+    //
+    // This mirrors the live path, which has always made the same split —
+    // `RecordingSessionKernel.swift:2400` routes
+    // `effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech(.asrEmptyNoSpeech)`.
+    let withSignal = RecoverySpoolReplayer.category(for: .emptyText, emptyDecodeHadSignal: true)
+
+    #expect(withSignal == .recoveryTranscribeFailed)
+    #expect(withSignal != .recoveryEmptyText)
+
+    // TWO-WAY CONTROL: the SAME reason must land in different buckets purely on
+    // the evidence. Without this arm, a mapping that ignored the flag and always
+    // returned `.recoveryTranscribeFailed` would satisfy the assertions above
+    // while silently undoing the split.
+    #expect(
+      withSignal != RecoverySpoolReplayer.category(for: .emptyText, emptyDecodeHadSignal: false))
   }
 
   @Test("nothing-came-out-of-the-spool reasons stay on the decrypt category")
@@ -86,6 +111,7 @@ import Testing
       .emptyOrUnreadableSamples: .recoveryDecryptFailed,
       .modelLoadFailed: .recoveryTranscribeFailed,
       .transcribeError: .recoveryTranscribeFailed,
+      // Default (no signal measured) — the with-signal arm is covered above.
       .emptyText: .recoveryEmptyText,
       .saveFailed: .recoveryDecryptFailed,
       .markerWriteFailed: .recoveryDecryptFailed,

@@ -279,10 +279,19 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // seconds, and twelve users produce ~58% of events. Decrypt, reconstruct
       // and ASR all worked; the recording held no speech.
       //
-      // Still no error and no failure class — nothing threw. It gets its own
-      // CATEGORY so it stops being counted as a transcription failure.
+      // Still no error and no failure class — nothing threw.
+      //
+      // MEASURE, do not assume. The aggregate evidence says most of these are
+      // silence, but no aggregate can tell you which of THESE samples held
+      // speech, and an empty decode on audio that DID carry signal is a real
+      // transcription failure that must not vanish into a "silence" bucket.
+      // So the buffer is classified with the same primitive the live path uses,
+      // and only a dead-air verdict earns the silent category.
+      let peak = recovered.samples.reduce(Float(0)) { Swift.max($0, Swift.abs($1)) }
+      let measurement = RawAudioDeadAirClassifier.measure(recovered.samples, peak: peak)
       return failUnrecoverable(
-        reason: .emptyText, reconstructedSampleCount: recovered.samples.count)
+        reason: .emptyText, reconstructedSampleCount: recovered.samples.count,
+        emptyDecodeHadSignal: !measurement.isDeadAir)
     }
 
     // Polish under the recording's record-time settings (raw-fallback floor
@@ -373,7 +382,10 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// `nonisolated` because it is a pure total function of its argument and
   /// touches no instance state — the enclosing type's `@MainActor` would
   /// otherwise force every caller onto the main actor for a switch.
-  nonisolated static func category(for reason: RecoveryTelemetryReason)
+  nonisolated static func category(
+    for reason: RecoveryTelemetryReason,
+    emptyDecodeHadSignal: Bool = false
+  )
     -> SentryBreadcrumb.ErrorCategory
   {
     switch reason {
@@ -383,9 +395,15 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // ASR could not run, or ran and threw.
     case .modelLoadFailed, .transcribeError:
       return .recoveryTranscribeFailed
-    // Everything worked; there were no words to find.
+    // An empty decode means one of two different things, and this mirrors the
+    // live path EXACTLY (`RecordingSessionKernel.swift:2400`, which routes
+    // `effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech(.asrEmptyNoSpeech)`).
+    // With signal in the buffer, ASR returned nothing it should have found —
+    // that is a real transcription failure and MUST stay in the transcribe
+    // metric, or a genuine decode regression would hide inside "silence".
+    // Only a buffer measured as dead air is the honest silent case.
     case .emptyText:
-      return .recoveryEmptyText
+      return emptyDecodeHadSignal ? .recoveryTranscribeFailed : .recoveryEmptyText
     // Reached after a successful transcribe, or outside the replay chain
     // entirely. These do not travel through `failUnrecoverable` today; they map
     // to the decrypt bucket only so this switch stays total.
@@ -398,9 +416,10 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private func failUnrecoverable(
     reason: RecoveryTelemetryReason,
     failureClass: RecoveryFailureClass? = nil,
-    reconstructedSampleCount: Int? = nil
+    reconstructedSampleCount: Int? = nil,
+    emptyDecodeHadSignal: Bool = false
   ) -> RecoveryReplayOutcome {
-    let category = Self.category(for: reason)
+    let category = Self.category(for: reason, emptyDecodeHadSignal: emptyDecodeHadSignal)
     SentryBreadcrumb.captureError(
       RecoveryReplayError.failed(reason.rawValue), category: category, stage: "recovery")
     let spoolSeconds = reconstructedSampleCount.map {
