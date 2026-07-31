@@ -46,7 +46,18 @@ import Testing
     #expect(mappedOutcome(.completed) == .complete)
     #expect(mappedOutcome(.cancelled) == .idle)
     #expect(mappedOutcome(.discarded(.tooShort)) == .idle)
-    #expect(mappedOutcome(.noSpeech(.vadGate)) == .idle)
+    // #1891: the VAD-gate no-speech ending NO LONGER collapses to idle. A
+    // microphone that delivered a dead signal floor now surfaces the seventh
+    // sentence as a user-setup advisory instead of vanishing silently.
+    #expect(mappedOutcome(.noSpeech(.vadGate)) == .advisory(.vadGateNoSpeech))
+    // The other two no-speech sources STAY silent — these are a working
+    // microphone and a user who said nothing, and they already know that
+    // (founder ruling, 2026-07-31). Without these two arms an advisory that
+    // fired on every no-speech source would pass the assertion above.
+    #expect(mappedOutcome(.noSpeech(.asrEmptyNoSpeech)) == .idle)
+    #expect(mappedOutcome(.noSpeech(.emptyAfterProcessing)) == .idle)
+    // #1891: zero-signal moved out of the error surface for the same reason.
+    #expect(mappedOutcome(.failed(.zeroSignal)) == .advisory(.zeroSignal))
     // Error-surface endings.
     for o: RecordingOutcome in [
       .failed(.asrEmpty), .audioInterrupted(nil), .asrInterrupted(wasRecording: true),

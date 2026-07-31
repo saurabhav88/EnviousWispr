@@ -13,6 +13,11 @@ public enum PipelineActivity: Equatable, Sendable {
   case processing
   case complete
   case error(TerminalNoticeReason)
+  /// #1891: a user-actionable terminal that is not our failure. Kept distinct
+  /// from `.error` so control-flow consumers can opt in explicitly rather than
+  /// inherit error treatment (a Try Again button, red menu bar, red sidebar
+  /// dot, VoiceOver "Error: " prefix).
+  case advisory(TerminalAdvisoryReason)
 }
 
 /// Narrow protocol the planner / handler consume. Backends' concrete enums
@@ -37,6 +42,7 @@ extension PipelineState: PipelineStateProtocol {
     case .transcribing, .polishing: return .processing
     case .complete: return .complete
     case .error(let reason): return .error(reason)
+    case .advisory(let reason): return .advisory(reason)
     }
   }
 }

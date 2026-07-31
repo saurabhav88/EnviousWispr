@@ -1027,6 +1027,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     // (state has returned to `.idle`, #1548 D1). The ending pill reads from the
     // outcome, not an FSM terminal state.
     if let outcome = kernel.recordingOutcome {
+      // #1891: same classifier as the `state` projection above. These are two
+      // INDEPENDENT projections — the original design changed only the other
+      // one and would have displayed nothing at all.
+      if let advisory = Self.advisoryReason(for: outcome) {
+        return .advisory(reason: advisory)
+      }
       switch outcome {
       case .completed, .cancelled, .discarded, .noSpeech:
         return .hidden
@@ -1601,6 +1607,53 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   // `RecordingOutcome` / `DeliveringPhase` types. No App-layer caller exists
   // (only same-module `state` getter + `@testable` tests); the App reads the
   // public `state` getter's `PipelineState` (#1548 D1, §2.5).
+  /// #1891 — the SINGLE authority deciding whether a concluded take is a
+  /// user-setup advisory rather than our failure. Called by BOTH the public
+  /// `state` projection and `overlayIntent`, which is the whole point: those
+  /// are independent projections, and an earlier design that changed only one
+  /// of them would have updated the state and displayed nothing.
+  ///
+  /// Exhaustive on purpose — no `default` anywhere. A future `RecordingOutcome`
+  /// or `RecordingFailureReason` case must fail the build and be classified
+  /// deliberately. Silence is the right ANSWER for unrelated outcomes; letting
+  /// them inherit it without a decision is not.
+  ///
+  /// Founder model (#1876, 2026-07-31): capture endings get exactly two
+  /// customer buckets, OUR SOFTWARE and YOUR SETUP. Only the two cases below
+  /// are the second bucket. `.captureStalled` (a mid-take death) deliberately
+  /// stays our-software until #1578 telemetry explains it — calling it the
+  /// user's setup would be a guess.
+  /// `nonisolated` because it is a pure function of the outcome value and
+  /// touches no driver state. Both projections call it, and keeping it off the
+  /// main actor means the truth table can be tested directly.
+  nonisolated static func advisoryReason(for outcome: RecordingOutcome)
+    -> TerminalAdvisoryReason?
+  {
+    switch outcome {
+    case .failed(let reason):
+      switch reason {
+      case .zeroSignal:
+        return .zeroSignal
+      case .prepareFailed, .permissionDenied, .modelWedged, .modelLoadFailed,
+        .captureStartFailed, .noMicrophoneFound, .noAudioCaptured, .asrEmpty,
+        .asrFailed, .asrWedged, .emptyAfterProcessing, .captureStalled:
+        return nil
+      }
+    case .noSpeech(let source):
+      switch source {
+      case .vadGate:
+        return .vadGateNoSpeech
+      // A working microphone and a user who said nothing. Stays SILENT — they
+      // already know they did not speak (founder, 2026-07-31).
+      case .asrEmptyNoSpeech, .emptyAfterProcessing:
+        return nil
+      }
+    case .completed, .cancelled, .discarded, .audioInterrupted,
+      .asrInterrupted, .noTransport:
+      return nil
+    }
+  }
+
   static func pipelineState(
     for state: RecordingSessionState,
     outcome: RecordingOutcome?,
@@ -1614,6 +1667,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     // A concluded session's public state comes from `recordingOutcome` (state
     // has returned to `.idle`, #1548 D1).
     if let outcome {
+      // #1891: the advisory classification wins over the error mapping below,
+      // so `.failed(.zeroSignal)` and `.noSpeech(.vadGate)` present identically
+      // instead of one being an error and the other silent.
+      if let advisory = advisoryReason(for: outcome) {
+        return .advisory(advisory)
+      }
       switch outcome {
       case .completed:
         return .complete

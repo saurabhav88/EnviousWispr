@@ -180,6 +180,19 @@ struct StatusView: View {
             dictationRuntime.resetActivePipeline()
           }
         }
+
+      // #1891: deliberately NO "Try Again" button and NO "Error" heading.
+      // Retrying cannot change the outcome when the microphone sent nothing,
+      // and offering it is the specific defect this change exists to remove.
+      // A mic-slash glyph rather than the error triangle, so the state is not
+      // signalled by colour alone (accessibility-macos.md
+      // RULE: accessibility-macos-baseline, accessibility-noncolor-motion).
+      case .advisory(let reason):
+        ContentUnavailableView {
+          Label("No audio captured", systemImage: "mic.slash")
+        } description: {
+          Text(DictationNarrator.copy(for: reason))
+        }
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -305,7 +318,10 @@ struct StatusBadge: View {
       case .polishing:
         progressLabel(DictationNarrator.statusBadgeCopy(for: .polishing))
 
-      case .idle, .complete, .error:
+      // #1891: advisory is a resting terminal like idle/complete/error, so the
+      // toolbar badge stays empty. The sentence is carried by the overlay and
+      // the main-window body, not duplicated in the toolbar.
+      case .idle, .complete, .error, .advisory:
         EmptyView()
       }
     }

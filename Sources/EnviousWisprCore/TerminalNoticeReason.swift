@@ -56,3 +56,44 @@ public enum TerminalNoticeReason: String, Equatable, Sendable, CaseIterable {
   /// enum case; any future explicit producer must own its own telemetry first.
   case unknown
 }
+
+/// #1891 (epic #1876 Phase 2b). A terminal fact that is NOT our software
+/// failing: the microphone delivered nothing usable, so the take ended with no
+/// text through no fault of the pipeline.
+///
+/// Deliberately a SEPARATE type from `TerminalNoticeReason`, not another case
+/// on it. `TerminalNoticeReason` means "a terminal notice whose raw value is
+/// the PostHog `pipeline.failed.error_code`", and both halves are wrong here:
+/// only one of these two reasons emits `pipeline.failed` at all, and the
+/// founder's model (#1876, 2026-07-31) splits capture endings into exactly two
+/// customer buckets — OUR SOFTWARE ("[X] error. Try again.") and YOUR SETUP.
+/// This type is the second bucket.
+///
+/// Two cases rather than one because the two producers have different
+/// telemetry obligations even though they share a sentence: `.zeroSignal`
+/// continues the existing `pipeline.failed` `zero_signal` series (340 events /
+/// 50 users per 30d — the baseline the Phase 2 analysis rests on), while
+/// `.vadGateNoSpeech` is already counted by `audio.vad_gate_no_speech` (#1845)
+/// and must NOT manufacture a second, overlapping failure record.
+///
+/// Both narrate identically. Do not add a per-case sentence without a founder
+/// decision: #1558 locked the customer copy set, and #1891 added exactly one
+/// seventh sentence to it.
+public enum TerminalAdvisoryReason: Equatable, Sendable, CaseIterable {
+  /// The capture buffer was digitally silent — a closed lid in clamshell,
+  /// vendor firmware mute, or a dead channel. Reaches here from
+  /// `RecordingOutcome.failed(.zeroSignal)`; keeps emitting `pipeline.failed`
+  /// with the unchanged `zero_signal` code.
+  case zeroSignal
+
+  /// The capture carried a signal floor but no speech evidence: every dead-air
+  /// threshold was crossed (raw peak `<0.006`, whole-buffer RMS `<0.00125`,
+  /// max 40 ms window RMS `<0.002`). An analog mute switch or a dead 3.5 mm
+  /// line looks like this — an ADC keeps converting a broken line, so it can
+  /// never read exact zero. Reaches here from `.noSpeech(.vadGate)`.
+  ///
+  /// NOT the same as a user who simply said nothing: that is
+  /// `.asrEmptyNoSpeech`, which stays silent because the microphone was
+  /// working and the user already knows they did not speak.
+  case vadGateNoSpeech
+}

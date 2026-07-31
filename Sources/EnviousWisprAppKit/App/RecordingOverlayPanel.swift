@@ -407,6 +407,18 @@ final class RecordingOverlayPanel {
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       showError(message: message)
+    // #1891: a user-setup advisory, announced WITHOUT an "Error: " prefix (the
+    // narrator owns that) and rendered in the non-red multiline style.
+    case .advisory(let reason):
+      let message = DictationNarrator.copy(for: reason)
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: spokenAnnouncement,
+          .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
+        ])
+      showAdvisory(message: message)
     case .interruption(let reason):
       let message = DictationNarrator.copy(for: reason)
       NSAccessibility.post(
@@ -812,6 +824,13 @@ final class RecordingOverlayPanel {
     showNotification(message: message, style: .error)
   }
 
+  /// #1891: show a user-setup advisory. Wider and taller than the other
+  /// notices because it carries a full sentence, and it dwells long enough to
+  /// read that sentence.
+  func showAdvisory(message: String) {
+    showNotification(message: message, style: .advisory)
+  }
+
   /// Unified handler for transient notification overlays (errors and warnings).
   private func showNotification(message: String, style: NotificationStyle) {
     guard panel == nil else {
@@ -827,16 +846,27 @@ final class RecordingOverlayPanel {
     let work = DispatchWorkItem { [weak self] in
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
-      self.showPanel(
-        content: NotificationOverlayView(message: message, style: style).frame(
-          width: 280, height: 44),
-        width: 280
-      )
+      // #1891: the advisory sizes to its content; every other notice keeps the
+      // fixed 280x44 box unchanged.
+      let width: CGFloat = style.isMultiline ? Self.advisoryWidth : 280
+      let content =
+        style.isMultiline
+        ? AnyView(
+          NotificationOverlayView(message: message, style: style)
+            .frame(width: width))
+        : AnyView(
+          NotificationOverlayView(message: message, style: style)
+            .frame(width: 280, height: 44))
+      self.showPanel(content: content, width: width, fitToContent: style.isMultiline)
       self.scheduleAutoDismiss(seconds: style.autoDismissSeconds)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
   }
+
+  /// #1891: wider than the 280pt notice box so the advisory sentence wraps to a
+  /// readable number of lines instead of a narrow column.
+  static let advisoryWidth: CGFloat = 360
 
   /// Transition an existing panel to a notification display.
   private func transitionToNotification(message: String, style: NotificationStyle) {
@@ -857,12 +887,21 @@ final class RecordingOverlayPanel {
     let work = DispatchWorkItem { [weak self] in
       guard let self, self.generation == token else { return }
       self.pendingCreateWork = nil
+      // #1891: mirror the create path exactly. A notice inherited from a
+      // recording panel must not be silently clipped back to 280x44 — the twin
+      // site is where this class of defect hides
+      // (workflow-process.md RULE: port-proven-patterns-wholesale).
+      let width: CGFloat = style.isMultiline ? Self.advisoryWidth : 280
+      let content =
+        style.isMultiline
+        ? AnyView(
+          NotificationOverlayView(message: message, style: style).frame(width: width))
+        : AnyView(
+          NotificationOverlayView(message: message, style: style)
+            .frame(width: 280, height: 44))
       self.showPanel(
-        content: NotificationOverlayView(message: message, style: style).frame(
-          width: 280, height: 44),
-        width: 280,
-        inheritedFrame: inheritedFrame
-      )
+        content: content, width: width, inheritedFrame: inheritedFrame,
+        fitToContent: style.isMultiline)
     }
     pendingCreateWork = work
     DispatchQueue.main.async(execute: work)
@@ -1764,12 +1803,16 @@ enum NotificationStyle {
   case error
   case warning
   case interruption
+  /// #1891: a user-setup advisory. Not a failure of ours, so it does not
+  /// borrow the red failure treatment.
+  case advisory
 
   var iconName: String {
     switch self {
     case .error: "xmark.circle.fill"
     case .warning: "exclamationmark.triangle.fill"
     case .interruption: ""  // uses distress lips, not SF Symbol
+    case .advisory: "mic.slash.fill"
     }
   }
 
@@ -1778,6 +1821,10 @@ enum NotificationStyle {
     case .error: .red
     case .warning: .orange
     case .interruption: .red
+    // #1891: deliberately not red. The glyph carries the meaning, so the state
+    // is never signalled by colour alone (accessibility-macos.md
+    // RULE: accessibility-macos-baseline, accessibility-noncolor-motion).
+    case .advisory: .secondary
     }
   }
 
@@ -1786,7 +1833,17 @@ enum NotificationStyle {
     case .error: 3.0
     case .warning: 2.5
     case .interruption: 2.0
+    // #1891: the advisory sentence is ~23 words. At roughly 200 wpm that needs
+    // about 7 seconds to read, so the 3.0s error dwell would show a message
+    // the user physically cannot finish. 8s, confirmed by reading UAT.
+    case .advisory: 8.0
     }
+  }
+
+  /// #1891: only the advisory wraps and sizes to its content. Every other
+  /// notice is a short single line in a fixed 280x44 box and stays that way.
+  var isMultiline: Bool {
+    self == .advisory
   }
 
   var usesDistressLips: Bool {
@@ -1814,7 +1871,12 @@ struct NotificationOverlayView: View {
       Text(message)
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(style.usesDistressLips ? Color.orange : .white)
-        .lineLimit(1)
+        // #1891: `.lineLimit(1)` in a 280pt box truncates the advisory sentence
+        // to a fragment. Only the advisory wraps; every other notice keeps its
+        // single-line shape exactly as before.
+        .lineLimit(style.isMultiline ? nil : 1)
+        .fixedSize(horizontal: false, vertical: style.isMultiline)
+        .multilineTextAlignment(.leading)
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)

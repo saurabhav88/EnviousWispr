@@ -68,6 +68,9 @@ final class BackendMetadata {
       case .transcribing: return DictationNarrator.shortCopy(for: .transcribing)
       case .polishing: return DictationNarrator.shortCopy(for: .polishing)
       case .error: return DictationNarrator.errorStatus
+      // #1891: `.advisory` deliberately falls through to the engine-health
+      // label ("Loaded" / "Unloaded") rather than showing "Error" in the
+      // sidebar. The microphone sent nothing; the engine is fine.
       default: break
       }
     } else {

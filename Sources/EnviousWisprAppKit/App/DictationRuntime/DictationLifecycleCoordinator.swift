@@ -264,7 +264,8 @@ final class DictationLifecycleCoordinator {
     case .loadingModel, .transcribing, .polishing:
       recordingLockedAccess.set(false)
       hotkeyService.unregisterCancelHotkey()
-    case .error, .idle, .complete:
+    // #1891: an advisory is a concluded terminal — same teardown as any ending.
+    case .error, .idle, .complete, .advisory:
       recordingLockedAccess.set(false)
       hotkeyService.unregisterCancelHotkey()
       // Session ended — retry any Ollama eviction deferred because the
@@ -344,7 +345,8 @@ final class DictationLifecycleCoordinator {
     case .loadingModel, .transcribing, .polishing:
       recordingLockedAccess.set(false)
       hotkeyService.unregisterCancelHotkey()
-    case .error, .idle, .complete:
+    // #1891: an advisory is a concluded terminal — same teardown as any ending.
+    case .error, .idle, .complete, .advisory:
       recordingLockedAccess.set(false)
       hotkeyService.unregisterCancelHotkey()
       settingsSync.retryDeferredOllamaEviction(settings: settings)
@@ -403,7 +405,10 @@ final class DictationLifecycleCoordinator {
       } else {
         languageSuggestionPresenter?.clearBuffer()
       }
-    case .error:
+    // #1891: an advisory is a terminal with no transcript, like `.error`, so it
+    // must clear a stale chip too. Found by sweeping `default` arms — the
+    // compiler could not flag this one.
+    case .error, .advisory:
       languageSuggestionPresenter?.clearCurrentChip()
       languageSuggestionPresenter?.clearBuffer()
     default:
