@@ -108,6 +108,22 @@ final class KernelTelemetryState {
   /// disclosure for `becameZeroMidCapture` (§3.5).
   var zeroSignalFailureMode: CaptureStallFailureMode?
 
+  /// #1890: hardware and signal facts for a take that captured nothing usable,
+  /// or `nil` when this take is not one of those.
+  ///
+  /// **Written ONLY at the two producer sites** — immediately before the eligible
+  /// `.failed(.zeroSignal)` terminal, and on the final `asr_empty_with_speech`
+  /// path after salvage has failed. `finishTerminal` only COPIES it into the
+  /// terminal snapshot.
+  ///
+  /// That direction is the whole point. Measuring or re-reading the bind at the
+  /// terminal would be innocent in intent and indistinguishable in effect from
+  /// the defect `gotchas-audio.md`
+  /// RULE: read-the-bind-prepare-returned-never-re-derive-it exists to prevent:
+  /// the bind read ORDER is a tested #1844/#1578 contract. Freezing at the
+  /// producer makes that invariant true by construction, not by discipline.
+  var signalAttribution: KernelSignalAttributionTelemetry?
+
   /// #1707: this session's ASR-interruption salvage outcome, or `nil` if no
   /// salvage was attempted. See `ASRSalvageOutcome` for the value taxonomy.
   var asrSalvageOutcome: ASRSalvageOutcome?
@@ -132,6 +148,7 @@ final class KernelTelemetryState {
     captureHealth = nil
     interruptedSalvageSource = nil
     zeroSignalFailureMode = nil
+    signalAttribution = nil
     asrSalvageOutcome = nil
     asrRetryOutcome = nil
   }

@@ -724,6 +724,125 @@ public final class TelemetryService {
     PostHogSDK.shared.capture(event, properties: props)
   }
 
+  // MARK: - #1884 outcome distribution
+
+  /// A dictation was ACCEPTED and a session minted. The denominator.
+  ///
+  /// Deliberately minimal — this event exists to be counted. Every fact worth
+  /// knowing about a take is on its `dictation.terminal` row, and duplicating
+  /// them here would create two places to keep in step.
+  ///
+  /// Its whole value is subtraction: a take with a `dictation.started` and no
+  /// `dictation.terminal` crashed, hung, was force-quit, or lost its telemetry.
+  /// That population is invisible in every other event we emit, and it is the
+  /// honest limit on any reliability number built from terminals alone.
+  ///
+  /// Content-free: an opaque take key and a closed-vocabulary backend name.
+  public func dictationStarted(takeID: String, backend: String) {
+    let event = "dictation.started"
+    let props: [String: Any] = ["take_id": takeID, "backend": backend]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: event, stringProps: ["take_id": takeID, "backend": backend]))
+    #endif
+    PostHogSDK.shared.capture(event, properties: props)
+  }
+
+  /// A dictation ENDED, and this is what happened to it.
+  ///
+  /// `result` is one of the seven terminal labels the app already uses
+  /// internally; `reason` is a `TerminalNoticeReason` raw value, present only
+  /// when `result` is `failed`. Neither vocabulary is invented here — both ship
+  /// today, which is the whole point (founder 2026-07-31: "the backend system
+  /// just needs to match our existing reporting system").
+  ///
+  /// **`result: "failed"` is NOT "ASR failed".** It spans permission, microphone,
+  /// capture, processing and ASR causes, and it EXCLUDES `asr_interrupted`,
+  /// which is its own terminal. Anyone deriving an ASR-impact rate must select
+  /// reasons explicitly rather than counting this label.
+  ///
+  /// **Count DISTINCT `take_id`, never rows.** A healthy take also emits an
+  /// `asr.completed` stage row; adding event counts double-counts it.
+  ///
+  /// The attribution block is present only for `zero_signal` and
+  /// `asr_empty_with_speech` — the two terminals #1890 is about. Every one of
+  /// those fields omits when nil and NEVER defaults: an exact zero is the
+  /// signature of a digitally dead channel (#1809), so a manufactured `0` would
+  /// be indistinguishable from the finding this data exists to detect.
+  ///
+  /// Content-free: labels, counts, magnitudes, durations, and closed-vocabulary
+  /// transport / device-class strings. Never a device UID, name, or model; never
+  /// audio; never transcript.
+  public func dictationTerminal(
+    takeID: String,
+    backend: String,
+    result: String,
+    reason: String?,
+    inputDeviceKind: String? = nil,
+    effectiveTransport: String? = nil,
+    selectedTransport: String? = nil,
+    inputSelectionMode: String? = nil,
+    wholeBufferRMS: Float? = nil,
+    maxWindowRMS: Float? = nil,
+    peakAudioLevel: Float? = nil,
+    durationMs: Int? = nil,
+    captureNativeRateHz: Double? = nil,
+    captureNativeChannelCount: Int? = nil
+  ) {
+    let event = "dictation.terminal"
+    var props: [String: Any] = [
+      "take_id": takeID,
+      "backend": backend,
+      "result": result,
+    ]
+    if let reason { props["reason"] = reason }
+    if let inputDeviceKind { props["input_device_kind"] = inputDeviceKind }
+    if let effectiveTransport { props["effective_transport"] = effectiveTransport }
+    if let selectedTransport { props["selected_transport"] = selectedTransport }
+    if let inputSelectionMode { props["input_selection_mode"] = inputSelectionMode }
+    // Float -> Double at the boundary: PostHog carries numbers as Double.
+    if let wholeBufferRMS { props["whole_buffer_rms"] = Double(wholeBufferRMS) }
+    if let maxWindowRMS { props["max_window_rms"] = Double(maxWindowRMS) }
+    if let peakAudioLevel { props["peak_audio_level"] = Double(peakAudioLevel) }
+    if let durationMs { props["duration_ms"] = durationMs }
+    if let captureNativeRateHz { props["capture_native_rate_hz"] = captureNativeRateHz }
+    if let captureNativeChannelCount {
+      props["capture_native_channel_count"] = captureNativeChannelCount
+    }
+    #if DEBUG
+      var stringProps: [String: String] = [
+        "take_id": takeID, "backend": backend, "result": result,
+      ]
+      if let reason { stringProps["reason"] = reason }
+      for key in [
+        "input_device_kind", "effective_transport", "selected_transport", "input_selection_mode",
+      ] {
+        if let value = props[key] as? String { stringProps[key] = value }
+      }
+      var intProps: [String: Int] = [:]
+      for key in ["duration_ms", "capture_native_channel_count"] {
+        if let value = props[key] as? Int { intProps[key] = value }
+      }
+      var doubleProps: [String: Double] = [:]
+      for key in [
+        "whole_buffer_rms", "max_window_rms", "peak_audio_level", "capture_native_rate_hz",
+      ] {
+        if let value = props[key] as? Double { doubleProps[key] = value }
+      }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: event, stringProps: stringProps, intProps: intProps, doubleProps: doubleProps))
+      Task {
+        await AppLogger.shared.log(
+          "dictation_terminal result=\(result) reason=\(reason ?? "nil") "
+            + "take=\(takeID) backend=\(backend)",
+          level: .info, category: "Telemetry")
+      }
+    #endif
+    PostHogSDK.shared.capture(event, properties: props)
+  }
+
   /// Heartpath 5b (#1520): a completed take came back zero-signal, so the fenced
   /// retire primitive was invoked. `retireAction` records whether teardown
   /// actually ran (`retired`) or was a fenced no-op. Content-free by
