@@ -281,14 +281,43 @@ echo "==> Detected lanes: ${DETECTED:-<none>}"
 #    can exercise them; the 11-case regression lock lives there.
 
 PLAN_FILE="${EW_PLAN_FILE:-}"
+if [ -n "$PLAN_FILE" ] && [ ! -f "$PLAN_FILE" ]; then
+  # An EXPLICIT override that does not resolve is an error, never a fallback.
+  # Silently detecting the lane instead would make a typo, a stale path, or a
+  # path relative to the wrong worktree look exactly like "this branch has no
+  # plan" — the caller asked for a specific document and must be told it is not
+  # there.
+  echo "FAIL: EW_PLAN_FILE does not exist: $PLAN_FILE" >&2
+  echo "      (cwd: $(pwd))" >&2
+  exit 2
+fi
 if [ -z "$PLAN_FILE" ]; then
   BRANCH_NAME=$(git -C "$PROJECT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
   # First run of digits anywhere in the branch name, e.g. `fix/1463-foo` -> 1463.
   BRANCH_ISSUE=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+' | head -1 || echo "")
   if [ -n "$BRANCH_ISSUE" ]; then
-    # shellcheck disable=SC2012 # newest match by mtime; plans for one issue may
-    # be revised, and only the count of matches is otherwise interesting.
-    PLAN_FILE=$(ls -t "$PROJECT_ROOT/docs/feature-requests/issue-${BRANCH_ISSUE}"-*.md 2>/dev/null | head -1 || echo "")
+    # Deliberately NOT `ls -t … | head -1`. A git checkout gives tracked files
+    # identical mtimes, so mtime carries no revision ordering and picking the
+    # "newest" would be an arbitrary choice between real alternatives — the same
+    # class of silent wrong-plan bug this whole change exists to remove. Issue
+    # 498 already has two plans on disk.
+    #
+    # One match is used. Zero falls back to the detected lane with a warning.
+    # More than one is AMBIGUOUS and refuses to guess.
+    # The trailing `-` is load-bearing: it stops issue 498 matching issue 4980.
+    PLAN_MATCHES=()
+    while IFS= read -r match; do
+      [ -n "$match" ] && PLAN_MATCHES+=("$match")
+    done < <(find "$PROJECT_ROOT/docs/feature-requests" -maxdepth 1 \
+      -name "issue-${BRANCH_ISSUE}-*.md" 2>/dev/null | sort || true)
+
+    if [ "${#PLAN_MATCHES[@]}" -gt 1 ]; then
+      echo "FAIL: issue ${BRANCH_ISSUE} has ${#PLAN_MATCHES[@]} plans; refusing to guess which one declares this PR's lane." >&2
+      for match in "${PLAN_MATCHES[@]}"; do echo "      $match" >&2; done
+      echo "      Set EW_PLAN_FILE=<path> to name the one this PR implements." >&2
+      exit 2
+    fi
+    [ "${#PLAN_MATCHES[@]}" -eq 1 ] && PLAN_FILE="${PLAN_MATCHES[0]}"
   fi
 fi
 
