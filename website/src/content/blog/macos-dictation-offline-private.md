@@ -8,7 +8,7 @@ draft: false
 author: "Saurabh Vaish"
 faqs:
   - question: "Does macOS have a built-in offline dictation option?"
-    answer: "Yes, but with caveats. Apple Dictation can download an Enhanced Dictation model that runs locally, but the experience is dated, post-processing is minimal, and accuracy on long-form dictation lags purpose-built tools. EnviousWispr runs entirely on-device using newer speech models (Parakeet for English, Whisper for multilingual) plus optional AI polish, so the transcript you paste is closer to what you actually meant to write."
+    answer: "Yes, but with caveats. Apple Dictation can download an Enhanced Dictation model that runs locally, but the experience is dated, post-processing is minimal, and accuracy on long-form dictation lags purpose-built tools. EnviousWispr runs entirely on-device using newer speech models (Parakeet for 25 European languages, Whisper for wider multilingual coverage) plus optional AI polish, so the transcript you paste is closer to what you actually meant to write."
   - question: "Can dictation software really work without an internet connection?"
     answer: "Yes, when the speech model runs locally. EnviousWispr ships with Core ML models that execute on your Mac's Neural Engine, so the entire transcribe-and-polish pipeline runs offline after the first download. There is no API call out, no server round-trip, and no graceful degradation when the Wi-Fi drops."
   - question: "Is on-device dictation accurate enough for medical or accessibility use?"
@@ -39,7 +39,7 @@ With EnviousWispr, that decision doesn't come up. Your recordings stay on your M
 
 ## How On-Device Transcription Works
 
-EnviousWispr handles transcription locally using two backends: Parakeet for fast, streaming English dictation, and WhisperKit for multi-language support. Both run natively through Apple's Core ML framework. The Neural Engine on your Apple Silicon chip does the heavy lifting, not a remote server.
+EnviousWispr handles transcription locally using two backends: Parakeet for fast dictation across 25 European languages, and WhisperKit for wider multi-language support. Both run natively through Apple's Core ML framework. The Neural Engine on your Apple Silicon chip does the heavy lifting, not a remote server.
 
 Here's what the pipeline looks like in practice:
 
