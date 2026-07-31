@@ -243,25 +243,52 @@ struct TerminalContextResolverTests {
     // The defect this freezes: the same bound applied to each of five reads, so
     // five could take five times the cap between them and no single call ever
     // looked late.
-    let budget = TerminalResolutionBudget(total: 0.100)
+    //
+    // TIMING MARGINS HERE ARE ONE-DIRECTIONAL, and must stay that way (#1893).
+    // A busy-wait guarantees a call costs AT LEAST its target and says nothing
+    // about the ceiling, and `step` also charges three accessibility
+    // round-trips inside the same window. So every assertion must survive a
+    // call costing MORE than asked. The original wanted four 25 ms calls to fit
+    // a 100 ms budget EXACTLY — one call of overhead short — and a loaded CI
+    // runner exhausted the budget in three, failing the required check on an
+    // unrelated PR.
     let element = AXUIElementCreateSystemWide()
-
-    var calls = 0
-    for _ in 0..<5 {
-      _ = budget.step(applying: element) {
-        calls += 1
-        // Busy-wait rather than sleep: the charge must reflect real elapsed
-        // time, and a test that slept would prove only that sleeping works.
-        let until = DispatchTime.now().uptimeNanoseconds + 25_000_000
-        while DispatchTime.now().uptimeNanoseconds < until {}
-        return true
-      }
-      if budget.isExhausted { break }
+    let slowCall = {
+      // Busy-wait rather than sleep: the charge must reflect real elapsed
+      // time, and a test that slept would prove only that sleeping works.
+      let until = DispatchTime.now().uptimeNanoseconds + 25_000_000
+      while DispatchTime.now().uptimeNanoseconds < until {}
+      return true
     }
 
-    #expect(calls >= 4, "each call must run until the SHARED budget is gone")
-    #expect(budget.isExhausted, "five 25 ms calls must exhaust a 100 ms cumulative cap")
-    #expect(budget.remaining == 0)
+    // A budget far larger than the work, so nothing can cut the sequence short
+    // and the call count is fixed rather than raced for.
+    let shared = TerminalResolutionBudget(total: 1.0)
+    var calls = 0
+    for _ in 0..<3 {
+      _ = shared.step(applying: element) {
+        calls += 1
+        return slowCall()
+      }
+    }
+
+    #expect(calls == 3, "a budget this large must never cut the sequence short")
+    // THE POINT. A per-call bound would have charged only the last call and
+    // left ~0.975 remaining; a cumulative one has charged all three. The
+    // threshold sits below 3 x 25 ms so slower calls only push it further from
+    // the boundary, and far above the ~0.025 a per-call bound would spend.
+    #expect(
+      shared.remaining <= 1.0 - 0.070,
+      "every call must be charged against the SHARED budget, not just the last")
+
+    // And the shared budget really does run out. 25 ms exceeds what remains
+    // after the first call, so the second exhausts it; a call running LONGER
+    // than 25 ms only reaches that sooner.
+    let tight = TerminalResolutionBudget(total: 0.040)
+    for _ in 0..<2 { _ = tight.step(applying: element) { slowCall() } }
+
+    #expect(tight.isExhausted, "two 25 ms calls must exhaust a 40 ms cumulative cap")
+    #expect(tight.remaining == 0)
   }
 
   @Test("A healthy sequence of calls barely touches the budget")
@@ -271,9 +298,21 @@ struct TerminalContextResolverTests {
     // must never bite healthy work.
     let budget = TerminalResolutionBudget(total: 0.100)
     let element = AXUIElementCreateSystemWide()
+
+    let started = DispatchTime.now().uptimeNanoseconds
     for _ in 0..<5 { _ = budget.step(applying: element) { true } }
-    #expect(!budget.isExhausted)
-    #expect(budget.remaining > 0.090, "five instant calls must leave the budget nearly whole")
+    let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e9
+
+    #expect(!budget.isExhausted, "five instant calls must not exhaust the cap")
+    // Bound the spend by what the loop ACTUALLY took rather than by an absolute
+    // millisecond figure (#1893). A fixed `remaining > 0.090` asserts that five
+    // accessibility round-trips cost under 10 ms, which is a claim about the
+    // machine, not about our budget — and this file's own comment records cold
+    // first calls spiking to 19-35 ms. What belongs to the budget is that it
+    // charges elapsed time and never adds a per-call surcharge on top.
+    #expect(
+      0.100 - budget.remaining <= elapsed + 0.001,
+      "the budget must charge only time that really passed")
   }
 
   // MARK: - Circuit breaker
