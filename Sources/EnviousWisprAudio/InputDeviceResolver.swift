@@ -196,6 +196,28 @@ struct InputDeviceResolver {
     // snapshot here, so report the default's transport from it rather than
     // discarding a fact we have; nil only when the default is not itself an
     // input candidate.
+    //
+    // KNOWN LIMIT, accepted deliberately (#1714 cloud review r3). `defaultID` was
+    // read before the snapshot, so a default unplugged in between is selected
+    // stale even when the snapshot holds a live alternative. Not fixed by
+    // rechecking `candidates` for three reasons:
+    //   1. Absence from `candidates` does not PROVE the default is gone. On an
+    //      incomplete list it proves nothing at all, and even on a complete one a
+    //      device is excluded for having no readable input channels, which is not
+    //      the same fact. Overriding the user's system default on inconclusive
+    //      evidence, in the heart path, is the worse trade.
+    //   2. Rung 1 above carries the identical staleness and deliberately does
+    //      NOT enumerate, so this check would make the pinned path stricter than
+    //      the Auto path about the same physical event, for no reason the user
+    //      could perceive. Making them consistent means enumerating on every
+    //      dictation, which §3 rung 1 exists to avoid.
+    //   3. It needs a double coincidence — pinned device missing AND default
+    //      changing inside the gap between two adjacent reads. Founder priority 3
+    //      is explicit that rare genuine failures get simple handling rather than
+    //      machinery.
+    // The outcome is a failed bind, which `bind_outcome = failed` records; if it
+    // instead binds and captures silence, that is the silent-capture family
+    // (#1845 / #1578 / #1809), which owns detection and is out of scope here.
     if let defaultID {
       return resolution(
         .selected(defaultID, source: .systemDefault),
