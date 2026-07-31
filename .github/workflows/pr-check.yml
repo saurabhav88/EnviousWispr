@@ -430,6 +430,69 @@ jobs:
 
           echo "==> FoundationModels compile probe PASSED"
 
+      # #1836: scripts/eval/{apple_runner,alias_runner} are tracked STANDALONE
+      # SwiftPM packages that path-depend on EnviousWisprCore. Nothing compiled
+      # them — not scripts/xcode-test.sh, not any workflow — so a public Core
+      # signature change broke them with a fully green local suite AND a green
+      # PR. #1770 collapsed LLMProviderConfig's two thinking optionals into one
+      # and left apple_runner uncompilable; 4,374 local tests passed and only a
+      # human reading the call site caught it.
+      #
+      # Compile-only: no run, no corpus, no model download. It lives INSIDE this
+      # lane on purpose. build-check is the only required status context, so a
+      # separate advisory job would reproduce the exact invisibility this fixes,
+      # and a new required context would need a ruleset change.
+      #
+      # `swift build` is correct here and does NOT contravene
+      # conventions.md RULE: xcode-build-engine-cli. That rule governs the app,
+      # XPC, release and repo-test gates; these two packages are invisible to
+      # Tuist/Xcode, so SwiftPM is the only thing that can build them. Debug
+      # `swift build` is explicitly allowed as an informal compile check.
+      - name: Compile standalone eval packages
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          for pkg in scripts/eval/apple_runner scripts/eval/alias_runner; do
+            # Seed each package's resolution from the app's TRACKED pins. Both
+            # eval Package.resolved files are gitignored, so a fresh runner has
+            # none and SwiftPM would resolve the whole graph fresh — floating
+            # ahead of what the app actually ships. Measured locally: an
+            # unseeded resolve picked PostHog 3.68.4 / Sentry 9.24.0 /
+            # swift-argument-parser 1.8.2 against the app's pinned 3.62.4 /
+            # 9.19.0 / 1.7.1. On a REQUIRED check that means an unrelated
+            # upstream release can turn the gate red, and the compile would not
+            # be against the versions we ship. Root Package.resolved is the one
+            # source of pin truth; SwiftPM prunes the entries this graph does
+            # not need (sparkle, swift-syntax) and holds every shared one.
+            cp Package.resolved "$pkg/Package.resolved"
+            # --only-use-versions-from-resolved-file makes the seeding a
+            # GUARANTEE rather than a hint. Without it SwiftPM may silently
+            # rewrite the copied lockfile and compile whatever resolves at that
+            # moment — e.g. when a PR changes a dependency constraint without
+            # updating the root Package.resolved — which would quietly undo the
+            # pinning this step exists to provide. With it, an out-of-date
+            # lockfile FAILS the step instead. Verified both directions locally:
+            # a correctly seeded build succeeds, and a lockfile that cannot
+            # satisfy the graph errors out rather than re-resolving.
+            # RELEASE, because that is the only configuration this tooling ever
+            # runs in: both READMEs say `swift build -c release`, and both eval
+            # gates execute `.build/release/` binaries
+            # (acceptance_gate.py:48, alias_suggestion_gate.py:45). A debug
+            # compile would validate a configuration nobody uses and would miss
+            # a break behind `#if DEBUG` — a real class here, since Core carries
+            # DEBUG-only members.
+            #
+            # This is NOT the case conventions.md RULE: xcode-build-engine-cli
+            # forbids. That rule governs the APP release/DoD gate, where Xcode
+            # owns bundle and resource assembly. These two packages have no
+            # Xcode representation at all, so SwiftPM is the only thing that can
+            # build them, and release is what they are actually run as. The
+            # local `check-swift-build-gate.sh` nudge does not apply to CI.
+            echo "==> swift build -c release --package-path $pkg (locked to root pins)"
+            swift build -c release --package-path "$pkg" --only-use-versions-from-resolved-file
+          done
+          echo "==> Both standalone eval packages compile against current Core"
+
   # Required aggregate gate. This is the ONLY required status check on main
   # (ruleset main-protection, context "build-check"); keeping the job id
   # "build-check" preserves that context so no ruleset change is needed (#906).
