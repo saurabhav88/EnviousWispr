@@ -1781,11 +1781,26 @@ final class RecordingSessionKernel {
     // a quiet `.noSpeech` instead of a user-visible ASR failure (#964 R2).
     var attemptedFromEnergyDespiteNoSegments = false
     if speechEvidence == .confirmedNoSpeech {
-      if Self.rawAudioIsDeadAir(captureResult.samples, peak: rawPeakAudioLevel) {
+      // #1845: `measure` instead of `rawAudioIsDeadAir` — the identical verdict,
+      // plus the two energy values the classifier already computed. Read ONCE;
+      // a second call would be a second measurement of the same buffer.
+      let deadAirMeasurement = RawAudioDeadAirClassifier.measure(
+        captureResult.samples, peak: rawPeakAudioLevel)
+      if deadAirMeasurement.isDeadAir {
+        // #1845: route frozen from THIS take's snapshot, never from the live
+        // `audioCapture.currentResolvedRoute` — by terminal time that can
+        // describe a different source. Same reasoning as the dead-mic retire
+        // telemetry below (`:1686-1690`).
+        let takeRoute = lastResolvedRoute
         telemetryState.noSpeechTelemetry = KernelNoSpeechTelemetry(
           mode: isStreamingSession ? "streaming" : "batch",
           rawSampleCount: captureResult.samples.count,
-          peakAudioLevel: rawPeakAudioLevel
+          peakAudioLevel: rawPeakAudioLevel,
+          wholeBufferRMS: deadAirMeasurement.wholeBufferRMS,
+          maxWindowRMS: deadAirMeasurement.maxWindowRMS,
+          effectiveTransport: takeRoute?.effective,
+          selectedTransport: takeRoute?.selected,
+          inputSelectionMode: takeRoute?.inputSelectionMode
         )
         // #1317 N2: a classified zero-signal session emits ONLY the new
         // failure-mode event — never the legacy zombie telemetry too.

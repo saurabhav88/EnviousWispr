@@ -89,6 +89,7 @@ TAKE_KEYED_EVENTS = (
     "asr.completed",
     "audio.capture_interrupted",
     "audio.dead_mic_retire_attempted",
+    "audio.vad_gate_no_speech",
     "dictation.completed",
     "dictation.first_vad_chunk_completed",
     "dictation.first_vad_chunk_started",

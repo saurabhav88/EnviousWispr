@@ -106,7 +106,12 @@ final class FakeAudioCapture: AudioCaptureInterface {
   /// route captured at monitor start, not a later value. Default unchanged.
   var routeOverride: String = "fake"
   var currentAudioRoute: String { routeOverride }
-  var currentResolvedRoute: ResolvedRouteTransports? { nil }
+  /// #1845: settable so a test can make the LIVE route disagree with the take's
+  /// frozen route. Telemetry that reads this instead of the frozen snapshot is a
+  /// real defect (the live value can describe a later source by terminal time),
+  /// and it is only detectable if the two can be made to differ.
+  var liveResolvedRoute: ResolvedRouteTransports?
+  var currentResolvedRoute: ResolvedRouteTransports? { liveResolvedRoute }
 
   // MARK: #1714 — scripted input-resolution attribution
   //
