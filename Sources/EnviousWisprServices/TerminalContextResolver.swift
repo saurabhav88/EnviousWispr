@@ -68,9 +68,21 @@ package final class TerminalResolutionBudget: Sendable {
 
   private let total: Double
   private let spent = OSAllocatedUnfairLock(initialState: 0.0)
+  private let now: @Sendable () -> Double
 
-  package init(total: Double = defaultTotal) {
+  /// `now` reads a monotonic clock in seconds. It exists so `step` can be
+  /// tested against a clock the test drives, matching how the resolver already
+  /// takes `Dependencies.now` — an assertion about cumulative charging must not
+  /// depend on wall time, because a busy-wait guarantees a floor and never a
+  /// ceiling (#1893).
+  package init(
+    total: Double = defaultTotal,
+    now: @escaping @Sendable () -> Double = {
+      Double(DispatchTime.now().uptimeNanoseconds) / 1e9
+    }
+  ) {
     self.total = total
+    self.now = now
   }
 
   package var remaining: Double {
@@ -100,8 +112,8 @@ package final class TerminalResolutionBudget: Sendable {
   package func step<T>(applying element: AXUIElement, _ body: () -> T) -> T {
     let application = AXUIElementCreateApplication(processIdentifier(of: element))
     AXUIElementSetMessagingTimeout(application, Float(max(0.005, remaining)))
-    let started = DispatchTime.now().uptimeNanoseconds
-    defer { charge(Double(DispatchTime.now().uptimeNanoseconds - started) / 1e9) }
+    let started = now()
+    defer { charge(now() - started) }
     return body()
   }
 
@@ -250,7 +262,9 @@ package enum TerminalContextResolver {
     // call, so nothing else charges it. Measured mean 3 ms / p95 7 ms.
     let scanStart = dependencies.now()
     let scan = dependencies.scanProcesses()
-    if overspent(by: dependencies.now() - scanStart, budget: budget, breaker: breaker, pid: targetPID) {
+    if overspent(
+      by: dependencies.now() - scanStart, budget: budget, breaker: breaker, pid: targetPID)
+    {
       return .refused(.deadline)
     }
 

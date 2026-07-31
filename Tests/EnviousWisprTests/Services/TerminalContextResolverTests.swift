@@ -243,25 +243,41 @@ struct TerminalContextResolverTests {
     // The defect this freezes: the same bound applied to each of five reads, so
     // five could take five times the cap between them and no single call ever
     // looked late.
-    let budget = TerminalResolutionBudget(total: 0.100)
+    //
+    // NO ASSERTION HERE MAY DEPEND ON WALL TIME (#1893), which is the rule the
+    // rest of this suite already follows through `TestClock`. Three review
+    // rounds landed on this one test, each on a different face of the same
+    // mistake, and each patch created the next: a busy-wait guarantees a floor
+    // and never a ceiling, so a threshold sized for calls that take *at least*
+    // 25 ms fails when a runner makes one take longer (the original, which
+    // needed four 25 ms calls to fit 100 ms exactly and broke an unrelated PR);
+    // widening that threshold instead lets a SINGLE descheduled call satisfy
+    // it, so the per-call regression passes and the test goes quietly green;
+    // and comparing against the spend hits `remaining`'s clamp at zero. There
+    // is no correct constant, because the failure modes point in both
+    // directions at once. `step` therefore takes the same injected clock the
+    // resolver already takes, and the numbers below are exact.
     let element = AXUIElementCreateSystemWide()
+    let clock = TestClock()
+    clock.perCallCost = 0.030  // every `step` reads the clock twice: 30 ms each
 
+    let shared = TerminalResolutionBudget(total: 1.0, now: { clock.read() })
     var calls = 0
-    for _ in 0..<5 {
-      _ = budget.step(applying: element) {
-        calls += 1
-        // Busy-wait rather than sleep: the charge must reflect real elapsed
-        // time, and a test that slept would prove only that sleeping works.
-        let until = DispatchTime.now().uptimeNanoseconds + 25_000_000
-        while DispatchTime.now().uptimeNanoseconds < until {}
-        return true
-      }
-      if budget.isExhausted { break }
-    }
+    for _ in 0..<3 { _ = shared.step(applying: element) { calls += 1 } }
 
-    #expect(calls >= 4, "each call must run until the SHARED budget is gone")
-    #expect(budget.isExhausted, "five 25 ms calls must exhaust a 100 ms cumulative cap")
-    #expect(budget.remaining == 0)
+    #expect(calls == 3)
+    // THE POINT. Cumulative charges all three: 0.090. A per-call bound retains
+    // only the final call and would read 0.030.
+    #expect(abs((1.0 - shared.remaining) - 0.090) < 1e-9, "every call must be charged")
+
+    // And the SHARED budget really runs out. Two 30 ms calls exceed a 40 ms cap
+    // between them while neither does alone, so exhaustion is reachable only by
+    // accumulating — a per-call bound would sit at 30 ms and stay open.
+    let tight = TerminalResolutionBudget(total: 0.040, now: { clock.read() })
+    for _ in 0..<2 { _ = tight.step(applying: element) {} }
+
+    #expect(tight.isExhausted, "two 30 ms calls must exhaust a 40 ms cumulative cap")
+    #expect(tight.remaining == 0)
   }
 
   @Test("A healthy sequence of calls barely touches the budget")
@@ -269,11 +285,23 @@ struct TerminalContextResolverTests {
     // Measured live 2026-07-28: all five reads cost mean 0.78 ms in Ghostty and
     // 1.79 ms in iTerm2. The cap is a failure bound, not a latency target, and
     // must never bite healthy work.
-    let budget = TerminalResolutionBudget(total: 0.100)
+    //
+    // Driven by `TestClock` rather than the wall clock (#1893). The original
+    // asserted `remaining > 0.090` against real time, which is a claim that five
+    // accessibility round-trips cost under 10 ms — a fact about the machine, not
+    // about our budget, and one this file's own note contradicts by recording
+    // cold first calls at 19-35 ms.
+    let clock = TestClock()
+    clock.perCallCost = 0.001  // a healthy read, at the measured order of cost
+    let budget = TerminalResolutionBudget(total: 0.100, now: { clock.read() })
     let element = AXUIElementCreateSystemWide()
-    for _ in 0..<5 { _ = budget.step(applying: element) { true } }
-    #expect(!budget.isExhausted)
-    #expect(budget.remaining > 0.090, "five instant calls must leave the budget nearly whole")
+
+    for _ in 0..<5 { _ = budget.step(applying: element) {} }
+
+    #expect(!budget.isExhausted, "five healthy calls must not exhaust the cap")
+    #expect(
+      budget.remaining > 0.090,
+      "five healthy calls must leave the budget nearly whole")
   }
 
   // MARK: - Circuit breaker
