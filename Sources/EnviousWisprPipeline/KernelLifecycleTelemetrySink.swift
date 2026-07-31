@@ -523,13 +523,11 @@ final class KernelLifecycleTelemetrySink {
 
   /// The terminal each lifecycle event represents, or `nil` for a non-terminal
   /// event. Exhaustive on purpose.
-  /// `package` rather than `private` since #1884: the terminal telemetry path
-  /// renders this same label from a frozen snapshot, and tests assert that every
-  /// `RecordingOutcome` projection lands on a terminal. `package` is the seam
-  /// visibility — tests live in a separate module, so `internal` would work only
-  /// through `@testable` and couple the seam to a compilation mode
-  /// (swift-patterns.md RULE: package-visibility-avoids-cross-module-unknown-default).
-  package static func terminalStateLabel(for event: KernelLifecycleEvent) -> String? {
+  /// Internal since #1884 so the projection tests can verify that every
+  /// `RecordingOutcome` maps to a terminal label. The enclosing type is already
+  /// `internal` and the tests already use `@testable`, so `package` would widen
+  /// access without buying anything — `internal` is the narrowest that works.
+  static func terminalStateLabel(for event: KernelLifecycleEvent) -> String? {
     switch event {
     case .pipelineCompleted: "completed"
     case .failed: "failed"

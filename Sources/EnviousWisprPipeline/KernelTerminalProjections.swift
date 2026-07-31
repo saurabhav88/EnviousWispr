@@ -52,10 +52,9 @@ extension RecordingFailureReason {
 
   /// The stable, presentation-neutral reason code for this failure.
   ///
-  /// `TerminalNoticeReason.rawValue` is the SHIPPED PostHog vocabulary — it is
-  /// what `pipeline.failed.error_code` already carries — so terminal telemetry
-  /// reuses it rather than emitting raw Swift case names. Snake_case, stable,
-  /// and already what our queries and the daily report are written against.
+  /// `TerminalNoticeReason.rawValue` is the SHIPPED PostHog vocabulary. It is
+  /// what `pipeline.failed.error_code` already carries, so terminal telemetry
+  /// reuses it rather than emitting raw Swift case names.
   ///
   /// Exhaustive with no `default`, so adding a `RecordingFailureReason` is a
   /// compile error here rather than a silently unmapped value in the data.

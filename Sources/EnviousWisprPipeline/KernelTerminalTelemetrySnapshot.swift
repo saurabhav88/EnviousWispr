@@ -22,8 +22,9 @@ import Foundation
 /// most diagnostically loaded value in the dataset and make absent data
 /// indistinguishable from the finding this record exists to detect.
 struct KernelSignalAttributionTelemetry: Sendable, Equatable {
-  /// Which physical input class produced the capture, from the bind-frozen
-  /// value — one of the four closed classes, never a device identifier.
+  /// Built-in-family input detail frozen at bind time: `built_in_mic` or
+  /// `jack_input`. Nil for USB, Bluetooth, and every other transport — those are
+  /// distinguished by `effectiveTransport`, not here. Never a device identifier.
   let inputDeviceKind: String?
   let effectiveTransport: String?
   let selectedTransport: String?
