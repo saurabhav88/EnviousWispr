@@ -26,10 +26,17 @@ enum DictationSessionConfigFactory {
     // (WhisperKit-only) maps to `.idle` in the kernel driver's state mapping.
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
+    // #1891: EXHAUSTIVE on purpose — the previous `default: return false` made
+    // this the one consumer the compiler could not flag. Adding `.advisory`
+    // without this line would have silently disabled auto-paste on the NEXT
+    // take: the user fixes their muted microphone, dictates successfully, and
+    // the text never lands. That is a heart-path regression hiding behind a
+    // green build and a green test suite. A future state must fail to compile
+    // here rather than quietly opt out of pasting.
     let activePipelineIdle: Bool = {
       switch active.state {
-      case .idle, .complete, .error: return true
-      default: return false
+      case .idle, .complete, .error, .advisory: return true
+      case .loadingModel, .recording, .transcribing, .polishing: return false
       }
     }()
     // #500: drop the legacy `permissions.hasAccessibilityPermission` gate so the

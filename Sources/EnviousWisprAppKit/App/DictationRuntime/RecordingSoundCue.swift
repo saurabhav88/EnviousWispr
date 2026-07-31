@@ -74,7 +74,10 @@ struct RecordingSoundCue {
       // code-diff review r3).
       guard playback(selectedPairing, .start) else { return }
       activePairingByBackend[backend] = selectedPairing
-    case .idle, .loadingModel, .transcribing, .polishing, .complete, .error:
+    // #1891: an advisory means the recording ended, so it plays the stop cue
+    // exactly like every other non-recording state.
+    case .idle, .loadingModel, .transcribing, .polishing, .complete, .error,
+      .advisory:
       guard let pairing = activePairingByBackend.removeValue(forKey: backend) else { return }
       _ = playback(pairing, .stop)
     }

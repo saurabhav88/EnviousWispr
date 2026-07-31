@@ -98,6 +98,16 @@ public enum OverlayIntent: Equatable, Sendable {
   /// #1558: carries a TYPED reason; `DictationNarrator` authors the
   /// sentence. Auto-dismissed by the overlay panel after 3 seconds.
   case error(reason: TerminalNoticeReason)
+  /// #1891 (epic #1876 Phase 2b). A user-setup advisory: the microphone
+  /// delivered nothing usable, so there is no text — and that is NOT our
+  /// software failing. Deliberately not `.error`, which carries a red
+  /// `xmark.circle.fill`, a 3-second dismissal too short to read this
+  /// sentence, a main-window "Error" heading with a Try Again button, a red
+  /// menu-bar state and a VoiceOver "Error: " prefix. Every one of those
+  /// contradicts the fact and sends the user to retry something that cannot
+  /// work. `DictationNarrator` authors the sentence; the panel renders it
+  /// multiline with a content-driven height and a dwell long enough to read.
+  case advisory(reason: TerminalAdvisoryReason)
   /// Transient interruption notice shown when the recording was cut short
   /// (device removed, or engine lost with the mic still attached). #1558:
   /// carries a TYPED reason. Distress lips (red pulse), auto-dismissed after 2 seconds.

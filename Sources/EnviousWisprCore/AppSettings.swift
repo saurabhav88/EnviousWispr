@@ -22,6 +22,11 @@ public enum PipelineState: Equatable, Sendable {
   case polishing
   case complete
   case error(TerminalNoticeReason)
+  /// #1891: a terminal the user can act on that is NOT our failure — the
+  /// microphone delivered nothing usable. Separate from `.error` because
+  /// `.error` drags a Try Again button, a red menu-bar state, a red sidebar
+  /// dot and a VoiceOver "Error: " prefix, all of which contradict the fact.
+  case advisory(TerminalAdvisoryReason)
 
   public var isActive: Bool {
     switch self {
@@ -45,6 +50,13 @@ public enum PipelineState: Equatable, Sendable {
     case .polishing: return "polishing"
     case .complete: return "complete"
     case .error: return "error"
+    // #1891: DELIBERATELY "error", not a new label. This feeds `app_phase` on
+    // `telemetry.flush_requested`; a new value would change that series'
+    // vocabulary at a version boundary, which is the exact trap #1813 hit
+    // (analytics-operations.md RULE: enum-backed-properties-carry-retired-
+    // vocabularies-split-by-version). The customer-facing split is a
+    // presentation decision and does not belong in a telemetry phase label.
+    case .advisory: return "error"
     }
   }
 

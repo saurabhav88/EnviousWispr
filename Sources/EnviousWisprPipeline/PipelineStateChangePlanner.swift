@@ -200,6 +200,21 @@ enum PipelineStateChangePlanner {
     if case .error(let reason) = newState.activity {
       effects.append(.reportPipelineFailed(errorCode: reason.rawValue))
     }
+    // #1891: `.zeroSignal` moved from `.error` to `.advisory` for PRESENTATION
+    // only. Its telemetry must not move with it — `zero_signal` is an existing
+    // series (340 events / 50 users per 30d) and the baseline the whole Phase 2
+    // analysis rests on, so it keeps emitting under its unchanged code.
+    // Splitting or renaming it would be the #1813 retired-vocabulary trap,
+    // self-inflicted.
+    //
+    // `.vadGateNoSpeech` emits NOTHING here on purpose: it is already counted
+    // by `audio.vad_gate_no_speech` (#1845), and a second record would both
+    // double-count that population and inflate total `pipeline.failed` volume
+    // with takes that were never a pipeline failure.
+    if case .advisory(.zeroSignal) = newState.activity {
+      effects.append(
+        .reportPipelineFailed(errorCode: TerminalNoticeReason.zeroSignal.rawValue))
+    }
 
     return PipelineStateChangePlan(effects: effects)
   }

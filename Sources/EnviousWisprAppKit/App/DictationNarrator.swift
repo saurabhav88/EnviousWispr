@@ -108,6 +108,32 @@ enum DictationNarrator {
     }
   }
 
+  /// #1891 (epic #1876 Phase 2b) — THE SEVENTH SENTENCE, founder-approved
+  /// verbatim 2026-07-31. Do not reword without a founder decision: #1558
+  /// locked the six, and this adds exactly one.
+  ///
+  /// It is a PLAIN SENTENCE, not `[Category] error. Try again.`, and that is
+  /// the whole point. Under the design rule at the top of this file the error
+  /// form means "our bug, just retry" — which is false here and, worse,
+  /// sends the user to do the one thing that cannot help. Capture worked. It
+  /// recorded exactly what the microphone sent, which was nothing usable.
+  ///
+  /// Both reasons share one sentence deliberately: the user cannot act on the
+  /// difference between a digitally silent channel and a signal floor below
+  /// every dead-air threshold, and the founder's model gives capture endings
+  /// exactly two customer buckets rather than one per cause.
+  ///
+  /// The three causes are offered with "may" because we genuinely cannot tell
+  /// them apart from the samples, and the app never claims a mute it cannot
+  /// substantiate (#1876 product decision 1).
+  static func copy(for reason: TerminalAdvisoryReason) -> String {
+    switch reason {
+    case .zeroSignal, .vadGateNoSpeech:
+      return
+        "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings."
+    }
+  }
+
   // MARK: - Post-completion + advisory warnings (E3, #1567)
 
   /// Founder-LOCKED 2026-07-15. Unchanged from today EXCEPT two approved
@@ -165,6 +191,10 @@ enum DictationNarrator {
     case .accessibilityToast: return "Accessibility permission needed for auto-paste"
     case .warning(let reason): return "Warning: \(copy(for: reason))"
     case .error(let reason): return "Error: \(copy(for: reason))"
+    // #1891: NO "Error: " prefix. A screen-reader user would otherwise hear
+    // the exact opposite of what the sentence says. This arm is the reason the
+    // advisory is a separate intent rather than a suppression flag on `.error`.
+    case .advisory(let reason): return copy(for: reason)
     case .interruption(let reason): return "Interruption: \(copy(for: reason))"
     case .passiveChip(let payload): return "Detected \(payload.displayName)"
     case .cachingModel(engineLabel: _): return "Getting dictation ready, one moment"
