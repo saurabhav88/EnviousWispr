@@ -193,6 +193,16 @@ struct KernelNoSpeechTelemetry {
   var effectiveTransport: String?
   var selectedTransport: String?
   var inputSelectionMode: String?
+  /// #1845 — which BUILT-IN-family input this was, closed vocabulary
+  /// (`built_in_mic` / `jack_input`), nil for every other transport.
+  ///
+  /// `effectiveTransport` reports `built_in` for BOTH the internal microphone
+  /// and a microphone in the 3.5 mm jack, because macOS routes the jack through
+  /// the same codec. Without this field a quiet built-in mic and a dead headset
+  /// plugged into the jack are the same row — and the second is the population
+  /// #1845 exists to measure. Derived from the bound device's Apple-fixed UID
+  /// constant, never from the device name or the raw UID.
+  var inputDeviceKind: String?
 }
 
 struct KernelASRCompletedTelemetry {

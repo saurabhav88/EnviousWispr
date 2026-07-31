@@ -77,6 +77,7 @@ import Testing
       let effectiveTransport: String?
       let selectedTransport: String?
       let inputSelectionMode: String?
+      let inputDeviceKind: String?
       let captureNativeRateHz: Double?
       let captureNativeChannelCount: Int?
       let takeID: String?
@@ -153,14 +154,15 @@ import Testing
       modelLoadWedged: { backend, _ in recorder.modelLoadWedgedBackends.append(backend) },
       vadGateNoSpeech: {
         backend, mode, rawSampleCount, peak, wholeRMS, maxWindowRMS, durationMs,
-        effectiveTransport, selectedTransport, inputSelectionMode, nativeRate, nativeChannels,
-        takeID in
+        effectiveTransport, selectedTransport, inputSelectionMode, deviceKind, nativeRate,
+        nativeChannels, takeID in
         recorder.vadGateNoSpeechCalls.append(
           Recorder.VADGateNoSpeechCall(
             backend: backend, mode: mode, rawSampleCount: rawSampleCount,
             peakAudioLevel: peak, wholeBufferRMS: wholeRMS, maxWindowRMS: maxWindowRMS,
             durationMs: durationMs, effectiveTransport: effectiveTransport,
             selectedTransport: selectedTransport, inputSelectionMode: inputSelectionMode,
+            inputDeviceKind: deviceKind,
             captureNativeRateHz: nativeRate, captureNativeChannelCount: nativeChannels,
             takeID: takeID))
         recorder.timeline.append("vadGateNoSpeech")
@@ -781,7 +783,8 @@ import Testing
       maxWindowRMS: 0.0009,
       effectiveTransport: "built_in",
       selectedTransport: "unknown",
-      inputSelectionMode: "auto"
+      inputSelectionMode: "auto",
+      inputDeviceKind: "jack_input"
     )
     let sink = makeSink(recorder: recorder, telemetryState: state)
 
@@ -797,6 +800,11 @@ import Testing
     #expect(call.effectiveTransport == "built_in")
     #expect(call.selectedTransport == "unknown")
     #expect(call.inputSelectionMode == "auto")
+    // #1845: the field that makes a jack-connected microphone distinguishable
+    // from the internal one. Both report transport `built_in`, so without this
+    // the two are the same row — and the jack case is the population the issue
+    // exists to measure.
+    #expect(call.inputDeviceKind == "jack_input")
     // The take key must survive to the tally. The generic terminal postamble
     // clears it, and only its placement AFTER the event-specific arm saves this.
     // If that postamble is ever hoisted above the switch, this assertion fails
@@ -881,14 +889,15 @@ import Testing
       updateTakeID: { _ in },
       vadGateNoSpeech: {
         backend, mode, rawSampleCount, peak, wholeRMS, maxWindowRMS, durationMs,
-        effectiveTransport, selectedTransport, inputSelectionMode, nativeRate, nativeChannels,
-        takeID in
+        effectiveTransport, selectedTransport, inputSelectionMode, deviceKind, nativeRate,
+        nativeChannels, takeID in
         recorder.vadGateNoSpeechCalls.append(
           Recorder.VADGateNoSpeechCall(
             backend: backend, mode: mode, rawSampleCount: rawSampleCount,
             peakAudioLevel: peak, wholeBufferRMS: wholeRMS, maxWindowRMS: maxWindowRMS,
             durationMs: durationMs, effectiveTransport: effectiveTransport,
             selectedTransport: selectedTransport, inputSelectionMode: inputSelectionMode,
+            inputDeviceKind: deviceKind,
             captureNativeRateHz: nativeRate, captureNativeChannelCount: nativeChannels,
             takeID: takeID))
       })

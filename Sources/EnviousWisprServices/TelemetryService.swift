@@ -658,6 +658,7 @@ public final class TelemetryService {
     effectiveTransport: String?,
     selectedTransport: String?,
     inputSelectionMode: String?,
+    inputDeviceKind: String?,
     captureNativeRateHz: Double?,
     captureNativeChannelCount: Int?,
     takeID: String?
@@ -677,6 +678,7 @@ public final class TelemetryService {
     if let effectiveTransport { props["effective_transport"] = effectiveTransport }
     if let selectedTransport { props["selected_transport"] = selectedTransport }
     if let inputSelectionMode { props["input_selection_mode"] = inputSelectionMode }
+    if let inputDeviceKind { props["input_device_kind"] = inputDeviceKind }
     if let captureNativeRateHz { props["capture_native_rate_hz"] = captureNativeRateHz }
     if let captureNativeChannelCount {
       props["capture_native_channel_count"] = captureNativeChannelCount
@@ -686,7 +688,10 @@ public final class TelemetryService {
       // Read BACK OUT of the emitted payload so a test observes what PostHog
       // receives rather than what the caller passed — the #1846 pattern.
       var stringProps: [String: String] = ["backend": backend, "mode": mode]
-      for key in ["effective_transport", "selected_transport", "input_selection_mode", "take_id"] {
+      for key in [
+        "effective_transport", "selected_transport", "input_selection_mode", "input_device_kind",
+        "take_id",
+      ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
       var intProps: [String: Int] = ["raw_sample_count": rawSampleCount]
@@ -711,7 +716,8 @@ public final class TelemetryService {
             + "peak=\(peakAudioLevel.map { "\($0)" } ?? "nil") "
             + "wholeRms=\(wholeBufferRMS.map { "\($0)" } ?? "nil") "
             + "maxWindowRms=\(maxWindowRMS.map { "\($0)" } ?? "nil") "
-            + "transport=\(effectiveTransport ?? "nil") take=\(takeID ?? "nil")",
+            + "transport=\(effectiveTransport ?? "nil") kind=\(inputDeviceKind ?? "nil") "
+            + "take=\(takeID ?? "nil")",
           level: .info, category: "Telemetry")
       }
     #endif

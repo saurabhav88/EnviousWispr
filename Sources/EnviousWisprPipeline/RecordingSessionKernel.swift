@@ -1800,7 +1800,15 @@ final class RecordingSessionKernel {
           maxWindowRMS: deadAirMeasurement.maxWindowRMS,
           effectiveTransport: takeRoute?.effective,
           selectedTransport: takeRoute?.selected,
-          inputSelectionMode: takeRoute?.inputSelectionMode
+          inputSelectionMode: takeRoute?.inputSelectionMode,
+          // #1845: read from the device HAL ACTUALLY OPENED (#1844's bound-device
+          // contract), not from a re-derived lookup — the whole point of that
+          // contract is that a re-read can name a different microphone.
+          // #1845: the label frozen at bind time. Deliberately NOT
+          // `zeroSignalDiscriminatorDevice?.deviceUID` — that accessor's read
+          // ORDER is a tested #1844/#1578 contract and consulting it here
+          // breaks it (caught by KernelFrozenBindGuardTests).
+          inputDeviceKind: audioCapture.boundInputDeviceKind
         )
         // #1317 N2: a classified zero-signal session emits ONLY the new
         // failure-mode event — never the legacy zombie telemetry too.

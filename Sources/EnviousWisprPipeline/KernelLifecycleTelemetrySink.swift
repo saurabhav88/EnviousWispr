@@ -59,7 +59,8 @@ final class KernelLifecycleTelemetrySink {
     _ backend: String, _ mode: String, _ rawSampleCount: Int, _ peakAudioLevel: Float?,
     _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?, _ durationMs: Int?,
     _ effectiveTransport: String?, _ selectedTransport: String?, _ inputSelectionMode: String?,
-    _ captureNativeRateHz: Double?, _ captureNativeChannelCount: Int?, _ takeID: String?
+    _ inputDeviceKind: String?, _ captureNativeRateHz: Double?, _ captureNativeChannelCount: Int?,
+    _ takeID: String?
   ) -> Void
 
   typealias CaptureErrorSink = @MainActor (
@@ -182,14 +183,15 @@ final class KernelLifecycleTelemetrySink {
     },
     vadGateNoSpeech: @escaping VADGateNoSpeechSink = {
       backend, mode, rawSampleCount, peakAudioLevel, wholeBufferRMS, maxWindowRMS, durationMs,
-      effectiveTransport, selectedTransport, inputSelectionMode, captureNativeRateHz,
-      captureNativeChannelCount, takeID in
+      effectiveTransport, selectedTransport, inputSelectionMode, inputDeviceKind,
+      captureNativeRateHz, captureNativeChannelCount, takeID in
       TelemetryService.shared.vadGateNoSpeech(
         backend: backend, mode: mode, rawSampleCount: rawSampleCount,
         peakAudioLevel: peakAudioLevel, wholeBufferRMS: wholeBufferRMS,
         maxWindowRMS: maxWindowRMS, durationMs: durationMs,
         effectiveTransport: effectiveTransport, selectedTransport: selectedTransport,
-        inputSelectionMode: inputSelectionMode, captureNativeRateHz: captureNativeRateHz,
+        inputSelectionMode: inputSelectionMode, inputDeviceKind: inputDeviceKind,
+        captureNativeRateHz: captureNativeRateHz,
         captureNativeChannelCount: captureNativeChannelCount, takeID: takeID)
     },
     captureError: @escaping CaptureErrorSink = { error, category, stage, extra in
@@ -433,7 +435,8 @@ final class KernelLifecycleTelemetrySink {
           facts.backend, facts.mode, facts.rawSampleCount, facts.peakAudioLevel,
           facts.wholeBufferRMS, facts.maxWindowRMS, facts.durationMs,
           facts.effectiveTransport, facts.selectedTransport, facts.inputSelectionMode,
-          facts.captureNativeRateHz, facts.captureNativeChannelCount, facts.takeID)
+          facts.inputDeviceKind, facts.captureNativeRateHz, facts.captureNativeChannelCount,
+          facts.takeID)
       case .asrEmptyNoSpeech:
         breadcrumb(
           "asr", "ASR empty (no speech detected)",
@@ -667,6 +670,9 @@ final class KernelLifecycleTelemetrySink {
     let effectiveTransport: String?
     let selectedTransport: String?
     let inputSelectionMode: String?
+    /// #1845: `built_in_mic` / `jack_input`, refining the ambiguous `built_in`
+    /// transport into the two physical inputs it covers. nil elsewhere.
+    let inputDeviceKind: String?
     let captureNativeRateHz: Double?
     let captureNativeChannelCount: Int?
     let takeID: String?
@@ -686,6 +692,7 @@ final class KernelLifecycleTelemetrySink {
       effectiveTransport: noSpeech?.effectiveTransport,
       selectedTransport: noSpeech?.selectedTransport,
       inputSelectionMode: noSpeech?.inputSelectionMode,
+      inputDeviceKind: noSpeech?.inputDeviceKind,
       captureNativeRateHz: health?.stopMetadata?.nativeRateHz,
       captureNativeChannelCount: health?.stopMetadata?.nativeChannelCount,
       // Read BEFORE the generic terminal postamble clears the take key. The
@@ -709,6 +716,7 @@ final class KernelLifecycleTelemetrySink {
     if let v = facts.effectiveTransport { payload["effective_transport"] = v }
     if let v = facts.selectedTransport { payload["selected_transport"] = v }
     if let v = facts.inputSelectionMode { payload["input_selection_mode"] = v }
+    if let v = facts.inputDeviceKind { payload["input_device_kind"] = v }
     if let v = facts.captureNativeRateHz { payload["capture_native_rate_hz"] = v }
     if let v = facts.captureNativeChannelCount { payload["capture_native_channel_count"] = v }
     return payload
