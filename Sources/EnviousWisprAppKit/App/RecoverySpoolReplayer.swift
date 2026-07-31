@@ -64,8 +64,10 @@ protocol RecoverySpoolReplaying: AnyObject {
 /// transcribe on the shared engine, polish under record-time settings, and save a
 /// non-auto-pasting "Recovered" transcript to History.
 ///
-/// Strict LIMB: every failure path surfaces "couldn't recover" via
-/// telemetry/breadcrumb and never throws into the heart path. #1464: it no longer
+/// Strict LIMB: every failure path reports itself through telemetry/breadcrumb
+/// and never throws into the heart path. "Reports" means TO US — there is no
+/// user-visible failure notice on this path at all (#1897); read this line as
+/// being about the signal, never about what the user is shown. #1464: it no longer
 /// destroys the spool/key — it returns a typed outcome and `RecoveryCoordinator`
 /// (the sole destructor) deletes or retains. It KEEPS the attempt-marker lifecycle
 /// (the one-attempt guard): a per-spool marker written BEFORE the risky
@@ -196,7 +198,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       }
       let reason: RecoveryTelemetryReason =
         (error as? RecoveryKeyStoreError) == .notFound ? .keyMissing : .keyReadFailed
-      return failUnrecoverable(reason: reason, category: .recoveryDecryptFailed)
+      return failUnrecoverable(reason: reason)
     }
 
     // Decrypt + reconstruct the valid prefix off the MainActor (heavy for a long
@@ -215,11 +217,11 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     case .success(let spool):
       recovered = spool
     case .failure:
-      return failUnrecoverable(reason: .reconstructionFailed, category: .recoveryDecryptFailed)
+      return failUnrecoverable(reason: .reconstructionFailed)
     }
     guard !recovered.samples.isEmpty else {
       return failUnrecoverable(
-        reason: .emptyOrUnreadableSamples, category: .recoveryDecryptFailed)
+        reason: .emptyOrUnreadableSamples)
     }
 
     // Transcribe on the shared engine (batch). The marker already covers warm-up.
@@ -248,7 +250,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       if isAborted() { return .aborted }
       return failUnrecoverable(
         reason: .modelLoadFailed, failureClass: Self.classify(error),
-        reconstructedSampleCount: recovered.samples.count, category: .recoveryTranscribeFailed)
+        reconstructedSampleCount: recovered.samples.count)
     }
     // Discard during the model load: bail BEFORE the expensive batch transcribe.
     if isAborted() { return .aborted }
@@ -261,15 +263,26 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       if isAborted() { return .aborted }
       return failUnrecoverable(
         reason: .transcribeError, failureClass: Self.classify(error),
-        reconstructedSampleCount: recovered.samples.count, category: .recoveryTranscribeFailed)
+        reconstructedSampleCount: recovered.samples.count)
     }
     if isAborted() { return .aborted }
     guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      // Empty text on good audio: a Camp B *candidate* (genuine silence vs a
-      // transcribe hiccup are indistinguishable here) — no error, so no class.
+      // Empty text on good audio. This used to file under
+      // `.recoveryTranscribeFailed` under a comment calling genuine silence and a
+      // transcribe hiccup "indistinguishable here". #1897: they are separable
+      // now, and the conflation was expensive — it made #1813 read as a 76-user
+      // P0 transcription bug when genuine throws are 5 events / 2 users.
+      //
+      // What separated them was existing telemetry nobody had split by `reason`:
+      // all 161 carry `audio_decrypted=true`, `reconstruction_failed` and
+      // `empty_or_unreadable_samples` are both zero, 158 of 161 are under ten
+      // seconds, and twelve users produce ~58% of events. Decrypt, reconstruct
+      // and ASR all worked; the recording held no speech.
+      //
+      // Still no error and no failure class — nothing threw. It gets its own
+      // CATEGORY so it stops being counted as a transcription failure.
       return failUnrecoverable(
-        reason: .emptyText, reconstructedSampleCount: recovered.samples.count,
-        category: .recoveryTranscribeFailed)
+        reason: .emptyText, reconstructedSampleCount: recovered.samples.count)
     }
 
     // Polish under the recording's record-time settings (raw-fallback floor
@@ -349,12 +362,45 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// bucket, and `camp_b_candidate=true` (good audio, failed downstream — the only
   /// case a future retry could help). Absent ⇒ omit both (never `audio_decrypted
   /// =false`).
+  /// The ONE place a recovery reason is mapped to its Sentry category (#1897).
+  ///
+  /// It was previously chosen inline at each `failUnrecoverable` call, which is
+  /// how `.emptyText` came to share `.recoveryTranscribeFailed` with a genuine
+  /// ASR throw — one label covering both "transcription broke" and "the
+  /// recording held no words". That conflation made #1813 read as a 76-user P0.
+  /// A pair can no longer be mismatched at a call site, and the switch is
+  /// exhaustive so a new reason cannot be added without choosing a category.
+  /// `nonisolated` because it is a pure total function of its argument and
+  /// touches no instance state — the enclosing type's `@MainActor` would
+  /// otherwise force every caller onto the main actor for a switch.
+  nonisolated static func category(for reason: RecoveryTelemetryReason)
+    -> SentryBreadcrumb.ErrorCategory
+  {
+    switch reason {
+    // Nothing usable came back out of the spool.
+    case .keyMissing, .keyReadFailed, .reconstructionFailed, .emptyOrUnreadableSamples:
+      return .recoveryDecryptFailed
+    // ASR could not run, or ran and threw.
+    case .modelLoadFailed, .transcribeError:
+      return .recoveryTranscribeFailed
+    // Everything worked; there were no words to find.
+    case .emptyText:
+      return .recoveryEmptyText
+    // Reached after a successful transcribe, or outside the replay chain
+    // entirely. These do not travel through `failUnrecoverable` today; they map
+    // to the decrypt bucket only so this switch stays total.
+    case .saveFailed, .markerWriteFailed, .markerClearFailed, .attemptAlreadySpent,
+      .keychainTransient:
+      return .recoveryDecryptFailed
+    }
+  }
+
   private func failUnrecoverable(
     reason: RecoveryTelemetryReason,
     failureClass: RecoveryFailureClass? = nil,
-    reconstructedSampleCount: Int? = nil,
-    category: SentryBreadcrumb.ErrorCategory
+    reconstructedSampleCount: Int? = nil
   ) -> RecoveryReplayOutcome {
+    let category = Self.category(for: reason)
     SentryBreadcrumb.captureError(
       RecoveryReplayError.failed(reason.rawValue), category: category, stage: "recovery")
     let spoolSeconds = reconstructedSampleCount.map {

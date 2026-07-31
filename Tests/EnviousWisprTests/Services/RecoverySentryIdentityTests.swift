@@ -44,12 +44,17 @@ struct RecoverySentryIdentityTests {
     // "empty" at the real call sites) that never enters the fingerprint — the
     // category param alone splits these into separate live issues (confirmed:
     // ENVIOUSWISPR-2N/2M on recovery_decrypt_failed, ENVIOUSWISPR-2R/1Z on
-    // recovery_transcribe_failed, both sharing descriptor #0).
+    // recovery_transcribe_failed, all sharing descriptor #0).
+    //
+    // #1897 added `.recoveryEmptyText` and it is included here deliberately: it
+    // is the category the "empty" reason now carries, so the property that the
+    // CATEGORY alone splits the issues has to hold for it too, or the split that
+    // change exists to create would collapse back into one Sentry issue.
     for reason in ["decrypt", "transcribe", "empty"] {
       let failed: RecoverySpoolReplayer.RecoveryReplayError = .failed(reason)
       #expect(SentryBreadcrumb.structuredDescriptor(failed) == "RecoveryReplayError#0")
       for category: SentryBreadcrumb.ErrorCategory in [
-        .recoveryDecryptFailed, .recoveryTranscribeFailed,
+        .recoveryDecryptFailed, .recoveryTranscribeFailed, .recoveryEmptyText,
       ] {
         #expect(
           SentryBreadcrumb.handledErrorFingerprint(
