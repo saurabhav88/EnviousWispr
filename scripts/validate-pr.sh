@@ -307,8 +307,16 @@ if [ -n "$PLAN_FILE" ] && [ ! -f "$PLAN_FILE" ]; then
 fi
 if [ -z "$PLAN_FILE" ]; then
   BRANCH_NAME=$(git -C "$PROJECT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-  # First run of digits anywhere in the branch name, e.g. `fix/1463-foo` -> 1463.
-  BRANCH_ISSUE=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+' | head -1 || echo "")
+  # An EXPLICIT `issue-<N>` wins over position. Taking the first run of digits
+  # picks the version out of `exp/v2-issue-1570` and then silently reads no plan
+  # at all, which is the failure mode this whole change removes. Only when the
+  # branch names no issue explicitly does it fall back to the first number, which
+  # covers the house convention `fix/1463-slug`.
+  BRANCH_ISSUE=$(echo "$BRANCH_NAME" | grep -oE 'issue[-_/]?[0-9]+' | head -1 |
+    grep -oE '[0-9]+' || echo "")
+  if [ -z "$BRANCH_ISSUE" ]; then
+    BRANCH_ISSUE=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+' | head -1 || echo "")
+  fi
   if [ -n "$BRANCH_ISSUE" ]; then
     # Deliberately NOT `ls -t … | head -1`. A git checkout gives tracked files
     # identical mtimes, so mtime carries no revision ordering and picking the
