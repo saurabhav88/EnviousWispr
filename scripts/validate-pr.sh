@@ -49,9 +49,25 @@ CANONICAL_LANES="Docs/dev-tooling Eval-harness CI/workflow Content Worker Code"
 # Longest-first so `Docs/dev-tooling` is never shadowed by a shorter sibling; the
 # trailing character class rejects a longer word that merely starts with a lane
 # name (`Codebase` is not `Code`).
+
+# The shapes a lane declaration actually takes across the tracked plans, counted
+# rather than assumed: 270 `**Lane:**`, 39 `- **Lane:**`, 8 bare `Lane:`, 3
+# `- Lane:`, 1 `- Primary lane:`. The old anchor was `^\*\*Lane:\*\*`, which
+# silently missed the last 51 and fell back to the detected lane.
+LANE_LINE_PATTERN='^[-*[:space:]]*\*{0,2}(primary )?lane\*{0,2}:'
+
 match_canonical_lane() {
   local raw="$1" lane
-  raw=$(echo "$raw" | sed -E 's/.*Lane:\*\* *\**//' | xargs || echo "")
+  # Strip any leading bullet/bold, the optional `Primary `, the label and colon,
+  # and any bold the author wrapped the value in.
+  # Consume the WHOLE run of stars, backticks and spaces after the colon, so
+  # `**Lane:** **Docs/dev-tooling.**` and `- **Lane:** ` + "`Code`" both reach
+  # the value. A lane never begins with any of those, so the run cannot eat one.
+  # Trim with sed, NOT xargs: xargs PARSES quotes, and a real plan line
+  # ("...NOT in this plan's first PR.") aborts it with "unterminated quote",
+  # which read as an unparseable lane.
+  raw=$(echo "$raw" \
+    | sed -E 's/.*[Ll]ane\*{0,2}:[*`[:space:]]*//; s/^[[:space:]]+//; s/[[:space:]]+$//')
   for lane in $CANONICAL_LANES; do
     case "$raw" in
       "$lane"|"$lane"[^A-Za-z0-9/-]*) echo "$lane"; return 0 ;;
@@ -121,8 +137,36 @@ JSON
 **Lane:** Local|-
 **Lane:** Mixed|-
 **Lane:** Codebase|-
+- **Lane:** Code (touches `Sources/EnviousWisprAppKit/App/`).|Code
+- Lane: Content|Content
+Lane: Worker|Worker
+- Primary lane: Eval-harness|Eval-harness
+- **Lane:** `Code`|Code
+- Primary lane: **Eval-harness** (data under `scripts/eval/`), NOT in this plan's first PR.|Eval-harness
+**Lane:** Mixed — Code (DEBUG seams) + Docs/dev-tooling (harness).|-
 CASES
-  echo "self-test: lane matcher exercised over 11 cases"
+  echo "self-test: lane matcher exercised over 18 cases"
+
+  # The declaration line must also be FOUND. A matcher that parses every shape
+  # is useless behind a grep anchored to one of them (#1861 cloud review P1).
+  while IFS='|' read -r line expected; do
+    [ -z "$line" ] && continue
+    if echo "$line" | grep -qiE "$LANE_LINE_PATTERN"; then got="found"; else got="-"; fi
+    if [ "$got" = "$expected" ]; then
+      pass=$((pass + 1))
+    else
+      fail=$((fail + 1))
+      echo "self-test FAIL: lane line pattern on '$line' gave '$got', expected '$expected'"
+    fi
+  done <<'FINDCASES'
+**Lane:** Code|found
+- **Lane:** Code|found
+Lane: Code|found
+- Lane: Code|found
+- Primary lane: Eval-harness|found
+Detect the lane from the PR's actual change set|-
+FINDCASES
+  echo "self-test: lane line pattern exercised over 6 cases"
 
   echo "self-test results: $pass passed, $fail failed"
   [ "$fail" -eq 0 ]
@@ -217,12 +261,15 @@ fi
 DECLARED=""
 if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
   echo "==> Plan: $PLAN_FILE"
-  LANE_LINE=$(grep -m1 -E '^\*\*Lane:\*\*' "$PLAN_FILE" 2>/dev/null || echo "")
+  LANE_LINE=$(grep -m1 -iE "$LANE_LINE_PATTERN" "$PLAN_FILE" 2>/dev/null || echo "")
   if [ -n "$LANE_LINE" ]; then
     if ! DECLARED=$(match_canonical_lane "$LANE_LINE"); then
       echo "FAIL: plan declares a lane that is not one of: $CANONICAL_LANES" >&2
       echo "      $PLAN_FILE" >&2
       echo "      $LANE_LINE" >&2
+      echo "      The lane token must come FIRST after the label. Trailing prose," >&2
+      echo "      parens, backticks and bold are fine. 'Mixed' is not a lane —" >&2
+      echo "      declare one primary lane, then 'mixed_pr: true' on its own line." >&2
       exit 2
     fi
   fi
