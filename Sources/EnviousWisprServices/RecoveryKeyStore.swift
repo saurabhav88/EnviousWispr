@@ -92,10 +92,10 @@ public struct RecoveryKeyStore: Sendable {
   }
 
   /// Every `recoverySessionID` that currently has a stored key. Lets the launch
-  /// purge sweep ORPHAN keys (a key with no spool — e.g. a recording that armed
-  /// then aborted before any frame was written), which a spool-only scan misses.
-  /// Best-effort: an enumeration failure returns an empty list (the caller is a
-  /// purge — failing closed there just defers cleanup to the next launch).
+  /// recovery scan sweep ORPHAN keys (a key with no spool — e.g. a recording that
+  /// armed then aborted before any frame was written), which a spool-only scan
+  /// misses. Best-effort: an enumeration failure returns an empty list (the caller
+  /// is a cleanup sweep — failing closed there just defers it to the next launch).
   public func listAccountIDs() -> [String] {
     switch backend {
     case .file:

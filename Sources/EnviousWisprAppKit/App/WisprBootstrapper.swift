@@ -24,8 +24,9 @@ public final class WisprBootstrapper {
   // into views via `.environment(...)` inside the view factories below.
   let navigationCoordinator: NavigationCoordinator
   let diagnosticsCoordinator: DiagnosticsCoordinator
-  /// Owns the crash-recovery limb (#1063 PR1): arms each recording's encrypted
-  /// spool, deletes it on durable save, purges orphans on launch.
+  /// Owns the crash-recovery limb: arms each recording's encrypted spool,
+  /// deletes it on durable save, and on launch scans for orphan spools and
+  /// replays them (#1063 PR2 — replaces PR1's launch purge).
   let recoveryCoordinator: RecoveryCoordinator
   let languageSuggestionPresenter: LanguageSuggestionPresenter
   let updateCoordinatorHolder: UpdateCoordinatorHolder
