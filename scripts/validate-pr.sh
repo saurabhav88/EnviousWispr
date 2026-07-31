@@ -74,14 +74,21 @@ match_canonical_lane() {
   local raw="$1" lane
   # Strip any leading bullet/bold, the optional `Primary `, the label and colon,
   # and any bold the author wrapped the value in.
-  # Consume the WHOLE run of stars, backticks and spaces after the colon, so
-  # `**Lane:** **Docs/dev-tooling.**` and `- **Lane:** ` + "`Code`" both reach
-  # the value. A lane never begins with any of those, so the run cannot eat one.
+  # ANCHORED at ^, never `.*[Ll]ane`. A greedy leading `.*` walks past the FIRST
+  # label to the LAST one, so `Lane: Code (secondary lane: Docs/dev-tooling)`
+  # returned `Docs/dev-tooling` — the parenthetical, not the declaration. sed has
+  # no lazy quantifier, so the prefix is spelled out instead. Letter classes
+  # rather than a case-insensitive flag, which is not portable across seds.
+  #
+  # `[*`[:space:]]*` after the colon consumes the WHOLE run of stars, backticks
+  # and spaces, so `**Lane:** **Docs/dev-tooling.**` reaches the value. A lane
+  # never begins with any of those, so the run cannot eat one.
+  #
   # Trim with sed, NOT xargs: xargs PARSES quotes, and a real plan line
   # ("...NOT in this plan's first PR.") aborts it with "unterminated quote",
   # which read as an unparseable lane.
-  raw=$(echo "$raw" \
-    | sed -E 's/.*[Ll]ane\*{0,2}:[*`[:space:]]*//; s/^[[:space:]]+//; s/[[:space:]]+$//')
+  raw=$(echo "$raw" | sed -E \
+    's/^[-*[:space:]]*\*{0,2}(([Dd]eclared|[Pp]rimary) )?[Ll][Aa][Nn][Ee]\*{0,2}:[*`[:space:]]*//; s/^[[:space:]]+//; s/[[:space:]]+$//')
   for lane in $CANONICAL_LANES; do
     case "$raw" in
       "$lane"|"$lane"[^A-Za-z0-9/-]*) echo "$lane"; return 0 ;;
@@ -160,8 +167,11 @@ Lane: Worker|Worker
 **Lane:** Mixed — Code (DEBUG seams) + Docs/dev-tooling (harness).|-
 - **Declared lane:** Code|Code
 - Declared lane: Docs/dev-tooling|Docs/dev-tooling
+Lane: Code (secondary lane: Docs/dev-tooling)|Code
+**Lane:** Content — the eval-harness lane: not used here.|Content
+- **Lane:** Worker (per-lane: obligations in §11)|Worker
 CASES
-  echo "self-test: lane matcher exercised over 20 cases"
+  echo "self-test: lane matcher exercised over 23 cases"
 
   # The declaration line must also be FOUND. A matcher that parses every shape
   # is useless behind a grep anchored to one of them (#1861 cloud review P1).
