@@ -691,6 +691,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       interruptionCause: kernel.lastAudioInterruptionCause)
   }
 
+  /// #1631 — the id of the session still genuinely continuing, or `nil`. The one
+  /// fact the hands-free publication gate needs: `nil` covers both "no session"
+  /// and "a session whose exit is already latched". `package` because the only
+  /// consumer is `HotkeyController` in this package.
+  package var continuingSessionID: String? { kernel.continuingSessionID }
+
   /// #1393: the pipeline's own single source of truth for monotonic elapsed
   /// recording time. `nil` outside an active/just-finished session.
   public var recordingElapsedSeconds: TimeInterval? { kernel.recordingElapsedSeconds }

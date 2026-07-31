@@ -2,7 +2,7 @@ import EnviousWisprCore
 import Foundation
 
 /// Telemetry Bible Phase 6 (#1175): the injection seam for hotkey/input-silence
-/// telemetry. `HotkeyService` reports input facts through these two closures; the
+/// telemetry. `HotkeyService` reports input facts through these closures; the
 /// `.live` sink composes the emit channels, the `.noop` default keeps non-app
 /// construction (tests, legacy) inert.
 ///
@@ -28,17 +28,27 @@ public struct HotkeyTelemetrySink: Sendable {
       _ triggerSource: String, _ inputMode: String, _ keyShape: String, _ pressAction: String
     ) -> Void
 
+  /// #1631 — a recorded hands-free intent reached a publication decision.
+  /// Emitted exactly once per intent; a refusal that lands before any intent was
+  /// recorded produces no decision and therefore no event. `reason` is one of
+  /// `published` / `start_produced_no_recording` / `not_lockable_at_publication`
+  /// / `publication_unavailable`. Metadata only — no session id, no key codes.
+  public var lockResolved: @MainActor (_ committed: Bool, _ reason: String) -> Void
+
   public init(
     registrationFailed: @escaping @MainActor (String, String, Int32?, String) -> Void,
-    pressed: @escaping @MainActor (String, String, String, String) -> Void
+    pressed: @escaping @MainActor (String, String, String, String) -> Void,
+    lockResolved: @escaping @MainActor (Bool, String) -> Void = { _, _ in }
   ) {
     self.registrationFailed = registrationFailed
     self.pressed = pressed
+    self.lockResolved = lockResolved
   }
 
   /// Inert sink — the default for tests and any non-app construction.
   public static let noop = HotkeyTelemetrySink(
-    registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _ in })
+    registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _ in },
+    lockResolved: { _, _ in })
 
   /// Production sink. Registration failure → PostHog breakdown + Sentry handled
   /// error (synchronous, durable). Press → PostHog, deferred to the next run loop
@@ -71,6 +81,15 @@ public struct HotkeyTelemetrySink: Sendable {
           TelemetryService.shared.hotkeyPressed(
             triggerSource: triggerSource, inputMode: inputMode,
             keyShape: keyShape, pressAction: pressAction)
+        }
+      }
+    },
+    lockResolved: { committed, reason in
+      // Same deferral as `pressed`, for the same reason: the publication decision
+      // runs on the input turn and must not pay for a PostHog write.
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          TelemetryService.shared.hotkeyLockResolved(committed: committed, reason: reason)
         }
       }
     })

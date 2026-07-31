@@ -470,6 +470,30 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("hotkey.pressed", properties: props)
   }
 
+  /// #1631: a recorded hands-free intent reached a publication decision. Sibling
+  /// of `hotkey.pressed`, NOT a replacement — `hotkey.pressed` keeps meaning "a
+  /// press was received" and every one of its values is unchanged. This event
+  /// carries the outcome that `hotkey.pressed` deliberately does not know.
+  ///
+  /// Emitted exactly once per recorded intent. A refusal landing before any
+  /// intent was recorded produces no decision, so the absence of an event for a
+  /// fast cold refusal is correct, not a gap.
+  ///
+  /// `reason=publication_unavailable` means a nil collaborator during app
+  /// lifetime — a fault, kept distinct from `not_lockable_at_publication` so an
+  /// ownership bug cannot hide inside a normal-looking refusal rate.
+  public func hotkeyLockResolved(committed: Bool, reason: String) {
+    let props: [String: Any] = ["committed": committed, "reason": reason]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "hotkey.lock_resolved",
+          stringProps: ["reason": reason],
+          boolProps: ["committed": committed]))
+    #endif
+    PostHogSDK.shared.capture("hotkey.lock_resolved", properties: props)
+  }
+
   /// #1177 (Telemetry Bible Phase 8): a limb failed quietly — the user still got
   /// raw text or a small glitch, but until now we had zero signal. ONE event for
   /// every quiet-limb site (ASR streaming finalize, output-safety classifier

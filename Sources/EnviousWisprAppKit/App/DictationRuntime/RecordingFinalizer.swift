@@ -10,7 +10,10 @@ import Foundation
 /// hides the overlay, then dispatches `.cancelRecording` on the active
 /// backend. Also owns the `lastUserStopRequest` timestamp (read by
 /// `RecordingStarter.start()`'s post-condition wedge guard) and the
-/// hands-free "lock on" toggle that the `onLocked` hotkey callback fires.
+/// hands-free "lock on" toggle that the `onLockRequested` hotkey callback fires
+/// — since #1631 that callback runs only when the session the press started is
+/// still the running one, so `markLocked()` is never reached for a press that
+/// produced no recording.
 ///
 /// Timing invariant: `userStop()` and `cancel()` mark
 /// `lastUserStopRequest` BEFORE any `await` that could suspend; Starter's
