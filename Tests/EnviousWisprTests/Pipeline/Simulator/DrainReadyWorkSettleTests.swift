@@ -140,4 +140,53 @@ struct DrainReadyWorkSettleTests {
         "A8 seed \(String(schedule.seed, radix: 16)) under contention: \(result.failures)")
     }
   }
+
+  // MARK: - #1857 — the conclusion wait, and its give-up report
+
+  /// The fix for `retryRescuedCompletionSurvivesClipboardFallback`: after a
+  /// `stop`, `drainUntilConcluded()` returns only once the kernel has actually
+  /// published a terminal, so a caller's terminal assertions can never read the
+  /// in-flight `nil` that epoch-quiescence alone allowed.
+  @Test("drainUntilConcluded returns only once the kernel has published a terminal")
+  func concludedDrainWaitsForTheTerminal() async {
+    // `.batchSuccess` concludes on cooperative scheduling alone. A behavior
+    // gated on FakeClock ticks (`.slowFinalize`) would violate the documented
+    // precondition — verified: it exhausts the cap and reports a give-up.
+    let (wrapper, _, capture) = makeContext(behavior: .batchSuccess(text: "in flight"))
+    let kernel = wrapper.testKernel
+
+    await wrapper.apply(.start)
+    await wrapper.drainReadyWork()
+    capture.deliverBuffer()
+    await wrapper.drainReadyWork()
+    #expect(kernel.recordingOutcome == nil, "still recording")
+
+    await wrapper.apply(.stop)
+    await wrapper.drainUntilConcluded()
+
+    #expect(kernel.recordingOutcome == .completed)
+    #expect(kernel.hasUnconsumedRecordingExit == false)
+  }
+
+  /// Positive control for the give-up report (`a-guard-nothing-arms-is-not-a-guard`):
+  /// a session parked in a finalize that never resolves can never conclude, so
+  /// the wait must exhaust the livelock cap and RECORD an issue rather than
+  /// return silently. Without this, a future give-up would again surface only as
+  /// unexplained `nil` assertions in the caller.
+  @Test("a session that never concludes is reported loudly, not settled silently")
+  func neverConcludingSessionIsReportedLoudly() async {
+    let (wrapper, _, capture) = makeContext(behavior: .heldFinalize)
+    let kernel = wrapper.testKernel
+
+    await wrapper.apply(.start)
+    await wrapper.drainReadyWork()
+    capture.deliverBuffer()
+    await wrapper.drainReadyWork()
+    await wrapper.apply(.stop)
+
+    await withKnownIssue("the finalize is held, so no terminal can ever publish") {
+      await wrapper.drainUntilConcluded()
+    }
+    #expect(kernel.recordingOutcome == nil, "control: the session genuinely never concluded")
+  }
 }

@@ -2,6 +2,7 @@ import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
+import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
@@ -398,7 +399,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
     var last = kernel.workEpoch
     var stable = 0
     var iterations = 0
-    while iterations < 20000 {
+    while iterations < Self.livelockYieldCap {
       await Task.yield()
       iterations += 1
       let now = kernel.workEpoch
@@ -410,6 +411,59 @@ final class KernelRecordingSession: RecordingSessionDriving {
       }
       if stable >= 64, !kernel.hasUnconsumedRecordingExit { return }
     }
+    // #1857: exhausting the livelock net is NOT quiescence. Returning silently
+    // made a give-up indistinguishable from a settle, so the caller's terminal
+    // assertions then failed as bare `nil`s with no hint that the drain never
+    // finished. Report it here, where the state that explains it is still live.
+    Issue.record(Self.giveUpMessage(kernel: kernel, what: "drainReadyWork", reached: "quiescence"))
+  }
+
+  /// Yield until the kernel PUBLISHES a terminal, then drain the remaining ready
+  /// work. #1857: `drainReadyWork` is a quiescence heuristic, not a terminal
+  /// wait. A continuation resumed synchronously inside the triggering step is
+  /// absorbed into the drain's initial `workEpoch` (the same bump-absorption
+  /// shape `hasUnconsumedRecordingExit` gates for the recording-exit hand-off),
+  /// so under full-suite MainActor contention the drain can return while the
+  /// session is still in flight — and every terminal assertion then reads `nil`.
+  /// That is the `retryRescuedCompletionSurvivesClipboardFallback` flake, and it
+  /// is exactly the "other continuations resumed inside a step's `apply`" case
+  /// `drainReadyWork`'s own Scope note predicted. Waiting on the kernel's own
+  /// conclusion signal removes the class for every terminal-asserting caller
+  /// rather than widening the stability window (see swift-testing-patterns.md
+  /// `yield-settle-needs-inflight-signal-not-count`: do not increase N).
+  ///
+  /// PRECONDITION: conclusion must be reachable by cooperative scheduling alone.
+  /// A scenario whose terminal depends on a REAL wall-clock deadline elapsing
+  /// (e.g. a live `retryDecodeTimeoutSeconds`) can never satisfy a yield-only
+  /// wait — those callers keep a declared deadline-fallback poll instead.
+  func drainUntilConcluded() async {
+    var iterations = 0
+    while kernel.recordingOutcome == nil, iterations < Self.livelockYieldCap {
+      await Task.yield()
+      iterations += 1
+    }
+    guard kernel.recordingOutcome != nil else {
+      Issue.record(
+        Self.giveUpMessage(kernel: kernel, what: "drainUntilConcluded", reached: "a terminal"))
+      return
+    }
+    await drainReadyWork()
+  }
+
+  /// Safety net against a kernel livelock, not a deadline — see `drainReadyWork`.
+  private static let livelockYieldCap = 20000
+
+  private static func giveUpMessage(
+    kernel: RecordingSessionKernel, what: String, reached: String
+  ) -> Comment {
+    """
+    \(what) gave up after \(livelockYieldCap) yields without reaching \(reached). \
+    This is the livelock net firing, not a settle — treat every assertion that \
+    follows as unreliable. Observed: state=\(String(describing: kernel.state)), \
+    recordingOutcome=\(String(describing: kernel.recordingOutcome)), \
+    hasUnconsumedRecordingExit=\(kernel.hasUnconsumedRecordingExit), \
+    workEpoch=\(kernel.workEpoch).
+    """
   }
 
   // MARK: State mapping — pure, mechanical (no policy)
