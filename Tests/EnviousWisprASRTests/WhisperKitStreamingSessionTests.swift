@@ -256,6 +256,123 @@ import Testing
     #expect(r.text == "one two")
   }
 
+  // MARK: Tail coverage (#1308)
+
+  /// Returns the partial hypothesis for every LOOP decode and the fuller one for
+  /// the padded finalize decode. Keyed on input length rather than call index
+  /// because the number of loop cycles differs before and after the fix — with
+  /// the fix the marker stays behind, so the loop legitimately decodes again. A
+  /// call-index script would hand the tail result to a loop cycle and the test
+  /// would pass for the wrong reason.
+  private actor TailCoverageDecoder: WhisperKitTranscribing {
+    nonisolated func encodeText(_ text: String) -> [Int] { [] }
+    private let liveCount: Int
+    private let loopResult: [TranscriptionResult]
+    private let tailResult: [TranscriptionResult]
+    private(set) var loopCalls = 0
+    private(set) var paddedCalls = 0
+
+    init(liveCount: Int, loopResult: [TranscriptionResult], tailResult: [TranscriptionResult]) {
+      self.liveCount = liveCount
+      self.loopResult = loopResult
+      self.tailResult = tailResult
+    }
+
+    func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
+      -> [TranscriptionResult]
+    {
+      if audioArray.count > liveCount {
+        paddedCalls += 1
+        return tailResult
+      }
+      loopCalls += 1
+      return loopResult
+    }
+  }
+
+  /// **The #1308 defect, as a failing test.**
+  ///
+  /// A decode cycle that produces ANY words marks the ENTIRE captured buffer as
+  /// heard (`applyLocalAgreement` returns true whenever it saw words at all).
+  /// Finalize then computes an empty unheard slice, takes the caught-up fast
+  /// path, and releases WITHOUT the padded tail decode — so everything spoken
+  /// after the last decoded word is silently dropped.
+  ///
+  /// Distinct from the wordless-decode case PR #1313 fixed: that one returns
+  /// "not heard" and already holds the marker back. This decode DID produce
+  /// words, just not enough of them.
+  ///
+  /// 11s of continuously loud audio, a hypothesis reaching 6s. The 5s remainder
+  /// is far above the energy floor, so it is speech rather than trailing silence
+  /// and the tail decode must run.
+  @Test("a decode whose words cover only part of the buffer must not mark the tail heard")
+  func partialWordCoverageDoesNotMarkTailHeard() async throws {
+    let liveCount = 176_000  // 11s
+    let partial = result(
+      "the meeting went rather well today and",
+      [
+        seg(0, 6, "the meeting went rather well today and").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 3, "went"),
+          word(3, 4, "rather"), word(4, 5, "well"), word(5, 6, "today"),
+        ])
+      ])
+    let withTail = result(
+      "the meeting went rather well today and everyone agreed",
+      [
+        seg(0, 11, "the meeting went rather well today and everyone agreed").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 3, "went"),
+          word(3, 4, "rather"), word(4, 5, "well"), word(5, 6, "today"),
+          word(6, 9, "everyone"), word(9, 11, "agreed"),
+        ])
+      ])
+
+    let fake = TailCoverageDecoder(
+      liveCount: liveCount, loopResult: [partial], tailResult: [withTail])
+    let s = WhisperKitStreamingSession(
+      whisperKit: fake, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1),
+      localAgreement: true)
+    await s.start(audioSamplesProvider: fixedProvider([Float](repeating: 0.4, count: liveCount)))
+    await waitForDecode(1, s)
+
+    let r = await s.finalize(finalSamples: [], speechSegments: [])
+
+    #expect(
+      await fake.paddedCalls == 1,
+      "5s of voiced audio past the last decoded word must trigger exactly one tail decode")
+    #expect(
+      (r.text ?? "").contains("agreed"),
+      "words after the hypothesis must reach the transcript, not be dropped")
+    await s.cancel()
+  }
+
+  /// The two-way control. A hypothesis that reaches the end of the buffer must
+  /// still mark it heard, or every dictation pays a redundant tail decode and the
+  /// streaming speed win is spent on nothing.
+  @Test("full word coverage still marks the buffer heard and skips the tail decode")
+  func fullWordCoverageSkipsTailDecode() async throws {
+    let liveCount = 96_000  // 6s, exactly what the words cover
+    let full = result(
+      "the meeting went rather well today",
+      [
+        seg(0, 6, "the meeting went rather well today").with(words: [
+          word(0, 1, "the"), word(1, 2, "meeting"), word(2, 3, "went"),
+          word(3, 4, "rather"), word(4, 5, "well"), word(5, 6, "today"),
+        ])
+      ])
+    let fake = TailCoverageDecoder(liveCount: liveCount, loopResult: [full], tailResult: [full])
+    let s = WhisperKitStreamingSession(
+      whisperKit: fake, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1),
+      localAgreement: true)
+    await s.start(audioSamplesProvider: fixedProvider([Float](repeating: 0.4, count: liveCount)))
+    await waitForDecode(1, s)
+
+    _ = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(await fake.paddedCalls == 0, "a fully covered buffer needs no tail decode")
+    await s.cancel()
+  }
+
   // MARK: In-flight decode serialization (Codex r5 P2)
 
   /// Tracks concurrent `transcribe` calls and blocks the FIRST (loop) decode
@@ -609,11 +726,18 @@ import Testing
     // One decode heard ALL the audio; nothing commits (no previous hypothesis)
     // so both words are the retained hypothesis. Finalize must release
     // confirmed+retained with ZERO further inference.
+    //
+    // #1308: the words now reach 3.0s, matching the 3.0s buffer. They previously
+    // reached 2.0s over the same buffer, which this test called "heard ALL the
+    // audio" — it was not. That 1s of loud uncovered audio is exactly the dropped
+    // tail #1308 is about, and under the corrected definition of caught-up it
+    // earns a tail decode. The fixture changed, the intent did not: this still
+    // asserts that a genuinely caught-up stream releases with zero inference.
     let d1 = result(
       "the meeting",
       [
-        seg(0, 2, "the meeting").with(words: [
-          word(0, 1, "the"), word(1, 2, "meeting"),
+        seg(0, 3, "the meeting").with(words: [
+          word(0, 1.5, "the"), word(1.5, 3, "meeting"),
         ])
       ])
     let (s, fake) = laFinalizeSession([[d1]])
