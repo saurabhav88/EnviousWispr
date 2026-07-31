@@ -66,6 +66,36 @@ struct DictationTerminalTelemetryTests {
     }
   }
 
+  /// Every outcome, with the reason each one owes. `result` and `reason` are both
+  /// read from the SAME projection, so a `failed` row without a reason is a
+  /// contradiction rather than a gap — which is what `.noTransport` shipped as
+  /// until the whole-diff review caught it: it projects to
+  /// `.failed(.noAudioCaptured)`, so an outcome-side match labelled it `failed`
+  /// and then found no reason to attach, hiding it from every reason-keyed count.
+  @Test("a failed row always carries a reason, and only failed rows do")
+  func failedAlwaysCarriesItsReason() {
+    let cases: [(RecordingOutcome, String, String?)] = [
+      (.completed, "completed", nil),
+      (.failed(.asrFailed), "failed", "asr_failed"),
+      (.cancelled, "cancelled", nil),
+      (.discarded(.tooShort), "discarded", nil),
+      (.noSpeech(.vadGate), "no_speech", nil),
+      (.audioInterrupted(.deviceRemoved), "audio_interrupted", nil),
+      (.asrInterrupted(wasRecording: true), "asr_interrupted", nil),
+      (.noTransport, "failed", "no_audio_captured"),
+    ]
+    for (outcome, expectedResult, expectedReason) in cases {
+      let recorder = Recorder()
+      makeSink(recorder).emitTerminal(snapshot(outcome))
+      #expect(recorder.terminals.first?.result == expectedResult, "\(outcome) result")
+      #expect(recorder.terminals.first?.reason == expectedReason, "\(outcome) reason")
+      #expect(
+        (recorder.terminals.first?.result == "failed")
+          == (recorder.terminals.first?.reason != nil),
+        "\(outcome): a failed row without a reason is unqueryable")
+    }
+  }
+
   /// `reason` exists only on `failed`. A reason on `cancelled` would invite a
   /// query that reads user intent as a fault.
   @Test("reason is present only for failed terminals")

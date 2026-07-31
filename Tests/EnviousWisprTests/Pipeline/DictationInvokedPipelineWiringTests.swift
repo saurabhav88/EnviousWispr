@@ -283,6 +283,23 @@ struct DictationInvokedPipelineWiringTests {
       terminalKernelSource.contains("defer { sessionTerminalTelemetry(terminalSnapshot) }"),
       "#1884: delivery must be deferred so a later cleanup return cannot lose it"
     )
+
+    // #1890 attribution: the freeze MEASURES. Both producers previously handed it
+    // `measurement: nil`, so every signal-free row shipped without the two energy
+    // values it exists to carry, and the comment above the function claimed the
+    // measurement happened. Owning the measurement removes the argument a caller
+    // can forget; this fails if it is ever handed back out.
+    let freeze = try Self.slice(
+      terminalKernelSource,
+      from: "private func freezeSignalAttribution(", to: "\n  }")
+    #expect(
+      freeze.contains("RawAudioDeadAirClassifier.measure(samples, peak: peak)"),
+      "#1890: the freeze must measure the buffer itself"
+    )
+    #expect(
+      terminalKernelSource.contains("measurement: nil") == false,
+      "#1890: no producer may hand the freeze a measurement, least of all an absent one"
+    )
   }
 
   private static func read(_ relativePath: String) throws -> String {

@@ -331,8 +331,13 @@ final class KernelLifecycleTelemetrySink {
       // which would be an unqueryable row that still counts in the denominator.
       return
     }
+    // Read from the PROJECTED event, never from the raw outcome. `.noTransport`
+    // projects to `.failed(.noAudioCaptured)`, so an outcome-side match labels the
+    // row `failed` with no reason at all — a failure invisible to every
+    // reason-keyed count (whole-diff review 2026-07-31). One projection decides
+    // both fields, so they cannot disagree.
     let reason: String? =
-      if case .failed(let failureReason) = snapshot.outcome {
+      if case .failed(let failureReason) = event {
         failureReason.terminalNoticeReason.rawValue
       } else {
         nil

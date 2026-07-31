@@ -745,6 +745,15 @@ public final class TelemetryService {
       testEventHook?(
         CapturedTelemetryEvent(
           name: event, stringProps: ["take_id": takeID, "backend": backend]))
+      // Logged for the same reason the terminal is: without it, Live UAT can see
+      // endings but not beginnings, and the one number this event exists to
+      // produce — started takes that never reported an ending — is unverifiable
+      // outside PostHog.
+      Task {
+        await AppLogger.shared.log(
+          "dictation_started take=\(takeID) backend=\(backend)",
+          level: .info, category: "Telemetry")
+      }
     #endif
     PostHogSDK.shared.capture(event, properties: props)
   }

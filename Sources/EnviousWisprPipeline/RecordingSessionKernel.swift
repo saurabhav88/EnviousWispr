@@ -1749,10 +1749,8 @@ final class RecordingSessionKernel {
 
     if zeroSignalRecoveryMode == .allZeroFromStart {
       // #1890 producer 1 of 2. Frozen HERE, where the route snapshot and the bind
-      // label still describe this take. No measurement: an all-zero-from-start
-      // capture has no RMS worth reporting, and the peak is the diagnostic value.
-      freezeSignalAttribution(
-        samples: captureResult.samples, peak: rawPeakAudioLevel, measurement: nil)
+      // label still describe this take.
+      freezeSignalAttribution(samples: captureResult.samples, peak: rawPeakAudioLevel)
       finishTerminal(.failed(.zeroSignal), sid: sid)
       return
     }
@@ -2397,10 +2395,7 @@ final class RecordingSessionKernel {
         // half #1890 counts; the `.noSpeech(.asrEmptyNoSpeech)` half already has
         // its own richer event from #1888, and giving the terminal row the same
         // frozen facts costs nothing and keeps the two joinable on `take_id`.
-        freezeSignalAttribution(
-          samples: captureResult.samples,
-          peak: rawPeakAudioLevel,
-          measurement: nil)
+        freezeSignalAttribution(samples: captureResult.samples, peak: rawPeakAudioLevel)
         finishTerminal(
           effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech(.asrEmptyNoSpeech),
           sid: sid)
@@ -3634,23 +3629,34 @@ final class RecordingSessionKernel {
   /// there breaks the #1844/#1578 read-order contract that
   /// `KernelFrozenBindGuardTests` locks.
   ///
-  /// Measures the buffer ONCE. A second `RawAudioDeadAirClassifier.measure` call
-  /// would be a second measurement of the same samples, which is the
-  /// re-implementation this project forbids by name.
-  private func freezeSignalAttribution(
-    samples: [Float],
-    peak: Float?,
-    measurement: RawAudioDeadAirClassifier.DeadAirMeasurement?
-  ) {
+  /// Measures the buffer HERE rather than accepting a measurement argument. Both
+  /// producers are mutually exclusive terminals, so this runs at most once per
+  /// take — and an argument is a thing a caller can forget, which is exactly
+  /// what happened: both call sites passed `nil` and every `asr_empty_with_speech`
+  /// row shipped without its two energy values (whole-diff review 2026-07-31).
+  ///
+  /// `measure` SHORT-CIRCUITS, so both RMS values come back nil whenever the peak
+  /// already clears the dead-air floor. That is the #1845 contract — nil means NOT
+  /// COMPUTED, never "computed as zero" — and it is the honest answer here,
+  /// because a peak above the floor has already established the channel carried
+  /// audio. The two RMS values exist to characterise the QUIET case, which is the
+  /// only case in which the classifier computes them.
+  ///
+  /// That short-circuit is also the cost story: a below-floor peak buys two O(n)
+  /// passes over the buffer, bounded by the 60-minute cap (#1060), and every other
+  /// take returns at the peak guard without touching a sample. It runs once, on a
+  /// terminal the user is already being told about.
+  private func freezeSignalAttribution(samples: [Float], peak: Float) {
     let takeRoute = lastResolvedRoute
     let health = telemetryState.captureHealth
+    let measurement = RawAudioDeadAirClassifier.measure(samples, peak: peak)
     telemetryState.signalAttribution = KernelSignalAttributionTelemetry(
       inputDeviceKind: audioCapture.boundInputDeviceKind,
       effectiveTransport: takeRoute?.effective,
       selectedTransport: takeRoute?.selected,
       inputSelectionMode: takeRoute?.inputSelectionMode,
-      wholeBufferRMS: measurement?.wholeBufferRMS,
-      maxWindowRMS: measurement?.maxWindowRMS,
+      wholeBufferRMS: measurement.wholeBufferRMS,
+      maxWindowRMS: measurement.maxWindowRMS,
       // Stays optional all the way to PostHog. An exact zero is the signature of
       // a digitally dead channel (#1809), so a manufactured 0 for "not measured"
       // would be indistinguishable from the finding this data exists to detect.
