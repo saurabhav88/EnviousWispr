@@ -261,31 +261,46 @@ struct TerminalContextResolverTests {
       return true
     }
 
+    // NOR MAY AN ASSERTION USE AN ABSOLUTE MILLISECOND THRESHOLD, which is the
+    // same defect pointing the other way and is the worse one: a descheduled
+    // busy-wait can make a SINGLE call long enough to satisfy any fixed number,
+    // so the per-call regression this test exists to catch would pass. Both
+    // assertions below therefore compare measured quantities against each
+    // other, never against a constant.
+    //
     // A budget far larger than the work, so nothing can cut the sequence short
     // and the call count is fixed rather than raced for.
     let shared = TerminalResolutionBudget(total: 1.0)
     var calls = 0
+    var perCall: [Double] = []
     for _ in 0..<3 {
+      let started = DispatchTime.now().uptimeNanoseconds
       _ = shared.step(applying: element) {
         calls += 1
         return slowCall()
       }
+      perCall.append(Double(DispatchTime.now().uptimeNanoseconds - started) / 1e9)
     }
+    let spent = 1.0 - shared.remaining
 
     #expect(calls == 3, "a budget this large must never cut the sequence short")
-    // THE POINT. A per-call bound would have charged only the last call and
-    // left ~0.975 remaining; a cumulative one has charged all three. The
-    // threshold sits below 3 x 25 ms so slower calls only push it further from
-    // the boundary, and far above the ~0.025 a per-call bound would spend.
+    // THE POINT, and it holds no matter how long any individual call took. A
+    // per-call bound retains only the FINAL call, so its spend can never exceed
+    // that call's own wall time as measured from outside `step` — outer time
+    // strictly contains what `step` charges. A cumulative one has also charged
+    // the first two, so it clears that bar by their combined ~50 ms.
     #expect(
-      shared.remaining <= 1.0 - 0.070,
-      "every call must be charged against the SHARED budget, not just the last")
+      spent > (perCall.last ?? 0),
+      "the spend must exceed the last call alone, i.e. every call was charged")
 
-    // And the shared budget really does run out. 25 ms exceeds what remains
-    // after the first call, so the second exhausts it; a call running LONGER
-    // than 25 ms only reaches that sooner.
+    // And the SHARED budget really runs out. Two 25 ms calls exceed a 40 ms cap
+    // between them while neither does alone, so exhaustion here is reachable
+    // only by accumulating. The final call is a no-op: under a per-call bound
+    // the budget would carry only its ~0 µs and stay open.
     let tight = TerminalResolutionBudget(total: 0.040)
-    for _ in 0..<2 { _ = tight.step(applying: element) { slowCall() } }
+    _ = tight.step(applying: element) { slowCall() }
+    _ = tight.step(applying: element) { slowCall() }
+    _ = tight.step(applying: element) { true }
 
     #expect(tight.isExhausted, "two 25 ms calls must exhaust a 40 ms cumulative cap")
     #expect(tight.remaining == 0)
