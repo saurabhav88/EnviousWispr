@@ -187,6 +187,15 @@ public actor AppLogger {
     }
 
     private func flushPendingLines() {
+      // RETAIN if the sink did not actually open. `openFileHandleIfNeeded` fails
+      // silently on a directory-creation or permission error, leaving
+      // `fileHandle` nil — and `writeToFile` then drops every line on the floor.
+      // Clearing the buffer first would destroy exactly the launch-window
+      // diagnostics this whole change exists to preserve, and destroy them for
+      // the one user whose machine is having a problem. Holding them costs
+      // nothing and a later successful open still flushes.
+      guard fileHandle != nil else { return }
+
       let pending = pendingLines
       let dropped = pendingDroppedCount
       pendingLines = []

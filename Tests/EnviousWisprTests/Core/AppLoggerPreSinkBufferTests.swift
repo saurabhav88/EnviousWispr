@@ -34,20 +34,26 @@ import Testing
     private func withRestoredLogger(
       _ body: () async throws -> Void
     ) async throws {
-      let priorMode = await AppLogger.shared.isDebugModeEnabled
-      let priorLevel = await AppLogger.shared.logLevel
+      // `.serialized` orders THIS suite only. AppLoggerLaunchSyncTests and
+      // AppLoggerCompileOutTests toggle the same singleton from their own
+      // suites, and nothing orders those against this one, so exclusion has to
+      // be explicit and process-wide.
+      try await withAppLoggerExclusion {
+        let priorMode = await AppLogger.shared.isDebugModeEnabled
+        let priorLevel = await AppLogger.shared.logLevel
 
-      await AppLogger.shared.setDebugMode(false)
-      await AppLogger.shared.resetPreSinkBufferForTesting()
+        await AppLogger.shared.setDebugMode(false)
+        await AppLogger.shared.resetPreSinkBufferForTesting()
 
-      // `defer` cannot await, so the restore is done on both exits explicitly.
-      do {
-        try await body()
-      } catch {
+        // `defer` cannot await, so the restore is done on both exits explicitly.
+        do {
+          try await body()
+        } catch {
+          await restore(mode: priorMode, level: priorLevel)
+          throw error
+        }
         await restore(mode: priorMode, level: priorLevel)
-        throw error
       }
-      await restore(mode: priorMode, level: priorLevel)
     }
 
     /// Reset FIRST, then re-apply the mode. The reverse order leaves the
