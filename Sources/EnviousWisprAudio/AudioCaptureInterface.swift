@@ -94,6 +94,20 @@ public protocol AudioCaptureInterface: AnyObject {
   /// treat a `deviceID` match alone as identity — that is what `deviceUID` is for.
   var zeroSignalDiscriminatorDevice: BoundInputDevice? { get }
 
+  /// #1845: which BUILT-IN-family input the bind opened (`built_in_mic` /
+  /// `jack_input`), or nil for every other transport. DERIVED once at bind time
+  /// from the bound UID and stored, deliberately NOT computed by reading
+  /// `zeroSignalDiscriminatorDevice` at emit time.
+  ///
+  /// The separation is load-bearing, not stylistic. That accessor participates
+  /// in the #1844/#1578 zero-signal DECISION and its read ORDER is a tested
+  /// contract: a run already classified reactively must short-circuit before the
+  /// bind is consulted at all. Telemetry asking the same question later would
+  /// consult it on a path the guard forbids, which is exactly the regression
+  /// `KernelFrozenBindGuardTests` caught. A decision input and an observation
+  /// are different concerns even when they describe the same fact.
+  var boundInputDeviceKind: String? { get }
+
   /// #1317, superseded as a consumer surface by #1578: a COMPATIBILITY VIEW of
   /// whether the CURRENT trailing all-zero run has a categorical refusal reason.
   /// True once the reactive check refused a candidate buffer somewhere in that
@@ -209,6 +223,7 @@ extension AudioCaptureInterface {
   /// source-compatible. The real capture backend (`AudioCaptureManager`)
   /// overrides it with the bind its own `prepare()` returned (#1844).
   public var zeroSignalDiscriminatorDevice: BoundInputDevice? { nil }
+  public var boundInputDeviceKind: String? { nil }
 
   /// #1714: WHY the microphone this session is using was chosen —
   /// `pinned_uid`, `system_default` or `list_fallback`. Default `nil` so every

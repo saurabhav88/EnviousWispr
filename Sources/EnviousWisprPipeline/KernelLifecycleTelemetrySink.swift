@@ -52,6 +52,17 @@ final class KernelLifecycleTelemetrySink {
     _ backend: String, _ telemetry: KernelModelLoadWedgeTelemetry?
   ) -> Void
 
+  /// #1845. Every optional is omit-when-nil at the `TelemetryService` boundary;
+  /// `peakAudioLevel` is optional deliberately so a missing reading can never be
+  /// emitted as an exact zero.
+  typealias VADGateNoSpeechSink = @MainActor (
+    _ backend: String, _ mode: String, _ rawSampleCount: Int, _ peakAudioLevel: Float?,
+    _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?, _ durationMs: Int?,
+    _ effectiveTransport: String?, _ selectedTransport: String?, _ inputSelectionMode: String?,
+    _ inputDeviceKind: String?, _ captureNativeRateHz: Double?, _ captureNativeChannelCount: Int?,
+    _ takeID: String?
+  ) -> Void
+
   typealias CaptureErrorSink = @MainActor (
     _ error: any Error & StableSentryErrorIdentity,
     _ category: SentryBreadcrumb.ErrorCategory,
@@ -100,6 +111,7 @@ final class KernelLifecycleTelemetrySink {
   private let updateAudioRoute: AudioRouteSink
   private let dictationInvoked: DictationInvokedSink
   private let modelLoadWedged: ModelLoadWedgedSink
+  private let vadGateNoSpeech: VADGateNoSpeechSink
   private let captureError: CaptureErrorSink
   private let captureErrorWithSnapshot: SnapshotCaptureErrorSink
   /// Optional. When wired (factory path), the sink routes
@@ -169,6 +181,19 @@ final class KernelLifecycleTelemetrySink {
         firstSignalLatencyMs: telemetry?.firstSignalLatencyMs,
         totalAttemptDurationMs: telemetry?.totalAttemptDurationMs)
     },
+    vadGateNoSpeech: @escaping VADGateNoSpeechSink = {
+      backend, mode, rawSampleCount, peakAudioLevel, wholeBufferRMS, maxWindowRMS, durationMs,
+      effectiveTransport, selectedTransport, inputSelectionMode, inputDeviceKind,
+      captureNativeRateHz, captureNativeChannelCount, takeID in
+      TelemetryService.shared.vadGateNoSpeech(
+        backend: backend, mode: mode, rawSampleCount: rawSampleCount,
+        peakAudioLevel: peakAudioLevel, wholeBufferRMS: wholeBufferRMS,
+        maxWindowRMS: maxWindowRMS, durationMs: durationMs,
+        effectiveTransport: effectiveTransport, selectedTransport: selectedTransport,
+        inputSelectionMode: inputSelectionMode, inputDeviceKind: inputDeviceKind,
+        captureNativeRateHz: captureNativeRateHz,
+        captureNativeChannelCount: captureNativeChannelCount, takeID: takeID)
+    },
     captureError: @escaping CaptureErrorSink = { error, category, stage, extra in
       SentryBreadcrumb.captureError(error, category: category, stage: stage, extra: extra)
     },
@@ -200,6 +225,7 @@ final class KernelLifecycleTelemetrySink {
     self.updateAudioRoute = updateAudioRoute
     self.dictationInvoked = dictationInvoked
     self.modelLoadWedged = modelLoadWedged
+    self.vadGateNoSpeech = vadGateNoSpeech
     self.captureError = captureError
     self.captureErrorWithSnapshot = captureErrorWithSnapshot
     self.noAudioCapturedRich = noAudioCapturedRich
@@ -396,10 +422,21 @@ final class KernelLifecycleTelemetrySink {
       // name/string rule. VAD-gate path = TP:787; ASR-empty no-speech = TP:902.
       switch source {
       case .vadGate:
-        // TODO(test-fix): update no-speech payload expectations for round-2 fields.
+        // #1845: ONE computation, TWO records. The breadcrumb is unchanged in
+        // name and stage; the tally is new and is the only countable evidence
+        // this terminal has ever produced — a breadcrumb is attached to a later
+        // Sentry event, and a no-speech terminal fires none, so until now these
+        // takes were invisible.
+        let facts = vadGateNoSpeechFacts()
         breadcrumb(
           "asr", "VAD gate: no speech detected, skipping ASR",
-          noSpeechVADGatePayload())
+          noSpeechVADGatePayload(facts))
+        vadGateNoSpeech(
+          facts.backend, facts.mode, facts.rawSampleCount, facts.peakAudioLevel,
+          facts.wholeBufferRMS, facts.maxWindowRMS, facts.durationMs,
+          facts.effectiveTransport, facts.selectedTransport, facts.inputSelectionMode,
+          facts.inputDeviceKind, facts.captureNativeRateHz, facts.captureNativeChannelCount,
+          facts.takeID)
       case .asrEmptyNoSpeech:
         breadcrumb(
           "asr", "ASR empty (no speech detected)",
@@ -609,15 +646,80 @@ final class KernelLifecycleTelemetrySink {
     return payload
   }
 
-  private func noSpeechVADGatePayload() -> [String: Any] {
-    [
-      "backend": backend.rawValue,
-      "mode": telemetryState.noSpeechTelemetry?.mode
-        ?? (outcome.streamingMode ? "streaming" : "batch"),
-      "raw_sample_count": telemetryState.noSpeechTelemetry?.rawSampleCount
-        ?? audioCapture.capturedSamples.count,
-      "peak_audio_level": telemetryState.noSpeechTelemetry?.peakAudioLevel ?? 0,
+  /// #1845: everything the `.vadGate` terminal reports, computed ONCE and fed to
+  /// BOTH the Sentry breadcrumb and the PostHog tally. Two independent reads
+  /// would let the two records describe the same take differently.
+  ///
+  /// Every route and format value here is frozen: route from
+  /// `noSpeechTelemetry` (stamped at the classifier site from this take's
+  /// `lastResolvedRoute`), format from `captureHealth.stopMetadata` (stamped
+  /// immediately post-stop, before every early terminal). Nothing reads
+  /// `audioCapture.currentResolvedRoute`, which is live and can describe a
+  /// later source by the time a terminal renders.
+  private struct VADGateNoSpeechFacts {
+    let backend: String
+    let mode: String
+    let rawSampleCount: Int
+    /// Optional and NEVER defaulted to `0`. An exact zero is the signature of a
+    /// digitally dead channel (#1809); manufacturing one from missing state
+    /// would make absent data look like the finding we are hunting.
+    let peakAudioLevel: Float?
+    let wholeBufferRMS: Float?
+    let maxWindowRMS: Float?
+    let durationMs: Int?
+    let effectiveTransport: String?
+    let selectedTransport: String?
+    let inputSelectionMode: String?
+    /// #1845: `built_in_mic` / `jack_input`, refining the ambiguous `built_in`
+    /// transport into the two physical inputs it covers. nil elsewhere.
+    let inputDeviceKind: String?
+    let captureNativeRateHz: Double?
+    let captureNativeChannelCount: Int?
+    let takeID: String?
+  }
+
+  private func vadGateNoSpeechFacts() -> VADGateNoSpeechFacts {
+    let noSpeech = telemetryState.noSpeechTelemetry
+    let health = telemetryState.captureHealth
+    return VADGateNoSpeechFacts(
+      backend: backend.rawValue,
+      mode: noSpeech?.mode ?? (outcome.streamingMode ? "streaming" : "batch"),
+      rawSampleCount: noSpeech?.rawSampleCount ?? audioCapture.capturedSamples.count,
+      peakAudioLevel: noSpeech?.peakAudioLevel,
+      wholeBufferRMS: noSpeech?.wholeBufferRMS,
+      maxWindowRMS: noSpeech?.maxWindowRMS,
+      durationMs: telemetryState.recordingSnapshot?.durationMs,
+      effectiveTransport: noSpeech?.effectiveTransport,
+      selectedTransport: noSpeech?.selectedTransport,
+      inputSelectionMode: noSpeech?.inputSelectionMode,
+      inputDeviceKind: noSpeech?.inputDeviceKind,
+      captureNativeRateHz: health?.stopMetadata?.nativeRateHz,
+      captureNativeChannelCount: health?.stopMetadata?.nativeChannelCount,
+      // Read BEFORE the generic terminal postamble clears the take key. The
+      // postamble deliberately runs after the event-specific arm for exactly
+      // this reason; if it is ever moved above the switch, the §11.2 take-key
+      // test fails rather than the property silently emptying.
+      takeID: telemetryState.takeID
+    )
+  }
+
+  private func noSpeechVADGatePayload(_ facts: VADGateNoSpeechFacts) -> [String: Any] {
+    var payload: [String: Any] = [
+      "backend": facts.backend,
+      "mode": facts.mode,
+      "raw_sample_count": facts.rawSampleCount,
     ]
+    if let v = facts.peakAudioLevel { payload["peak_audio_level"] = v }
+    if let v = facts.wholeBufferRMS { payload["whole_buffer_rms"] = v }
+    if let v = facts.maxWindowRMS { payload["max_window_rms"] = v }
+    if let v = facts.durationMs { payload["duration_ms"] = v }
+    if let v = facts.effectiveTransport { payload["effective_transport"] = v }
+    if let v = facts.selectedTransport { payload["selected_transport"] = v }
+    if let v = facts.inputSelectionMode { payload["input_selection_mode"] = v }
+    if let v = facts.inputDeviceKind { payload["input_device_kind"] = v }
+    if let v = facts.captureNativeRateHz { payload["capture_native_rate_hz"] = v }
+    if let v = facts.captureNativeChannelCount { payload["capture_native_channel_count"] = v }
+    return payload
   }
 
   private func recordingSnapshot() -> SentryBreadcrumb.RecordingSnapshot? {

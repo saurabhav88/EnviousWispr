@@ -54,6 +54,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   public var zeroSignalDiscriminatorDevice: BoundInputDevice? { effectiveDiscriminatorDevice }
 
+  /// #1845: derived once in `adoptBoundState`, alongside the route refresh, so
+  /// no consumer re-reads the bind to answer it. See the protocol requirement
+  /// for why this is not a computed projection of the property above.
+  public private(set) var boundInputDeviceKind: String?
+
   /// #1317 (ported in-process from the former app-side capture proxy at the C1
   /// collapse, #1543): WHY the CURRENT trailing all-zero run was refused by the
   /// device discriminator. The kernel's STOP-time backstop reads this guard-first
@@ -553,6 +558,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// the source, so there is nothing to downcast and no way to read a stale bind.
   private func adoptBoundState(_ bound: BoundInputDevice) {
     effectiveDiscriminatorDevice = bound
+    boundInputDeviceKind = AudioDeviceEnumerator.builtInInputKind(forUID: bound.deviceUID)
     refreshResolvedRoute(actualBoundTransport: bound.transportLabel)
   }
 

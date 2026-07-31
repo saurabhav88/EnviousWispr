@@ -170,6 +170,39 @@ struct KernelNoSpeechTelemetry {
   let mode: String
   let rawSampleCount: Int
   let peakAudioLevel: Float
+  /// #1845 — the two energy values `RawAudioDeadAirClassifier.measure` compared
+  /// against their floors. Optional because the classification short-circuits;
+  /// `nil` means NOT COMPUTED, never "computed as zero". Populated only on the
+  /// `.vadGate` route, which is the only one that runs the classifier — the
+  /// `.asrEmptyNoSpeech` stamp leaves them nil and that is correct, not a gap.
+  var wholeBufferRMS: Float?
+  var maxWindowRMS: Float?
+  /// #1845 — THIS take's route, frozen from `lastResolvedRoute` at the
+  /// classifier site.
+  ///
+  /// These live here rather than being read at emit time because the sink's
+  /// only other handle is `audioCapture.currentResolvedRoute`, which is LIVE
+  /// state and can describe a later source by the time a terminal renders. The
+  /// dead-mic telemetry already refuses that live read for the same reason
+  /// (`RecordingSessionKernel.swift:1686-1690`).
+  ///
+  /// The native capture FORMAT fields are deliberately NOT duplicated here:
+  /// `telemetryState.captureHealth.stopMetadata` is already frozen before every
+  /// early terminal and already reachable from the sink, so a second copy would
+  /// be a second authority for one fact.
+  var effectiveTransport: String?
+  var selectedTransport: String?
+  var inputSelectionMode: String?
+  /// #1845 — which BUILT-IN-family input this was, closed vocabulary
+  /// (`built_in_mic` / `jack_input`), nil for every other transport.
+  ///
+  /// `effectiveTransport` reports `built_in` for BOTH the internal microphone
+  /// and a microphone in the 3.5 mm jack, because macOS routes the jack through
+  /// the same codec. Without this field a quiet built-in mic and a dead headset
+  /// plugged into the jack are the same row — and the second is the population
+  /// #1845 exists to measure. Derived from the bound device's Apple-fixed UID
+  /// constant, never from the device name or the raw UID.
+  var inputDeviceKind: String?
 }
 
 struct KernelASRCompletedTelemetry {

@@ -365,6 +365,51 @@ public enum AudioDeviceEnumerator {
     return transportLabel(for: id)
   }
 
+  /// #1845: which BUILT-IN-family input a UID names, or nil for anything else.
+  ///
+  /// `transportLabel` reports `built_in` for BOTH the internal microphone and a
+  /// microphone plugged into the 3.5 mm jack, because macOS routes the jack
+  /// through the same audio codec. Measured on the founder's Mac 2026-07-31:
+  ///
+  /// | Picker name | UID | transport |
+  /// |---|---|---|
+  /// | MacBook Pro Microphone | `BuiltInMicrophoneDevice` | `bltn` |
+  /// | External Microphone | `BuiltInHeadphoneInputDevice` | `bltn` |
+  ///
+  /// So transport alone cannot tell "the internal mic went quiet" from "a dead
+  /// headset is plugged into the jack" — and the second is the population #1845
+  /// exists to measure. The UID does distinguish them.
+  ///
+  /// **Returns a CLOSED VOCABULARY, never the UID itself.** That is a privacy
+  /// requirement, not a style choice: a USB UID embeds the device serial
+  /// (`AppleUSBAudioEngine:Plantronics:…:CBB85FCE…`) and a Bluetooth UID is the
+  /// peer MAC address, so emitting raw UIDs would ship hardware identifiers.
+  /// The two values below are Apple-fixed constants that name a PORT on every
+  /// Mac, identify nobody, and are already documented as the UID-shape
+  /// cross-check in `gotchas-audio.md`.
+  ///
+  /// Deliberately nil outside the built-in family: `usb`, `bluetooth` and
+  /// `virtual` are already unambiguous in the transport label, so a second
+  /// field there would be a duplicate authority for a fact that has one.
+  ///
+  /// **Device MODEL is deliberately not reported, and that was a considered
+  /// decision rather than an omission (founder, 2026-07-31).** `kAudioDevice`
+  /// `PropertyModelUID` is available and safe — measured `Blackwire 5220
+  /// Series:047F:C053` for USB and `4066 9e` for Bluetooth, neither carrying a
+  /// serial or the user's chosen device name. It was rejected on VALUE, not on
+  /// privacy: the question worth answering is which of four input CLASSES
+  /// failed, and a per-model breakdown does not change what we would do about
+  /// it. Do not add it back without a use that a class-level answer cannot
+  /// serve. The raw `deviceUID` remains permanently unemittable — the USB form
+  /// embeds the unit serial and the Bluetooth form is the peer MAC address.
+  public static func builtInInputKind(forUID uid: String?) -> String? {
+    switch uid {
+    case "BuiltInMicrophoneDevice": return "built_in_mic"
+    case "BuiltInHeadphoneInputDevice": return "jack_input"
+    default: return nil
+    }
+  }
+
   // MARK: - Private Helpers
 
   /// Raw CoreAudio transport-type constant, or nil if the property read fails.

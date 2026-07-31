@@ -62,7 +62,29 @@ import Testing
       let takeID: String?
     }
 
+    /// #1845: the `audio.vad_gate_no_speech` tally. Optionals are kept optional
+    /// on purpose — the whole point of the event is that "we did not measure" and
+    /// "we measured exactly zero" must stay distinguishable, so a recorder that
+    /// collapsed nil to a default would hide the defect it exists to catch.
+    struct VADGateNoSpeechCall: Equatable {
+      let backend: String
+      let mode: String
+      let rawSampleCount: Int
+      let peakAudioLevel: Float?
+      let wholeBufferRMS: Float?
+      let maxWindowRMS: Float?
+      let durationMs: Int?
+      let effectiveTransport: String?
+      let selectedTransport: String?
+      let inputSelectionMode: String?
+      let inputDeviceKind: String?
+      let captureNativeRateHz: Double?
+      let captureNativeChannelCount: Int?
+      let takeID: String?
+    }
+
     var breadcrumbs: [BreadcrumbCall] = []
+    var vadGateNoSpeechCalls: [VADGateNoSpeechCall] = []
     var recordingStates: [RecordingStateCall] = []
     var audioRoutes: [String] = []
     var dictationsInvoked: [DictationInvokedCall] = []
@@ -130,6 +152,21 @@ import Testing
             triggerSource: trigger, inputMode: mode, targetApp: target, takeID: takeID))
       },
       modelLoadWedged: { backend, _ in recorder.modelLoadWedgedBackends.append(backend) },
+      vadGateNoSpeech: {
+        backend, mode, rawSampleCount, peak, wholeRMS, maxWindowRMS, durationMs,
+        effectiveTransport, selectedTransport, inputSelectionMode, deviceKind, nativeRate,
+        nativeChannels, takeID in
+        recorder.vadGateNoSpeechCalls.append(
+          Recorder.VADGateNoSpeechCall(
+            backend: backend, mode: mode, rawSampleCount: rawSampleCount,
+            peakAudioLevel: peak, wholeBufferRMS: wholeRMS, maxWindowRMS: maxWindowRMS,
+            durationMs: durationMs, effectiveTransport: effectiveTransport,
+            selectedTransport: selectedTransport, inputSelectionMode: inputSelectionMode,
+            inputDeviceKind: deviceKind,
+            captureNativeRateHz: nativeRate, captureNativeChannelCount: nativeChannels,
+            takeID: takeID))
+        recorder.timeline.append("vadGateNoSpeech")
+      },
       captureError: { error, category, stage, extra in
         recorder.captureErrors.append(
           Recorder.CaptureErrorCall(
@@ -713,13 +750,164 @@ import Testing
     let sink = makeSink(recorder: recorder)
     sink.emit(.noSpeech(.vadGate))
     // Round 2 item #15 restored OLD-TP:787-804's `mode`, `peak_audio_level`,
-    // `raw_sample_count` fields. Sink now emits the full sorted key set.
+    // `raw_sample_count` fields.
+    //
+    // #1845 CHANGED THIS EXPECTATION DELIBERATELY: with no `noSpeechTelemetry`
+    // stamped, `peak_audio_level` is now ABSENT rather than `0`. It used to be
+    // defaulted, which meant a take with no measurement was reported as having
+    // measured exact zero — the signature of a digitally dead channel. This
+    // assertion is the regression test for that removal: if the default ever
+    // returns, `peak_audio_level` reappears here and this fails.
     #expect(
       recorder.breadcrumbs == [
         .init(
           stage: "asr", message: "VAD gate: no speech detected, skipping ASR",
-          dataKeys: ["backend", "mode", "peak_audio_level", "raw_sample_count"])
+          dataKeys: ["backend", "mode", "raw_sample_count"])
       ])
+  }
+
+  // MARK: - #1845 `audio.vad_gate_no_speech`
+
+  /// The sink must emit the tally alongside the breadcrumb, carrying every value
+  /// the classifier and the frozen take state supplied.
+  @Test("#1845: .vadGate emits the tally with the frozen measurement and route")
+  func vadGateNoSpeechEmitsTally() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.takeID = "take-1845"
+    state.noSpeechTelemetry = KernelNoSpeechTelemetry(
+      mode: "batch",
+      rawSampleCount: 16_000,
+      peakAudioLevel: 0.0007,
+      wholeBufferRMS: 0.0004,
+      maxWindowRMS: 0.0009,
+      effectiveTransport: "built_in",
+      selectedTransport: "unknown",
+      inputSelectionMode: "auto",
+      inputDeviceKind: "jack_input"
+    )
+    let sink = makeSink(recorder: recorder, telemetryState: state)
+
+    sink.emit(.noSpeech(.vadGate))
+
+    #expect(recorder.vadGateNoSpeechCalls.count == 1)
+    let call = try! #require(recorder.vadGateNoSpeechCalls.first)
+    #expect(call.mode == "batch")
+    #expect(call.rawSampleCount == 16_000)
+    #expect(call.peakAudioLevel == 0.0007)
+    #expect(call.wholeBufferRMS == 0.0004)
+    #expect(call.maxWindowRMS == 0.0009)
+    #expect(call.effectiveTransport == "built_in")
+    #expect(call.selectedTransport == "unknown")
+    #expect(call.inputSelectionMode == "auto")
+    // #1845: the field that makes a jack-connected microphone distinguishable
+    // from the internal one. Both report transport `built_in`, so without this
+    // the two are the same row — and the jack case is the population the issue
+    // exists to measure.
+    #expect(call.inputDeviceKind == "jack_input")
+    // The take key must survive to the tally. The generic terminal postamble
+    // clears it, and only its placement AFTER the event-specific arm saves this.
+    // If that postamble is ever hoisted above the switch, this assertion fails
+    // rather than the property silently emptying.
+    #expect(call.takeID == "take-1845")
+  }
+
+  /// A missing measurement must arrive as `nil`, never as `0`. This is the
+  /// event's core correctness property: an exact zero is a real and highly
+  /// meaningful hardware observation, so absent data must not impersonate it.
+  @Test("#1845: an unmeasured take reports nil energy values, never zero")
+  func vadGateNoSpeechReportsNilNotZero() {
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder)
+
+    sink.emit(.noSpeech(.vadGate))
+
+    let call = try! #require(recorder.vadGateNoSpeechCalls.first)
+    #expect(call.peakAudioLevel == nil, "a missing reading must not be emitted as exact zero")
+    #expect(call.wholeBufferRMS == nil)
+    #expect(call.maxWindowRMS == nil)
+    #expect(call.effectiveTransport == nil)
+  }
+
+  /// Exhaustive negative control. Every OTHER lifecycle event must leave the
+  /// tally untouched — a per-terminal spot check would miss whichever arm nobody
+  /// thought of, which is the failure mode `classify-by-producer-not-by-name`
+  /// exists to prevent.
+  @Test(
+    "#1845: no other lifecycle event emits the tally",
+    arguments: [
+      KernelLifecycleEvent.noSpeech(.asrEmptyNoSpeech),
+      .noSpeech(.emptyAfterProcessing),
+      .pipelineStartingUp,
+      .recordingCommitted(isStreaming: false),
+      .recordingStopped,
+      .transcriptionStarted,
+      .discarded(.tooShort),
+      .cancelled,
+      .pipelineCompleted,
+    ] as [KernelLifecycleEvent]
+  )
+  func vadGateNoSpeechDoesNotFireOnOtherEvents(event: KernelLifecycleEvent) {
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder)
+
+    sink.emit(event)
+
+    #expect(
+      recorder.vadGateNoSpeechCalls.isEmpty,
+      "\(event) must not emit audio.vad_gate_no_speech")
+  }
+
+  /// The sink must not re-derive the route from LIVE capture state. The fake
+  /// reports its own live route; the frozen take route says something different;
+  /// the frozen one must win. This fails if the sink is ever changed to read
+  /// `audioCapture.currentResolvedRoute`.
+  @Test("#1845: the tally uses the frozen take route, not live capture state")
+  func vadGateNoSpeechPrefersFrozenRoute() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.noSpeechTelemetry = KernelNoSpeechTelemetry(
+      mode: "batch",
+      rawSampleCount: 16_000,
+      peakAudioLevel: 0.0007,
+      effectiveTransport: "usb",
+      selectedTransport: "usb",
+      inputSelectionMode: "explicit"
+    )
+    let capture = FakeAudioCapture()
+    capture.liveResolvedRoute = ResolvedRouteTransports(
+      selected: "bluetooth", effective: "bluetooth", routeReason: "test",
+      routeFallbackReason: nil, inputSelectionMode: "auto", outputTransport: "unknown",
+      routeResolutionSource: "app_derived")
+    let sink = KernelLifecycleTelemetrySink(
+      backend: .parakeet,
+      audioCapture: capture,
+      context: KernelSessionContext(),
+      captureTelemetry: CaptureTelemetryState(),
+      telemetryState: state,
+      breadcrumb: { _, _, _ in },
+      updateTakeID: { _ in },
+      vadGateNoSpeech: {
+        backend, mode, rawSampleCount, peak, wholeRMS, maxWindowRMS, durationMs,
+        effectiveTransport, selectedTransport, inputSelectionMode, deviceKind, nativeRate,
+        nativeChannels, takeID in
+        recorder.vadGateNoSpeechCalls.append(
+          Recorder.VADGateNoSpeechCall(
+            backend: backend, mode: mode, rawSampleCount: rawSampleCount,
+            peakAudioLevel: peak, wholeBufferRMS: wholeRMS, maxWindowRMS: maxWindowRMS,
+            durationMs: durationMs, effectiveTransport: effectiveTransport,
+            selectedTransport: selectedTransport, inputSelectionMode: inputSelectionMode,
+            inputDeviceKind: deviceKind,
+            captureNativeRateHz: nativeRate, captureNativeChannelCount: nativeChannels,
+            takeID: takeID))
+      })
+
+    sink.emit(.noSpeech(.vadGate))
+
+    let call = try! #require(recorder.vadGateNoSpeechCalls.first)
+    #expect(call.effectiveTransport == "usb", "live capture route leaked into the tally")
+    #expect(call.selectedTransport == "usb")
+    #expect(call.inputSelectionMode == "explicit")
   }
 
   @Test(".noSpeech(.asrEmptyNoSpeech) emits the TP:902 breadcrumb (r7)")

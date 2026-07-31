@@ -626,6 +626,104 @@ public final class TelemetryService {
     PostHogSDK.shared.capture(event, properties: props)
   }
 
+  /// #1845: one event per take that terminated at the VAD no-speech gate having
+  /// passed every dead-air threshold. Sizes a population that until now emitted
+  /// NOTHING countable — the existing Sentry breadcrumb is only visible when
+  /// some other event fires, and a no-speech terminal fires none.
+  ///
+  /// Named for the terminal it observes, NOT for a presumed cause. The app knows
+  /// the audio was below every energy floor; it does not know the microphone was
+  /// muted, dead, or simply pointed at a quiet room, and a physical mute switch
+  /// is frequently invisible to the host by design. Nothing here may be renamed
+  /// to imply otherwise.
+  ///
+  /// Content-free by construction: counts, durations, magnitudes, closed-vocabulary
+  /// transport strings, and the existing take key. Never transcript, audio,
+  /// device name, or UID.
+  ///
+  /// **Every optional omits when nil rather than emitting a sentinel, and
+  /// `peakAudioLevel` is optional for exactly that reason.** An exact zero is the
+  /// signature of a digitally dead channel (#1809), so defaulting a missing
+  /// reading to `0` would manufacture the most diagnostically loaded value in the
+  /// dataset and make absent data indistinguishable from the finding this event
+  /// exists to detect.
+  public func vadGateNoSpeech(
+    backend: String,
+    mode: String,
+    rawSampleCount: Int,
+    peakAudioLevel: Float?,
+    wholeBufferRMS: Float?,
+    maxWindowRMS: Float?,
+    durationMs: Int?,
+    effectiveTransport: String?,
+    selectedTransport: String?,
+    inputSelectionMode: String?,
+    inputDeviceKind: String?,
+    captureNativeRateHz: Double?,
+    captureNativeChannelCount: Int?,
+    takeID: String?
+  ) {
+    let event = "audio.vad_gate_no_speech"
+    var props: [String: Any] = [
+      "backend": backend,
+      "mode": mode,
+      "raw_sample_count": rawSampleCount,
+    ]
+    // Float -> Double at the boundary: PostHog carries numbers as Double and the
+    // DEBUG hook has a Double bucket and no Float one.
+    if let peakAudioLevel { props["peak_audio_level"] = Double(peakAudioLevel) }
+    if let wholeBufferRMS { props["whole_buffer_rms"] = Double(wholeBufferRMS) }
+    if let maxWindowRMS { props["max_window_rms"] = Double(maxWindowRMS) }
+    if let durationMs { props["duration_ms"] = durationMs }
+    if let effectiveTransport { props["effective_transport"] = effectiveTransport }
+    if let selectedTransport { props["selected_transport"] = selectedTransport }
+    if let inputSelectionMode { props["input_selection_mode"] = inputSelectionMode }
+    if let inputDeviceKind { props["input_device_kind"] = inputDeviceKind }
+    if let captureNativeRateHz { props["capture_native_rate_hz"] = captureNativeRateHz }
+    if let captureNativeChannelCount {
+      props["capture_native_channel_count"] = captureNativeChannelCount
+    }
+    if let takeID { props["take_id"] = takeID }
+    #if DEBUG
+      // Read BACK OUT of the emitted payload so a test observes what PostHog
+      // receives rather than what the caller passed — the #1846 pattern.
+      var stringProps: [String: String] = ["backend": backend, "mode": mode]
+      for key in [
+        "effective_transport", "selected_transport", "input_selection_mode", "input_device_kind",
+        "take_id",
+      ] {
+        if let value = props[key] as? String { stringProps[key] = value }
+      }
+      var intProps: [String: Int] = ["raw_sample_count": rawSampleCount]
+      for key in ["duration_ms", "capture_native_channel_count"] {
+        if let value = props[key] as? Int { intProps[key] = value }
+      }
+      var doubleProps: [String: Double] = [:]
+      for key in [
+        "peak_audio_level", "whole_buffer_rms", "max_window_rms", "capture_native_rate_hz",
+      ] {
+        if let value = props[key] as? Double { doubleProps[key] = value }
+      }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: event, stringProps: stringProps, intProps: intProps, doubleProps: doubleProps))
+      // Unlike `zeroSignalRefused`, this event DOES write a log line: #1845's Live
+      // UAT needs a local witness it can correlate to the PostHog row by take key,
+      // and verifying through PostHog alone is what made the sibling's UAT hard.
+      Task {
+        await AppLogger.shared.log(
+          "vad_gate_no_speech mode=\(mode) samples=\(rawSampleCount) "
+            + "peak=\(peakAudioLevel.map { "\($0)" } ?? "nil") "
+            + "wholeRms=\(wholeBufferRMS.map { "\($0)" } ?? "nil") "
+            + "maxWindowRms=\(maxWindowRMS.map { "\($0)" } ?? "nil") "
+            + "transport=\(effectiveTransport ?? "nil") kind=\(inputDeviceKind ?? "nil") "
+            + "take=\(takeID ?? "nil")",
+          level: .info, category: "Telemetry")
+      }
+    #endif
+    PostHogSDK.shared.capture(event, properties: props)
+  }
+
   /// Heartpath 5b (#1520): a completed take came back zero-signal, so the fenced
   /// retire primitive was invoked. `retireAction` records whether teardown
   /// actually ran (`retired`) or was a fenced no-op. Content-free by
