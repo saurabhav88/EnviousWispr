@@ -44,14 +44,21 @@ import Testing
       do {
         try await body()
       } catch {
-        await AppLogger.shared.setDebugMode(priorMode)
-        await AppLogger.shared.setLogLevel(priorLevel)
-        await AppLogger.shared.resetPreSinkBufferForTesting()
+        await restore(mode: priorMode, level: priorLevel)
         throw error
       }
-      await AppLogger.shared.setDebugMode(priorMode)
-      await AppLogger.shared.setLogLevel(priorLevel)
+      await restore(mode: priorMode, level: priorLevel)
+    }
+
+    /// Reset FIRST, then re-apply the mode. The reverse order leaves the
+    /// pre-sink window OPEN: `resetPreSinkBufferForTesting` clears
+    /// `hasAppliedInitialDebugMode`, so running it after `setDebugMode` undoes
+    /// the latch that call just closed, and every later log line in the process
+    /// would start buffering again for output that can never be flushed.
+    private func restore(mode: Bool, level: DebugLogLevel) async {
       await AppLogger.shared.resetPreSinkBufferForTesting()
+      await AppLogger.shared.setLogLevel(level)
+      await AppLogger.shared.setDebugMode(mode)
     }
 
     /// Reads the live `app.log`. Missing or unreadable reads back as empty, so a
@@ -85,6 +92,34 @@ import Testing
         #expect(
           contents.contains("buffered before the log file opened"),
           "the flush must announce itself so the ordering is explainable")
+
+        // The flushed entry must appear ABOVE the notice that describes it, and
+        // above "Debug mode enabled". Writing the notice first stamped it with
+        // `now` and put older entries beneath it, so the file ran backward in
+        // time while a comment claimed it ascended.
+        //
+        // Scope the search to the text AFTER this run's unique marker. app.log
+        // is appended across every run, so a whole-file `range(of:)` finds a
+        // "Debug mode enabled" from some previous session and compares offsets
+        // from different runs — which is how the first version of this
+        // assertion failed against correct code.
+        guard let markerIdx = contents.range(of: marker) else {
+          Issue.record("the buffered line never reached app.log")
+          return
+        }
+        let afterMarker = contents[markerIdx.upperBound...]
+        guard let noticeIdx = afterMarker.range(of: "were buffered before the log file opened")
+        else {
+          Issue.record("the flush notice must follow the entries it describes")
+          return
+        }
+        guard let enabledIdx = afterMarker.range(of: "Debug mode enabled") else {
+          Issue.record("the debug-mode-enabled marker must follow the flush")
+          return
+        }
+        #expect(
+          noticeIdx.lowerBound < enabledIdx.lowerBound,
+          "the flush notice must precede the debug-mode-enabled marker")
       }
     }
 
@@ -167,7 +202,7 @@ import Testing
         await AppLogger.shared.setDebugMode(true)
         let contents = readLog()
         #expect(
-          contents.contains("older line(s) dropped at the 500 cap"),
+          contents.contains("dropped at the 500 cap"),
           "an overflowing buffer must say so rather than silently truncate")
         #expect(
           contents.contains("EW1361-bound-\(runID)-599"),

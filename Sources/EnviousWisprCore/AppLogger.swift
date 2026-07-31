@@ -95,9 +95,10 @@ public actor AppLogger {
     #if DEBUG
       if enabled {
         openFileHandleIfNeeded()
-        // #1361: flush BEFORE the marker so the launch-window lines keep their
-        // real timestamps and stay in ascending order. `isDebugModeEnabled` is
-        // already true above, so nothing written from here re-enters the buffer.
+        // #1361: flush BEFORE the "Debug mode enabled" marker so the launch
+        // window's lines, which are older, appear above it and every timestamp
+        // in the file ascends. `isDebugModeEnabled` is already true above, so
+        // nothing written from here re-enters the buffer.
         flushPendingLines()
         hasAppliedInitialDebugMode = true
         log("Debug mode enabled", level: .info, category: "AppLogger")
@@ -192,18 +193,28 @@ public actor AppLogger {
       pendingDroppedCount = 0
       guard !pending.isEmpty || dropped > 0 else { return }
 
-      let now = timestampFormatter.string(from: Date())
-      writeRendered(
-        timestamp: now, level: .info, category: "AppLogger",
-        message:
-          "Flushing \(pending.count) line(s) buffered before the log file opened"
-          + (dropped > 0 ? "; \(dropped) older line(s) dropped at the \(maxPendingLines) cap" : "")
-          + " — the entries below carry their original timestamps and precede this one")
+      // Entries FIRST, marker after. Writing the marker first stamped it with
+      // `now` and then emitted older entries beneath it, so the file read
+      // now -> launch-time -> now and time ran BACKWARD — the opposite of what
+      // the comment claimed. Emitting the entries first keeps every timestamp in
+      // the file ascending, and the marker then reports what just happened
+      // rather than predicting it.
+      var written = 0
       for entry in pending where entry.level <= logLevel {
         writeRendered(
           timestamp: entry.timestamp, level: entry.level, category: entry.category,
           message: entry.message)
+        written += 1
       }
+
+      let filtered = pending.count - written
+      writeRendered(
+        timestamp: timestampFormatter.string(from: Date()), level: .info, category: "AppLogger",
+        message:
+          "The \(written) line(s) above were buffered before the log file opened and carry their "
+          + "original timestamps"
+          + (filtered > 0 ? "; \(filtered) more were below the current log level" : "")
+          + (dropped > 0 ? "; \(dropped) older line(s) dropped at the \(maxPendingLines) cap" : ""))
     }
 
     private func writeToFile(_ data: Data) {
