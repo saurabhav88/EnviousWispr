@@ -32,6 +32,34 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SCHEMA_VERSION=1
 
+# --- Canonical lanes (workflow-process.md FACT: lane-classification) ---
+# Exactly six, exact case. No `Local`, no `Mixed` (a multi-lane PR declares one
+# primary lane plus `mixed_pr: true`). Defined here, above --self-test, so the
+# self-test can EXERCISE the matcher rather than grep for its name.
+# MUST stay in step with `check-validation.sh`'s per-lane `case` dispatch — any
+# lane accepted here and absent there dies at `FAIL: unknown declared_lane`.
+CANONICAL_LANES="Docs/dev-tooling Eval-harness CI/workflow Content Worker Code"
+
+# Echoes the canonical lane a `**Lane:**` declaration line starts with, or
+# returns 1. #1463: the old parser cut the line at the first `*` or `.`, so
+# `**Lane:** Code (touches \`website/astro.config.mjs\` ...)` came out as
+# `Code (touches \`website/astro` and failed downstream as an unknown lane.
+# The lane set is CLOSED, so match against it instead of trimming open-ended
+# prose (workflow-process.md RULE: parse-structured-input-dont-regex-and-iterate).
+# Longest-first so `Docs/dev-tooling` is never shadowed by a shorter sibling; the
+# trailing character class rejects a longer word that merely starts with a lane
+# name (`Codebase` is not `Code`).
+match_canonical_lane() {
+  local raw="$1" lane
+  raw=$(echo "$raw" | sed -E 's/.*Lane:\*\* *\**//' | xargs || echo "")
+  for lane in $CANONICAL_LANES; do
+    case "$raw" in
+      "$lane"|"$lane"[^A-Za-z0-9/-]*) echo "$lane"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
 # --- Self-test mode ---
 if [ "${1:-}" = "--self-test" ]; then
   TMPDIR=$(mktemp -d -t validate-pr-self-test.XXXXXX)
@@ -67,6 +95,34 @@ JSON
     fail=$((fail + 1))
     echo "self-test FAIL: orchestrator-shaped run.json failed check-validation.sh"
   fi
+
+  # Test: the lane matcher, EXERCISED (#1463 regression lock). Each case is
+  # `declaration line -> expected`, where `-` means "must not match". The first
+  # case is the exact line from the legacy May plan that produced
+  # `Code (touches \`website/astro` and failed the run with an unknown lane.
+  while IFS='|' read -r line expected; do
+    [ -z "$line" ] && continue
+    if got=$(match_canonical_lane "$line"); then :; else got="-"; fi
+    if [ "$got" = "$expected" ]; then
+      pass=$((pass + 1))
+    else
+      fail=$((fail + 1))
+      echo "self-test FAIL: lane matcher on '$line' gave '$got', expected '$expected'"
+    fi
+  done <<'CASES'
+**Lane:** Code (touches `website/astro.config.mjs` and more)|Code
+**Lane:** Code|Code
+**Lane:** Content|Content
+**Lane:** CI/workflow|CI/workflow
+**Lane:** Eval-harness|Eval-harness
+**Lane:** Worker|Worker
+**Lane:** Docs/dev-tooling|Docs/dev-tooling
+**Lane:** **Docs/dev-tooling.** Narrative prose after.|Docs/dev-tooling
+**Lane:** Local|-
+**Lane:** Mixed|-
+**Lane:** Codebase|-
+CASES
+  echo "self-test: lane matcher exercised over 11 cases"
 
   echo "self-test results: $pass passed, $fail failed"
   [ "$fail" -eq 0 ]
@@ -126,21 +182,55 @@ fi
 DETECTED=$(detect_lane_from_diff "$CHANGED")
 echo "==> Detected lanes: ${DETECTED:-<none>}"
 
-# --- Read declared lane from latest plan file (Phase 1 Preface) ---
-# Plan template format: `**Lane:** Code | Content | CI/workflow | ...`
-# Author may wrap the chosen lane in additional bold (`**Docs/dev-tooling.**`)
-# and append narrative prose after a period. Parser strips the `**Lane:**`
-# prefix + any leading bold markers, then stops at the first `*` or `.` so
-# trailing prose doesn't leak into the lane name.
-# shellcheck disable=SC2010 # ls -t + grep is the simplest way to find the
-# newest plan file by mtime; for-loop alternatives add lines without semantic gain.
-LATEST_PLAN=$(ls -t "$PROJECT_ROOT"/docs/feature-requests/issue-*.md 2>/dev/null | grep -v aggressive-plan-stage2 | grep -v TEMPLATE | head -1 || echo "")
+# --- Read declared lane from THIS PR's plan file (Phase 1 Preface) ---
+# #1463, two compounding bugs, both fixed here.
+#
+# 1. WRONG PLAN. This used to take the newest `issue-*.md` by mtime. We stopped
+#    committing plan files around May 2026, so in a fresh feature worktree the
+#    only plans on disk are the ~25 legacy tracked ones and `ls -t` confidently
+#    returned a plan from MAY — then read ITS lane. Now the plan must belong to
+#    this branch: the issue number is taken from the branch name and matched
+#    against `issue-<N>-*.md`. No match means no declaration, never someone
+#    else's. `EW_PLAN_FILE` overrides for a branch whose name carries no number.
+#
+# 2. MANGLED VALUE. The old parser stripped `**Lane:**` then cut at the first
+#    `*` or `.`, so `**Lane:** Code (touches \`website/astro.config.mjs\` ...)`
+#    yielded `Code (touches \`website/astro` and failed downstream as an unknown
+#    lane. The six lanes are a CLOSED set, so match against it instead of
+#    trimming open-ended prose (workflow-process.md
+#    RULE: parse-structured-input-dont-regex-and-iterate). `match_canonical_lane`
+#    and `CANONICAL_LANES` are defined at the top of this file so `--self-test`
+#    can exercise them; the 11-case regression lock lives there.
+
+PLAN_FILE="${EW_PLAN_FILE:-}"
+if [ -z "$PLAN_FILE" ]; then
+  BRANCH_NAME=$(git -C "$PROJECT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  # First run of digits anywhere in the branch name, e.g. `fix/1463-foo` -> 1463.
+  BRANCH_ISSUE=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+' | head -1 || echo "")
+  if [ -n "$BRANCH_ISSUE" ]; then
+    # shellcheck disable=SC2012 # newest match by mtime; plans for one issue may
+    # be revised, and only the count of matches is otherwise interesting.
+    PLAN_FILE=$(ls -t "$PROJECT_ROOT/docs/feature-requests/issue-${BRANCH_ISSUE}"-*.md 2>/dev/null | head -1 || echo "")
+  fi
+fi
+
 DECLARED=""
-if [ -n "$LATEST_PLAN" ] && [ -f "$LATEST_PLAN" ]; then
-  DECLARED=$(grep -m1 -E '^\*\*Lane:\*\*' "$LATEST_PLAN" 2>/dev/null | sed -E 's/.*Lane:\*\* *\**//; s/[*.].*//' | xargs || echo "")
+if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
+  echo "==> Plan: $PLAN_FILE"
+  LANE_LINE=$(grep -m1 -E '^\*\*Lane:\*\*' "$PLAN_FILE" 2>/dev/null || echo "")
+  if [ -n "$LANE_LINE" ]; then
+    if ! DECLARED=$(match_canonical_lane "$LANE_LINE"); then
+      echo "FAIL: plan declares a lane that is not one of: $CANONICAL_LANES" >&2
+      echo "      $PLAN_FILE" >&2
+      echo "      $LANE_LINE" >&2
+      exit 2
+    fi
+  fi
+else
+  echo "==> Plan: <none for this branch>"
 fi
 if [ -z "$DECLARED" ]; then
-  echo "WARN: no declared lane found in latest plan; using detected lane"
+  echo "WARN: no plan lane declared for this branch; using detected lane"
   DECLARED=$(echo "$DETECTED" | cut -d, -f1)
 fi
 echo "==> Declared lane: $DECLARED"
