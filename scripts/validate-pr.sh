@@ -89,9 +89,19 @@ match_canonical_lane() {
   # which read as an unparseable lane.
   raw=$(echo "$raw" | sed -E \
     's/^[-*[:space:]]*\*{0,2}(([Dd]eclared|[Pp]rimary) )?[Ll][Aa][Nn][Ee]\*{0,2}:[*`[:space:]]*//; s/^[[:space:]]+//; s/[[:space:]]+$//')
+  # Case-INSENSITIVE match, canonical-cased OUTPUT. A plan writing `code` names
+  # exactly one lane and there is no ambiguity to protect against, but
+  # `check-validation.sh` dispatches on the exact-case name — so rejecting the
+  # declaration would fail a run over letter case, while passing `code` through
+  # verbatim would die downstream at `unknown declared_lane`. Normalising here
+  # accepts the human spelling and emits the one form the rest of the pipeline
+  # understands. `issue-501`'s tracked plan declares lowercase `code`.
+  local lower_raw lower_lane
+  lower_raw=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
   for lane in $CANONICAL_LANES; do
-    case "$raw" in
-      "$lane"|"$lane"[^A-Za-z0-9/-]*) echo "$lane"; return 0 ;;
+    lower_lane=$(printf '%s' "$lane" | tr '[:upper:]' '[:lower:]')
+    case "$lower_raw" in
+      "$lower_lane"|"$lower_lane"[^a-z0-9/-]*) echo "$lane"; return 0 ;;
     esac
   done
   return 1
@@ -170,8 +180,12 @@ Lane: Worker|Worker
 Lane: Code (secondary lane: Docs/dev-tooling)|Code
 **Lane:** Content — the eval-harness lane: not used here.|Content
 - **Lane:** Worker (per-lane: obligations in §11)|Worker
+- **Declared lane:** code (mixed_pr: false)|Code
+**Lane:** DOCS/DEV-TOOLING|Docs/dev-tooling
+**Lane:** ci/workflow|CI/workflow
+**Lane:** codebase|-
 CASES
-  echo "self-test: lane matcher exercised over 23 cases"
+  echo "self-test: lane matcher exercised over 27 cases"
 
   # The declaration line must also be FOUND. A matcher that parses every shape
   # is useless behind a grep anchored to one of them (#1861 cloud review P1).
