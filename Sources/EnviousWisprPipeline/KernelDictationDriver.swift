@@ -1664,26 +1664,22 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// neutral `TerminalNoticeReason`. PURE — no telemetry side effect (this map
   /// is read from BOTH the state and overlay projections, so emitting here
   /// would double-fire; the raw error is already captured at its producer's
-  /// Sentry site). Total over all 12 cases (no `default`), so a new
-  /// `RecordingFailureReason` reds the build until it is assigned a reason.
+  /// Sentry site).
+  ///
+  /// #1884: the switch itself moved to `RecordingFailureReason.terminalNoticeReason`
+  /// (`KernelTerminalProjections.swift`) because terminal telemetry needs the SAME
+  /// answer, and two copies of a 13-arm mapping disagree silently — both values
+  /// look plausible in a dashboard. This stays as the driver's named entry point
+  /// so its call sites read unchanged.
+  ///
+  /// The old comment here said "all 12 cases"; the switch had 13 arms and has
+  /// since it was written. A count in a comment that nobody re-derives is how a
+  /// wrong enumeration survives — the shared projection is exhaustive with no
+  /// `default`, so the compiler holds the invariant the comment was claiming.
   nonisolated static func terminalNoticeReason(for reason: RecordingFailureReason)
     -> TerminalNoticeReason
   {
-    switch reason {
-    case .prepareFailed: return .prepareFailed
-    case .permissionDenied: return .permissionDenied
-    case .modelWedged: return .modelWedged
-    case .modelLoadFailed: return .modelLoadFailed
-    case .captureStartFailed: return .captureStartFailed
-    case .noMicrophoneFound: return .noMicrophoneFound
-    case .noAudioCaptured: return .noAudioCaptured
-    case .asrEmpty: return .asrEmptyWithSpeech
-    case .asrFailed: return .asrFailed
-    case .asrWedged: return .asrWedged
-    case .emptyAfterProcessing: return .emptyAfterProcessing
-    case .captureStalled: return .captureStalled
-    case .zeroSignal: return .zeroSignal
-    }
+    reason.terminalNoticeReason
   }
 
   /// #1558: map a stamped `EngineInterruptionCause` (optional) to the typed
