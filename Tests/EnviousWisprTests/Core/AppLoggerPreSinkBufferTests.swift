@@ -15,25 +15,43 @@ import Testing
 /// and resets the latch through the `#if DEBUG` seam so the pre-sink window is
 /// reachable regardless of suite ordering.
 #if DEBUG
-  @Suite("AppLogger pre-sink buffer (#1361)")
+  /// `.serialized` is load-bearing, not tidiness. Swift Testing runs tests in
+  /// parallel by default and every case here mutates the ONE process-wide
+  /// `AppLogger.shared`. Run concurrently, a sibling enabling the sink midway
+  /// through `bufferIsBoundedAndHonest` would flush and empty the buffer under
+  /// it, and the count assertions would fail for a reason that has nothing to do
+  /// with the code under test. Serializing the suite is the only way these
+  /// assertions mean what they say.
+  @Suite("AppLogger pre-sink buffer (#1361)", .serialized)
   struct AppLoggerPreSinkBufferTests {
 
     /// Runs `body` with AppLogger returned to its prior state afterwards.
+    ///
+    /// Restoration is AWAITED, not fired into a detached `Task`. A `defer` that
+    /// only launches restoration returns before any of it lands, so the next
+    /// test could start against half-restored state and the developer's own
+    /// persisted debug mode could be left wrong after the run.
     private func withRestoredLogger(
       _ body: () async throws -> Void
-    ) async rethrows {
+    ) async throws {
       let priorMode = await AppLogger.shared.isDebugModeEnabled
       let priorLevel = await AppLogger.shared.logLevel
-      defer {
-        Task {
-          await AppLogger.shared.setDebugMode(priorMode)
-          await AppLogger.shared.setLogLevel(priorLevel)
-          await AppLogger.shared.resetPreSinkBufferForTesting()
-        }
-      }
+
       await AppLogger.shared.setDebugMode(false)
       await AppLogger.shared.resetPreSinkBufferForTesting()
-      try await body()
+
+      // `defer` cannot await, so the restore is done on both exits explicitly.
+      do {
+        try await body()
+      } catch {
+        await AppLogger.shared.setDebugMode(priorMode)
+        await AppLogger.shared.setLogLevel(priorLevel)
+        await AppLogger.shared.resetPreSinkBufferForTesting()
+        throw error
+      }
+      await AppLogger.shared.setDebugMode(priorMode)
+      await AppLogger.shared.setLogLevel(priorLevel)
+      await AppLogger.shared.resetPreSinkBufferForTesting()
     }
 
     /// Reads the live `app.log`. Missing or unreadable reads back as empty, so a
