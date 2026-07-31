@@ -45,6 +45,9 @@ struct AppLoggerCompileOutTests {
 
     @Test("Debug build: log() emits the marker into the file sink")
     func debugBuildEmitsMarkerIntoFileSink() async throws {
+      // Three separate suites toggle the AppLogger singleton and Swift Testing
+      // runs suites in parallel; `.serialized` cannot span them (#1361).
+      try await withAppLoggerExclusion {
       let marker = Self.uniqueMarker("debug")
       let priorMode = await AppLogger.shared.isDebugModeEnabled
 
@@ -60,12 +63,15 @@ struct AppLoggerCompileOutTests {
       // Restore prior debug-mode state — never assume default false, so suite
       // ordering does not change behavior.
       await AppLogger.shared.setDebugMode(priorMode)
+      }
     }
 
   #else
 
     @Test("Release build: log() does NOT emit the marker (sink is dead code)")
     func releaseBuildSinkIsDeadCode() async throws {
+      // See the DEBUG case above: cross-suite exclusion, not `.serialized`.
+      try await withAppLoggerExclusion {
       let marker = Self.uniqueMarker("release")
       let priorMode = await AppLogger.shared.isDebugModeEnabled
       let url = Self.expectedLogURL
@@ -87,6 +93,7 @@ struct AppLoggerCompileOutTests {
       #expect(isEnabled == true)
 
       await AppLogger.shared.setDebugMode(priorMode)
+      }
     }
 
   #endif

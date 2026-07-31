@@ -27,6 +27,9 @@ struct AppLoggerLaunchSyncTests {
 
   @Test("applyInitialSettings seeds AppLogger debug mode + log level from persisted settings")
   func applyInitialSettingsSeedsAppLogger() async throws {
+    // Cross-suite exclusion on the AppLogger singleton (#1361). `.serialized`
+    // orders one suite only, and three suites toggle this global.
+    try await withAppLoggerExclusion {
     // Save prior AppLogger state so suite ordering does not leak.
     let priorMode = await AppLogger.shared.isDebugModeEnabled
     let priorLevel = await AppLogger.shared.logLevel
@@ -112,6 +115,7 @@ struct AppLoggerLaunchSyncTests {
       defaults.set(priorDebugLogLevel, forKey: "debugLogLevel")
     } else {
       defaults.removeObject(forKey: "debugLogLevel")
+    }
     }
   }
 }

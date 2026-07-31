@@ -47,6 +47,45 @@ public actor AppLogger {
     }
     private var currentLogURL: URL { logDirectory.appendingPathComponent("app.log") }
     private var fileHandle: FileHandle?
+
+    // MARK: Pre-sink buffer (#1361)
+    //
+    // Lines logged BEFORE the file sink is enabled used to vanish. The cause is
+    // not a FileHandle race (the issue's original guess) but the plain
+    // `isDebugModeEnabled` guard in `log(...)`: that flag is false until
+    // `PipelineSettingsSync.applyInitialSettings` calls `setDebugMode(true)`,
+    // so everything emitted earlier in launch reached OSLog and nothing else.
+    // A launch-window `finishFailed` never made it to app.log while the
+    // IDENTICAL call at press-time did, and that cost about an hour chasing a
+    // phantom warmup wedge. Same family as #728, which seeded debug mode at
+    // launch; this closes the window that still precedes the seeding.
+    //
+    // Entries are buffered unrendered so the level filter is applied at FLUSH
+    // time against the log level that is actually in force by then, while the
+    // timestamp is captured at LOG time so the flushed lines stay in true
+    // chronological order.
+    private struct PendingLine {
+      let timestamp: String
+      let level: DebugLogLevel
+      let category: String
+      let message: String
+    }
+    private var pendingLines: [PendingLine] = []
+    private var pendingDroppedCount = 0
+    /// The window is EXACTLY "before the persisted debug setting has been
+    /// applied", which is the whole of the bug and nothing more. It closes on
+    /// the first `setDebugMode` call in either direction — that call is
+    /// `PipelineSettingsSync.applyInitialSettings` at launch.
+    ///
+    /// Closing on `false` too is what keeps this free in steady state. Keying it
+    /// on "has never been ENABLED" instead meant that in the overwhelmingly
+    /// common case — a DEBUG build with debug mode off — every one of the ~148
+    /// log call sites would format a timestamp and allocate, forever, for output
+    /// that can never be flushed. Worse, past the cap each further call paid an
+    /// O(n) `removeFirst` on a 500-element array. Neither cost is acceptable to
+    /// buy a launch-window diagnostic.
+    private var hasAppliedInitialDebugMode = false
+    private let maxPendingLines = 500
   #endif
 
   private init() {}
@@ -56,8 +95,20 @@ public actor AppLogger {
     #if DEBUG
       if enabled {
         openFileHandleIfNeeded()
+        // #1361: flush BEFORE the "Debug mode enabled" marker so the launch
+        // window's lines, which are older, appear above it and every timestamp
+        // in the file ascends. `isDebugModeEnabled` is already true above, so
+        // nothing written from here re-enters the buffer.
+        flushPendingLines()
+        hasAppliedInitialDebugMode = true
         log("Debug mode enabled", level: .info, category: "AppLogger")
       } else {
+        // #1361: the window closes here too. Debug logging is off, so nothing
+        // buffered can ever be written — discard it rather than hold it, and
+        // stop buffering from now on.
+        hasAppliedInitialDebugMode = true
+        pendingLines = []
+        pendingDroppedCount = 0
         log("Debug mode disabled", level: .info, category: "AppLogger")
         fileHandle?.closeFile()
         fileHandle = nil
@@ -77,13 +128,19 @@ public actor AppLogger {
       case .debug: oslog.debug("[\(category, privacy: .public)] \(message, privacy: .public)")
       }
 
-      guard isDebugModeEnabled, level <= logLevel else { return }
+      guard isDebugModeEnabled, level <= logLevel else {
+        // #1361: only the pre-sink window is buffered. A line rejected because
+        // debug mode is ON but the level is below the threshold is a deliberate
+        // filter, not a lost line, so it is NOT buffered.
+        if !isDebugModeEnabled, !hasAppliedInitialDebugMode {
+          bufferPreSink(level: level, category: category, message: message)
+        }
+        return
+      }
 
-      let timestamp = timestampFormatter.string(from: Date())
-      let line = "[\(timestamp)] [\(level.rawValue.uppercased())] [\(category)] \(message)\n"
-
-      guard let data = line.data(using: .utf8) else { return }
-      writeToFile(data)
+      writeRendered(
+        timestamp: timestampFormatter.string(from: Date()),
+        level: level, category: category, message: message)
     #endif
     // Release: no-op. The 148 call sites still pay the actor-hop cost of
     // `await AppLogger.shared.log(...)`; the privacy win is removing all sink
@@ -103,6 +160,70 @@ public actor AppLogger {
       }
       fileHandle = try? FileHandle(forWritingTo: currentLogURL)
       fileHandle?.seekToEndOfFile()
+    }
+
+    /// Single renderer for both the live path and the #1361 flush, so a format
+    /// change cannot apply to one and not the other.
+    private func writeRendered(
+      timestamp: String, level: DebugLogLevel, category: String, message: String
+    ) {
+      let line = "[\(timestamp)] [\(level.rawValue.uppercased())] [\(category)] \(message)\n"
+      guard let data = line.data(using: .utf8) else { return }
+      writeToFile(data)
+    }
+
+    private func bufferPreSink(level: DebugLogLevel, category: String, message: String) {
+      // Bounded: drop the OLDEST and count it, so a long run with debug mode
+      // never enabled cannot grow without limit. The count is reported at flush
+      // rather than silently swallowed.
+      if pendingLines.count >= maxPendingLines {
+        pendingLines.removeFirst()
+        pendingDroppedCount += 1
+      }
+      pendingLines.append(
+        PendingLine(
+          timestamp: timestampFormatter.string(from: Date()),
+          level: level, category: category, message: message))
+    }
+
+    private func flushPendingLines() {
+      // RETAIN if the sink did not actually open. `openFileHandleIfNeeded` fails
+      // silently on a directory-creation or permission error, leaving
+      // `fileHandle` nil — and `writeToFile` then drops every line on the floor.
+      // Clearing the buffer first would destroy exactly the launch-window
+      // diagnostics this whole change exists to preserve, and destroy them for
+      // the one user whose machine is having a problem. Holding them costs
+      // nothing and a later successful open still flushes.
+      guard fileHandle != nil else { return }
+
+      let pending = pendingLines
+      let dropped = pendingDroppedCount
+      pendingLines = []
+      pendingDroppedCount = 0
+      guard !pending.isEmpty || dropped > 0 else { return }
+
+      // Entries FIRST, marker after. Writing the marker first stamped it with
+      // `now` and then emitted older entries beneath it, so the file read
+      // now -> launch-time -> now and time ran BACKWARD — the opposite of what
+      // the comment claimed. Emitting the entries first keeps every timestamp in
+      // the file ascending, and the marker then reports what just happened
+      // rather than predicting it.
+      var written = 0
+      for entry in pending where entry.level <= logLevel {
+        writeRendered(
+          timestamp: entry.timestamp, level: entry.level, category: entry.category,
+          message: entry.message)
+        written += 1
+      }
+
+      let filtered = pending.count - written
+      writeRendered(
+        timestamp: timestampFormatter.string(from: Date()), level: .info, category: "AppLogger",
+        message:
+          "The \(written) line(s) above were buffered before the log file opened and carry their "
+          + "original timestamps"
+          + (filtered > 0 ? "; \(filtered) more were below the current log level" : "")
+          + (dropped > 0 ? "; \(dropped) older line(s) dropped at the \(maxPendingLines) cap" : ""))
     }
 
     private func writeToFile(_ data: Data) {
@@ -136,6 +257,22 @@ public actor AppLogger {
       openFileHandleIfNeeded()
     }
 
+  #endif
+
+  #if DEBUG
+    /// #1361 test seam. `AppLogger` is a singleton, so a suite that has already
+    /// applied a debug mode would leave `hasAppliedInitialDebugMode` latched and the
+    /// pre-sink window unreachable for the next test. `package` rather than
+    /// `internal` so tests reach it on a plain import, without coupling the seam
+    /// to `@testable`.
+    package func resetPreSinkBufferForTesting() {
+      pendingLines = []
+      pendingDroppedCount = 0
+      hasAppliedInitialDebugMode = false
+    }
+
+    /// Count of lines currently held in the pre-sink buffer (#1361 tests).
+    package var pendingPreSinkLineCount: Int { pendingLines.count }
   #endif
 
   // MARK: - Utilities
