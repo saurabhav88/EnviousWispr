@@ -22,9 +22,15 @@ enum InputResolutionTelemetryReporting {
   /// root wires it in one line.
   ///
   /// The installation lives here rather than inline in `WisprBootstrapper`
-  /// because that file is AT its architecture-test ceiling: the inline
-  /// three-line form measured 1331 against a limit of 1330, and the ceiling is
-  /// not ours to raise for a telemetry wire.
+  /// because that file sits at its architecture-test ceiling: the inline
+  /// three-line form measured 1331 against a limit of 1330, and this extraction
+  /// bought the line back.
+  ///
+  /// That saving was later spent anyway — main independently reached 1329 before
+  /// this branch merged, so the ceiling went to 1335 with a changelog entry in
+  /// `EnviousWisprAppCeilingsTests`. Keep the extraction regardless: it is the
+  /// named seam these tests drive, and it keeps the composition root's line about
+  /// wiring rather than about telemetry field mapping.
   static func observing(_ manager: AudioCaptureManager) -> AudioCaptureManager {
     manager.onFinalizedInputResolutionAttempt = report
     return manager
