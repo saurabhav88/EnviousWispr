@@ -65,9 +65,9 @@ final class HotkeyController {
     hotkeyService.onStartRecording = { [weak starter] in
       guard let starter else {
         Self.reportNilCollaborator(callback: "onStartRecording")
-        return
+        return .noRecording
       }
-      await starter.start()
+      return await starter.start()
     }
     hotkeyService.onStopRecording = { [weak finalizer] in
       guard let finalizer else {
@@ -86,12 +86,19 @@ final class HotkeyController {
     hotkeyService.onIsProcessing = { [weak starter] in
       starter?.isProcessing ?? false
     }
-    hotkeyService.onLocked = { [weak finalizer] in
-      guard let finalizer else {
-        Self.reportNilCollaborator(callback: "onLocked")
-        return
+    // #1631: publish the hands-free lock only when the session the press started
+    // is still the one running. Services owns the press bookkeeping but cannot
+    // see pipeline state, so AppKit answers this one fact. A mismatched or nil id
+    // means the accepted session is gone (ended, or replaced by one a toolbar
+    // press started), and a lock for it would be a lie.
+    hotkeyService.onLockRequested = { [weak starter, weak finalizer] sessionID in
+      guard let starter, let finalizer else {
+        Self.reportNilCollaborator(callback: "onLockRequested")
+        return .unavailable
       }
+      guard starter.activeDriver.continuingSessionID == sessionID else { return .notLockable }
       finalizer.markLocked()
+      return .published
     }
   }
 

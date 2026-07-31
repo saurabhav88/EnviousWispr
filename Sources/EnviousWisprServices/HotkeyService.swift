@@ -2,6 +2,49 @@ import Carbon.HIToolbox
 import Cocoa
 import EnviousWisprCore
 
+/// #1631 — what a push-to-talk start attempt produced, reported back to
+/// `HotkeyService` so it can reconcile the optimistic bookkeeping it stamped on
+/// key-down.
+package enum RecordingStartOutcome: Equatable, Sendable {
+  /// A session is genuinely continuing when `start()` computes its result,
+  /// carrying its opaque id. The id is what later publication compares against —
+  /// the outcome alone is a snapshot and cannot be trusted on its own, because
+  /// the session can end between this answer and the second tap.
+  case recording(String)
+  /// The hotkey must clear this attempt's optimistic start and hands-free
+  /// bookkeeping. Lifecycle-owned teardown may still be completing; this says
+  /// nothing about it.
+  case noRecording
+
+  /// The single mapping from "is the pipeline active" plus "is a session still
+  /// continuing" to this outcome. Lives on the type it constructs rather than on
+  /// the start path, so every `.recording`-capable exit routes through one place
+  /// and the mapping is testable as a closed set without racing the kernel.
+  ///
+  /// A nil id means no session is continuing — which covers both "nothing is
+  /// running" and "a session whose exit is already latched" — so an active-looking
+  /// pipeline with a latched exit correctly reports `.noRecording`.
+  /// `package`, not `public`: the only caller is `RecordingStarter` in this
+  /// package, and a `public` factory would widen the shipped surface for nothing.
+  package static func make(
+    pipelineActive: Bool, continuingSessionID: String?
+  ) -> RecordingStartOutcome {
+    guard pipelineActive, let continuingSessionID else { return .noRecording }
+    return .recording(continuingSessionID)
+  }
+}
+
+/// #1631 — the outcome of asking the app to publish the hands-free lock.
+package enum HandsFreeLockRequestResult: Equatable, Sendable {
+  /// Published: shared + overlay lock state have been written.
+  case published
+  /// The named session is no longer the running one — nothing was written.
+  case notLockable
+  /// The publication path itself is missing (a nil collaborator). A FAULT, not a
+  /// pipeline verdict; kept distinct so telemetry cannot launder it.
+  case unavailable
+}
+
 /// Manages global hotkey registration for dictation recording control.
 ///
 /// Uses Carbon RegisterEventHotKey for system-wide hotkeys without
@@ -50,6 +93,21 @@ public final class HotkeyService {
   /// Used for the 500ms double-press detection window.
   private var recordingStartTime: Date? = nil
 
+  /// #1631 — identifies one start attempt, incremented only when a fresh press
+  /// stamps a new one, so a late result can prove which press it belongs to.
+  ///
+  /// Deliberately NOT `stateGeneration`: that is bumped by every unlocked release
+  /// too, so a generation captured at press time is already stale in exactly the
+  /// press → release → press sequence this fix exists for.
+  private var startPressID: UInt64 = 0
+
+  /// #1631 — the press whose start confirmed a continuing session, and that
+  /// session's opaque id. Together they gate publication: hands-free intent is
+  /// recorded on the second press, but published only once the SAME press's
+  /// start has confirmed a session that is still running.
+  private var acceptedStartPressID: UInt64?
+  private var acceptedSessionID: String?
+
   /// Debounce timer: on quick PTT release (< 500ms), waits for a possible
   /// second press before stopping. Cancelled on double-press or new recording.
   private var debounceTask: Task<Void, Never>? = nil
@@ -69,12 +127,24 @@ public final class HotkeyService {
   // MARK: - Callbacks (wired by the former root state)
 
   public var onToggleRecording: (@MainActor () async -> Void)?
-  public var onStartRecording: (@MainActor () async -> Void)?
+  /// #1631: returns whether a session is genuinely continuing when the start path
+  /// finishes, and if so its id. `HotkeyService` reconciles its own state on that.
+  package var onStartRecording: (@MainActor () async -> RecordingStartOutcome)?
   public var onStopRecording: (@MainActor () async -> Void)?
   public var onCancelRecording: (@MainActor () async -> Void)?
 
-  /// Called when recording transitions to hands-free (locked) mode via double-press.
-  public var onLocked: (@MainActor () async -> Void)?
+  /// #1631 — asks the app to publish the hands-free lock for a SPECIFIC session,
+  /// and reports what happened. Replaces the former `onLocked` notification:
+  /// publication is now a decision, not an announcement, because a double-press
+  /// alone does not prove a recording exists.
+  ///
+  /// Synchronous on purpose. The old `Task { await onLocked?() }` could run after
+  /// cleanup had already happened and publish a lock for a dead attempt; calling
+  /// inline closes that window rather than guarding it.
+  ///
+  /// The `String` is an opaque token, compared for equality only — Services never
+  /// interprets it.
+  package var onLockRequested: (@MainActor (String) -> HandsFreeLockRequestResult)?
 
   /// Returns true if the pipeline is in a processing state (transcribing, polishing, etc.).
   /// Used by the processing state gate to block new recordings during processing.
@@ -123,8 +193,24 @@ public final class HotkeyService {
     case cancel = "cancel_hotkey"
   }
 
-  public init(telemetry: HotkeyTelemetrySink = .noop) {
+  /// Injected clock for the 500ms double-press window and the lock cooldown.
+  /// Defaults to the real clock, so production is unchanged.
+  ///
+  /// Tests MUST inject: the window is measured in real elapsed time, so a test
+  /// that awaits anything between the two presses can be pushed outside the
+  /// window by parallel load and silently take the stop or fresh-start branch
+  /// instead of the lock branch. That is a genuinely load-dependent test, which
+  /// `swift-patterns.md` RULE: tests-no-real-time-scheduling-precision forbids —
+  /// found by the independent whole-diff review, which reproduced eight failures
+  /// running this suite alongside its siblings while it passed alone.
+  private let now: @MainActor () -> Date
+
+  public init(
+    telemetry: HotkeyTelemetrySink = .noop,
+    now: @escaping @MainActor () -> Date = { Date() }
+  ) {
     self.telemetry = telemetry
+    self.now = now
   }
 
   /// Emit `hotkey.pressed` for an accepted keydown. Synchronous + cheap (computes
@@ -204,8 +290,93 @@ public final class HotkeyService {
     isRecordingLocked = false
     recordingStartTime = nil
     lockTime = nil
+    // #1631: acceptance must never outlive the attempt that earned it, or a later
+    // press could inherit it and publish on a session it never started.
+    acceptedStartPressID = nil
+    acceptedSessionID = nil
     debounceTask?.cancel()
     debounceTask = nil
+  }
+
+  // MARK: - #1631 Start reconciliation and hands-free publication
+
+  /// Why a lock intent did or did not become a published lock. Metadata only.
+  private enum LockResolutionReason: String {
+    case published
+    case startProducedNoRecording = "start_produced_no_recording"
+    case notLockableAtPublication = "not_lockable_at_publication"
+    case publicationUnavailable = "publication_unavailable"
+  }
+
+  private func emitLockResolved(committed: Bool, reason: LockResolutionReason) {
+    telemetry.lockResolved(committed, reason.rawValue)
+  }
+
+  /// Reconcile a start attempt's outcome with the state stamped optimistically on
+  /// key-down. Guarded on press identity AND a live stamp, so a result belonging
+  /// to a superseded press — or arriving after any cleanup already ran — is
+  /// dropped rather than applied to newer state.
+  private func resolveStart(pressID: UInt64, outcome: RecordingStartOutcome) {
+    // #1631 test seam — fires on EVERY exit, including the dropped-stale-result
+    // guard below, so a test can observe that reconciliation finished rather than
+    // guessing from a scheduling turn. A signal fired inside the start callback
+    // cannot serve: this method runs AFTER that callback returns.
+    defer { onStartResolvedForTesting?() }
+    guard pressID == startPressID, recordingStartTime != nil else { return }
+    switch outcome {
+    case .recording(let sessionID):
+      acceptedStartPressID = pressID
+      acceptedSessionID = sessionID
+      publishLockIfReady()
+    case .noRecording:
+      // Only a press that already recorded hands-free intent has a decision to
+      // report; a refusal landing before the second tap has nothing to resolve.
+      if isRecordingLocked {
+        emitLockResolved(committed: false, reason: .startProducedNoRecording)
+      }
+      performCleanup()
+    }
+  }
+
+  /// Publish the hands-free lock iff this press recorded intent, this press's
+  /// start confirmed a session, and that session is STILL the running one.
+  ///
+  /// The last condition cannot be answered from the stored outcome: `start()`
+  /// returns as soon as the kernel is arming, and the session can end — or be
+  /// replaced by one a toolbar press started — before the second tap arrives.
+  /// Asking at the moment of use is the whole design; see the plan's class table.
+  private func publishLockIfReady() {
+    guard isRecordingLocked,
+      acceptedStartPressID == startPressID,
+      let sessionID = acceptedSessionID
+    else { return }
+    switch onLockRequested?(sessionID) ?? .unavailable {
+    case .published:
+      emitLockResolved(committed: true, reason: .published)
+    case .notLockable:
+      emitLockResolved(committed: false, reason: .notLockableAtPublication)
+      performCleanup()
+    case .unavailable:
+      emitLockResolved(committed: false, reason: .publicationUnavailable)
+      performCleanup()
+    }
+  }
+
+  /// #1631 test seam — await the in-flight start task so a test can assert the
+  /// reconciliation deterministically instead of polling a clock.
+  ///
+  /// NOT valid proof that a SUPERSEDED attempt finished: a newer press overwrites
+  /// `recordingTask`, so awaiting the slot awaits the replacement. A test that
+  /// needs a superseded attempt's completion must signal from its own injected
+  /// callback.
+  /// #1631 test seam — invoked once per completed `resolveStart`, on every exit
+  /// path. Test-only; production never sets it.
+  // periphery:ignore - test seam
+  package var onStartResolvedForTesting: (@MainActor () -> Void)?
+
+  // periphery:ignore - test seam
+  package func awaitInFlightStartForTesting() async {
+    await recordingTask?.value
   }
 
   // MARK: - Hands-Free State Machine
@@ -246,16 +417,30 @@ public final class HotkeyService {
       // Not recording → start fresh
       stateGeneration &+= 1
       isRecordingLocked = false
-      recordingStartTime = Date()
+      recordingStartTime = now()
+      // #1631: a fresh attempt owns a fresh identity, and inherits no acceptance.
+      startPressID &+= 1
+      acceptedStartPressID = nil
+      acceptedSessionID = nil
+      let pressID = startPressID
       debounceTask?.cancel()
       debounceTask = nil
       recordingTask?.cancel()
-      recordingTask = Task { await onStartRecording?() }
+      recordingTask = Task { [weak self] in
+        guard let self else { return }
+        guard let handler = self.onStartRecording else {
+          // No callback wired means nothing was recorded, so the optimistic
+          // bookkeeping is exactly as wrong here as on any other refusal.
+          self.resolveStart(pressID: pressID, outcome: .noRecording)
+          return
+        }
+        self.resolveStart(pressID: pressID, outcome: await handler())
+      }
       // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
       // defers the actual write off this turn so it never delays the callback.
       emitHotkeyPressed(.start, trigger: .ptt)
     } else if let startTime = recordingStartTime,
-      Date().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs)
+      now().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs)
         / 1000.0
     {
       // Within 500ms window
@@ -278,18 +463,23 @@ public final class HotkeyService {
         // Double press → lock into hands-free
         Task {
           await AppLogger.shared.log(
-            "Double press — locking into hands-free mode",
+            // #1631: this records the REQUEST. Whether it becomes a lock is not
+            // known yet — `Hands-free mode activated` is logged by the publisher.
+            "Double press — requesting hands-free mode",
             level: .info, category: "HotkeyService"
           )
         }
         debounceTask?.cancel()
         debounceTask = nil
         isRecordingLocked = true
-        lockTime = Date()
+        lockTime = now()
         // DO NOT cancel recordingTask here — the pipeline startup must
         // continue running. Cancelling it aborts preWarm/toggleRecording,
         // leaving the UI locked but no actual recording happening.
-        Task { await onLocked?() }
+        // #1631: intent is recorded above; publication happens only if this
+        // press's start has already confirmed a session that is still running.
+        // If it has not yet, `resolveStart` publishes when it does.
+        publishLockIfReady()
         emitHotkeyPressed(.lock, trigger: .ptt)
       }
     } else if isRecordingLocked {
@@ -297,11 +487,11 @@ public final class HotkeyService {
       // Prevents accidental finger-bounce on modifier keys from
       // immediately stopping a just-locked recording.
       if let lt = lockTime,
-        Date().timeIntervalSince(lt) <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
+        now().timeIntervalSince(lt) <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
       {
         Task {
           await AppLogger.shared.log(
-            "Press ignored — lock cooldown (\(Int(Date().timeIntervalSince(lt) * 1000))ms since lock)",
+            "Press ignored — lock cooldown (\(Int(now().timeIntervalSince(lt) * 1000))ms since lock)",
             level: .info, category: "HotkeyService"
           )
         }
@@ -341,7 +531,7 @@ public final class HotkeyService {
 
     // Quick release (within 500ms) → debounce, wait for double-press
     if let startTime = recordingStartTime,
-      Date().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs)
+      now().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs)
         / 1000.0
     {
       stateGeneration &+= 1

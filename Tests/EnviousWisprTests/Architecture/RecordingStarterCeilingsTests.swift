@@ -156,10 +156,22 @@ import Testing
     // `toggle()`'s new `active.state.isActive` read is a property access, not
     // a method. Only the paper-line ceiling moves (deterministic rule: actual
     // 631 + 10 → round up to nearest 5 = 645).
+    // #1631: raised 645 → 650. `start()` now returns `RecordingStartOutcome`
+    // instead of Void, so each of its sixteen exits names what it produced and
+    // the two already-active guards expand from a one-line `else { return }` to
+    // a routed call. The mapping helper itself is NOT here — it lives on
+    // `RecordingStartOutcome`, which is what kept the collaborator count at 6 and
+    // the non-private method count at 2 (start, toggle).
+    //
+    // Measured after rebasing onto origin/main: 646, not the 645 measured before.
+    // #1860 landed a three-comment correction in this file while this branch was
+    // in flight, so the pre-rebase local number was against a stale base and CI —
+    // which tests the MERGE — was the first thing able to see the real total.
+    // Deterministic rule: actual 646 + 4 → round up to nearest 5 = 650.
     #expect(
-      count <= 645,
+      count <= 650,
       """
-      RecordingStarter line count exceeded: \(count) > 645. \
+      RecordingStarter line count exceeded: \(count) > 650. \
       Raise via Bible §30 only.
       """)
   }

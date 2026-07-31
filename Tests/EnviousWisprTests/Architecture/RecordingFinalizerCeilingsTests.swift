@@ -4,7 +4,7 @@ import Testing
 /// PR10 of #763 — locks `RecordingFinalizer`'s initial shape so the
 /// stop/cancel/lock-on home does not silently accrete domain state. Owns
 /// `userStop()` (PTT release path), `cancel()` (full cancel cleanup),
-/// `markLocked()` (hands-free `onLocked` hotkey callback), and
+/// `markLocked()` (hands-free `onLockRequested` hotkey callback), and
 /// `resetActive()` (UI dismiss / Try Again — lives here because Finalizer
 /// already holds the pipelines, so DR's façade does not need to store
 /// them).

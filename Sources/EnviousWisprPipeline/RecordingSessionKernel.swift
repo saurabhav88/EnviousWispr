@@ -340,6 +340,33 @@ final class RecordingSessionKernel {
   /// `idle → preparing` / `terminal → preparing` (PR-1 §B.1.5).
   private(set) var currentSessionID = SessionID()
 
+  /// #1631 — the id of the session that is still genuinely continuing, or `nil`
+  /// when none is.
+  ///
+  /// `nil` is overloaded ON PURPOSE: it covers both "no session" and "a session
+  /// whose stop, cancel, or recording exit is already latched", so a caller never
+  /// has to ask two questions. That is why this replaces a separate
+  /// can-continue Boolean rather than joining one.
+  ///
+  /// `state` alone cannot answer this. `deliverRecordingExit` latches
+  /// `recordingExitLatched` synchronously and the state advance happens
+  /// afterwards, so `.live` can already mean "committed to exiting" — the exact
+  /// window the presentation-facing `PipelineState` cannot express.
+  ///
+  /// Deliberately NOT the same predicate as `RecordingFinalizer.cancel()`'s
+  /// `state == .recording || state == .loadingModel`: that answers "is sending a
+  /// cancel meaningful", which stays true for a session already exiting. This
+  /// answers "can this session still honestly become hands-free", which does not.
+  var continuingSessionID: String? {
+    let continuing: Bool
+    switch state {
+    case .arming: continuing = !stopLatched && !cancelRequested && !recordingExitLatched
+    case .live: continuing = !recordingExitLatched
+    case .idle, .stopping, .delivering: continuing = false
+    }
+    return continuing ? currentSessionID.raw.uuidString : nil
+  }
+
   /// The ending category of the current (or last) session, or `nil` while a
   /// session is in flight (#1548 D1). `recordingOutcome != nil` is the
   /// session-concluded barrier that replaced `state.isTerminal`. Set exactly

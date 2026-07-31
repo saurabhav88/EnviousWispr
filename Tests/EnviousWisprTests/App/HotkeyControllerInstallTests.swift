@@ -99,7 +99,7 @@ import Testing
     #expect(fx.hotkeyService.onStopRecording == nil)
     #expect(fx.hotkeyService.onCancelRecording == nil)
     #expect(fx.hotkeyService.onIsProcessing == nil)
-    #expect(fx.hotkeyService.onLocked == nil)
+    #expect(fx.hotkeyService.onLockRequested == nil)
 
     fx.controller.install()
 
@@ -108,7 +108,7 @@ import Testing
     #expect(fx.hotkeyService.onStopRecording != nil)
     #expect(fx.hotkeyService.onCancelRecording != nil)
     #expect(fx.hotkeyService.onIsProcessing != nil)
-    #expect(fx.hotkeyService.onLocked != nil)
+    #expect(fx.hotkeyService.onLockRequested != nil)
   }
 
   @Test func installPushesInitialRecordingModeAndKeyConfiguration() {
@@ -182,4 +182,70 @@ import Testing
 
     fx.hotkeyService.stop()
   }
+
+  // MARK: - #1631 publication contract
+
+  /// The identity comparison is the whole design: publication happens only when
+  /// the session the press started is still the running one. It lives in the
+  /// REAL installed closure, so it is driven here rather than through an injected
+  /// double — an injected closure would prove only that the test can return a
+  /// value it chose itself.
+  @Test("the installed publication callback publishes only for the running session")
+  func publicationRequiresTheStartedSession() throws {
+    let fx = Self.makeFixture()
+    fx.controller.install()
+    let request = try #require(fx.hotkeyService.onLockRequested)
+
+    // Both drivers are idle in this fixture, so no session is continuing and any
+    // id must be refused. This is the negative side of the two-way control.
+    #expect(fx.starter.activeDriver.continuingSessionID == nil)
+    if case .notLockable = request("some-session-that-is-not-running") {
+      // Expected.
+    } else {
+      Issue.record("expected .notLockable when no session is continuing")
+    }
+    #expect(
+      fx.finalizer.recordingLockedAccess.get() == false,
+      "a refused publication must not have written the shared lock")
+  }
+
+  #if DEBUG
+
+    /// Positive control: with a session genuinely continuing, the SAME closure
+    /// publishes. Without this the negative test above would also pass for a
+    /// callback that refuses unconditionally, which would silently disable
+    /// hands-free for everyone.
+    ///
+    /// The WHOLE test is `#if DEBUG`, not just its body: a Release build would
+    /// otherwise still register it and pass it having asserted nothing, which is
+    /// a green that means less than no test at all.
+    @Test("the installed publication callback publishes for the continuing session")
+    func publicationSucceedsForTheRunningSession() throws {
+      let fx = Self.makeFixture()
+      fx.controller.install()
+      let request = try #require(fx.hotkeyService.onLockRequested)
+
+      fx.starter.activeDriver.kernelForTesting.testForceState(.live)
+      let running = try #require(
+        fx.starter.activeDriver.continuingSessionID,
+        "precondition: a live session must report a continuing id")
+
+      if case .published = request(running) {
+        #expect(
+          fx.finalizer.recordingLockedAccess.get(),
+          "a published lock must have written the shared lock")
+      } else {
+        Issue.record("expected .published for the continuing session")
+      }
+
+      // And the same closure still refuses a DIFFERENT id while that session runs.
+      if case .notLockable = request("a-different-session") {
+        // Expected.
+      } else {
+        Issue.record("expected .notLockable for a different session")
+      }
+    }
+
+  #endif
+
 }

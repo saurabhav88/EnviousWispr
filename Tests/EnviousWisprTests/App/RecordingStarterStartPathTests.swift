@@ -173,7 +173,7 @@ import Testing
     // runs before the prewarm await. The await may resolve to an error
     // or never (no live audio); the prologue resets we care about
     // already happened.
-    await fx.starter.start()
+    _ = await fx.starter.start()
     #expect(fx.lastRecordingResult.polishError == nil)
   }
 
@@ -184,7 +184,7 @@ import Testing
     fx.asr.isModelLoaded = true
     fx.audio.preWarmError = AudioError.noBuiltInMicrophoneFound
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .error(.noMicrophoneFound))
   }
@@ -197,7 +197,7 @@ import Testing
     fx.audio.preWarmError = XPCErrorSanitizer.sanitizeForXPC(
       AudioError.noBuiltInMicrophoneFound)
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .error(.noMicrophoneFound))
   }
@@ -215,7 +215,7 @@ import Testing
     fx.asr.isModelLoaded = true
     fx.audio.preWarmError = NSError(domain: "SomeGenericCapture", code: 99)
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .error(.permissionDenied))
   }
@@ -240,7 +240,7 @@ import Testing
     fx.asr.isModelLoaded = true  // → readiness .ready, so start/toggle pass the cold-engine guard
     #expect(fx.kernelDriver.engineReadiness == .ready)
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
     #expect(counter.count == 1)  // start() refreshed once
 
     await fx.starter.toggle(source: .toolbar)
@@ -258,7 +258,7 @@ import Testing
     fx.asr.isModelLoaded = false  // → readiness .notReady
     #expect(fx.kernelDriver.engineReadiness == .notReady)
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     // No session minted: the kernel never left idle.
     #expect(fx.kernelDriver.state == .idle)
@@ -275,7 +275,7 @@ import Testing
     let fx = Self.makeFixture(isRecovering: true)
     fx.asr.activeBackendType = .parakeet
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .idle, "no session minted while recovering")
     #expect(
@@ -302,7 +302,7 @@ import Testing
     fx.asr.activeBackendType = .parakeet
     fx.asr.isModelLoaded = true  // ready → top gate passes, recovery flips on during arm
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .idle, "no session minted — recovery started during the arm")
     #expect(fx.overlay.currentIntent == .recoveringLastRecording)
@@ -339,7 +339,7 @@ import Testing
     fx.asr.isModelLoaded = true  // → readiness .ready
     #expect(fx.kernelDriver.engineReadiness == .ready)
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     // A ready press must take the WARM path, which shows the recording overlay.
     // The old test only checked the cold-boot pill's ABSENCE — a broken warm
@@ -384,7 +384,7 @@ import Testing
     fx.asr.isModelLoaded = true  // ready → passes cold + pre-warm guards, reaches the arm
     #expect(fx.kernelDriver.engineReadiness == .ready)
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     // The prewarmed engine was torn down (not just the overlay hidden).
     #expect(fx.audio.abortPreWarmCallCount >= 1)
@@ -423,7 +423,7 @@ import Testing
     fx.kernelDriver.residentModelLostWhileIdle = true
     fx.settings.modelUnloadPolicy = .never  // explicit: user keeps the model resident
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     // Marker consumed (single press) and NO cold pill — the PTT fall-through
     // shows the recording overlay instead.
@@ -459,7 +459,7 @@ import Testing
     fx.kernelDriver.residentModelLostWhileIdle = true
     fx.settings.modelUnloadPolicy = .fiveMinutes
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .idle)
     #expect(fx.overlay.currentIntent == .cachingModel(engineLabel: "Parakeet v3"))
@@ -475,7 +475,7 @@ import Testing
     fx.asr.isModelLoaded = false
     #expect(fx.kernelDriver.residentModelLostWhileIdle == false)  // never reaped
 
-    await fx.starter.start()
+    _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .idle)
     #expect(fx.overlay.currentIntent == .cachingModel(engineLabel: "Parakeet v3"))
@@ -497,6 +497,77 @@ import Testing
     _ = await fx.kernelDriver.ensureEngineWarm(reason: .coldPress)
     #expect(fx.kernelDriver.residentModelLostWhileIdle == false)
   }
+  // MARK: - #1631 outcome mapping
+
+  /// The mapping is a closed set of two inputs, so it is tested directly rather
+  /// than by racing the kernel's spawned forward task into `.error` — a race the
+  /// fixture has no seam to win deterministically.
+  @Test("outcome is .recording only when the pipeline is active AND a session continues")
+  func startOutcomeClosedSet() {
+    #expect(
+      RecordingStartOutcome.make(pipelineActive: true, continuingSessionID: "S1")
+        == .recording("S1"))
+    // Active but no continuing session: an exit is already latched.
+    #expect(RecordingStartOutcome.make(pipelineActive: true, continuingSessionID: nil) == .noRecording)
+    // Inactive covers the immediate-error case: PipelineState.error is not isActive.
+    #expect(
+      RecordingStartOutcome.make(pipelineActive: false, continuingSessionID: "S1") == .noRecording)
+    #expect(
+      RecordingStartOutcome.make(pipelineActive: false, continuingSessionID: nil) == .noRecording)
+  }
+
+  #if DEBUG
+
+    /// The helper test above proves the mapping. These prove the two PRODUCTION
+    /// guards actually call it — a helper nothing routes through is not a fix.
+    @Test("an already-active Parakeet session reports its continuing id")
+    func parakeetAlreadyActiveReportsRecording() async throws {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.kernelDriver.kernelForTesting.testForceState(.live)
+      let expected = try #require(fx.kernelDriver.continuingSessionID)
+
+      let outcome = await fx.starter.start()
+
+      switch outcome {
+      case .recording(let sessionID): #expect(sessionID == expected)
+      case .noRecording: Issue.record("expected the already-active Parakeet session")
+      }
+    }
+
+    @Test("an already-active WhisperKit session reports its continuing id")
+    func whisperKitAlreadyActiveReportsRecording() async throws {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .whisperKit
+      fx.whisperKitKernelDriver.kernelForTesting.testForceState(.live)
+      let expected = try #require(fx.whisperKitKernelDriver.continuingSessionID)
+
+      let outcome = await fx.starter.start()
+
+      switch outcome {
+      case .recording(let sessionID): #expect(sessionID == expected)
+      case .noRecording: Issue.record("expected the already-active WhisperKit session")
+      }
+    }
+
+  #endif
+
+  @Test("a press while recovery holds the engine reports no recording")
+  func recoveryHoldReportsNoRecording() async {
+    let fx = Self.makeFixture(isRecovering: true)
+    fx.asr.activeBackendType = .parakeet
+    let outcome = await fx.starter.start()
+    #expect(outcome == .noRecording)
+  }
+
+  @Test("a release during the recovery arm reports no recording")
+  func releaseDuringArmReportsNoRecording() async {
+    let fx = Self.makeFixture(releaseDuringRecoveryArm: true)
+    fx.asr.activeBackendType = .parakeet
+    let outcome = await fx.starter.start()
+    #expect(outcome == .noRecording)
+  }
+
 }
 
 /// Counts accessibility-refresh invocations for #904. A `@MainActor` reference

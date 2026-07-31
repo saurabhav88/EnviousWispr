@@ -235,7 +235,7 @@ final class RecordingStarter {
   /// overlay shows immediately for visual feedback, then prewarm, then
   /// dispatch `.toggleRecording`, then the issue #445 post-condition
   /// guard.
-  func start() async {
+  func start() async -> RecordingStartOutcome {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let backend = asrManager.activeBackendType
     let isWhisperKit = backend == .whisperKit
@@ -244,9 +244,15 @@ final class RecordingStarter {
     // log cohorts warm/cold/mid-flight; snapshot-at-entry avoids retro-labeling.
     let readinessAtEntry = (isWhisperKit ? whisperKitKernelDriver : kernelDriver).engineReadiness
     if isWhisperKit {
-      guard !whisperKitKernelDriver.state.isActive else { return }
+      guard !whisperKitKernelDriver.state.isActive else {
+        return RecordingStartOutcome.make(
+          pipelineActive: true, continuingSessionID: whisperKitKernelDriver.continuingSessionID)
+      }
     } else {
-      guard !kernelDriver.state.isActive else { return }
+      guard !kernelDriver.state.isActive else {
+        return RecordingStartOutcome.make(
+          pipelineActive: true, continuingSessionID: kernelDriver.continuingSessionID)
+      }
     }
     // #1063 PR2 — recovery hold. While the one leftover recording backfills behind
     // the blocking pill, a record-press mints NO session: show the "recovering"
@@ -254,13 +260,13 @@ final class RecordingStarter {
     // using. Takes precedence over the cold-engine gate below (same shape).
     if isRecovering() {
       handleRecoveryPressRefused(backend: backend)
-      return
+      return .noRecording
     }
     // #1171 — start-of-recording safety: never record on an engine other than the
     // one the user selected (a switch deferred while busy/recovering may not have
     // applied yet). Show the reactive #879 pill for the selected engine and bail;
     // the user re-presses on the now-correct engine. Recovery precedence above.
-    if reconcileSelectedBackendIfNeeded() { return }
+    if reconcileSelectedBackendIfNeeded() { return .noRecording }
     // #1386 PR-2c (founder): a press while the selected model is REMOVED or
     // mid-removal mints nothing and shows the honest not-installed pill. One
     // gate, before any readiness/warm logic — a removal's first instants can
@@ -270,7 +276,7 @@ final class RecordingStarter {
         intent: .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
       TelemetryService.shared.coldStartPressBlocked(
         asrBackend: backend.rawValue, warmupInFlight: false)
-      return
+      return .noRecording
     }
     lastRecordingResult?.polishError = nil
     // #879 — cold-boot press safety. A press on a not-ready engine must NOT mint
@@ -287,7 +293,7 @@ final class RecordingStarter {
         overlay: recordingOverlay, active: active,
         backendTag: backend.rawValue,
         readiness: readinessAtEntry, modelUnloadPolicy: settings.modelUnloadPolicy)
-      if !warmRespawn { return }
+      if !warmRespawn { return .noRecording }
     }
     let isWarmRespawn = readinessAtEntry != .ready
     // #1171 — committed to minting on `active` (selected == active confirmed above,
@@ -316,7 +322,7 @@ final class RecordingStarter {
       audioCapture.abortPreWarm()
       recordingOverlay.show(intent: .hidden)
       recordingLockedAccess.set(false)
-      return
+      return .noRecording
     } catch {
       audioCapture.abortPreWarm()
       recordingOverlay.show(intent: .hidden)
@@ -340,13 +346,13 @@ final class RecordingStarter {
         reason = noMic ? .noMicrophoneFound : .micWouldNotOpen
       }
       active.setTerminalReason(reason)
-      return
+      return .noRecording
     }
     guard !Task.isCancelled else {
       audioCapture.abortPreWarm()
       recordingOverlay.show(intent: .hidden)
       recordingLockedAccess.set(false)
-      return
+      return .noRecording
     }
     // PTT key-up that fired while `preWarm()` was awaiting did not reach
     // the kernel via `requestStop` — `RecordingSessionKernel.requestStop`
@@ -363,7 +369,7 @@ final class RecordingStarter {
       audioCapture.abortPreWarm()
       recordingOverlay.show(intent: .hidden)
       recordingLockedAccess.set(false)
-      return
+      return .noRecording
     }
     let preWarmMs = Self.elapsedMs(since: pttStart)
     // #959: set the warm-respawn overlay latch ONLY here — after every pre-toggle
@@ -389,7 +395,7 @@ final class RecordingStarter {
         cleanupRecoveryArm(config.recoverySessionID)
         recordingOverlay.show(intent: .hidden)
         recordingLockedAccess.set(false)
-        return
+        return .noRecording
       }
       // #1063 PR2 (Codex code-diff r2 P2): the top-of-`start()` recovery gate can
       // go STALE across the `preWarm` + recovery-arm awaits — launch recovery may
@@ -402,7 +408,7 @@ final class RecordingStarter {
         cleanupRecoveryArm(config.recoverySessionID)
         handleRecoveryPressRefused(backend: backend)
         recordingLockedAccess.set(false)
-        return
+        return .noRecording
       }
       // #1171 — no engine-changed re-check here: the `beginMinting()` state-gate
       // (held since before preWarm) guarantees the coordinator did NOT switch the
@@ -413,7 +419,7 @@ final class RecordingStarter {
         error: error, op: "toggle-from-prewarm",
         reason: .modelWedged,
         setTerminalReason: active.setTerminalReason)
-      return
+      return .noRecording
     }
     let totalMs = Self.elapsedMs(since: pttStart)
     let pipelineActive: Bool
@@ -446,12 +452,12 @@ final class RecordingStarter {
       recordingOverlay.show(intent: .hidden)
       recordingLockedAccess.set(false)
       active.setTerminalReason(.modelWedged)
-      return
+      return .noRecording
     }
     if !pipelineActive && !pipelineInError && userStoppedDuringStart {
       recordingOverlay.show(intent: .hidden)
       recordingLockedAccess.set(false)
-      return
+      return .noRecording
     }
     // GitHub cloud review, PR #1732: consume the pending blocked-press info
     // (and emit `recovery.press_unblocked`) only NOW, after both post-
@@ -466,6 +472,14 @@ final class RecordingStarter {
         level: .info, category: "Pipeline"
       )
     }
+    // #1631: report what the hotkey needs — a session that is genuinely
+    // continuing, and its id. `pipelineInError` is deliberately NOT treated as a
+    // session here: `PipelineState.error` is excluded from `isActive`, so an
+    // errored pipeline is not a live recording and must not keep hands-free
+    // bookkeeping alive. The id also comes back nil when an exit is already
+    // latched, which `state` alone cannot express.
+    return RecordingStartOutcome.make(
+      pipelineActive: pipelineActive, continuingSessionID: active.continuingSessionID)
   }
 
   /// UI/menu toggle path (no prewarm). Mirrors the former root-state file
