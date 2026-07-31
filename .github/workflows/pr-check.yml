@@ -474,8 +474,22 @@ jobs:
             # lockfile FAILS the step instead. Verified both directions locally:
             # a correctly seeded build succeeds, and a lockfile that cannot
             # satisfy the graph errors out rather than re-resolving.
-            echo "==> swift build --package-path $pkg (locked to root pins)"
-            swift build --package-path "$pkg" --only-use-versions-from-resolved-file
+            # RELEASE, because that is the only configuration this tooling ever
+            # runs in: both READMEs say `swift build -c release`, and both eval
+            # gates execute `.build/release/` binaries
+            # (acceptance_gate.py:48, alias_suggestion_gate.py:45). A debug
+            # compile would validate a configuration nobody uses and would miss
+            # a break behind `#if DEBUG` — a real class here, since Core carries
+            # DEBUG-only members.
+            #
+            # This is NOT the case conventions.md RULE: xcode-build-engine-cli
+            # forbids. That rule governs the APP release/DoD gate, where Xcode
+            # owns bundle and resource assembly. These two packages have no
+            # Xcode representation at all, so SwiftPM is the only thing that can
+            # build them, and release is what they are actually run as. The
+            # local `check-swift-build-gate.sh` nudge does not apply to CI.
+            echo "==> swift build -c release --package-path $pkg (locked to root pins)"
+            swift build -c release --package-path "$pkg" --only-use-versions-from-resolved-file
           done
           echo "==> Both standalone eval packages compile against current Core"
 
