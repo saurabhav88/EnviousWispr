@@ -4,17 +4,20 @@ import Testing
 
 @testable import EnviousWisprPipeline
 
-// #1844: the kernel's PRODUCTION eligibility closure — the one it builds itself when
-// no replacement is injected — must read the frozen `BoundInputDevice` the capture
-// layer published, and must fail closed when there is none.
+// #1844/#1578: the kernel's PRODUCTION decision-snapshot closure — the one it
+// builds when no replacement is injected — must read the frozen
+// `BoundInputDevice` the capture layer published, and must fail closed when
+// there is none.
 //
-// Every other zero-signal test in this repo injects a replacement closure (default
-// `{ true }`), which is correct for those scenarios but means the production default
-// has never been under test. These five cases drive it directly by passing nil.
+// Every other zero-signal test in this repo injects a replacement closure (since
+// #1578, one returning an eligible snapshot), which is correct for those scenarios
+// but means the production default has never been under test. These five cases
+// drive it directly by passing nil.
 //
-// HOW THE CLAIM IS PROVEN, since the closure's boolean output cannot carry it: with a
-// synthetic bind the closure returns false, and with no bind it also returns false, so
-// the output alone is uninformative. `FakeAudioCapture` therefore COUNTS reads of
+// HOW THE CLAIM IS PROVEN, since the closure's returned value cannot carry it: a
+// synthetic bind yields `.identityMismatch` and no bind yields
+// `.boundDeviceUnavailable`, and neither says whether the bind was actually
+// consulted. `FakeAudioCapture` therefore COUNTS reads of
 // `zeroSignalDiscriminatorDevice`. The count is what distinguishes "consulted the
 // frozen bind" from "refused without looking".
 //
@@ -25,7 +28,7 @@ import Testing
 // exactly what the injected `package` overload is for (covered by
 // `ZeroSignalDeviceIdentityTests`).
 @MainActor
-@Suite("Kernel production eligibility closure reads the frozen bind — #1844")
+@Suite("Kernel production decision snapshot reads the frozen bind — #1844/#1578")
 struct KernelFrozenBindGuardTests {
 
   private let threshold = AudioConstants.minimumTranscriptionSamples  // 16_000
@@ -44,7 +47,7 @@ struct KernelFrozenBindGuardTests {
     let vad: FakeVADSignalSource
   }
 
-  /// Builds a session whose eligibility closure is the KERNEL'S OWN, by passing nil.
+  /// Builds a session whose decision-snapshot closure is the KERNEL'S OWN, by passing nil.
   private func makeContext() -> Context {
     let clock = FakeClock()
     let engine = FakeEngine(behavior: .batchSuccess(text: "hello"), clock: clock)
@@ -52,7 +55,7 @@ struct KernelFrozenBindGuardTests {
     let vad = FakeVADSignalSource()
     let wrapper = KernelRecordingSession(
       engine: engine, capture: capture, vad: vad, clock: clock, paste: FakePasteTarget(),
-      zeroSignalDeviceEligible: nil)  // ← the production default, not a stand-in
+      zeroSignalDecisionSnapshot: nil)  // ← the production default, not a stand-in
     return Context(wrapper: wrapper, capture: capture, vad: vad)
   }
 
@@ -68,12 +71,12 @@ struct KernelFrozenBindGuardTests {
   }
 
   /// A bind built from a device this machine reports as genuinely alive AND unmuted,
-  /// using the same two classifiers the authority consults — but NOT `isEligible`
-  /// itself, so the fixture is not chosen by the function under test.
+  /// using the same liveness and mute readers the authority consults, but not
+  /// `classify(bound:)` itself, so the fixture is not chosen by the function under test.
   ///
-  /// This is the only case that can force the authority to answer TRUE, and it is
-  /// therefore the only case that distinguishes "the closure calls the shared
-  /// authority" from "the closure refuses unconditionally". Measured on this machine
+  /// This is the only case that can force the snapshot's eligibility to `.eligible`,
+  /// and therefore the only case that distinguishes "the closure calls the shared
+  /// authority" from "the closure manufactures a refusal." Measured on this machine
   /// 2026-07-30: all three input devices classify alive+unmuted, including the
   /// built-in microphone.
   /// `nonisolated` because `.enabled(if:)` is evaluated OUTSIDE actor isolation, the
@@ -114,8 +117,8 @@ struct KernelFrozenBindGuardTests {
 
     await driveAllZeroCapture(ctx)
 
-    // Only the shared authority can produce an ELIGIBLE verdict. A closure that
-    // dropped the `isEligible(bound:)` call and returned false would fail here while
+    // Only the shared classifier can produce an ELIGIBLE verdict. A closure that
+    // skipped `classify(bound:)` and manufactured a refusal would fail here while
     // still satisfying every other case in this suite.
     #expect(
       ctx.wrapper.testKernel.zeroSignalFailureMode != nil,
@@ -166,20 +169,23 @@ struct KernelFrozenBindGuardTests {
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
   }
 
-  @Test("an earlier muted observation short-circuits BEFORE the bind is read (#1844)")
-  func sawIneligibleShortCircuitsBeforeReadingBind() async {
+  @Test("a run already classified reactively short-circuits BEFORE the bind is read")
+  func reactivelyClassifiedRunShortCircuitsBeforeReadingBind() async {
     let ctx = makeContext()
     ctx.capture.stubbedZeroSignalDiscriminatorDevice = Self.syntheticBind
-    ctx.capture.stubbedZeroSignalDiscriminatorSawIneligible = true
+    // #1578: the categorical replacement for the old Boolean latch. The reactive
+    // producer froze a REASON for this run, and the flag says it did so.
+    ctx.capture.stubbedZeroSignalRunWasClassifiedReactively = true
+    ctx.capture.stubbedZeroSignalRefusalReason = .deviceMuted
 
     await driveAllZeroCapture(ctx)
 
-    // Guard ORDER is the contract: a genuinely-muted stretch must stay ineligible
-    // even if the device's live state has since become fine, so the latch is checked
-    // first and the device is never consulted.
+    // Guard ORDER is the contract: a stretch that was genuinely unusable must stay
+    // refused even if the device's live state has since become fine, so the frozen
+    // reason is taken and the device is never consulted.
     #expect(
       ctx.capture.zeroSignalDiscriminatorDeviceReadCount == 0,
-      "the device was consulted despite an earlier ineligible observation")
+      "the device was consulted despite a run already classified reactively")
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
   }
 }

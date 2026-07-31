@@ -92,18 +92,48 @@ public protocol AudioCaptureInterface: AnyObject {
   /// treat a `deviceID` match alone as identity — that is what `deviceUID` is for.
   var zeroSignalDiscriminatorDevice: BoundInputDevice? { get }
 
-  /// #1317 (cloud review round 2, P2; scope narrowed round 3, P2): true
-  /// once a reactive zero-signal check observed a candidate buffer,
-  /// somewhere in the CURRENT trailing all-zero run, while the device was
-  /// ineligible (muted). The kernel's STOP-time backstop must fail closed
-  /// once this is true even if the device's LIVE state has since become
-  /// eligible (the user unmuted right before releasing does not undo that
-  /// THAT silent stretch was genuinely muted) — but scoped to the current
-  /// run only, so an earlier resolved mute elsewhere in the same recording
-  /// can't blind the backstop to a later, unrelated genuine failure.
-  /// Default `false` — conformers with no reactive per-buffer detector
-  /// (there is nothing to observe) correctly never set it.
+  /// #1317, superseded as a consumer surface by #1578: a COMPATIBILITY VIEW of
+  /// whether the CURRENT trailing all-zero run has a categorical refusal reason.
+  /// True once the reactive check refused a candidate buffer somewhere in that
+  /// run, for ANY of the classifier's five non-eligible reasons — not mute alone.
+  ///
+  /// Scoped to the current run: a non-zero sample that breaks the trailing zero
+  /// run clears it, so an earlier refusal elsewhere in the same recording cannot
+  /// blind a later, unrelated genuine failure.
+  ///
+  /// `AudioCaptureManager` DERIVES this from `zeroSignalRefusalReason`; it is not
+  /// independent storage. New code reads the reason and the
+  /// reactively-classified flag below instead — the kernel's STOP path no longer
+  /// consults this at all. Default `false` for conformers with no reactive
+  /// per-buffer detector, which have nothing to observe.
   var zeroSignalDiscriminatorSawIneligible: Bool { get }
+
+  /// #1578: WHY the current trailing zero run was refused, or `nil` when the
+  /// run has no refusal. The compatibility view above answers only THAT a
+  /// refusal happened; this carries the categorical reason, which is the fact
+  /// #1578 exists to stop discarding.
+  var zeroSignalRefusalReason: ZeroSignalEligibility? { get }
+
+  /// #1578: whether the CURRENT zero run was already classified by the reactive
+  /// producer. This — never forwarding success — is what suppresses a second
+  /// STOP-time classification of the same run.
+  var zeroSignalRunWasClassifiedReactively: Bool { get }
+
+  /// #1578: one forward attempt per refused run. `true` means the observation
+  /// was delivered immediately; `false` means the consumer rejected it (stale
+  /// session, no active target) and the producer must enqueue the context in
+  /// its per-session backlog exactly once.
+  var onZeroSignalRefused: ((ZeroSignalRefusalContext) -> Bool)? { get set }
+
+  /// #1578: ATOMIC take-and-clear of the pending refusal backlog, MainActor.
+  /// Returns every rejected context and empties the backlog in ONE synchronous
+  /// step, so a second caller — including a cancel landing while `stopCapture()`
+  /// is suspended — gets an empty array rather than a duplicate. Callers MUST
+  /// invoke it before any `await` and before the session FSM returns to idle.
+  ///
+  /// NOT `mutating`: this protocol is class-bound (`: AnyObject`, line 7), and
+  /// Swift rejects a `mutating` method declared in a class-bound protocol.
+  func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext]
 
   // Configuration properties (read-write)
   var selectedInputDeviceUID: String { get set }
@@ -178,11 +208,79 @@ extension AudioCaptureInterface {
   /// overrides it with the bind its own `prepare()` returned (#1844).
   public var zeroSignalDiscriminatorDevice: BoundInputDevice? { nil }
 
-  /// #1317 (cloud review round 2, P2): default `false` — test fakes and
-  /// simulator doubles have no reactive per-buffer detector, so nothing to
-  /// latch. `AudioCaptureManager` overrides it with its own session-scoped
-  /// latch (ported in-process at #1543).
+  /// #1317: default `false` — test fakes and simulator doubles have no reactive
+  /// per-buffer detector, so no run of theirs can carry a refusal reason.
+  /// `AudioCaptureManager` overrides it with a value DERIVED from the current
+  /// run's categorical reason (#1578), never with separate storage.
   public var zeroSignalDiscriminatorSawIneligible: Bool { false }
+
+  /// #1578: no reactive per-buffer detector means no refusal reason to report.
+  public var zeroSignalRefusalReason: ZeroSignalEligibility? { nil }
+
+  /// #1578: same reasoning — a conformer with no reactive classifier never
+  /// classified the current run, so STOP-time classification stays permitted.
+  public var zeroSignalRunWasClassifiedReactively: Bool { false }
+
+  /// #1578: an explicit `get { nil } set {}` pair, NOT the read-only computed
+  /// shape the two properties above use. A settable protocol requirement cannot
+  /// be satisfied by a getter alone, so copying that shape here would not
+  /// compile. Assignment through an existential is accepted and discarded.
+  public var onZeroSignalRefused: ((ZeroSignalRefusalContext) -> Bool)? {
+    get { nil }
+    set {}
+  }
+
+  /// #1578: a conformer with no backlog has nothing to hand over. Synchronous
+  /// and non-`mutating`, matching the requirement.
+  public func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext] {
+    []
+  }
+}
+
+/// #1578: the observation a refused zero run produces — the reason plus the
+/// minimum context needed to make it countable by transport and failure shape.
+/// Lives in `EnviousWisprAudio` beside the protocol that carries it, not in
+/// Core, which this change deliberately leaves untouched.
+public struct ZeroSignalRefusalContext: Sendable, Equatable {
+  public let sessionID: UInt64
+  public let reason: ZeroSignalEligibility
+  public let transport: String
+  public let failureShape: CaptureStallFailureMode
+
+  public init(
+    sessionID: UInt64,
+    reason: ZeroSignalEligibility,
+    transport: String,
+    failureShape: CaptureStallFailureMode
+  ) {
+    self.sessionID = sessionID
+    self.reason = reason
+    self.transport = transport
+    self.failureShape = failureShape
+  }
+}
+
+/// #1578: what the kernel's STOP-time seam returns — the classification plus
+/// the one fact that decides whether STOP may classify the run again.
+public struct ZeroSignalDecisionSnapshot: Sendable, Equatable {
+  public let eligibility: ZeroSignalEligibility
+
+  /// Whether the CURRENT run was already classified reactively — NOT whether
+  /// its first forward succeeded. A rejected forward is emitted from the
+  /// backlog, so a forwarding-success discriminator would invite STOP to emit
+  /// it a second time.
+  ///
+  /// This snapshot deliberately carries NO backlog: consumption belongs to the
+  /// atomic take-and-clear, and two owners of one queue is a defect.
+  public let currentRunWasClassifiedReactively: Bool
+
+  public init(
+    eligibility: ZeroSignalEligibility,
+    currentRunWasClassifiedReactively: Bool
+  ) {
+    self.eligibility = eligibility
+    self.currentRunWasClassifiedReactively = currentRunWasClassifiedReactively
+  }
 }
 
 /// Heartpath 5b (#1520): the observational outcome of `retireCapturingSource`.

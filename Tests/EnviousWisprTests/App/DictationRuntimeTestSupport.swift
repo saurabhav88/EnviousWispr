@@ -26,6 +26,11 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
   var onVADAutoStop: (() -> Void)?
   var onMaxDurationReached: (() -> Void)?
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
+  /// #1578: STORED, not inherited. The protocol extension's default is a
+  /// deliberate no-op setter for conformers with no reactive detector, so
+  /// relying on it here would silently discard whatever the router installs and
+  /// leave the router tests with nothing to invoke.
+  var onZeroSignalRefused: ((ZeroSignalRefusalContext) -> Bool)?
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
   var currentCaptureSessionID: UInt64 = 0
   var isActivelyCapturing: Bool = false

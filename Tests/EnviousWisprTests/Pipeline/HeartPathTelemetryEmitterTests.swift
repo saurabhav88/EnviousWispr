@@ -1,3 +1,4 @@
+import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
@@ -657,12 +658,97 @@ struct HeartPathTelemetryEmitterTests {
       #expect(captured?.intProps["gap_ms"] == 1_200)
     }
 
+    // MARK: - #1578 zero-signal refusal
+
+    @Test("zeroSignalRefused adds one breadcrumb AND one PostHog event with identical props")
+    func zeroSignalRefusedFansOut() {
+      let recorder = Recorder()
+      let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
+
+      let box = CapturedEventsBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      emitter.zeroSignalRefused(
+        ZeroSignalRefusalContext(
+          sessionID: 12,
+          reason: .deviceMuted,
+          transport: "usb",
+          failureShape: .becameZeroMidCapture))
+
+      #expect(recorder.breadcrumbs.count == 1)
+      #expect(recorder.breadcrumbs.first?.stage == "recording")
+      #expect(recorder.breadcrumbs.first?.message == "Zero signal refusal observed")
+      // Exactly three keys, no more: the payload carries no session id, device
+      // id, UID, or anything that could identify a user or a recording.
+      let breadcrumbKeys = Set(recorder.breadcrumbs.first.map { Array($0.data.keys) } ?? [])
+      #expect(breadcrumbKeys == ["reason", "transport", "failure_shape"])
+      #expect(recorder.breadcrumbs.first?.data["reason"] as? String == "device_muted")
+      #expect(recorder.breadcrumbs.first?.data["transport"] as? String == "usb")
+      #expect(
+        recorder.breadcrumbs.first?.data["failure_shape"] as? String == "became_zero_mid_capture")
+      // A user or environment condition, not a bug: breadcrumb only, so no
+      // standalone Sentry issue and no alert.
+      #expect(recorder.errors.isEmpty)
+
+      #expect(box.events.count == 1)
+      let captured = box.events.first
+      #expect(captured?.name == "audio.zero_signal_refused")
+      #expect(
+        captured?.stringProps == [
+          "reason": "device_muted",
+          "transport": "usb",
+          "failure_shape": "became_zero_mid_capture",
+        ])
+      #expect(captured?.intProps.isEmpty == true)
+      #expect(captured?.doubleProps.isEmpty == true)
+      #expect(captured?.boolProps.isEmpty == true)
+    }
+
+    @Test("zeroSignalRefused does NOT dedup — two identical runs emit twice")
+    func zeroSignalRefusedDoesNotDedup() {
+      let recorder = Recorder()
+      let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
+
+      let box = CapturedEventsBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      // Same session, same reason, same transport, same shape — which is what a
+      // muted mic that recovers and goes silent again genuinely produces.
+      // Exactly-once already holds at the producer (one refusal per zero run);
+      // a second mechanism here would delete the later runs.
+      let context = ZeroSignalRefusalContext(
+        sessionID: 12,
+        reason: .deviceMuted,
+        transport: "usb",
+        failureShape: .becameZeroMidCapture)
+      emitter.zeroSignalRefused(context)
+      emitter.zeroSignalRefused(context)
+
+      #expect(recorder.breadcrumbs.count == 2)
+      #expect(box.events.count == 2)
+      #expect(recorder.errors.isEmpty)
+    }
+
     /// Sendable-safe capture box for the DEBUG `testEventHook` (a `@Sendable`
     /// closure): a `@MainActor` class is implicitly Sendable, mutated via
     /// `MainActor.assumeIsolated` since the emit is synchronous on the main actor.
     @MainActor
     private final class CapturedEventBox {
       var event: CapturedTelemetryEvent?
+    }
+
+    /// #1578: the counting twin of `CapturedEventBox`. The single-slot box
+    /// above overwrites, so it cannot tell one emission from two — which is the
+    /// whole claim of the no-dedup test.
+    @MainActor
+    private final class CapturedEventsBox {
+      var events: [CapturedTelemetryEvent] = []
     }
   #endif
 }

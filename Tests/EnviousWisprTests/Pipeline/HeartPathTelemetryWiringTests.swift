@@ -263,7 +263,298 @@ struct HeartPathTelemetryWiringTests {
 
     await pipeline.cancelRecording()
   }
+
+  // #1578: the asymmetry test. `handleCaptureStall` deliberately reaches the
+  // kernel FSM; `handleZeroSignalRefusal` deliberately does not. Asserting only
+  // that the observer fired would pass for a method that ALSO stopped the
+  // recording, so this drives a real session to `.live` and then proves the FSM
+  // did not move. `hasUnconsumedRecordingExit` is the strong witness: an
+  // accidental `externalCaptureStalled` on a zero-signal mode latches a
+  // recording exit synchronously, so it would be `true` the moment the call
+  // returned. It needs `kernelForTesting`, which is DEBUG-only.
+  #if DEBUG
+    @Test("KernelDictationDriver.handleZeroSignalRefusal observes without moving the FSM")
+    func refusalReachesTelemetryWithoutTouchingTheFSM() async throws {
+      let fixture = try SyntheticAudioFixture.make(
+        fileName: "1578-refusal-no-fsm-move.wav",
+        pattern: .toneBurst
+      )
+      let audioCapture = try FixtureAudioCapture(fixtureURL: fixture.url, deliverFirstBuffer: true)
+      let asrManager = MockASRManager(
+        transcribeBehavior: .success(
+          ASRResult(
+            text: "",
+            language: "en",
+            duration: fixture.durationSeconds,
+            processingTime: 0.01,
+            backendType: .parakeet
+          )
+        )
+      )
+      let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(
+        audioCapture: audioCapture)
+      let pipeline = KernelDictationDriverFactory.makeForParakeet(
+        inputs: .init(
+          audioCapture: audioCapture,
+          asrManager: asrManager,
+          vadSignalSource: vad,
+          transcriptStore: TranscriptStore(),
+          keychainManager: KeychainManager(),
+          captureTelemetry: CaptureTelemetryState(),
+          pasteCompletionRegistry: PasteCompletionRegistry(),
+          engineMutationScope: .alwaysAllowedForTesting,
+          captureErrorSink: { _, _, _, _, _ in }
+        ))
+      let stateWaiter = PipelineStateWaiter(pipeline)
+
+      let config = DictationSessionConfig.testDefault(
+        autoPasteToActiveApp: false,
+        vadSensitivity: 0.5,
+        languageMode: .auto,
+        llmProvider: .openAI,
+        llmModel: "gpt-test"
+      )
+      try await pipeline.handle(event: .toggleRecording(config))
+      // `PipelineStateWaiter` subscribes to `onStateChange` and parks on a
+      // continuation until `.recording` is observed; its 5s timeout is only the
+      // deadline fallback around that signal. Same helper, same call, as the
+      // stall test above.
+      // settle: signal wait on an observed state change, not a clock wait.
+      await stateWaiter.wait(for: .recording)
+
+      // Preconditions, so the post-call assertions cannot pass vacuously.
+      #expect(pipeline.state == .recording)
+      #expect(pipeline.kernelForTesting.state == .live)
+      #expect(pipeline.kernelForTesting.hasUnconsumedRecordingExit == false)
+      #expect(pipeline.kernelForTesting.recordingOutcome == nil)
+
+      let box = RefusalEventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      pipeline.handleZeroSignalRefusal(
+        ZeroSignalRefusalContext(
+          sessionID: 5,
+          reason: .deviceMuted,
+          transport: "usb",
+          failureShape: .becameZeroMidCapture))
+
+      // 1. The observation genuinely travelled the whole route.
+      #expect(box.events.map(\.name) == ["audio.zero_signal_refused"])
+
+      // 2. And the recording is untouched. An accidental zero-signal stall call
+      // would synchronously flip `hasUnconsumedRecordingExit`; the other three
+      // assertions freeze the broader observer-only contract.
+      #expect(pipeline.state == .recording)
+      #expect(pipeline.kernelForTesting.state == .live)
+      #expect(
+        pipeline.kernelForTesting.hasUnconsumedRecordingExit == false,
+        "a refusal latched a recording exit — did handleZeroSignalRefusal call externalCaptureStalled?"
+      )
+      #expect(pipeline.kernelForTesting.recordingOutcome == nil)
+
+      await pipeline.cancelRecording()
+    }
+
+    /// Collects PostHog events emitted through the DEBUG hook during a single
+    /// synchronous main-actor call.
+    @MainActor
+    private final class RefusalEventBox {
+      var events: [CapturedTelemetryEvent] = []
+    }
+
+    // #1578: the backlog's ONLY route to the emitter is a single line in
+    // `KernelDictationDriverFactory`. Delete it and the kernel still drains, the
+    // sink is still called, and every direct kernel, manager, router, emitter and
+    // service test stays green — while production emits nothing at all. That is
+    // the definition of a guard nothing arms, so this test builds the driver
+    // through the REAL factory and watches the REAL telemetry hook.
+    @Test("#1578: the drained backlog reaches PostHog through the production factory wiring")
+    func drainedBacklogReachesTelemetryThroughFactoryWiring() async throws {
+      let audioCapture = BacklogAudioCapture()
+      let pipeline = Self.makeFactoryDriver(audioCapture: audioCapture)
+      let stateWaiter = PipelineStateWaiter(pipeline)
+
+      let box = RefusalEventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      // A real session, then a real terminal — `cancel()` from `.idle` concludes
+      // nothing and would reach no drain point at all.
+      try await pipeline.handle(event: .toggleRecording(Self.refusalConfig))
+      // settle: signal wait on an observed state change, not a clock wait.
+      await stateWaiter.wait(for: .recording)
+      #expect(pipeline.state == .recording)
+
+      // Populate the backlog INSIDE the active session. Seeding it beforehand
+      // would model a state production cannot reach: `AudioCaptureManager`
+      // clears any prior-session backlog when capture begins, so a pre-start
+      // seed is a context production would already have thrown away.
+      let activeSessionID = audioCapture.currentCaptureSessionID
+      audioCapture.stubbedPending = [
+        ZeroSignalRefusalContext(
+          sessionID: activeSessionID,
+          reason: .deviceMuted,
+          transport: "usb",
+          failureShape: .becameZeroMidCapture),
+        ZeroSignalRefusalContext(
+          sessionID: activeSessionID,
+          reason: .notAlive,
+          transport: "bluetooth",
+          failureShape: .allZeroFromStart),
+      ]
+      #expect(audioCapture.stubbedPending.count == 2)
+
+      await pipeline.cancelRecording()
+
+      let refusals = box.events.filter { $0.name == "audio.zero_signal_refused" }
+      #expect(refusals.count == 2, "N pending contexts must produce N events, not one batch")
+      #expect(
+        refusals.map { $0.stringProps["reason"] } == ["device_muted", "not_alive"],
+        "order lost between the atomic take and the emitter")
+      #expect(refusals.map { $0.stringProps["transport"] } == ["usb", "bluetooth"])
+      #expect(
+        refusals.map { $0.stringProps["failure_shape"] }
+          == ["became_zero_mid_capture", "all_zero_from_start"])
+      #expect(audioCapture.takeCallCount == 1, "the terminal did not perform exactly one drain")
+      #expect(audioCapture.stubbedPending.isEmpty)
+    }
+
+    @Test("#1578: an empty backlog emits nothing through the production wiring")
+    func emptyBacklogEmitsNothingThroughFactoryWiring() async throws {
+      let audioCapture = BacklogAudioCapture()
+      let pipeline = Self.makeFactoryDriver(audioCapture: audioCapture)
+      let stateWaiter = PipelineStateWaiter(pipeline)
+
+      let box = RefusalEventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      try await pipeline.handle(event: .toggleRecording(Self.refusalConfig))
+      // settle: signal wait on an observed state change, not a clock wait.
+      await stateWaiter.wait(for: .recording)
+      #expect(pipeline.state == .recording)
+      #expect(audioCapture.stubbedPending.isEmpty)
+
+      await pipeline.cancelRecording()
+
+      // The paired control. Without it, a factory that emitted a spurious event on
+      // every terminal would satisfy the positive test above. The take assertion
+      // matters as much as the event one: it proves the control actually ENTERED
+      // the drain and found nothing, rather than silently skipping it.
+      #expect(audioCapture.takeCallCount == 1, "the empty control never entered the drain")
+      #expect(audioCapture.stubbedPending.isEmpty)
+      #expect(box.events.allSatisfy { $0.name != "audio.zero_signal_refused" })
+    }
+
+    private static let refusalConfig = DictationSessionConfig.testDefault(
+      autoPasteToActiveApp: false,
+      vadSensitivity: 0.5,
+      languageMode: .auto,
+      llmProvider: .openAI,
+      llmModel: "gpt-test"
+    )
+
+    private static func makeFactoryDriver(
+      audioCapture: BacklogAudioCapture
+    ) -> KernelDictationDriver {
+      KernelDictationDriverFactory.makeForParakeet(
+        inputs: .init(
+          audioCapture: audioCapture,
+          // MockASRManager, not NoOpASRManager: the no-op stub throws from its
+          // lifecycle methods, so the forward path never reaches `.recording` and
+          // no terminal drain point is ever exercised. Same choice the
+          // recording-state test above makes.
+          asrManager: MockASRManager(
+            transcribeBehavior: .success(
+              ASRResult(
+                text: "hello", language: "en", duration: 1,
+                processingTime: 0.01, backendType: .parakeet))),
+          vadSignalSource: KernelDictationDriverFactory.makeSharedVADSignalSource(
+            audioCapture: audioCapture),
+          transcriptStore: TranscriptStore(),
+          keychainManager: KeychainManager(),
+          captureTelemetry: CaptureTelemetryState(),
+          pasteCompletionRegistry: PasteCompletionRegistry(),
+          engineMutationScope: .alwaysAllowedForTesting,
+          captureErrorSink: { _, _, _, _, _ in }
+        ))
+    }
+  #endif
 }
+
+#if DEBUG
+  /// A capture double whose ONLY interesting behaviour is the pending-refusal
+  /// backlog, so the factory-wiring test observes the wire and nothing else.
+  @MainActor
+  private final class BacklogAudioCapture: AudioCaptureInterface {
+    var stubbedPending: [ZeroSignalRefusalContext] = []
+    private(set) var takeCallCount = 0
+
+    func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext] {
+      takeCallCount += 1
+      let pending = stubbedPending
+      stubbedPending.removeAll(keepingCapacity: true)
+      return pending
+    }
+
+    var isCapturing: Bool = false
+    var audioLevel: Float = 0
+    var capturedSamples: [Float] = []
+    var currentAudioRoute: String = "built_in_mic"
+    var currentResolvedRoute: ResolvedRouteTransports?
+    var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    var onEngineInterrupted: ((EngineInterruptionCause) -> Void)?
+    var onVADAutoStop: (() -> Void)?
+    var onMaxDurationReached: (() -> Void)?
+    var onCaptureStalled: ((CaptureStallContext) -> Void)?
+    var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
+    var currentCaptureSessionID: UInt64 = 1
+    var isActivelyCapturing: Bool = false
+    var captureSourceType: String = "hal_device_input"
+    var selectedInputDeviceUID: String = ""
+    var preferredInputDeviceIDOverride: String = ""
+    var warmEnginePolicy: WarmEnginePolicy = .off
+
+    func startEnginePhase() async throws {}
+    func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
+      // Same shape as `FixtureAudioCapture`: flip the capture flags and bump the
+      // session id so the forward path can reach `.recording`. Without this the
+      // session never leaves arming and no terminal drain point is ever reached.
+      currentCaptureSessionID += 1
+      isCapturing = true
+      isActivelyCapturing = true
+      return AsyncStream { $0.finish() }
+    }
+    func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
+      try await beginCapturePhase(recoveryPayload: nil)
+    }
+    func stopCapture() async -> CaptureResult {
+      isCapturing = false
+      isActivelyCapturing = false
+      // Real audio, so the take is an ordinary recording rather than a
+      // zero-signal one — this test is about the BACKLOG route, not classification.
+      return CaptureResult(samples: [Float](repeating: 0.5, count: 16_000))
+    }
+    func rebuildEngine() {}
+    func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
+    func preWarm() async throws {}
+    func abortPreWarm() {}
+    func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async
+      -> Bool
+    { true }
+    func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool)
+    {}
+    func getSamplesSnapshot(fromIndex: Int) async -> (samples: [Float], totalCount: Int) { ([], 0) }
+    func getVADSegments() async -> [SpeechSegment] { [] }
+  }
+#endif
 
 // MARK: - Stubs (test-local)
 

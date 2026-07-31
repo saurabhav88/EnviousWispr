@@ -79,6 +79,14 @@ final class FakeAudioCapture: AudioCaptureInterface {
   private var gateReachedContinuation: CheckedContinuation<Void, Never>?
   private var gateReached = false
 
+  /// #1578: same shape for `stopCapture()`. When set, the Nth (1-based) stop
+  /// parks until `releaseStopCaptureGate()`, so a test can conclude the session
+  /// by cancel while the normal STOP path is suspended mid-`await`.
+  var gateStopCaptureCall: Int?
+  private var stopGateContinuation: CheckedContinuation<Void, Never>?
+  private var stopGateReachedContinuation: CheckedContinuation<Void, Never>?
+  private var stopGateReached = false
+
   // MARK: Captured audio
 
   private var accumulatedSamples: [Float] = []
@@ -103,28 +111,55 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var isActivelyCapturing: Bool { isCapturing }
   var captureSourceType: String { "hal_device_input" }
 
-  // MARK: #1844 — observing what the kernel's PRODUCTION eligibility closure reads
+  // MARK: #1844 — observing what the kernel's PRODUCTION snapshot closure reads
   //
   // Overriding the protocol's nil default lets a test hand the kernel a frozen bind
   // and, crucially, COUNT whether the closure consulted it. The count is the only
-  // way to discriminate "read the frozen bind and refused" from "refused for some
-  // other reason" — the closure returns false either way, so its boolean output
-  // proves nothing on its own.
+  // way to discriminate "read the frozen bind and refused" from "refused without
+  // looking" — since #1578 the closure returns a categorical reason, and several
+  // distinct paths can produce the same non-eligible one, so the returned value
+  // alone still cannot carry the claim.
 
   /// The frozen bind this fake publishes. nil models an invalidated attempt.
   var stubbedZeroSignalDiscriminatorDevice: BoundInputDevice?
   /// Incremented on every read of `zeroSignalDiscriminatorDevice`.
   private(set) var zeroSignalDiscriminatorDeviceReadCount = 0
-  /// Set true to model an earlier muted observation, which must short-circuit
-  /// BEFORE the device is consulted.
-  var stubbedZeroSignalDiscriminatorSawIneligible = false
-
   var zeroSignalDiscriminatorDevice: BoundInputDevice? {
     zeroSignalDiscriminatorDeviceReadCount += 1
     return stubbedZeroSignalDiscriminatorDevice
   }
 
-  var zeroSignalDiscriminatorSawIneligible: Bool { stubbedZeroSignalDiscriminatorSawIneligible }
+  // #1578: the categorical replacements for the old boolean saw-ineligible
+  // seam, which is deleted here rather than kept. The kernel no longer
+  // reads the legacy Boolean at all, so stubbing it here would model a path
+  // production does not take. `zeroSignalDiscriminatorSawIneligible` now comes
+  // from the protocol's own compatibility default.
+
+  /// The reason the reactive producer froze for the current run, if any. Read by
+  /// the production snapshot closure when the run was classified reactively.
+  var stubbedZeroSignalRefusalReason: ZeroSignalEligibility?
+  /// Whether the current run was already classified by the reactive producer.
+  /// True must short-circuit BEFORE the frozen bind is consulted.
+  var stubbedZeroSignalRunWasClassifiedReactively = false
+  /// Contexts a rejected reactive forward left behind, handed over in order by
+  /// the atomic take.
+  var stubbedPendingZeroSignalRefusals: [ZeroSignalRefusalContext] = []
+  /// Counts atomic takes, so a test can prove a second drain happened AND was
+  /// empty rather than never happening at all.
+  private(set) var takePendingZeroSignalRefusalsCallCount = 0
+
+  var zeroSignalRefusalReason: ZeroSignalEligibility? { stubbedZeroSignalRefusalReason }
+
+  var zeroSignalRunWasClassifiedReactively: Bool { stubbedZeroSignalRunWasClassifiedReactively }
+
+  /// Mirrors `AudioCaptureManager`'s contract exactly: synchronous, order
+  /// preserving, and empty on every call after the first.
+  func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext] {
+    takePendingZeroSignalRefusalsCallCount += 1
+    let pending = stubbedPendingZeroSignalRefusals
+    stubbedPendingZeroSignalRefusals.removeAll(keepingCapacity: true)
+    return pending
+  }
 
   // MARK: AudioCaptureInterface — callbacks
 
@@ -178,7 +213,31 @@ final class FakeAudioCapture: AudioCaptureInterface {
     bufferContinuation?.finish()
     bufferContinuation = nil
     bufferStream = nil
-    return CaptureResult(samples: accumulatedSamples, vadSegments: segments)
+    let result = CaptureResult(samples: accumulatedSamples, vadSegments: segments)
+    // #1578: park the Nth stop so a test can land a cancel while the normal STOP
+    // is suspended — the exact race the drain-before-await ordering exists for.
+    // Modelled on `gateStabilizationCall` above; signal-based, never a sleep, so
+    // it satisfies the simulator's wall-clock ban.
+    if let gate = gateStopCaptureCall, gate == stopCaptureCallCount {
+      stopGateReached = true
+      stopGateReachedContinuation?.resume()
+      stopGateReachedContinuation = nil
+      await withCheckedContinuation { stopGateContinuation = $0 }
+    }
+    return result
+  }
+
+  /// Suspend until the gated `stopCapture()` call has parked. Returns
+  /// immediately if it already parked.
+  func awaitStopCaptureGateReached() async {
+    if stopGateReached { return }
+    await withCheckedContinuation { stopGateReachedContinuation = $0 }
+  }
+
+  /// Resume the parked `stopCapture()` call.
+  func releaseStopCaptureGate() {
+    stopGateContinuation?.resume()
+    stopGateContinuation = nil
   }
 
   func rebuildEngine() { rebuildEngineCallCount += 1 }

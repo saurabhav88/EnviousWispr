@@ -55,19 +55,74 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   public var zeroSignalDiscriminatorDevice: BoundInputDevice? { effectiveDiscriminatorDevice }
 
   /// #1317 (ported in-process from the former app-side capture proxy at the C1
-  /// collapse, #1543): true once the CURRENT trailing all-zero run has been observed
-  /// while the device discriminator was ineligible (muted/mute-unknown). The
-  /// kernel's STOP-time backstop reads this guard-first so a genuinely-muted
-  /// silent stretch is not misread as the harness glitch just because the user
-  /// unmuted right before releasing. Scoped to the current run, not
-  /// session-wide: a non-zero sample that breaks the trailing zero-run clears
-  /// it (`feedDeadAirDetector`), so an earlier resolved mute cannot blind the
-  /// backstop to a later, unrelated genuine zero-signal failure. Reset in
+  /// collapse, #1543): WHY the CURRENT trailing all-zero run was refused by the
+  /// device discriminator. The kernel's STOP-time backstop reads this guard-first
+  /// so a refused silent stretch is not later misclassified as the harness glitch.
+  /// Scoped to the current run, not session-wide: a non-zero sample that breaks
+  /// the trailing zero run clears it, so an earlier resolved refusal cannot blind
+  /// the backstop to a later, unrelated genuine zero-signal failure. Reset in
   /// `beginCapturePhase`; per the `effectiveDiscriminatorDevice` invariant no
   /// teardown path may clear it early.
-  private var sawIneligibleZeroSignalDuringSession = false
+  ///
+  /// #1578 replaces the former Boolean latch with its categorical reason, so WHY
+  /// and whether a refusal happened cannot drift apart.
+  private var currentZeroSignalRefusalReason: ZeroSignalEligibility?
 
-  public var zeroSignalDiscriminatorSawIneligible: Bool { sawIneligibleZeroSignalDuringSession }
+  /// #1578: whether the CURRENT zero run has already produced its reactive refusal
+  /// observation. Classification still runs on every candidate batch so a later
+  /// `.eligible` verdict preserves the shipping stall behavior. This flag suppresses
+  /// only duplicate refusal forwarding, backlog admission, and STOP-time
+  /// reclassification. Forwarding acceptance never controls it.
+  private var currentRunWasClassifiedReactively = false
+
+  /// #1578: refusal contexts whose one forward attempt was REJECTED (no
+  /// subscriber, or a stale-session rejection). Per SESSION, not per run:
+  /// clearing this on non-zero recovery would erase a refusal that genuinely
+  /// happened just because the microphone came back. Drained atomically at a
+  /// terminal.
+  private var pendingZeroSignalRefusals: [ZeroSignalRefusalContext] = []
+
+  public var zeroSignalDiscriminatorSawIneligible: Bool {
+    currentZeroSignalRefusalReason != nil
+  }
+
+  public var zeroSignalRefusalReason: ZeroSignalEligibility? {
+    currentZeroSignalRefusalReason
+  }
+
+  public var zeroSignalRunWasClassifiedReactively: Bool {
+    currentRunWasClassifiedReactively
+  }
+
+  /// #1578: the manager MUST store this itself. The protocol extension's default
+  /// is an explicit no-op setter for conformers with no reactive detector, so
+  /// inheriting it here would silently swallow the production subscriber.
+  public var onZeroSignalRefused: ((ZeroSignalRefusalContext) -> Bool)?
+
+  /// #1578: ONE owner for the three fields above, so a future third reset point
+  /// cannot clear two of them and miss the other.
+  ///
+  /// `clearBacklog` is the entire difference between the two call sites, and it
+  /// is load-bearing: session start clears everything, while non-zero recovery
+  /// clears only the current-run facts. A recovery that also emptied the backlog
+  /// would delete a rejected refusal for the very reason it should be kept — the
+  /// microphone started working again.
+  private func resetZeroSignalState(clearBacklog: Bool) {
+    currentZeroSignalRefusalReason = nil
+    currentRunWasClassifiedReactively = false
+    if clearBacklog {
+      pendingZeroSignalRefusals.removeAll(keepingCapacity: true)
+    }
+  }
+
+  /// #1578: ATOMIC take-and-clear. Synchronous and MainActor-isolated, so a
+  /// second caller — a cancel landing while `stopCapture()` is suspended — gets
+  /// an empty array instead of a duplicate. Append order is preserved.
+  public func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext] {
+    let pending = pendingZeroSignalRefusals
+    pendingZeroSignalRefusals.removeAll(keepingCapacity: true)
+    return pending
+  }
 
   /// Current audio level (0.0 - 1.0) for waveform visualization.
   public private(set) var audioLevel: Float = 0.0
@@ -466,7 +521,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     // Reset per-session reactive dead-air + stall-latch state (#1317 / #1543).
     deadAirDetector = DeadAirStreamingDetector()
-    sawIneligibleZeroSignalDuringSession = false
+    // #1578: session start is the ONE place the backlog is cleared without a
+    // consumer having taken it — a new session must never inherit the previous
+    // one's undelivered refusals.
+    resetZeroSignalState(clearBacklog: true)
     captureStallReported = false
     #if DEBUG
       didLogZeroPrefixThisSession = false
@@ -1129,12 +1187,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   /// Feed this batch's raw samples into the per-generation all-zero
   /// harness-glitch detector; when it crosses a confidence threshold, run the
-  /// §3.0 device-alive + not-muted discriminator and — only if it passes —
-  /// fire `onCaptureStalled` with the matching failure mode. A muted or
-  /// mute-unknown device fails closed: no fire, today's honest no-speech path
-  /// is untouched, the trailing-zero-run latch is set so the kernel's STOP-time
-  /// backstop stays fail-closed, and the next batch re-evaluates (mute state
-  /// can legitimately change mid-recording). MainActor-isolated (called from
+  /// §3.0 device discriminator and — only if it returns `.eligible` — fire
+  /// `onCaptureStalled` with the matching failure mode. Any of the five
+  /// non-eligible reasons fails closed: no fire, today's honest no-speech path
+  /// is untouched, the run's reason is frozen so the kernel's STOP-time backstop
+  /// stays fail-closed, and the next batch re-evaluates (device state can
+  /// legitimately change mid-recording). MainActor-isolated (called from
   /// `ingestSamples`), so the detector is never mutated off the consumer thread.
   private func feedDeadAirDetector(_ samples: [Float]) {
     guard !deadAirDetector.fired, !captureStallReported, !samples.isEmpty else { return }
@@ -1142,11 +1200,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     samples.withUnsafeBufferPointer { deadAirDetector.ingest($0) }
     // A non-zero sample anywhere in this batch breaks the trailing zero-run —
     // `consecutiveExactZeroSuffix` after ingest is then strictly less than
-    // `suffixBefore + samples.count`. Any earlier ineligible (muted) result
-    // applied to THAT run, not this new one, so it must not suppress detection
-    // of a later, unrelated zero-signal failure.
+    // `suffixBefore + samples.count`. Any earlier refusal applied to THAT run,
+    // not this new one, so it must not suppress detection of a later, unrelated
+    // zero-signal failure.
     if deadAirDetector.consecutiveExactZeroSuffix != suffixBefore + samples.count {
-      sawIneligibleZeroSignalDuringSession = false
+      // #1578: current-run facts only. Anything already REJECTED stays in the
+      // backlog — the run it described really happened, and recovery does not
+      // undo it.
+      resetZeroSignalState(clearBacklog: false)
     }
     #if DEBUG
       emitZeroPrefixDiagnosticIfNeeded()
@@ -1164,15 +1225,46 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // Evaluate against the bind this attempt's `prepare()` RETURNED (#1844),
     // not a live re-read — the live UID properties can already reflect a device
     // the user switched to mid-recording, and a settings-derived value can name
-    // a microphone HAL never opened.
-    guard
-      let bound = effectiveDiscriminatorDevice,
-      ZeroSignalDeviceDiscriminator.isEligible(bound: bound)
-    else {
-      // A zero-signal-candidate batch observed while ineligible (muted) — latch
-      // it so the STOP-time backstop can't later see a since-unmuted live state
-      // and misclassify this genuinely-muted stretch as the harness glitch.
-      sawIneligibleZeroSignalDuringSession = true
+    // a microphone HAL never opened. The optional goes straight to the
+    // classifier: #1578 made it the single owner of the missing-bind outcome,
+    // so translating `nil` here would put that policy in two places.
+    let reason = ZeroSignalDeviceDiscriminator.classify(bound: effectiveDiscriminatorDevice)
+
+    guard reason == .eligible else {
+      // This candidate was refused for one of the classifier's five non-eligible
+      // reasons. Freeze the first reason so STOP cannot later reinterpret the run
+      // from a changed live device state.
+      //
+      // ONE observation per RUN, though the classification above still runs per
+      // BATCH. `feedDeadAirDetector` fires on every incoming batch and a zero run
+      // spans many of them; this flag — not callback success, not backlog
+      // membership, not either stall latch — is what silences the second and
+      // later refusals of the same run.
+      guard !currentRunWasClassifiedReactively else { return }
+
+      // Set BOTH fields before calling out: a subscriber that synchronously
+      // re-enters capture must find this run already classified.
+      currentZeroSignalRefusalReason = reason
+      currentRunWasClassifiedReactively = true
+
+      // Same authorities `fireDeadAirStall` uses for the same two facts — the
+      // detector-selected shape and the resolved effective transport — so the
+      // refusal event and the stall event can never disagree about a take.
+      let context = ZeroSignalRefusalContext(
+        sessionID: currentCaptureSessionID,
+        reason: reason,
+        transport: currentResolvedRoute?.effective ?? "unknown",
+        failureShape: mode
+      )
+      // ONE attempt. A missing subscriber and an explicit `false` are the same
+      // answer — not delivered — so the context is preserved for a terminal
+      // drain rather than lost. Note this deliberately sets neither
+      // `deadAirDetector.fired` nor `captureStallReported`: a refusal is an
+      // observation, and latching either one would suppress a later GENUINE
+      // failure in the same take.
+      if onZeroSignalRefused?(context) != true {
+        pendingZeroSignalRefusals.append(context)
+      }
       return
     }
 

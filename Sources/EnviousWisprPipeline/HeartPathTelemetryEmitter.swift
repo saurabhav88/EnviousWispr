@@ -1,3 +1,4 @@
+import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
@@ -268,6 +269,38 @@ final class HeartPathTelemetryEmitter {
       msSinceLastGood: msSinceLastGood,
       routeFallbackReason: ctx.routeFallbackReason,
       takeID: ctx.takeID)
+  }
+
+  /// #1578: the zero-signal discriminator refused to fire recovery, and this
+  /// records why. Same content-free breadcrumb + PostHog fan-out as
+  /// `deadMicRetireAttempted` above, from ONE set of computed values so the two
+  /// sinks can never disagree.
+  ///
+  /// NO dedup here, deliberately. `stallFired` dedups because two independent
+  /// producers (the HAL watchdog and the raw-samples route) can observe the
+  /// SAME stall. Refusal cardinality is already enforced before the emitter:
+  /// the manager's per-run flag permits one reactive forward attempt, and STOP
+  /// emits only when that run was not classified reactively. Several zero runs
+  /// in one session are legitimately several events; emitter-side dedup would
+  /// suppress the later ones.
+  ///
+  /// Observational: a breadcrumb, never a `captureError`, so this raises no
+  /// Sentry issue and no alert.
+  func zeroSignalRefused(_ context: ZeroSignalRefusalContext) {
+    let reason = context.reason.rawValue
+    let transport = context.transport
+    let failureShape = context.failureShape.rawValue
+    addBreadcrumb(
+      "recording", "Zero signal refusal observed",
+      [
+        "reason": reason,
+        "transport": transport,
+        "failure_shape": failureShape,
+      ])
+    TelemetryService.shared.zeroSignalRefused(
+      reason: reason,
+      transport: transport,
+      failureShape: failureShape)
   }
 
   /// Heartpath 5b (#1520): a pending dead-mic watch resolved (a later take

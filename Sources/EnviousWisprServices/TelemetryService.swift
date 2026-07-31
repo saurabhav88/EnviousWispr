@@ -571,6 +571,35 @@ public final class TelemetryService {
     PostHogSDK.shared.capture(event, properties: props)
   }
 
+  /// #1578: one event per uninterrupted zero run whose frozen-device
+  /// classification came back non-eligible. Records WHY stall recovery was
+  /// refused; it does NOT assert the microphone died. Content-free by
+  /// construction: three closed-vocabulary strings, never transcript, audio,
+  /// device name, or UID — and no session or take identifier.
+  public func zeroSignalRefused(
+    reason: String,
+    transport: String,
+    failureShape: String
+  ) {
+    let event = "audio.zero_signal_refused"
+    let props: [String: Any] = [
+      "reason": reason,
+      "transport": transport,
+      "failure_shape": failureShape,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: event,
+          stringProps: [
+            "reason": reason,
+            "transport": transport,
+            "failure_shape": failureShape,
+          ]))
+    #endif
+    PostHogSDK.shared.capture(event, properties: props)
+  }
+
   /// Heartpath 5b (#1520): a completed take came back zero-signal, so the fenced
   /// retire primitive was invoked. `retireAction` records whether teardown
   /// actually ran (`retired`) or was a fenced no-op. Content-free by
