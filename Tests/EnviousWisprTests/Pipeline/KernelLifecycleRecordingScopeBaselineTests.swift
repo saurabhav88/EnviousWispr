@@ -156,8 +156,9 @@ import Testing
       // hand-picking an event, so the test cannot drift from what the observer
       // would really emit.
       let outcome = try #require(kernel.recordingOutcome)
-      let event = try #require(
-        KernelHeartPathTelemetryObserver.terminalEvent(for: outcome, isStreaming: false))
+      // #1884: `lifecycleEvent` is total, so no `#require` — every outcome IS an
+      // ending and there is no "not a terminal" answer to unwrap.
+      let event = outcome.lifecycleEvent
 
       let recorder = RecordingStateRecorder()
       let sink = makeSink(recorder: recorder)
