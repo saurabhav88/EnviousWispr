@@ -18,6 +18,7 @@ struct SpeechEngineSettingsView: View {
 
   @State private var showLanguageLockSheet: Bool = false
   @State private var showSpokenPunctuationHelp: Bool = false
+  @State private var showLiveTranscriptionHelp: Bool = false
 
   /// #1171 — shown ONLY when the user's selected engine differs from the active
   /// one because a switch is deferred while a dictation/recovery is in flight.
@@ -281,21 +282,20 @@ struct SpeechEngineSettingsView: View {
             HStack(alignment: .top, spacing: 11) {
               SettingsRowIcon(systemName: "waveform")
               VStack(alignment: .leading, spacing: 4) {
-                Toggle(isOn: $settings.useStreamingASR) {
-                  Text("Live transcription").settingsRowLabel()
+                HStack(spacing: 6) {
+                  Toggle(isOn: $settings.useStreamingASR) {
+                    Text(LiveTranscriptionCopy.toggleLabel).settingsRowLabel()
+                  }
+                  .toggleStyle(BrandedToggleStyle())
+                  liveTranscriptionHelpButton
                 }
-                .toggleStyle(BrandedToggleStyle())
-                Text(
-                  "Transcribes while you speak for faster results. Turn off for cleaner text on longer recordings."
-                )
-                .settingsReadingCopy()
+                Text(LiveTranscriptionCopy.toggleDescription)
+                  .settingsReadingCopy()
                 if settings.selectedBackend == .whisperKit,
                   isAutoLanguage(settings.languageMode)
                 {
-                  Text(
-                    "Live transcription needs a selected language. With Auto-detect, EnviousWispr uses clean batch transcription for accuracy."
-                  )
-                  .settingsReadingCopy()
+                  Text(LiveTranscriptionCopy.autoLanguageFootnote)
+                    .settingsReadingCopy()
                 }
               }
             }
@@ -592,6 +592,83 @@ struct SpeechEngineSettingsView: View {
     .buttonStyle(.borderless)
     .help("Re-check model status")
     .accessibilityLabel("Re-check model status")
+  }
+
+  // MARK: - Live transcription help (#1337)
+
+  /// Same shape as `spokenPunctuationHelpButton` deliberately: a real `Button`, never a
+  /// hover-only reveal, so it is reachable by keyboard and VoiceOver. The two panels are
+  /// the same affordance and must read as one family.
+  private var liveTranscriptionHelpButton: some View {
+    Button {
+      showLiveTranscriptionHelp = true
+    } label: {
+      Image(systemName: "questionmark.circle")
+        .foregroundStyle(Color.stTextSecondary)
+        .font(.stHelper)
+    }
+    .buttonStyle(.borderless)
+    .help(LiveTranscriptionCopy.helpButtonAccessibilityLabel)
+    .accessibilityLabel(LiveTranscriptionCopy.helpButtonAccessibilityLabel)
+    .popover(isPresented: $showLiveTranscriptionHelp, arrowEdge: .bottom) {
+      liveTranscriptionHelpPanel
+    }
+  }
+
+  /// Ordered speed first, then the measured cost, then why, then the recommendation.
+  /// Speed leads because speed is why anyone turns this on, so the answer they came for
+  /// should not be buried under a caveat.
+  private var liveTranscriptionHelpPanel: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text(LiveTranscriptionCopy.helpTitle)
+        .font(.stSectionHeader)
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text(LiveTranscriptionCopy.helpSpeedHeading).font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+        Text(LiveTranscriptionCopy.helpSpeedBody).settingsReadingCopy()
+      }
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text(LiveTranscriptionCopy.helpAccuracyHeading).font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
+          GridRow {
+            Text("")
+            Text(LiveTranscriptionCopy.helpComparisonOffColumn)
+            Text(LiveTranscriptionCopy.helpComparisonOnColumn)
+          }
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+          ForEach(LiveTranscriptionCopy.comparisons) { row in
+            GridRow {
+              Text(row.metric)
+              Text(row.off)
+              Text(row.on)
+            }
+          }
+        }
+        .font(.stBody)
+        Text(LiveTranscriptionCopy.helpLostEndings).settingsReadingCopy()
+      }
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text(LiveTranscriptionCopy.helpWhyHeading).font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+        Text(LiveTranscriptionCopy.helpWhyBody).settingsReadingCopy()
+      }
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text(LiveTranscriptionCopy.helpRecommendationHeading).font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+        Text(LiveTranscriptionCopy.helpRecommendationBody).settingsReadingCopy()
+      }
+
+      Text(LiveTranscriptionCopy.helpFootnote)
+        .settingsReadingCopy()
+    }
+    .frame(maxWidth: 340, alignment: .leading)
+    .padding(16)
   }
 
   // MARK: - Spoken punctuation help (#1794)
