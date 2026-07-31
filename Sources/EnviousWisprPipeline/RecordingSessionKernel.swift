@@ -318,6 +318,22 @@ final class RecordingSessionKernel {
   /// model-load or capture-start failure could be raised before the tag existed.
   /// Defaulted to a no-op: only the production composition root wires it.
   private let sessionAcceptedTelemetry: @MainActor (_ takeID: String) -> Void
+
+  /// #1884: called exactly once per ACCEPTED terminal, with an immutable snapshot
+  /// frozen at the moment the take ended.
+  ///
+  /// Deliberately NOT routed through `KernelHeartPathTelemetryObserver`, which is
+  /// how every other terminal signal reaches telemetry. That path observes
+  /// asynchronously through a `Task`, and its own source documents the mechanism
+  /// as not a lossless queue — so take B can start and replace
+  /// `telemetryState.takeID` before take A is rendered, and take A's row would
+  /// carry take B's identity. Nothing about that failure is visible in the data:
+  /// both ids are real, both rows look correct.
+  ///
+  /// Defaulted to a no-op: only the production composition root wires it, through
+  /// the relay (the kernel is constructed before the lifecycle sink exists).
+  private let sessionTerminalTelemetry: @MainActor (KernelTerminalTelemetrySnapshot) -> Void
+
   private let markPipelineTimingStart: @MainActor () -> Void
   private let markASRTimingStart: @MainActor (_ streaming: Bool) -> Void
   private let markASRTimingEnd: @MainActor () -> Void
@@ -818,6 +834,9 @@ final class RecordingSessionKernel {
     zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in },
     recordingStoppedTelemetry: @escaping @MainActor (_ sampleCount: Int) -> Void = { _ in },
     sessionAcceptedTelemetry: @escaping @MainActor (_ takeID: String) -> Void = { _ in },
+    sessionTerminalTelemetry: @escaping @MainActor (KernelTerminalTelemetrySnapshot) -> Void = {
+      _ in
+    },
     markPipelineTimingStart: @escaping @MainActor () -> Void = {},
     markASRTimingStart: @escaping @MainActor (_ streaming: Bool) -> Void = { _ in },
     markASRTimingEnd: @escaping @MainActor () -> Void = {},
@@ -885,6 +904,7 @@ final class RecordingSessionKernel {
     self.zeroSignalRefusalSink = zeroSignalRefusalSink
     self.recordingStoppedTelemetry = recordingStoppedTelemetry
     self.sessionAcceptedTelemetry = sessionAcceptedTelemetry
+    self.sessionTerminalTelemetry = sessionTerminalTelemetry
     self.markPipelineTimingStart = markPipelineTimingStart
     self.markASRTimingStart = markASRTimingStart
     self.markASRTimingEnd = markASRTimingEnd
@@ -1728,6 +1748,9 @@ final class RecordingSessionKernel {
     // that correctly discard as `.tooShort` today.
 
     if zeroSignalRecoveryMode == .allZeroFromStart {
+      // #1890 producer 1 of 2. Frozen HERE, where the route snapshot and the bind
+      // label still describe this take.
+      freezeSignalAttribution(samples: captureResult.samples, peak: rawPeakAudioLevel)
       finishTerminal(.failed(.zeroSignal), sid: sid)
       return
     }
@@ -2364,6 +2387,15 @@ final class RecordingSessionKernel {
             )
           }
         }
+        // #1890 producer 2 of 2. Reached only after salvage has already failed
+        // (`!salvageDelivered` above), so this IS the final answer for the take
+        // — freezing earlier would attribute a take that later recovered.
+        //
+        // Both branches freeze. `.failed(.asrEmpty)` is the `asr_empty_with_speech`
+        // half #1890 counts; the `.noSpeech(.asrEmptyNoSpeech)` half already has
+        // its own richer event from #1888, and giving the terminal row the same
+        // frozen facts costs nothing and keeps the two joinable on `take_id`.
+        freezeSignalAttribution(samples: captureResult.samples, peak: rawPeakAudioLevel)
         finishTerminal(
           effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech(.asrEmptyNoSpeech),
           sid: sid)
@@ -3582,6 +3614,59 @@ final class RecordingSessionKernel {
   /// Fixed order (§5.3 r4, #1578): validate the floor and legal conclusion →
   /// set `recordingOutcome` → stamp `lastTakeID` (#1846) → drain pending
   /// zero-signal refusals → transition to `.idle` → drain the task bag.
+
+  /// #1890: freeze this take's hardware and signal facts, at the producer, for a
+  /// terminal that captured nothing usable.
+  ///
+  /// Called immediately before the two eligible terminals — `.failed(.zeroSignal)`
+  /// and the speech-evidence `.failed(.asrEmpty)`. `finishTerminal` only COPIES
+  /// what this leaves behind; it never measures and never re-reads the bind.
+  ///
+  /// Why here and not there: `lastResolvedRoute` is THIS take's frozen snapshot,
+  /// and `boundInputDeviceKind` is the label the bind returned. A live read at
+  /// terminal time can name a NEWER source in the fenced `.staleSession` /
+  /// `.sourceReplaced` races, and consulting `zeroSignalDiscriminatorDevice`
+  /// there breaks the #1844/#1578 read-order contract that
+  /// `KernelFrozenBindGuardTests` locks.
+  ///
+  /// Measures the buffer HERE rather than accepting a measurement argument. Both
+  /// producers are mutually exclusive terminals, so this runs at most once per
+  /// take — and an argument is a thing a caller can forget, which is exactly
+  /// what happened: both call sites passed `nil` and every `asr_empty_with_speech`
+  /// row shipped without its two energy values (whole-diff review 2026-07-31).
+  ///
+  /// `measure` SHORT-CIRCUITS, so both RMS values come back nil whenever the peak
+  /// already clears the dead-air floor. That is the #1845 contract — nil means NOT
+  /// COMPUTED, never "computed as zero" — and it is the honest answer here,
+  /// because a peak above the floor has already established the channel carried
+  /// audio. The two RMS values exist to characterise the QUIET case, which is the
+  /// only case in which the classifier computes them.
+  ///
+  /// That short-circuit is also the cost story: a below-floor peak buys two O(n)
+  /// passes over the buffer, bounded by the 60-minute cap (#1060), and every other
+  /// take returns at the peak guard without touching a sample. It runs once, on a
+  /// terminal the user is already being told about.
+  private func freezeSignalAttribution(samples: [Float], peak: Float) {
+    let takeRoute = lastResolvedRoute
+    let health = telemetryState.captureHealth
+    let measurement = RawAudioDeadAirClassifier.measure(samples, peak: peak)
+    telemetryState.signalAttribution = KernelSignalAttributionTelemetry(
+      inputDeviceKind: audioCapture.boundInputDeviceKind,
+      effectiveTransport: takeRoute?.effective,
+      selectedTransport: takeRoute?.selected,
+      inputSelectionMode: takeRoute?.inputSelectionMode,
+      wholeBufferRMS: measurement.wholeBufferRMS,
+      maxWindowRMS: measurement.maxWindowRMS,
+      // Stays optional all the way to PostHog. An exact zero is the signature of
+      // a digitally dead channel (#1809), so a manufactured 0 for "not measured"
+      // would be indistinguishable from the finding this data exists to detect.
+      peakAudioLevel: peak,
+      durationMs: telemetryState.recordingSnapshot?.durationMs,
+      captureNativeRateHz: health?.stopMetadata?.nativeRateHz,
+      captureNativeChannelCount: health?.stopMetadata?.nativeChannelCount
+    )
+  }
+
   private func finishTerminal(_ rawOutcome: RecordingOutcome, sid: SessionID) {
     // Set-once barrier: `isCurrent` fences stale sessions; `recordingOutcome ==
     // nil` prevents a double conclusion.
@@ -3601,6 +3686,36 @@ final class RecordingSessionKernel {
     // `isCurrent(sid)` guard above already proved they match, and `sid` is
     // unambiguously the session being concluded.
     lastTakeID = sid.raw.uuidString
+
+    // #1884: freeze this take's outcome NOW, inside the set-once barrier, and
+    // register delivery with `defer`.
+    //
+    // Position is load-bearing in both directions. AFTER the guards and the
+    // outcome write, so a stale, illegal, or losing terminal returns before ever
+    // registering — one accepted terminal, one event, no duplicates. BEFORE
+    // `drainPendingZeroSignalRefusals()` and every later cleanup return, so an
+    // accepted terminal cannot lose its event to an early exit further down.
+    //
+    // `defer` rather than a direct call so delivery runs after this function's
+    // own cleanup, while still being unreachable from the rejecting paths above.
+    // `finishTerminal` is synchronous and MainActor-isolated with no suspension
+    // point, so the deferred call runs before control returns to the main actor:
+    // no new session can start, and the lifecycle observer's queued `Task` cannot
+    // run, in between.
+    //
+    // The snapshot is COMPLETE here. The consumer must render it and read nothing
+    // else — cleanup below tears down callbacks, tasks, the adapter and capture
+    // state, and take B may be running by the time anyone looks.
+    let terminalSnapshot = KernelTerminalTelemetrySnapshot(
+      takeID: sid.raw.uuidString,
+      backend: adapter.engineIdentity.backendType.rawValue,
+      outcome: outcome,
+      // COPIED, never measured here. Populated at its producer (§G5); nil for
+      // every take that is not signal-free.
+      signalAttribution: telemetryState.signalAttribution
+    )
+    defer { sessionTerminalTelemetry(terminalSnapshot) }
+
     // #1578 drain ownership point 2 of 2 — cancellation, non-recoverable
     // interruption, and every other direct terminal. Placed AFTER the set-once
     // outcome write so a stale or losing terminal (both bail on the guard above)

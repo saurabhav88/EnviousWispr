@@ -273,7 +273,11 @@ import Testing
       _ outcome: RecordingOutcome,
       isStreaming: Bool = false
     ) -> KernelLifecycleEvent? {
-      KernelHeartPathTelemetryObserver.terminalEvent(for: outcome, isStreaming: isStreaming)
+      // #1884: the switch moved to the shared `RecordingOutcome.lifecycleEvent`
+      // projection so terminal telemetry renders the identical value. This
+      // helper keeps returning an optional so every existing expectation below
+      // reads unchanged; the projection itself is total.
+      outcome.lifecycleEvent
     }
 
     /// The pure in-flight tuple-delta → lifecycle-events map (#1548 D1). Every

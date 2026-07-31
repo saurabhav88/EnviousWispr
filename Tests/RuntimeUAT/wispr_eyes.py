@@ -1230,11 +1230,44 @@ def switch_backend(name, wait=3.0):
             raise RuntimeError("Could not tap 'Transcription' in the Settings sidebar")
     time.sleep(0.3)
     label = _BACKEND_LABELS[name]
-    if not tap(label):
-        raise RuntimeError(f"Could not tap '{label}' button in Settings -> Transcription")
+    # These two engine buttons carry their label in AXDescription with an EMPTY
+    # AXTitle, which `tap()` does not search — so `tap("Fast")` reported
+    # 'Fast' not found while `see()` printed the button one line above
+    # (#1884 Live UAT, 2026-07-31). A missing control and an unsearched attribute
+    # look identical from the caller, which is why this resolves the element
+    # itself rather than retrying a tap that can never match.
+    button = _engine_button(label)
+    if button is None:
+        raise RuntimeError(
+            f"Could not find the '{label}' engine button in Settings -> Transcription")
+    if not perform_action(button, "AXPress"):
+        raise RuntimeError(f"Could not press the '{label}' engine button")
+    # Prove the switch LANDED, by waiting on the button's own selection state.
+    # Pressing and assuming is the precondition-never-checked shape: every later
+    # assertion would then describe whichever engine was already selected.
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        if str(get_attr(_engine_button(label), "AXValue") or "") == "Selected":
+            break
+        time.sleep(0.25)  # settle: poll interval around the AXValue signal wait above, not a fixed delay
+    else:
+        raise RuntimeError(f"Pressed '{label}' but it never reported itself selected")
     print(f"Switched backend to {name} ({label}); waiting {wait:.0f}s for model load...")
     time.sleep(wait)
     return True
+
+
+def _engine_button(label):
+    """The Transcription-pane engine button whose AXDescription is *label*.
+
+    Separate from `tap()` on purpose: `tap()` matches AXTitle/AXValue across the
+    whole app, and matching a description app-wide would make every caller's
+    taps fuzzier. Returns None when absent.
+    """
+    for el in find_all_elements(_app, role="AXButton"):
+        if (get_attr(el, "AXDescription") or "") == label:
+            return el
+    return None
 
 
 def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.0):

@@ -63,6 +63,24 @@ final class KernelLifecycleTelemetrySink {
     _ takeID: String?
   ) -> Void
 
+  /// #1884 `dictation.started` — the denominator. Deliberately minimal: this
+  /// event exists to be counted, and every fact worth knowing about a take is
+  /// already on its terminal row.
+  typealias DictationStartedSink = @MainActor (
+    _ takeID: String, _ backend: String
+  ) -> Void
+
+  /// #1884 `dictation.terminal`. `result` is one of the seven terminal labels;
+  /// `reason` is a `TerminalNoticeReason.rawValue` and is nil unless the terminal
+  /// is `.failed`. The attribution block is nil unless the take was signal-free.
+  typealias DictationTerminalSink = @MainActor (
+    _ takeID: String, _ backend: String, _ result: String, _ reason: String?,
+    _ inputDeviceKind: String?, _ effectiveTransport: String?, _ selectedTransport: String?,
+    _ inputSelectionMode: String?, _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?,
+    _ peakAudioLevel: Float?, _ durationMs: Int?, _ captureNativeRateHz: Double?,
+    _ captureNativeChannelCount: Int?
+  ) -> Void
+
   typealias CaptureErrorSink = @MainActor (
     _ error: any Error & StableSentryErrorIdentity,
     _ category: SentryBreadcrumb.ErrorCategory,
@@ -112,6 +130,14 @@ final class KernelLifecycleTelemetrySink {
   private let dictationInvoked: DictationInvokedSink
   private let modelLoadWedged: ModelLoadWedgedSink
   private let vadGateNoSpeech: VADGateNoSpeechSink
+
+  /// #1884 `dictation.started`. Primitives rather than the snapshot type because
+  /// `TelemetryService` lives in Services and cannot see Pipeline types — the
+  /// dependency runs one way only.
+  private let dictationStarted: DictationStartedSink
+
+  /// #1884 `dictation.terminal`. Destructured for the same reason.
+  private let dictationTerminal: DictationTerminalSink
   private let captureError: CaptureErrorSink
   private let captureErrorWithSnapshot: SnapshotCaptureErrorSink
   /// Optional. When wired (factory path), the sink routes
@@ -194,6 +220,22 @@ final class KernelLifecycleTelemetrySink {
         captureNativeRateHz: captureNativeRateHz,
         captureNativeChannelCount: captureNativeChannelCount, takeID: takeID)
     },
+    dictationStarted: @escaping DictationStartedSink = { takeID, backend in
+      TelemetryService.shared.dictationStarted(takeID: takeID, backend: backend)
+    },
+    dictationTerminal: @escaping DictationTerminalSink = {
+      takeID, backend, result, reason, inputDeviceKind, effectiveTransport, selectedTransport,
+      inputSelectionMode, wholeBufferRMS, maxWindowRMS, peakAudioLevel, durationMs,
+      captureNativeRateHz, captureNativeChannelCount in
+      TelemetryService.shared.dictationTerminal(
+        takeID: takeID, backend: backend, result: result, reason: reason,
+        inputDeviceKind: inputDeviceKind, effectiveTransport: effectiveTransport,
+        selectedTransport: selectedTransport, inputSelectionMode: inputSelectionMode,
+        wholeBufferRMS: wholeBufferRMS, maxWindowRMS: maxWindowRMS,
+        peakAudioLevel: peakAudioLevel, durationMs: durationMs,
+        captureNativeRateHz: captureNativeRateHz,
+        captureNativeChannelCount: captureNativeChannelCount)
+    },
     captureError: @escaping CaptureErrorSink = { error, category, stage, extra in
       SentryBreadcrumb.captureError(error, category: category, stage: stage, extra: extra)
     },
@@ -226,6 +268,8 @@ final class KernelLifecycleTelemetrySink {
     self.dictationInvoked = dictationInvoked
     self.modelLoadWedged = modelLoadWedged
     self.vadGateNoSpeech = vadGateNoSpeech
+    self.dictationStarted = dictationStarted
+    self.dictationTerminal = dictationTerminal
     self.captureError = captureError
     self.captureErrorWithSnapshot = captureErrorWithSnapshot
     self.noAudioCapturedRich = noAudioCapturedRich
@@ -255,6 +299,57 @@ final class KernelLifecycleTelemetrySink {
   /// scope tag.
   func establishTakeID(_ takeID: String) {
     updateTakeID(takeID)
+  }
+
+  /// #1884: BOTH acceptance effects, through one method and one identity.
+  ///
+  /// The Sentry take tag first (unchanged, same single writer), then exactly one
+  /// `dictation.started`. They share the `takeID` the kernel just minted — no
+  /// second callback, no second identity.
+  ///
+  /// This is the denominator. A take that never reaches a terminal is only
+  /// visible as the difference between this event and `dictation.terminal`, so
+  /// an accepted session that emits nothing here is invisible rather than
+  /// merely uncounted.
+  func acceptSession(takeID: String) {
+    updateTakeID(takeID)
+    dictationStarted(takeID, backend.rawValue)
+  }
+
+  /// #1884: exactly one row per ACCEPTED terminal, rendered from the immutable
+  /// snapshot and nothing else.
+  ///
+  /// Reads no live state on purpose. By the time this runs, `finishTerminal`'s
+  /// cleanup has torn down callbacks, tasks, the adapter and capture state, and
+  /// the next take may already be running — so anything consulted here could
+  /// describe a different dictation than the one being reported.
+  func emitTerminal(_ snapshot: KernelTerminalTelemetrySnapshot) {
+    let event = snapshot.outcome.lifecycleEvent
+    guard let result = Self.terminalStateLabel(for: event) else {
+      // Unreachable: every `RecordingOutcome` projects to a terminal, and a
+      // projection test freezes that. Refusing beats emitting `result: nil`,
+      // which would be an unqueryable row that still counts in the denominator.
+      return
+    }
+    // Read from the PROJECTED event, never from the raw outcome. `.noTransport`
+    // projects to `.failed(.noAudioCaptured)`, so an outcome-side match labels the
+    // row `failed` with no reason at all — a failure invisible to every
+    // reason-keyed count (whole-diff review 2026-07-31). One projection decides
+    // both fields, so they cannot disagree.
+    let reason: String? =
+      if case .failed(let failureReason) = event {
+        failureReason.terminalNoticeReason.rawValue
+      } else {
+        nil
+      }
+    let attribution = snapshot.signalAttribution
+    dictationTerminal(
+      snapshot.takeID, snapshot.backend, result, reason,
+      attribution?.inputDeviceKind, attribution?.effectiveTransport,
+      attribution?.selectedTransport, attribution?.inputSelectionMode,
+      attribution?.wholeBufferRMS, attribution?.maxWindowRMS,
+      attribution?.peakAudioLevel, attribution?.durationMs,
+      attribution?.captureNativeRateHz, attribution?.captureNativeChannelCount)
   }
 
   func emit(_ event: KernelLifecycleEvent) {
@@ -523,7 +618,11 @@ final class KernelLifecycleTelemetrySink {
 
   /// The terminal each lifecycle event represents, or `nil` for a non-terminal
   /// event. Exhaustive on purpose.
-  private static func terminalStateLabel(for event: KernelLifecycleEvent) -> String? {
+  /// Internal since #1884 so the projection tests can verify that every
+  /// `RecordingOutcome` maps to a terminal label. The enclosing type is already
+  /// `internal` and the tests already use `@testable`, so `package` would widen
+  /// access without buying anything — `internal` is the narrowest that works.
+  static func terminalStateLabel(for event: KernelLifecycleEvent) -> String? {
     switch event {
     case .pipelineCompleted: "completed"
     case .failed: "failed"

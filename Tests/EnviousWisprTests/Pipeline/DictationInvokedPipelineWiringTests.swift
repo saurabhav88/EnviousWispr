@@ -249,19 +249,57 @@ struct DictationInvokedPipelineWiringTests {
     // The sink remains the single writer of the scope tag.
     let sinkSource = try Self.read(
       "Sources/EnviousWisprPipeline/KernelLifecycleTelemetrySink.swift")
-    #expect(sinkSource.contains("func establishTakeID(_ takeID: String) {"))
-    let establish = try Self.slice(
-      sinkSource, from: "func establishTakeID(_ takeID: String) {", to: "\n  }")
+    // #1884: acceptance now activates BOTH effects through one method. The tag
+    // write is asserted here; the `dictation.started` emission below.
+    #expect(sinkSource.contains("func acceptSession(takeID: String) {"))
+    let acceptBody = try Self.slice(
+      sinkSource, from: "func acceptSession(takeID: String) {", to: "\n  }")
     #expect(
-      establish.contains("updateTakeID(takeID)"),
+      acceptBody.contains("updateTakeID(takeID)"),
       "must route through the same writer as the per-event refresh and terminal clear"
+    )
+    #expect(
+      acceptBody.contains("dictationStarted("),
+      "#1884: acceptance must also emit the denominator — removing it must fail this"
     )
 
     // And production actually wires it — an unwired hook is a dead guard.
     let factorySource = try Self.read(
       "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift")
     #expect(factorySource.contains("telemetryRelay.establishTakeID(takeID)"))
-    #expect(factorySource.contains("lifecycleSink.establishTakeID(takeID)"))
+    #expect(factorySource.contains("lifecycleSink.acceptSession(takeID: takeID)"))
+
+    // #1884 terminal path: kernel -> relay -> sink, all three links. The kernel
+    // and sink defaults are INERT, so unit tests alone can pass with nothing
+    // wired in production (validation-discipline
+    // RULE: a-guard-nothing-arms-is-not-a-guard applied to an emitter).
+    #expect(factorySource.contains("telemetryRelay.deliverSessionTerminal(snapshot)"))
+    #expect(factorySource.contains("telemetryRelay.sessionTerminal = "))
+    #expect(factorySource.contains("lifecycleSink.emitTerminal(snapshot)"))
+
+    let terminalKernelSource = try Self.read(
+      "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift")
+    #expect(
+      terminalKernelSource.contains("defer { sessionTerminalTelemetry(terminalSnapshot) }"),
+      "#1884: delivery must be deferred so a later cleanup return cannot lose it"
+    )
+
+    // #1890 attribution: the freeze MEASURES. Both producers previously handed it
+    // `measurement: nil`, so every signal-free row shipped without the two energy
+    // values it exists to carry, and the comment above the function claimed the
+    // measurement happened. Owning the measurement removes the argument a caller
+    // can forget; this fails if it is ever handed back out.
+    let freeze = try Self.slice(
+      terminalKernelSource,
+      from: "private func freezeSignalAttribution(", to: "\n  }")
+    #expect(
+      freeze.contains("RawAudioDeadAirClassifier.measure(samples, peak: peak)"),
+      "#1890: the freeze must measure the buffer itself"
+    )
+    #expect(
+      terminalKernelSource.contains("measurement: nil") == false,
+      "#1890: no producer may hand the freeze a measurement, least of all an absent one"
+    )
   }
 
   private static func read(_ relativePath: String) throws -> String {

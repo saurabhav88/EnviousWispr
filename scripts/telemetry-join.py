@@ -79,7 +79,7 @@ LEGACY_IDENTITY_LABEL = "legacy Sentry identity"
 TAKE_TAG = "dictation.take_id"
 TAKE_PROPERTY = "take_id"
 
-# The 13 events Phase 2 routes the take key to. MEASURED from the emitter, not
+# The events Phase 2 routes the take key to. MEASURED from the emitter, not
 # remembered: every name here has a `["take_id"] = takeID` assignment in
 # `TelemetryService.swift`. Match the FIELD, not a `props`/`properties` variable
 # name — a pattern pinned to `props[...]` structurally cannot match the
@@ -94,6 +94,11 @@ TAKE_KEYED_EVENTS = (
     "dictation.first_vad_chunk_completed",
     "dictation.first_vad_chunk_started",
     "dictation.invoked",
+    # #1884: the outcome distribution. `dictation.started` is the denominator
+    # (an accepted take with no terminal crashed, hung, or was force-quit);
+    # `dictation.terminal` classifies every observed ending.
+    "dictation.started",
+    "dictation.terminal",
     "dictation.vad_preparation_completed",
     "llm.polish_completed",
     "llm.polish_failed",
@@ -1668,7 +1673,7 @@ def fetch_take_rates(
     # denominator drawn from its own numerator. The first version of the
     # arithmetic case froze that as `1/1`.
     # ELIGIBLE, not SUCCESSFUL. Plan section 5 defines the affected-user rate over
-    # "installs with >=1 ELIGIBLE take" — any of the 13 keyed events — while the
+    # "installs with >=1 ELIGIBLE take" — any registered keyed event — while the
     # TAKE-level rate above deliberately uses successful `dictation.completed`
     # takes. One filter served both and quietly narrowed this denominator: an
     # install with keyed VAD, invocation or failure events but no successful
@@ -3351,7 +3356,10 @@ def run_self_test() -> int:
     ]
     assert queried == list(TAKE_KEYED_EVENTS), queried
     assert len(coverage_transport.seen) == len(TAKE_KEYED_EVENTS), len(coverage_transport.seen)
-    passed("take coverage queries every one of the 13 events, one bounded query each")
+    passed(
+        f"take coverage queries every one of {len(TAKE_KEYED_EVENTS)} events, "
+        "one bounded query each"
+    )
 
     # TRUNCATION. Measured 2026-07-30: PostHog caps a HogQL result at 100 rows and
     # sets `hasMore: true`. Every query in this file is an aggregate or a bounded

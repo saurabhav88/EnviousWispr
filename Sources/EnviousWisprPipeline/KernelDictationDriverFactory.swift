@@ -228,12 +228,21 @@ public enum KernelDictationDriverFactory {
     /// then called synchronously from `start(config:)` on every accepted session.
     var sessionAccepted: (@MainActor (String) -> Void)?
 
+    /// #1884: set after the lifecycle sink exists, for the same construction-order
+    /// reason as `sessionAccepted` above. Called from `finishTerminal`'s `defer`
+    /// with an immutable snapshot, exactly once per accepted terminal.
+    var sessionTerminal: (@MainActor (KernelTerminalTelemetrySnapshot) -> Void)?
+
     func emitRecordingStopped(sampleCount: Int) {
       recordingStopped?(sampleCount)
     }
 
     func establishTakeID(_ takeID: String) {
       sessionAccepted?(takeID)
+    }
+
+    func deliverSessionTerminal(_ snapshot: KernelTerminalTelemetrySnapshot) {
+      sessionTerminal?(snapshot)
     }
 
     func modelLoadWedgeTelemetry() -> KernelModelLoadWedgeTelemetry? {
@@ -504,6 +513,11 @@ public enum KernelDictationDriverFactory {
       sessionAcceptedTelemetry: { takeID in
         telemetryRelay.establishTakeID(takeID)
       },
+      // #1884: same relay, same reason — the kernel is constructed before the
+      // lifecycle sink, so the terminal callback cannot reference it directly.
+      sessionTerminalTelemetry: { snapshot in
+        telemetryRelay.deliverSessionTerminal(snapshot)
+      },
       markPipelineTimingStart: {
         outcome.pipelineStartedAtSeconds = CFAbsoluteTimeGetCurrent()
       },
@@ -572,8 +586,14 @@ public enum KernelDictationDriverFactory {
     }
     // #1846: the sink stays the SINGLE writer of `dictation.take_id`; this only
     // gives the kernel a synchronous way to reach it at session acceptance.
+    // #1884: acceptance now activates BOTH effects through one sink method — the
+    // Sentry take tag (unchanged single writer) and the `dictation.started`
+    // denominator. One identity, no second callback.
     telemetryRelay.sessionAccepted = { [lifecycleSink] takeID in
-      lifecycleSink.establishTakeID(takeID)
+      lifecycleSink.acceptSession(takeID: takeID)
+    }
+    telemetryRelay.sessionTerminal = { [lifecycleSink] snapshot in
+      lifecycleSink.emitTerminal(snapshot)
     }
 
     // 9. Observer (constructed AFTER kernel — needs the kernel ref). The

@@ -280,43 +280,15 @@ final class KernelHeartPathTelemetryObserver {
       events.append(.asrCompleted)
     }
 
-    if prevOutcome == nil, let outcome,
-      let event = terminalEvent(for: outcome, isStreaming: isStreaming)
-    {
+    if prevOutcome == nil, let outcome {
       // Conclusion — the ending event (the paired `→ .idle` has none).
-      events.append(event)
+      // Shared projection: `KernelTerminalProjections.swift`. The terminal
+      // telemetry path renders the SAME value from its frozen snapshot, so the
+      // two vendors cannot disagree about what ended a dictation (#1884).
+      events.append(outcome.lifecycleEvent)
     }
 
     return events
   }
 
-  /// Map a concluded session's `RecordingOutcome` to its terminal lifecycle
-  /// event (#1548 D1). `.noTransport` projects to the existing
-  /// `.failed(.noAudioCaptured)` telemetry (locked projection, plan §4 / §7) —
-  /// no new Sentry/PostHog identity.
-  static func terminalEvent(
-    for outcome: RecordingOutcome,
-    isStreaming: Bool
-  ) -> KernelLifecycleEvent? {
-    switch outcome {
-    case .completed:
-      return .pipelineCompleted
-    case .failed(let reason):
-      return .failed(reason)
-    case .cancelled:
-      return .cancelled
-    case .discarded(let reason):
-      return .discarded(reason)
-    case .noSpeech(let source):
-      return .noSpeech(source)
-    case .audioInterrupted(let cause):
-      // Default defensively to `.engineLost` if the cause was not stamped — a
-      // lost recording with no cause is still an unowned loss (#1174 A3).
-      return .audioInterrupted(cause: cause ?? .engineLost)
-    case .asrInterrupted(let wasRecording):
-      return .asrInterrupted(wasRecording: wasRecording)
-    case .noTransport:
-      return .failed(.noAudioCaptured)
-    }
-  }
 }
