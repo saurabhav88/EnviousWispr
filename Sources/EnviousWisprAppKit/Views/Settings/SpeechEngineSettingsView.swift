@@ -289,7 +289,7 @@ struct SpeechEngineSettingsView: View {
                   .toggleStyle(BrandedToggleStyle())
                   liveTranscriptionHelpButton
                 }
-                Text(LiveTranscriptionCopy.toggleDescription)
+                Text(LiveTranscriptionCopy.toggleDescription(for: settings.selectedBackend))
                   .settingsReadingCopy()
                 if settings.selectedBackend == .whisperKit,
                   isAutoLanguage(settings.languageMode)
@@ -615,60 +615,75 @@ struct SpeechEngineSettingsView: View {
     }
   }
 
-  /// Ordered speed first, then the measured cost, then why, then the recommendation.
-  /// Speed leads because speed is why anyone turns this on, so the answer they came for
-  /// should not be buried under a caveat.
+  /// Ordered speed first, then accuracy, then why, then the recommendation. Speed leads
+  /// because speed is why anyone turns this on, so the answer they came for should not be
+  /// buried under a caveat.
+  ///
+  /// Content is per-engine. The two engines stream by different mechanisms and the evidence
+  /// points opposite ways, so a single panel would give one of them wrong advice
+  /// (diff review, 2026-07-31). The comparison table renders only when that engine actually
+  /// has defensible figures.
   private var liveTranscriptionHelpPanel: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text(LiveTranscriptionCopy.helpTitle)
+    let panel = LiveTranscriptionCopy.panel(for: settings.selectedBackend)
+    return VStack(alignment: .leading, spacing: 12) {
+      Text(panel.title)
         .font(.stSectionHeader)
 
-      VStack(alignment: .leading, spacing: 4) {
-        Text(LiveTranscriptionCopy.helpSpeedHeading).font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-        Text(LiveTranscriptionCopy.helpSpeedBody).settingsReadingCopy()
+      helpSection(panel.speedHeading) {
+        Text(panel.speedBody).settingsReadingCopy()
       }
 
-      VStack(alignment: .leading, spacing: 6) {
-        Text(LiveTranscriptionCopy.helpAccuracyHeading).font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
-          GridRow {
-            Text("")
-            Text(LiveTranscriptionCopy.helpComparisonOffColumn)
-            Text(LiveTranscriptionCopy.helpComparisonOnColumn)
-          }
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-          ForEach(LiveTranscriptionCopy.comparisons) { row in
-            GridRow {
-              Text(row.metric)
-              Text(row.off)
-              Text(row.on)
+      helpSection(panel.accuracyHeading) {
+        VStack(alignment: .leading, spacing: 6) {
+          if panel.comparisons.isEmpty == false {
+            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
+              GridRow {
+                Text("")
+                Text("Off")
+                Text("On")
+              }
+              .font(.stHelper)
+              .foregroundStyle(Color.stTextSecondary)
+              ForEach(panel.comparisons) { row in
+                GridRow {
+                  Text(row.metric)
+                  Text(row.off)
+                  Text(row.on)
+                }
+              }
             }
+            .font(.stBody)
           }
+          Text(panel.accuracyBody).settingsReadingCopy()
         }
-        .font(.stBody)
-        Text(LiveTranscriptionCopy.helpLostEndings).settingsReadingCopy()
       }
 
-      VStack(alignment: .leading, spacing: 4) {
-        Text(LiveTranscriptionCopy.helpWhyHeading).font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-        Text(LiveTranscriptionCopy.helpWhyBody).settingsReadingCopy()
+      helpSection(panel.whyHeading) {
+        Text(panel.whyBody).settingsReadingCopy()
       }
 
-      VStack(alignment: .leading, spacing: 4) {
-        Text(LiveTranscriptionCopy.helpRecommendationHeading).font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-        Text(LiveTranscriptionCopy.helpRecommendationBody).settingsReadingCopy()
+      helpSection(panel.recommendationHeading) {
+        Text(panel.recommendationBody).settingsReadingCopy()
       }
 
-      Text(LiveTranscriptionCopy.helpFootnote)
+      Text(panel.footnote)
         .settingsReadingCopy()
     }
     .frame(maxWidth: 340, alignment: .leading)
     .padding(16)
+  }
+
+  /// A labelled block inside the help panel. Extracted so the four sections cannot drift
+  /// apart in spacing or heading treatment.
+  private func helpSection<Content: View>(
+    _ heading: String, @ViewBuilder content: () -> Content
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(heading)
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
+      content()
+    }
   }
 
   // MARK: - Spoken punctuation help (#1794)
