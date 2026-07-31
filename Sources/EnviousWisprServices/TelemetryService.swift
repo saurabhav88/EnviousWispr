@@ -241,7 +241,8 @@ public final class TelemetryService {
   // MARK: - App Lifecycle
 
   public func appLaunched(
-    version: String, build: String, osVersion: String, hardware: String, isFreshInstall: Bool,
+    version: String, build: String, osVersion: String, hardware: String,
+    deviceModel: String, isFreshInstall: Bool,
     aiCapable: Bool, aiEnabled: Bool
   ) {
     PostHogSDK.shared.capture(
@@ -251,6 +252,9 @@ public final class TelemetryService {
         "build": build,
         "os_version": osVersion,
         "hardware": hardware,
+        // #1572: the SPECIFIC machine, alongside the architecture. `hardware` keeps
+        // its meaning so its own history stays readable.
+        "device_model": deviceModel,
         "is_fresh_install": isFreshInstall,
         "ai_capable": aiCapable,
         "ai_enabled": aiEnabled,

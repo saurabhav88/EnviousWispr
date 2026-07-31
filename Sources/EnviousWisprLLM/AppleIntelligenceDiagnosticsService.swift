@@ -134,7 +134,8 @@ public enum AppleIntelligenceDiagnosticsService {
     let isCapable = frameworkAndOS && !deviceIneligible
     let isEnabled = eligibility?.status == .passed
     return LaunchAvailabilitySnapshot(
-      hardwareClass: hardwareClass, isCapable: isCapable, isEnabled: isEnabled)
+      hardwareClass: hardwareClass, deviceModel: currentDeviceModel(),
+      isCapable: isCapable, isEnabled: isEnabled)
   }
 
   // MARK: - Timeout Helpers
@@ -358,12 +359,27 @@ public enum AppleIntelligenceDiagnosticsService {
     return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
   }
 
-  private static func currentHardwareClass() -> String {
+  private static func currentHardwareClass() -> String { sysctlString("hw.machine") }
+
+  private static func currentDeviceModel() -> String { sysctlString("hw.model") }
+
+  /// One sysctl string reader for both hardware keys.
+  ///
+  /// Written as one function rather than two near-identical bodies: the
+  /// NUL-trimming and the sign-flip from `CChar` are the parts that are easy to
+  /// get subtly wrong, and a second copy is a second chance to get them wrong.
+  ///
+  /// Returns "unknown" rather than an empty string when the key is missing or the
+  /// read fails, so a failed read is distinguishable in the data from a machine
+  /// that genuinely reported nothing. An empty string would silently group with
+  /// every other empty value.
+  private static func sysctlString(_ key: String) -> String {
     var size: size_t = 0
-    sysctlbyname("hw.machine", nil, &size, nil, 0)
-    var machine = [CChar](repeating: 0, count: size)
-    sysctlbyname("hw.machine", &machine, &size, nil, 0)
-    return String(
-      decoding: machine.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    guard sysctlbyname(key, nil, &size, nil, 0) == 0, size > 0 else { return "unknown" }
+    var buffer = [CChar](repeating: 0, count: size)
+    guard sysctlbyname(key, &buffer, &size, nil, 0) == 0 else { return "unknown" }
+    let value = String(
+      decoding: buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    return value.isEmpty ? "unknown" : value
   }
 }
