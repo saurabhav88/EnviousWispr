@@ -50,11 +50,25 @@ CANONICAL_LANES="Docs/dev-tooling Eval-harness CI/workflow Content Worker Code"
 # trailing character class rejects a longer word that merely starts with a lane
 # name (`Codebase` is not `Code`).
 
-# The shapes a lane declaration actually takes across the tracked plans, counted
-# rather than assumed: 270 `**Lane:**`, 39 `- **Lane:**`, 8 bare `Lane:`, 3
-# `- Lane:`, 1 `- Primary lane:`. The old anchor was `^\*\*Lane:\*\*`, which
-# silently missed the last 51 and fell back to the detected lane.
-LANE_LINE_PATTERN='^[-*[:space:]]*\*{0,2}(primary )?lane\*{0,2}:'
+# The DECLARATION shapes, enumerated exhaustively across every plan on disk with
+#   grep -rhoiE "^[^:]{0,40}lane[^:]{0,10}:" docs/feature-requests/*.md
+# (no prefix assumed) rather than guessed one review round at a time:
+#
+#   270  **Lane:            39  - **Lane:           8  Lane:
+#     3  - Lane:             2  - **Declared lane:  1  - Primary lane:
+#
+# The qualifier set is CLOSED — nothing, `Declared `, or `Primary `. It is
+# deliberately NOT "any word before lane:", because the same sweep shows plenty
+# of PROSE in that shape that must never be mistaken for the declaration:
+# `**Validation lane:` (a different field entirely), `**Code lane:`,
+# `- **Worker lane:`, `REFACTOR lane:`, `Lane detection:`, `Mixed-lane note:`,
+# and `"declared_lane":` inside a JSON block. A permissive pattern would match
+# one of those, find no canonical lane in it, and now HARD-FAIL the run — a
+# worse failure than the bug being fixed.
+#
+# The old anchor was `^\*\*Lane:\*\*`, which silently missed 53 real
+# declarations and fell back to the detected lane.
+LANE_LINE_PATTERN='^[-*[:space:]]*\*{0,2}((declared|primary) )?lane\*{0,2}:'
 
 match_canonical_lane() {
   local raw="$1" lane
@@ -144,8 +158,10 @@ Lane: Worker|Worker
 - **Lane:** `Code`|Code
 - Primary lane: **Eval-harness** (data under `scripts/eval/`), NOT in this plan's first PR.|Eval-harness
 **Lane:** Mixed — Code (DEBUG seams) + Docs/dev-tooling (harness).|-
+- **Declared lane:** Code|Code
+- Declared lane: Docs/dev-tooling|Docs/dev-tooling
 CASES
-  echo "self-test: lane matcher exercised over 18 cases"
+  echo "self-test: lane matcher exercised over 20 cases"
 
   # The declaration line must also be FOUND. A matcher that parses every shape
   # is useless behind a grep anchored to one of them (#1861 cloud review P1).
@@ -164,9 +180,17 @@ CASES
 Lane: Code|found
 - Lane: Code|found
 - Primary lane: Eval-harness|found
+- **Declared lane:** Code|found
 Detect the lane from the PR's actual change set|-
+**Validation lane:** Y|-
+**Code lane:** obligations below|-
+- **Worker lane:** routine prompt|-
+REFACTOR lane: module moves|-
+Lane detection:|-
+Mixed-lane note:|-
+  "declared_lane": "Code",|-
 FINDCASES
-  echo "self-test: lane line pattern exercised over 6 cases"
+  echo "self-test: lane line pattern exercised over 14 cases"
 
   echo "self-test results: $pass passed, $fail failed"
   [ "$fail" -eq 0 ]
@@ -261,17 +285,27 @@ fi
 DECLARED=""
 if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
   echo "==> Plan: $PLAN_FILE"
-  LANE_LINE=$(grep -m1 -iE "$LANE_LINE_PATTERN" "$PLAN_FILE" 2>/dev/null || echo "")
-  if [ -n "$LANE_LINE" ]; then
-    if ! DECLARED=$(match_canonical_lane "$LANE_LINE"); then
-      echo "FAIL: plan declares a lane that is not one of: $CANONICAL_LANES" >&2
-      echo "      $PLAN_FILE" >&2
-      echo "      $LANE_LINE" >&2
-      echo "      The lane token must come FIRST after the label. Trailing prose," >&2
-      echo "      parens, backticks and bold are fine. 'Mixed' is not a lane —" >&2
-      echo "      declare one primary lane, then 'mixed_pr: true' on its own line." >&2
-      exit 2
-    fi
+  # Try EVERY matching line, not just the first. The pattern is bounded to real
+  # declaration shapes, but a plan that quotes the preface format before
+  # declaring its own lane would otherwise hard-fail on the quotation. Failing
+  # only when NO matching line yields a canonical lane keeps the check strict
+  # about genuinely-wrong declarations without being brittle about prose.
+  FIRST_LANE_LINE=""
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    [ -n "$FIRST_LANE_LINE" ] || FIRST_LANE_LINE="$candidate"
+    if DECLARED=$(match_canonical_lane "$candidate"); then break; fi
+    DECLARED=""
+  done < <(grep -iE "$LANE_LINE_PATTERN" "$PLAN_FILE" 2>/dev/null || true)
+
+  if [ -n "$FIRST_LANE_LINE" ] && [ -z "$DECLARED" ]; then
+    echo "FAIL: plan declares a lane that is not one of: $CANONICAL_LANES" >&2
+    echo "      $PLAN_FILE" >&2
+    echo "      $FIRST_LANE_LINE" >&2
+    echo "      The lane token must come FIRST after the label. Trailing prose," >&2
+    echo "      parens, backticks and bold are fine. 'Mixed' is not a lane —" >&2
+    echo "      declare one primary lane, then 'mixed_pr: true' on its own line." >&2
+    exit 2
   fi
 else
   echo "==> Plan: <none for this branch>"
