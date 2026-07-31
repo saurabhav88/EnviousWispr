@@ -18,6 +18,8 @@ public protocol AudioCaptureInterface: AnyObject {
   /// route resolution. Telemetry-only observation — nothing branches capture on
   /// it (#1376).
   var currentResolvedRoute: ResolvedRouteTransports? { get }
+  /// #1714: see the defaulted implementation below.
+  var currentInputResolutionSource: String? { get }
 
   // Callback properties (read-write)
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)? { get set }
@@ -207,6 +209,14 @@ extension AudioCaptureInterface {
   /// source-compatible. The real capture backend (`AudioCaptureManager`)
   /// overrides it with the bind its own `prepare()` returned (#1844).
   public var zeroSignalDiscriminatorDevice: BoundInputDevice? { nil }
+
+  /// #1714: WHY the microphone this session is using was chosen —
+  /// `pinned_uid`, `system_default` or `list_fallback`. Default `nil` so every
+  /// existing conformer (test fakes, simulator doubles) stays source-compatible;
+  /// `AudioCaptureManager` overrides it. A low-cardinality telemetry string, and
+  /// the ONLY public surface #1714 adds. Observation-only: nothing may branch
+  /// capture on it, and a nil value degrades attribution, never recording.
+  public var currentInputResolutionSource: String? { nil }
 
   /// #1317: default `false` — test fakes and simulator doubles have no reactive
   /// per-buffer detector, so no run of theirs can carry a refusal reason.

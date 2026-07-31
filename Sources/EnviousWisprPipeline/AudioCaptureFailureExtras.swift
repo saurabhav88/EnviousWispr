@@ -25,7 +25,10 @@ enum AudioCaptureFailureExtras {
       routeFallbackReason: resolvedRoute?.routeFallbackReason,
       inputSelectionMode: resolvedRoute?.inputSelectionMode,
       outputTransport: resolvedRoute?.outputTransport,
-      routeResolutionSource: resolvedRoute?.routeResolutionSource
+      routeResolutionSource: resolvedRoute?.routeResolutionSource,
+      // #1714: read from the interface this builder already receives — no new
+      // argument, no downcast to the concrete manager.
+      inputResolutionSource: audioCapture.currentInputResolutionSource
     )
 
     if let source = (error as? AudioError)?.diagnosticSource {

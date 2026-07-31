@@ -9,9 +9,9 @@ import CoreAudio
 /// could describe a microphone the session never recorded from. Returning the
 /// bind makes "read it before it exists" unexpressible rather than merely tested.
 ///
-/// All three fields are read together in HAL's single all-succeeded commit block
+/// All four fields are read together in HAL's single all-succeeded commit block
 /// and cleared together in its single teardown, so they are ONE fact with one
-/// lifetime — not three accessors that could drift apart.
+/// lifetime, not four accessors that could drift apart.
 ///
 /// **Visibility.** `public` is the NARROWEST WORKING visibility, not a default.
 /// `AudioCaptureInterface` is already `public` (`AudioCaptureInterface.swift:7`)
@@ -35,9 +35,29 @@ public struct BoundInputDevice: Equatable, Sendable {
   /// authority; this is not a second home for the fact.
   public let transportLabel: String?
 
-  public init(deviceID: AudioDeviceID, deviceUID: String?, transportLabel: String?) {
+  /// WHY this device was chosen, frozen at resolution time (#1714):
+  /// `pinned_uid`, `system_default` or `list_fallback`.
+  ///
+  /// **Non-optional and undefaulted, deliberately.** Cold resolution normally
+  /// happens during `preWarm()`, which discards the bind it gets back, and the
+  /// recording that follows takes the WARM path — so by the time a take
+  /// completes, nothing else on the session still knows why this microphone was
+  /// picked. Riding on the bind is what carries the fact across that gap. An
+  /// optional or defaulted field would let a conformer commit a bind without
+  /// saying why and still compile, and the attribution would silently read
+  /// `system_default` for every fallback take — which is precisely the metric
+  /// #1714 ships to prove the fix works.
+  ///
+  /// A low-cardinality `String`, not the resolver enum: `AudioCaptureInterface`
+  /// is `public`, and a public requirement cannot expose a package type.
+  public let resolutionSource: String
+
+  public init(
+    deviceID: AudioDeviceID, deviceUID: String?, transportLabel: String?, resolutionSource: String
+  ) {
     self.deviceID = deviceID
     self.deviceUID = deviceUID
     self.transportLabel = transportLabel
+    self.resolutionSource = resolutionSource
   }
 }

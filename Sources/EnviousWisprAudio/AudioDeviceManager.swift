@@ -8,6 +8,34 @@ public struct AudioInputDevice: Sendable, Identifiable, Hashable {
   public let uid: String
 }
 
+/// One input-device candidate, frozen during a SINGLE enumeration pass (#1714).
+///
+/// Distinct from `AudioInputDevice`, which carries no transport: capture
+/// resolution has to rank candidates by transport, and re-reading the transport
+/// per candidate later would describe a different hardware state than the one
+/// that was enumerated.
+struct InputDeviceCandidate: Sendable, Equatable {
+  let id: AudioDeviceID
+  let uid: String
+  /// Raw CoreAudio transport constant, or nil if the property read FAILED.
+  /// Nil-preserving on purpose: `kAudioDeviceTransportTypeUnknown` (0) is itself
+  /// a real reported value, so collapsing a failed read into it would hide the
+  /// failure from telemetry.
+  let rawTransport: UInt32?
+}
+
+/// The result of ONE input-device enumeration pass (#1714).
+///
+/// A CoreAudio read failure is a distinct case, never an empty success. The two
+/// are different facts and they select different errors: an empty successful
+/// list proves no microphone is attached, a failed read proves nothing, and
+/// telling the user to connect a microphone after a failed READ would be a
+/// false statement.
+enum InputDeviceSnapshot: Sendable, Equatable {
+  case success([InputDeviceCandidate])
+  case readFailed
+}
+
 /// Enumerates audio input devices using CoreAudio HAL.
 public enum AudioDeviceEnumerator {
   /// Returns all audio input devices currently connected.
@@ -55,6 +83,122 @@ public enum AudioDeviceEnumerator {
         uid: uid
       )
     }
+  }
+
+  /// ONE frozen input-device enumeration for capture resolution (#1714).
+  ///
+  /// Two differences from `allInputDevices()`, both load-bearing:
+  /// a property-read failure stays a typed failure instead of collapsing into
+  /// an empty list (`allInputDevices()` returns `[]` for both), and every
+  /// candidate carries the RAW transport read during this same pass.
+  ///
+  /// This is one frozen RESOLUTION INPUT, not an atomic CoreAudio transaction:
+  /// the device list and each device's own properties are separate reads at
+  /// separate instants. `InputDeviceResolver` calls this at most once per
+  /// attempt; callers must never re-enumerate for logging or telemetry.
+  ///
+  /// Deliberately NOT merged with `allInputDevices()`, which stays the settings
+  /// picker's reader: the picker needs display names and can live with the
+  /// failure-collapses-to-empty behaviour, capture resolution needs transports
+  /// and cannot. Two owners for two questions, not an accident to tidy up.
+  static func inputDeviceSnapshot() -> InputDeviceSnapshot {
+    var propertyAddress = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDevices,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+
+    var dataSize: UInt32 = 0
+    var status = AudioObjectGetPropertyDataSize(
+      AudioObjectID(kAudioObjectSystemObject),
+      &propertyAddress,
+      0,
+      nil,
+      &dataSize
+    )
+    guard status == noErr else { return .readFailed }
+    // A zero-byte device list is a SUCCESSFUL read of an empty machine, not a
+    // failure — the size call already returned noErr.
+    guard dataSize > 0 else { return .success([]) }
+
+    let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+    var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
+
+    status = AudioObjectGetPropertyData(
+      AudioObjectID(kAudioObjectSystemObject),
+      &propertyAddress,
+      0,
+      nil,
+      &dataSize,
+      &deviceIDs
+    )
+    guard status == noErr else { return .readFailed }
+
+    var candidates: [InputDeviceCandidate] = []
+    for deviceID in deviceIDs {
+      // #1714 whole-diff review: a FAILED channel-count read must not be dropped
+      // like an output-only device. If it were the only microphone, the snapshot
+      // would come back successfully empty and the resolver would treat that as
+      // PROOF no microphone exists — the exact failure-vs-empty conflation this
+      // type exists to prevent, one level down. Fail the whole snapshot to
+      // uncertainty instead.
+      guard let channels = inputChannelCountRaw(for: deviceID) else { return .readFailed }
+      guard channels > 0 else { continue }
+      candidates.append(
+        InputDeviceCandidate(
+          id: deviceID,
+          uid: stringProperty(for: deviceID, selector: kAudioDevicePropertyDeviceUID) ?? "",
+          rawTransport: transportTypeRaw(for: deviceID)
+        ))
+    }
+    return .success(candidates)
+  }
+
+  /// The closed allow-list of transports we will bind a microphone on (#1714).
+  ///
+  /// An ALLOW-list, not a deny-list: the dominant risk is silently binding a
+  /// loopback or meeting-app virtual device and recording digital silence,
+  /// which is worse for the user than an honest error. So an unreadable (nil),
+  /// unknown (0) or future unrecognised transport is REFUSED, not accepted.
+  ///
+  /// AirPlay is deliberately absent — it is an output protocol, not a known
+  /// microphone path. A newly observed working transport is added from fleet
+  /// evidence, never accepted before its behaviour is known.
+  ///
+  /// This constrains only the automatic last resort. A device the user pinned
+  /// is selected before this predicate is ever consulted.
+  static func isAllowedPhysicalInputTransport(_ rawTransport: UInt32?) -> Bool {
+    guard let rawTransport else { return false }
+    switch rawTransport {
+    case kAudioDeviceTransportTypeBuiltIn,
+      kAudioDeviceTransportTypeUSB,
+      kAudioDeviceTransportTypeBluetooth,
+      kAudioDeviceTransportTypeBluetoothLE,
+      kAudioDeviceTransportTypeContinuityCaptureWired,
+      kAudioDeviceTransportTypeContinuityCaptureWireless,
+      kAudioDeviceTransportTypeThunderbolt,
+      kAudioDeviceTransportTypeDisplayPort,
+      kAudioDeviceTransportTypeHDMI,
+      kAudioDeviceTransportTypePCI,
+      kAudioDeviceTransportTypeFireWire,
+      kAudioDeviceTransportTypeAVB:
+      return true
+    default:
+      return false
+    }
+  }
+
+  /// Transports we recognise as definitively NOT a physical microphone, so a
+  /// list containing only these PROVES no microphone is attached (#1714 §4.1).
+  ///
+  /// Deliberately narrower than "fails the allow-list". Everything else that
+  /// fails it — unreadable, unknown (0), AirPlay, a future constant — is
+  /// UNCERTAINTY, and telling the user to connect a microphone there would be a
+  /// claim we cannot back.
+  static func isKnownNonMicrophoneTransport(_ rawTransport: UInt32?) -> Bool {
+    guard let rawTransport else { return false }
+    return rawTransport == kAudioDeviceTransportTypeVirtual
+      || rawTransport == kAudioDeviceTransportTypeAggregate
   }
 
   /// Returns the default system input device ID, or nil if unavailable.
@@ -110,12 +254,6 @@ public enum AudioDeviceEnumerator {
       || transport == kAudioDeviceTransportTypeBluetoothLE
   }
 
-  /// Returns the AudioDeviceID of the built-in microphone, if one exists.
-  public static func builtInMicrophoneDeviceID() -> AudioDeviceID? {
-    let devices = allInputDevices()
-    return devices.first { transportType(for: $0.id) == kAudioDeviceTransportTypeBuiltIn }?.id
-  }
-
   /// Returns the default system output device ID, or nil if unavailable.
   public static func defaultOutputDeviceID() -> AudioDeviceID? {
     var propertyAddress = AudioObjectPropertyAddress(
@@ -153,16 +291,6 @@ public enum AudioDeviceEnumerator {
     return isRunning != 0
   }
 
-  /// Recommended input device given current output device and media-playing state.
-  /// Returns the built-in mic if Bluetooth output is active and media is playing;
-  /// nil otherwise (meaning "use whatever is currently selected").
-  public static func recommendedInputDevice() -> AudioDeviceID? {
-    guard let outputDeviceID = defaultOutputDeviceID() else { return nil }
-    guard isBluetoothDevice(outputDeviceID) else { return nil }
-    guard isDeviceRunningSomewhere(outputDeviceID) else { return nil }
-    return builtInMicrophoneDeviceID()
-  }
-
   // MARK: - Transport labels (#1376 single authority)
 
   /// Maps a CoreAudio transport-type constant to the app's low-cardinality
@@ -195,6 +323,16 @@ public enum AudioDeviceEnumerator {
       return "fire_wire"
     case kAudioDeviceTransportTypeThunderbolt:
       return "thunderbolt"
+    // #1714 founder decision 2026-07-30: the physical allow-list ACCEPTS these
+    // three, so reporting them as `unknown` said "we bound something we could
+    // not identify" about a device we selected on purpose. Naming them changes
+    // only what a bound device is CALLED — never eligibility or selection.
+    case kAudioDeviceTransportTypeContinuityCaptureWired:
+      return "continuity_capture_wired"
+    case kAudioDeviceTransportTypeContinuityCaptureWireless:
+      return "continuity_capture_wireless"
+    case kAudioDeviceTransportTypeAVB:
+      return "avb"
     default:
       return "unknown"
     }
@@ -239,7 +377,19 @@ public enum AudioDeviceEnumerator {
   /// stream (`kAudioDevicePropertyStreamConfiguration`). Module-internal (#1523)
   /// so the capture backend can record it as prepare-time fleet telemetry —
   /// this is the single channel-count authority; do not add a second reader.
-  static func inputChannelCount(for deviceID: AudioDeviceID) -> Int {
+  /// Nil-preserving channel count (#1714 whole-diff review).
+  ///
+  /// Returns nil when a CoreAudio property READ FAILS, and 0 when the device
+  /// genuinely exposes no input streams. `inputChannelCount(for:)` collapses
+  /// both to 0, which is right for its two callers but WRONG for capture
+  /// resolution: a device whose read failed would be silently dropped from the
+  /// snapshot, and if it were the only microphone the resolver would treat the
+  /// empty list as PROOF none exists and tell the user to connect one.
+  ///
+  /// Same nil-preserving shape as `transportTypeRaw(for:)` above, for the same
+  /// reason — this is the per-DEVICE twin of the failure-vs-empty distinction
+  /// `inputDeviceSnapshot()` already makes for the device LIST.
+  static func inputChannelCountRaw(for deviceID: AudioDeviceID) -> Int? {
     var propertyAddress = AudioObjectPropertyAddress(
       mSelector: kAudioDevicePropertyStreamConfiguration,
       mScope: kAudioObjectPropertyScopeInput,
@@ -248,7 +398,10 @@ public enum AudioDeviceEnumerator {
 
     var dataSize: UInt32 = 0
     let status = AudioObjectGetPropertyDataSize(deviceID, &propertyAddress, 0, nil, &dataSize)
-    guard status == noErr, dataSize > 0 else { return 0 }
+    guard status == noErr else { return nil }
+    // A zero-size stream configuration is a SUCCESSFUL read of a device with no
+    // input streams — an output-only device, correctly skipped.
+    guard dataSize > 0 else { return 0 }
 
     // AudioBufferList has a variable-length trailing array of AudioBuffer entries.
     // Allocate the exact byte count reported by CoreAudio to avoid heap corruption
@@ -263,10 +416,17 @@ public enum AudioDeviceEnumerator {
 
     let getStatus = AudioObjectGetPropertyData(
       deviceID, &propertyAddress, 0, nil, &dataSize, bufferListPointer)
-    guard getStatus == noErr else { return 0 }
+    guard getStatus == noErr else { return nil }
 
     let bufferList = UnsafeMutableAudioBufferListPointer(bufferListPointer)
     return bufferList.reduce(0) { $0 + Int($1.mNumberChannels) }
+  }
+
+  /// Collapsing channel count: a failed read reads as 0, which is what the
+  /// settings picker and the bind-time telemetry both want. Capture resolution
+  /// must NOT use this — see `inputChannelCountRaw(for:)`.
+  static func inputChannelCount(for deviceID: AudioDeviceID) -> Int {
+    inputChannelCountRaw(for: deviceID) ?? 0
   }
 
   private static func stringProperty(

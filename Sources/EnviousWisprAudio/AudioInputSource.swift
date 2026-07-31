@@ -22,6 +22,18 @@ protocol AudioInputSource: AnyObject {
   var onInterrupted: ((EngineInterruptionCause) -> Void)? { get set }
   var onLifecycleSignal: (@Sendable (String) -> Void)? { get set }
 
+  /// #1714: fires exactly once per COLD `prepare()`, synchronously, before it
+  /// returns or throws. Warm reuse fires nothing — a reused bind is not a new
+  /// resolution.
+  ///
+  /// **Deliberately undefaulted.** A no-op default would let a future conformer
+  /// silently report no attribution at all, and the failure would look exactly
+  /// like "this user never had a cold open" in the data. The compiler forces
+  /// each conformer to say whether it supports this.
+  var onInputResolutionAttemptFinalized: ((FinalizedInputResolutionAttempt) -> Void)? {
+    get set
+  }
+
   /// Liveness-watchdog callback — fires once per capture session if zero
   /// buffers are delivered within `Constants.audioCaptureStallWindowMs` of
   /// tap install. Set by `AudioCaptureManager` on every `resolveSource()`.

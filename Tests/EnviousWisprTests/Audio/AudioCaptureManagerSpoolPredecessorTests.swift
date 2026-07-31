@@ -212,7 +212,7 @@ import Testing
       defer { try? FileManager.default.removeItem(at: dir) }
       let manager = AudioCaptureManager()
       let stub = StopFenceStub()
-      manager.installSourceFactoryForTesting { stub }
+      manager.installSourceFactoryForTesting { _ in stub }
       try await manager.startEnginePhase()
 
       manager.armRecoverySpoolingForTesting(
@@ -258,8 +258,12 @@ import Testing
         (nil, nil)
       }
     #endif
+    /// #1714: the undefaulted protocol witness. This suite never fires it;
+    /// declaring it explicitly is exactly what the undefaulted requirement is for.
+    var onInputResolutionAttemptFinalized: ((FinalizedInputResolutionAttempt) -> Void)?
     var boundToReturn = BoundInputDevice(
-      deviceID: 1, deviceUID: "stub-uid", transportLabel: "stub")
+      deviceID: 1, deviceUID: "stub-uid", transportLabel: "stub",
+      resolutionSource: "system_default")
     func prepare() async throws -> BoundInputDevice { boundToReturn }
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
       AsyncStream { $0.finish() }

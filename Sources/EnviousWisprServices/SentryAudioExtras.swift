@@ -28,7 +28,8 @@ public enum SentryAudioExtras {
     routeFallbackReason: String? = nil,
     inputSelectionMode: String? = nil,
     outputTransport: String? = nil,
-    routeResolutionSource: String? = nil
+    routeResolutionSource: String? = nil,
+    inputResolutionSource: String? = nil
   ) -> [String: Any] {
     var extras: [String: Any] = [
       "capture.source_type": sourceType,
@@ -95,6 +96,12 @@ public enum SentryAudioExtras {
     if let ism = inputSelectionMode { extras["capture.input_selection_mode"] = ism }
     if let ot = outputTransport { extras["capture.output_transport"] = ot }
     if let rrs = routeResolutionSource { extras["capture.route_resolution_source"] = rrs }
+    // #1714: WHY the input device was selected. Deliberately NOT named
+    // `resolution_source`: `route_resolution_source` above already carries
+    // `app_derived` / `helper_reported`, which is how a TRANSPORT LABEL was
+    // derived — an unrelated question. Two near-identical keys on one event
+    // would make every future query ambiguous. Nil omits the key entirely.
+    if let irs = inputResolutionSource { extras["capture.input_resolution_source"] = irs }
 
     return extras
   }

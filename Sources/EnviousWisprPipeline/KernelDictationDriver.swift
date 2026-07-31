@@ -985,6 +985,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
   /// kernel; never persisted. Low-cardinality transport/reason strings only.
   public var lastResolvedRoute: ResolvedRouteTransports? { kernel.lastResolvedRoute }
+  /// #1714: WHY this session's microphone was chosen — `pinned_uid`,
+  /// `system_default` or `list_fallback`. A direct read-through of the kernel's
+  /// frozen value, following `lastResolvedRoute`'s precedent; the App layer
+  /// reads it after completion OR failure for terminal telemetry.
+  public var lastInputResolutionSource: String? { kernel.lastInputResolutionSource }
   /// #1434: non-nil when the most recent completion was a degraded-lead
   /// SALVAGE (the transcript was recovered by trimming a poisoned opening) —
   /// drives the post-completion disclosure pill and `dictation.completed`
