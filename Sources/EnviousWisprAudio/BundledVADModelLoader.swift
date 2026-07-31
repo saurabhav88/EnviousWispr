@@ -33,6 +33,23 @@ enum BundledVADModelLoader {
     do {
       // Match the pinned FluidAudio VAD loader (`DownloadUtils.swift:301-303`).
       // Keep this heart-path policy explicit across dependency updates (#1784).
+      //
+      // Deliberately NOT copied from `DownloadUtils.loadModelsOnce` (#1784
+      // audit, 2026-07-30): its aggregate cache-presence check, its three
+      // per-model structural checks (path exists, path is a directory, contains
+      // `coremldata.bin`), and — in the `loadModels` wrapper around it — the
+      // delete-cache-then-redownload retry. The retry has no equivalent here
+      // because this path has no download source to re-fetch from. The three
+      // structural checks are REDUNDANT rather than unreachable: the `Bundle`
+      // lookup above already proves the named resource exists, and
+      // `MLModel(contentsOf:configuration:)` is the authority on whether the
+      // compiled model is loadable — a failure surfaces as `.loadFailed`
+      // carrying the real CoreML error instead of a synthesized one.
+      //
+      // Do not upgrade that to "corruption is impossible here." App-bundle
+      // resources are covered by the code signature's resource seal, but a seal
+      // is integrity EVIDENCE, not proof: bad bytes can be signed at packaging
+      // time, and bytes can change after the initial validation.
       let configuration = MLModelConfiguration()
       configuration.computeUnits = .cpuAndNeuralEngine
       configuration.allowLowPrecisionAccumulationOnGPU = true
