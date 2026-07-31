@@ -244,65 +244,39 @@ struct TerminalContextResolverTests {
     // five could take five times the cap between them and no single call ever
     // looked late.
     //
-    // TIMING MARGINS HERE ARE ONE-DIRECTIONAL, and must stay that way (#1893).
-    // A busy-wait guarantees a call costs AT LEAST its target and says nothing
-    // about the ceiling, and `step` also charges three accessibility
-    // round-trips inside the same window. So every assertion must survive a
-    // call costing MORE than asked. The original wanted four 25 ms calls to fit
-    // a 100 ms budget EXACTLY — one call of overhead short — and a loaded CI
-    // runner exhausted the budget in three, failing the required check on an
-    // unrelated PR.
+    // NO ASSERTION HERE MAY DEPEND ON WALL TIME (#1893), which is the rule the
+    // rest of this suite already follows through `TestClock`. Three review
+    // rounds landed on this one test, each on a different face of the same
+    // mistake, and each patch created the next: a busy-wait guarantees a floor
+    // and never a ceiling, so a threshold sized for calls that take *at least*
+    // 25 ms fails when a runner makes one take longer (the original, which
+    // needed four 25 ms calls to fit 100 ms exactly and broke an unrelated PR);
+    // widening that threshold instead lets a SINGLE descheduled call satisfy
+    // it, so the per-call regression passes and the test goes quietly green;
+    // and comparing against the spend hits `remaining`'s clamp at zero. There
+    // is no correct constant, because the failure modes point in both
+    // directions at once. `step` therefore takes the same injected clock the
+    // resolver already takes, and the numbers below are exact.
     let element = AXUIElementCreateSystemWide()
-    let slowCall = {
-      // Busy-wait rather than sleep: the charge must reflect real elapsed
-      // time, and a test that slept would prove only that sleeping works.
-      let until = DispatchTime.now().uptimeNanoseconds + 25_000_000
-      while DispatchTime.now().uptimeNanoseconds < until {}
-      return true
-    }
+    let clock = TestClock()
+    clock.perCallCost = 0.030  // every `step` reads the clock twice: 30 ms each
 
-    // NOR MAY AN ASSERTION USE AN ABSOLUTE MILLISECOND THRESHOLD, which is the
-    // same defect pointing the other way and is the worse one: a descheduled
-    // busy-wait can make a SINGLE call long enough to satisfy any fixed number,
-    // so the per-call regression this test exists to catch would pass. Both
-    // assertions below therefore compare measured quantities against each
-    // other, never against a constant.
-    //
-    // A budget far larger than the work, so nothing can cut the sequence short
-    // and the call count is fixed rather than raced for.
-    let shared = TerminalResolutionBudget(total: 1.0)
+    let shared = TerminalResolutionBudget(total: 1.0, now: { clock.read() })
     var calls = 0
-    var perCall: [Double] = []
-    for _ in 0..<3 {
-      let started = DispatchTime.now().uptimeNanoseconds
-      _ = shared.step(applying: element) {
-        calls += 1
-        return slowCall()
-      }
-      perCall.append(Double(DispatchTime.now().uptimeNanoseconds - started) / 1e9)
-    }
-    let spent = 1.0 - shared.remaining
+    for _ in 0..<3 { _ = shared.step(applying: element) { calls += 1 } }
 
-    #expect(calls == 3, "a budget this large must never cut the sequence short")
-    // THE POINT, and it holds no matter how long any individual call took. A
-    // per-call bound retains only the FINAL call, so its spend can never exceed
-    // that call's own wall time as measured from outside `step` — outer time
-    // strictly contains what `step` charges. A cumulative one has also charged
-    // the first two, so it clears that bar by their combined ~50 ms.
-    #expect(
-      spent > (perCall.last ?? 0),
-      "the spend must exceed the last call alone, i.e. every call was charged")
+    #expect(calls == 3)
+    // THE POINT. Cumulative charges all three: 0.090. A per-call bound retains
+    // only the final call and would read 0.030.
+    #expect(abs((1.0 - shared.remaining) - 0.090) < 1e-9, "every call must be charged")
 
-    // And the SHARED budget really runs out. Two 25 ms calls exceed a 40 ms cap
-    // between them while neither does alone, so exhaustion here is reachable
-    // only by accumulating. The final call is a no-op: under a per-call bound
-    // the budget would carry only its ~0 µs and stay open.
-    let tight = TerminalResolutionBudget(total: 0.040)
-    _ = tight.step(applying: element) { slowCall() }
-    _ = tight.step(applying: element) { slowCall() }
-    _ = tight.step(applying: element) { true }
+    // And the SHARED budget really runs out. Two 30 ms calls exceed a 40 ms cap
+    // between them while neither does alone, so exhaustion is reachable only by
+    // accumulating — a per-call bound would sit at 30 ms and stay open.
+    let tight = TerminalResolutionBudget(total: 0.040, now: { clock.read() })
+    for _ in 0..<2 { _ = tight.step(applying: element) {} }
 
-    #expect(tight.isExhausted, "two 25 ms calls must exhaust a 40 ms cumulative cap")
+    #expect(tight.isExhausted, "two 30 ms calls must exhaust a 40 ms cumulative cap")
     #expect(tight.remaining == 0)
   }
 
@@ -311,23 +285,23 @@ struct TerminalContextResolverTests {
     // Measured live 2026-07-28: all five reads cost mean 0.78 ms in Ghostty and
     // 1.79 ms in iTerm2. The cap is a failure bound, not a latency target, and
     // must never bite healthy work.
-    let budget = TerminalResolutionBudget(total: 0.100)
+    //
+    // Driven by `TestClock` rather than the wall clock (#1893). The original
+    // asserted `remaining > 0.090` against real time, which is a claim that five
+    // accessibility round-trips cost under 10 ms — a fact about the machine, not
+    // about our budget, and one this file's own note contradicts by recording
+    // cold first calls at 19-35 ms.
+    let clock = TestClock()
+    clock.perCallCost = 0.001  // a healthy read, at the measured order of cost
+    let budget = TerminalResolutionBudget(total: 0.100, now: { clock.read() })
     let element = AXUIElementCreateSystemWide()
 
-    let started = DispatchTime.now().uptimeNanoseconds
-    for _ in 0..<5 { _ = budget.step(applying: element) { true } }
-    let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e9
+    for _ in 0..<5 { _ = budget.step(applying: element) {} }
 
-    #expect(!budget.isExhausted, "five instant calls must not exhaust the cap")
-    // Bound the spend by what the loop ACTUALLY took rather than by an absolute
-    // millisecond figure (#1893). A fixed `remaining > 0.090` asserts that five
-    // accessibility round-trips cost under 10 ms, which is a claim about the
-    // machine, not about our budget — and this file's own comment records cold
-    // first calls spiking to 19-35 ms. What belongs to the budget is that it
-    // charges elapsed time and never adds a per-call surcharge on top.
+    #expect(!budget.isExhausted, "five healthy calls must not exhaust the cap")
     #expect(
-      0.100 - budget.remaining <= elapsed + 0.001,
-      "the budget must charge only time that really passed")
+      budget.remaining > 0.090,
+      "five healthy calls must leave the budget nearly whole")
   }
 
   // MARK: - Circuit breaker
