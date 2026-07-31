@@ -24,20 +24,48 @@ public enum RawAudioDeadAirClassifier {
     public static let windowSamples = 640
   }
 
-  /// True when a raw capture buffer is dead air (no recoverable speech) for
-  /// the #964 gate: when Silero reports zero segments the kernel skips ASR
-  /// ONLY if the raw audio is also below every `DeadAirFloor` threshold.
-  /// Otherwise it falls through and lets Parakeet decide. Pure + static so
-  /// the boundary cases (just-below / just-above each threshold) unit-test
-  /// without a kernel.
-  public static func isDeadAir<C: RandomAccessCollection>(_ samples: C, peak: Float) -> Bool
+  /// What `measure` observed while classifying a buffer (#1845).
+  ///
+  /// Both RMS values are OPTIONAL because the classification short-circuits:
+  /// an above-floor peak, an empty buffer, or an above-floor whole-buffer RMS
+  /// each return before the later work runs. `nil` therefore means "not
+  /// computed", never "computed as zero" — the same distinction #1845 enforces
+  /// on `peak_audio_level` at the telemetry layer, where a fabricated zero
+  /// would be indistinguishable from a digitally dead channel.
+  package struct DeadAirMeasurement: Sendable, Equatable {
+    package let wholeBufferRMS: Float?
+    package let maxWindowRMS: Float?
+    package let isDeadAir: Bool
+  }
+
+  /// The classification above, plus the intermediate energy values it computed.
+  ///
+  /// `isDeadAir` delegates here, so this is the single implementation of the
+  /// #964 gate rather than a parallel copy. #1845 needs the two RMS values as
+  /// telemetry: the classifier already computed them and threw them away, and
+  /// recomputing them at the call site would be a second implementation of the
+  /// thing being measured.
+  ///
+  /// Short-circuit ORDER and RESULTS are identical to the pre-#1845 code —
+  /// peak, then empty, then whole-buffer RMS, then the short-buffer reuse, then
+  /// the tiled window loop. Nothing added here may change what the gate decides.
+  package static func measure<C: RandomAccessCollection>(
+    _ samples: C,
+    peak: Float
+  ) -> DeadAirMeasurement
   where C.Element == Float, C.Index == Int {
-    guard peak < DeadAirFloor.peak else { return false }
-    guard !samples.isEmpty else { return true }
+    guard peak < DeadAirFloor.peak else {
+      return DeadAirMeasurement(wholeBufferRMS: nil, maxWindowRMS: nil, isDeadAir: false)
+    }
+    guard !samples.isEmpty else {
+      return DeadAirMeasurement(wholeBufferRMS: nil, maxWindowRMS: nil, isDeadAir: true)
+    }
     var sumSquares: Float = 0
     for s in samples { sumSquares += s * s }
     let rms = (sumSquares / Float(samples.count)).squareRoot()
-    guard rms < DeadAirFloor.rms else { return false }
+    guard rms < DeadAirFloor.rms else {
+      return DeadAirMeasurement(wholeBufferRMS: rms, maxWindowRMS: nil, isDeadAir: false)
+    }
     // Loudest non-overlapping 40 ms window. A faint word lifts a local
     // window's RMS even when most of the buffer is silence around it; tiled
     // windows keep this bounded at O(n). Indices are offset from
@@ -45,7 +73,13 @@ public enum RawAudioDeadAirClassifier {
     // a larger buffer, #1317 cloud review) does NOT start at index 0, so raw
     // `0..<window`-style indexing would read the wrong elements or trap.
     let window = DeadAirFloor.windowSamples
-    guard samples.count >= window else { return rms < DeadAirFloor.windowRms }
+    guard samples.count >= window else {
+      // A buffer shorter than one window has no tiled window to measure, so the
+      // whole-buffer RMS IS the loudest-window value. Reported rather than left
+      // nil: it was computed, and the gate compared it.
+      return DeadAirMeasurement(
+        wholeBufferRMS: rms, maxWindowRMS: rms, isDeadAir: rms < DeadAirFloor.windowRms)
+    }
     var maxWindowRms = rms
     var windowStart = samples.startIndex
     while windowStart + window <= samples.endIndex {
@@ -55,6 +89,22 @@ public enum RawAudioDeadAirClassifier {
       if wr > maxWindowRms { maxWindowRms = wr }
       windowStart += window
     }
-    return maxWindowRms < DeadAirFloor.windowRms
+    return DeadAirMeasurement(
+      wholeBufferRMS: rms, maxWindowRMS: maxWindowRms,
+      isDeadAir: maxWindowRms < DeadAirFloor.windowRms)
+  }
+
+  /// True when a raw capture buffer is dead air (no recoverable speech) for
+  /// the #964 gate: when Silero reports zero segments the kernel skips ASR
+  /// ONLY if the raw audio is also below every `DeadAirFloor` threshold.
+  /// Otherwise it falls through and lets Parakeet decide. Pure + static so
+  /// the boundary cases (just-below / just-above each threshold) unit-test
+  /// without a kernel.
+  ///
+  /// #1845: now a projection of `measure`, which owns the computation. Callers
+  /// that only need the verdict keep using this.
+  public static func isDeadAir<C: RandomAccessCollection>(_ samples: C, peak: Float) -> Bool
+  where C.Element == Float, C.Index == Int {
+    measure(samples, peak: peak).isDeadAir
   }
 }
