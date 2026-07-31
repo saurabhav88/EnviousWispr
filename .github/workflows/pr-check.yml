@@ -465,8 +465,17 @@ jobs:
             # source of pin truth; SwiftPM prunes the entries this graph does
             # not need (sparkle, swift-syntax) and holds every shared one.
             cp Package.resolved "$pkg/Package.resolved"
-            echo "==> swift build --package-path $pkg"
-            swift build --package-path "$pkg"
+            # --only-use-versions-from-resolved-file makes the seeding a
+            # GUARANTEE rather than a hint. Without it SwiftPM may silently
+            # rewrite the copied lockfile and compile whatever resolves at that
+            # moment — e.g. when a PR changes a dependency constraint without
+            # updating the root Package.resolved — which would quietly undo the
+            # pinning this step exists to provide. With it, an out-of-date
+            # lockfile FAILS the step instead. Verified both directions locally:
+            # a correctly seeded build succeeds, and a lockfile that cannot
+            # satisfy the graph errors out rather than re-resolving.
+            echo "==> swift build --package-path $pkg (locked to root pins)"
+            swift build --package-path "$pkg" --only-use-versions-from-resolved-file
           done
           echo "==> Both standalone eval packages compile against current Core"
 
