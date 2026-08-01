@@ -738,7 +738,7 @@ test("resolveDevIds: accepts hogqlOpts so its own retry path is test-determinist
   let calls = 0;
   const fetchFn = async () => {
     calls += 1;
-    return calls === 1 ? fakeResponse(504) : fakeResponse(200, { results: [["dev-1"]] });
+    return calls === 1 ? fakeResponse(504) : fakeResponse(200, { results: [["dev-1"]], columns: ["distinct_id"] });
   };
   const devIds = await resolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, {
     fetchFn,
@@ -753,7 +753,7 @@ test("resolveDevIds: throws on overflow rather than silently building a truncate
   // LIMIT+1 query shape - the fetchFn doesn't need to know the real limit,
   // it just needs to return more than 5000 rows.
   const overflowRows = Array.from({ length: 5001 }, (_, i) => [`dev-${i}`]);
-  const fetchFn = async () => fakeResponse(200, { results: overflowRows });
+  const fetchFn = async () => fakeResponse(200, { results: overflowRows, columns: ["distinct_id"] });
   await assert.rejects(
     () => resolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, { fetchFn }),
     /dev-id completeness check failed/,
@@ -762,7 +762,9 @@ test("resolveDevIds: throws on overflow rather than silently building a truncate
 });
 
 test("resolveDevIds: an empty result is a valid, non-throwing state", async () => {
-  const fetchFn = async () => fakeResponse(200, { results: [] });
+  // With its columns intact: zero dev ids is legitimate, a missing column set
+  // is a malformed response (#1589).
+  const fetchFn = async () => fakeResponse(200, { results: [], columns: ["distinct_id"] });
   const devIds = await resolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, { fetchFn });
   assert.deepEqual(devIds, []);
 });
@@ -866,7 +868,10 @@ function mockPostHog({ failQuery, failWith, github, discordStatus, onDiscord } =
     // dev_ids: empty list is the common, valid case - keeps every downstream
     // query's ${prod} predicate as plain ENV_ONLY in these tests.
     if (queryName === "dev_ids") {
-      return fakeResponse(200, { results: [] });
+      // `columns` is REQUIRED: a real PostHog response always carries it, and
+      // resolveDevIds checks it because zero rows is a legitimate state and a
+      // row-level check cannot fire on an empty result (#1589).
+      return fakeResponse(200, { results: [], columns: ["distinct_id"] });
     }
     // totals' total_users must match engine_and_tier_b's row count (1, "u1"),
     // or resolveBuckets' completeness check throws on tests that chain all
@@ -2876,7 +2881,7 @@ test("dev IDs resolve ONCE and both sections share that one production predicate
     const body = init?.body ? JSON.parse(init.body) : {};
     if (body.name === "daily_report_dev_ids") {
       devIdCalls += 1;
-      return fakeResponse(200, { results: [["dev-alpha"], ["dev-beta"]] });
+      return fakeResponse(200, { results: [["dev-alpha"], ["dev-beta"]], columns: ["distinct_id"] });
     }
     return inner(url, init);
   };
@@ -3745,7 +3750,7 @@ test("daily-report still labels every query daily_report_*, unchanged by the mov
   const fetchFn = async (_url, init) => {
     const body = JSON.parse(init.body);
     names.push(body.name);
-    return fakeResponse(200, { results: [], columns: [] });
+    return fakeResponse(200, { results: [], columns: ["distinct_id"] });
   };
   await rawResolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" },
     { fetchFn, workerLabel: "daily_report" });
@@ -3859,7 +3864,9 @@ test("real ISO 8601 timestamps, with Z or an explicit offset, are accepted", asy
 
 test("resolveDevIds refuses a malformed row instead of excluding 'undefined'", async () => {
   const env = { POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" };
-  for (const body of [{ results: [[]] }, { results: [[null]] }, { results: [[""]] }, { results: [[7]] }]) {
+  const cols = { columns: ["distinct_id"] };
+  for (const body of [{ results: [[]], ...cols }, { results: [[null]], ...cols },
+                      { results: [[""]], ...cols }, { results: [[7]], ...cols }]) {
     await assert.rejects(
       () => resolveDevIds(env, { fetchFn: async () => fakeResponse(200, body) }),
       /malformed row/,
@@ -3868,6 +3875,26 @@ test("resolveDevIds refuses a malformed row instead of excluding 'undefined'", a
   }
   // Two-way control: a genuinely empty list is legitimate and must still pass,
   // because zero dev-tainted ids is a real state.
-  const empty = await resolveDevIds(env, { fetchFn: async () => fakeResponse(200, { results: [] }) });
+  const empty = await resolveDevIds(env, {
+    fetchFn: async () => fakeResponse(200, { results: [], columns: ["distinct_id"] }),
+  });
+  assert.deepEqual(empty, []);
+});
+
+test("resolveDevIds refuses an empty result whose column set is malformed", async () => {
+  // Zero dev ids is legitimate, so every per-row check is skipped exactly when
+  // a malformed empty response arrives. Checked on the COLUMNS instead.
+  const env = { POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" };
+  for (const body of [{ results: [], columns: [] }, { results: [], columns: ["id"] }, { results: [] }]) {
+    await assert.rejects(
+      () => resolveDevIds(env, { fetchFn: async () => fakeResponse(200, body) }),
+      /malformed column set/,
+      `${JSON.stringify(body)} must be refused`
+    );
+  }
+  // Two-way control: a real empty list, correctly shaped, still resolves.
+  const empty = await resolveDevIds(env, {
+    fetchFn: async () => fakeResponse(200, { results: [], columns: ["distinct_id"] }),
+  });
   assert.deepEqual(empty, []);
 });

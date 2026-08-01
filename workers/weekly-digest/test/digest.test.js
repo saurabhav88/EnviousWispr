@@ -658,7 +658,9 @@ test("a source row with a missing or renamed bucket column degrades", async () =
     { results: [[42, 8]], columns: ["bucket", "n"] },          // wrong type
   ]) {
     const h = harness({ posthog: { download_sources: () => ok(body) } });
-    await assert.rejects(() => h.run(), /malformed row shape/);
+    // Either detector may fire first: a renamed column trips the COLUMN check,
+    // a wrong-typed value trips the ROW check. Both must degrade the section.
+    await assert.rejects(() => h.run(), /malformed (row shape|column set)/);
     assert.match(h.state.posts[0].embeds[2].description, /Sources unavailable/);
     assert.doesNotMatch(h.state.posts[0].embeds[2].description, /Other:/);
   }
@@ -778,4 +780,37 @@ test("a failed funnel query leaves the usage line intact, and vice versa", async
   const b = usageDown.state.posts[0].embeds[3].description;
   assert.match(b, /31 people finished setting up/);
   assert.match(b, /New installs were temporarily unavailable/);
+});
+
+test("an EMPTY response with a malformed column set degrades, not 'none yet'", async () => {
+  // The axis this closes: every row-shape check is skipped when there are zero
+  // rows, which is exactly when a malformed empty response arrives. The digest
+  // would otherwise report "No off-site downloads yet" with full confidence.
+  for (const body of [{ results: [], columns: [] }, { results: [], columns: ["source", "count"] }]) {
+    const h = harness({ posthog: { download_sources: () => ok(body) } });
+    await assert.rejects(() => h.run(), /malformed column set/);
+    assert.match(h.state.posts[0].embeds[2].description, /Sources unavailable/);
+    assert.doesNotMatch(h.state.posts[0].embeds[2].description, /No off-site downloads yet/);
+  }
+});
+
+test("an EMPTY dev-id response with no columns degrades app usage, never assumes zero", async () => {
+  // Same axis in the shared resolver: `{results: [], columns: []}` read as "no
+  // dev accounts", so both reports would fall back to the environment filter
+  // and include dev machines while printing that they were excluded.
+  const h = harness({ posthog: { dev_ids: () => ok({ results: [], columns: [] }) } });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  assert.match(h.state.posts[0].embeds[3].description, /temporarily unavailable/);
+  assert.equal(h.state.queryNames.includes("weekly_digest_app_usage"), false);
+});
+
+test("a genuinely empty response WITH valid columns is still a real empty week", async () => {
+  // Two-way control for both checks above.
+  const h = harness({ posthog: {
+    dev_ids: () => ok({ results: [], columns: ["distinct_id"] }),
+    download_sources: () => ok({ results: [], columns: ["bucket", "n"] }),
+  } });
+  await h.run();
+  assert.match(h.state.posts[0].embeds[2].description, /No off-site downloads yet/);
+  assert.match(h.state.posts[0].embeds[3].description, /189 people used EnviousWispr/);
 });

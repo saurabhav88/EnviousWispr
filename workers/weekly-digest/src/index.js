@@ -722,7 +722,11 @@ export async function runDigest(env, deps = {}) {
       failures.push(`${name}: degraded after retries`);
       return null;
     }
-    return rowsToObjects(outcome.value.response);
+    // Rows AND columns. A per-row shape check cannot fire on zero rows, so any
+    // query where empty is legitimate must be checked on its column set - the
+    // one part of the response that is present regardless of row count.
+    const response = outcome.value.response;
+    return { rows: rowsToObjects(response), columns: response.columns || [] };
   };
 
   /** An AGGREGATE query returns EXACTLY ONE row whose named columns are finite
@@ -738,8 +742,9 @@ export async function runDigest(env, deps = {}) {
    * one place every aggregate passes through, rather than at each call site
    * where the next query would forget. */
   const readAggregate = (index, name, fields) => {
-    const rows = read(index, name);
-    if (rows === null) return null; // already degraded and recorded
+    const result = read(index, name);
+    if (result === null) return null; // already degraded and recorded
+    const { rows } = result;
     if (rows.length !== 1) {
       failures.push(`${name}: expected exactly 1 aggregate row, got ${rows.length}`);
       return null;
@@ -764,9 +769,18 @@ export async function runDigest(env, deps = {}) {
    * publishing a confident attribution for a query whose shape had changed. So
    * the check is on PRESENCE plus type, never on truthiness, which cannot tell
    * "no source recorded" from "the column is gone". */
-  const readGrouped = (index, name) => {
-    const rows = read(index, name);
-    if (rows === null) return null;
+  const readGrouped = (index, name, columns) => {
+    const result = read(index, name);
+    if (result === null) return null;
+    const { rows } = result;
+    // Columns first: zero rows is a legitimate empty week here, so the row
+    // check below is skipped exactly when a malformed empty response arrives.
+    // Without this, a 200 with no rows and renamed columns reads as a confident
+    // "No off-site downloads yet".
+    if (!columns.every((c) => result.columns.includes(c))) {
+      failures.push(`${name}: malformed column set`);
+      return null;
+    }
     const bad = rows.find(
       (r) =>
         typeof r.n !== "number" ||
@@ -785,7 +799,7 @@ export async function runDigest(env, deps = {}) {
   try {
     site = readAggregate(0, "website", ["views", "visitors"]);
     downloads = readAggregate(1, "downloads", ["intents", "bots_excluded"]);
-    sources = readGrouped(2, "download_sources");
+    sources = readGrouped(2, "download_sources", ["bucket", "n"]);
     usage = prod ? readAggregate(3, "app_usage", ["active", "fresh"]) : null;
     funnel = prod ? readAggregate(4, "onboard_activate", ["onboarded", "activated"]) : null;
   } catch (err) {

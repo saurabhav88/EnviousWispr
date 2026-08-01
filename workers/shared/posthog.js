@@ -121,6 +121,15 @@ export async function resolveDevIds(env, hogqlOpts = {}) {
     "dev_ids",
     hogqlOpts
   );
+  // Checked on the COLUMNS, not the rows, because zero dev-tainted ids is a
+  // legitimate state and any per-row check is therefore skipped exactly when
+  // the response is empty. `{ results: [], columns: [] }` from a 200 would
+  // otherwise read as "no dev accounts", both reports would fall back to the
+  // environment filter alone, and they would include dev machines while
+  // printing that dev machines are excluded.
+  if (!Array.isArray(result.columns) || !result.columns.includes("distinct_id")) {
+    throw new Error("dev-id resolution returned a malformed column set");
+  }
   const rows = result.results || [];
   const devIds = rows.map((row) => row?.[0]);
   // A 200 whose rows are the wrong shape (`results: [[]]`) yields `undefined`,
