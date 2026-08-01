@@ -339,7 +339,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // #1762: character COUNT and audio duration only — never the transcript. A
     // count is enough to tell "recovered something real" from "recovered a
     // fragment", which is the question you ask standing at the machine.
-    await RecoveryLog.line(
+    RecoveryLog.line(
       "replay recovered \(textOutcome.text.count) chars from "
         + "\(Int(recoveredSeconds.rounded()))s of audio")
     TelemetryService.shared.recoveryCompleted(
@@ -377,7 +377,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // coordinator's own awaited outcome line lands after `replay` returns, and
     // this reason line is enqueued strictly before that.
     let failureReason = reason.rawValue
-    Task { await RecoveryLog.line("replay failed: \(failureReason)") }
+    RecoveryLog.line("replay failed: \(failureReason)")
     TelemetryService.shared.recoveryCompleted(
       outcome: "failed",
       reason: reason,
