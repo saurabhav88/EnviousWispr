@@ -22,6 +22,36 @@ import Foundation
 /// for about a quarter of users. A progress percentage is impossible — WhisperKit exposes
 /// no load-progress stream (`whisperkit-research.md` FACT: cold-start-warmup-lifecycle).
 ///
+/// ## THE ROW STILL LIES ON A COLD PRESS. This is known, observed, and accepted.
+///
+/// **Do not read the scope note above as a theoretical edge.** On 2026-08-01 the founder
+/// reproduced it live: the warming pill reading "Getting dictation ready… WhisperKit is
+/// warming up after a restart" sat ON TOP of this row reading "Model Ready", both visible
+/// in one screenshot. His words: "the pill is more accurate than the settings page." The
+/// `app.log` line for that press is
+/// `press blocked — engine not ready (readinessAtPTT=warming) backend=whisperKit`, i.e. the
+/// `ColdPressGuard` path, which calls `ensureEngineWarm(reason: .coldPress)` directly and
+/// never touches `warmingBackend`.
+///
+/// **Founder ruling 2026-08-01: SHIP ANYWAY, and write down why.** The reasoning, so the
+/// next person can disagree with the actual argument rather than guess at it:
+/// - The originally filed bug (#1635, 2026-07-17) is the post-download / engine-swap
+///   moment, which this DOES fix. That is the path a user reaches by installing the
+///   optional engine, and it is the one with the 27.4s median.
+/// - The cold-press case is rarer than the reproduction suggests. The shipped default for
+///   "Unload model after" is `never` (`SettingsDefaultValues.swift:49`), so the engine stays
+///   resident; the founder had switched it to `immediately` specifically to make this
+///   testable. A genuinely cold press mostly means first launch or a post-OS-update cache
+///   wipe.
+/// - On a cold press the user gets the pill, which is honest and already correct. The row
+///   is then redundant rather than the only signal.
+/// - Fixing it properly means the coordinator learning about warms it does not own, which
+///   is #1882's engine load-state consolidation, not a label change. A shortcut here would
+///   be a fourth place guessing at readiness, which is the disease #1171 cured.
+///
+/// So: if you are here because someone reported "Model Ready while it says warming up",
+/// that is THIS, it is known, and the fix lives in #1882 — not in widening this file.
+///
 /// Copy frozen by the founder 2026-08-01, who explicitly declined further wordsmithing.
 /// `ModelPreparingCopyTests` pins both strings so a change is a conscious act.
 /// No em-dashes or en-dashes (brand rule).
