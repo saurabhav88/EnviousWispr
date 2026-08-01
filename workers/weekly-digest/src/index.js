@@ -1,53 +1,149 @@
 /**
- * EnviousWispr Weekly Digest — Cloudflare Worker
- * Runs every Monday 9am ET via cron trigger.
- * Pulls stats from Cloudflare Analytics, GitHub Releases, and PostHog,
- * then posts a formatted embed to Discord.
+ * EnviousWispr Weekly Digest - Cloudflare Worker (issues #1243, #1589)
+ *
+ * Runs Monday 13:00 UTC via a Cloudflare cron trigger and posts ONE Discord
+ * message with four sections: all website traffic (Cloudflare), tracked visitor
+ * activity (PostHog), downloads (GitHub + PostHog), and app usage (PostHog).
+ *
+ * ORCHESTRATION OWNERSHIP. This file resolves the report window ONCE, resolves
+ * the dev-ID exclusion ONCE, schedules every outbound query itself under one
+ * concurrency limiter, assembles ONE payload, and decides whether the run was
+ * clean. Transport, retry, limiting and Discord protocol belong to
+ * `workers/shared`; the SQL, the window, the failure policy and every sentence
+ * the founder reads belong here.
+ *
+ * WHAT #1589 FIXED. Four of these were WRONG NUMBERS rather than missing ones,
+ * and a wrong number is worse than an absent one:
+ *   - 5 concurrent PostHog queries against a documented 3-concurrent ceiling,
+ *     with no retry and no HTTP status check at all.
+ *   - Every failure rendered as "?" beside real figures, indistinguishable
+ *     from a quiet week.
+ *   - Active installs summed two Trends buckets over an 8-day window, counting
+ *     anyone present in both twice: 210 reported where 189 was true.
+ *   - Page views and visitors counted a DIFFERENT PRODUCT
+ *     (app.enviousstaging.com) and localhost dev servers.
+ *   - "All-time" downloads read only GitHub's first page: 30 of 45 releases.
+ *   - A Cloudflare failure rendered as a confident 0.
+ *   - The public trigger URL needed no secret and would post to Discord for
+ *     anyone who knew it.
+ *
+ * Privacy: output and logs are counts, labels and durations only. Never a
+ * distinct_id, never a response body, never the API key or trigger secret.
  */
+
+import {
+  productionClauseFor,
+  querySection,
+  resolveDevIds,
+  rowsToObjects,
+  runLimited,
+  windowClause,
+} from "../../shared/posthog.js";
+import { deliverReport } from "../../shared/discord.js";
+
+const WORKER_LABEL = "weekly_digest";
+
+/** PostHog allows only 3 concurrent queries per project (#1588), and that
+ * project is shared with EnviousStaging. Two in flight leaves a slot of
+ * headroom. This is the GLOBAL ceiling for this run: sections describe their
+ * work, they never schedule it, because two limiters of 2 is a limiter of 4. */
+const CONCURRENCY_LIMIT = 2;
+
+const REPORT_DAYS = 7;
+
+/** The EnviousWispr website's own hosts. Everything else in PostHog project
+ * 354235 belongs to another product or to a local dev server
+ * (analytics-operations.md FACT: posthog-project-is-shared-with-enviousstaging).
+ *
+ * `www` does not appear in 30 days of live data and is listed anyway: its
+ * absence is a fact about today's DNS, not a guarantee. */
+const SITE_HOSTS = ["enviouswispr.com", "www.enviouswispr.com"];
 
 export default {
   async scheduled(event, env) {
-    await sendDigest(env);
+    await runDigest(env);
   },
 
-  // Manual trigger via HTTP for testing: curl <worker-url>
+  /**
+   * Manual trigger. Secret-gated and FAILS CLOSED: the workers.dev URL is
+   * public, and before #1589 any request to it posted a real digest to Discord.
+   * An unset TRIGGER_SECRET refuses everything, so a half-configured deploy
+   * cannot be triggered by anyone.
+   */
   async fetch(request, env) {
-    await sendDigest(env);
-    return new Response("Digest sent.");
+    const url = new URL(request.url);
+    const provided = url.searchParams.get("token") || request.headers.get("x-trigger-secret");
+    if (!env.TRIGGER_SECRET || provided !== env.TRIGGER_SECRET) {
+      return new Response("unauthorized\n", { status: 401 });
+    }
+    try {
+      const content = await runDigest(env);
+      return new Response(content + "\n", { status: 200 });
+    } catch (err) {
+      // Deliberately posts nothing here. runDigest owns every Discord request;
+      // a second post from this layer is how a failed run tells the founder
+      // twice, or tells him after he already has the digest.
+      return new Response("weekly digest failed: " + err.message + "\n", { status: 500 });
+    }
   },
 };
 
-async function sendDigest(env) {
-  const now = new Date();
-  const weekEnd = now.toISOString().slice(0, 10);
-  const weekStart = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
+// ----- Window ---------------------------------------------------------------
 
-  const [cf, gh, ph] = await Promise.all([
-    fetchCloudflareStats(env, weekStart, weekEnd),
-    fetchGitHubDownloads(env),
-    fetchPostHogStats(env, weekStart, weekEnd),
-  ]);
-
-  const embed = buildEmbed(weekStart, weekEnd, cf, gh, ph);
-  await postToDiscord(env.DISCORD_WEBHOOK_URL, embed);
+/**
+ * Seven whole UTC days, HALF-OPEN: `start` inclusive, `end` exclusive.
+ *
+ * The shipped worker used `now - 7d` to `now` with BOTH ends inclusive, which
+ * is eight calendar dates. That is what produced a second weekly Trends bucket
+ * and, with the bucket-summing extractor, the 210-vs-189 double count. A
+ * half-open range is also what stops consecutive weeks sharing a day.
+ *
+ * UTC days, not Eastern days. KNOWN LIMIT, recorded rather than hidden: the
+ * daily report measures Eastern calendar days, so a week of daily reports and
+ * one weekly digest cover windows offset by the Eastern UTC offset and will not
+ * reconcile to the exact person. Aligning them means sharing the daily report's
+ * timezone machinery, which is a separate change with its own risk to a working
+ * worker.
+ */
+export function resolveWeekWindow(now = new Date()) {
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const start = new Date(end.getTime() - REPORT_DAYS * 86400000);
+  return Object.freeze({
+    start,
+    end,
+    win: windowClause(start, end),
+    startDay: start.toISOString().slice(0, 10),
+    // The last day INCLUDED, for display and for Cloudflare's inclusive filter.
+    // Never `end` itself: that day is outside the window.
+    lastDay: new Date(end.getTime() - 86400000).toISOString().slice(0, 10),
+  });
 }
 
-// ── Cloudflare Analytics ──────────────────────────────────────
+// ----- Cloudflare -----------------------------------------------------------
 
-async function fetchCloudflareStats(env, dateFrom, dateTo) {
+/**
+ * Site-wide traffic. One request, a different API with no shared ceiling, so it
+ * runs outside the PostHog limiter.
+ *
+ * Every failure path throws. Before #1589 none of them did: a non-2xx, a
+ * GraphQL `errors` array, or a missing zone all left `zone` undefined, the
+ * totals loops ran over empty arrays, and the digest reported a confident 0
+ * unique visitors. Three distinct producers of one silent wrong answer.
+ */
+export async function fetchCloudflareStats(env, window, { fetchFn = fetch } = {}) {
   const query = `query {
     viewer {
       zones(filter: {zoneTag: "${env.CF_ZONE_ID}"}) {
         totals: httpRequests1dGroups(
-          limit: 7
-          filter: {date_geq: "${dateFrom}", date_leq: "${dateTo}"}
+          limit: ${REPORT_DAYS}
+          filter: {date_geq: "${window.startDay}", date_leq: "${window.lastDay}"}
         ) {
           sum { requests pageViews }
           uniq { uniques }
         }
         byDay: httpRequests1dGroups(
-          limit: 7
-          filter: {date_geq: "${dateFrom}", date_leq: "${dateTo}"}
+          limit: ${REPORT_DAYS}
+          filter: {date_geq: "${window.startDay}", date_leq: "${window.lastDay}"}
         ) {
           dimensions { date }
           sum {
@@ -59,196 +155,179 @@ async function fetchCloudflareStats(env, dateFrom, dateTo) {
     }
   }`;
 
-  // NOTE: the former "Top Referrers" query (httpRequestsAdaptiveGroups { refererHost })
-  // was removed (#1243): refererHost is rejected by the Cloudflare API on the zone
-  // dataset (the valid field, clientRefererHost, is paid-only), so the section was
-  // silently empty. Download attribution now comes from PostHog source_bucket — see
-  // the "Download Sources" field built from fetchPostHogStats.
-  const opts = {
+  // NOTE: the former "Top Referrers" query (httpRequestsAdaptiveGroups {
+  // refererHost }) was removed (#1243): refererHost is rejected by the
+  // Cloudflare API on the zone dataset (the valid field, clientRefererHost, is
+  // paid-only), so the section was silently empty. Download attribution now
+  // comes from PostHog source_bucket.
+  const res = await fetchFn("https://api.cloudflare.com/client/v4/graphql", {
     method: "POST",
     headers: {
       "X-Auth-Email": env.CF_EMAIL,
       "X-Auth-Key": env.CF_API_KEY,
       "Content-Type": "application/json",
     },
-  };
-
-  const mainRes = await fetch("https://api.cloudflare.com/client/v4/graphql", {
-    ...opts,
     body: JSON.stringify({ query }),
-  }).then((r) => r.json());
+  });
+  if (!res.ok) throw new Error(`Cloudflare Analytics HTTP ${res.status}`);
 
-  const zone = mainRes?.data?.viewer?.zones?.[0];
-  const totals = zone?.totals || [];
-  const byDay = zone?.byDay || [];
+  const body = await res.json();
+  // GraphQL answers 200 with an `errors` array, so a status-only check passes
+  // and `zone` is still undefined. Separate producer, separate check.
+  if (Array.isArray(body?.errors) && body.errors.length > 0) {
+    throw new Error("Cloudflare Analytics returned GraphQL errors");
+  }
+  const zone = body?.data?.viewer?.zones?.[0];
+  if (!zone) throw new Error("Cloudflare Analytics returned no zone");
 
-  let totalRequests = 0, totalPageViews = 0, totalUniques = 0;
+  let totalRequests = 0, totalPageViews = 0, summedDailyUniques = 0;
   const countries = {};
-
-  for (const g of totals) {
+  for (const g of zone.totals || []) {
     totalRequests += g.sum?.requests || 0;
     totalPageViews += g.sum?.pageViews || 0;
-    totalUniques += g.uniq?.uniques || 0;
+    summedDailyUniques += g.uniq?.uniques || 0;
   }
-  for (const g of byDay) {
+  for (const g of zone.byDay || []) {
     for (const c of g.sum?.countryMap || []) {
       countries[c.clientCountryName] = (countries[c.clientCountryName] || 0) + c.requests;
     }
   }
 
-  const topCountries = Object.entries(countries)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-
-  return { totalRequests, totalPageViews, totalUniques, topCountries };
+  return {
+    totalRequests,
+    totalPageViews,
+    // Named for what it IS. This sums each day's unique-IP count, so a visitor
+    // on three days counts three times; calling it "unique visitors" was the
+    // label lying about the arithmetic (founder decision 2026-08-01: relabel,
+    // do not change the query).
+    summedDailyUniques,
+    topCountries: Object.entries(countries).sort((a, b) => b[1] - a[1]).slice(0, 5),
+  };
 }
 
-// ── GitHub Release Downloads ──────────────────────────────────
+// ----- GitHub ---------------------------------------------------------------
 
-async function fetchGitHubDownloads(env) {
+const GITHUB_PAGE_SIZE = 100;
+// Bound on pages walked. 45 releases exist today; 50 pages is 5,000 releases,
+// far beyond any real state, and it exists only so a malformed paging response
+// cannot spin forever inside a Worker's wall clock.
+const GITHUB_MAX_PAGES = 50;
+
+/**
+ * All-time DMG downloads across EVERY release.
+ *
+ * The shipped version made one unpaginated request. GitHub's default page size
+ * is 30 and this repo has 45 releases, so the "All-Time" figure silently
+ * omitted 15 releases' worth of downloads.
+ *
+ * A mid-pagination failure throws rather than returning the pages gathered so
+ * far: a total assembled from 2 of 5 pages is a plausible, confidently wrong
+ * number, which is the exact defect class this change exists to remove.
+ */
+export async function fetchGitHubDownloads(env, { fetchFn = fetch } = {}) {
   const headers = { "User-Agent": "EnviousWispr-Digest-Worker" };
   if (env.GITHUB_TOKEN) headers.Authorization = `token ${env.GITHUB_TOKEN}`;
 
-  const res = await fetch(
-    `https://api.github.com/repos/${env.GITHUB_REPO}/releases`,
-    { headers }
-  );
-  if (!res.ok) return { totalDownloads: "?", latestVersion: "?" };
-
-  const releases = await res.json();
   let totalDownloads = 0;
-  let latestVersion = releases[0]?.tag_name || "?";
+  let latestVersion = "?";
 
-  for (const rel of releases) {
-    for (const asset of rel.assets || []) {
-      if (asset.name.endsWith(".dmg")) {
-        totalDownloads += asset.download_count;
+  for (let page = 1; page <= GITHUB_MAX_PAGES; page += 1) {
+    const res = await fetchFn(
+      `https://api.github.com/repos/${env.GITHUB_REPO}/releases?per_page=${GITHUB_PAGE_SIZE}&page=${page}`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`GitHub releases HTTP ${res.status}`);
+    const releases = await res.json();
+    if (!Array.isArray(releases)) throw new Error("GitHub releases returned a non-array");
+
+    if (page === 1) latestVersion = releases[0]?.tag_name || "?";
+    for (const rel of releases) {
+      for (const asset of rel.assets || []) {
+        if (asset.name?.endsWith(".dmg")) totalDownloads += asset.download_count || 0;
       }
     }
+    if (releases.length < GITHUB_PAGE_SIZE) return { totalDownloads, latestVersion };
   }
-
-  return { totalDownloads, latestVersion };
+  throw new Error(`GitHub releases exceeded ${GITHUB_MAX_PAGES} pages`);
 }
 
-// ── PostHog Stats ─────────────────────────────────────────────
+// ----- PostHog SQL ----------------------------------------------------------
 
-async function fetchPostHogStats(env, dateFrom, dateTo) {
-  const apiKey = env.POSTHOG_PERSONAL_API_KEY;
-  if (!apiKey) return { weeklyActiveUsers: "?", newUsers: "?", downloadIntents: "?", downloadSources: null, botExcluded: "?" };
+const hostFilter = `properties.$host IN (${SITE_HOSTS.map((h) => `'${h}'`).join(", ")})`;
 
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    "Content-Type": "application/json",
-  };
-
-  // Weekly active users (production only — excludes dev dogfooding)
-  const prodFilter = [{ key: "environment", operator: "exact", type: "event", value: "production" }];
-  const wauQuery = {
-    kind: "TrendsQuery",
-    dateRange: { date_from: dateFrom, date_to: dateTo },
-    interval: "week",
-    properties: prodFilter,
-    series: [
-      { kind: "EventsNode", event: "app.launched", math: "dau", custom_name: "WAU" },
-      { kind: "EventsNode", event: "app.launched", math: "first_time_for_user", custom_name: "New" },
-    ],
-  };
-
-  // Download intents (7d) = on-site clicks + non-bot off-site doorway redirects.
-  // HogQL (not TrendsQuery) because the union + bot-exclusion needs coalesce() on a
-  // property; bare property names do NOT resolve in HogQL — must be properties.<name>.
-  const intentsQuery = { kind: "HogQLQuery", query: downloadIntentsHogQL(dateFrom, dateTo) };
-  // Off-site download sources (non-bot) grouped by canonical source_bucket.
-  const sourcesQuery = { kind: "HogQLQuery", query: downloadSourcesHogQL(dateFrom, dateTo) };
-  // Off-site bot hits excluded this week — integrity line (surfaces a bot surge OR
-  // over-aggressive filtering).
-  const botQuery = { kind: "HogQLQuery", query: botExcludedHogQL(dateFrom, dateTo) };
-
-  // Website pageviews
-  const pvQuery = {
-    kind: "TrendsQuery",
-    dateRange: { date_from: dateFrom, date_to: dateTo },
-    interval: "week",
-    series: [
-      { kind: "EventsNode", event: "$pageview", math: "total", custom_name: "Website PVs" },
-      { kind: "EventsNode", event: "$pageview", math: "dau", custom_name: "Website visitors" },
-    ],
-  };
-
-  const queryUrl = `https://us.posthog.com/api/projects/${env.POSTHOG_PROJECT_ID}/query/`;
-
-  const post = (query) =>
-    fetch(queryUrl, { method: "POST", headers, body: JSON.stringify({ query }) })
-      .then((r) => r.json())
-      .catch(() => null);
-
-  const [wauRes, pvRes, intentsRes, sourcesRes, botRes] = await Promise.all([
-    post(wauQuery),
-    post(pvQuery),
-    post(intentsQuery),
-    post(sourcesQuery),
-    post(botQuery),
-  ]);
-
-  return {
-    weeklyActiveUsers: extractTrendTotal(wauRes, 0),
-    newUsers: extractTrendTotal(wauRes, 1),
-    websitePageViews: extractTrendTotal(pvRes, 0),
-    websiteVisitors: extractTrendTotal(pvRes, 1),
-    downloadIntents: extractHogScalar(intentsRes),
-    downloadSources: extractHogRows(sourcesRes),
-    botExcluded: extractHogScalar(botRes),
-  };
+/** App usage. The ONLY query carrying the production predicate.
+ *
+ * `uniqExact` over the whole window, replacing a TrendsQuery whose two weekly
+ * buckets were summed. New installs uses the app's own is_fresh_install rather
+ * than PostHog's first_time_for_user (founder decision 2026-08-01): it is what
+ * the daily report counts, and reproducing first_time_for_user in HogQL needs a
+ * whole-history min(timestamp) per user, the unbounded-scan shape that caused
+ * the #1655 and #1716 timeouts. */
+export function appUsageSql(prod, win) {
+  return `SELECT
+      uniqExact(distinct_id) AS active,
+      uniqExactIf(distinct_id, properties.is_fresh_install = true) AS fresh
+    FROM events
+    WHERE event = 'app.launched' AND ${prod} AND ${win}`;
 }
 
-// ── Helpers (pure; exported for node --test) ──────────────────
-
-// HogQL query builders. NOTE: every event-property ref MUST be properties.<name>
-// (bare names do not resolve in PostHog HogQL). The union/bot predicate is the
-// single shared DEFINITION (mirrored by the PostHog ping function; see
-// .claude/knowledge/analytics-operations.md). #1243
-export function downloadIntentsHogQL(dateFrom, dateTo) {
-  return `SELECT count() FROM events WHERE toDate(timestamp) >= toDate('${dateFrom}') AND toDate(timestamp) <= toDate('${dateTo}') AND (event = 'download_clicked' OR (event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = ''))`;
-}
-export function downloadSourcesHogQL(dateFrom, dateTo) {
-  return `SELECT properties.source_bucket AS bucket, count() AS n FROM events WHERE event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '' AND toDate(timestamp) >= toDate('${dateFrom}') AND toDate(timestamp) <= toDate('${dateTo}') GROUP BY bucket ORDER BY n DESC LIMIT 8`;
-}
-export function botExcludedHogQL(dateFrom, dateTo) {
-  return `SELECT count() FROM events WHERE event = 'download_redirect' AND coalesce(properties.excluded_reason, '') != '' AND toDate(timestamp) >= toDate('${dateFrom}') AND toDate(timestamp) <= toDate('${dateTo}')`;
-}
-
-// TrendsQuery total extractor (aggregated_value or summed data array).
-export function extractTrendTotal(res, seriesIdx = 0) {
-  try {
-    const series = res?.results?.[seriesIdx];
-    if (!series) return "?";
-    if (series.aggregated_value != null) return series.aggregated_value;
-    if (Array.isArray(series.data)) return series.data.reduce((a, b) => a + b, 0);
-    return "?";
-  } catch {
-    return "?";
-  }
+/** Website traffic. NO production predicate, deliberately.
+ *
+ * `productionClauseFor` always begins `properties.environment = 'production'`,
+ * and website events carry no environment property at all - the site's PostHog
+ * init sets none. Applying it here returns ZERO, not "the same rows more
+ * slowly". The host filter is what scopes this population, and it is what stops
+ * EnviousStaging and localhost being counted as EnviousWispr visitors.
+ *
+ * This argument is LOCAL to the three website queries and must be re-derived by
+ * anyone adding a fourth. */
+export function websiteSql(win) {
+  return `SELECT count() AS views, uniqExact(distinct_id) AS visitors
+    FROM events
+    WHERE event = '$pageview' AND ${hostFilter} AND ${win}`;
 }
 
-// HogQLQuery scalar (first cell of first row, e.g. a count()).
-export function extractHogScalar(res) {
-  try {
-    const v = res?.results?.[0]?.[0];
-    return v == null ? "?" : v;
-  } catch {
-    return "?";
-  }
+/** Download intents and excluded bot hits in ONE query.
+ *
+ * Same table, same window, differing only by predicate, so two countIf columns
+ * replace two round trips. `WHERE event IN (...)` keeps the merged query scoped
+ * to the two relevant event types. Both predicates are byte-preserved from the
+ * two builders this replaces, so the numbers do not move.
+ *
+ * NO host filter, on measured evidence: download_clicked appears only from
+ * enviouswispr.com, and download_redirect carries no $host at all because the
+ * doorway worker emits it server-side. A host filter here would silently drop
+ * every off-site redirect. */
+export function downloadsSql(win) {
+  return `SELECT
+      countIf(event = 'download_clicked'
+              OR (event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '')) AS intents,
+      countIf(event = 'download_redirect'
+              AND coalesce(properties.excluded_reason, '') != '') AS bots_excluded
+    FROM events
+    WHERE event IN ('download_clicked', 'download_redirect') AND ${win}`;
 }
 
-// HogQLQuery rows (array of [col0, col1, ...]). Returns null (NOT []) on a failed
-// or malformed response, so a query error is distinguishable from a genuine empty
-// week — a real empty array means "zero off-site downloads", null means "unknown".
-export function extractHogRows(res) {
-  return Array.isArray(res?.results) ? res.results : null;
+/** Off-site download sources by canonical bucket. Stays separate from
+ * downloadsSql: it is a GROUP BY producing rows, and folding it in would need a
+ * UNION - and a UNION in a query that also interpolates a predicate is the
+ * doubled-subquery shape behind #1655 and #1716. */
+export function downloadSourcesSql(win) {
+  return `SELECT properties.source_bucket AS bucket, count() AS n
+    FROM events
+    WHERE event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '' AND ${win}
+    GROUP BY bucket
+    ORDER BY n DESC
+    LIMIT 8`;
 }
 
-// Canonical source_bucket -> human label for the digest (concise; the live ping
-// uses its own slightly longer phrasing). Unknown/null -> "Other".
+// ----- Presentation ---------------------------------------------------------
+
+const UNAVAILABLE = "temporarily unavailable";
+
+const n = (value) => Number(value).toLocaleString();
+
+// Canonical source_bucket -> human label. Unknown/null -> "Other".
 export const SOURCE_LABELS = {
   github_readme: "GitHub README",
   github_release: "GitHub",
@@ -274,103 +353,256 @@ export function sourceLabel(bucket) {
   return (bucket && SOURCE_LABELS[bucket]) || "Other";
 }
 
-// Render the source-breakdown rows ([[bucket, n], ...]) for the embed.
-// null (query failed/unknown) and [] (genuine zero) render differently so a
-// telemetry outage never masquerades as a true zero-source week.
+/** Renders the source breakdown. `null` (unavailable) and `[]` (a genuine zero)
+ * render differently, so a telemetry outage never masquerades as a true
+ * zero-source week. This one field already got the distinction right before
+ * #1589; the rest of the digest now follows it. */
 export function formatSourceBreakdown(rows) {
   if (rows == null || !Array.isArray(rows)) return "Sources unavailable";
   if (rows.length === 0) return "No off-site downloads yet";
-  return rows
-    .map(([bucket, n]) => `${sourceLabel(bucket)}: ${Number(n).toLocaleString()}`)
-    .join("\n");
+  return rows.map((r) => `${sourceLabel(r.bucket)}: ${n(r.n)}`).join("\n");
 }
 
-// ── Discord Embed ─────────────────────────────────────────────
+function formatDayRange(window) {
+  const fmt = (iso) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "UTC", month: "long", day: "numeric",
+    }).format(new Date(Date.UTC(y, m - 1, d, 12)));
+  };
+  return `${fmt(window.startDay)} to ${fmt(window.lastDay)}`;
+}
 
-export function buildEmbed(weekStart, weekEnd, cf, gh, ph) {
-  const topCountriesStr = cf.topCountries
-    .map(([name, count]) => `${name}: ${count.toLocaleString()}`)
-    .join("\n") || "No data";
+/** Every section formatter returns LINES whose FIRST line titles its embed, so
+ * the payload assembler never authors a sentence of its own. */
+export function formatCloudflare(cf) {
+  if (!cf) return ["All website traffic", `Traffic figures were ${UNAVAILABLE} when this digest ran.`];
+  const lines = [
+    "All website traffic",
+    `${n(cf.totalPageViews)} page views, from ${n(cf.summedDailyUniques)} daily visits added up.`,
+    "Someone who visits on three days counts three times in that second number.",
+    `${n(cf.totalRequests)} requests reached the site in total.`,
+  ];
+  if (cf.topCountries.length) {
+    lines.push("", `Busiest places: ${cf.topCountries.map(([c, r]) => `${c} ${n(r)}`).join(", ")}.`);
+  }
+  return lines;
+}
 
-  const sourcesStr = formatSourceBreakdown(ph.downloadSources);
+export function formatWebsite(site, intents) {
+  const lines = ["Tracked visitor activity"];
+  lines.push(site
+    ? `${n(site.visitors)} people viewed ${n(site.views)} pages on enviouswispr.com.`
+    : `Visitor figures were ${UNAVAILABLE} when this digest ran.`);
+  lines.push(intents == null
+    ? `The number of people who started a download was ${UNAVAILABLE}.`
+    : `${n(intents)} of them started a download.`);
+  lines.push("", "This counts only people whose browser runs our analytics, so it reads lower than the traffic figures above.");
+  return lines;
+}
 
+export function formatDownloads(gh, sources, botsExcluded) {
+  const lines = ["Downloads"];
+  lines.push(gh
+    ? `${n(gh.totalDownloads)} downloads all time, across every release. Latest release is ${gh.latestVersion}.`
+    : `All-time download figures were ${UNAVAILABLE} when this digest ran.`);
+  lines.push("", "Where this week's off-site downloads came from:", "```", formatSourceBreakdown(sources), "```");
+  lines.push(botsExcluded == null
+    ? `Bot downloads excluded: ${UNAVAILABLE}.`
+    : `Bot downloads excluded this week: ${n(botsExcluded)}.`);
+  return lines;
+}
+
+export function formatAppUsage(usage) {
+  if (!usage) return ["App usage", `App usage figures were ${UNAVAILABLE} when this digest ran.`];
+  return [
+    "App usage",
+    `${n(usage.active)} people used EnviousWispr this week.`,
+    `${n(usage.fresh)} of them installed it for the first time.`,
+    "",
+    "Dev machines are excluded from both numbers.",
+  ];
+}
+
+/** One embed per section, and a REFUSAL of any shape Discord would reject,
+ * while that failure still belongs to one section rather than the payload. */
+function toEmbed(lines) {
+  if (!Array.isArray(lines) || lines.length < 2) {
+    throw new TypeError("section formatter must return a title and body as string lines");
+  }
+  const checked = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    // Indexed and read exactly ONCE: Array#every skips holes, and two reads of
+    // the same index let an accessor answer one value to the check and another
+    // to the consumer.
+    if (!Object.hasOwn(lines, i)) {
+      throw new TypeError("section formatter must return a title and body as string lines");
+    }
+    const line = lines[i];
+    if (typeof line !== "string") {
+      throw new TypeError("section formatter must return a title and body as string lines");
+    }
+    checked.push(line);
+  }
+  const [title, ...body] = checked;
+  const description = body.join("\n");
+  if (title.length === 0 || description.length === 0) {
+    throw new TypeError("section formatter must return a non-empty title and description");
+  }
   return {
-    embeds: [
-      {
-        title: `📊 EnviousWispr Weekly Digest`,
-        description: `**${weekStart}** to **${weekEnd}**`,
-        color: 0x7c3aed, // brand purple
-        fields: [
-          {
-            name: "🌐 Website (Cloudflare)",
-            value: [
-              `**Unique Visitors:** ${cf.totalUniques.toLocaleString()}`,
-              `**Page Views:** ${cf.totalPageViews.toLocaleString()}`,
-              `**Total Requests:** ${cf.totalRequests.toLocaleString()}`,
-            ].join("\n"),
-            inline: true,
-          },
-          {
-            name: "🌐 Website (PostHog)",
-            value: [
-              `**Tracked Visitors:** ${ph.websiteVisitors ?? "—"}`,
-              `**Tracked Page Views:** ${ph.websitePageViews ?? "—"}`,
-              `**Download Intents (7d):** ${ph.downloadIntents ?? "—"}`,
-            ].join("\n"),
-            inline: true,
-          },
-          {
-            name: "\u200b",
-            value: "\u200b",
-            inline: false,
-          },
-          {
-            name: "⬇️ Downloads",
-            value: [
-              `**All-Time DMG Downloads:** ${gh.totalDownloads.toLocaleString()}`,
-              `**Latest Release:** ${gh.latestVersion}`,
-            ].join("\n"),
-            inline: true,
-          },
-          {
-            name: "📱 App Usage (PostHog)",
-            value: [
-              `**Active Installs (7d):** ${ph.weeklyActiveUsers}`,
-              `**New Users This Week:** ${ph.newUsers}`,
-            ].join("\n"),
-            inline: true,
-          },
-          {
-            name: "\u200b",
-            value: "\u200b",
-            inline: false,
-          },
-          {
-            name: "⬇️ Download Sources (7d)",
-            value: `\`\`\`\n${sourcesStr}\n\`\`\`\nOff-site bots excluded: ${ph.botExcluded ?? "—"}`,
-            inline: true,
-          },
-          {
-            name: "🌍 Top Countries",
-            value: `\`\`\`\n${topCountriesStr}\n\`\`\``,
-            inline: true,
-          },
-        ],
-        footer: {
-          text: "EnviousWispr Weekly Digest • Cloudflare Worker",
-        },
-        timestamp: new Date().toISOString(),
-      },
-    ],
+    title,
+    description,
+    color: 0x7c3aed, // brand purple
+    footer: { text: "EnviousWispr Weekly Digest" },
   };
 }
 
-// ── Discord Post ──────────────────────────────────────────────
+// ----- Orchestration --------------------------------------------------------
 
-async function postToDiscord(webhookUrl, payload) {
-  await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+/** Best-effort fixed notice for a run that produced no digest at all. Carries
+ * no error text, status code or response body: it goes to a Discord channel,
+ * and the exception surfaces through the trigger's non-2xx status. */
+async function postFailureNotice(env, label, { fetchFn = fetch } = {}) {
+  if (!env.DISCORD_WEBHOOK_URL) return;
+  try {
+    await deliverReport(env.DISCORD_WEBHOOK_URL, {
+      content:
+        `EnviousWispr Weekly Digest for ${label} could not be generated. ` +
+        `Nothing was measured, so this is not a report of zero.`,
+    }, { fetchFn });
+  } catch (_) {
+    // The caller's rethrow is what surfaces the failure. A failure notice that
+    // itself fails must not replace the original error.
+  }
+}
+
+/** Unwraps a settled outcome, returning `null` where the section failed, so a
+ * formatter renders "temporarily unavailable" instead of a fabricated number. */
+function valueOrNull(outcome, failures, name) {
+  if (outcome.status === "fulfilled") return outcome.value;
+  failures.push(`${name}: ${outcome.reason?.message || "failed"}`);
+  return null;
+}
+
+/**
+ * `deps` is a test-only injection seam; production passes nothing.
+ * `deps.hogqlOpts` drives retry paths without sitting through real backoff,
+ * `deps.fetchFn` intercepts Cloudflare/GitHub/Discord, `deps.now` pins the
+ * window.
+ */
+export async function runDigest(env, deps = {}) {
+  const hogqlOpts = { ...(deps.hogqlOpts || {}), workerLabel: WORKER_LABEL };
+  const fetchFn = deps.fetchFn || fetch;
+  const now = deps.now || new Date();
+
+  // ---- Window. The ONLY whole-run fatal dependency: without it no section has
+  // a period to measure, so there is nothing honest to post.
+  let window;
+  try {
+    window = resolveWeekWindow(now);
+  } catch (err) {
+    await postFailureNotice(env, "the requested week", { fetchFn });
+    throw err;
+  }
+  const label = formatDayRange(window);
+
+  // ---- Dev-ID resolution. Needed ONLY by app usage, so its failure costs that
+  // one section and nothing else. Daily-report makes this fatal to its whole
+  // run and is right to, because both of its sections are app events measured
+  // over the production population. Here, three sections never touch the dev
+  // list, and this is the single most timeout-prone query in the run - an
+  // unbounded whole-history scan. Inheriting the fatal contract would discard
+  // three working sections for an app-only dependency.
+  let prod = null;
+  const failures = [];
+  try {
+    prod = productionClauseFor(await resolveDevIds(env, hogqlOpts));
+  } catch (err) {
+    failures.push(`dev_ids: ${err.message}`);
+    console.log(`weekly_digest dev_ids failed, app usage unavailable: ${err.message}`);
+  }
+
+  // ---- Fan-out. PostHog work goes through the ONE limiter; Cloudflare and
+  // GitHub are different APIs with no shared ceiling and run alongside it.
+  const posthogTasks = [
+    () => querySection(env, websiteSql(window.win), "website", hogqlOpts),
+    () => querySection(env, downloadsSql(window.win), "downloads", hogqlOpts),
+    () => querySection(env, downloadSourcesSql(window.win), "download_sources", hogqlOpts),
+  ];
+  if (prod) {
+    posthogTasks.push(() => querySection(env, appUsageSql(prod, window.win), "app_usage", hogqlOpts));
+  }
+
+  const [posthogOutcome, cfOutcome, ghOutcome] = await Promise.allSettled([
+    runLimited(posthogTasks.map((task) => async () => {
+      try {
+        return { status: "fulfilled", value: await task() };
+      } catch (reason) {
+        return { status: "rejected", reason };
+      }
+    }), CONCURRENCY_LIMIT),
+    fetchCloudflareStats(env, window, { fetchFn }),
+    fetchGitHubDownloads(env, { fetchFn }),
+  ]);
+
+  // A rejection here is a programming error in the limiter itself, not a query
+  // failure: every task above already converts its own rejection to a settled
+  // record. Fatal, and deliberately not absorbed as four unavailable sections.
+  if (posthogOutcome.status === "rejected") {
+    await postFailureNotice(env, label, { fetchFn });
+    throw posthogOutcome.reason;
+  }
+  const settled = posthogOutcome.value;
+
+  const read = (index, name) => {
+    if (index >= settled.length) return null;
+    const outcome = settled[index];
+    if (outcome.status === "rejected") {
+      // querySection already absorbed every EXPECTED transient failure into a
+      // degraded flag, so a rejection here is a contract failure: auth, bad
+      // SQL, a malformed response shape, or a programming error. Those stay
+      // loud rather than becoming a quietly missing section.
+      throw outcome.reason;
+    }
+    if (outcome.value.degraded) {
+      failures.push(`${name}: degraded after retries`);
+      return null;
+    }
+    return rowsToObjects(outcome.value.response);
+  };
+
+  let site, downloads, sources, usage;
+  try {
+    site = read(0, "website")?.[0] ?? null;
+    downloads = read(1, "downloads")?.[0] ?? null;
+    sources = read(2, "download_sources");
+    usage = prod ? (read(3, "app_usage")?.[0] ?? null) : null;
+  } catch (err) {
+    await postFailureNotice(env, label, { fetchFn });
+    throw err;
+  }
+
+  const cf = valueOrNull(cfOutcome, failures, "cloudflare");
+  const gh = valueOrNull(ghOutcome, failures, "github");
+
+  const payload = {
+    content: `EnviousWispr Weekly Digest, ${label}`,
+    embeds: [
+      toEmbed(formatCloudflare(cf)),
+      toEmbed(formatWebsite(site, downloads ? downloads.intents : null)),
+      toEmbed(formatDownloads(gh, sources, downloads ? downloads.bots_excluded : null)),
+      toEmbed(formatAppUsage(usage)),
+    ],
+  };
+
+  // Validated and sent as ONE object. An over-budget payload throws here with
+  // zero requests made: the digest is sent whole or not at all.
+  await deliverReport(env.DISCORD_WEBHOOK_URL, payload, { fetchFn });
+
+  // The founder has the digest; the trigger still has to fail, or a section
+  // that silently stopped working would look like a healthy run forever.
+  if (failures.length) {
+    throw new Error(`weekly digest delivered with unavailable sections - ${failures.join("; ")}`);
+  }
+  return payload.content;
 }

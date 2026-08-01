@@ -495,6 +495,36 @@ jobs:
           done
           echo "==> Both standalone eval packages compile against current Core"
 
+  # Worker unit suites (#1589). Deliberately UNCONDITIONAL and deliberately
+  # running BOTH workers every time: the point is to catch a change under
+  # workers/shared/ that breaks the OTHER consumer, which a paths filter or a
+  # changed-worker-only run would miss by construction. It is seconds long and
+  # needs no macOS runner, so gating it buys nothing and adds a way to be wrong.
+  # It does not consume scripts/ci/classify-changes.sh, whose needs_build verdict
+  # is about the Swift build and has no opinion about workers.
+  #
+  # Feeds build-check below, because an advisory job that goes red while the PR
+  # stays mergeable is decoration, not a gate.
+  worker-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '22'
+
+      - name: Worker unit tests
+        run: |
+          set -euo pipefail
+          for w in daily-report weekly-digest; do
+            echo "==> $w"
+            ( cd "workers/$w" && node --test )
+          done
+
   # Required aggregate gate. This is the ONLY required status check on main
   # (ruleset main-protection, context "build-check"); keeping the job id
   # "build-check" preserves that context so no ruleset change is needed (#906).
@@ -502,7 +532,7 @@ jobs:
   # fail closed), but is skipped when the whole run is cancelled (a superseded
   # push) so the obsolete SHA shows "cancelled", not a false "Failure".
   build-check:
-    needs: [build-debug, build-release]
+    needs: [build-debug, build-release, worker-tests]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -524,11 +554,13 @@ jobs:
 
       - name: Require both build lanes
         run: |
-          if [ "${{ needs.build-debug.result }}" != "success" ] || [ "${{ needs.build-release.result }}" != "success" ]; then
-            echo "::error::build lane failed — build-debug=${{ needs.build-debug.result }} build-release=${{ needs.build-release.result }}"
+          if [ "${{ needs.build-debug.result }}" != "success" ] \
+             || [ "${{ needs.build-release.result }}" != "success" ] \
+             || [ "${{ needs.worker-tests.result }}" != "success" ]; then
+            echo "::error::lane failed — build-debug=${{ needs.build-debug.result }} build-release=${{ needs.build-release.result }} worker-tests=${{ needs.worker-tests.result }}"
             exit 1
           fi
-          echo "==> Both build lanes passed."
+          echo "==> Both build lanes and the worker unit suites passed."
 
       - name: Report build status
         run: |

@@ -9,3 +9,22 @@ crons = ["0 13 * * 1"]  # Every Monday at 1pm UTC = 9am ET
 CF_ZONE_ID = "b4416a0f0ebd699e96969a331c7ad7ff"
 GITHUB_REPO = "saurabhav88/EnviousWispr"
 POSTHOG_PROJECT_ID = "354235"
+
+# Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
+#   POSTHOG_PERSONAL_API_KEY  - GCP secret `posthog-personal-api-key`
+#   DISCORD_WEBHOOK_URL       - the session-logs webhook
+#   CF_EMAIL / CF_API_KEY     - Cloudflare Analytics GraphQL auth
+#   GITHUB_TOKEN              - optional; raises the releases rate limit
+#   TRIGGER_SECRET            - gates the public `fetch` trigger. The workers.dev
+#                               URL is public, so before #1589 anyone who knew it
+#                               could post a real digest to Discord. The trigger
+#                               now fails CLOSED: an unset secret refuses every
+#                               request, so a half-configured deploy cannot be
+#                               triggered at all. The cron path is unaffected.
+#
+# This worker holds one of the account's five free-plan Cloudflare cron slots
+# (#1092), which is why scheduling lives here and not in a GitHub Action.
+#
+# `src/index.js` imports from `../../shared/`. Wrangler's esbuild follows that
+# relative path above the worker root with no config change, and a deploy of
+# THIS worker does not update the daily report's copy - see workers/shared/README.md.

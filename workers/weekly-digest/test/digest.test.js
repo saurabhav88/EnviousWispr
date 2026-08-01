@@ -1,131 +1,519 @@
-// Unit tests for the pure query-builder / extractor / formatter helpers (no network).
-// Run: node --test  (from workers/weekly-digest/)
+/**
+ * Weekly digest tests (#1243, #1589).
+ *
+ * The #1589 suites drive the REAL `runDigest` with fetch intercepted, rather
+ * than re-assembling the digest from its parts. A harness that re-implements
+ * the orchestration is a second authority: it passes happily while production
+ * takes another path.
+ */
+
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  downloadIntentsHogQL,
-  downloadSourcesHogQL,
-  botExcludedHogQL,
-  extractTrendTotal,
-  extractHogScalar,
-  extractHogRows,
+
+import worker, {
+  runDigest,
+  resolveWeekWindow,
+  fetchCloudflareStats,
+  fetchGitHubDownloads,
+  appUsageSql,
+  websiteSql,
+  downloadsSql,
+  downloadSourcesSql,
   sourceLabel,
   formatSourceBreakdown,
-  buildEmbed,
+  formatCloudflare,
+  formatWebsite,
+  formatDownloads,
+  formatAppUsage,
+  SOURCE_LABELS,
 } from "../src/index.js";
 
-// ---- HogQL builders: must qualify every event-property as properties.<name> ----
-// A bare excluded_reason / source_bucket (not preceded by "properties.") would fail
-// in PostHog HogQL. This regex catches the regression Codex flagged twice.
-const BARE_PROP = /(?<!properties\.)\b(excluded_reason|source_bucket)\b/;
+// Every event-property reference must be qualified as properties.<name>: a bare
+// name does not resolve in PostHog HogQL. This regex catches the regression
+// Codex flagged twice on the pre-#1589 builders.
+const BARE_PROP = /(?<!properties\.)\b(excluded_reason|source_bucket|is_fresh_install|app_version)\b/;
 
-test("downloadIntentsHogQL: union of both events, bot-excluded, fully qualified", () => {
-  const q = downloadIntentsHogQL("2026-06-23", "2026-06-30");
-  assert.match(q, /event = 'download_clicked'/);
-  assert.match(q, /event = 'download_redirect'/);
-  assert.match(q, /coalesce\(properties\.excluded_reason, ''\) = ''/);
-  assert.ok(!BARE_PROP.test(q), "no bare event-property refs allowed");
-  assert.match(q, /2026-06-23/);
-  assert.match(q, /2026-06-30/);
+const ENV = {
+  POSTHOG_PROJECT_ID: "354235",
+  POSTHOG_PERSONAL_API_KEY: "k",
+  CF_ZONE_ID: "zone",
+  CF_EMAIL: "e",
+  CF_API_KEY: "cfk",
+  GITHUB_REPO: "saurabhav88/EnviousWispr",
+  DISCORD_WEBHOOK_URL: "https://discord.test/hook",
+  TRIGGER_SECRET: "s3cret",
+};
+
+// Pinned so the window is deterministic: Monday 2026-08-03 13:00 UTC ->
+// window 2026-07-27 .. 2026-08-03 exclusive, last included day 2026-08-02.
+const NOW = new Date("2026-08-03T13:00:00Z");
+
+const ok = (body) => ({ ok: true, status: 200, json: async () => body });
+const fail = (status) => ({ ok: false, status, json: async () => ({}), body: { cancel: async () => {} } });
+
+const POSTHOG_ROWS = {
+  dev_ids: { results: [["dev-a"], ["dev-b"]], columns: ["distinct_id"] },
+  website: { results: [[226, 119]], columns: ["views", "visitors"] },
+  downloads: { results: [[36, 11]], columns: ["intents", "bots_excluded"] },
+  download_sources: { results: [["github_readme", 20], ["reddit", 8]], columns: ["bucket", "n"] },
+  app_usage: { results: [[189, 51]], columns: ["active", "fresh"] },
+};
+
+const CF_BODY = {
+  data: { viewer: { zones: [{
+    totals: [{ sum: { requests: 5000, pageViews: 900 }, uniq: { uniques: 300 } }],
+    byDay: [{ dimensions: { date: "2026-07-27" }, sum: { pageViews: 100, countryMap: [
+      { clientCountryName: "United States", requests: 3000 },
+      { clientCountryName: "India", requests: 900 },
+    ] } }],
+  }] } },
+};
+
+const RELEASES_PAGE = (count, startTag = 1) =>
+  Array.from({ length: count }, (_, i) => ({
+    tag_name: `v1.${startTag + i}.0`,
+    assets: [{ name: "EnviousWispr.dmg", download_count: 10 }],
+  }));
+
+/**
+ * One harness driving the real runDigest. `overrides` replaces individual
+ * PostHog query responses (keyed by the UNPREFIXED query name) or the
+ * Cloudflare / GitHub behaviour.
+ */
+function harness(overrides = {}) {
+  const state = { posts: [], queryNames: [], inFlight: 0, peakInFlight: 0, posthogCalls: 0, githubPages: [], sql: [] };
+
+  const fetchFn = async (url, init) => {
+    if (String(url).includes("posthog.com")) {
+      state.posthogCalls += 1;
+      state.inFlight += 1;
+      state.peakInFlight = Math.max(state.peakInFlight, state.inFlight);
+      try {
+        const body = JSON.parse(init.body);
+        const name = body.name;
+        state.queryNames.push(name);
+        state.sql.push(body.query.query);
+        assert.ok(name.startsWith("weekly_digest_"), `query name must carry the worker label, got ${name}`);
+        const key = name.replace(/^weekly_digest_/, "");
+        // Yield, so concurrent work actually overlaps and peakInFlight means
+        // something rather than recording a sequence of instant resolutions.
+        await new Promise((r) => setImmediate(r));
+        const override = overrides.posthog?.[key];
+        if (typeof override === "function") return override();
+        return ok(POSTHOG_ROWS[key] ?? { results: [], columns: [] });
+      } finally {
+        state.inFlight -= 1;
+      }
+    }
+    if (String(url).includes("api.cloudflare.com")) {
+      return overrides.cloudflare ? overrides.cloudflare() : ok(CF_BODY);
+    }
+    if (String(url).includes("api.github.com")) {
+      const page = Number(new URL(url).searchParams.get("page"));
+      state.githubPages.push(page);
+      if (overrides.github) return overrides.github(page);
+      return ok(page === 1 ? RELEASES_PAGE(100) : RELEASES_PAGE(45, 101));
+    }
+    if (String(url).includes("discord.test")) {
+      state.posts.push(JSON.parse(init.body));
+      return { status: 204 };
+    }
+    throw new Error(`unexpected fetch to ${url}`);
+  };
+
+  const run = (env = ENV) =>
+    runDigest(env, { fetchFn, now: NOW, hogqlOpts: { fetchFn, sleepFn: async () => {}, randomFn: () => 0 } });
+
+  return { state, fetchFn, run };
+}
+
+// ---- Window ------------------------------------------------------------------
+
+test("the window is seven whole UTC days, half-open, with no shared day", () => {
+  const w = resolveWeekWindow(NOW);
+  assert.equal(w.startDay, "2026-07-27");
+  assert.equal(w.lastDay, "2026-08-02");
+  assert.equal(w.end.toISOString(), "2026-08-03T00:00:00.000Z");
+  // Seven days, not the eight the shipped worker measured.
+  assert.equal((w.end - w.start) / 86400000, 7);
+  // Exclusive end: consecutive weeks must not share a day.
+  const next = resolveWeekWindow(new Date("2026-08-10T13:00:00Z"));
+  assert.equal(next.startDay, "2026-08-03");
+  assert.equal(w.lastDay < next.startDay, true);
 });
 
-test("downloadSourcesHogQL: groups off-site only by qualified source_bucket", () => {
-  const q = downloadSourcesHogQL("2026-06-23", "2026-06-30");
-  assert.match(q, /properties\.source_bucket/);
-  assert.match(q, /event = 'download_redirect'/);
-  assert.ok(!/download_clicked/.test(q), "source breakdown must be off-site only");
-  assert.match(q, /coalesce\(properties\.excluded_reason, ''\) = ''/);
-  assert.match(q, /GROUP BY bucket/);
-  assert.ok(!BARE_PROP.test(q), "no bare event-property refs allowed");
+test("the SQL window clause is half-open, never an inclusive toDate range", () => {
+  const w = resolveWeekWindow(NOW);
+  assert.match(w.win, /timestamp >= '2026-07-27 00:00:00' AND timestamp < '2026-08-03 00:00:00'/);
+  // An inclusive `<=` is what reintroduces the eighth day and the double count.
+  assert.doesNotMatch(w.win, /<=/);
 });
 
-test("botExcludedHogQL: counts non-empty excluded_reason, qualified", () => {
-  const q = botExcludedHogQL("2026-06-23", "2026-06-30");
-  assert.match(q, /coalesce\(properties\.excluded_reason, ''\) != ''/);
-  assert.match(q, /event = 'download_redirect'/);
-  assert.ok(!BARE_PROP.test(q), "no bare event-property refs allowed");
+// ---- Query shape -------------------------------------------------------------
+
+test("every event property is qualified as properties.<name>", () => {
+  const win = "timestamp >= 'x' AND timestamp < 'y'";
+  for (const sql of [appUsageSql("P", win), websiteSql(win), downloadsSql(win), downloadSourcesSql(win)]) {
+    assert.doesNotMatch(sql, BARE_PROP);
+  }
 });
 
-// ---- extractors ----
-test("extractHogScalar: first cell, '?' fallbacks", () => {
-  assert.equal(extractHogScalar({ results: [[5]] }), 5);
-  assert.equal(extractHogScalar({ results: [[0]] }), 0); // zero is a real count, not "?"
-  assert.equal(extractHogScalar({ results: [] }), "?");
-  assert.equal(extractHogScalar(null), "?");
-  assert.equal(extractHogScalar({}), "?");
+test("app usage carries the production predicate; website and downloads do NOT", () => {
+  const prod = "properties.environment = 'production'\n    AND distinct_id NOT IN ('dev-a')";
+  const win = "timestamp >= 'x' AND timestamp < 'y'";
+  assert.match(appUsageSql(prod, win), /environment = 'production'/);
+  assert.match(appUsageSql(prod, win), /distinct_id NOT IN/);
+  // Website events carry no environment property at all, so the production
+  // predicate would return ZERO rather than the same rows more slowly.
+  for (const sql of [websiteSql(win), downloadsSql(win), downloadSourcesSql(win)]) {
+    assert.doesNotMatch(sql, /environment = 'production'/);
+    assert.doesNotMatch(sql, /distinct_id NOT IN/);
+  }
 });
 
-test("extractHogRows: passthrough; null on failure (unknown != empty)", () => {
-  assert.deepEqual(extractHogRows({ results: [["reddit", 2], ["blog", 1]] }), [["reddit", 2], ["blog", 1]]);
-  assert.deepEqual(extractHogRows({ results: [] }), []); // genuine zero week is a real []
-  assert.equal(extractHogRows(null), null); // failed query -> unknown, NOT empty
-  assert.equal(extractHogRows({ results: "nope" }), null);
+test("only the pageview query is host-scoped; download queries must NOT be", () => {
+  const win = "timestamp >= 'x' AND timestamp < 'y'";
+  assert.match(websiteSql(win), /properties\.\$host IN \('enviouswispr\.com', 'www\.enviouswispr\.com'\)/);
+  // download_redirect is emitted server-side with no $host, so a host filter
+  // here would silently drop every off-site redirect.
+  assert.doesNotMatch(downloadsSql(win), /\$host/);
+  assert.doesNotMatch(downloadSourcesSql(win), /\$host/);
 });
 
-test("extractTrendTotal: aggregated_value, summed data, fallback", () => {
-  assert.equal(extractTrendTotal({ results: [{ aggregated_value: 12 }] }, 0), 12);
-  assert.equal(extractTrendTotal({ results: [{ data: [1, 2, 3] }] }, 0), 6);
-  assert.equal(extractTrendTotal({ results: [] }, 0), "?");
-  assert.equal(extractTrendTotal(null, 0), "?");
+test("no query interpolates the production predicate more than once", () => {
+  const prod = "properties.environment = 'production'";
+  const win = "timestamp >= 'x' AND timestamp < 'y'";
+  // Repeating an unbounded dev-exclusion predicate inside one query is the
+  // shape that timed out production PostHog in #1655 and #1716.
+  assert.equal(appUsageSql(prod, win).split(prod).length - 1, 1);
 });
 
-// ---- labels / formatting ----
+test("the merged downloads query preserves both original predicates", () => {
+  const sql = downloadsSql("W");
+  assert.match(sql, /event = 'download_clicked'/);
+  assert.match(sql, /event = 'download_redirect' AND coalesce\(properties\.excluded_reason, ''\) = ''/);
+  assert.match(sql, /coalesce\(properties\.excluded_reason, ''\) != ''/);
+  // Scoped to the two relevant event types, or the merge scans everything.
+  assert.match(sql, /WHERE event IN \('download_clicked', 'download_redirect'\)/);
+});
+
+test("app usage counts fresh installs by the app's own flag, not PostHog first-seen", () => {
+  const sql = appUsageSql("P", "W");
+  assert.match(sql, /uniqExactIf\(distinct_id, properties\.is_fresh_install = true\)/);
+  // A single uniqExact over the window, never per-bucket counts a caller could
+  // sum into a double count.
+  assert.match(sql, /uniqExact\(distinct_id\) AS active/);
+});
+
+// ---- Concurrency, retry, request count ---------------------------------------
+
+test("never more than 2 PostHog requests in flight, and the cap is actually reached", async () => {
+  const h = harness();
+  await h.run();
+  assert.equal(h.state.peakInFlight, 2, "cap must be reached, not merely never exceeded");
+});
+
+test("a clean run makes exactly 5 PostHog requests: 1 preflight + 4 metrics", async () => {
+  const h = harness();
+  await h.run();
+  // Equality, so both an added query and a silently dropped one fail.
+  assert.equal(h.state.posthogCalls, 5);
+  assert.equal(h.state.queryNames.filter((q) => q === "weekly_digest_dev_ids").length, 1);
+});
+
+test("every query name carries the weekly_digest label, never daily_report", async () => {
+  const h = harness();
+  await h.run();
+  assert.deepEqual(h.state.queryNames.slice().sort(), [
+    "weekly_digest_app_usage",
+    "weekly_digest_dev_ids",
+    "weekly_digest_download_sources",
+    "weekly_digest_downloads",
+    "weekly_digest_website",
+  ]);
+});
+
+test("a 504 that then succeeds still produces a complete digest", async () => {
+  let attempts = 0;
+  const h = harness({ posthog: { website: () => {
+    attempts += 1;
+    return attempts === 1 ? fail(504) : ok(POSTHOG_ROWS.website);
+  } } });
+  const content = await h.run();
+  assert.match(content, /EnviousWispr Weekly Digest/);
+  assert.equal(attempts, 2);
+  assert.equal(h.state.posts.length, 1);
+  assert.match(h.state.posts[0].embeds[1].description, /119 people viewed 226 pages/);
+});
+
+// ---- Degrade: no number may appear when its query failed ----------------------
+
+test("an exhausted section degrades, the others keep real numbers, one digest posts", async () => {
+  const h = harness({ posthog: { website: () => fail(503) } });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  assert.equal(h.state.posts.length, 1, "exactly one digest, never a second notice");
+  const [digest] = h.state.posts;
+  const website = digest.embeds[1].description;
+  assert.match(website, /temporarily unavailable/);
+  // The degraded section must not fabricate a zero.
+  assert.doesNotMatch(website, /\b0 people\b/);
+  // Every other section still carries its real figures.
+  assert.match(digest.embeds[3].description, /189 people used EnviousWispr/);
+  assert.match(digest.embeds[0].description, /900 page views/);
+});
+
+test("a healthy run says 'temporarily unavailable' nowhere and prints no question marks", async () => {
+  const h = harness();
+  await h.run();
+  const text = JSON.stringify(h.state.posts[0]);
+  // Two-way control: without this, a degrade-everything bug passes every
+  // failure test above.
+  assert.doesNotMatch(text, /temporarily unavailable/);
+  assert.doesNotMatch(text, /\?/);
+});
+
+// ---- dev_ids is an app-usage dependency, NOT a whole-run gate -----------------
+
+test("dev_ids exhausted: app usage degrades, three sections still deliver", async () => {
+  const h = harness({ posthog: { dev_ids: () => fail(503) } });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  assert.equal(h.state.posts.length, 1);
+  const [digest] = h.state.posts;
+  assert.match(digest.embeds[3].description, /temporarily unavailable/);
+  assert.match(digest.embeds[0].description, /900 page views/);
+  assert.match(digest.embeds[1].description, /119 people viewed/);
+  // No app_usage query may be attempted without a resolved exclusion list.
+  assert.equal(h.state.queryNames.includes("weekly_digest_app_usage"), false);
+  // A partial digest was delivered, so the whole-run notice must NOT appear.
+  assert.equal(h.state.posts.filter((p) => /could not be generated/.test(p.content || "")).length, 0);
+});
+
+test("dev_ids overflowing the id ceiling degrades app usage, never truncates the list", async () => {
+  const many = { results: Array.from({ length: 5001 }, (_, i) => [`dev-${i}`]), columns: ["distinct_id"] };
+  const h = harness({ posthog: { dev_ids: () => ok(many) } });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  assert.equal(h.state.posts.length, 1);
+  assert.match(h.state.posts[0].embeds[3].description, /temporarily unavailable/);
+  assert.equal(h.state.queryNames.includes("weekly_digest_app_usage"), false);
+});
+
+test("a dev_ids 401 costs app usage only; a METRIC 401 fails the whole run", async () => {
+  const devAuth = harness({ posthog: { dev_ids: () => fail(401) } });
+  await assert.rejects(() => devAuth.run(), /unavailable sections/);
+  assert.equal(devAuth.state.posts.length, 1, "a partial digest still posts");
+  assert.equal(devAuth.state.posts[0].embeds.length, 4);
+
+  const metricAuth = harness({ posthog: { website: () => fail(401) } });
+  await assert.rejects(() => metricAuth.run(), /HTTP 401/);
+  // Contract failure: notice, no digest.
+  assert.equal(metricAuth.state.posts.length, 1);
+  assert.match(metricAuth.state.posts[0].content, /could not be generated/);
+  assert.equal(metricAuth.state.posts[0].embeds, undefined);
+});
+
+test("a malformed metric response posts the failure notice and no digest", async () => {
+  const h = harness({ posthog: { downloads: () => ok({ columns: ["intents"] }) } });
+  await assert.rejects(() => h.run(), /returned no results array/);
+  assert.equal(h.state.posts.length, 1);
+  assert.match(h.state.posts[0].content, /could not be generated/);
+  assert.equal(h.state.posts[0].embeds, undefined);
+});
+
+test("zero dev ids is a legitimate state and must not produce NOT IN ()", async () => {
+  const h = harness({ posthog: { dev_ids: () => ok({ results: [], columns: ["distinct_id"] }) } });
+  await h.run();
+  const appUsage = h.state.sql.find((q) => q.includes("app.launched"));
+  assert.match(appUsage, /environment = 'production'/);
+  assert.doesNotMatch(appUsage, /NOT IN \(\)/);
+});
+
+test("resolved dev ids reach the app-usage query as a literal exclusion list", async () => {
+  const h = harness();
+  await h.run();
+  const appUsage = h.state.sql.find((q) => q.includes("app.launched"));
+  assert.match(appUsage, /distinct_id NOT IN \('dev-a', 'dev-b'\)/);
+});
+
+// ---- Trigger gate ------------------------------------------------------------
+
+test("an unauthenticated trigger returns 401 and posts nothing", async () => {
+  const res = await worker.fetch(new Request("https://w.dev/"), ENV);
+  assert.equal(res.status, 401);
+});
+
+test("a wrong token is refused", async () => {
+  const res = await worker.fetch(new Request("https://w.dev/?token=nope"), ENV);
+  assert.equal(res.status, 401);
+});
+
+test("an unset TRIGGER_SECRET refuses everything, including a supplied token", async () => {
+  const { TRIGGER_SECRET, ...noSecret } = ENV;
+  for (const url of ["https://w.dev/", "https://w.dev/?token=s3cret", "https://w.dev/?token="]) {
+    const res = await worker.fetch(new Request(url), noSecret);
+    assert.equal(res.status, 401, `${url} must fail closed`);
+  }
+});
+
+test("a wrong header-form trigger secret is refused too", async () => {
+  const res = await worker.fetch(
+    new Request("https://w.dev/", { headers: { "x-trigger-secret": "wrong" } }),
+    ENV
+  );
+  assert.equal(res.status, 401);
+});
+
+// ---- Cloudflare and GitHub ---------------------------------------------------
+
+test("a Cloudflare failure degrades its section and never renders a zero", async () => {
+  for (const bad of [
+    () => fail(500),
+    () => ok({ errors: [{ message: "boom" }] }),
+    () => ok({ data: { viewer: { zones: [] } } }),
+  ]) {
+    const h = harness({ cloudflare: bad });
+    await assert.rejects(() => h.run(), /unavailable sections/);
+    const traffic = h.state.posts[0].embeds[0].description;
+    assert.match(traffic, /temporarily unavailable/);
+    // The shipped worker reported a confident 0 for each of these three.
+    assert.doesNotMatch(traffic, /\b0 page views\b/);
+  }
+});
+
+test("a genuine zero-traffic week still renders 0, not 'unavailable'", async () => {
+  const empty = { data: { viewer: { zones: [{ totals: [], byDay: [] }] } } };
+  const h = harness({ cloudflare: () => ok(empty) });
+  await h.run();
+  const traffic = h.state.posts[0].embeds[0].description;
+  assert.match(traffic, /0 page views/);
+  assert.doesNotMatch(traffic, /temporarily unavailable/);
+});
+
+test("all-time downloads reads every page, not just GitHub's first 30", async () => {
+  const h = harness();
+  await h.run();
+  assert.deepEqual(h.state.githubPages, [1, 2]);
+  // 100 releases on page 1 + 45 on page 2, one 10-download dmg each.
+  assert.match(h.state.posts[0].embeds[2].description, /1,450 downloads all time/);
+});
+
+test("one page is one request: a short first page must not fetch a second", async () => {
+  const h = harness({ github: () => ok(RELEASES_PAGE(45)) });
+  await h.run();
+  assert.deepEqual(h.state.githubPages, [1]);
+  assert.match(h.state.posts[0].embeds[2].description, /450 downloads all time/);
+});
+
+test("a mid-pagination failure degrades the section rather than reporting a partial sum", async () => {
+  const h = harness({ github: (page) => (page === 1 ? ok(RELEASES_PAGE(100)) : fail(502)) });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  const downloads = h.state.posts[0].embeds[2].description;
+  assert.match(downloads, /temporarily unavailable/);
+  // 1,000 is page one's real total, and exactly the plausible wrong number a
+  // partial sum would have shipped.
+  assert.doesNotMatch(downloads, /1,000 downloads/);
+});
+
+test("GitHub non-2xx on the first page degrades instead of returning '?'", async () => {
+  const h = harness({ github: () => fail(403) });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  assert.match(h.state.posts[0].embeds[2].description, /temporarily unavailable/);
+});
+
+// ---- Payload -----------------------------------------------------------------
+
+test("the digest posts four section embeds carrying the brand colour", async () => {
+  const h = harness();
+  await h.run();
+  const [digest] = h.state.posts;
+  assert.equal(digest.embeds.length, 4);
+  assert.deepEqual(digest.embeds.map((e) => e.title), [
+    "All website traffic", "Tracked visitor activity", "Downloads", "App usage",
+  ]);
+  for (const embed of digest.embeds) {
+    assert.equal(embed.color, 0x7c3aed);
+    assert.equal(embed.footer.text, "EnviousWispr Weekly Digest");
+  }
+  assert.match(digest.content, /EnviousWispr Weekly Digest, July 27 to August 2/);
+});
+
+test("the assembled payload passes the shared Discord validator at realistic size", async () => {
+  const wide = {
+    results: Array.from({ length: 8 }, (_, i) => ["unknown_referrer", 10_000_000 + i]),
+    columns: ["bucket", "n"],
+  };
+  const h = harness({ posthog: { download_sources: () => ok(wide) } });
+  await h.run();
+  const [digest] = h.state.posts;
+  const combined = digest.embeds.reduce(
+    (sum, e) => sum + e.title.length + e.description.length + e.footer.text.length, 0);
+  assert.ok(combined < 6000, `combined embed text ${combined} must stay under Discord's budget`);
+});
+
+test("the digest is sent exactly once, and nothing follows a successful delivery", async () => {
+  const h = harness();
+  await h.run();
+  assert.equal(h.state.posts.length, 1);
+});
+
+// ---- Pure helpers ------------------------------------------------------------
+
 test("sourceLabel: known maps, unknown/null -> Other", () => {
   assert.equal(sourceLabel("github_readme"), "GitHub README");
   assert.equal(sourceLabel("reddit"), "Reddit");
-  assert.equal(sourceLabel("ai_assistant"), "AI assistant");
-  assert.equal(sourceLabel("some_new_bucket"), "Other");
+  assert.equal(sourceLabel("nope"), "Other");
   assert.equal(sourceLabel(null), "Other");
   assert.equal(sourceLabel(undefined), "Other");
+  assert.equal(Object.keys(SOURCE_LABELS).length > 10, true);
 });
 
-test("formatSourceBreakdown: empty vs unknown vs rows", () => {
-  assert.equal(formatSourceBreakdown([]), "No off-site downloads yet"); // genuine zero
-  assert.equal(formatSourceBreakdown(null), "Sources unavailable"); // query failed/unknown
-  const out = formatSourceBreakdown([["github_readme", 3], ["reddit", 1], ["mystery", 1]]);
-  assert.match(out, /GitHub README: 3/);
-  assert.match(out, /Reddit: 1/);
-  assert.match(out, /Other: 1/); // unknown bucket never disappears
+test("formatSourceBreakdown: unavailable, genuine zero, and rows read differently", () => {
+  assert.equal(formatSourceBreakdown(null), "Sources unavailable");
+  assert.equal(formatSourceBreakdown(undefined), "Sources unavailable");
+  assert.equal(formatSourceBreakdown([]), "No off-site downloads yet");
+  assert.equal(
+    formatSourceBreakdown([{ bucket: "reddit", n: 1234 }, { bucket: null, n: 2 }]),
+    "Reddit: 1,234\nOther: 2"
+  );
 });
 
-// ---- embed smoke ----
-const cf = { totalUniques: 10, totalPageViews: 50, totalRequests: 100, topCountries: [["United States", 5]] };
-const gh = { totalDownloads: 1234, latestVersion: "v1.10.2" };
-
-test("buildEmbed: shows Download Intents + Download Sources, drops legacy labels", () => {
-  const ph = {
-    websiteVisitors: 9, websitePageViews: 40,
-    downloadIntents: 7, downloadSources: [["github_readme", 4], ["reddit", 2]],
-    botExcluded: 3, weeklyActiveUsers: 20, newUsers: 2,
-  };
-  const json = JSON.stringify(buildEmbed("2026-06-23", "2026-06-30", cf, gh, ph));
-  assert.match(json, /Download Intents \(7d\)/);
-  assert.match(json, /Download Sources \(7d\)/);
-  assert.match(json, /Off-site bots excluded: 3/);
-  assert.match(json, /GitHub README: 4/);
-  assert.ok(!/Download Clicks/.test(json), "legacy 'Download Clicks' label removed");
-  assert.ok(!/Top Referrers/.test(json), "broken 'Top Referrers' section removed");
-  // All-time GitHub file-download count stays separate and labeled.
-  assert.match(json, /All-Time DMG Downloads/);
+test("every formatter degrades to prose, never to a number, when its input is null", () => {
+  for (const lines of [formatCloudflare(null), formatWebsite(null, null), formatDownloads(null, null, null), formatAppUsage(null)]) {
+    assert.match(lines.join("\n"), /temporarily unavailable/);
+  }
+  // Title line must survive so the embed is still well-formed.
+  assert.equal(formatAppUsage(null)[0], "App usage");
 });
 
-test("buildEmbed: empty sources renders the friendly placeholder", () => {
-  const ph = {
-    websiteVisitors: 9, websitePageViews: 40,
-    downloadIntents: 0, downloadSources: [], botExcluded: 0,
-    weeklyActiveUsers: 20, newUsers: 2,
-  };
-  const json = JSON.stringify(buildEmbed("2026-06-23", "2026-06-30", cf, gh, ph));
-  assert.match(json, /No off-site downloads yet/);
+test("formatters produce a title line plus a non-empty body of strings", () => {
+  const cases = [
+    formatCloudflare({ totalPageViews: 1, summedDailyUniques: 2, totalRequests: 3, topCountries: [] }),
+    formatWebsite({ views: 1, visitors: 2 }, 3),
+    formatDownloads({ totalDownloads: 1, latestVersion: "v1" }, [], 0),
+    formatAppUsage({ active: 1, fresh: 2 }),
+  ];
+  for (const lines of cases) {
+    assert.ok(lines.length >= 2);
+    assert.ok(lines[0].length > 0);
+    assert.ok(lines.slice(1).join("\n").length > 0);
+    for (const line of lines) assert.equal(typeof line, "string");
+  }
 });
 
-test("buildEmbed: failed sources query renders 'Sources unavailable', not a false zero", () => {
-  const ph = {
-    websiteVisitors: 9, websitePageViews: 40,
-    downloadIntents: "?", downloadSources: null, botExcluded: "?",
-    weeklyActiveUsers: 20, newUsers: 2,
-  };
-  const json = JSON.stringify(buildEmbed("2026-06-23", "2026-06-30", cf, gh, ph));
-  assert.match(json, /Sources unavailable/);
-  assert.ok(!/No off-site downloads yet/.test(json), "a failed query must not look like a true zero");
+test("the Cloudflare visitor line says what it counts, not 'unique visitors'", () => {
+  const lines = formatCloudflare({ totalPageViews: 900, summedDailyUniques: 300, totalRequests: 5000, topCountries: [] });
+  const text = lines.join("\n");
+  assert.match(text, /daily visits added up/);
+  assert.match(text, /counts three times/);
+  // The old label claimed people; the arithmetic never supported that.
+  assert.doesNotMatch(text, /Unique Visitors/i);
+});
+
+test("fetchCloudflareStats and fetchGitHubDownloads are callable in isolation", async () => {
+  const w = resolveWeekWindow(NOW);
+  const cf = await fetchCloudflareStats(ENV, w, { fetchFn: async () => ok(CF_BODY) });
+  assert.equal(cf.totalPageViews, 900);
+  assert.deepEqual(cf.topCountries[0], ["United States", 3000]);
+  const gh = await fetchGitHubDownloads(ENV, { fetchFn: async () => ok(RELEASES_PAGE(2)) });
+  assert.equal(gh.totalDownloads, 20);
+  assert.equal(gh.latestVersion, "v1.1.0");
 });
