@@ -127,6 +127,9 @@ final class RecoveryCoordinator {
   /// the owning drain loop clears it immediately before each pass, so a trigger
   /// arriving mid-pass causes exactly one later pass, never zero and never two.
   private var pendingRescan = false
+  /// #1762 — debug-log only: which entry point opened the current drain loop, so
+  /// each pass can name its trigger. Never read for control flow.
+  private var recoveryScanTrigger = "launch"
 
   /// IDs excluded from SAME-LAUNCH rescans, cleared only by a genuine new
   /// launch (a fresh coordinator). Two populations remain (#1755 narrowed it
@@ -517,9 +520,18 @@ final class RecoveryCoordinator {
     guard let id else { return nil }
     if armedSessionID == id { armedSessionID = nil }
     guard Self.shouldDeleteOnLiveEnding(ending) else {
+      // #1762: the RETAIN branch. A live ending that keeps its spool is the one
+      // that produces an orphan for a later launch to find, so it must not be
+      // silent — otherwise the next launch's discovery has no antecedent.
+      RecoveryLog.line("live ending (\(ending)) — keeping the spool for a future launch")
       nextLaunchOnlyRecoveryIDs.insert(id)
       return nil
     }
+    // #1762: the DELETE branch. Logged on REQUEST, before the destructor runs —
+    // `emitDeletionFailed` only fires on failure, so a successful live-ending
+    // cleanup was entirely invisible. The issue asked for the ending family and
+    // whether deletion was requested; both are here.
+    RecoveryLog.line("live ending (\(ending)) — deleting the spool")
     // GitHub cloud review PR #1761: suppress BEFORE the best-effort delete.
     // If the spool deletion fails (transient FS/permission error), the same
     // callback fires `onDictationEndedForRecovery` moments later — without
@@ -552,11 +564,11 @@ final class RecoveryCoordinator {
   func scanAndRecover() async {
     pendingRescan = true
     guard !scanInProgress else {
-      RecoveryLog.line("scan requested (launch) — coalesced into the pass already running")
+      RecoveryLog.line("launch scan arrived mid-pass — a follow-up pass is queued")
       return
     }
     scanInProgress = true
-    RecoveryLog.line("scan started (launch)")
+    recoveryScanTrigger = "launch"
     await drainPendingRescan()
   }
 
@@ -570,11 +582,11 @@ final class RecoveryCoordinator {
   func requestRecoveryRecheck() {
     pendingRescan = true
     guard !scanInProgress else {
-      RecoveryLog.line("scan requested (wake) — coalesced into the pass already running")
+      RecoveryLog.line("wake arrived mid-pass — a follow-up pass is queued")
       return
     }
     scanInProgress = true
-    RecoveryLog.line("scan started (wake)")
+    recoveryScanTrigger = "wake"
     Task { await drainPendingRescan() }
   }
 
@@ -588,9 +600,19 @@ final class RecoveryCoordinator {
   /// after yielding it would defeat the entire point of the yield; the live
   /// dictation's own later end becomes the next legitimate wake-up instead.
   private func drainPendingRescan() async {
-    defer { scanInProgress = false }
+    defer {
+      scanInProgress = false
+      RecoveryLog.line("scan finished")
+    }
+    var passNumber = 0
     while pendingRescan {
       pendingRescan = false
+      passNumber += 1
+      // #1762: log where the pass ACTUALLY starts, not where it was requested.
+      // A wake arriving mid-pass queues a FOLLOW-UP pass through this loop; an
+      // earlier draft claimed it joined the running pass, which is not what the
+      // loop does. Announcing each pass here is accurate whatever schedules it.
+      RecoveryLog.line("scan pass \(passNumber) started (\(recoveryScanTrigger))")
       let yieldedToLiveStart = await runOneScanPass()
       if yieldedToLiveStart {
         pendingRescan = false
@@ -619,6 +641,10 @@ final class RecoveryCoordinator {
       RecoveryLog.line("scan aborted — could not list the spool directory; nothing deleted")
       return false
     }
+    // #1762: BEFORE any early return, including zero. A pass that found nothing
+    // and finished must not read like a pass that stalled — that ambiguity is
+    // the whole reason this issue exists.
+    RecoveryLog.line("\(spoolIDs.count) spool(s) on disk")
     let armed = armedSessionID
 
     // Sweep KEY-ONLY orphans first: a key whose spool was never written — a
@@ -756,6 +782,12 @@ final class RecoveryCoordinator {
         recoveryEngineClaim.end()
         onRecoveryComplete?()
       }
+      // #1762: BEFORE the await, not after. If the process wedges or dies inside
+      // model load or transcription — the failure this diagnostic exists to
+      // investigate — an after-the-fact line never runs, and the log cannot show
+      // that this item ever entered replay. Pairs with the outcome line below:
+      // an "attempting" with no outcome IS the signature of a wedge.
+      RecoveryLog.line("attempting replay")
       let outcome = await replayer.replay(recoverySessionID: id) { [weak self] in
         // Discard bumps `recoveryGeneration`; a mismatch ⇒ abandon this in-flight
         // replay. Coordinator gone ⇒ treat as aborted (safe).
