@@ -1,8 +1,17 @@
 /**
- * Discord delivery for the daily report (issue #1838 chunk 6).
+ * Discord delivery, shared by every worker that posts a report (issues #1838,
+ * #1589).
  *
- * Infrastructure only. It knows Discord's transport limits and nothing about
- * adoption, releases or metrics.
+ * CONSUMERS: workers/daily-report, workers/weekly-digest.
+ *
+ * DEPLOY RULE: each worker bundles its own copy at deploy time, so editing this
+ * file changes nothing in production until EVERY consumer is redeployed. See
+ * workers/shared/README.md.
+ *
+ * Infrastructure only. It owns Discord's transport limits and the SUPPORTED
+ * SUBSET of its payload protocol, and knows nothing about adoption, releases,
+ * digests or metrics. It must never refuse a field Discord accepts merely
+ * because one consumer does not use it (#1589).
  *
  * ONE function validates and sends the SAME object, deliberately. A separate
  * `validate()` returning a boolean would let a caller check one payload and
@@ -40,16 +49,34 @@ export const DISCORD_LIMITS = Object.freeze({
   content: 2000,
   embedTitle: 256,
   embedDescription: 4096,
+  embedFooterText: 2048,
   embeds: 10,
   combinedText: 6000,
 });
 
-/** Embeds may carry only these two textual fields. Any other own key is
- * refused rather than passed through: `combinedText` must count every textual
- * field ACTUALLY SENT, and a field this module does not know about is a field
- * it cannot count. Refusing is the only way that arithmetic stays true. */
-const ALLOWED_EMBED_FIELDS = new Set(["title", "description"]);
+/** The SUPPORTED SUBSET of Discord's embed fields. Not all of them: this module
+ * does not implement `fields`, `author`, `image`, or `thumbnail`, and does not
+ * claim to.
+ *
+ * Any own key outside this set is refused rather than passed through, because
+ * `combinedText` must count every TEXTUAL field actually sent, and a field this
+ * module does not know about is a field it cannot count. Refusing is the only
+ * way that arithmetic stays true.
+ *
+ * WHY THIS SET IS NOT JUST {title, description} (#1589): it was, and that made
+ * the shared validator impose the daily report's LAYOUT CHOICE on every other
+ * worker. Discord permits `color`, `footer` and `timestamp`; refusing them was
+ * never a protocol limit, and it would have forced the weekly digest to drop its
+ * brand colour to reuse this transport. A shared module owns the protocol, not
+ * the presentation. Adding a field here means teaching `embedTextLength` to
+ * count it, or proving it costs nothing against the budget. */
+const ALLOWED_EMBED_FIELDS = new Set(["title", "description", "color", "footer", "timestamp"]);
 const ALLOWED_PAYLOAD_FIELDS = new Set(["content", "embeds"]);
+
+/** Fields Discord counts toward the 6000-character combined budget: embed
+ * titles, descriptions, field names/values, footer text, and author name. Colour
+ * and timestamp are NOT text and cost nothing against it. */
+const ALLOWED_FOOTER_FIELDS = new Set(["text"]);
 
 /** THE RULE THIS FILE EXISTS TO ENFORCE: validation must observe exactly what
  * `JSON.stringify` will observe.
@@ -181,6 +208,35 @@ function assertDeliverable(payload) {
     const title = ownString(embed, "title", `embed ${i}`, DISCORD_LIMITS.embedTitle);
     const description = ownString(embed, "description", `embed ${i}`, DISCORD_LIMITS.embedDescription);
     combined += title.length + description.length;
+
+    // Optional fields. Each is read EXACTLY ONCE through the same own-data-
+    // property discipline as the required ones, so a getter cannot answer one
+    // value here and another to JSON.stringify.
+    if (Object.hasOwn(embed, "color")) {
+      const color = ownDataValue(embed, "color", `embed ${i}`);
+      // Discord rejects a non-integer or out-of-range colour outright, so this
+      // refuses before the request rather than after.
+      if (!Number.isInteger(color) || color < 0 || color > 0xffffff) {
+        throw new DiscordPayloadError(`embed ${i}: color must be an integer between 0 and 16777215`);
+      }
+    }
+    if (Object.hasOwn(embed, "timestamp")) {
+      const timestamp = ownDataValue(embed, "timestamp", `embed ${i}`);
+      if (typeof timestamp !== "string" || Number.isNaN(Date.parse(timestamp))) {
+        throw new DiscordPayloadError(`embed ${i}: timestamp must be an ISO 8601 string`);
+      }
+    }
+    if (Object.hasOwn(embed, "footer")) {
+      const footer = ownDataValue(embed, "footer", `embed ${i}`);
+      if (!isPlainObject(footer)) {
+        throw new DiscordPayloadError(`embed ${i}: footer must be a plain object`);
+      }
+      assertAllowedOwnFields(footer, ALLOWED_FOOTER_FIELDS, `embed ${i}: footer`);
+      // Counted, because Discord counts it. This is the whole reason the
+      // allowlist exists: a permitted textual field that went uncounted would
+      // silently break the 6000-character arithmetic.
+      combined += ownString(footer, "text", `embed ${i}: footer`, DISCORD_LIMITS.embedFooterText).length;
+    }
   }
 
   if (combined > DISCORD_LIMITS.combinedText) {
