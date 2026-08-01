@@ -127,6 +127,9 @@ final class RecoveryCoordinator {
   /// the owning drain loop clears it immediately before each pass, so a trigger
   /// arriving mid-pass causes exactly one later pass, never zero and never two.
   private var pendingRescan = false
+  /// #1762 — debug-log only: which entry point opened the current drain loop, so
+  /// each pass can name its trigger. Never read for control flow.
+  private var recoveryScanTrigger = "launch"
 
   /// IDs excluded from SAME-LAUNCH rescans, cleared only by a genuine new
   /// launch (a fresh coordinator). Two populations remain (#1755 narrowed it
@@ -297,6 +300,16 @@ final class RecoveryCoordinator {
   /// destruction call. Never includes the recovery ID, path, or raw error —
   /// deletion stays best-effort and swallowed; this is diagnosis only.
   private func emitDeletionFailed(component: String, source: DestructionSource) {
+    // #1762 r5: reports the ACTION and its result, nothing further. Five review
+    // rounds went to disposition clauses here — "stays on disk", "already
+    // deleted", "a future launch will retry" — and each was wrong in some real
+    // path: `RecoverySpoolStore.delete` also clears the attempt marker and
+    // propagates THAT failure, the key delete cannot see the spool's fate under
+    // concurrency, and Discard's own delete can fail after the outcome line
+    // claimed success. This call site knows one thing for certain, so it says
+    // exactly that. A reader correlates the spool and key lines by sequence
+    // number; the log no longer does that inference for them, wrongly.
+    RecoveryLog.line("\(component) delete FAILED (\(source.rawValue))")
     let data = ["component": component, "source": source.rawValue]
     if let sink = deletionFailureBreadcrumbForTesting {
       sink("recovery", "deletion_failed", data)
@@ -442,6 +455,25 @@ final class RecoveryCoordinator {
     }
   }
 
+  /// #1762 — the human-readable outcome label for the local debug log. Exhaustive
+  /// so a new outcome cannot be added without choosing how it reads on screen;
+  /// `default` here would silently log the wrong thing for a future case.
+  ///
+  /// Deliberately says nothing beyond the outcome name — no transcript text, no
+  /// spool id, no path. `RecoveryLog`'s privacy rule applies to every caller.
+  static func logLabel(_ outcome: RecoveryReplayOutcome) -> String {
+    switch outcome {
+    case .recovered: return "recovered — transcript saved to History"
+    case .abandoned: return "abandoned — a prior attempt had already started"
+    case .failed(.unrecoverable): return "unrecoverable — the attempt is spent"
+    case .failed(.save): return "recovered but the History write failed"
+    case .aborted: return "aborted — the user pressed Discard"
+    case .deferred: return "deferred — no attempt ran"
+    case .deferredMarkerClearFailed:
+      return "deferred, attempt marker not cleared — a new launch re-checks it"
+    }
+  }
+
   /// A recording's transcript was durably saved — delete that session's spool +
   /// key. Best-effort, off the user's path, idempotent. Returns the detached
   /// work so tests can await it; callers discard it.
@@ -495,9 +527,22 @@ final class RecoveryCoordinator {
     guard let id else { return nil }
     if armedSessionID == id { armedSessionID = nil }
     guard Self.shouldDeleteOnLiveEnding(ending) else {
+      // #1762: the RETAIN branch. A live ending that keeps its spool is the one
+      // that produces an orphan for a later launch to find, so it must not be
+      // silent — otherwise the next launch's discovery has no antecedent.
+      // Synchronous hook, so this cannot await. Ordering does not matter here:
+      // this line stands alone rather than pairing with a later outcome.
+      Task {
+        RecoveryLog.line("live ending (\(ending)) — keeping the spool for a future launch")
+      }
       nextLaunchOnlyRecoveryIDs.insert(id)
       return nil
     }
+    // #1762: the DELETE branch. Logged on REQUEST, before the destructor runs —
+    // `emitDeletionFailed` only fires on failure, so a successful live-ending
+    // cleanup was entirely invisible. The issue asked for the ending family and
+    // whether deletion was requested; both are here.
+    RecoveryLog.line("live ending (\(ending)) — requesting spool deletion")
     // GitHub cloud review PR #1761: suppress BEFORE the best-effort delete.
     // If the spool deletion fails (transient FS/permission error), the same
     // callback fires `onDictationEndedForRecovery` moments later — without
@@ -529,8 +574,13 @@ final class RecoveryCoordinator {
   /// coalesces into a follow-up pass rather than running twice.
   func scanAndRecover() async {
     pendingRescan = true
-    guard !scanInProgress else { return }
+    guard !scanInProgress else {
+      recoveryScanTrigger = "launch"
+      RecoveryLog.line("launch scan arrived mid-pass — a follow-up pass is queued")
+      return
+    }
     scanInProgress = true
+    recoveryScanTrigger = "launch"
     await drainPendingRescan()
   }
 
@@ -543,8 +593,15 @@ final class RecoveryCoordinator {
   /// `scanAndRecover()` uses — never a parallel path.
   func requestRecoveryRecheck() {
     pendingRescan = true
-    guard !scanInProgress else { return }
+    guard !scanInProgress else {
+      // #1762 r2: relabel, or the drain loop credits this follow-up to whichever
+      // trigger opened the loop — a wake during a launch scan would read "launch".
+      recoveryScanTrigger = "wake"
+      RecoveryLog.line("wake arrived mid-pass — a follow-up pass is queued")
+      return
+    }
     scanInProgress = true
+    recoveryScanTrigger = "wake"
     Task { await drainPendingRescan() }
   }
 
@@ -559,14 +616,26 @@ final class RecoveryCoordinator {
   /// dictation's own later end becomes the next legitimate wake-up instead.
   private func drainPendingRescan() async {
     defer { scanInProgress = false }
+    var passNumber = 0
     while pendingRescan {
       pendingRescan = false
+      passNumber += 1
+      // #1762: log where the pass ACTUALLY starts, not where it was requested.
+      // A wake arriving mid-pass queues a FOLLOW-UP pass through this loop; an
+      // earlier draft claimed it joined the running pass, which is not what the
+      // loop does. Announcing each pass here is accurate whatever schedules it.
+      RecoveryLog.line("scan pass \(passNumber) started (\(recoveryScanTrigger))")
       let yieldedToLiveStart = await runOneScanPass()
       if yieldedToLiveStart {
         pendingRescan = false
+        // #1762: BOTH exits say so. A `defer` cannot await, and this early
+        // return is the yielded-to-live-dictation path — the one most likely to
+        // be misread as a scan that simply stopped.
+        RecoveryLog.line("scan finished (yielded to a live dictation)")
         return
       }
     }
+    RecoveryLog.line("scan finished")
   }
 
   /// One full discovery + per-item-replay pass. Returns `true` exactly when
@@ -584,8 +653,15 @@ final class RecoveryCoordinator {
     do {
       spoolIDs = try store.listSpoolSessionIDs()
     } catch {
+      // #1762: the fail-closed branch above is invisible on disk — it looks
+      // identical to "no spools". Say which one happened.
+      RecoveryLog.line("scan aborted — could not list the spool directory; nothing deleted")
       return false
     }
+    // #1762: BEFORE any early return, including zero. A pass that found nothing
+    // and finished must not read like a pass that stalled — that ambiguity is
+    // the whole reason this issue exists.
+    RecoveryLog.line("\(spoolIDs.count) spool(s) on disk")
     let armed = armedSessionID
 
     // Sweep KEY-ONLY orphans first: a key whose spool was never written — a
@@ -636,19 +712,31 @@ final class RecoveryCoordinator {
         // re-transcribing (the dedup MUST precede any append — History forbids a
         // duplicate id). Routed through the sole destructor (#1464); these ids are
         // never appended to `recoverable`, so the async delete never races a replay.
+        RecoveryLog.line("already in History — deleting without re-transcribing")
         destroySpoolAndKey(id: id, source: .historyDedup)
       } else {
         recoverable.append(id)
       }
     }
-    guard !recoverable.isEmpty else { return false }
+    guard !recoverable.isEmpty else {
+      RecoveryLog.line("\(spoolIDs.count) spool(s) found, none recoverable — pass done")
+      return false
+    }
 
     // #1707 Phase 3 (§3.3): skip ids whose marker-clear failure means only a
     // genuinely NEW launch may safely re-check them — they stay on disk,
     // untouched, waiting for a future launch's fresh coordinator instance.
     let attemptable = recoverable.filter { !nextLaunchOnlyRecoveryIDs.contains($0) }
-    guard !attemptable.isEmpty else { return false }
+    guard !attemptable.isEmpty else {
+      // #1762 r3: generic on purpose. `nextLaunchOnlyRecoveryIDs` also holds
+      // live endings and History-save failures whose delete failed, and neither
+      // has a replay marker — naming one cause would be wrong for most members.
+      RecoveryLog.line(
+        "\(recoverable.count) recoverable, all held for a future launch — pass done")
+      return false
+    }
 
+    RecoveryLog.line("\(attemptable.count) spool(s) to attempt this pass")
     TelemetryService.shared.recoveryFound(count: attemptable.count)
     // #1707 Phase 3 (§3.1): cleared once per fresh pass — a live-start refusal
     // observed DURING this pass (between items, below) still yields the
@@ -674,14 +762,26 @@ final class RecoveryCoordinator {
       // existing switch symmetry exactly: a switch already in progress makes
       // recovery defer here; once `isRecovering` is set below, a NEW switch
       // cannot begin (`EngineCoordinator` already checks it).
-      guard !pendingLiveStartSignal else { return true }
+      guard !pendingLiveStartSignal else {
+        RecoveryLog.line(
+          "yielding the engine to a live dictation — remaining spools stay on disk")
+        return true
+      }
       // Contention guard: never run the shared engine while a live dictation is
       // in flight (a recording can start in the launch window, including with
       // recovery OFF) OR while an engine switch is in flight (#1171 — a switch
       // unloads/sets the active engine; starting recovery on top would race the
       // shared engine). Defer the remaining orphans — they stay on disk.
-      guard !isDictationActive(), !isEngineSwitching() else { return false }
+      guard !isDictationActive(), !isEngineSwitching() else {
+        RecoveryLog.line(
+          isDictationActive()
+            ? "deferred — a dictation is in flight; spools stay on disk"
+            : "deferred — an engine switch is in flight; spools stay on disk")
+        return false
+      }
       guard recoveryEngineClaim.tryBegin() else {
+        RecoveryLog.line(
+          "deferred — the engine gate is held; a retry is owed when it releases")
         // The gate is held by an in-flight mutation; its `endMutation()`
         // wake-up (§3.2's `recoveryRetryOwed`) calls `requestRecoveryRecheck()`
         // when it releases, so stopping here is never a stranded deferral.
@@ -703,6 +803,12 @@ final class RecoveryCoordinator {
         recoveryEngineClaim.end()
         onRecoveryComplete?()
       }
+      // #1762: BEFORE the await, not after. If the process wedges or dies inside
+      // model load or transcription — the failure this diagnostic exists to
+      // investigate — an after-the-fact line never runs, and the log cannot show
+      // that this item ever entered replay. Pairs with the outcome line below:
+      // an "attempting" with no outcome IS the signature of a wedge.
+      RecoveryLog.line("attempting replay")
       let outcome = await replayer.replay(recoverySessionID: id) { [weak self] in
         // Discard bumps `recoveryGeneration`; a mismatch ⇒ abandon this in-flight
         // replay. Coordinator gone ⇒ treat as aborted (safe).
@@ -719,7 +825,22 @@ final class RecoveryCoordinator {
       // #1464: the coordinator is the sole destructor — the replayer no longer
       // deletes, so apply the replay predicate now that `replay()` has returned.
       // (`.aborted` deletes nothing here: `discardActiveRecovery` already did.)
-      if Self.shouldDeleteAfterReplay(outcome) { destroySpoolAndKey(id: id, source: .replayOutcome) }
+      let willDelete = Self.shouldDeleteAfterReplay(outcome)
+      // #1762: outcome AND disposition on one line. Disposition is the half that
+      // was impossible to read from disk — a spool that is gone tells you nothing
+      // about whether it was recovered or given up on.
+      // #1762 r2: `.aborted` returns false from the predicate because
+      // `discardActiveRecovery` ALREADY deleted — "keeping" was factually wrong
+      // and told the reader discarded audio was still on disk.
+      let disposition: String
+      switch outcome {
+      case .aborted: disposition = "Discard already requested deletion"
+      default: disposition = willDelete ? "requesting deletion" : "keeping"
+      }
+      RecoveryLog.line("replay \(Self.logLabel(outcome)) — \(disposition)")
+      if willDelete {
+        destroySpoolAndKey(id: id, source: .replayOutcome)
+      }
       // Post the standalone success notice for a recording that landed in History.
       if case .recovered = outcome { onRecoverySucceeded?() }
       // A Discard ends the whole hold; remaining orphans (rare) wait for the next
