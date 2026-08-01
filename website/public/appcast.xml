@@ -595,5 +595,19 @@
       />
     </item>
 
+        <item>
+      <title>Version 2.4.3</title>
+      <pubDate>Sat, 01 Aug 2026 20:31:42 +0000</pubDate>
+      <sparkle:version>2.4.3</sparkle:version>
+      <sparkle:shortVersionString>2.4.3</sparkle:shortVersionString>
+                <sparkle:minimumAutoupdateVersion>2.1.0</sparkle:minimumAutoupdateVersion>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v2.4.3/EnviousWispr-2.4.3.dmg"
+        length="104254730"
+        type="application/octet-stream"
+        sparkle:edSignature="EDcUOfIXAAWNzeb/UNMiGBiXeTLp4HZFJdJjDwzxAXNbTiTxFOTPAa3G3t6A1TSQh4rFdQvLiarvoli6aaNWDw=="
+      />
+    </item>
+
     </channel>
 </rss>
