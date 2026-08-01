@@ -670,3 +670,51 @@ test("a genuinely null bucket is data, not a malformed row", async () => {
   assert.match(h.state.posts[0].embeds[2].description, /Other: 3/);
   assert.doesNotMatch(h.state.posts[0].embeds[2].description, /Sources unavailable/);
 });
+
+test("a release with a missing assets array degrades, never undercounts", async () => {
+  // `rel.assets || []` treated this as a release with no downloads, quietly
+  // lowering an all-time total that then passed every numeric check.
+  const h = harness({ github: () => ok([{ tag_name: "v1.0.0" }]) });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  assert.match(h.state.posts[0].embeds[2].description, /temporarily unavailable/);
+});
+
+test("an asset with a non-string name degrades rather than being skipped", async () => {
+  const h = harness({ github: () => ok([{ tag_name: "v1.0.0", assets: [{ name: null, download_count: 5 }] }]) });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  assert.match(h.state.posts[0].embeds[2].description, /temporarily unavailable/);
+});
+
+test("a release that genuinely ships no dmg is data, not a malformed response", async () => {
+  // Two-way control for both checks above: an EMPTY assets array, and a
+  // non-dmg asset, are both legitimate.
+  const h = harness({ github: () => ok([
+    { tag_name: "v1.1.0", assets: [] },
+    { tag_name: "v1.0.0", assets: [{ name: "notes.txt", download_count: 3 }, { name: "a.dmg", download_count: 7 }] },
+  ]) });
+  await h.run();
+  assert.match(h.state.posts[0].embeds[2].description, /7 downloads all time/);
+});
+
+test("a country entry without a name degrades instead of publishing 'undefined'", async () => {
+  const body = { data: { viewer: { zones: [{
+    totals: [{ sum: { requests: 10, pageViews: 5 }, uniq: { uniques: 3 } }],
+    byDay: [{ sum: { countryMap: [{ requests: 10 }] } }],
+  }] } } };
+  const h = harness({ cloudflare: () => ok(body) });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  const traffic = h.state.posts[0].embeds[0].description;
+  assert.match(traffic, /temporarily unavailable/);
+  assert.doesNotMatch(traffic, /undefined/);
+});
+
+test("a day with no country traffic is legitimate and still reports the totals", async () => {
+  // Two-way control: an absent countryMap is normal for a quiet day.
+  const body = { data: { viewer: { zones: [{
+    totals: [{ sum: { requests: 10, pageViews: 5 }, uniq: { uniques: 3 } }],
+    byDay: [{ sum: {} }],
+  }] } } };
+  const h = harness({ cloudflare: () => ok(body) });
+  await h.run();
+  assert.match(h.state.posts[0].embeds[0].description, /5 page views/);
+});

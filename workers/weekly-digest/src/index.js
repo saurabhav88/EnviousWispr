@@ -205,9 +205,16 @@ export async function fetchCloudflareStats(env, window, { fetchFn = fetch } = {}
   }
   for (const g of zone.byDay) {
     // countryMap may legitimately be absent for a day with no traffic; a
-    // PRESENT but malformed entry is not tolerated.
+    // PRESENT but malformed entry is not tolerated. The NAME is validated
+    // alongside the count: a missing one becomes the object key "undefined" and
+    // gets published as a busiest place, which is a wrong answer wearing a
+    // country's clothes.
     for (const c of g?.sum?.countryMap ?? []) {
-      countries[c.clientCountryName] = (countries[c.clientCountryName] || 0) + num(c?.requests, "countryMap.requests");
+      const country = c?.clientCountryName;
+      if (typeof country !== "string" || country.length === 0) {
+        throw new Error("Cloudflare Analytics returned a country entry without a name");
+      }
+      countries[country] = (countries[country] || 0) + num(c?.requests, "countryMap.requests");
     }
   }
 
@@ -266,8 +273,20 @@ export async function fetchGitHubDownloads(env, { fetchFn = fetch } = {}) {
       latestVersion = tag || "?";
     }
     for (const rel of releases) {
-      for (const asset of rel.assets || []) {
-        if (!asset?.name?.endsWith(".dmg")) continue;
+      // `rel.assets || []` would treat a release whose asset list is MISSING as
+      // a release with no downloads, silently undercounting the all-time total
+      // while reporting success. A release with an empty array is different and
+      // legitimate: some releases genuinely ship no dmg.
+      if (!Array.isArray(rel?.assets)) {
+        throw new Error("GitHub releases returned a release without an assets array");
+      }
+      for (const asset of rel.assets) {
+        // A non-string name silently fails the .dmg test and skips a real
+        // asset, which is the same undercount by a different route.
+        if (typeof asset?.name !== "string") {
+          throw new Error("GitHub releases returned an asset without a name");
+        }
+        if (!asset.name.endsWith(".dmg")) continue;
         // Same class as the PostHog and Cloudflare checks: a 200 whose body is
         // the wrong shape must not become a number. `|| 0` here would silently
         // undercount a dmg whose counter came back null or a string, which
@@ -591,27 +610,40 @@ export async function runDigest(env, deps = {}) {
   }
   const settled = posthogOutcome.value;
 
-  // EVERY VALUE THAT REACHES A FORMATTER, enumerated once so this stops being
-  // found an instance at a time. Whole-diff review raised the same class in
-  // four consecutive rounds because each fix covered only the instance it
-  // named; the cure is the list, not another patch. A new metric adds a row
-  // here, and its validator, in the same edit.
+  // EVERY EXTERNAL FIELD THIS WORKER READS, enumerated so the malformed-200
+  // class stops being found an instance at a time. Whole-diff review raised it
+  // in five consecutive rounds.
   //
-  //   site.views, site.visitors            readAggregate, finite numbers
-  //   downloads.intents, .bots_excluded    readAggregate, finite numbers
-  //   usage.active, usage.fresh            readAggregate, finite numbers
-  //   sources[].n                          readGrouped, finite number
-  //   sources[].bucket                     readGrouped, present, string or null
-  //   cf.totalPageViews/.totalRequests/
-  //     .summedDailyUniques                fetchCloudflareStats, num()
-  //   cf.topCountries[][1]                 fetchCloudflareStats, num()
-  //   gh.totalDownloads                    fetchGitHubDownloads, finite number
-  //   gh.latestVersion                     fetchGitHubDownloads, string
-  //   devIds[]                             shared resolveDevIds, non-empty strings
+  // The first version of this list enumerated the values that reach a
+  // FORMATTER, and review immediately found two more instances inside it. That
+  // was the wrong axis: `gh.totalDownloads` is validated, but it is DERIVED
+  // from `rel.assets` and `asset.name`, and a malformed one of those silently
+  // skipped a real asset and undercounted the total that was then checked and
+  // found perfectly numeric. So the list is now of INPUT FIELDS, not output
+  // values - every field parsed out of an external response, whether or not it
+  // is printed:
   //
-  // The rule each of them follows: check the SHAPE, never the magnitude. A zero
-  // is data; a missing field is a broken contract. Every check above has a
-  // two-way control in the test suite proving a genuine zero still reports zero.
+  //   PostHog rows      site.views/.visitors, downloads.intents/.bots_excluded,
+  //                     usage.active/.fresh          readAggregate, finite numbers
+  //                     sources[].n                  readGrouped, finite number
+  //                     sources[].bucket             readGrouped, present, string or null
+  //                     devIds[]                     shared resolveDevIds, non-empty strings
+  //   Cloudflare        zone.totals, zone.byDay      arrays
+  //                     g.sum.requests/.pageViews,
+  //                     g.uniq.uniques               num()
+  //                     c.clientCountryName          non-empty string
+  //                     c.requests                   num()
+  //   GitHub            releases                     array
+  //                     rel.assets                   array (missing != empty)
+  //                     asset.name                   string
+  //                     asset.download_count         finite number
+  //                     releases[0].tag_name         string
+  //
+  // Two rules, both learned the hard way. Check the SHAPE, never the magnitude:
+  // a zero is data, a missing field is a broken contract, and every check above
+  // has a two-way control in the tests proving a genuine zero still reports
+  // zero. And when adding a metric, add every field it READS, not just the
+  // number it prints.
   const read = (index, name) => {
     if (index >= settled.length) return null;
     const outcome = settled[index];
