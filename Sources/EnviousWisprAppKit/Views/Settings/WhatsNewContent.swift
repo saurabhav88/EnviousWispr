@@ -13,24 +13,78 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
-    // MARK: - v2.4.2
+    // MARK: - v2.4.3
+
+    Entry(
+      id: "cursor-aware-capitalization",
+      icon: "textformat",
+      title: "Dictating after an incomplete sentence properly considers capitalization",
+      description:
+        "If you type part of a sentence and then dictate the rest, EnviousWispr now looks at the words already there before it writes. It matches the capitalization and spacing you would have used, so you no longer get a capital letter in the middle of your own sentence. If the dictation repeats a word you just typed, the duplicate is removed. This also works in your terminal when Claude Code, Codex or Gemini CLI is running.",
+      version: "2.4.3"
+    ),
 
     Entry(
       id: "spoken-punctuation-is-now-a-choice",
       icon: "text.quote",
-      title: "Saying \"comma\" and \"period\" is now yours to switch on",
+      title: "Added a toggle to control spoken punctuation",
       description:
-        "Until now, saying words like \"comma\", \"period\" or \"colon\" always turned them into punctuation marks, even when you meant the word. Dictating \"the grace period expires\" could quietly break your sentence. EnviousWispr already adds punctuation for you, so this is off from now on. If you like dictating punctuation out loud, turn it back on under Speech Engine, in the Cleanup section, where a help button lists every word you can say and what you get.",
-      version: "2.4.2"
+        "Saying \"comma\" or \"period\" used to always insert the punctuation mark, even when you meant the word. There is now a toggle for it under Speech Engine, in the Cleanup section. It is off by default, because EnviousWispr already adds punctuation for you. Turn it on if you prefer to dictate punctuation out loud, and the help icon beside it lists every word you can say.",
+      version: "2.4.3"
     ),
 
     Entry(
-      id: "automatic-microphone-fallback",
-      icon: "mic.fill",
-      title: "Dictation finds another microphone automatically",
+      id: "parakeet-final-words",
+      icon: "waveform.badge.checkmark",
+      title: "Improved how Parakeet hears the last few words of your dictation",
       description:
-        "When macOS temporarily has no default microphone, EnviousWispr now finds another connected physical microphone so you can keep dictating instead of being told to connect one.",
-      version: "2.4.2"
+        "Parakeet, the default speech engine, would sometimes add a word you never said at the very end of a dictation. \"I was able to\" could come back as \"I was able to do that.\" That no longer happens. Your dictation ends where you stopped speaking.",
+      version: "2.4.3"
+    ),
+
+    Entry(
+      id: "bluetooth-wake-grace",
+      icon: "headphones",
+      title: "Further improved Bluetooth performance",
+      description:
+        "Bluetooth microphones take a moment to start listening after you press, and EnviousWispr was giving up too early. A first press on AirPods or a headset could come back with nothing at all. It now waits for the connection to wake up, so you can press and start talking.",
+      version: "2.4.3"
+    ),
+
+    Entry(
+      id: "audio-error-reporting",
+      icon: "exclamationmark.bubble",
+      title: "Improved audio error reporting",
+      description:
+        "When your microphone sent nothing usable, EnviousWispr showed a generic error with a Try Again button that would fail the same way. In one case it said nothing at all. You now get a plain sentence asking you to check your microphone. And if macOS loses track of your default microphone, EnviousWispr finds another connected one and carries on.",
+      version: "2.4.3"
+    ),
+
+    Entry(
+      id: "help-icons-introduced",
+      icon: "questionmark.circle",
+      title: "Began introducing help icons within the application",
+      description:
+        "We've recognized there's a lot of nuance to how our software works. You might start noticing help icons next to some toggles so you can better understand the features and capabilities.",
+      version: "2.4.3"
+    ),
+
+    Entry(
+      id: "gemini-latest-models",
+      icon: "cloud.bolt",
+      title: "Updated Gemini API to support latest models",
+      description:
+        "Google changed how its newer Gemini models accept requests, and several models in the picker had stopped working for cloud polish. They all work now. The default Gemini model has also been updated, since Google retired the previous one.",
+      version: "2.4.3"
+    ),
+
+    Entry(
+      id: "smaller-repairs-recording-settings",
+      icon: "wrench.and.screwdriver",
+      title: "A handful of smaller repairs across recording and settings",
+      description:
+        "With Live transcription switched on, the last words you said could go missing while the transcript still looked complete. Settings could say your speech engine was ready before it actually was, so recording would not start. Hands-free mode could get stuck, leaving your shortcut doing nothing. Recovering a recording that was interrupted is more dependable. And the app runs more steadily on the newest Macs.",
+      version: "2.4.3"
     ),
 
     // MARK: - v2.4.1
