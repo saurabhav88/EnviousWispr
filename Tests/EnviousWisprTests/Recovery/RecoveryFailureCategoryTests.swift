@@ -21,11 +21,12 @@ import Testing
 
   // MARK: - The split itself
 
-  @Test("an empty transcript on DEAD AIR is not filed as a transcription failure")
-  func emptyTextOnDeadAirGetsItsOwnCategory() {
-    let empty = RecoverySpoolReplayer.category(for: .emptyText, emptyDecodeHadSignal: false)
+  @Test("an empty ASR result is not filed as a transcription failure")
+  func emptyTextGetsItsOwnCategory() {
+    let empty = RecoverySpoolReplayer.category(for: .emptyText)
 
-    // POSITIVE — measured silence has its own bucket.
+    // POSITIVE — "ASR returned empty" has its own bucket, separate from "ASR
+    // threw". Both are observations; neither claims a cause.
     #expect(empty == .recoveryEmptyText)
 
     // NEGATIVE, and this is the whole point of #1897: it must not be the
@@ -36,29 +37,31 @@ import Testing
     #expect(empty != RecoverySpoolReplayer.category(for: .transcribeError))
   }
 
-  @Test("an empty transcript on audio that HAD signal stays a transcription failure")
-  func emptyTextWithSignalStaysATranscriptionFailure() {
-    // The first cut of #1897 routed EVERY empty decode to the silent bucket on
-    // aggregate evidence (158/161 under ten seconds, all decrypted fine). Local
-    // review killed it: no aggregate can say whether THESE samples held speech,
-    // and an empty decode on audio that did carry signal is a real transcription
-    // failure. Burying those inside "silence" would hide exactly the decode
-    // regression the metric exists to catch.
+  @Test("the split is THREW vs RETURNED-EMPTY, and claims no cause")
+  func theSplitIsAnObservationNotAnInference() {
+    // Three review rounds were spent trying to make this category mean "the
+    // recording was silent", and it cannot:
     //
-    // This mirrors the live path, which has always made the same split —
-    // `RecordingSessionKernel.swift:2400` routes
-    // `effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech(.asrEmptyNoSpeech)`.
-    let withSignal = RecoverySpoolReplayer.category(for: .emptyText, emptyDecodeHadSignal: true)
+    //   1. Assuming every empty is silence used no evidence at all.
+    //   2. The dead-air classifier is a DEAD-AIR detector, not a speech one.
+    //      Room noise sits near 0.0178 against its 0.006 floor (13 quiet-room
+    //      controls measured 0.0170-0.0930), so real silent rooms would read as
+    //      "had signal" and the split would barely fire.
+    //   3. Rerunning VAD is the only true discriminator, and is out of scope.
+    //
+    // What the categories DO mean is checkable, so that is what is asserted.
+    #expect(RecoverySpoolReplayer.category(for: .transcribeError) == .recoveryTranscribeFailed)
+    #expect(RecoverySpoolReplayer.category(for: .emptyText) == .recoveryEmptyText)
 
-    #expect(withSignal == .recoveryTranscribeFailed)
-    #expect(withSignal != .recoveryEmptyText)
-
-    // TWO-WAY CONTROL: the SAME reason must land in different buckets purely on
-    // the evidence. Without this arm, a mapping that ignored the flag and always
-    // returned `.recoveryTranscribeFailed` would satisfy the assertions above
-    // while silently undoing the split.
+    // The property that fixes #1813: a throw and an empty result cannot share a
+    // bucket, so neither can inflate the other's count. That is the whole claim.
     #expect(
-      withSignal != RecoverySpoolReplayer.category(for: .emptyText, emptyDecodeHadSignal: false))
+      RecoverySpoolReplayer.category(for: .transcribeError)
+        != RecoverySpoolReplayer.category(for: .emptyText))
+
+    // A model-load failure — ASR never ran at all — stays with the throw,
+    // because it is also "we failed", not "we looked and found nothing".
+    #expect(RecoverySpoolReplayer.category(for: .modelLoadFailed) == .recoveryTranscribeFailed)
   }
 
   @Test("nothing-came-out-of-the-spool reasons stay on the decrypt category")
