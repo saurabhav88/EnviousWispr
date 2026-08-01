@@ -561,6 +561,212 @@ struct EngineCoordinatorTests {
       #expect(warm.intProps["duration_ms"] != nil)
     }
   #endif
+
+  // MARK: - #1635 published warm-in-flight
+
+  /// THE test the parked attempt lacked. It must fail if `startWarm` stops publishing.
+  ///
+  /// Every assertion reads `c.status`, the PUBLISHED snapshot, never a hand-built
+  /// `EngineStatus` — four green copy-mapping tests over hand-supplied values are exactly
+  /// how #1635 previously shipped a label that could never appear.
+  ///
+  /// Note what the fake does NOT do: `warm` leaves readiness at `.notReady` until the
+  /// outcome resolves. So while the latch is held, adapter readiness is `.notReady`, and
+  /// `warmInFlight == .whisperKit` can ONLY come from the coordinator's own field. That is
+  /// the acceptance check "publication must work before adapter readiness becomes
+  /// `.warming`", proved by construction rather than asserted.
+  @Test("a coordinator-owned warm publishes warmInFlight while the load is still running")
+  func warmInFlightIsPublishedDuringTheWarm() async {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    let latch = AsyncLatch()
+    fake.onWarmAwait = { await latch.wait() }
+    let c = fake.makeStartedCoordinator()
+    fake.selected = .whisperKit
+    c.poke(.settingsChanged)
+
+    // Signal, not a clock: resumes the instant the warm actually parks inside `deps.warm`.
+    await latch.waitUntilWaiting()
+    #expect(
+      c.status.warmInFlight == .whisperKit,
+      "the published snapshot must name the engine being warmed")
+    #expect(
+      c.status.activeReadiness != .warming,
+      "published BEFORE readiness reports .warming — the race that killed the last attempt")
+
+    // Completion signal from the SUBJECT, not from the stub: the coordinator fires this
+    // after a warm settles and republishes.
+    let warmCompleted = AsyncLatch()
+    c.onEngineStateChangedForRecovery = { warmCompleted.release() }
+    latch.release()
+    await warmCompleted.wait()
+    #expect(c.status.warmInFlight == nil, "a settled warm must clear the published field")
+  }
+
+  /// Two-way control: a healthy engine that never warms must never announce one.
+  /// Without this, a field stuck at non-nil would pass the test above.
+  @Test("a converged ready engine never publishes warmInFlight")
+  func warmInFlightStaysNilWhenNothingWarms() async {
+    let fake = FakeEngineDeps(
+      selected: .whisperKit, active: .whisperKit, whisperKitReadiness: .ready)
+    let c = fake.makeStartedCoordinator()
+    // Signal, not a window: this returns once the coordinator has fully converged, which is
+    // the exact point at which a spurious warm would already have announced itself.
+    await c.ensureSelectedReadyForPress()
+    #expect(c.status.warmInFlight == nil, "nothing is loading, so nothing may claim to be")
+    #expect(fake.warmCount == 0, "and no warm was started at all")
+  }
+
+  /// A FAILED warm must not strand the field. Round 2 of the parked review killed a design
+  /// that mapped every not-ready value to a progress label precisely because a failed warm
+  /// settles into `.notReady` and then idles forever.
+  @Test("a failed warm clears warmInFlight instead of stranding it")
+  func warmInFlightClearsAfterAFailedWarm() async {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    fake.warmOutcome[.whisperKit] = .failed(FakeWarmError.failed)
+    let warm = AsyncLatch()
+    let completed = AsyncLatch()
+    fake.onWarmAwait = { await warm.wait() }
+    let c = fake.makeStartedCoordinator()
+
+    fake.selected = .whisperKit
+    c.poke(.settingsChanged)
+    await warm.waitUntilWaiting()
+    // Arm the completion signal only NOW. The recovery hook also fires when the SWITCH
+    // completes, which happens before the warm starts — arming earlier would resolve on
+    // that first fire and assert while the warm is still running.
+    c.onEngineStateChangedForRecovery = { completed.release() }
+    #expect(c.status.warmInFlight == .whisperKit, "the failing warm announces itself first")
+    warm.release()
+    await completed.wait()
+    #expect(fake.active == .whisperKit, "the user's choice is honored, not reverted")
+    #expect(
+      c.status.warmInFlight == nil,
+      "a failed warm must not leave a progress label on screen forever")
+  }
+
+  /// Third of the four warm outcomes. `.cancelled` is a deliberate user choice (#1388's
+  /// Cancel during an install), not a failure, and it must not strand the label either.
+  @Test("a cancelled warm clears warmInFlight")
+  func warmInFlightClearsAfterACancelledWarm() async {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    fake.warmOutcome[.whisperKit] = .cancelled
+    let warm = AsyncLatch()
+    let completed = AsyncLatch()
+    fake.onWarmAwait = { await warm.wait() }
+    let c = fake.makeStartedCoordinator()
+
+    fake.selected = .whisperKit
+    c.poke(.settingsChanged)
+    await warm.waitUntilWaiting()
+    // Arm the completion signal only NOW. The recovery hook also fires when the SWITCH
+    // completes, which happens before the warm starts — arming earlier would resolve on
+    // that first fire and assert while the warm is still running.
+    c.onEngineStateChangedForRecovery = { completed.release() }
+    #expect(c.status.warmInFlight == .whisperKit, "the warm announces itself first")
+    warm.release()
+    await completed.wait()
+    #expect(
+      c.status.warmInFlight == nil,
+      "a cancelled warm must not leave a progress label on screen forever")
+  }
+
+  /// Fourth outcome, and the one with no `.warmCompleted` poke behind it. A refused
+  /// mutation claim (recovery holds the engine) returns without ever reaching the
+  /// completion path, so this branch must publish its OWN clear — otherwise the row keeps
+  /// showing "Getting the model ready" until some unrelated poke happens to republish.
+  @Test("a refused warm claim clears and republishes warmInFlight")
+  func warmInFlightClearsWhenTheClaimIsRefused() async {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    fake.mutationScope = fake.makeRefusingScope()
+    let refused = AsyncLatch()
+    fake.onRefusedSignal = { refused.release() }
+    let c = fake.makeStartedCoordinator()
+    fake.selected = .whisperKit
+    c.poke(.settingsChanged)
+
+    // Signal from the subject's own refusal path, and the ORDERING IS SOUND rather than
+    // lucky: `onRefused` runs inside `withClaim`, and the coordinator's clear-and-publish
+    // runs immediately after `withClaim` returns, in the same MainActor turn. Resuming a
+    // continuation SCHEDULES the waiter, it does not preempt the running turn, so this test
+    // cannot resume until after the publish has landed.
+    await refused.wait()
+    #expect(fake.refusedSites == ["startWarm"], "the claim was actually refused")
+    #expect(fake.warmCount == 0, "a refused claim never runs the warm itself")
+    #expect(c.status.warmInFlight == nil, "the refusal branch must publish its own clear")
+  }
+
+  /// THE test the generation counter exists for. A superseded warm's cleanup must not clear
+  /// the REPLACEMENT's marker, which would blank "Getting the model ready" mid-load.
+  ///
+  /// Reachable here because the fake leaves readiness at `.notReady` for the duration of a
+  /// warm. In production, gate 4b (`readiness(actual) == .warming`) defers and JOINS
+  /// instead, so the real window is only between the assignment and that readiness
+  /// transition — narrow, but real.
+  ///
+  /// **ACCEPTED LIMIT, founder decision 2026-08-01 (#1635 chunk-1 review r2).** This test is
+  /// SCHEDULING-DEPENDENT and is not a deterministic proof. `staleResumed` fires inside the
+  /// fake's warm hook, one resumption before the coordinator's own generation check, so in
+  /// principle the test can poke and inspect before the stale cleanup has executed. Making
+  /// it deterministic would require a coordinator-owned signal fired after the generation
+  /// check — production code existing solely to be observed by a test — and the founder
+  /// declined that trade for a one-line guard against a narrow window.
+  ///
+  /// What it IS worth: run against the code with the generation check deleted, it fails
+  /// (`Expectation failed: (clobbered → true) == false`); restored, it passes. So it does
+  /// catch this defect, it simply cannot promise to catch it every time. Do not "fix" the
+  /// flake by weakening the assertion; if it ever fails, the guard is genuinely gone.
+  @Test("a superseded warm cannot clear the replacement warmInFlight")
+  func supersededWarmCannotClearTheReplacementMarker() async {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    let firstWarm = AsyncLatch()
+    let secondWarm = AsyncLatch()
+    // Signals the moment the STALE warm has resumed, so the test can force a publication
+    // afterwards rather than guessing at a delay.
+    let staleResumed = AsyncLatch()
+    fake.onWarmAwait = {
+      await firstWarm.wait()
+      staleResumed.release()
+    }
+
+    let c = fake.makeStartedCoordinator()
+    fake.selected = .whisperKit
+    c.poke(.settingsChanged)
+    await firstWarm.waitUntilWaiting()
+    #expect(c.status.warmInFlight == .whisperKit, "generation 1 owns the marker")
+
+    // Supersede it: swap the hook, then switch back. This reaches `startWarm` again,
+    // bumping the generation and reassigning the marker while warm 1 is still parked.
+    fake.onWarmAwait = { await secondWarm.wait() }
+    fake.selected = .parakeet
+    c.poke(.settingsChanged)
+    await secondWarm.waitUntilWaiting()
+    #expect(c.status.warmInFlight == .parakeet, "generation 2 now owns the marker")
+
+    // Release the STALE warm. Its cleanup runs against a generation that has moved on.
+    firstWarm.release()
+    await staleResumed.wait()
+
+    // THE PUBLICATION IS WHAT MAKES THE DEFECT VISIBLE, and omitting it is why the first
+    // draft of this test passed with the guard REMOVED. A superseded task writes the
+    // private field and then returns at the `Task.isCancelled` check without publishing,
+    // so `status` still holds the pre-clobber value and asserting on it alone proves
+    // nothing. An unrelated poke forces a republication, which is exactly how a real user
+    // would see it: any settings or driver-state change during the warm re-reads the field
+    // and would render "Model Ready" over a still-loading engine.
+    c.poke(.driverStateChanged)
+    let clobbered = await enginePoll(.milliseconds(250)) { c.status.warmInFlight == nil }
+    #expect(
+      clobbered == false,
+      "the stale warm's cleanup must not clear generation 2's marker")
+
+    let settled = AsyncLatch()
+    c.onEngineStateChangedForRecovery = { settled.release() }
+    secondWarm.release()
+    await settled.wait()
+    #expect(
+      c.status.warmInFlight == nil,
+      "and the current generation still clears normally afterwards")
+  }
 }
 
 /// A one-shot MainActor latch so a test can hold a switch/warm `await` open and
@@ -569,7 +775,23 @@ struct EngineCoordinatorTests {
 final class AsyncLatch {
   private var cont: CheckedContinuation<Void, Never>?
   private var released = false
+  /// #1635: fires the moment the subject actually PARKS on this latch, so a test can assert
+  /// mid-flight state on a signal instead of polling a clock. Without it the key
+  /// publication test would poll, which is the "wait for a signal, not a clock" violation
+  /// the chunk-1 review flagged.
+  private var arrival: CheckedContinuation<Void, Never>?
+  private var hasArrived = false
+
+  /// Await the subject reaching `wait()`. Returns immediately if it already has.
+  func waitUntilWaiting() async {
+    if hasArrived { return }
+    await withCheckedContinuation { arrival = $0 }
+  }
+
   func wait() async {
+    hasArrived = true
+    arrival?.resume()
+    arrival = nil
     if released { return }
     await withCheckedContinuation { cont = $0 }
   }

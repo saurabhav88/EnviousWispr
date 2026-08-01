@@ -1,6 +1,7 @@
 import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
+import Observation
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
@@ -21,7 +22,21 @@ final class FakeEngineDeps {
   var whisperKitActive = false
   var recovering = false
   var parakeetInstalled = true
-  var whisperKitInstalled = true
+
+  /// #1635: backed by an `@Observable` box so `EngineCoordinator.observeInstalledState()`
+  /// can genuinely track it.
+  ///
+  /// That method wraps `deps.isInstalled(.whisperKit)` in `withObservationTracking`, and
+  /// its own comment says "In unit tests the fake reader touches no `@Observable` source,
+  /// so this is inert." A plain stored property therefore made the real download-completion
+  /// trigger untestable, and a test could only fake it by calling
+  /// `poke(.setupStateChanged)` by hand — which exercises the EFFECT, not the trigger.
+  /// Reading through this box makes the observation fire for real.
+  var whisperKitInstalled: Bool {
+    get { whisperKitInstalledBox.value }
+    set { whisperKitInstalledBox.value = newValue }
+  }
+  private let whisperKitInstalledBox = ObservableInstallFlag(true)
 
   /// Switch bookkeeping.
   private(set) var switchCount = 0
@@ -37,6 +52,29 @@ final class FakeEngineDeps {
   var warmOutcome: [ASRBackendType: EngineWarmupOutcome] = [:]
   /// Optional hook awaited INSIDE `warm`, before it resolves.
   var onWarmAwait: (@MainActor () async -> Void)?
+
+  /// #1635: the mutation scope handed to the coordinator. Defaults to the existing
+  /// always-allowed test value so every prior test is byte-for-byte unchanged; a test that
+  /// needs the REFUSED branch (which clears and republishes `warmInFlight` without any
+  /// `.warmCompleted` poke to follow it) swaps in a refusing `.live`.
+  var mutationScope: EngineMutationScope = .alwaysAllowedForTesting
+
+  /// Records the site string of every refused claim, so a test can prove the refusal
+  /// actually happened rather than inferring it from an absence.
+  private(set) var refusedSites: [String] = []
+
+  /// Released from `onRefused`, so a test can await the refusal instead of polling.
+  var onRefusedSignal: (@MainActor () -> Void)?
+
+  /// A scope that refuses every claim, recording the site and firing the signal.
+  func makeRefusingScope() -> EngineMutationScope {
+    .live(
+      tryBegin: { false }, end: { false }, wake: {},
+      onRefused: { site in
+        self.refusedSites.append(site)
+        self.onRefusedSignal?()
+      })
+  }
 
   init(
     selected: ASRBackendType = .parakeet,
@@ -89,7 +127,7 @@ final class FakeEngineDeps {
         if case .ready = outcome { self.setReadiness(backend, .ready) }
         return outcome
       },
-      engineMutationScope: .alwaysAllowedForTesting)
+      engineMutationScope: mutationScope)
   }
 
   /// Build a started coordinator over this fake. `start()` fires the initial
@@ -127,3 +165,12 @@ func enginePoll(
 }
 
 enum FakeWarmError: Error { case failed }
+
+/// #1635: an `@Observable` cell so `FakeEngineDeps.whisperKitInstalled` participates in
+/// `withObservationTracking`. Without this, `EngineCoordinator.observeInstalledState()` is
+/// inert under test and the real download-completion trigger cannot be exercised.
+@Observable
+final class ObservableInstallFlag {
+  var value: Bool
+  init(_ value: Bool) { self.value = value }
+}

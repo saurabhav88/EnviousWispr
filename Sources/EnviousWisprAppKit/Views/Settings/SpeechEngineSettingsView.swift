@@ -526,8 +526,40 @@ struct SpeechEngineSettingsView: View {
     case .ready:
       VStack(alignment: .leading, spacing: 6) {
         HStack {
-          Label("Model Ready", systemImage: "checkmark.circle.fill")
+          // #1635: delivery `.ready` means the model is on DISK. The engine then loads into
+          // memory for a measured p50 of 27.4s on this path, and a press during that window
+          // is correctly refused — so a green tick here contradicted the app for roughly
+          // half a minute. `warmInFlight` is coordinator intent, published synchronously at
+          // warm-start; do NOT swap it for adapter readiness, which is still `.notReady` at
+          // that moment and is why the previous attempt's label could never appear.
+          if ModelPreparingCopy.isPreparing(warmInFlight: engineCoordinator?.status.warmInFlight) {
+            HStack(spacing: 6) {
+              ProgressView()
+                .controlSize(.small)
+              Text(
+                ModelPreparingCopy.label(
+                  warmInFlight: engineCoordinator?.status.warmInFlight)
+              )
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+            }
+            // #1635: on the SUBVIEW that renders the copy, so the event can only fire when
+            // the words genuinely entered the visible hierarchy. `reason` is the constant
+            // "engine_swap" because `warmInFlight` is set solely by the coordinator-owned
+            // post-switch warm; the view has no wider reason to report and must not invent
+            // one. Reappearance is another honest impression, so there is no dedup here.
+            .onAppear {
+              TelemetryService.shared.settingsModelPreparingImpression(
+                engine: "whisperKit", reason: "engine_swap")
+            }
+          } else {
+            Label(
+              ModelPreparingCopy.label(
+                warmInFlight: engineCoordinator?.status.warmInFlight),
+              systemImage: "checkmark.circle.fill"
+            )
             .foregroundStyle(.stSuccess)
+          }
           Spacer()
           // 2c: the way out. An app that installs 1.5 GB must offer deletion.
           // Removal does NOT switch the selected engine (founder ruling 2.5.5
