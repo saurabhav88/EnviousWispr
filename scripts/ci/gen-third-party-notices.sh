@@ -38,8 +38,8 @@ COMPONENTS=(
   # identity — it is vendored inside argmax-oss-swift, not its own SwiftPM pin.
   "swift-transformers (incorporated into Argmax OSS)|n/a|Apache-2.0|argmax-oss-swift/NOTICES|https://github.com/huggingface/swift-transformers|"
   "FluidAudio|afb9aab1 (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
-  "PostHog iOS|3.62.4|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
-  "Sentry Cocoa|9.19.0|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
+  "PostHog iOS|3.68.2|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
+  "Sentry Cocoa|9.23.0|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
   "Sparkle|2.9.4|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
   "swift-argument-parser|1.7.1|Apache-2.0|swift-argument-parser/LICENSE.txt|https://github.com/apple/swift-argument-parser|swift-argument-parser"
   # #1741: test-only — the freeze test's Swift parser. Never linked into the
