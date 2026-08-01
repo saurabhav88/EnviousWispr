@@ -60,6 +60,27 @@ const REPORT_DAYS = 7;
  * absence is a fact about today's DNS, not a guarantee. */
 const SITE_HOSTS = ["enviouswispr.com", "www.enviouswispr.com"];
 
+/**
+ * The trigger gate, as its own function so it can be tested without running a
+ * digest. Exported for that reason: the handler's only other path is
+ * `runDigest`, which reaches PostHog, Cloudflare, GitHub and Discord, so a test
+ * that drove the handler to prove the gate OPENS would either hit production or
+ * assert something weaker than "the gate opened". It did both, briefly.
+ *
+ * HEADER ONLY, deliberately. A `?token=` form would put the secret in the URL,
+ * where it survives in browser and shell history, proxies and request logs;
+ * leaking it restores exactly the unauthenticated Discord-posting access this
+ * gate exists to close. The daily report also accepts a query param -
+ * pre-existing, out of scope here, and not a reason to copy it.
+ *
+ * Fails CLOSED: an unset TRIGGER_SECRET refuses everything, so a
+ * half-configured deploy cannot be triggered by anyone.
+ */
+export function isAuthorizedTrigger(request, env) {
+  if (!env.TRIGGER_SECRET) return false;
+  return request.headers.get("x-trigger-secret") === env.TRIGGER_SECRET;
+}
+
 export default {
   async scheduled(event, env) {
     await runDigest(env);
@@ -72,13 +93,7 @@ export default {
    * cannot be triggered by anyone.
    */
   async fetch(request, env) {
-    // HEADER ONLY, deliberately. A `?token=` form would put the secret in the
-    // URL, where it survives in browser and shell history, proxies and request
-    // logs; leaking it restores exactly the unauthenticated Discord-posting
-    // access this gate exists to close. The daily report also accepts a query
-    // param - pre-existing, out of scope here, and not a reason to copy it.
-    const provided = request.headers.get("x-trigger-secret");
-    if (!env.TRIGGER_SECRET || provided !== env.TRIGGER_SECRET) {
+    if (!isAuthorizedTrigger(request, env)) {
       return new Response("unauthorized\n", { status: 401 });
     }
     try {

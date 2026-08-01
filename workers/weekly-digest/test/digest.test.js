@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import worker, {
+  isAuthorizedTrigger,
   runDigest,
   resolveWeekWindow,
   fetchCloudflareStats,
@@ -356,16 +357,22 @@ test("the query-string form is refused even when the value is CORRECT", async ()
   assert.equal(res.status, 401);
 });
 
-test("the correct header is accepted and runs the digest", async () => {
-  const h = harness();
-  const res = await worker.fetch(
-    new Request("https://w.dev/", { headers: { "x-trigger-secret": "s3cret" } }),
-    { ...ENV, POSTHOG_PERSONAL_API_KEY: "k" }
-  );
-  // The real handler calls runDigest with production fetch, which the test
-  // environment cannot reach, so a non-401 is what this asserts: the gate
-  // OPENED. Behaviour past the gate is covered by the runDigest suites.
-  assert.notEqual(res.status, 401);
+test("the gate opens for the correct header, and only for that", () => {
+  // Asserted on the gate FUNCTION, not by driving the handler. An earlier
+  // version of this test called worker.fetch and checked for a non-401: with no
+  // fetch injected it ran the real runDigest against production PostHog,
+  // Cloudflare and GitHub on every CI run, and it would have passed on a 500.
+  // A test that reaches production to prove a local branch is two defects.
+  const req = (headers) => new Request("https://w.dev/", { headers });
+  assert.equal(isAuthorizedTrigger(req({ "x-trigger-secret": "s3cret" }), ENV), true);
+  assert.equal(isAuthorizedTrigger(req({ "x-trigger-secret": "wrong" }), ENV), false);
+  assert.equal(isAuthorizedTrigger(req({}), ENV), false);
+  // Fails closed with no secret configured, even when one is supplied.
+  const { TRIGGER_SECRET, ...noSecret } = ENV;
+  assert.equal(isAuthorizedTrigger(req({ "x-trigger-secret": "s3cret" }), noSecret), false);
+  // And the query-string form is not a credential here at all.
+  assert.equal(
+    isAuthorizedTrigger(new Request("https://w.dev/?token=s3cret"), ENV), false);
 });
 
 test("an unset TRIGGER_SECRET refuses everything, including a supplied token", async () => {
