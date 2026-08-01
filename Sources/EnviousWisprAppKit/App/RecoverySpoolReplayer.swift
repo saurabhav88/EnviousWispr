@@ -267,17 +267,18 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     }
     if isAborted() { return .aborted }
     guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      // Empty text on good audio. This used to file under
-      // `.recoveryTranscribeFailed` under a comment calling genuine silence and a
-      // transcribe hiccup "indistinguishable here". #1897: they are separable
-      // now, and the conflation was expensive — it made #1813 read as a 76-user
-      // P0 transcription bug when genuine throws are 5 events / 2 users.
+      // ASR ran and returned an empty result. This used to file under
+      // `.recoveryTranscribeFailed`, the same category as a THROW, so one label
+      // covered both. That was expensive: it made #1813 read as a 76-user P0
+      // transcription bug when genuine throws are 5 events / 2 users.
       //
-      // What separated them was existing telemetry nobody had split by `reason`:
-      // all 161 carry `audio_decrypted=true`, `reconstruction_failed` and
-      // `empty_or_unreadable_samples` are both zero, 158 of 161 are under ten
-      // seconds, and twelve users produce ~58% of events. Decrypt, reconstruct
-      // and ASR all worked; the recording held no speech.
+      // What the existing `recovery.completed.reason` split shows, once anyone
+      // looks at it: `empty_text` is ~93% of non-successes on the current
+      // release, all 161 carry `audio_decrypted=true`, `reconstruction_failed`
+      // and `empty_or_unreadable_samples` are both zero, 158 of 161 are under
+      // ten seconds, and twelve users produce ~58% of events. Decrypt and
+      // reconstruct worked and ASR ran without error. WHY it came back empty is
+      // not established by any of that.
       //
       // Still no error and no failure class — nothing threw. It carries its own
       // category so it stops being counted as a transcription failure.
@@ -388,7 +389,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// It was previously chosen inline at each `failUnrecoverable` call, which is
   /// how `.emptyText` came to share `.recoveryTranscribeFailed` with a genuine
   /// ASR throw — one label covering both "transcription broke" and "the
-  /// recording held no words". That conflation made #1813 read as a 76-user P0.
+  /// ASR returned an empty result". That conflation made #1813 read as a
+  /// 76-user P0.
   /// A pair can no longer be mismatched at a call site, and the switch is
   /// exhaustive so a new reason cannot be added without choosing a category.
   /// `nonisolated` because it is a pure total function of its argument and

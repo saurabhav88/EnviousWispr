@@ -430,17 +430,24 @@ public enum SentryBreadcrumb {
     /// attempt) — the orphan is deleted, and see `recoveryDecryptFailed` above
     /// for what the user is (not) shown.
     ///
-    /// #1897: this used to ALSO cover "returned empty", which is a different
-    /// event — ASR ran fine and the recording held no speech. That conflation
-    /// made #1813 read as a 76-user P0 transcription bug when genuine throws are
-    /// 5 events / 2 users on the current release. Empty now has its own
-    /// `recoveryEmptyText` below.
+    /// #1897: this used to ALSO cover "ASR returned an empty result", which is a
+    /// different observation. That conflation made #1813 read as a 76-user P0
+    /// transcription bug when genuine throws are 5 events / 2 users on the
+    /// current release. Empty now has its own `recoveryEmptyText` below.
     case recoveryTranscribeFailed = "recovery_transcribe_failed"
     /// #1897: a recovered spool decrypted and reconstructed correctly, ASR ran
-    /// without error, and the result held no words. NOT a failure of recovery —
-    /// everything worked except that there was nothing to transcribe. ~93% of
-    /// recovery non-successes on the current release (161 events / 50 users, 30d),
-    /// all with `audio_decrypted=true`, 158 of them under 10 seconds.
+    /// without error, and the result was empty.
+    ///
+    /// THAT IS ALL THIS MEANS. It is deliberately NOT "the recording was
+    /// silent": the replay path holds no speech evidence, and neither duration
+    /// nor energy can supply it (a quiet room measures well above the dead-air
+    /// floor — `gotchas-audio.md` FACT: dead-air-detector-cannot-see-near-zero).
+    /// Splitting a THROW from an EMPTY RESULT is enough to stop one inflating
+    /// the other's count, which is the whole of what #1813 needed. If a cause is
+    /// ever wanted per take, VAD evidence is the only honest source.
+    ///
+    /// ~93% of recovery non-successes on the current release (161 events / 50
+    /// users, 30d), all with `audio_decrypted=true`, 158 of them under 10s.
     ///
     /// Splitting this OUT of `recovery_transcribe_failed` drops that series by
     /// ~93% at this release boundary. That drop is this change, not a fix — see

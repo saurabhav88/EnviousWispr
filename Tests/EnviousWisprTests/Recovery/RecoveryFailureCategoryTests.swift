@@ -10,7 +10,7 @@ import Testing
 /// The defect this exists to prevent: `.emptyText` used to be filed under
 /// `.recoveryTranscribeFailed`, the SAME category as a genuine ASR throw, because
 /// each call site picked its own category inline. One label then covered both
-/// "transcription broke" and "the recording held no words", and #1813 was read as
+/// "ASR threw" and "ASR returned an empty result", and #1813 was read as
 /// a 76-user P0 transcription bug when genuine throws were 5 events / 2 users.
 ///
 /// Every test here carries a NEGATIVE arm. A mapping that returned one category
