@@ -44,6 +44,14 @@ final class FakeAudioCapture: AudioCaptureInterface {
   // MARK: Observed counters (for FakeAudioCaptureTests teardown assertion)
 
   private(set) var stopCaptureCallCount = 0
+  /// #1854 Phase 1 — how many of those calls the identity fence REFUSED.
+  ///
+  /// Separate from `stopCaptureCallCount` on purpose: a refused stop still
+  /// arrived, and a test proving the kernel gate works needs to distinguish
+  /// "the stale stop was fenced" from "the stale stop never happened". Without
+  /// this, both read as the engine surviving, and a fix that merely stopped
+  /// scheduling the cleanup would look identical to one that gated it.
+  private(set) var stopCaptureRefusedCallCount = 0
   private(set) var beginCapturePhaseCallCount = 0
   private(set) var preWarmCallCount = 0
   private(set) var abortPreWarmCallCount = 0
@@ -240,6 +248,25 @@ final class FakeAudioCapture: AudioCaptureInterface {
 
   func stopCapture(sessionID: UInt64) async -> CaptureResult {
     stopCaptureCallCount += 1
+    // #1854 Phase 1: model the PRODUCTION identity fence.
+    //
+    // `AudioCaptureManager.stopCapture(sessionID:)` refuses a stop whose id is
+    // not the live one and changes nothing. This fake ignored `sessionID`
+    // entirely, so every stale stop LANDED — which meant a test could not tell
+    // "production would have fenced this" from "this is the hole", and both
+    // showed up as `stopCaptureCallCount` rising with `isCapturing` going false.
+    //
+    // `0` stays valid deliberately, exactly as production does: it is the id of
+    // a prepared-but-never-armed engine whose cleanup must be allowed through or
+    // the engine leaks. That permitted `0` is precisely the interval #1854 is
+    // about — the manager's own comment says this guard cannot identify it and
+    // callers must gate it by lifecycle ownership. Modelling the fence here
+    // narrows the failing test to that interval instead of a broader window the
+    // real code already closes.
+    guard sessionID == currentCaptureSessionID || sessionID == 0 else {
+      stopCaptureRefusedCallCount += 1
+      return CaptureResult(samples: [])
+    }
     isCapturing = false
     bufferContinuation?.finish()
     bufferContinuation = nil
