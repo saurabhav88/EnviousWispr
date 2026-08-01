@@ -517,3 +517,59 @@ test("fetchCloudflareStats and fetchGitHubDownloads are callable in isolation", 
   assert.equal(gh.totalDownloads, 20);
   assert.equal(gh.latestVersion, "v1.1.0");
 });
+
+// ---- Whole-diff review findings (#1589) --------------------------------------
+
+test("an empty aggregate row is a failure, never a silently 'unavailable' success", async () => {
+  // The trap this closes: the section renders "temporarily unavailable" while
+  // the run RESOLVES, so a degraded digest reports success to the trigger and
+  // broken telemetry looks healthy for as long as nobody reads the post.
+  for (const [key, embedIndex] of [["website", 1], ["downloads", 2], ["app_usage", 3]]) {
+    const h = harness({ posthog: { [key]: () => ok({ results: [], columns: [] }) } });
+    await assert.rejects(() => h.run(), /returned no aggregate row/,
+      `${key} returning no row must fail the run, not resolve it`);
+    assert.equal(h.state.posts.length, 1);
+    assert.match(h.state.posts[0].embeds[embedIndex].description, /temporarily unavailable/);
+  }
+});
+
+test("download sources returning zero rows is a genuine empty week, not a failure", async () => {
+  // The two-way control for the test above: a GROUP BY legitimately returns no
+  // rows, and treating THAT as malformed would fail every quiet week.
+  const h = harness({ posthog: { download_sources: () => ok({ results: [], columns: ["bucket", "n"] }) } });
+  await h.run();
+  assert.match(h.state.posts[0].embeds[2].description, /No off-site downloads yet/);
+  assert.doesNotMatch(h.state.posts[0].embeds[2].description, /Sources unavailable/);
+});
+
+test("a Cloudflare 200 with a malformed zone degrades instead of reporting zeros", async () => {
+  const malformed = [
+    { data: { viewer: { zones: [{ byDay: [] }] } } },                       // no totals
+    { data: { viewer: { zones: [{ totals: [] }] } } },                      // no byDay
+    { data: { viewer: { zones: [{ totals: [{ sum: {} }], byDay: [] }] } } }, // no numbers
+    { data: { viewer: { zones: [{ totals: [{ sum: { requests: "many", pageViews: 1 }, uniq: { uniques: 1 } }], byDay: [] }] } } },
+  ];
+  for (const body of malformed) {
+    const h = harness({ cloudflare: () => ok(body) });
+    await assert.rejects(() => h.run(), /unavailable sections/);
+    const traffic = h.state.posts[0].embeds[0].description;
+    assert.match(traffic, /temporarily unavailable/);
+    assert.doesNotMatch(traffic, /\b0 page views\b/, "a malformed response must never render as zero");
+  }
+});
+
+test("the download line does not claim to be a subset of tracked visitors", async () => {
+  // `intents` counts EVENTS, including off-site redirects that never appeared
+  // in the pageview population, so it can legitimately exceed the visitor
+  // count. "N of them" claimed both a headcount and a subset.
+  const h = harness({ posthog: {
+    website: () => ok({ results: [[201, 105]], columns: ["views", "visitors"] }),
+    downloads: () => ok({ results: [[400, 2]], columns: ["intents", "bots_excluded"] }),
+  } });
+  await h.run();
+  const text = h.state.posts[0].embeds[1].description;
+  assert.match(text, /400 downloads were started/);
+  assert.doesNotMatch(text, /of them/);
+  // The scenario that proves the point: more downloads than tracked visitors.
+  assert.match(text, /105 people viewed/);
+});

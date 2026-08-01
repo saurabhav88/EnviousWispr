@@ -180,16 +180,34 @@ export async function fetchCloudflareStats(env, window, { fetchFn = fetch } = {}
   const zone = body?.data?.viewer?.zones?.[0];
   if (!zone) throw new Error("Cloudflare Analytics returned no zone");
 
+  // A 200 carrying a zone but no `totals`/`byDay` array, or groups missing
+  // their numeric fields, is malformed - NOT an empty week. `|| []` and `|| 0`
+  // would turn exactly that into a confident zero, which is the silent-zero
+  // failure this function exists to remove; it would just move one level
+  // deeper. An EMPTY array is still legitimate (a genuinely dead week), so the
+  // check is on the SHAPE, never on the length.
+  if (!Array.isArray(zone.totals) || !Array.isArray(zone.byDay)) {
+    throw new Error("Cloudflare Analytics returned a zone without totals/byDay");
+  }
+
   let totalRequests = 0, totalPageViews = 0, summedDailyUniques = 0;
   const countries = {};
-  for (const g of zone.totals || []) {
-    totalRequests += g.sum?.requests || 0;
-    totalPageViews += g.sum?.pageViews || 0;
-    summedDailyUniques += g.uniq?.uniques || 0;
+  const num = (value, field) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new Error(`Cloudflare Analytics returned a non-numeric ${field}`);
+    }
+    return value;
+  };
+  for (const g of zone.totals) {
+    totalRequests += num(g?.sum?.requests, "requests");
+    totalPageViews += num(g?.sum?.pageViews, "pageViews");
+    summedDailyUniques += num(g?.uniq?.uniques, "uniques");
   }
-  for (const g of zone.byDay || []) {
-    for (const c of g.sum?.countryMap || []) {
-      countries[c.clientCountryName] = (countries[c.clientCountryName] || 0) + c.requests;
+  for (const g of zone.byDay) {
+    // countryMap may legitimately be absent for a day with no traffic; a
+    // PRESENT but malformed entry is not tolerated.
+    for (const c of g?.sum?.countryMap ?? []) {
+      countries[c.clientCountryName] = (countries[c.clientCountryName] || 0) + num(c?.requests, "countryMap.requests");
     }
   }
 
@@ -394,10 +412,15 @@ export function formatWebsite(site, intents) {
   lines.push(site
     ? `${n(site.visitors)} people viewed ${n(site.views)} pages on enviouswispr.com.`
     : `Visitor figures were ${UNAVAILABLE} when this digest ran.`);
+  // NOT "of them". `intents` counts download EVENTS - on-site clicks plus
+  // off-site doorway redirects - so it is neither a headcount nor a subset of
+  // the visitors above, and it can legitimately exceed them. Saying "of them"
+  // claimed both, and a sentence that overstates what a number means is the
+  // same defect class as a wrong number.
   lines.push(intents == null
-    ? `The number of people who started a download was ${UNAVAILABLE}.`
-    : `${n(intents)} of them started a download.`);
-  lines.push("", "This counts only people whose browser runs our analytics, so it reads lower than the traffic figures above.");
+    ? `Downloads started was ${UNAVAILABLE}.`
+    : `${n(intents)} downloads were started, counting on-site clicks and off-site links together.`);
+  lines.push("", "The visitor figures count only people whose browser runs our analytics, so they read lower than the traffic figures above.");
   return lines;
 }
 
@@ -571,12 +594,33 @@ export async function runDigest(env, deps = {}) {
     return rowsToObjects(outcome.value.response);
   };
 
+  /** An AGGREGATE query returns exactly one row, always: `uniqExact` and
+   * `countIf` over an empty window still produce a row of zeros. So an empty
+   * `results` array from a 200 is a malformed response, NOT a quiet week.
+   *
+   * Without this it fails in the worst available way: the section renders
+   * "temporarily unavailable" while `failures` stays empty, so the digest looks
+   * degraded to the founder and the run reports SUCCESS to the trigger. Broken
+   * telemetry would then look healthy for as long as nobody read the post. */
+  const readAggregate = (index, name) => {
+    const rows = read(index, name);
+    if (rows === null) return null; // already degraded and recorded
+    if (rows.length === 0) {
+      failures.push(`${name}: returned no aggregate row`);
+      return null;
+    }
+    return rows[0];
+  };
+
   let site, downloads, sources, usage;
   try {
-    site = read(0, "website")?.[0] ?? null;
-    downloads = read(1, "downloads")?.[0] ?? null;
+    site = readAggregate(0, "website");
+    downloads = readAggregate(1, "downloads");
+    // NOT an aggregate: a GROUP BY legitimately returns zero rows when there
+    // were no off-site downloads, and formatSourceBreakdown already renders
+    // that differently from unavailable.
     sources = read(2, "download_sources");
-    usage = prod ? (read(3, "app_usage")?.[0] ?? null) : null;
+    usage = prod ? readAggregate(3, "app_usage") : null;
   } catch (err) {
     await postFailureNotice(env, label, { fetchFn });
     throw err;
