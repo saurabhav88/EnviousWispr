@@ -603,7 +603,9 @@ test("more than one aggregate row is malformed, not a first-row-wins guess", asy
 
 test("a non-numeric count in the sources breakdown degrades that section", async () => {
   const h = harness({ posthog: { download_sources: () => ok({ results: [["reddit", "lots"]], columns: ["bucket", "n"] }) } });
-  await assert.rejects(() => h.run(), /non-numeric row count/);
+  // Message generalised in review round 4 when the bucket column joined the
+  // same check; the CONTRACT is unchanged.
+  await assert.rejects(() => h.run(), /malformed row shape/);
   assert.match(h.state.posts[0].embeds[2].description, /Sources unavailable/);
 });
 
@@ -642,4 +644,29 @@ test("a malformed dev-ID row degrades app usage rather than claiming a false exc
     assert.equal(h.state.queryNames.includes("weekly_digest_app_usage"), false);
     assert.equal(h.state.sql.some((q) => q.includes("'undefined'")), false);
   }
+});
+
+test("a source row with a missing or renamed bucket column degrades", async () => {
+  // A NULL bucket is legitimate (no source recorded -> "Other"). An OMITTED or
+  // renamed column arrives as undefined and would take that same branch,
+  // publishing a confident attribution for a query whose shape had changed.
+  for (const body of [
+    { results: [[20]], columns: ["n"] },                       // bucket column gone
+    { results: [["reddit", 8]], columns: ["source", "n"] },    // renamed
+    { results: [[42, 8]], columns: ["bucket", "n"] },          // wrong type
+  ]) {
+    const h = harness({ posthog: { download_sources: () => ok(body) } });
+    await assert.rejects(() => h.run(), /malformed row shape/);
+    assert.match(h.state.posts[0].embeds[2].description, /Sources unavailable/);
+    assert.doesNotMatch(h.state.posts[0].embeds[2].description, /Other:/);
+  }
+});
+
+test("a genuinely null bucket is data, not a malformed row", async () => {
+  // Two-way control: PostHog returns null for an absent property, and that is a
+  // real "we could not attribute this download", rendered as Other.
+  const h = harness({ posthog: { download_sources: () => ok({ results: [[null, 3]], columns: ["bucket", "n"] }) } });
+  await h.run();
+  assert.match(h.state.posts[0].embeds[2].description, /Other: 3/);
+  assert.doesNotMatch(h.state.posts[0].embeds[2].description, /Sources unavailable/);
 });

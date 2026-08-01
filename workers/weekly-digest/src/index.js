@@ -591,6 +591,27 @@ export async function runDigest(env, deps = {}) {
   }
   const settled = posthogOutcome.value;
 
+  // EVERY VALUE THAT REACHES A FORMATTER, enumerated once so this stops being
+  // found an instance at a time. Whole-diff review raised the same class in
+  // four consecutive rounds because each fix covered only the instance it
+  // named; the cure is the list, not another patch. A new metric adds a row
+  // here, and its validator, in the same edit.
+  //
+  //   site.views, site.visitors            readAggregate, finite numbers
+  //   downloads.intents, .bots_excluded    readAggregate, finite numbers
+  //   usage.active, usage.fresh            readAggregate, finite numbers
+  //   sources[].n                          readGrouped, finite number
+  //   sources[].bucket                     readGrouped, present, string or null
+  //   cf.totalPageViews/.totalRequests/
+  //     .summedDailyUniques                fetchCloudflareStats, num()
+  //   cf.topCountries[][1]                 fetchCloudflareStats, num()
+  //   gh.totalDownloads                    fetchGitHubDownloads, finite number
+  //   gh.latestVersion                     fetchGitHubDownloads, string
+  //   devIds[]                             shared resolveDevIds, non-empty strings
+  //
+  // The rule each of them follows: check the SHAPE, never the magnitude. A zero
+  // is data; a missing field is a broken contract. Every check above has a
+  // two-way control in the test suite proving a genuine zero still reports zero.
   const read = (index, name) => {
     if (index >= settled.length) return null;
     const outcome = settled[index];
@@ -638,13 +659,27 @@ export async function runDigest(env, deps = {}) {
 
   /** The GROUP BY counterpart. Zero rows is a LEGITIMATE empty week here, which
    * is why it does not go through readAggregate - but each row still has to be
-   * the shape the formatter will read. */
+   * the exact shape the formatter will read.
+   *
+   * BOTH columns are checked, and the bucket check is the subtle one. `bucket`
+   * may legitimately be NULL - PostHog returns null for an absent property, and
+   * sourceLabel deliberately renders that as "Other". An OMITTED or RENAMED
+   * column also arrives as undefined and would take the same "Other" branch,
+   * publishing a confident attribution for a query whose shape had changed. So
+   * the check is on PRESENCE plus type, never on truthiness, which cannot tell
+   * "no source recorded" from "the column is gone". */
   const readGrouped = (index, name) => {
     const rows = read(index, name);
     if (rows === null) return null;
-    const malformed = rows.some((r) => typeof r.n !== "number" || !Number.isFinite(r.n));
-    if (malformed) {
-      failures.push(`${name}: non-numeric row count`);
+    const bad = rows.find(
+      (r) =>
+        typeof r.n !== "number" ||
+        !Number.isFinite(r.n) ||
+        !Object.hasOwn(r, "bucket") ||
+        !(typeof r.bucket === "string" || r.bucket === null)
+    );
+    if (bad) {
+      failures.push(`${name}: malformed row shape`);
       return null;
     }
     return rows;
