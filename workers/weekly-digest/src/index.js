@@ -72,8 +72,12 @@ export default {
    * cannot be triggered by anyone.
    */
   async fetch(request, env) {
-    const url = new URL(request.url);
-    const provided = url.searchParams.get("token") || request.headers.get("x-trigger-secret");
+    // HEADER ONLY, deliberately. A `?token=` form would put the secret in the
+    // URL, where it survives in browser and shell history, proxies and request
+    // logs; leaking it restores exactly the unauthenticated Discord-posting
+    // access this gate exists to close. The daily report also accepts a query
+    // param - pre-existing, out of scope here, and not a reason to copy it.
+    const provided = request.headers.get("x-trigger-secret");
     if (!env.TRIGGER_SECRET || provided !== env.TRIGGER_SECRET) {
       return new Response("unauthorized\n", { status: 401 });
     }
@@ -309,18 +313,31 @@ const hostFilter = `properties.$host IN (${SITE_HOSTS.map((h) => `'${h}'`).join(
 
 /** App usage. The ONLY query carrying the production predicate.
  *
- * `uniqExact` over the whole window, replacing a TrendsQuery whose two weekly
- * buckets were summed. New installs uses the app's own is_fresh_install rather
- * than PostHog's first_time_for_user (founder decision 2026-08-01): it is what
- * the daily report counts, and reproducing first_time_for_user in HogQL needs a
+ * `uniqExactIf` over the whole window, replacing a TrendsQuery whose two weekly
+ * buckets were summed.
+ *
+ * ACTIVE means one successful DICTATION, not a launch (founder definition
+ * 2026-08-01: "I consider doing at least one successful dictation as a sign of
+ * usage"). Counting launches would include everyone who opened the app and
+ * never dictated, under a sentence that says they used it - and it would make
+ * the weekly headline a different metric from the daily report's, which has
+ * always counted successful dictators.
+ *
+ * FRESH still comes from app.launched, because is_fresh_install rides on that
+ * event. Both live in ONE query over the two event types rather than two round
+ * trips; `WHERE event IN (...)` keeps it scoped.
+ *
+ * New installs uses the app's own is_fresh_install rather than PostHog's
+ * first_time_for_user (founder decision 2026-08-01): it is what the daily
+ * report counts, and reproducing first_time_for_user in HogQL needs a
  * whole-history min(timestamp) per user, the unbounded-scan shape that caused
  * the #1655 and #1716 timeouts. */
 export function appUsageSql(prod, win) {
   return `SELECT
-      uniqExact(distinct_id) AS active,
-      uniqExactIf(distinct_id, properties.is_fresh_install = true) AS fresh
+      uniqExactIf(distinct_id, event = 'dictation.completed' AND properties.result = 'success') AS active,
+      uniqExactIf(distinct_id, event = 'app.launched' AND properties.is_fresh_install = true) AS fresh
     FROM events
-    WHERE event = 'app.launched' AND ${prod} AND ${win}`;
+    WHERE event IN ('dictation.completed', 'app.launched') AND ${prod} AND ${win}`;
 }
 
 /** The week's active-user population (successful dictators), used ONCE as an

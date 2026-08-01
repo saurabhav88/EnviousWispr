@@ -127,11 +127,17 @@ export async function resolveDevIds(env, hogqlOpts = {}) {
   // otherwise read as "no dev accounts", both reports would fall back to the
   // environment filter alone, and they would include dev machines while
   // printing that dev machines are excluded.
-  if (!Array.isArray(result.columns) || !result.columns.includes("distinct_id")) {
+  // Read by NAME, at whatever position PostHog returned it. Checking that the
+  // name is present and then reading row[0] anyway passes validation while
+  // pulling a different column - the predicate would exclude the wrong ids and
+  // silently include dev machines, which is the failure this whole check exists
+  // to prevent, reached through the check itself.
+  const idIndex = Array.isArray(result.columns) ? result.columns.indexOf("distinct_id") : -1;
+  if (idIndex === -1) {
     throw new Error("dev-id resolution returned a malformed column set");
   }
   const rows = result.results || [];
-  const devIds = rows.map((row) => row?.[0]);
+  const devIds = rows.map((row) => row?.[idIndex]);
   // A 200 whose rows are the wrong shape (`results: [[]]`) yields `undefined`,
   // which sqlIdList happily renders as the literal string 'undefined'. The
   // query then excludes a distinct_id nobody has and INCLUDES every real dev

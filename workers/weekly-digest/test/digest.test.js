@@ -200,10 +200,10 @@ test("the merged downloads query preserves both original predicates", () => {
 
 test("app usage counts fresh installs by the app's own flag, not PostHog first-seen", () => {
   const sql = appUsageSql("P", "W");
-  assert.match(sql, /uniqExactIf\(distinct_id, properties\.is_fresh_install = true\)/);
-  // A single uniqExact over the window, never per-bucket counts a caller could
-  // sum into a double count.
-  assert.match(sql, /uniqExact\(distinct_id\) AS active/);
+  assert.match(sql, /uniqExactIf\(distinct_id, event = 'app\.launched' AND properties\.is_fresh_install = true\)/);
+  // Single whole-window uniqExactIf counts, never per-bucket counts a caller
+  // could sum into a double count.
+  assert.doesNotMatch(sql, /interval/i);
 });
 
 // ---- Concurrency, retry, request count ---------------------------------------
@@ -348,12 +348,35 @@ test("a wrong token is refused", async () => {
   assert.equal(res.status, 401);
 });
 
+test("the query-string form is refused even when the value is CORRECT", async () => {
+  // Header only: a secret in a URL survives in browser and shell history,
+  // proxies and request logs, and leaking it restores the unauthenticated
+  // Discord-posting access this gate closes.
+  const res = await worker.fetch(new Request("https://w.dev/?token=s3cret"), ENV);
+  assert.equal(res.status, 401);
+});
+
+test("the correct header is accepted and runs the digest", async () => {
+  const h = harness();
+  const res = await worker.fetch(
+    new Request("https://w.dev/", { headers: { "x-trigger-secret": "s3cret" } }),
+    { ...ENV, POSTHOG_PERSONAL_API_KEY: "k" }
+  );
+  // The real handler calls runDigest with production fetch, which the test
+  // environment cannot reach, so a non-401 is what this asserts: the gate
+  // OPENED. Behaviour past the gate is covered by the runDigest suites.
+  assert.notEqual(res.status, 401);
+});
+
 test("an unset TRIGGER_SECRET refuses everything, including a supplied token", async () => {
   const { TRIGGER_SECRET, ...noSecret } = ENV;
   for (const url of ["https://w.dev/", "https://w.dev/?token=s3cret", "https://w.dev/?token="]) {
     const res = await worker.fetch(new Request(url), noSecret);
     assert.equal(res.status, 401, `${url} must fail closed`);
   }
+  const withHeader = await worker.fetch(
+    new Request("https://w.dev/", { headers: { "x-trigger-secret": "s3cret" } }), noSecret);
+  assert.equal(withHeader.status, 401, "an unset secret must refuse the header form too");
 });
 
 test("a wrong header-form trigger secret is refused too", async () => {
@@ -813,4 +836,27 @@ test("a genuinely empty response WITH valid columns is still a real empty week",
   await h.run();
   assert.match(h.state.posts[0].embeds[2].description, /No off-site downloads yet/);
   assert.match(h.state.posts[0].embeds[3].description, /189 people used EnviousWispr/);
+});
+
+test("the usage headline counts successful DICTATORS, not launches", async () => {
+  const h = harness();
+  await h.run();
+  const sql = h.state.sql.find((q) => q.includes("is_fresh_install"));
+  // Founder definition: one successful dictation is what counts as using it.
+  assert.match(sql, /uniqExactIf\(distinct_id, event = 'dictation\.completed' AND properties\.result = 'success'\) AS active/);
+  assert.match(sql, /uniqExactIf\(distinct_id, event = 'app\.launched' AND properties\.is_fresh_install = true\) AS fresh/);
+  // One round trip over both event types, scoped so it does not scan everything.
+  assert.match(sql, /WHERE event IN \('dictation\.completed', 'app\.launched'\)/);
+});
+
+test("dev ids are read by column NAME, not by position", async () => {
+  // A response with distinct_id in a later column passed the name check and
+  // then read the wrong column, excluding ids nobody has.
+  const h = harness({ posthog: {
+    dev_ids: () => ok({ results: [["2026-08-01", "dev-a"]], columns: ["day", "distinct_id"] }),
+  } });
+  await h.run();
+  const sql = h.state.sql.find((q) => q.includes("is_fresh_install"));
+  assert.match(sql, /NOT IN \('dev-a'\)/);
+  assert.doesNotMatch(sql, /2026-08-01/);
 });

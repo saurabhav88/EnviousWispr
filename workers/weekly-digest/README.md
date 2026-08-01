@@ -18,6 +18,10 @@ digest to Discord. It now fails closed:
 curl -fsS -H "x-trigger-secret: $SECRET" https://enviouswispr-weekly-digest.saurabhav.workers.dev
 ```
 
+**Header only. There is no `?token=` form**, unlike the daily report: a secret
+in a URL survives in browser and shell history, proxies and request logs, and
+leaking it restores the unauthenticated posting this gate closes.
+
 An unset `TRIGGER_SECRET` refuses every request, so a half-configured deploy
 cannot be triggered at all. The cron path is unaffected. `-f` is required:
 plain `curl -sS` exits 0 on an HTTP 401 or 500.
@@ -97,6 +101,10 @@ the daily report's per-day shape:
 New installs: 46.
 40 people finished setting up. Of those, 35 also dictated.
 ```
+
+"Used" means **at least one successful dictation**, not a launch, matching the
+daily report's headline and the founder's definition. Someone who opens the app
+and never dictates is not counted as a user.
 
 `is_fresh_install` is `settings.onboardingState != .completed`
 (`Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift:221`), which is
