@@ -29,8 +29,8 @@
  * trigger secret.
  */
 
-import { productionClauseFor, resolveDevIds, runLimited, windowClause } from "./lib/posthog.js";
-import { deliverReport } from "./lib/discord.js";
+import { productionClauseFor, resolveDevIds, runLimited, windowClause } from "../../shared/posthog.js";
+import { deliverReport } from "../../shared/discord.js";
 import { createAdoptionSection } from "./adoption.js";
 import {
   ScorecardSectionError,
@@ -461,7 +461,10 @@ async function postFailureNotice(env, dateStr) {
 // empty; `deps.hogqlOpts` and `deps.releaseOpts` drive retry paths without
 // sitting through real backoff delays.
 export async function runReport(env, dateOverride = null, deps = {}) {
-  const hogqlOpts = deps.hogqlOpts || {};
+  // workerLabel is REQUIRED by the shared transport and is set exactly once
+  // here, then forwarded verbatim to every call site. The spread keeps a test
+  // seam able to inject fetch/sleep/random without having to know about it.
+  const hogqlOpts = { ...(deps.hogqlOpts || {}), workerLabel: "daily_report" };
   const releaseOpts = deps.releaseOpts || {};
 
   // ---- Shared preflight. Anything failing here is fatal to BOTH sections:

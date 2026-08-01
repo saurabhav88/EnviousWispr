@@ -1,19 +1,29 @@
 /**
- * PostHog transport + production-filter infrastructure for the daily report
- * (issue #1838 chunk 1).
+ * PostHog transport + production-filter infrastructure, shared by every worker
+ * that queries PostHog (issues #1838, #1589).
  *
- * Extracted from `../index.js`, where it was duplicated function-for-function
- * with the since-retired product-health worker and hand-ported between the two
- * (#1720 -> #1775). That hand-porting demonstrably did not converge: the same
- * fix is still unported to `workers/weekly-digest`. This module is the single
- * owner for the daily report, and is deliberately NOT promoted to a
- * repo-global `workers/shared/`: after that retirement the daily report is its
- * only consumer, and a shared module with one consumer is indirection, not
- * reuse (plan §3b).
+ * HISTORY, because it explains why this file moved rather than being copied a
+ * fifth time. It began inside `daily-report/src/index.js`, duplicated
+ * function-for-function with the since-retired product-health worker and
+ * hand-ported between the two (#1720 -> #1775). It then lived at
+ * `daily-report/src/lib/posthog.js` with a header arguing AGAINST promoting it
+ * here, on the stated ground that "after that retirement the daily report is
+ * its only consumer, and a shared module with one consumer is indirection, not
+ * reuse." That precondition no longer holds: `workers/weekly-digest` is now a
+ * real second consumer (#1589), and the same header recorded that hand-porting
+ * "demonstrably did not converge." Two consumers, one owner.
+ *
+ * CONSUMERS: workers/daily-report, workers/weekly-digest.
+ *
+ * DEPLOY RULE: Cloudflare bundles each worker separately, so editing this file
+ * changes NOTHING in production until EVERY consumer above is redeployed
+ * (`npx wrangler deploy` from each worker directory). A merged PR does not
+ * deploy; a `git revert` does not roll back. See workers/shared/README.md.
  *
  * Infrastructure ONLY - transport, retry, concurrency, dev-ID resolution, the
- * production predicate, SQL literal escaping, and row conversion. Metric SQL
- * and every product judgement stay in their owning module.
+ * production predicate, SQL literal escaping, and row conversion. Metric SQL,
+ * report windows, section failure policy and every product judgement stay in
+ * the owning worker.
  *
  * Privacy: this module logs query NAMES and HTTP statuses only. Never a
  * response body, never a distinct_id, never the API key.
@@ -111,19 +121,61 @@ export async function resolveDevIds(env, hogqlOpts = {}) {
     "dev_ids",
     hogqlOpts
   );
-  const devIds = (result.results || []).map((row) => row[0]);
+  // Checked on the COLUMNS, not the rows, because zero dev-tainted ids is a
+  // legitimate state and any per-row check is therefore skipped exactly when
+  // the response is empty. `{ results: [], columns: [] }` from a 200 would
+  // otherwise read as "no dev accounts", both reports would fall back to the
+  // environment filter alone, and they would include dev machines while
+  // printing that dev machines are excluded.
+  // Read by NAME, at whatever position PostHog returned it. Checking that the
+  // name is present and then reading row[0] anyway passes validation while
+  // pulling a different column - the predicate would exclude the wrong ids and
+  // silently include dev machines, which is the failure this whole check exists
+  // to prevent, reached through the check itself.
+  const idIndex = Array.isArray(result.columns) ? result.columns.indexOf("distinct_id") : -1;
+  if (idIndex === -1) {
+    throw new Error("dev-id resolution returned a malformed column set");
+  }
+  const rows = result.results || [];
+  const devIds = rows.map((row) => row?.[idIndex]);
+  // A 200 whose rows are the wrong shape (`results: [[]]`) yields `undefined`,
+  // which sqlIdList happily renders as the literal string 'undefined'. The
+  // query then excludes a distinct_id nobody has and INCLUDES every real dev
+  // machine, while the report goes on claiming they were excluded. That is
+  // worse than failing: the number is wrong AND its caveat is a lie.
+  //
+  // Fails loud, so each consumer applies its own contract: the daily report
+  // treats it as fatal to the whole run, the weekly digest as app-usage-only.
+  if (devIds.some((id) => typeof id !== "string" || id.length === 0)) {
+    throw new Error("dev-id resolution returned a malformed row");
+  }
   if (devIds.length > PER_USER_LIST_LIMIT) {
     throw new Error(`dev-id completeness check failed: more than ${PER_USER_LIST_LIMIT} ids`);
   }
   return devIds;
 }
 
+/** Identifies the calling worker in PostHog's query log and in Cloudflare logs.
+ *
+ * REQUIRED, never defaulted. A default of "daily_report" would file another
+ * worker's queries under the daily report's name - an answer that looks right
+ * everywhere it is read, which is worse than a crash. Both consumers set it
+ * once at the top of their run and forward the same options bag verbatim to
+ * every call site. */
+function requireWorkerLabel(workerLabel) {
+  if (typeof workerLabel !== "string" || workerLabel.length === 0) {
+    throw new TypeError("hogql requires a non-empty workerLabel");
+  }
+  return workerLabel;
+}
+
 export async function hogql(
   env,
   sql,
   queryName,
-  { fetchFn = fetch, sleepFn = sleep, randomFn = Math.random } = {}
+  { fetchFn = fetch, sleepFn = sleep, randomFn = Math.random, workerLabel } = {}
 ) {
+  const label = requireWorkerLabel(workerLabel);
   const url = `${POSTHOG_HOST}/api/projects/${env.POSTHOG_PROJECT_ID}/query/`;
   const maxAttempts = RETRY_DELAY_RANGES_MS.length + 1;
 
@@ -137,7 +189,7 @@ export async function hogql(
       body: JSON.stringify({
         query: { kind: "HogQLQuery", query: sql },
         refresh: "blocking",
-        name: `daily_report_${queryName}`,
+        name: `${label}_${queryName}`,
       }),
     });
 
@@ -232,6 +284,7 @@ export async function runLimited(tasks, limit) {
  * report-wide by #1720). `totals` deliberately does NOT go through this helper;
  * it stays fail-loud, see its call site in fetchReportData. */
 export async function querySection(env, sql, queryName, hogqlOpts) {
+  const label = requireWorkerLabel(hogqlOpts?.workerLabel);
   try {
     return { response: await hogql(env, sql, queryName, hogqlOpts), degraded: false };
   } catch (err) {
@@ -240,7 +293,7 @@ export async function querySection(env, sql, queryName, hogqlOpts) {
       err.queryName === queryName &&
       RETRYABLE_POSTHOG_STATUSES.has(err.status);
     if (!isExpectedTransientFailure) throw err;
-    console.log(`daily-report ${queryName} degraded after retries: HTTP ${err.status}`);
+    console.log(`${label} ${queryName} degraded after retries: HTTP ${err.status}`);
     return { response: null, degraded: true };
   }
 }

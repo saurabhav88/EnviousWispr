@@ -25,7 +25,7 @@
  * returns a GitHub response body.
  */
 
-import { hogql, rowsToObjects } from "./lib/posthog.js";
+import { hogql, rowsToObjects } from "../../shared/posthog.js";
 
 /** Distinguishes an exhausted TRANSIENT failure - which the scorecard section
  * may degrade on while adoption still renders - from a contract failure

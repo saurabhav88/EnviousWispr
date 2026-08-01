@@ -22,7 +22,7 @@ import {
   rowsToObjects,
   sqlIdList,
   sqlTimestamp,
-} from "./lib/posthog.js";
+} from "../../shared/posthog.js";
 
 // Shipped app defaults (SettingsDefaultValues.swift) - the tier-of-last-resort
 // when a user has neither a settings record nor any dictation carrying a

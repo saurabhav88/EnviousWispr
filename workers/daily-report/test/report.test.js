@@ -12,8 +12,8 @@ import worker, {
 } from "../src/index.js";
 // #1838 chunk 2: the adoption domain has its own owner. Tests import from it
 // directly - a re-export from index.js would be a forwarding shim.
-import { createAdoptionSection, resolveBuckets } from "../src/adoption.js";
-import { DISCORD_LIMITS, DiscordPayloadError, deliverReport } from "../src/lib/discord.js";
+import { createAdoptionSection as rawCreateAdoptionSection, resolveBuckets } from "../src/adoption.js";
+import { DISCORD_LIMITS, DiscordPayloadError, deliverReport } from "../../shared/discord.js";
 import {
   normalizeReleaseVersion,
   compareVersions,
@@ -31,7 +31,7 @@ import {
   METRIC_CALCULATIONS,
   WINDOW_COUNT,
   rankMovers,
-  createScorecardSection,
+  createScorecardSection as rawCreateScorecardSection,
   isScorecardEligible,
   ScorecardSectionError,
   releaseAgeInWindow,
@@ -42,17 +42,42 @@ import { formatScorecard, formatScorecardUnavailable } from "../src/report-forma
 // re-export from index.js would be a forwarding shim kept alive solely for
 // tests, which this REFACTOR-tier change forbids.
 import {
-  hogql,
+  hogql as rawHogql,
   runLimited,
-  resolveDevIds,
+  resolveDevIds as rawResolveDevIds,
   productionClauseFor,
-  querySection,
+  querySection as rawQuerySection,
   rowsToObjects,
   sqlIdList,
   sqlTimestamp,
   windowClause,
   PostHogQueryError,
-} from "../src/lib/posthog.js";
+} from "../../shared/posthog.js";
+
+// #1589: the shared transport REQUIRES `workerLabel`, deliberately with no
+// default - a default would file this worker's queries under another worker's
+// name in PostHog's query log, which reads as correct everywhere it is seen.
+// Production sets it once in runReport and forwards the bag; these wrappers do
+// the same one thing for tests that call the transport directly, so ~20 call
+// sites do not each restate it and a new one cannot silently forget it.
+//
+// The raw imports above stay reachable so the "label is required" tests can
+// call the unwrapped functions - a wrapper that always supplies the label could
+// never prove the requirement exists.
+const WORKER_LABEL = "daily_report";
+const withLabel = (opts = {}) => ({ ...opts, workerLabel: WORKER_LABEL });
+const hogql = (env, sql, name, opts = {}) => rawHogql(env, sql, name, withLabel(opts));
+const querySection = (env, sql, name, opts = {}) => rawQuerySection(env, sql, name, withLabel(opts));
+const resolveDevIds = (env, opts = {}) => rawResolveDevIds(env, withLabel(opts));
+
+// Section factories take the bag as `opts.hogqlOpts`, so they need the same
+// one-place treatment: production supplies the label in runReport, and a test
+// driving a section directly must not have to remember it.
+const sectionOptsWithLabel = (opts = {}) => ({ ...opts, hogqlOpts: withLabel(opts.hogqlOpts) });
+const createAdoptionSection = (env, ctx, opts = {}) =>
+  rawCreateAdoptionSection(env, ctx, sectionOptsWithLabel(opts));
+const createScorecardSection = (env, ctx, opts = {}) =>
+  rawCreateScorecardSection(env, ctx, sectionOptsWithLabel(opts));
 
 // ---- easternYesterdayWindowUTC ----
 
@@ -713,7 +738,7 @@ test("resolveDevIds: accepts hogqlOpts so its own retry path is test-determinist
   let calls = 0;
   const fetchFn = async () => {
     calls += 1;
-    return calls === 1 ? fakeResponse(504) : fakeResponse(200, { results: [["dev-1"]] });
+    return calls === 1 ? fakeResponse(504) : fakeResponse(200, { results: [["dev-1"]], columns: ["distinct_id"] });
   };
   const devIds = await resolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, {
     fetchFn,
@@ -728,7 +753,7 @@ test("resolveDevIds: throws on overflow rather than silently building a truncate
   // LIMIT+1 query shape - the fetchFn doesn't need to know the real limit,
   // it just needs to return more than 5000 rows.
   const overflowRows = Array.from({ length: 5001 }, (_, i) => [`dev-${i}`]);
-  const fetchFn = async () => fakeResponse(200, { results: overflowRows });
+  const fetchFn = async () => fakeResponse(200, { results: overflowRows, columns: ["distinct_id"] });
   await assert.rejects(
     () => resolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, { fetchFn }),
     /dev-id completeness check failed/,
@@ -737,7 +762,9 @@ test("resolveDevIds: throws on overflow rather than silently building a truncate
 });
 
 test("resolveDevIds: an empty result is a valid, non-throwing state", async () => {
-  const fetchFn = async () => fakeResponse(200, { results: [] });
+  // With its columns intact: zero dev ids is legitimate, a missing column set
+  // is a malformed response (#1589).
+  const fetchFn = async () => fakeResponse(200, { results: [], columns: ["distinct_id"] });
   const devIds = await resolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, { fetchFn });
   assert.deepEqual(devIds, []);
 });
@@ -841,7 +868,10 @@ function mockPostHog({ failQuery, failWith, github, discordStatus, onDiscord } =
     // dev_ids: empty list is the common, valid case - keeps every downstream
     // query's ${prod} predicate as plain ENV_ONLY in these tests.
     if (queryName === "dev_ids") {
-      return fakeResponse(200, { results: [] });
+      // `columns` is REQUIRED: a real PostHog response always carries it, and
+      // resolveDevIds checks it because zero rows is a legitimate state and a
+      // row-level check cannot fire on an empty result (#1589).
+      return fakeResponse(200, { results: [], columns: ["distinct_id"] });
     }
     // totals' total_users must match engine_and_tier_b's row count (1, "u1"),
     // or resolveBuckets' completeness check throws on tests that chain all
@@ -2851,7 +2881,7 @@ test("dev IDs resolve ONCE and both sections share that one production predicate
     const body = init?.body ? JSON.parse(init.body) : {};
     if (body.name === "daily_report_dev_ids") {
       devIdCalls += 1;
-      return fakeResponse(200, { results: [["dev-alpha"], ["dev-beta"]] });
+      return fakeResponse(200, { results: [["dev-alpha"], ["dev-beta"]], columns: ["distinct_id"] });
     }
     return inner(url, init);
   };
@@ -3660,4 +3690,211 @@ test("a release published after the reported window is never crowned newest", as
   await assert.rejects(
     () => resolveReleases(env, usageRows, { ...opts, windowEndExclusive: "July 29" }),
     /requires opts.windowEndExclusive/);
+});
+
+// ---- #1589: shared-transport worker label ------------------------------------
+// These call the RAW imports deliberately. The wrapped helpers at the top of
+// this file always supply a label, so they could never prove the requirement
+// exists - a guard nothing can trip is not a guard.
+
+test("shared hogql: a missing workerLabel throws BEFORE any request is made", async () => {
+  let calls = 0;
+  const fetchFn = async () => { calls += 1; return fakeResponse(200, { results: [] }); };
+  await assert.rejects(
+    () => rawHogql({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, "SELECT 1", "q", { fetchFn }),
+    /requires a non-empty workerLabel/
+  );
+  // The point of failing loud is failing EARLY: an unlabelled query must never
+  // reach PostHog, or it lands in the query log under no worker at all.
+  assert.equal(calls, 0, "no request may be made without a label");
+});
+
+test("shared hogql: a non-string or empty workerLabel is refused, not coerced", async () => {
+  const env = { POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" };
+  const fetchFn = async () => fakeResponse(200, { results: [] });
+  for (const bad of [null, 42, "", {}, ["daily_report"]]) {
+    await assert.rejects(
+      () => rawHogql(env, "SELECT 1", "q", { fetchFn, workerLabel: bad }),
+      /requires a non-empty workerLabel/,
+      `workerLabel ${JSON.stringify(bad)} must be refused`
+    );
+  }
+});
+
+test("shared hogql: the query name PostHog sees is <workerLabel>_<queryName>", async () => {
+  const seen = [];
+  const fetchFn = async (_url, init) => {
+    seen.push(JSON.parse(init.body).name);
+    return fakeResponse(200, { results: [] });
+  };
+  const env = { POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" };
+  await rawHogql(env, "SELECT 1", "totals", { fetchFn, workerLabel: "daily_report" });
+  await rawHogql(env, "SELECT 1", "totals", { fetchFn, workerLabel: "weekly_digest" });
+  // Two-way control: the SAME queryName must produce two DIFFERENT logged names,
+  // which is the whole reason the label is required rather than defaulted.
+  assert.deepEqual(seen, ["daily_report_totals", "weekly_digest_totals"]);
+});
+
+test("shared querySection: requires the label too, and refuses before requesting", async () => {
+  let calls = 0;
+  const fetchFn = async () => { calls += 1; return fakeResponse(503, null); };
+  await assert.rejects(
+    () => rawQuerySection({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" }, "SELECT 1", "geo", { fetchFn }),
+    /requires a non-empty workerLabel/
+  );
+  assert.equal(calls, 0);
+});
+
+test("daily-report still labels every query daily_report_*, unchanged by the move", async () => {
+  const names = [];
+  const fetchFn = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    names.push(body.name);
+    return fakeResponse(200, { results: [], columns: ["distinct_id"] });
+  };
+  await rawResolveDevIds({ POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" },
+    { fetchFn, workerLabel: "daily_report" });
+  assert.deepEqual(names, ["daily_report_dev_ids"]);
+});
+
+// ---- #1589: shared Discord module owns the PROTOCOL, not one worker's layout --
+
+test("deliverReport accepts color, footer and timestamp — Discord permits them", async () => {
+  let sent;
+  const fetchFn = async (_url, init) => { sent = JSON.parse(init.body); return { status: 204 }; };
+  await deliverReport("https://hook", {
+    content: "EnviousWispr Weekly Digest",
+    embeds: [{
+      title: "App usage",
+      description: "189 people used the app.",
+      color: 0x7c3aed,
+      footer: { text: "EnviousWispr Weekly Digest" },
+      timestamp: "2026-08-01T13:00:00.000Z",
+    }],
+  }, { fetchFn });
+  // Before #1589 this payload was REFUSED, which forced the weekly digest to
+  // drop its brand colour to reuse this transport. That was one worker's layout
+  // choice enforced as if it were a protocol limit.
+  assert.equal(sent.embeds[0].color, 0x7c3aed);
+  assert.equal(sent.embeds[0].footer.text, "EnviousWispr Weekly Digest");
+  assert.equal(sent.embeds[0].timestamp, "2026-08-01T13:00:00.000Z");
+});
+
+test("footer text counts toward the 6000-character budget, like Discord counts it", async () => {
+  const fetchFn = async () => { throw new Error("must not reach the network"); };
+  const long = "x".repeat(3000);
+  // Title+description alone are under budget; adding footer text pushes the
+  // total over. If footer text were permitted but uncounted, this would send.
+  await assert.rejects(
+    () => deliverReport("https://hook", {
+      content: "c",
+      embeds: [
+        { title: "A", description: long },
+        { title: "B", description: long, footer: { text: "y".repeat(500) } },
+      ],
+    }, { fetchFn }),
+    /exceeds the 6000 limit/
+  );
+});
+
+test("a permitted-looking but malformed color, timestamp or footer is refused", async () => {
+  const fetchFn = async () => { throw new Error("must not reach the network"); };
+  const base = { title: "T", description: "D" };
+  const bad = [
+    { ...base, color: -1 },
+    { ...base, color: 0x1000000 },
+    { ...base, color: 1.5 },
+    { ...base, color: "purple" },
+    { ...base, timestamp: "not a date" },
+    { ...base, timestamp: 1754049600000 },
+    { ...base, footer: "EnviousWispr" },
+    { ...base, footer: { text: "ok", icon_url: "https://x" } },
+    { ...base, footer: {} },
+  ];
+  for (const embed of bad) {
+    await assert.rejects(
+      () => deliverReport("https://hook", { content: "c", embeds: [embed] }, { fetchFn }),
+      DiscordPayloadError,
+      `${JSON.stringify(embed)} must be refused`
+    );
+  }
+});
+
+test("an embed field this module cannot count is STILL refused", async () => {
+  const fetchFn = async () => { throw new Error("must not reach the network"); };
+  // The allowlist widened; it did not become a passthrough. `fields` carries
+  // countable text this module does not know how to count, so permitting it
+  // would silently break the combined-text arithmetic.
+  await assert.rejects(
+    () => deliverReport("https://hook", {
+      content: "c",
+      embeds: [{ title: "T", description: "D", fields: [{ name: "n", value: "v" }] }],
+    }, { fetchFn }),
+    /unsupported field fields/
+  );
+});
+
+test("a date-like string that is not ISO 8601 is refused as a timestamp", async () => {
+  const fetchFn = async () => { throw new Error("must not reach the network"); };
+  // Date.parse accepts all of these; Discord documents ISO 8601, so the shape
+  // is checked before the value.
+  for (const bad of ["1", "Dec 25 2026", "2026-08-01", "2026-08-01T13:00:00", "now"]) {
+    await assert.rejects(
+      () => deliverReport("https://hook", {
+        content: "c",
+        embeds: [{ title: "T", description: "D", timestamp: bad }],
+      }, { fetchFn }),
+      /timestamp must be an ISO 8601 string/,
+      `${bad} must be refused`
+    );
+  }
+});
+
+test("real ISO 8601 timestamps, with Z or an explicit offset, are accepted", async () => {
+  let sent;
+  const fetchFn = async (_u, init) => { sent = JSON.parse(init.body); return { status: 204 }; };
+  for (const good of ["2026-08-01T13:00:00Z", "2026-08-01T13:00:00.123Z", "2026-08-01T13:00:00+05:30"]) {
+    await deliverReport("https://hook", {
+      content: "c",
+      embeds: [{ title: "T", description: "D", timestamp: good }],
+    }, { fetchFn });
+    assert.equal(sent.embeds[0].timestamp, good);
+  }
+});
+
+test("resolveDevIds refuses a malformed row instead of excluding 'undefined'", async () => {
+  const env = { POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" };
+  const cols = { columns: ["distinct_id"] };
+  for (const body of [{ results: [[]], ...cols }, { results: [[null]], ...cols },
+                      { results: [[""]], ...cols }, { results: [[7]], ...cols }]) {
+    await assert.rejects(
+      () => resolveDevIds(env, { fetchFn: async () => fakeResponse(200, body) }),
+      /malformed row/,
+      `${JSON.stringify(body)} must be refused`
+    );
+  }
+  // Two-way control: a genuinely empty list is legitimate and must still pass,
+  // because zero dev-tainted ids is a real state.
+  const empty = await resolveDevIds(env, {
+    fetchFn: async () => fakeResponse(200, { results: [], columns: ["distinct_id"] }),
+  });
+  assert.deepEqual(empty, []);
+});
+
+test("resolveDevIds refuses an empty result whose column set is malformed", async () => {
+  // Zero dev ids is legitimate, so every per-row check is skipped exactly when
+  // a malformed empty response arrives. Checked on the COLUMNS instead.
+  const env = { POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" };
+  for (const body of [{ results: [], columns: [] }, { results: [], columns: ["id"] }, { results: [] }]) {
+    await assert.rejects(
+      () => resolveDevIds(env, { fetchFn: async () => fakeResponse(200, body) }),
+      /malformed column set/,
+      `${JSON.stringify(body)} must be refused`
+    );
+  }
+  // Two-way control: a real empty list, correctly shaped, still resolves.
+  const empty = await resolveDevIds(env, {
+    fetchFn: async () => fakeResponse(200, { results: [], columns: ["distinct_id"] }),
+  });
+  assert.deepEqual(empty, []);
 });
