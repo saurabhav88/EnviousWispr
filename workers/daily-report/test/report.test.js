@@ -3828,3 +3828,31 @@ test("an embed field this module cannot count is STILL refused", async () => {
     /unsupported field fields/
   );
 });
+
+test("a date-like string that is not ISO 8601 is refused as a timestamp", async () => {
+  const fetchFn = async () => { throw new Error("must not reach the network"); };
+  // Date.parse accepts all of these; Discord documents ISO 8601, so the shape
+  // is checked before the value.
+  for (const bad of ["1", "Dec 25 2026", "2026-08-01", "2026-08-01T13:00:00", "now"]) {
+    await assert.rejects(
+      () => deliverReport("https://hook", {
+        content: "c",
+        embeds: [{ title: "T", description: "D", timestamp: bad }],
+      }, { fetchFn }),
+      /timestamp must be an ISO 8601 string/,
+      `${bad} must be refused`
+    );
+  }
+});
+
+test("real ISO 8601 timestamps, with Z or an explicit offset, are accepted", async () => {
+  let sent;
+  const fetchFn = async (_u, init) => { sent = JSON.parse(init.body); return { status: 204 }; };
+  for (const good of ["2026-08-01T13:00:00Z", "2026-08-01T13:00:00.123Z", "2026-08-01T13:00:00+05:30"]) {
+    await deliverReport("https://hook", {
+      content: "c",
+      embeds: [{ title: "T", description: "D", timestamp: good }],
+    }, { fetchFn });
+    assert.equal(sent.embeds[0].timestamp, good);
+  }
+});

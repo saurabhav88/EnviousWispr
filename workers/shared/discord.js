@@ -78,6 +78,11 @@ const ALLOWED_PAYLOAD_FIELDS = new Set(["content", "embeds"]);
  * and timestamp are NOT text and cost nothing against it. */
 const ALLOWED_FOOTER_FIELDS = new Set(["text"]);
 
+/** ISO 8601 with a required date and time, and either `Z` or an explicit
+ * offset. Discord documents `timestamp` as ISO 8601; anything else is a payload
+ * it may reject, so it is refused here rather than sent. */
+const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+
 /** THE RULE THIS FILE EXISTS TO ENFORCE: validation must observe exactly what
  * `JSON.stringify` will observe.
  *
@@ -222,7 +227,15 @@ function assertDeliverable(payload) {
     }
     if (Object.hasOwn(embed, "timestamp")) {
       const timestamp = ownDataValue(embed, "timestamp", `embed ${i}`);
-      if (typeof timestamp !== "string" || Number.isNaN(Date.parse(timestamp))) {
+      // `Date.parse` alone is far too permissive to be a format check: it
+      // accepts "1" (as the year 2001), "Dec 25", and other shapes Discord
+      // rejects. Discord wants ISO 8601, so the SHAPE is checked first and
+      // Date.parse only then confirms the values are a real instant.
+      if (
+        typeof timestamp !== "string" ||
+        !ISO_8601.test(timestamp) ||
+        Number.isNaN(Date.parse(timestamp))
+      ) {
         throw new DiscordPayloadError(`embed ${i}: timestamp must be an ISO 8601 string`);
       }
     }

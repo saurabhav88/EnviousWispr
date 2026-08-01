@@ -526,7 +526,9 @@ test("an empty aggregate row is a failure, never a silently 'unavailable' succes
   // broken telemetry looks healthy for as long as nobody reads the post.
   for (const [key, embedIndex] of [["website", 1], ["downloads", 2], ["app_usage", 3]]) {
     const h = harness({ posthog: { [key]: () => ok({ results: [], columns: [] }) } });
-    await assert.rejects(() => h.run(), /returned no aggregate row/,
+    // Message tightened in review round 2 from "returned no aggregate row" to
+    // name the actual count; the CONTRACT is unchanged - it must fail the run.
+    await assert.rejects(() => h.run(), /expected exactly 1 aggregate row, got 0/,
       `${key} returning no row must fail the run, not resolve it`);
     assert.equal(h.state.posts.length, 1);
     assert.match(h.state.posts[0].embeds[embedIndex].description, /temporarily unavailable/);
@@ -572,4 +574,51 @@ test("the download line does not claim to be a subset of tracked visitors", asyn
   assert.doesNotMatch(text, /of them/);
   // The scenario that proves the point: more downloads than tracked visitors.
   assert.match(text, /105 people viewed/);
+});
+
+// ---- Whole-diff review round 2: a 200 with the wrong SHAPE ---------------------
+// Third round on one class, so these enumerate every path where a successful
+// response can still produce a number, not only the ones review named.
+
+test("an aggregate row missing a column degrades instead of publishing NaN", async () => {
+  const cases = [
+    ["website", 1, { results: [[226]], columns: ["views"] }],                 // renamed/missing column
+    ["downloads", 2, { results: [[36, null]], columns: ["intents", "bots_excluded"] }],
+    ["app_usage", 3, { results: [["many", 51]], columns: ["active", "fresh"] }],
+  ];
+  for (const [key, embedIndex, body] of cases) {
+    const h = harness({ posthog: { [key]: () => ok(body) } });
+    await assert.rejects(() => h.run(), /missing or non-numeric/, `${key} must degrade`);
+    const text = JSON.stringify(h.state.posts[0]);
+    assert.doesNotMatch(text, /NaN/, "a malformed row must never reach the reader as NaN");
+    assert.match(h.state.posts[0].embeds[embedIndex].description, /temporarily unavailable/);
+  }
+});
+
+test("more than one aggregate row is malformed, not a first-row-wins guess", async () => {
+  const h = harness({ posthog: { website: () => ok({ results: [[1, 2], [3, 4]], columns: ["views", "visitors"] }) } });
+  await assert.rejects(() => h.run(), /expected exactly 1 aggregate row/);
+  assert.match(h.state.posts[0].embeds[1].description, /temporarily unavailable/);
+});
+
+test("a non-numeric count in the sources breakdown degrades that section", async () => {
+  const h = harness({ posthog: { download_sources: () => ok({ results: [["reddit", "lots"]], columns: ["bucket", "n"] }) } });
+  await assert.rejects(() => h.run(), /non-numeric row count/);
+  assert.match(h.state.posts[0].embeds[2].description, /Sources unavailable/);
+});
+
+test("a GitHub asset with a non-numeric download_count degrades, never undercounts", async () => {
+  const h = harness({ github: () => ok([{ tag_name: "v1.0.0", assets: [{ name: "a.dmg", download_count: null }] }]) });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  const text = h.state.posts[0].embeds[2].description;
+  assert.match(text, /temporarily unavailable/);
+  // `|| 0` would have silently reported this as a real zero-download release.
+  assert.doesNotMatch(text, /0 downloads all time/);
+});
+
+test("a genuine zero-download release still counts as zero, not as malformed", async () => {
+  // Two-way control for the check above.
+  const h = harness({ github: () => ok([{ tag_name: "v1.0.0", assets: [{ name: "a.dmg", download_count: 0 }] }]) });
+  await h.run();
+  assert.match(h.state.posts[0].embeds[2].description, /0 downloads all time/);
 });

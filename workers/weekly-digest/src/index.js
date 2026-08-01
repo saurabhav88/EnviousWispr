@@ -258,10 +258,24 @@ export async function fetchGitHubDownloads(env, { fetchFn = fetch } = {}) {
     const releases = await res.json();
     if (!Array.isArray(releases)) throw new Error("GitHub releases returned a non-array");
 
-    if (page === 1) latestVersion = releases[0]?.tag_name || "?";
+    if (page === 1) {
+      const tag = releases[0]?.tag_name;
+      if (releases.length && typeof tag !== "string") {
+        throw new Error("GitHub releases returned a release without a tag_name");
+      }
+      latestVersion = tag || "?";
+    }
     for (const rel of releases) {
       for (const asset of rel.assets || []) {
-        if (asset.name?.endsWith(".dmg")) totalDownloads += asset.download_count || 0;
+        if (!asset?.name?.endsWith(".dmg")) continue;
+        // Same class as the PostHog and Cloudflare checks: a 200 whose body is
+        // the wrong shape must not become a number. `|| 0` here would silently
+        // undercount a dmg whose counter came back null or a string, which
+        // reads as a quiet week rather than as the malformed response it is.
+        if (typeof asset.download_count !== "number" || !Number.isFinite(asset.download_count)) {
+          throw new Error("GitHub releases returned a non-numeric download_count");
+        }
+        totalDownloads += asset.download_count;
       }
     }
     if (releases.length < GITHUB_PAGE_SIZE) return { totalDownloads, latestVersion };
@@ -594,33 +608,54 @@ export async function runDigest(env, deps = {}) {
     return rowsToObjects(outcome.value.response);
   };
 
-  /** An AGGREGATE query returns exactly one row, always: `uniqExact` and
-   * `countIf` over an empty window still produce a row of zeros. So an empty
-   * `results` array from a 200 is a malformed response, NOT a quiet week.
+  /** An AGGREGATE query returns EXACTLY ONE row whose named columns are finite
+   * numbers. `uniqExact` and `countIf` over an empty window still produce a row
+   * of zeros, so anything else from a 200 is a malformed response, not a quiet
+   * week.
    *
-   * Without this it fails in the worst available way: the section renders
-   * "temporarily unavailable" while `failures` stays empty, so the digest looks
-   * degraded to the founder and the run reports SUCCESS to the trigger. Broken
-   * telemetry would then look healthy for as long as nobody read the post. */
-  const readAggregate = (index, name) => {
+   * Checking the row COUNT alone is not enough, and this is the third review
+   * round on one class - a 200 whose body is the wrong SHAPE. A response with
+   * `columns: ["views"]` yields `{views: 226}`, `visitors` is `undefined`, and
+   * the digest publishes "NaN people viewed 226 pages" while the run reports
+   * SUCCESS. So the field names and their numeric-ness are checked here, at the
+   * one place every aggregate passes through, rather than at each call site
+   * where the next query would forget. */
+  const readAggregate = (index, name, fields) => {
     const rows = read(index, name);
     if (rows === null) return null; // already degraded and recorded
-    if (rows.length === 0) {
-      failures.push(`${name}: returned no aggregate row`);
+    if (rows.length !== 1) {
+      failures.push(`${name}: expected exactly 1 aggregate row, got ${rows.length}`);
       return null;
     }
-    return rows[0];
+    const row = rows[0];
+    const bad = fields.filter((f) => typeof row[f] !== "number" || !Number.isFinite(row[f]));
+    if (bad.length) {
+      failures.push(`${name}: missing or non-numeric ${bad.join(", ")}`);
+      return null;
+    }
+    return row;
+  };
+
+  /** The GROUP BY counterpart. Zero rows is a LEGITIMATE empty week here, which
+   * is why it does not go through readAggregate - but each row still has to be
+   * the shape the formatter will read. */
+  const readGrouped = (index, name) => {
+    const rows = read(index, name);
+    if (rows === null) return null;
+    const malformed = rows.some((r) => typeof r.n !== "number" || !Number.isFinite(r.n));
+    if (malformed) {
+      failures.push(`${name}: non-numeric row count`);
+      return null;
+    }
+    return rows;
   };
 
   let site, downloads, sources, usage;
   try {
-    site = readAggregate(0, "website");
-    downloads = readAggregate(1, "downloads");
-    // NOT an aggregate: a GROUP BY legitimately returns zero rows when there
-    // were no off-site downloads, and formatSourceBreakdown already renders
-    // that differently from unavailable.
-    sources = read(2, "download_sources");
-    usage = prod ? readAggregate(3, "app_usage") : null;
+    site = readAggregate(0, "website", ["views", "visitors"]);
+    downloads = readAggregate(1, "downloads", ["intents", "bots_excluded"]);
+    sources = readGrouped(2, "download_sources");
+    usage = prod ? readAggregate(3, "app_usage", ["active", "fresh"]) : null;
   } catch (err) {
     await postFailureNotice(env, label, { fetchFn });
     throw err;
