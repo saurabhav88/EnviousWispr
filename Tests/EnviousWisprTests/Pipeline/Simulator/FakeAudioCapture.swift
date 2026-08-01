@@ -256,14 +256,17 @@ final class FakeAudioCapture: AudioCaptureInterface {
     // "production would have fenced this" from "this is the hole", and both
     // showed up as `stopCaptureCallCount` rising with `isCapturing` going false.
     //
-    // `0` stays valid deliberately, exactly as production does: it is the id of
-    // a prepared-but-never-armed engine whose cleanup must be allowed through or
-    // the engine leaks. That permitted `0` is precisely the interval #1854 is
-    // about — the manager's own comment says this guard cannot identify it and
-    // callers must gate it by lifecycle ownership. Modelling the fence here
-    // narrows the failing test to that interval instead of a broader window the
-    // real code already closes.
-    guard sessionID == currentCaptureSessionID || sessionID == 0 else {
+    // STRICT EQUALITY, with no special case for `0`. Production's guard is
+    // exactly `sessionID == captureSessionCounter`. A prepared-but-never-armed
+    // cleanup gets through there not by exception but because the counter is
+    // ALSO `0` at that moment, so the equality simply holds.
+    //
+    // An earlier draft here wrote `|| sessionID == 0`, which accepts a stale
+    // zero-id stop even when the counter has moved on — more permissive than
+    // production, in precisely the direction that makes a Phase 2 race test
+    // report a failure that cannot happen. Over-modelling the fence is the same
+    // class of error as not modelling it.
+    guard sessionID == currentCaptureSessionID else {
       stopCaptureRefusedCallCount += 1
       return CaptureResult(samples: [])
     }
