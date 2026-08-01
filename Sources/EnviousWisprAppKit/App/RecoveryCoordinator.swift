@@ -299,27 +299,17 @@ final class RecoveryCoordinator {
   /// #1755 chunk 4: one failure-only breadcrumb per failed component per
   /// destruction call. Never includes the recovery ID, path, or raw error —
   /// deletion stays best-effort and swallowed; this is diagnosis only.
-  private func emitDeletionFailed(
-    component: String, source: DestructionSource, spoolAlreadyFailed: Bool = false
-  ) {
-    // #1762: a failed delete can leave a spool the next launch finds again, and
-    // without a line here that reappearance reads as a fresh crash.
-    //
-    // The disposition cannot be read off `component` alone (r3). The destructor
-    // always attempts the key even after the spool delete failed, so on a
-    // double failure a key-keyed line saying "the audio is already deleted"
-    // contradicts the spool line printed moments earlier. Only the spool's own
-    // result establishes whether audio survives, so that is what is consulted.
-    let disposition: String
-    if component == "spool" {
-      disposition = "the recording stays on disk and a future launch will find it again"
-    } else if spoolAlreadyFailed {
-      disposition = "the recording is ALSO still on disk — see the spool failure above"
-    } else {
-      disposition = "the audio is already deleted; only this leftover remains"
-    }
-    RecoveryLog.line(
-      "deletion FAILED for \(component) (\(source.rawValue)) — \(disposition)")
+  private func emitDeletionFailed(component: String, source: DestructionSource) {
+    // #1762 r5: reports the ACTION and its result, nothing further. Five review
+    // rounds went to disposition clauses here — "stays on disk", "already
+    // deleted", "a future launch will retry" — and each was wrong in some real
+    // path: `RecoverySpoolStore.delete` also clears the attempt marker and
+    // propagates THAT failure, the key delete cannot see the spool's fate under
+    // concurrency, and Discard's own delete can fail after the outcome line
+    // claimed success. This call site knows one thing for certain, so it says
+    // exactly that. A reader correlates the spool and key lines by sequence
+    // number; the log no longer does that inference for them, wrongly.
+    RecoveryLog.line("\(component) delete FAILED (\(source.rawValue))")
     let data = ["component": component, "source": source.rawValue]
     if let sink = deletionFailureBreadcrumbForTesting {
       sink("recovery", "deletion_failed", data)
@@ -364,11 +354,6 @@ final class RecoveryCoordinator {
       // attempt (seam or real store). Unarmed: no-op.
       crashBoundaryController.boundaryReached(.beforeSpoolDelete)
     #endif
-    // #1762 r4: LOCAL, never an instance property. The key delete below is
-    // detached and several destructions overlap in practice (a dedup sweep
-    // destroys one per id), so shared state would let a later spool result
-    // rewrite an earlier key line's disposition. Captured into the task instead.
-    var spoolFailed = false
     do {
       if let override = destructionSpoolDeleteForTesting {
         try override(id)
@@ -377,14 +362,12 @@ final class RecoveryCoordinator {
       }
       emitCleanupOutcome(component: "spool", source: source, succeeded: true)
     } catch {
-      spoolFailed = true
-      emitDeletionFailed(component: "spool", source: source, spoolAlreadyFailed: true)
+      emitDeletionFailed(component: "spool", source: source)
       emitCleanupOutcome(component: "spool", source: source, succeeded: false)
     }
     // Key deletion ALWAYS runs, detached, even after a spool failure.
     let keyStore = self.keyStore
     let keyOverride = destructionKeyDeleteForTesting
-    let capturedSpoolFailed = spoolFailed
     // Capture self STRONGLY: the failure breadcrumb must survive coordinator
     // deallocation racing the detached delete (a weak capture silently
     // dropped it). The task is short-lived; the temporary strong retention
@@ -411,8 +394,7 @@ final class RecoveryCoordinator {
         }
       } catch {
         await MainActor.run {
-          self.emitDeletionFailed(
-            component: "key", source: source, spoolAlreadyFailed: capturedSpoolFailed)
+          self.emitDeletionFailed(component: "key", source: source)
           self.emitCleanupOutcome(component: "key", source: source, succeeded: false)
         }
       }
@@ -488,7 +470,7 @@ final class RecoveryCoordinator {
     case .aborted: return "aborted — the user pressed Discard"
     case .deferred: return "deferred — no attempt ran"
     case .deferredMarkerClearFailed:
-      return "deferred, marker not cleared — only a new launch may retry"
+      return "deferred, attempt marker not cleared — a new launch re-checks it"
     }
   }
 
@@ -560,7 +542,7 @@ final class RecoveryCoordinator {
     // `emitDeletionFailed` only fires on failure, so a successful live-ending
     // cleanup was entirely invisible. The issue asked for the ending family and
     // whether deletion was requested; both are here.
-    RecoveryLog.line("live ending (\(ending)) — deleting the spool")
+    RecoveryLog.line("live ending (\(ending)) — requesting spool deletion")
     // GitHub cloud review PR #1761: suppress BEFORE the best-effort delete.
     // If the spool deletion fails (transient FS/permission error), the same
     // callback fires `onDictationEndedForRecovery` moments later — without
@@ -852,8 +834,8 @@ final class RecoveryCoordinator {
       // and told the reader discarded audio was still on disk.
       let disposition: String
       switch outcome {
-      case .aborted: disposition = "already deleted by Discard"
-      default: disposition = willDelete ? "deleting" : "keeping"
+      case .aborted: disposition = "Discard already requested deletion"
+      default: disposition = willDelete ? "requesting deletion" : "keeping"
       }
       RecoveryLog.line("replay \(Self.logLabel(outcome)) — \(disposition)")
       if willDelete {
