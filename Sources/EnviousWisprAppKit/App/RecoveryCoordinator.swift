@@ -130,10 +130,6 @@ final class RecoveryCoordinator {
   /// #1762 — debug-log only: which entry point opened the current drain loop, so
   /// each pass can name its trigger. Never read for control flow.
   private var recoveryScanTrigger = "launch"
-  /// #1762 — debug-log only: did THIS destruction's spool delete fail? The key
-  /// delete runs regardless, and its log line must not claim the audio is gone
-  /// when the spool is still there. Never read for control flow.
-  private var spoolDeletionFailedThisDestruction = false
 
   /// IDs excluded from SAME-LAUNCH rescans, cleared only by a genuine new
   /// launch (a fresh coordinator). Two populations remain (#1755 narrowed it
@@ -303,7 +299,9 @@ final class RecoveryCoordinator {
   /// #1755 chunk 4: one failure-only breadcrumb per failed component per
   /// destruction call. Never includes the recovery ID, path, or raw error —
   /// deletion stays best-effort and swallowed; this is diagnosis only.
-  private func emitDeletionFailed(component: String, source: DestructionSource) {
+  private func emitDeletionFailed(
+    component: String, source: DestructionSource, spoolAlreadyFailed: Bool = false
+  ) {
     // #1762: a failed delete can leave a spool the next launch finds again, and
     // without a line here that reappearance reads as a fresh crash.
     //
@@ -315,7 +313,7 @@ final class RecoveryCoordinator {
     let disposition: String
     if component == "spool" {
       disposition = "the recording stays on disk and a future launch will find it again"
-    } else if spoolDeletionFailedThisDestruction {
+    } else if spoolAlreadyFailed {
       disposition = "the recording is ALSO still on disk — see the spool failure above"
     } else {
       disposition = "the audio is already deleted; only this leftover remains"
@@ -366,10 +364,11 @@ final class RecoveryCoordinator {
       // attempt (seam or real store). Unarmed: no-op.
       crashBoundaryController.boundaryReached(.beforeSpoolDelete)
     #endif
-    // #1762 r3: the key delete below ALWAYS runs, even after the spool failed,
-    // so its diagnostic needs to know whether audio actually survived. Reset per
-    // destruction — a stale true would misreport the next one.
-    spoolDeletionFailedThisDestruction = false
+    // #1762 r4: LOCAL, never an instance property. The key delete below is
+    // detached and several destructions overlap in practice (a dedup sweep
+    // destroys one per id), so shared state would let a later spool result
+    // rewrite an earlier key line's disposition. Captured into the task instead.
+    var spoolFailed = false
     do {
       if let override = destructionSpoolDeleteForTesting {
         try override(id)
@@ -378,13 +377,14 @@ final class RecoveryCoordinator {
       }
       emitCleanupOutcome(component: "spool", source: source, succeeded: true)
     } catch {
-      spoolDeletionFailedThisDestruction = true
-      emitDeletionFailed(component: "spool", source: source)
+      spoolFailed = true
+      emitDeletionFailed(component: "spool", source: source, spoolAlreadyFailed: true)
       emitCleanupOutcome(component: "spool", source: source, succeeded: false)
     }
     // Key deletion ALWAYS runs, detached, even after a spool failure.
     let keyStore = self.keyStore
     let keyOverride = destructionKeyDeleteForTesting
+    let capturedSpoolFailed = spoolFailed
     // Capture self STRONGLY: the failure breadcrumb must survive coordinator
     // deallocation racing the detached delete (a weak capture silently
     // dropped it). The task is short-lived; the temporary strong retention
@@ -411,7 +411,8 @@ final class RecoveryCoordinator {
         }
       } catch {
         await MainActor.run {
-          self.emitDeletionFailed(component: "key", source: source)
+          self.emitDeletionFailed(
+            component: "key", source: source, spoolAlreadyFailed: capturedSpoolFailed)
           self.emitCleanupOutcome(component: "key", source: source, succeeded: false)
         }
       }
