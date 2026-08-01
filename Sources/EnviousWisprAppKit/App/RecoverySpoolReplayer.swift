@@ -339,7 +339,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // #1762: character COUNT and audio duration only — never the transcript. A
     // count is enough to tell "recovered something real" from "recovered a
     // fragment", which is the question you ask standing at the machine.
-    RecoveryLog.line(
+    await RecoveryLog.line(
       "replay recovered \(textOutcome.text.count) chars from "
         + "\(Int(recoveredSeconds.rounded()))s of audio")
     TelemetryService.shared.recoveryCompleted(
@@ -371,7 +371,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // `.failed(.unrecoverable)` covers key-missing, decrypt, reconstruct,
     // model-load, throw and empty-result alike, and telling them apart on a real
     // machine is the whole point of this issue. Closed vocabulary, no id, no path.
-    RecoveryLog.line("replay failed: \(reason.rawValue)")
+    //
+    // `failUnrecoverable` is synchronous (it is called from `guard` bodies all
+    // through `replay`), so this cannot await. Ordering is still sound: the
+    // coordinator's own awaited outcome line lands after `replay` returns, and
+    // this reason line is enqueued strictly before that.
+    let failureReason = reason.rawValue
+    Task { await RecoveryLog.line("replay failed: \(failureReason)") }
     TelemetryService.shared.recoveryCompleted(
       outcome: "failed",
       reason: reason,
