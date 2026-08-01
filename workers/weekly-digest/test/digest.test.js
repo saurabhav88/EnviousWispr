@@ -622,3 +622,24 @@ test("a genuine zero-download release still counts as zero, not as malformed", a
   await h.run();
   assert.match(h.state.posts[0].embeds[2].description, /0 downloads all time/);
 });
+
+test("a malformed dev-ID row degrades app usage rather than claiming a false exclusion", async () => {
+  // `results: [[]]` yields undefined, which sqlIdList renders as the literal
+  // 'undefined': the query would exclude an id nobody has, INCLUDE every real
+  // dev machine, and the section would still say they were excluded. A wrong
+  // number whose caveat is also a lie.
+  for (const body of [
+    { results: [[]], columns: ["distinct_id"] },
+    { results: [[null]], columns: ["distinct_id"] },
+    { results: [[""]], columns: ["distinct_id"] },
+    { results: [[42]], columns: ["distinct_id"] },
+  ]) {
+    const h = harness({ posthog: { dev_ids: () => ok(body) } });
+    await assert.rejects(() => h.run(), /unavailable sections/);
+    assert.match(h.state.posts[0].embeds[3].description, /temporarily unavailable/);
+    // The false claim must not be printed beside an unavailable section.
+    assert.doesNotMatch(h.state.posts[0].embeds[3].description, /Dev machines are excluded/);
+    assert.equal(h.state.queryNames.includes("weekly_digest_app_usage"), false);
+    assert.equal(h.state.sql.some((q) => q.includes("'undefined'")), false);
+  }
+});

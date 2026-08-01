@@ -3856,3 +3856,18 @@ test("real ISO 8601 timestamps, with Z or an explicit offset, are accepted", asy
     assert.equal(sent.embeds[0].timestamp, good);
   }
 });
+
+test("resolveDevIds refuses a malformed row instead of excluding 'undefined'", async () => {
+  const env = { POSTHOG_PROJECT_ID: "x", POSTHOG_PERSONAL_API_KEY: "k" };
+  for (const body of [{ results: [[]] }, { results: [[null]] }, { results: [[""]] }, { results: [[7]] }]) {
+    await assert.rejects(
+      () => resolveDevIds(env, { fetchFn: async () => fakeResponse(200, body) }),
+      /malformed row/,
+      `${JSON.stringify(body)} must be refused`
+    );
+  }
+  // Two-way control: a genuinely empty list is legitimate and must still pass,
+  // because zero dev-tainted ids is a real state.
+  const empty = await resolveDevIds(env, { fetchFn: async () => fakeResponse(200, { results: [] }) });
+  assert.deepEqual(empty, []);
+});

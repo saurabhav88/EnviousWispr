@@ -121,7 +121,19 @@ export async function resolveDevIds(env, hogqlOpts = {}) {
     "dev_ids",
     hogqlOpts
   );
-  const devIds = (result.results || []).map((row) => row[0]);
+  const rows = result.results || [];
+  const devIds = rows.map((row) => row?.[0]);
+  // A 200 whose rows are the wrong shape (`results: [[]]`) yields `undefined`,
+  // which sqlIdList happily renders as the literal string 'undefined'. The
+  // query then excludes a distinct_id nobody has and INCLUDES every real dev
+  // machine, while the report goes on claiming they were excluded. That is
+  // worse than failing: the number is wrong AND its caveat is a lie.
+  //
+  // Fails loud, so each consumer applies its own contract: the daily report
+  // treats it as fatal to the whole run, the weekly digest as app-usage-only.
+  if (devIds.some((id) => typeof id !== "string" || id.length === 0)) {
+    throw new Error("dev-id resolution returned a malformed row");
+  }
   if (devIds.length > PER_USER_LIST_LIMIT) {
     throw new Error(`dev-id completeness check failed: more than ${PER_USER_LIST_LIMIT} ids`);
   }
