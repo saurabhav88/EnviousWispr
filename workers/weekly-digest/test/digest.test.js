@@ -718,3 +718,14 @@ test("a day with no country traffic is legitimate and still reports the totals",
   await h.run();
   assert.match(h.state.posts[0].embeds[0].description, /5 page views/);
 });
+
+test("the app-usage line does not claim first-time installs it cannot prove", async () => {
+  // is_fresh_install is `onboardingState != .completed`, so it stays true on
+  // every launch until setup finishes. Measured: 46 reported vs 43 genuinely
+  // first-launching in the same window. The sentence must not overclaim.
+  const h = harness();
+  await h.run();
+  const text = h.state.posts[0].embeds[3].description;
+  assert.match(text, /new or had not finished setting up/);
+  assert.doesNotMatch(text, /installed it for the first time/);
+});

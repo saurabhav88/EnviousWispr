@@ -84,3 +84,21 @@ against an independently written oracle query.
   live smoke) because it scans all history by design.
 - **PostHog project 354235 is shared with EnviousStaging**, which is why the
   host filter exists at all.
+
+## Known limit: "new or still setting up" is not "new installs"
+
+`is_fresh_install` is not what its name suggests. The app derives it as
+`settings.onboardingState != .completed`
+(`Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift:221`), so it stays
+true on **every launch until setup is finished**. Someone who installs and never
+completes onboarding is flagged again every week they open the app.
+
+Measured 2026-08-01: 21 distinct ids carried the flag on more than one day over
+30 days; the 2026-07-25..08-01 window reported 46 where 43 ids were genuinely
+launching for the first time.
+
+The digest's wording says what the number actually contains. Changing WHICH
+metric is reported is a product decision, not a bug fix, and **the daily report
+counts the same property the same way** (`workers/daily-report/src/adoption.js`,
+printed as "New installs"), so it carries the same overstatement. Fix both or
+neither.

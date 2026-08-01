@@ -469,12 +469,27 @@ export function formatDownloads(gh, sources, botsExcluded) {
   return lines;
 }
 
+/** KNOWN LIMIT in the second line, stated in the digest rather than hidden.
+ *
+ * `is_fresh_install` is not what its name suggests. The app derives it as
+ * `settings.onboardingState != .completed` (AppLifecycleCoordinator.swift:221),
+ * so it stays TRUE on every launch until setup is finished - someone who
+ * installs and never completes onboarding is flagged again every week they open
+ * the app. Measured 2026-08-01: 21 ids carried the flag on more than one day
+ * over 30 days, and this window reported 46 where 43 ids were genuinely
+ * launching for the first time.
+ *
+ * The wording therefore describes the population the number ACTUALLY has rather
+ * than claiming first-time installs. Changing WHICH metric is reported is a
+ * product decision, raised with the founder separately; the daily report counts
+ * the same property the same way (adoption.js:109) and carries the same
+ * overstatement, so this is not a weekly-digest defect to fix in isolation. */
 export function formatAppUsage(usage) {
   if (!usage) return ["App usage", `App usage figures were ${UNAVAILABLE} when this digest ran.`];
   return [
     "App usage",
     `${n(usage.active)} people used EnviousWispr this week.`,
-    `${n(usage.fresh)} of them installed it for the first time.`,
+    `${n(usage.fresh)} of them were new or had not finished setting up yet.`,
     "",
     "Dev machines are excluded from both numbers.",
   ];
