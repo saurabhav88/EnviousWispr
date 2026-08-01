@@ -44,6 +44,20 @@ struct EngineStatus: Sendable {
   /// WhisperKit is true only once downloaded).
   let selectedInstalled: Bool
   let blockedReason: BlockedReason?
+  /// The engine whose COORDINATOR-OWNED warm is in flight right now, else nil.
+  ///
+  /// #1635. This is coordinator INTENT, not adapter readiness, and the distinction is
+  /// load-bearing: `warmingBackend` is assigned synchronously before the warm Task is
+  /// spawned, whereas the adapter does not reach `.warming` until inside the awaited
+  /// load. A snapshot keyed on readiness at warm-start would still read `.notReady`,
+  /// which is how the previous attempt at this feature produced a label that could
+  /// never appear.
+  ///
+  /// Scope: coordinator-owned post-switch warms ONLY. The launch preload
+  /// (`SetupCoordinator`) and the cold-press warm (`ColdPressGuard`) call their drivers
+  /// directly and never touch `warmingBackend`, so this stays nil for them. Widening it
+  /// would mean owning every warm entry point, which is #1882's job, not this field's.
+  let warmInFlight: ASRBackendType?
 
   /// The selected engine differs from the active one — a switch is owed.
   var isDiverged: Bool { selected != active }

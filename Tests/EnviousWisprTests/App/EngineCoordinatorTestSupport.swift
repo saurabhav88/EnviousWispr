@@ -38,6 +38,29 @@ final class FakeEngineDeps {
   /// Optional hook awaited INSIDE `warm`, before it resolves.
   var onWarmAwait: (@MainActor () async -> Void)?
 
+  /// #1635: the mutation scope handed to the coordinator. Defaults to the existing
+  /// always-allowed test value so every prior test is byte-for-byte unchanged; a test that
+  /// needs the REFUSED branch (which clears and republishes `warmInFlight` without any
+  /// `.warmCompleted` poke to follow it) swaps in a refusing `.live`.
+  var mutationScope: EngineMutationScope = .alwaysAllowedForTesting
+
+  /// Records the site string of every refused claim, so a test can prove the refusal
+  /// actually happened rather than inferring it from an absence.
+  private(set) var refusedSites: [String] = []
+
+  /// Released from `onRefused`, so a test can await the refusal instead of polling.
+  var onRefusedSignal: (@MainActor () -> Void)?
+
+  /// A scope that refuses every claim, recording the site and firing the signal.
+  func makeRefusingScope() -> EngineMutationScope {
+    .live(
+      tryBegin: { false }, end: { false }, wake: {},
+      onRefused: { site in
+        self.refusedSites.append(site)
+        self.onRefusedSignal?()
+      })
+  }
+
   init(
     selected: ASRBackendType = .parakeet,
     active: ASRBackendType = .parakeet,
@@ -89,7 +112,7 @@ final class FakeEngineDeps {
         if case .ready = outcome { self.setReadiness(backend, .ready) }
         return outcome
       },
-      engineMutationScope: .alwaysAllowedForTesting)
+      engineMutationScope: mutationScope)
   }
 
   /// Build a started coordinator over this fake. `start()` fires the initial

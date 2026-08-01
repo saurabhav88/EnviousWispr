@@ -114,6 +114,17 @@ final class EngineCoordinator {
   /// the Task.
   @ObservationIgnored private var warmTask: Task<Void, Never>?
   @ObservationIgnored private var warmingBackend: ASRBackendType?
+  /// #1635. Identifies WHICH `startWarm` a completion belongs to, so a superseded warm's
+  /// cleanup cannot clear the REPLACEMENT's `warmingBackend`. Without it, `startWarm`
+  /// cancels the prior Task and immediately reassigns the field, while the old Task's
+  /// unconditional clear still runs when its awaited load finally returns — the row would
+  /// then lose "Getting the model ready" while the engine is still loading.
+  ///
+  /// The window is narrow: once readiness reports `.warming`, gate 4b defers and JOINS
+  /// rather than starting a second warm. It is the interval between the assignment and
+  /// that readiness transition. `&+=` because a wrapping counter cannot trap, and a
+  /// collision would need 2^64 warms while one Task is still in flight.
+  @ObservationIgnored private var warmGeneration: UInt64 = 0
   /// The engine whose in-flight load gate 4b is currently joining (so repeated
   /// gate-4b pokes don't spawn duplicate join tasks).
   @ObservationIgnored private var joiningBackend: ASRBackendType?
@@ -141,7 +152,7 @@ final class EngineCoordinator {
   init(dependencies: Dependencies) {
     self.deps = dependencies
     self.status = EngineCoordinator.snapshot(
-      deps: dependencies, switchPhase: .idle, blockedReason: nil)
+      deps: dependencies, switchPhase: .idle, blockedReason: nil, warmInFlight: nil)
     let (stream, continuation) = AsyncStream<PokeReason>.makeStream(
       bufferingPolicy: .bufferingNewest(1))
     self.pokeStream = stream
@@ -391,7 +402,15 @@ final class EngineCoordinator {
     if warmingBackend == backend, warmTask != nil { return }
 
     warmTask?.cancel()
+    // #1635: stamp this warm BEFORE the field is reassigned, so a superseded task's
+    // cleanup can recognise that the field no longer belongs to it.
+    warmGeneration &+= 1
+    let generation = warmGeneration
     warmingBackend = backend
+    // #1635: publish HERE. This is the only moment a Settings row can learn a warm has
+    // begun. The switch published immediately before this call, and the next publication is
+    // the `.warmCompleted` poke roughly 27 seconds later (WhisperKit engine-swap p50).
+    publishStatus()
     warmTask = Task(priority: .utility) { [weak self] in
       guard let self else { return }
       // #1707 Phase 3 (§3.2, row 4): hold a mutation claim for the FULL
@@ -403,7 +422,10 @@ final class EngineCoordinator {
       let claimOutcome = await self.deps.engineMutationScope.withClaim(site: "startWarm") {
         let start = ContinuousClock.now
         let outcome = await self.deps.warm(backend)
-        self.warmingBackend = nil
+        // #1635: clear only if this warm still owns the field. Guarding the ASSIGNMENT
+        // rather than returning early deliberately preserves the cancellation check and
+        // the outcome telemetry below, which an early return would skip.
+        if self.warmGeneration == generation { self.warmingBackend = nil }
         if Task.isCancelled { return }
         let ms = Self.elapsedMs(since: start)
         switch outcome {
@@ -435,7 +457,12 @@ final class EngineCoordinator {
         self.poke(.warmCompleted)
       }
       if case .refused = claimOutcome {
+        // #1635: a refusal has no `.warmCompleted` poke to publish for it, so it must
+        // publish its own clear — otherwise the row keeps showing "Getting the model
+        // ready" until some unrelated poke happens to republish.
+        guard self.warmGeneration == generation else { return }
         self.warmingBackend = nil
+        self.publishStatus()
       }
     }
   }
@@ -462,13 +489,15 @@ final class EngineCoordinator {
 
   private func publishStatus() {
     status = Self.snapshot(
-      deps: deps, switchPhase: currentSwitchPhase, blockedReason: currentBlockedReason)
+      deps: deps, switchPhase: currentSwitchPhase, blockedReason: currentBlockedReason,
+      warmInFlight: warmingBackend)
   }
 
   private static func snapshot(
     deps: Dependencies,
     switchPhase: EngineStatus.SwitchPhase,
-    blockedReason: EngineStatus.BlockedReason?
+    blockedReason: EngineStatus.BlockedReason?,
+    warmInFlight: ASRBackendType?
   ) -> EngineStatus {
     let sel = deps.selectedBackend()
     let act = deps.activeBackend()
@@ -481,7 +510,8 @@ final class EngineCoordinator {
       whisperKitActive: deps.isEngineActive(.whisperKit),
       switchPhase: switchPhase,
       selectedInstalled: deps.isInstalled(sel),
-      blockedReason: blockedReason)
+      blockedReason: blockedReason,
+      warmInFlight: warmInFlight)
   }
 
   /// Record a deferral, emit `change_blocked` once per reason per epoch, publish.
