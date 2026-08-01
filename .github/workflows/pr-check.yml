@@ -456,10 +456,12 @@ jobs:
             # Seed each package's resolution from the app's TRACKED pins. Both
             # eval Package.resolved files are gitignored, so a fresh runner has
             # none and SwiftPM would resolve the whole graph fresh — floating
-            # ahead of what the app actually ships. Measured locally: an
-            # unseeded resolve picked PostHog 3.68.4 / Sentry 9.24.0 /
-            # swift-argument-parser 1.8.2 against the app's pinned 3.62.4 /
-            # 9.19.0 / 1.7.1. On a REQUIRED check that means an unrelated
+            # ahead of what the app actually ships. Measured locally as of
+            # 2026-07-29 (pins have since moved; the drift is the point, not
+            # the numbers): an unseeded resolve picked PostHog 3.68.4 /
+            # Sentry 9.24.0 / swift-argument-parser 1.8.2 against the app's
+            # then-pinned 3.62.4 / 9.19.0 / 1.7.1. On a REQUIRED check that
+            # means an unrelated
             # upstream release can turn the gate red, and the compile would not
             # be against the versions we ship. Root Package.resolved is the one
             # source of pin truth; SwiftPM prunes the entries this graph does
