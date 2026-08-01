@@ -32,7 +32,7 @@ import worker, {
 // Every event-property reference must be qualified as properties.<name>: a bare
 // name does not resolve in PostHog HogQL. This regex catches the regression
 // Codex flagged twice on the pre-#1589 builders.
-const BARE_PROP = /(?<!properties\.)\b(excluded_reason|source_bucket|is_fresh_install|app_version)\b/;
+const BARE_PROP = /(?<!properties\.)\b(excluded_reason|source_bucket|app_version)\b/;
 
 const ENV = {
   POSTHOG_PROJECT_ID: "354235",
@@ -201,7 +201,9 @@ test("the merged downloads query preserves both original predicates", () => {
 
 test("app usage counts fresh installs by the app's own flag, not PostHog first-seen", () => {
   const sql = appUsageSql("P", "W");
-  assert.match(sql, /uniqExactIf\(distinct_id, event = 'app\.launched' AND properties\.is_fresh_install = true\)/);
+  assert.match(sql, /uniqExactIf\(distinct_id, event = 'onboarding\.started'\) AS fresh/);
+  // The STATE flag re-counted anyone who never finished setup, every window.
+  assert.doesNotMatch(sql, /is_fresh_install/);
   // Single whole-window uniqExactIf counts, never per-bucket counts a caller
   // could sum into a double count.
   assert.doesNotMatch(sql, /interval/i);
@@ -325,7 +327,7 @@ test("a malformed metric response posts the failure notice and no digest", async
 test("zero dev ids is a legitimate state and must not produce NOT IN ()", async () => {
   const h = harness({ posthog: { dev_ids: () => ok({ results: [], columns: ["distinct_id"] }) } });
   await h.run();
-  const appUsage = h.state.sql.find((q) => q.includes("app.launched"));
+  const appUsage = h.state.sql.find((q) => q.includes("AS fresh"));
   assert.match(appUsage, /environment = 'production'/);
   assert.doesNotMatch(appUsage, /NOT IN \(\)/);
 });
@@ -333,7 +335,7 @@ test("zero dev ids is a legitimate state and must not produce NOT IN ()", async 
 test("resolved dev ids reach the app-usage query as a literal exclusion list", async () => {
   const h = harness();
   await h.run();
-  const appUsage = h.state.sql.find((q) => q.includes("app.launched"));
+  const appUsage = h.state.sql.find((q) => q.includes("AS fresh"));
   assert.match(appUsage, /distinct_id NOT IN \('dev-a', 'dev-b'\)/);
 });
 
@@ -760,7 +762,7 @@ test("the app-usage line does not claim first-time installs it cannot prove", as
   const h = harness();
   await h.run();
   const text = h.state.posts[0].embeds[3].description;
-  assert.match(text, /New installs: 51\./);
+  assert.match(text, /51 people began setting up\./);
   assert.match(text, /31 people finished setting up\. Of those, 24 also dictated\./);
   // The install number is launches-without-completed-onboarding, so it must not
   // claim first-time installs it cannot prove.
@@ -772,7 +774,7 @@ test("the onboarding funnel reads install, setup, then first dictation", async (
   await h.run();
   const text = h.state.posts[0].embeds[3].description;
   assert.match(text, /189 people used EnviousWispr this week\./);
-  assert.match(text, /New installs: 51\./);
+  assert.match(text, /51 people began setting up\./);
   assert.match(text, /31 people finished setting up\. Of those, 24 also dictated\./);
 });
 
@@ -809,7 +811,7 @@ test("a failed funnel query leaves the usage line intact, and vice versa", async
   await assert.rejects(() => usageDown.run(), /unavailable sections/);
   const b = usageDown.state.posts[0].embeds[3].description;
   assert.match(b, /31 people finished setting up/);
-  assert.match(b, /New installs were temporarily unavailable/);
+  assert.match(b, /The number of people who began setting up was temporarily unavailable/);
 });
 
 test("an EMPTY response with a malformed column set degrades, not 'none yet'", async () => {
@@ -848,12 +850,12 @@ test("a genuinely empty response WITH valid columns is still a real empty week",
 test("the usage headline counts successful DICTATORS, not launches", async () => {
   const h = harness();
   await h.run();
-  const sql = h.state.sql.find((q) => q.includes("is_fresh_install"));
+  const sql = h.state.sql.find((q) => q.includes("AS fresh"));
   // Founder definition: one successful dictation is what counts as using it.
   assert.match(sql, /uniqExactIf\(distinct_id, event = 'dictation\.completed' AND properties\.result = 'success'\) AS active/);
-  assert.match(sql, /uniqExactIf\(distinct_id, event = 'app\.launched' AND properties\.is_fresh_install = true\) AS fresh/);
+  assert.match(sql, /uniqExactIf\(distinct_id, event = 'onboarding\.started'\) AS fresh/);
   // One round trip over both event types, scoped so it does not scan everything.
-  assert.match(sql, /WHERE event IN \('dictation\.completed', 'app\.launched'\)/);
+  assert.match(sql, /WHERE event IN \('dictation\.completed', 'onboarding\.started'\)/);
 });
 
 test("dev ids are read by column NAME, not by position", async () => {
@@ -863,7 +865,18 @@ test("dev ids are read by column NAME, not by position", async () => {
     dev_ids: () => ok({ results: [["2026-08-01", "dev-a"]], columns: ["day", "distinct_id"] }),
   } });
   await h.run();
-  const sql = h.state.sql.find((q) => q.includes("is_fresh_install"));
+  const sql = h.state.sql.find((q) => q.includes("AS fresh"));
   assert.match(sql, /NOT IN \('dev-a'\)/);
   assert.doesNotMatch(sql, /2026-08-01/);
+});
+
+test("the install line claims setup BEGAN, never that it was a first time", async () => {
+  // Diagnostics has a "Restart Onboarding" action, so an existing user can emit
+  // onboarding.started again. Claiming "for the first time" would be the same
+  // overclaiming that made is_fresh_install misleading, in a new place.
+  const h = harness();
+  await h.run();
+  const text = h.state.posts[0].embeds[3].description;
+  assert.match(text, /51 people began setting up\./);
+  assert.doesNotMatch(text, /first time/);
 });

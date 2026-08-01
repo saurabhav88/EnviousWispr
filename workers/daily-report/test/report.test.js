@@ -245,7 +245,7 @@ test("adoption section: golden fixture matches the founder-approved report shape
   assert.equal(reportHeader("2026-07-08"), "EnviousWispr Daily Report, Wednesday, July 8, 2026");
   assert.match(msg, /^Adoption\n/);
   assert.doesNotMatch(msg, /EnviousWispr Daily Report/);
-  assert.match(msg, /New installs: 90\. People who finished setup that day: 82\. Of those, 60 also dictated that day\./);
+  assert.match(msg, /People who began setting up: 90\. People who finished setup that day: 82\. Of those, 60 also dictated that day\./);
   assert.doesNotMatch(msg, /for the first time/);
   assert.doesNotMatch(msg, /out of 90/); // no funnel-bleed wording (r1 fix)
   assert.match(msg, /Total users: 110 people used the app that day\./);
@@ -288,15 +288,15 @@ test("adoption section: zero total_users omits the engine/polish section entirel
 
 test("adoption section: installsDegraded omits the freshInstalls number, keeps onboarding intact", () => {
   const msg = formatAdoption({ ...GOLDEN_DATA, installsDegraded: true }, GOLDEN_BUCKETS).join("\n");
-  assert.match(msg, /New installs: temporarily unavailable\./);
-  assert.doesNotMatch(msg, /New installs: 90/);
+  assert.match(msg, /People who began setting up: temporarily unavailable\./);
+  assert.doesNotMatch(msg, /began setting up: 90/);
   assert.match(msg, /People who finished setup that day: 82\. Of those, 60 also dictated that day\./);
-  assert.match(msg, /Note: .*new installs/);
+  assert.match(msg, /Note: .*people who began setting up/);
 });
 
 test("adoption section: onboardActivateDegraded omits onboarding, keeps installs intact", () => {
   const msg = formatAdoption({ ...GOLDEN_DATA, onboardActivateDegraded: true }, GOLDEN_BUCKETS).join("\n");
-  assert.match(msg, /New installs: 90\./);
+  assert.match(msg, /People who began setting up: 90\./);
   assert.match(msg, /Onboarding and activation: temporarily unavailable\./);
   assert.doesNotMatch(msg, /People who finished setup that day/);
   assert.match(msg, /Note: .*onboarding\/activation/);
@@ -330,7 +330,7 @@ test("adoption section: multiple degraded sections all appear in one combined no
   ).join("\n");
   const noteLine = msg.split("\n").find((l) => l.startsWith("Note:"));
   assert.ok(noteLine, "expected one combined Note line");
-  assert.match(noteLine, /new installs/);
+  assert.match(noteLine, /people who began setting up/);
   assert.match(noteLine, /where they are/);
 });
 
@@ -3897,4 +3897,32 @@ test("resolveDevIds refuses an empty result whose column set is malformed", asyn
     fetchFn: async () => fakeResponse(200, { results: [], columns: ["distinct_id"] }),
   });
   assert.deepEqual(empty, []);
+});
+
+test("installs counts BEGAN-ONBOARDING, not the launch-time fresh-install state", async () => {
+  // The existing source guardrail checks the ${prod} predicate and the absence
+  // of an inline dev-exclusion, so it could not see this change at all: the
+  // whole suite stayed green while the metric's MEANING moved. Locking the
+  // meaning, not just the plumbing.
+  //
+  // `is_fresh_install` is a STATE (`onboardingState != .completed`), true on
+  // every launch until setup finishes, so it re-counted anyone who never
+  // finished as a new install EVERY DAY. `onboarding.started` is an EVENT fired
+  // once on the "Get Started" tap. Measured over 30 days: 21 ids re-counted
+  // under the flag, 2 under the event. Founder decision 2026-08-01.
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../src/adoption.js", import.meta.url), "utf8");
+  const query = src.match(/const installsSql = `([\s\S]*?)`;/)?.[1];
+  assert.ok(query, "expected installsSql");
+  assert.match(query, /event = 'onboarding\.started'/);
+  assert.doesNotMatch(query, /is_fresh_install/);
+  // The weekly digest must count the same thing; they share the definition.
+  // Asserted on the QUERY BODY, not the file: the file also EXPLAINS why the
+  // old flag was wrong, and a whole-file match would fail on that prose - a
+  // check that forbids naming the thing it forbids using.
+  const weekly = fs.readFileSync(new URL("../../weekly-digest/src/index.js", import.meta.url), "utf8");
+  const weeklyQuery = weekly.match(/export function appUsageSql[\s\S]*?return `([\s\S]*?)`;/)?.[1];
+  assert.ok(weeklyQuery, "expected weekly appUsageSql");
+  assert.match(weeklyQuery, /uniqExactIf\(distinct_id, event = 'onboarding\.started'\) AS fresh/);
+  assert.doesNotMatch(weeklyQuery, /is_fresh_install/);
 });

@@ -97,27 +97,27 @@ is what counts as really using the app. The section reports all three, matching
 the daily report's per-day shape:
 
 ```
-179 people used EnviousWispr this week.
-New installs: 46.
+160 people used EnviousWispr this week.
+43 people began setting up.
 40 people finished setting up. Of those, 35 also dictated.
 ```
 
-"Used" means **at least one successful dictation**, not a launch, matching the
-daily report's headline and the founder's definition. Someone who opens the app
-and never dictates is not counted as a user.
+"Used" means at least one successful dictation, not a launch. Someone who opens
+the app and never dictates is not counted as a user.
 
-`is_fresh_install` is `settings.onboardingState != .completed`
-(`Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift:221`), which is
-why "install" means begun-onboarding rather than first-ever-launch. Two
-consequences worth knowing before reading the number as first launches:
+"Began setting up" comes from the `onboarding.started` EVENT, fired on the
+"Get Started" tap (`OnboardingV2View.swift:670`). It says setup BEGAN in the
+window, not that it was a first time: Diagnostics has a "Restart Onboarding"
+action (`DiagnosticsSettingsView.swift:106`), so an existing user can emit it
+again. The wording stays at what the event proves.
 
-- It stays true on **every launch until setup finishes**, so someone who never
-  completes onboarding counts again in each week they open the app. Measured
-  2026-08-01: 21 ids carried the flag on more than one day across 30 days, and
-  the 2026-07-25..08-01 window showed 46 against 43 ids genuinely launching for
-  the first time.
-- The funnel is what makes that readable. A gap between installs and finished
-  setup is the interesting signal, not noise to be cleaned out of the top line.
+**It is NOT `is_fresh_install`, and that distinction is the whole point** (#1910).
+That property is a STATE, `onboardingState != .completed`, so it stayed true on
+every launch until setup finished and re-counted anyone who never finished as a
+new install every single week. Measured over 30 days: 21 ids re-counted under
+the flag, 2 under the event. The week 2026-07-25..08-01 reads 43 rather than 46,
+and 43 is exactly the number of ids whose first-ever launch fell in that window.
 
-The daily report counts the same property the same way, so both reports share
-this definition. Change them together or not at all.
+The daily report counts the same thing the same way. A source-guardrail test in
+`workers/daily-report/test/report.test.js` asserts BOTH files, so the two cannot
+drift apart silently.

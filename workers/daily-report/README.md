@@ -20,7 +20,7 @@ never a UTC-day approximation).
 
 | Line | Definition |
 |---|---|
-| New installs | Unique `distinct_id`s with `app.launched{is_fresh_install=true}` that day. |
+| People who began setting up | Unique `distinct_id`s with `onboarding.started` that day. NOT `app.launched{is_fresh_install}` — that is a STATE (`onboardingState != .completed`) that stays true until setup finishes, so it re-counted unfinished onboarding as a new install every day (#1910). Says setup BEGAN that day, not that it was a first time: Diagnostics can restart onboarding. |
 | People who finished setup | Unique `distinct_id`s with `onboarding.completed` that day. |
 | Of those, also dictated | Same-day activation: of the users who onboarded THAT day, how many ALSO had a successful dictation that same day. Deliberately same-day, not open-ended — a stated simplification, not an oversight. |
 | Total users | Unique `distinct_id`s with a **successful** `dictation.completed` that day. This deliberately EXCLUDES people who launched the app, or attempted a dictation that failed (ASR/paste failure). It is not "everyone who touched the app," it is "everyone who got a working dictation." Per-version failure rates live in the version scorecard section, not here. |

@@ -224,7 +224,7 @@ export function reportHeader(dateStr) {
 // same booleans the adoption section returns. `totals` is deliberately absent -
 // it never degrades (#1720).
 const DEGRADED_SECTION_LABELS = [
-  ["installsDegraded", "new installs"],
+  ["installsDegraded", "people who began setting up"],
   ["onboardActivateDegraded", "onboarding/activation"],
   ["engineAndTierBDegraded", "transcription engine and AI-polish breakdown"],
   ["geoDegraded", "where they are"],
@@ -261,8 +261,8 @@ export function formatAdoption(data, buckets) {
   }
 
   const installsPart = data.installsDegraded
-    ? "New installs: temporarily unavailable."
-    : `New installs: ${data.freshInstalls}.`;
+    ? "People who began setting up: temporarily unavailable."
+    : `People who began setting up: ${data.freshInstalls}.`;
   const onboardPart = data.onboardActivateDegraded
     ? "Onboarding and activation: temporarily unavailable."
     : `People who finished setup that day: ${data.onboarded}. Of those, ${data.activated} also dictated that day.`;

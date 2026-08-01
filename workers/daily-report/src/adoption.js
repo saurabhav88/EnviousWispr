@@ -104,10 +104,16 @@ export function createAdoptionSection(env, context, opts = {}) {
   const endTs = sqlTimestamp(context.endUTC);
   const activeUsers = activeUsersSubquery(win);
 
+  // "Began onboarding", from the EVENT fired once when the user taps "Get
+  // Started" (OnboardingV2View.swift:670) - not `app.launched` +
+  // `is_fresh_install`, which is a STATE (`onboardingState != .completed`) and
+  // stays true on every launch until setup finishes. That re-counted anyone who
+  // never finished as a new install EVERY DAY. Measured over 30 days: 21 ids
+  // re-counted under the flag, 2 under the event. Founder decision 2026-08-01;
+  // the weekly digest counts the same thing the same way.
   const installsSql = `
     SELECT uniqExact(distinct_id) FROM events
-    WHERE event = 'app.launched' AND properties.is_fresh_install = true
-      AND ${prod} AND ${win}`;
+    WHERE event = 'onboarding.started' AND ${prod} AND ${win}`;
 
   const onboardActivateSql = `
     SELECT
