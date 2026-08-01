@@ -338,21 +338,32 @@ const hostFilter = `properties.$host IN (${SITE_HOSTS.map((h) => `'${h}'`).join(
  * the weekly headline a different metric from the daily report's, which has
  * always counted successful dictators.
  *
- * FRESH still comes from app.launched, because is_fresh_install rides on that
- * event. Both live in ONE query over the two event types rather than two round
- * trips; `WHERE event IN (...)` keeps it scoped.
+ * FRESH is `onboarding.started`, an EVENT fired once when the user taps "Get
+ * Started" (OnboardingV2View.swift:670). It replaced `is_fresh_install`, which
+ * is a STATE - `onboardingState != .completed` - and therefore stayed true on
+ * every launch until setup finished, re-counting anyone who never finished as a
+ * new install every single day and week. Measured over 30 days: 21 ids were
+ * re-counted under the flag, 2 under the event, and those 2 look like genuine
+ * re-onboards. For the 2026-07-25..08-01 week it reads 43 rather than 46, and
+ * 43 is exactly the number of ids whose first-ever launch fell in that window.
  *
- * New installs uses the app's own is_fresh_install rather than PostHog's
- * first_time_for_user (founder decision 2026-08-01): it is what the daily
- * report counts, and reproducing first_time_for_user in HogQL needs a
- * whole-history min(timestamp) per user, the unbounded-scan shape that caused
- * the #1655 and #1716 timeouts. */
+ * An install therefore means "began onboarding" (founder definition
+ * 2026-08-01), which is what the label now literally says - and no more than
+ * that. The line deliberately does NOT say "for the first time": Diagnostics
+ * has a "Restart Onboarding" action (DiagnosticsSettingsView.swift:106), so an
+ * existing user can emit this event again. It proves setup BEGAN in the window,
+ * not that it was ever a first time, and claiming otherwise would be the same
+ * overclaiming that made is_fresh_install misleading.
+ *
+ * Both numbers come from ONE query over the two event types rather than two
+ * round trips; `WHERE event IN (...)` keeps it scoped. app.launched is no
+ * longer read at all here. */
 export function appUsageSql(prod, win) {
   return `SELECT
       uniqExactIf(distinct_id, event = 'dictation.completed' AND properties.result = 'success') AS active,
-      uniqExactIf(distinct_id, event = 'app.launched' AND properties.is_fresh_install = true) AS fresh
+      uniqExactIf(distinct_id, event = 'onboarding.started') AS fresh
     FROM events
-    WHERE event IN ('dictation.completed', 'app.launched') AND ${prod} AND ${win}`;
+    WHERE event IN ('dictation.completed', 'onboarding.started') AND ${prod} AND ${win}`;
 }
 
 /** The week's active-user population (successful dictators), used ONCE as an
@@ -562,8 +573,8 @@ export function formatAppUsage(usage, funnel) {
     ? `${n(usage.active)} people used EnviousWispr this week.`
     : `The number of people who used the app was ${UNAVAILABLE}.`);
   lines.push(usage
-    ? `New installs: ${n(usage.fresh)}.`
-    : `New installs were ${UNAVAILABLE}.`);
+    ? `${n(usage.fresh)} people began setting up.`
+    : `The number of people who began setting up was ${UNAVAILABLE}.`);
   // The two steps after install, on the founder's definition (2026-08-01): an
   // install is someone who has begun onboarding, finishing setup is its own
   // step, and ONE successful dictation is what counts as really using it. Same
