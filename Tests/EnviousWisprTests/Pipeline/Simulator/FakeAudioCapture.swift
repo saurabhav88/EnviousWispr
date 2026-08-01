@@ -44,6 +44,14 @@ final class FakeAudioCapture: AudioCaptureInterface {
   // MARK: Observed counters (for FakeAudioCaptureTests teardown assertion)
 
   private(set) var stopCaptureCallCount = 0
+  /// #1854 Phase 1 — how many of those calls the identity fence REFUSED.
+  ///
+  /// Separate from `stopCaptureCallCount` on purpose: a refused stop still
+  /// arrived, and a test proving the kernel gate works needs to distinguish
+  /// "the stale stop was fenced" from "the stale stop never happened". Without
+  /// this, both read as the engine surviving, and a fix that merely stopped
+  /// scheduling the cleanup would look identical to one that gated it.
+  private(set) var stopCaptureRefusedCallCount = 0
   private(set) var beginCapturePhaseCallCount = 0
   private(set) var preWarmCallCount = 0
   private(set) var abortPreWarmCallCount = 0
@@ -240,6 +248,28 @@ final class FakeAudioCapture: AudioCaptureInterface {
 
   func stopCapture(sessionID: UInt64) async -> CaptureResult {
     stopCaptureCallCount += 1
+    // #1854 Phase 1: model the PRODUCTION identity fence.
+    //
+    // `AudioCaptureManager.stopCapture(sessionID:)` refuses a stop whose id is
+    // not the live one and changes nothing. This fake ignored `sessionID`
+    // entirely, so every stale stop LANDED — which meant a test could not tell
+    // "production would have fenced this" from "this is the hole", and both
+    // showed up as `stopCaptureCallCount` rising with `isCapturing` going false.
+    //
+    // STRICT EQUALITY, with no special case for `0`. Production's guard is
+    // exactly `sessionID == captureSessionCounter`. A prepared-but-never-armed
+    // cleanup gets through there not by exception but because the counter is
+    // ALSO `0` at that moment, so the equality simply holds.
+    //
+    // An earlier draft here wrote `|| sessionID == 0`, which accepts a stale
+    // zero-id stop even when the counter has moved on — more permissive than
+    // production, in precisely the direction that makes a Phase 2 race test
+    // report a failure that cannot happen. Over-modelling the fence is the same
+    // class of error as not modelling it.
+    guard sessionID == currentCaptureSessionID else {
+      stopCaptureRefusedCallCount += 1
+      return CaptureResult(samples: [])
+    }
     isCapturing = false
     bufferContinuation?.finish()
     bufferContinuation = nil
