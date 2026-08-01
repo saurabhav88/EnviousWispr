@@ -1920,6 +1920,45 @@ public final class TelemetryService {
       ])
   }
 
+  /// #1635: the WhisperKit setup row's "getting the model ready" copy genuinely entered the
+  /// visible view hierarchy.
+  ///
+  /// WHY THIS EXISTS AT ALL. The previous attempt at #1635 shipped a label that could NEVER
+  /// appear, behind four passing tests, because nothing published the state it keyed on. No
+  /// existing telemetry could have caught that: `coldstart.warmup_*` measures how long the
+  /// engine took to load, never whether we told the user anything. This event answers the
+  /// one question those cannot — did the copy actually reach a screen.
+  ///
+  /// EMITTED BY THE VIEW, NEVER THE COORDINATOR. The event name claims a render, and only
+  /// the thing that renders can honestly claim it. Emitting from `EngineCoordinator` would
+  /// assert a render it never observes, which is the same false-claim shape as the label
+  /// this issue exists to fix.
+  ///
+  /// An impression, not a session: a SwiftUI subview can disappear and reappear during one
+  /// warm, so a reappearance is another honest impression. There is deliberately no
+  /// deduplication, no clear event, and no `elapsed_ms` — a view that can vanish mid-warm
+  /// cannot measure the warm, and `coldstart.warmup_*` already owns that duration.
+  ///
+  /// Privacy: two enum-shaped strings, no content
+  /// (`sentry-operations.md` RULE: telemetry-privacy-boundary).
+  public func settingsModelPreparingImpression(engine: String, reason: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "settings.model_preparing_impression",
+          stringProps: [
+            "engine": engine,
+            "reason": reason,
+          ]))
+    #endif
+    PostHogSDK.shared.capture(
+      "settings.model_preparing_impression",
+      properties: [
+        "engine": engine,
+        "reason": reason,
+      ])
+  }
+
   /// Telemetry Bible Phase 4 (#1173): an API key was saved or removed. `action`
   /// is `save` (code can't cheaply tell first-add from overwrite) or `remove`;
   /// `result` is `success` or `failure`. Key material is never logged.

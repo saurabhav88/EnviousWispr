@@ -543,6 +543,15 @@ struct SpeechEngineSettingsView: View {
               .font(.stHelper)
               .foregroundStyle(.stTextSecondary)
             }
+            // #1635: on the SUBVIEW that renders the copy, so the event can only fire when
+            // the words genuinely entered the visible hierarchy. `reason` is the constant
+            // "engine_swap" because `warmInFlight` is set solely by the coordinator-owned
+            // post-switch warm; the view has no wider reason to report and must not invent
+            // one. Reappearance is another honest impression, so there is no dedup here.
+            .onAppear {
+              TelemetryService.shared.settingsModelPreparingImpression(
+                engine: "whisperKit", reason: "engine_swap")
+            }
           } else {
             Label(
               ModelPreparingCopy.label(
