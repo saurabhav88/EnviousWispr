@@ -1,6 +1,7 @@
 import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
+import Observation
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
@@ -21,7 +22,21 @@ final class FakeEngineDeps {
   var whisperKitActive = false
   var recovering = false
   var parakeetInstalled = true
-  var whisperKitInstalled = true
+
+  /// #1635: backed by an `@Observable` box so `EngineCoordinator.observeInstalledState()`
+  /// can genuinely track it.
+  ///
+  /// That method wraps `deps.isInstalled(.whisperKit)` in `withObservationTracking`, and
+  /// its own comment says "In unit tests the fake reader touches no `@Observable` source,
+  /// so this is inert." A plain stored property therefore made the real download-completion
+  /// trigger untestable, and a test could only fake it by calling
+  /// `poke(.setupStateChanged)` by hand — which exercises the EFFECT, not the trigger.
+  /// Reading through this box makes the observation fire for real.
+  var whisperKitInstalled: Bool {
+    get { whisperKitInstalledBox.value }
+    set { whisperKitInstalledBox.value = newValue }
+  }
+  private let whisperKitInstalledBox = ObservableInstallFlag(true)
 
   /// Switch bookkeeping.
   private(set) var switchCount = 0
@@ -150,3 +165,12 @@ func enginePoll(
 }
 
 enum FakeWarmError: Error { case failed }
+
+/// #1635: an `@Observable` cell so `FakeEngineDeps.whisperKitInstalled` participates in
+/// `withObservationTracking`. Without this, `EngineCoordinator.observeInstalledState()` is
+/// inert under test and the real download-completion trigger cannot be exercised.
+@Observable
+final class ObservableInstallFlag {
+  var value: Bool
+  init(_ value: Bool) { self.value = value }
+}

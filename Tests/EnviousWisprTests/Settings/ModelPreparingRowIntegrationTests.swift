@@ -28,32 +28,49 @@ struct ModelPreparingRowIntegrationTests {
 
   /// Drive: not installed → user picks WhisperKit → download admits → coordinator switches
   /// and warms. Returns the coordinator with its warm parked on `warm`.
+  ///
+  /// **The admission is NOT poked by hand.** Flipping `whisperKitInstalled` is the whole
+  /// trigger: the fake's flag is `@Observable`, so the coordinator's own
+  /// `observeInstalledState()` sees the change and fires `.setupStateChanged` itself. An
+  /// earlier draft called `poke(.setupStateChanged)` manually, which exercised the EFFECT
+  /// of the trigger rather than the trigger, and the audit caught it.
+  ///
+  /// **IF THIS HANGS, `FakeEngineDeps.whisperKitInstalled` HAS STOPPED BEING OBSERVABLE.**
+  /// The `#require` below does not catch that: losing observability still leaves the switch
+  /// correctly blocked, so the precondition passes and the hang lands later at
+  /// `waitUntilWaiting()`, waiting for a warm the coordinator was never told to start.
+  /// Do NOT "fix" it with a timeout — that puts a clock back into the one place this test
+  /// deliberately has none. Restore the `@Observable` box instead.
   private func driveToParkedWarm(
     _ fake: FakeEngineDeps, _ warm: AsyncLatch
-  ) async -> EngineCoordinator {
+  ) async throws -> EngineCoordinator {
     fake.whisperKitInstalled = false
     fake.onWarmAwait = { await warm.wait() }
     let c = fake.makeStartedCoordinator()
 
-    // The user picks the optional engine before it exists on disk. The switch is refused
-    // (gate 4, not installed) and Parakeet stays active — this is the real ordering, since
-    // the Download button only renders once WhisperKit is selected.
+    // The user picks the optional engine before it exists on disk. The switch must be
+    // refused (gate 4, not installed) with Parakeet still active — this is the real
+    // ordering, since the Download button only renders once WhisperKit is selected.
     fake.selected = .whisperKit
     c.poke(.settingsChanged)
+    let blocked = await enginePoll { c.status.blockedReason == .notInstalled }
+    try #require(blocked, "an uninstalled engine must block the switch, not warm")
+    #expect(fake.active == .parakeet, "and the old engine stays active meanwhile")
+    #expect(fake.warmCount == 0, "nothing may warm before the model exists")
+    #expect(renderedLabel(c) == ModelPreparingCopy.ready, "and the row is not preparing yet")
 
-    // Download completes. `observeInstalledState` fires exactly this poke on admission.
+    // Download completes. Nothing else: the observation does the rest.
     fake.whisperKitInstalled = true
-    c.poke(.setupStateChanged)
 
     await warm.waitUntilWaiting()
     return c
   }
 
   @Test("a completed download shows the preparing copy, then Model Ready")
-  func settledWarmRoundTrip() async {
+  func settledWarmRoundTrip() async throws {
     let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
     let warm = AsyncLatch()
-    let c = await driveToParkedWarm(fake, warm)
+    let c = try await driveToParkedWarm(fake, warm)
 
     #expect(
       renderedLabel(c) == ModelPreparingCopy.preparing,
@@ -68,11 +85,11 @@ struct ModelPreparingRowIntegrationTests {
   }
 
   @Test("a failed warm returns the row to Model Ready, never a stuck spinner")
-  func failedWarmReturnsToReady() async {
+  func failedWarmReturnsToReady() async throws {
     let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
     fake.warmOutcome[.whisperKit] = .failed(FakeWarmError.failed)
     let warm = AsyncLatch()
-    let c = await driveToParkedWarm(fake, warm)
+    let c = try await driveToParkedWarm(fake, warm)
 
     #expect(renderedLabel(c) == ModelPreparingCopy.preparing)
 
@@ -86,11 +103,11 @@ struct ModelPreparingRowIntegrationTests {
   }
 
   @Test("a cancelled warm returns the row to Model Ready")
-  func cancelledWarmReturnsToReady() async {
+  func cancelledWarmReturnsToReady() async throws {
     let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
     fake.warmOutcome[.whisperKit] = .cancelled
     let warm = AsyncLatch()
-    let c = await driveToParkedWarm(fake, warm)
+    let c = try await driveToParkedWarm(fake, warm)
 
     #expect(renderedLabel(c) == ModelPreparingCopy.preparing)
 
