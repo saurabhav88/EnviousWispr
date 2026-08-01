@@ -426,9 +426,25 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     // `streamingResult` trims the edges.
     let releaseText = confirmedText + retainedUnconfirmedSegments.map(\.text).joined()
 
-    // Exact bookkeeping: audio that arrived after the last decode pulled the
-    // buffer. `lastDecodeSampleCount` is the sample count that decode saw.
-    let unheardStart = max(0, min(count, lastDecodeSampleCount))
+    // Exact bookkeeping (#1308): audio that the text we are ABOUT TO RELEASE does
+    // not cover. Derived from `releaseText`'s own words — `lastConfirmedSec` for
+    // the committed prefix, the last retained segment for the held-back tail —
+    // never from `lastDecodeSampleCount`.
+    //
+    // That marker records how much audio a decode was HANDED, and handing a
+    // decoder 11s that yields 6s of words does not make the last 5s heard. Using
+    // it here skipped the tail decode below and dropped the user's final words.
+    //
+    // Deriving it here rather than caching it during the loop is deliberate, and
+    // whole-diff review is why. A cached high-water mark went wrong twice: it read
+    // UNFILTERED words, so a hallucinated timestamp in the 30s window's silence
+    // padding claimed full coverage even though `applyLocalAgreement` discarded
+    // that word; and being monotonic it held an older, farther endpoint after a
+    // later hypothesis retracted its final word, hiding real audio from the
+    // unheard slice. Both recreate the exact silent tail loss this fixes. The
+    // release hypothesis cannot disagree with itself.
+    let releasedEndSec = max(lastConfirmedSec, retainedUnconfirmedSegments.last?.end ?? 0)
+    let unheardStart = max(0, min(count, Int(releasedEndSec * 16_000)))
     let unheardSlice = unheardStart < count ? Array(samples[unheardStart..<count]) : []
     let unheardSec = Float(unheardSlice.count) / 16_000.0
     if unheardSec < minVoicedTailSec || rms(unheardSlice) <= tailEnergyFloor || samples.isEmpty {
@@ -775,10 +791,17 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       }
     }
 
-    // Retain the uncommitted remainder for the benchmark's release-only arm
-    // (set before the commitCount>0 guard, mirroring the segment path).
-    // Retained text is the RAW token (self-spacing, see the commit loop) —
-    // the release path concatenates these without a separator.
+    // The held-back tail of the current hypothesis. Set before the commitCount>0
+    // guard (mirroring the segment path) so a cycle that commits nothing still
+    // records everything as retained. Retained text is the RAW token
+    // (self-spacing, see the commit loop) — the release path concatenates these
+    // without a separator.
+    //
+    // SHIPPED FINALIZE READS THIS. It builds `releaseText` from it (`:435`) and,
+    // since #1308, derives the release hypothesis's audio coverage from its last
+    // segment. An earlier comment here said "Shipped finalize never reads this",
+    // which was false and was quoted as evidence in the #1308 plan before the
+    // grep caught it.
     retainedUnconfirmedSegments = words[commitCount...].map {
       BenchmarkSegment(text: $0.word, start: $0.start, end: $0.end)
     }
