@@ -32,6 +32,7 @@
  */
 
 import {
+  ENV_ONLY,
   productionClauseFor,
   querySection,
   resolveDevIds,
@@ -322,6 +323,42 @@ export function appUsageSql(prod, win) {
     WHERE event = 'app.launched' AND ${prod} AND ${win}`;
 }
 
+/** The week's active-user population (successful dictators), used ONCE as an
+ * IN-membership test inside onboardActivateSql's `activated` column.
+ *
+ * Deliberately ${ENV_ONLY}, not the full production predicate. The argument is
+ * re-derived here rather than copied from the daily report's identical-looking
+ * subquery, because that file states plainly that its version is local and a
+ * new caller must not assume it: every row this set is tested against came from
+ * onboardActivateSql's own outer `WHERE ... AND ${prod}` on
+ * onboarding.completed, so a dev-tainted id can never appear on the OUTER side
+ * to begin with. Whether this inner set is also dev-filtered therefore cannot
+ * change which outer ids match. Applying the full predicate would evaluate the
+ * unbounded dev-exclusion a SECOND time inside one query, which is exactly the
+ * doubled-subquery shape that timed out production PostHog in #1655 and #1716.
+ *
+ * This argument is local to this one call site. */
+function activeUsersSubquery(win) {
+  return `SELECT DISTINCT distinct_id FROM events
+    WHERE event = 'dictation.completed' AND properties.result = 'success'
+      AND ${ENV_ONLY} AND ${win}`;
+}
+
+/** The onboarding funnel's second and third steps: who finished setup this
+ * week, and how many of those went on to dictate successfully.
+ *
+ * Founder's definition (2026-08-01): an install is someone who has begun
+ * onboarding, finishing setup is its own step, and ONE successful dictation is
+ * what counts as really using the app. Same three levels the daily report
+ * already reports per day. */
+export function onboardActivateSql(prod, win) {
+  return `SELECT
+      uniqExact(distinct_id) AS onboarded,
+      uniqExactIf(distinct_id, distinct_id IN (${activeUsersSubquery(win)})) AS activated
+    FROM events
+    WHERE event = 'onboarding.completed' AND ${prod} AND ${win}`;
+}
+
 /** Website traffic. NO production predicate, deliberately.
  *
  * `productionClauseFor` always begins `properties.environment = 'production'`,
@@ -484,15 +521,26 @@ export function formatDownloads(gh, sources, botsExcluded) {
  * product decision, raised with the founder separately; the daily report counts
  * the same property the same way (adoption.js:109) and carries the same
  * overstatement, so this is not a weekly-digest defect to fix in isolation. */
-export function formatAppUsage(usage) {
-  if (!usage) return ["App usage", `App usage figures were ${UNAVAILABLE} when this digest ran.`];
-  return [
-    "App usage",
-    `${n(usage.active)} people used EnviousWispr this week.`,
-    `${n(usage.fresh)} of them were new or had not finished setting up yet.`,
-    "",
-    "Dev machines are excluded from both numbers.",
-  ];
+export function formatAppUsage(usage, funnel) {
+  if (!usage && !funnel) {
+    return ["App usage", `App usage figures were ${UNAVAILABLE} when this digest ran.`];
+  }
+  const lines = ["App usage"];
+  lines.push(usage
+    ? `${n(usage.active)} people used EnviousWispr this week.`
+    : `The number of people who used the app was ${UNAVAILABLE}.`);
+  lines.push(usage
+    ? `New installs: ${n(usage.fresh)}.`
+    : `New installs were ${UNAVAILABLE}.`);
+  // The two steps after install, on the founder's definition (2026-08-01): an
+  // install is someone who has begun onboarding, finishing setup is its own
+  // step, and ONE successful dictation is what counts as really using it. Same
+  // three levels the daily report gives per day.
+  lines.push(funnel
+    ? `${n(funnel.onboarded)} people finished setting up. Of those, ${n(funnel.activated)} also dictated.`
+    : `Setup and first-dictation figures were ${UNAVAILABLE}.`);
+  lines.push("", "Dev machines are excluded from every number here.");
+  return lines;
 }
 
 /** One embed per section, and a REFUSAL of any shape Discord would reject,
@@ -602,6 +650,7 @@ export async function runDigest(env, deps = {}) {
   ];
   if (prod) {
     posthogTasks.push(() => querySection(env, appUsageSql(prod, window.win), "app_usage", hogqlOpts));
+    posthogTasks.push(() => querySection(env, onboardActivateSql(prod, window.win), "onboard_activate", hogqlOpts));
   }
 
   const [posthogOutcome, cfOutcome, ghOutcome] = await Promise.allSettled([
@@ -732,12 +781,13 @@ export async function runDigest(env, deps = {}) {
     return rows;
   };
 
-  let site, downloads, sources, usage;
+  let site, downloads, sources, usage, funnel;
   try {
     site = readAggregate(0, "website", ["views", "visitors"]);
     downloads = readAggregate(1, "downloads", ["intents", "bots_excluded"]);
     sources = readGrouped(2, "download_sources");
     usage = prod ? readAggregate(3, "app_usage", ["active", "fresh"]) : null;
+    funnel = prod ? readAggregate(4, "onboard_activate", ["onboarded", "activated"]) : null;
   } catch (err) {
     await postFailureNotice(env, label, { fetchFn });
     throw err;
@@ -752,7 +802,7 @@ export async function runDigest(env, deps = {}) {
       toEmbed(formatCloudflare(cf)),
       toEmbed(formatWebsite(site, downloads ? downloads.intents : null)),
       toEmbed(formatDownloads(gh, sources, downloads ? downloads.bots_excluded : null)),
-      toEmbed(formatAppUsage(usage)),
+      toEmbed(formatAppUsage(usage, funnel)),
     ],
   };
 

@@ -85,20 +85,31 @@ against an independently written oracle query.
 - **PostHog project 354235 is shared with EnviousStaging**, which is why the
   host filter exists at all.
 
-## Known limit: "new or still setting up" is not "new installs"
+## The app-usage funnel, and what "install" means here
 
-`is_fresh_install` is not what its name suggests. The app derives it as
-`settings.onboardingState != .completed`
-(`Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift:221`), so it stays
-true on **every launch until setup is finished**. Someone who installs and never
-completes onboarding is flagged again every week they open the app.
+Founder definition, 2026-08-01: **an install is someone who has begun
+onboarding**, finishing setup is its own step, and **one successful dictation**
+is what counts as really using the app. The section reports all three, matching
+the daily report's per-day shape:
 
-Measured 2026-08-01: 21 distinct ids carried the flag on more than one day over
-30 days; the 2026-07-25..08-01 window reported 46 where 43 ids were genuinely
-launching for the first time.
+```
+179 people used EnviousWispr this week.
+New installs: 46.
+40 people finished setting up. Of those, 35 also dictated.
+```
 
-The digest's wording says what the number actually contains. Changing WHICH
-metric is reported is a product decision, not a bug fix, and **the daily report
-counts the same property the same way** (`workers/daily-report/src/adoption.js`,
-printed as "New installs"), so it carries the same overstatement. Fix both or
-neither.
+`is_fresh_install` is `settings.onboardingState != .completed`
+(`Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift:221`), which is
+why "install" means begun-onboarding rather than first-ever-launch. Two
+consequences worth knowing before reading the number as first launches:
+
+- It stays true on **every launch until setup finishes**, so someone who never
+  completes onboarding counts again in each week they open the app. Measured
+  2026-08-01: 21 ids carried the flag on more than one day across 30 days, and
+  the 2026-07-25..08-01 window showed 46 against 43 ids genuinely launching for
+  the first time.
+- The funnel is what makes that readable. A gap between installs and finished
+  setup is the interesting signal, not noise to be cleaned out of the top line.
+
+The daily report counts the same property the same way, so both reports share
+this definition. Change them together or not at all.

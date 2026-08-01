@@ -57,6 +57,7 @@ const POSTHOG_ROWS = {
   downloads: { results: [[36, 11]], columns: ["intents", "bots_excluded"] },
   download_sources: { results: [["github_readme", 20], ["reddit", 8]], columns: ["bucket", "n"] },
   app_usage: { results: [[189, 51]], columns: ["active", "fresh"] },
+  onboard_activate: { results: [[31, 24]], columns: ["onboarded", "activated"] },
 };
 
 const CF_BODY = {
@@ -213,11 +214,11 @@ test("never more than 2 PostHog requests in flight, and the cap is actually reac
   assert.equal(h.state.peakInFlight, 2, "cap must be reached, not merely never exceeded");
 });
 
-test("a clean run makes exactly 5 PostHog requests: 1 preflight + 4 metrics", async () => {
+test("a clean run makes exactly 6 PostHog requests: 1 preflight + 5 metrics", async () => {
   const h = harness();
   await h.run();
   // Equality, so both an added query and a silently dropped one fail.
-  assert.equal(h.state.posthogCalls, 5);
+  assert.equal(h.state.posthogCalls, 6);
   assert.equal(h.state.queryNames.filter((q) => q === "weekly_digest_dev_ids").length, 1);
 });
 
@@ -229,6 +230,7 @@ test("every query name carries the weekly_digest label, never daily_report", asy
     "weekly_digest_dev_ids",
     "weekly_digest_download_sources",
     "weekly_digest_downloads",
+    "weekly_digest_onboard_activate",
     "weekly_digest_website",
   ]);
 });
@@ -477,11 +479,11 @@ test("formatSourceBreakdown: unavailable, genuine zero, and rows read differentl
 });
 
 test("every formatter degrades to prose, never to a number, when its input is null", () => {
-  for (const lines of [formatCloudflare(null), formatWebsite(null, null), formatDownloads(null, null, null), formatAppUsage(null)]) {
+  for (const lines of [formatCloudflare(null), formatWebsite(null, null), formatDownloads(null, null, null), formatAppUsage(null, null)]) {
     assert.match(lines.join("\n"), /temporarily unavailable/);
   }
   // Title line must survive so the embed is still well-formed.
-  assert.equal(formatAppUsage(null)[0], "App usage");
+  assert.equal(formatAppUsage(null, null)[0], "App usage");
 });
 
 test("formatters produce a title line plus a non-empty body of strings", () => {
@@ -489,7 +491,7 @@ test("formatters produce a title line plus a non-empty body of strings", () => {
     formatCloudflare({ totalPageViews: 1, summedDailyUniques: 2, totalRequests: 3, topCountries: [] }),
     formatWebsite({ views: 1, visitors: 2 }, 3),
     formatDownloads({ totalDownloads: 1, latestVersion: "v1" }, [], 0),
-    formatAppUsage({ active: 1, fresh: 2 }),
+    formatAppUsage({ active: 1, fresh: 2 }, { onboarded: 1, activated: 1 }),
   ];
   for (const lines of cases) {
     assert.ok(lines.length >= 2);
@@ -726,6 +728,54 @@ test("the app-usage line does not claim first-time installs it cannot prove", as
   const h = harness();
   await h.run();
   const text = h.state.posts[0].embeds[3].description;
-  assert.match(text, /new or had not finished setting up/);
+  assert.match(text, /New installs: 51\./);
+  assert.match(text, /31 people finished setting up\. Of those, 24 also dictated\./);
+  // The install number is launches-without-completed-onboarding, so it must not
+  // claim first-time installs it cannot prove.
   assert.doesNotMatch(text, /installed it for the first time/);
+});
+
+test("the onboarding funnel reads install, setup, then first dictation", async () => {
+  const h = harness();
+  await h.run();
+  const text = h.state.posts[0].embeds[3].description;
+  assert.match(text, /189 people used EnviousWispr this week\./);
+  assert.match(text, /New installs: 51\./);
+  assert.match(text, /31 people finished setting up\. Of those, 24 also dictated\./);
+});
+
+test("the activation subquery is dev-filtered by environment ONLY, never twice", async () => {
+  const h = harness();
+  await h.run();
+  const sql = h.state.sql.find((q) => q.includes("onboarding.completed"));
+  // The outer WHERE carries the full predicate, including the dev-id list.
+  assert.match(sql, /WHERE event = 'onboarding\.completed' AND properties\.environment = 'production'/);
+  assert.match(sql, /distinct_id NOT IN \('dev-a', 'dev-b'\)/);
+  // The inner membership set carries environment only. Evaluating the unbounded
+  // dev-exclusion a second time inside one query is the doubled-subquery shape
+  // that timed out production PostHog in #1655 and #1716.
+  assert.equal(sql.split("distinct_id NOT IN").length - 1, 1, "dev exclusion must appear exactly once");
+  assert.match(sql, /dictation\.completed' AND properties\.result = 'success'\s*\n\s*AND properties\.environment = 'production'/);
+});
+
+test("the funnel degrades with app usage when dev ids cannot be resolved", async () => {
+  const h = harness({ posthog: { dev_ids: () => fail(503) } });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  const text = h.state.posts[0].embeds[3].description;
+  assert.match(text, /temporarily unavailable/);
+  assert.equal(h.state.queryNames.includes("weekly_digest_onboard_activate"), false);
+});
+
+test("a failed funnel query leaves the usage line intact, and vice versa", async () => {
+  const funnelDown = harness({ posthog: { onboard_activate: () => fail(503) } });
+  await assert.rejects(() => funnelDown.run(), /unavailable sections/);
+  const a = funnelDown.state.posts[0].embeds[3].description;
+  assert.match(a, /189 people used EnviousWispr/);
+  assert.match(a, /Setup and first-dictation figures were temporarily unavailable/);
+
+  const usageDown = harness({ posthog: { app_usage: () => fail(503) } });
+  await assert.rejects(() => usageDown.run(), /unavailable sections/);
+  const b = usageDown.state.posts[0].embeds[3].description;
+  assert.match(b, /31 people finished setting up/);
+  assert.match(b, /New installs were temporarily unavailable/);
 });
