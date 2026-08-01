@@ -48,6 +48,14 @@ public enum ObservabilityBootstrap {
     config.enableSwizzling = false
     config.captureScreenViews = false
     config.sendFeatureFlagEvent = false
+    // Sentry is this app's only crash handler. PostHog vendors PLCrashReporter, but
+    // `PostHogConfig.getIntegrations()` is the sole construction site of its exception
+    // autocapture integration and builds it only when this flag is true — it defaults
+    // to false, so nothing installs today and `install()` is unreachable. Pinned
+    // explicitly because 3.68.1 already moved WHEN that integration installs (before
+    // the first /config response rather than after), so the boundary we rely on is one
+    // upstream default away from putting a second signal handler beside Sentry.
+    config.errorTrackingConfig.autoCapture = false
     config.flushAt = 20
     config.flushIntervalSeconds = 30
     config.maxQueueSize = 1000
