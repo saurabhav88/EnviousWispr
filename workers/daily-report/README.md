@@ -250,3 +250,17 @@ enviouswispr-daily-report` removes the worker entirely. Revert the PR to
 remove the code. A bad metric definition is a source-level fix + redeploy —
 no data migration involved, this worker is stateless (reads PostHog,
 writes only to Discord).
+
+## Shared infrastructure (#1589)
+
+The PostHog transport and Discord delivery this worker uses now live in
+`workers/shared/`, because `workers/weekly-digest` became a second consumer.
+This worker's behaviour is unchanged: the same retry policy, the same
+concurrency cap, the same `daily_report_*` query names.
+
+**Deploy consequence.** Each worker bundles its own snapshot at deploy time, so
+a change under `workers/shared/` is live only in the workers redeployed since.
+When a change touches that directory, deploy **weekly-digest first** and this
+worker second: a broken shared change then lands on the worker already being
+modified rather than on this one, which is the higher-value report and the one
+that should not have changed at all. Full rule: `workers/shared/README.md`.
