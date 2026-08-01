@@ -134,7 +134,7 @@ Issue #1780 classified the investigation as LARGE. This reduced plan is **MEDIUM
 
 The compute-unit pin does not ship in this PR. Before it may be proposed again:
 
-1. Bring the exact VAD benchmark into a reviewable branch, or name a committed immutable artifact and command both configurations run unchanged. The `Tests/RuntimeUAT/repro-1780` harness currently lives only on the `investigate/1780-vad-repro` branch and is NOT in this worktree; the measurement may not depend on an investigation-branch artifact.
+1. Bring the exact VAD benchmark into a reviewable branch, or name a committed immutable artifact and command both configurations run unchanged. The `Tests/RuntimeUAT/repro-1780` harness lives only in the annotated tag `parked/1780-vad-repro-2026-08-01` (branch `investigate/1780-vad-repro` archived into it and deleted 2026-08-01) and is NOT in this worktree; the measurement may not depend on an investigation-branch artifact. Restore with `git checkout parked/1780-vad-repro-2026-08-01 -- Tests/RuntimeUAT/repro-1780`.
 2. Run the unchanged harness against current `.all` and proposed `.cpuAndNeuralEngine` before any implementation approval.
 3. Record cold preparation, first prediction, sustained prediction, CPU time, and energy, broken out by tested hardware and macOS version.
 4. Obtain explicit founder approval for changing compute scheduling for all users.
