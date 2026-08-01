@@ -418,13 +418,43 @@ public enum SentryBreadcrumb {
     /// only the safety copy is absent for that take.
     case recoveryKeyStoreFailed = "recovery_key_store_failed"
     /// #1063 PR2: a recovered spool failed to decrypt (missing key, cipher
-    /// mismatch, or an empty/torn prefix). Non-crash limb — the orphan is deleted
-    /// and the user sees "couldn't recover."
+    /// mismatch, or an empty/torn prefix). Non-crash limb — the orphan is deleted.
+    /// #1897: this said "and the user sees 'couldn't recover'". It does not.
+    /// `OverlayIntent` has exactly two recovery cases, `recoveringLastRecording`
+    /// and `recoverySucceeded`; there is no failure case, so nothing is shown and
+    /// the "Saved to History when it's done" promise is dropped in silence. The
+    /// #1063 PR2 plan §2 required "no silent disappearance" and it was never
+    /// built. Do not restore that sentence here without a user-visible surface.
     case recoveryDecryptFailed = "recovery_decrypt_failed"
-    /// #1063 PR2: transcribing a recovered spool returned empty or threw. Non-crash
-    /// limb (one attempt) — the orphan is deleted and the user sees "couldn't
-    /// recover."
+    /// #1063 PR2: transcribing a recovered spool THREW. Non-crash limb (one
+    /// attempt) — the orphan is deleted, and see `recoveryDecryptFailed` above
+    /// for what the user is (not) shown.
+    ///
+    /// #1897: this used to ALSO cover "ASR returned an empty result", which is a
+    /// different observation. That conflation made #1813 read as a 76-user P0
+    /// transcription bug when genuine throws are 5 events / 2 users on the
+    /// current release. Empty now has its own `recoveryEmptyText` below.
     case recoveryTranscribeFailed = "recovery_transcribe_failed"
+    /// #1897: a recovered spool decrypted and reconstructed correctly, ASR ran
+    /// without error, and the result was empty.
+    ///
+    /// THAT IS ALL THIS MEANS. It is deliberately NOT "the recording was
+    /// silent": the replay path holds no speech evidence, and neither duration
+    /// nor energy can supply it (a quiet room measures well above the dead-air
+    /// floor — `gotchas-audio.md` FACT: dead-air-detector-cannot-see-near-zero).
+    /// Splitting a THROW from an EMPTY RESULT is enough to stop one inflating
+    /// the other's count, which is the whole of what #1813 needed. If a cause is
+    /// ever wanted per take, VAD evidence is the only honest source.
+    ///
+    /// ~93% of recovery non-successes on the current release (161 events / 50
+    /// users, 30d), all with `audio_decrypted=true`, 158 of them under 10s.
+    ///
+    /// Splitting this OUT of `recovery_transcribe_failed` drops that series by
+    /// ~93% at this release boundary. That drop is this change, not a fix — see
+    /// `analytics-operations.md` RULE:
+    /// enum-backed-properties-carry-retired-vocabularies-split-by-version before
+    /// reading any trend across it.
+    case recoveryEmptyText = "recovery_empty_text"
     /// #1063 PR2: a spool whose attempt marker was already present on launch — a
     /// prior recovery attempt already STARTED for that spool — so it is abandoned
     /// (deleted, never retried) by the one-attempt guard rather than risking a loop.
