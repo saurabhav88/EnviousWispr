@@ -83,9 +83,22 @@ import Testing
     // `RecoveryLog`'s rule: counts, outcomes and closed-vocabulary labels only.
     // These strings are constants, so the freeze is that they STAY constants —
     // no id, path, or interpolated payload creeping in later.
+    //
+    // The identifier check looks for a UUID SHAPE, not a bare hyphen. Banning
+    // hyphens outright false-fired on the ordinary English "re-checks" the
+    // moment a label was reworded, which is a rule that punishes prose rather
+    // than catching leaks. A recovery session id is a UUID, so that is the
+    // shape worth refusing.
+    let uuidish = try! Regex("[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}")
     for label in Self.allOutcomes.map(RecoveryCoordinator.logLabel) {
       #expect(!label.contains("/"), "a path reached a log label")
-      #expect(!label.contains("-"), "an identifier reached a log label")
+      #expect(label.firstMatch(of: uuidish) == nil, "an identifier reached a log label")
     }
+
+    // TWO-WAY CONTROL: the pattern must actually catch a real session id, or the
+    // assertions above pass because the check is broken rather than because the
+    // labels are clean.
+    let leaked = "recovered — 8B1D2C3A-77F0-4E11-9A2B-1C4D5E6F7A88"
+    #expect(leaked.firstMatch(of: uuidish) != nil, "the leak detector cannot detect a leak")
   }
 }

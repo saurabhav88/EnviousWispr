@@ -25,6 +25,22 @@ import os
 /// even when the writes interleave — the wedge signature (an `attempting`
 /// with no later outcome) survives, and no critical section grows an await.
 ///
+/// ## Known limit, accepted deliberately
+///
+/// A process that dies immediately after a call can lose that line: the task
+/// never reaches `AppLogger`. Review raised this against the `attempting replay`
+/// line specifically, which is the one a hard wedge most wants.
+///
+/// It is accepted rather than fixed, because the alternative is the awaited
+/// version that opened a delete-a-kept-recording window, and because the
+/// DURABLE record of "an attempt started" already exists and is not this log:
+/// `RecoverySpoolReplayer` writes a per-spool attempt marker to disk BEFORE the
+/// risky load/transcribe, precisely so a launch that dies mid-replay is
+/// detectable on the next one. The marker is the evidence; this line is the
+/// convenience. Anyone diagnosing a wedge should read both, and a missing
+/// `attempting` line next to a surviving marker means the process died between
+/// the two — itself a useful reading.
+///
 /// **Never pass transcript text, spool bytes, key material, or a device
 /// identifier.** Counts, outcomes, durations and closed-vocabulary labels only —
 /// the same content-free rule the telemetry boundary follows. A recovered
