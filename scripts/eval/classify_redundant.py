@@ -38,6 +38,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -74,7 +75,8 @@ Two traps, both of which produced wrong verdicts on a previous pass:
    spelling of an identical-sounding word. When such a thing is missing from
    PARAKEET, that is an artifact of HOW this data was made, not evidence about
    the real product. Never call a test obsolete for that reason; call it
-   INCONCLUSIVE.
+   BROKEN, the verdict for "the round trip destroyed what this case was written
+   to test". Never emit a verdict outside the three defined below.
 
 Pipeline reality you must assume:
   speech -> Parakeet speech-to-text -> [deterministic steps] -> AI polish model -> paste
@@ -132,6 +134,39 @@ def build_prompt(batch: list[dict]) -> str:
             f"EXPECTED: {c['expected']}"
         )
     return "\n\n".join(parts)
+
+
+def batch_fingerprint(batch: list[dict]) -> str:
+    """Identity of everything that determines a batch's verdicts.
+
+    The cache is keyed by batch INDEX, so reusing --out/--work-dir after the
+    corpus, the transcripts or BATCH changed would serve verdicts computed for
+    a different set of cases under the same filename, and the run would look
+    clean. The rubric is folded in as well: editing SYSTEM changes the answers
+    just as surely as changing the inputs does.
+    """
+    h = hashlib.sha256()
+    h.update(SYSTEM.encode())
+    h.update(b"\x00")
+    h.update(build_prompt(batch).encode())
+    return h.hexdigest()
+
+
+def load_cached_batch(work: Path, n: int, batch: list[dict]) -> list[dict] | None:
+    """Cached rows for this batch, or None when absent or stale.
+
+    Single authority for the resume decision: the preload pass and the skip
+    check must agree, or one of them re-runs work the other believes is done.
+    A cache written before fingerprints existed has no sidecar and is treated
+    as stale, which costs one re-run and cannot serve a wrong verdict.
+    """
+    cached = work / f"batch-{n:03d}.verdicts.jsonl"
+    stamp = work / f"batch-{n:03d}.fingerprint"
+    if not (cached.exists() and cached.read_text().strip()):
+        return None
+    if not stamp.exists() or stamp.read_text().strip() != batch_fingerprint(batch):
+        return None
+    return [json.loads(l) for l in cached.read_text().splitlines() if l.strip()]
 
 
 def codex_judge(system: str, user: str, outfile: Path) -> str:
@@ -234,14 +269,13 @@ def main() -> int:
     # long window and losing all of it to one bad batch is not acceptable.
     verdicts: dict[str, dict] = {}
     done_batches = 0
-    for n in range(len(batches)):
-        cached = work / f"batch-{n:03d}.verdicts.jsonl"
-        if cached.exists() and cached.read_text().strip():
-            for line in cached.read_text().splitlines():
-                if line.strip():
-                    row = json.loads(line)
-                    verdicts[row["id"]] = row
-            done_batches += 1
+    for n, batch in enumerate(batches):
+        rows = load_cached_batch(work, n, batch)
+        if rows is None:
+            continue
+        for row in rows:
+            verdicts[row["id"]] = row
+        done_batches += 1
 
     print(f"judge   : codex-run exec (serial, one in flight)", file=sys.stderr)
     print(f"cases   : {len(cases)} in {len(batches)} batches of {BATCH}", file=sys.stderr)
@@ -250,9 +284,9 @@ def main() -> int:
     failed = 0
     t0 = time.monotonic()
     for n, batch in enumerate(batches):
-        cached = work / f"batch-{n:03d}.verdicts.jsonl"
-        if cached.exists() and cached.read_text().strip():
+        if load_cached_batch(work, n, batch) is not None:
             continue
+        cached = work / f"batch-{n:03d}.verdicts.jsonl"
         transcript = work / f"batch-{n:03d}.txt"
         try:
             # SERIAL, never parallel: concurrent execs get killed with zero
@@ -266,6 +300,9 @@ def main() -> int:
             for row in rows:
                 f.write(json.dumps(row) + "\n")
                 verdicts[row["id"]] = row
+        # Written only after the verdicts land, so an interrupted write leaves a
+        # batch with no fingerprint and it is recomputed rather than trusted.
+        (work / f"batch-{n:03d}.fingerprint").write_text(batch_fingerprint(batch) + "\n")
         got = len({r["id"] for r in rows} & {c["id"] for c in batch})
         elapsed = int(time.monotonic() - t0)
         print(f"  batch {n+1}/{len(batches)}: {got}/{len(batch)} verdicts ({elapsed}s)",
