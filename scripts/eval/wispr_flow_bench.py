@@ -140,6 +140,12 @@ def main():
             for l in f:
                 if l.strip():
                     r = json.loads(l)
+                    # A failed capture is not a result. The abort path appends
+                    # no_paste rows before stopping, so treating them as done
+                    # would make a resumed run skip precisely the cases that
+                    # failed and report a full sweep it never took.
+                    if r.get("no_paste") or not r.get("output"):
+                        continue
                     done[r["id"]] = r.get("wav_sha")
     # Skip only when the stored result came from THIS audio. A row written before
     # wav_sha existed has None and is redone, which costs one run and cannot

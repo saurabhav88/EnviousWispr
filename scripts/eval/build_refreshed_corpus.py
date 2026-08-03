@@ -43,6 +43,7 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -60,15 +61,29 @@ def word_counts(s: str) -> Counter:
     Multiplicity matters: 'very very important' losing one 'very' changes the
     emphasis, and a set cannot see that.
 
-    `\\w` is Unicode-aware for str patterns. An ASCII-only class here
-    (`[^a-z0-9 ]`) deleted every word of a non-Latin script, so the check below
-    saw nothing missing and adopted a transcript unrelated to the case. That is
-    the fail-open shape workflow-process.md RULE:
-    parse-structured-input-dont-regex-and-iterate warns about: ask of any
-    character class in a guard what input makes it match NOTHING, and whether
-    the guard then allows or refuses.
+    Tokenized by Unicode CATEGORY rather than by a character class, because two
+    successive review rounds found a class that silently dropped a script.
+    `[^a-z0-9 ]` deleted every non-Latin word outright; `\\w` then looked correct
+    but excludes combining marks, so Indic vowel signs vanished and "कि" and
+    "कु" compared equal. Both failed OPEN, and only in languages nobody
+    spot-checks, which is the shape workflow-process.md RULE:
+    parse-structured-input-dont-regex-and-iterate warns about. Letters, marks
+    and numbers are kept and everything else separates words, so the rule is
+    "what a script considers part of a word" instead of a hand-drawn set.
+
+    The product ships 25 languages, so this harness cannot assume English.
     """
-    return Counter(re.findall(r"\w+", s.lower()))
+    text = unicodedata.normalize("NFC", s.casefold())
+    words, buf = [], []
+    for ch in text:
+        if unicodedata.category(ch)[0] in ("L", "M", "N"):
+            buf.append(ch)
+        elif buf:
+            words.append("".join(buf))
+            buf = []
+    if buf:
+        words.append("".join(buf))
+    return Counter(words)
 
 
 def round_trip_destroyed(original: str, parakeet: str) -> str | None:
@@ -87,7 +102,10 @@ def round_trip_destroyed(original: str, parakeet: str) -> str | None:
     # it loses is typically a name; the case then keeps an `expected_output` that
     # still refers to a word no longer in the input, so the model is graded on
     # producing something it was never given. Measured on the 2026-08-01 build:
-    # 206 of 1458 adopted cases (14.1%) had lost at least one word this way.
+    # Measured on the shipped 2026-08-01 build with this tokenizer and rule:
+    # of 1458 adopted cases, 221 lost a word, 42 more only GAINED words and were
+    # invisible to the old one-way check, 263 (18.0%) differ at all, and 161 have
+    # an expected_output still requiring a word now entirely absent from the input.
     orig, got = word_counts(original), word_counts(parakeet)
     if original.strip() and not orig:
         # Fail closed. A tokenizer that returns nothing cannot testify that
