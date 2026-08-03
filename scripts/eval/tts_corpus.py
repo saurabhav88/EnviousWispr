@@ -33,6 +33,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -165,10 +166,28 @@ def main() -> int:
     args.wav_dir.mkdir(parents=True, exist_ok=True)
     args.manifest.parent.mkdir(parents=True, exist_ok=True)
 
+    # Resume is keyed on WHAT PRODUCED the audio, not on the file existing. A
+    # refreshed corpus deliberately keeps case IDs while changing their text, so
+    # reusing a --wav-dir would silently serve the old sentence's audio under the
+    # new case and put it in the manifest as if it were current. Engine, model
+    # and voice are folded in for the same reason: they change the audio.
+    stamp_path = args.wav_dir / ".synthesis.json"
+    try:
+        stamps = json.loads(stamp_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        stamps = {}
+
+    def stamp_of(text: str) -> str:
+        h = hashlib.sha256()
+        for part in (text, args.engine, args.model, voice):
+            h.update(part.encode())
+            h.update(b"\x00")
+        return h.hexdigest()
+
     todo = []
     for cid, text in cases:
         p = args.wav_dir / f"{cid}.wav"
-        if p.exists() and p.stat().st_size > 0:
+        if p.exists() and p.stat().st_size > 0 and stamps.get(cid) == stamp_of(text):
             continue
         todo.append((cid, text))
 
@@ -197,11 +216,15 @@ def main() -> int:
                         args.model, voice, api_key, region): cid
             for cid, text in todo
         }
+        texts = dict(todo)
         for fut in as_completed(futs):
             cid = futs[fut]
             done += 1
             try:
                 fut.result()
+                # Stamped only on success, so a failed case is retried next run
+                # instead of being treated as current audio.
+                stamps[cid] = stamp_of(texts[cid])
             except Exception as e:  # noqa: BLE001 — report and continue; resume handles retries
                 errors += 1
                 print(f"ERROR {cid}: {e}", file=sys.stderr)
@@ -209,14 +232,17 @@ def main() -> int:
                 print(f"  {done}/{len(todo)} ({errors} errors, {int(time.monotonic()-t0)}s)",
                       file=sys.stderr)
 
-    # Manifest lists only cases whose audio actually exists, so a partial run
-    # produces a manifest ParakeetRunner can consume without phantom paths.
+    stamp_path.write_text(json.dumps(stamps, ensure_ascii=False, indent=0))
+
+    # Manifest lists only cases whose audio actually exists AND was produced from
+    # the current text, so a stale WAV left by an earlier corpus cannot enter the
+    # run under a reused case ID.
     written = 0
     missing = []
     with open(args.manifest, "w") as m:
-        for cid, _ in cases:
+        for cid, text in cases:
             p = args.wav_dir / f"{cid}.wav"
-            if p.exists() and p.stat().st_size > 0:
+            if p.exists() and p.stat().st_size > 0 and stamps.get(cid) == stamp_of(text):
                 m.write(json.dumps({"id": cid, "wav": str(p.resolve())}) + "\n")
                 written += 1
             else:

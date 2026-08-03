@@ -166,7 +166,15 @@ def load_cached_batch(work: Path, n: int, batch: list[dict]) -> list[dict] | Non
         return None
     if not stamp.exists() or stamp.read_text().strip() != batch_fingerprint(batch):
         return None
-    return [json.loads(l) for l in cached.read_text().splitlines() if l.strip()]
+    rows = [json.loads(l) for l in cached.read_text().splitlines() if l.strip()]
+    # A parseable but PARTIAL Codex response is still written, and it carries a
+    # valid fingerprint because the fingerprint describes the request, not the
+    # answer. Without this the first run exits nonzero on MISSING and every
+    # rerun happily serves the same incomplete batch. Completeness is a property
+    # of the response, so it has to be checked separately from staleness.
+    if {r.get("id") for r in rows} != {c["id"] for c in batch}:
+        return None
+    return rows
 
 
 def codex_judge(system: str, user: str, outfile: Path) -> str:

@@ -33,7 +33,7 @@ Method notes that are load-bearing:
     is a harder input than the pristine WAV our own runs consume, so check the reported
     word-overlap before reading anything into a competitor's mistakes.
 """
-import argparse, json, os, subprocess, sys, threading, time
+import argparse, hashlib, json, os, subprocess, sys, threading, time
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO, "Tests/RuntimeUAT"))
@@ -52,6 +52,16 @@ def duration(path):
         if "estimated duration" in line:
             return float(line.split(":")[1].strip().split()[0])
     raise RuntimeError(f"afinfo gave no duration for {path}")
+
+
+def wav_sha(path):
+    """Identity of the audio a result came from.
+
+    Resume matches on case ID, and a refreshed corpus reuses IDs while changing
+    the audio behind them, so an ID alone would keep a result produced from a
+    different recording.
+    """
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
 
 
 def _focused_element(app="TextEdit"):
@@ -107,7 +117,7 @@ def dictate(case_id, wav_dir, key="fn", app="TextEdit", settle=2.0, timeout=30.0
         elif last_change and time.time() - last_change > 1.5:
             break
     delta = text[len(before):] if text.startswith(before) else text
-    return {"id": case_id, "audio_s": round(dur, 2),
+    return {"id": case_id, "audio_s": round(dur, 2), "wav_sha": wav_sha(path),
             "output": delta.strip(), "no_paste": last_change is None}
 
 
@@ -124,11 +134,18 @@ def main():
     ids = sorted((f[:-4] for f in os.listdir(args.wav_dir)
                   if f.startswith(args.ids) and f.endswith(".wav")),
                  key=lambda x: (x.split("-")[0], int(x.split("-")[1])))
-    done = set()
+    done = {}
     if os.path.exists(args.out):
         with open(args.out) as f:
-            done = {json.loads(l)["id"] for l in f if l.strip()}
-    todo = [c for c in ids if c not in done]
+            for l in f:
+                if l.strip():
+                    r = json.loads(l)
+                    done[r["id"]] = r.get("wav_sha")
+    # Skip only when the stored result came from THIS audio. A row written before
+    # wav_sha existed has None and is redone, which costs one run and cannot
+    # report a result from a recording that no longer exists.
+    todo = [c for c in ids
+            if done.get(c) != wav_sha(os.path.join(args.wav_dir, f"{c}.wav"))]
     print(f"{len(done)} already done, {len(todo)} to run", flush=True)
 
     empties = 0
