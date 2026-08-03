@@ -69,9 +69,15 @@ def round_trip_destroyed(original: str, parakeet: str) -> str | None:
         return "emoji lost (a voice cannot speak one)"
     if TRUNCATED.search(original) and not TRUNCATED.search(parakeet):
         return "half-spoken word lost (a voice cannot pronounce one)"
-    orig = content_words(original)
-    if orig and len(orig & content_words(parakeet)) / len(orig) < 0.9:
-        return "words mangled (usually a name)"
+    # Any lost word disqualifies the case, not a ratio of them. A 0.9 threshold
+    # lets an input with ten or more unique words lose one silently, and the one
+    # it loses is typically a name; the case then keeps an `expected_output` that
+    # still refers to a word no longer in the input, so the model is graded on
+    # producing something it was never given. Measured on the 2026-08-01 build:
+    # 206 of 1458 adopted cases (14.1%) had lost at least one word this way.
+    missing = content_words(original) - content_words(parakeet)
+    if missing:
+        return f"words mangled (usually a name): lost {sorted(missing)[:5]}"
     return None
 
 

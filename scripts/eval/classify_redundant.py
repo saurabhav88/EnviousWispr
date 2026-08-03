@@ -212,7 +212,14 @@ def main() -> int:
         cases.append({
             "id": cid,
             "gold_behavior": d.get("gold_behavior"),
-            "original": (d.get("asr_input") or d.get("input") or "").replace("\n", " "),
+            # On a refreshed corpus build_refreshed_corpus.py has already replaced
+            # asr_input/input with the Parakeet transcript and preserved the real
+            # source under input_source.original_input. Reading the replaced field
+            # would compare the transcript against itself.
+            "original": (
+                (d.get("input_source") or {}).get("original_input")
+                or d.get("asr_input") or d.get("input") or ""
+            ).replace("\n", " "),
             "parakeet": pk["text"],
             "expected": (d.get("expected_output") or "").replace("\n", " "),
         })

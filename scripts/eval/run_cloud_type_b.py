@@ -121,6 +121,10 @@ GEMINI_THINKING_FAST = {
     "gemini-3.1-pro-preview-customtools": ("thinkingLevel", "low"),
     "gemini-2.5-flash": ("thinkingBudget", 0),
     "gemini-2.5-flash-lite": ("thinkingBudget", 0),
+    # 2.5 Pro rejects budget 0 ("This model only works in thinking mode"); 128 is
+    # the documented minimum and is what production sends. Omitting it here would
+    # silently benchmark the model at Google's default dynamic thinking instead.
+    "gemini-2.5-pro": ("thinkingBudget", 128),
 }
 
 
@@ -279,7 +283,12 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
         if cand.get("finishReason") not in (None, "STOP"):
             raise RuntimeError(f"non-STOP finishReason={cand.get('finishReason')}")
         parts = (cand.get("content") or {}).get("parts") or []
-        text = "".join(p.get("text", "") for p in parts).strip()
+        # Drop internal-reasoning parts exactly as GeminiConnector.swift does
+        # (`.filter { $0["thought"] as? Bool != true }`). Without this a thinking
+        # -capable model's chain of thought is concatenated into the candidate and
+        # then scored as if the model had said it.
+        text = "".join(p.get("text", "") for p in parts
+                       if p.get("thought") is not True).strip()
         usage = data.get("usageMetadata", {}) or {}
         meta = {
             "inTok": usage.get("promptTokenCount"),
