@@ -47,6 +47,7 @@ from Quartz import (
     kCGEventFlagMaskShift,
     kCGEventFlagMaskAlternate,
     kCGEventFlagMaskControl,
+    kCGEventFlagMaskSecondaryFn,
     kCGKeyboardEventKeycode,
     kCGMouseEventClickState,
 )
@@ -240,13 +241,22 @@ _MODIFIER_FLAGS = {
     60: kCGEventFlagMaskShift,     # Right Shift
     59: kCGEventFlagMaskControl,   # Left Control
     62: kCGEventFlagMaskControl,   # Right Control
+    63: kCGEventFlagMaskSecondaryFn,  # Fn, hardware key, flagsChanged only
 }
 
 # Friendly names for modifier keys
 MODIFIER_KEYS = {
     "rcmd": 54, "lcmd": 55, "lopt": 58, "ropt": 61,
     "lshift": 56, "rshift": 60, "lctrl": 59, "rctrl": 62,
+    "fn": 63,
 }
+
+# Fn caveat (2026-08-02, #1272). Fn is not in KEY_CODES on purpose: it has no
+# keyDown form, so it only works through modifier_down/up and hold_key('fn').
+# After holding it, a plain press_key() inherits the ambient modifier state, so
+# a lingering Fn turns Return into Fn+Return — macOS beeps and inserts nothing,
+# which reads as "the app ignored me" rather than "my event was malformed".
+# Release Fn and let the system settle before posting ordinary keystrokes.
 
 
 def modifier_down(keycode):

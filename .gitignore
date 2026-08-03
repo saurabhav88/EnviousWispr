@@ -187,6 +187,21 @@ scripts/eval/corpus/*
 !scripts/eval/tests/**
 scripts/eval/apple_runner/.build/
 scripts/eval/apple_runner/Package.resolved
+# Corpus-fidelity + judging harness (#1272, 2026-08-01) — PUBLIC tracked files.
+# These are tracked deliberately: the one-off generator behind the #1199 cloud
+# numbers was gitignored, got deleted, and cost a session rediscovering that
+# those scores had been measured through the wrong prompt. Tooling that produces
+# a number we later cite must survive in git.
+!scripts/eval/classify_redundant.py
+!scripts/eval/run_cloud_type_b.py
+!scripts/eval/tts_corpus.py
+!scripts/eval/build_parakeet_corpus.py
+!scripts/eval/build_refreshed_corpus.py
+!scripts/eval/wispr_flow_bench.py
+!scripts/eval/parakeet_runner/
+!scripts/eval/parakeet_runner/**
+scripts/eval/parakeet_runner/.build/
+scripts/eval/parakeet_runner/Package.resolved
 # Alias suggestion eval harness (#637) — PUBLIC tracked files
 !scripts/eval/alias_runner/
 !scripts/eval/alias_runner/**
