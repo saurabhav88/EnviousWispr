@@ -55,7 +55,16 @@ TRUNCATED = re.compile(r"\b\w+-(?=\s|$)")
 
 
 def content_words(s: str) -> set[str]:
-    return set(re.sub(r"[^a-z0-9 ]", " ", s.lower()).split())
+    """Tokenize for the fidelity check. `\\w` is Unicode-aware for str patterns.
+
+    An ASCII-only class here (`[^a-z0-9 ]`) deleted every word of a non-Latin
+    script, so the check below saw an empty set, found nothing missing, and
+    adopted a transcript unrelated to the case. That is the fail-open shape
+    workflow-process.md RULE: parse-structured-input-dont-regex-and-iterate
+    warns about: ask of any character class in a guard what input makes it match
+    NOTHING, and whether the guard then allows or refuses.
+    """
+    return set(re.findall(r"\w+", s.lower()))
 
 
 def round_trip_destroyed(original: str, parakeet: str) -> str | None:
@@ -75,7 +84,12 @@ def round_trip_destroyed(original: str, parakeet: str) -> str | None:
     # still refers to a word no longer in the input, so the model is graded on
     # producing something it was never given. Measured on the 2026-08-01 build:
     # 206 of 1458 adopted cases (14.1%) had lost at least one word this way.
-    missing = content_words(original) - content_words(parakeet)
+    orig = content_words(original)
+    if original.strip() and not orig:
+        # Fail closed. A tokenizer that returns nothing cannot testify that
+        # nothing was lost, so refuse rather than adopt on an empty comparison.
+        return "input did not tokenize into any word (unsupported script?)"
+    missing = orig - content_words(parakeet)
     if missing:
         return f"words mangled (usually a name): lost {sorted(missing)[:5]}"
     return None
