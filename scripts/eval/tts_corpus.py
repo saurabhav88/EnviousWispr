@@ -26,7 +26,7 @@ the unfinished cases.
 Usage:
   ~/.claude/bin/get-key launch openai-api-key OPENAI_API_KEY -- \\
     python3 scripts/eval/tts_corpus.py \\
-      --corpus scripts/eval/corpus/type_b_approved_1890.jsonl \\
+      --corpus scripts/eval/corpus/type_b_parakeet.jsonl \\
       --wav-dir scripts/eval/runs/<run>/wav \\
       --manifest scripts/eval/runs/<run>/manifest.jsonl
 """

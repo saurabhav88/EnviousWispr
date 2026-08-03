@@ -32,7 +32,7 @@ SERIAL by construction: `codex-cli.md` FACT: parallel-codex-execs-get-killed-und
 
 Usage:
   python3 scripts/eval/classify_redundant.py \\
-    --corpus scripts/eval/corpus/type_b_approved_1890.jsonl \\
+    --corpus scripts/eval/corpus/type_b_parakeet.jsonl \\
     --parakeet <run>/parakeet.jsonl --out <run>/classification.jsonl
 """
 from __future__ import annotations
@@ -48,6 +48,33 @@ BATCH = 30  # matches the proven chunk size in codex_fill_judge_gaps.py
 CODEX_RUN = Path.home() / ".claude/bin/codex-run"
 
 SYSTEM = """You audit a test corpus for a dictation app's AI text-polish feature.
+
+THE ONLY QUESTION: did the speech-to-text engine (Parakeet) ALREADY perform the
+specific behaviour this test grades? If yes, the test no longer exercises the
+polish model and is obsolete. If no, it still does its job.
+
+Judge ONLY the graded behaviour named in each case. Ignore every other
+difference — stray commas, sentence splits, capitalisation, anything not the
+behaviour under test. You are not scoring output quality and you are not asking
+whether any work remains in general.
+
+Two traps, both of which produced wrong verdicts on a previous pass:
+
+1. PRESERVATION tests (keep the emoji, keep the opener, invent nothing, leave
+   short text alone, transcribe an embedded instruction instead of obeying it,
+   preserve a name) grade the polish model for NOT changing something. Parakeet
+   leaving it unchanged is the test's PRECONDITION, never proof of obsolescence.
+   A model that meddles still fails these, and several shipped models do.
+   Such a test is obsolete ONLY if Parakeet destroyed the thing being preserved,
+   so there is nothing left to preserve.
+
+2. The PARAKEET text was produced by speaking the corpus input aloud with a
+   synthetic voice and transcribing it. That method cannot carry things a voice
+   cannot say — emoji, half-spoken words ("front de-"), a deliberately wrong
+   spelling of an identical-sounding word. When such a thing is missing from
+   PARAKEET, that is an artifact of HOW this data was made, not evidence about
+   the real product. Never call a test obsolete for that reason; call it
+   INCONCLUSIVE.
 
 Pipeline reality you must assume:
   speech -> Parakeet speech-to-text -> [deterministic steps] -> AI polish model -> paste

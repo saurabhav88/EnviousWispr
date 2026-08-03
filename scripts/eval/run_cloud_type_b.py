@@ -44,12 +44,12 @@ Usage:
   ~/.claude/bin/get-key launch openai-api-key OPENAI_API_KEY -- \\
     python3 scripts/eval/run_cloud_type_b.py \\
       --provider openai --model gpt-5.6-luna \\
-      --corpus scripts/eval/corpus/type_b_approved_1890.jsonl \\
+      --corpus scripts/eval/corpus/type_b_parakeet.jsonl \\
       --out scripts/eval/runs/type-b-luna/candidates.jsonl
 
 Score the result with the SAME judge the baseline used:
   python3 scripts/eval/behavior_judge.py --system new --judge claude-sonnet-5 \\
-    --corpus scripts/eval/corpus/type_b_approved_1890.jsonl \\
+    --corpus scripts/eval/corpus/type_b_parakeet.jsonl \\
     --candidates <out> --out <run-dir>/scores
 """
 from __future__ import annotations
@@ -203,14 +203,30 @@ def _post(url: str, body: dict, headers: dict, timeout: int) -> dict:
         return json.loads(resp.read())
 
 
-def call_once(provider: str, model: str, api_key: str, system: str, user: str) -> tuple[str, dict]:
+def call_once(provider: str, model: str, api_key: str, system: str, user: str,
+              azure_endpoint: str = "") -> tuple[str, dict]:
     if provider == "openai":
-        data = _post(
-            OPENAI_URL,
-            openai_body(model, system, user),
-            {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=120,
-        )
+        # Azure hosts the same OpenAI models on Founders Hub credits. Same
+        # Chat Completions body; only the URL and the auth header differ, and
+        # `model` is a DEPLOYMENT name (hyphens: gpt-5-6-luna) not a model id.
+        # Fidelity caveat, stated once and accepted by the founder: our users
+        # call api.openai.com directly, so an Azure-hosted deployment is a
+        # different service instance of the same model.
+        if azure_endpoint:
+            data = _post(
+                f"{azure_endpoint.rstrip('/')}/openai/deployments/{model}"
+                "/chat/completions?api-version=2024-10-21",
+                openai_body(model, system, user),
+                {"api-key": api_key, "Content-Type": "application/json"},
+                timeout=180,
+            )
+        else:
+            data = _post(
+                OPENAI_URL,
+                openai_body(model, system, user),
+                {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                timeout=120,
+            )
         choice = data["choices"][0]
         finish = choice.get("finish_reason")
         if finish == "length":
@@ -279,7 +295,8 @@ BARE_PROMPT = (ROOT / "scripts/eval/prompts/cloud-fixed-polish-prompt-v6.txt").r
 
 
 def polish_case(
-    provider: str, model: str, api_key: str, case: dict, prompt_mode: str = "production"
+    provider: str, model: str, api_key: str, case: dict,
+    prompt_mode: str = "production", azure_endpoint: str = ""
 ) -> dict:
     transcript = case["text"]
     word_count = len(transcript.split())
@@ -292,7 +309,7 @@ def polish_case(
     last_err = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            raw, meta = call_once(provider, model, api_key, system, user)
+            raw, meta = call_once(provider, model, api_key, system, user, azure_endpoint)
             # Production strips the LLM preamble before pasting; judge the same
             # text the user would get. Cloud keeps literal <transcript> tags.
             candidate = _strip_llm_preamble_python(raw, strip_transcript_tags=False)
@@ -359,6 +376,12 @@ def main() -> int:
              "ONLY so a past bare-prompt number can be reproduced as a control; "
              "never report a bare-prompt score as the shipped product's quality.",
     )
+    ap.add_argument(
+        "--azure", action="store_true",
+        help="route --provider openai through the Azure deployment on Founders Hub "
+             "credits instead of the direct key. --model then takes the DEPLOYMENT "
+             "name (gpt-5-6-luna), not the model id (gpt-5.6-luna).",
+    )
     args = ap.parse_args()
 
     # Fail fast on prompt drift BEFORE spending anything.
@@ -368,13 +391,22 @@ def main() -> int:
         print(f"{args.model} is Responses-API-only; the shipped connector cannot call it", file=sys.stderr)
         return 2
 
-    api_key = _key(
-        {
-            "openai": "openai-api-key",
-            "gemini": "gemini-api-key",
-            "claude": "anthropic-api-key",
-        }[args.provider]
-    )
+    azure_endpoint = ""
+    if args.azure:
+        if args.provider != "openai":
+            print("--azure applies to --provider openai only", file=sys.stderr)
+            return 2
+        # Founders Hub credits instead of the direct key (founder 2026-08-01).
+        api_key = _key("azure-openai-key")
+        azure_endpoint = _key("azure-openai-endpoint")
+    else:
+        api_key = _key(
+            {
+                "openai": "openai-api-key",
+                "gemini": "gemini-api-key",
+                "claude": "anthropic-api-key",
+            }[args.provider]
+        )
 
     cases = load_corpus(args.corpus)
     if args.limit:
@@ -392,7 +424,8 @@ def main() -> int:
     t0 = time.monotonic()
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = [
-            pool.submit(polish_case, args.provider, args.model, api_key, c, args.system_prompt)
+            pool.submit(polish_case, args.provider, args.model, api_key, c,
+                        args.system_prompt, azure_endpoint)
             for c in cases
         ]
         for fut in as_completed(futures):

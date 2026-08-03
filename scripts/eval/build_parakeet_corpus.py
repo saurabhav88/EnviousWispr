@@ -30,7 +30,7 @@ salvage everything except the genuinely bad phrase.
 
 Usage:
   python3 scripts/eval/build_parakeet_corpus.py \
-    --corpus scripts/eval/corpus/type_b_approved_1890.jsonl \
+    --corpus scripts/eval/corpus/type_b_approved_1890-raw.jsonl \
     --out-dir scripts/eval/corpus/parakeet-roundtrip
 """
 from __future__ import annotations

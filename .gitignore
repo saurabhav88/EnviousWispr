@@ -196,6 +196,8 @@ scripts/eval/apple_runner/Package.resolved
 !scripts/eval/run_cloud_type_b.py
 !scripts/eval/tts_corpus.py
 !scripts/eval/build_parakeet_corpus.py
+!scripts/eval/build_refreshed_corpus.py
+!scripts/eval/wispr_flow_bench.py
 !scripts/eval/parakeet_runner/
 !scripts/eval/parakeet_runner/**
 scripts/eval/parakeet_runner/.build/
