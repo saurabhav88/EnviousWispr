@@ -111,7 +111,12 @@ struct TextProcessingRunnerCaptureTests {
     // #1305: the .ollama entry gate consults a readiness probe before the
     // polisher. These are MID-FLIGHT-path tests (failure on a running server),
     // so the probe reports ready — and never touches a real network.
-    step.ollamaReadinessProbe = { _ in .ready }
+    // #1914: this suite is about capture/telemetry, not about the daemon's
+    // per-model facts, so it arms the readiness gate with unknown facts —
+    // today's behaviour for a payload carrying neither field.
+    step.ollamaReadinessProbe = { _ in
+      .ready(facts: OllamaModelFacts(isRemote: false, thinks: false))
+    }
     return step
   }
 

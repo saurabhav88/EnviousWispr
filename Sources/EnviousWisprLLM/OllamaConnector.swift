@@ -19,13 +19,48 @@ public struct OllamaEvictOutcome: Sendable {
   }
 }
 
+/// #1914: the two per-model facts the daemon reports about the armed model, read
+/// from its own `/api/tags` row rather than guessed from its name.
+///
+/// The two are INDEPENDENT and govern different decisions — where a model runs
+/// does not tell you whether it reasons before answering, which is why a single
+/// flag could not serve both. Ownership table: plan §3d.
+/// - `isRemote` → picker presentation, warm-up skip, eviction skip, completed telemetry.
+/// - `thinks` → output-token budget and the thinking level sent on the request.
+///
+/// Deliberately CLOSED at two fields. Add a third only when the daemon reports
+/// an observed fact with a named consumer; this is not a metadata bag.
+public struct OllamaModelFacts: Sendable, Equatable {
+  /// True iff the daemon reported a non-empty `remote_host` for this model,
+  /// meaning Ollama proxies it to its own servers rather than running it here.
+  /// Never derived from a `-cloud` name suffix: the production sighting that
+  /// opened #1914 was `deepseek-v4-flash:latest`, which carries no suffix.
+  public let isRemote: Bool
+  /// True iff the daemon listed `thinking` among this model's `capabilities`.
+  /// This is the observable the hand-authored `thinkingCapableFamilyPrefixes`
+  /// list currently guesses at with four names; a later chunk retires that list
+  /// in favour of this field. Available for local and remote models alike.
+  public let thinks: Bool
+
+  public init(isRemote: Bool, thinks: Bool) {
+    self.isRemote = isRemote
+    self.thinks = thinks
+  }
+}
+
 /// #1305: the instant answer to "is an Ollama polish attempt worth starting?"
 /// Returned by `OllamaConnector.preflightReadiness(model:)`; consumed by the
 /// polish-entry gate in `LLMPolishStep`. Per-attempt truth — callers must NOT
 /// cache it across dictations (the user can quit/start Ollama at any time).
 public enum OllamaReadiness: Sendable, Equatable {
   /// Server responded and the tags list contains the model — attempt polish.
-  case ready
+  ///
+  /// #1914: carries the matched row's own facts. Swift permits a bare
+  /// `case .ready:` to match and IGNORE this payload, so the compiler does NOT
+  /// enforce that consumers read it. A later chunk both consumes the payload in
+  /// `LLMPolishStep` and adds the `OllamaReadinessGateTests` coverage that
+  /// asserts the binding, because no compiler check can stand in for it.
+  case ready(facts: OllamaModelFacts)
   /// Transport error, timeout, non-2xx, or unparseable body — "Ollama is not
   /// responding" class.
   case serverDown
@@ -264,9 +299,42 @@ public struct OllamaConnector: TranscriptPolisher {
       return .serverDown
     }
     let target = OllamaSetupService.canonicalModelName(model)
-    let installed = models.compactMap { $0["name"] as? String }
-      .map(OllamaSetupService.canonicalModelName)
-    return installed.contains(target) ? .ready : .modelMissing
+    // #1914: find the MATCHED row and read its own facts. Scanning for facts
+    // across all rows would let an unrelated cloud model make a local one look
+    // remote, so membership and fact extraction must resolve to one row.
+    guard
+      let matched = models.first(where: {
+        guard let name = $0["name"] as? String else { return false }
+        return OllamaSetupService.canonicalModelName(name) == target
+      })
+    else {
+      return .modelMissing
+    }
+    return .ready(facts: modelFacts(fromTagsRow: matched))
+  }
+
+  /// #1914: the SOLE derivation site for both daemon-reported facts. One pure
+  /// function over one parsed `/api/tags` row. Its only caller today is the
+  /// runtime readiness path below; a later chunk points the picker's catalog
+  /// refresh at this same function, so the two can never disagree.
+  ///
+  /// Every field is optional in practice and absent on older daemons, so each
+  /// check fails to `false` rather than trusting a shape. `false` means "not
+  /// observed", never "observed to be false" — which is why a defaulted `false`
+  /// must not be reported as proven-local telemetry (plan §3d tri-state).
+  nonisolated static func modelFacts(fromTagsRow row: [String: Any]) -> OllamaModelFacts {
+    // Remote iff `remote_host` is a non-empty STRING. A present-but-empty value
+    // and a JSON null both read as local: `as? String` rejects `NSNull`.
+    let remoteHost = row["remote_host"] as? String
+    let isRemote = !(remoteHost ?? "").isEmpty
+
+    // `capabilities` is an array of strings; `thinking` is one of them. A missing
+    // key, a null, an empty array, or a non-array shape all read as not-thinking,
+    // which preserves today's tight budget for anything we cannot read.
+    let capabilities = row["capabilities"] as? [String] ?? []
+    let thinks = capabilities.contains("thinking")
+
+    return OllamaModelFacts(isRemote: isRemote, thinks: thinks)
   }
 
   // MARK: - Eviction (#295)

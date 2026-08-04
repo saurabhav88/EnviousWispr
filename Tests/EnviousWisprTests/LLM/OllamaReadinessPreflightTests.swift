@@ -19,6 +19,29 @@ struct OllamaReadinessPreflightTests {
     return try! JSONSerialization.data(withJSONObject: payload)
   }
 
+  /// #1914: a tags body whose rows carry arbitrary extra keys, so a test can
+  /// build the exact shapes the real daemon emits (`remote_host`, `capabilities`)
+  /// including absent, empty, and null variants.
+  private func tagsBody(rows: [[String: Any]]) -> Data {
+    try! JSONSerialization.data(withJSONObject: ["models": rows])
+  }
+
+  /// #1914: membership-only assertion. The pre-existing readiness tests are about
+  /// whether the armed model was FOUND, not about the facts on its row, so they
+  /// must not be rewritten into facts assertions — that would silently turn
+  /// membership coverage into fact coverage and leave membership untested.
+  private func isReady(_ readiness: OllamaReadiness) -> Bool {
+    if case .ready = readiness { return true }
+    return false
+  }
+
+  /// #1914: the facts carried by a `.ready`, or nil when not ready. Spelled with
+  /// an explicit binding because Swift lets `case .ready:` ignore the payload.
+  private func facts(_ readiness: OllamaReadiness) -> OllamaModelFacts? {
+    if case .ready(let facts) = readiness { return facts }
+    return nil
+  }
+
   private func http(_ status: Int) -> HTTPURLResponse {
     HTTPURLResponse(
       url: URL(string: "http://localhost:11434/api/tags")!,
@@ -31,19 +54,21 @@ struct OllamaReadinessPreflightTests {
   func exactMatchReady() {
     let readiness = OllamaConnector.classifyReadiness(
       data: tagsBody(["llama3.2", "mistral"]), response: http(200), model: "llama3.2")
-    #expect(readiness == .ready)
+    #expect(isReady(readiness))
   }
 
   @Test("canonical matching equates llama2 and llama2:latest in BOTH directions")
   func latestCanonicalization() {
     // Installed with :latest, armed without.
     #expect(
-      OllamaConnector.classifyReadiness(
-        data: tagsBody(["llama2:latest"]), response: http(200), model: "llama2") == .ready)
+      isReady(
+        OllamaConnector.classifyReadiness(
+          data: tagsBody(["llama2:latest"]), response: http(200), model: "llama2")))
     // Installed without, armed with :latest.
     #expect(
-      OllamaConnector.classifyReadiness(
-        data: tagsBody(["llama2"]), response: http(200), model: "llama2:latest") == .ready)
+      isReady(
+        OllamaConnector.classifyReadiness(
+          data: tagsBody(["llama2"]), response: http(200), model: "llama2:latest")))
     // A NON-latest tag is a different model — must not loosely match.
     #expect(
       OllamaConnector.classifyReadiness(
@@ -84,6 +109,163 @@ struct OllamaReadinessPreflightTests {
     let readiness = OllamaConnector.classifyReadiness(
       data: body, response: http(200), model: "llama3.2")
     #expect(readiness == .serverDown)
+  }
+
+  // MARK: - Daemon-reported facts (#1914)
+
+  @Test("remote_host present and non-empty means remote; absent means local")
+  func remoteHostDiscriminatesBothWays() {
+    // Measured 2026-08-01: the daemon returns remote_host for a pulled cloud
+    // model and OMITS the key entirely for a local one, side by side in one
+    // payload. Both directions are asserted because a decoder that always
+    // answered "remote" would pass a one-way test while discriminating nothing.
+    let body = tagsBody(rows: [
+      ["name": "gpt-oss:120b-cloud", "remote_host": "https://ollama.com"],
+      ["name": "qwen3:0.6b"],
+    ])
+    #expect(
+      facts(
+        OllamaConnector.classifyReadiness(
+          data: body, response: http(200), model: "gpt-oss:120b-cloud"))?.isRemote == true)
+    #expect(
+      facts(
+        OllamaConnector.classifyReadiness(
+          data: body, response: http(200), model: "qwen3:0.6b"))?.isRemote == false)
+  }
+
+  @Test("an empty or null remote_host reads as local, never remote")
+  func degenerateRemoteHostIsLocal() {
+    // Fail-safe direction: an unreadable value must not promote a local model
+    // to remote, which would suppress its warm-up and mislabel it in the picker.
+    let empty = tagsBody(rows: [["name": "m", "remote_host": ""]])
+    #expect(
+      facts(OllamaConnector.classifyReadiness(data: empty, response: http(200), model: "m"))?
+        .isRemote == false)
+
+    let null = tagsBody(rows: [["name": "m", "remote_host": NSNull()]])
+    #expect(
+      facts(OllamaConnector.classifyReadiness(data: null, response: http(200), model: "m"))?
+        .isRemote == false)
+
+    // Wrong SHAPE (number where a string belongs) must also read as local.
+    let wrongType = tagsBody(rows: [["name": "m", "remote_host": 42]])
+    #expect(
+      facts(OllamaConnector.classifyReadiness(data: wrongType, response: http(200), model: "m"))?
+        .isRemote == false)
+  }
+
+  @Test("capabilities containing thinking discriminates in BOTH directions")
+  func thinkingCapabilityDiscriminatesBothWays() {
+    // The load-bearing half is the NEGATIVE: measured across 12 models, 11
+    // reported thinking and tinyllama reported only ["completion"]. A field that
+    // always said yes would look like it worked while telling us nothing, and
+    // would hand every non-thinking model the large reasoning budget.
+    let body = tagsBody(rows: [
+      ["name": "qwen3:0.6b", "capabilities": ["completion", "tools", "thinking"]],
+      ["name": "tinyllama:latest", "capabilities": ["completion"]],
+    ])
+    #expect(
+      facts(
+        OllamaConnector.classifyReadiness(
+          data: body, response: http(200), model: "qwen3:0.6b"))?.thinks == true)
+    #expect(
+      facts(
+        OllamaConnector.classifyReadiness(
+          data: body, response: http(200), model: "tinyllama:latest"))?.thinks == false)
+  }
+
+  @Test("absent, empty, or wrong-shaped capabilities read as NOT thinking")
+  func degenerateCapabilitiesAreNotThinking() {
+    // Absent must match today's default for an unlisted model — the tight
+    // budget — so an older daemon degrades to current behaviour, not to a
+    // silently enlarged budget for every model it serves.
+    let absent = tagsBody(rows: [["name": "m"]])
+    #expect(
+      facts(OllamaConnector.classifyReadiness(data: absent, response: http(200), model: "m"))?
+        .thinks == false)
+
+    let empty = tagsBody(rows: [["name": "m", "capabilities": [String]()]])
+    #expect(
+      facts(OllamaConnector.classifyReadiness(data: empty, response: http(200), model: "m"))?
+        .thinks == false)
+
+    let null = tagsBody(rows: [["name": "m", "capabilities": NSNull()]])
+    #expect(
+      facts(OllamaConnector.classifyReadiness(data: null, response: http(200), model: "m"))?
+        .thinks == false)
+
+    // A non-array shape must not crash or match.
+    let wrongType = tagsBody(rows: [["name": "m", "capabilities": "thinking"]])
+    #expect(
+      facts(OllamaConnector.classifyReadiness(data: wrongType, response: http(200), model: "m"))?
+        .thinks == false)
+  }
+
+  @Test("the two facts are INDEPENDENT — all four combinations decode correctly")
+  func factsAreIndependent() {
+    // Where a model runs does not tell you whether it reasons. A local thinking
+    // model and a remote non-thinking model both exist, so neither fact may be
+    // derived from the other.
+    let body = tagsBody(rows: [
+      ["name": "local-plain"],
+      ["name": "local-thinks", "capabilities": ["thinking"]],
+      ["name": "remote-plain", "remote_host": "https://ollama.com"],
+      [
+        "name": "remote-thinks", "remote_host": "https://ollama.com",
+        "capabilities": ["completion", "thinking"],
+      ],
+    ])
+    func f(_ model: String) -> OllamaModelFacts? {
+      facts(OllamaConnector.classifyReadiness(data: body, response: http(200), model: model))
+    }
+    #expect(f("local-plain") == OllamaModelFacts(isRemote: false, thinks: false))
+    #expect(f("local-thinks") == OllamaModelFacts(isRemote: false, thinks: true))
+    #expect(f("remote-plain") == OllamaModelFacts(isRemote: true, thinks: false))
+    #expect(f("remote-thinks") == OllamaModelFacts(isRemote: true, thinks: true))
+  }
+
+  @Test("facts come from the MATCHED row, not from any row in the payload")
+  func factsComeFromTheMatchedRow() {
+    // The defect this prevents: scanning the whole payload for facts would let
+    // one installed cloud model make every local model look remote. The armed
+    // model here is local and sits AFTER a remote row, so a first-row or
+    // any-row implementation fails.
+    let body = tagsBody(rows: [
+      [
+        "name": "deepseek-v4-flash", "remote_host": "https://ollama.com",
+        "capabilities": ["thinking"],
+      ],
+      ["name": "llama3.2"],
+    ])
+    let armed = facts(
+      OllamaConnector.classifyReadiness(data: body, response: http(200), model: "llama3.2"))
+    #expect(armed == OllamaModelFacts(isRemote: false, thinks: false))
+  }
+
+  @Test("canonical :latest matching still supplies the matched row's facts")
+  func canonicalMatchCarriesFacts() {
+    // Membership uses canonical names, so fact extraction must resolve to the
+    // same row that membership matched — including across the :latest equality.
+    let body = tagsBody(rows: [
+      ["name": "gemma4:latest", "remote_host": "https://ollama.com", "capabilities": ["thinking"]]
+    ])
+    let armed = facts(
+      OllamaConnector.classifyReadiness(data: body, response: http(200), model: "gemma4"))
+    #expect(armed == OllamaModelFacts(isRemote: true, thinks: true))
+  }
+
+  @Test("the probe carries facts end to end through the transport")
+  func probeCarriesFactsEndToEnd() async {
+    let connector = OllamaConnector()
+    let body = tagsBody(rows: [
+      [
+        "name": "gpt-oss:20b-cloud", "remote_host": "https://ollama.com",
+        "capabilities": ["thinking"],
+      ]
+    ])
+    let readiness = await connector.preflightReadiness(
+      model: "gpt-oss:20b-cloud", executor: { _ in (body, self.http(200)) })
+    #expect(facts(readiness) == OllamaModelFacts(isRemote: true, thinks: true))
   }
 
   // MARK: - Probe wrapper
@@ -143,7 +325,7 @@ struct OllamaReadinessPreflightTests {
     let response = http(200)
     let ready = await connector.preflightReadiness(
       model: "gemma3n:e4b", executor: { _ in (body, response) })
-    #expect(ready == .ready)
+    #expect(isReady(ready))
 
     let missing = await connector.preflightReadiness(
       model: "llama3.2", executor: { _ in (body, response) })

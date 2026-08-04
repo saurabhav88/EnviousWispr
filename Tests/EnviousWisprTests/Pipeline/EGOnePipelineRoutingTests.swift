@@ -156,7 +156,11 @@ struct EGOnePipelineRoutingTests {
     step.llmModel = "llama3.2"
     // #1305: report ready so this stays a MID-FLIGHT surfacing test (the
     // preflight gate would otherwise intercept, and would probe a real socket).
-    step.ollamaReadinessProbe = { _ in .ready }
+    // #1914: EG-1 routing is unaffected by Ollama's per-model facts; arm the
+    // gate with unknown facts so this suite keeps testing routing only.
+    step.ollamaReadinessProbe = { _ in
+      .ready(facts: OllamaModelFacts(isRemote: false, thinks: false))
+    }
     struct Down: TranscriptPolisher {
       func polish(
         text: String, instructions: PolishInstructions, config: LLMProviderConfig,

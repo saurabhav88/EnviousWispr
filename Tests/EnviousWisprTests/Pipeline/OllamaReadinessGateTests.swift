@@ -103,7 +103,8 @@ struct OllamaReadinessGateTests {
   func readyProceedsToPolisher() async throws {
     let invocationCounter = InvocationCounter()
     let (step, factoryCalls) = makeStep(
-      probe: { _ in .ready }, invocationCounter: invocationCounter)
+      probe: { _ in .ready(facts: OllamaModelFacts(isRemote: false, thinks: false)) },
+      invocationCounter: invocationCounter)
 
     let result = try await step.process(context())
 
@@ -118,7 +119,7 @@ struct OllamaReadinessGateTests {
     var probedModel: String?
     let (step, _) = makeStep(probe: { model in
       probedModel = model
-      return .ready
+      return .ready(facts: OllamaModelFacts(isRemote: false, thinks: false))
     })
     step.llmModel = "gemma3n:e4b"
 
