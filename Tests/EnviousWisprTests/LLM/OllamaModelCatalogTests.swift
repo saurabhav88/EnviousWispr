@@ -204,29 +204,63 @@ struct OllamaModelCatalogTests {
     #expect(OllamaSetupService.isWeakModel("llama3.2:8b", parameterBillions: nil) == false)
   }
 
-  // MARK: - Thinking-Capable Detection (#272)
+  // MARK: - Thinking detection: RETIRED name list → reported capability (#272, #1914)
 
-  @Test("known thinking-capable families are detected across tag variants")
-  func thinkingCapableFamilies() {
-    #expect(OllamaSetupService.isThinkingCapableModel("gemma4:latest") == true)
-    #expect(OllamaSetupService.isThinkingCapableModel("gemma4:8b") == true)
-    #expect(OllamaSetupService.isThinkingCapableModel("qwen3") == true)
-    #expect(OllamaSetupService.isThinkingCapableModel("qwen3:7b") == true)
-    #expect(OllamaSetupService.isThinkingCapableModel("deepseek-r1") == true)
-    #expect(OllamaSetupService.isThinkingCapableModel("deepseek-r1:14b") == true)
-    #expect(OllamaSetupService.isThinkingCapableModel("gpt-oss:20b") == true)
+  /// #1914 retired the name-matching thinking classifier and its four-family
+  /// prefix list. The question it answered is now answered by the daemon, so the
+  /// coverage moves with the authority rather than being deleted: these assert
+  /// that the SAME seven model names the old list classified are still
+  /// classified correctly, via `OllamaModelFacts` decoded from a real-shaped
+  /// `/api/tags` row.
+  ///
+  /// Verified live 2026-08-01 that all four retired families report the
+  /// `thinking` capability, `qwen3` and `deepseek-r1` as local builds.
+  private func facts(name: String, capabilities: [String]) -> OllamaModelFacts {
+    let body = try! JSONSerialization.data(withJSONObject: [
+      "models": [["name": name, "capabilities": capabilities]]
+    ])
+    let response = HTTPURLResponse(
+      url: URL(string: "http://localhost:11434/api/tags")!,
+      statusCode: 200, httpVersion: nil, headerFields: nil)!
+    guard
+      case .ready(let facts) = OllamaConnector.classifyReadiness(
+        data: body, response: response, model: name)
+    else {
+      Issue.record("fixture did not classify as ready for \(name)")
+      return OllamaModelFacts(isRemote: false, thinks: false)
+    }
+    return facts
   }
 
-  @Test("non-thinking models are not flagged as thinking-capable")
-  func notThinkingCapable() {
-    // Prevents regression where non-thinking 7B+ models would get the
-    // 2048-token budget and risk outrunning the 15s pipeline timeout.
-    #expect(OllamaSetupService.isThinkingCapableModel("llama3.2") == false)
-    #expect(OllamaSetupService.isThinkingCapableModel("llama3.1:8b") == false)
-    #expect(OllamaSetupService.isThinkingCapableModel("mistral") == false)
-    #expect(OllamaSetupService.isThinkingCapableModel("gemma2:2b") == false)
-    #expect(OllamaSetupService.isThinkingCapableModel("gemma3:12b") == false)
-    #expect(OllamaSetupService.isThinkingCapableModel("phi-2") == false)
-    #expect(OllamaSetupService.isThinkingCapableModel("qwen2.5:7b") == false)
+  @Test(
+    "the four retired families are still detected as thinking, now by capability",
+    arguments: [
+      "gemma4:latest", "gemma4:8b", "qwen3", "qwen3:7b", "deepseek-r1", "deepseek-r1:14b",
+      "gpt-oss:20b",
+    ])
+  func retiredFamiliesReportThinking(name: String) {
+    #expect(facts(name: name, capabilities: ["completion", "thinking"]).thinks == true)
+  }
+
+  @Test(
+    "non-thinking models are still not flagged, now by capability",
+    arguments: [
+      "llama3.2", "llama3.1:8b", "mistral", "gemma2:2b", "gemma3:12b", "phi-2", "qwen2.5:7b",
+    ])
+  func nonThinkingModelsDoNotReportThinking(name: String) {
+    // Prevents the regression the #272 test guarded: a non-thinking model
+    // getting the 2048 budget and risking the 15s pipeline timeout on a rambly
+    // generation.
+    #expect(facts(name: name, capabilities: ["completion"]).thinks == false)
+  }
+
+  /// The behaviour change the retirement exists for. Under the old list these
+  /// two would have been classified by NAME — `gemma4` always thinking,
+  /// `qwen2.5` never — regardless of what the daemon reported. Now the name is
+  /// irrelevant and the daemon decides, which is what fixes every thinking
+  /// model that was outside the four hard-coded names.
+  @Test func capabilityOverridesWhatTheNameWouldHaveImplied() {
+    #expect(facts(name: "gemma4:latest", capabilities: ["completion"]).thinks == false)
+    #expect(facts(name: "qwen2.5:7b", capabilities: ["completion", "thinking"]).thinks == true)
   }
 }

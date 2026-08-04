@@ -37,9 +37,11 @@ public struct OllamaModelFacts: Sendable, Equatable {
   /// opened #1914 was `deepseek-v4-flash:latest`, which carries no suffix.
   public let isRemote: Bool
   /// True iff the daemon listed `thinking` among this model's `capabilities`.
-  /// This is the observable the hand-authored `thinkingCapableFamilyPrefixes`
-  /// list currently guesses at with four names; a later chunk retires that list
-  /// in favour of this field. Available for local and remote models alike.
+  /// This is the SOLE authority for the question — it replaced a hand-authored
+  /// four-name family list, which was a prediction about which models other
+  /// people install and mis-budgeted every thinking model outside it. Reported
+  /// for local and remote models alike. Do not reintroduce a name-based
+  /// fallback beside it.
   public let thinks: Bool
 
   public init(isRemote: Bool, thinks: Bool) {
@@ -128,7 +130,8 @@ public struct OllamaConnector: TranscriptPolisher {
       model: config.model,
       messages: messages,
       maxTokens: maxTokens,
-      temperature: config.temperature
+      temperature: config.temperature,
+      thinking: config.thinking
     )
 
     var request = URLRequest(url: url)
@@ -195,7 +198,8 @@ public struct OllamaConnector: TranscriptPolisher {
       model: config.model,
       messages: messages,
       maxTokens: maxTokens,
-      temperature: config.temperature
+      temperature: config.temperature,
+      thinking: config.thinking
     )
 
     var request = URLRequest(url: url)
@@ -429,16 +433,20 @@ public struct OllamaConnector: TranscriptPolisher {
 
   /// Builds the `/api/chat` request body shared by both polish entry points.
   ///
-  /// The `think` parameter is intentionally omitted (#272):
-  /// - Setting `think: false` (boolean) is silently ignored by gemma4:latest and
-  ///   causes reasoning to leak into `message.content` as a 5-13× expansion that
-  ///   the validator rejects.
-  /// - Omitting the key lets Ollama route any reasoning to `message.thinking`
-  ///   (which we don't read) and deliver the clean final answer in `message.content`,
-  ///   provided `num_predict` is large enough to accommodate both (see
-  ///   `LLMConstants.ollamaMaxTokens`).
-  /// Non-thinking models (llama3.2 etc.) are unaffected: they emit empty
-  /// `message.thinking` regardless.
+  /// `think` handling (#272, revised by #1914):
+  /// - A model the daemon reports as thinking receives an explicit `"low"`.
+  ///   Omitting the key means the model's DEFAULT depth, which is what starved
+  ///   `message.content` to empty in ENVIOUSWISPR-4M; `"low"` addresses the
+  ///   cause while the larger `num_predict` floor accommodates what remains.
+  ///   Measured 2026-08-01: `"low"` was ~3x faster than `"high"` at identical
+  ///   output length.
+  /// - A model the daemon reports as NOT thinking receives no `think` key at
+  ///   all. Boolean `think: false` is forbidden: gemma4 and gpt-oss silently
+  ///   ignore it and leak reasoning into `message.content` as a 5-13× expansion
+  ///   the validator rejects, while nemotron honours it — a value two of three
+  ///   models ignore cannot be a control.
+  /// The value arrives on `config.thinking` as `ResolvedThinking`, resolved per
+  /// attempt from the daemon's own facts; this builder never infers it.
   /// Returns the model name iff the provider is `.ollama` and the model
   /// is non-empty; nil otherwise. Pure helper used by the settings
   /// observer to snapshot the pre-swap effective Ollama model (#295).
@@ -461,9 +469,10 @@ public struct OllamaConnector: TranscriptPolisher {
     model: String,
     messages: [[String: String]],
     maxTokens: Int,
-    temperature: Double
+    temperature: Double,
+    thinking: ResolvedThinking?
   ) -> [String: Any] {
-    [
+    var body: [String: Any] = [
       "model": model,
       "messages": messages,
       "stream": false,
@@ -473,6 +482,17 @@ public struct OllamaConnector: TranscriptPolisher {
         "temperature": temperature,
       ],
     ]
+    // #1914: `think` is a TOP-LEVEL key on /api/chat, not an `options` entry.
+    // Only the level dialect is emitted; a budget or effort value would be a
+    // different provider's dialect reaching the wrong wire format, so it is
+    // dropped rather than coerced. `nil` keeps the key absent entirely, which
+    // is what a non-thinking model must send — never a boolean false (#272:
+    // ignored by gemma4 and gpt-oss, honoured by nemotron, so it is not a
+    // control).
+    if case .level(let level) = thinking {
+      body["think"] = level
+    }
+    return body
   }
 
   // MARK: - Retry

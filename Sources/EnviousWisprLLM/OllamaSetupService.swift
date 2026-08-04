@@ -303,27 +303,22 @@ public final class OllamaSetupService {
     return weakModelFallbackPrefixes.contains(where: { lower.hasPrefix($0) })
   }
 
-  /// Known thinking-capable Ollama model family prefixes (as of 2026-04).
-  /// These families emit reasoning into `message.thinking` separately from the
-  /// final answer in `message.content`. Because the reasoning still counts
-  /// against `num_predict`, these models need a larger token budget to avoid
-  /// truncating the final answer to empty (#272).
-  nonisolated private static let thinkingCapableFamilyPrefixes: [String] = [
-    "gemma4",  // Google Gemma 4 (thinking capability in Ollama 0.20+)
-    "qwen3",  // Alibaba Qwen 3 reasoning
-    "deepseek-r1",  // DeepSeek R1 reasoning
-    "gpt-oss",  // OpenAI gpt-oss (low/medium/high thinking)
-  ]
-
-  /// Determine if a model emits separate thinking tokens that consume
-  /// `num_predict` budget. Used to decide whether to grant the larger
-  /// 2048-token floor in `LLMPolishStep` (non-thinking models stay on the
-  /// tight 256 floor so they can't outrun the 15s pipeline timeout on a
-  /// rambly generation).
-  public nonisolated static func isThinkingCapableModel(_ name: String) -> Bool {
-    let lower = name.lowercased()
-    return thinkingCapableFamilyPrefixes.contains(where: { lower.hasPrefix($0) })
-  }
+  // #1914: a hand-authored family-prefix list and its name-matching classifier
+  // were DELETED here, not extended. They named four families and every thinking
+  // model outside that list was mis-budgeted. A hand-authored membership set is
+  // a prediction about which models other people install, and `/api/tags`
+  // answers the question directly per model — verified in both directions
+  // across 12 models, including one that reports no thinking capability at all.
+  //
+  // The replacement is `OllamaModelFacts.thinks`, decoded once in
+  // `OllamaConnector.modelFacts(fromTagsRow:)` and carried per attempt. Do not
+  // reintroduce a name-based fallback beside it: two authorities for one
+  // question is the scatter this deletion removes.
+  //
+  // The retired symbol names are deliberately not written here, so that a grep
+  // for them returns zero and stays usable as a residue check. They are in the
+  // commit message and in `.claude/knowledge/ollama-operations.md` for anyone
+  // searching history.
 
   // MARK: - Private
 

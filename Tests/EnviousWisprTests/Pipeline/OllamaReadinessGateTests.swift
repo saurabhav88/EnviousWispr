@@ -67,6 +67,49 @@ struct OllamaReadinessGateTests {
     var value = 0
   }
 
+  // MARK: - #1914 facts-binding harness
+
+  /// Captures the `LLMProviderConfig` the step actually built, so a test can
+  /// assert what the OUTGOING REQUEST would carry rather than what the step was
+  /// told. Actor-isolated because `polish` is not main-actor isolated.
+  private actor ConfigCapture {
+    private(set) var config: LLMProviderConfig?
+    func record(_ c: LLMProviderConfig) { config = c }
+  }
+
+  private struct CapturingPolisher: TranscriptPolisher {
+    let capture: ConfigCapture
+    func polish(
+      text: String,
+      instructions: PolishInstructions,
+      config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      await capture.record(config)
+      return LLMResult(polishedText: "Quick email to the ethics committee chair about it.")
+    }
+  }
+
+  /// Builds a step whose readiness answer carries the given facts, and returns
+  /// the capture so the test can read the resolved config.
+  ///
+  /// `model` defaults to a name that gives NO clue about thinking capability —
+  /// it matches neither the retired prefix list nor any real family. If a
+  /// name-based fallback ever creeps back in, these tests keep passing only if
+  /// the daemon's fact is genuinely what decided the outcome.
+  private func makeFactsStep(
+    facts: OllamaModelFacts,
+    model: String = "some-unknown-model:7b"
+  ) -> (step: LLMPolishStep, capture: ConfigCapture) {
+    let capture = ConfigCapture()
+    let step = LLMPolishStep(keychainManager: KeychainManager())
+    step.llmProvider = .ollama
+    step.llmModel = model
+    step.ollamaReadinessProbe = { _ in .ready(facts: facts) }
+    step.makePolisher = { _, _, _ in CapturingPolisher(capture: capture) }
+    return (step, capture)
+  }
+
   private func context(_ text: String = longTranscript) -> TextProcessingContext {
     TextProcessingContext(text: text, language: "en")
   }
@@ -263,4 +306,78 @@ struct OllamaReadinessGateTests {
       #expect(event.stringProps["skip_reason"] == "local_polish_ollama_model_missing")
     }
   #endif
+
+  // MARK: - #1914 the readiness payload must reach the outgoing request
+
+  /// THE test this chunk exists for. Swift lets `case .ready:` match and discard
+  /// the associated value, so nothing in the compiler notices if the binding is
+  /// dropped and every model silently falls back to the tight budget — which is
+  /// the original #1914 defect. This asserts the facts reach the CONFIG the
+  /// connector would send, not merely that the step was handed them.
+  ///
+  /// Mutation-verified: neutralising the bound `facts.thinks` in production
+  /// fails this test specifically.
+  @Test("thinking facts reach the outgoing config: large floor AND think low")
+  func thinkingFactsReachTheConfig() async throws {
+    let (step, capture) = makeFactsStep(
+      facts: OllamaModelFacts(isRemote: false, thinks: true))
+
+    _ = try await step.process(context())
+
+    let config = await capture.config
+    #expect(config?.outputTokens == .capped(LLMConstants.ollamaThinkingMaxTokens))
+    #expect(config?.thinking == .level("low"))
+  }
+
+  /// The negative half. Without it, an implementation that hard-coded thinking
+  /// on would pass the test above while quietly enlarging every request.
+  @Test("non-thinking facts reach the outgoing config: tight floor AND no think field")
+  func nonThinkingFactsReachTheConfig() async throws {
+    let (step, capture) = makeFactsStep(
+      facts: OllamaModelFacts(isRemote: false, thinks: false))
+
+    _ = try await step.process(context())
+
+    let config = await capture.config
+    #expect(config?.outputTokens == .capped(LLMConstants.ollamaMaxTokens))
+    #expect(config?.thinking == nil)
+  }
+
+  /// Independence control. `isRemote` must influence neither the budget nor the
+  /// thinking level — where a model runs does not tell you whether it reasons.
+  /// A remote non-thinking model and a local thinking model are both real, so
+  /// deriving one fact from the other would break both.
+  @Test("isRemote changes neither the token floor nor the thinking level")
+  func remotenessDoesNotDetermineBudgetOrThinking() async throws {
+    // Remote + non-thinking → tight floor, no think. Same as local non-thinking.
+    let (remotePlain, remotePlainCapture) = makeFactsStep(
+      facts: OllamaModelFacts(isRemote: true, thinks: false))
+    _ = try await remotePlain.process(context())
+    let plain = await remotePlainCapture.config
+    #expect(plain?.outputTokens == .capped(LLMConstants.ollamaMaxTokens))
+    #expect(plain?.thinking == nil)
+
+    // Remote + thinking → large floor and low. Same as local thinking.
+    let (remoteThinks, remoteThinksCapture) = makeFactsStep(
+      facts: OllamaModelFacts(isRemote: true, thinks: true))
+    _ = try await remoteThinks.process(context())
+    let thinks = await remoteThinksCapture.config
+    #expect(thinks?.outputTokens == .capped(LLMConstants.ollamaThinkingMaxTokens))
+    #expect(thinks?.thinking == .level("low"))
+  }
+
+  /// A name that WOULD have matched the retired prefix list must not get the
+  /// thinking budget when the daemon says it does not think. This is the direct
+  /// freeze against a name-based fallback creeping back in beside the capability.
+  @Test("a formerly-listed family name does not override the reported capability")
+  func retiredFamilyNameDoesNotOverrideCapability() async throws {
+    let (step, capture) = makeFactsStep(
+      facts: OllamaModelFacts(isRemote: false, thinks: false), model: "gemma4:latest")
+
+    _ = try await step.process(context())
+
+    let config = await capture.config
+    #expect(config?.outputTokens == .capped(LLMConstants.ollamaMaxTokens))
+    #expect(config?.thinking == nil)
+  }
 }
