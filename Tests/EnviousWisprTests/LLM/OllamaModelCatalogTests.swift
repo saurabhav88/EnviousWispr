@@ -55,14 +55,21 @@ struct OllamaModelCatalogTests {
 
   // MARK: - EG-1 curated-private catalog visibility (#1269)
 
-  private func downloaded(_ name: String, sizeGB: Double = 2.9) -> OllamaDownloadedModel {
+  /// #1914: `facts` is required with no default, so every fixture states what
+  /// the daemon reported. Defaults to a plain local model; the remote-grouping
+  /// tests pass their own.
+  private func downloaded(
+    _ name: String, sizeGB: Double = 2.9,
+    facts: OllamaModelFacts = OllamaModelFacts(isRemote: false, thinks: false)
+  ) -> OllamaDownloadedModel {
     OllamaDownloadedModel(
       exactName: name,
       canonicalName: OllamaSetupService.canonicalModelName(name),
       parameterSize: "4B",
       parameterBillions: 4.0,
       fileSizeBytes: Int64(sizeGB * 1_000_000_000),
-      displayName: name
+      displayName: name,
+      facts: facts
     )
   }
 

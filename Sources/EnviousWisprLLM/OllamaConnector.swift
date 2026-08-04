@@ -25,7 +25,7 @@ public struct OllamaEvictOutcome: Sendable {
 /// The two are INDEPENDENT and govern different decisions — where a model runs
 /// does not tell you whether it reasons before answering, which is why a single
 /// flag could not serve both. Ownership table: plan §3d.
-/// - `isRemote` → picker presentation, warm-up skip, eviction skip, completed telemetry.
+/// - `isRemote` → Manage Models presentation, warm-up skip, eviction skip, completed telemetry.
 /// - `thinks` → output-token budget and the thinking level sent on the request.
 ///
 /// Deliberately CLOSED at two fields. Add a third only when the daemon reports
@@ -318,9 +318,12 @@ public struct OllamaConnector: TranscriptPolisher {
   }
 
   /// #1914: the SOLE derivation site for both daemon-reported facts. One pure
-  /// function over one parsed `/api/tags` row. Its only caller today is the
-  /// runtime readiness path below; a later chunk points the picker's catalog
-  /// refresh at this same function, so the two can never disagree.
+  /// function over one parsed `/api/tags` row, with exactly two production
+  /// consumers: the runtime readiness path below, and
+  /// `OllamaSetupService.parseDownloadedModels` for the Manage Models catalog.
+  /// Both
+  /// go through here so the runtime and the UI can never disagree about the
+  /// same model. Do not add a third reader of `remote_host` or `capabilities`.
   ///
   /// Every field is optional in practice and absent on older daemons, so each
   /// check fails to `false` rather than trusting a shape. `false` means "not

@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import Foundation
 
 /// States in the Ollama guided-setup flow.
@@ -51,6 +52,17 @@ public struct OllamaModelCatalogEntry: Identifiable, Sendable {
   public let qualityTier: OllamaQualityTier
   public let downloadSize: String
   public let isDownloaded: Bool
+  /// #1914: true iff Ollama proxies this model to its own servers. Drives the
+  /// Manage Models list's separate group and the suppression of size and quality
+  /// columns,
+  /// which are meaningless for a model that is not on this disk — a cloud row's
+  /// `size` is manifest-only (316 bytes for a 158B model).
+  ///
+  /// Defaulted `false` ONLY because every curated suggestion is by definition a
+  /// local pull; the downloaded path always supplies it explicitly from decoded
+  /// facts. Unlike `OllamaDownloadedModel.facts`, no row here can be built from
+  /// an undecoded `/api/tags` response.
+  public let isRemote: Bool
 
   public var id: String { name }
 
@@ -60,7 +72,8 @@ public struct OllamaModelCatalogEntry: Identifiable, Sendable {
     parameterCount: String,
     qualityTier: OllamaQualityTier,
     downloadSize: String,
-    isDownloaded: Bool = false
+    isDownloaded: Bool = false,
+    isRemote: Bool = false
   ) {
     self.name = name
     self.displayName = displayName
@@ -68,6 +81,7 @@ public struct OllamaModelCatalogEntry: Identifiable, Sendable {
     self.qualityTier = qualityTier
     self.downloadSize = downloadSize
     self.isDownloaded = isDownloaded
+    self.isRemote = isRemote
   }
 }
 
@@ -79,6 +93,11 @@ public struct OllamaDownloadedModel: Sendable {
   public let parameterBillions: Double?
   public let fileSizeBytes: Int64
   public let displayName: String
+  /// #1914: the daemon's own facts for THIS row, decoded by the single shared
+  /// decoder. Required with no default: a defaulted value would let a row that
+  /// was never decoded claim to be local, which is the same silent-fallback
+  /// shape the runtime path deliberately made unrepresentable.
+  public let facts: OllamaModelFacts
 }
 
 /// Guides users through Ollama installation, server startup, and model pulling.
@@ -195,7 +214,11 @@ public final class OllamaSetupService {
           parameterCount: model.parameterSize ?? curated.parameterCount,
           qualityTier: curated.qualityTier,
           downloadSize: Self.formatFileSize(model.fileSizeBytes),
-          isDownloaded: true
+          isDownloaded: true,
+          // #1914: carried on BOTH construction paths. A remote model can match
+          // a curated row by name, so setting it only on the custom branch below
+          // would silently lose remoteness for exactly the well-known models.
+          isRemote: model.facts.isRemote
         )
       }
 
@@ -206,7 +229,8 @@ public final class OllamaSetupService {
         parameterCount: model.parameterSize ?? "Unknown",
         qualityTier: Self.inferQualityTier(parameterBillions: model.parameterBillions),
         downloadSize: Self.formatFileSize(model.fileSizeBytes),
-        isDownloaded: true
+        isDownloaded: true,
+        isRemote: model.facts.isRemote
       )
     }
     .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
@@ -460,38 +484,132 @@ public final class OllamaSetupService {
       guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
       guard let models = json?["models"] as? [[String: Any]] else { return }
-      downloadedModels = models.compactMap { model -> OllamaDownloadedModel? in
-        guard let name = model["name"] as? String else { return nil }
-        let canonical = Self.canonicalModelName(name)
-
-        // Parse details.parameter_size
-        let details = model["details"] as? [String: Any]
-        let parameterSize = details?["parameter_size"] as? String
-        let parameterBillions = parameterSize.flatMap { Self.parseParameterSize($0) }
-
-        // Parse file size (Int64 for large models)
-        let fileSizeBytes: Int64
-        if let size = model["size"] as? Int64 {
-          fileSizeBytes = size
-        } else if let size = model["size"] as? Int {
-          fileSizeBytes = Int64(size)
-        } else {
-          fileSizeBytes = 0
-        }
-
-        let displayName = Self.inferDisplayName(from: name)
-
-        return OllamaDownloadedModel(
-          exactName: name,
-          canonicalName: canonical,
-          parameterSize: parameterSize,
-          parameterBillions: parameterBillions,
-          fileSizeBytes: fileSizeBytes,
-          displayName: displayName
-        )
-      }
+      downloadedModels = Self.parseDownloadedModels(fromTagsModels: models)
     } catch {
       // Silently ignore -- server may not be running
+    }
+  }
+
+  /// #1914: whether a warm-up may run at all, and with which facts.
+  ///
+  /// Pure so the policy is testable without a server, in the same spirit as
+  /// `OllamaConnector.makeEvictRequestBody`. Returning the FACTS rather than a
+  /// bare Bool is deliberate: the caller needs `thinks` to build the body, and
+  /// handing back one value keeps the decision and the data it implies together
+  /// instead of letting the caller re-derive facts it might resolve differently.
+  enum WarmupPolicy: Equatable {
+    case run(facts: OllamaModelFacts)
+    /// Ollama proxies this model to its own servers: nothing local to warm, and
+    /// a request would spend the user's cloud quota for no benefit.
+    case skipRemote
+    /// The model is not in the catalog, so remoteness is UNKNOWN. Skipping is
+    /// the safe direction — warm-up is best-effort by contract and not
+    /// guaranteed before any given dictation, so the cost is a marginally
+    /// slower first polish rather than a wrongly-spent cloud request.
+    case skipUnknownModel
+  }
+
+  /// #1914: the warm-up `/api/chat` body, pure so its shape is testable without
+  /// a server — the same treatment `OllamaConnector.makeEvictRequestBody` and
+  /// `makeRequestBody` already get.
+  ///
+  /// This function is where the LAST live `think: false` in the repo was
+  /// removed. Two of three tested models silently IGNORE the boolean and emit
+  /// reasoning anyway (gemma4, gpt-oss; nemotron honoured it), so it never was
+  /// the control it appeared to be. A thinking model gets an explicit `"low"`;
+  /// a non-thinking one gets no key at all, matching the polish request exactly.
+  ///
+  /// Extracted only after a mutation control proved the inline version was
+  /// untestable: changing `"low"` to `"high"` left every warm-up test green.
+  nonisolated static func makeWarmupRequestBody(model: String, thinks: Bool) -> [String: Any] {
+    var body: [String: Any] = [
+      "model": model,
+      "messages": [["role": "user", "content": "hi"]],
+      "stream": false,
+      "keep_alive": "60m",
+      "options": ["num_predict": 1],
+    ]
+    if thinks {
+      body["think"] = "low"
+    }
+    return body
+  }
+
+  /// Retires an in-flight warm-up and any `.warming` state belonging to the
+  /// model being switched away from. One owner so the two callers — the skip
+  /// path and the normal model-switch path — cannot diverge.
+  ///
+  /// `.warm` is deliberately NOT cleared: a model that genuinely finished
+  /// warming is still resident in Ollama's memory, so discarding that fact would
+  /// make the app re-warm something already warm. Only the in-flight and
+  /// pending-publish states are retired.
+  private func cancelWarmupForModelSwitch() {
+    warmupTask?.cancel()
+    warmupTask = nil
+    if case .warming = warmupState {
+      warmupState = .idle
+    }
+  }
+
+  nonisolated static func warmupPolicy(for matched: OllamaDownloadedModel?) -> WarmupPolicy {
+    guard let matched else { return .skipUnknownModel }
+    return matched.facts.isRemote ? .skipRemote : .run(facts: matched.facts)
+  }
+
+  /// Debug-log receipt wording. Never includes `remote_host` — the boolean is
+  /// the whole answer and the host is the user's environment (`CLAUDE.md` §
+  /// Privacy: metadata, never content or environment values).
+  nonisolated static func warmupSkipReason(for matched: OllamaDownloadedModel?) -> String {
+    switch warmupPolicy(for: matched) {
+    case .run: return "not skipped"
+    case .skipRemote: return "remote"
+    case .skipUnknownModel: return "model not in catalog"
+    }
+  }
+
+  /// #1914: the pure half of `refreshDownloadedModels`, extracted so the parsing
+  /// is testable without a live server AND so there is exactly one place that
+  /// turns `/api/tags` rows into catalog models.
+  ///
+  /// Facts come from `OllamaConnector.modelFacts(fromTagsRow:)` — the SAME
+  /// decoder the per-attempt readiness path uses. This function must never read
+  /// `remote_host` or `capabilities` itself: two readers of one wire format is
+  /// how the Manage Models list and the runtime would come to disagree about the
+  /// same model.
+  nonisolated static func parseDownloadedModels(
+    fromTagsModels models: [[String: Any]]
+  ) -> [OllamaDownloadedModel] {
+    models.compactMap { model -> OllamaDownloadedModel? in
+      guard let name = model["name"] as? String else { return nil }
+      let canonical = canonicalModelName(name)
+
+      // Parse details.parameter_size
+      let details = model["details"] as? [String: Any]
+      let parameterSize = details?["parameter_size"] as? String
+      let parameterBillions = parameterSize.flatMap { parseParameterSize($0) }
+
+      // Parse file size (Int64 for large models)
+      let fileSizeBytes: Int64
+      if let size = model["size"] as? Int64 {
+        fileSizeBytes = size
+      } else if let size = model["size"] as? Int {
+        fileSizeBytes = Int64(size)
+      } else {
+        fileSizeBytes = 0
+      }
+
+      let displayName = inferDisplayName(from: name)
+
+      return OllamaDownloadedModel(
+        exactName: name,
+        canonicalName: canonical,
+        parameterSize: parameterSize,
+        parameterBillions: parameterBillions,
+        fileSizeBytes: fileSizeBytes,
+        displayName: displayName,
+        // Decoded from THIS row, never scanned across the payload.
+        facts: OllamaConnector.modelFacts(fromTagsRow: model)
+      )
     }
   }
 
@@ -721,6 +839,39 @@ public final class OllamaSetupService {
   public func warmUpModel(_ modelName: String) {
     let canonical = Self.canonicalModelName(modelName)
 
+    // #1914: a remote model has nothing to warm. Warm-up exists to pull weights
+    // into local memory; against a model on Ollama's servers it is a network
+    // round trip that spends the USER'S cloud quota for no benefit, and it fires
+    // on every settings change. No new warm-up task and no `/api/chat` request
+    // start, and `warmupState` is never set to `.warming` for this model.
+    //
+    // Two things DO happen on this path, so the earlier "nothing observable"
+    // wording was wrong: any warm-up belonging to the PREVIOUS model is retired
+    // (below), and a debug-log task is spawned for the skip receipt.
+    //
+    // A model absent from `downloadedModels` also skips. We cannot tell whether
+    // it is remote, and warm-up is best-effort by contract (it is not guaranteed
+    // before any given dictation), so the cost of skipping is a marginally
+    // slower first polish while the cost of guessing wrong is the user's quota.
+    let matched = downloadedModels.first { $0.canonicalName == canonical }
+    guard case .run(let facts) = Self.warmupPolicy(for: matched) else {
+      // Retire any warm-up belonging to the PREVIOUS model before returning.
+      // Skipping is about issuing no request for the NEW model; it must not
+      // leave the old one running. Without this, switching from a warming local
+      // model to a hosted one leaves that request in flight and it later
+      // publishes `.warm` for a model the user is no longer using — a stale
+      // checkmark, and a `warmupState` that disagrees with the armed model.
+      // Ordering is load-bearing: the early return sits ABOVE the existing
+      // cancellation below, so the cancellation has to be repeated here rather
+      // than relied upon.
+      cancelWarmupForModelSwitch()
+      Task { [reason = Self.warmupSkipReason(for: matched)] in
+        await AppLogger.shared.log(
+          "warmup skipped (\(reason)) model=\(canonical)", level: .info, category: "LLM")
+      }
+      return
+    }
+
     // Skip if already warm for this model and not expired
     if warmupState.isWarm(for: canonical) { return }
 
@@ -728,8 +879,7 @@ public final class OllamaSetupService {
     if case .warming(let m) = warmupState, m == canonical { return }
 
     // Cancel any in-flight warm-up for a different model
-    warmupTask?.cancel()
-    warmupTask = nil
+    cancelWarmupForModelSwitch()
 
     warmupState = .warming(model: canonical)
 
@@ -741,14 +891,7 @@ public final class OllamaSetupService {
           return
         }
 
-        let body: [String: Any] = [
-          "model": modelName,
-          "messages": [["role": "user", "content": "hi"]],
-          "stream": false,
-          "think": false,
-          "keep_alive": "60m",
-          "options": ["num_predict": 1],
-        ]
+        let body = Self.makeWarmupRequestBody(model: modelName, thinks: facts.thinks)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
