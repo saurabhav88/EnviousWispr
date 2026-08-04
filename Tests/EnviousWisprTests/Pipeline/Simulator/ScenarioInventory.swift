@@ -144,15 +144,20 @@ enum ScenarioInventory {
         terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
         transcript: .nonEmpty)),
     Scenario(
-      id: "A11", name: "adapter empty result with speech evidence",
+      // #1920: audio was arriving above every dead-air floor and the engine ran
+      // clean — nothing failed, so the user is told NOTHING. Founder rule
+      // 2026-08-04: holding the key while gathering thoughts is ordinary use.
+      // `userVisibleError: nil` is the assertion that matters here; it was
+      // `.recoverableError` before this change.
+      id: "A11", name: "adapter empty result with speech evidence -> silent (#1920)",
       steps: [
         .engine(.setBehavior(.empty(hadSpeechEvidence: true))),
         .vad(.evidence(.voiced)),
         .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
       ],
       expected: ExpectedOutcome(
-        terminalState: .failed(.asrEmpty), pasteCount: 0, pasteOutcome: .none,
-        transcript: .none, userVisibleError: .recoverableError)),
+        terminalState: .asrEmptyDespiteAudio, pasteCount: 0, pasteOutcome: .none,
+        transcript: .none, userVisibleError: nil)),
     Scenario(
       id: "A12", name: "adapter empty result, no speech",
       steps: [

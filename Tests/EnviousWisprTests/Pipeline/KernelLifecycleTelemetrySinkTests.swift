@@ -1368,7 +1368,8 @@ import Testing
     .recordingStopped,
     .transcriptionStarted,
     .asrCompleted,
-    // Terminal — the seven `terminalStateLabel` recognises.
+    // Terminal — the eight `terminalStateLabel` recognises (#1920 added the
+    // eighth).
     .pipelineCompleted,
     .failed(.asrEmpty),
     .audioInterrupted(cause: .engineLost),
@@ -1376,6 +1377,7 @@ import Testing
     .discarded(.tooShort),
     .noSpeech(.vadGate),
     .cancelled,
+    .asrEmptyDespiteAudio,
   ]
 
   /// A deliberate COMPILE-TIME MIRROR of the production `terminalStateLabel`
@@ -1387,7 +1389,7 @@ import Testing
   private static func isTerminalMirror(_ event: KernelLifecycleEvent) -> Bool {
     switch event {
     case .pipelineCompleted, .failed, .audioInterrupted, .asrInterrupted,
-      .discarded, .noSpeech, .cancelled:
+      .discarded, .noSpeech, .cancelled, .asrEmptyDespiteAudio:
       true
     case .pipelineStartingUp, .modelLoading, .recordingCommitted, .recordingStopped,
       .transcriptionStarted, .asrCompleted:
@@ -1407,10 +1409,10 @@ import Testing
   @Test("every terminal removes the take key and clears recording state exactly once")
   func everyTerminalClearsTheTakeKeyExactlyOnce() {
     let events = Self.allEvents
-    #expect(events.count == 13, "one representative per KernelLifecycleEvent case")
+    #expect(events.count == 14, "one representative per KernelLifecycleEvent case")
 
     let terminals = events.filter { Self.isTerminalMirror($0) }
-    #expect(terminals.count == 7, "the closed terminal set `terminalStateLabel` recognises")
+    #expect(terminals.count == 8, "the closed terminal set `terminalStateLabel` recognises")
 
     for event in events {
       let recorder = Recorder()

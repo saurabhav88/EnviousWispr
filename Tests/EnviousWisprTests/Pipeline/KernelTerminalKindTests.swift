@@ -161,6 +161,18 @@ struct EndingRetryOutcomeComposedMatrixTests {
     }
   }
 
+  /// #1920: the new terminal projects to its OWN ending and that ending deletes,
+  /// like every other concluded live ending (#1755). This is the audio-deletion
+  /// decision, so it gets its own cell rather than riding on a sibling's: the
+  /// compiler forces the `shouldDeleteOnLiveEnding` arm to exist, but only a test
+  /// proves it answers `true`.
+  @Test(".asrEmptyDespiteAudio: projects to its own ending and deletes")
+  func asrEmptyDespiteAudioProjectsAndDeletes() {
+    for retry in [nil, .attempted, .retrySucceeded, .retryExhausted] as [ASRRetryOutcome?] {
+      #expect(composedDelete(.asrEmptyDespiteAudio, retry) == (.asrEmptyDespiteAudio, true))
+    }
+  }
+
   @Test("characterization: .completed and static .cancelled stay outside the predicate")
   func completedAndStaticCancelledProjectNil() {
     #expect(KernelDictationDriver.recoveryEnding(for: .completed) == nil)

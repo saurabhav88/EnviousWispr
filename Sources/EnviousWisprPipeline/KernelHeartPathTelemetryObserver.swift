@@ -59,6 +59,11 @@ enum KernelLifecycleEvent: Equatable, Sendable {
   case noSpeech(NoSpeechSource)
   /// The session reached `cancelled` — a user-cancelled recording.
   case cancelled
+  /// #1920: the session reached `asrEmptyDespiteAudio` — audio was arriving, the
+  /// engine ran clean, and it produced no words. Kept as its own event rather
+  /// than folded into `.failed` or `.noSpeech`: it is neither a failure nor an
+  /// assertion that the recording was silent.
+  case asrEmptyDespiteAudio
 
   // MARK: PR-4b.2 r6 additions
 
@@ -81,7 +86,9 @@ enum KernelLifecycleEvent: Equatable, Sendable {
   /// "ASR completed" breadcrumb. NOT fired on the `.finalizing` path that came
   /// from a no-speech VAD gate or asrEmpty — those emit `.noSpeech(source:)` /
   /// `.failed(.asrEmpty)` instead, matching old code which never emits the
-  /// "ASR completed" breadcrumb on those paths.
+  /// "ASR completed" breadcrumb on those paths. #1920: the speech-evidence half
+  /// of that pair is now `.asrEmptyDespiteAudio`, and it emits no "ASR completed"
+  /// breadcrumb either.
   case asrCompleted
 
   /// The session entered `.preparing` — the first observable transition from

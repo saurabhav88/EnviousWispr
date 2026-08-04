@@ -191,6 +191,12 @@ public enum RecordingRecoveryEnding: Equatable, Sendable {
   case asrInterrupted
   case noTransport
   case cancelled(RecordingCancelOrigin)
+  /// #1920: audio was arriving, the engine ran clean, and it produced no words.
+  /// Kept distinct from `.noSpeech` because it asserts nothing about whether
+  /// speech occurred. Deletes like every other concluded live ending (#1755) —
+  /// `RecoveryCoordinator.shouldDeleteOnLiveEnding` is exhaustive, so that
+  /// decision is made explicitly there rather than inherited.
+  case asrEmptyDespiteAudio
 }
 
 /// Issue #285 — heart-path telemetry callbacks that the former root state routes to

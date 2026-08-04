@@ -36,6 +36,8 @@ extension RecordingOutcome {
       .discarded(reason)
     case .noSpeech(let source):
       .noSpeech(source)
+    case .asrEmptyDespiteAudio:
+      .asrEmptyDespiteAudio
     case .audioInterrupted(let cause):
       // Default defensively to `.engineLost` when the cause was not stamped: a
       // lost recording with no cause is still an unowned loss (#1174 A3).

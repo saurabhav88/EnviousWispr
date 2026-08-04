@@ -75,6 +75,7 @@ struct KernelTerminalProjectionsTests {
     #expect(RecordingOutcome.cancelled.lifecycleEvent == .cancelled)
     #expect(RecordingOutcome.failed(.asrFailed).lifecycleEvent == .failed(.asrFailed))
     #expect(RecordingOutcome.noSpeech(.vadGate).lifecycleEvent == .noSpeech(.vadGate))
+    #expect(RecordingOutcome.asrEmptyDespiteAudio.lifecycleEvent == .asrEmptyDespiteAudio)
     #expect(RecordingOutcome.discarded(.tooShort).lifecycleEvent == .discarded(.tooShort))
     #expect(
       RecordingOutcome.asrInterrupted(wasRecording: true).lifecycleEvent

@@ -36,6 +36,11 @@ public enum TerminalNoticeReason: String, Equatable, Sendable, CaseIterable {
   case asrWedged = "asr_wedged"
   case asrInterrupted = "asr_interrupted"
   case noAudioCaptured = "no_audio_captured"
+  /// #1920: NO PRODUCTION PRODUCER — the empty-decode path now ends at
+  /// `asr_empty_despite_audio` and says nothing to the user. This raw value is
+  /// retained because historical PostHog rows carry it; expect the series to
+  /// drop to zero at that release boundary, and read that drop as the change,
+  /// not as a fix. Do not give it a producer again.
   case asrEmptyWithSpeech = "asr_empty_with_speech"
   case emptyAfterProcessing = "empty_after_processing"
 

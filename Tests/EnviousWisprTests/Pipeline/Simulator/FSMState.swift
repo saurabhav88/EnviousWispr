@@ -44,6 +44,8 @@ enum FSMState: Equatable, Sendable {
   case cancelled
   case discarded
   case noSpeech
+  /// #1920: audio arrived, the engine ran clean, no words. Silent terminal.
+  case asrEmptyDespiteAudio
   case audioInterrupted
   case asrInterrupted
 
@@ -51,7 +53,7 @@ enum FSMState: Equatable, Sendable {
   var isTerminal: Bool {
     switch self {
     case .completed, .failed, .cancelled, .discarded, .noSpeech,
-      .audioInterrupted, .asrInterrupted:
+      .audioInterrupted, .asrInterrupted, .asrEmptyDespiteAudio:
       return true
     case .idle, .preparing, .warmingUp, .recording, .stopping, .transcribing,
       .finalizing:

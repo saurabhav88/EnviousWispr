@@ -55,6 +55,8 @@ import Testing
     // (founder ruling, 2026-07-31). Without these two arms an advisory that
     // fired on every no-speech source would pass the assertion above.
     #expect(mappedOutcome(.noSpeech(.asrEmptyNoSpeech)) == .idle)
+    // #1920: silent terminal — back to idle, no error state published.
+    #expect(mappedOutcome(.asrEmptyDespiteAudio) == .idle)
     #expect(mappedOutcome(.noSpeech(.emptyAfterProcessing)) == .idle)
     // #1891: zero-signal moved out of the error surface for the same reason.
     #expect(mappedOutcome(.failed(.zeroSignal)) == .advisory(.zeroSignal))

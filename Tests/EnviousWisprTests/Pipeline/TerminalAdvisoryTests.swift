@@ -26,6 +26,10 @@ import Testing
     // NEGATIVE — a working microphone and a user who said nothing. These stay
     // SILENT by founder ruling: they already know they did not speak.
     #expect(KernelDictationDriver.advisoryReason(for: .noSpeech(.asrEmptyNoSpeech)) == nil)
+    // #1920: audio WAS arriving above every dead-air floor and the engine ran
+    // clean, so there is nothing to tell the user to check. The two advisories
+    // above stay the only ones, and they are the genuinely-absent-audio cases.
+    #expect(KernelDictationDriver.advisoryReason(for: .asrEmptyDespiteAudio) == nil)
     #expect(KernelDictationDriver.advisoryReason(for: .noSpeech(.emptyAfterProcessing)) == nil)
 
     // NEGATIVE — genuinely our software. These keep "Audio capture error.
