@@ -336,6 +336,19 @@ struct TerminalContextResolverTests {
     #expect(
       description.contains("total=4.0ms"),
       "and the total must be their sum, got \(description)")
+
+    // A phase marker separates the initial read from the commit-boundary
+    // re-check, which reuses the same labels. It must cost nothing: if a marker
+    // charged even a rounding error, the total the 100 ms cap is judged against
+    // would drift with the number of phases rather than with real work.
+    budget.mark("recheck")
+    _ = budget.step(applying: element, label: "focused") {}
+
+    let withPhases = budget.timingDescription
+    #expect(withPhases.contains("|recheck|"), "the phase boundary must be visible")
+    #expect(
+      withPhases.contains("total=6.0ms"),
+      "the marker adds no time; only the third real step does, got \(withPhases)")
   }
 
   // MARK: - Circuit breaker

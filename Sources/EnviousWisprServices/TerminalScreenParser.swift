@@ -136,14 +136,93 @@ package enum TerminalScreenParser {
   /// Refusals ARE the feature. A wrapped box, an empty box, a stale box, an
   /// unrecognised layout and a bare shell all return nil, and the user gets
   /// today's behaviour unchanged.
+  /// The existing shape, kept because thirty-five tests encode the behaviour
+  /// contract through it and this change is diagnostic, not behavioural.
+  ///
+  /// DELEGATES rather than re-deciding: a second copy of the matching rules
+  /// could drift from the first, and then the log would describe a decision the
+  /// product did not make.
   package static func locate(inScreenTail tail: String) -> Located? {
+    if case .located(let found) = locateDetailed(inScreenTail: tail) { return found }
+    return nil
+  }
+
+  /// The same decision, carrying WHY it refused.
+  package static func locateDetailed(inScreenTail tail: String) -> LocateResult {
     let rows = tail.split(separator: "\n", omittingEmptySubsequences: false)
 
     // Codex first: it draws NO box, so the box search cannot find it, and its
     // status bar sits below the input. Anchoring on "the last non-empty row"
     // was measured to return `weekly 63% left` from that status bar.
-    if let located = locateCodex(rows) { return located }
-    return locateBoxed(rows)
+    switch locateCodex(rows) {
+    case .located(let located): return .located(located)
+    case .refused(let codexRefusal):
+      switch locateBoxed(rows) {
+      case .located(let located): return .located(located)
+      case .refused(let boxedRefusal):
+        // BOTH routes, deliberately. Every normal Claude Code screen fails the
+        // Codex probe first, so logging that refusal alone would report
+        // `no_opening_marker` on every dictation and send the next reader
+        // chasing the wrong layout entirely.
+        return .refused(Refusal(codex: codexRefusal, boxed: boxedRefusal))
+      }
+    }
+  }
+
+  // MARK: - Typed refusals
+  //
+  // `locate` returned a bare `nil` for ten structurally different reasons, and
+  // the caller collapsed all of them into one telemetry value. That discarded
+  // the only evidence that could explain a field failure: on 2026-08-04 three
+  // of four dictations refused here in under a millisecond, and no amount of
+  // reading could say which guard fired. Three hypotheses were tested by hand
+  // and all three were wrong.
+  //
+  // Closed-set names only. Never the screen, the input text, the marker-adjacent
+  // text, or any row's contents — the same boundary `TerminalContextRefusal`
+  // keeps.
+
+  package enum CodexRefusal: String, Sendable {
+    case noOpeningMarker = "codex:no_opening_marker"
+    case tooManyPopulatedRowsBelow = "codex:too_many_populated_rows_below"
+    case livePromptBelow = "codex:live_prompt_below"
+    case emptyInput = "codex:empty_input"
+  }
+
+  package enum BoxedRefusal: Sendable {
+    case fewerThanTwoBoundaries
+    case incompatibleBoundaries
+    case populatedBodyRows(Int)
+    case livePromptBelow
+    case wrongOpeningMarker
+    case emptyInput
+
+    package var telemetryName: String {
+      switch self {
+      case .fewerThanTwoBoundaries: return "boxed:fewer_than_two_boundaries"
+      case .incompatibleBoundaries: return "boxed:incompatible_boundaries"
+      case .populatedBodyRows(let count):
+        // The COUNT distinguishes an empty box from a wrapped one, which is the
+        // whole question. It is a small non-negative integer describing screen
+        // STRUCTURE, never content.
+        return count == 0
+          ? "boxed:zero_populated_body_rows"
+          : "boxed:multiple_populated_body_rows(\(count))"
+      case .livePromptBelow: return "boxed:live_prompt_below"
+      case .wrongOpeningMarker: return "boxed:wrong_opening_marker"
+      case .emptyInput: return "boxed:empty_input"
+      }
+    }
+  }
+
+  package struct Refusal: Sendable {
+    package let codex: CodexRefusal
+    package let boxed: BoxedRefusal
+  }
+
+  package enum LocateResult: Sendable {
+    case located(Located)
+    case refused(Refusal)
   }
 
   // MARK: - Codex
@@ -154,42 +233,51 @@ package enum TerminalScreenParser {
   /// "Opens" is load-bearing. A row that merely CONTAINS the marker — a footer
   /// reading `Press › to continue` — is not input, and requiring the marker to
   /// start the row is what separates them.
-  static func locateCodex(_ rows: [Substring]) -> Located? {
+  static func locateCodex(_ rows: [Substring]) -> CodexLocateResult {
     guard
       let index = rows.indices.last(where: { openingCharacter(of: rows[$0]) == codexMarker })
-    else { return nil }
+    else { return .refused(.noOpeningMarker) }
 
     let populatedBelow = rows[(index + 1)...].filter { !isBlank($0) }.count
-    guard populatedBelow <= 2 else { return nil }
+    guard populatedBelow <= 2 else { return .refused(.tooManyPopulatedRowsBelow) }
     // Same staleness rule as the boxed layouts: a live shell prompt below means
     // Codex has exited and this row is history.
-    guard !aLivePromptSits(below: index, in: rows) else { return nil }
+    guard !aLivePromptSits(below: index, in: rows) else { return .refused(.livePromptBelow) }
 
     let line = stripLeadingMarker(rows[index], codexMarker)
-    guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-    return Located(cli: .codex, inputLine: line)
+    guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return .refused(.emptyInput) }
+    return .located(Located(cli: .codex, inputLine: line))
+  }
+
+  enum CodexLocateResult {
+    case located(Located)
+    case refused(CodexRefusal)
   }
 
   // MARK: - Boxed layouts
 
   /// Claude Code and Gemini both draw a box; the RULE GLYPH tells them apart.
-  static func locateBoxed(_ rows: [Substring]) -> Located? {
+  static func locateBoxed(_ rows: [Substring]) -> BoxedLocateResult {
     let boundaries = rows.indices.compactMap { index -> (Int, BoundaryClass)? in
       boundaryClass(of: rows[index]).map { (index, $0) }
     }
-    guard boundaries.count >= 2 else { return nil }
+    guard boundaries.count >= 2 else { return .refused(.fewerThanTwoBoundaries) }
 
     let closing = boundaries[boundaries.count - 1]
     let opening = boundaries[boundaries.count - 2]
     // Both rules must be the same kind of box.
-    guard opening.1 == closing.1, closing.0 > opening.0 + 1 else { return nil }
+    guard opening.1 == closing.1, closing.0 > opening.0 + 1 else {
+      return .refused(.incompatibleBoundaries)
+    }
 
     let body = rows[(opening.0 + 1)..<closing.0].filter { !isBlank($0) }
     // More than one populated row means the input wrapped, and joining screen
     // rows reconstructs different text — a soft wrap can fall mid-word.
-    guard body.count == 1, let row = body.first else { return nil }
+    guard body.count == 1, let row = body.first else {
+      return .refused(.populatedBodyRows(body.count))
+    }
 
-    guard !aLivePromptSits(below: closing.0, in: rows) else { return nil }
+    guard !aLivePromptSits(below: closing.0, in: rows) else { return .refused(.livePromptBelow) }
 
     let cli: SupportedTerminalCLI = closing.1 == .block ? .geminiCLI : .claudeCode
     let marker = closing.1 == .block ? geminiMarker : claudeMarker
@@ -203,13 +291,18 @@ package enum TerminalScreenParser {
     // it at no cost. A faithful spoof that reproduces the marker still passes,
     // which is exactly why Gate 1 remains the authority; closing an instance is
     // not a claim to have closed the class.
-    guard openingCharacter(of: row) == marker else { return nil }
+    guard openingCharacter(of: row) == marker else { return .refused(.wrongOpeningMarker) }
 
     let line = stripLeadingMarker(row, marker)
     // An EMPTY box refuses. The prototype's exact failure was reading an empty
     // box back as the hint text printed below it, which would delete words
     // nobody typed.
-    guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-    return Located(cli: cli, inputLine: line)
+    guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return .refused(.emptyInput) }
+    return .located(Located(cli: cli, inputLine: line))
+  }
+
+  enum BoxedLocateResult {
+    case located(Located)
+    case refused(BoxedRefusal)
   }
 }

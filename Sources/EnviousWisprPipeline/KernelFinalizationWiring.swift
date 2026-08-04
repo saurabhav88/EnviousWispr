@@ -637,6 +637,35 @@ struct KernelFinalizationWiring {
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
             terminalBudget: terminalBudget))
         pasteResult = result
+
+        // WHICH payload actually went to the app, which `CURSOR_REPAIR` cannot
+        // say because it is logged before the write happens.
+        //
+        // This is the gap that made the founder's original report
+        // undiagnosable: the repair can decide `lowercased_first`, offer a
+        // candidate, and the route can still commit the LEGACY text because
+        // `payloadAtCommitBoundary` re-reads the caret and refuses when
+        // anything changed. From the log alone those two outcomes were
+        // indistinguishable — both showed `candidate=offered` and the user saw
+        // the capital survive.
+        //
+        // A second line rather than a field on the first, only because the fact
+        // does not exist until after the write. `tier` rides along so the two
+        // can be matched without a timestamp join.
+        // The FULL budget spend, which `CURSOR_REPAIR` structurally cannot show:
+        // that line is written before the paste, and the commit-boundary
+        // re-check runs after the target app is activated. On 2026-08-04 the
+        // repair line reported a healthy 1.6 ms and the breaker tripped anyway,
+        // because the whole overspend lived in the half no line covered.
+        //
+        // Everything before `|recheck|` was already on the repair line; the
+        // suffix is new, and the total is what the 100 ms cap is judged against.
+        await AppLogger.shared.log(
+          "CURSOR_COMMIT submitted=\(result.submittedPayload?.rawValue ?? "none") "
+            + "tier=\(result.pasteTierLabel ?? "none") "
+            + "timing=[\(terminalBudget.timingDescription)]",
+          level: .info, category: "KernelFinalizationWiring")
+
         if case .delivered = result.outcome {
           // The text that actually LANDED, which is not always the one this
           // closure passed in: a route may have committed the contextual

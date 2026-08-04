@@ -645,6 +645,11 @@ public enum PasteService {
   ) -> Bool {
     // The SAME budget as the initial read, so resolution plus every commit check
     // share one cumulative per-delivery bound rather than one bound each.
+    //
+    // Marked so the trace says WHICH phase spent the budget. This one runs after
+    // the target app has been activated, which the initial read does not, and it
+    // was invisible until now because `CURSOR_REPAIR` is logged before the paste.
+    terminalBudget?.mark("recheck")
     guard let fresh = readCaretContext(element: element, terminalBudget: terminalBudget) else {
       return false
     }

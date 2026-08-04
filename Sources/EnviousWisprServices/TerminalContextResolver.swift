@@ -1,5 +1,6 @@
 import ApplicationServices
 import Darwin
+import EnviousWisprCore
 import Foundation
 import os
 
@@ -81,7 +82,8 @@ package final class TerminalResolutionBudget: Sendable {
   ///
   /// Metadata only — a label and a duration. Never screen text, a path, or the
   /// derived line, which is the same boundary `TerminalContextRefusal` keeps.
-  private let trace = OSAllocatedUnfairLock(initialState: [(label: String, seconds: Double)]())
+  private let trace = OSAllocatedUnfairLock(
+    initialState: [(label: String, seconds: Double, isMark: Bool)]())
 
   /// `now` reads a monotonic clock in seconds. It exists so `step` can be
   /// tested against a clock the test drives, matching how the resolver already
@@ -135,20 +137,34 @@ package final class TerminalResolutionBudget: Sendable {
       // Two separate locks, never nested: `charge` has already returned.
       // Recording is a plain array append under an uncontended lock with no
       // suspension point, so this cannot widen the window it measures.
-      trace.withLock { $0.append((label, elapsed)) }
+      trace.withLock { $0.append((label, elapsed, false)) }
     }
     return body()
   }
 
+  /// Note a PHASE boundary in the trace. Costs nothing and charges nothing.
+  ///
+  /// The commit-boundary re-check calls the same read path as the initial
+  /// resolution, so its steps carry the same labels and land in the same trace.
+  /// Without a separator the line reads as one long run of duplicated names and
+  /// the reader cannot tell which phase spent the budget — which matters here
+  /// precisely because the re-check runs AFTER the target app is activated and
+  /// is the half we could not previously see.
+  package func mark(_ label: String) {
+    trace.withLock { $0.append((label, 0, true)) }
+  }
+
   /// The per-step costs, for one log line. Empty when no step ran.
   ///
-  /// Reads as `focused=0.4ms scan=1.1ms screen=0.2ms total=1.7ms`, which is
-  /// what makes a trip diagnosable: the total says the cap was hit, the labels
-  /// say which call ate it.
+  /// Reads as `focused=0.4ms screen=0.2ms |recheck| focused=97.1ms total=97.7ms`,
+  /// which is what makes a trip diagnosable: the total says the cap was hit, the
+  /// labels say which call ate it, and the marker says in which phase.
   package var timingDescription: String {
     let samples = trace.withLock { $0 }
-    guard !samples.isEmpty else { return "" }
-    let parts = samples.map { "\($0.label)=\(String(format: "%.1f", $0.seconds * 1000))ms" }
+    guard samples.contains(where: { !$0.isMark }) else { return "" }
+    let parts = samples.map {
+      $0.isMark ? "|\($0.label)|" : "\($0.label)=\(String(format: "%.1f", $0.seconds * 1000))ms"
+    }
     let total = samples.reduce(0.0) { $0 + $1.seconds }
     return parts.joined(separator: " ") + " total=\(String(format: "%.1f", total * 1000))ms"
   }
@@ -328,7 +344,25 @@ package enum TerminalContextResolver {
     }
 
     guard let tail else { return .refused(.screenUnreadable) }
-    guard let located = TerminalScreenParser.locate(inScreenTail: tail) else {
+    let located: TerminalScreenParser.Located
+    switch TerminalScreenParser.locateDetailed(inScreenTail: tail) {
+    case .located(let found):
+      located = found
+    case .refused(let detail):
+      // WHICH guard refused. `screenRefused` is one telemetry value covering ten
+      // structurally different outcomes, and that collapse is why a live field
+      // failure could not be diagnosed on 2026-08-04.
+      //
+      // Logged rather than threaded into `TerminalContextRefusal`, because that
+      // enum's raw values are a shipped closed set read by telemetry, and
+      // widening it to carry a parser detail would change what those values
+      // mean. Closed-set names only; nothing here can carry screen content.
+      Task {
+        await AppLogger.shared.log(
+          "TERMINAL_PARSE refused codex=\(detail.codex.rawValue) "
+            + "boxed=\(detail.boxed.telemetryName)",
+          level: .info, category: "TerminalContextResolver")
+      }
       return .refused(.screenRefused)
     }
 
