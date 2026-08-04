@@ -549,6 +549,19 @@ final class KernelLifecycleTelemetrySink {
           ["backend": backend.rawValue])
       }
 
+    case .asrEmptyDespiteAudio:
+      // #1920: context-only breadcrumb, mirroring the `.failed(.asrEmpty)` arm
+      // this replaces (#979 already downgraded that one from a Sentry error).
+      // NO Sentry event: nothing failed. The countable record is the
+      // `asr_empty_despite_audio` terminal result plus the dedicated
+      // `audio.asr_empty_despite_audio` event emitted from `emitTerminal`, which
+      // reads only the FROZEN snapshot — a breadcrumb here cannot carry the
+      // count because a no-error terminal fires no Sentry event for it to
+      // attach to (the #1845 lesson).
+      breadcrumb(
+        "asr", "ASR returned empty text while audio was arriving",
+        telemetryState.asrEmptyDiagnostics?.sentryExtra() ?? ["backend": backend.rawValue])
+
     case .cancelled:
       // r7 — NO breadcrumb. PR-1 §B.7.4 allows only ONE new event
       // (`discarded`); a `.cancelled` breadcrumb would be a second new event.
@@ -630,6 +643,12 @@ final class KernelLifecycleTelemetrySink {
     case .asrInterrupted: "asr_interrupted"
     case .discarded: "discarded"
     case .noSpeech: "no_speech"
+    // #1920: its OWN terminal result, an additive eighth value. NOT `failed`
+    // (nothing failed) and NOT `no_speech` (we cannot assert absence of speech,
+    // and `analytics-operations.md` documents `no_speech` as a quiet room).
+    // The `asr_empty_with_speech` series drops to zero at this release boundary;
+    // that drop IS this change, not a fix.
+    case .asrEmptyDespiteAudio: "asr_empty_despite_audio"
     case .cancelled: "cancelled"
     case .pipelineStartingUp, .modelLoading, .recordingCommitted, .recordingStopped,
       .transcriptionStarted, .asrCompleted:
@@ -914,6 +933,11 @@ final class KernelLifecycleTelemetrySink {
         .audioCaptureFailed, "recording",
         captureFailureExtra(error: error, failureMode: "no_microphone_found"))
     case .asrEmpty:
+      // #1920: UNREACHABLE — `RecordingFailureReason.asrEmpty` has no production
+      // producer since the empty-decode path was re-typed to
+      // `.asrEmptyDespiteAudio` (see that case's own arm above). Retained with
+      // the reason case itself; the notes below are the #979 provenance and
+      // describe the pre-#1920 shape.
       // #979: ASR-empty on non-speech (ambient noise trips VAD, engine
       // correctly returns empty) is an EXPECTED outcome, not an error.
       // Evidence: 7 organic capture pairs all ambient non-speech (energy-mod

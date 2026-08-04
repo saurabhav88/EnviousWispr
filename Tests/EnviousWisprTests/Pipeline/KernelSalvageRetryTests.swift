@@ -156,13 +156,13 @@ struct KernelSalvageRetryTests {
     #expect(ctx.wrapper.telemetryState.asrCompletedTelemetry?.mode == "batch")
   }
 
-  @Test("all retries empty → today's asrEmpty terminal, ladder bounded by the candidate count")
+  @Test("all retries empty → the empty terminal (#1920), ladder bounded by the candidate count")
   func allRetriesEmptyFallsThrough() async {
     let ctx = makeContext(behavior: .emptyThenScripted(text: "never", emptyCalls: 99))
     await runToTerminal(ctx)
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.recordingOutcome == .failed(.asrEmpty))
+    #expect(kernel.recordingOutcome == .asrEmptyDespiteAudio)
     #expect(kernel.deliveredTranscript == nil)
     #expect(kernel.pasteCount == 0)
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
@@ -180,12 +180,12 @@ struct KernelSalvageRetryTests {
 
     // The primary decode classified the session as empty; a retry-path error
     // must not surface as `.asrFailed`.
-    #expect(kernel.recordingOutcome == .failed(.asrEmpty))
+    #expect(kernel.recordingOutcome == .asrEmptyDespiteAudio)
     #expect(ctx.engine.finalizeCallCount == 2)
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
   }
 
-  @Test("no candidates (healthy-shaped capture) → no retry, terminal unchanged from A11")
+  @Test("no candidates (healthy-shaped capture) → no retry, terminal unchanged from A11 (#1920 renamed it)")
   func noCandidatesMeansNoRetry() async {
     let ctx = makeContext(behavior: .emptyThenScripted(text: "never", emptyCalls: 99))
     await ctx.wrapper.apply(.start)
@@ -200,7 +200,7 @@ struct KernelSalvageRetryTests {
     await ctx.wrapper.drainReadyWork()
     let kernel = ctx.wrapper.testKernel
 
-    #expect(kernel.recordingOutcome == .failed(.asrEmpty))
+    #expect(kernel.recordingOutcome == .asrEmptyDespiteAudio)
     // Exactly the primary decode — the ladder never dispatched.
     #expect(ctx.engine.finalizeCallCount == 1)
   }

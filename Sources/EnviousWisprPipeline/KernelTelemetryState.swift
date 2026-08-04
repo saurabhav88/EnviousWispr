@@ -112,8 +112,9 @@ final class KernelTelemetryState {
   /// or `nil` when this take is not one of those.
   ///
   /// **Written ONLY at the two producer sites** — immediately before the eligible
-  /// `.failed(.zeroSignal)` terminal, and on the final `asr_empty_with_speech`
-  /// path after salvage has failed. `finishTerminal` only COPIES it into the
+  /// `.failed(.zeroSignal)` terminal, and on the final empty-decode path after
+  /// salvage has failed (#1920 re-typed that terminal to
+  /// `.asrEmptyDespiteAudio`; it was `asr_empty_with_speech`). `finishTerminal` only COPIES it into the
   /// terminal snapshot.
   ///
   /// That direction is the whole point. Measuring or re-reading the bind at the
@@ -192,6 +193,9 @@ struct KernelNoSpeechTelemetry {
   /// `nil` means NOT COMPUTED, never "computed as zero". Populated only on the
   /// `.vadGate` route, which is the only one that runs the classifier — the
   /// `.asrEmptyNoSpeech` stamp leaves them nil and that is correct, not a gap.
+  /// #1920: `.asrEmptyDespiteAudio` likewise leaves them nil here — its energy
+  /// numbers reach telemetry through the frozen `signalAttribution` snapshot,
+  /// not these fields.
   var wholeBufferRMS: Float?
   var maxWindowRMS: Float?
   /// #1845 — THIS take's route, frozen from `lastResolvedRoute` at the

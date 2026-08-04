@@ -778,8 +778,10 @@ public final class TelemetryService {
   /// **Count DISTINCT `take_id`, never rows.** A healthy take also emits an
   /// `asr.completed` stage row; adding event counts double-counts it.
   ///
-  /// The attribution block is present only for `zero_signal` and
-  /// `asr_empty_with_speech` — the two terminals #1890 is about. Every one of
+  /// The attribution block is present only for `zero_signal` and the
+  /// empty-decode terminal — the two terminals #1890 is about. #1920 renamed the
+  /// latter from `asr_empty_with_speech` to `asr_empty_despite_audio`, so a query
+  /// spanning that release boundary must accept BOTH tokens. Every one of
   /// those fields omits when nil and NEVER defaults: an exact zero is the
   /// signature of a digitally dead channel (#1809), so a manufactured `0` would
   /// be indistinguishable from the finding this data exists to detect.

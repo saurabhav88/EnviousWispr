@@ -484,6 +484,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
       case .cancelled: return .cancelled
       case .discarded: return .discarded
       case .noSpeech: return .noSpeech
+      case .asrEmptyDespiteAudio: return .asrEmptyDespiteAudio
       case .audioInterrupted: return .audioInterrupted
       case .asrInterrupted: return .asrInterrupted
       case .noTransport: return .failed(.noAudioCaptured)

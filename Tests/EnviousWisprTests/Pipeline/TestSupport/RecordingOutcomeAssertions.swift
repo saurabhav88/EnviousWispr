@@ -24,6 +24,8 @@ extension RecordingOutcome {
     case audioInterrupted
     case asrInterrupted
     case noTransport
+    /// #1920: audio arrived, engine ran clean, no words. Silent terminal.
+    case asrEmptyDespiteAudio
   }
 
   var kind: Kind {
@@ -36,6 +38,7 @@ extension RecordingOutcome {
     case .audioInterrupted: return .audioInterrupted
     case .asrInterrupted: return .asrInterrupted
     case .noTransport: return .noTransport
+    case .asrEmptyDespiteAudio: return .asrEmptyDespiteAudio
     }
   }
 }

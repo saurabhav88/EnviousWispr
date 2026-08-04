@@ -412,7 +412,11 @@ final class RecoveryCoordinator {
   /// cells are unit-tested directly (`matcher-set-adversarial-tests`).
   static func shouldDeleteOnLiveEnding(_ ending: RecordingRecoveryEnding) -> Bool {
     switch ending {
-    case .discarded, .noSpeech, .asrRetryExhausted:
+    // #1920: `.asrEmptyDespiteAudio` deletes like every other concluded live
+    // ending. The app was alive, the user witnessed the take end with no text,
+    // and re-pressing the key is the whole recovery — a surprise replay of a
+    // wordless recording at a later launch would be a bug in their eyes.
+    case .discarded, .noSpeech, .asrRetryExhausted, .asrEmptyDespiteAudio:
       return true
     case .failed, .audioInterrupted, .asrInterrupted, .noTransport:
       // #1755: flipped from retain — the in-session salvage/retry was the

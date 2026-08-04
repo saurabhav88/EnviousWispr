@@ -37,6 +37,16 @@ public enum RecordingFailureReason: Equatable, Sendable {
   /// same as the prewarm (PTT) path already does AppKit-side.
   case noMicrophoneFound
   case noAudioCaptured
+  /// #1920: NO PRODUCTION PRODUCER since the empty-decode path was re-typed to
+  /// `RecordingOutcome.asrEmptyDespiteAudio`. Kept, not deleted, for two reasons:
+  /// its projected `TerminalNoticeReason.asrEmptyWithSpeech` raw value is the
+  /// SHIPPED PostHog vocabulary that historical rows still carry, and the tests
+  /// guarding #979's Sentry downgrade document why that downgrade exists. Same
+  /// accepted pattern as `TerminalNoticeReason.unknown`.
+  ///
+  /// **DO NOT route an empty decode here again.** An empty result carries no
+  /// evidence that anything failed; that is the whole finding of #1920, and
+  /// `.failed(_)` renders "Transcription error. Try again."
   case asrEmpty
   case asrFailed
   case asrWedged
@@ -95,6 +105,29 @@ enum RecordingOutcome: Equatable, Sendable {
   /// `bufferCountThisSession == 0` (a dead mic). Projects to the existing
   /// `.failed(.noAudioCaptured)` telemetry + "No audio captured" copy.
   case noTransport
+  /// #1920: audio was arriving ABOVE every dead-air floor, the engine ran
+  /// without error, and it produced no words.
+  ///
+  /// THAT IS ALL THIS MEANS. It is deliberately NOT a claim that the recording
+  /// was silent, NOT a claim that anything failed, and NOT a claim about the
+  /// user. We hold no evidence for any of those: the empty decode itself is not
+  /// evidence, and neither energy nor duration can supply it — measured twice
+  /// independently (`pipeline-mechanics.md` FACT: no-speech-gate-and-soft-onset;
+  /// `SentryBreadcrumb.swift` `recoveryEmptyText` reached the same wall on the
+  /// recovery path).
+  ///
+  /// Replaces `.failed(.asrEmpty)` on this path. Founder rule 2026-08-04: "no
+  /// error if people are holding down the button and not speaking, as long as we
+  /// know we're capturing audio" — pressing the key while gathering thoughts is
+  /// ordinary use, and the engine doing its job and finding nothing is not an
+  /// event. Genuinely absent audio keeps its own advisory
+  /// (`.failed(.zeroSignal)` / `.noSpeech(.vadGate)`), which is the case that
+  /// SHOULD speak.
+  ///
+  /// Silent for the user by design. Carries its own `asr_empty_despite_audio`
+  /// terminal result rather than `failed` (it is not a failure) or `no_speech`
+  /// (we cannot assert absence of speech).
+  case asrEmptyDespiteAudio
 }
 
 /// The `delivering` sub-phase (#1548 D1). Nests the existing
@@ -525,6 +558,13 @@ final class RecordingSessionKernel {
       return .interruption
     case .asrInterrupted, .failed, .noTransport:
       return .recoverableError
+    // #1920: NAMED rather than left to the `default`. This projection is
+    // `default`-bearing, so the compiler does NOT force a decision here and a
+    // new terminal silently inherits `nil`. That happens to be correct for
+    // `.asrEmptyDespiteAudio` — nothing failed, so there is no error surface —
+    // but the correctness must be visible, not accidental.
+    case .asrEmptyDespiteAudio:
+      return nil
     default:
       return nil
     }
@@ -2391,13 +2431,24 @@ final class RecordingSessionKernel {
         // (`!salvageDelivered` above), so this IS the final answer for the take
         // — freezing earlier would attribute a take that later recovered.
         //
+        // Both branches freeze. #1920 re-typed the speech-evidence branch to
+        // `.asrEmptyDespiteAudio`, which now carries its own
+        // `asr_empty_despite_audio` terminal result; the line below describes the
+        // pre-#1920 shape and is kept for the #1890 provenance.
         // Both branches freeze. `.failed(.asrEmpty)` is the `asr_empty_with_speech`
         // half #1890 counts; the `.noSpeech(.asrEmptyNoSpeech)` half already has
         // its own richer event from #1888, and giving the terminal row the same
         // frozen facts costs nothing and keeps the two joinable on `take_id`.
         freezeSignalAttribution(samples: captureResult.samples, peak: rawPeakAudioLevel)
+        // #1920: an empty decode is NOT a failure. Audio was arriving above every
+        // dead-air floor and the engine ran clean, so there is no evidence that
+        // anything broke — the terminal is a neutral observation and the user is
+        // told nothing. Genuinely absent audio keeps its own advisory via
+        // `.failed(.zeroSignal)` / `.noSpeech(.vadGate)`, which never reach here.
+        // The trigger is UNCHANGED from the pre-#1920 line: same
+        // `effectiveSpeechEvidence`, same point, after the same salvage attempt.
         finishTerminal(
-          effectiveSpeechEvidence ? .failed(.asrEmpty) : .noSpeech(.asrEmptyNoSpeech),
+          effectiveSpeechEvidence ? .asrEmptyDespiteAudio : .noSpeech(.asrEmptyNoSpeech),
           sid: sid)
       }
     case .cancelled:
@@ -3367,7 +3418,10 @@ final class RecordingSessionKernel {
       switch outcome {
       case .failed, .discarded, .cancelled, .noTransport:
         return true
-      case .completed, .noSpeech, .audioInterrupted, .asrInterrupted:
+      // #1920: `.asrEmptyDespiteAudio` is produced ONLY by the post-decode empty
+      // branch, which runs at `.delivering/.transcribing`. Refusing it everywhere
+      // else makes the impossible state unreachable rather than handled.
+      case .completed, .noSpeech, .audioInterrupted, .asrInterrupted, .asrEmptyDespiteAudio:
         return false
       }
     case .live:
@@ -3381,7 +3435,7 @@ final class RecordingSessionKernel {
         return true
       case .asrInterrupted(wasRecording: true):
         return true
-      case .asrInterrupted(wasRecording: false), .completed, .noSpeech:
+      case .asrInterrupted(wasRecording: false), .completed, .noSpeech, .asrEmptyDespiteAudio:
         return false
       }
     case .stopping:
@@ -3398,7 +3452,9 @@ final class RecordingSessionKernel {
         // never for an ordinary caller forging the live-time payload from a
         // later phase.
         return telemetryState.interruptedSalvageSource == .asr
-      case .completed, .noTransport:
+      // #1920: illegal from `.stopping` — the empty-decode producer runs a phase
+      // later, at `.delivering/.transcribing`.
+      case .completed, .noTransport, .asrEmptyDespiteAudio:
         return false
       }
     case .delivering:
@@ -3411,6 +3467,10 @@ final class RecordingSessionKernel {
         // is #1707's salvage-recovery-failure floor target, typed-gated below.
         switch outcome {
         case .failed, .noSpeech, .cancelled, .audioInterrupted:
+          return true
+        // #1920: the ONLY phase that may conclude `.asrEmptyDespiteAudio`. Its
+        // sole producer is the post-decode empty branch, which runs here.
+        case .asrEmptyDespiteAudio:
           return true
         case .asrInterrupted(wasRecording: false):
           return true
@@ -3435,7 +3495,11 @@ final class RecordingSessionKernel {
           return true
         case .asrInterrupted(wasRecording: true):
           return telemetryState.interruptedSalvageSource == .asr
-        case .cancelled, .discarded, .asrInterrupted(wasRecording: false), .noTransport:
+        // #1920: `.finalizing` begins only once a NON-EMPTY transcript enters
+        // `runFinalizing`, so the empty-decode producer can never conclude from
+        // here. Refused rather than accepted-just-in-case.
+        case .cancelled, .discarded, .asrInterrupted(wasRecording: false), .noTransport,
+          .asrEmptyDespiteAudio:
           return false
         }
       }
@@ -3500,7 +3564,10 @@ final class RecordingSessionKernel {
       return outcome
     case .engine(let cause):
       switch outcome {
-      case .discarded, .noSpeech, .failed(.noAudioCaptured):
+      // #1920: `.asrEmptyDespiteAudio` joins the narrow set. An interrupted
+      // engine IS the honest account of why there is no text, and this is the
+      // same treatment its `.noSpeech` siblings already get.
+      case .discarded, .noSpeech, .failed(.noAudioCaptured), .asrEmptyDespiteAudio:
         return .audioInterrupted(cause)
       case .completed, .cancelled, .failed, .audioInterrupted, .asrInterrupted, .noTransport:
         return outcome
@@ -3533,7 +3600,11 @@ final class RecordingSessionKernel {
           stage: "recovery", message: "asr_salvage_cancelled",
           data: ["asr_salvage_outcome": "cancelled"])
         return outcome
-      case .discarded, .noSpeech, .failed, .audioInterrupted, .asrInterrupted, .noTransport:
+      // #1920: `.asrEmptyDespiteAudio` joins the WIDE-by-design set — the ASR
+      // salvage promises the same terminal every pre-salvage failure mode
+      // produced, and this is one of them.
+      case .discarded, .noSpeech, .failed, .audioInterrupted, .asrInterrupted, .noTransport,
+        .asrEmptyDespiteAudio:
         // #1707 Codex code-diff r2: only UPGRADE the telemetry signal — a
         // recovery that already failed/cancelled (stamped at the call site
         // before decode was ever attempted) must not be overwritten here;

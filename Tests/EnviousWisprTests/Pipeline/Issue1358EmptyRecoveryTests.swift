@@ -265,6 +265,23 @@ private final class SavedBox {
           == .noSpeech(.asrEmptyNoSpeech))
     }
 
+    /// #1920: the same two floor cells for the new speech-evidence terminal. It
+    /// is a TOP-LEVEL case, so unlike a `.noSpeech` sub-case it is not swept in
+    /// by `case .noSpeech` — both arms had to name it, and this freezes that.
+    @Test("asrEmptyDespiteAudio floors to audioInterrupted, and passes through clean")
+    func asrEmptyDespiteAudioFloorCells() {
+      let interrupted = freshKernelAtFinalizing()
+      interrupted.testSetInterruptionCause(.engineLost)
+      #expect(
+        interrupted.testInterruptedTerminalFloor(.asrEmptyDespiteAudio).kind
+          == .audioInterrupted)
+
+      let clean = freshKernelAtFinalizing()
+      clean.testSetInterruptionCause(nil)
+      #expect(
+        clean.testInterruptedTerminalFloor(.asrEmptyDespiteAudio) == .asrEmptyDespiteAudio)
+    }
+
     // MARK: Diagnostic-archive relabel (code-diff r2)
     // `relabeledArchiveOutcome` + the dictation-audio-archive feature are
     // `#if DEBUG`-only (diagnostic capture), so this test lives in the gated suite.

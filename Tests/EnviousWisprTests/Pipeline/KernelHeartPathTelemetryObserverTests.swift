@@ -81,6 +81,7 @@ import Testing
     func noSpeechCarriesSource() {
       #expect(terminalEvent(.noSpeech(.vadGate)) == .noSpeech(.vadGate))
       #expect(terminalEvent(.noSpeech(.asrEmptyNoSpeech)) == .noSpeech(.asrEmptyNoSpeech))
+      #expect(terminalEvent(.asrEmptyDespiteAudio) == .asrEmptyDespiteAudio)
     }
 
     // MARK: deltaEvents map — pure (in-flight tuple delta → lifecycle events)

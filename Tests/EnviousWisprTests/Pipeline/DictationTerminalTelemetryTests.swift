@@ -57,6 +57,10 @@ struct DictationTerminalTelemetryTests {
       (.noSpeech(.vadGate), "no_speech"),
       (.audioInterrupted(.deviceRemoved), "audio_interrupted"),
       (.asrInterrupted(wasRecording: true), "asr_interrupted"),
+      // #1920: its own eighth value. Countability for this class lives HERE, on
+      // the terminal row that already carries device, transports, the energy
+      // triple, duration and take_id — no second overlapping event is minted.
+      (.asrEmptyDespiteAudio, "asr_empty_despite_audio"),
     ]
     for (outcome, expected) in cases {
       let recorder = Recorder()
@@ -83,6 +87,10 @@ struct DictationTerminalTelemetryTests {
       (.audioInterrupted(.deviceRemoved), "audio_interrupted", nil),
       (.asrInterrupted(wasRecording: true), "asr_interrupted", nil),
       (.noTransport, "failed", "no_audio_captured"),
+      // #1920: NOT a failure, so no reason — and the row is still countable by
+      // its own `result`. This is the assertion that keeps the "only failed rows
+      // carry a reason" contract true after adding the eighth value.
+      (.asrEmptyDespiteAudio, "asr_empty_despite_audio", nil),
     ]
     for (outcome, expectedResult, expectedReason) in cases {
       let recorder = Recorder()

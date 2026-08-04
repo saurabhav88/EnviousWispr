@@ -1034,7 +1034,9 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         return .advisory(reason: advisory)
       }
       switch outcome {
-      case .completed, .cancelled, .discarded, .noSpeech:
+      // #1920: `.asrEmptyDespiteAudio` is hidden. The engine ran and found no
+      // words while audio was arriving; that is not an event to announce.
+      case .completed, .cancelled, .discarded, .noSpeech, .asrEmptyDespiteAudio:
         return .hidden
       case .failed(let reason):
         // #1558: emit the TYPED reason; the raw detail stays owned by the
@@ -1428,6 +1430,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       return .discarded
     case .noSpeech:
       return .noSpeech
+    // #1920: its OWN ending, not reused from `.noSpeech`. The two are different
+    // observations, and `shouldDeleteOnLiveEnding` must decide this one
+    // explicitly rather than inherit a no-speech decision.
+    case .asrEmptyDespiteAudio:
+      return .asrEmptyDespiteAudio
     case .failed:
       return retryOutcome == .retryExhausted ? .asrRetryExhausted : .failed
     case .audioInterrupted:
@@ -1648,8 +1655,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       case .asrEmptyNoSpeech, .emptyAfterProcessing:
         return nil
       }
+    // #1920: `.asrEmptyDespiteAudio` gets NO advisory. Audio was arriving above
+    // every dead-air floor, so there is nothing to tell the user to check — the
+    // genuinely-absent-audio cases above (`.zeroSignal`, `.vadGate`) keep the
+    // advisory, and they are the ones that should speak.
     case .completed, .cancelled, .discarded, .audioInterrupted,
-      .asrInterrupted, .noTransport:
+      .asrInterrupted, .noTransport, .asrEmptyDespiteAudio:
       return nil
     }
   }
@@ -1676,7 +1687,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       switch outcome {
       case .completed:
         return .complete
-      case .cancelled, .discarded, .noSpeech:
+      // #1920: back to idle with no error state published.
+      case .cancelled, .discarded, .noSpeech, .asrEmptyDespiteAudio:
         return .idle
       case .failed(let reason):
         return .error(terminalNoticeReason(for: reason))
