@@ -260,6 +260,10 @@ struct PolishFailureReasonTests {
     // #1710: with no client ceiling (or Claude's generous fixed cap), a
     // truncation is the provider's own per-model limit — their condition.
     .outputTruncated,
+    // #1914: either the user has not chosen a model, or we deliberately
+    // declined to choose a hosted one for them. A configuration state, not a
+    // defect, and the count is what tells us how often the refusal fires.
+    .noModelSelected,
   ]
 
   @Test(
@@ -360,21 +364,29 @@ struct PolishFailureReasonTests {
     }
   }
 
-  /// Four reasons tell the user "AI cleanup skipped" — nothing is broken. Exactly two
+  /// Five reasons tell the user "AI cleanup skipped" — nothing is broken. Exactly two
   /// of them still page us, and both are OURS despite the reassuring copy:
   ///   - `timedOut` — the deadline it blew is a budget WE chose, so a spike means our
   ///     budget shrank or our prompt ballooned.
   ///   - `apiKeyUnreadable` — we stored a key and then could not read it back. Its
   ///     copy is deliberately identical to `apiKeyMissing` (re-entering the key fixes
   ///     both), but only this one is a defect.
-  /// The other two are the user's own situation and are counted only. Pinned so a
+  /// The other three are the user's own situation and are counted only. Pinned so a
   /// future tidy-up cannot collapse the notice and the channel into each other: they
   /// answer different questions — "is the user alarmed?" vs "is this our bug?"
   @Test("the only reassuring-looking reasons that still page us are the two that are ours")
   func onlyOurOwnFailuresAlertAmongSkipNotices() {
     let skipNoticeReasons = PolishFailureReason.allCases.filter { $0.leadIn == .skipped }
     #expect(
-      Set(skipNoticeReasons) == [.apiKeyMissing, .apiKeyUnreadable, .inputTooLong, .timedOut])
+      Set(skipNoticeReasons) == [
+        .apiKeyMissing, .apiKeyUnreadable, .inputTooLong, .timedOut,
+        // #1914: skip tone, deliberately. Declining to arm a hosted model for
+        // the user is not a breakage to apologise for. This assertion is the
+        // ONLY thing pinning that classification — the pill gets its skip
+        // prefix from `ollamaPreflightSkipMessage` directly, so no runtime
+        // test can catch a wrong `leadIn` here. Mutation-verified.
+        .noModelSelected,
+      ])
 
     let alertingSkipNotices = skipNoticeReasons.filter {
       $0.telemetryChannel(provider: .openAI) == .alertingSentryError

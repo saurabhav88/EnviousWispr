@@ -866,16 +866,79 @@ public final class SettingsManager {
       // sorts first alphabetically, not the fast/cheap Haiku default.
       let defaultID = LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
       let datedSnapshotPrefix = "\(defaultID)-"
-      let preferredDefault = models.first { model in
+
+      // #1914 (founder decision 2026-08-04): this repair branch may arm a model
+      // automatically, so its candidates exclude hosted Ollama models. It is the
+      // only site that can do so — verified by enumerating every writer of the
+      // two fields.
+      //
+      // An available model already armed before this call bypasses the branch.
+      // The stored fields carry no provenance, so that existing selection may
+      // have come from either a manual pick or the pre-Chunk-4 automatic
+      // fallback (`4b668907`, `models.first(where: \.isAvailable)`), whose
+      // result is byte-identical to a manual pick. The same is true of the
+      // remembered `ollamaModel` the launch-time canonicalization reads.
+      //
+      // FOUNDER DECISION 2026-08-04: existing selections are LEFT ALONE. No
+      // one-time migration clears a pre-existing hosted selection.
+      //
+      // The reason is this branch's own behaviour, not the population size. An
+      // armed, available model never reaches here, so this change PRESERVES its
+      // current selection — for identified users and unidentified ones alike.
+      // Chunk 2 separately improves thinking-model request behaviour without
+      // changing that selection. Note what is NOT claimed: availability in
+      // discovery does not prove usable cloud access, so a preserved hosted
+      // model may still fail at inference (ENVIOUSWISPR-4M's is paid-tier and
+      // 403s). A forced unselect would be the only action that REMOVES a
+      // selection someone may have made deliberately.
+      //
+      // Do NOT re-derive the population from telemetry and reach a different
+      // conclusion: it CANNOT answer the question. We record model names, not
+      // the daemon's `remote_host`, and hosted models do not reliably carry a
+      // `-cloud` suffix — §3 Decision 1 rejects that suffix as a classifier for
+      // exactly this reason. A 2026-08-04 query matching plan-documented
+      // cloud-only names found one person (`deepseek-v4-flash:latest`, the
+      // ENVIOUSWISPR-4M user) out of 16 Ollama users in 365 days. That is a
+      // LOWER BOUND from a name list, not a count. An earlier revision of this
+      // comment claimed the population was "measured EMPTY" by grepping for
+      // `-cloud`; that classifier is the one the plan forbids, and the claim
+      // was false.
+      //
+      // Reopen only if provenance-bearing evidence shows that a pre-Chunk-4
+      // automatic hosted selection survived the upgrade and harmed a user.
+      // Chunk 7's remoteness field alone CANNOT do this: it says where a model
+      // runs, never who chose it, and those are different questions.
+      let eligible = models.filter { model in
         guard model.isAvailable else { return false }
+        return provider == .ollama ? !model.isRemote : true
+      }
+      let preferredDefault = eligible.first { model in
         if model.id == defaultID { return true }
         guard model.id.hasPrefix(datedSnapshotPrefix) else { return false }
         let snapshotSuffix = model.id.dropFirst(datedSnapshotPrefix.count)
         return snapshotSuffix.count == 8 && snapshotSuffix.allSatisfy(\.isNumber)
       }
-      if let fallback = preferredDefault ?? models.first(where: { $0.isAvailable }) {
+      if let fallback = preferredDefault ?? eligible.first {
         llmModel = fallback.id
         if provider == .ollama { ollamaModel = fallback.id }
+      } else if provider == .ollama {
+        // Every available model is hosted. Arm NOTHING rather than pick one.
+        //
+        // BOTH fields, and that is the whole point: `effectiveLLMModel` reads
+        // `ollamaModel` for this provider, not `llmModel`, so clearing only the
+        // picker field would leave the runtime still armed to whatever was
+        // remembered and the refusal would be cosmetic. Clearing both is what
+        // makes the readiness preflight see an empty model, classify it
+        // `.noModelSelected`, and show the user the pill.
+        //
+        // This is the one place the remembered preference is deliberately
+        // discarded. The `models.isEmpty` branch above keeps it on purpose (it
+        // powers the Download-suggestion copy and nothing is installed to
+        // contradict it); here models DO exist and every one of them is a model
+        // we must not choose, so a remembered name would resurrect the exact
+        // silent arming this refuses.
+        llmModel = ""
+        ollamaModel = ""
       }
     }
   }

@@ -138,6 +138,73 @@ enum AIPolishModelClassifier {
   }
 }
 
+/// #1914: how the MODEL SELECTION DROPDOWN is split into sections.
+///
+/// Sibling of `OllamaCatalogPresentation`, which owns the Manage Models list.
+/// Two types rather than one because they answer different questions about
+/// different row types: that one partitions `OllamaModelCatalogEntry` (things
+/// you can download and delete), this one partitions `LLMModelInfo` (things you
+/// can select, across every provider). They deliberately SHARE the heading
+/// string, because a user reading either surface is asking the same question.
+///
+/// Placed here beside `AIPolishModelClassifier` for the same reason that type
+/// is here: it is picker policy consumed by exactly one view, and keeping it as
+/// production code rather than an inline filter is what lets a test prove the
+/// real split rather than a copy of it.
+enum OllamaModelPickerPresentation {
+
+  /// The dropdown, split for display. Every input row lands in exactly one
+  /// array, and that is structural rather than tested-for: `groups(from:)`
+  /// assigns each row in a single pass with no overlapping filters.
+  ///
+  /// Deliberately NOT `Equatable`: `LLMModelInfo` is not, and conforming it
+  /// would widen a public Core type to serve a test's convenience. Tests
+  /// compare `.map(\.id)`, which is what they actually mean anyway.
+  struct Groups {
+    let recommended: [LLMModelInfo]
+    let other: [LLMModelInfo]
+    /// Ollama models the daemon proxies to Ollama's servers. Always empty for
+    /// every other provider.
+    let hosted: [LLMModelInfo]
+    let locked: [LLMModelInfo]
+  }
+
+  /// One heading, one string. Sharing it with the Manage Models list is the
+  /// point: two spellings of the same fact is how the two surfaces would come
+  /// to describe the same model differently.
+  static var hostedGroupTitle: String { OllamaCatalogPresentation.hostedGroupTitle }
+
+  static func groups(from models: [LLMModelInfo], provider: LLMProvider) -> Groups {
+    var recommended: [LLMModelInfo] = []
+    var other: [LLMModelInfo] = []
+    var hosted: [LLMModelInfo] = []
+    var locked: [LLMModelInfo] = []
+
+    for model in models {
+      guard model.isAvailable else {
+        locked.append(model)
+        continue
+      }
+      // Remoteness is checked BEFORE the recommended/other split, not after: a
+      // hosted model can perfectly well carry a "recommended" token in its id,
+      // and landing it under "Recommended for cleanup" would put a model that
+      // runs on someone else's servers at the top of the list under a heading
+      // that says nothing about where it runs.
+      if provider == .ollama && model.isRemote {
+        hosted.append(model)
+        continue
+      }
+      if AIPolishModelClassifier.isRecommendedForCleanup(model.id) {
+        recommended.append(model)
+      } else {
+        other.append(model)
+      }
+    }
+
+    return Groups(recommended: recommended, other: other, hosted: hosted, locked: locked)
+  }
+}
+
 /// LLM provider configuration, API keys, Ollama wizard, and prompt editing.
 struct AIPolishSettingsView: View {
   @Environment(SettingsManager.self) private var settings
@@ -415,6 +482,19 @@ struct AIPolishSettingsView: View {
               : settings.llmModel
           )
           .tag(settings.llmModel)
+        }
+
+        // #1914: models exist and none is armed. Without a row carrying the
+        // empty tag the Picker has no selection to render and simply draws
+        // blank, which reads as broken rather than as a state the user can act
+        // on. This is the settings-side half of the "no polish model selected"
+        // pill: the notice says it during dictation, this says it at rest.
+        //
+        // Mutually exclusive with the branch above, which already emits an
+        // empty-tagged row when discovery came back empty. Two rows sharing one
+        // tag would make the Picker's selection ambiguous.
+        if !llmDiscovery.discoveredModels.isEmpty && settings.llmModel.isEmpty {
+          Text("No model selected").tag("")
         }
 
         modelPickerSections
@@ -788,33 +868,41 @@ struct AIPolishSettingsView: View {
 
   // MARK: - Model Picker Sections (#617)
 
-  /// Three labeled groups of discovered models. Empty groups are suppressed.
+  /// Labeled groups of discovered models. Empty groups are suppressed.
   /// Locked rows are disabled so a user can't pick something the API will reject.
+  ///
+  /// #1914: the split moved into `OllamaModelPickerPresentation` so the hosted
+  /// group is production policy a test can hold, not three inline filters.
   @ViewBuilder
   private var modelPickerSections: some View {
-    let discovered = llmDiscovery.discoveredModels
-    let recommended = discovered.filter {
-      $0.isAvailable && AIPolishModelClassifier.isRecommendedForCleanup($0.id)
-    }
-    let other = discovered.filter {
-      $0.isAvailable && !AIPolishModelClassifier.isRecommendedForCleanup($0.id)
-    }
-    let locked = discovered.filter { !$0.isAvailable }
+    let groups = OllamaModelPickerPresentation.groups(
+      from: llmDiscovery.discoveredModels, provider: settings.llmProvider)
 
-    if !recommended.isEmpty {
+    if !groups.recommended.isEmpty {
       Section("Recommended for cleanup") {
-        ForEach(recommended) { model in
+        ForEach(groups.recommended) { model in
           Text(model.displayName).tag(model.id)
         }
       }
     }
-    if !other.isEmpty {
+    if !groups.other.isEmpty {
       Section("Other available models") {
-        ForEach(other) { model in
+        ForEach(groups.other) { model in
           Text(model.displayName).tag(model.id)
         }
       }
     }
+    // #1914: hosted models stay fully selectable. The group states where they
+    // run so the choice is visible while scanning; it is not a warning and not
+    // a gate. What the app will not do is choose one FOR the user.
+    if !groups.hosted.isEmpty {
+      Section(OllamaModelPickerPresentation.hostedGroupTitle) {
+        ForEach(groups.hosted) { model in
+          Text(model.displayName).tag(model.id)
+        }
+      }
+    }
+    let locked = groups.locked
     if !locked.isEmpty {
       Section("Not available with your API key") {
         ForEach(locked) { model in
@@ -943,7 +1031,8 @@ struct AIPolishSettingsView: View {
         """
         Ollama runs open models through a free tool you install once, with no API key or \
         per-use cost. Models on your Mac keep your dictation on your Mac. Ollama also offers \
-        hosted models, which run on Ollama's servers. Those are listed separately below.
+        hosted models, which run on Ollama's servers. Those are listed separately below \
+        and are never selected for you.
         """
       )
       .settingsReadingCopy()

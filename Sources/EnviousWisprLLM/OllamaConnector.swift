@@ -67,8 +67,20 @@ public enum OllamaReadiness: Sendable, Equatable {
   /// responding" class.
   case serverDown
   /// Server responded with a parsed tags list that has no canonical match for
-  /// the model (or the model string is empty — nothing armed).
+  /// the model. The user HAS a selection; it is not installed.
   case modelMissing
+  /// Nothing is armed at all — the model string is empty.
+  ///
+  /// #1914: split out of `modelMissing`, which used to absorb it. The two states
+  /// need different sentences and the difference is not cosmetic: "no model is
+  /// installed in Ollama" was flatly false for a user with models installed and
+  /// none selected, which is exactly the state the never-auto-arm-a-hosted-model
+  /// refusal now creates on purpose.
+  ///
+  /// The producer names it rather than the consumer re-deriving emptiness later:
+  /// only the preflight can see the armed string, and a downstream `isEmpty`
+  /// check would be a second authority on the same question.
+  case noModelSelected
 }
 
 /// Ollama local LLM connector. Uses Ollama's native /api/chat endpoint
@@ -266,9 +278,9 @@ public struct OllamaConnector: TranscriptPolisher {
     executor: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil,
     deadlineSeconds: Double = 1.0
   ) async -> OllamaReadiness {
-    // Empty model string → nothing armed → modelMissing by definition,
-    // without spending a network round trip.
-    guard !model.isEmpty else { return .modelMissing }
+    // Empty model string → nothing armed. Its own state, not `modelMissing`:
+    // no selection exists to be missing. Answered without a network round trip.
+    guard !model.isEmpty else { return .noModelSelected }
     guard let url = URL(string: "\(baseURL)/api/tags") else { return .serverDown }
     var mutableRequest = URLRequest(url: url)
     mutableRequest.httpMethod = "GET"

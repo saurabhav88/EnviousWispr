@@ -270,7 +270,10 @@ struct OllamaReadinessPreflightTests {
 
   // MARK: - Probe wrapper
 
-  @Test("empty model is modelMissing WITHOUT any network call")
+  /// #1914: was `.modelMissing`. The two states now diverge here, at the
+  /// producer, because only the preflight can see the armed string and a
+  /// downstream `isEmpty` check would be a second authority on one question.
+  @Test("empty model is noModelSelected WITHOUT any network call")
   func emptyModelShortCircuits() async {
     let connector = OllamaConnector()
     let readiness = await connector.preflightReadiness(
@@ -279,7 +282,21 @@ struct OllamaReadinessPreflightTests {
         Issue.record("the empty-model guard must not reach the network")
         throw URLError(.badURL)
       })
+    #expect(readiness == .noModelSelected)
+  }
+
+  /// The discriminating half. A nonempty model absent from the tags list is a
+  /// genuinely missing INSTALL and must keep its own state, or the split buys
+  /// nothing: both would still land on one sentence.
+  @Test("a nonempty model absent from tags stays modelMissing, not noModelSelected")
+  func nonemptyMissingModelStaysModelMissing() async {
+    let connector = OllamaConnector()
+    let body = tagsBody(rows: [["name": "llama3.2"]])
+    let readiness = await connector.preflightReadiness(
+      model: "deleted-model",
+      executor: { _ in (body, self.http(200)) })
     #expect(readiness == .modelMissing)
+    #expect(readiness != .noModelSelected)
   }
 
   @Test("a transport error (connection refused) maps to serverDown")
@@ -339,20 +356,46 @@ struct OllamaReadinessPreflightTests {
     let serverDown = PolishFailureReason.providerUnreachable.ollamaPreflightSkipMessage
     #expect(
       serverDown == "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish.")
+    // #1914: was "no model is installed in Ollama", which is false whenever
+    // models ARE installed and the armed one simply is not among them.
     let modelMissing = PolishFailureReason.modelUnavailable.ollamaPreflightSkipMessage
     #expect(
       modelMissing
-        == "AI cleanup skipped: no model is installed in Ollama. Download one in Settings → AI Polish."
+        == "AI cleanup skipped: the selected Ollama model isn't installed. "
+          + "Download it or pick another in Settings → AI Polish."
     )
-    // Both must carry the skip lead-in the completion planner keys off.
+    // #1914: the founder's sentence, pinned. Distinct from the one above on
+    // purpose — telling a user with no selection to download something sends
+    // them to fix what is not broken.
+    let noSelection = PolishFailureReason.noModelSelected.ollamaPreflightSkipMessage
+    #expect(
+      noSelection
+        == "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish.")
+    #expect(modelMissing != noSelection, "the two states must not collapse to one sentence")
+    // All three must carry the skip lead-in the completion planner keys off.
     #expect(PolishFailureReason.isSkipNotice(serverDown ?? "") == true)
     #expect(PolishFailureReason.isSkipNotice(modelMissing ?? "") == true)
+    #expect(PolishFailureReason.isSkipNotice(noSelection ?? "") == true)
+  }
+
+  /// Rule 6: no em or en dashes in user-facing copy. Checked on the whole
+  /// preflight set rather than the one string this change added, because the
+  /// rule applies to the class and a per-instance check is how the next one
+  /// slips through.
+  @Test("no preflight notice contains an em or en dash")
+  func preflightCopyHasNoDashes() {
+    for reason in PolishFailureReason.allCases {
+      guard let message = reason.ollamaPreflightSkipMessage else { continue }
+      #expect(!message.contains("\u{2014}"), "\(reason) has an em dash")
+      #expect(!message.contains("\u{2013}"), "\(reason) has an en dash")
+    }
   }
 
   @Test("non-preflight reasons have NO preflight copy or telemetry reason")
   func nonPreflightReasonsAreNil() {
     for reason in PolishFailureReason.allCases
-    where reason != .providerUnreachable && reason != .modelUnavailable {
+    where reason != .providerUnreachable && reason != .modelUnavailable
+      && reason != .noModelSelected {
       #expect(reason.ollamaPreflightSkipMessage == nil)
       #expect(PolishSkipReason(ollamaPreflight: reason) == nil)
     }
@@ -363,6 +406,9 @@ struct OllamaReadinessPreflightTests {
     #expect(
       PolishSkipReason(ollamaPreflight: .providerUnreachable)?.telemetryTag
         == "local_polish_ollama_server_down")
+    #expect(
+      PolishSkipReason(ollamaPreflight: .noModelSelected)?.telemetryTag
+        == "local_polish_ollama_no_model_selected")
     #expect(
       PolishSkipReason(ollamaPreflight: .modelUnavailable)?.telemetryTag
         == "local_polish_ollama_model_missing")

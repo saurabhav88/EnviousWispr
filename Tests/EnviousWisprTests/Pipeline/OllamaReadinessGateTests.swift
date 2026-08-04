@@ -142,6 +142,36 @@ struct OllamaReadinessGateTests {
     #expect(factoryCalls() == 0)
   }
 
+  /// #1914: the state the never-auto-arm refusal creates. It must reach the
+  /// user as its OWN reason, not folded into `.modelUnavailable`, because the
+  /// two carry different sentences and one of them would be false.
+  @Test("noModelSelected throws localPolishNotReady(.noModelSelected) with ZERO connector work")
+  func noModelSelectedThrowsBeforeAnyPolisher() async {
+    let (step, factoryCalls) = makeStep(probe: { _ in .noModelSelected })
+
+    await #expect(throws: LLMError.localPolishNotReady(.noModelSelected)) {
+      _ = try await step.process(context())
+    }
+    #expect(factoryCalls() == 0)
+  }
+
+  /// The discriminating control: the two readiness states must not produce the
+  /// same error. Without this, mapping both to one reason would still pass the
+  /// test above.
+  @Test("noModelSelected and modelMissing produce DIFFERENT errors")
+  func noModelSelectedIsNotModelMissing() async {
+    let (selectedStep, _) = makeStep(probe: { _ in .noModelSelected })
+    await #expect(throws: LLMError.localPolishNotReady(.noModelSelected)) {
+      _ = try await selectedStep.process(context())
+    }
+
+    let (missingStep, _) = makeStep(probe: { _ in .modelMissing })
+    // Fails if the gate collapsed the two states onto one reason.
+    await #expect(throws: LLMError.localPolishNotReady(.modelUnavailable)) {
+      _ = try await missingStep.process(context())
+    }
+  }
+
   @Test("ready proceeds to the polisher exactly as before")
   func readyProceedsToPolisher() async throws {
     let invocationCounter = InvocationCounter()
@@ -264,10 +294,38 @@ struct OllamaReadinessGateTests {
 
     #expect(
       result.polishError
-        == "AI cleanup skipped: no model is installed in Ollama. Download one in Settings → AI Polish."
+        == "AI cleanup skipped: the selected Ollama model isn't installed. "
+        + "Download it or pick another in Settings → AI Polish."
     )
     #expect(PolishFailureReason.isSkipNotice(result.polishError ?? "") == true)
     #expect(result.context.polishedText == nil)
+    #expect(spy.count == 0)
+  }
+
+  /// #1914 END TO END, and this is the test that stands for the founder's
+  /// decision: "a pill flash saying no polish model selected while still
+  /// pasting the raw output". Every clause of that sentence is an assertion
+  /// here — the exact pill, the skip tone, and the deterministic text arriving
+  /// intact rather than the run failing.
+  @Test("no model selected -> pinned skipped-tone notice, raw text, NO Sentry capture")
+  func noModelSelectedSurfacedSkip() async throws {
+    let spy = CaptureSpy()
+
+    let result = try await runThroughRunner(probe: { _ in .noModelSelected }, spy: spy)
+
+    #expect(
+      result.polishError
+        == "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish.")
+    // Skip tone, not failure tone: the completion planner keys the "Polish
+    // failed. Using raw text." overlay off this exact predicate, and declining
+    // to choose a model for the user is not a breakage to apologise for.
+    #expect(PolishFailureReason.isSkipNotice(result.polishError ?? "") == true)
+    // "while still pasting the raw output" — the heart is untouched. The
+    // deterministic text is what reaches the user, unpolished and complete.
+    #expect(result.context.text == Self.longTranscript)
+    #expect(result.context.polishedText == nil)
+    #expect(result.context.llmProvider == nil)
+    // Not our defect, so nothing pages us.
     #expect(spy.count == 0)
   }
 
@@ -304,6 +362,26 @@ struct OllamaReadinessGateTests {
       let event = try await waiter.waitForEvent(named: "llm.polish_skipped")
       #expect(event.stringProps["provider"] == "ollama")
       #expect(event.stringProps["skip_reason"] == "local_polish_ollama_model_missing")
+    }
+
+    /// #1914: the outcome must be COUNTABLE, not only visible. Without the
+    /// `PolishSkipReason` mapping the pill still shows and this event silently
+    /// never fires, so how often we decline to arm a model for someone would be
+    /// unanswerable while looking, from the user's side, completely normal.
+    @Test("no model selected emits llm.polish_skipped with local_polish_ollama_no_model_selected")
+    func noModelSelectedEmitsSkipTelemetry() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      let spy = CaptureSpy()
+
+      _ = try await runThroughRunner(probe: { _ in .noModelSelected }, spy: spy)
+
+      let event = try await waiter.waitForEvent(named: "llm.polish_skipped")
+      #expect(event.stringProps["provider"] == "ollama")
+      #expect(event.stringProps["skip_reason"] == "local_polish_ollama_no_model_selected")
     }
   #endif
 

@@ -75,8 +75,16 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   /// Gemini 429 `RESOURCE_EXHAUSTED` — rate OR quota; Gemini does not cleanly
   /// split the two, so the message names both honestly.
   case rateLimitedOrQuota
-  /// 404 / model not found / Ollama model not pulled.
+  /// 404 / model not found / Ollama model not pulled. The user HAS a selection
+  /// and it is not installed.
   case modelUnavailable
+  /// #1914: no polish model is armed at all. Ollama-only today: it is produced
+  /// solely by the readiness preflight seeing an empty model string, which is
+  /// the state the never-auto-arm-a-hosted-model refusal creates deliberately.
+  /// Never produced by `from(_:)` — no provider error means this, and inventing
+  /// one from a 404 would put "you have not chosen a model" in front of a user
+  /// who has.
+  case noModelSelected
   /// 400 `context_length_exceeded` / token budget — the dictation is too long.
   case inputTooLong
   /// Provider blocked the text (content filter / safety). Best-effort detection.
@@ -127,6 +135,7 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     case .rateLimited: return "rate_limited"
     case .rateLimitedOrQuota: return "rate_or_quota"
     case .modelUnavailable: return "model_unavailable"
+    case .noModelSelected: return "no_model_selected"
     case .inputTooLong: return "input_too_long"
     case .contentBlocked: return "content_blocked"
     case .providerUnreachable: return "provider_unreachable"
@@ -150,6 +159,22 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   public var leadIn: LeadIn {
     switch self {
     case .apiKeyMissing, .apiKeyUnreadable, .inputTooLong, .timedOut: return .skipped
+    // #1914: explicit, because `default:` here returns `.failed` and would have
+    // silently classified "you have not picked a model" as a breakage of ours.
+    //
+    // Scope of the arm, stated precisely because it is easy to overclaim: the
+    // PILL the user actually sees does NOT come through here. It comes from
+    // `ollamaPreflightSkipMessage`, which interpolates `LeadIn.skipped.text`
+    // itself, and `isSkipNotice` matches that prefix — so the skip tone on
+    // screen survives even without this arm. `leadIn`'s only production reader
+    // is `composedMessage`, which the runner never reaches for this reason
+    // (`TextProcessingRunner`'s `ollamaPreflightSkipMessage ?? composedMessage`
+    // short-circuits). Verified by mutation: deleting this arm leaves every
+    // pill and gate test GREEN and fails only the classification test.
+    //
+    // It stays because the classification must be true for the next consumer,
+    // not because today's screen depends on it.
+    case .noModelSelected: return .skipped
     // #1710: a real failure the user should see, explicitly — not left to
     // the default: arm the file header warns about.
     case .outputTruncated: return .failed
@@ -167,6 +192,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     // #1710: same-budget retry recovery is unmeasured — no unknown-benefit
     // retry cost on the user's key. Explicit, not default-absorbed.
     case .outputTruncated: return false
+    // #1914: explicit though the default already says false. Retrying cannot
+    // make a selection appear, and the arm records that this was decided.
+    case .noModelSelected: return false
     default: return false
     }
   }
@@ -223,6 +251,11 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       .outOfCredits, .rateLimited, .rateLimitedOrQuota, .providerServerError,
       .contentBlocked, .inputTooLong:
       return .nonAlertingAnalytics
+    // #1914: a configuration state, not a defect — either the user has not
+    // chosen a model yet, or we deliberately declined to choose a hosted one.
+    // Counted so the rate is answerable; never paged.
+    case .noModelSelected:
+      return .nonAlertingAnalytics
     // #1710: with no client ceiling on OpenAI/Gemini and a generous fixed
     // Claude cap, a truncation is the provider's own per-model limit —
     // their condition, counted for the post-ship metric, never paged.
@@ -258,6 +291,8 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       return isOllama
         ? "that Ollama model isn't downloaded yet. Pull it in Ollama or pick another in Settings."
         : "the selected \(name) model isn't available. Pick another in Settings."
+    case .noModelSelected:
+      return "no polish model is selected. Pick one in Settings."
     case .inputTooLong:
       return
         "this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
@@ -302,8 +337,16 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     case .providerUnreachable:
       return "\(LeadIn.skipped.text) Ollama isn't running. Start it in Settings → AI Polish."
     case .modelUnavailable:
+      // #1914: was "no model is installed in Ollama", which is false whenever
+      // models ARE installed and the armed one simply is not among them — the
+      // ordinary case after a delete or rename. It also collided with the empty
+      // selection, which now has its own arm below.
       return
-        "\(LeadIn.skipped.text) no model is installed in Ollama. Download one in Settings → AI Polish."
+        "\(LeadIn.skipped.text) the selected Ollama model isn't installed. "
+        + "Download it or pick another in Settings → AI Polish."
+    case .noModelSelected:
+      return
+        "\(LeadIn.skipped.text) no polish model selected. Pick one in Settings → AI Polish."
     default:
       return nil
     }

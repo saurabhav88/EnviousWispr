@@ -469,6 +469,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         throw LLMError.localPolishNotReady(.providerUnreachable)
       case .modelMissing:
         throw LLMError.localPolishNotReady(.modelUnavailable)
+      case .noModelSelected:
+        // #1914: distinct from `.modelMissing` all the way to the pill. The
+        // user has no selection, so telling them to download a model would send
+        // them to fix something that is not broken.
+        throw LLMError.localPolishNotReady(.noModelSelected)
       }
     } else {
       // Explicit, not defaulted: a non-Ollama attempt has no daemon to ask, and
