@@ -358,6 +358,17 @@ public final class OllamaSetupService {
 
   public init() {}
 
+  /// #1914 test seam, approved by the founder on 2026-08-04 (test seams are a
+  /// founder decision per `workflow-process.md` RULE: chunked-build-orchestration).
+  /// Internal so it does not widen the public API.
+  ///
+  /// Live Ollama operations normally populate or mutate `downloadedModels`.
+  /// This initializer lets the eviction wiring test distinguish populated
+  /// remote and local catalogs without making a network request.
+  init(downloadedModelsForTesting: [OllamaDownloadedModel]) {
+    downloadedModels = downloadedModelsForTesting
+  }
+
   /// Run the full detection pipeline: binary -> server -> models.
   public func detectState() async {
     setupState = .detecting

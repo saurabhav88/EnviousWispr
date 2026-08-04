@@ -7,8 +7,8 @@ import Testing
 /// #1305: the `.llmModel` → `ollamaModel` mirror decision. "" means "nothing
 /// armed" (empty discovery cleared the picker) and must never wipe the
 /// remembered `ollamaModel` preference; non-empty picks mirror as before.
-/// The decision is a pure static on `PipelineSettingsSync` because the full
-/// sync home needs live kernel drivers a unit test cannot construct.
+/// The decision is pure so its three-way matrix can be tested without
+/// constructing the sync home's unrelated collaborators.
 @MainActor
 @Suite("PipelineSettingsSync llmModel mirror guard (#1305)")
 struct PipelineSettingsSyncMirrorGuardTests {
