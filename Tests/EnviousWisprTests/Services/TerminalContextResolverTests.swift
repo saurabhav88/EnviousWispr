@@ -263,7 +263,7 @@ struct TerminalContextResolverTests {
 
     let shared = TerminalResolutionBudget(total: 1.0, now: { clock.read() })
     var calls = 0
-    for _ in 0..<3 { _ = shared.step(applying: element) { calls += 1 } }
+    for _ in 0..<3 { _ = shared.step(applying: element, label: "probe") { calls += 1 } }
 
     #expect(calls == 3)
     // THE POINT. Cumulative charges all three: 0.090. A per-call bound retains
@@ -274,7 +274,7 @@ struct TerminalContextResolverTests {
     // between them while neither does alone, so exhaustion is reachable only by
     // accumulating — a per-call bound would sit at 30 ms and stay open.
     let tight = TerminalResolutionBudget(total: 0.040, now: { clock.read() })
-    for _ in 0..<2 { _ = tight.step(applying: element) {} }
+    for _ in 0..<2 { _ = tight.step(applying: element, label: "probe") {} }
 
     #expect(tight.isExhausted, "two 30 ms calls must exhaust a 40 ms cumulative cap")
     #expect(tight.remaining == 0)
@@ -296,12 +296,46 @@ struct TerminalContextResolverTests {
     let budget = TerminalResolutionBudget(total: 0.100, now: { clock.read() })
     let element = AXUIElementCreateSystemWide()
 
-    for _ in 0..<5 { _ = budget.step(applying: element) {} }
+    for _ in 0..<5 { _ = budget.step(applying: element, label: "probe") {} }
 
     #expect(!budget.isExhausted, "five healthy calls must not exhaust the cap")
     #expect(
       budget.remaining > 0.090,
       "five healthy calls must leave the budget nearly whole")
+  }
+
+  @Test("the budget records what each step cost, named, for the log line")
+  func timingDescriptionNamesEachStep() {
+    // The breaker trip on 2026-08-04 was undiagnosable because the budget
+    // charged itself and recorded nothing. Three hypotheses were tested by hand
+    // against a live machine and all three were wrong. This is the line that
+    // makes the next trip answerable from the log alone.
+    let clock = TestClock()
+    clock.perCallCost = 0.002
+    let budget = TerminalResolutionBudget(total: 0.100, now: { clock.read() })
+    let element = AXUIElementCreateSystemWide()
+
+    #expect(
+      budget.timingDescription.isEmpty,
+      "no step ran, so the line must carry nothing rather than an empty bracket")
+
+    _ = budget.step(applying: element, label: "focused") {}
+    _ = budget.step(applying: element, label: "screen") {}
+
+    let description = budget.timingDescription
+    #expect(description.contains("focused="), "each step is named, got \(description)")
+    #expect(description.contains("screen="), "each step is named, got \(description)")
+    #expect(description.contains("total="), "and the total is what the cap is judged against")
+
+    // The point of the line is that the numbers are REAL, not that they exist.
+    // A description that renders every step as 0.0ms would satisfy `contains`
+    // and diagnose nothing, which is the failure mode this asserts against.
+    #expect(
+      description.contains("2.0ms"),
+      "the recorded cost must be the driven clock's, got \(description)")
+    #expect(
+      description.contains("total=4.0ms"),
+      "and the total must be their sum, got \(description)")
   }
 
   // MARK: - Circuit breaker

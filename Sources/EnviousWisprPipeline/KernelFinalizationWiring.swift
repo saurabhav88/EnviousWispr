@@ -600,11 +600,19 @@ struct KernelFinalizationWiring {
         // rounds of guessing during founder testing on 2026-07-26. Names and
         // shapes only, never a word of the document, so this respects the same
         // privacy boundary the telemetry does.
+        // The per-step timings ride the SAME line, because the question they
+        // answer is always "why did THIS outcome happen". Split across two
+        // lines they would have to be correlated by timestamp, which is exactly
+        // the reconstruction that made the 2026-08-04 breaker trip
+        // undiagnosable. Empty when no bounded step ran, so a non-terminal app
+        // does not gain a dangling ` timing=` on every dictation.
+        let terminalTiming = terminalBudget.timingDescription
         await AppLogger.shared.log(
           "CURSOR_REPAIR app=\(context.targetApp?.bundleIdentifier ?? "nil") "
             + "caret=\(outcome.caretContextOutcome ?? "nil") "
             + "rules=\(outcome.repairRules ?? "none") "
-            + "candidate=\(payloads.repairedText == nil ? "none" : "offered")",
+            + "candidate=\(payloads.repairedText == nil ? "none" : "offered")"
+            + (terminalTiming.isEmpty ? "" : " timing=[\(terminalTiming)]"),
           level: .info, category: "KernelFinalizationWiring")
 
         // The legacy payload is what a route falls back to; §6 decides per route

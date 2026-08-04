@@ -70,6 +70,19 @@ package final class TerminalResolutionBudget: Sendable {
   private let spent = OSAllocatedUnfairLock(initialState: 0.0)
   private let now: @Sendable () -> Double
 
+  /// What each bounded step actually cost, for the log line.
+  ///
+  /// The budget was previously unobservable: it charged itself, tripped the
+  /// breaker on exhaustion, and recorded nothing about WHICH step spent the
+  /// time or how much. When the breaker fired in the field on 2026-08-04 there
+  /// was no way to answer "why did a read that measures ~1 ms take over 100?"
+  /// from the logs, and three separate hypotheses had to be tested by hand
+  /// against a live machine, all three wrong.
+  ///
+  /// Metadata only — a label and a duration. Never screen text, a path, or the
+  /// derived line, which is the same boundary `TerminalContextRefusal` keeps.
+  private let trace = OSAllocatedUnfairLock(initialState: [(label: String, seconds: Double)]())
+
   /// `now` reads a monotonic clock in seconds. It exists so `step` can be
   /// tested against a clock the test drives, matching how the resolver already
   /// takes `Dependencies.now` — an assertion about cumulative charging must not
@@ -109,12 +122,35 @@ package final class TerminalResolutionBudget: Sendable {
   /// 1.79 ms in iTerm2, with the only spikes (19-35 ms) on a cold first call.
   /// The cap is roughly fifty times the typical cost and three times the worst
   /// observed — it exists to bound a wedge, and never bites healthy work.
-  package func step<T>(applying element: AXUIElement, _ body: () -> T) -> T {
+  /// - Parameter label: names this step in the timing trace. Required rather
+  ///   than defaulted, so a new bounded step cannot silently appear in the log
+  ///   as an anonymous cost.
+  package func step<T>(applying element: AXUIElement, label: String, _ body: () -> T) -> T {
     let application = AXUIElementCreateApplication(processIdentifier(of: element))
     AXUIElementSetMessagingTimeout(application, Float(max(0.005, remaining)))
     let started = now()
-    defer { charge(now() - started) }
+    defer {
+      let elapsed = now() - started
+      charge(elapsed)
+      // Two separate locks, never nested: `charge` has already returned.
+      // Recording is a plain array append under an uncontended lock with no
+      // suspension point, so this cannot widen the window it measures.
+      trace.withLock { $0.append((label, elapsed)) }
+    }
     return body()
+  }
+
+  /// The per-step costs, for one log line. Empty when no step ran.
+  ///
+  /// Reads as `focused=0.4ms scan=1.1ms screen=0.2ms total=1.7ms`, which is
+  /// what makes a trip diagnosable: the total says the cap was hit, the labels
+  /// say which call ate it.
+  package var timingDescription: String {
+    let samples = trace.withLock { $0 }
+    guard !samples.isEmpty else { return "" }
+    let parts = samples.map { "\($0.label)=\(String(format: "%.1f", $0.seconds * 1000))ms" }
+    let total = samples.reduce(0.0) { $0 + $1.seconds }
+    return parts.joined(separator: " ") + " total=\(String(format: "%.1f", total * 1000))ms"
   }
 
   private func processIdentifier(of element: AXUIElement) -> pid_t {

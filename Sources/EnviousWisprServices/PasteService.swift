@@ -745,7 +745,7 @@ public enum PasteService {
     // Cloud review found it; the discipline already existed one function away.
     guard
       let fresh = budget.step(
-        applying: element,
+        applying: element, label: "focused",
         {
           freshFocusedElement(matching: element, messagingTimeout: max(0.005, budget.remaining))
         })
@@ -757,7 +757,9 @@ public enum PasteService {
     let dependencies = TerminalContextResolver.Dependencies(
       bundleIdentifier: { NSRunningApplication(processIdentifier: pid)?.bundleIdentifier },
       scanProcesses: { TerminalProcessScanner.liveSnapshot() },
-      readScreenTail: { budget.step(applying: fresh) { terminalScreenTail(of: fresh) } })
+      readScreenTail: {
+        budget.step(applying: fresh, label: "screen") { terminalScreenTail(of: fresh) }
+      })
 
     // The typed refusal is REPORTED, not discarded. §8 of the plan lists eight
     // distinct outcomes, and cloud review found every one of them collapsing
@@ -890,38 +892,42 @@ public enum PasteService {
     budget: TerminalResolutionBudget? = nil
   ) -> CaretContext? {
     // One helper, so no read can be added later that forgets to be counted.
-    func bounded<T>(_ body: () -> T) -> T {
+    func bounded<T>(_ label: String, _ body: () -> T) -> T {
       guard let budget else { return body() }
-      return budget.step(applying: element, body)
+      return budget.step(applying: element, label: label, body)
     }
 
     guard
-      let fresh = bounded({
-        freshFocusedElement(
-          matching: element,
-          messagingTimeout: budget.map { max(0.005, $0.remaining) } ?? axMessagingTimeoutSeconds)
-      })
+      let fresh = bounded(
+        "focused",
+        {
+          freshFocusedElement(
+            matching: element,
+            messagingTimeout: budget.map { max(0.005, $0.remaining) } ?? axMessagingTimeoutSeconds)
+        })
     else { return nil }
 
     // Role is read from the FRESH element, never the captured handle.
     var roleRef: CFTypeRef?
     guard
-      bounded({
-        AXUIElementCopyAttributeValue(fresh, kAXRoleAttribute as CFString, &roleRef)
-      }) == .success,
+      bounded(
+        "role", { AXUIElementCopyAttributeValue(fresh, kAXRoleAttribute as CFString, &roleRef) })
+        == .success,
       let role = roleRef as? String, textRoles.contains(role)
     else { return nil }
 
     var countRef: CFTypeRef?
     guard
-      bounded({
-        AXUIElementCopyAttributeValue(
-          fresh, kAXNumberOfCharactersAttribute as CFString, &countRef)
-      }) == .success,
+      bounded(
+        "count",
+        {
+          AXUIElementCopyAttributeValue(
+            fresh, kAXNumberOfCharactersAttribute as CFString, &countRef)
+        }) == .success,
       let characterCount = countRef as? Int
     else { return nil }
 
-    guard let range = bounded({ selectedRange(of: fresh) }) else { return nil }
+    guard let range = bounded("range", { selectedRange(of: fresh) }) else { return nil }
 
     return assembleCaretContext(
       characterCount: characterCount,
@@ -929,7 +935,7 @@ public enum PasteService {
       selectionLength: range.length,
       window: window,
       readRange: { location, length in
-        bounded { string(of: fresh, at: location, length: length) }
+        bounded("range_read", { string(of: fresh, at: location, length: length) })
       })
   }
 
