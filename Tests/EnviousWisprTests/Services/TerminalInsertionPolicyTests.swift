@@ -1,3 +1,4 @@
+import ApplicationServices
 import Foundation
 import Testing
 
@@ -16,7 +17,9 @@ struct TerminalInsertionPolicyTests {
   /// leading-case rule is exercised rather than skipped as a proper noun.
   static let ordinaryWords = EnglishWordOracle(
     unavailableReason: nil,
-    dictionaryVerdict: { ["fix", "first", "second", "a", "b"].contains($0) ? .ordinary : .notOrdinary },
+    dictionaryVerdict: {
+      ["fix", "first", "second", "a", "b"].contains($0) ? .ordinary : .notOrdinary
+    },
     isLearnedWord: { _ in false },
     isRecognizedName: { _, _ in false })
 
@@ -281,7 +284,114 @@ struct TerminalInsertionPolicyTests {
   @Test("A nil element at a commit boundary always takes today's payload")
   func commitBoundaryWithoutAnElementIsLegacy() {
     let payload = PasteService.payloadAtCommitBoundary(
-      legacy: "legacy ", repaired: "repaired ", context: nil, element: nil)
+      legacy: "legacy ", repaired: "repaired ", context: nil, element: nil,
+      candidateDeletesDictatedText: false)
     #expect(payload.kind == .legacy)
   }
+
+  // MARK: - The re-read is conditional (2026-08-04)
+
+  @Test("A casing-only candidate commits WITHOUT a second caret read")
+  func casingCandidateSkipsTheReread() {
+    // The defect this fixes, measured live: the app read the caret, decided
+    // `lowercased_first`, and the re-read then failed and discarded the
+    // correction — on most terminal dictations.
+    //
+    // A real element is deliberately passed. Before this change that element
+    // would be re-read and, in a test process with no matching focus, the
+    // re-read fails and the payload comes back `.legacy`. So this test FAILS
+    // against the previous behaviour and passes now, which is what makes it a
+    // control rather than a restatement.
+    let payload = PasteService.payloadAtCommitBoundary(
+      legacy: "Warmer and summer starts. ",
+      repaired: "warmer and summer starts. ",
+      context: terminalContext(line: "I can't wait till the weather is"),
+      element: AXUIElementCreateSystemWide(),
+      candidateDeletesDictatedText: false)
+
+    #expect(payload.kind == .repaired, "a casing-only fix must not need confirming")
+    #expect(payload.text == "warmer and summer starts. ")
+  }
+
+  @Test("A candidate that DROPS a dictated word still requires confirmation")
+  func wordDroppingCandidateStillRequiresTheReread() {
+    // The one asymmetry worth paying a re-read for. Every other rule trades one
+    // wrong capital for another; this one removes a word the user actually
+    // said, so a stale caret loses content.
+    //
+    // The system-wide element cannot match the recorded context in a test
+    // process, so `caretUnchanged` refuses and today's payload ships. That IS
+    // the assertion: the guard still fires for this class.
+    let payload = PasteService.payloadAtCommitBoundary(
+      legacy: "the museum is open ",
+      repaired: "museum is open ",
+      context: terminalContext(line: "I can't wait till the weather is"),
+      element: AXUIElementCreateSystemWide(),
+      candidateDeletesDictatedText: true)
+
+    #expect(payload.kind == .legacy, "dropping a dictated word must still be confirmed")
+  }
+
+  @Test("EVERY rule that deletes dictated text is classified as such, exhaustively")
+  func destructiveRulesAreEnumerated() {
+    // Cloud review found the gap this freezes: the flag was computed at the
+    // call site as `contains(.droppedDuplicateWord)`, which silently missed
+    // `.droppedTerminalPeriod` — a rule that also removes a character the user
+    // dictated, so committing it against a stale caret loses content for the
+    // same reason.
+    //
+    // Asserted over an explicit list rather than by re-deriving the switch,
+    // because a test that reimplements its subject proves only that the copy
+    // works. Every case of the enum appears below; adding one without a row
+    // here leaves it unasserted, and adding one without a case in
+    // `deletesDictatedText` does not compile.
+    let deletes: [CursorInsertionRepair.AppliedRule] = [
+      .droppedDuplicateWord, .droppedTerminalPeriod,
+    ]
+    let keeps: [CursorInsertionRepair.AppliedRule] = [
+      .refusedInsideWord, .refusedNoLeftAnchor, .leadingSpace, .lowercasedFirst,
+      .caseSkipped(.alreadyLower), .caseKept(.afterTerminator), .trailingSpace,
+      .trailingSpaceSkipped(.rightIsSpace),
+    ]
+    for rule in deletes {
+      #expect(rule.deletesDictatedText, "\(rule.telemetryName) removes dictated text")
+    }
+    for rule in keeps {
+      #expect(!rule.deletesDictatedText, "\(rule.telemetryName) only adjusts placement or case")
+    }
+  }
+
+  @Test("A dropped terminal period earns the re-read too, not just a dropped word")
+  func droppedPeriodAlsoConfirmsTheCaret() {
+    // The reviewer's own case, end to end through the decision that consumes
+    // the flag. Same shape as the dropped-word test above: the system-wide
+    // element cannot match the recorded context in a test process, so
+    // `caretUnchanged` refuses and today's payload ships — which IS the
+    // assertion, because it proves the guard fires for this class at all.
+    let payload = PasteService.payloadAtCommitBoundary(
+      legacy: "Hello. ",
+      repaired: "Hello ",
+      context: terminalContext(line: "She said"),
+      element: AXUIElementCreateSystemWide(),
+      candidateDeletesDictatedText: [CursorInsertionRepair.AppliedRule.droppedTerminalPeriod]
+        .contains { $0.deletesDictatedText })
+
+    #expect(payload.kind == .legacy, "dropping a dictated full stop must be confirmed too")
+  }
+
+  @Test("No candidate is still legacy, whatever the word-drop flag says")
+  func noCandidateIsAlwaysLegacy() {
+    // Two-way control on the new flag: it must not become a back door that
+    // commits a payload that does not exist.
+    for dropsWords in [true, false] {
+      let payload = PasteService.payloadAtCommitBoundary(
+        legacy: "legacy ", repaired: nil,
+        context: terminalContext(line: "I can't wait till the weather is"),
+        element: AXUIElementCreateSystemWide(),
+        candidateDeletesDictatedText: dropsWords)
+      #expect(payload.kind == .legacy)
+      #expect(payload.text == "legacy ")
+    }
+  }
+
 }

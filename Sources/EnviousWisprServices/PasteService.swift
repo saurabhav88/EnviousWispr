@@ -377,15 +377,41 @@ public enum PasteService {
   /// or a field that has moved since the candidate was computed all select
   /// today's payload. The only way to get the repaired text is positive proof
   /// that the field is still exactly as it was.
+  /// Which payload a clipboard route may commit.
+  ///
+  /// **The re-read is now conditional, and that is the whole change.** It used
+  /// to run for every candidate. Measured on the founder's machine on
+  /// 2026-08-04: the app read the caret, correctly decided `lowercased_first`,
+  /// and then the re-read failed and threw the correction away — on most
+  /// terminal dictations. The trace showed the re-read stopping before it could
+  /// resolve anything, in 1.7 ms, nowhere near any deadline.
+  ///
+  /// Removing it entirely is safe for every rule but one, and the reason is that
+  /// a clipboard route cannot rewrite what is already on screen. It inserts at
+  /// the caret, so a stale context can only make the text WE INSERT wrong. For
+  /// casing and spacing that is one letter or one space — exactly the cost of
+  /// refusing. Guarding a wrong capital with a check that produces a wrong
+  /// capital is not a guard.
+  ///
+  /// `candidateDeletesDictatedText` is the exception. The duplicate-seam rule
+  /// removes a word the user actually said, so a stale caret there loses
+  /// content rather than trading one blemish for another. That asymmetry is
+  /// what the re-read is worth paying for, and the only thing it is worth
+  /// paying for.
+  ///
+  /// Nothing here decides WHERE the paste lands. The write goes to whatever is
+  /// focused either way; this only chooses between two strings.
   package static func payloadAtCommitBoundary(
     legacy: String,
     repaired: String?,
     context: CaretContext?,
     element: AXUIElement?,
+    candidateDeletesDictatedText: Bool,
     terminalBudget: TerminalResolutionBudget? = nil
   ) -> (text: String, kind: PastePayloadKind) {
-    guard let repaired, let context, let element,
-      caretUnchanged(element: element, since: context, terminalBudget: terminalBudget)
+    guard let repaired, let context, let element else { return (legacy, .legacy) }
+    guard candidateDeletesDictatedText else { return (repaired, .repaired) }
+    guard caretUnchanged(element: element, since: context, terminalBudget: terminalBudget)
     else { return (legacy, .legacy) }
     return (repaired, .repaired)
   }
@@ -717,9 +743,12 @@ public enum PasteService {
     // the stale element and the screen read then went to that same stale
     // element anyway, describing a tab that is no longer in front of them.
     // Cloud review found it; the discipline already existed one function away.
-    guard let fresh = budget.step(applying: element, {
-      freshFocusedElement(matching: element, messagingTimeout: max(0.005, budget.remaining))
-    })
+    guard
+      let fresh = budget.step(
+        applying: element,
+        {
+          freshFocusedElement(matching: element, messagingTimeout: max(0.005, budget.remaining))
+        })
     else { return nil }
 
     var pid: pid_t = 0
@@ -835,7 +864,8 @@ public enum PasteService {
     // Gate 0 inside the resolver is what stops this firing in an honest app
     // whose user simply put the cursor at the very start of a document.
     let looksLikeATerminal =
-      context == nil || (context?.leftWindow.isEmpty == true && context?.rightWindow.isEmpty == false)
+      context == nil
+      || (context?.leftWindow.isEmpty == true && context?.rightWindow.isEmpty == false)
     guard looksLikeATerminal else { return context }
 
     context =
