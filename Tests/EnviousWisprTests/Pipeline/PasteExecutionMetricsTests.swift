@@ -22,13 +22,19 @@ struct PasteExecutionMetricsTests {
       smartInsertionEnabled: true,
       caretContextOutcome: "read",
       repairRules: "leading_space,lowercased_first",
-      pastePayloadKind: "repaired")
+      pastePayloadKind: "repaired",
+      languageResolutionSource: "document",
+      languageConfidenceBucket: "f70to90")
     let decoded = try JSONDecoder().decode(
       ExecutionMetrics.self, from: JSONEncoder().encode(metrics))
     #expect(decoded.smartInsertionEnabled == true)
     #expect(decoded.caretContextOutcome == "read")
     #expect(decoded.repairRules == "leading_space,lowercased_first")
     #expect(decoded.pastePayloadKind == "repaired")
+    // #1921. Distinctive values, not defaults, so a hop that silently dropped
+    // them could not pass by coincidence.
+    #expect(decoded.languageResolutionSource == "document")
+    #expect(decoded.languageConfidenceBucket == "f70to90")
   }
 
   @Test("A transcript stored before this feature still decodes")
@@ -45,6 +51,12 @@ struct PasteExecutionMetricsTests {
     #expect(decoded.caretContextOutcome == nil)
     #expect(decoded.repairRules == nil)
     #expect(decoded.pastePayloadKind == nil)
+    // #1921. The literal JSON above is deliberately UNCHANGED — it is the real
+    // pre-field shape, not something today's encoder produced. Generating it
+    // with the current encoder would only prove the new code agrees with
+    // itself, which is exactly the failure this case exists to prevent.
+    #expect(decoded.languageResolutionSource == nil)
+    #expect(decoded.languageConfidenceBucket == nil)
   }
 
   @Test("Absent facts are omitted, never sent as a placeholder")
@@ -58,6 +70,24 @@ struct PasteExecutionMetricsTests {
     #expect(partial.properties["caret_context"] as? String == "setting_off")
     #expect(partial.properties["repair_rules"] == nil)
     #expect(partial.properties["payload_kind"] == nil)
+    // #1921. Nil must stay ABSENT rather than becoming "none". "none" is a real
+    // upstream category meaning "we measured and found nothing"; absent means
+    // the fact was never recorded, which is what an old stored transcript has.
+    // Collapsing the two would make a pre-#1921 history entry indistinguishable
+    // from a genuine language-stage timeout.
+    #expect(empty.properties["language_resolution_source"] == nil)
+    #expect(empty.properties["language_confidence_bucket"] == nil)
+    #expect(partial.properties["language_resolution_source"] == nil)
+    #expect(partial.properties["language_confidence_bucket"] == nil)
+
+    // #1921. The other half, which the omission assertions alone do NOT prove: a
+    // REAL "none" must actually be emitted. Without this the suite shows only
+    // that nil disappears, and the distinction between "we measured and found
+    // nothing" and "nobody ever looked" would be asserted in prose and untested.
+    let measuredNothing = TelemetryService.PasteInsertionTelemetry(
+      languageResolutionSource: "none", languageConfidenceBucket: "none")
+    #expect(measuredNothing.properties["language_resolution_source"] as? String == "none")
+    #expect(measuredNothing.properties["language_confidence_bucket"] as? String == "none")
   }
 
   @Test("Every rule name is a closed reason, never the word it applied to")
