@@ -553,11 +553,12 @@ final class KernelLifecycleTelemetrySink {
       // #1920: context-only breadcrumb, mirroring the `.failed(.asrEmpty)` arm
       // this replaces (#979 already downgraded that one from a Sentry error).
       // NO Sentry event: nothing failed. The countable record is the
-      // `asr_empty_despite_audio` terminal result plus the dedicated
-      // `audio.asr_empty_despite_audio` event emitted from `emitTerminal`, which
-      // reads only the FROZEN snapshot — a breadcrumb here cannot carry the
-      // count because a no-error terminal fires no Sentry event for it to
-      // attach to (the #1845 lesson).
+      // `asr_empty_despite_audio` value on the `dictation_terminal` row, which
+      // already carries `take_id`, device kind, both transports, the energy
+      // triple and duration — so no dedicated audio event was minted (a second
+      // record would overlap it, the #1845 lesson). A breadcrumb cannot carry
+      // the count either, because a no-error terminal fires no Sentry event for
+      // it to attach to.
       breadcrumb(
         "asr", "ASR returned empty text while audio was arriving",
         telemetryState.asrEmptyDiagnostics?.sentryExtra() ?? ["backend": backend.rawValue])
