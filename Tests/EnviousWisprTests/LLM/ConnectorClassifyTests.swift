@@ -118,9 +118,11 @@ struct ConnectorClassifyTests {
     #expect(OllamaConnector.classify(statusCode: 404, bodyString: "") == .modelUnavailable)
   }
 
-  @Test("Ollama 5xx -> provider server error (stays retryable)")
-  func ollama5xx() {
-    let reason = OllamaConnector.classify(statusCode: 500, bodyString: "")
+  @Test(
+    "Ollama 5xx -> provider server error (stays retryable)",
+    arguments: [500, 503])
+  func ollama5xx(status: Int) {
+    let reason = OllamaConnector.classify(statusCode: status, bodyString: "")
     #expect(reason == .providerServerError)
     #expect(reason.isRetryable)
   }
@@ -129,6 +131,77 @@ struct ConnectorClassifyTests {
   func ollama400() {
     let reason = OllamaConnector.classify(statusCode: 400, bodyString: "")
     #expect(reason == .badRequest)
-    #expect(!reason.isRetryable)
+    #expect(reason.isRetryable == false)
+  }
+
+  // MARK: - Ollama account statuses (#1914, plan Decision 6)
+  //
+  // All four previously fell into the generic 4xx bucket as `.badRequest`, which
+  // ALERTS. Each test asserts reason, retryability and channel together, because
+  // a right reason with a wrong channel restores that defect exactly.
+
+  @Test("Ollama 401 -> key rejected (signed out), non-retryable, never alerts")
+  func ollama401() {
+    let reason = OllamaConnector.classify(statusCode: 401, bodyString: #"{"error":"Unauthorized"}"#)
+    #expect(reason == .apiKeyRejected)
+    #expect(reason.isRetryable == false)
+    #expect(reason.telemetryChannel(provider: .ollama) == .nonAlertingAnalytics)
+  }
+
+  @Test("Ollama 402 -> out of credits, non-retryable, never alerts")
+  func ollama402() {
+    let reason = OllamaConnector.classify(statusCode: 402, bodyString: "")
+    #expect(reason == .outOfCredits)
+    #expect(reason.isRetryable == false)
+    #expect(reason.telemetryChannel(provider: .ollama) == .nonAlertingAnalytics)
+  }
+
+  @Test("Ollama 403 -> access denied (paid-tier model), non-retryable, never alerts")
+  func ollama403() {
+    let reason = OllamaConnector.classify(
+      statusCode: 403, bodyString: "this model requires a subscription")
+    #expect(reason == .accessDenied)
+    #expect(reason.isRetryable == false)
+    #expect(reason.telemetryChannel(provider: .ollama) == .nonAlertingAnalytics)
+  }
+
+  /// Deliberately body-INDEPENDENT, unlike `openAIQuota` / `openAIRate` above.
+  /// The two loaded bodies are exactly the ones a copied-from-OpenAI split would
+  /// react to, so this fails the moment someone ports that split over.
+  @Test(
+    "Ollama 429 stays rate-or-quota ambiguous whatever the body says",
+    arguments: [
+      "",
+      #"{"error":{"type":"insufficient_quota","message":"You exceeded your quota"}}"#,
+      #"{"error":{"type":"rate_limit_exceeded","message":"Rate limit reached"}}"#,
+    ])
+  func ollama429Ambiguous(body: String) {
+    let reason = OllamaConnector.classify(statusCode: 429, bodyString: body)
+    #expect(reason == .rateLimitedOrQuota)
+    #expect(reason != .rateLimited)
+    #expect(reason != .outOfCredits)
+    #expect(reason.isRetryable == false)
+    #expect(reason.telemetryChannel(provider: .ollama) == .nonAlertingAnalytics)
+  }
+
+  /// The negative half of the pair: #1914 moved FOUR statuses and no more, so
+  /// every 4xx outside those four and the long-standing 404 arm (`ollama404`
+  /// above) must still be `.badRequest` and must still ALERT. 499 is the top of
+  /// the range and 405 / 409 / 418 / 422 sit between the moved statuses, so a
+  /// range typed too wide (`401...429`) fails here rather than in production.
+  @Test(
+    "untargeted 4xx statuses still mean our own bad request, and still alert",
+    arguments: [400, 405, 409, 418, 422, 499])
+  func ollamaUntargeted4xxUnchanged(status: Int) {
+    let reason = OllamaConnector.classify(statusCode: status, bodyString: "")
+    #expect(reason == .badRequest)
+    #expect(reason.isRetryable == false)
+    #expect(reason.telemetryChannel(provider: .ollama) == .alertingSentryError)
+  }
+
+  @Test("a status outside 4xx and 5xx is still unknown")
+  func ollamaNon4xx5xxUnknown() {
+    #expect(OllamaConnector.classify(statusCode: 302, bodyString: "") == .unknown)
+    #expect(OllamaConnector.classify(statusCode: 0, bodyString: "") == .unknown)
   }
 }

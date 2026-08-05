@@ -127,6 +127,53 @@ struct PolishFailureReasonTests {
     #expect(cloudReach != ollamaReach)
   }
 
+  /// #1914: a 401 from Ollama means the user is signed out of ollama.com, and the
+  /// generic line points at an EnviousWispr Settings API key that Ollama has
+  /// none of. Frozen as an EXACT composed string, not a `contains`, because the
+  /// value of this arm is the specific command it names.
+  @Test("Ollama 401 copy names the real signin command, not a Settings key")
+  func ollamaSignedOutCopy() {
+    let ollama = PolishFailureReason.apiKeyRejected.composedMessage(provider: .ollama)
+    #expect(
+      ollama
+        == "AI polish failed: Ollama isn't signed in. "
+        + "Run ollama signin in Terminal, then try again.")
+    #expect(ollama.contains("ollama signin"))
+    #expect(ollama.contains("Settings") == false)
+
+    // The control, stated for what it actually proves: the cloud arm is BYTE
+    // IDENTICAL to before #1914. Deleting the Ollama branch is caught by the
+    // three expectations above, not by this one — with the branch gone, Ollama's
+    // text would still differ from OpenAI's, because `name` is interpolated. So
+    // this line pins the untouched arm; it does not detect the missing branch.
+    let cloud = PolishFailureReason.apiKeyRejected.composedMessage(provider: .openAI)
+    #expect(
+      cloud == "AI polish failed: OpenAI rejected your API key. Check or replace it in Settings.")
+  }
+
+  /// #1914: a 403 from Ollama means the model is subscription-gated, measured
+  /// 2026-08-01 from `this model requires a subscription`. The generic line
+  /// suggests API-access and region checks instead of naming that cause.
+  @Test("Ollama 403 copy names the subscription and offers picking another model")
+  func ollamaPaidTierCopy() {
+    let ollama = PolishFailureReason.accessDenied.composedMessage(provider: .ollama)
+    #expect(
+      ollama
+        == "AI polish failed: that Ollama model requires a subscription. "
+        + "Pick another model or check your Ollama plan.")
+    #expect(ollama.contains("subscription"))
+    #expect(ollama.contains("region") == false)
+
+    // Same control shape as the 401 test: this pins the cloud arm as unchanged.
+    // It is the exact-string expectation above that fails if the Ollama branch
+    // is deleted, not a comparison between the two.
+    let cloud = PolishFailureReason.accessDenied.composedMessage(provider: .gemini)
+    #expect(
+      cloud
+        == "AI polish failed: Gemini denied access. "
+        + "Check your provider billing, API access, region, or selected model.")
+  }
+
   @Test("the generic fallback lines read cleanly after their lead-in (no restated lead-in)")
   func genericFallbackCopyTightened() {
     // Founder-approved tightening (2026-06-22): these three compose without

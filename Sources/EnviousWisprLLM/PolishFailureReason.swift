@@ -275,11 +275,19 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       // One arm, not two: copy parity between the two key reasons is a contract
       // (#1446), and a shared arm cannot drift the way two arms can.
       return "no \(name) API key set yet. Add one in Settings."
+    // #1914: Ollama 401 means the user is signed out and 403 means the selected
+    // model requires a subscription. Local Ollama has no authentication layer,
+    // so these measured responses need provider-specific guidance without a
+    // remoteness fact.
     case .apiKeyRejected:
-      return "\(name) rejected your API key. Check or replace it in Settings."
+      return isOllama
+        ? "Ollama isn't signed in. Run ollama signin in Terminal, then try again."
+        : "\(name) rejected your API key. Check or replace it in Settings."
     case .accessDenied:
-      return
-        "\(name) denied access. Check your provider billing, API access, region, or selected model."
+      return isOllama
+        ? "that Ollama model requires a subscription. Pick another model or check your Ollama plan."
+        : "\(name) denied access. Check your provider billing, API access, "
+          + "region, or selected model."
     case .outOfCredits:
       return "your \(name) account is out of credits. Check your provider billing."
     case .rateLimited:

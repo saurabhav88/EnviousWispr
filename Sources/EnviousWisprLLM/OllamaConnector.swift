@@ -586,14 +586,26 @@ public struct OllamaConnector: TranscriptPolisher {
     throw lastError ?? LLMError.requestFailed("All retries exhausted")
   }
 
-  /// Pure status+body -> reason classifier (#945). 404 means the model is not
-  /// pulled; 5xx is a local Ollama server error. `bodyString` is accepted for
-  /// signature parity with the cloud classifiers (and future body-based splits).
+  /// Pure status+body -> reason classifier (#945, #1914). 404 means the model
+  /// is unavailable; 5xx is an Ollama-side server error. `bodyString` remains
+  /// accepted for classifier signature parity, but Ollama's 429 stays
+  /// rate-or-quota ambiguous and is never split from body text.
   /// Unit-testable without network mocking.
+  ///
+  /// The 401 / 402 / 403 / 429 mapping is plan Decision 6 (#1914), which owns the
+  /// evidence for each status. Do not re-derive it here.
   static func classify(statusCode: Int, bodyString: String) -> PolishFailureReason {
     switch statusCode {
+    case 401:
+      return .apiKeyRejected
+    case 402:
+      return .outOfCredits
+    case 403:
+      return .accessDenied
     case 404:
       return .modelUnavailable
+    case 429:
+      return .rateLimitedOrQuota
     case 500...599:
       return .providerServerError
     default:
