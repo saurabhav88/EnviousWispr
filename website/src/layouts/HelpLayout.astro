@@ -28,7 +28,7 @@ const { title, description, canonicalPath, articles, currentArticle, currentCate
       <div class="help-grid">
         <div class="help-rail">
           <div class="help-rail-search">
-            <HelpSearch variant="compact" />
+            <HelpSearch variant="compact" withDialog={false} />
           </div>
           <HelpSidebar
             articles={articles}
@@ -46,6 +46,13 @@ const { title, description, canonicalPath, articles, currentArticle, currentCate
       </div>
     </div>
   </section>
+
+  {/* The dialog lives outside `.help-page > .container`. That container sets
+      `z-index: 1`, creating a stacking context its descendants cannot escape:
+      the overlay asked for z-index 2000 and still rendered BELOW the fixed nav
+      at 1000, which stayed clickable through the open modal. Verified with
+      elementFromPoint over the nav: it returned .nav-logo. */}
+  <HelpSearch variant="compact" withDialog={true} triggerHidden={true} />
 </BaseLayout>
 
 <style is:global>

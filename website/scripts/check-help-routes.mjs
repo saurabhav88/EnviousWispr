@@ -59,13 +59,34 @@ const sitemapMissing = [...expected].filter((u) => !seen.has(`${SITE}${u}`)).sor
 const duplicated = [...seen.entries()].filter(([, n]) => n > 1).map(([u]) => u);
 const undated = helpEntries.filter(([, , d]) => !/^\d{4}-\d{2}-\d{2}/.test(d)).map(([, u]) => u);
 
+// Every internal /help/ link in the built pages must resolve. Nine of these
+// are inline cross-references inside article prose ("See <Article>"), which the
+// Crisp source rendered as italic text with no destination — a reader was told
+// where to go and given no way to get there. They are links now, and this is
+// what stops a future edit quietly recreating a dead end.
+const deadLinks = [];
+let linksChecked = 0;
+for (const route of built) {
+  const file = path.join(dist, route.replace(/^\//, ''), 'index.html');
+  if (!fs.existsSync(file)) continue;
+  const html = fs.readFileSync(file, 'utf8');
+  for (const m of html.matchAll(/href="(\/help\/[a-z0-9-]+\/)"/g)) {
+    linksChecked++;
+    if (!fs.existsSync(path.join(dist, m[1].replace(/^\//, ''), 'index.html'))) {
+      deadLinks.push(`${route} -> ${m[1]}`);
+    }
+  }
+}
+
 const problems = [];
+if (linksChecked === 0) problems.push('no internal help links found at all — the link scan is broken, not the pages');
+if (deadLinks.length) problems.push(`internal help links pointing nowhere: ${deadLinks.join(', ')}`);
 if (missing.length) problems.push(`routes missing from the build: ${missing.join(', ')}`);
 if (unexpected.length) problems.push(`routes built but not expected: ${unexpected.join(', ')}`);
 if (sitemapMissing.length) problems.push(`help URLs absent from the sitemap: ${sitemapMissing.join(', ')}`);
 if (duplicated.length) problems.push(`help URLs appearing more than once in the sitemap: ${duplicated.join(', ')}`);
 if (undated.length) problems.push(`help URLs with an unparseable lastmod: ${undated.join(', ')}`);
 
-console.log(`help routes: expected ${expected.size}, built ${built.size}, in sitemap ${seen.size}`);
+console.log(`help routes: expected ${expected.size}, built ${built.size}, in sitemap ${seen.size}, internal links ${linksChecked} (${deadLinks.length} dead)`);
 for (const p of problems) console.error(`FAIL: ${p}`);
 process.exit(problems.length ? 1 : 0);
