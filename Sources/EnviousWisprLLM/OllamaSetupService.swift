@@ -248,11 +248,14 @@ public final class OllamaSetupService {
   // MARK: - Name Normalization
 
   /// Canonical name: strips `:latest` suffix only. All other tags preserved.
+  ///
+  /// Delegates to `LLMModelInfo.canonicalOllamaName` in Core so this rule has
+  /// ONE implementation. `EnviousWisprServices` needs the same rule and cannot
+  /// import this module (PR #1949 cloud review); duplicating it there would
+  /// have made two authorities for one question. The 28 call sites of this
+  /// name keep working unchanged.
   public nonisolated static func canonicalModelName(_ name: String) -> String {
-    if name.hasSuffix(":latest") {
-      return String(name.dropLast(":latest".count))
-    }
-    return name
+    LLMModelInfo.canonicalOllamaName(name)
   }
 
   // MARK: - Parameter Size Parsing

@@ -230,6 +230,25 @@ public struct LLMProviderConfig: Codable, Sendable {
 
 /// A discoverable LLM model with availability status.
 public struct LLMModelInfo: Codable, Identifiable, Sendable {
+  /// Canonical Ollama model name: strips a `:latest` suffix, preserves every
+  /// other tag. `llama3.2` and `llama3.2:latest` are the same model; `llama3.2`
+  /// and `llama3.2:1b` are not.
+  ///
+  /// Lives in Core because TWO modules must agree on it and they cannot see
+  /// each other: `EnviousWisprLLM` matches the daemon's `/api/tags` rows with
+  /// it, and `EnviousWisprServices` needs it to decide whether a remembered
+  /// selection is still installed. `OllamaSetupService.canonicalModelName`
+  /// delegates here rather than reimplementing, so there is one rule.
+  ///
+  /// PR #1949 cloud review: `SettingsManager` compared a remembered name to a
+  /// discovered id EXACTLY, while the runtime readiness preflight compares
+  /// canonically. The shipped default is `llama3.2` and a daemon commonly
+  /// reports `llama3.2:latest`, so the two disagreed about whether the user's
+  /// model was installed.
+  public static func canonicalOllamaName(_ name: String) -> String {
+    name.hasSuffix(":latest") ? String(name.dropLast(":latest".count)) : name
+  }
+
   public let id: String
   public let displayName: String
   public let provider: LLMProvider

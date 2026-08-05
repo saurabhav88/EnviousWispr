@@ -869,8 +869,22 @@ public final class SettingsManager {
     // decision below being violated by the very branch that documents it.
     //
     // Test what is actually armed.
+    //
+    // Matched CANONICALLY for Ollama, because the runtime does. The readiness
+    // preflight treats `llama3.2` and `llama3.2:latest` as the same model, and
+    // the shipped default is `llama3.2` while a daemon commonly reports
+    // `llama3.2:latest` — so an exact compare here would call an installed
+    // model missing and repair away a selection that works. One rule, in Core,
+    // because this module cannot import the Ollama one (PR #1949).
     let armedModel = provider == .ollama ? ollamaModel : llmModel
-    if models.contains(where: { $0.id == armedModel && $0.isAvailable }) {
+    let armedRow = models.first { candidate in
+      guard candidate.isAvailable else { return false }
+      return provider == .ollama
+        ? LLMModelInfo.canonicalOllamaName(candidate.id)
+          == LLMModelInfo.canonicalOllamaName(armedModel)
+        : candidate.id == armedModel
+    }
+    if let armedRow {
       // Armed and available: this is the user's selection and it stands. Re-sync
       // the picker field, which binds `llmModel` (`AIPolishSettingsView:473`),
       // so the UI shows the model the runtime will actually use instead of the
@@ -882,8 +896,13 @@ public final class SettingsManager {
       // the model is present and available, and it never invents a name: on the
       // all-hosted path below, `ollamaModel` is cleared to "" and no available
       // row can match it.
-      if provider == .ollama, llmModel != armedModel {
-        llmModel = armedModel
+      // Sync to the DISCOVERED id, not the remembered spelling: a canonical
+      // match can differ by `:latest`, and the picker lists discovered rows, so
+      // storing `llama3.2` against a `llama3.2:latest` row would leave the
+      // picker showing nothing selected.
+      if provider == .ollama {
+        if llmModel != armedRow.id { llmModel = armedRow.id }
+        if ollamaModel != armedRow.id { ollamaModel = armedRow.id }
       }
     } else {
       // Prefer the provider's own default-model family (an exact id match,

@@ -155,6 +155,55 @@ struct SettingsManagerOllamaTruthTests {
       "the picker binds llmModel, so it must show the model the runtime will use")
   }
 
+  /// PR #1949 cloud review, second finding. The repair compared names EXACTLY
+  /// while the runtime readiness preflight compares CANONICALLY, so the two
+  /// disagreed about whether a model was installed.
+  ///
+  /// The case must DISCRIMINATE. A first draft used the shipped default
+  /// (`llama3.2` remembered, `llama3.2:latest` discovered) and was vacuous: an
+  /// exact-match repair falls through to `eligible.first`, which was that same
+  /// row, so both implementations produced the identical result and a mutation
+  /// back to exact matching still passed.
+  ///
+  /// This version uses the reviewer's actual harm. The remembered model is
+  /// HOSTED, so an exact-match repair does not merely re-pick it — the repair
+  /// excludes hosted rows on purpose, and the user lands on a local model they
+  /// never chose.
+  @Test("a hosted pick matching only by :latest is kept, not repaired to a local model")
+  func canonicalMatchProtectsAHostedPickSpelledDifferently() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "gpt-4o-mini"  // left behind by a round trip through OpenAI
+    settings.ollamaModel = "gemma4"  // remembered without the tag
+
+    settings.applyDiscoveredModels(
+      [model("gemma4:latest", isRemote: true), model("mistral")], for: .ollama)
+
+    #expect(
+      settings.effectiveLLMModel == "gemma4:latest",
+      "the same hosted model by another spelling must not be repaired away")
+    #expect(
+      settings.llmModel == "gemma4:latest",
+      "the picker lists discovered rows, so it must hold the discovered id")
+    #expect(settings.ollamaModel == "gemma4:latest")
+  }
+
+  /// The control: `:latest` is the ONLY tag that may be ignored. A different
+  /// size tag is a different model, so the repair must still run — and because
+  /// the remaining row is hosted here, it must arm NOTHING rather than pick it.
+  @Test("a different tag is a different model and still repairs")
+  func differentTagIsNotCanonicallyEqual() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "gemma4:1b"
+    settings.ollamaModel = "gemma4:1b"
+
+    settings.applyDiscoveredModels([model("gemma4:latest", isRemote: true)], for: .ollama)
+
+    #expect(settings.effectiveLLMModel == "")
+    #expect(settings.ollamaModel == "")
+  }
+
   /// The control that keeps the test above from passing vacuously: a hosted
   /// model that is genuinely GONE from discovery must still be repaired away,
   /// and the replacement must still be local. Without this, an implementation
