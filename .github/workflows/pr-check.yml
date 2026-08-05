@@ -525,6 +525,59 @@ jobs:
             ( cd "workers/$w" && node --test )
           done
 
+  # Website lane: builds the Astro site and runs the help-centre checks.
+  #
+  # Before this, `npm run build` ran ONLY on push to main (deploy-blog.yml), so
+  # a broken site was discovered after merge, at deploy. The help centre's whole
+  # safety story rests on this build and these checks, so it runs before merge.
+  #
+  # needs_website gating is at STEP level, matching build-debug: a non-website PR
+  # runs this job, skips the work, and reports SUCCESS. A job-level `if` would
+  # report `skipped`, which a needs-based aggregator treats as not-success.
+  website-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Job-scoped, not step-scoped: a later step cannot read another step's env,
+      # and the conversion check needs the base to read the pre-migration JSON.
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Full history: resolving pull_request.base.sha needs it, and a
+          # shallow clone makes the diff fail. Same reason as the build lanes.
+          fetch-depth: 0
+
+      - name: Detect website changes
+        id: changes
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
+
+      - name: Setup Node
+        if: steps.changes.outputs.needs_website == 'true'
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        if: steps.changes.outputs.needs_website == 'true'
+        working-directory: website
+        run: npm ci
+
+      - name: Build site
+        if: steps.changes.outputs.needs_website == 'true'
+        working-directory: website
+        run: npm run build
+
+      - name: Help centre checks (routes, sitemap, search)
+        if: steps.changes.outputs.needs_website == 'true'
+        working-directory: website
+        run: npm run check:help
+
   # Required aggregate gate. This is the ONLY required status check on main
   # (ruleset main-protection, context "build-check"); keeping the job id
   # "build-check" preserves that context so no ruleset change is needed (#906).
@@ -532,7 +585,7 @@ jobs:
   # fail closed), but is skipped when the whole run is cancelled (a superseded
   # push) so the obsolete SHA shows "cancelled", not a false "Failure".
   build-check:
-    needs: [build-debug, build-release, worker-tests]
+    needs: [build-debug, build-release, worker-tests, website-check]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -556,8 +609,9 @@ jobs:
         run: |
           if [ "${{ needs.build-debug.result }}" != "success" ] \
              || [ "${{ needs.build-release.result }}" != "success" ] \
-             || [ "${{ needs.worker-tests.result }}" != "success" ]; then
-            echo "::error::lane failed — build-debug=${{ needs.build-debug.result }} build-release=${{ needs.build-release.result }} worker-tests=${{ needs.worker-tests.result }}"
+             || [ "${{ needs.worker-tests.result }}" != "success" ] \
+             || [ "${{ needs.website-check.result }}" != "success" ]; then
+            echo "::error::lane failed — build-debug=${{ needs.build-debug.result }} build-release=${{ needs.build-release.result }} worker-tests=${{ needs.worker-tests.result }} website-check=${{ needs.website-check.result }}"
             exit 1
           fi
           echo "==> Both build lanes and the worker unit suites passed."
