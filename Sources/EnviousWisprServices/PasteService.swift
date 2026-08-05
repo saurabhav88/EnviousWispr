@@ -914,7 +914,9 @@ public enum PasteService {
   ///
   /// When a `budget` is supplied, EVERY accessibility call inside is wrapped so
   /// the cap applies to all of them TOGETHER (founder 2026-07-28: "it has to be
-  /// a 100 ms cap for all the questions"). Passing no budget is today's path
+  /// a 100 ms cap for all the questions"; the cumulative rule stands, the value
+  /// is 200 ms since 2026-08-05 — `TerminalResolutionBudget.defaultTotal` owns
+  /// why). Passing no budget is today's path
   /// exactly, at the standard failure timeout — which is what every non-terminal
   /// app takes.
   static func caretDerivedContext(

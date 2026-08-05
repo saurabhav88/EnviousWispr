@@ -244,6 +244,11 @@ struct TerminalContextResolverTests {
     // five could take five times the cap between them and no single call ever
     // looked late.
     //
+    // The CUMULATIVE half of that decision is what this test freezes and it is
+    // unchanged. The VALUE is no longer 100 ms — it is
+    // `TerminalResolutionBudget.defaultTotal`, raised to 200 ms on 2026-08-05
+    // (#1941). This test passes its own total, so it does not depend on either.
+    //
     // NO ASSERTION HERE MAY DEPEND ON WALL TIME (#1893), which is the rule the
     // rest of this suite already follows through `TestClock`. Three review
     // rounds landed on this one test, each on a different face of the same
@@ -339,8 +344,8 @@ struct TerminalContextResolverTests {
 
     // A phase marker separates the initial read from the commit-boundary
     // re-check, which reuses the same labels. It must cost nothing: if a marker
-    // charged even a rounding error, the total the 100 ms cap is judged against
-    // would drift with the number of phases rather than with real work.
+    // charged even a rounding error, the total the cap is judged against would
+    // drift with the number of phases rather than with real work.
     budget.mark("recheck")
     _ = budget.step(applying: element, label: "focused") {}
 

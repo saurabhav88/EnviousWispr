@@ -65,7 +65,30 @@ package enum TerminalContextResult: Equatable, Sendable {
 /// the user, on the heart path. A per-CALL limit would not bound that; only a
 /// cumulative one does. No call, route, retry or revalidation resets it.
 package final class TerminalResolutionBudget: Sendable {
-  package static let defaultTotal: Double = 0.100
+  /// 200 ms, raised from 100 ms (founder, 2026-08-05). INTERIM — the cost this
+  /// accommodates is a defect, tracked in #1943.
+  ///
+  /// The cap has always been cumulative, and that half of the original decision
+  /// is unchanged (founder 2026-07-28: "it has to be a 100 ms cap for all the
+  /// questions"). Only the number moved, and it moved because the number was
+  /// set against a cost that turned out to be wrong by an order of magnitude.
+  ///
+  /// What forced it: Gate 1's process scan is charged here, and it walks EVERY
+  /// pid on the machine at ~4 syscalls each. Measured on the real path across
+  /// one ordinary session — 36, 49, 54, 61, 77, 77 ms, then 114.7 ms, which
+  /// exhausted the old cap and tripped the breaker. `TerminalCircuitBreaker`
+  /// has no production reset, so that single moment turned terminal insertion
+  /// off for the rest of that terminal's life with nothing shown to the user
+  /// (#1941). A later clean session measured 60-65 ms per dictation: passing,
+  /// but spending two thirds of the old cap on one step with no headroom.
+  ///
+  /// Why raising it is the right INTERIM move and the wrong permanent one: the
+  /// worst case here is added latency before falling back to the payload we
+  /// would have pasted anyway, whereas exhausting it is a silent permanent
+  /// feature loss. Trading up to 100 ms of rare worst-case delay against that is
+  /// worth it today. It is not a fix — #1943 makes the scan cheap, and this
+  /// number should come back down once it lands, against a re-measured cost.
+  package static let defaultTotal: Double = 0.200
 
   private let total: Double
   private let spent = OSAllocatedUnfairLock(initialState: 0.0)
@@ -131,6 +154,11 @@ package final class TerminalResolutionBudget: Sendable {
   /// 2026-07-28: "it has to be a 100 ms cap for all the questions"). An earlier
   /// version applied the same bound to each of the five reads, so five could
   /// take five times the cap between them.
+  ///
+  /// The cumulative half of that decision stands. The VALUE is now 200 ms
+  /// (founder, 2026-08-05); `defaultTotal` owns the reason. Quoting the older
+  /// figure here as the live cap would make this comment the kind of confidently
+  /// stale citation that grounding-discipline.md warns about.
   ///
   /// Measured live the same day, which is why this is a FAILURE bound and not a
   /// latency target: all five reads together cost mean 0.78 ms in Ghostty and
@@ -330,7 +358,21 @@ package enum TerminalContextResolver {
     // result is what keeps them apart.
     //
     // Timed from out here because the process sweep is NOT an accessibility
-    // call, so nothing else charges it. Measured mean 3 ms / p95 7 ms.
+    // call, so nothing else charges it.
+    //
+    // COST, re-measured 2026-08-05 and corrected: this line previously read
+    // "Measured mean 3 ms / p95 7 ms", and that number is what the old 100 ms
+    // cap was sized against. On the real path it is 4x to 40x higher. The app's
+    // own trace across one ordinary session: 36, 49, 54, 61, 77, 77, then
+    // 114.7 ms — the last exhausted the whole cap here and tripped the breaker
+    // (#1941). A later clean session ran 60-65 ms per dictation. Standalone, the
+    // shipped scanner spans 13 ms to 862 ms depending on queue and machine load.
+    //
+    // This step is therefore the dominant consumer of the budget, not a rounding
+    // error, and #1943 exists to make it cheap. Do not restore the 3 ms figure,
+    // and do not size anything against it.
+    //
+    // Every other step in the same traces is under 0.5 ms.
     let scanStart = dependencies.now()
     let scan = dependencies.scanProcesses()
     if overspent(

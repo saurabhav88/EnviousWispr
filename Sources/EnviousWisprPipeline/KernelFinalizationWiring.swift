@@ -668,7 +668,10 @@ struct KernelFinalizationWiring {
         // because the whole overspend lived in the half no line covered.
         //
         // Everything before `|recheck|` was already on the repair line; the
-        // suffix is new, and the total is what the 100 ms cap is judged against.
+        // suffix is new, and the total is what the cumulative cap is judged
+        // against. That cap is `TerminalResolutionBudget.defaultTotal`, which
+        // owns the current value — do not restate the number here, because a
+        // second copy is what goes stale (it read "100 ms" until 2026-08-05).
         await AppLogger.shared.log(
           "CURSOR_COMMIT submitted=\(result.submittedPayload?.rawValue ?? "none") "
             + "tier=\(result.pasteTierLabel ?? "none") "
