@@ -345,6 +345,47 @@ struct SeamCasingRuntimeSerializationTests {
     }
   }
 
+  @Test("#1922 Saving state for the exclusion helper must not START anything")
+  func stateCaptureIsReadOnly() async throws {
+    // Confirming whole-diff review, P2. `withSeamCasingOracleExclusion` saves the
+    // prior English oracle so it can hand it back. Doing that with
+    // `snapshot(for:)` enqueued English and started a real preparation, which
+    // `resetForTesting()` cannot cancel — so the helper could manufacture the
+    // very overlap the suites it guards exist to disprove.
+    //
+    // This asserts the read is inert on the hardest case: a runtime where English
+    // has NEVER been prepared, which is exactly when `snapshot` would enqueue.
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+
+      let builderRan = OSAllocatedUnfairLock(initialState: false)
+      SeamCasingOracleRuntime.setPreparationOverrideForTesting { _ in
+        builderRan.withLock { $0 = true }
+        return Self.ready(["the"])
+      }
+      defer { SeamCasingOracleRuntime.setPreparationOverrideForTesting(nil) }
+
+      #expect(
+        SeamCasingOracleRuntime.installedOracleForTesting("en") == nil,
+        "nothing is prepared, so there is nothing to hand back")
+      #expect(
+        SeamCasingOracleRuntime.outstandingLeasesForTesting() == 0,
+        "and a read must not take a lease")
+
+      let started = await Self.waitUntil(timeout: .milliseconds(300)) {
+        builderRan.withLock { $0 }
+      }
+      #expect(started == false, "reading prior state must not queue a preparation")
+
+      // Two-way control: it must still SEE a prepared oracle, or the helper would
+      // silently stop restoring anything and this test would pass on a stub.
+      SeamCasingOracleRuntime.installForTesting(Self.ready(["the"]), for: "en")
+      #expect(
+        SeamCasingOracleRuntime.installedOracleForTesting("en") != nil,
+        "and it must return a READY oracle when one exists")
+    }
+  }
+
   // MARK: - The latch is still process-wide
 
   @Test("#1922 One language's timeout latches EVERY language, not just its own")

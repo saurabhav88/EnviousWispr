@@ -82,30 +82,29 @@ func withSeamCasingOracleExclusion<T>(
 ) async rethrows -> T {
   await SeamCasingOracleTestExclusion.shared.acquire()
 
-  // ENGLISH only, and that is a deliberate limit rather than an oversight.
+  // READ-ONLY, and that is load-bearing rather than tidy.
   //
-  // The runtime holds one phase per language now (#1922), so "the prior state"
-  // is a dictionary. It cannot be read as one: probing a language that was never
-  // requested ENQUEUES it, so a save loop would itself mutate what it is trying
-  // to preserve, and the phase type is private besides. English is the only
-  // language the app prewarms at launch, so it is the only one a holder can
-  // realistically destroy. Every other language is left reset, which costs one
-  // re-preparation and can never produce a wrong answer.
+  // The obvious way to save prior state is `snapshot(for: "en")`. That is a
+  // decision-time call and is deliberately NOT read-only: an absent language is
+  // enqueued and a real `NSSpellChecker` preparation is started. The body then
+  // calls `resetForTesting()`, which clears `preparing` without being able to
+  // cancel a builder already running — so the test's own preparation could
+  // overlap the stray one and produce exactly the concurrent access these suites
+  // exist to prove cannot happen. Observation manufacturing the defect it
+  // observes. Confirming whole-diff review, P2.
   //
-  // The lease goes back immediately: an assertion is not a decision, and a lease
-  // nobody releases would stop the drain preparing any language for the rest of
-  // the run.
-  let prior = SeamCasingOracleRuntime.snapshot(for: "en")
-  if prior.isAvailable { SeamCasingOracleRuntime.releaseDecisionLease() }
+  // ENGLISH only, and that is a deliberate limit. The runtime holds one phase per
+  // language now (#1922), and there is no way to enumerate them without
+  // requesting them. English is the only language the app prewarms at launch, so
+  // it is the only one a holder can realistically destroy; every other language
+  // is left reset, which costs one re-preparation and can never produce a wrong
+  // answer. Warming and unavailable phases are not restored for the same reason —
+  // both recompute safely.
+  let prior = SeamCasingOracleRuntime.installedOracleForTesting("en")
 
   @Sendable func restoreAndRelease() async {
     SeamCasingOracleRuntime.resetForTesting()
-    // `oracleWarming` IS what a reset produces, so reinstalling it would be a
-    // no-op at best. Any other prior state was a real oracle this holder must
-    // hand back.
-    if prior.unavailableReason != .oracleWarming {
-      SeamCasingOracleRuntime.installForTesting(prior, for: "en")
-    }
+    if let prior { SeamCasingOracleRuntime.installForTesting(prior, for: "en") }
     await SeamCasingOracleTestExclusion.shared.release()
   }
 

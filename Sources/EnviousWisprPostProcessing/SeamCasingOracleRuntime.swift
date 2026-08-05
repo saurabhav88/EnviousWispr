@@ -558,6 +558,28 @@ package enum SeamCasingOracleRuntime {
     }
   }
 
+  /// Read a language's prepared oracle WITHOUT requesting one. Test-only.
+  ///
+  /// `snapshot(for:)` is deliberately not read-only: an absent language is
+  /// enqueued and the drain is poked. That is right for a decision and wrong for
+  /// a helper whose only job is to save state so it can hand it back.
+  ///
+  /// Using `snapshot(for:)` for that started a REAL `NSSpellChecker` preparation
+  /// which `resetForTesting()` then could not cancel — it clears `preparing`
+  /// without stopping the builder — so the test's own preparation could overlap
+  /// the stray one. That is precisely the concurrent access these tests exist to
+  /// prove cannot happen, manufactured by the observation itself. Confirming
+  /// whole-diff review, P2.
+  ///
+  /// Returns nil when the language is absent, warming, or unavailable; all three
+  /// recompute safely on next request, so only a READY oracle is worth restoring.
+  package static func installedOracleForTesting(_ base: String = "en") -> SeamCasingOracle? {
+    state.withLock { state in
+      guard case .ready(let oracle)? = state.phases[base] else { return nil }
+      return oracle
+    }
+  }
+
   /// Leases outstanding right now. Test-only.
   ///
   /// Exists so a test can PROVE the drain waits rather than asserting it in a
