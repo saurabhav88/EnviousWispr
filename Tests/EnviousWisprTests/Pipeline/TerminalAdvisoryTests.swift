@@ -15,20 +15,24 @@ import Testing
 
   // MARK: - The classifier: one authority, both projections
 
-  @Test("only zeroSignal and vadGate no-speech are advisories")
+  @Test("only genuinely absent-audio outcomes are advisories")
   func classifierTruthTable() {
-    // POSITIVE — the two endings the founder decision covers.
+    // POSITIVE — the absent-audio endings the founder decision covers.
     #expect(
       KernelDictationDriver.advisoryReason(for: .failed(.zeroSignal)) == .zeroSignal)
     #expect(
       KernelDictationDriver.advisoryReason(for: .noSpeech(.vadGate)) == .vadGateNoSpeech)
+    // #1923/#1925: zero buffers for the whole session is the same shape, just
+    // a different producer — own case to preserve its own telemetry identity
+    // (§ PipelineStateChangePlanner), same shared sentence.
+    #expect(KernelDictationDriver.advisoryReason(for: .noTransport) == .noTransport)
 
     // NEGATIVE — a working microphone and a user who said nothing. These stay
     // SILENT by founder ruling: they already know they did not speak.
     #expect(KernelDictationDriver.advisoryReason(for: .noSpeech(.asrEmptyNoSpeech)) == nil)
     // #1920: audio WAS arriving above every dead-air floor and the engine ran
-    // clean, so there is nothing to tell the user to check. The two advisories
-    // above stay the only ones, and they are the genuinely-absent-audio cases.
+    // clean, so there is nothing to tell the user to check. The three advisories
+    // above stay the only ones, and they are the genuinely absent-audio cases.
     #expect(KernelDictationDriver.advisoryReason(for: .asrEmptyDespiteAudio) == nil)
     #expect(KernelDictationDriver.advisoryReason(for: .noSpeech(.emptyAfterProcessing)) == nil)
 
@@ -50,12 +54,11 @@ import Testing
     #expect(KernelDictationDriver.advisoryReason(for: .cancelled) == nil)
     #expect(KernelDictationDriver.advisoryReason(for: .discarded(.tooShort)) == nil)
     #expect(KernelDictationDriver.advisoryReason(for: .discarded(.releasedBeforeRecording)) == nil)
-    #expect(KernelDictationDriver.advisoryReason(for: .noTransport) == nil)
   }
 
   // MARK: - The copy
 
-  @Test("the seventh sentence is byte-exact and shared by both reasons")
+  @Test("the seventh sentence is byte-exact and shared by all advisory reasons")
   func seventhSentenceIsFrozen() {
     let expected =
       "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings."

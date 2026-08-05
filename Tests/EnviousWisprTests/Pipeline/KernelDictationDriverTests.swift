@@ -60,10 +60,12 @@ import Testing
     #expect(mappedOutcome(.noSpeech(.emptyAfterProcessing)) == .idle)
     // #1891: zero-signal moved out of the error surface for the same reason.
     #expect(mappedOutcome(.failed(.zeroSignal)) == .advisory(.zeroSignal))
+    // #1923/#1925: zero buffers for the whole session is the same "nothing to
+    // transcribe" shape, own advisory case to keep its own telemetry identity.
+    #expect(mappedOutcome(.noTransport) == .advisory(.noTransport))
     // Error-surface endings.
     for o: RecordingOutcome in [
       .failed(.asrEmpty), .audioInterrupted(nil), .asrInterrupted(wasRecording: true),
-      .noTransport,
     ] {
       if case .error = mappedOutcome(o) {
       } else {
@@ -96,10 +98,6 @@ import Testing
       KernelDictationDriver.pipelineState(
         for: .idle, outcome: .failed(.modelLoadFailed), externalReason: nil)
         == .error(.modelLoadFailed))
-    #expect(
-      KernelDictationDriver.pipelineState(
-        for: .idle, outcome: .noTransport, externalReason: nil)
-        == .error(.noAudioCaptured))
   }
 
   // MARK: handle(event:) -> kernel triggers
@@ -239,6 +237,27 @@ import Testing
       // leak. Customer copy is proven in `DictationNarratorTests` (AppKit).
       #expect(h.driver.state == .error(.modelLoadFailed))
       #expect(h.driver.overlayIntent == .error(reason: .modelLoadFailed))
+    }
+
+    @Test("hasTerminalResult recognizes every terminal mechanism, including a silent outcome (#1925)")
+    func hasTerminalResultRecognizesEveryTerminalMechanism() {
+      // Fresh driver, nothing has happened yet.
+      let fresh = makeDriver()
+      #expect(fresh.driver.hasTerminalResult == false)
+
+      // A silent, non-error conclusion (the shape #1925's postcondition
+      // could not previously distinguish from a genuine wedge) still counts.
+      let silent = makeDriver()
+      #expect(silent.kernel.testForceTransition(to: .arming))
+      silent.kernel.testForceConclude(.asrEmptyDespiteAudio)
+      #expect(silent.driver.hasTerminalResult == true)
+
+      // The driver's OWN direct-set mechanism also counts, independent of the
+      // kernel-concluded path above.
+      let direct = makeDriver()
+      #expect(direct.driver.hasTerminalResult == false)
+      direct.driver.setTerminalReason(.modelWedged)
+      #expect(direct.driver.hasTerminalResult == true)
     }
 
     @Test(

@@ -67,23 +67,25 @@ public enum TerminalNoticeReason: String, Equatable, Sendable, CaseIterable {
 /// text through no fault of the pipeline.
 ///
 /// Deliberately a SEPARATE type from `TerminalNoticeReason`, not another case
-/// on it. `TerminalNoticeReason` means "a terminal notice whose raw value is
-/// the PostHog `pipeline.failed.error_code`", and both halves are wrong here:
-/// only one of these two reasons emits `pipeline.failed` at all, and the
-/// founder's model (#1876, 2026-07-31) splits capture endings into exactly two
-/// customer buckets — OUR SOFTWARE ("[X] error. Try again.") and YOUR SETUP.
+/// on it. `TerminalNoticeReason` couples each case directly to a raw PostHog
+/// `pipeline.failed.error_code`. This type cannot make that promise because its
+/// three producers have different telemetry obligations, described below.
+///
+/// The founder's model (#1876, 2026-07-31) splits capture endings into exactly
+/// two customer buckets: OUR SOFTWARE ("[X] error. Try again.") and YOUR SETUP.
 /// This type is the second bucket.
 ///
-/// Two cases rather than one because the two producers have different
-/// telemetry obligations even though they share a sentence: `.zeroSignal`
+/// Three cases rather than one because the producers have different telemetry
+/// obligations even though they share one customer sentence. `.zeroSignal`
 /// continues the existing `pipeline.failed` `zero_signal` series (340 events /
-/// 50 users per 30d — the baseline the Phase 2 analysis rests on), while
+/// 50 users per 30d — the baseline the Phase 2 analysis rests on). `.noTransport`
+/// continues the existing `pipeline.failed` `no_audio_captured` series.
 /// `.vadGateNoSpeech` is already counted by `audio.vad_gate_no_speech` (#1845)
 /// and must NOT manufacture a second, overlapping failure record.
 ///
-/// Both narrate identically. Do not add a per-case sentence without a founder
-/// decision: #1558 locked the customer copy set, and #1891 added exactly one
-/// seventh sentence to it.
+/// All three narrate identically. Do not add a per-case sentence without a
+/// founder decision: #1558 locked the customer copy set, and #1891 added
+/// exactly one seventh sentence to it.
 public enum TerminalAdvisoryReason: Equatable, Sendable, CaseIterable {
   /// The capture buffer was digitally silent — a closed lid in clamshell,
   /// vendor firmware mute, or a dead channel. Reaches here from
@@ -101,4 +103,11 @@ public enum TerminalAdvisoryReason: Equatable, Sendable, CaseIterable {
   /// `.asrEmptyNoSpeech`, which stays silent because the microphone was
   /// working and the user already knows they did not speak.
   case vadGateNoSpeech
+
+  /// #1923/#1925: no audio transport ever arrived for the whole session — the
+  /// no-buffer watchdog fired with zero buffers delivered. Reaches here from
+  /// `RecordingOutcome.noTransport`; keeps emitting `pipeline.failed` with the
+  /// unchanged `no_audio_captured` code (the LOCKED projection this outcome
+  /// has always carried, `KernelTerminalProjections.swift`).
+  case noTransport
 }

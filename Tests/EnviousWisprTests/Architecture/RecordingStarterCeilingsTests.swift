@@ -34,11 +34,16 @@ import Testing
       named: "RecordingStarter", at: Self.sourcePath)
     let count = RouterCeilingParser.nonPrivateMethodCount(in: body)
     #expect(
-      count <= 2,
+      count <= 3,
       """
-      RecordingStarter non-private method ceiling exceeded: \(count) > 2 \
+      RecordingStarter non-private method ceiling exceeded: \(count) > 3 \
       non-private `func` declarations. PR10 baseline: start, toggle. \
-      `isProcessing` is a `var` (computed) and is not counted.
+      #1925 added `shouldStampPostConditionWedge` — the postcondition's actual \
+      decision, extracted as a pure `nonisolated static func` so the four-case \
+      wedge-detection truth table is directly testable rather than requiring a \
+      live driver/kernel; it must stay reachable from the test target, so it \
+      cannot be `private`. `isProcessing` is a `var` (computed) and is not \
+      counted.
       """)
   }
 
@@ -168,10 +173,17 @@ import Testing
     // in flight, so the pre-rebase local number was against a stale base and CI —
     // which tests the MERGE — was the first thing able to see the real total.
     // Deterministic rule: actual 646 + 4 → round up to nearest 5 = 650.
+    // #1925: raised 650 → 660. The postcondition's `pipelineInError` computation
+    // (duplicated across the `kernelDriver`/`whisperKitKernelDriver` branches)
+    // collapsed to a single `active.hasTerminalResult` read, and the new
+    // `shouldStampPostConditionWedge` pure function plus its doc comment were
+    // added — a net addition once the deleted branching is subtracted. No new
+    // collaborator (count stays ≤ 7). Deterministic rule: actual 654 + 6 → round
+    // up to nearest 5 = 660.
     #expect(
-      count <= 650,
+      count <= 660,
       """
-      RecordingStarter line count exceeded: \(count) > 650. \
+      RecordingStarter line count exceeded: \(count) > 660. \
       Raise via Bible §30 only.
       """)
   }

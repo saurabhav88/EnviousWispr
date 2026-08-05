@@ -200,20 +200,31 @@ enum PipelineStateChangePlanner {
     if case .error(let reason) = newState.activity {
       effects.append(.reportPipelineFailed(errorCode: reason.rawValue))
     }
-    // #1891: `.zeroSignal` moved from `.error` to `.advisory` for PRESENTATION
-    // only. Its telemetry must not move with it — `zero_signal` is an existing
-    // series (340 events / 50 users per 30d) and the baseline the whole Phase 2
-    // analysis rests on, so it keeps emitting under its unchanged code.
-    // Splitting or renaming it would be the #1813 retired-vocabulary trap,
-    // self-inflicted.
+    // #1891/#1923/#1925: `.zeroSignal` and `.noTransport` moved from `.error`
+    // to `.advisory` for PRESENTATION only. Their telemetry must not move
+    // with them — `zero_signal` and `no_audio_captured` are existing series
+    // (`zero_signal`: 340 events / 50 users per 30d, the baseline the whole
+    // Phase 2 analysis rests on) that keep emitting under their unchanged
+    // codes. Splitting or renaming either would be the #1813 retired-
+    // vocabulary trap, self-inflicted. An exhaustive switch (not a second
+    // freestanding `if case`) so a FUTURE fourth advisory case is a compile
+    // error here, not a silently skipped telemetry record.
     //
     // `.vadGateNoSpeech` emits NOTHING here on purpose: it is already counted
     // by `audio.vad_gate_no_speech` (#1845), and a second record would both
     // double-count that population and inflate total `pipeline.failed` volume
     // with takes that were never a pipeline failure.
-    if case .advisory(.zeroSignal) = newState.activity {
-      effects.append(
-        .reportPipelineFailed(errorCode: TerminalNoticeReason.zeroSignal.rawValue))
+    if case .advisory(let reason) = newState.activity {
+      switch reason {
+      case .zeroSignal:
+        effects.append(
+          .reportPipelineFailed(errorCode: TerminalNoticeReason.zeroSignal.rawValue))
+      case .noTransport:
+        effects.append(
+          .reportPipelineFailed(errorCode: TerminalNoticeReason.noAudioCaptured.rawValue))
+      case .vadGateNoSpeech:
+        break
+      }
     }
 
     return PipelineStateChangePlan(effects: effects)
