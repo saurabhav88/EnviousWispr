@@ -516,6 +516,34 @@ import Testing
       RecordingStartOutcome.make(pipelineActive: false, continuingSessionID: nil) == .noRecording)
   }
 
+  // MARK: - #1925 postcondition decision
+
+  /// Extracted as a pure function so this is tested directly rather than by
+  /// racing a live driver into each of the four states. Only ONE combination
+  /// stamps a wedge: nothing active, no terminal result reached by any
+  /// mechanism, and the user did not stop it themselves.
+  @Test("the wedge postcondition fires only when truly nothing happened")
+  func postConditionWedgeClosedSet() {
+    // Active: never a wedge, regardless of the other two inputs.
+    #expect(
+      !RecordingStarter.shouldStampPostConditionWedge(
+        pipelineActive: true, hasTerminalResult: false, userStoppedDuringStart: false))
+    // Concluded by any mechanism (error, advisory, or any other real ending):
+    // not a wedge. This is the #1925 fix — the old check only recognized
+    // `.error` here.
+    #expect(
+      !RecordingStarter.shouldStampPostConditionWedge(
+        pipelineActive: false, hasTerminalResult: true, userStoppedDuringStart: false))
+    // The user stopped it themselves during start: not a wedge, a real no-op.
+    #expect(
+      !RecordingStarter.shouldStampPostConditionWedge(
+        pipelineActive: false, hasTerminalResult: false, userStoppedDuringStart: true))
+    // Nothing active, nothing concluded, no user stop: the one true wedge.
+    #expect(
+      RecordingStarter.shouldStampPostConditionWedge(
+        pipelineActive: false, hasTerminalResult: false, userStoppedDuringStart: false))
+  }
+
   #if DEBUG
 
     /// The helper test above proves the mapping. These prove the two PRODUCTION

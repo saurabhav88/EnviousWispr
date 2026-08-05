@@ -422,28 +422,22 @@ final class RecordingStarter {
       return .noRecording
     }
     let totalMs = Self.elapsedMs(since: pttStart)
-    let pipelineActive: Bool
-    let pipelineInError: Bool
-    if isWhisperKit {
-      pipelineActive = whisperKitKernelDriver.state.isActive
-      if case .error = whisperKitKernelDriver.state {
-        pipelineInError = true
-      } else {
-        pipelineInError = false
-      }
-    } else {
-      pipelineActive = kernelDriver.state.isActive
-      if case .error = kernelDriver.state {
-        pipelineInError = true
-      } else {
-        pipelineInError = false
-      }
-    }
+    let pipelineActive = active.state.isActive
+    // #1925: was `pipelineInError`, matching only `.error`. A concluded
+    // `.advisory` (and any other quietly-concluded outcome) is just as much
+    // "something happened" as an error is, and the old check treated it like
+    // silence — letting this postcondition stamp a wedge over an already-
+    // correct message. `hasTerminalResult` answers the real question
+    // directly instead of enumerating recognized cases.
+    let pipelineConcluded = active.hasTerminalResult
     let userStoppedDuringStart: Bool = {
       guard let lastStop = lastUserStopAccess.read() else { return false }
       return lastStop > pttStart
     }()
-    if !pipelineActive && !pipelineInError && !userStoppedDuringStart {
+    if Self.shouldStampPostConditionWedge(
+      pipelineActive: pipelineActive, hasTerminalResult: pipelineConcluded,
+      userStoppedDuringStart: userStoppedDuringStart)
+    {
       SentryBreadcrumb.captureError(
         ModelLoadWatchdog.WedgeError(stage: "post_condition"),
         category: .pipelinePostConditionFailed, stage: "recording",
@@ -454,7 +448,7 @@ final class RecordingStarter {
       active.setTerminalReason(.modelWedged)
       return .noRecording
     }
-    if !pipelineActive && !pipelineInError && userStoppedDuringStart {
+    if !pipelineActive && !pipelineConcluded && userStoppedDuringStart {
       recordingOverlay.show(intent: .hidden)
       recordingLockedAccess.set(false)
       return .noRecording
@@ -462,7 +456,7 @@ final class RecordingStarter {
     // GitHub cloud review, PR #1732: consume the pending blocked-press info
     // (and emit `recovery.press_unblocked`) only NOW, after both post-
     // condition early-returns above have been survived — a genuine session
-    // (active or a real pipeline error, not a silent wedge or a user-stop-
+    // (active or a real pipeline result, not a silent wedge or a user-stop-
     // during-arm no-op) actually started. Firing this before `handle(event:)`
     // let a throw or an unactivated session get counted as "unblocked".
     consumePendingBlockedPressIfAny()
@@ -473,13 +467,27 @@ final class RecordingStarter {
       )
     }
     // #1631: report what the hotkey needs — a session that is genuinely
-    // continuing, and its id. `pipelineInError` is deliberately NOT treated as a
-    // session here: `PipelineState.error` is excluded from `isActive`, so an
-    // errored pipeline is not a live recording and must not keep hands-free
+    // continuing, and its id. `pipelineConcluded` is deliberately NOT treated
+    // as a session here: a concluded pipeline (error, advisory, or any other
+    // real ending) is not a live recording and must not keep hands-free
     // bookkeeping alive. The id also comes back nil when an exit is already
     // latched, which `state` alone cannot express.
     return RecordingStartOutcome.make(
       pipelineActive: pipelineActive, continuingSessionID: active.continuingSessionID)
+  }
+
+  /// #1925: the postcondition's actual decision, extracted as a pure function
+  /// so it is directly testable without constructing a live driver/kernel.
+  /// `pipelineActive` and `hasTerminalResult` are independent facts (a
+  /// session can be neither, briefly, between conclusion and reset) —
+  /// stamping a wedge is correct only when NEITHER holds AND the user did not
+  /// stop it themselves.
+  nonisolated static func shouldStampPostConditionWedge(
+    pipelineActive: Bool,
+    hasTerminalResult: Bool,
+    userStoppedDuringStart: Bool
+  ) -> Bool {
+    !pipelineActive && !hasTerminalResult && !userStoppedDuringStart
   }
 
   /// UI/menu toggle path (no prewarm). Mirrors the former root-state file

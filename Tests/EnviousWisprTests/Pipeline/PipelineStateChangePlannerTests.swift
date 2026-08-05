@@ -320,6 +320,73 @@ struct PipelineStateChangePlannerTests {
   // redundant now that both backends share `PipelineState.error(_)` (covered
   // by `errorStateEmitsReportPipelineFailed` above).
 
+  // MARK: - Advisory telemetry identity (#1923/#1925)
+  //
+  // The advisory bucket presents one shared sentence for three producers, but
+  // each keeps its OWN `pipeline.failed.error_code` so the three underlying
+  // series never merge. This is the regression guard for a defect caught
+  // before it shipped: an earlier draft would have routed `.noTransport`
+  // through the `.zeroSignal` code, silently corrupting the `zero_signal`
+  // baseline the whole Phase 2 analysis rests on.
+
+  @Test("advisory zeroSignal still reports the unchanged zero_signal code")
+  func advisoryZeroSignalReportsUnchangedCode() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.advisory(.zeroSignal),
+      pipelineOverlayIntent: .advisory(reason: .zeroSignal),
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: false,
+      historySaved: true,
+      historySaveReason: nil
+    )
+    #expect(
+      plan.effects.contains(
+        .reportPipelineFailed(errorCode: TerminalNoticeReason.zeroSignal.rawValue)))
+  }
+
+  @Test("advisory noTransport reports the pre-existing no_audio_captured code, not zero_signal")
+  func advisoryNoTransportReportsNoAudioCapturedCode() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.advisory(.noTransport),
+      pipelineOverlayIntent: .advisory(reason: .noTransport),
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: false,
+      historySaved: true,
+      historySaveReason: nil
+    )
+    #expect(
+      plan.effects.contains(
+        .reportPipelineFailed(errorCode: TerminalNoticeReason.noAudioCaptured.rawValue)))
+    // TWO-WAY CONTROL: the defect this test guards against would have this
+    // pass too, since both codes would be emitted under a merged series.
+    #expect(
+      !plan.effects.contains(
+        .reportPipelineFailed(errorCode: TerminalNoticeReason.zeroSignal.rawValue)))
+  }
+
+  @Test("advisory vadGateNoSpeech still emits nothing here, unchanged")
+  func advisoryVadGateStillEmitsNothing() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.advisory(.vadGateNoSpeech),
+      pipelineOverlayIntent: .advisory(reason: .vadGateNoSpeech),
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: false,
+      historySaved: true,
+      historySaveReason: nil
+    )
+    for effect in plan.effects {
+      if case .reportPipelineFailed = effect {
+        Issue.record("vadGateNoSpeech must not emit reportPipelineFailed (already counted by audio.vad_gate_no_speech)")
+      }
+    }
+  }
+
   // MARK: - Effect ordering guarantees
 
   @Test("complete success plan produces canonical effect order")

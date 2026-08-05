@@ -102,8 +102,9 @@ enum RecordingOutcome: Equatable, Sendable {
   /// distinction — true when the session was `.live` at interruption.
   case asrInterrupted(wasRecording: Bool)
   /// #1548: no audio ever arrived — the 800 ms no-buffer watchdog fired with
-  /// `bufferCountThisSession == 0` (a dead mic). Projects to the existing
-  /// `.failed(.noAudioCaptured)` telemetry + "No audio captured" copy.
+  /// `bufferCountThisSession == 0`. Retains the existing
+  /// `.failed(.noAudioCaptured)` telemetry identity and presents through
+  /// `.advisory(.noTransport)` (#1923/#1925), not a hardware verdict.
   case noTransport
   /// #1920: audio was arriving ABOVE every dead-air floor, the engine ran
   /// without error, and it produced no words.
@@ -3063,8 +3064,8 @@ final class RecordingSessionKernel {
   /// capture session via its own `isCurrentSession(ctx.sessionID)` check.
   ///
   /// #1317 §3.2 / #1548 D2: routes by `ctx.failureMode` AND lifecycle state.
-  /// - `.noBuffers` + no buffer ever (`bufferCountThisSession == 0`) → dead mic:
-  ///   `finishTerminal(.noTransport)` ("No audio captured"; #1755 disposition: best-effort deletion).
+  /// - `.noBuffers` + no buffer ever (`bufferCountThisSession == 0`) → transport absence:
+  ///   `finishTerminal(.noTransport)` (microphone advisory; #1755 disposition: best-effort deletion).
   /// - `.noBuffers` after a buffer arrived → `.captureStall` (routed via the
   ///   pending slot from `.arming`, `deliverRecordingExitIfCurrent` from `.live`).
   /// - `.allZeroFromStart` / `.becameZeroMidCapture` → the dedicated `.zeroSignal`

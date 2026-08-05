@@ -128,7 +128,7 @@ enum DictationNarrator {
   /// substantiate (#1876 product decision 1).
   static func copy(for reason: TerminalAdvisoryReason) -> String {
     switch reason {
-    case .zeroSignal, .vadGateNoSpeech:
+    case .zeroSignal, .vadGateNoSpeech, .noTransport:
       return
         "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings."
     }

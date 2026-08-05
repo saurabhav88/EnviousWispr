@@ -1217,6 +1217,18 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     fireStateChangeIfNeeded()
   }
 
+  /// #1925: whether the current start produced any terminal result, by
+  /// either mechanism (`lastTerminalReason`, set directly by driver-level
+  /// fallback paths, or a concluded `kernel.recordingOutcome`, set by the FSM
+  /// itself). The single source of truth for "did something happen," so a
+  /// start-path postcondition can tell a genuine wedge from any real
+  /// conclusion without re-deriving it from `state` case by case — a check
+  /// that enumerated cases (`.error`, `.advisory`, ...) would need to grow
+  /// every time a new terminal shape is added; this does not.
+  package var hasTerminalResult: Bool {
+    lastTerminalReason != nil || kernel.recordingOutcome != nil
+  }
+
   // MARK: HeartPathTelemetryTarget — forwards to the observer (PR-4 §3.9)
 
   public func handleCaptureStall(_ ctx: CaptureStallContext) {
@@ -1626,7 +1638,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// them inherit it without a decision is not.
   ///
   /// Founder model (#1876, 2026-07-31): capture endings get exactly two
-  /// customer buckets, OUR SOFTWARE and YOUR SETUP. Only the two cases below
+  /// customer buckets, OUR SOFTWARE and YOUR SETUP. Only the three cases below
   /// are the second bucket. `.captureStalled` (a mid-take death) deliberately
   /// stays our-software until #1578 telemetry explains it — calling it the
   /// user's setup would be a guess.
@@ -1655,12 +1667,18 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       case .asrEmptyNoSpeech, .emptyAfterProcessing:
         return nil
       }
+    // #1923/#1925: zero audio buffers ever arrived — the same "nothing to
+    // transcribe" shape as `.zeroSignal`/`.vadGate` above, not a transcription
+    // failure. Own advisory case (not reusing `.zeroSignal`) to keep its
+    // `no_audio_captured` telemetry identity separate from `zero_signal`'s.
+    case .noTransport:
+      return .noTransport
     // #1920: `.asrEmptyDespiteAudio` gets NO advisory. Audio was arriving above
     // every dead-air floor, so there is nothing to tell the user to check — the
-    // genuinely-absent-audio cases above (`.zeroSignal`, `.vadGate`) keep the
-    // advisory, and they are the ones that should speak.
+    // genuinely-absent-audio cases above (`.zeroSignal`, `.vadGate`, `.noTransport`)
+    // keep the advisory, and they are the ones that should speak.
     case .completed, .cancelled, .discarded, .audioInterrupted,
-      .asrInterrupted, .noTransport, .asrEmptyDespiteAudio:
+      .asrInterrupted, .asrEmptyDespiteAudio:
       return nil
     }
   }
