@@ -204,8 +204,11 @@ const alsoRead = article ? related(articles, article) : [];
           </p>
         )}
 
+        {/* The space before "against" is explicit: Astro strips the leading
+            whitespace of a continuation line, so a newline here renders as
+            "2026-08-05against". */}
         <p class="help-checked">
-          Last checked <time datetime={isoDate(article!.data.updated)}>{isoDate(article!.data.updated)}</time>
+          Last checked <time datetime={isoDate(article!.data.updated)}>{isoDate(article!.data.updated)}</time>{' '}
           against the shipping app.
         </p>
 

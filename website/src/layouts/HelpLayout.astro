@@ -49,7 +49,12 @@ const { title, description, canonicalPath, articles, currentArticle, currentCate
 </BaseLayout>
 
 <style is:global>
-  .help-page { padding: 48px 0 88px; }
+  /* The nav is `position: fixed` (global.css:99), so page content has to clear
+     it. 120px is what blog/index.astro, BlogPost.astro and contact.astro all
+     use; matching it is what keeps the help centre from starting higher than
+     every other page. An earlier 48px put the sidebar's search box underneath
+     the nav bar — invisible to every build check, obvious in a browser. */
+  .help-page { padding: 120px 0 96px; }
 
   .help-grid { display: block; }
 
@@ -65,7 +70,21 @@ const { title, description, canonicalPath, articles, currentArticle, currentCate
     }
   }
 
-  .help-rail-search { margin-bottom: 20px; }
+  /* The RAIL is the sticky unit, not just the tree inside it, so the search
+     trigger stays reachable while reading a long article. The plan called for
+     "a sticky sidebar with the search trigger at its top"; making only the tree
+     sticky let search scroll away, which is the opposite. */
+  @media (min-width: 1080px) {
+    .help-rail {
+      position: sticky;
+      top: 88px;
+      max-height: calc(100vh - 108px);
+      display: flex;
+      flex-direction: column;
+    }
+  }
+
+  .help-rail-search { margin-bottom: 20px; flex: 0 0 auto; }
 
   /* Below the breakpoint the tree becomes a disclosure above the content, so a
      phone reader is never scrolled past a long nav to reach the article. */

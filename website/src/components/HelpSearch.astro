@@ -172,6 +172,22 @@ const { variant = 'compact' } = Astro.props;
   }
 </script>
 
+<style is:global>
+  /* Result rows are built at runtime via innerHTML, so they never get Astro's
+     scoping attribute and a scoped selector silently does not apply. These are
+     global for that reason, namespaced under .help-search-results so nothing
+     else can match them. Caught in a browser: every build check passed while
+     results rendered as one run-on default-blue link. */
+  .help-search-results a {
+    display: grid; gap: 3px; padding: 11px 12px; border-radius: 10px;
+    text-decoration: none; color: inherit;
+  }
+  .help-search-results li.is-active a, .help-search-results a:hover { background: var(--accent-soft); }
+  .help-search-results .r-title { font-weight: 650; color: var(--text); font-size: 15px; }
+  .help-search-results .r-cat { font-family: var(--font-mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+  .help-search-results .r-snip { font-size: 13px; color: var(--text-2); line-height: 1.45; }
+</style>
+
 <style>
   .visually-hidden {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -220,14 +236,6 @@ const { variant = 'compact' } = Astro.props;
   .help-search-status:empty { display: none; }
 
   .help-search-results { list-style: none; margin: 0; padding: 0 8px 8px; max-height: 55vh; overflow-y: auto; }
-  .help-search-results a {
-    display: grid; gap: 3px; padding: 11px 12px; border-radius: 10px;
-    text-decoration: none; color: inherit;
-  }
-  .help-search-results li.is-active a, .help-search-results a:hover { background: var(--accent-soft); }
-  .r-title { font-weight: 650; color: var(--text); font-size: 15px; }
-  .r-cat { font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
-  .r-snip { font-size: 13px; color: var(--text-2); line-height: 1.45; }
 
   @media (prefers-reduced-motion: reduce) {
     .help-search-inline, .help-search-compact { transition: none; }

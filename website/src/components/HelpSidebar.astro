@@ -53,11 +53,11 @@ const { articles, currentArticle, currentCategory } = Astro.props;
   .help-sidebar { display: none; }
 
   @media (min-width: 1080px) {
+    /* No sticky here: the RAIL is the sticky unit (HelpLayout), so the search
+       trigger stays with the tree. This just scrolls inside it. */
     .help-sidebar {
       display: block;
-      position: sticky;
-      top: 100px;
-      max-height: calc(100vh - 120px);
+      min-height: 0;
       overflow-y: auto;
       padding-right: 8px;
       font-size: 14px;
