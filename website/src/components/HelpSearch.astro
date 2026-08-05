@@ -103,7 +103,13 @@ const { variant = 'compact', withDialog = true } = Astro.props;
       overlay.hidden = false;
       document.body.style.overflow = 'hidden';
       input.focus();
-      load().catch(() => {});
+      // Re-render on EVERY open, not just the first. close() sets
+      // aria-expanded=false, and load() is memoised, so reopening a dialog that
+      // already has results returned the resolved promise without rendering:
+      // the old results stayed on screen while the combobox reported itself
+      // collapsed and could still point aria-activedescendant at a stale row.
+      render();
+      load().then(render).catch(() => {});
     }
 
     function close() {
