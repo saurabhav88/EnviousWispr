@@ -38,6 +38,39 @@ const BLOG_POST_DATES = (() => {
   return { map, latest };
 })();
 
+// Help dates for EVERY help URL, not only articles.
+//
+// The failure this exists to prevent: `sourceForUrl` returns null for /help/…,
+// so any help URL without a mapped date falls through to serialize's final
+// `new Date()` fallback. Articles carry `updated`, but the index and all twelve
+// category pages have no date of their own — so thirteen pages would have
+// claimed "modified today" on EVERY build, and deploy-blog.yml rebuilds the
+// site on a daily cron. A daily false freshness signal teaches search engines
+// to ignore our lastmod entirely.
+//
+// Categories take the latest `updated` among their own articles; the index
+// takes the latest across all of them.
+const HELP_DATES = (() => {
+  const helpDir = path.join(__dirname, 'src/content/help');
+  const map = {};
+  if (!fs.existsSync(helpDir)) return map;
+  const perCategory = {};
+  let latest = null;
+  for (const file of fs.readdirSync(helpDir)) {
+    if (!file.endsWith('.md')) continue;
+    const content = fs.readFileSync(path.join(helpDir, file), 'utf8');
+    const cat = content.match(/^category:\s*["']?([a-z-]+)["']?/m)?.[1];
+    const upd = content.match(/^updated:\s*["']?(\d{4}-\d{2}-\d{2})["']?/m)?.[1];
+    if (!cat || !upd) throw new Error(`sitemap: ${file} is missing category or updated`);
+    map[`${SITE}/help/${file.replace(/\.md$/, '')}/`] = upd;
+    if (!perCategory[cat] || upd > perCategory[cat]) perCategory[cat] = upd;
+    if (!latest || upd > latest) latest = upd;
+  }
+  for (const [cat, date] of Object.entries(perCategory)) map[`${SITE}/help/${cat}/`] = date;
+  if (latest) map[`${SITE}/help/`] = latest;
+  return map;
+})();
+
 // File mtime → ISO date for any source path on disk.
 function mtimeIso(absPath) {
   try {
@@ -110,6 +143,17 @@ export default defineConfig({
   integrations: [
     sitemap({
       serialize(item) {
+        // Help: every help URL has a derived date. THROW rather than fall
+        // through — a help URL reaching the today's-date fallback would
+        // publish a false freshness signal on every daily rebuild, silently.
+        if (item.url === `${SITE}/help/` || item.url.startsWith(`${SITE}/help/`)) {
+          const helpDate = HELP_DATES[item.url];
+          if (!helpDate) {
+            throw new Error(`sitemap: help URL has no mapped lastmod: ${item.url}`);
+          }
+          item.lastmod = helpDate;
+          return item;
+        }
         // Blog posts: use the frontmatter-driven date map.
         const blogDate = BLOG_POST_DATES.map[item.url];
         if (blogDate) {

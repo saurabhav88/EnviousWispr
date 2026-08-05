@@ -5,7 +5,7 @@
 Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.
 License: GNU General Public License v3 (GPLv3, open source on GitHub).
 Platform: macOS 14 (Sonoma) or later, Apple Silicon only.
-Last-updated: 2026-07-10
+Last-updated: 2026-08-05
 
 ## Product
 
@@ -13,6 +13,22 @@ Last-updated: 2026-07-10
 - [Homepage](https://enviouswispr.com/): Download, screenshots, core value proposition, system requirements (Apple Silicon, macOS 14+).
 - [Best dictation apps for Mac](https://enviouswispr.com/compare/best-dictation-apps-for-mac/): A practical 2026 guide to six Mac dictation options, with honest picks by workflow.
 - [Compare to alternatives](https://enviouswispr.com/compare/): Index of comparison pages vs WisprFlow, Superwhisper, Apple Dictation, Dragon, MacWhisper, Otter.ai, and others.
+
+## Help
+
+- [Help centre](https://enviouswispr.com/help/): All 52 support articles, searchable, with the complete article list on the page.
+- [Getting Started](https://enviouswispr.com/help/getting-started/): System requirements, download and install, first dictation, granting microphone and accessibility permission, uninstalling.
+- [Troubleshooting](https://enviouswispr.com/help/troubleshooting/): No text appearing, inaccurate dictation, first word cut off, accessibility permission not sticking, recording that will not stop, Ollama and Apple Intelligence failures, app crashes.
+- [Recording and Hotkeys](https://enviouswispr.com/help/recording-and-hotkeys/): Push-to-talk, hands-free, toggle mode, changing the recording hotkey, cancelling a recording.
+- [Speech Engines](https://enviouswispr.com/help/speech-engines/): Parakeet versus WhisperKit, language coverage, downloading and managing models, live transcription.
+- [AI Polish](https://enviouswispr.com/help/ai-polish/): What polish does, choosing or disabling a provider, Apple Intelligence setup, running Ollama offline, context-aware polish, hallucination protection.
+- [Pasting Your Text](https://enviouswispr.com/help/pasting-your-text/): How text reaches the focused app, spacing and capitals at the cursor, clipboard preservation, what to do when paste fails.
+- [Audio and Microphone](https://enviouswispr.com/help/audio-and-microphone/): Choosing an input device, AirPods and Bluetooth behaviour, noise suppression, voice activity detection and auto-stop.
+- [Custom Words](https://enviouswispr.com/help/custom-words/): Adding names and jargon, how correction matches, importing and exporting a word list.
+- [Features](https://enviouswispr.com/help/features/): Transcript history, filler-word removal, spoken punctuation and emoji, numbers and dates formatting, sounds and appearance.
+- [Privacy and Security](https://enviouswispr.com/help/privacy-and-security/): What stays on the Mac, what telemetry is collected, what cloud polish sends and to whom, where API keys are stored.
+- [Updates and Source](https://enviouswispr.com/help/updates-and-source/): Automatic updates, source code and contributing under GPLv3.
+- [Pricing](https://enviouswispr.com/help/pricing/): Why the app is free, and what bring-your-own-key costs if you choose a cloud provider.
 
 ## Comparisons
 
