@@ -1,5 +1,6 @@
 import ApplicationServices
 import Darwin
+import EnviousWisprCore
 import Foundation
 import os
 
@@ -70,6 +71,20 @@ package final class TerminalResolutionBudget: Sendable {
   private let spent = OSAllocatedUnfairLock(initialState: 0.0)
   private let now: @Sendable () -> Double
 
+  /// What each bounded step actually cost, for the log line.
+  ///
+  /// The budget was previously unobservable: it charged itself, tripped the
+  /// breaker on exhaustion, and recorded nothing about WHICH step spent the
+  /// time or how much. When the breaker fired in the field on 2026-08-04 there
+  /// was no way to answer "why did a read that measures ~1 ms take over 100?"
+  /// from the logs, and three separate hypotheses had to be tested by hand
+  /// against a live machine, all three wrong.
+  ///
+  /// Metadata only — a label and a duration. Never screen text, a path, or the
+  /// derived line, which is the same boundary `TerminalContextRefusal` keeps.
+  private let trace = OSAllocatedUnfairLock(
+    initialState: [(label: String, seconds: Double, isMark: Bool)]())
+
   /// `now` reads a monotonic clock in seconds. It exists so `step` can be
   /// tested against a clock the test drives, matching how the resolver already
   /// takes `Dependencies.now` — an assertion about cumulative charging must not
@@ -92,8 +107,21 @@ package final class TerminalResolutionBudget: Sendable {
   package var isExhausted: Bool { remaining <= 0 }
 
   /// Charge the time a step made the caller wait.
-  package func charge(_ seconds: Double) {
+  ///
+  /// Charging and RECORDING are one call, so a cost cannot reach the budget
+  /// without also reaching the trace unless a caller says so explicitly. Cloud
+  /// review found exactly that gap: the process scan was charged and recorded
+  /// nowhere, so a scan that ate 90 ms printed `total=1.0ms` — the line would
+  /// have been at its most misleading in the one case it exists to explain. A
+  /// log line carries the same evidence burden as a comment.
+  ///
+  /// Pass `nil` ONLY where the cost is already recorded by `step`, which is the
+  /// screen read: charging it a second time from the caller would double-count
+  /// it and halve the effective budget.
+  package func charge(_ seconds: Double, label: String?) {
     spent.withLock { $0 += max(0, seconds) }
+    guard let label else { return }
+    trace.withLock { $0.append((label, max(0, seconds), false)) }
   }
 
   /// Run one bounded step: apply the remaining budget as the accessibility
@@ -109,12 +137,51 @@ package final class TerminalResolutionBudget: Sendable {
   /// 1.79 ms in iTerm2, with the only spikes (19-35 ms) on a cold first call.
   /// The cap is roughly fifty times the typical cost and three times the worst
   /// observed — it exists to bound a wedge, and never bites healthy work.
-  package func step<T>(applying element: AXUIElement, _ body: () -> T) -> T {
+  /// - Parameter label: names this step in the timing trace. Required rather
+  ///   than defaulted, so a new bounded step cannot silently appear in the log
+  ///   as an anonymous cost.
+  package func step<T>(applying element: AXUIElement, label: String, _ body: () -> T) -> T {
     let application = AXUIElementCreateApplication(processIdentifier(of: element))
     AXUIElementSetMessagingTimeout(application, Float(max(0.005, remaining)))
     let started = now()
-    defer { charge(now() - started) }
+    defer {
+      // ONE call. `charge` both charges and records, so the separate
+      // `trace.append` this used to make alongside it would enter every step
+      // twice and double the printed total.
+      //
+      // Two separate locks inside `charge`, never nested: recording is a plain
+      // array append under an uncontended lock with no suspension point, so it
+      // cannot widen the window it measures.
+      charge(now() - started, label: label)
+    }
     return body()
+  }
+
+  /// Note a PHASE boundary in the trace. Costs nothing and charges nothing.
+  ///
+  /// The commit-boundary re-check calls the same read path as the initial
+  /// resolution, so its steps carry the same labels and land in the same trace.
+  /// Without a separator the line reads as one long run of duplicated names and
+  /// the reader cannot tell which phase spent the budget — which matters here
+  /// precisely because the re-check runs AFTER the target app is activated and
+  /// is the half we could not previously see.
+  package func mark(_ label: String) {
+    trace.withLock { $0.append((label, 0, true)) }
+  }
+
+  /// The per-step costs, for one log line. Empty when no step ran.
+  ///
+  /// Reads as `focused=0.4ms screen=0.2ms |recheck| focused=97.1ms total=97.7ms`,
+  /// which is what makes a trip diagnosable: the total says the cap was hit, the
+  /// labels say which call ate it, and the marker says in which phase.
+  package var timingDescription: String {
+    let samples = trace.withLock { $0 }
+    guard samples.contains(where: { !$0.isMark }) else { return "" }
+    let parts = samples.map {
+      $0.isMark ? "|\($0.label)|" : "\($0.label)=\(String(format: "%.1f", $0.seconds * 1000))ms"
+    }
+    let total = samples.reduce(0.0) { $0 + $1.seconds }
+    return parts.joined(separator: " ") + " total=\(String(format: "%.1f", total * 1000))ms"
   }
 
   private func processIdentifier(of element: AXUIElement) -> pid_t {
@@ -221,13 +288,17 @@ package enum TerminalContextResolver {
   /// documented, and inert — a wedged terminal would have repeated its delay on
   /// every single dictation forever. Tests that only trip it by hand cannot
   /// catch that; this is the one place the product itself does.
+  /// - Parameter label: names this cost in the timing trace, or `nil` when the
+  ///   cost was already recorded by `budget.step` and charging it again here
+  ///   would double-count it.
   static func overspent(
     by elapsed: Double,
+    label: String?,
     budget: TerminalResolutionBudget,
     breaker: TerminalCircuitBreaker,
     pid: pid_t
   ) -> Bool {
-    budget.charge(elapsed)
+    budget.charge(elapsed, label: label)
     guard budget.isExhausted else { return false }
     breaker.trip(for: pid)
     return true
@@ -263,7 +334,8 @@ package enum TerminalContextResolver {
     let scanStart = dependencies.now()
     let scan = dependencies.scanProcesses()
     if overspent(
-      by: dependencies.now() - scanStart, budget: budget, breaker: breaker, pid: targetPID)
+      by: dependencies.now() - scanStart, label: "scan", budget: budget, breaker: breaker,
+      pid: targetPID)
     {
       return .refused(.deadline)
     }
@@ -284,7 +356,9 @@ package enum TerminalContextResolver {
     // cumulative. Timing it again from out here would double-count it and
     // halve the effective budget.
     let tail = dependencies.readScreenTail()
-    if overspent(by: 0, budget: budget, breaker: breaker, pid: targetPID) {
+    // `nil` label and zero cost: `budget.step` already recorded the read under
+    // `screen`. This call exists only to re-test exhaustion after it.
+    if overspent(by: 0, label: nil, budget: budget, breaker: breaker, pid: targetPID) {
       // The evidence may well be complete, and it is discarded anyway. A result
       // that arrived after the deadline is a result the user already waited too
       // long for, and accepting it would make the promised bound meaningless.
@@ -292,7 +366,25 @@ package enum TerminalContextResolver {
     }
 
     guard let tail else { return .refused(.screenUnreadable) }
-    guard let located = TerminalScreenParser.locate(inScreenTail: tail) else {
+    let located: TerminalScreenParser.Located
+    switch TerminalScreenParser.locateDetailed(inScreenTail: tail) {
+    case .located(let found):
+      located = found
+    case .refused(let detail):
+      // WHICH guard refused. `screenRefused` is one telemetry value covering ten
+      // structurally different outcomes, and that collapse is why a live field
+      // failure could not be diagnosed on 2026-08-04.
+      //
+      // Logged rather than threaded into `TerminalContextRefusal`, because that
+      // enum's raw values are a shipped closed set read by telemetry, and
+      // widening it to carry a parser detail would change what those values
+      // mean. Closed-set names only; nothing here can carry screen content.
+      Task {
+        await AppLogger.shared.log(
+          "TERMINAL_PARSE refused codex=\(detail.codex.rawValue) "
+            + "boxed=\(detail.boxed.telemetryName)",
+          level: .info, category: "TerminalContextResolver")
+      }
       return .refused(.screenRefused)
     }
 

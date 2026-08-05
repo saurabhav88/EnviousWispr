@@ -600,11 +600,19 @@ struct KernelFinalizationWiring {
         // rounds of guessing during founder testing on 2026-07-26. Names and
         // shapes only, never a word of the document, so this respects the same
         // privacy boundary the telemetry does.
+        // The per-step timings ride the SAME line, because the question they
+        // answer is always "why did THIS outcome happen". Split across two
+        // lines they would have to be correlated by timestamp, which is exactly
+        // the reconstruction that made the 2026-08-04 breaker trip
+        // undiagnosable. Empty when no bounded step ran, so a non-terminal app
+        // does not gain a dangling ` timing=` on every dictation.
+        let terminalTiming = terminalBudget.timingDescription
         await AppLogger.shared.log(
           "CURSOR_REPAIR app=\(context.targetApp?.bundleIdentifier ?? "nil") "
             + "caret=\(outcome.caretContextOutcome ?? "nil") "
             + "rules=\(outcome.repairRules ?? "none") "
-            + "candidate=\(payloads.repairedText == nil ? "none" : "offered")",
+            + "candidate=\(payloads.repairedText == nil ? "none" : "offered")"
+            + (terminalTiming.isEmpty ? "" : " timing=[\(terminalTiming)]"),
           level: .info, category: "KernelFinalizationWiring")
 
         // The legacy payload is what a route falls back to; §6 decides per route
@@ -629,6 +637,35 @@ struct KernelFinalizationWiring {
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
             terminalBudget: terminalBudget))
         pasteResult = result
+
+        // WHICH payload actually went to the app, which `CURSOR_REPAIR` cannot
+        // say because it is logged before the write happens.
+        //
+        // This is the gap that made the founder's original report
+        // undiagnosable: the repair can decide `lowercased_first`, offer a
+        // candidate, and the route can still commit the LEGACY text because
+        // `payloadAtCommitBoundary` re-reads the caret and refuses when
+        // anything changed. From the log alone those two outcomes were
+        // indistinguishable — both showed `candidate=offered` and the user saw
+        // the capital survive.
+        //
+        // A second line rather than a field on the first, only because the fact
+        // does not exist until after the write. `tier` rides along so the two
+        // can be matched without a timestamp join.
+        // The FULL budget spend, which `CURSOR_REPAIR` structurally cannot show:
+        // that line is written before the paste, and the commit-boundary
+        // re-check runs after the target app is activated. On 2026-08-04 the
+        // repair line reported a healthy 1.6 ms and the breaker tripped anyway,
+        // because the whole overspend lived in the half no line covered.
+        //
+        // Everything before `|recheck|` was already on the repair line; the
+        // suffix is new, and the total is what the 100 ms cap is judged against.
+        await AppLogger.shared.log(
+          "CURSOR_COMMIT submitted=\(result.submittedPayload?.rawValue ?? "none") "
+            + "tier=\(result.pasteTierLabel ?? "none") "
+            + "timing=[\(terminalBudget.timingDescription)]",
+          level: .info, category: "KernelFinalizationWiring")
+
         if case .delivered = result.outcome {
           // The text that actually LANDED, which is not always the one this
           // closure passed in: a route may have committed the contextual

@@ -87,6 +87,58 @@ struct TerminalScreenParserTests {
     #expect(TerminalScreenParser.locate(inScreenTail: wrapped) == nil)
   }
 
+  @Test("#1921 diagnosis: refusals name WHICH guard fired, on both routes")
+  func refusalsAreDistinguishable() {
+    // Every one of the ten guards reported the same word, which is why a live
+    // failure on 2026-08-04 could not be diagnosed at all: three hypotheses were
+    // tested by hand against the founder's machine and all three were wrong.
+    //
+    // Both routes are recorded deliberately. Every normal Claude Code screen
+    // fails the Codex probe first, so a line carrying only the Codex refusal
+    // would read `no_opening_marker` on every single dictation and point the
+    // next reader at the wrong layout entirely.
+    func refusal(_ tail: String) -> TerminalScreenParser.Refusal? {
+      if case .refused(let detail) = TerminalScreenParser.locateDetailed(inScreenTail: tail) {
+        return detail
+      }
+      return nil
+    }
+
+    let wrapped = """
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      \u{276F} this line is long enough that it
+      wrapped onto a second row
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      """
+    let wrappedRefusal = refusal(wrapped)
+    #expect(
+      wrappedRefusal?.boxed.telemetryName == "boxed:multiple_populated_body_rows(2)",
+      "a wrapped input must name the wrap and its row count")
+
+    // The distinction that matters most: an EMPTY box and a WRAPPED box both
+    // refused with the same word before this change, and they mean opposite
+    // things — nothing typed yet, versus too much typed.
+    //
+    // Corrected by this test failing: an empty box reports `empty_input`, not a
+    // zero row count, because the marker row `\u{276F} ` is not blank and so
+    // survives the body-count guard to be rejected later for having no text. I
+    // expected the row count; the code was right and the assumption was mine.
+    let emptyRefusal = refusal(Self.claudeBox(""))
+    #expect(
+      emptyRefusal?.boxed.telemetryName == "boxed:empty_input",
+      "an empty box must be distinguishable from a wrapped one")
+
+    // And the Codex probe is reported even when the boxed route is the one that
+    // decided, because that is the pair the log has to carry.
+    #expect(wrappedRefusal?.codex == .noOpeningMarker)
+
+    // Two-way control: a screen the parser ACCEPTS must not produce a refusal at
+    // all, or every assertion above passes for the wrong reason.
+    #expect(
+      refusal(Self.claudeBox("fix the")) == nil,
+      "a locatable box must not be reported as refused")
+  }
+
   @Test("An EMPTY box refuses, never reading back the hints printed below it")
   func emptyBoxRefuses() {
     // The prototype's exact failure: an untouched box read back as
