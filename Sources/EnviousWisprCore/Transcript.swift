@@ -7,9 +7,9 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var llmLatencySeconds: Double?
   public var pasteTier: String?
   public var pasteLatencyMs: Int?
-  /// Cursor-aware insertion (#1785). All four are optional and additive, so a
-  /// transcript written before this feature decodes with them nil rather than
-  /// failing. Shapes and closed-set names only — a wrong-case report carries no
+  /// Cursor-aware insertion (#1785, extended by #1921). All six are optional and
+  /// additive, so a transcript written before either feature decodes with them
+  /// nil rather than failing. Shapes and closed-set names only — a wrong-case report carries no
   /// text, and these are what make it answerable:
   ///
   /// - `smartInsertionEnabled`: the setting as frozen for that recording,
@@ -21,10 +21,24 @@ public struct ExecutionMetrics: Codable, Sendable {
   ///   without the word it applied to.
   /// - `pastePayloadKind`: `legacy` / `repaired`, or nil when no route reached a
   ///   write. What was SUBMITTED, never proof of what landed.
+  /// - `languageResolutionSource` / `languageConfidenceBucket` (#1921): WHY the
+  ///   language question got the answer it did — `locked` / `engine` /
+  ///   `dictation` / `document` / `none`, and a confidence band. Without them
+  ///   `case_skipped:language_not_supported` looks identical whether the user
+  ///   locked a language, the engine reported one, or the recogniser was unsure.
+  ///
+  ///   Both stay OPTIONAL, and nil is not the same as `"none"`: `"none"` means
+  ///   the app measured and found nothing, nil means the fact was never
+  ///   recorded — which is every transcript written before #1921.
+  ///
+  ///   `public` is required, not preferred: `ExecutionMetrics` is the existing
+  ///   public carrier across Core -> Pipeline and Core -> Services.
   public var smartInsertionEnabled: Bool?
   public var caretContextOutcome: String?
   public var repairRules: String?
   public var pastePayloadKind: String?
+  public var languageResolutionSource: String?
+  public var languageConfidenceBucket: String?
   public var targetApp: String?
   public var coldStart: Bool
   public var streamingMode: Bool
@@ -131,6 +145,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     caretContextOutcome: String? = nil,
     repairRules: String? = nil,
     pastePayloadKind: String? = nil,
+    languageResolutionSource: String? = nil,
+    languageConfidenceBucket: String? = nil,
     targetApp: String? = nil,
     coldStart: Bool = false,
     streamingMode: Bool = false,
@@ -183,6 +199,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.caretContextOutcome = caretContextOutcome
     self.repairRules = repairRules
     self.pastePayloadKind = pastePayloadKind
+    self.languageResolutionSource = languageResolutionSource
+    self.languageConfidenceBucket = languageConfidenceBucket
     self.targetApp = targetApp
     self.coldStart = coldStart
     self.streamingMode = streamingMode

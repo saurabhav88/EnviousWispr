@@ -52,6 +52,62 @@ package struct EnglishWordOracle: Sendable {
 
   package var isAvailable: Bool { unavailableReason == nil }
 
+  /// The same oracle, but asking permission before every consultation.
+  ///
+  /// `authorize` answers two things at once for a caller holding a deadline
+  /// (#1921), and both need to be one atomic answer rather than a notification:
+  ///
+  /// - **It records that the oracle was genuinely reached.**
+  ///   `CursorInsertionRepair.repair` has early exits and does its spacing work
+  ///   before ever consulting word knowledge, so the moment repair STARTS is not
+  ///   the moment the oracle is involved — and a deadline that conflates the two
+  ///   permanently disables a component that was never touched.
+  /// - **It refuses once the deadline has fired.** Cancellation cannot preempt a
+  ///   blocked thread, so an un-preempted repair would otherwise walk into the
+  ///   real oracle after the timeout gave up, making exactly the unbounded call
+  ///   the deadline exists to bound (integration review round 2).
+  ///
+  /// Each refusal is conservative in that closure's OWN vocabulary — dictionary
+  /// unavailable, learned word, recognised name — so every one of them prevents
+  /// lowering. That is what makes a late refusal safe by construction: the worst
+  /// it can do is decline to improve text, which is what the app did before this
+  /// feature existed.
+  ///
+  /// `isLearnedWord` deliberately returns `true` here while `unavailable(_:)`
+  /// returns `false` there, and the difference is not an inconsistency. That
+  /// factory sets a non-nil `unavailableReason`, which short-circuits `mayLower`
+  /// at its first line, so none of its closures is ever consulted and their
+  /// values are inert. This wrapper passes the wrapped oracle's own
+  /// `unavailableReason` through, so on a healthy oracle the closures ARE
+  /// consulted and each value has to refuse on its own.
+  ///
+  /// I described these as "copied verbatim" from that factory when handing this
+  /// to review. They are not, and the reviewer checked. The values are right;
+  /// the reason I gave for them was not.
+  ///
+  /// Built here rather than at the call site because the memberwise initialiser
+  /// is internal to this module, and because a type that can be wrapped should
+  /// own how it is wrapped. `repair` stays unaware of any of this: it remains a
+  /// pure function of the oracle it is handed.
+  package func authorized(
+    by authorize: @escaping @Sendable () -> Bool
+  ) -> EnglishWordOracle {
+    EnglishWordOracle(
+      unavailableReason: unavailableReason,
+      dictionaryVerdict: { word in
+        guard authorize() else { return .unavailable(.oracleTimedOut) }
+        return dictionaryVerdict(word)
+      },
+      isLearnedWord: { word in
+        guard authorize() else { return true }
+        return isLearnedWord(word)
+      },
+      isRecognizedName: { left, payload in
+        guard authorize() else { return true }
+        return isRecognizedName(left, payload)
+      })
+  }
+
   package static func unavailable(
     _ reason: CursorInsertionRepair.CaseSkipReason
   ) -> EnglishWordOracle {

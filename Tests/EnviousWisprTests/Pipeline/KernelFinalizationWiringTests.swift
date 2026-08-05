@@ -4,10 +4,10 @@ import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 import Testing
-
-@testable import EnviousWisprPostProcessing
+import os
 
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprPostProcessing
 
 // MARK: - KernelFinalizationWiringTests (epic #827, PR-4 §11.4)
 //
@@ -32,7 +32,9 @@ import Testing
   /// gating CI on those would be flaky by construction (#1803 plan §11.2).
   static let testOracle = EnglishWordOracle(
     unavailableReason: nil,
-    dictionaryVerdict: { ["review", "the", "store", "testing"].contains($0) ? .ordinary : .notOrdinary },
+    dictionaryVerdict: {
+      ["review", "the", "store", "testing"].contains($0) ? .ordinary : .notOrdinary
+    },
     isLearnedWord: { _ in false },
     isRecognizedName: { _, _ in false })
 
@@ -340,6 +342,36 @@ import Testing
     let wiring = makeWiring(context: context, deliverPaste: { _ in Self.deliveredResult })
     let outcome = await wiring.deliver("hello")
     #expect(outcome == .clipboardOnly, "no auto-paste => never .pasted")
+  }
+
+  @Test("#1921 A clipboard-only delivery cannot inherit the previous session's language fields")
+  func clipboardOnlyDeliveryClearsStaleLanguageFields() async {
+    // `outcome` is SHARED and reused across sessions, and everything describing
+    // the insertion repair is written inside the auto-paste branch. So a
+    // clipboard-only delivery skips those assignments entirely.
+    //
+    // Without a default written at the top of `deliver`, this session would
+    // report the PREVIOUS dictation's language decision as if it were its own —
+    // stale telemetry that is indistinguishable from a real reading in the
+    // field, which is the worst kind. Found by chunk review; the first version
+    // of the production comment claimed these were "written on EVERY path".
+    let outcome = KernelFinalizationOutcome()
+    outcome.languageResolutionSource = "dictation"
+    outcome.languageConfidenceBucket = "ge90"
+
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoCopyToClipboard: true, autoPasteToActiveApp: false)
+    let wiring = makeWiring(
+      outcome: outcome, context: context, deliverPaste: { _ in Self.deliveredResult })
+
+    _ = await wiring.deliver("hello")
+
+    #expect(
+      outcome.languageResolutionSource == nil,
+      "a clipboard-only session never reaches the resolver, so nothing was MEASURED")
+    #expect(
+      outcome.languageConfidenceBucket == nil,
+      "nil means no attempt; \"none\" would claim an attempt that produced no answer")
   }
 
   // MARK: - Contracts migrated to the live finalization wiring
@@ -1210,7 +1242,9 @@ import Testing
     currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
     // Defaults to UNREADABLE, so every pre-existing test in this suite keeps
     // exactly today's behaviour and only tests that opt in see a candidate.
-    readCaretContext: @escaping @MainActor (AXUIElement, TerminalResolutionBudget, ((TerminalContextRefusal) -> Void)?) -> PasteService.CaretContext? = { _, _, _ in
+    readCaretContext: @escaping @MainActor (
+      AXUIElement, TerminalResolutionBudget, ((TerminalContextRefusal) -> Void)?
+    ) -> PasteService.CaretContext? = { _, _, _ in
       nil
     },
     // Delivery only ever runs after a transcription produced the text being
@@ -1219,7 +1253,14 @@ import Testing
     adapter: (any ASREngineAdapter)? = nil,
     // Injected, never installed into the process-global runtime: mutating that
     // would race `EnglishWordOracleTests` under concurrent suite execution.
-    englishWordOracle: @escaping @MainActor () -> EnglishWordOracle = { Self.testOracle }
+    englishWordOracle: @escaping @MainActor () -> EnglishWordOracle = { Self.testOracle },
+    // #1921 language-resolver seam. Defaults to the real resolver so every
+    // pre-existing case keeps today's behaviour; the two deadline tests inject a
+    // blocking one to drive the REAL 100 ms deadline into its timeout paths.
+    resolveLanguage: (
+      @Sendable (String?, Bool, String?, String, String) ->
+        DictationLanguageResolver.Resolution
+    )? = nil
   ) -> KernelFinalizationWiring {
     KernelFinalizationWiring(
       outcome: outcome,
@@ -1239,6 +1280,12 @@ import Testing
       deliverPaste: deliverPaste,
       readCaretContext: readCaretContext,
       englishWordOracle: englishWordOracle,
+      resolveLanguage: resolveLanguage
+        ?? {
+          DictationLanguageResolver.resolve(
+            lockedLanguage: $0, engineDetectsLanguage: $1, engineReportedLanguage: $2,
+            text: $3, surroundingText: $4)
+        },
       pasteCompletionRegistry: registry,
       currentTime: currentTime,
       telemetryState: telemetryState)
@@ -1325,6 +1372,307 @@ import Testing
     #expect(metrics.polishFellBackToRaw == false)
     #expect(metrics.polishFallbackReason == nil)
   }
+
+  // MARK: - #1921 Chunk 2: the language/repair deadline handoff
+
+  /// A resolution to hand the gate, distinct enough that its survival is visible.
+  static let gateResolution = DictationLanguageResolver.Resolution(
+    language: "en", source: .dictation, confidenceBucket: .ge90)
+
+  @Test("#1921 The deadline gate's four phases, including the completed distinction")
+  func deadlineGateFourPhaseMatrix() {
+    // Obligation 10's third race order lives inside `withOrderedDeadline`, in the
+    // gap between `await operation()` returning and `claim()` (`TaskTimeout.swift:123-125`).
+    // No injected seam reaches it, and timing against the 100 ms boundary would be
+    // a clock race. So that ordering is proven HERE, on the state machine itself,
+    // and the production call site is verified structurally in the receipt.
+    //
+    // The `repair` versus `completed` distinction is the entire reason this gate
+    // has four states rather than three: a three-state gate permanently disables a
+    // word oracle that had already finished successfully.
+
+    // Timeout while still resolving: nothing to report, nothing to disable.
+    let resolving = LanguageRepairDeadlineGate()
+    let fromResolving = resolving.timeOut()
+    #expect(fromResolving.resolution == nil)
+    #expect(fromResolving.shouldDisableOracle == false, "the oracle never ran")
+
+    // Timeout while repair is running AND the oracle was genuinely consulted:
+    // keep the resolution, disable.
+    let running = LanguageRepairDeadlineGate()
+    #expect(running.beginRepair(Self.gateResolution))
+    #expect(running.authorizeOracleUse(), "an authorised repair may consult the oracle")
+    let fromOracle = running.timeOut()
+    #expect(fromOracle.resolution?.language == "en")
+    #expect(fromOracle.resolution?.confidenceBucket == .ge90)
+    #expect(fromOracle.shouldDisableOracle, "a genuinely stuck oracle must be disabled")
+
+    // Timeout while repair is running but the oracle was NEVER touched.
+    //
+    // Integration review found this: `beginRepair` runs before
+    // `CursorInsertionRepair.repair`, and repair has early exits and does its
+    // spacing work before it ever consults the oracle. Arming on "repair began"
+    // would permanently disable a healthy oracle that was never involved — the
+    // exact harm this gate exists to prevent, moved one step later.
+    //
+    // Not reachable through the real wiring: the window is inside repair, and
+    // forcing it would need either a production seam in `CursorInsertionRepair`
+    // or a clock race. Proven here, on the state machine, like the completed
+    // ordering above.
+    let authorizedButUntouched = LanguageRepairDeadlineGate()
+    #expect(authorizedButUntouched.beginRepair(Self.gateResolution))
+    let fromUntouched = authorizedButUntouched.timeOut()
+    #expect(
+      fromUntouched.resolution?.language == "en",
+      "the resolution still survives; only the disable decision differs")
+    #expect(
+      fromUntouched.shouldDisableOracle == false,
+      "an oracle that was never consulted must not be punished for repair stalling")
+
+    // Timeout after repair already returned: keep the resolution, do NOT disable.
+    let completed = LanguageRepairDeadlineGate()
+    #expect(completed.beginRepair(Self.gateResolution))
+    #expect(completed.authorizeOracleUse())
+    completed.completeRepair()
+    let fromCompleted = completed.timeOut()
+    #expect(fromCompleted.resolution?.language == "en", "a finished run keeps its answer")
+    #expect(
+      fromCompleted.shouldDisableOracle == false,
+      "a healthy oracle that already finished must NOT be disabled")
+
+    // A second timeout is inert.
+    let repeated = completed.timeOut()
+    #expect(repeated.resolution == nil)
+    #expect(repeated.shouldDisableOracle == false)
+
+    // Repair can never start once the timeout owns the phase.
+    let lateStart = LanguageRepairDeadlineGate()
+    _ = lateStart.timeOut()
+    #expect(
+      lateStart.beginRepair(Self.gateResolution) == false,
+      "a resolver the deadline could not preempt must not enter repair")
+
+    // And an un-preempted repair ALREADY INSIDE the deadline must not reach the
+    // oracle once the timeout has claimed the phase.
+    //
+    // Integration review round 2 found this. Cancellation "cannot preempt a
+    // blocked thread" (`TaskTimeout.swift:129`), so a repair authorised before
+    // the deadline keeps running after it. Without this refusal it walks into
+    // the real word oracle after the timeout gave up, making exactly the
+    // unbounded blocking call the deadline exists to bound.
+    let lateOracle = LanguageRepairDeadlineGate()
+    #expect(lateOracle.beginRepair(Self.gateResolution))
+    let lateTimeout = lateOracle.timeOut()
+    #expect(
+      lateTimeout.shouldDisableOracle == false,
+      "it had not been consulted at the moment the deadline fired")
+    #expect(
+      lateOracle.authorizeOracleUse() == false,
+      "and it must be refused entry afterwards, not merely recorded")
+
+    // `completeRepair` from a phase that never began is inert, not a promotion.
+    let neverBegan = LanguageRepairDeadlineGate()
+    neverBegan.completeRepair()
+    let afterInertComplete = neverBegan.timeOut()
+    #expect(afterInertComplete.resolution == nil)
+    #expect(afterInertComplete.shouldDisableOracle == false)
+  }
+
+  @Test("#1921 The language resolution reaches the real transcript metrics")
+  func languageResolutionReachesTranscriptMetrics() async throws {
+    // The first hop of the telemetry chain, exercised through the REAL
+    // `updateTranscriptMetrics` rather than by constructing an `ExecutionMetrics`
+    // in the test — which would prove only that I can copy two strings.
+    //
+    // `document` / `f70to90` are deliberately distinctive: neither is a default,
+    // and neither is what any other path would produce, so a hop that silently
+    // dropped the value could not pass by coincidence.
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetElement = Self.stubCaretElement()
+
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
+      resolveLanguage: { _, _, _, _, _ in
+        DictationLanguageResolver.Resolution(
+          language: "de", source: .document, confidenceBucket: .f70to90)
+      })
+
+    let processed = try await wiring.processText("Review this before the meeting") {}
+    try await wiring.store(processed, UUID())
+    let delivery = await wiring.deliver(processed)
+
+    #expect(delivery == .pasted, "the normal non-timeout route must still deliver")
+    #expect(outcome.languageResolutionSource == "document")
+    #expect(outcome.languageConfidenceBucket == "f70to90")
+
+    let metrics = try #require(outcome.transcript?.metrics, "delivery must produce metrics")
+    #expect(
+      metrics.languageResolutionSource == "document",
+      "the value must survive the outcome -> ExecutionMetrics hop unchanged")
+    #expect(metrics.languageConfidenceBucket == "f70to90")
+  }
+
+  @Test("#1921 A stalled LANGUAGE stage times out without disabling the word oracle")
+  func languageStageTimeoutLeavesOracleEnabled() async throws {
+    // Race order one, through the REAL deadline. Before #1921 language
+    // resolution ran outside it entirely, so this stall had no bound at all.
+    //
+    // A language stall must not latch an unrelated, healthy component off for
+    // the rest of the process. A naive "did the oracle begin" flag gets this
+    // right only by luck, because cancellation here cannot preempt the blocked
+    // call.
+    try await withEnglishWordOracleExclusion {
+      EnglishWordOracleRuntime.resetForTesting()
+      EnglishWordOracleRuntime.installForTesting(Self.testOracle)
+      #expect(
+        EnglishWordOracleRuntime.snapshot().isAvailable,
+        "precondition: the oracle starts enabled, or this test cannot fail")
+
+      let entered = DispatchSemaphore(value: 0)
+      let release = DispatchSemaphore(value: 0)
+      let exited = DispatchSemaphore(value: 0)
+      // Records WHY the blocking wait ended. Without it, `exited` fires whether
+      // the test released the blocker or the five-second fail-safe expired, so
+      // the fallback could silently become the normal path.
+      let releaseOutcome = OSAllocatedUnfairLock<DispatchTimeoutResult?>(initialState: nil)
+      let outcome = KernelFinalizationOutcome()
+      let context = KernelSessionContext()
+      context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+      context.targetElement = Self.stubCaretElement()
+      let captured = CapturedRequest()
+
+      let wiring = makeWiring(
+        outcome: outcome,
+        context: context,
+        deliverPaste: { request in
+          captured.request = request
+          return Self.deliveredResult
+        },
+        readCaretContext: { _, _, _ in Self.midSentenceCaret },
+        resolveLanguage: { _, _, _, _, _ in
+          entered.signal()
+          // deadline-fallback: `release` is the signal; this bound only stops a defect hanging the suite
+          let waited = release.wait(timeout: .now() + 5)
+          releaseOutcome.withLock { $0 = waited }
+          exited.signal()
+          return DictationLanguageResolver.Resolution(
+            language: "en", source: .dictation, confidenceBucket: .ge90)
+        })
+
+      let delivery = Task { await wiring.deliver("Warmer and summer starts.") }
+
+      // Prove the ordering this test is NAMED for. Without it the case passes
+      // even if the resolver is never reached at all.
+      #expect(await awaitSignal(entered), "the resolver must have been entered before the deadline")
+
+      _ = await delivery.value
+
+      // Cleanup BEFORE any throwing assertion, so a failure below cannot strand
+      // a blocked thread for the rest of the suite.
+      release.signal()
+      #expect(await awaitSignal(exited), "the blocked resolver must have exited")
+      #expect(
+        releaseOutcome.withLock { $0 } == .success,
+        "it must have exited because we released it, not because the fail-safe expired")
+
+      let request = try #require(captured.request, "the paste route must have been reached")
+      #expect(
+        request.repairedText == nil,
+        "a timed-out repair must offer no candidate, only today's payload")
+      #expect(
+        request.legacyText == "Warmer and summer starts. ",
+        "and that payload must be exactly today's, trailing space included")
+      #expect(
+        outcome.languageResolutionSource == "none",
+        "nothing was resolved in time, and the field must say so rather than guess")
+      #expect(outcome.languageConfidenceBucket == "none")
+      #expect(
+        EnglishWordOracleRuntime.snapshot().isAvailable,
+        "the oracle never ran, so the language stall must NOT have latched it off")
+    }
+  }
+
+  @Test("#1921 A stalled ORACLE still latches, and the language answer survives")
+  func oracleStageTimeoutLatchesAndKeepsResolution() async throws {
+    // Race order two. Repair genuinely entered the oracle, so today's latching
+    // must be preserved exactly — and the resolution the language stage already
+    // produced must survive into telemetry rather than being reported as `none`,
+    // which is what a gate without a payload would do.
+    try await withEnglishWordOracleExclusion {
+      EnglishWordOracleRuntime.resetForTesting()
+      EnglishWordOracleRuntime.installForTesting(Self.testOracle)
+      #expect(EnglishWordOracleRuntime.snapshot().isAvailable, "precondition")
+
+      let entered = DispatchSemaphore(value: 0)
+      let release = DispatchSemaphore(value: 0)
+      let exited = DispatchSemaphore(value: 0)
+      let releaseOutcome = OSAllocatedUnfairLock<DispatchTimeoutResult?>(initialState: nil)
+      let blockingOracle = EnglishWordOracle(
+        unavailableReason: nil,
+        dictionaryVerdict: { _ in
+          entered.signal()
+          // deadline-fallback: `release` is the signal; this bound only stops a defect hanging the suite
+          let waited = release.wait(timeout: .now() + 5)
+          releaseOutcome.withLock { $0 = waited }
+          exited.signal()
+          return .ordinary
+        },
+        isLearnedWord: { _ in false },
+        isRecognizedName: { _, _ in false })
+
+      let outcome = KernelFinalizationOutcome()
+      let context = KernelSessionContext()
+      context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+      context.targetElement = Self.stubCaretElement()
+      let captured = CapturedRequest()
+
+      let wiring = makeWiring(
+        outcome: outcome,
+        context: context,
+        deliverPaste: { request in
+          captured.request = request
+          return Self.deliveredResult
+        },
+        readCaretContext: { _, _, _ in Self.midSentenceCaret },
+        englishWordOracle: { blockingOracle },
+        resolveLanguage: { _, _, _, _, _ in
+          DictationLanguageResolver.Resolution(
+            language: "en", source: .dictation, confidenceBucket: .ge90)
+        })
+
+      let delivery = Task { await wiring.deliver("Review this before the meeting") }
+
+      #expect(
+        await awaitSignal(entered),
+        "repair must have genuinely reached the oracle, not merely timed out near it")
+
+      _ = await delivery.value
+
+      release.signal()
+      #expect(await awaitSignal(exited), "the blocked oracle must have exited")
+      #expect(
+        releaseOutcome.withLock { $0 } == .success,
+        "it must have exited because we released it, not because the fail-safe expired")
+
+      let request = try #require(captured.request, "the paste route must have been reached")
+      #expect(request.repairedText == nil, "a timed-out repair offers no candidate")
+      #expect(
+        request.legacyText == "Review this before the meeting ",
+        "and the delivered payload must be exactly today's")
+      #expect(
+        EnglishWordOracleRuntime.snapshot().unavailableReason == .oracleTimedOut,
+        "a genuinely stuck oracle must still be latched off, exactly as before #1921")
+      #expect(
+        outcome.languageResolutionSource == "dictation",
+        "the language stage had already answered; the timeout must not erase it")
+      #expect(outcome.languageConfidenceBucket == "ge90")
+    }
+  }
+
 }
 
 /// Hand-advanced logical clock for the tick-rate test. Local `@MainActor` copy:
@@ -1337,6 +1685,34 @@ private final class ManualClock {
 }
 
 private enum WiringTestError: Error { case storage }
+
+/// Awaits a `DispatchSemaphore` WITHOUT occupying the caller's actor.
+///
+/// The blocking side of these tests is a synchronous production closure, so a
+/// semaphore is the only thing it can signal. But `DispatchSemaphore.wait` is
+/// unavailable from an async context, and waiting on the `@MainActor` test body
+/// would block the very actor `deliver` needs to make progress — a guaranteed
+/// deadlock rather than a slow test.
+///
+/// So the wait happens on a global queue and the result comes back through a
+/// continuation. The SIGNAL is the semaphore; the bound is a fail-safe so a
+/// defect fails one case instead of hanging the suite.
+private func awaitSignal(_ semaphore: DispatchSemaphore) async -> Bool {
+  await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+    DispatchQueue.global().async {
+      // deadline-fallback: the semaphore is the signal; this bound is the fail-safe
+      continuation.resume(returning: semaphore.wait(timeout: .now() + 5) == .success)
+    }
+  }
+}
+
+/// Captures the real delivery request so a timeout test can assert on the
+/// payload that ACTUALLY reached the paste route, rather than on the outcome
+/// fields alone. `@MainActor` because `deliverPaste` is.
+@MainActor
+private final class CapturedRequest {
+  var request: PasteDeliveryRequest?
+}
 
 /// Deterministic polisher for the #1022 short-dictation test: enables the
 /// polish step (provider set, connector mocked) so the persisted nil can only

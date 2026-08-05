@@ -4,6 +4,7 @@ import EnviousWisprLLM
 import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
+import os
 
 // MARK: - KernelFinalizationWiring (epic #827, PR-4 §3.3, §3.6)
 //
@@ -80,6 +81,16 @@ final class KernelFinalizationOutcome {
   var smartInsertionEnabled: Bool?
   var caretContextOutcome: String?
   var repairRules: String?
+  /// #1921. `repairRules` says WHAT the repair decided; these say why the
+  /// language question got the answer it did. Without them a fielded regression
+  /// in the confidence gate is invisible: `case_skipped:language_not_supported`
+  /// looks identical whether the user locked a language, the engine reported
+  /// one, the recogniser was unsure, or the document vetoed.
+  ///
+  /// Closed-set category names only, never a language code, so this says how the
+  /// gate behaved without shipping what language each user speaks.
+  var languageResolutionSource: String?
+  var languageConfidenceBucket: String?
   /// #1167: whether the durable history save succeeded. `false` ⟺ the save
   /// threw but delivery still proceeded (best-effort save). Default `true` (the
   /// happy path); the `store` closure sets it explicitly on each save attempt,
@@ -183,6 +194,24 @@ struct KernelFinalizationWiring {
     // suites that legitimately do (local diff review, P2).
     englishWordOracle: @escaping @MainActor () -> EnglishWordOracle = {
       EnglishWordOracleRuntime.snapshot()
+    },
+    // #1921 language-resolver seam. `@Sendable`, not `@MainActor`, because
+    // resolution now runs INSIDE the `@Sendable` deadline operation. Defaults to
+    // the real resolver, so production behaviour is identical.
+    //
+    // A test injects a blocking resolver to drive the REAL deadline into its two
+    // reachable timeout orders. Without this the only way to reach them would be
+    // to time work against the 100 ms boundary, which is a clock race.
+    resolveLanguage: @escaping @Sendable (
+      _ lockedLanguage: String?,
+      _ engineDetectsLanguage: Bool,
+      _ engineReportedLanguage: String?,
+      _ text: String,
+      _ surroundingText: String
+    ) -> DictationLanguageResolver.Resolution = {
+      DictationLanguageResolver.resolve(
+        lockedLanguage: $0, engineDetectsLanguage: $1, engineReportedLanguage: $2,
+        text: $3, surroundingText: $4)
     },
     pasteCompletionRegistry: PasteCompletionRegistry?,
     // #900 clock seam — defaults to today's live expression, so production
@@ -378,6 +407,21 @@ struct KernelFinalizationWiring {
       let config = context.config
       var pasteResult: PasteDeliveryResult?
       let deliveryOutcome: KernelDeliveryOutcome
+      // #1921: cleared BEFORE the auto-paste branch below, because `outcome` is
+      // shared and reused across sessions. Everything that describes the
+      // insertion repair is written inside that branch, so a clipboard-only
+      // delivery would otherwise report the PREVIOUS dictation's language
+      // decision as if it were this one's — a stale reading that looks exactly
+      // like a real one in the field.
+      //
+      // Cleared to NIL, not to `"none"`. My first version wrote `"none"` here
+      // and that broke the contract these fields exist to express: `"none"`
+      // means the app measured and found no answer, nil means no measurement was
+      // ever attempted. A clipboard-only session never reaches the resolver at
+      // all, so `"none"` would have reported a measurement that did not happen
+      // (integration review).
+      outcome.languageResolutionSource = nil
+      outcome.languageConfidenceBucket = nil
       if config?.autoPasteToActiveApp == true {
         // ONE cumulative terminal-resolution budget for this whole delivery,
         // created here and reused by every commit-boundary revalidation. A fresh
@@ -438,36 +482,89 @@ struct KernelFinalizationWiring {
         // the DEFAULT engine, a German dictation on the default path was being
         // recased with English rules — the exact defect the language gate was
         // built to prevent (cloud review, PR #1802).
-        let resolvedLanguage = DictationLanguageResolver.resolve(
-          lockedLanguage: {
-            if case .locked(let code) = context.config?.languageMode { return code }
-            return nil
-          }(),
-          engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
-          engineReportedLanguage: adapter.lastResult?.language,
-          text: text,
-          // The caret windows we already read. A short mid-sentence
-          // continuation cannot be identified on its own, and that is exactly
-          // the insertion this feature exists for.
-          surroundingText: caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? "")
-
+        // Every `@MainActor` input, snapshotted BEFORE the `@Sendable` deadline
+        // operation, which cannot reach a `@MainActor` seam.
+        let lockedLanguageCode: String? = {
+          if case .locked(let code) = context.config?.languageMode { return code }
+          return nil
+        }()
+        let engineDetectsLanguage = adapter.capabilities.supportsLanguageDetection
+        let engineReportedLanguage = adapter.lastResult?.language
+        // The caret windows we already read. A short mid-sentence continuation
+        // cannot always be identified on its own, and that is exactly the
+        // insertion this feature exists for.
+        let surroundingText = caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? ""
         let protectedSpellings = context.protectedSpellings
-        // Taken on the main actor BEFORE the deadline closure, which is
-        // `@Sendable` and cannot call a `@MainActor` seam.
         let oracleSnapshot = englishWordOracle()
+
+        // #1921: language resolution now runs INSIDE this deadline. It used to
+        // run above it, unbounded, on the paste path — a claim an earlier
+        // revision of the plan asserted was already true and was not.
+        //
+        // One gate arbitrates both stages, because "which stage timed out" now
+        // decides whether `EnglishWordOracleRuntime` may be disabled, and a
+        // plain flag cannot answer it safely: cancellation here is best-effort
+        // and cannot preempt a running operation, so the timeout can look, see
+        // the language stage, decline to disable, and the un-preempted operation
+        // can then enter the oracle anyway.
+        let gate = LanguageRepairDeadlineGate()
+        // The timeout path's resolution. It cannot ride the operation's return
+        // value, because on timeout the operation's value is discarded; and
+        // `onTimeout` is `@Sendable`, so it cannot write to a captured `var`.
+        let timedOutResolution = OSAllocatedUnfairLock<DictationLanguageResolver.Resolution?>(
+          initialState: nil)
+
+        let deadlineResult = await withOrderedDeadline(
+          seconds: 0.100,
+          operation: {
+            let resolution = resolveLanguage(
+              lockedLanguageCode, engineDetectsLanguage, engineReportedLanguage,
+              text, surroundingText)
+            guard gate.beginRepair(resolution) else {
+              // The deadline already claimed the phase, so repair must not
+              // start. This return value is discarded by the deadline's own
+              // single-claim rule; it exists to leave the closure, not to be read.
+              return (
+                CursorInsertionRepair.legacyOnly(text: text, reason: .oracleTimedOut), resolution
+              )
+            }
+            // The oracle asks the gate before every consultation, which both
+            // tells the timeout a genuinely stuck oracle from repair stalling
+            // before it ever got there, and refuses the call outright once the
+            // deadline has fired. `repair` has early exits and does spacing work
+            // first, so "repair started" is not "the oracle is running"
+            // (integration review); and cancellation cannot preempt a blocked
+            // thread, so without the refusal an un-preempted repair would still
+            // enter the real oracle after the timeout gave up (integration
+            // review round 2). Every refusal keeps the capital.
+            // `CursorInsertionRepair` stays unaware of the deadline: it remains
+            // a pure function of the oracle it is handed.
+            let gatedOracle = oracleSnapshot.authorized { gate.authorizeOracleUse() }
+            let repaired = CursorInsertionRepair.repair(
+              text: text,
+              context: repairContext,
+              protectedWords: protectedSpellings,
+              language: resolution.language,
+              oracle: gatedOracle)
+            // Immediately after repair returns and before this closure does, so
+            // the window in which a FINISHED oracle still looks stuck is as
+            // small as the runtime allows.
+            gate.completeRepair()
+            return (repaired, resolution)
+          },
+          onTimeout: {
+            let timeout = gate.timeOut()
+            timedOutResolution.withLock { $0 = timeout.resolution }
+            // Only a genuinely RUNNING oracle. A language-stage stall must not
+            // disable an unrelated healthy component for the rest of the
+            // process, and neither must one that had already succeeded.
+            if timeout.shouldDisableOracle { EnglishWordOracleRuntime.disableAfterTimeout() }
+          }
+        )
+
         let payloads =
-          await withOrderedDeadline(
-            seconds: 0.100,
-            operation: {
-              CursorInsertionRepair.repair(
-                text: text,
-                context: repairContext,
-                protectedWords: protectedSpellings,
-                language: resolvedLanguage,
-                oracle: oracleSnapshot)
-            },
-            onTimeout: { EnglishWordOracleRuntime.disableAfterTimeout() }
-          ) ?? CursorInsertionRepair.legacyOnly(text: text, reason: .oracleTimedOut)
+          deadlineResult?.0 ?? CursorInsertionRepair.legacyOnly(text: text, reason: .oracleTimedOut)
+        let resolution = deadlineResult?.1 ?? timedOutResolution.withLock { $0 }
 
         // Why this dictation was or was not repaired, recorded before delivery
         // so it survives every route outcome. Names and shapes only (#1785 §8).
@@ -482,6 +579,21 @@ struct KernelFinalizationWiring {
         outcome.repairRules =
           payloads.candidateRules.isEmpty
           ? nil : payloads.candidateRules.map(\.telemetryName).joined(separator: ",")
+        // #1921. An auto-paste attempt records the resolver outcome here,
+        // overwriting the nil defaulted at the top of `deliver`. A
+        // language-stage timeout records `none` because it genuinely produced
+        // no answer before the deadline. Clipboard-only delivery never reaches
+        // this block at all and so stays nil, because it never attempts
+        // resolution — that is the whole distinction the two values carry.
+        //
+        // Two earlier versions of this comment were wrong, in opposite
+        // directions. The first claimed the fields were "written on EVERY path";
+        // they were not, because this block sits inside the auto-paste branch.
+        // The second still said the default above was `none` after it had been
+        // changed to nil. A comment asserting a property the code does not have
+        // is worse than none, because it stops the next reader checking.
+        outcome.languageResolutionSource = (resolution?.source ?? .none).rawValue
+        outcome.languageConfidenceBucket = (resolution?.confidenceBucket ?? .none).rawValue
 
         // #1803: the repair decision has only ever gone to telemetry, so a
         // wrong-case report could not be diagnosed locally — which cost three
@@ -658,6 +770,12 @@ struct KernelFinalizationWiring {
       caretContextOutcome: outcome.caretContextOutcome,
       repairRules: outcome.repairRules,
       pastePayloadKind: outcome.pasteResult?.submittedPayload?.rawValue,
+      // #1921: carried through unchanged. Each hop transports exactly what the
+      // previous one produced — no normalising, no substituting a default —
+      // because a value that is quietly rewritten in transit is worse than one
+      // that is dropped: the dropped one is visibly absent.
+      languageResolutionSource: outcome.languageResolutionSource,
+      languageConfidenceBucket: outcome.languageConfidenceBucket,
       targetApp: context.targetApp?.bundleIdentifier,
       coldStart: false,
       streamingMode: outcome.streamingMode,

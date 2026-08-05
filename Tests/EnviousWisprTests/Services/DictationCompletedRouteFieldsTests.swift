@@ -278,5 +278,73 @@ struct DictationCompletedRouteFieldsTests {
       #expect(box.event?.stringProps.keys.contains("input_resolution_source") == false)
     }
 
+    // MARK: - #1921 language-resolution telemetry, end to end
+
+    /// Collects EVERY event, not just the last. `paste.completed` and
+    /// `dictation.completed` both fire from one `reportDictationCompleted`, so a
+    /// last-write-wins box would assert against whichever happened to land
+    /// second — a test that reads a different event than it names.
+    private final class EventLog: @unchecked Sendable {
+      var events: [CapturedTelemetryEvent] = []
+    }
+
+    @Test("#1921 language resolution reaches the real paste.completed payload")
+    func languageResolutionReachesPasteCompleted() throws {
+      let log = EventLog()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { log.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      // `pasteTier` and `pasteLatencyMs` are what open the real
+      // `paste.completed` gate; the two #1921 values ride the same metrics.
+      // Distinctive on purpose — `document` and `f70to90` are neither the
+      // default nor the value any other hop would produce by accident, so a
+      // dropped field cannot pass by coincidence.
+      var metrics = ExecutionMetrics(pasteTier: "cgevent", pasteLatencyMs: 12)
+      metrics.languageResolutionSource = "document"
+      metrics.languageConfidenceBucket = "f70to90"
+      var transcript = Transcript(text: "hello")
+      transcript.metrics = metrics
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: transcript, inputMode: "ptt")
+
+      let pasteEvents = log.events.filter { $0.name == "paste.completed" }
+      #expect(pasteEvents.count == 1, "exactly one paste.completed, got \(pasteEvents.count)")
+      let props = try #require(pasteEvents.first).stringProps
+
+      #expect(props["language_resolution_source"] == "document")
+      #expect(props["language_confidence_bucket"] == "f70to90")
+      // Exact spelling. An alias would be silently unqueryable in PostHog.
+      #expect(props.keys.contains("language_source") == false)
+      #expect(props.keys.contains("confidence_bucket") == false)
+      #expect(props.keys.contains("resolution_source") == false)
+    }
+
+    @Test("#1921 a transcript without the fields omits both keys entirely")
+    func absentLanguageResolutionOmitsBothKeys() throws {
+      let log = EventLog()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { log.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      // A transcript written before #1921 has neither field. It must not report
+      // `"none"`, which is a real category meaning the app looked and found
+      // nothing — otherwise the whole back catalogue reads as timed-out.
+      var transcript = Transcript(text: "hello")
+      transcript.metrics = ExecutionMetrics(pasteTier: "cgevent", pasteLatencyMs: 12)
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: transcript, inputMode: "ptt")
+
+      let pasteEvents = log.events.filter { $0.name == "paste.completed" }
+      #expect(pasteEvents.count == 1)
+      let props = try #require(pasteEvents.first).stringProps
+      #expect(props.keys.contains("language_resolution_source") == false)
+      #expect(props.keys.contains("language_confidence_bucket") == false)
+    }
+
   #endif
 }

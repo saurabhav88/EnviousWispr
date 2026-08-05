@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprPostProcessing
 
@@ -36,7 +37,6 @@ struct EnglishWordOracleTests {
       isRecognizedName: { _, _ in isName })
   }
 
-
   /// A `@Sendable`-safe flag, because the oracle's closures are `@Sendable` and
   /// a captured `var` cannot be mutated from one.
   final class ConsultationSpy: @unchecked Sendable {
@@ -53,7 +53,6 @@ struct EnglishWordOracleTests {
       lock.unlock()
     }
   }
-
 
   /// Records what the word-class closure was handed. `@Sendable`-safe for the
   /// same reason `ConsultationSpy` is.
@@ -111,7 +110,8 @@ struct EnglishWordOracleTests {
       isLearnedWord: { _ in false },
       isRecognizedName: { _, _ in true })
 
-    #expect(oracle.mayLower(word: "Mark", left: "speak with ", payload: "Mark today.") == .recognizedName)
+    #expect(
+      oracle.mayLower(word: "Mark", left: "speak with ", payload: "Mark today.") == .recognizedName)
     #expect(probe.wasConsulted == false, "the dictionary must not be asked about a recognised name")
   }
 
@@ -133,7 +133,8 @@ struct EnglishWordOracleTests {
     // and the recogniser does not call them names.
     for noun in ["today", "museum", "coffee", "everything"] {
       let decision = Self.oracle(ordinary: [noun])
-        .mayLower(word: noun.capitalized, left: "we went to ", payload: "\(noun.capitalized) later.")
+        .mayLower(
+          word: noun.capitalized, left: "we went to ", payload: "\(noun.capitalized) later.")
       #expect(decision == nil, "\(noun) must lowercase without needing an exception list")
     }
   }
@@ -235,7 +236,10 @@ struct EnglishWordOracleTests {
     var probed: [String] = []
     let ordinary = EnglishWordOracleRuntime.isOrdinary(
       "Zorbitrax", sentinel: "zqx123456vkj",
-      spelledCorrectly: { probed.append($0); return false },
+      spelledCorrectly: {
+        probed.append($0)
+        return false
+      },
       onServiceFailure: {})
     #expect(ordinary == false)
     #expect(probed == ["Zorbitrax"], "the sentinel must not be probed on a refusal")
@@ -282,80 +286,105 @@ struct EnglishWordOracleTests {
   // MARK: - Runtime state machine
 
   @Test("Before prewarm the runtime refuses with oracle_warming")
-  func warmingRefuses() {
-    EnglishWordOracleRuntime.resetForTesting()
-    let snapshot = EnglishWordOracleRuntime.snapshot()
-    #expect(snapshot.isAvailable == false)
-    #expect(snapshot.unavailableReason == .oracleWarming)
+  func warmingRefuses() async {
+    // Cross-suite exclusion: this test mutates the process-wide runtime,
+    // and since #1921 a second suite does too. `.serialized` orders this
+    // suite only; Swift Testing runs suites concurrently.
+    await withEnglishWordOracleExclusion {
+      EnglishWordOracleRuntime.resetForTesting()
+      let snapshot = EnglishWordOracleRuntime.snapshot()
+      #expect(snapshot.isAvailable == false)
+      #expect(snapshot.unavailableReason == .oracleWarming)
+    }
   }
 
   @Test("A warming runtime keeps the capital while spacing still repairs")
-  func warmingKeepsCapitalButSpaces() {
-    // The product call: the first dictation after a cold launch keeps its
-    // capital — today's behaviour — rather than paying the measured 105.6 ms of
-    // one-time setup on the paste path.
-    EnglishWordOracleRuntime.resetForTesting()
-    let payloads = CursorInsertionRepair.repair(
-      text: "Go home.",
-      context: CursorInsertionRepair.CaretText(left: "I can't wait to", right: ""),
-      protectedWords: [],
-      oracle: EnglishWordOracleRuntime.snapshot())
+  func warmingKeepsCapitalButSpaces() async {
+    // Cross-suite exclusion: this test mutates the process-wide runtime,
+    // and since #1921 a second suite does too. `.serialized` orders this
+    // suite only; Swift Testing runs suites concurrently.
+    await withEnglishWordOracleExclusion {
+      // The product call: the first dictation after a cold launch keeps its
+      // capital — today's behaviour — rather than paying the measured 105.6 ms of
+      // one-time setup on the paste path.
+      EnglishWordOracleRuntime.resetForTesting()
+      let payloads = CursorInsertionRepair.repair(
+        text: "Go home.",
+        context: CursorInsertionRepair.CaretText(left: "I can't wait to", right: ""),
+        protectedWords: [],
+        oracle: EnglishWordOracleRuntime.snapshot())
 
-    #expect(payloads.candidateRules.contains(.caseSkipped(.oracleWarming)))
-    #expect(payloads.repairedText?.contains("Go home.") == true, "capital kept")
-    #expect(payloads.candidateRules.contains(.leadingSpace), "spacing is unaffected")
+      #expect(payloads.candidateRules.contains(.caseSkipped(.oracleWarming)))
+      #expect(payloads.repairedText?.contains("Go home.") == true, "capital kept")
+      #expect(payloads.candidateRules.contains(.leadingSpace), "spacing is unaffected")
+    }
   }
 
   @Test("The timeout latch is permanent and survives a later ready oracle")
-  func timeoutLatchIsPermanent() {
-    // `withOrderedDeadline.claim()` discards a late decision but cannot roll
-    // back side effects inside the abandoned operation. The latch must therefore
-    // outlast anything that call does afterwards, or a stalled service could be
-    // waited on twice.
-    EnglishWordOracleRuntime.resetForTesting()
-    EnglishWordOracleRuntime.installForTesting(Self.oracle(ordinary: ["go"]))
-    #expect(EnglishWordOracleRuntime.snapshot().isAvailable)
+  func timeoutLatchIsPermanent() async {
+    // Cross-suite exclusion: this test mutates the process-wide runtime,
+    // and since #1921 a second suite does too. `.serialized` orders this
+    // suite only; Swift Testing runs suites concurrently.
+    await withEnglishWordOracleExclusion {
+      // `withOrderedDeadline.claim()` discards a late decision but cannot roll
+      // back side effects inside the abandoned operation. The latch must therefore
+      // outlast anything that call does afterwards, or a stalled service could be
+      // waited on twice.
+      EnglishWordOracleRuntime.resetForTesting()
+      EnglishWordOracleRuntime.installForTesting(Self.oracle(ordinary: ["go"]))
+      #expect(EnglishWordOracleRuntime.snapshot().isAvailable)
 
-    EnglishWordOracleRuntime.disableAfterTimeout()
+      EnglishWordOracleRuntime.disableAfterTimeout()
 
-    let after = EnglishWordOracleRuntime.snapshot()
-    #expect(after.isAvailable == false)
-    #expect(after.unavailableReason == .oracleTimedOut)
-    #expect(
-      after.mayLower(word: "Go", left: "I want to ", payload: "Go home.") == .oracleTimedOut,
-      "no decision may reach a system service after the latch")
+      let after = EnglishWordOracleRuntime.snapshot()
+      #expect(after.isAvailable == false)
+      #expect(after.unavailableReason == .oracleTimedOut)
+      #expect(
+        after.mayLower(word: "Go", left: "I want to ", payload: "Go home.") == .oracleTimedOut,
+        "no decision may reach a system service after the latch")
+    }
   }
 
   @Test("A prewarm that started before a state change cannot publish after it")
   func stalePrewarmCannotPublish() async {
-    // `prewarmStarted` guards STARTING a prewarm, not one already in flight. A
-    // prepare launched by another suite's driver construction can finish after
-    // `resetForTesting()` restores `.warming` — which is exactly the condition
-    // its publish step checks — and land `.ready` on top of a test's state.
-    //
-    // The epoch closes it. Simulated here by latching, which bumps the epoch,
-    // and then letting a prewarm attempt to publish.
-    EnglishWordOracleRuntime.resetForTesting()
-    EnglishWordOracleRuntime.disableAfterTimeout()
+    // Cross-suite exclusion: this test mutates the process-wide runtime,
+    // and since #1921 a second suite does too. `.serialized` orders this
+    // suite only; Swift Testing runs suites concurrently.
+    await withEnglishWordOracleExclusion {
+      // `prewarmStarted` guards STARTING a prewarm, not one already in flight. A
+      // prepare launched by another suite's driver construction can finish after
+      // `resetForTesting()` restores `.warming` — which is exactly the condition
+      // its publish step checks — and land `.ready` on top of a test's state.
+      //
+      // The epoch closes it. Simulated here by latching, which bumps the epoch,
+      // and then letting a prewarm attempt to publish.
+      EnglishWordOracleRuntime.resetForTesting()
+      EnglishWordOracleRuntime.disableAfterTimeout()
 
-    await EnglishWordOracleRuntime.prewarm()
+      await EnglishWordOracleRuntime.prewarm()
 
-    #expect(
-      EnglishWordOracleRuntime.snapshot().unavailableReason == .oracleTimedOut,
-      "a prewarm must never overwrite state established after it began")
+      #expect(
+        EnglishWordOracleRuntime.snapshot().unavailableReason == .oracleTimedOut,
+        "a prewarm must never overwrite state established after it began")
+    }
   }
 
   @Test("Repeated prewarm after a latch cannot revive the runtime")
   func prewarmCannotRevive() async {
-    EnglishWordOracleRuntime.resetForTesting()
-    EnglishWordOracleRuntime.installForTesting(Self.oracle(ordinary: ["go"]))
-    EnglishWordOracleRuntime.disableAfterTimeout()
+    // Cross-suite exclusion: this test mutates the process-wide runtime,
+    // and since #1921 a second suite does too. `.serialized` orders this
+    // suite only; Swift Testing runs suites concurrently.
+    await withEnglishWordOracleExclusion {
+      EnglishWordOracleRuntime.resetForTesting()
+      EnglishWordOracleRuntime.installForTesting(Self.oracle(ordinary: ["go"]))
+      EnglishWordOracleRuntime.disableAfterTimeout()
 
-    // `installForTesting` marks prewarm started, so this is the real
-    // idempotence guard rather than an accident of ordering.
-    await EnglishWordOracleRuntime.prewarm()
+      // `installForTesting` marks prewarm started, so this is the real
+      // idempotence guard rather than an accident of ordering.
+      await EnglishWordOracleRuntime.prewarm()
 
-    #expect(EnglishWordOracleRuntime.snapshot().unavailableReason == .oracleTimedOut)
+      #expect(EnglishWordOracleRuntime.snapshot().unavailableReason == .oracleTimedOut)
+    }
   }
 
   // MARK: - Ordering against the guards that outrank the oracle
@@ -382,7 +411,8 @@ struct EnglishWordOracleTests {
       oracle: spy)
 
     #expect(payloads.candidateRules.contains(.caseSkipped(.protectedWord)))
-    #expect(consulted.wasConsulted == false, "the oracle must never be asked about a protected spelling")
+    #expect(
+      consulted.wasConsulted == false, "the oracle must never be asked about a protected spelling")
   }
 
   @Test("Non-English dictation never reaches the oracle at all")
@@ -419,5 +449,94 @@ struct EnglishWordOracleTests {
 
     #expect(payloads.candidateRules.contains(.lowercasedFirst))
     #expect(payloads.repairedText?.hasPrefix("the museum") == true)
+  }
+
+  // MARK: - #1921 `authorized(by:)`
+
+  @Test("#1921 An authorized wrapper reaches the underlying oracle on every closure")
+  func authorizedWrapperPassesThrough() {
+    let calls = OSAllocatedUnfairLock(initialState: 0)
+    let underlying = EnglishWordOracle(
+      unavailableReason: nil,
+      dictionaryVerdict: { _ in
+        calls.withLock { $0 += 1 }
+        return .ordinary
+      },
+      isLearnedWord: { _ in
+        calls.withLock { $0 += 1 }
+        return false
+      },
+      isRecognizedName: { _, _ in
+        calls.withLock { $0 += 1 }
+        return false
+      })
+
+    let wrapped = underlying.authorized(by: { true })
+    let skip = wrapped.mayLower(word: "The", left: "I went to ", payload: "The museum.")
+
+    #expect(skip == nil, "an authorized oracle decides exactly as the one it wraps")
+    #expect(
+      calls.withLock { $0 } == 3,
+      "and all three closures must reach it, or the wrapper is silently deciding")
+  }
+
+  @Test("#1921 A refused wrapper calls NOTHING underneath and keeps the capital")
+  func refusedWrapperNeverCallsUnderlying() {
+    // The control integration review round 2 asked for. A deadline that has
+    // already fired must stop the call, not merely record it: cancellation
+    // "cannot preempt a blocked thread", so an un-preempted repair would
+    // otherwise make exactly the unbounded call the deadline exists to bound.
+    //
+    // The underlying closures fail the test if reached, which is stronger than
+    // counting: a count can be asserted after the damage, this cannot pass at
+    // all if the guard is missing.
+    let calls = OSAllocatedUnfairLock(initialState: 0)
+    let underlying = EnglishWordOracle(
+      unavailableReason: nil,
+      dictionaryVerdict: { _ in
+        calls.withLock { $0 += 1 }
+        return .ordinary
+      },
+      isLearnedWord: { _ in
+        calls.withLock { $0 += 1 }
+        return false
+      },
+      isRecognizedName: { _, _ in
+        calls.withLock { $0 += 1 }
+        return false
+      })
+
+    let wrapped = underlying.authorized(by: { false })
+    let skip = wrapped.mayLower(word: "The", left: "I went to ", payload: "The museum.")
+
+    #expect(
+      calls.withLock { $0 } == 0,
+      "a refused wrapper must not enter the underlying oracle at all")
+    #expect(
+      skip != nil,
+      "and it must refuse to lower, because every refusal keeps the capital")
+  }
+
+  @Test("#1921 Refusal is safe on each closure independently, not just the first")
+  func refusalIsSafeOnEveryClosure() {
+    // `mayLower` short-circuits at `isRecognizedName`, so the test above proves
+    // only that ONE refusal is safe. If a later refactor reorders those checks,
+    // the other two refusals become load-bearing. Assert each in isolation.
+    let permissive = EnglishWordOracle(
+      unavailableReason: nil,
+      dictionaryVerdict: { _ in .ordinary },
+      isLearnedWord: { _ in false },
+      isRecognizedName: { _, _ in false })
+    let refused = permissive.authorized(by: { false })
+
+    #expect(
+      refused.isRecognizedName("I went to ", "The museum."),
+      "refusing the name check must read as A NAME, which keeps the capital")
+    #expect(
+      refused.isLearnedWord("the"),
+      "refusing the learned check must read as LEARNED, which keeps the capital")
+    #expect(
+      refused.dictionaryVerdict("the") == .unavailable(.oracleTimedOut),
+      "and the dictionary must report the real cause, not a bland 'not ordinary'")
   }
 }

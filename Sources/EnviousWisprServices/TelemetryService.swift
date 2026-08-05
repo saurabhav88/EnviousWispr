@@ -233,7 +233,9 @@ public final class TelemetryService {
           smartInsertionEnabled: m?.smartInsertionEnabled,
           caretContextOutcome: m?.caretContextOutcome,
           repairRules: m?.repairRules,
-          payloadKind: m?.pastePayloadKind),
+          payloadKind: m?.pastePayloadKind,
+          languageResolutionSource: m?.languageResolutionSource,
+          languageConfidenceBucket: m?.languageConfidenceBucket),
         takeID: takeID)
     }
   }
@@ -1709,12 +1711,13 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("paste.completed", properties: props)
   }
 
-  /// Cursor-aware insertion fields for `paste.completed` (#1785).
+  /// Cursor-aware insertion fields for `paste.completed` (#1785, extended #1921).
   ///
-  /// A separate value rather than four more parameters so the projection has one
+  /// A separate value rather than six more parameters so the projection has one
   /// owner and one test surface: `paste.completed` is emitted from a metrics
-  /// projection, and four loose optionals threaded through it is how one of them
-  /// eventually gets dropped without any test noticing.
+  /// projection, and six loose optionals threaded through it is how one of them
+  /// eventually gets dropped without any test noticing. #1921 added two of them,
+  /// which is exactly the growth this shape was chosen to absorb.
   ///
   /// Every field is a shape or a closed-set name. `repairRules` carries reasons
   /// (`case_skipped:protected_word`) and never the word a reason applied to,
@@ -1725,17 +1728,27 @@ public final class TelemetryService {
     public let caretContextOutcome: String?
     public let repairRules: String?
     public let payloadKind: String?
+    /// #1921. Why the language question got its answer, and how confident. A
+    /// closed category and a band, never a language code or a raw score — this
+    /// says how the gate behaved without shipping what language each user
+    /// speaks.
+    public let languageResolutionSource: String?
+    public let languageConfidenceBucket: String?
 
     public init(
       smartInsertionEnabled: Bool? = nil,
       caretContextOutcome: String? = nil,
       repairRules: String? = nil,
-      payloadKind: String? = nil
+      payloadKind: String? = nil,
+      languageResolutionSource: String? = nil,
+      languageConfidenceBucket: String? = nil
     ) {
       self.smartInsertionEnabled = smartInsertionEnabled
       self.caretContextOutcome = caretContextOutcome
       self.repairRules = repairRules
       self.payloadKind = payloadKind
+      self.languageResolutionSource = languageResolutionSource
+      self.languageConfidenceBucket = languageConfidenceBucket
     }
 
     /// Absent facts are OMITTED rather than sent as a placeholder, so a
@@ -1747,6 +1760,12 @@ public final class TelemetryService {
       if let caretContextOutcome { out["caret_context"] = caretContextOutcome }
       if let repairRules { out["repair_rules"] = repairRules }
       if let payloadKind { out["payload_kind"] = payloadKind }
+      if let languageResolutionSource {
+        out["language_resolution_source"] = languageResolutionSource
+      }
+      if let languageConfidenceBucket {
+        out["language_confidence_bucket"] = languageConfidenceBucket
+      }
       return out
     }
   }
