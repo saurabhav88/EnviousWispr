@@ -615,6 +615,15 @@ struct KernelFinalizationWiring {
             legacyText: pasteText,
             repairedText: payloads.repairedText,
             caretContext: caretContext,
+            // Asked of the RULES, not enumerated here. Listing the destructive
+            // ones at this call site is how the first version missed
+            // `.droppedTerminalPeriod` — a rule that also removes a character
+            // the user dictated, found by cloud review. `deletesDictatedText`
+            // is an exhaustive switch beside the enum, so a new rule cannot
+            // inherit "not destructive" by being forgotten out here.
+            candidateDeletesDictatedText: payloads.candidateRules.contains {
+              $0.deletesDictatedText
+            },
             targetApp: context.targetApp,
             targetElement: context.targetElement,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,

@@ -16,6 +16,21 @@ internal struct PasteDeliveryRequest {
   /// The exact caret context the candidate was computed from, so a later route
   /// can revalidate against the same evidence rather than re-reading.
   let caretContext: PasteService.CaretContext?
+  /// Whether the candidate REMOVES words the user dictated.
+  ///
+  /// This is the only difference from the legacy payload that a stale caret can
+  /// turn into a real loss. Every other repair rule changes a letter's case or a
+  /// space, and if the caret moved, committing such a candidate costs exactly
+  /// what refusing it costs — one wrong capital. Paying for a second caret read
+  /// to choose between those two buys nothing, and measured on the founder's
+  /// machine on 2026-08-04 it discarded CORRECT fixes on most terminal
+  /// dictations, because the re-read fails far more often than the caret
+  /// actually moves.
+  ///
+  /// The duplicate-seam rule is the exception: it drops a word from what the
+  /// user said, so committing it against a stale caret loses dictated content.
+  /// That case, and only that case, still earns the re-read.
+  let candidateDeletesDictatedText: Bool
   let targetApp: NSRunningApplication?
   let targetElement: AXUIElement?
   let restoreClipboardAfterPaste: Bool
@@ -356,6 +371,7 @@ internal final class PasteCascadeExecutor {
           repaired: request.repairedText,
           context: request.caretContext,
           element: request.targetElement,
+          candidateDeletesDictatedText: request.candidateDeletesDictatedText,
           terminalBudget: request.terminalBudget)
         // Snapshot AFTER that revalidation, immediately before the write. The
         // re-check makes accessibility calls, and anything copied while they run
@@ -405,6 +421,7 @@ internal final class PasteCascadeExecutor {
           repaired: request.repairedText,
           context: request.caretContext,
           element: request.targetElement,
+          candidateDeletesDictatedText: request.candidateDeletesDictatedText,
           terminalBudget: request.terminalBudget)
         // Same ordering as Tier 2: snapshot after the re-check, before the write.
         let snapshot: ClipboardSnapshot? =
@@ -456,6 +473,7 @@ internal final class PasteCascadeExecutor {
           repaired: request.repairedText,
           context: request.caretContext,
           element: request.targetElement,
+          candidateDeletesDictatedText: request.candidateDeletesDictatedText,
           terminalBudget: request.terminalBudget)
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)

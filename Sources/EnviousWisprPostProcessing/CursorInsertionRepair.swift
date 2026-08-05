@@ -160,6 +160,31 @@ public enum CursorInsertionRepair {
       case .trailingSpaceSkipped(let reason): return "trailing_space_skipped:\(reason.rawValue)"
       }
     }
+
+    /// Whether this rule REMOVES text the user actually dictated, as opposed to
+    /// adjusting placement, spacing or a capital.
+    ///
+    /// The distinction decides whether a clipboard route pays for a commit-time
+    /// caret re-read. Everything else this repair does is worth one letter or
+    /// one space if the caret has moved underneath it — the same cost as
+    /// refusing — so re-reading buys nothing and fires far more often than the
+    /// caret actually moves. A deletion is different: committing it against
+    /// stale evidence loses content rather than trading one blemish for another.
+    ///
+    /// Written as an EXHAUSTIVE switch with no `default`, deliberately. A future
+    /// rule that deletes something must not be able to inherit "false" by
+    /// omission — the compiler makes it a decision. Cloud review found exactly
+    /// that gap: the first version of this asked `contains(.droppedDuplicateWord)`
+    /// at the call site and silently missed `.droppedTerminalPeriod`.
+    public var deletesDictatedText: Bool {
+      switch self {
+      case .droppedDuplicateWord, .droppedTerminalPeriod:
+        return true
+      case .refusedInsideWord, .refusedNoLeftAnchor, .leadingSpace, .lowercasedFirst,
+        .caseSkipped, .caseKept, .trailingSpace, .trailingSpaceSkipped:
+        return false
+      }
+    }
   }
 
   /// Both payloads, so the caller never has to reconstruct either one.
