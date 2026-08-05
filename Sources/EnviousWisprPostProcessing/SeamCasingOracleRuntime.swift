@@ -3,9 +3,9 @@ import Foundation
 import NaturalLanguage
 import os
 
-/// The single runtime owner of the English word oracle: readiness,
-/// availability, the permanent timeout latch, and the only contact with
-/// `NSSpellChecker` and `NLTagger` in the app.
+/// The single runtime owner of seam-casing word knowledge, one language at a
+/// time: readiness, availability, the permanent timeout latch, and the only
+/// contact with `NSSpellChecker` and `NLTagger` in the app.
 ///
 /// ## Why an owner at all
 ///
@@ -35,7 +35,19 @@ import os
 /// A stalled prewarm needs no deadline either: the state simply stays
 /// `.warming`, decisions refuse, and capitals are kept — today's behaviour.
 ///
-/// Issue #1803.
+/// ## What #1922 changed, and what it had to add
+///
+/// Going per-language is what put point 1 at risk. With one language, prewarm ran
+/// once at launch and nothing else ever prepared. With twelve, any dictation in a
+/// new language can start a preparation at any moment. Two guards restore the
+/// argument, and neither is sufficient alone:
+///
+/// - **One global drain**, so at most one builder is ever inside the checker.
+///   Independent per-language warmers would void the proof outright.
+/// - **A decision LEASE**, because refusing new snapshots does not stop one taken
+///   microseconds earlier from calling in during preparation.
+///
+/// Issues #1803, #1922.
 package enum SeamCasingOracleRuntime {
 
   private enum Phase: Sendable {
@@ -184,6 +196,17 @@ package enum SeamCasingOracleRuntime {
   /// Both are one-time and both are expensive: 20.2 ms and 80.3 ms measured
   /// cold. Neither is ever repeated.
   private static func prepare(base: String) -> Phase {
+    // The one seam in this function, and it exists because the serialization
+    // contract cannot be demonstrated any other way. `drain()` is the only code
+    // that can prove "one builder at a time, and never while a decision holds a
+    // lease", and the real body below calls `NSSpellChecker` and `NLTagger` — a
+    // test driving that would measure the machine, and could not hold a
+    // preparation open at a chosen instant, which IS the experiment.
+    if let build = preparationOverride.withLock({ $0 }) {
+      let oracle = build(base)
+      if let reason = oracle.unavailableReason { return .unavailable(reason) }
+      return .ready(oracle)
+    }
     // NEVER the raw dictation language, the checker's currently selected
     // language, or nil. Measured: `checkSpelling(language:)` with an
     // unrecognised identifier reports EVERY word correctly spelled — it fails
@@ -471,10 +494,28 @@ package enum SeamCasingOracleRuntime {
   /// `.ready` over a test's expected state and make full-suite results
   /// order-dependent (local diff review r3).
   package static func resetForTesting() {
+    // Cleared here as well as by the setter, so a case that fails mid-way cannot
+    // leave a blocking builder installed for every suite after it. The exclusion
+    // helper resets on the way out, which makes this the backstop.
+    preparationOverride.withLock { $0 = nil }
     state.withLock { state in
       state = State(prewarmStarted: true, epoch: state.epoch + 1)
     }
   }
+
+  /// Stand in for the system preparation of one language.
+  ///
+  /// Set AFTER `resetForTesting()`, which clears it. Returning an oracle with a
+  /// non-nil `unavailableReason` stands in for a preparation that found the
+  /// language unusable.
+  package static func setPreparationOverrideForTesting(
+    _ build: (@Sendable (String) -> SeamCasingOracle)?
+  ) {
+    preparationOverride.withLock { $0 = build }
+  }
+
+  private static let preparationOverride =
+    OSAllocatedUnfairLock<(@Sendable (String) -> SeamCasingOracle)?>(initialState: nil)
 
   /// Install a fixed phase for one language without touching a system service.
   ///

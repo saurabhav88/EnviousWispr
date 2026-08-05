@@ -21,7 +21,8 @@ struct TerminalInsertionPolicyTests {
       ["fix", "first", "second", "a", "b"].contains($0) ? .ordinary : .notOrdinary
     },
     isLearnedWord: { _ in false },
-    isRecognizedName: { _, _ in false })
+    isRecognizedName: { _, _ in false },
+    isNoun: { _ in false })
 
   private func terminalContext(line: String) -> PasteService.CaretContext {
     PasteService.CaretContext(

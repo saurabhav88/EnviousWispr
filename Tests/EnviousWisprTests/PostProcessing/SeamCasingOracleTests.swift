@@ -25,16 +25,30 @@ struct SeamCasingOracleTests {
 
   /// An oracle with fixed answers. `isName` defaults to false so a case that is
   /// not about the name recogniser cannot fail because of it.
+  /// Read the runtime's state for an ASSERTION, without stranding a lease.
+  ///
+  /// `snapshot(for:)` leases when it answers ready, and the drain will not begin
+  /// preparing any language while a lease is outstanding. A test that asserts
+  /// availability and walks away would therefore wedge preparation for the rest
+  /// of the run — quietly, because every later language just reports warming.
+  static func probe(_ base: String = "en") -> SeamCasingOracle {
+    let oracle = SeamCasingOracleRuntime.snapshot(for: base)
+    if oracle.isAvailable { SeamCasingOracleRuntime.releaseDecisionLease() }
+    return oracle
+  }
+
   static func oracle(
     ordinary: Set<String> = [],
     learned: Set<String> = [],
-    isName: Bool = false
+    isName: Bool = false,
+    isNoun: Bool = false
   ) -> SeamCasingOracle {
     SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { ordinary.contains($0) ? .ordinary : .notOrdinary },
       isLearnedWord: { learned.contains($0) },
-      isRecognizedName: { _, _ in isName })
+      isRecognizedName: { _, _ in isName },
+      isNoun: { _ in isNoun })
   }
 
   /// A `@Sendable`-safe flag, because the oracle's closures are `@Sendable` and
@@ -108,7 +122,8 @@ struct SeamCasingOracleTests {
         return .ordinary
       },
       isLearnedWord: { _ in false },
-      isRecognizedName: { _, _ in true })
+      isRecognizedName: { _, _ in true },
+      isNoun: { _ in false })
 
     #expect(
       oracle.mayLower(word: "Mark", left: "speak with ", payload: "Mark today.") == .recognizedName)
@@ -173,33 +188,51 @@ struct SeamCasingOracleTests {
     #expect(decision == reason)
   }
 
-  // MARK: - English selection
+  // MARK: - Dictionary selection
 
-  @Test("English is chosen deterministically from what is actually installed")
-  func resolvesEnglishDeterministically() {
+  @Test("A language is chosen deterministically from what is actually installed")
+  func resolvesLanguageDeterministically() {
     // Never the raw dictation language, the checker's selected language, or nil.
     // Measured: an unrecognised identifier makes `checkSpelling` report EVERY
     // word correctly spelled — it fails OPEN. Choosing from `availableLanguages`
     // makes that unreachable rather than merely detected.
     let installed = ["fr", "en_GB", "de", "en", "en_AU"]
-    #expect(SeamCasingOracleRuntime.resolveEnglishLanguage(from: installed) == "en")
+    #expect(SeamCasingOracleRuntime.resolveLanguage("en", from: installed) == "en")
   }
 
-  @Test("A machine with no English dictionary yields no identifier")
-  func noEnglishYieldsNil() {
-    #expect(SeamCasingOracleRuntime.resolveEnglishLanguage(from: ["fr", "de", "ja"]) == nil)
+  @Test("A machine with no dictionary for the asked language yields no identifier")
+  func missingLanguageYieldsNil() {
+    #expect(SeamCasingOracleRuntime.resolveLanguage("en", from: ["fr", "de", "ja"]) == nil)
   }
 
-  @Test("A regional English is accepted when plain English is absent")
-  func regionalEnglishAccepted() {
-    #expect(SeamCasingOracleRuntime.resolveEnglishLanguage(from: ["de", "en_GB"]) == "en_GB")
+  @Test("A regional variant is accepted when the plain code is absent")
+  func regionalVariantAccepted() {
+    #expect(SeamCasingOracleRuntime.resolveLanguage("en", from: ["de", "en_GB"]) == "en_GB")
   }
 
   @Test("Language matching is on the base code, not a prefix of the string")
   func baseCodeNotPrefix() {
     // `eng` and `enm` start with "en" but are not English identifiers we want to
     // silently accept; matching must split on the separator.
-    #expect(SeamCasingOracleRuntime.resolveEnglishLanguage(from: ["eng", "enm"]) == nil)
+    #expect(SeamCasingOracleRuntime.resolveLanguage("en", from: ["eng", "enm"]) == nil)
+  }
+
+  @Test(
+    "#1922 Selection is per-language, so no language can be served another's dictionary",
+    arguments: [
+      // asked, installed, expected
+      ("de", ["en", "de_DE", "fr"], "de_DE"),
+      ("sv", ["en", "sv", "nb"], "sv"),
+      ("tr", ["en", "de", "fr"], String?.none),
+      ("nl", ["nl_BE"], "nl_BE"),
+      // The trap this exists for: asking for Danish must never be answered by
+      // German because both were once hard-coded to whatever "the" dictionary
+      // was. A wrong dictionary does not fail loudly — it silently calls the
+      // user's words unknown and keeps every capital.
+      ("da", ["de", "en"], String?.none),
+    ])
+  func selectionIsPerLanguage(_ asked: String, _ installed: [String], _ expected: String?) {
+    #expect(SeamCasingOracleRuntime.resolveLanguage(asked, from: installed) == expected)
   }
 
   // MARK: - The spell service failing OPEN
@@ -266,7 +299,8 @@ struct SeamCasingOracleTests {
       isRecognizedName: { left, _ in
         seenLeft.record(left)
         return false
-      })
+      },
+      isNoun: { _ in false })
 
     _ = CursorInsertionRepair.repair(
       text: "Mark said he would be late.",
@@ -292,7 +326,7 @@ struct SeamCasingOracleTests {
     // suite only; Swift Testing runs suites concurrently.
     await withSeamCasingOracleExclusion {
       SeamCasingOracleRuntime.resetForTesting()
-      let snapshot = SeamCasingOracleRuntime.snapshot()
+      let snapshot = Self.probe()
       #expect(snapshot.isAvailable == false)
       #expect(snapshot.unavailableReason == .oracleWarming)
     }
@@ -308,11 +342,16 @@ struct SeamCasingOracleTests {
       // capital — today's behaviour — rather than paying the measured 105.6 ms of
       // one-time setup on the paste path.
       SeamCasingOracleRuntime.resetForTesting()
+      // Leased and released exactly as the repair does it, rather than probed:
+      // this case stands in for the product call, so it should take the same
+      // route through the runtime that the product call takes.
+      let live = SeamCasingOracleRuntime.snapshot(for: "en")
+      defer { SeamCasingOracleRuntime.releaseDecisionLease() }
       let payloads = CursorInsertionRepair.repair(
         text: "Go home.",
         context: CursorInsertionRepair.CaretText(left: "I can't wait to", right: ""),
         protectedWords: [],
-        oracle: SeamCasingOracleRuntime.snapshot())
+        oracle: live)
 
       #expect(payloads.candidateRules.contains(.caseSkipped(.oracleWarming)))
       #expect(payloads.repairedText?.contains("Go home.") == true, "capital kept")
@@ -332,11 +371,11 @@ struct SeamCasingOracleTests {
       // waited on twice.
       SeamCasingOracleRuntime.resetForTesting()
       SeamCasingOracleRuntime.installForTesting(Self.oracle(ordinary: ["go"]))
-      #expect(SeamCasingOracleRuntime.snapshot().isAvailable)
+      #expect(Self.probe().isAvailable)
 
       SeamCasingOracleRuntime.disableAfterTimeout()
 
-      let after = SeamCasingOracleRuntime.snapshot()
+      let after = Self.probe()
       #expect(after.isAvailable == false)
       #expect(after.unavailableReason == .oracleTimedOut)
       #expect(
@@ -364,7 +403,7 @@ struct SeamCasingOracleTests {
       await SeamCasingOracleRuntime.prewarm()
 
       #expect(
-        SeamCasingOracleRuntime.snapshot().unavailableReason == .oracleTimedOut,
+        Self.probe().unavailableReason == .oracleTimedOut,
         "a prewarm must never overwrite state established after it began")
     }
   }
@@ -383,7 +422,7 @@ struct SeamCasingOracleTests {
       // idempotence guard rather than an accident of ordering.
       await SeamCasingOracleRuntime.prewarm()
 
-      #expect(SeamCasingOracleRuntime.snapshot().unavailableReason == .oracleTimedOut)
+      #expect(Self.probe().unavailableReason == .oracleTimedOut)
     }
   }
 
@@ -402,7 +441,8 @@ struct SeamCasingOracleTests {
         return .ordinary
       },
       isLearnedWord: { _ in false },
-      isRecognizedName: { _, _ in false })
+      isRecognizedName: { _, _ in false },
+      isNoun: { _ in false })
 
     let payloads = CursorInsertionRepair.repair(
       text: "Olive sent the files.",
@@ -415,8 +455,18 @@ struct SeamCasingOracleTests {
       consulted.wasConsulted == false, "the oracle must never be asked about a protected spelling")
   }
 
-  @Test("Non-English dictation never reaches the oracle at all")
-  func nonEnglishNeverConsultsOracle() {
+  @Test("A language with no casing policy never reaches the oracle at all")
+  func unsupportedLanguageNeverConsultsOracle() {
+    // Polish, not German. This case used to dictate German on the reasoning that
+    // "an English dictionary must never judge German" — but the dictionary was
+    // never English, it was whichever language the runtime prepared, and #1922
+    // gives German its own. Left as it was, the case would have frozen the exact
+    // behaviour the change removes.
+    //
+    // What it actually guards is unchanged and still worth guarding: a language
+    // absent from the policy table must not reach word knowledge at all, so the
+    // 23 unsupported European languages cannot be judged by a neighbour's
+    // dictionary.
     let consulted = ConsultationSpy()
     let spy = SeamCasingOracle(
       unavailableReason: nil,
@@ -425,15 +475,56 @@ struct SeamCasingOracleTests {
         return .ordinary
       },
       isLearnedWord: { _ in false },
-      isRecognizedName: { _, _ in false })
+      isRecognizedName: { _, _ in false },
+      isNoun: { _ in false })
 
     let payloads = CursorInsertionRepair.repair(
-      text: "Haus ist gross.",
-      context: CursorInsertionRepair.CaretText(left: "Ich gehe zum ", right: ""),
-      protectedWords: [], language: "de", oracle: spy)
+      text: "Dziekuje bardzo za to.",
+      context: CursorInsertionRepair.CaretText(left: "Chcialem powiedziec ze ", right: ""),
+      protectedWords: [], language: "pl", oracle: spy)
 
     #expect(payloads.candidateRules.contains(.caseSkipped(.languageNotSupported)))
-    #expect(consulted.wasConsulted == false, "an English dictionary must never judge German")
+    #expect(
+      consulted.wasConsulted == false,
+      "a language we did not measure must never be judged by another language's dictionary")
+  }
+
+  @Test("German DOES reach the oracle, and the noun veto is what decides")
+  func germanReachesOracleAndVetoDecides() {
+    // The positive control for the case above. Without it, deleting German from
+    // the policy table would leave every assertion in this suite green while
+    // silently reverting the language.
+    let consulted = ConsultationSpy()
+    let noun = SeamCasingOracle(
+      unavailableReason: nil,
+      dictionaryVerdict: { _ in
+        consulted.record()
+        return .ordinary
+      },
+      isLearnedWord: { _ in false },
+      isRecognizedName: { _, _ in false },
+      isNoun: { _ in true })
+
+    let kept = CursorInsertionRepair.repair(
+      text: "Haus ist gross.",
+      context: CursorInsertionRepair.CaretText(left: "Ich gehe zum ", right: ""),
+      protectedWords: [], language: "de", oracle: noun)
+
+    #expect(consulted.wasConsulted, "German must consult its own word knowledge")
+    #expect(
+      kept.candidateRules.contains(.caseSkipped(.nounInNounCapitalisingLanguage)),
+      "and a tagged noun must keep its capital by VETO")
+    #expect(kept.repairedText == "Haus ist gross. ")
+
+    // Same input, same policy, only the tagger's answer flipped. A veto that
+    // refused everything would pass the assertions above and disable the feature.
+    let lowered = CursorInsertionRepair.repair(
+      text: "Haus ist gross.",
+      context: CursorInsertionRepair.CaretText(left: "Ich gehe zum ", right: ""),
+      protectedWords: [], language: "de",
+      oracle: Self.oracle(ordinary: ["haus"], isNoun: false))
+
+    #expect(lowered.repairedText == "haus ist gross. ", "and a non-noun must lower")
   }
 
   @Test("The founder's reported case: a determiner continuation is lowered")
@@ -469,6 +560,10 @@ struct SeamCasingOracleTests {
       isRecognizedName: { _, _ in
         calls.withLock { $0 += 1 }
         return false
+      },
+      isNoun: { _ in
+        calls.withLock { $0 += 1 }
+        return false
       })
 
     let wrapped = underlying.authorized(by: { true })
@@ -478,6 +573,15 @@ struct SeamCasingOracleTests {
     #expect(
       calls.withLock { $0 } == 3,
       "and all three closures must reach it, or the wrapper is silently deciding")
+
+    // THREE, not four: `isNoun` is deliberately outside `mayLower` — it is a veto
+    // the repair applies after `mayLower` has already authorised lowering, so a
+    // count of four here would mean the veto had leaked into the decision. It
+    // still has to survive the wrapper, which the fourth call proves separately.
+    _ = wrapped.isNoun("Haus ist gross.")
+    #expect(
+      calls.withLock { $0 } == 4,
+      "and the veto must reach it too when asked directly")
   }
 
   @Test("#1921 A refused wrapper calls NOTHING underneath and keeps the capital")
@@ -504,10 +608,17 @@ struct SeamCasingOracleTests {
       isRecognizedName: { _, _ in
         calls.withLock { $0 += 1 }
         return false
+      },
+      isNoun: { _ in
+        calls.withLock { $0 += 1 }
+        return false
       })
 
     let wrapped = underlying.authorized(by: { false })
     let skip = wrapped.mayLower(word: "The", left: "I went to ", payload: "The museum.")
+    // The veto is asked separately by the repair, so a refusal that covered only
+    // `mayLower` would still let a post-deadline call reach the tagger.
+    let noun = wrapped.isNoun("Haus ist gross.")
 
     #expect(
       calls.withLock { $0 } == 0,
@@ -515,6 +626,9 @@ struct SeamCasingOracleTests {
     #expect(
       skip != nil,
       "and it must refuse to lower, because every refusal keeps the capital")
+    #expect(
+      noun,
+      "and a refused veto must read as NOUN, which is the direction that keeps the capital")
   }
 
   @Test("#1921 Refusal is safe on each closure independently, not just the first")
@@ -526,7 +640,8 @@ struct SeamCasingOracleTests {
       unavailableReason: nil,
       dictionaryVerdict: { _ in .ordinary },
       isLearnedWord: { _ in false },
-      isRecognizedName: { _, _ in false })
+      isRecognizedName: { _, _ in false },
+      isNoun: { _ in false })
     let refused = permissive.authorized(by: { false })
 
     #expect(
@@ -538,5 +653,8 @@ struct SeamCasingOracleTests {
     #expect(
       refused.dictionaryVerdict("the") == .unavailable(.oracleTimedOut),
       "and the dictionary must report the real cause, not a bland 'not ordinary'")
+    #expect(
+      refused.isNoun("Haus ist gross."),
+      "and refusing the veto must read as NOUN, which keeps the capital")
   }
 }

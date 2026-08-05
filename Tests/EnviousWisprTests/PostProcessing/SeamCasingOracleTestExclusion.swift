@@ -82,7 +82,21 @@ func withSeamCasingOracleExclusion<T>(
 ) async rethrows -> T {
   await SeamCasingOracleTestExclusion.shared.acquire()
 
-  let prior = SeamCasingOracleRuntime.snapshot()
+  // ENGLISH only, and that is a deliberate limit rather than an oversight.
+  //
+  // The runtime holds one phase per language now (#1922), so "the prior state"
+  // is a dictionary. It cannot be read as one: probing a language that was never
+  // requested ENQUEUES it, so a save loop would itself mutate what it is trying
+  // to preserve, and the phase type is private besides. English is the only
+  // language the app prewarms at launch, so it is the only one a holder can
+  // realistically destroy. Every other language is left reset, which costs one
+  // re-preparation and can never produce a wrong answer.
+  //
+  // The lease goes back immediately: an assertion is not a decision, and a lease
+  // nobody releases would stop the drain preparing any language for the rest of
+  // the run.
+  let prior = SeamCasingOracleRuntime.snapshot(for: "en")
+  if prior.isAvailable { SeamCasingOracleRuntime.releaseDecisionLease() }
 
   @Sendable func restoreAndRelease() async {
     SeamCasingOracleRuntime.resetForTesting()
@@ -90,7 +104,7 @@ func withSeamCasingOracleExclusion<T>(
     // no-op at best. Any other prior state was a real oracle this holder must
     // hand back.
     if prior.unavailableReason != .oracleWarming {
-      SeamCasingOracleRuntime.installForTesting(prior)
+      SeamCasingOracleRuntime.installForTesting(prior, for: "en")
     }
     await SeamCasingOracleTestExclusion.shared.release()
   }
