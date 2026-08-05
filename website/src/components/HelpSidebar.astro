@@ -1,0 +1,110 @@
+---
+import { HELP_CATEGORIES } from '../data/help-categories';
+import { articlesInCategory, type HelpArticle } from '../utils/help';
+
+interface Props {
+  articles: HelpArticle[];
+  /** Slug of the article being read, if any. */
+  currentArticle?: string;
+  /** Slug of the category being browsed, if any. */
+  currentCategory?: string;
+}
+
+const { articles, currentArticle, currentCategory } = Astro.props;
+---
+
+<aside class="help-sidebar" aria-label="Help centre contents">
+  <nav class="help-nav">
+    {HELP_CATEGORIES.map((cat) => {
+      const inCat = articlesInCategory(articles, cat.slug);
+      const isCurrent = cat.slug === currentCategory
+        || inCat.some((a) => a.id === currentArticle);
+      return (
+        <div class="help-nav-group">
+          <a
+            href={`/help/${cat.slug}/`}
+            class:list={['help-nav-cat', { 'is-current': cat.slug === currentCategory }]}
+            aria-current={cat.slug === currentCategory ? 'page' : undefined}
+          >
+            {cat.label}
+            <span class="help-nav-count">{inCat.length}</span>
+          </a>
+          <ul class:list={['help-nav-list', { 'is-open': isCurrent }]} role="list">
+            {inCat.map((a) => (
+              <li>
+                <a
+                  href={`/help/${a.id}/`}
+                  class:list={[{ 'is-current': a.id === currentArticle }]}
+                  aria-current={a.id === currentArticle ? 'page' : undefined}
+                >{a.data.title}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    })}
+  </nav>
+</aside>
+
+<style>
+  /* Mirrors the blog's two-column numbers so the two page types feel like one
+     site: BlogPost.astro turns its rail on at 1080px and BlogSidebar pins it
+     with the same sticky offsets. */
+  .help-sidebar { display: none; }
+
+  @media (min-width: 1080px) {
+    .help-sidebar {
+      display: block;
+      position: sticky;
+      top: 100px;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+      padding-right: 8px;
+      font-size: 14px;
+    }
+  }
+
+  .help-nav-group { margin-bottom: 18px; }
+
+  .help-nav-cat {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+    padding: 4px 0;
+    letter-spacing: -0.01em;
+  }
+  .help-nav-cat:hover { color: var(--accent); }
+  .help-nav-cat.is-current { color: var(--accent); }
+
+  .help-nav-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-3);
+    font-weight: 400;
+  }
+
+  .help-nav-list {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0 0 0 2px;
+    border-left: 1px solid var(--border);
+  }
+
+  .help-nav-list a {
+    display: block;
+    padding: 3px 0 3px 12px;
+    color: var(--text-2);
+    text-decoration: none;
+    line-height: 1.35;
+  }
+  .help-nav-list a:hover { color: var(--accent); }
+  .help-nav-list a.is-current {
+    color: var(--accent);
+    font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+</style>

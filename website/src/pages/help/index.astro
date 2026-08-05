@@ -1,0 +1,154 @@
+---
+import HelpLayout from '../../layouts/HelpLayout.astro';
+import HelpSearch from '../../components/HelpSearch.astro';
+import { HELP_CATEGORIES } from '../../data/help-categories';
+import { getHelpArticles, validateSeeAlso, articlesInCategory, helpIndexUrl, helpUrl } from '../../utils/help';
+
+const SITE = 'https://enviouswispr.com';
+
+const articles = await getHelpArticles();
+await validateSeeAlso(articles);
+
+// The two reasons anyone opens a help centre. Everything else is browsing.
+const setUp = articlesInCategory(articles, 'getting-started');
+const fixIt = articlesInCategory(articles, 'troubleshooting');
+
+// Example queries, because an empty search box tells nobody what it can do.
+const EXAMPLES = ['airpods', 'paste not working', 'turn off ai', 'is this free'];
+
+const jsonLd = [
+  JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: 'EnviousWispr Help Centre',
+    description: 'Answers for setting up EnviousWispr, fixing problems, and every feature it ships with.',
+    url: helpIndexUrl,
+    isPartOf: { '@type': 'WebSite', url: SITE, name: 'EnviousWispr' },
+    publisher: { '@type': 'Organization', name: 'Envious Labs', url: SITE },
+    hasPart: HELP_CATEGORIES.map((c) => ({
+      '@type': 'CollectionPage', name: c.label, description: c.blurb, url: `${SITE}/help/${c.slug}/`,
+    })),
+  }),
+  JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: SITE },
+      { '@type': 'ListItem', position: 2, name: 'Help', item: helpIndexUrl },
+    ],
+  }),
+];
+---
+
+<HelpLayout
+  title="EnviousWispr Help Centre: Setup, Fixes and Features"
+  description="Answers for setting up EnviousWispr, fixing problems, and every feature it ships with. Search or browse 52 articles."
+  canonicalPath="/help/"
+  articles={articles}
+  jsonLd={jsonLd}
+>
+  <header class="help-hero">
+    <h1 class="help-h1">How can we help?</h1>
+    <p class="help-lede">Search everything we cover, or start with one of the two below.</p>
+
+    <HelpSearch variant="inline" />
+
+    <div class="help-examples">
+      <span>Try</span>
+      {EXAMPLES.map((q) => <button type="button" class="help-example" data-help-search-open data-query={q}>{q}</button>)}
+    </div>
+    <p class="help-privacy">Search runs in your browser. What you type never leaves your Mac.</p>
+  </header>
+
+  <div class="help-tasks">
+    <a class="help-task" href="/help/getting-started/">
+      <span class="help-task-kicker">New here</span>
+      <span class="help-task-title">Set up EnviousWispr</span>
+      <span class="help-task-desc">Install it, give it permission, and get your first words on screen. {setUp.length} steps.</span>
+    </a>
+    <a class="help-task" href="/help/troubleshooting/">
+      <span class="help-task-kicker">Something is wrong</span>
+      <span class="help-task-title">Fix a problem</span>
+      <span class="help-task-desc">No text appearing, wrong words, paste not working, and the rest. {fixIt.length} fixes.</span>
+    </a>
+  </div>
+
+  <h2 class="help-h2">Browse by topic</h2>
+  <div class="help-cats">
+    {HELP_CATEGORIES.map((c) => (
+      <a class="help-cat" href={`/help/${c.slug}/`}>
+        <span class="help-cat-title">{c.label}<span class="help-cat-count">{articlesInCategory(articles, c.slug).length}</span></span>
+        <span class="help-cat-blurb">{c.blurb}</span>
+      </a>
+    ))}
+  </div>
+
+  <h2 class="help-h2">Every article</h2>
+  <p class="help-all-note">
+    The complete list, so nothing here depends on search working, or on JavaScript running at all.
+  </p>
+  {HELP_CATEGORIES.map((c) => (
+    <section class="help-all-group">
+      <h3>{c.label}</h3>
+      <ul role="list">
+        {articlesInCategory(articles, c.slug).map((a) => (
+          <li><a href={`/help/${a.id}/`}>{a.data.title}</a></li>
+        ))}
+      </ul>
+    </section>
+  ))}
+</HelpLayout>
+
+<script>
+  // The example chips open search with their query already typed.
+  document.querySelectorAll<HTMLElement>('.help-example').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const input = document.getElementById('help-search-input') as HTMLInputElement | null;
+      if (!input) return;
+      input.value = chip.dataset.query ?? '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  });
+</script>
+
+<style>
+  .help-hero { margin-bottom: 40px; }
+  .help-h1 { font-size: 38px; font-weight: 800; letter-spacing: -1.2px; margin: 0 0 8px; text-wrap: balance; }
+  .help-lede { font-size: 17px; color: var(--text-2); margin: 0 0 20px; }
+  .help-h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-3); margin: 44px 0 14px; }
+
+  .help-examples { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 12px; font-size: 13px; color: var(--text-3); }
+  .help-example {
+    font-family: var(--font-body); font-size: 13px; color: var(--text-2); cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 4px 11px;
+  }
+  .help-example:hover { border-color: var(--accent); color: var(--accent); }
+  .help-privacy { font-size: 12.5px; color: var(--text-3); margin: 12px 0 0; }
+
+  .help-tasks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .help-tasks { grid-template-columns: 1fr; } }
+  .help-task {
+    display: grid; gap: 4px; padding: 20px 22px; text-decoration: none;
+    border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface);
+  }
+  .help-task:hover { border-color: var(--accent); }
+  .help-task-kicker { font-family: var(--font-mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; }
+  .help-task-title { font-size: 19px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+  .help-task-desc { font-size: 14px; color: var(--text-2); line-height: 1.5; }
+
+  .help-cats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 900px) { .help-cats { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .help-cats { grid-template-columns: 1fr; } }
+  .help-cat { display: grid; gap: 3px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; text-decoration: none; }
+  .help-cat:hover { border-color: var(--border-hover); background: var(--surface); }
+  .help-cat-title { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 650; color: var(--text); }
+  .help-cat-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+  .help-cat-blurb { font-size: 13px; color: var(--text-3); line-height: 1.45; }
+
+  .help-all-note { font-size: 13px; color: var(--text-3); margin: 0 0 18px; }
+  .help-all-group { margin-bottom: 20px; }
+  .help-all-group h3 { font-size: 14px; font-weight: 700; color: var(--text); margin: 0 0 6px; }
+  .help-all-group ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 3px; }
+  .help-all-group a { font-size: 14px; color: var(--text-2); text-decoration: none; }
+  .help-all-group a:hover { color: var(--accent); text-decoration: underline; }
+</style>
