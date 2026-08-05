@@ -1563,7 +1563,8 @@ public final class TelemetryService {
     /// #1914: remoteness for a completed Ollama polish. Omitted when nil.
     /// `false` means the Ollama daemon did not report the model as remote; it
     /// must not double as the default for a non-Ollama provider. Failed and
-    /// skipped events carry no equivalent field under plan Decision 6.
+    /// skipped events carry no equivalent field under the founder's
+    /// 2026-08-03 tabling recorded in plan §3a.
     ollamaRemote: Bool? = nil,
     /// #1846: which dictation this event belongs to. Omit-when-nil.
     takeID: String? = nil
