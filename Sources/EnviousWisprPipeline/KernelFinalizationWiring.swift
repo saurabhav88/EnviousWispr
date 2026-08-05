@@ -195,8 +195,18 @@ struct KernelFinalizationWiring {
     // a fixed oracle so a case never depends on the machine's dictionaries — and
     // so no test has to MUTATE the process-global runtime, which would race the
     // suites that legitimately do (local diff review, P2).
-    englishWordOracle: @escaping @MainActor () -> SeamCasingOracle = {
-      SeamCasingOracleRuntime.snapshot()
+    // Takes the RESOLVED language, so it must be called after resolution, not
+    // before it (grounded review r1: the snapshot used to be taken above the
+    // deadline, where the language is not yet known).
+    seamCasingOracle: @escaping @MainActor (String?) -> SeamCasingOracle = {
+      SeamCasingOracleRuntime.snapshot(for: $0)
+    },
+    // Paired with the seam above. A READY snapshot holds a lease that stops the
+    // preparation drain entering the shared spell checker underneath a decision
+    // already in flight; releasing is mandatory and happens in a `defer`.
+    // Injected tests pass a no-op, because their oracle takes no lease.
+    releaseOracleLease: @escaping @MainActor () -> Void = {
+      SeamCasingOracleRuntime.releaseDecisionLease()
     },
     // #1921 language-resolver seam. `@Sendable`, not `@MainActor`, because
     // resolution now runs INSIDE the `@Sendable` deadline operation. Defaults to
@@ -502,7 +512,6 @@ struct KernelFinalizationWiring {
         // insertion this feature exists for.
         let surroundingText = caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? ""
         let protectedSpellings = context.protectedSpellings
-        let oracleSnapshot = englishWordOracle()
 
         // #1921: language resolution now runs INSIDE this deadline. It used to
         // run above it, unbounded, on the paste path — a claim an earlier
@@ -546,6 +555,13 @@ struct KernelFinalizationWiring {
             // review round 2). Every refusal keeps the capital.
             // `CursorInsertionRepair` stays unaware of the deadline: it remains
             // a pure function of the oracle it is handed.
+            // Taken HERE, below resolution, because the oracle is per-language
+            // now and the language is not known any earlier. A ready snapshot
+            // holds a lease; `defer` releases it on every exit including the
+            // discarded-on-timeout one, since the deadline cannot preempt this
+            // closure and it always runs to completion.
+            let oracleSnapshot = await MainActor.run { seamCasingOracle(resolution.language) }
+            defer { Task { @MainActor in releaseOracleLease() } }
             let gatedOracle = oracleSnapshot.authorized { gate.authorizeOracleUse() }
             let repaired = CursorInsertionRepair.repair(
               text: text,

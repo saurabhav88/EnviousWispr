@@ -64,6 +64,12 @@ public enum CursorInsertionRepair {
     case alreadyLower = "already_lower"
     case protectedWord = "protected_word"
     case mixedCaseOrAcronym = "mixed_case_or_acronym"
+    /// German only: the word-class tagger called this a noun, and German
+    /// capitalises every noun. #1922.
+    case nounInNounCapitalisingLanguage = "noun_in_noun_capitalising_language"
+    /// A form whose capital marks polite address — German `Sie`, Swedish `Ni`.
+    /// The capital IS the meaning, so no dictionary can see it. #1922.
+    case politeForm = "polite_form"
     case containsDigit = "contains_digit"
     case pronounI = "pronoun_i"
     case alwaysCapitalized = "always_capitalized"
@@ -245,22 +251,110 @@ public enum CursorInsertionRepair {
   /// rule, and Russian spaces its words while using an alphabet our lexicon has
   /// never seen. Deciding them separately keeps every language in exactly one of
   /// four honest states rather than one all-or-nothing switch.
+  /// How a language wants its leading capital decided, when it wants one decided
+  /// at all. `nil` in `LanguageRules.casingPolicy` means abstain.
+  ///
+  /// Two knobs, because exactly two things vary across the eleven supported
+  /// languages and neither implies the other. German inverts the noun rule and
+  /// has polite forms; Swedish has polite forms and no noun rule; the other nine
+  /// have neither.
+  struct CasingPolicy: Equatable {
+    /// Keep the capital when the word-class tagger calls this word a noun.
+    ///
+    /// TRUE for German ONLY, and that is a measurement, not an oversight: German
+    /// capitalises every noun, so "lower a positively identified non-noun" is its
+    /// rule. French and Italian LOWERCASE their common nouns, so the same veto
+    /// there refuses correct lowerings — measured at a third of their recall for
+    /// one point of precision. Do not extend this on intuition.
+    let nounVeto: Bool
+
+    /// Forms that are always capitalised for politeness, lowercased for lookup.
+    ///
+    /// A closed grammatical inventory (German `Sie`/`Ihr`/`Ihnen` and their
+    /// declensions, Swedish `Ni`), NOT a vocabulary prediction — the distinction
+    /// `matcher-set-adversarial-tests`' generalisation gate turns on. The test is
+    /// whether the CAPITAL ITSELF carries the meaning: `Sie` capitalised is the
+    /// polite you, `sie` is "she". Italian and Russian polite lists were tried
+    /// and REVERTED because theirs failed that test — `la`, `le`, `suo`, `sua`,
+    /// `вы` are ordinary articles, possessives and pronouns, so protecting them
+    /// blocked correct lowerings and cost far more than it saved.
+    let politeForms: Set<String>
+
+    /// The English shape: dictionary and name detection decide, nothing else.
+    static let plain = CasingPolicy(nounVeto: false, politeForms: [])
+  }
+
+  /// What this repair may do in the language actually being dictated.
+  ///
+  /// Both answers are per-language and neither is a detail of the other: Japanese
+  /// has no casing AND no word spacing, German has both but inverts the noun
+  /// rule, and Russian spaces its words while using an alphabet our lexicon has
+  /// never seen. Deciding them separately keeps every language in exactly one of
+  /// four honest states rather than one all-or-nothing switch.
   struct LanguageRules: Equatable {
     /// Words are separated by spaces, so a seam may need one.
     let usesWordSpacing: Bool
-    /// We hold casing knowledge for this language. English only today.
-    let knowsCasing: Bool
+
+    /// How to decide the leading capital, or `nil` to leave it alone.
+    ///
+    /// Replaces the former `knowsCasing: Bool`, which could only say yes or no
+    /// and so could not express that German's rule is inverted. One authority for
+    /// "what may this repair do in this language", covering spacing and casing.
+    let casingPolicy: CasingPolicy?
+
+    /// The resolved two-letter code, or `nil` when the language is unknown.
+    ///
+    /// Carried because LOWERCASING IS LOCALE-DEPENDENT and the repair cannot
+    /// recover the language once `forLanguage` has mapped it. Turkish `I`
+    /// lowercases to `ı`, not `i`, and only a Turkish locale knows that; Dutch
+    /// needs its own digraph handling. Measured both ways in
+    /// `2026-08-05-lowering-locale-probe.swift`.
+    let baseCode: String?
 
     /// Unknown language: space, do not recase. Spacing is what all but six of
     /// Whisper's ninety-nine languages do, and a missing or extra space is a
     /// far smaller error than a wrongly lowercased proper noun.
-    static let unknown = LanguageRules(usesWordSpacing: true, knowsCasing: false)
+    static let unknown = LanguageRules(
+      usesWordSpacing: true, casingPolicy: nil, baseCode: nil)
+
+    /// The eleven languages measured as safe, and the two that need more than the
+    /// English shape.
+    ///
+    /// This is a POLICY table keyed by language code, and that is deliberate even
+    /// though `cursor-aware-insertion.md` RULE: never-extend-knowsCasing-by-adding-a-language-code
+    /// forbids code-gating. That rule governs AVAILABILITY — whether macOS can
+    /// actually serve a language — because Apple's facilities fail open and a
+    /// code-based gate would trust a service that is lying. Availability is still
+    /// probed at runtime by the oracle, unchanged. What lives here is the
+    /// LANGUAGE'S OWN GRAMMAR: German capitalises its nouns whether or not this
+    /// Mac has a German dictionary installed. There is no fail-open to detect.
+    ///
+    /// Every entry is measured on held-out published text; per-language numbers
+    /// and the floors they must clear are in the #1922 plan §13. A language absent
+    /// from this table abstains, which is what all 23 remaining European
+    /// languages do today and must keep doing.
+    static let casingPolicies: [String: CasingPolicy] = [
+      // Full toolkit, English shape.
+      "en": .plain, "fr": .plain, "it": .plain,
+      // Dictionary only, English shape. No name detection exists for these, so
+      // the dictionary alone carries the decision.
+      "ru": .plain, "nl": .plain, "es": .plain, "pt": .plain,
+      "da": .plain, "fi": .plain, "tr": .plain,
+      // German: the only language whose rule inverts.
+      "de": CasingPolicy(
+        nounVeto: true,
+        politeForms: ["sie", "ihr", "ihnen", "ihre", "ihrer", "ihres", "ihrem", "ihren"]),
+      // Swedish: polite forms without a noun rule. `.lexicalClass` is unavailable
+      // for Swedish, so a veto here would be inert even if the grammar wanted one.
+      "sv": CasingPolicy(nounVeto: false, politeForms: ["ni", "er", "ert", "era"]),
+    ]
 
     static func forLanguage(_ raw: String?) -> LanguageRules {
       guard let base = LanguageNormalizer.baseCode(raw) else { return .unknown }
       return LanguageRules(
         usesWordSpacing: !LanguageTypes.isUnsegmentedScript(base),
-        knowsCasing: base == "en")
+        casingPolicy: casingPolicies[base],
+        baseCode: base)
     }
   }
 
@@ -430,17 +524,18 @@ public enum CursorInsertionRepair {
         !left.atLineStart && (anchor.isLetter || anchor.isNumber || continuers.contains(anchor))
       } ?? false
 
-    if continuing, !language.knowsCasing {
+    if continuing, let policy = language.casingPolicy {
+      let (adjusted, caseRule) = applyLeadingCase(
+        to: out, leftWindow: context.left, isScreenDerived: context.isScreenDerived,
+        protectedWords: protectedWords, oracle: oracle,
+        policy: policy, languageCode: language.baseCode)
+      out = adjusted
+      rules.append(caseRule)
+    } else if continuing {
       // Positioned to lowercase, but not in a language whose casing we know.
       // Recorded as a skip rather than silently omitted so the field can tell
       // "we chose not to" from "the position did not call for it".
       rules.append(.caseSkipped(.languageNotSupported))
-    } else if continuing {
-      let (adjusted, caseRule) = applyLeadingCase(
-        to: out, leftWindow: context.left, isScreenDerived: context.isScreenDerived,
-        protectedWords: protectedWords, oracle: oracle)
-      out = adjusted
-      rules.append(caseRule)
     } else if left.character == nil {
       // Nothing real to the left: an empty window means nothing precedes the
       // caret at all, a non-empty one means we walked back to a line start.
@@ -544,7 +639,9 @@ public enum CursorInsertionRepair {
     leftWindow: String,
     isScreenDerived: Bool,
     protectedWords: Set<String>,
-    oracle: SeamCasingOracle
+    oracle: SeamCasingOracle,
+    policy: CasingPolicy,
+    languageCode: String?
   ) -> (String, AppliedRule) {
     let leadingWhitespace = text.prefix(while: \.isWhitespace)
     let stripped = text.dropFirst(leadingWhitespace.count)
@@ -564,17 +661,40 @@ public enum CursorInsertionRepair {
     if startsWithProtectedSpelling(stripped, protectedWords: protectedWords) {
       return (text, .caseSkipped(.protectedWord))
     }
-    if bare.dropFirst().contains(where: \.isUppercase) {
+    // Dutch `IJ` is ONE casing unit, so its second character is not evidence of
+    // an acronym. Without this exemption every `IJ`-initial Dutch word dies here,
+    // four guards before the lowering code ever runs — which made rev 2's
+    // "add a locale" fix completely inert (verified: `2026-08-05-dutch-guard-probe.swift`).
+    //
+    // Scoped as narrowly as it can be: Dutch only, exactly `I` then `J`, and only
+    // that one character is forgiven. `USA` still refuses in Dutch, because its
+    // `S` is not the exempted position. The single-character `Ĳ` ligature never
+    // reaches here — it has no second uppercase character.
+    if bare.dropFirst().contains(where: \.isUppercase), !isDutchIJDigraph(bare, languageCode) {
       return (text, .caseSkipped(.mixedCaseOrAcronym))
     }
     if bare.contains(where: \.isNumber) {
       return (text, .caseSkipped(.containsDigit))
     }
-    if isFirstPersonPronoun(bare) {
-      return (text, .caseSkipped(.pronounI))
+    // English-only by construction, and that is deliberate: `isFirstPersonPronoun`
+    // is `["I", "I'm", …]` and `alwaysCapitalized` is the English weekday/month
+    // set. Applying either to German or Turkish would be asserting an English
+    // fact about another language. Both were language-blind before this change,
+    // which was harmless only because English was the sole casing language.
+    if languageCode == "en" {
+      if isFirstPersonPronoun(bare) {
+        return (text, .caseSkipped(.pronounI))
+      }
+      if alwaysCapitalized.contains(bare) {
+        return (text, .caseSkipped(.alwaysCapitalized))
+      }
     }
-    if alwaysCapitalized.contains(bare) {
-      return (text, .caseSkipped(.alwaysCapitalized))
+    // A polite form is capitalised for its ROLE, so the capital carries the
+    // meaning and no dictionary can see it: German `Sie` is the polite you while
+    // `sie` is "she". Closed grammatical inventory, checked before the oracle
+    // because the oracle would happily call it an ordinary word.
+    if policy.politeForms.contains(bare.lowercased()) {
+      return (text, .caseSkipped(.politeForm))
     }
     // The tagger must see the seam AS IT WILL BE WRITTEN, separator included.
     //
@@ -624,8 +744,66 @@ public enum CursorInsertionRepair {
       }
     }
 
-    let lowered = String(firstCharacter).lowercased()
-    return (String(leadingWhitespace) + lowered + String(stripped.dropFirst()), .lowercasedFirst)
+    // German inverts the rule: every noun is capitalised, so a positively
+    // identified noun keeps its capital.
+    //
+    // A VETO, never a decider. Everything above has already decided to lower;
+    // this can only withdraw that. #1803's rejected design made word class the
+    // DECIDER plus a safe-tag allowlist, which lowered nominalised adverbs and
+    // pronouns. As a conjunction it cannot introduce a damage class the rule did
+    // not already have — measured 127 wrong to 22 on the tuned split, and 91 to 9
+    // on a clean holdout.
+    //
+    // The dictation ALONE, never the surrounding document: #1803 measured that
+    // adding the document flipped `Morgen` from adverb to noun. And the top tag,
+    // not `tagHypotheses` — that was #1803's prescribed fix and it is byte-
+    // identical here, because noun carries weight only when noun already wins.
+    if policy.nounVeto, oracle.isNoun(String(stripped)) {
+      return (text, .caseSkipped(.nounInNounCapitalisingLanguage))
+    }
+
+    return (loweringLeadingUnit(of: text, languageCode: languageCode), .lowercasedFirst)
+  }
+
+  /// Is `bare` a Dutch word opening with the `IJ` digraph?
+  ///
+  /// Deliberately ASCII `I`+`J` and Dutch only. Widening either axis breaks
+  /// acronym protection somewhere: any-language would forgive `IT`, and
+  /// any-second-capital would forgive `USA`.
+  static func isDutchIJDigraph(_ bare: String, _ languageCode: String?) -> Bool {
+    guard languageCode == "nl" else { return false }
+    var it = bare.makeIterator()
+    guard it.next() == "I", it.next() == "J" else { return false }
+    // Only the `J` is forgiven — anything uppercase after it is still an acronym.
+    return !bare.dropFirst(2).contains(where: \.isUppercase)
+  }
+
+  /// Lowercase the leading CASING UNIT, which is not always one character.
+  ///
+  /// Two things the old `String(firstCharacter).lowercased()` got wrong, both
+  /// latent until #1922 made Turkish and Dutch reachable, both measured in
+  /// `2026-08-05-lowering-locale-probe.swift`:
+  ///
+  /// - **Locale.** `lowercased()` uses the root locale, so Turkish `I` becomes
+  ///   `i` when it must become `ı`.
+  /// - **Unit length.** Dutch `IJ` is one casing unit spelled with two
+  ///   characters, so lowering only the first yields `iJs`. A locale argument
+  ///   does NOT fix this — measured, `lowercased(with: nl)` also returns `iJs`.
+  static func loweringLeadingUnit(of text: String, languageCode: String?) -> String {
+    let leadingWhitespace = text.prefix(while: \.isWhitespace)
+    let stripped = text.dropFirst(leadingWhitespace.count)
+    guard let firstCharacter = stripped.first else { return text }
+    let locale = languageCode.map { Locale(identifier: $0) } ?? Locale(identifier: "en")
+
+    // Dutch digraph: two characters in, two characters out.
+    if languageCode == "nl", stripped.count >= 2 {
+      let second = stripped[stripped.index(after: stripped.startIndex)]
+      if firstCharacter == "I", second == "J" {
+        return String(leadingWhitespace) + "ij" + String(stripped.dropFirst(2))
+      }
+    }
+    let lowered = String(firstCharacter).lowercased(with: locale)
+    return String(leadingWhitespace) + lowered + String(stripped.dropFirst())
   }
 
   // MARK: - Seam de-duplication (#1803)

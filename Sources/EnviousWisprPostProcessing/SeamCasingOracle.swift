@@ -50,6 +50,20 @@ package struct SeamCasingOracle: Sendable {
   /// the dictionary, which is why that second step exists.
   package let isRecognizedName: @Sendable (_ left: String, _ payload: String) -> Bool
 
+  /// Does the word-class tagger call the payload's first word a noun?
+  ///
+  /// Consulted ONLY where `CasingPolicy.nounVeto` is set, which today is German
+  /// alone — the one supported language that capitalises every noun. #1922.
+  ///
+  /// Takes the payload and not the joined seam on purpose: #1803 measured that
+  /// feeding the surrounding document made German WORSE, flipping `Morgen` from
+  /// adverb to noun. This is the opposite of `isRecognizedName`, which needs the
+  /// left context because a name is recognised from its neighbours.
+  ///
+  /// Answering `true` KEEPS the capital, so `true` is the conservative direction
+  /// and every refusal path returns it.
+  package let isNoun: @Sendable (_ payload: String) -> Bool
+
   package var isAvailable: Bool { unavailableReason == nil }
 
   /// The same oracle, but asking permission before every consultation.
@@ -105,6 +119,13 @@ package struct SeamCasingOracle: Sendable {
       isRecognizedName: { left, payload in
         guard authorize() else { return true }
         return isRecognizedName(left, payload)
+      },
+      // `true` on refusal, same as the others and for the same reason: a veto
+      // answering "noun" keeps the capital, which is what the app did before
+      // this feature existed.
+      isNoun: { payload in
+        guard authorize() else { return true }
+        return isNoun(payload)
       })
   }
 
@@ -115,7 +136,8 @@ package struct SeamCasingOracle: Sendable {
       unavailableReason: reason,
       dictionaryVerdict: { _ in .unavailable(reason) },
       isLearnedWord: { _ in false },
-      isRecognizedName: { _, _ in true })
+      isRecognizedName: { _, _ in true },
+      isNoun: { _ in true })
   }
 
   /// The decision, in one place.
