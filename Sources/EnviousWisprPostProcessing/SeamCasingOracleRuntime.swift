@@ -404,10 +404,29 @@ package enum SeamCasingOracleRuntime {
   /// lease the drain could begin a preparation call while an already-issued
   /// decision is still inside the shared checker — the race refusing-at-snapshot
   /// does not close, because that snapshot escaped before preparation started.
-  package static func snapshot(for base: String?) -> SeamCasingOracle {
+  package static func snapshot(for rawLanguage: String?) -> SeamCasingOracle {
+    // ONE authority decides both the KEY and whether to do any work at all, and
+    // it is the same one `repair` consults. Whole-diff review found two P2s that
+    // are really one defect — the caller passed the RAW dictation tag while
+    // `repair` keyed off the NORMALISED base code:
+    //
+    // - A regional tag (`de-DE`) would key `phases["de-DE"]` and then ask
+    //   `resolveLanguage("de-DE", …)`, which compares against base codes, finds
+    //   nothing, and permanently marks that phantom key `.dictionaryUnavailable`.
+    //   Latent today — every producer emits a base code (the 100-entry lock
+    //   catalog and both engines) — but silent if one ever does not.
+    // - A language with NO casing policy (`ja`, `pl`) queued a real spell-checker
+    //   preparation it could never use, and WHILE that ran every ready language
+    //   refused with `oracleWarming`. That one is reachable today.
+    //
+    // Deriving both from `LanguageRules` makes the two key spaces identical by
+    // construction rather than by two call sites agreeing.
+    let rules = CursorInsertionRepair.LanguageRules.forLanguage(rawLanguage)
+    guard rules.casingPolicy != nil, let base = rules.baseCode else {
+      return .unavailable(.languageNotSupported)
+    }
     let (oracle, needsDrain) = state.withLock { state -> (SeamCasingOracle, Bool) in
       if let latched = state.latched { return (.unavailable(latched), false) }
-      guard let base else { return (.unavailable(.languageNotSupported), false) }
       // A preparation call is inside the checker right now: everyone refuses,
       // including languages that are already built.
       if state.preparing { return (.unavailable(.oracleWarming), false) }

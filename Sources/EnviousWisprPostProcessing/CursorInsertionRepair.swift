@@ -712,7 +712,9 @@ public enum CursorInsertionRepair {
     // already ended in a space, so none of them could exercise this. Caught by
     // local diff review r2 (P1).
     let taggerLeft = leftWindow + String(leadingWhitespace)
-    if let refusal = oracle.mayLower(word: bare, left: taggerLeft, payload: String(stripped)) {
+    if let refusal = oracle.mayLower(
+      word: bare, left: taggerLeft, payload: String(stripped), languageCode: languageCode)
+    {
       return (text, .caseSkipped(refusal))
     }
 
@@ -742,7 +744,9 @@ public enum CursorInsertionRepair {
     // its separator and the second reading would merely double it.
     if isScreenDerived, let lastLeft = taggerLeft.last, !lastLeft.isWhitespace {
       let separated = taggerLeft + " "
-      if let refusal = oracle.mayLower(word: bare, left: separated, payload: String(stripped)) {
+      if let refusal = oracle.mayLower(
+        word: bare, left: separated, payload: String(stripped), languageCode: languageCode)
+      {
         return (text, .caseSkipped(refusal))
       }
     }
@@ -795,11 +799,23 @@ public enum CursorInsertionRepair {
   /// - **Unit length.** Dutch `IJ` is one casing unit spelled with two
   ///   characters, so lowering only the first yields `iJs`. A locale argument
   ///   does NOT fix this — measured, `lowercased(with: nl)` also returns `iJs`.
+  /// The one locale authority for this file.
+  ///
+  /// Extracted because TWO places lowercase and both must agree: the text we
+  /// WRITE, and the word we ASK THE DICTIONARY ABOUT. Whole-diff review found
+  /// them disagreeing — the query used the root locale, so Turkish `Işık` was
+  /// looked up as `işık` instead of `ışık`, the Turkish dictionary rejected an
+  /// ordinary word, and the capital was kept. That fails safe and costs recall,
+  /// which is why no test caught it.
+  static func casingLocale(for languageCode: String?) -> Locale {
+    Locale(identifier: languageCode ?? "en")
+  }
+
   static func loweringLeadingUnit(of text: String, languageCode: String?) -> String {
     let leadingWhitespace = text.prefix(while: \.isWhitespace)
     let stripped = text.dropFirst(leadingWhitespace.count)
     guard let firstCharacter = stripped.first else { return text }
-    let locale = languageCode.map { Locale(identifier: $0) } ?? Locale(identifier: "en")
+    let locale = casingLocale(for: languageCode)
 
     // Dutch digraph: two characters in, two characters out.
     if languageCode == "nl", stripped.count >= 2 {

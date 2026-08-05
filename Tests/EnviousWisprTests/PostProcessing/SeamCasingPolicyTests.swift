@@ -1,4 +1,5 @@
 import Testing
+import os
 
 @testable import EnviousWisprPostProcessing
 
@@ -286,6 +287,50 @@ struct SeamCasingPolicyTests {
       payload, language: language, left: "Ben dedim ki ",
       oracle: Self.permissive(isNoun: false))
     #expect(out.repairedText == expected)
+  }
+
+  @Test("#1922 The DICTIONARY is asked about the locale-correct lowercase form")
+  func dictionaryQueryUsesTheLanguageLocale() {
+    // Whole-diff review, P2. Two places lowercase and both must agree: the text
+    // we WRITE and the word we ASK ABOUT. The query used the root locale, so
+    // Turkish `Işık` was looked up as `işık` rather than `ışık` — the real
+    // Turkish dictionary rejects that, so an ordinary word kept its capital.
+    //
+    // It fails SAFE, which is precisely why nothing caught it: it costs recall
+    // and never damages text. This asserts the word the oracle actually received.
+    let asked = OSAllocatedUnfairLock(initialState: [String]())
+    let recorder = SeamCasingOracle(
+      unavailableReason: nil,
+      dictionaryVerdict: { word in
+        asked.withLock { $0.append(word) }
+        return .ordinary
+      },
+      isLearnedWord: { _ in false },
+      isRecognizedName: { _, _ in false },
+      isNoun: { _ in false })
+
+    _ = Self.repaired(
+      "Işık çok güzel.", language: "tr", left: "Ben dedim ki ", oracle: recorder)
+    #expect(
+      asked.withLock { $0 }.contains("ışık"),
+      "Turkish must be asked about `ışık`, got \(asked.withLock { $0 })")
+    #expect(
+      asked.withLock { $0 }.contains("işık") == false,
+      "and never about the root-locale form, which the Turkish dictionary rejects")
+
+    // Two-way control: English must be unaffected by the locale threading.
+    let englishAsked = OSAllocatedUnfairLock(initialState: [String]())
+    let englishRecorder = SeamCasingOracle(
+      unavailableReason: nil,
+      dictionaryVerdict: { word in
+        englishAsked.withLock { $0.append(word) }
+        return .ordinary
+      },
+      isLearnedWord: { _ in false },
+      isRecognizedName: { _, _ in false },
+      isNoun: { _ in false })
+    _ = Self.repaired("Ice is cold.", language: "en", left: "I said that ", oracle: englishRecorder)
+    #expect(englishAsked.withLock { $0 }.contains("ice"))
   }
 
   @Test("#1922 Turkish lowering is NOT the invariant lowering")

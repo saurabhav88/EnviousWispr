@@ -282,6 +282,69 @@ struct SeamCasingRuntimeSerializationTests {
     }
   }
 
+  @Test("#1922 A regional tag reaches the SAME cache entry as its base code")
+  func regionalTagSharesTheBaseEntry() async throws {
+    // Whole-diff review, P2. The caller passes whatever the resolver produced;
+    // `repair` keys off the NORMALISED base code. If the runtime keyed off the
+    // raw tag instead, `de-DE` would build a phantom entry, ask the spell checker
+    // for a dictionary named `de-DE`, find none, and mark that key permanently
+    // unavailable — silently, and only for users whose language carries a region.
+    //
+    // Latent today (every producer emits a base code) and cheap to make
+    // impossible, which is the bar for fixing an unproven defect: trivial fix,
+    // silent failure.
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.installForTesting(Self.ready(["gestern"]), for: "de")
+
+      for raw in ["de", "de-DE", "de_AT", "de-CH"] {
+        let oracle = SeamCasingOracleRuntime.snapshot(for: raw)
+        #expect(oracle.isAvailable, "\(raw) must resolve to the prepared German entry")
+        if oracle.isAvailable { SeamCasingOracleRuntime.releaseDecisionLease() }
+      }
+    }
+  }
+
+  @Test("#1922 A language with no casing policy never enters the preparation drain")
+  func unsupportedLanguageNeverPrepares() async throws {
+    // Whole-diff review, P2, and this one is reachable today: dictating Japanese
+    // queued a real spell-checker preparation that `repair` could never use, and
+    // while it ran EVERY ready language refused with `oracleWarming`. Pure waste
+    // plus a self-inflicted global refusal window.
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.installForTesting(Self.ready(["the"]), for: "en")
+
+      let builderRan = OSAllocatedUnfairLock(initialState: false)
+      SeamCasingOracleRuntime.setPreparationOverrideForTesting { _ in
+        builderRan.withLock { $0 = true }
+        return Self.ready([])
+      }
+      defer { SeamCasingOracleRuntime.setPreparationOverrideForTesting(nil) }
+
+      for unsupported in ["ja", "zh", "pl", "cs", "hu", "th"] {
+        let oracle = SeamCasingOracleRuntime.snapshot(for: unsupported)
+        #expect(
+          oracle.unavailableReason == .languageNotSupported,
+          "\(unsupported) must refuse immediately, not warm")
+      }
+
+      // Give the drain a real chance to misbehave; an instant assertion would
+      // pass even with the guard missing.
+      let started = await Self.waitUntil(timeout: .milliseconds(300)) {
+        builderRan.withLock { $0 }
+      }
+      #expect(started == false, "no preparation may be queued for a language that will abstain")
+
+      // Two-way control: a SUPPORTED language must still prepare, or this test
+      // would also pass against a runtime that prepares nothing at all.
+      #expect(SeamCasingOracleRuntime.snapshot(for: "sv").unavailableReason == .oracleWarming)
+      #expect(
+        await Self.waitUntil { builderRan.withLock { $0 } },
+        "a supported language must still reach the builder")
+    }
+  }
+
   // MARK: - The latch is still process-wide
 
   @Test("#1922 One language's timeout latches EVERY language, not just its own")

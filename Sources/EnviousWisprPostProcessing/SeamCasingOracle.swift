@@ -6,13 +6,14 @@ import Foundation
 /// A VALUE, not a service: its four closures — `dictionaryVerdict`,
 /// `isLearnedWord`, `isRecognizedName`, `isNoun` — are the only contact with the
 /// operating system, so unit tests inject fixed answers and never touch a
-/// system facility.
-
-// Named `EnglishWordOracle` until #1922 (2026-08-05) made it serve twelve
-// languages. `mayLower` still asks the two questions below; the German noun VETO
-// that issue added lives OUTSIDE it, in `CursorInsertionRepair.applyLeadingCase`,
-// which is what keeps it structurally a veto rather than a decider. `SeamCasingOracleRuntime` is the only thing that builds a
+/// system facility. `SeamCasingOracleRuntime` is the only thing that builds a
 /// live one, which keeps `AppKit` and `NaturalLanguage` confined to that file.
+///
+/// Named `EnglishWordOracle` until #1922 (2026-08-05) made it serve twelve
+/// languages. `mayLower` still asks the two questions below; the German noun
+/// VETO that issue added lives OUTSIDE it, in
+/// `CursorInsertionRepair.applyLeadingCase`, which is what keeps it structurally
+/// a veto rather than a decider.
 ///
 /// Replaces `OrdinaryLowercaseLexicon`, a hand-authored 799-word allowlist that
 /// could not contain the English language: `go`, `send`, `call`, `buy`, `email`
@@ -173,10 +174,18 @@ package struct SeamCasingOracle: Sendable {
   /// this feature existed, so no failure here can damage text that was already
   /// correct.
   package func mayLower(
-    word: String, left: String, payload: String
+    word: String, left: String, payload: String, languageCode: String? = nil
   ) -> CursorInsertionRepair.CaseSkipReason? {
     if let unavailableReason { return unavailableReason }
-    let lower = word.lowercased()
+    // LOCALE-AWARE, and it has to be: `lowercased()` uses the root locale, so a
+    // Turkish word opening with dotless `I` was queried as `işık` rather than
+    // `ışık` — the Turkish dictionary rejects that, so an ordinary word kept its
+    // capital. The defect fails SAFE, which is exactly why nothing caught it: it
+    // costs Turkish recall and never damages text. Whole-diff review, P2.
+    //
+    // Defaults to nil (root locale) so the many test call sites that pass no
+    // language keep their existing behaviour, which is correct for English.
+    let lower = word.lowercased(with: CursorInsertionRepair.casingLocale(for: languageCode))
     guard !isRecognizedName(left, payload) else { return .recognizedName }
     // Queried lowercased, and that is sufficient: `hasLearnedWord` folds case in
     // both directions. Measured with clean before-teaching controls — teach
