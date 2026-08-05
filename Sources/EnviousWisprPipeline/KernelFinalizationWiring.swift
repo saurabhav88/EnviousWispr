@@ -457,14 +457,12 @@ struct KernelFinalizationWiring {
         let repairContext: CursorInsertionRepair.CaretText? = caretContext.map {
           CursorInsertionRepair.CaretText(
             left: $0.leftWindow, right: $0.rightWindow,
-            // The left window is cut to `caretContextWindow` units, and the
-            // string cannot say whether it was cut or simply began at the
-            // document's start. `assembleCaretContext` reads from
-            // `max(0, selectionLocation - window)`, so the window reached
-            // offset zero exactly when it is as long as the caret's offset.
-            // Without this the seam de-duplication refused every short field
-            // (#1803, local diff review).
-            leftReachesDocumentStart: $0.leftWindow.utf16.count == $0.selectionLocation,
+            // Read, not derived. This was `leftWindow.utf16.count ==
+            // selectionLocation`, which is exact for a real caret and vacuous
+            // for a terminal — both values come from the same string there, so
+            // EVERY screen-derived context claimed to reach the start, wrapped
+            // ones included. Each source now states the fact it alone knows.
+            leftReachesDocumentStart: $0.leftReachesDocumentStart,
             // The narrow policy fact the repair needs. A screen-derived line is
             // ONE rendered row, so a payload carrying a line break is refused
             // rather than reasoned about — in a terminal a newline can submit

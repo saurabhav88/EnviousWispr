@@ -472,17 +472,31 @@ public enum PasteService {
     /// context has no selection offsets to compare, so this IS its identity.
     package let terminalEvidence: TerminalEvidence?
 
+    /// Whether `leftWindow` begins at the very start of what the user can edit,
+    /// so its first token has no hidden prefix.
+    ///
+    /// STORED, not inferred. Pipeline used to derive it as
+    /// `leftWindow.utf16.count == selectionLocation`, which is exact for a real
+    /// caret and meaningless for a terminal: both values come from the same
+    /// string there, so a screen-derived context ALWAYS claimed to reach the
+    /// start — including when the row read was the tail of a wrapped line with
+    /// text hidden above it. That claim lets `completeLeftToken` treat a wrap
+    /// fragment as a complete word, which authorises the one repair rule that
+    /// DELETES a dictated word.
+    package let leftReachesDocumentStart: Bool
+
     /// Whether this context was derived from a terminal screen.
     package var isScreenDerived: Bool { terminalEvidence != nil }
 
     package init(
       leftWindow: String, rightWindow: String, selectionLocation: Int, selectionLength: Int,
-      terminalEvidence: TerminalEvidence? = nil
+      leftReachesDocumentStart: Bool, terminalEvidence: TerminalEvidence? = nil
     ) {
       self.leftWindow = leftWindow
       self.rightWindow = rightWindow
       self.selectionLocation = selectionLocation
       self.selectionLength = selectionLength
+      self.leftReachesDocumentStart = leftReachesDocumentStart
       self.terminalEvidence = terminalEvidence
     }
   }
@@ -566,7 +580,11 @@ public enum PasteService {
       leftWindow: leftWindow,
       rightWindow: rightWindow,
       selectionLocation: selectionLocation,
-      selectionLength: selectionLength)
+      selectionLength: selectionLength,
+      // The window reached offset zero exactly when it is as long as the
+      // caret's offset — the same test Pipeline used to make, moved to the one
+      // place that actually knows the geometry.
+      leftReachesDocumentStart: leftStart == 0)
   }
 
   /// Read the text either side of the caret in the app that owns `element`.
@@ -785,6 +803,11 @@ public enum PasteService {
       rightWindow: "",
       selectionLocation: evidence.located.inputLine.utf16.count,
       selectionLength: 0,
+      // A wrapped line's tail has text hidden above it, so its first token may
+      // be a fragment. The parser is the only thing that knows a row was
+      // dropped, so it says so rather than leaving it to be inferred from
+      // offsets that cannot express it.
+      leftReachesDocumentStart: !evidence.located.leftWasCut,
       terminalEvidence: evidence)
   }
 

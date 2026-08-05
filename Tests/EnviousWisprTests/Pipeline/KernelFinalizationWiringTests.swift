@@ -783,7 +783,10 @@ import os
     leftWindow: "I went to the ",
     rightWindow: "",
     selectionLocation: 14,
-    selectionLength: 0)
+    selectionLength: 0,
+    // The window is as long as the caret's offset, so it began at the field's
+    // own start — the value Pipeline used to derive from exactly that test.
+    leftReachesDocumentStart: true)
 
   @Test(
     "delivery carries today's payload, the contextual candidate, and the caret evidence")
@@ -843,7 +846,8 @@ import os
       },
       readCaretContext: { _, _, _ in
         PasteService.CaretContext(
-          leftWindow: "Ich gehe zum ", rightWindow: "", selectionLocation: 13, selectionLength: 0)
+          leftWindow: "Ich gehe zum ", rightWindow: "", selectionLocation: 13,
+          selectionLength: 0, leftReachesDocumentStart: true)
       },
       adapter: Self.transcribedEngine(language: "en"))
 
@@ -884,7 +888,7 @@ import os
       readCaretContext: { _, _, _ in
         PasteService.CaretContext(
           leftWindow: "I want to go to the ", rightWindow: "", selectionLocation: 20,
-          selectionLength: 0)
+          selectionLength: 0, leftReachesDocumentStart: true)
       },
       adapter: Self.transcribedEngine(language: "en"))
 
@@ -920,7 +924,7 @@ import os
       readCaretContext: { _, _, _ in
         PasteService.CaretContext(
           leftWindow: "\u{4ECA}\u{65E5}", rightWindow: "", selectionLocation: 2,
-          selectionLength: 0)
+          selectionLength: 0, leftReachesDocumentStart: true)
       },
       adapter: Self.transcribedEngine(language: "ja"))
 
@@ -1109,7 +1113,8 @@ import os
       leftWindow: "sto",
       rightWindow: "re",
       selectionLocation: 3,
-      selectionLength: 0)
+      selectionLength: 0,
+      leftReachesDocumentStart: true)
 
     let wiring = makeWiring(
       context: context,

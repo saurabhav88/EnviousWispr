@@ -437,7 +437,8 @@ public enum CursorInsertionRepair {
       rules.append(.caseSkipped(.languageNotSupported))
     } else if continuing {
       let (adjusted, caseRule) = applyLeadingCase(
-        to: out, leftWindow: context.left, protectedWords: protectedWords, oracle: oracle)
+        to: out, leftWindow: context.left, isScreenDerived: context.isScreenDerived,
+        protectedWords: protectedWords, oracle: oracle)
       out = adjusted
       rules.append(caseRule)
     } else if left.character == nil {
@@ -541,6 +542,7 @@ public enum CursorInsertionRepair {
   private static func applyLeadingCase(
     to text: String,
     leftWindow: String,
+    isScreenDerived: Bool,
     protectedWords: Set<String>,
     oracle: EnglishWordOracle
   ) -> (String, AppliedRule) {
@@ -589,6 +591,37 @@ public enum CursorInsertionRepair {
     let taggerLeft = leftWindow + String(leadingWhitespace)
     if let refusal = oracle.mayLower(word: bare, left: taggerLeft, payload: String(stripped)) {
       return (text, .caseSkipped(refusal))
+    }
+
+    // A TERMINAL hides the trailing space, so the seam above may be a lie.
+    //
+    // A rendered row ends at its last VISIBLE character, which is why `fix the`
+    // and `fix the ` are byte-identical on screen and why Rule 1 is disabled
+    // here. So `taggerLeft` fuses the left text onto the payload — `with` +
+    // `Mark` reads as `withMark`, which the tagger calls a verb, which is a safe
+    // class, which lowercases somebody's name. The same defect Rule 1's space
+    // fixes everywhere else, arriving through the one door Rule 1 does not
+    // cover.
+    //
+    // MEASURED on six names whose caret sits after a word: FUSED recognised 1
+    // of 6, SEPARATED recognised 5. So the separated reading is asked as well,
+    // and either one calling it a name keeps the capital.
+    //
+    // This can only ever DECLINE to lower. Every oracle refusal preserves the
+    // capital, which is what the app did before this feature existed, so a
+    // wrong answer here cannot damage text that was already correct.
+    //
+    // Asked only when the seam is actually FUSED. Trailing whitespace in a
+    // terminal is unrecoverable in BOTH directions — a read can show cell
+    // padding the user never typed, or hide a space they did — so the test is
+    // what `taggerLeft` actually ends with rather than an assumption about
+    // which. Whitespace already there, from either side, means the tagger has
+    // its separator and the second reading would merely double it.
+    if isScreenDerived, let lastLeft = taggerLeft.last, !lastLeft.isWhitespace {
+      let separated = taggerLeft + " "
+      if let refusal = oracle.mayLower(word: bare, left: separated, payload: String(stripped)) {
+        return (text, .caseSkipped(refusal))
+      }
     }
 
     let lowered = String(firstCharacter).lowercased()

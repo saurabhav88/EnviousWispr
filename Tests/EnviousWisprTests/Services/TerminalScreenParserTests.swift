@@ -45,6 +45,48 @@ struct TerminalScreenParserTests {
     """
   }
 
+  // MARK: - Wrapped layouts, MEASURED rather than invented
+  //
+  // Captured from live CLIs in a 67-column terminal on 2026-08-04. The gutter is
+  // the width of the marker prefix and differs per tool — 2 cells for Claude
+  // Code's `❯` plus its non-breaking space, 3 for Gemini's leading space, `>`
+  // and space, 2 for Codex's `› `. The previous wrapped fixture used an
+  // UNINDENTED continuation row, which no real CLI draws, so it could not have
+  // caught a gutter mistake either way.
+
+  /// Claude Code with the input wrapped across `rows`, the first carrying the
+  /// marker and the rest the 2-cell gutter.
+  private static func claudeWrapped(_ rows: [String], trailingBlank: Bool = false) -> String {
+    let rule = String(repeating: "\u{2500}", count: 8)
+    var body = rows.enumerated().map { index, text in
+      index == 0 ? "\u{276F}\u{00A0}\(text)" : "  \(text)"
+    }
+    if trailingBlank { body.append("") }
+    return (["some earlier output", rule] + body + [rule, "  ? for shortcuts"])
+      .joined(separator: "\n")
+  }
+
+  /// Gemini with the input wrapped, whose gutter is 3 cells wide.
+  private static func geminiWrapped(_ rows: [String]) -> String {
+    let top = String(repeating: "\u{2584}", count: 8)
+    let bottom = String(repeating: "\u{2580}", count: 8)
+    let body = rows.enumerated().map { index, text in
+      index == 0 ? " > \(text)" : "   \(text)"
+    }
+    return (["earlier output", top] + body + [bottom]).joined(separator: "\n")
+  }
+
+  /// Codex with the input wrapped: marker row, gutter-indented continuation
+  /// rows, ONE blank row, then the status bar.
+  private static func codexWrapped(
+    _ rows: [String], status: [String] = ["  tab to queue message      100% context left"]
+  ) -> String {
+    let body = rows.enumerated().map { index, text in
+      index == 0 ? "\u{203A} \(text)" : "  \(text)"
+    }
+    return (["earlier output"] + body + [""] + status).joined(separator: "\n")
+  }
+
   // MARK: - The three tools
 
   @Test("Claude Code's boxed input line is found, and the footer below it is not")
@@ -74,17 +116,251 @@ struct TerminalScreenParserTests {
 
   // MARK: - Refusals that are the feature
 
-  @Test("A WRAPPED box refuses rather than joining rows")
-  func wrappedBoxRefuses() {
-    // Joining screen rows reconstructs different text, and a soft wrap can fall
-    // mid-word.
-    let wrapped = """
+  // MARK: - Wrapping
+
+  @Test("A WRAPPED box is read from its LAST row, never rejoined")
+  func wrappedBoxReadsItsLastRow() {
+    // This used to refuse, and that refusal made the feature unavailable for
+    // most real dictations: a 67-column terminal wraps at 63 characters, so two
+    // sentences do not fit. 8 of the 9 field refusals where the founder had
+    // actually typed something were this guard (#1926).
+    //
+    // Rejoining is still impossible and still not attempted. MEASURED:
+    // `"A"x63 + " next word"` and `"A"x64 + " next word"` render byte-identical
+    // screens, so no join rule can recover which was typed. The LAST row needs
+    // no join — it is the verbatim tail, confirmed at every typed length from
+    // 40 to 260 characters.
+    let located = TerminalScreenParser.locate(
+      inScreenTail: Self.claudeWrapped([
+        "I want to test if this works as intended and works properly.",
+        "Now I dictate",
+      ]))
+    #expect(located?.cli == .claudeCode)
+    #expect(located?.inputLine == "Now I dictate")
+    #expect(located?.leftWasCut == true, "a wrapped tail has text hidden above it")
+  }
+
+  @Test("An UNWRAPPED box still reads its only row, and reports nothing was cut")
+  func unwrappedBoxIsNotMarkedAsCut() {
+    // The two-way control. Without it the assertion above passes for a parser
+    // that marked EVERY line as cut, which would refuse seam de-duplication on
+    // every short field in every terminal.
+    let located = TerminalScreenParser.locate(inScreenTail: Self.claudeBox("git commit -m fix the"))
+    #expect(located?.inputLine == "git commit -m fix the")
+    #expect(located?.leftWasCut == false)
+  }
+
+  @Test("The gutter is the MARKER's width, so Gemini's 3-cell indent survives")
+  func geminiWrappedKeepsItsOwnGutter() {
+    // Claude Code indents continuation rows by 2 and Gemini by 3, because their
+    // markers are different widths. A hardcoded 2 would leave a stray space on
+    // every wrapped Gemini line.
+    let located = TerminalScreenParser.locate(
+      inScreenTail: Self.geminiWrapped(["explain this to me in a lot", "more detail please"]))
+    #expect(located?.cli == .geminiCLI)
+    #expect(located?.inputLine == "more detail please")
+    #expect(located?.leftWasCut == true)
+  }
+
+  @Test("A wrapped Codex input reads its last row, not the row before the wrap")
+  func codexWrappedReadsItsLastRow() {
+    // The Codex path did NOT refuse a one-row wrap: its status bar allowance is
+    // two populated rows, and one continuation plus one status row is exactly
+    // two. So it passed and returned the MARKER row — the text from BEFORE the
+    // wrap — and the repair acted on stale context with nothing logged. A
+    // silent wrong answer, worse than the boxed refusal it sat beside.
+    let located = TerminalScreenParser.locate(
+      inScreenTail: Self.codexWrapped([
+        "refactor the handler so it stops swallowing the error",
+        "and then run the tests",
+      ]))
+    #expect(located?.cli == .codex)
+    #expect(located?.inputLine == "and then run the tests")
+    #expect(located?.leftWasCut == true)
+  }
+
+  @Test("A three-row Codex wrap is read too, not refused for having rows below")
+  func codexDeepWrapIsRead() {
+    let located = TerminalScreenParser.locate(
+      inScreenTail: Self.codexWrapped(["first visual row", "second visual row", "third row"]))
+    #expect(located?.inputLine == "third row")
+  }
+
+  @Test("A Codex continuation row starting with a shell glyph is not a live prompt")
+  func codexWrapContainingAPromptGlyphIsStillInput() {
+    // The staleness scan used to start at the MARKER row, so any row of the
+    // user's own wrapped text beginning `$`, `%`, `#` or `❯` read as a live
+    // shell prompt and refused. It now starts after the input block.
+    let located = TerminalScreenParser.locate(
+      inScreenTail: Self.codexWrapped([
+        "run this for me and explain what it does:",
+        "$ git rebase --onto main feature",
+      ]))
+    #expect(located?.inputLine == "$ git rebase --onto main feature")
+  }
+
+  @Test("Codex refuses when the caret sits on a new empty line of its own")
+  func codexTrailingBlankRowRefuses() {
+    // MEASURED at 67 columns: caret at the END of the input draws ONE blank row
+    // before the status bar, wrapped or not; a newline (Ctrl+J) draws TWO. The
+    // second blank IS the caret's line, so the last populated row is not where
+    // the next word goes and lowering against it continues a sentence the user
+    // deliberately ended. Found by whole-diff review, which spotted that the
+    // boxed path already refused this and Codex read straight past it.
+    let wrappedThenNewline = """
+      earlier output
+      \u{203A} a short line and now a much longer continuation that certainly
+        wraps past the edge of this window
+
+
+        gpt-5.6-sol high \u{00B7} /tmp \u{00B7} Ready
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: wrappedThenNewline) == nil)
+    if case .refused(let detail) = TerminalScreenParser.locateDetailed(
+      inScreenTail: wrappedThenNewline)
+    {
+      #expect(detail.codex == .ambiguousTrailingBlankRow)
+    } else {
+      Issue.record("a caret on its own blank line must refuse")
+    }
+
+    // Two-way control, and it is the SAME screen with ONE blank row instead of
+    // two. Without it this passes for a parser that refuses every Codex wrap.
+    let wrappedCaretAtEnd = """
+      earlier output
+      \u{203A} a short line and now a much longer continuation that certainly
+        wraps past the edge of this window
+
+        gpt-5.6-sol high \u{00B7} /tmp \u{00B7} Ready
+      """
+    #expect(
+      TerminalScreenParser.locate(inScreenTail: wrappedCaretAtEnd)?.inputLine
+        == "wraps past the edge of this window")
+  }
+
+  @Test("Every shape a Codex input block can take is read from its LAST row")
+  func codexInputBlockShapes() {
+    // The CLASS, enumerated. Two review rounds found the same defect scanning
+    // DOWNWARD from the marker — first the status bar absorbed as continuation
+    // text, then a row the user had indented ending the block early — so every
+    // member is frozen here rather than the one that was reported.
+    func line(_ tail: String) -> String? {
+      TerminalScreenParser.locate(inScreenTail: tail)?.inputLine
+    }
+    let status = "  gpt-5.6-sol high \u{00B7} /tmp \u{00B7} Ready"
+
+    // A wrap continuation sits exactly at the gutter.
+    #expect(
+      line(
+        """
+        earlier output
+        \u{203A} first visual row of the prompt
+          second visual row
+
+        \(status)
+        """) == "second visual row")
+
+    // A hard-newline row the user indented FURTHER sits past the gutter. This
+    // is review r2's P1: requiring equality ended the block at the marker row,
+    // so the parser read the row ABOVE the caret and reported it as unwrapped —
+    // which also let the seam rule delete a dictated word.
+    #expect(
+      line(
+        """
+        earlier output
+        \u{203A} first line of my prompt
+              an indented second line
+
+        \(status)
+        """) == "an indented second line")
+
+    // A blank line inside the user's OWN prompt is not the separator.
+    #expect(
+      line(
+        """
+        earlier output
+        \u{203A} first line
+
+          third line after a blank one
+
+        \(status)
+        """) == "third line after a blank one")
+
+    // Trailing blank rows below the status bar do not move the separator.
+    #expect(
+      line(
+        """
+        earlier output
+        \u{203A} first visual row of the prompt
+          second visual row
+
+        \(status)
+
+
+        """) == "second visual row")
+
+    // Two status rows are still allowed, as they always were.
+    #expect(
+      line(
+        """
+        earlier output
+        \u{203A} first visual row of the prompt
+          second visual row
+
+        \(status)
+          tab to queue message
+        """) == "second visual row")
+  }
+
+  @Test("An UNWRAPPED Codex line with the caret on a new line refuses too")
+  func codexUnwrappedTrailingBlankRefuses() {
+    // The same shape without a wrap, which the shipped parser also read past —
+    // it counted one populated row below the marker, which is inside its limit.
+    let shortThenNewline = """
+      earlier output
+      \u{203A} short text
+
+
+        gpt-5.6-sol high \u{00B7} /tmp \u{00B7} Ready
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: shortThenNewline) == nil)
+  }
+
+  @Test("A blank row BELOW the text refuses — two inputs draw it and they disagree")
+  func trailingBlankRowRefuses() {
+    // MEASURED, and the reason this one case still refuses. `"A"x63 + " "`
+    // (text that ended exactly at the wrap) and `"first line" + backslash +
+    // Enter` (a deliberate new line) render the SAME two rows. The first wants
+    // the sentence continued in lower case; the second wants a capital. The
+    // screen cannot tell them apart, so the app declines rather than guessing.
+    #expect(
+      TerminalScreenParser.locate(
+        inScreenTail: Self.claudeWrapped(["first line of text"], trailingBlank: true)) == nil)
+
+    if case .refused(let detail) = TerminalScreenParser.locateDetailed(
+      inScreenTail: Self.claudeWrapped(["first line of text"], trailingBlank: true))
+    {
+      #expect(detail.boxed.telemetryName == "boxed:ambiguous_trailing_blank_row")
+    } else {
+      Issue.record("a trailing blank row must refuse")
+    }
+  }
+
+  @Test("An untouched box still says EMPTY even when the box is drawn taller")
+  func emptyBoxOutranksTheTrailingBlankRule() {
+    // Order matters: an empty box drawn with spare height has a blank row below
+    // its marker row too, and it means "nothing typed", not "ambiguous".
+    let taller = """
       \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
-      \u{276F} this line is long enough that it
-      wrapped onto a second row
+      \u{276F}\u{00A0}
+
       \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
       """
-    #expect(TerminalScreenParser.locate(inScreenTail: wrapped) == nil)
+    if case .refused(let detail) = TerminalScreenParser.locateDetailed(inScreenTail: taller) {
+      #expect(detail.boxed.telemetryName == "boxed:empty_input")
+    } else {
+      Issue.record("an untouched box must refuse as empty")
+    }
   }
 
   @Test("#1921 diagnosis: refusals name WHICH guard fired, on both routes")
@@ -104,20 +380,18 @@ struct TerminalScreenParserTests {
       return nil
     }
 
-    let wrapped = """
-      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
-      \u{276F} this line is long enough that it
-      wrapped onto a second row
-      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
-      """
-    let wrappedRefusal = refusal(wrapped)
+    // A trailing blank row is the one wrap shape that still refuses, and it must
+    // be nameable. The row-count refusal it replaced fired on ORDINARY wraps,
+    // which are now read (#1926).
+    let ambiguous = Self.claudeWrapped(["first line of text"], trailingBlank: true)
+    let ambiguousRefusal = refusal(ambiguous)
     #expect(
-      wrappedRefusal?.boxed.telemetryName == "boxed:multiple_populated_body_rows(2)",
-      "a wrapped input must name the wrap and its row count")
+      ambiguousRefusal?.boxed.telemetryName == "boxed:ambiguous_trailing_blank_row",
+      "the one unreadable wrap shape must name itself")
 
-    // The distinction that matters most: an EMPTY box and a WRAPPED box both
-    // refused with the same word before this change, and they mean opposite
-    // things — nothing typed yet, versus too much typed.
+    // The distinction that matters most: an EMPTY box and an unreadable one
+    // meant the same word before the diagnostic existed, and they mean opposite
+    // things — nothing typed yet, versus typed but unreadable.
     //
     // Corrected by this test failing: an empty box reports `empty_input`, not a
     // zero row count, because the marker row `\u{276F} ` is not blank and so
@@ -126,11 +400,11 @@ struct TerminalScreenParserTests {
     let emptyRefusal = refusal(Self.claudeBox(""))
     #expect(
       emptyRefusal?.boxed.telemetryName == "boxed:empty_input",
-      "an empty box must be distinguishable from a wrapped one")
+      "an empty box must be distinguishable from an unreadable one")
 
     // And the Codex probe is reported even when the boxed route is the one that
     // decided, because that is the pair the log has to carry.
-    #expect(wrappedRefusal?.codex == .noOpeningMarker)
+    #expect(ambiguousRefusal?.codex == .noOpeningMarker)
 
     // Two-way control: a screen the parser ACCEPTS must not produce a refusal at
     // all, or every assertion above passes for the wrong reason.
@@ -338,15 +612,15 @@ struct TerminalScreenParserTests {
     let screen =
       kind == "boxed"
       ? """
-        \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
-        \u{276F} old boxed input
-        \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
-        $ ls -la
-        """
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      \u{276F} old boxed input
+      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}
+      $ ls -la
+      """
       : """
-        \u{203A} old codex input
-        $ ls -la
-        """
+      \u{203A} old codex input
+      $ ls -la
+      """
     #expect(TerminalScreenParser.locate(inScreenTail: screen) == nil)
   }
 
