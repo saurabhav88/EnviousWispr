@@ -1560,4 +1560,114 @@ struct CursorInsertionRepairTests {
     #expect(payloads.candidateRules.contains(.droppedDuplicateWord))
     #expect(payloads.repairedText == " Bahnhof. ")
   }
+
+  // MARK: - The seam a terminal hides (#1926)
+
+  /// An oracle that recognises a name ONLY when the left context ends with a
+  /// separator, which is how the real one behaves.
+  ///
+  /// MEASURED on `NLTagger` over six names whose caret sits directly after a
+  /// word: FUSED (`...withMark said`) recognised 1 of 6, SEPARATED
+  /// (`...with Mark said`) recognised 5. A terminal renders a row up to its last
+  /// VISIBLE character, so the trailing space the user typed is not on screen
+  /// and the fused reading is the one the repair would otherwise get.
+  private static let seamSensitiveOracle = EnglishWordOracle(
+    unavailableReason: nil,
+    dictionaryVerdict: { ["mark", "with", "and", "now"].contains($0) ? .ordinary : .notOrdinary },
+    isLearnedWord: { _ in false },
+    isRecognizedName: { left, _ in left.last?.isWhitespace == true })
+
+  @Test("A terminal seam asks the SEPARATED reading too, so a name keeps its capital")
+  func screenDerivedSeamProtectsAName() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "Mark said he would help ",
+      context: CursorInsertionRepair.CaretText(
+        left: "I had a long conversation with", right: "",
+        leftReachesDocumentStart: true, isScreenDerived: true),
+      protectedWords: [], oracle: Self.seamSensitiveOracle)
+    // Asserted on the RULE as well as the text. In a terminal Rule 1 is
+    // disabled, so a kept capital leaves the payload byte-identical — and an
+    // assertion of the form `repairedText?.hasPrefix("Mark") ?? true` would
+    // then pass whether the name check ran or not.
+    #expect(
+      payloads.candidateRules.contains(.caseSkipped(.recognizedName)),
+      "the separated reading must be what refuses, by name")
+    #expect(payloads.repairedText == "Mark said he would help ", "and the capital survives")
+  }
+
+  @Test("Control: the FUSED reading alone would have lowered that name")
+  func fusedReadingAloneWouldLowerTheName() {
+    // Without this, the test above passes for a repair that never lowers
+    // anything. Asking the oracle the way the code asked it BEFORE this change
+    // — one question, fused — permits the lowering, so the capital that
+    // survives above can only have come from the second reading.
+    #expect(
+      Self.seamSensitiveOracle.mayLower(
+        word: "Mark", left: "I had a long conversation with",
+        payload: "Mark said he would help") == nil,
+      "the fused seam reads as an ordinary word, which is the whole defect")
+    #expect(
+      Self.seamSensitiveOracle.mayLower(
+        word: "Mark", left: "I had a long conversation with ",
+        payload: "Mark said he would help") != nil,
+      "and the separated seam recognises the name")
+  }
+
+  @Test("An ordinary field never needed this, because Rule 1 already separates")
+  func caretDerivedSeamIsAlreadySeparated() {
+    // Why the defect is terminal-only. Everywhere else Rule 1 prepends the
+    // seam space, so the FIRST reading is already the separated one — and the
+    // second question is not asked at all.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Mark said he would help ",
+      context: CursorInsertionRepair.CaretText(
+        left: "I had a long conversation with", right: "",
+        leftReachesDocumentStart: true, isScreenDerived: false),
+      protectedWords: [], oracle: Self.seamSensitiveOracle)
+    #expect(payloads.repairedText == " Mark said he would help ")
+  }
+
+  @Test("An ordinary continuation in a terminal still lowers — the point of the feature")
+  func screenDerivedOrdinaryWordStillLowers() {
+    // The founder's actual traffic. If the extra reading refused these too, the
+    // change would have bought a name at the cost of the whole feature.
+    let payloads = CursorInsertionRepair.repair(
+      text: "And now I dictate the rest ",
+      context: CursorInsertionRepair.CaretText(
+        left: "I want to test if this works", right: "",
+        leftReachesDocumentStart: true, isScreenDerived: true),
+      protectedWords: [],
+      oracle: EnglishWordOracle(
+        unavailableReason: nil,
+        dictionaryVerdict: { ["and", "now"].contains($0) ? .ordinary : .notOrdinary },
+        isLearnedWord: { _ in false },
+        isRecognizedName: { _, _ in false }))
+    #expect(payloads.repairedText?.hasPrefix("and now") == true)
+  }
+
+  @Test("A wrapped tail cannot authorise deleting a dictated word")
+  func cutLeftWindowRefusesTheSeamDelete() {
+    // A wrapped row's first token may be the tail of a word split at the wrap,
+    // so it is not a complete token and cannot match the payload's first word.
+    // The terminal path used to claim every line reached the document start,
+    // because `leftWindow.utf16.count == selectionLocation` is trivially true
+    // when both come from the same string.
+    let cut = Self.seamCut(left: "the", payload: "The store is closed today.", reaches: false)
+    #expect(!cut.candidateRules.contains(.droppedDuplicateWord))
+
+    let whole = Self.seamCut(left: "the", payload: "The store is closed today.", reaches: true)
+    #expect(
+      whole.candidateRules.contains(.droppedDuplicateWord),
+      "two-way control: a window known to reach the start still de-duplicates")
+  }
+
+  private static func seamCut(
+    left: String, payload: String, reaches: Bool
+  ) -> CursorInsertionRepair.PreparedPayloads {
+    CursorInsertionRepair.repair(
+      text: payload,
+      context: CursorInsertionRepair.CaretText(
+        left: left, right: "", leftReachesDocumentStart: reaches, isScreenDerived: true),
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
+  }
 }

@@ -29,6 +29,7 @@ struct TerminalInsertionPolicyTests {
       rightWindow: "",
       selectionLocation: line.utf16.count,
       selectionLength: 0,
+      leftReachesDocumentStart: true,
       terminalEvidence: TerminalEvidence(
         surface: .ghostty,
         runningCLIs: [.init(processIdentifier: 42, cli: .claudeCode)],
@@ -41,7 +42,8 @@ struct TerminalInsertionPolicyTests {
   @Test("A caret-derived context is not screen-derived, and a terminal one is")
   func provenanceIsTyped() {
     let caret = PasteService.CaretContext(
-      leftWindow: "abc", rightWindow: "", selectionLocation: 3, selectionLength: 0)
+      leftWindow: "abc", rightWindow: "", selectionLocation: 3, selectionLength: 0,
+      leftReachesDocumentStart: true)
     #expect(!caret.isScreenDerived)
     #expect(terminalContext(line: "abc").isScreenDerived)
   }
@@ -54,6 +56,7 @@ struct TerminalInsertionPolicyTests {
     let original = terminalContext(line: line)
     let scrolled = PasteService.CaretContext(
       leftWindow: line, rightWindow: "", selectionLocation: line.utf16.count, selectionLength: 0,
+      leftReachesDocumentStart: true,
       terminalEvidence: TerminalEvidence(
         surface: .ghostty,
         runningCLIs: [.init(processIdentifier: 42, cli: .claudeCode)],
@@ -236,7 +239,8 @@ struct TerminalInsertionPolicyTests {
     // And an ordinary app's context carries no terminal provenance, so neither
     // the multiline refusal nor the Tier 1 exclusion can reach it.
     let ordinary = PasteService.CaretContext(
-      leftWindow: "notes: ", rightWindow: "", selectionLocation: 7, selectionLength: 0)
+      leftWindow: "notes: ", rightWindow: "", selectionLocation: 7, selectionLength: 0,
+      leftReachesDocumentStart: true)
     #expect(!ordinary.isScreenDerived)
     let payload = PasteService.accessibilityWritePayload(
       legacy: "Fix it ", repaired: "fix it ", context: ordinary,
@@ -270,7 +274,8 @@ struct TerminalInsertionPolicyTests {
     // route refuses everything.
     let left = "git commit -m "
     let caret = PasteService.CaretContext(
-      leftWindow: left, rightWindow: "", selectionLocation: left.utf16.count, selectionLength: 0)
+      leftWindow: left, rightWindow: "", selectionLocation: left.utf16.count,
+      selectionLength: 0, leftReachesDocumentStart: true)
     let payload = PasteService.accessibilityWritePayload(
       legacy: "Fix the handler ",
       repaired: "fix the handler ",

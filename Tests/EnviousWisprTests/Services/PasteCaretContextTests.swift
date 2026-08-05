@@ -300,7 +300,8 @@ struct PasteCaretContextTests {
   @Test("identical surroundings at the same offsets still match")
   func windowsMatchWhenNothingChanged() {
     let context = PasteService.CaretContext(
-      leftWindow: "I went to the ", rightWindow: "", selectionLocation: 14, selectionLength: 0)
+      leftWindow: "I went to the ", rightWindow: "", selectionLocation: 14,
+      selectionLength: 0, leftReachesDocumentStart: true)
     #expect(
       PasteService.contextWindowsStillMatch(context, inFieldBefore: "I went to the "))
   }
@@ -310,7 +311,8 @@ struct PasteCaretContextTests {
     // The reviewer's case: `, ` became `. `, every offset identical, but the
     // repair's whole decision — lowercase or keep the capital — inverts.
     let context = PasteService.CaretContext(
-      leftWindow: "I went home, ", rightWindow: "", selectionLocation: 13, selectionLength: 0)
+      leftWindow: "I went home, ", rightWindow: "", selectionLocation: 13,
+      selectionLength: 0, leftReachesDocumentStart: true)
     #expect(
       PasteService.contextWindowsStillMatch(context, inFieldBefore: "I went home. ") == false)
   }
@@ -318,7 +320,8 @@ struct PasteCaretContextTests {
   @Test("text after the selection is compared too")
   func windowsCompareTheRightSide() {
     let context = PasteService.CaretContext(
-      leftWindow: "the ", rightWindow: "yesterday", selectionLocation: 4, selectionLength: 0)
+      leftWindow: "the ", rightWindow: "yesterday", selectionLocation: 4,
+      selectionLength: 0, leftReachesDocumentStart: true)
     #expect(PasteService.contextWindowsStillMatch(context, inFieldBefore: "the yesterday"))
     #expect(
       PasteService.contextWindowsStillMatch(context, inFieldBefore: "the tomorrow ") == false)
@@ -327,7 +330,8 @@ struct PasteCaretContextTests {
   @Test("a field that shrank below the recorded selection fails closed")
   func windowsFailClosedOnAShrunkField() {
     let context = PasteService.CaretContext(
-      leftWindow: "I went to the ", rightWindow: "", selectionLocation: 14, selectionLength: 0)
+      leftWindow: "I went to the ", rightWindow: "", selectionLocation: 14,
+      selectionLength: 0, leftReachesDocumentStart: true)
     #expect(PasteService.contextWindowsStillMatch(context, inFieldBefore: "I went") == false)
   }
 
@@ -336,7 +340,8 @@ struct PasteCaretContextTests {
     // "🚀" is two UTF-16 units and one Character; slicing in Characters would
     // land mid-surrogate and compare the wrong text.
     let context = PasteService.CaretContext(
-      leftWindow: "a🚀", rightWindow: "b", selectionLocation: 3, selectionLength: 0)
+      leftWindow: "a🚀", rightWindow: "b", selectionLocation: 3,
+      selectionLength: 0, leftReachesDocumentStart: true)
     #expect(PasteService.contextWindowsStillMatch(context, inFieldBefore: "a🚀b"))
   }
 
