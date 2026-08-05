@@ -24,6 +24,60 @@ struct TerminalScreenParserTests {
     """
   }
 
+  /// Claude Code with its session title drawn INTO the top rule.
+  ///
+  /// The default title row is the real one, copied byte-for-byte from frame
+  /// 2419 of the 2026-08-04 capture of the founder's own 67-column window: a
+  /// 36-glyph leading run, the space-padded title, then exactly 2 glyphs. The
+  /// closing rule stays plain, which is what the same capture shows — opening
+  /// titled 15 frames, closing titled 0.
+  ///
+  /// The closing rule is derived from the title row's width rather than
+  /// hard-coded, because the first draft drew a 67-wide top over an 8-wide
+  /// bottom and no real box looks like that — measured across all 4,397 frames
+  /// the two rules match in 4,397 and differ in 0. The PARSER does not require
+  /// it (a width check was tried and removed: `String.count` is not terminal
+  /// columns, so it refused a square box with a CJK title). The fixture stays
+  /// faithful anyway, because a fixture looser than production hides exactly the
+  /// defect it exists to catch.
+  private static func claudeTitledBox(
+    _ input: String,
+    title: String = "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}"
+      + "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}"
+      + "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}"
+      + "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500} ollama-build-order-decision \u{2500}\u{2500}",
+    footer: String = "  ? for shortcuts"
+  ) -> String {
+    """
+    some earlier output
+    \(title)
+    \u{276F} \(input)
+    \(String(repeating: "\u{2500}", count: title.count))
+    \(footer)
+    """
+  }
+
+  /// A screen whose opening row is `opening` and whose CLOSING rule is the same
+  /// width, so the only thing a test varies is the opening's own shape.
+  ///
+  /// Every negative below needs this. While a width invariant was briefly in the
+  /// parser, a fixture with a 34-wide opening over a 40-wide closing refused for
+  /// the WIDTH — not for the centred title, the mixed glyph, or whatever the
+  /// test was named after — and would have gone on passing while testing
+  /// nothing. The invariant is gone, but the lesson is not: an acceptance check
+  /// must be able to reach its own subject, so widths stay matched here.
+  private static func boxWithOpening(
+    _ opening: String, input: String = "rendered output", marker: Character = "\u{276F}",
+    closingGlyph: Character = "\u{2500}"
+  ) -> String {
+    """
+    earlier output
+    \(opening)
+    \(marker) \(input)
+    \(String(repeating: String(closingGlyph), count: opening.count))
+    """
+  }
+
   /// Gemini: half-block rules with a plain `>` inside.
   private static func geminiBox(_ input: String) -> String {
     """
@@ -495,6 +549,365 @@ struct TerminalScreenParserTests {
   func unrecognisedScreenRefuses() {
     #expect(TerminalScreenParser.locate(inScreenTail: "") == nil)
     #expect(TerminalScreenParser.locate(inScreenTail: "just some output\nand more") == nil)
+  }
+
+  // MARK: - #1932: a top rule carrying the session title
+  //
+  // Claude Code draws the session name into the OPENING rule. `boundaryClass`
+  // wanted one repeated glyph, so the row was not a boundary and the whole box
+  // was refused as `fewer_than_two_boundaries` — measured at 15 of 4,397 frames
+  // captured from the founder's own window, against 43 that located.
+
+  @Test("#1932: a titled top rule is still the top of the box")
+  func titledOpeningRuleIsFound() throws {
+    let located = try #require(
+      TerminalScreenParser.locate(inScreenTail: Self.claudeTitledBox("Hey, so we")))
+    #expect(located.cli == .claudeCode)
+    #expect(located.inputLine == "Hey, so we")
+    #expect(located.leftWasCut == false)
+  }
+
+  @Test("#1932: the title's own content is never read, whatever it contains")
+  func titledRuleContentIsIrrelevant() throws {
+    // The title is Claude Code's AI-generated session name, so it can be any
+    // language and any length. Hold the GEOMETRY fixed at the measured
+    // right-aligned shape and vary only the text, or the test stops being about
+    // content — the first draft varied both and failed on its own short leading
+    // runs rather than on anything to do with the characters.
+    let lead = String(repeating: "\u{2500}", count: 20)
+    let trail = String(repeating: "\u{2500}", count: 2)
+    for text in [
+      "\u{6E2C}\u{8A66}\u{30BB}\u{30C3}\u{30B7}\u{30E7}\u{30F3}",
+      "a",
+      "1.2.3 (draft)",
+      "\u{0440}\u{0435}\u{0444}\u{0430}\u{043A}\u{0442}\u{043E}\u{0440}\u{0438}\u{043D}\u{0433}",
+      "fix: don't drop the user's text",
+    ] {
+      // Closing rule sized in terminal COLUMNS, not `String.count` — a CJK
+      // character occupies two cells. Building it from `title.count` is what
+      // hid the width-invariant defect: the fixture reproduced the same wrong
+      // count and passed while a real box would have been refused.
+      let columns =
+        lead.count + trail.count + 2
+        + text.unicodeScalars.reduce(0) { $0 + (($1.value >= 0x1100) ? 2 : 1) }
+      let screen = """
+        some earlier output
+        \(lead) \(text) \(trail)
+        \u{276F} carry on
+        \(String(repeating: "\u{2500}", count: columns))
+          ? for shortcuts
+        """
+      let located = try #require(
+        TerminalScreenParser.locate(inScreenTail: screen), "title \(text) should still locate")
+      #expect(located.inputLine == "carry on")
+    }
+  }
+
+  @Test("#1932: a titled rule composes with a WRAPPED input, still reading the tail")
+  func titledRuleAroundWrappedInput() throws {
+    let titled =
+      String(repeating: "\u{2500}", count: 20) + " ollama-build-order-decision "
+      + String(repeating: "\u{2500}", count: 2)
+    // Same width as the opening, because that is what a box is.
+    let rule = String(repeating: "\u{2500}", count: titled.count)
+    let screen = """
+      earlier output
+      \(titled)
+      \u{276F}\u{00A0}the first row of what was typed
+      \u{00A0}\u{00A0}and the tail after it wrapped
+      \(rule)
+      """
+    let located = try #require(TerminalScreenParser.locate(inScreenTail: screen))
+    #expect(located.inputLine == "and the tail after it wrapped")
+    #expect(located.leftWasCut, "a wrapped titled box must still report the cut")
+  }
+
+  // The adversarial negatives. Each is a DIFFERENT way the shape could
+  // over-match, not three phrasings of one way.
+
+  @Test("#1932: the CLOSING rule may not be titled")
+  func titledClosingRuleRefuses() {
+    let titled =
+      String(repeating: "\u{2500}", count: 20) + " not a bottom border "
+      + String(repeating: "\u{2500}", count: 2)
+    let screen = """
+      \(String(repeating: "\u{2500}", count: 8))
+      \u{276F} some text
+      \(titled)
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: screen) == nil)
+  }
+
+  @Test("#1932: a rule broken by text TWICE is decoration, not a border")
+  func glyphReappearingInTheMiddleRefuses() {
+    // `──── a ──── b ────` is a divider row some tools print. The middle
+    // containing the glyph is exactly what separates it from a titled border.
+    let decoration =
+      String(repeating: "\u{2500}", count: 6) + " a " + String(repeating: "\u{2500}", count: 6)
+      + " b " + String(repeating: "\u{2500}", count: 6)
+    #expect(
+      TerminalScreenParser.locate(
+        inScreenTail: Self.boxWithOpening(decoration, input: "some text")) == nil)
+  }
+
+  @Test("#1932: an ASCII markdown rule with a title is not a box rule")
+  func asciiRuleWithTitleRefuses() {
+    let screen = """
+      --- Chapter One ---
+      \u{276F} some text
+      \(String(repeating: "\u{2500}", count: 8))
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: screen) == nil)
+  }
+
+  @Test("#1932: a titled rule whose glyph CLASS differs from the closing refuses")
+  func titledOpeningOfTheWrongClassRefuses() {
+    let titled =
+      String(repeating: "\u{2500}", count: 20) + " light on top "
+      + String(repeating: "\u{2500}", count: 2)
+    #expect(
+      TerminalScreenParser.locate(
+        inScreenTail: Self.boxWithOpening(titled, input: "some text", closingGlyph: "\u{2580}"))
+        == nil)
+  }
+
+  @Test("#1932: a titled rule cannot rescue a box whose marker is missing")
+  func titledRuleStillRequiresTheMarker() {
+    // The measured spoof — a file of box-drawing rows shown in vim or less —
+    // carries no marker, and a title must not become a way around that.
+    let titled =
+      String(repeating: "\u{2500}", count: 20) + " some-file.txt "
+      + String(repeating: "\u{2500}", count: 2)
+    let screen = """
+      \(titled)
+      just an ordinary line of a file
+      \(String(repeating: "\u{2500}", count: 8))
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: screen) == nil)
+  }
+
+  @Test("#1932: a titled box left in scrollback still refuses under a live prompt")
+  func titledBoxInScrollbackRefuses() {
+    let titled =
+      String(repeating: "\u{2500}", count: 20) + " old-session "
+      + String(repeating: "\u{2500}", count: 2)
+    let screen = """
+      \(titled)
+      \u{276F} something typed a while ago
+      \(String(repeating: "\u{2500}", count: 8))
+      \u{276F} \u{00A0}
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: screen) == nil)
+  }
+
+  @Test("#1932: glyph runs separated only by SPACES are not a title")
+  func glyphRunsSplitBySpacesRefuse() {
+    // `──── ────` has no text between the runs, so it is a broken rule rather
+    // than a titled one. Without this the middle-has-no-glyph test alone would
+    // accept it.
+    let screen = """
+      \(String(repeating: "\u{2500}", count: 6))   \(String(repeating: "\u{2500}", count: 6))
+      \u{276F} some text
+      \(String(repeating: "\u{2500}", count: 8))
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: screen) == nil)
+  }
+
+  @Test("#1932: a tree-drawing row is not a border even with a box glyph in it")
+  func treeRowIsNotABorder() {
+    let screen = """
+      \u{251C}\u{2500}\u{2500} Sources
+      \u{276F} some text
+      \(String(repeating: "\u{2500}", count: 8))
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: screen) == nil)
+  }
+
+  @Test("#1932: a CENTRED titled rule is another tool's output, not our box")
+  func centredTitledRuleRefuses() {
+    // Python Rich's `Console.rule("Chapter 2")` centres its title, and a program
+    // printing a line that happens to open with `❯` between two rules then looks
+    // exactly like an input box. Found by coverage review and CONFIRMED by
+    // replaying the real parser, which located it and returned the program's
+    // output as the user's sentence. Right-alignment is what separates ours.
+    let centred =
+      String(repeating: "\u{2500}", count: 20) + " Chapter 2 "
+      + String(repeating: "\u{2500}", count: 20)
+    #expect(
+      TerminalScreenParser.locate(
+        inScreenTail: Self.boxWithOpening(centred, input: "this is rendered output")) == nil)
+  }
+
+  @Test("#1932: a LEFT-aligned titled rule refuses too")
+  func leftAlignedTitledRuleRefuses() {
+    let leftAligned =
+      String(repeating: "\u{2500}", count: 2) + " Chapter 2 "
+      + String(repeating: "\u{2500}", count: 30)
+    #expect(
+      TerminalScreenParser.locate(
+        inScreenTail: Self.boxWithOpening(leftAligned, input: "this is rendered output")) == nil)
+  }
+
+  @Test("#1932: a titled GEMINI block border refuses — untested is not supported")
+  func titledGeminiOpeningRefuses() {
+    // Titled openings are light-rule only. Cloud review caught the first cut
+    // extending them to Gemini's block rules, which combines the looser border
+    // rule with the WEAKER marker — `>` is ordinary in quoted mail, diffs and
+    // redirects, which is why this parser refuses to search by it. And there is
+    // no evidence for it either way: no Gemini session appears in the 4,397-frame
+    // capture. Refusing keeps Gemini exactly as it is today.
+    let titled =
+      String(repeating: "\u{2584}", count: 20) + " Gemini session "
+      + String(repeating: "\u{2584}", count: 2)
+    let screen = """
+      earlier output
+      \(titled)
+      > explain this result
+      \(String(repeating: "\u{2580}", count: 36))
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: screen) == nil)
+  }
+
+  @Test("#1932: an ordinary PLAIN Gemini box is untouched by any of this")
+  func plainGeminiBoxStillWorks() throws {
+    // The two-way control for the refusal above: Gemini must still work exactly
+    // as before, or "restrict to light rules" would have broken it outright.
+    let located = try #require(
+      TerminalScreenParser.locate(inScreenTail: Self.geminiBox("explain this to me")))
+    #expect(located.cli == .geminiCLI)
+    #expect(located.inputLine == "explain this to me")
+    #expect(located.boxOpeningKind == .plain)
+  }
+
+  @Test("#1932: a right-heavy rule outside the measured suffix refuses")
+  func rightHeavyRuleRefuses() {
+    // Grounded review's counterexample, reproduced against the real parser
+    // before it was accepted: 24 glyphs, a title, 6 glyphs satisfies a
+    // `trailing * 4 <= leading` ratio EXACTLY. Ordinary program output can
+    // reproduce any ratio, so the matcher takes only the measured suffix of two.
+    let opening =
+      String(repeating: "\u{2500}", count: 24) + " report "
+      + String(repeating: "\u{2500}", count: 6)
+    #expect(
+      TerminalScreenParser.locate(
+        inScreenTail: Self.boxWithOpening(opening, input: "rendered output")) == nil)
+  }
+
+  @Test("#1932: a divider pasted INSIDE the box cannot shadow the real top rule")
+  func titledDividerInsideTheBodyRefuses() {
+    // Cloud review's finding: a titled row is now a legal opening, so a divider
+    // pasted into the user's OWN input was picked ahead of the real top rule.
+    // It refuses because the first body row after that divider carries no
+    // marker, which is the guard this file already leans on hardest. A width
+    // invariant was tried here and REMOVED: `String.count` is not terminal
+    // columns, so it rejected a perfectly square box with a CJK title.
+    let rule = String(repeating: "\u{2500}", count: 40)
+    let screen = """
+      earlier output
+      \(rule)
+      \u{276F} first line the user typed
+        \(String(repeating: "\u{2500}", count: 8)) Section \(String(repeating: "\u{2500}", count: 2))
+        more typed text
+      \(rule)
+      """
+    #expect(TerminalScreenParser.locate(inScreenTail: screen) == nil)
+  }
+
+  @Test("#1932: an UNPADDED title is a program divider, not our border")
+  func unpaddedTitleRefuses() {
+    // Both measured rows pad the title with a space on each side. A divider
+    // printed as `────────Section──` does not, and cloud review caught it being
+    // accepted — a program-rendered rule above a `❯` output line then read as
+    // the live input. Every side of the padding is covered, not just the one
+    // reported, because the previous "enumerated the class" claim missed the
+    // middle's BOUNDARIES while covering its contents.
+    let cases = [
+      String(repeating: "\u{2500}", count: 20) + "Section"
+        + String(repeating: "\u{2500}", count: 2),
+      String(repeating: "\u{2500}", count: 20) + "Section "
+        + String(repeating: "\u{2500}", count: 2),
+      String(repeating: "\u{2500}", count: 20) + " Section"
+        + String(repeating: "\u{2500}", count: 2),
+    ]
+    for opening in cases {
+      #expect(
+        TerminalScreenParser.locate(inScreenTail: Self.boxWithOpening(opening)) == nil,
+        "unpadded title must refuse: \(opening)")
+    }
+  }
+
+  @Test("#1932: any box-drawing character in the title makes it a divider")
+  func boxDrawingCharacterInTitleRefuses() {
+    // The six glyphs a rule is DRAWN with are not the range a divider may USE.
+    // Answering the second question with the first let `──── a ├ b ──` pass,
+    // because `├` is box-drawing and in neither set. Local review caught it.
+    for interloper in ["\u{251C}", "\u{253C}", "\u{2502}", "\u{2554}", "\u{2591}"] {
+      let opening =
+        String(repeating: "\u{2500}", count: 24) + " a \(interloper) b "
+        + String(repeating: "\u{2500}", count: 2)
+      #expect(
+        TerminalScreenParser.locate(inScreenTail: Self.boxWithOpening(opening)) == nil,
+        "box-drawing \(interloper) in a title must refuse")
+    }
+  }
+
+  @Test("#1932: the title's padding must be a real space, not any whitespace")
+  func exoticWhitespacePaddingRefuses() {
+    // Every measured row pads with U+0020. `isWhitespace` also admits tabs and
+    // the Unicode spaces, which program output can produce and no Claude Code
+    // border does.
+    for pad in ["\t", "\u{2003}", "\u{2009}"] {
+      let opening =
+        String(repeating: "\u{2500}", count: 24) + "\(pad)Section\(pad)"
+        + String(repeating: "\u{2500}", count: 2)
+      #expect(
+        TerminalScreenParser.locate(inScreenTail: Self.boxWithOpening(opening)) == nil,
+        "padding \(pad.debugDescription) must refuse")
+    }
+  }
+
+  @Test("#1932: a titled rule mixing box glyphs is a divider, not a border")
+  func mixedGlyphTitledRuleRefuses() {
+    // Cloud review's finding, reproduced against the real parser: the middle
+    // check was scoped to the LEADING glyph, so a different box glyph inside the
+    // title span slipped through and a mixed divider under a `❯` line returned
+    // its rendered text as the user's sentence. A plain rule already refuses the
+    // mixture `─━═─` deliberately, so admitting it through the title span
+    // contradicted the boundary contract.
+    //
+    // The whole class, not just the reported instance: every box glyph of every
+    // class, in either box family, and in either run's neighbourhood.
+    let cases = [
+      String(repeating: "\u{2500}", count: 24) + " a \u{2501}\u{2501} b "
+        + String(repeating: "\u{2500}", count: 2),
+      String(repeating: "\u{2500}", count: 24) + " a \u{2550} b "
+        + String(repeating: "\u{2500}", count: 2),
+      String(repeating: "\u{2500}", count: 24) + " a \u{2584} b "
+        + String(repeating: "\u{2500}", count: 2),
+      String(repeating: "\u{2584}", count: 24) + " a \u{2580} b "
+        + String(repeating: "\u{2584}", count: 2),
+    ]
+    for opening in cases {
+      #expect(
+        TerminalScreenParser.locate(inScreenTail: Self.boxWithOpening(opening)) == nil,
+        "mixed-glyph divider must refuse: \(opening)")
+    }
+  }
+
+  @Test("#1932: the opening kind is recorded, so the field can see this path")
+  func openingKindIsRecorded() throws {
+    let titled = try #require(
+      TerminalScreenParser.locate(inScreenTail: Self.claudeTitledBox("Hey, so we")))
+    #expect(titled.boxOpeningKind == .titled)
+
+    let plain = try #require(
+      TerminalScreenParser.locate(inScreenTail: Self.claudeBox("Hey, so we")))
+    #expect(plain.boxOpeningKind == .plain)
+
+    // Codex draws no box at all, so it has no opening kind to report.
+    let codex = try #require(
+      TerminalScreenParser.locate(inScreenTail: Self.codexScreen("Hey, so we")))
+    #expect(codex.boxOpeningKind == nil)
   }
 
   // MARK: - The two live spoofs

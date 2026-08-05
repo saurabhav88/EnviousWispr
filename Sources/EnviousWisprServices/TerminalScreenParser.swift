@@ -33,10 +33,25 @@ package enum TerminalScreenParser {
     /// DELETES a dictated word.
     package let leftWasCut: Bool
 
-    package init(cli: SupportedTerminalCLI, inputLine: String, leftWasCut: Bool = false) {
+    /// How the box's opening rule was drawn, or nil for a CLI that draws no box.
+    ///
+    /// Carried so a titled read is visible in the FIELD. The parser's own
+    /// refusal names never leave the log: `TerminalContextResolver` collapses
+    /// every one of them into `terminal_screen_refused` before telemetry,
+    /// deliberately, because that enum's raw values are a shipped closed set. So
+    /// "the titled path silently stopped matching" cannot be seen from the
+    /// refusal side, which is what an earlier version of this change wrongly
+    /// assumed when it declined to carry this.
+    package let boxOpeningKind: BoxOpeningKind?
+
+    package init(
+      cli: SupportedTerminalCLI, inputLine: String, leftWasCut: Bool = false,
+      boxOpeningKind: BoxOpeningKind? = nil
+    ) {
       self.cli = cli
       self.inputLine = inputLine
       self.leftWasCut = leftWasCut
+      self.boxOpeningKind = boxOpeningKind
     }
   }
 
@@ -68,22 +83,150 @@ package enum TerminalScreenParser {
 
   // MARK: - Row helpers
 
-  /// Whether a row is one repeated box glyph — the rule above or below an input
-  /// box. Requires four to avoid matching a short `---` in prose.
-  static func boundaryClass(of row: Substring) -> BoundaryClass? {
-    let trimmed = row.trimmingCharacters(in: .whitespaces)
-    // ONE repeated glyph, which is what the rule always claimed and did not
-    // enforce: a mixture such as `─━═─` was accepted, so ASCII art or another
-    // tool's output could be misread as a box.
-    guard
-      trimmed.count >= 4,
-      let glyph = trimmed.first,
-      trimmed.dropFirst().allSatisfy({ $0 == glyph })
+  /// Any Box Drawing (U+2500–U+257F) or Block Element (U+2580–U+259F) codepoint.
+  ///
+  /// The two six-character sets above are the glyphs a rule is DRAWN with; this
+  /// is the whole range a divider might use. They are different questions, and
+  /// answering the second with the first let `──── a ├ b ──` pass as a titled
+  /// border, because `├` is a box-drawing character that neither set contains.
+  /// A title never legitimately contains one of these.
+  static func isBoxDrawingGlyph(_ character: Character) -> Bool {
+    character.unicodeScalars.contains { (0x2500...0x259F).contains($0.value) }
+  }
+
+  /// Which end of the box a row is being tested for.
+  ///
+  /// The two ends have DIFFERENT rules, so the mode is explicit rather than
+  /// implied by which function was called. Only the opening may carry a title.
+  enum BoundaryUse {
+    case opening
+    case closing
+  }
+
+  /// How the opening rule was drawn. Carried so the field can tell a titled
+  /// read from an ordinary one; the title's text is never recorded.
+  package enum BoxOpeningKind: String, Equatable, Sendable {
+    case plain
+    case titled
+  }
+
+  package struct BoundaryMatch: Equatable, Sendable {
+    package let boxClass: BoundaryClass
+    package let openingKind: BoxOpeningKind
+  }
+
+  /// Whether a row is the rule above or below an input box.
+  ///
+  /// ONE authority for both ends, taking the end as a parameter. This replaces
+  /// `boundaryClass(of:)`, which no longer exists under that name: the first cut
+  /// of #1932 kept it and added a second function beside it that re-derived the
+  /// glyph set and the class, which grounded review correctly called two border
+  /// authorities under a plan claiming one.
+  ///
+  /// A plain rule is one repeated glyph, at least four of them — the mixture
+  /// `─━═─` is refused so ASCII art cannot be misread as a box.
+  ///
+  /// An OPENING rule may also carry Claude Code's session title:
+  ///
+  ///     ──────────────────────────────────── ollama-build-order-decision ──
+  ///     ❯ commit it and keep going
+  ///     ───────────────────────────────────────────────────────────────────
+  ///
+  /// Requiring one repeated glyph meant that row was not a boundary, so
+  /// `locateBoxed` found fewer than two and continuation casing silently did
+  /// nothing. MEASURED over 4,397 accessibility frames captured from the
+  /// founder's own window: 15 refused this way, against 43 that located.
+  ///
+  /// The trailing run must be EXACTLY two, which is the only invariant the
+  /// capture actually shows — both measured rows are 36/2 and 20/2. An earlier
+  /// draft used the ratio `trailing * 4 <= leading` to mean "right-aligned",
+  /// reasoning that a fixed suffix would break the day Claude Code changed its
+  /// margin. Grounded review killed it with a counterexample that was then
+  /// reproduced against the real parser: an ordinary rule of 24 glyphs, a title,
+  /// and 6 glyphs satisfies the ratio exactly, so any right-heavy program output
+  /// with a `❯` line under it was located and its rendered text returned as the
+  /// user's own sentence. The two failure directions are not symmetric — a
+  /// margin change under the fixed suffix refuses, which is merely today's
+  /// behaviour, while the ratio accepts and PERMITS A REPAIR on text nobody
+  /// typed. Widen this only when a different geometry is actually observed.
+  ///
+  /// The title is Claude Code's own AI-generated session name, so nothing is
+  /// assumed about its language, characters or length — it is never read.
+  static func boundary(of row: Substring, for use: BoundaryUse) -> BoundaryMatch? {
+    let trimmed = Substring(row.trimmingCharacters(in: .whitespaces))
+    guard trimmed.count >= 4, let glyph = trimmed.first else { return nil }
+
+    let boxClass: BoundaryClass
+    if lightBoxGlyphs.contains(glyph) {
+      boxClass = .light
+    } else if blockBoxGlyphs.contains(glyph) {
+      boxClass = .block
+    } else {
+      return nil
+    }
+
+    if trimmed.dropFirst().allSatisfy({ $0 == glyph }) {
+      return BoundaryMatch(boxClass: boxClass, openingKind: .plain)
+    }
+
+    // Titled openings are LIGHT-RULE ONLY, which is the only class the capture
+    // ever showed one on. Cloud review caught the first cut extending it to
+    // Gemini's block rules, and that combined the looser border rule with the
+    // WEAKER marker: `>` is ordinary in quoted mail, diffs and redirects, which
+    // is exactly why this file refuses to search by it. Claude Code's `❯` is
+    // rare enough to carry the weight; `>` is not, so a titled block border
+    // would widen the false-accept surface where it is already thinnest — and
+    // on no evidence, since no Gemini session appears in the capture at all.
+    //
+    // Gemini therefore keeps today's strict behaviour exactly. Widen this when
+    // a real titled Gemini layout is observed, not before: an accepted screen
+    // permits a repair on text nobody typed, and a refusal costs a capital.
+    guard use == .opening, boxClass == .light, trimmed.last == glyph else { return nil }
+
+    let leading = trimmed.prefix(while: { $0 == glyph }).count
+    let trailing = trimmed.reversed().prefix(while: { $0 == glyph }).count
+    guard leading >= 4, trailing == 2, leading + trailing < trimmed.count else { return nil }
+
+    let middle = trimmed.dropFirst(leading).dropLast(trailing)
+
+    // The rest of the row is checked against the MEASURED STRUCTURE rather than
+    // against the findings so far, because enumerating from findings is what
+    // kept missing cases. Both captured rows are exactly:
+    //
+    //     <run of light glyph><space><title text><space><run of light glyph>
+    //
+    // so every part of that gets a guard: glyph CLASS and the two run LENGTHS
+    // above, then PADDING on both sides of the title, no box glyph of any class
+    // inside it, and at least one real character in it.
+    //
+    // An earlier revision listed "four ways this span can over-accept" and
+    // called the class closed. It was not: that list covered what may be INSIDE
+    // the middle and never its BOUNDARIES, so `────────────────────Section──`
+    // still passed and a program-rendered divider above a `❯` line was read as
+    // the live input. Deriving the guards from the row's shape closes the set
+    // by construction, which enumerating symptoms did not.
+    // A plain space or the non-breaking space a box pads with, and nothing else.
+    // `isWhitespace` also admits tabs and the exotic Unicode spaces, which no
+    // measured row uses — and program output that happens to use one would then
+    // pass as a border.
+    guard let opensPadding = middle.first, let closesPadding = middle.last,
+      opensPadding == " " || opensPadding == "\u{00A0}",
+      closesPadding == " " || closesPadding == "\u{00A0}"
     else { return nil }
 
-    if lightBoxGlyphs.contains(glyph) { return .light }
-    if blockBoxGlyphs.contains(glyph) { return .block }
-    return nil
+    // No box glyph of ANY class, not merely the leading one: a plain rule
+    // refuses the mixture `─━═─` deliberately, so admitting that same mixture
+    // through the title span contradicted the boundary contract, and
+    // `──── a ━━ b ──` was located with its rendered text returned as the
+    // user's sentence. This also rejects `──── a ──── b ────`, which is
+    // decoration rather than a border.
+    guard !middle.contains(where: isBoxDrawingGlyph) else { return nil }
+
+    // A title is text. Without this, `──── ────` — a rule broken by spaces —
+    // would read as a titled border.
+    guard middle.contains(where: { !$0.isWhitespace && $0 != "\u{00A0}" }) else { return nil }
+
+    return BoundaryMatch(boxClass: boxClass, openingKind: .titled)
   }
 
   package enum BoundaryClass: Equatable, Sendable {
@@ -419,15 +562,39 @@ package enum TerminalScreenParser {
 
   /// Claude Code and Gemini both draw a box; the RULE GLYPH tells them apart.
   static func locateBoxed(_ rows: [Substring]) -> BoxedLocateResult {
-    let boundaries = rows.indices.compactMap { index -> (Int, BoundaryClass)? in
-      boundaryClass(of: rows[index]).map { (index, $0) }
-    }
-    guard boundaries.count >= 2 else { return .refused(.fewerThanTwoBoundaries) }
+    // Only the opening border is permitted to carry a title. No titled closing
+    // border appeared in 4,397 captured frames. Keeping the closing strict is an
+    // explicit fail-closed POLICY, not a claim that titled closers never occur —
+    // and it is what stops a decorative row being taken for the bottom of a box.
+    guard
+      let closing = rows.indices.reversed().lazy
+        .compactMap({ index in boundary(of: rows[index], for: .closing).map { (index, $0) } })
+        .first
+    else { return .refused(.fewerThanTwoBoundaries) }
 
-    let closing = boundaries[boundaries.count - 1]
-    let opening = boundaries[boundaries.count - 2]
+    guard
+      let opening = rows[..<closing.0].indices.reversed().lazy
+        .compactMap({ index in boundary(of: rows[index], for: .opening).map { (index, $0) } })
+        .first
+    else { return .refused(.fewerThanTwoBoundaries) }
     // Both rules must be the same kind of box.
-    guard opening.1 == closing.1, closing.0 > opening.0 + 1 else {
+    //
+    // NOT the same WIDTH, though a revision of this change briefly required it.
+    // The idea was sound — two sides of one rectangle — and it measured clean on
+    // all 4,397 captured frames. It is still wrong, because `String.count` is
+    // not terminal columns: a CJK or emoji title occupies two cells per
+    // character, so a box that renders perfectly square has an opening whose
+    // count is SHORTER than its closing rule, and the check would refuse it.
+    // That silently disables terminal repair for anyone whose session title is
+    // not Latin, which is a far worse trade than the P3 it was added for — a
+    // divider pasted into the user's own input, which the marker check on the
+    // first body row already refuses.
+    //
+    // Doing it properly needs a terminal-cell-width helper validated against
+    // real captures, and no capture here contains a non-Latin title, so there is
+    // nothing to validate one against. Measuring in the wrong unit is not a
+    // smaller version of measuring correctly.
+    guard opening.1.boxClass == closing.1.boxClass, closing.0 > opening.0 + 1 else {
       return .refused(.incompatibleBoundaries)
     }
 
@@ -442,8 +609,8 @@ package enum TerminalScreenParser {
 
     guard !aLivePromptSits(below: closing.0, in: rows) else { return .refused(.livePromptBelow) }
 
-    let cli: SupportedTerminalCLI = closing.1 == .block ? .geminiCLI : .claudeCode
-    let marker = closing.1 == .block ? geminiMarker : claudeMarker
+    let cli: SupportedTerminalCLI = closing.1.boxClass == .block ? .geminiCLI : .claudeCode
+    let marker = closing.1.boxClass == .block ? geminiMarker : claudeMarker
     // The marker sits on the FIRST populated row. A wrapped continuation row
     // never carries one, so this is checked where the marker actually is rather
     // than on whichever row is read.
@@ -490,7 +657,10 @@ package enum TerminalScreenParser {
       ? stripLeadingMarker(body[last], marker)
       : stripContinuationGutter(body[last])
     guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return .refused(.emptyInput) }
-    return .located(Located(cli: cli, inputLine: line, leftWasCut: last != first))
+    return .located(
+      Located(
+        cli: cli, inputLine: line, leftWasCut: last != first,
+        boxOpeningKind: opening.1.openingKind))
   }
 
   enum BoxedLocateResult {
