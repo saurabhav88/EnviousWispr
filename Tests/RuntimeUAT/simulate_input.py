@@ -172,16 +172,16 @@ def press_key(key_name, cmd=False, shift=False, alt=False, ctrl=False):
     if ctrl:
         flags |= kCGEventFlagMaskControl
 
-    # Key down.
+    # Key down. Flags are set unconditionally, including to 0 — see the note in
+    # `type_text`: a new event inherits ambient modifier state, so a conditional
+    # set latches a modifier into every later event.
     down_event = CGEventCreateKeyboardEvent(None, keycode, True)
-    if flags:
-        CGEventSetFlags(down_event, flags)
+    CGEventSetFlags(down_event, flags)
     CGEventPost(kCGHIDEventTap, down_event)
 
     # Key up.
     up_event = CGEventCreateKeyboardEvent(None, keycode, False)
-    if flags:
-        CGEventSetFlags(up_event, flags)
+    CGEventSetFlags(up_event, flags)
     CGEventPost(kCGHIDEventTap, up_event)
 
     time.sleep(DEFAULT_DELAY)
@@ -222,9 +222,19 @@ def type_text(text, delay=None):
 
         down = CGEventCreateKeyboardEvent(None, keycode, True)
         up = CGEventCreateKeyboardEvent(None, keycode, False)
-        if flags:
-            CGEventSetFlags(down, flags)
-            CGEventSetFlags(up, flags)
+        # ALWAYS set flags, including to 0. A freshly created keyboard event
+        # inherits the ambient modifier state, so skipping this call when
+        # `flags` is 0 leaves shift latched from the previous character:
+        # `hello then Hello then world` typed as `hello then HELLO THEN WORLD`
+        # (2026-08-04). The first capital turns shift on and nothing turns it
+        # off again.
+        #
+        # It fails silently and in the worst possible place. Any UAT that types
+        # mixed-case context is then testing ALL-CAPS input, and for the
+        # continuation-casing feature that is a different question entirely —
+        # the run looks healthy and proves nothing.
+        CGEventSetFlags(down, flags)
+        CGEventSetFlags(up, flags)
 
         CGEventPost(kCGHIDEventTap, down)
         CGEventPost(kCGHIDEventTap, up)
@@ -329,18 +339,16 @@ def hold_key(key_name, duration=2.0, cmd=False, shift=False, alt=False, ctrl=Fal
     if ctrl:
         flags |= kCGEventFlagMaskControl
 
-    # Key down
+    # Key down. Unconditional flags, same reason as `type_text`.
     down_event = CGEventCreateKeyboardEvent(None, keycode, True)
-    if flags:
-        CGEventSetFlags(down_event, flags)
+    CGEventSetFlags(down_event, flags)
     CGEventPost(kCGHIDEventTap, down_event)
 
     time.sleep(duration)
 
     # Key up
     up_event = CGEventCreateKeyboardEvent(None, keycode, False)
-    if flags:
-        CGEventSetFlags(up_event, flags)
+    CGEventSetFlags(up_event, flags)
     CGEventPost(kCGHIDEventTap, up_event)
     time.sleep(DEFAULT_DELAY)
 
