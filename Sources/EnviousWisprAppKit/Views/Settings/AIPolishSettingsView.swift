@@ -930,7 +930,9 @@ struct AIPolishSettingsView: View {
     // a third arm (issue #158, plan §3).
     case .claude: return "Why use Claude"
     case .appleIntelligence: return "Why use Apple Intelligence"
-    case .ollama: return "Why use Local (Ollama)"
+    // #1914: renamed with the rail row. "Local" became false the moment Ollama
+    // could run a model on its own servers.
+    case .ollama: return "Why use Ollama"
     case .egOne: return "Why use EG-1"
     case .none: return ""
     }
