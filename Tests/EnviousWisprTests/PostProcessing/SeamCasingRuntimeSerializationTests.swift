@@ -386,6 +386,95 @@ struct SeamCasingRuntimeSerializationTests {
     }
   }
 
+  @Test("#1922 A request made DURING another preparation is queued, not dropped")
+  func requestDuringPreparationIsQueued() async throws {
+    // Confirming whole-diff review r3, P2, and it is a real first-run cost: the
+    // `preparing` early return used to sit above the enqueue, so a German
+    // dictation arriving while English was still building was refused AND
+    // forgotten. German casing then could not work until the THIRD dictation —
+    // once at launch for every user whose second language is not English.
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+
+      let entered = DispatchSemaphore(value: 0)
+      let release = DispatchSemaphore(value: 0)
+      let built = OSAllocatedUnfairLock(initialState: [String]())
+      SeamCasingOracleRuntime.setPreparationOverrideForTesting { base in
+        built.withLock { $0.append(base) }
+        entered.signal()
+        // deadline-fallback: `release` is the signal; this bound only stops a defect hanging the suite
+        _ = release.wait(timeout: .now() + 5)
+        return Self.ready(["the", "gestern"])
+      }
+      defer { SeamCasingOracleRuntime.setPreparationOverrideForTesting(nil) }
+
+      // English starts building and is held open.
+      #expect(Self.probe("en").unavailableReason == .oracleWarming)
+      #expect(await Self.awaitSignal(entered), "English must be inside the builder")
+
+      // German arrives DURING that build. It must refuse — one builder at a time —
+      // AND be remembered.
+      #expect(
+        SeamCasingOracleRuntime.snapshot(for: "de").unavailableReason == .oracleWarming,
+        "German must refuse while another language is inside the checker")
+
+      release.signal()
+      release.signal()
+
+      // READ-ONLY from here, and that is the whole point of the case.
+      //
+      // The first draft waited on `probe("de")`, which calls `snapshot(for:)` —
+      // so the wait itself re-requested German, queued it, and the language
+      // became ready no matter what. The test passed against the defect it was
+      // written to catch, and only the mutation control exposed it. An assertion
+      // must never be able to repair the state it is inspecting.
+      #expect(
+        await Self.waitUntil {
+          SeamCasingOracleRuntime.installedOracleForTesting("de") != nil
+        },
+        "German must prepare from the request made DURING English's build, with no second ask")
+      #expect(
+        built.withLock { $0 }.sorted() == ["de", "en"],
+        "both languages built exactly once, got \(built.withLock { $0 })")
+    }
+  }
+
+  @Test("#1922 An early English request and prewarm do not queue English twice")
+  func prewarmDoesNotDoubleQueueEnglish() async throws {
+    // Confirming whole-diff review r3, P2. `prewarm()` is launched
+    // asynchronously, so a dictation can request English first. That request
+    // marks English warming and queues it while leaving `prewarmStarted` false,
+    // so an unconditional append in `prewarm()` queued English a second time —
+    // and during the pointless second build every ready language refused.
+    try await withSeamCasingOracleExclusion {
+      // `prewarmStarted: false` is REQUIRED, not incidental. The default reset
+      // marks prewarm as already run — correct for every other case, because it
+      // stops a real prewarm racing the test — but it makes `prewarm()` return at
+      // its first guard, so a case aimed at its body reaches nothing and passes
+      // against any implementation. The first draft did exactly that and the
+      // mutation control caught it.
+      SeamCasingOracleRuntime.resetForTesting(prewarmStarted: false)
+
+      let builds = OSAllocatedUnfairLock(initialState: 0)
+      SeamCasingOracleRuntime.setPreparationOverrideForTesting { _ in
+        builds.withLock { $0 += 1 }
+        return Self.ready(["the"])
+      }
+      defer { SeamCasingOracleRuntime.setPreparationOverrideForTesting(nil) }
+
+      // The dictation wins the race to English.
+      #expect(SeamCasingOracleRuntime.snapshot(for: "en").unavailableReason == .oracleWarming)
+      // Then launch prewarm, exactly as `WisprBootstrapper` does.
+      await SeamCasingOracleRuntime.prewarm()
+
+      // Read-only, for the same reason as the case above: probing would re-request.
+      #expect(await Self.waitUntil { SeamCasingOracleRuntime.installedOracleForTesting() != nil })
+      #expect(
+        builds.withLock { $0 } == 1,
+        "English must be built ONCE, got \(builds.withLock { $0 })")
+    }
+  }
+
   // MARK: - The latch is still process-wide
 
   @Test("#1922 One language's timeout latches EVERY language, not just its own")

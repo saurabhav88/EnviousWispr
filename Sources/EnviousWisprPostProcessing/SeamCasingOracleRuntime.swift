@@ -142,8 +142,15 @@ package enum SeamCasingOracleRuntime {
       // English is warmed unconditionally at launch because it is by far the
       // most common language and this is the one moment that is definitely off
       // the paste path. Every other language is prepared on first request.
-      state.phases["en"] = .warming
-      state.pending.append("en")
+      //
+      // Through the SHARED enqueue, which is idempotent. `prewarm()` is launched
+      // asynchronously, so a dictation can request English first — and that
+      // request already marks English warming and queues it, while leaving
+      // `prewarmStarted` false. Appending unconditionally here queued English
+      // TWICE, so the drain built it twice, and during the pointless second build
+      // every ready language returned `oracleWarming`. Confirming whole-diff
+      // review r3, P2.
+      _ = enqueueLocked(&state, "en")
       return true
     }
     guard start else { return }
@@ -157,6 +164,24 @@ package enum SeamCasingOracleRuntime {
   /// type doc) holds only because preparation and decisions never overlap in the
   /// one shared `NSSpellChecker`. Independent per-language warmers would void
   /// it, and so would draining while a decision holds a lease.
+  /// Mark a language as requested, exactly once. Returns whether the drain needs
+  /// poking.
+  ///
+  /// ONE enqueue for both callers — `prewarm()` and `snapshot(for:)` — because
+  /// they had two, and the two disagreed. Guarding on "no phase yet" makes a
+  /// double request idempotent by construction rather than by both call sites
+  /// remembering to check.
+  ///
+  /// `prewarmStarted` is deliberately NOT touched here: it means "prewarm has
+  /// run", and a German dictation must not be able to suppress English's launch
+  /// warm-up by setting it.
+  private static func enqueueLocked(_ state: inout State, _ base: String) -> Bool {
+    guard state.phases[base] == nil else { return false }
+    state.phases[base] = .warming
+    state.pending.append(base)
+    return true
+  }
+
   @concurrent
   private static func drain() async {
     while true {
@@ -427,22 +452,34 @@ package enum SeamCasingOracleRuntime {
     }
     let (oracle, needsDrain) = state.withLock { state -> (SeamCasingOracle, Bool) in
       if let latched = state.latched { return (.unavailable(latched), false) }
+
+      // RECORD THE REQUEST FIRST, whatever we go on to answer. Enqueueing and
+      // answering are separate concerns, and collapsing them lost requests: the
+      // `preparing` early return below used to sit ABOVE the enqueue, so a German
+      // dictation arriving while English was still building was refused AND
+      // forgotten. The next German dictation only started German's preparation,
+      // so German casing could not work until the THIRD attempt — once at launch
+      // for every user whose second language is not English. Confirming
+      // whole-diff review r3, P2.
+      let queued = enqueueLocked(&state, base)
+
       // A preparation call is inside the checker right now: everyone refuses,
       // including languages that are already built.
-      if state.preparing { return (.unavailable(.oracleWarming), false) }
+      if state.preparing { return (.unavailable(.oracleWarming), queued) }
 
       switch state.phases[base] {
       case .ready(let oracle):
         state.decisionLeases += 1
-        return (oracle, false)
+        return (oracle, queued)
       case .warming:
-        return (.unavailable(.oracleWarming), false)
+        return (.unavailable(.oracleWarming), queued)
       case .unavailable(let reason):
-        return (.unavailable(reason), false)
+        return (.unavailable(reason), queued)
       case nil:
-        state.phases[base] = .warming
-        state.pending.append(base)
-        return (.unavailable(.oracleWarming), true)
+        // Unreachable: `enqueueLocked` above installs `.warming` for any language
+        // that had no phase. Kept for exhaustiveness, and answering `warming` is
+        // the correct conservative answer if it ever became reachable.
+        return (.unavailable(.oracleWarming), queued)
       }
     }
     if needsDrain { pokeDrain() }
@@ -515,13 +552,17 @@ package enum SeamCasingOracleRuntime {
   /// that concurrently — without this, a background prepare could publish
   /// `.ready` over a test's expected state and make full-suite results
   /// order-dependent (local diff review r3).
-  package static func resetForTesting() {
+  /// - Parameter prewarmStarted: defaults to `true`, which is what almost every
+  ///   case wants — it stops a REAL prewarm firing underneath the test. Pass
+  ///   `false` only to exercise `prewarm()` itself; without it that function
+  ///   returns at its first guard and a test aimed at its body reaches nothing.
+  package static func resetForTesting(prewarmStarted: Bool = true) {
     // Cleared here as well as by the setter, so a case that fails mid-way cannot
     // leave a blocking builder installed for every suite after it. The exclusion
     // helper resets on the way out, which makes this the backstop.
     preparationOverride.withLock { $0 = nil }
     state.withLock { state in
-      state = State(prewarmStarted: true, epoch: state.epoch + 1)
+      state = State(prewarmStarted: prewarmStarted, epoch: state.epoch + 1)
     }
   }
 
