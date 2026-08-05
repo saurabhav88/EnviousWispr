@@ -71,6 +71,11 @@ const { variant = 'compact' } = Astro.props;
         if (!docsRes.ok) throw new Error(`corpus ${docsRes.status}`);
         const index = buildHelpIndex(await docsRes.json());
         engine = { search: (q) => searchHelp(index, q), snippet: (r, q) => snippet(r, q) };
+        // Render whatever is already typed. Someone who types (or clicks an
+        // example chip) before the corpus lands would otherwise sit looking at
+        // an empty dialog until they changed the text, because render() ran
+        // once against a null engine and nothing re-ran it.
+        render();
       })().catch((err) => {
         // Fails CLOSED and says so. An empty result list here would read as
         // "we have no article about that", which is a different and false claim.

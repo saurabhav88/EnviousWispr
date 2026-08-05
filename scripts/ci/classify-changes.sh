@@ -36,7 +36,14 @@ classify() {
   # A path that leaves it unset makes every heavy step in website-check skip
   # while the job still reports success — a silent pass, which is worse than a
   # failure because nothing looks wrong.
-  if grep -qE '^website/' <<<"$changed"; then website=true; else website=false; fi
+  # Self-force, mirroring the build lane above: a PR that only edits pr-check.yml
+  # could otherwise break website-check and pass, because every website step
+  # would skip and the job would still report success.
+  if grep -qE '^(website/|\.github/workflows/pr-check\.yml$)' <<<"$changed"; then
+    website=true
+  else
+    website=false
+  fi
 
   if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
@@ -233,7 +240,7 @@ _expect_push_exit1() {
 
 self_test() {
   echo "== classify contract (--classify-only path) =="
-  _expect_classify ".github/workflows/pr-check.yml" true "self-force pr-check" false
+  _expect_classify ".github/workflows/pr-check.yml" true "self-force pr-check" true
   _expect_classify "Sources/Foo.swift" true "swift source" false
   _expect_classify $'docs/x.md\nwebsite/y.astro' false "docs+website only" true
   _expect_classify ".github/actions/foo/action.yml" false "github actions dir excluded" false
@@ -244,7 +251,7 @@ self_test() {
   _expect_classify $'docs/a.md\nSources/B.swift' true "mixed docs+swift" false
   _expect_classify "website/src/pages/help/index.astro" false "website only -> website check, no build" true
   _expect_classify $'website/a.astro\nSources/B.swift' true "website+swift -> both" true
-  _expect_classify ".github/workflows/pr-check.yml" true "workflow only -> build, no website" false
+  _expect_classify ".github/workflows/pr-check.yml" true "workflow only -> self-forces website too" true
   _expect_classify $'website/x.md\n.github/workflows/pr-check.yml' true "workflow+website -> both" true
 
   echo "== three-dot diff + #825 fail-safe (temp repos) =="

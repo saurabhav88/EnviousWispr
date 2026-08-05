@@ -94,7 +94,19 @@ const { title, description, canonicalPath, articles, currentArticle, currentCate
     padding: 10px 0; border-bottom: 1px solid var(--border);
   }
   .help-rail-mobile[open] summary { margin-bottom: 12px; }
-  .help-rail-mobile :global(.help-sidebar) { display: block; position: static; max-height: none; }
+  /* Two traps here, both hit in one round.
+     1. `:global()` is the escape hatch for SCOPED style blocks. Inside
+        `is:global` it is an invalid selector that silently matches nothing, so
+        the sidebar's own `display: none` stayed in force and the disclosure
+        opened to an empty box.
+     2. Fixing that with an unconditional `display: block` then defeated the
+        browser's own hiding of closed <details> content, so the tree was
+        ALWAYS visible. Keying on [open] makes the CSS itself drive the
+        open/closed states rather than depending on UA behaviour. */
+  .help-rail-mobile .help-sidebar { display: none; }
+  .help-rail-mobile[open] .help-sidebar {
+    display: block; position: static; max-height: none; overflow: visible;
+  }
 
   @media (min-width: 1080px) {
     .help-rail-mobile { display: none; }
