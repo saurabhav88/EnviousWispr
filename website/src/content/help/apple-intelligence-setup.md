@@ -26,4 +26,4 @@ Apple Intelligence tidies up your text on your Mac. It is free, there is no key 
 
 EnviousWispr checks and tells you which requirement is missing, on that same page. The usual reasons are an older macOS, Apple Intelligence not switched on yet, or the model still downloading in the background.
 
-See [[_Apple Intelligence Not Available_](/help/apple-intelligence-not-available/)](/help/apple-intelligence-not-available/) if you get stuck.
+See [_Apple Intelligence Not Available_](/help/apple-intelligence-not-available/) if you get stuck.

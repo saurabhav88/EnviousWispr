@@ -26,4 +26,4 @@ EnviousWispr keeps what it recorded up to that point and transcribes it, rather 
 
 ### A note on headsets
 
-If your AirPods are your Mac's input, EnviousWispr records from them, and your headset drops out of music mode while it does. See [[_Bluetooth and AirPods_](/help/bluetooth-and-airpods/)](/help/bluetooth-and-airpods/).
+If your AirPods are your Mac's input, EnviousWispr records from them, and your headset drops out of music mode while it does. See [_Bluetooth and AirPods_](/help/bluetooth-and-airpods/).

@@ -68,8 +68,11 @@ const { variant = 'compact', withDialog = true, triggerHidden = false } = Astro.
   if (overlay && input && list && status) {
     let engine: { search: (q: string) => { matchKind: string; results: any[] }; snippet: (r: any, q: string) => string } | null = null;
     let loading: Promise<void> | null = null;
+    let failed = false;
     let active = -1;
     let lastFocus: HTMLElement | null = null;
+
+    const UNAVAILABLE = 'Search is unavailable right now. Browse by category below.';
 
     // One in-flight promise, memoised: opening twice while the corpus is still
     // downloading must not start a second fetch.
@@ -83,6 +86,7 @@ const { variant = 'compact', withDialog = true, triggerHidden = false } = Astro.
         if (!docsRes.ok) throw new Error(`corpus ${docsRes.status}`);
         const index = buildHelpIndex(await docsRes.json());
         engine = { search: (q) => searchHelp(index, q), snippet: (r, q) => snippet(r, q) };
+        failed = false;
         // Render whatever is already typed. Someone who types (or clicks an
         // example chip) before the corpus lands would otherwise sit looking at
         // an empty dialog until they changed the text, because render() ran
@@ -91,10 +95,16 @@ const { variant = 'compact', withDialog = true, triggerHidden = false } = Astro.
       })().catch((err) => {
         // Fails CLOSED and says so. An empty result list here would read as
         // "we have no article about that", which is a different and false claim.
+        //
+        // The failure is recorded as STATE and drawn by render(), rather than
+        // written to the status line here. Writing it here meant the next
+        // render() — typing another character, or simply reopening the dialog —
+        // fell into the "no engine" branch and blanked the message, leaving an
+        // empty dialog that offered no explanation and no way on.
         loading = null;
         engine = null;
-        status.textContent = 'Search is unavailable right now. Browse by category below.';
-        list.innerHTML = '';
+        failed = true;
+        render();
         throw err;
       });
       return loading;
@@ -125,6 +135,15 @@ const { variant = 'compact', withDialog = true, triggerHidden = false } = Astro.
       const q = input.value.trim();
       active = -1;
       input.removeAttribute('aria-activedescendant');
+      // A failed corpus load outranks everything else on screen, including an
+      // empty query: the reader needs to know search is broken rather than
+      // conclude the site has nothing to say.
+      if (failed) {
+        list.innerHTML = '';
+        status.textContent = UNAVAILABLE;
+        input.setAttribute('aria-expanded', 'false');
+        return;
+      }
       if (!engine || !q) {
         list.innerHTML = '';
         status.textContent = '';
