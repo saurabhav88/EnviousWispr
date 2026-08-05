@@ -469,7 +469,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // It is `Bool?` rather than `Bool` because its third state is real: a
     // non-Ollama attempt has no daemon to ask, and saying `false` there would
     // make the metric mean "local" in one place and "not Ollama" in another.
-    let ollamaThinks: Bool
+    let ollamaThinks: Bool?
     let ollamaRemote: Bool?
     if provider == .ollama {
       switch await ollamaReadinessProbe(model) {
@@ -488,8 +488,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       }
     } else {
       // Explicit, not defaulted: a non-Ollama attempt has no daemon to ask, and
-      // this value reaches only the `.ollama` branches of the two policies below.
-      ollamaThinks = false
+      // both values reach only the `.ollama` branches of the two policies below
+      // (`outputTokenPolicy` switches on provider; `ollamaThinking` is called
+      // only under `provider == .ollama`).
+      //
+      // `nil`, not `false`, for the same reason `ollamaRemote` is nil here: a
+      // reported `false` and "nobody was asked" are different facts, and the
+      // three-state on `OllamaModelFacts.thinks` only works if every producer
+      // respects the distinction.
+      ollamaThinks = nil
       ollamaRemote = nil
     }
 
@@ -948,7 +955,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// polish. Local engines and Claude keep explicit caps. Static and pure
   /// for fixture testing.
   nonisolated static func outputTokenPolicy(
-    provider: LLMProvider, model: String, textCount: Int, thinks: Bool
+    provider: LLMProvider, model: String, textCount: Int, thinks: Bool?
   ) -> OutputTokenPolicy {
     switch provider {
     case .ollama:
@@ -975,10 +982,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       //
       // Note the floor only binds on SHORT dictations: above ~5,844 characters
       // `textCount / 3 + 100` already exceeds 2048 and dominates.
+      // ONLY a REPORTED not-thinking earns the tight floor. `nil` means the
+      // daemon did not report capabilities, and that case takes the larger
+      // floor so it reproduces pre-#1914 `main` for the four families the
+      // retired prefix list covered, instead of silently downgrading them
+      // (PR #1949 cloud review). See `OllamaModelFacts.thinks`.
       let floor =
-        thinks
-        ? LLMConstants.ollamaThinkingMaxTokens
-        : LLMConstants.ollamaMaxTokens
+        thinks == false
+        ? LLMConstants.ollamaMaxTokens
+        : LLMConstants.ollamaThinkingMaxTokens
       return .capped(max(textCount / 3 + 100, floor))
     case .egOne:
       // #1271: character-count cap, CJK-safe shape (Codex r14) — the
@@ -1037,11 +1049,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// three models silently ignore cannot be a control, so a non-thinking model
   /// sends no field at all rather than an explicit false.
   ///
-  /// Takes the resolved Boolean, not an optional: there is no "unknown" case to
-  /// default here, because a polish attempt that never resolved readiness has
-  /// already thrown.
-  private static func ollamaThinking(thinks: Bool) -> ResolvedThinking? {
-    thinks ? .level("low") : nil
+  /// Three-state. Readiness always resolves before a polish attempt, so a
+  /// missing ANSWER is impossible here — but a daemon that never reported
+  /// `capabilities` leaves the FACT unknown, and `nil` says so.
+  ///
+  /// Only a reported `true` sends a thinking level. Unknown sends no `think`
+  /// key, exactly as pre-#1914 `main` did for every model, so a daemon without
+  /// the undocumented field cannot receive a dialect it may not understand.
+  private static func ollamaThinking(thinks: Bool?) -> ResolvedThinking? {
+    thinks == true ? .level("low") : nil
   }
 
   private static func resolveThinking(

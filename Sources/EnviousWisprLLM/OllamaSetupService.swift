@@ -532,7 +532,9 @@ public final class OllamaSetupService {
   ///
   /// Extracted only after a mutation control proved the inline version was
   /// untestable: changing `"low"` to `"high"` left every warm-up test green.
-  nonisolated static func makeWarmupRequestBody(model: String, thinks: Bool) -> [String: Any] {
+  /// Three-state, mirroring the polish request exactly: only a REPORTED
+  /// thinking model gets `"low"`. Unknown sends no key, as pre-#1914 `main` did.
+  nonisolated static func makeWarmupRequestBody(model: String, thinks: Bool?) -> [String: Any] {
     var body: [String: Any] = [
       "model": model,
       "messages": [["role": "user", "content": "hi"]],
@@ -540,7 +542,7 @@ public final class OllamaSetupService {
       "keep_alive": "60m",
       "options": ["num_predict": 1],
     ]
-    if thinks {
+    if thinks == true {
       body["think"] = "low"
     }
     return body

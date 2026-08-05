@@ -36,15 +36,42 @@ public struct OllamaModelFacts: Sendable, Equatable {
   /// Never derived from a `-cloud` name suffix: the production sighting that
   /// opened #1914 was `deepseek-v4-flash:latest`, which carries no suffix.
   public let isRemote: Bool
-  /// True iff the daemon listed `thinking` among this model's `capabilities`.
+  /// Whether the daemon listed `thinking` among this model's `capabilities`.
   /// This is the SOLE authority for the question — it replaced a hand-authored
   /// four-name family list, which was a prediction about which models other
   /// people install and mis-budgeted every thinking model outside it. Reported
   /// for local and remote models alike. Do not reintroduce a name-based
   /// fallback beside it.
-  public let thinks: Bool
+  ///
+  /// THREE-STATE, and the third state is load-bearing. `nil` means the daemon
+  /// did not report `capabilities` AT ALL for this row, which is different from
+  /// reporting a capability list that omits `thinking`:
+  ///
+  /// | value | meaning | budget | `think` key |
+  /// |---|---|---|---|
+  /// | `true` | reported, thinks | 2048 | `"low"` |
+  /// | `false` | reported, does NOT think | 256 | absent |
+  /// | `nil` | not reported | 2048 | absent |
+  ///
+  /// `nil` reproduces PRE-#1914 `main` exactly for the four families that the
+  /// retired prefix list covered (`qwen3`, `deepseek-r1`, `gpt-oss`, `gemma4`),
+  /// which all got the 2048 floor and no `think` key. Collapsing `nil` into
+  /// `false` would have handed those users the 256 floor — the starvation this
+  /// issue exists to remove — on any daemon that omits the field.
+  ///
+  /// That matters because `capabilities` on `/api/tags` is UNDOCUMENTED. The
+  /// published schema (docs.ollama.com/api/tags, read 2026-08-05) lists only
+  /// `name`, `model`, `remote_model`, `remote_host`, `modified_at`, `size`,
+  /// `digest` and `details`; capabilities are documented on `/api/show`. It is
+  /// nonetheless present on every row in practice (measured: Ollama 0.32.4,
+  /// 12 models, 2026-08-01 and again 2026-08-05), so the field is used when
+  /// present and its absence must never silently downgrade a user.
+  ///
+  /// `remote_host` needs no such treatment: it IS documented on `/api/tags`,
+  /// and absent-means-local is correct rather than a guess.
+  public let thinks: Bool?
 
-  public init(isRemote: Bool, thinks: Bool) {
+  public init(isRemote: Bool, thinks: Bool?) {
     self.isRemote = isRemote
     self.thinks = thinks
   }
@@ -347,11 +374,21 @@ public struct OllamaConnector: TranscriptPolisher {
     let remoteHost = row["remote_host"] as? String
     let isRemote = !(remoteHost ?? "").isEmpty
 
-    // `capabilities` is an array of strings; `thinking` is one of them. A missing
-    // key, a null, an empty array, or a non-array shape all read as not-thinking,
-    // which preserves today's tight budget for anything we cannot read.
-    let capabilities = row["capabilities"] as? [String] ?? []
-    let thinks = capabilities.contains("thinking")
+    // `capabilities` is an array of strings; `thinking` is one of them.
+    //
+    // A missing key, a null, or a non-array shape mean the daemon told us
+    // NOTHING about capability, and that is `nil`, not `false` — see the
+    // three-state table on `OllamaModelFacts.thinks`. An earlier revision
+    // collapsed these to `false` under the comment "preserves today's tight
+    // budget"; that justification was wrong, because on `main` the retired
+    // prefix list gave qwen3 / deepseek-r1 / gpt-oss / gemma4 the 2048 floor,
+    // so `false` would have REGRESSED exactly those users on a daemon that
+    // omits the field. Cloud review caught it (PR #1949).
+    //
+    // An EMPTY array is different again: the daemon answered, and its answer
+    // lists no thinking. That is a reported `false`.
+    let capabilities = row["capabilities"] as? [String]
+    let thinks = capabilities.map { $0.contains("thinking") }
 
     return OllamaModelFacts(isRemote: isRemote, thinks: thinks)
   }

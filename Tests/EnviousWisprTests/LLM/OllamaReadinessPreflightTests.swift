@@ -174,31 +174,87 @@ struct OllamaReadinessPreflightTests {
           data: body, response: http(200), model: "tinyllama:latest"))?.thinks == false)
   }
 
-  @Test("absent, empty, or wrong-shaped capabilities read as NOT thinking")
-  func degenerateCapabilitiesAreNotThinking() {
-    // Absent must match today's default for an unlisted model — the tight
-    // budget — so an older daemon degrades to current behaviour, not to a
-    // silently enlarged budget for every model it serves.
+  /// PR #1949 cloud review. `capabilities` is UNDOCUMENTED on `/api/tags` —
+  /// the published schema stops at `details` — so a daemon that omits it is a
+  /// shape we must survive, not a shape we can assume away.
+  ///
+  /// The distinction under test is NOT-REPORTED (`nil`) versus REPORTED-AS-NO
+  /// (`false`). An earlier revision collapsed both to `false` under the comment
+  /// "preserves today's tight budget". That justification was false: on `main`
+  /// the retired prefix list handed qwen3 / deepseek-r1 / gpt-oss / gemma4 the
+  /// 2048 floor, so collapsing would have REGRESSED precisely those users to
+  /// the 256 floor and the starvation #1914 exists to remove.
+  @Test("a daemon that does not report capabilities yields nil, never false")
+  func unreportedCapabilitiesAreNilNotFalse() {
+    // No key at all: the daemon said nothing.
     let absent = tagsBody(rows: [["name": "m"]])
     #expect(
       facts(OllamaConnector.classifyReadiness(data: absent, response: http(200), model: "m"))?
-        .thinks == false)
+        .thinks == nil)
 
-    let empty = tagsBody(rows: [["name": "m", "capabilities": [String]()]])
-    #expect(
-      facts(OllamaConnector.classifyReadiness(data: empty, response: http(200), model: "m"))?
-        .thinks == false)
-
+    // JSON null: also nothing.
     let null = tagsBody(rows: [["name": "m", "capabilities": NSNull()]])
     #expect(
       facts(OllamaConnector.classifyReadiness(data: null, response: http(200), model: "m"))?
-        .thinks == false)
+        .thinks == nil)
 
-    // A non-array shape must not crash or match.
+    // A non-array shape is unreadable, so it is also "nothing" — and must not
+    // crash or substring-match the word it happens to contain.
     let wrongType = tagsBody(rows: [["name": "m", "capabilities": "thinking"]])
     #expect(
       facts(OllamaConnector.classifyReadiness(data: wrongType, response: http(200), model: "m"))?
-        .thinks == false)
+        .thinks == nil)
+  }
+
+  /// The other side of the distinction, and the reason `nil` cannot simply be
+  /// mapped to `true` either: an EMPTY array is a real answer. The daemon
+  /// reported this model's capabilities and thinking is not among them.
+  @Test("an empty capabilities array is a REPORTED not-thinking, not unknown")
+  func emptyCapabilitiesIsReportedFalse() {
+    let empty = tagsBody(rows: [["name": "m", "capabilities": [String]()]])
+    let decoded = facts(
+      OllamaConnector.classifyReadiness(data: empty, response: http(200), model: "m"))
+    #expect(decoded?.thinks == false)
+    // Guard against the reading that would make this test vacuous: `nil == false`
+    // is false in Swift, but assert the optional is populated so a future change
+    // that returns nil here cannot pass by accident.
+    #expect(decoded?.thinks != nil)
+  }
+
+  /// The regression this three-state exists to prevent, stated as the budget a
+  /// user actually receives rather than as a decoder detail.
+  ///
+  /// A `qwen3` row from a daemon that omits `capabilities` must still earn the
+  /// 2048 floor and send NO `think` key — byte-identical to pre-#1914 `main`,
+  /// which reached the same place through the prefix list this change deleted.
+  @Test("an old-daemon qwen3 row still gets main's budget and no think key")
+  func unreportedCapabilityReproducesMainForFormerlyListedFamilies() throws {
+    let oldDaemonRow = tagsBody(rows: [["name": "qwen3:0.6b"]])
+    let decoded = try #require(
+      facts(
+        OllamaConnector.classifyReadiness(
+          data: oldDaemonRow, response: http(200), model: "qwen3:0.6b")))
+    #expect(decoded.thinks == nil)
+
+    let policy = LLMPolishStep.outputTokenPolicy(
+      provider: .ollama, model: "qwen3:0.6b", textCount: 300, thinks: decoded.thinks)
+    #expect(policy == .capped(LLMConstants.ollamaThinkingMaxTokens))
+
+    // And no `think` key, because we cannot know the model understands levels.
+    let body = OllamaConnector.makeRequestBody(
+      model: "qwen3:0.6b",
+      messages: [["role": "system", "content": "s"]],
+      maxTokens: LLMConstants.ollamaThinkingMaxTokens,
+      temperature: 0,
+      thinking: nil
+    )
+    #expect(body["think"] == nil)
+
+    // Warm-up must agree with the polish request, or the model loads under one
+    // shape and answers under another.
+    let warmup = OllamaSetupService.makeWarmupRequestBody(
+      model: "qwen3:0.6b", thinks: decoded.thinks)
+    #expect(warmup["think"] == nil)
   }
 
   @Test("the two facts are INDEPENDENT — all four combinations decode correctly")
@@ -206,10 +262,17 @@ struct OllamaReadinessPreflightTests {
     // Where a model runs does not tell you whether it reasons. A local thinking
     // model and a remote non-thinking model both exist, so neither fact may be
     // derived from the other.
+    // Every row carries an explicit `capabilities` list, because a real daemon
+    // sends one (measured: Ollama 0.32.4, all 12 rows). Omitting it here would
+    // make the "plain" rows decode as NOT-REPORTED rather than reported-as-no,
+    // which is a different fact and not what this test is about.
     let body = tagsBody(rows: [
-      ["name": "local-plain"],
+      ["name": "local-plain", "capabilities": ["completion"]],
       ["name": "local-thinks", "capabilities": ["thinking"]],
-      ["name": "remote-plain", "remote_host": "https://ollama.com"],
+      [
+        "name": "remote-plain", "remote_host": "https://ollama.com",
+        "capabilities": ["completion"],
+      ],
       [
         "name": "remote-thinks", "remote_host": "https://ollama.com",
         "capabilities": ["completion", "thinking"],
@@ -235,7 +298,7 @@ struct OllamaReadinessPreflightTests {
         "name": "deepseek-v4-flash", "remote_host": "https://ollama.com",
         "capabilities": ["thinking"],
       ],
-      ["name": "llama3.2"],
+      ["name": "llama3.2", "capabilities": ["completion"]],
     ])
     let armed = facts(
       OllamaConnector.classifyReadiness(data: body, response: http(200), model: "llama3.2"))
@@ -362,7 +425,7 @@ struct OllamaReadinessPreflightTests {
     #expect(
       modelMissing
         == "AI cleanup skipped: the selected Ollama model isn't installed. "
-          + "Download it or pick another in Settings → AI Polish."
+        + "Download it or pick another in Settings → AI Polish."
     )
     // #1914: the founder's sentence, pinned. Distinct from the one above on
     // purpose — telling a user with no selection to download something sends
@@ -395,7 +458,8 @@ struct OllamaReadinessPreflightTests {
   func nonPreflightReasonsAreNil() {
     for reason in PolishFailureReason.allCases
     where reason != .providerUnreachable && reason != .modelUnavailable
-      && reason != .noModelSelected {
+      && reason != .noModelSelected
+    {
       #expect(reason.ollamaPreflightSkipMessage == nil)
       #expect(PolishSkipReason(ollamaPreflight: reason) == nil)
     }
