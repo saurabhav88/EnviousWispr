@@ -571,6 +571,17 @@ struct KernelFinalizationWiring {
           if config?.smartInsertion != true { return "setting_off" }
           if context.targetElement == nil { return "no_target" }
           if let terminalRefusal { return terminalRefusal.rawValue }
+          // #1932. A titled box is named separately so the field can see that
+          // path working. The parser's own refusal names never get here —
+          // `TerminalContextResolver` collapses all ten into
+          // `terminal_screen_refused` on purpose, because that enum's raw values
+          // are a shipped closed set — so a titled path that silently stopped
+          // matching would be invisible without this. That is the six-week blind
+          // spot #1926 sat in, and it is why declining this field on the
+          // grounds that "the refusal side already shows it" was wrong.
+          if caretContext?.terminalEvidence?.located.boxOpeningKind == .titled {
+            return "terminal_read_titled_box"
+          }
           if caretContext?.isScreenDerived == true { return "terminal_read" }
           return caretContext == nil ? "unreadable" : "read_selected"
         }()
