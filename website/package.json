@@ -9,7 +9,9 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "prebuild": "node scripts/check-help-content.mjs",
+    "check:help": "node scripts/check-help-routes.mjs && node scripts/check-help-search.mjs"
   },
   "overrides": {
     "devalue": ">=5.8.1",
