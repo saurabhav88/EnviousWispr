@@ -73,7 +73,11 @@ struct AppLoggerLaunchSyncTests {
       whisperKitKernelDriver: whisperKitKernelDriver,
       audioCapture: audioCapture,
       asrManager: asrManager,
-      hotkeyService: hotkeyService
+      hotkeyService: hotkeyService,
+      // #1914: required, no default. These suites do not exercise eviction, so
+      // "absent from the catalog" is the honest answer — and it is the
+      // fail-open one, preserving today's local-eviction behaviour.
+      ollamaRemotenessLookup: { _ in nil }
     )
 
     // Configure persisted state: debug=on, level=.debug (the values that should

@@ -162,43 +162,95 @@ enum ProviderStatusMapping {
 
 // MARK: - Rail catalog
 
-/// One row's presentation data. Order and grouping are the approved Direction-C
-/// handoff: "On this Mac" (EG-1, Apple, Ollama) then "Cloud" (OpenAI, Gemini),
-/// EG-1 pinned first and Recommended.
+/// The rail's three founder-approved provider groups (#1914, 2026-08-04).
+///
+/// The previous binary classification could describe only "this Mac" or
+/// "cloud". That was insufficient for Ollama, whose selected model may run
+/// locally or on Ollama's servers.
+///
+/// This enum centralizes the heading, spoken accessibility phrase, and privacy
+/// line. The rail policy remains provider-level, so `.yourOwnSetup` uses copy
+/// that is accurate for every Ollama model.
+enum PolishRailGroup: CaseIterable {
+  case onThisMac
+  case yourOwnSetup
+  case cloud
+
+  var heading: String {
+    switch self {
+    case .onThisMac: return "On this Mac"
+    case .yourOwnSetup: return "Your own setup"
+    case .cloud: return "Cloud"
+    }
+  }
+
+  /// Spoken after the row name by VoiceOver.
+  var accessibilityPhrase: String {
+    switch self {
+    case .onThisMac: return "on this Mac"
+    case .yourOwnSetup: return "your own setup"
+    case .cloud: return "cloud"
+    }
+  }
+
+  /// The detail header's privacy claim.
+  ///
+  /// `.cloud` drops "only" deliberately: all three cloud providers route through
+  /// the shared `.cloudFixed` prompt family, which conditionally includes the
+  /// active app name and custom word list alongside the transcript
+  /// (`CloudFixedPromptBuilder`), so "text only" was never accurate (#158; the
+  /// terse header was missed by that round's grep and fixed later).
+  ///
+  /// `.yourOwnSetup` states what is true whichever model is armed. It does not
+  /// warn, and it does not discourage the hosted path: per the founder's
+  /// 2026-08-01 doctrine correction this is accuracy, not a privacy warning.
+  var privacyLine: String {
+    switch self {
+    case .onThisMac: return "Nothing you dictate leaves this Mac"
+    case .yourOwnSetup: return "Uses your selected Ollama model, local or hosted"
+    case .cloud: return "Sends transcribed text, never audio"
+    }
+  }
+}
+
+/// One row's presentation data. EG-1 is pinned first and Recommended.
 struct PolishRailProvider: Identifiable, Equatable {
   let provider: LLMProvider
   let name: String
   let tagline: String
-  let isLocal: Bool
+  let group: PolishRailGroup
   let recommended: Bool
 
   var id: LLMProvider { provider }
 }
 
 enum PolishRailCatalog {
-  static let local: [PolishRailProvider] = [
+  /// Flattened in render order. `providers(in:)` derives group membership from
+  /// this list, and the current rail renders those results.
+  static let all: [PolishRailProvider] = [
     PolishRailProvider(
       provider: .egOne, name: "EG-1", tagline: "Our tuned model",
-      isLocal: true, recommended: true),
+      group: .onThisMac, recommended: true),
     PolishRailProvider(
       provider: .appleIntelligence, name: "Apple Intelligence", tagline: "Built into macOS",
-      isLocal: true, recommended: false),
+      group: .onThisMac, recommended: false),
     PolishRailProvider(
-      provider: .ollama, name: "Local (Ollama)", tagline: "Any open model",
-      isLocal: true, recommended: false),
-  ]
-  static let cloud: [PolishRailProvider] = [
+      provider: .ollama, name: "Ollama", tagline: "Any open model, local or hosted",
+      group: .yourOwnSetup, recommended: false),
     PolishRailProvider(
       provider: .openAI, name: "OpenAI", tagline: "Your API key",
-      isLocal: false, recommended: false),
+      group: .cloud, recommended: false),
     PolishRailProvider(
       provider: .gemini, name: "Google Gemini", tagline: "Your API key",
-      isLocal: false, recommended: false),
+      group: .cloud, recommended: false),
     PolishRailProvider(
       provider: .claude, name: "Claude", tagline: "Your API key",
-      isLocal: false, recommended: false),
+      group: .cloud, recommended: false),
   ]
-  static let all: [PolishRailProvider] = local + cloud
+
+  static func providers(in group: PolishRailGroup) -> [PolishRailProvider] {
+    all.filter { $0.group == group }
+  }
 
   static func entry(for provider: LLMProvider) -> PolishRailProvider? {
     all.first { $0.provider == provider }
@@ -462,7 +514,7 @@ struct ProviderRailRow: View {
     .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)
-    .accessibilityLabel("\(entry.name), \(entry.isLocal ? "on this Mac" : "cloud")")
+    .accessibilityLabel("\(entry.name), \(entry.group.accessibilityPhrase)")
     .accessibilityValue(
       isSelected
         ? "Selected\(entry.recommended ? ", recommended" : "")"
@@ -476,7 +528,7 @@ struct ProviderRailRow: View {
 
 // MARK: - Rail
 
-/// The grouped vertical rail: "On this Mac" then "Cloud". Writes the selection
+/// The grouped vertical rail (#1914: three groups). Writes the selection
 /// through the same `settings.llmProvider` setter the old dropdown used — no new
 /// state home (plan §3b).
 struct ProviderRail: View {
@@ -488,11 +540,14 @@ struct ProviderRail: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
-      groupHeader("On this Mac")
-      ForEach(PolishRailCatalog.local) { row(for: $0) }
-      groupHeader("Cloud")
-        .padding(.top, 14)
-      ForEach(PolishRailCatalog.cloud) { row(for: $0) }
+      // #1914: driven by `PolishRailGroup.allCases` and the catalog, never by
+      // hard-coded blocks. Adding a group is a case, not a fourth copy of this
+      // pattern, and the heading text has one owner.
+      ForEach(Array(PolishRailGroup.allCases.enumerated()), id: \.element) { index, group in
+        groupHeader(group.heading)
+          .padding(.top, index == 0 ? 0 : 14)
+        ForEach(PolishRailCatalog.providers(in: group)) { row(for: $0) }
+      }
     }
     .padding(10)
     .background(
@@ -542,19 +597,9 @@ struct ProviderDetailHeader: View {
   let entry: PolishRailProvider
   let status: ProviderStatus
 
-  private var privacyLine: String {
-    // "only" is dropped for cloud providers, not just Claude's: all three
-    // (OpenAI/Gemini/Claude) route through the shared `.cloudFixed` prompt
-    // family, which conditionally includes the active app name and custom
-    // word list alongside the transcript (CloudFixedPromptBuilder) — "text
-    // only" was never accurate here, this terse header line just hadn't
-    // been caught by #158's earlier fix to the fuller privacy sentences in
-    // AIPolishSettingsView.swift (a different string, missed by that
-    // round's grep; Codex r8 found it).
-    entry.isLocal
-      ? "Nothing you dictate leaves this Mac"
-      : "Sends transcribed text, never audio"
-  }
+  // #1914: the privacy claim lives on `PolishRailGroup`. The current heading,
+  // accessibility label, and detail line all read the same group-owned policy.
+  private var privacyLine: String { entry.group.privacyLine }
 
   var body: some View {
     HStack(alignment: .center, spacing: 12) {
@@ -576,7 +621,10 @@ struct ProviderDetailHeader: View {
         Text("\(entry.tagline) · \(privacyLine)")
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)
-          .lineLimit(1)
+          // Ollama's approved line carries the local-or-hosted qualification.
+          // Let that row wrap instead of truncating the trust-relevant copy.
+          .lineLimit(entry.group == .yourOwnSetup ? nil : 1)
+          .fixedSize(horizontal: false, vertical: true)
           .truncationMode(.tail)
       }
       Spacer(minLength: 8)

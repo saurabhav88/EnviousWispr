@@ -104,6 +104,43 @@ struct DualModePolishTelemetryTests {
     #expect(decoded.polishFellBackToRaw == true)
   }
 
+  /// #1914: transcripts written before `polishRanRemote` lack this key, so they
+  /// must decode with nil rather than fail. An optional Codable property provides
+  /// that compatibility; this test pins it.
+  @Test("ExecutionMetrics decodes a pre-#1914 record with polishRanRemote absent")
+  func executionMetricsDecodesLegacyWithoutRemoteness() throws {
+    let legacy = """
+      {
+        "asrLatencySeconds": 0.4,
+        "llmLatencySeconds": 0.9,
+        "coldStart": false,
+        "streamingMode": false,
+        "polishFellBackToRaw": false
+      }
+      """
+    let metrics = try JSONDecoder().decode(
+      ExecutionMetrics.self, from: Data(legacy.utf8))
+    #expect(metrics.polishRanRemote == nil)
+    // The record is otherwise intact, so a nil here is the absent key and not a
+    // decode that quietly gave up partway.
+    #expect(metrics.llmLatencySeconds == 0.9)
+    #expect(metrics.polishFellBackToRaw == false)
+  }
+
+  /// Both booleans survive a round trip, in both directions. `false` matters as
+  /// much as `true`: it is the local-model arm of the metric, and a shape that
+  /// dropped it would leave remote polish looking like the only Ollama polish
+  /// that ever happens.
+  @Test(
+    "ExecutionMetrics roundtrips polishRanRemote in both directions",
+    arguments: [true, false])
+  func executionMetricsRoundtripsRemoteness(value: Bool) throws {
+    let original = ExecutionMetrics(llmLatencySeconds: 1.0, polishRanRemote: value)
+    let decoded = try JSONDecoder().decode(
+      ExecutionMetrics.self, from: JSONEncoder().encode(original))
+    #expect(decoded.polishRanRemote == value)
+  }
+
   // MARK: - 3. TelemetryService surfaces properties via testEventHook
 
   // testEventHook + CapturedTelemetryEvent are DEBUG-only — release builds
@@ -174,6 +211,53 @@ struct DualModePolishTelemetryTests {
       #expect(event.boolProps["fell_back_to_raw"] == false)
       // filter_tripped absent (passed nil) — schema cleanliness
       #expect(event.stringProps["filter_tripped"] == nil)
+    }
+
+    /// #1914: `true` and `false` are both real answers and must arrive as
+    /// distinct values, not as present-versus-absent. The hook reads
+    /// `ollama_remote` back out of the emitted `props`, so deleting the
+    /// `props["ollama_remote"]` write fails this even though the parameter
+    /// would still be sitting there unused.
+    @Test(
+      "TelemetryService emits ollama_remote true and false distinctly on completed polish",
+      arguments: [true, false])
+    func telemetryServiceEmitsOllamaRemote(value: Bool) async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.llmPolishCompleted(
+        provider: "ollama", model: "gpt-oss:20b-cloud",
+        result: "success", latencySeconds: 0.9,
+        ollamaRemote: value
+      )
+
+      let event = try await waiter.waitForEvent(named: "llm.polish_completed")
+      #expect(event.boolProps["ollama_remote"] == value)
+      #expect(event.stringProps["provider"] == "ollama")
+    }
+
+    /// The nil arm, which is the one that keeps the metric readable. A cloud
+    /// provider has no daemon to ask, so the key must be ABSENT rather than
+    /// `false` — a defaulted `false` would make "ran locally in Ollama" and "was
+    /// never Ollama" the same value, and no query could separate them again.
+    @Test("TelemetryService omits ollama_remote entirely for a non-Ollama provider")
+    func telemetryServiceOmitsOllamaRemoteForCloud() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.llmPolishCompleted(
+        provider: "openai", model: "gpt-4o-mini",
+        result: "success", latencySeconds: 1.1
+      )
+
+      let event = try await waiter.waitForEvent(named: "llm.polish_completed")
+      #expect(event.boolProps["ollama_remote"] == nil)
     }
 
   #endif  // DEBUG (testEventHook tests)

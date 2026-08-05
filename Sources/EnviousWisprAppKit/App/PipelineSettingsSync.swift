@@ -30,13 +30,40 @@ final class PipelineSettingsSync {
   /// corrupt a pre-snapshot read from the polish step.
   private var lastEvictableOllamaModel: String?
 
+  /// #1914: is this Ollama model one the daemon proxies to Ollama's servers?
+  ///
+  /// `true` proven remote · `false` proven local · **`nil` absent from the
+  /// catalog**, which is a THIRD answer and not a synonym for either. Only
+  /// `true` suppresses eviction; `nil` falls through to today's behaviour.
+  ///
+  /// Required, with no default. A defaulted lookup would silently answer for a
+  /// composition root that forgot to wire it, and "silently answers" is the
+  /// entire defect class this epic removes.
+  private let ollamaRemotenessLookup: (String) -> Bool?
+
+  /// #1914 test seam. Nil uses the production scheduler, which still routes
+  /// through `LLMPolishStep.evictPreviousOllamaModel`.
+  ///
+  /// Shaped as an optional OVERRIDE rather than a defaulted closure (the shape
+  /// `LLMPolishStep.evictOllamaModel` uses) because the production default
+  /// needs `self.kernelDriver`, and a stored property cannot reference `self`
+  /// in its own initializer. The alternative — a no-op default reassigned in
+  /// `init` — would leave a closure that silently disables eviction for any
+  /// future initializer that forgot to overwrite it.
+  ///
+  /// It exists because suppression happens BEFORE any connector call, so the
+  /// connector's own `networkExecutor` seam is downstream of the gate and
+  /// cannot observe a request that was never scheduled.
+  var evictionScheduler: ((String) -> Void)?
+
   init(
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     hotkeyService: HotkeyService,
-    egOneRuntime: EGOneRuntime? = nil
+    egOneRuntime: EGOneRuntime? = nil,
+    ollamaRemotenessLookup: @escaping (String) -> Bool?
   ) {
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
@@ -44,6 +71,7 @@ final class PipelineSettingsSync {
     self.asrManager = asrManager
     self.hotkeyService = hotkeyService
     self.egOneRuntime = egOneRuntime
+    self.ollamaRemotenessLookup = ollamaRemotenessLookup
     // #1271 matrix gap 3: Remove Model defers while a recording froze
     // `.egOne`. The pinned-session authority is THIS class (it owns both
     // drivers), so it wires the runtime's read itself.
@@ -276,6 +304,33 @@ final class PipelineSettingsSync {
       lastEvictableOllamaModel = new
       return
     }
+    // #1914: remote models are skipped BEFORE the in-flight deferral below,
+    // and the order is load-bearing. Eviction unloads weights from THIS Mac's
+    // memory; a model running on Ollama's servers has none here, so the request
+    // buys nothing and spends the user's cloud quota. A remote model may well
+    // have a polish request in flight — what it does not have is local weights
+    // the deferral exists to protect, so eviction is unnecessary either way.
+    // Deferring would leave the tracker pinned at `pre` and re-ask the same
+    // question on every later settings change.
+    //
+    // Only a PROVEN remote model is skipped. `nil` means the catalog has no row
+    // for this name, and that falls through to eviction on purpose: the cost of
+    // a needless unload is one local request, while the cost of skipping a real
+    // local model is a model left resident in VRAM, which is the #286
+    // Bluetooth-audio regression. That is the OPPOSITE default from the warm-up
+    // policy (#1914 Chunk 3), which skips unknown models, because there the
+    // costs are reversed: a needless warm-up spends cloud quota and a skipped
+    // one only costs a slower first polish.
+    if ollamaRemotenessLookup(pre) == true {
+      lastEvictableOllamaModel = new
+      Task {
+        await AppLogger.shared.log(
+          "Ollama eviction skipped: model=\(pre) reason=remote",
+          level: .info, category: "Ollama")
+      }
+      return
+    }
+
     // Phase B: if either pipeline has frozen `pre` into its in-flight
     // session via `DictationSessionConfig`, the upcoming polish call is
     // pinned to that model. Evicting now would cold-swap the active
@@ -283,13 +338,66 @@ final class PipelineSettingsSync {
     // `pre`; the next setting change re-evaluates.
     if isOllamaModelPinnedInFlight(pre) { return }
     lastEvictableOllamaModel = new
-    // #1106: eviction is a stateless server-unload by model NAME
-    // (`OllamaConnector.evictModel`), so it routes through the live kernel's
-    // polish step (where the Ollama models actually load) rather than the
-    // deleted re-polish step. Any `LLMPolishStep` instance works.
+    scheduleOllamaEviction(pre)
+  }
+
+  /// #1106: eviction is a stateless server-unload by model NAME
+  /// (`OllamaConnector.evictModel`), so it routes through the live kernel's
+  /// polish step (where the Ollama models actually load) rather than the
+  /// deleted re-polish step. Any `LLMPolishStep` instance works.
+  ///
+  /// #1914: extracted so a test can observe THIS call site. Suppression happens
+  /// before the connector exists, so the connector's network seam is downstream
+  /// of the gate and can never see a request that was never scheduled.
+  private func scheduleOllamaEviction(_ model: String) {
+    if let evictionScheduler {
+      evictionScheduler(model)
+      return
+    }
     let polishStep = kernelDriver.llmPolish
-    Task { [polishStep, pre] in
-      await polishStep.evictPreviousOllamaModel(pre)
+    Task { [polishStep, model] in
+      await polishStep.evictPreviousOllamaModel(model)
+    }
+  }
+
+  /// #1914: name to remoteness, against the Manage Models catalog.
+  ///
+  /// Production code, not a test helper, and the composition root calls THIS
+  /// rather than writing its own matcher — a test that reimplemented canonical
+  /// matching would prove only that the copy works.
+  ///
+  /// Matching is canonical (`llama2` and `llama2:latest` are one model), and
+  /// the fact comes from the row's already-decoded `facts`. This never reads
+  /// `remote_host`, never inspects the name for a `-cloud` suffix (plan §3
+  /// Decision 1 rejects that classifier), and never issues a request.
+  ///
+  /// Returns `nil` when the catalog has no row for the name, which is a real
+  /// third answer: the catalog can legitimately be empty before the first
+  /// `/api/tags` refresh.
+  static func ollamaRemoteness(
+    of model: String, in catalog: [OllamaDownloadedModel]
+  ) -> Bool? {
+    let target = OllamaSetupService.canonicalModelName(model)
+    let matched = catalog.first {
+      OllamaSetupService.canonicalModelName($0.exactName) == target
+    }
+    return matched?.facts.isRemote
+  }
+
+  /// The production wiring for `ollamaRemotenessLookup`, living beside the
+  /// semantics it depends on rather than in the composition root — which only
+  /// needs to name it, not explain it.
+  ///
+  /// Reads `downloadedModels` at CALL time, never capturing a snapshot, so a
+  /// model pulled or deleted after launch is seen. The capture is weak and a
+  /// deallocated service answers `nil`, which is the fail-open direction: an
+  /// unknown model is still evicted.
+  static func liveOllamaRemotenessLookup(
+    _ ollamaSetup: OllamaSetupService
+  ) -> (String) -> Bool? {
+    { [weak ollamaSetup] model in
+      guard let ollamaSetup else { return nil }
+      return ollamaRemoteness(of: model, in: ollamaSetup.downloadedModels)
     }
   }
 

@@ -23,22 +23,100 @@ public struct LLMModelDiscovery: Sendable {
   /// Alias prefixes to exclude (keep specific versioned models only).
   private static let aliasPatterns = ["latest"]
 
+  /// #1914: one fetched row on its way to becoming an `LLMModelInfo`.
+  ///
+  /// Replaces the bare `(id:displayName:)` tuple the fetchers used to hand
+  /// around, because remoteness now has to survive the trip from `/api/tags` to
+  /// the selection dropdown and a tuple cannot carry it without every cloud
+  /// fetcher also growing a field it has no answer for. The cloud fetchers keep
+  /// returning pairs and are adapted by `cloudCandidates`.
+  /// `internal`, not `private`, so the pure mapping below is directly testable.
+  /// This file has no HTTP mock for its fetchers and never has (see
+  /// `LLMModelDiscoveryTests`), so the established answer here is to extract the
+  /// pure decision and test that — the same shape as `claudePaginationDecision`.
+  struct DiscoveryCandidate: Sendable, Equatable {
+    let id: String
+    let displayName: String
+    /// Meaningful for `.ollama` only — see `LLMModelInfo.isRemote`.
+    let isRemote: Bool
+  }
+
+  /// #1914: the FINAL handoff — a candidate becomes the row selection and
+  /// auto-selection actually consume.
+  ///
+  /// Production-owned rather than inline in the task group because remoteness
+  /// crosses TWO links, and testing only the first proves nothing about the
+  /// second: `ollamaCandidates` carries the fact out of the wire format, and
+  /// this carries it into `LLMModelInfo`. A mutation to an inline construction
+  /// would have evaded every control aimed at the parser.
+  static func modelInfo(
+    from candidate: DiscoveryCandidate,
+    provider: LLMProvider,
+    isAvailable: Bool
+  ) -> LLMModelInfo {
+    LLMModelInfo(
+      id: candidate.id,
+      displayName: candidate.displayName,
+      provider: provider,
+      isAvailable: isAvailable,
+      isRemote: candidate.isRemote
+    )
+  }
+
+  /// #1914: `/api/tags` rows to selection-dropdown candidates.
+  ///
+  /// The whole body is a delegation on purpose. Discovery must NOT read
+  /// `remote_host` or `capabilities` itself. `OllamaConnector.modelFacts` has
+  /// exactly two production callers by design — `parseDownloadedModels` (the
+  /// catalog) and `classifyReadiness` (the runtime) — and discovery reaches it
+  /// THROUGH the first rather than becoming a third. A third reader of one wire
+  /// format is exactly how the dropdown and the runtime would come to disagree
+  /// about the same model.
+  ///
+  /// Extracted from `fetchOllamaModels` so remoteness reaching a candidate is
+  /// assertable without a live daemon. Without this seam, breaking the link
+  /// would fail no test at all.
+  static func ollamaCandidates(fromTagsModels models: [[String: Any]]) -> [DiscoveryCandidate] {
+    OllamaSetupService.parseDownloadedModels(fromTagsModels: models)
+      .map {
+        DiscoveryCandidate(
+          id: $0.exactName,
+          displayName: $0.displayName,
+          isRemote: $0.facts.isRemote
+        )
+      }
+  }
+
+  /// Adapts a cloud provider's `(id, displayName)` rows. `isRemote` is `false`
+  /// by definition here: it answers "does the Ollama daemon proxy this model",
+  /// and a cloud provider has no Ollama daemon in its path at all.
+  private static func cloudCandidates(
+    _ rows: [(id: String, displayName: String)]
+  ) -> [DiscoveryCandidate] {
+    rows.map { DiscoveryCandidate(id: $0.id, displayName: $0.displayName, isRemote: false) }
+  }
+
   // MARK: - Public API
 
   /// Discover and probe models for the given provider.
   /// Returns models sorted: available first, then locked, alphabetically within each group.
   public func discoverModels(provider: LLMProvider, apiKey: String) async throws -> [LLMModelInfo] {
-    let modelIDs: [(id: String, displayName: String)]
+    let candidates: [DiscoveryCandidate]
 
+    // #1914: each cloud branch now filters at its own call site. Previously one
+    // shared `provider == .ollama ? modelIDs : filterModels(modelIDs)` line did
+    // it — identical behaviour, since Ollama was the sole unfiltered provider,
+    // but the conditional no longer earns its keep once the branches differ in
+    // what they return.
     switch provider {
     case .gemini:
-      modelIDs = try await fetchGeminiModels(apiKey: apiKey)
+      candidates = Self.cloudCandidates(filterModels(try await fetchGeminiModels(apiKey: apiKey)))
     case .openAI:
-      modelIDs = try await fetchOpenAIModels(apiKey: apiKey)
+      candidates = Self.cloudCandidates(filterModels(try await fetchOpenAIModels(apiKey: apiKey)))
     case .claude:
-      modelIDs = try await fetchClaudeModels(apiKey: apiKey)
+      candidates = Self.cloudCandidates(filterModels(try await fetchClaudeModels(apiKey: apiKey)))
     case .ollama:
-      modelIDs = try await fetchOllamaModels()
+      candidates = try await fetchOllamaModels()
     case .appleIntelligence:
       return appleIntelligenceModelInfo()
     case .egOne:
@@ -49,21 +127,18 @@ public struct LLMModelDiscovery: Sendable {
       return []
     }
 
-    let filtered = provider == .ollama ? modelIDs : filterModels(modelIDs)
-
     // Probe models with concurrency limit to avoid rate limiting
     var results: [LLMModelInfo] = []
 
     // Process in batches to limit concurrent requests
-    for batch in filtered.chunked(into: LLMConstants.maxConcurrentProbes) {
+    for batch in candidates.chunked(into: LLMConstants.maxConcurrentProbes) {
       let batchResults = await withTaskGroup(of: LLMModelInfo.self, returning: [LLMModelInfo].self)
       { group in
         for model in batch {
           group.addTask {
             let available = await probeModel(id: model.id, provider: provider, apiKey: apiKey)
-            return LLMModelInfo(
-              id: model.id,
-              displayName: model.displayName,
+            return Self.modelInfo(
+              from: model,
               provider: provider,
               isAvailable: available
             )
@@ -367,7 +442,7 @@ public struct LLMModelDiscovery: Sendable {
 
   // MARK: - Ollama
 
-  private func fetchOllamaModels() async throws -> [(id: String, displayName: String)] {
+  private func fetchOllamaModels() async throws -> [DiscoveryCandidate] {
     guard let url = URL(string: "http://localhost:11434/api/tags") else {
       throw LLMError.requestFailed("Invalid Ollama URL")
     }
@@ -385,16 +460,12 @@ public struct LLMModelDiscovery: Sendable {
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
       guard let models = json?["models"] as? [[String: Any]] else { return [] }
 
-      return models.compactMap { model -> (id: String, displayName: String)? in
-        guard let name = model["name"] as? String else { return nil }
-        let base = name.components(separatedBy: ":").first ?? name
-        let display = base.replacingOccurrences(of: "-", with: " ")
-          .replacingOccurrences(of: ".", with: " ")
-          .split(separator: " ")
-          .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-          .joined(separator: " ")
-        return (id: name, displayName: display)
-      }
+      // #1914: parsing lives in `ollamaCandidates` so it is testable without a
+      // live daemon. That also deleted a duplicate: the name-prettifying block
+      // that used to sit here was byte-identical to
+      // `OllamaSetupService.inferDisplayName`, which the shared parser already
+      // applies, so dropdown labels are unchanged.
+      return Self.ollamaCandidates(fromTagsModels: models)
     } catch let urlError as URLError {
       switch urlError.code {
       case .cannotConnectToHost, .timedOut, .cannotFindHost,
@@ -419,7 +490,11 @@ public struct LLMModelDiscovery: Sendable {
               id: "apple-intelligence",
               displayName: "Apple Intelligence (On-Device)",
               provider: .appleIntelligence,
-              isAvailable: true
+              isAvailable: true,
+              // Apple Intelligence runs on this Mac by definition. Stated
+              // rather than defaulted: `LLMModelInfo.init` requires the
+              // parameter, so omitting it here is a compile error.
+              isRemote: false
             )
           ]
         case .unavailable(let reason):
@@ -439,7 +514,8 @@ public struct LLMModelDiscovery: Sendable {
               id: "apple-intelligence",
               displayName: "Apple Intelligence (\(suffix))",
               provider: .appleIntelligence,
-              isAvailable: false
+              isAvailable: false,
+              isRemote: false
             )
           ]
         }
@@ -450,7 +526,8 @@ public struct LLMModelDiscovery: Sendable {
         id: "apple-intelligence",
         displayName: "Apple Intelligence (Requires macOS 26+)",
         provider: .appleIntelligence,
-        isAvailable: false
+        isAvailable: false,
+        isRemote: false
       )
     ]
   }

@@ -135,6 +135,15 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var tailDecodeSec: Double?
   public var maxUnconfirmedWindowSec: Double?
   public var stopWhileDecodeInFlight: Bool?
+  /// #1914: whether a SUCCESSFUL Ollama polish ran on Ollama's servers rather
+  /// than on this Mac. Nil for every other case — non-Ollama providers, failed
+  /// or skipped polish, and pre-#1914 transcripts on disk (additive optional
+  /// Codable, back-compatible). Metadata only: this is a boolean about where the
+  /// model ran, never the `remote_host` value the daemon reported.
+  ///
+  /// `false` means the daemon did not report this model as remote. It is not an
+  /// independent proof of local execution, and telemetry must not read it as one.
+  public var polishRanRemote: Bool?
 
   public init(
     asrLatencySeconds: Double? = nil,
@@ -189,7 +198,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     streamingCoveredSec: Double? = nil,
     tailDecodeSec: Double? = nil,
     maxUnconfirmedWindowSec: Double? = nil,
-    stopWhileDecodeInFlight: Bool? = nil
+    stopWhileDecodeInFlight: Bool? = nil,
+    polishRanRemote: Bool? = nil
   ) {
     self.asrLatencySeconds = asrLatencySeconds
     self.llmLatencySeconds = llmLatencySeconds
@@ -244,6 +254,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.tailDecodeSec = tailDecodeSec
     self.maxUnconfirmedWindowSec = maxUnconfirmedWindowSec
     self.stopWhileDecodeInFlight = stopWhileDecodeInFlight
+    self.polishRanRemote = polishRanRemote
   }
 }
 

@@ -363,6 +363,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     ctx.polishedText = nil
     ctx.llmProvider = nil
     ctx.llmModel = nil
+    // #1914: nothing polished, so there is no completed remoteness fact to carry.
+    // Cleared rather than left alone because this returns the CALLER's context,
+    // and a value arriving here could otherwise ride a bypass into telemetry.
+    ctx.polishRanRemote = nil
     return ctx
   }
 
@@ -443,15 +447,57 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // symptom). The probe uses the entry-snapshot `model`, so a mid-polish
     // settings change cannot tear it; the answer is per-attempt truth, never
     // cached across dictations.
+    // #1914: the probe's `.ready` carries the daemon's own facts about THIS
+    // model. Bound explicitly rather than matched with a bare `case .ready:` —
+    // Swift permits ignoring an associated value, so nothing in the compiler
+    // notices if this binding is dropped and every model silently falls back to
+    // the tight budget again. `OllamaReadinessGateTests` is what catches that,
+    // and its mutation control was run to prove it does.
+    //
+    // Scoped to this one attempt and never cached: `preflightReadiness`'s own
+    // contract forbids reuse across dictations, because the user can sign out of
+    // Ollama or swap a model at any time.
+    //
+    // Deliberately a NON-OPTIONAL `let` with no default. An optional plus `??
+    // false` would reintroduce the exact defect this chunk removes: drop the
+    // binding and every model silently falls back to the tight budget, compiling
+    // cleanly. Here Swift's definite-initialization makes that a COMPILE error
+    // instead — every path that reaches the polish request must have assigned
+    // it, and the three not-ready paths throw before they get there.
+    //
+    // #1914 Chunk 7: `ollamaRemote` rides the SAME binding, for the same reason.
+    // It is `Bool?` rather than `Bool` because its third state is real: a
+    // non-Ollama attempt has no daemon to ask, and saying `false` there would
+    // make the metric mean "local" in one place and "not Ollama" in another.
+    let ollamaThinks: Bool?
+    let ollamaRemote: Bool?
     if provider == .ollama {
       switch await ollamaReadinessProbe(model) {
-      case .ready:
-        break
+      case .ready(let facts):
+        ollamaThinks = facts.thinks
+        ollamaRemote = facts.isRemote
       case .serverDown:
         throw LLMError.localPolishNotReady(.providerUnreachable)
       case .modelMissing:
         throw LLMError.localPolishNotReady(.modelUnavailable)
+      case .noModelSelected:
+        // #1914: distinct from `.modelMissing` all the way to the pill. The
+        // user has no selection, so telling them to download a model would send
+        // them to fix something that is not broken.
+        throw LLMError.localPolishNotReady(.noModelSelected)
       }
+    } else {
+      // Explicit, not defaulted: a non-Ollama attempt has no daemon to ask, and
+      // both values reach only the `.ollama` branches of the two policies below
+      // (`outputTokenPolicy` switches on provider; `ollamaThinking` is called
+      // only under `provider == .ollama`).
+      //
+      // `nil`, not `false`, for the same reason `ollamaRemote` is nil here: a
+      // reported `false` and "nobody was asked" are different facts, and the
+      // three-state on `OllamaModelFacts.thinks` only works if every producer
+      // respects the distinction.
+      ollamaThinks = nil
+      ollamaRemote = nil
     }
 
     // #1271: EG-1 resolves its polisher from the live server endpoint, not
@@ -503,12 +549,23 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // these three on a live step: PipelineSettingsSync no-ops all of them and
     // the values are frozen per recording. The discipline is kept because
     // internal consistency should not depend on an invariant held elsewhere.)
-    let thinking = Self.resolveThinking(
-      control: provider.modelCapabilities(model: model).thinkingControl,
-      useExtendedThinking: extendedThinking
-    )
+    //
+    // #1914: Ollama is the one provider whose thinking answer is OBSERVED per
+    // attempt rather than looked up. `LLMModelCapabilities` is documented
+    // "Static knowledge, deliberately" and keys off a model NAME, so a live
+    // `/api/tags` fact has no business in it — the daemon's answer is routed
+    // straight from the attempt's facts to the request instead. Every other
+    // provider keeps the static resolution unchanged.
+    let thinking: ResolvedThinking? =
+      provider == .ollama
+      ? Self.ollamaThinking(thinks: ollamaThinks)
+      : Self.resolveThinking(
+        control: provider.modelCapabilities(model: model).thinkingControl,
+        useExtendedThinking: extendedThinking
+      )
     let outputTokens = Self.outputTokenPolicy(
-      provider: provider, model: model, textCount: context.text.count)
+      provider: provider, model: model, textCount: context.text.count,
+      thinks: ollamaThinks)
 
     // Prefer live LID but fall back to the context's persisted language so
     // standalone callers that clear `languageDetection` (crash-recovery's
@@ -669,6 +726,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       postFilterOutput: result.polishedText,
       validatedText: validatedText,
       originalText: context.text)
+    // #1914: the only positive stamp site. It sits after `polisher.polish`
+    // returned and after `validatePolishOutput`. Every earlier exit leaves the
+    // field nil.
+    //
+    // Finalization owns one later correction: if empty-output recovery clears
+    // `polishedText` and reclassifies the result as skipped, it clears this field
+    // too. Apple Intelligence cannot reach this stamp because its branch returns
+    // above.
+    ctx.polishRanRemote = ollamaRemote
     return ctx
   }
 
@@ -889,7 +955,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// polish. Local engines and Claude keep explicit caps. Static and pure
   /// for fixture testing.
   nonisolated static func outputTokenPolicy(
-    provider: LLMProvider, model: String, textCount: Int
+    provider: LLMProvider, model: String, textCount: Int, thinks: Bool?
   ) -> OutputTokenPolicy {
     switch provider {
     case .ollama:
@@ -897,17 +963,34 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // For 921-char input: 921/3 + 100 = 407 tokens (~2x actual output of ~195).
       // The pipeline-level timeout (15s) caps runaway generation.
       //
-      // Only thinking-capable families (Gemma4, qwen3, deepseek-r1,
-      // gpt-oss) get the larger 2048-token floor — they emit reasoning
-      // into `message.thinking` separately from `message.content`, and
-      // that reasoning still counts against `num_predict` (#272). All
-      // other Ollama models (weak or not) keep the tight 256 floor so
-      // a rambly generation can't outrun the 15s pipeline timeout.
-      // `done_reason=stop` ends generation early for short transcripts.
+      // #1914: `thinks` is the daemon's OWN answer for this model, taken from
+      // the attempt's `/api/tags` facts. It replaces a hand-authored list of
+      // four family names, which was a prediction about models other people
+      // install and mis-budgeted every thinking model outside it. The model
+      // NAME no longer affects this decision at all.
+      //
+      // A thinking model emits reasoning into `message.thinking`, which still
+      // counts against `num_predict` (#272), so it needs the larger floor.
+      // Measured 2026-08-01: at deep thinking a 256 cap returned zero content
+      // with `done_reason=length`; at 2048 the same request completed. Shallow
+      // thinking fits the tight cap comfortably, which is why the first attempt
+      // to reproduce that starvation failed — the depth is load-bearing.
+      //
+      // Non-thinking models keep the tight 256 floor so a rambly generation
+      // can't outrun the 15s pipeline timeout. `done_reason=stop` ends
+      // generation early for short transcripts.
+      //
+      // Note the floor only binds on SHORT dictations: above ~5,844 characters
+      // `textCount / 3 + 100` already exceeds 2048 and dominates.
+      // ONLY a REPORTED not-thinking earns the tight floor. `nil` means the
+      // daemon did not report capabilities, and that case takes the larger
+      // floor so it reproduces pre-#1914 `main` for the four families the
+      // retired prefix list covered, instead of silently downgrading them
+      // (PR #1949 cloud review). See `OllamaModelFacts.thinks`.
       let floor =
-        OllamaSetupService.isThinkingCapableModel(model)
-        ? LLMConstants.ollamaThinkingMaxTokens
-        : LLMConstants.ollamaMaxTokens
+        thinks == false
+        ? LLMConstants.ollamaMaxTokens
+        : LLMConstants.ollamaThinkingMaxTokens
       return .capped(max(textCount / 3 + 100, floor))
     case .egOne:
       // #1271: character-count cap, CJK-safe shape (Codex r14) — the
@@ -952,6 +1035,31 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// Static and fed from `process()`'s entry snapshot, never from `self`, so a
   /// concurrent settings change cannot tear it away from the model the rest of
   /// the request was built for.
+  /// #1914: Ollama's thinking value, resolved from the attempt's observed facts.
+  ///
+  /// A thinking model gets an explicit `"low"`, never an omitted field and never
+  /// a boolean. Omission means the model's DEFAULT depth, which is what produced
+  /// the empty output in ENVIOUSWISPR-4M; `"low"` addresses the cause while the
+  /// enlarged budget accommodates what remains. Measured 2026-08-01: `"low"` was
+  /// ~3x faster than `"high"` at identical output length.
+  ///
+  /// `think: false` is FORBIDDEN and this is confirmed on three models —
+  /// `gpt-oss:120b-cloud` and `gemma4:latest` both ignored it and emitted
+  /// reasoning anyway, while `nemotron-3-super:cloud` honoured it. A value two of
+  /// three models silently ignore cannot be a control, so a non-thinking model
+  /// sends no field at all rather than an explicit false.
+  ///
+  /// Three-state. Readiness always resolves before a polish attempt, so a
+  /// missing ANSWER is impossible here — but a daemon that never reported
+  /// `capabilities` leaves the FACT unknown, and `nil` says so.
+  ///
+  /// Only a reported `true` sends a thinking level. Unknown sends no `think`
+  /// key, exactly as pre-#1914 `main` did for every model, so a daemon without
+  /// the undocumented field cannot receive a dialect it may not understand.
+  private static func ollamaThinking(thinks: Bool?) -> ResolvedThinking? {
+    thinks == true ? .level("low") : nil
+  }
+
   private static func resolveThinking(
     control: LLMModelCapabilities.ThinkingControl,
     useExtendedThinking: Bool

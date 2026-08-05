@@ -344,7 +344,11 @@ import Testing
       // Discovery finds the current model unavailable and swaps it (writes both
       // llmModel and ollamaModel under the system flag) — one coalesced delta.
       settings.applyDiscoveredModels(
-        [LLMModelInfo(id: "mistral", displayName: "M", provider: .ollama, isAvailable: true)],
+        [
+          LLMModelInfo(
+            id: "mistral", displayName: "M", provider: .ollama, isAvailable: true,
+            isRemote: false)
+        ],
         for: .ollama)
       telemetry.flush()
       let d = deltas(box, setting: "llm_model")
@@ -398,7 +402,11 @@ import Testing
       // 500 ms debounce window. The final value came from the system write.
       settings.llmProvider = .ollama
       settings.applyDiscoveredModels(
-        [LLMModelInfo(id: "mistral", displayName: "M", provider: .ollama, isAvailable: true)],
+        [
+          LLMModelInfo(
+            id: "mistral", displayName: "M", provider: .ollama, isAvailable: true,
+            isRemote: false)
+        ],
         for: .ollama)
       telemetry.flush()
       let d = deltas(box, setting: "llm_model")

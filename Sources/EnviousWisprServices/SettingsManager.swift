@@ -853,7 +853,58 @@ public final class SettingsManager {
         : LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       return
     }
-    if !models.contains(where: { $0.id == llmModel && $0.isAvailable }) {
+    // #1914 (PR #1949 cloud review): for Ollama the ARMED model is
+    // `ollamaModel`, not `llmModel` — `effectiveLLMModel` reads it (`:574`), and
+    // `canonicalizeLLMModelForProvider` deliberately does NOT refill `llmModel`
+    // from it (#1305: refilling at launch re-armed a picker selection discovery
+    // had cleared).
+    //
+    // So switching provider away from Ollama and back leaves `llmModel` holding
+    // the OTHER provider's id while `ollamaModel` still holds the user's Ollama
+    // pick. Testing `llmModel` here made that remembered pick look UNARMED, so
+    // the repair below ran — and because the repair excludes hosted rows, a
+    // deliberately chosen HOSTED model was replaced by a local one, or cleared
+    // outright on a hosted-only install, purely from visiting another provider
+    // and coming back. That is the "existing selections are LEFT ALONE" founder
+    // decision below being violated by the very branch that documents it.
+    //
+    // Test what is actually armed.
+    //
+    // Matched CANONICALLY for Ollama, because the runtime does. The readiness
+    // preflight treats `llama3.2` and `llama3.2:latest` as the same model, and
+    // the shipped default is `llama3.2` while a daemon commonly reports
+    // `llama3.2:latest` — so an exact compare here would call an installed
+    // model missing and repair away a selection that works. One rule, in Core,
+    // because this module cannot import the Ollama one (PR #1949).
+    let armedModel = provider == .ollama ? ollamaModel : llmModel
+    let armedRow = models.first { candidate in
+      guard candidate.isAvailable else { return false }
+      return provider == .ollama
+        ? LLMModelInfo.canonicalOllamaName(candidate.id)
+          == LLMModelInfo.canonicalOllamaName(armedModel)
+        : candidate.id == armedModel
+    }
+    if let armedRow {
+      // Armed and available: this is the user's selection and it stands. Re-sync
+      // the picker field, which binds `llmModel` (`AIPolishSettingsView:473`),
+      // so the UI shows the model the runtime will actually use instead of the
+      // previous provider's leftover id.
+      //
+      // This does NOT resurrect #1305. That bug refilled `llmModel` from a
+      // REMEMBERED name with no availability check, re-arming a model discovery
+      // had just cleared. This runs only when discovery itself has just proven
+      // the model is present and available, and it never invents a name: on the
+      // all-hosted path below, `ollamaModel` is cleared to "" and no available
+      // row can match it.
+      // Sync to the DISCOVERED id, not the remembered spelling: a canonical
+      // match can differ by `:latest`, and the picker lists discovered rows, so
+      // storing `llama3.2` against a `llama3.2:latest` row would leave the
+      // picker showing nothing selected.
+      if provider == .ollama {
+        if llmModel != armedRow.id { llmModel = armedRow.id }
+        if ollamaModel != armedRow.id { ollamaModel = armedRow.id }
+      }
+    } else {
       // Prefer the provider's own default-model family (an exact id match,
       // or that default id as a dated-snapshot prefix — Anthropic returns
       // Claude ids as a compact-dated snapshot, e.g. `claude-haiku-4-5` vs.
@@ -866,16 +917,79 @@ public final class SettingsManager {
       // sorts first alphabetically, not the fast/cheap Haiku default.
       let defaultID = LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
       let datedSnapshotPrefix = "\(defaultID)-"
-      let preferredDefault = models.first { model in
+
+      // #1914 (founder decision 2026-08-04): this repair branch may arm a model
+      // automatically, so its candidates exclude hosted Ollama models. It is the
+      // only site that can do so — verified by enumerating every writer of the
+      // two fields.
+      //
+      // An available model already armed before this call bypasses the branch.
+      // The stored fields carry no provenance, so that existing selection may
+      // have come from either a manual pick or the pre-Chunk-4 automatic
+      // fallback (`4b668907`, `models.first(where: \.isAvailable)`), whose
+      // result is byte-identical to a manual pick. The same is true of the
+      // remembered `ollamaModel` the launch-time canonicalization reads.
+      //
+      // FOUNDER DECISION 2026-08-04: existing selections are LEFT ALONE. No
+      // one-time migration clears a pre-existing hosted selection.
+      //
+      // The reason is this branch's own behaviour, not the population size. An
+      // armed, available model never reaches here, so this change PRESERVES its
+      // current selection — for identified users and unidentified ones alike.
+      // Chunk 2 separately improves thinking-model request behaviour without
+      // changing that selection. Note what is NOT claimed: availability in
+      // discovery does not prove usable cloud access, so a preserved hosted
+      // model may still fail at inference (ENVIOUSWISPR-4M's is paid-tier and
+      // 403s). A forced unselect would be the only action that REMOVES a
+      // selection someone may have made deliberately.
+      //
+      // Do NOT re-derive the population from telemetry and reach a different
+      // conclusion: it CANNOT answer the question. We record model names, not
+      // the daemon's `remote_host`, and hosted models do not reliably carry a
+      // `-cloud` suffix — §3 Decision 1 rejects that suffix as a classifier for
+      // exactly this reason. A 2026-08-04 query matching plan-documented
+      // cloud-only names found one person (`deepseek-v4-flash:latest`, the
+      // ENVIOUSWISPR-4M user) out of 16 Ollama users in 365 days. That is a
+      // LOWER BOUND from a name list, not a count. An earlier revision of this
+      // comment claimed the population was "measured EMPTY" by grepping for
+      // `-cloud`; that classifier is the one the plan forbids, and the claim
+      // was false.
+      //
+      // Reopen only if provenance-bearing evidence shows that a pre-Chunk-4
+      // automatic hosted selection survived the upgrade and harmed a user.
+      // Chunk 7's remoteness field alone CANNOT do this: it says where a model
+      // runs, never who chose it, and those are different questions.
+      let eligible = models.filter { model in
         guard model.isAvailable else { return false }
+        return provider == .ollama ? !model.isRemote : true
+      }
+      let preferredDefault = eligible.first { model in
         if model.id == defaultID { return true }
         guard model.id.hasPrefix(datedSnapshotPrefix) else { return false }
         let snapshotSuffix = model.id.dropFirst(datedSnapshotPrefix.count)
         return snapshotSuffix.count == 8 && snapshotSuffix.allSatisfy(\.isNumber)
       }
-      if let fallback = preferredDefault ?? models.first(where: { $0.isAvailable }) {
+      if let fallback = preferredDefault ?? eligible.first {
         llmModel = fallback.id
         if provider == .ollama { ollamaModel = fallback.id }
+      } else if provider == .ollama {
+        // Every available model is hosted. Arm NOTHING rather than pick one.
+        //
+        // BOTH fields, and that is the whole point: `effectiveLLMModel` reads
+        // `ollamaModel` for this provider, not `llmModel`, so clearing only the
+        // picker field would leave the runtime still armed to whatever was
+        // remembered and the refusal would be cosmetic. Clearing both is what
+        // makes the readiness preflight see an empty model, classify it
+        // `.noModelSelected`, and show the user the pill.
+        //
+        // This is the one place the remembered preference is deliberately
+        // discarded. The `models.isEmpty` branch above keeps it on purpose (it
+        // powers the Download-suggestion copy and nothing is installed to
+        // contradict it); here models DO exist and every one of them is a model
+        // we must not choose, so a remembered name would resurrect the exact
+        // silent arming this refuses.
+        llmModel = ""
+        ollamaModel = ""
       }
     }
   }

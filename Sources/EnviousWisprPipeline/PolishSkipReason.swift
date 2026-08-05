@@ -16,7 +16,7 @@ import Foundation
 ///
 /// "Skip" means no polish output was accepted — NOT "never attempted."
 /// `outputLanguageDrift` fires only after a real generation attempt; the other
-/// AFM cases are pre-attempt bypasses. All 15 cases share the same contract
+/// AFM cases are pre-attempt bypasses. All 16 cases share the same contract
 /// (Bypass, per `llm-contract.md`): no `polishedText`, no provider stamp, no
 /// error banner.
 enum PolishSkipReason: Sendable, Equatable {
@@ -27,6 +27,7 @@ enum PolishSkipReason: Sendable, Equatable {
   case egOne(EGOneSkipReason)
   case ollamaProviderUnreachable
   case ollamaModelUnavailable
+  case ollamaNoModelSelected
   case tooShort(LLMProvider)
   case frameworkUnavailable
   case unsupportedInputLanguage
@@ -48,6 +49,7 @@ enum PolishSkipReason: Sendable, Equatable {
       }
     case .ollamaProviderUnreachable: return "local_polish_ollama_server_down"
     case .ollamaModelUnavailable: return "local_polish_ollama_model_missing"
+    case .ollamaNoModelSelected: return "local_polish_ollama_no_model_selected"
     case .tooShort: return "too_short"
     case .frameworkUnavailable: return "framework_unavailable"
     case .unsupportedInputLanguage: return "unsupported_input_language"
@@ -66,7 +68,7 @@ enum PolishSkipReason: Sendable, Equatable {
       return .appleIntelligence
     case .localPolishTimeout, .egOne:
       return .egOne
-    case .ollamaProviderUnreachable, .ollamaModelUnavailable:
+    case .ollamaProviderUnreachable, .ollamaModelUnavailable, .ollamaNoModelSelected:
       return .ollama
     case .tooShort(let provider):
       return provider
@@ -78,6 +80,11 @@ enum PolishSkipReason: Sendable, Equatable {
     switch reason {
     case .providerUnreachable: self = .ollamaProviderUnreachable
     case .modelUnavailable: self = .ollamaModelUnavailable
+    // #1914: explicit arm, because this `default:` returns nil and a missing
+    // mapping does NOT surface as a wrong tag — the skip event simply never
+    // fires, so the outcome would be invisible in analytics while the user sees
+    // the pill. Silent absence is the failure mode this arm exists to stop.
+    case .noModelSelected: self = .ollamaNoModelSelected
     default: return nil
     }
   }

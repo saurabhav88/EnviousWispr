@@ -448,7 +448,8 @@ public final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager,
       hotkeyService: hotkeyService,
-      egOneRuntime: egOneRuntime
+      egOneRuntime: egOneRuntime,
+      ollamaRemotenessLookup: PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
     )
     settingsSync.applyInitialSettings(settings)
 

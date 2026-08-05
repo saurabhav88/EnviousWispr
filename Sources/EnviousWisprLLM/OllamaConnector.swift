@@ -19,19 +19,95 @@ public struct OllamaEvictOutcome: Sendable {
   }
 }
 
+/// #1914: the two per-model facts the daemon reports about the armed model, read
+/// from its own `/api/tags` row rather than guessed from its name.
+///
+/// The two are INDEPENDENT and govern different decisions — where a model runs
+/// does not tell you whether it reasons before answering, which is why a single
+/// flag could not serve both. Ownership table: plan §3d.
+/// - `isRemote` → Manage Models presentation, warm-up skip, eviction skip, completed telemetry.
+/// - `thinks` → output-token budget and the thinking level sent on the request.
+///
+/// Deliberately CLOSED at two fields. Add a third only when the daemon reports
+/// an observed fact with a named consumer; this is not a metadata bag.
+public struct OllamaModelFacts: Sendable, Equatable {
+  /// True iff the daemon reported a non-empty `remote_host` for this model,
+  /// meaning Ollama proxies it to its own servers rather than running it here.
+  /// Never derived from a `-cloud` name suffix: the production sighting that
+  /// opened #1914 was `deepseek-v4-flash:latest`, which carries no suffix.
+  public let isRemote: Bool
+  /// Whether the daemon listed `thinking` among this model's `capabilities`.
+  /// This is the SOLE authority for the question — it replaced a hand-authored
+  /// four-name family list, which was a prediction about which models other
+  /// people install and mis-budgeted every thinking model outside it. Reported
+  /// for local and remote models alike. Do not reintroduce a name-based
+  /// fallback beside it.
+  ///
+  /// THREE-STATE, and the third state is load-bearing. `nil` means the daemon
+  /// did not report `capabilities` AT ALL for this row, which is different from
+  /// reporting a capability list that omits `thinking`:
+  ///
+  /// | value | meaning | budget | `think` key |
+  /// |---|---|---|---|
+  /// | `true` | reported, thinks | 2048 | `"low"` |
+  /// | `false` | reported, does NOT think | 256 | absent |
+  /// | `nil` | not reported | 2048 | absent |
+  ///
+  /// `nil` reproduces PRE-#1914 `main` exactly for the four families that the
+  /// retired prefix list covered (`qwen3`, `deepseek-r1`, `gpt-oss`, `gemma4`),
+  /// which all got the 2048 floor and no `think` key. Collapsing `nil` into
+  /// `false` would have handed those users the 256 floor — the starvation this
+  /// issue exists to remove — on any daemon that omits the field.
+  ///
+  /// That matters because `capabilities` on `/api/tags` is UNDOCUMENTED. The
+  /// published schema (docs.ollama.com/api/tags, read 2026-08-05) lists only
+  /// `name`, `model`, `remote_model`, `remote_host`, `modified_at`, `size`,
+  /// `digest` and `details`; capabilities are documented on `/api/show`. It is
+  /// nonetheless present on every row in practice (measured: Ollama 0.32.4,
+  /// 12 models, 2026-08-01 and again 2026-08-05), so the field is used when
+  /// present and its absence must never silently downgrade a user.
+  ///
+  /// `remote_host` needs no such treatment: it IS documented on `/api/tags`,
+  /// and absent-means-local is correct rather than a guess.
+  public let thinks: Bool?
+
+  public init(isRemote: Bool, thinks: Bool?) {
+    self.isRemote = isRemote
+    self.thinks = thinks
+  }
+}
+
 /// #1305: the instant answer to "is an Ollama polish attempt worth starting?"
 /// Returned by `OllamaConnector.preflightReadiness(model:)`; consumed by the
 /// polish-entry gate in `LLMPolishStep`. Per-attempt truth — callers must NOT
 /// cache it across dictations (the user can quit/start Ollama at any time).
 public enum OllamaReadiness: Sendable, Equatable {
   /// Server responded and the tags list contains the model — attempt polish.
-  case ready
+  ///
+  /// #1914: carries the matched row's own facts. Swift permits a bare
+  /// `case .ready:` to match and IGNORE this payload, so the compiler does NOT
+  /// enforce that consumers read it. A later chunk both consumes the payload in
+  /// `LLMPolishStep` and adds the `OllamaReadinessGateTests` coverage that
+  /// asserts the binding, because no compiler check can stand in for it.
+  case ready(facts: OllamaModelFacts)
   /// Transport error, timeout, non-2xx, or unparseable body — "Ollama is not
   /// responding" class.
   case serverDown
   /// Server responded with a parsed tags list that has no canonical match for
-  /// the model (or the model string is empty — nothing armed).
+  /// the model. The user HAS a selection; it is not installed.
   case modelMissing
+  /// Nothing is armed at all — the model string is empty.
+  ///
+  /// #1914: split out of `modelMissing`, which used to absorb it. The two states
+  /// need different sentences and the difference is not cosmetic: "no model is
+  /// installed in Ollama" was flatly false for a user with models installed and
+  /// none selected, which is exactly the state the never-auto-arm-a-hosted-model
+  /// refusal now creates on purpose.
+  ///
+  /// The producer names it rather than the consumer re-deriving emptiness later:
+  /// only the preflight can see the armed string, and a downstream `isEmpty`
+  /// check would be a second authority on the same question.
+  case noModelSelected
 }
 
 /// Ollama local LLM connector. Uses Ollama's native /api/chat endpoint
@@ -93,7 +169,8 @@ public struct OllamaConnector: TranscriptPolisher {
       model: config.model,
       messages: messages,
       maxTokens: maxTokens,
-      temperature: config.temperature
+      temperature: config.temperature,
+      thinking: config.thinking
     )
 
     var request = URLRequest(url: url)
@@ -160,7 +237,8 @@ public struct OllamaConnector: TranscriptPolisher {
       model: config.model,
       messages: messages,
       maxTokens: maxTokens,
-      temperature: config.temperature
+      temperature: config.temperature,
+      thinking: config.thinking
     )
 
     var request = URLRequest(url: url)
@@ -227,9 +305,9 @@ public struct OllamaConnector: TranscriptPolisher {
     executor: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil,
     deadlineSeconds: Double = 1.0
   ) async -> OllamaReadiness {
-    // Empty model string → nothing armed → modelMissing by definition,
-    // without spending a network round trip.
-    guard !model.isEmpty else { return .modelMissing }
+    // Empty model string → nothing armed. Its own state, not `modelMissing`:
+    // no selection exists to be missing. Answered without a network round trip.
+    guard !model.isEmpty else { return .noModelSelected }
     guard let url = URL(string: "\(baseURL)/api/tags") else { return .serverDown }
     var mutableRequest = URLRequest(url: url)
     mutableRequest.httpMethod = "GET"
@@ -264,9 +342,55 @@ public struct OllamaConnector: TranscriptPolisher {
       return .serverDown
     }
     let target = OllamaSetupService.canonicalModelName(model)
-    let installed = models.compactMap { $0["name"] as? String }
-      .map(OllamaSetupService.canonicalModelName)
-    return installed.contains(target) ? .ready : .modelMissing
+    // #1914: find the MATCHED row and read its own facts. Scanning for facts
+    // across all rows would let an unrelated cloud model make a local one look
+    // remote, so membership and fact extraction must resolve to one row.
+    guard
+      let matched = models.first(where: {
+        guard let name = $0["name"] as? String else { return false }
+        return OllamaSetupService.canonicalModelName(name) == target
+      })
+    else {
+      return .modelMissing
+    }
+    return .ready(facts: modelFacts(fromTagsRow: matched))
+  }
+
+  /// #1914: the SOLE derivation site for both daemon-reported facts. One pure
+  /// function over one parsed `/api/tags` row, with exactly two production
+  /// consumers: the runtime readiness path below, and
+  /// `OllamaSetupService.parseDownloadedModels` for the Manage Models catalog.
+  /// Both
+  /// go through here so the runtime and the UI can never disagree about the
+  /// same model. Do not add a third reader of `remote_host` or `capabilities`.
+  ///
+  /// Every field is optional in practice and absent on older daemons, so each
+  /// check fails to `false` rather than trusting a shape. `false` means "not
+  /// observed", never "observed to be false" — which is why a defaulted `false`
+  /// must not be reported as proven-local telemetry (plan §3d tri-state).
+  nonisolated static func modelFacts(fromTagsRow row: [String: Any]) -> OllamaModelFacts {
+    // Remote iff `remote_host` is a non-empty STRING. A present-but-empty value
+    // and a JSON null both read as local: `as? String` rejects `NSNull`.
+    let remoteHost = row["remote_host"] as? String
+    let isRemote = !(remoteHost ?? "").isEmpty
+
+    // `capabilities` is an array of strings; `thinking` is one of them.
+    //
+    // A missing key, a null, or a non-array shape mean the daemon told us
+    // NOTHING about capability, and that is `nil`, not `false` — see the
+    // three-state table on `OllamaModelFacts.thinks`. An earlier revision
+    // collapsed these to `false` under the comment "preserves today's tight
+    // budget"; that justification was wrong, because on `main` the retired
+    // prefix list gave qwen3 / deepseek-r1 / gpt-oss / gemma4 the 2048 floor,
+    // so `false` would have REGRESSED exactly those users on a daemon that
+    // omits the field. Cloud review caught it (PR #1949).
+    //
+    // An EMPTY array is different again: the daemon answered, and its answer
+    // lists no thinking. That is a reported `false`.
+    let capabilities = row["capabilities"] as? [String]
+    let thinks = capabilities.map { $0.contains("thinking") }
+
+    return OllamaModelFacts(isRemote: isRemote, thinks: thinks)
   }
 
   // MARK: - Eviction (#295)
@@ -361,16 +485,20 @@ public struct OllamaConnector: TranscriptPolisher {
 
   /// Builds the `/api/chat` request body shared by both polish entry points.
   ///
-  /// The `think` parameter is intentionally omitted (#272):
-  /// - Setting `think: false` (boolean) is silently ignored by gemma4:latest and
-  ///   causes reasoning to leak into `message.content` as a 5-13× expansion that
-  ///   the validator rejects.
-  /// - Omitting the key lets Ollama route any reasoning to `message.thinking`
-  ///   (which we don't read) and deliver the clean final answer in `message.content`,
-  ///   provided `num_predict` is large enough to accommodate both (see
-  ///   `LLMConstants.ollamaMaxTokens`).
-  /// Non-thinking models (llama3.2 etc.) are unaffected: they emit empty
-  /// `message.thinking` regardless.
+  /// `think` handling (#272, revised by #1914):
+  /// - A model the daemon reports as thinking receives an explicit `"low"`.
+  ///   Omitting the key means the model's DEFAULT depth, which is what starved
+  ///   `message.content` to empty in ENVIOUSWISPR-4M; `"low"` addresses the
+  ///   cause while the larger `num_predict` floor accommodates what remains.
+  ///   Measured 2026-08-01: `"low"` was ~3x faster than `"high"` at identical
+  ///   output length.
+  /// - A model the daemon reports as NOT thinking receives no `think` key at
+  ///   all. Boolean `think: false` is forbidden: gemma4 and gpt-oss silently
+  ///   ignore it and leak reasoning into `message.content` as a 5-13× expansion
+  ///   the validator rejects, while nemotron honours it — a value two of three
+  ///   models ignore cannot be a control.
+  /// The value arrives on `config.thinking` as `ResolvedThinking`, resolved per
+  /// attempt from the daemon's own facts; this builder never infers it.
   /// Returns the model name iff the provider is `.ollama` and the model
   /// is non-empty; nil otherwise. Pure helper used by the settings
   /// observer to snapshot the pre-swap effective Ollama model (#295).
@@ -393,9 +521,10 @@ public struct OllamaConnector: TranscriptPolisher {
     model: String,
     messages: [[String: String]],
     maxTokens: Int,
-    temperature: Double
+    temperature: Double,
+    thinking: ResolvedThinking?
   ) -> [String: Any] {
-    [
+    var body: [String: Any] = [
       "model": model,
       "messages": messages,
       "stream": false,
@@ -405,6 +534,17 @@ public struct OllamaConnector: TranscriptPolisher {
         "temperature": temperature,
       ],
     ]
+    // #1914: `think` is a TOP-LEVEL key on /api/chat, not an `options` entry.
+    // Only the level dialect is emitted; a budget or effort value would be a
+    // different provider's dialect reaching the wrong wire format, so it is
+    // dropped rather than coerced. `nil` keeps the key absent entirely, which
+    // is what a non-thinking model must send — never a boolean false (#272:
+    // ignored by gemma4 and gpt-oss, honoured by nemotron, so it is not a
+    // control).
+    if case .level(let level) = thinking {
+      body["think"] = level
+    }
+    return body
   }
 
   // MARK: - Retry
@@ -483,14 +623,26 @@ public struct OllamaConnector: TranscriptPolisher {
     throw lastError ?? LLMError.requestFailed("All retries exhausted")
   }
 
-  /// Pure status+body -> reason classifier (#945). 404 means the model is not
-  /// pulled; 5xx is a local Ollama server error. `bodyString` is accepted for
-  /// signature parity with the cloud classifiers (and future body-based splits).
+  /// Pure status+body -> reason classifier (#945, #1914). 404 means the model
+  /// is unavailable; 5xx is an Ollama-side server error. `bodyString` remains
+  /// accepted for classifier signature parity, but Ollama's 429 stays
+  /// rate-or-quota ambiguous and is never split from body text.
   /// Unit-testable without network mocking.
+  ///
+  /// The 401 / 402 / 403 / 429 mapping is plan Decision 6 (#1914), which owns the
+  /// evidence for each status. Do not re-derive it here.
   static func classify(statusCode: Int, bodyString: String) -> PolishFailureReason {
     switch statusCode {
+    case 401:
+      return .apiKeyRejected
+    case 402:
+      return .outOfCredits
+    case 403:
+      return .accessDenied
     case 404:
       return .modelUnavailable
+    case 429:
+      return .rateLimitedOrQuota
     case 500...599:
       return .providerServerError
     default:

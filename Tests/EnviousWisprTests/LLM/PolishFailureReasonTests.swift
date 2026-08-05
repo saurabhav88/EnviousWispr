@@ -127,6 +127,53 @@ struct PolishFailureReasonTests {
     #expect(cloudReach != ollamaReach)
   }
 
+  /// #1914: a 401 from Ollama means the user is signed out of ollama.com, and the
+  /// generic line points at an EnviousWispr Settings API key that Ollama has
+  /// none of. Frozen as an EXACT composed string, not a `contains`, because the
+  /// value of this arm is the specific command it names.
+  @Test("Ollama 401 copy names the real signin command, not a Settings key")
+  func ollamaSignedOutCopy() {
+    let ollama = PolishFailureReason.apiKeyRejected.composedMessage(provider: .ollama)
+    #expect(
+      ollama
+        == "AI polish failed: Ollama isn't signed in. "
+        + "Run ollama signin in Terminal, then try again.")
+    #expect(ollama.contains("ollama signin"))
+    #expect(ollama.contains("Settings") == false)
+
+    // The control, stated for what it actually proves: the cloud arm is BYTE
+    // IDENTICAL to before #1914. Deleting the Ollama branch is caught by the
+    // three expectations above, not by this one — with the branch gone, Ollama's
+    // text would still differ from OpenAI's, because `name` is interpolated. So
+    // this line pins the untouched arm; it does not detect the missing branch.
+    let cloud = PolishFailureReason.apiKeyRejected.composedMessage(provider: .openAI)
+    #expect(
+      cloud == "AI polish failed: OpenAI rejected your API key. Check or replace it in Settings.")
+  }
+
+  /// #1914: a 403 from Ollama means the model is subscription-gated, measured
+  /// 2026-08-01 from `this model requires a subscription`. The generic line
+  /// suggests API-access and region checks instead of naming that cause.
+  @Test("Ollama 403 copy names the subscription and offers picking another model")
+  func ollamaPaidTierCopy() {
+    let ollama = PolishFailureReason.accessDenied.composedMessage(provider: .ollama)
+    #expect(
+      ollama
+        == "AI polish failed: that Ollama model requires a subscription. "
+        + "Pick another model or check your Ollama plan.")
+    #expect(ollama.contains("subscription"))
+    #expect(ollama.contains("region") == false)
+
+    // Same control shape as the 401 test: this pins the cloud arm as unchanged.
+    // It is the exact-string expectation above that fails if the Ollama branch
+    // is deleted, not a comparison between the two.
+    let cloud = PolishFailureReason.accessDenied.composedMessage(provider: .gemini)
+    #expect(
+      cloud
+        == "AI polish failed: Gemini denied access. "
+        + "Check your provider billing, API access, region, or selected model.")
+  }
+
   @Test("the generic fallback lines read cleanly after their lead-in (no restated lead-in)")
   func genericFallbackCopyTightened() {
     // Founder-approved tightening (2026-06-22): these three compose without
@@ -260,6 +307,10 @@ struct PolishFailureReasonTests {
     // #1710: with no client ceiling (or Claude's generous fixed cap), a
     // truncation is the provider's own per-model limit — their condition.
     .outputTruncated,
+    // #1914: either the user has not chosen a model, or we deliberately
+    // declined to choose a hosted one for them. A configuration state, not a
+    // defect, and the count is what tells us how often the refusal fires.
+    .noModelSelected,
   ]
 
   @Test(
@@ -360,21 +411,29 @@ struct PolishFailureReasonTests {
     }
   }
 
-  /// Four reasons tell the user "AI cleanup skipped" — nothing is broken. Exactly two
+  /// Five reasons tell the user "AI cleanup skipped" — nothing is broken. Exactly two
   /// of them still page us, and both are OURS despite the reassuring copy:
   ///   - `timedOut` — the deadline it blew is a budget WE chose, so a spike means our
   ///     budget shrank or our prompt ballooned.
   ///   - `apiKeyUnreadable` — we stored a key and then could not read it back. Its
   ///     copy is deliberately identical to `apiKeyMissing` (re-entering the key fixes
   ///     both), but only this one is a defect.
-  /// The other two are the user's own situation and are counted only. Pinned so a
+  /// The other three are the user's own situation and are counted only. Pinned so a
   /// future tidy-up cannot collapse the notice and the channel into each other: they
   /// answer different questions — "is the user alarmed?" vs "is this our bug?"
   @Test("the only reassuring-looking reasons that still page us are the two that are ours")
   func onlyOurOwnFailuresAlertAmongSkipNotices() {
     let skipNoticeReasons = PolishFailureReason.allCases.filter { $0.leadIn == .skipped }
     #expect(
-      Set(skipNoticeReasons) == [.apiKeyMissing, .apiKeyUnreadable, .inputTooLong, .timedOut])
+      Set(skipNoticeReasons) == [
+        .apiKeyMissing, .apiKeyUnreadable, .inputTooLong, .timedOut,
+        // #1914: skip tone, deliberately. Declining to arm a hosted model for
+        // the user is not a breakage to apologise for. This assertion is the
+        // ONLY thing pinning that classification — the pill gets its skip
+        // prefix from `ollamaPreflightSkipMessage` directly, so no runtime
+        // test can catch a wrong `leadIn` here. Mutation-verified.
+        .noModelSelected,
+      ])
 
     let alertingSkipNotices = skipNoticeReasons.filter {
       $0.telemetryChannel(provider: .openAI) == .alertingSentryError

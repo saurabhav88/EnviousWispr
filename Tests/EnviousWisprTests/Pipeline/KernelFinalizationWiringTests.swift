@@ -411,6 +411,135 @@ import os
     #expect(saves.last?.text == "hello world this is a test")
   }
 
+  // MARK: #1914 remoteness carrier, through the real wiring
+
+  /// Drives the actual `processText` → `store` → `deliver` path with an injected
+  /// Ollama readiness answer and a canned polisher, then reads BOTH ends of the
+  /// transfer: the outcome carrier and the persisted `ExecutionMetrics`. Neither
+  /// copy is re-created in test code, so deleting either assignment in
+  /// `KernelFinalizationWiring` fails this rather than passing on a parallel path.
+  private func runOllamaPolish(
+    facts: OllamaModelFacts,
+    outcome: KernelFinalizationOutcome
+  ) async throws {
+    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    polish.llmProvider = .ollama
+    polish.llmModel = "some-unknown-model:7b"
+    polish.ollamaReadinessProbe = { _ in .ready(facts: facts) }
+    polish.makePolisher = { _, _, _ in CannedPolisher() }
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      outcome: outcome, context: context, steps: makeSteps(polish: polish))
+
+    let text = try await wiring.processText("hello world this is a test") {}
+    try await wiring.store(text, UUID())
+    _ = await wiring.deliver(text)
+  }
+
+  @Test(
+    "a completed Ollama polish carries remoteness from context to persisted metrics",
+    arguments: [true, false])
+  func remotenessReachesPersistedMetrics(remote: Bool) async throws {
+    let outcome = KernelFinalizationOutcome()
+
+    try await runOllamaPolish(
+      facts: OllamaModelFacts(isRemote: remote, thinks: false), outcome: outcome)
+
+    #expect(outcome.polishRanRemote == remote)
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.polishRanRemote == remote)
+  }
+
+  /// The nil arm through the same real path. A cloud polish leaves the carrier
+  /// empty at every stage, so nothing downstream has to filter it out.
+  @Test("a completed cloud polish leaves remoteness nil in outcome and metrics")
+  func cloudPolishLeavesRemotenessNil() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    polish.llmProvider = .openAI
+    polish.llmModel = "gpt-4o-mini"
+    polish.makePolisher = { _, _, _ in CannedPolisher() }
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      outcome: outcome, context: context, steps: makeSteps(polish: polish))
+
+    let text = try await wiring.processText("hello world this is a test") {}
+    try await wiring.store(text, UUID())
+    _ = await wiring.deliver(text)
+
+    #expect(outcome.polishedText != nil, "the polish really did complete")
+    #expect(outcome.polishRanRemote == nil)
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.polishRanRemote == nil)
+  }
+
+  /// Drives a remote-ready failure through the real wiring. The runner retains
+  /// its pre-step context when `process` throws, and the wiring persists that
+  /// context, so both the outcome and metrics must keep remoteness nil.
+  ///
+  /// The probe returns facts with `isRemote == true`, proving readiness completed
+  /// before the failure. This test freezes the failed-path result; the successful
+  /// carrier links are pinned by the completed-polish mutation controls.
+  @Test("a FAILED remote polish leaves remoteness nil in outcome and metrics")
+  func failedPolishLeavesRemotenessNil() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    polish.llmProvider = .ollama
+    polish.llmModel = "gpt-oss:20b-cloud"
+    polish.ollamaReadinessProbe = { _ in
+      .ready(facts: OllamaModelFacts(isRemote: true, thinks: false))
+    }
+    polish.makePolisher = { _, _, _ in ThrowingPolisher() }
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      outcome: outcome, context: context, steps: makeSteps(polish: polish))
+
+    let text = try await wiring.processText("hello world this is a test") {}
+    try await wiring.store(text, UUID())
+    _ = await wiring.deliver(text)
+
+    #expect(outcome.polishError != nil, "the polish really did fail")
+    #expect(outcome.polishRanRemote == nil)
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.polishRanRemote == nil)
+  }
+
+  /// #1358's empty-output recovery turns a completed generation into a skip.
+  /// A canned polisher returns empty without throwing so this test reaches that
+  /// finalization branch directly and verifies its remoteness clear.
+  @Test("an empty remote polish becomes a skip and drops remoteness")
+  func emptyRemotePolishDropsRemoteness() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    polish.llmProvider = .ollama
+    polish.llmModel = "deepseek-v4-flash:latest"
+    polish.ollamaReadinessProbe = { _ in
+      .ready(facts: OllamaModelFacts(isRemote: true, thinks: false))
+    }
+    polish.makePolisher = { _, _, _ in EmptyPolisher() }
+
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(
+      outcome: outcome, context: context, steps: makeSteps(polish: polish))
+
+    let input = "please clean up this sentence now"
+    let text = try await wiring.processText(input) {}
+    try await wiring.store(text, UUID())
+    _ = await wiring.deliver(text)
+
+    #expect(text == input)
+    #expect(outcome.llmProvider == LLMProvider.ollama.rawValue)
+    #expect(outcome.polishedText == nil)
+    #expect(outcome.polishFallbackReason == "empty_output_floor")
+    #expect(outcome.polishRanRemote == nil)
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.polishRanRemote == nil)
+  }
+
   @Test("whitespace-only chain output reaches the kernel's empty guard unchanged")
   func whitespaceOnlyOutputIsNotGuardedAtThisLayer() async throws {
     // The deleted seam threw `.emptyAfterProcessing` here. In production that
@@ -1785,6 +1914,20 @@ private struct ThrowingPolisher: TranscriptPolisher {
     onToken: (@Sendable (String) -> Void)?
   ) async throws -> LLMResult {
     throw WiringTestError.storage
+  }
+}
+
+/// #1914: succeeds and returns nothing, which is what drives #1358's
+/// empty-output recovery. Distinct from `ThrowingPolisher`: this one COMPLETES,
+/// so every carrier link runs and only finalization decides it was a skip.
+private struct EmptyPolisher: TranscriptPolisher {
+  func polish(
+    text: String,
+    instructions: PolishInstructions,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    LLMResult(polishedText: "")
   }
 }
 

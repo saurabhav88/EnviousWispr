@@ -44,6 +44,9 @@ final class KernelFinalizationOutcome {
   var pipelineFellBackToRaw = false
   /// #1050 honest disaggregation of `pipelineFellBackToRaw`; AFM-gated downstream.
   var polishFallbackReason: String?
+  /// #1914: carried straight through from the context, never re-derived here.
+  /// Nil unless an Ollama polish completed. See `TextProcessingContext`.
+  var polishRanRemote: Bool?
   var pipelineStartedAtSeconds: Double?
   var pipelineEndedAtSeconds: Double?
   var asrStartedAtSeconds: Double?
@@ -314,6 +317,7 @@ struct KernelFinalizationWiring {
       outcome.polishMetadata = ctx.polishMetadata
       outcome.pipelineFellBackToRaw = ctx.pipelineFellBackToRaw
       outcome.polishFallbackReason = ctx.polishFallbackReason
+      outcome.polishRanRemote = ctx.polishRanRemote
       outcome.polishError = result.polishError
       outcome.polishDurationSeconds = CFAbsoluteTimeGetCurrent() - start
 
@@ -333,6 +337,11 @@ struct KernelFinalizationWiring {
       if !floor.isEmpty {
         outcome.rawText = floor
         outcome.polishedText = nil  // the "" polish never persists; History == clipboard
+        // #1914: finalization rejected the generated output, so this polish is
+        // skipped. `llm.polish_completed` derives `result` from
+        // `polishedText != nil`; leaving remoteness set would emit
+        // `result: "skipped"` together with `ollama_remote`.
+        outcome.polishRanRemote = nil
         // Preserve the invariant `(polishFallbackReason != nil) == pipelineFellBackToRaw`
         // (`TextProcessingStep.swift`). `llmProvider`/`llmModel`/`polishMetadata`
         // are retained — honest facts that a polish was attempted.
@@ -885,7 +894,12 @@ struct KernelFinalizationWiring {
       streamingCoveredSec: telemetryState.asrCompletedTelemetry?.streamingCoveredSec,
       tailDecodeSec: telemetryState.asrCompletedTelemetry?.tailDecodeSec,
       maxUnconfirmedWindowSec: telemetryState.asrCompletedTelemetry?.maxUnconfirmedWindowSec,
-      stopWhileDecodeInFlight: telemetryState.asrCompletedTelemetry?.stopWhileDecodeInFlight
+      stopWhileDecodeInFlight: telemetryState.asrCompletedTelemetry?.stopWhileDecodeInFlight,
+      // #1914: copied without applying another policy. `LLMPolishStep` stamps
+      // the per-attempt fact after generation and validation; empty-output
+      // recovery above clears it when finalization reclassifies the result as
+      // skipped. `emitFallbackFields` owns different telemetry.
+      polishRanRemote: outcome.polishRanRemote
     )
     outcome.transcript = transcript
   }

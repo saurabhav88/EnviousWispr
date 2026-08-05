@@ -138,6 +138,73 @@ enum AIPolishModelClassifier {
   }
 }
 
+/// #1914: how the MODEL SELECTION DROPDOWN is split into sections.
+///
+/// Sibling of `OllamaCatalogPresentation`, which owns the Manage Models list.
+/// Two types rather than one because they answer different questions about
+/// different row types: that one partitions `OllamaModelCatalogEntry` (things
+/// you can download and delete), this one partitions `LLMModelInfo` (things you
+/// can select, across every provider). They deliberately SHARE the heading
+/// string, because a user reading either surface is asking the same question.
+///
+/// Placed here beside `AIPolishModelClassifier` for the same reason that type
+/// is here: it is picker policy consumed by exactly one view, and keeping it as
+/// production code rather than an inline filter is what lets a test prove the
+/// real split rather than a copy of it.
+enum OllamaModelPickerPresentation {
+
+  /// The dropdown, split for display. Every input row lands in exactly one
+  /// array, and that is structural rather than tested-for: `groups(from:)`
+  /// assigns each row in a single pass with no overlapping filters.
+  ///
+  /// Deliberately NOT `Equatable`: `LLMModelInfo` is not, and conforming it
+  /// would widen a public Core type to serve a test's convenience. Tests
+  /// compare `.map(\.id)`, which is what they actually mean anyway.
+  struct Groups {
+    let recommended: [LLMModelInfo]
+    let other: [LLMModelInfo]
+    /// Ollama models the daemon proxies to Ollama's servers. Always empty for
+    /// every other provider.
+    let hosted: [LLMModelInfo]
+    let locked: [LLMModelInfo]
+  }
+
+  /// One heading, one string. Sharing it with the Manage Models list is the
+  /// point: two spellings of the same fact is how the two surfaces would come
+  /// to describe the same model differently.
+  static var hostedGroupTitle: String { OllamaCatalogPresentation.hostedGroupTitle }
+
+  static func groups(from models: [LLMModelInfo], provider: LLMProvider) -> Groups {
+    var recommended: [LLMModelInfo] = []
+    var other: [LLMModelInfo] = []
+    var hosted: [LLMModelInfo] = []
+    var locked: [LLMModelInfo] = []
+
+    for model in models {
+      guard model.isAvailable else {
+        locked.append(model)
+        continue
+      }
+      // Remoteness is checked BEFORE the recommended/other split, not after: a
+      // hosted model can perfectly well carry a "recommended" token in its id,
+      // and landing it under "Recommended for cleanup" would put a model that
+      // runs on someone else's servers at the top of the list under a heading
+      // that says nothing about where it runs.
+      if provider == .ollama && model.isRemote {
+        hosted.append(model)
+        continue
+      }
+      if AIPolishModelClassifier.isRecommendedForCleanup(model.id) {
+        recommended.append(model)
+      } else {
+        other.append(model)
+      }
+    }
+
+    return Groups(recommended: recommended, other: other, hosted: hosted, locked: locked)
+  }
+}
+
 /// LLM provider configuration, API keys, Ollama wizard, and prompt editing.
 struct AIPolishSettingsView: View {
   @Environment(SettingsManager.self) private var settings
@@ -417,10 +484,28 @@ struct AIPolishSettingsView: View {
           .tag(settings.llmModel)
         }
 
+        // #1914: models exist and none is armed. Without a row carrying the
+        // empty tag the Picker has no selection to render and simply draws
+        // blank, which reads as broken rather than as a state the user can act
+        // on. This is the settings-side half of the "no polish model selected"
+        // pill: the notice says it during dictation, this says it at rest.
+        //
+        // Mutually exclusive with the branch above, which already emits an
+        // empty-tagged row when discovery came back empty. Two rows sharing one
+        // tag would make the Picker's selection ambiguous.
+        if !llmDiscovery.discoveredModels.isEmpty && settings.llmModel.isEmpty {
+          Text("No model selected").tag("")
+        }
+
         modelPickerSections
       }
 
-      if settings.llmProvider == .ollama {
+      // #1914: warm-up is a LOCAL-memory operation, so for a hosted model the
+      // whole control is meaningless — its button would issue no request and its
+      // states can never be reached. Hiding it is honest; leaving a dead
+      // "Prepare Model" affordance on screen is the kind of control that teaches
+      // users the app is unreliable.
+      if settings.llmProvider == .ollama && !selectedOllamaModelIsRemote {
         ollamaWarmupIndicator
       } else if llmDiscovery.isDiscoveringModels {
         ProgressView()
@@ -783,33 +868,41 @@ struct AIPolishSettingsView: View {
 
   // MARK: - Model Picker Sections (#617)
 
-  /// Three labeled groups of discovered models. Empty groups are suppressed.
+  /// Labeled groups of discovered models. Empty groups are suppressed.
   /// Locked rows are disabled so a user can't pick something the API will reject.
+  ///
+  /// #1914: the split moved into `OllamaModelPickerPresentation` so the hosted
+  /// group is production policy a test can hold, not three inline filters.
   @ViewBuilder
   private var modelPickerSections: some View {
-    let discovered = llmDiscovery.discoveredModels
-    let recommended = discovered.filter {
-      $0.isAvailable && AIPolishModelClassifier.isRecommendedForCleanup($0.id)
-    }
-    let other = discovered.filter {
-      $0.isAvailable && !AIPolishModelClassifier.isRecommendedForCleanup($0.id)
-    }
-    let locked = discovered.filter { !$0.isAvailable }
+    let groups = OllamaModelPickerPresentation.groups(
+      from: llmDiscovery.discoveredModels, provider: settings.llmProvider)
 
-    if !recommended.isEmpty {
+    if !groups.recommended.isEmpty {
       Section("Recommended for cleanup") {
-        ForEach(recommended) { model in
+        ForEach(groups.recommended) { model in
           Text(model.displayName).tag(model.id)
         }
       }
     }
-    if !other.isEmpty {
+    if !groups.other.isEmpty {
       Section("Other available models") {
-        ForEach(other) { model in
+        ForEach(groups.other) { model in
           Text(model.displayName).tag(model.id)
         }
       }
     }
+    // #1914: hosted models stay fully selectable. The group states where they
+    // run so the choice is visible while scanning; it is not a warning and not
+    // a gate. What the app will not do is choose one FOR the user.
+    if !groups.hosted.isEmpty {
+      Section(OllamaModelPickerPresentation.hostedGroupTitle) {
+        ForEach(groups.hosted) { model in
+          Text(model.displayName).tag(model.id)
+        }
+      }
+    }
+    let locked = groups.locked
     if !locked.isEmpty {
       Section("Not available with your API key") {
         ForEach(locked) { model in
@@ -837,7 +930,9 @@ struct AIPolishSettingsView: View {
     // a third arm (issue #158, plan §3).
     case .claude: return "Why use Claude"
     case .appleIntelligence: return "Why use Apple Intelligence"
-    case .ollama: return "Why use Local (Ollama)"
+    // #1914: renamed with the rail row. "Local" became false the moment Ollama
+    // could run a model on its own servers.
+    case .ollama: return "Why use Ollama"
     case .egOne: return "Why use EG-1"
     case .none: return ""
     }
@@ -928,8 +1023,20 @@ struct AIPolishSettingsView: View {
   @ViewBuilder
   private var ollamaExplainer: some View {
     VStack(alignment: .leading, spacing: 10) {
+      // #1914: this used to say "Nothing you dictate leaves your device" without
+      // qualification. Ollama can now run models on its own servers, and a user
+      // who picks one has that sentence quietly broken for them. Stating which
+      // is which is accuracy, not a warning — per the 2026-08-01 doctrine
+      // correction there is no interstitial and no discouragement of the hosted
+      // path, and the audio never leaves the Mac on either.
       Text(
-        "Local (Ollama) runs open models on your Mac through Ollama, a free tool you install once. Nothing you dictate leaves your device, and there is no API key or per-use cost."
+        """
+        Ollama is a free tool you install once. Models on your Mac need no API key and \
+        no per-use cost, and they keep your dictation on your Mac. Ollama also offers \
+        hosted models, which run on Ollama's servers. Those are listed separately below \
+        and are never selected for you. A hosted model needs you signed in to Ollama, \
+        and some of them need a paid Ollama plan.
+        """
       )
       .settingsReadingCopy()
 
@@ -1021,7 +1128,11 @@ struct AIPolishSettingsView: View {
         ollamaStepIndicators(current: 1)
 
         Text(
-          "Ollama runs AI models privately on your Mac. No cloud, no API keys, completely free."
+          // #1914: "No cloud" was unconditional and is no longer true for every
+          // model Ollama can run. This is the not-installed step, where the only
+          // thing on offer IS a local download, so the accurate claim is about
+          // what installing gets you rather than about Ollama as a whole.
+          "Ollama runs AI models on your Mac. No API keys, completely free."
         )
         .font(.stHelper)
         .foregroundStyle(Color.stTextSecondary)
@@ -1449,13 +1560,59 @@ struct AIPolishSettingsView: View {
       return false
     }()
 
+    // #1914: hosted models are SEPARATED, not badged. Where a model runs has to
+    // be visible while scanning the list, not only after reading a row — that is
+    // what lets someone who wants everything on their own machine avoid them at
+    // a glance. Local rows keep their existing order and metadata untouched.
+    //
+    // The split and the heading come from `OllamaCatalogPresentation`, not from
+    // an inline filter here: a test against an inline predicate would only be
+    // testing its own copy of the rule. Note that the tests cover that POLICY,
+    // not this wiring — if this view stopped calling it, they would still pass,
+    // so the rendered grouping is a Live UAT item.
+    let groups = OllamaCatalogPresentation.groups(from: catalog)
+
     VStack(alignment: .leading, spacing: 6) {
-      ForEach(catalog) { entry in
-        HStack(spacing: 8) {
-          VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 4) {
-              Text(entry.displayName)
-                .font(.stHelper)
+      ForEach(groups.local) { entry in
+        ollamaCatalogRow(
+          entry, isPulling: isPulling, isLastInGroup: entry.id == groups.local.last?.id)
+      }
+
+      if !groups.hosted.isEmpty {
+        Text(OllamaCatalogPresentation.hostedGroupTitle)
+          .font(.stSectionHeader)
+          .foregroundStyle(Color.stAccent)
+          .textCase(.uppercase)
+          .padding(.top, 10)
+          .accessibilityAddTraits(.isHeader)
+        ForEach(groups.hosted) { entry in
+          ollamaCatalogRow(
+            entry, isPulling: isPulling, isLastInGroup: entry.id == groups.hosted.last?.id)
+        }
+      }
+    }
+    .padding(.top, 4)
+  }
+
+  /// One catalog row. Extracted so the local and hosted groups render through
+  /// exactly the same code — two copies would let the groups drift in actions or
+  /// layout, which is the defect a "just duplicate the ForEach" version invites.
+  @ViewBuilder
+  private func ollamaCatalogRow(
+    _ entry: OllamaModelCatalogEntry, isPulling: Bool, isLastInGroup: Bool
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 1) {
+          HStack(spacing: 4) {
+            Text(entry.displayName)
+              .font(.stHelper)
+            // #1914: quality tier and size are SUPPRESSED for a hosted model.
+            // Both are meaningless for something that is not on this disk — a
+            // cloud row's reported `size` is manifest-only (316 bytes for a
+            // 158-billion-parameter model), so showing it is worse than
+            // showing nothing.
+            if OllamaCatalogPresentation.showsSizeAndQuality(entry) {
               Text("(\(entry.qualityTier.label))")
                 .font(.stHelper)
                 .foregroundStyle(
@@ -1463,67 +1620,68 @@ struct AIPolishSettingsView: View {
                     ? Color.stAccent
                     : (entry.qualityTier == .medium ? Color.secondary : Color.stWarning))
             }
+          }
+          if OllamaCatalogPresentation.showsSizeAndQuality(entry) {
             Text("\(entry.parameterCount) · \(entry.downloadSize)")
               .font(.stHelper)
               .foregroundStyle(Color.stTextSecondary)
           }
+        }
 
-          Spacer()
+        Spacer()
 
-          if setup.ollamaSetup.currentPullingModel == entry.name {
-            // Active pull for THIS row: show progress + Cancel.
-            HStack(spacing: 8) {
-              Text("Downloading… \(Int(setup.ollamaSetup.pullProgress * 100))%")
-                .font(.stHelper)
-                .foregroundStyle(Color.secondary)
-                .monospacedDigit()
-              Button {
-                setup.ollamaSetup.cancelPull()
-              } label: {
-                Text("Cancel")
-                  .foregroundStyle(.stError)
-              }
-              .controlSize(.small)
-              .buttonStyle(.borderless)
-            }
-          } else if entry.isDownloaded {
+        if setup.ollamaSetup.currentPullingModel == entry.name {
+          // Active pull for THIS row: show progress + Cancel.
+          HStack(spacing: 8) {
+            Text("Downloading… \(Int(setup.ollamaSetup.pullProgress * 100))%")
+              .font(.stHelper)
+              .foregroundStyle(Color.secondary)
+              .monospacedDigit()
             Button {
-              // #1305: sequence delete → discovery refresh so the model picker
-              // (and the armed selection, via applyDiscoveredModels) never
-              // keeps showing a model that no longer exists. The Task outlives
-              // a dismissed view harmlessly — discovery targets app-owned
-              // coordinators.
-              Task {
-                await setup.ollamaSetup.deleteModel(name: entry.name)
-                await llmDiscovery.validateKeyAndDiscoverModels(
-                  provider: .ollama, settings: settings)
-              }
+              setup.ollamaSetup.cancelPull()
             } label: {
-              Text("Delete")
+              Text("Cancel")
                 .foregroundStyle(.stError)
             }
             .controlSize(.small)
             .buttonStyle(.borderless)
-            .disabled(isPulling)
-          } else {
-            Button {
-              setup.ollamaSetup.pullModel(entry.name)
-            } label: {
-              Text("Download")
-            }
-            .controlSize(.small)
-            .buttonStyle(.borderless)
-            .disabled(isPulling)
           }
-        }
-        .padding(.vertical, 2)
-
-        if entry.id != catalog.last?.id {
-          Divider()
+        } else if entry.isDownloaded {
+          Button {
+            // #1305: sequence delete → discovery refresh so the model picker
+            // (and the armed selection, via applyDiscoveredModels) never
+            // keeps showing a model that no longer exists. The Task outlives
+            // a dismissed view harmlessly — discovery targets app-owned
+            // coordinators.
+            Task {
+              await setup.ollamaSetup.deleteModel(name: entry.name)
+              await llmDiscovery.validateKeyAndDiscoverModels(
+                provider: .ollama, settings: settings)
+            }
+          } label: {
+            Text("Delete")
+              .foregroundStyle(.stError)
+          }
+          .controlSize(.small)
+          .buttonStyle(.borderless)
+          .disabled(isPulling)
+        } else {
+          Button {
+            setup.ollamaSetup.pullModel(entry.name)
+          } label: {
+            Text("Download")
+          }
+          .controlSize(.small)
+          .buttonStyle(.borderless)
+          .disabled(isPulling)
         }
       }
+      .padding(.vertical, 2)
+
+      if !isLastInGroup {
+        Divider()
+      }
     }
-    .padding(.top, 4)
   }
 
   // MARK: - Helpers
@@ -1631,6 +1789,18 @@ struct AIPolishSettingsView: View {
   }
 
   // MARK: - Ollama Warm-up Indicator
+
+  /// #1914: whether the ARMED Ollama model runs on Ollama's servers. Resolved
+  /// from the downloaded catalog by canonical name, the same way warm-up itself
+  /// resolves it, so the control and the behaviour cannot disagree. An unknown
+  /// model reads as not-remote, which keeps today's appearance for a model the
+  /// catalog has not caught up with — the control is then merely unhelpful
+  /// rather than wrong, and warm-up itself still refuses to run for it.
+  private var selectedOllamaModelIsRemote: Bool {
+    let canonical = OllamaSetupService.canonicalModelName(settings.llmModel)
+    return setup.ollamaSetup.downloadedModels
+      .first { $0.canonicalName == canonical }?.facts.isRemote ?? false
+  }
 
   @ViewBuilder
   private var ollamaWarmupIndicator: some View {

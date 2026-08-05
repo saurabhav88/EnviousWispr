@@ -223,6 +223,7 @@ public final class TelemetryService {
         filterTripped: m?.polishFilterTripped,
         fellBackToRaw: m?.polishFellBackToRaw,
         fallbackReason: m?.polishFallbackReason,
+        ollamaRemote: m?.polishRanRemote,
         takeID: takeID
       )
     }
@@ -1559,6 +1560,12 @@ public final class TelemetryService {
     filterTripped: String? = nil,
     fellBackToRaw: Bool? = nil,
     fallbackReason: String? = nil,
+    /// #1914: remoteness for a completed Ollama polish. Omitted when nil.
+    /// `false` means the Ollama daemon did not report the model as remote; it
+    /// must not double as the default for a non-Ollama provider. Failed and
+    /// skipped events carry no equivalent field under the founder's
+    /// 2026-08-03 tabling recorded in plan §3a.
+    ollamaRemote: Bool? = nil,
     /// #1846: which dictation this event belongs to. Omit-when-nil.
     takeID: String? = nil
   ) {
@@ -1572,6 +1579,7 @@ public final class TelemetryService {
     if let ft = filterTripped { props["filter_tripped"] = ft }
     if let fb = fellBackToRaw { props["fell_back_to_raw"] = fb }
     if let fr = fallbackReason { props["fallback_reason"] = fr }
+    if let ollamaRemote { props["ollama_remote"] = ollamaRemote }
     if let takeID { props["take_id"] = takeID }
     #if DEBUG
       var stringProps: [String: String] = [
@@ -1585,6 +1593,11 @@ public final class TelemetryService {
       if let takeID = props["take_id"] as? String { stringProps["take_id"] = takeID }
       var boolProps: [String: Bool] = [:]
       if let fb = fellBackToRaw { boolProps["fell_back_to_raw"] = fb }
+      // #1914: read BACK OUT of `props`, like `take_id` above, so a test that
+      // sees `ollama_remote` is seeing what PostHog receives. Reading the
+      // PARAMETER instead would keep passing if the `props` write were deleted,
+      // which is exactly the mutation this hook has to be able to fail.
+      if let emitted = props["ollama_remote"] as? Bool { boolProps["ollama_remote"] = emitted }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "llm.polish_completed",

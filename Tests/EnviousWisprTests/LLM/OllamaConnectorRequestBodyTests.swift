@@ -7,7 +7,9 @@ import Testing
 @Suite("OllamaConnector request body")
 struct OllamaConnectorRequestBodyTests {
 
-  private func makeBody(temperature: Double = 0.3, maxTokens: Int = 512) -> [String: Any] {
+  private func makeBody(
+    temperature: Double = 0.3, maxTokens: Int = 512, thinking: ResolvedThinking? = nil
+  ) -> [String: Any] {
     OllamaConnector.makeRequestBody(
       model: "gemma4:latest",
       messages: [
@@ -15,17 +17,53 @@ struct OllamaConnectorRequestBodyTests {
         ["role": "user", "content": "hello"],
       ],
       maxTokens: maxTokens,
-      temperature: temperature
+      temperature: temperature,
+      thinking: thinking
     )
   }
 
-  /// Primary regression guard for #272. Passing `think: false` at the top level
-  /// is silently ignored by gemma4:latest and causes chain-of-thought to leak
-  /// into `message.content` (5-13× expansion). Omitting the key uses Ollama's
-  /// documented default (thinking OFF) and restores polish behavior.
-  @Test func requestBodyDoesNotIncludeThinkKey() {
-    let body = makeBody()
+  /// #272's regression guard, RE-AIMED by #1914 rather than deleted. The defect
+  /// it protects against is unchanged: a boolean `think: false` is silently
+  /// ignored by gemma4 and gpt-oss and leaks chain-of-thought into
+  /// `message.content` as a 5-13× expansion. What changed is the correct
+  /// behaviour for a THINKING model — it now receives an explicit `"low"`
+  /// instead of no key, because omission means the model's default depth, which
+  /// starved the answer to empty in ENVIOUSWISPR-4M.
+  @Test func nonThinkingModelSendsNoThinkKey() {
+    let body = makeBody(thinking: nil)
     #expect(body["think"] == nil)
+  }
+
+  @Test func thinkingModelSendsLowAsAString() {
+    let body = makeBody(thinking: .level("low"))
+    #expect(body["think"] as? String == "low")
+  }
+
+  /// The value must never be a boolean on any path, in either direction. A
+  /// `Bool` and a `String` both answer `!= nil`, so the type is asserted
+  /// explicitly — this is the assertion that would catch a regression to
+  /// `think: false`.
+  @Test func thinkValueIsNeverABoolean() {
+    #expect(makeBody(thinking: .level("low"))["think"] as? Bool == nil)
+    #expect(makeBody(thinking: nil)["think"] as? Bool == nil)
+  }
+
+  /// `think` is a TOP-LEVEL key on `/api/chat`, not an `options` entry. Placing
+  /// it under `options` would be silently accepted by the daemon and silently
+  /// ignored, which is indistinguishable from working.
+  @Test func thinkIsTopLevelNotInsideOptions() {
+    let body = makeBody(thinking: .level("low"))
+    let options = body["options"] as? [String: Any]
+    #expect(options?["think"] == nil)
+    #expect(body["think"] as? String == "low")
+  }
+
+  /// Other providers' thinking dialects must not reach Ollama's wire format.
+  /// A budget or effort value is a different provider's shape; emitting it here
+  /// would send a key the daemon does not understand.
+  @Test func nonLevelDialectsAreNotEmitted() {
+    #expect(makeBody(thinking: .budget(1024))["think"] == nil)
+    #expect(makeBody(thinking: .effort("high"))["think"] == nil)
   }
 
   @Test func requestBodyDisablesStreaming() {

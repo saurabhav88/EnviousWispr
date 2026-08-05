@@ -230,16 +230,109 @@ public struct LLMProviderConfig: Codable, Sendable {
 
 /// A discoverable LLM model with availability status.
 public struct LLMModelInfo: Codable, Identifiable, Sendable {
+  /// Canonical Ollama model name: strips a `:latest` suffix, preserves every
+  /// other tag. `llama3.2` and `llama3.2:latest` are the same model; `llama3.2`
+  /// and `llama3.2:1b` are not.
+  ///
+  /// Lives in Core because TWO modules must agree on it and they cannot see
+  /// each other: `EnviousWisprLLM` matches the daemon's `/api/tags` rows with
+  /// it, and `EnviousWisprServices` needs it to decide whether a remembered
+  /// selection is still installed. `OllamaSetupService.canonicalModelName`
+  /// delegates here rather than reimplementing, so there is one rule.
+  ///
+  /// PR #1949 cloud review: `SettingsManager` compared a remembered name to a
+  /// discovered id EXACTLY, while the runtime readiness preflight compares
+  /// canonically. The shipped default is `llama3.2` and a daemon commonly
+  /// reports `llama3.2:latest`, so the two disagreed about whether the user's
+  /// model was installed.
+  public static func canonicalOllamaName(_ name: String) -> String {
+    name.hasSuffix(":latest") ? String(name.dropLast(":latest".count)) : name
+  }
+
   public let id: String
   public let displayName: String
   public let provider: LLMProvider
   public var isAvailable: Bool
 
-  public init(id: String, displayName: String, provider: LLMProvider, isAvailable: Bool) {
+  /// #1914: whether the OLLAMA DAEMON proxies this model to Ollama's own
+  /// servers instead of running it on this Mac.
+  ///
+  /// Read the name precisely: this is not "does this model live in the cloud".
+  /// Production always constructs `.openAI` / `.gemini` / `.claude` rows with
+  /// `false`, because those providers have no Ollama daemon to report a
+  /// `remote_host` and the question is meaningless for them — their remoteness
+  /// is the provider identity itself. The type does not enforce that, so
+  /// consumers gate on the PROVIDER too rather than trusting this field alone
+  /// (`OllamaModelPickerPresentation.groups`, `applyDiscoveredModels`). Only
+  /// `.ollama` rows carry a meaningful value, sourced from
+  /// `OllamaConnector.modelFacts(fromTagsRow:)` by way of
+  /// `OllamaSetupService.parseDownloadedModels(fromTagsModels:)`.
+  ///
+  /// Mirrors `OllamaModelCatalogEntry.isRemote` deliberately: the Manage Models
+  /// list and the selection dropdown answer the same question about the same
+  /// model, so they carry the same field name fed by the same decoder.
+  public let isRemote: Bool
+
+  /// `isRemote` is deliberately REQUIRED, with no default. A default made
+  /// "every production site states remoteness" a convention a future caller
+  /// could quietly break, and an omitted Ollama fact would default to local and
+  /// make the model eligible for auto-selection — the exact defect this change
+  /// exists to remove. Required turns that into a compile error, the same cure
+  /// `LLMPolishStep`'s non-optional `ollamaThinks` binding uses.
+  public init(
+    id: String, displayName: String, provider: LLMProvider, isAvailable: Bool,
+    isRemote: Bool
+  ) {
     self.id = id
     self.displayName = displayName
     self.provider = provider
     self.isAvailable = isAvailable
+    self.isRemote = isRemote
+  }
+
+  /// #1914: hand-written because a property default does NOT rescue a missing
+  /// key. Swift's synthesized `init(from:)` calls `decode(_:forKey:)` for a
+  /// non-optional property and throws `keyNotFound` regardless of any default
+  /// written in the declaration — measured, not assumed (2026-08-04).
+  ///
+  /// That matters because `LLMModelDiscoveryCoordinator` persists arrays of
+  /// this type to `UserDefaults` and reloads them with `try?`, so ONE decode
+  /// failure silently empties a whole provider's model dropdown. The two
+  /// providers need opposite answers, so the migration is deliberately split:
+  ///
+  /// - **Ollama: FAIL CLOSED.** A legacy row cannot say where its model runs,
+  ///   and defaulting it to local would print "runs on this Mac" over a model
+  ///   that does not. Throwing discards the stale cache. The Ollama pane starts
+  ///   live discovery on its next appearance and repopulates the list when the
+  ///   daemon is reachable. No timing is promised: that path first runs daemon
+  ///   detection and discovers only `if case .ready`, so with Ollama stopped the
+  ///   list stays empty until it is running.
+  /// - **Every other provider: default to `false`.** The field is meaningless
+  ///   for them, so a legacy row loses nothing by adopting it. This half is
+  ///   load-bearing: cloud panes load the cache and do NOT auto-run discovery,
+  ///   so failing closed there would leave a real user staring at an empty
+  ///   model list until they thought to press refresh.
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(String.self, forKey: .id)
+    displayName = try container.decode(String.self, forKey: .displayName)
+    provider = try container.decode(LLMProvider.self, forKey: .provider)
+    isAvailable = try container.decode(Bool.self, forKey: .isAvailable)
+    if let decoded = try container.decodeIfPresent(Bool.self, forKey: .isRemote) {
+      isRemote = decoded
+    } else if provider == .ollama {
+      throw DecodingError.keyNotFound(
+        CodingKeys.isRemote,
+        DecodingError.Context(
+          codingPath: container.codingPath,
+          debugDescription:
+            "Pre-#1914 Ollama cache row cannot say whether the model runs on this Mac. "
+            + "Discarding the cache so live discovery repopulates it."
+        )
+      )
+    } else {
+      isRemote = false
+    }
   }
 }
 

@@ -44,6 +44,16 @@ public struct TextProcessingContext: Sendable {
   /// the wiring, not by `LLMPolishStep.polishFallbackReason`).
   /// Invariant: `(polishFallbackReason != nil) == pipelineFellBackToRaw`.
   public var polishFallbackReason: String?
+  /// #1914: whether the Ollama daemon reported the polishing model as running on
+  /// Ollama's servers. Stamped after generation and validation return.
+  ///
+  /// `true` means remote. `false` means the daemon did not report the model as
+  /// remote. `nil` means no completed Ollama generation fact reached this
+  /// context, including non-Ollama and pre-generation failure or bypass paths.
+  /// Finalization may later clear a non-nil value when empty-output recovery
+  /// reclassifies the generation as skipped. `false` is not independent proof
+  /// of local execution.
+  public var polishRanRemote: Bool?
 
   public init(text: String, language: String?) {
     self.text = text

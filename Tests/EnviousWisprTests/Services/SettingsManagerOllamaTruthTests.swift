@@ -20,8 +20,11 @@ struct SettingsManagerOllamaTruthTests {
     return SettingsManager(defaults: suite)
   }
 
-  private func model(_ id: String, available: Bool = true) -> LLMModelInfo {
-    LLMModelInfo(id: id, displayName: id, provider: .ollama, isAvailable: available)
+  private func model(
+    _ id: String, available: Bool = true, isRemote: Bool = false
+  ) -> LLMModelInfo {
+    LLMModelInfo(
+      id: id, displayName: id, provider: .ollama, isAvailable: available, isRemote: isRemote)
   }
 
   // MARK: - Empty discovery (the root-cause fix)
@@ -75,6 +78,283 @@ struct SettingsManagerOllamaTruthTests {
 
     #expect(settings.llmModel == "mistral")
     #expect(settings.ollamaModel == "mistral")
+  }
+
+  // MARK: - Never auto-arm a hosted model (#1914, founder decision 2026-08-04)
+
+  /// The defect this closes. `applyDiscoveredModels` is the only site in the app
+  /// that can arm a model the user never chose, and its fallback used to be
+  /// plain first-available. With a hosted model pulled and the armed local one
+  /// deleted, that silently moved the user's dictation off their Mac.
+  @Test("a remote-only discovery arms NOTHING rather than a hosted model")
+  func remoteOnlyArmsNothing() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "deleted-model"
+    settings.ollamaModel = "deleted-model"
+
+    settings.applyDiscoveredModels(
+      [
+        model("gpt-oss:120b-cloud", isRemote: true),
+        model("deepseek-v3.1:671b-cloud", isRemote: true),
+      ],
+      for: .ollama)
+
+    #expect(settings.llmModel == "")
+    // BOTH fields, because the runtime reads `ollamaModel`, not `llmModel`.
+    // Clearing only the picker field would leave the refusal cosmetic while
+    // dictation still went to the hosted model.
+    #expect(settings.ollamaModel == "")
+    #expect(settings.effectiveLLMModel == "", "the runtime must genuinely be armed to nothing")
+  }
+
+  /// PR #1949 cloud review. Switching provider away from Ollama and back must
+  /// not throw away a deliberately chosen HOSTED model.
+  ///
+  /// The mechanism: `effectiveLLMModel` reads `ollamaModel` for this provider,
+  /// but `canonicalizeLLMModelForProvider` deliberately does not refill
+  /// `llmModel` from it (#1305). So after a round trip through OpenAI,
+  /// `llmModel` holds an OpenAI id while `ollamaModel` still holds the user's
+  /// hosted pick. Judging armed-ness by `llmModel` made that pick look unarmed,
+  /// and the repair branch — which excludes hosted rows on purpose — then
+  /// replaced it with a local model.
+  ///
+  /// This is the founder's "existing selections are LEFT ALONE" decision, which
+  /// the repair branch documents in its own comment, being violated by that
+  /// same branch.
+  @Test("a remembered hosted pick survives a round trip through another provider")
+  func rememberedHostedSelectionSurvivesProviderRoundTrip() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "gemma4:31b-cloud"
+    settings.ollamaModel = "gemma4:31b-cloud"
+
+    // Away to OpenAI, which canonicalizes `llmModel` to an OpenAI id and leaves
+    // `ollamaModel` alone, then back.
+    settings.llmProvider = .openAI
+    settings.llmProvider = .ollama
+    #expect(
+      settings.ollamaModel == "gemma4:31b-cloud",
+      "precondition: the round trip itself must not clear the remembered pick")
+
+    settings.applyDiscoveredModels(
+      [
+        model("gemma4:31b-cloud", isRemote: true),
+        model("llama3.2", isRemote: false),
+      ],
+      for: .ollama)
+
+    #expect(
+      settings.ollamaModel == "gemma4:31b-cloud",
+      "the deliberate hosted pick is the armed model and must be preserved")
+    #expect(
+      settings.effectiveLLMModel == "gemma4:31b-cloud",
+      "the runtime must still be armed to the user's choice")
+    #expect(
+      settings.llmModel == "gemma4:31b-cloud",
+      "the picker binds llmModel, so it must show the model the runtime will use")
+  }
+
+  /// PR #1949 cloud review, second finding. The repair compared names EXACTLY
+  /// while the runtime readiness preflight compares CANONICALLY, so the two
+  /// disagreed about whether a model was installed.
+  ///
+  /// The case must DISCRIMINATE. A first draft used the shipped default
+  /// (`llama3.2` remembered, `llama3.2:latest` discovered) and was vacuous: an
+  /// exact-match repair falls through to `eligible.first`, which was that same
+  /// row, so both implementations produced the identical result and a mutation
+  /// back to exact matching still passed.
+  ///
+  /// This version uses the reviewer's actual harm. The remembered model is
+  /// HOSTED, so an exact-match repair does not merely re-pick it — the repair
+  /// excludes hosted rows on purpose, and the user lands on a local model they
+  /// never chose.
+  @Test("a hosted pick matching only by :latest is kept, not repaired to a local model")
+  func canonicalMatchProtectsAHostedPickSpelledDifferently() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "gpt-4o-mini"  // left behind by a round trip through OpenAI
+    settings.ollamaModel = "gemma4"  // remembered without the tag
+
+    settings.applyDiscoveredModels(
+      [model("gemma4:latest", isRemote: true), model("mistral")], for: .ollama)
+
+    #expect(
+      settings.effectiveLLMModel == "gemma4:latest",
+      "the same hosted model by another spelling must not be repaired away")
+    #expect(
+      settings.llmModel == "gemma4:latest",
+      "the picker lists discovered rows, so it must hold the discovered id")
+    #expect(settings.ollamaModel == "gemma4:latest")
+  }
+
+  /// The control: `:latest` is the ONLY tag that may be ignored. A different
+  /// size tag is a different model, so the repair must still run — and because
+  /// the remaining row is hosted here, it must arm NOTHING rather than pick it.
+  @Test("a different tag is a different model and still repairs")
+  func differentTagIsNotCanonicallyEqual() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "gemma4:1b"
+    settings.ollamaModel = "gemma4:1b"
+
+    settings.applyDiscoveredModels([model("gemma4:latest", isRemote: true)], for: .ollama)
+
+    #expect(settings.effectiveLLMModel == "")
+    #expect(settings.ollamaModel == "")
+  }
+
+  /// The control that keeps the test above from passing vacuously: a hosted
+  /// model that is genuinely GONE from discovery must still be repaired away,
+  /// and the replacement must still be local. Without this, an implementation
+  /// that simply never repaired Ollama would pass.
+  @Test("a hosted pick that vanished from discovery is still repaired to a local model")
+  func vanishedHostedPickIsStillRepaired() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "gemma4:31b-cloud"
+    settings.ollamaModel = "gemma4:31b-cloud"
+
+    settings.applyDiscoveredModels([model("llama3.2", isRemote: false)], for: .ollama)
+
+    #expect(settings.ollamaModel == "llama3.2")
+    #expect(settings.effectiveLLMModel == "llama3.2")
+  }
+
+  /// The two-way control. Without it, an implementation that cleared both
+  /// fields unconditionally would pass the test above while disabling Ollama
+  /// polish entirely.
+  @Test("a local model is still auto-selected when one is available")
+  func localStillAutoSelected() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "deleted-model"
+    settings.ollamaModel = "deleted-model"
+
+    settings.applyDiscoveredModels([model("mistral")], for: .ollama)
+
+    #expect(settings.llmModel == "mistral")
+    #expect(settings.ollamaModel == "mistral")
+    #expect(settings.effectiveLLMModel == "mistral")
+  }
+
+  /// Order independence. A first-available pick over the raw list would pass
+  /// whenever the local model happened to sort first, so the local model is
+  /// placed LAST here on purpose.
+  @Test("a local model wins even when hosted models sort ahead of it")
+  func localWinsRegardlessOfOrder() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "deleted-model"
+    settings.ollamaModel = "deleted-model"
+
+    settings.applyDiscoveredModels(
+      [
+        model("aaa-cloud", isRemote: true),
+        model("bbb-cloud", isRemote: true),
+        model("zzz-local"),
+      ], for: .ollama)
+
+    #expect(settings.llmModel == "zzz-local")
+    #expect(settings.ollamaModel == "zzz-local")
+  }
+
+  /// The preferred-default branch has its own candidate search, so it needs its
+  /// own guard. `defaultModel(for: .ollama, ollamaModel:)` returns the
+  /// remembered name, so a remembered HOSTED model is exactly the input that
+  /// would sail through a fix applied only to the plain fallback.
+  ///
+  /// RE-AIMED, not weakened (PR #1949 cloud review + founder decision
+  /// 2026-08-05). This test used to seed a remembered hosted model that WAS
+  /// present in discovery and assert the repair replaced it with a local one.
+  /// That asserted the defect the review found: a model the user picked being
+  /// undone by the repair. Founder ruling, verbatim: "If a user selects a model
+  /// -> that is the model they want to use -> swapping to a different ai
+  /// polishing provider should not 'undo' their selection in Ollama."
+  ///
+  /// The branch under test is unchanged and still needs its guard, so the setup
+  /// now describes the state where the repair legitimately RUNS: the remembered
+  /// hosted model is GONE from discovery, so nothing is armed, and the
+  /// candidate search must still refuse the hosted row that remains.
+  @Test("a hosted preferred-default never wins over an available local model")
+  func hostedPreferredDefaultLosesToLocal() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "deleted-model"
+    // The remembered preference IS a hosted model, so it is the preferred
+    // default candidate on this pass — and it is NOT in discovery below, so the
+    // repair genuinely runs instead of preserving an armed selection.
+    settings.ollamaModel = "gpt-oss:120b-cloud"
+
+    settings.applyDiscoveredModels(
+      [model("nemotron-3-super:cloud", isRemote: true), model("mistral")], for: .ollama)
+
+    #expect(settings.llmModel == "mistral")
+    #expect(settings.ollamaModel == "mistral")
+  }
+
+  /// An already-armed hosted model stays armed while it is available.
+  ///
+  /// This asserts PRESERVATION, not that the user chose it. The stored fields
+  /// record no provenance, so the selection may have come from a manual pick or
+  /// from the pre-#1914 automatic fallback, whose result is byte-identical.
+  ///
+  /// Founder decision 2026-08-04: preservation is the shipped behaviour and no
+  /// migration clears existing selections. So this expectation is final, not
+  /// provisional — see the decision note in `applyDiscoveredModels` for the
+  /// reasoning and for the condition that would reopen it.
+  @Test("an already armed available hosted model is left alone")
+  func armedHostedModelSurvives() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "gpt-oss:120b-cloud"
+    settings.ollamaModel = "gpt-oss:120b-cloud"
+
+    settings.applyDiscoveredModels(
+      [model("gpt-oss:120b-cloud", isRemote: true), model("mistral")], for: .ollama)
+
+    #expect(settings.llmModel == "gpt-oss:120b-cloud")
+    #expect(settings.ollamaModel == "gpt-oss:120b-cloud")
+    #expect(settings.effectiveLLMModel == "gpt-oss:120b-cloud")
+  }
+
+  /// Availability still gates the local pool: an unavailable local model is not
+  /// a usable answer, so a list of one unavailable local plus hosted models
+  /// must still arm nothing.
+  @Test("an UNAVAILABLE local model does not rescue a remote-only list")
+  func unavailableLocalIsNotSelected() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = "deleted-model"
+    settings.ollamaModel = "deleted-model"
+
+    settings.applyDiscoveredModels(
+      [model("broken-local", available: false), model("gpt-oss:120b-cloud", isRemote: true)],
+      for: .ollama)
+
+    #expect(settings.llmModel == "")
+    #expect(settings.ollamaModel == "")
+  }
+
+  /// The refusal is scoped to Ollama. Remoteness is an Ollama-daemon fact and
+  /// means nothing for a cloud provider, whose models are all "remote" in the
+  /// ordinary sense — filtering them out would disable cloud polish entirely.
+  @Test("cloud auto-selection is unaffected by remoteness")
+  func cloudAutoSelectionUnaffected() {
+    for provider in [LLMProvider.openAI, .gemini, .claude] {
+      let settings = freshSettings()
+      settings.llmProvider = provider
+      settings.llmModel = "deleted-model"
+
+      settings.applyDiscoveredModels(
+        [
+          LLMModelInfo(
+            id: "some-model", displayName: "S", provider: provider, isAvailable: true,
+            isRemote: true)
+        ], for: provider)
+
+      #expect(settings.llmModel == "some-model", "\(provider) must still auto-select")
+    }
   }
 
   @Test("an armed model present in discovery is left alone")
