@@ -853,7 +853,39 @@ public final class SettingsManager {
         : LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
       return
     }
-    if !models.contains(where: { $0.id == llmModel && $0.isAvailable }) {
+    // #1914 (PR #1949 cloud review): for Ollama the ARMED model is
+    // `ollamaModel`, not `llmModel` — `effectiveLLMModel` reads it (`:574`), and
+    // `canonicalizeLLMModelForProvider` deliberately does NOT refill `llmModel`
+    // from it (#1305: refilling at launch re-armed a picker selection discovery
+    // had cleared).
+    //
+    // So switching provider away from Ollama and back leaves `llmModel` holding
+    // the OTHER provider's id while `ollamaModel` still holds the user's Ollama
+    // pick. Testing `llmModel` here made that remembered pick look UNARMED, so
+    // the repair below ran — and because the repair excludes hosted rows, a
+    // deliberately chosen HOSTED model was replaced by a local one, or cleared
+    // outright on a hosted-only install, purely from visiting another provider
+    // and coming back. That is the "existing selections are LEFT ALONE" founder
+    // decision below being violated by the very branch that documents it.
+    //
+    // Test what is actually armed.
+    let armedModel = provider == .ollama ? ollamaModel : llmModel
+    if models.contains(where: { $0.id == armedModel && $0.isAvailable }) {
+      // Armed and available: this is the user's selection and it stands. Re-sync
+      // the picker field, which binds `llmModel` (`AIPolishSettingsView:473`),
+      // so the UI shows the model the runtime will actually use instead of the
+      // previous provider's leftover id.
+      //
+      // This does NOT resurrect #1305. That bug refilled `llmModel` from a
+      // REMEMBERED name with no availability check, re-arming a model discovery
+      // had just cleared. This runs only when discovery itself has just proven
+      // the model is present and available, and it never invents a name: on the
+      // all-hosted path below, `ollamaModel` is cleared to "" and no available
+      // row can match it.
+      if provider == .ollama, llmModel != armedModel {
+        llmModel = armedModel
+      }
+    } else {
       // Prefer the provider's own default-model family (an exact id match,
       // or that default id as a dated-snapshot prefix — Anthropic returns
       // Claude ids as a compact-dated snapshot, e.g. `claude-haiku-4-5` vs.
