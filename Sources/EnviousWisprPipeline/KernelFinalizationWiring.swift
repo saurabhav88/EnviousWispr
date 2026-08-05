@@ -561,7 +561,17 @@ struct KernelFinalizationWiring {
             // discarded-on-timeout one, since the deadline cannot preempt this
             // closure and it always runs to completion.
             let oracleSnapshot = await MainActor.run { seamCasingOracle(resolution.language) }
-            defer { Task { @MainActor in releaseOracleLease() } }
+            // Release ONLY IF a lease was actually taken. `snapshot(for:)` leases
+            // on a ready answer and not on a refusal, so an unconditional release
+            // is not merely harmless bookkeeping: leases carry no identity, so an
+            // unmatched release decrements whichever decision currently holds the
+            // count, and the drain may then start preparing while that decision is
+            // still inside the shared spell checker — precisely the race the lease
+            // exists to close. Grounded review r3, MED.
+            let holdsOracleLease = oracleSnapshot.isAvailable
+            defer {
+              if holdsOracleLease { Task { @MainActor in releaseOracleLease() } }
+            }
             let gatedOracle = oracleSnapshot.authorized { gate.authorizeOracleUse() }
             let repaired = CursorInsertionRepair.repair(
               text: text,

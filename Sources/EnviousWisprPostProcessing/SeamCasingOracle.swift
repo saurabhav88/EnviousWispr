@@ -1,10 +1,17 @@
 import Foundation
 
-/// Whether a capitalised English word may be lowered where it sits.
+/// Whether a capitalised word may be lowered where it sits, in any of the
+/// twelve languages that have a casing policy.
 ///
-/// A VALUE, not a service: the four closures are the only contact with the
+/// A VALUE, not a service: its four closures — `dictionaryVerdict`,
+/// `isLearnedWord`, `isRecognizedName`, `isNoun` — are the only contact with the
 /// operating system, so unit tests inject fixed answers and never touch a
-/// system facility. `SeamCasingOracleRuntime` is the only thing that builds a
+/// system facility.
+
+// Named `EnglishWordOracle` until #1922 (2026-08-05) made it serve twelve
+// languages. `mayLower` still asks the two questions below; the German noun VETO
+// that issue added lives OUTSIDE it, in `CursorInsertionRepair.applyLeadingCase`,
+// which is what keeps it structurally a veto rather than a decider. `SeamCasingOracleRuntime` is the only thing that builds a
 /// live one, which keeps `AppKit` and `NaturalLanguage` confined to that file.
 ///
 /// Replaces `OrdinaryLowercaseLexicon`, a hand-authored 799-word allowlist that

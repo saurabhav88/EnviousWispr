@@ -295,8 +295,9 @@ struct CursorInsertionRepairLanguagePairingTests {
     // The two-way control the case above cannot supply. A veto that answered
     // "noun" to everything would satisfy every German assertion in this suite
     // while disabling the feature for the whole language, and nothing would show
-    // it. Measured on held-out German: 22.0% correct before, 89.0% after — that
-    // gain is entirely made of continuations like this one.
+    // it. Measured on held-out German against the BUILT code: 22.0% correct
+    // before, 88.5% after — and that gain is entirely made of continuations like
+    // this one.
     let lowered = Self.repaired(
       "Und dann sagte er nichts.", "de",
       left: "Ich habe den ganzen Morgen an dieser Mail geschrieben ", right: "")

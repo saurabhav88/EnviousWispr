@@ -2,8 +2,8 @@ import Testing
 
 @testable import EnviousWisprPostProcessing
 
-// #1922: the eleven-language policy table, the German noun veto, the polite-form
-// guards, and locale-aware lowering.
+// #1922: the TWELVE-language policy table — English plus the eleven this issue
+// added — the German noun veto, the polite-form guards, and locale-aware lowering.
 //
 // Everything here is a pure function of an injected oracle, so no case touches a
 // system dictionary or a part-of-speech tagger. What macOS can actually SERVE is
@@ -132,9 +132,9 @@ struct SeamCasingPolicyTests {
   @Test(
     "#1922 English output is byte-identical to the shipped behaviour",
     arguments: [
-      // The cross-persona guarantee. English shipped this rule in #1803 and
-      // 100k users depend on it; the eleven new languages are worth nothing if
-      // they cost a regression here.
+      // The cross-persona guarantee. English shipped this rule in #1803 and is
+      // the language most of our users dictate in; the eleven new languages are
+      // worth nothing if they cost a regression here.
       //
       // Each row is payload / expected repaired text / expected reason, taken
       // from the rules English already had, not from a run of the new code.

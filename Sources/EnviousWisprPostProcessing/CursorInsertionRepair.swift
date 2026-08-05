@@ -75,7 +75,10 @@ public enum CursorInsertionRepair {
     case alwaysCapitalized = "always_capitalized"
     /// The system dictionary does not recognise the lowercase form.
     case notOrdinaryWord = "not_ordinary_word"
-    /// No usable English dictionary on this machine.
+    /// No usable dictionary for THIS dictation's language on this machine.
+    /// Per-language since #1922: a missing Danish dictionary says nothing about
+    /// the English one, and demoting all of them would turn one language's
+    /// outage into a whole-feature outage.
     case dictionaryUnavailable = "dictionary_unavailable"
     /// Apple's recogniser read this word as a person, place or organisation in
     /// this sentence, so the capital is carrying meaning.
@@ -254,10 +257,10 @@ public enum CursorInsertionRepair {
   /// How a language wants its leading capital decided, when it wants one decided
   /// at all. `nil` in `LanguageRules.casingPolicy` means abstain.
   ///
-  /// Two knobs, because exactly two things vary across the eleven supported
-  /// languages and neither implies the other. German inverts the noun rule and
-  /// has polite forms; Swedish has polite forms and no noun rule; the other nine
-  /// have neither.
+  /// Two knobs, because exactly two things vary across the TWELVE languages that
+  /// have a policy — English plus the eleven #1922 added — and neither implies the
+  /// other. German inverts the noun rule and has polite forms; Swedish has polite
+  /// forms and no noun rule; the other ten have neither.
   struct CasingPolicy: Equatable {
     /// Keep the capital when the word-class tagger calls this word a noun.
     ///
@@ -751,8 +754,11 @@ public enum CursorInsertionRepair {
     // this can only withdraw that. #1803's rejected design made word class the
     // DECIDER plus a safe-tag allowlist, which lowered nominalised adverbs and
     // pronouns. As a conjunction it cannot introduce a damage class the rule did
-    // not already have — measured 127 wrong to 22 on the tuned split, and 91 to 9
-    // on a clean holdout.
+    // not already have. Measured 127 wrong to 22 on the tuned split; on the clean
+    // dev holdout the BUILT code lowers 1,547 German seams correctly and 7 wrongly
+    // (0.30%), taking German from 22.0% to 88.5% end-state accuracy. An earlier
+    // 91-to-9 figure here was the PROBE's, and the probe reimplemented part of the
+    // chain (issue-1922-artifacts/2026-08-05-shipfloor-dev.out).
     //
     // The dictation ALONE, never the surrounding document: #1803 measured that
     // adding the document flipped `Morgen` from adverb to noun. And the top tag,

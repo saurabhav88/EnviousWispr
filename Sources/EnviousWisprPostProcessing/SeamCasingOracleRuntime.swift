@@ -100,8 +100,11 @@ package enum SeamCasingOracleRuntime {
   /// file and independently by grounded review r2.
   ///
   /// The dictionary sentinel is required by EVERY profile and must never be
-  /// relaxed: it is what makes the 23 unsupported European languages refuse
-  /// safely. Only the tag-scheme requirements vary.
+  /// relaxed. Be precise about what it does, because the two guards are easy to
+  /// conflate: the POLICY TABLE is what makes the 23 unsupported European
+  /// languages abstain — they never reach this type at all — while the sentinel
+  /// protects a SUPPORTED language against a dictionary that is listed but
+  /// answers yes to everything. Only the tag-scheme requirements vary.
   struct CapabilityProfile: Sendable {
     let needsNameType: Bool
     let needsLexicalClass: Bool

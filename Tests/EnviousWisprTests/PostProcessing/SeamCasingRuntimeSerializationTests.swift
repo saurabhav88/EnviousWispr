@@ -239,6 +239,49 @@ struct SeamCasingRuntimeSerializationTests {
     }
   }
 
+  @Test("#1922 An unmatched release cannot steal a lease another decision holds")
+  func unmatchedReleaseCannotStealALease() async throws {
+    // Grounded review r3 (MED). Leases carry no identity, so `releaseDecisionLease()`
+    // called by a decision that never took one decrements whichever decision
+    // currently holds the count — and the drain then starts preparing while that
+    // decision is still inside the shared spell checker, which is exactly the race
+    // the lease exists to close.
+    //
+    // The production fix is at the CALL SITE: release only if the snapshot was
+    // ready. This freezes the property that makes the fix necessary — an extra
+    // release does real damage — so nobody restores the unconditional form
+    // believing it harmless.
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.installForTesting(Self.ready(["the"]), for: "en")
+
+      // Decision A: ready, so it leases.
+      let a = SeamCasingOracleRuntime.snapshot(for: "en")
+      #expect(a.isAvailable)
+      #expect(SeamCasingOracleRuntime.outstandingLeasesForTesting() == 1)
+
+      // Decision B: a language with no policy. It gets no lease — and if it
+      // releases anyway, it takes A's.
+      let b = SeamCasingOracleRuntime.snapshot(for: nil)
+      #expect(b.isAvailable == false, "an unsupported language must not be ready")
+      #expect(
+        SeamCasingOracleRuntime.outstandingLeasesForTesting() == 1,
+        "and it must not have taken a lease of its own")
+
+      // What the old unconditional `defer` did.
+      SeamCasingOracleRuntime.releaseDecisionLease()
+      #expect(
+        SeamCasingOracleRuntime.outstandingLeasesForTesting() == 0,
+        "THIS is the damage: A conceptually still holds its lease, the count says zero, and the drain is now free to prepare while A is inside the checker"
+      )
+
+      // Clean up A's real lease. The count is already zero, so this is a no-op —
+      // which is the other half of the same defect: the accounting cannot recover.
+      SeamCasingOracleRuntime.releaseDecisionLease()
+      #expect(SeamCasingOracleRuntime.outstandingLeasesForTesting() == 0)
+    }
+  }
+
   // MARK: - The latch is still process-wide
 
   @Test("#1922 One language's timeout latches EVERY language, not just its own")

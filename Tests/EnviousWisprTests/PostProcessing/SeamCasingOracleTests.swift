@@ -346,7 +346,11 @@ struct SeamCasingOracleTests {
       // this case stands in for the product call, so it should take the same
       // route through the runtime that the product call takes.
       let live = SeamCasingOracleRuntime.snapshot(for: "en")
-      defer { SeamCasingOracleRuntime.releaseDecisionLease() }
+      // Conditional, mirroring production. This case's snapshot is WARMING, so it
+      // takes no lease, and an unconditional release here would model the
+      // production bug rather than the production code.
+      let holdsLease = live.isAvailable
+      defer { if holdsLease { SeamCasingOracleRuntime.releaseDecisionLease() } }
       let payloads = CursorInsertionRepair.repair(
         text: "Go home.",
         context: CursorInsertionRepair.CaretText(left: "I can't wait to", right: ""),
