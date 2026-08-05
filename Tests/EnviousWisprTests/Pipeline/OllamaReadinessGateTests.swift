@@ -231,6 +231,109 @@ struct OllamaReadinessGateTests {
     #expect(result.polishedText == nil)
   }
 
+  // MARK: - #1914 completed-only remoteness carrier
+
+  /// A polisher that gets past readiness and then throws. The step returns no
+  /// context on this path; the wiring-level test confirms that the runner's
+  /// retained pre-step context reaches metrics with remoteness absent.
+  private struct ThrowingPolisher: TranscriptPolisher {
+    func polish(
+      text: String,
+      instructions: PolishInstructions,
+      config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      throw LLMError.classified(.providerServerError)
+    }
+  }
+
+  @Test(
+    "a completed Ollama polish carries the daemon's remoteness answer, either way",
+    arguments: [true, false])
+  func completedOllamaPolishCarriesRemoteness(remote: Bool) async throws {
+    let (step, _) = makeFactsStep(facts: OllamaModelFacts(isRemote: remote, thinks: false))
+
+    let result = try await step.process(context())
+
+    #expect(result.polishRanRemote == remote)
+    #expect(result.polishedText != nil)
+  }
+
+  /// The third state, and the reason the carrier is `Bool?`. OpenAI has no
+  /// daemon to ask, so `nil` is the honest answer; `false` would claim the model
+  /// ran locally in Ollama, which is not what happened.
+  @Test("a completed non-Ollama polish carries no remoteness at all")
+  func completedCloudPolishCarriesNoRemoteness() async throws {
+    let (step, _) = makeStep(
+      probe: { _ in .ready(facts: OllamaModelFacts(isRemote: true, thinks: false)) })
+    step.llmProvider = .openAI
+    step.llmModel = "gpt-4o-mini"
+
+    let result = try await step.process(context())
+
+    #expect(result.polishRanRemote == nil)
+    #expect(result.polishedText != nil)
+  }
+
+  /// Establishes the PRECONDITION for the tabling: a remote-ready attempt that
+  /// then fails leaves the step by throwing, so it never reaches the stamp and
+  /// returns no context at all. Stated precisely because that is all this proves.
+  ///
+  /// The stamped value on a failed dictation is asserted where it can actually be
+  /// read — `KernelFinalizationWiringTests.failedPolishLeavesRemotenessNil`, which
+  /// runs the real wiring and inspects the persisted metrics — and the emitted
+  /// payload is asserted in `DictationCompletedRouteFieldsTests`.
+  @Test("a remote-ready attempt whose polish throws never reaches the stamp")
+  func failedRemotePolishThrowsBeforeTheStamp() async throws {
+    let step = LLMPolishStep(keychainManager: KeychainManager())
+    step.llmProvider = .ollama
+    step.llmModel = "gpt-oss:20b-cloud"
+    step.ollamaReadinessProbe = { _ in
+      .ready(facts: OllamaModelFacts(isRemote: true, thinks: false))
+    }
+    step.makePolisher = { _, _, _ in ThrowingPolisher() }
+
+    await #expect(throws: (any Error).self) {
+      _ = try await step.process(self.context())
+    }
+  }
+
+  /// Every readiness skip, enumerated rather than sampled: these are the three
+  /// non-ready cases `OllamaReadiness` has. Each throws, so like the failure
+  /// above it returns no context and cannot have stamped anything. Enumerated
+  /// because a fourth case added later must decide this deliberately, and a
+  /// sampled test would let it default to whatever the new arm happened to do.
+  @Test(
+    "every readiness skip throws before the stamp, so none can carry remoteness",
+    arguments: [
+      OllamaReadiness.serverDown,
+      OllamaReadiness.modelMissing,
+      OllamaReadiness.noModelSelected,
+    ])
+  func readinessSkipsThrowBeforeTheStamp(readiness: OllamaReadiness) async {
+    let (step, _) = makeStep(probe: { _ in readiness })
+
+    await #expect(throws: (any Error).self) {
+      _ = try await step.process(self.context())
+    }
+  }
+
+  /// The bypass path returns the CALLER's context, so a value already sitting on
+  /// it would ride through untouched. `bypassedContext` clears the field for the
+  /// same reason it clears provider and model.
+  @Test("the too-short bypass clears any remoteness already on the context")
+  func tooShortBypassClearsRemoteness() async throws {
+    let (step, _) = makeStep(
+      probe: { _ in .ready(facts: OllamaModelFacts(isRemote: true, thinks: false)) })
+    var incoming = context("just two words")
+    incoming.polishRanRemote = true
+
+    let result = try await step.process(incoming)
+
+    #expect(result.polishRanRemote == nil)
+    #expect(result.polishedText == nil)
+  }
+
   // MARK: - Runner surfaced-skip contract (notice YES, Sentry NO, telemetry YES)
 
   /// Records every runner Sentry capture (same shape as

@@ -107,6 +107,95 @@ struct DictationCompletedRouteFieldsTests {
       }
     }
 
+    /// #1914: `ollama_remote` is scoped to ONE of the four completion events.
+    /// The take-key tests above prove all four fire, so asserting the other
+    /// three are empty here is a real exclusion rather than a vacuous pass.
+    ///
+    /// The founder tabled failed and skipped remoteness on 2026-08-03. That
+    /// tabling has no compiler behind it: adding the key to another emitter is
+    /// a two-line change that nothing else would notice, which is what this
+    /// freezes.
+    @Test("only llm.polish_completed carries ollama_remote in the completion fan-out")
+    func onlyCompletedPolishCarriesRemoteness() throws {
+      let seen = EventsBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { seen.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Self.transcriptOpeningAllFourGatesRemotely(),
+        inputMode: "ptt",
+        takeID: Self.takeID)
+
+      #expect(seen.events.count == 4, "all four gates must open for the exclusion to mean anything")
+      for event in seen.events {
+        if event.name == "llm.polish_completed" {
+          #expect(event.boolProps["ollama_remote"] == true)
+        } else {
+          #expect(
+            event.boolProps["ollama_remote"] == nil,
+            "\(event.name) must not carry remoteness")
+        }
+      }
+    }
+
+    /// The nil arm through the REAL report path, not a direct emitter call. A
+    /// cloud dictation reaches `llm.polish_completed` with no remoteness on its
+    /// metrics, and the key must be absent rather than `false`.
+    ///
+    /// Added after a mutation control found the gap: replacing the omission with
+    /// `ollamaRemote ?? false` left this whole suite green, because the only
+    /// transcript it fed through the fan-out already carried `true`. A suite that
+    /// asserts an exclusion needs the negative INPUT as well as the negative
+    /// assertion.
+    @Test("a cloud dictation reaches the completed polish event with no remoteness key")
+    func cloudDictationOmitsRemotenessThroughTheReportPath() throws {
+      let seen = EventsBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { seen.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Self.transcriptOpeningAllFourGates(),
+        inputMode: "ptt",
+        takeID: Self.takeID)
+
+      let polish = try #require(seen.events.first { $0.name == "llm.polish_completed" })
+      #expect(polish.boolProps["ollama_remote"] == nil)
+      #expect(polish.stringProps["provider"] == "openai", "the cloud arm really did run")
+    }
+
+    /// The two emitters the tabling is ABOUT. Neither takes a remoteness
+    /// argument, so this asserts the emitted payloads rather than the call
+    /// sites: adding the key to either builder fails here.
+    @Test("neither the failed nor the skipped polish event carries ollama_remote")
+    func failedAndSkippedPolishCarryNoRemoteness() throws {
+      let seen = EventsBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { seen.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.polishFailed(
+        provider: "ollama", model: "gpt-oss:20b-cloud",
+        reason: "empty_response", isTimeout: false)
+      TelemetryService.shared.polishSkipped(
+        provider: "ollama", reason: "local_polish_ollama_server_down")
+
+      let names = Set(seen.events.map(\.name))
+      #expect(
+        names == ["llm.polish_failed", "llm.polish_skipped"],
+        "both emitters must have fired — saw \(names.sorted())")
+      for event in seen.events {
+        #expect(
+          event.boolProps["ollama_remote"] == nil,
+          "\(event.name) must not carry remoteness (founder tabling 2026-08-03)")
+        #expect(event.stringProps["ollama_remote"] == nil)
+      }
+    }
+
     private final class EventsBox: @unchecked Sendable {
       var events: [CapturedTelemetryEvent] = []
     }
@@ -130,6 +219,23 @@ struct DictationCompletedRouteFieldsTests {
           pasteTier: "cgevent",
           pasteLatencyMs: 12,
           e2eSeconds: 1.0))
+    }
+
+    /// The same four-gate transcript with a completed REMOTE Ollama polish on it.
+    /// Provider is `ollama` so the shape is one production can actually produce.
+    private static func transcriptOpeningAllFourGatesRemotely() -> Transcript {
+      Transcript(
+        text: "hello",
+        polishedText: "Hello.",
+        llmProvider: "ollama",
+        llmModel: "gpt-oss:20b-cloud",
+        metrics: ExecutionMetrics(
+          asrLatencySeconds: 0.4,
+          llmLatencySeconds: 0.3,
+          pasteTier: "cgevent",
+          pasteLatencyMs: 12,
+          e2eSeconds: 1.0,
+          polishRanRemote: true))
     }
 
     @Test("Auto dictation omits route fields when nil")

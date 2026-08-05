@@ -363,6 +363,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     ctx.polishedText = nil
     ctx.llmProvider = nil
     ctx.llmModel = nil
+    // #1914: nothing polished, so there is no completed remoteness fact to carry.
+    // Cleared rather than left alone because this returns the CALLER's context,
+    // and a value arriving here could otherwise ride a bypass into telemetry.
+    ctx.polishRanRemote = nil
     return ctx
   }
 
@@ -459,12 +463,19 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // binding and every model silently falls back to the tight budget, compiling
     // cleanly. Here Swift's definite-initialization makes that a COMPILE error
     // instead — every path that reaches the polish request must have assigned
-    // it, and the two not-ready paths throw before they get there.
+    // it, and the three not-ready paths throw before they get there.
+    //
+    // #1914 Chunk 7: `ollamaRemote` rides the SAME binding, for the same reason.
+    // It is `Bool?` rather than `Bool` because its third state is real: a
+    // non-Ollama attempt has no daemon to ask, and saying `false` there would
+    // make the metric mean "local" in one place and "not Ollama" in another.
     let ollamaThinks: Bool
+    let ollamaRemote: Bool?
     if provider == .ollama {
       switch await ollamaReadinessProbe(model) {
       case .ready(let facts):
         ollamaThinks = facts.thinks
+        ollamaRemote = facts.isRemote
       case .serverDown:
         throw LLMError.localPolishNotReady(.providerUnreachable)
       case .modelMissing:
@@ -479,6 +490,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // Explicit, not defaulted: a non-Ollama attempt has no daemon to ask, and
       // this value reaches only the `.ollama` branches of the two policies below.
       ollamaThinks = false
+      ollamaRemote = nil
     }
 
     // #1271: EG-1 resolves its polisher from the live server endpoint, not
@@ -707,6 +719,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       postFilterOutput: result.polishedText,
       validatedText: validatedText,
       originalText: context.text)
+    // #1914: the only positive stamp site. It sits after `polisher.polish`
+    // returned and after `validatePolishOutput`. Every earlier exit leaves the
+    // field nil.
+    //
+    // Finalization owns one later correction: if empty-output recovery clears
+    // `polishedText` and reclassifies the result as skipped, it clears this field
+    // too. Apple Intelligence cannot reach this stamp because its branch returns
+    // above.
+    ctx.polishRanRemote = ollamaRemote
     return ctx
   }
 
