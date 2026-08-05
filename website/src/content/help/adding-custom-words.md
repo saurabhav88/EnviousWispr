@@ -45,4 +45,4 @@ Your spellings are applied to your text before AI Polish runs, on every dictatio
 
 OpenAI, Gemini and Claude are also given your list, so their rewriting keeps your spellings. Whether Ollama is depends on the model you picked. Apple Intelligence and EG-1 are not, because they do better with shorter instructions and your words have already been applied by then.
 
-To move your words between Macs, or bring them in from another app, see [_Importing and Exporting Custom Words_](/help/importing-and-exporting-custom-words/).
+To move your words between Macs, or bring them in from another app, see [[_Importing and Exporting Custom Words_](/help/importing-and-exporting-custom-words/)](/help/importing-and-exporting-custom-words/).

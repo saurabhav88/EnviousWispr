@@ -28,7 +28,7 @@ You can switch this off under **Clipboard** in Settings, where it is called **Sm
 
 ### Your clipboard
 
-When **Restore clipboard after paste** is on, EnviousWispr saves what was on your clipboard and puts it back after pasting. It is on out of the box. See [_Clipboard Preservation_](/help/clipboard-preservation/).
+When **Restore clipboard after paste** is on, EnviousWispr saves what was on your clipboard and puts it back after pasting. It is on out of the box. See [[_Clipboard Preservation_](/help/clipboard-preservation/)](/help/clipboard-preservation/).
 
 ### What this needs
 

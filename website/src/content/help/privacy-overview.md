@@ -23,4 +23,4 @@ Your voice becomes text on your Mac. The audio never leaves it. There is no acco
 - **Anonymous usage and crash data.** On by default. It tells us which app and macOS versions were involved in a problem, never what you said. See [_What Data Is Collected_](/help/what-data-is-collected/).
 - **Cloud AI Polish, only if you choose it.** If you pick OpenAI, Gemini or Claude, your text goes to that company under your own key. Your audio never does. See [_AI Polish and Cloud Data_](/help/ai-polish-and-cloud-data/).
 
-AI Polish on your Mac, with Apple Intelligence, EG-1 or Ollama, sends none of your dictation anywhere.
+AI Polish sends none of your dictation anywhere when it runs on your Mac: Apple Intelligence, EG-1, or an Ollama model you have downloaded. Ollama's hosted models are the exception, because they run on Ollama's servers.

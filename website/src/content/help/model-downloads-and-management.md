@@ -32,4 +32,4 @@ You can download any of them again later.
 
 ### The other speed setting
 
-How quickly a dictation _starts_ is a different setting, under **Microphone**. See [_First Word Gets Cut Off_](/help/first-word-gets-cut-off/).
+How quickly a dictation _starts_ is a different setting, under **Microphone**. See [[_First Word Gets Cut Off_](/help/first-word-gets-cut-off/)](/help/first-word-gets-cut-off/).

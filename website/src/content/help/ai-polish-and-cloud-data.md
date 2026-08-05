@@ -16,7 +16,7 @@ Whether anything leaves your Mac depends entirely on which AI Polish option you 
 - **None.** No AI step at all.
 - **Apple Intelligence.** Apple's model, running on your Mac.
 - **EG-1.** Our own model, running on your Mac.
-- **Ollama.** A model you chose, running on your Mac.
+- **Ollama, when you pick a model that runs on your Mac.** Ollama also offers hosted models that run on its servers; those send your transcribed text, and EnviousWispr shows them under their own heading so you can tell which is which.
 
 ### Your text is sent
 

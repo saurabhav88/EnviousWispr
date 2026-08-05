@@ -14,8 +14,11 @@ Open Settings and go to **AI Polish**. These are your choices.
 
 - **Apple Intelligence.** Free, nothing to set up. Needs macOS 26 or later on a Mac that supports it. This is what you start with.
 - **EG-1.** Our own model, built for dictation. Free. Download it from the AI Polish page, about 2.9 GB once.
-- **Ollama.** Runs a model you choose. Free. You install Ollama yourself.
 - **None.** No AI step. You still get filler-word removal and your custom words.
+
+### Your own setup
+
+- **Ollama.** Runs a model you choose. Free for models on your Mac. You install Ollama yourself. Ollama offers models that run on your Mac and models that run on Ollama's servers. EnviousWispr lists the hosted ones separately and never picks one for you.
 
 ### Uses a company's service
 
@@ -34,7 +37,7 @@ With OpenAI and Gemini, EnviousWispr also asks them not to keep a copy of the re
 | None | Nowhere | Free | Nothing |
 | Apple Intelligence | Stays on your Mac | Free | macOS 26 or later |
 | EG-1 | Stays on your Mac | Free | A 2.9 GB download |
-| Ollama | Stays on your Mac | Free | Ollama installed and running |
+| Ollama | Your Mac, or Ollama's servers if you pick a hosted model | Free on your Mac; a hosted model may need a paid Ollama plan | Ollama installed and running |
 | OpenAI | To OpenAI | You pay OpenAI | An API key |
 | Gemini | To Google | You pay Google | An API key |
 | Claude | To Anthropic | You pay Anthropic | An API key |

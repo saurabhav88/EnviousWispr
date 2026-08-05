@@ -17,7 +17,7 @@ AI Polish tidies up what you said. It fixes grammar and punctuation, cuts filler
 - Translate you. Dictate in French and you get French.
 - Touch a very short dictation. Those skip the AI step, though your other clean-up settings still apply.
 
-AI can still get things wrong. EnviousWispr checks the result and rejects the obvious failures (see [_Hallucination Protection_](/help/hallucination-protection/)), but read anything important before you send it.
+AI can still get things wrong. EnviousWispr checks the result and rejects the obvious failures (see [[_Hallucination Protection_](/help/hallucination-protection/)](/help/hallucination-protection/)), but read anything important before you send it.
 
 ### It cannot lose your words
 

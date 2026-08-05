@@ -1,6 +1,6 @@
 # EnviousWispr
 
-> Free, private voice-to-text for macOS. Hold a hotkey, speak, release. Polished text lands on your clipboard or pastes directly. Transcription runs on-device with Parakeet (25 European languages) or WhisperKit (99 languages). Optional AI polish can stay on-device with EG-1, Apple Intelligence, or Ollama; OpenAI and Gemini are optional bring-your-own-key cloud providers. No account, no subscription. Free download.
+> Free, private voice-to-text for macOS. Hold a hotkey, speak, release. Polished text lands on your clipboard or pastes directly. Transcription runs on-device with Parakeet (25 European languages) or WhisperKit (99 languages). Optional AI polish can stay on-device with EG-1, Apple Intelligence, or a local Ollama model; Ollama also offers hosted models that run on its servers, and OpenAI, Gemini and Claude are optional bring-your-own-key cloud providers. No account, no subscription. Free download.
 
 Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.
 License: GNU General Public License v3 (GPLv3, open source on GitHub).
@@ -21,7 +21,7 @@ Last-updated: 2026-08-05
 - [Troubleshooting](https://enviouswispr.com/help/troubleshooting/): No text appearing, inaccurate dictation, first word cut off, accessibility permission not sticking, recording that will not stop, Ollama and Apple Intelligence failures, app crashes.
 - [Recording and Hotkeys](https://enviouswispr.com/help/recording-and-hotkeys/): Push-to-talk, hands-free, toggle mode, changing the recording hotkey, cancelling a recording.
 - [Speech Engines](https://enviouswispr.com/help/speech-engines/): Parakeet versus WhisperKit, language coverage, downloading and managing models, live transcription.
-- [AI Polish](https://enviouswispr.com/help/ai-polish/): What polish does, choosing or disabling a provider, Apple Intelligence setup, running Ollama offline, context-aware polish, hallucination protection.
+- [AI Polish](https://enviouswispr.com/help/ai-polish/): What polish does, choosing or disabling a provider, Apple Intelligence setup, running a local Ollama model offline, what hosted Ollama models send, context-aware polish, hallucination protection.
 - [Pasting Your Text](https://enviouswispr.com/help/pasting-your-text/): How text reaches the focused app, spacing and capitals at the cursor, clipboard preservation, what to do when paste fails.
 - [Audio and Microphone](https://enviouswispr.com/help/audio-and-microphone/): Choosing an input device, AirPods and Bluetooth behaviour, noise suppression, voice activity detection and auto-stop.
 - [Custom Words](https://enviouswispr.com/help/custom-words/): Adding names and jargon, how correction matches, importing and exporting a word list.

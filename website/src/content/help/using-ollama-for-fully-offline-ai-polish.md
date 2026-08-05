@@ -8,7 +8,9 @@ keywords: ["ollama", "offline ai", "local ai", "local model", "llama", "run ai l
 related: ["ollama-polish-not-working"]
 updated: 2026-08-05
 ---
-Ollama runs a language model on your own Mac. Once it is set up, polishing needs no key, no account, and sends none of your dictation to the internet.
+Ollama can run a language model on your own Mac. Once it is set up, polishing needs no key, no account, and sends none of your dictation to the internet.
+
+This page is about those on-Mac models. Ollama also offers hosted models that run on Ollama's servers, which do send your transcribed text off your Mac. EnviousWispr lists them under their own heading in the model list and never selects one for you, so if you want everything to stay local, pick a model that is not in that group.
 
 ### Setting it up
 

@@ -22,7 +22,7 @@ Yes. Everything, with no subscription, no trial and no account.
 
 If you choose OpenAI, Gemini or Claude for AI Polish, you bring your own key and pay that company for what you use. EnviousWispr charges nothing either way.
 
-You never have to. Apple Intelligence, EG-1 and Ollama all polish on your Mac for free.
+You never have to. Apple Intelligence, EG-1, and Ollama models on your Mac all polish for free. Ollama's hosted models run on Ollama's servers and some of them need a paid Ollama plan.
 
 ### Why free
 

@@ -18,7 +18,7 @@ Hold your hotkey, talk, let go. That is push to talk, and it is how EnviousWispr
 
 ### For longer dictations
 
-If you do not want to keep holding the key, tap it quickly and then press it again within half a second. Recording stays on after you let go. See [_Hands-Free Mode (Long Dictation)_](/help/hands-free-mode-long-dictation/).
+If you do not want to keep holding the key, tap it quickly and then press it again within half a second. Recording stays on after you let go. See [[_Hands-Free Mode (Long Dictation)_](/help/hands-free-mode-long-dictation/)](/help/hands-free-mode-long-dictation/).
 
 ### Choosing it
 
