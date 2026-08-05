@@ -5,8 +5,16 @@
 interface Props {
   /** The index page renders a large inline field; other pages a compact button. */
   variant?: 'inline' | 'compact';
+  /**
+   * Render the dialog itself. EXACTLY ONE instance per page may do this.
+   * The trigger is reusable; the dialog is not — two of them means duplicate
+   * IDs for the overlay, label, input, status and results, so getElementById
+   * silently binds everything to whichever comes first, the other dialog is
+   * unreachable, and every aria reference is ambiguous.
+   */
+  withDialog?: boolean;
 }
-const { variant = 'compact' } = Astro.props;
+const { variant = 'compact', withDialog = true } = Astro.props;
 ---
 
 {variant === 'inline' ? (
@@ -23,6 +31,7 @@ const { variant = 'compact' } = Astro.props;
   </button>
 )}
 
+{withDialog && (
 <div class="help-search-overlay" id="help-search-overlay" hidden>
   <div class="help-search-backdrop" data-help-search-close></div>
   <div class="help-search-panel" role="dialog" aria-modal="true" aria-labelledby="help-search-label">
@@ -47,6 +56,7 @@ const { variant = 'compact' } = Astro.props;
     <ul class="help-search-results" id="help-search-results" role="listbox" aria-label="Search results"></ul>
   </div>
 </div>
+)}
 
 <script>
   const overlay = document.getElementById('help-search-overlay') as HTMLElement | null;
@@ -106,6 +116,7 @@ const { variant = 'compact' } = Astro.props;
     function render() {
       const q = input.value.trim();
       active = -1;
+      input.removeAttribute('aria-activedescendant');
       if (!engine || !q) {
         list.innerHTML = '';
         status.textContent = '';
@@ -126,7 +137,7 @@ const { variant = 'compact' } = Astro.props;
 
       list.innerHTML = results
         .map((r, i) => `
-          <li role="option" aria-selected="false" data-index="${i}">
+          <li role="option" id="help-search-opt-${i}" aria-selected="false" data-index="${i}">
             <a href="/help/${r.id}/">
               <span class="r-title">${escapeHtml(r.title)}</span>
               <span class="r-cat">${escapeHtml(r.categoryLabel)}</span>
@@ -148,6 +159,10 @@ const { variant = 'compact' } = Astro.props;
         li.setAttribute('aria-selected', i === active ? 'true' : 'false');
         li.classList.toggle('is-active', i === active);
       });
+      // Focus stays on the combobox by design, so without this a screen reader
+      // is told nothing when the arrow keys move: the visual class change is
+      // the only signal, which is no signal at all for Aaron.
+      input.setAttribute('aria-activedescendant', items[active].id);
       items[active].scrollIntoView({ block: 'nearest' });
     }
 
@@ -161,7 +176,23 @@ const { variant = 'compact' } = Astro.props;
       else if (e.key === 'Enter') {
         const link = list.querySelectorAll('li')[active]?.querySelector('a') as HTMLAnchorElement | undefined;
         if (link) { e.preventDefault(); window.location.href = link.href; }
-      } else if (e.key === 'Escape') { e.preventDefault(); close(); }
+      }
+    });
+
+    // Escape and Tab are handled on the DIALOG, not the input: focus moves to
+    // the close button and to results, and an Escape bound to the input stops
+    // working the moment it does. Tab is cycled so it cannot reach the page
+    // behind an open modal.
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      if (e.key !== 'Tab') return;
+      const focusable = [input, ...overlay.querySelectorAll<HTMLElement>('button, a[href]')]
+        .filter((el) => el && el.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     });
 
     document.addEventListener('keydown', (e) => {
