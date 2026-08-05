@@ -855,8 +855,11 @@ public enum PasteService {
     var context = caretDerivedContext(
       element: element, window: window, budget: terminalBudget)
 
+    // `nil` label and zero cost: every read inside `caretDerivedContext` already
+    // recorded itself through `budget.step`, so this is an exhaustion CHECK and
+    // not a cost. Labelling it would add a phantom zero-cost entry to the trace.
     if TerminalContextResolver.overspent(
-      by: 0, budget: terminalBudget, breaker: terminalBreaker, pid: targetPID)
+      by: 0, label: nil, budget: terminalBudget, breaker: terminalBreaker, pid: targetPID)
     {
       // Path 3. Whatever came back arrived too late to spend more time on.
       onTerminalRefusal?(.deadline)

@@ -206,13 +206,13 @@ struct TerminalInsertionPolicyTests {
     // A nearly-spent budget still yields a usable, non-zero bound rather than
     // an instant-failure timeout.
     let spent = TerminalResolutionBudget(total: 0.100)
-    spent.charge(0.099)
+    spent.charge(0.099, label: "probe")
     #expect(spent.remaining > 0)
     #expect(max(0.010, min(spent.remaining, PasteService.axMessagingTimeoutSeconds)) >= 0.010)
 
     // An exhausted budget clamps to the floor, never to zero or a negative.
     let exhausted = TerminalResolutionBudget(total: 0.100)
-    exhausted.charge(1.0)
+    exhausted.charge(1.0, label: "probe")
     #expect(max(0.010, min(exhausted.remaining, PasteService.axMessagingTimeoutSeconds)) == 0.010)
   }
 

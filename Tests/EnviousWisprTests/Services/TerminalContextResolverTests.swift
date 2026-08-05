@@ -200,7 +200,7 @@ struct TerminalContextResolverTests {
       readScreenTail: { Self.claudeScreen })
 
     let budget = TerminalResolutionBudget(total: 0.100)
-    budget.charge(0.100)
+    budget.charge(0.100, label: "probe")
     #expect(resolve(dependencies, budget: budget) == .refused(.deadline))
     #expect(!scanned.wasRaised)
   }
@@ -227,13 +227,13 @@ struct TerminalContextResolverTests {
   func budgetAccounting() {
     let budget = TerminalResolutionBudget(total: 0.100)
     #expect(budget.remaining == 0.100)
-    budget.charge(0.040)
+    budget.charge(0.040, label: "probe")
     #expect(abs(budget.remaining - 0.060) < 0.0001)
-    budget.charge(0.500)
+    budget.charge(0.500, label: "probe")
     #expect(budget.remaining == 0)
     #expect(budget.isExhausted)
     // A negative charge cannot buy time back.
-    budget.charge(-1.0)
+    budget.charge(-1.0, label: "probe")
     #expect(budget.isExhausted)
   }
 
@@ -349,6 +349,39 @@ struct TerminalContextResolverTests {
     #expect(
       withPhases.contains("total=6.0ms"),
       "the marker adds no time; only the third real step does, got \(withPhases)")
+  }
+
+  @Test("a cost charged OUTSIDE an accessibility step still reaches the total")
+  func nonAccessibilityCostsAreInTheTotal() {
+    // Cloud review's finding, frozen. The process sweep is not an accessibility
+    // call, so nothing else charges it — `resolve` times it by hand and charges
+    // the shared budget directly. It was recorded NOWHERE, so a sweep that ate
+    // 90 ms of the 100 ms cap printed `total=1.0ms`: the line would have been at
+    // its most misleading in exactly the case it exists to explain.
+    let clock = TestClock()
+    clock.perCallCost = 0.002
+    let budget = TerminalResolutionBudget(total: 0.100, now: { clock.read() })
+    let element = AXUIElementCreateSystemWide()
+
+    budget.charge(0.090, label: "scan")
+    _ = budget.step(applying: element, label: "screen") {}
+
+    let description = budget.timingDescription
+    #expect(description.contains("scan=90.0ms"), "named and real, got \(description)")
+    #expect(
+      description.contains("total=92.0ms"),
+      "the total must include it, got \(description)")
+
+    // Two-way control on the escape hatch: a cost the caller says is ALREADY
+    // recorded must not appear twice. `overspent(by: 0, label: nil, …)` runs on
+    // the screen-read path for exactly that reason, and a version that recorded
+    // anyway would double every step in the line.
+    budget.charge(0.005, label: nil)
+    let after = budget.timingDescription
+    #expect(
+      after == description,
+      "an unlabelled charge changes the budget, never the trace, got \(after)")
+    #expect(budget.remaining < 0.006, "but it IS charged")
   }
 
   // MARK: - Circuit breaker

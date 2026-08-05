@@ -107,8 +107,21 @@ package final class TerminalResolutionBudget: Sendable {
   package var isExhausted: Bool { remaining <= 0 }
 
   /// Charge the time a step made the caller wait.
-  package func charge(_ seconds: Double) {
+  ///
+  /// Charging and RECORDING are one call, so a cost cannot reach the budget
+  /// without also reaching the trace unless a caller says so explicitly. Cloud
+  /// review found exactly that gap: the process scan was charged and recorded
+  /// nowhere, so a scan that ate 90 ms printed `total=1.0ms` — the line would
+  /// have been at its most misleading in the one case it exists to explain. A
+  /// log line carries the same evidence burden as a comment.
+  ///
+  /// Pass `nil` ONLY where the cost is already recorded by `step`, which is the
+  /// screen read: charging it a second time from the caller would double-count
+  /// it and halve the effective budget.
+  package func charge(_ seconds: Double, label: String?) {
     spent.withLock { $0 += max(0, seconds) }
+    guard let label else { return }
+    trace.withLock { $0.append((label, max(0, seconds), false)) }
   }
 
   /// Run one bounded step: apply the remaining budget as the accessibility
@@ -132,12 +145,14 @@ package final class TerminalResolutionBudget: Sendable {
     AXUIElementSetMessagingTimeout(application, Float(max(0.005, remaining)))
     let started = now()
     defer {
-      let elapsed = now() - started
-      charge(elapsed)
-      // Two separate locks, never nested: `charge` has already returned.
-      // Recording is a plain array append under an uncontended lock with no
-      // suspension point, so this cannot widen the window it measures.
-      trace.withLock { $0.append((label, elapsed, false)) }
+      // ONE call. `charge` both charges and records, so the separate
+      // `trace.append` this used to make alongside it would enter every step
+      // twice and double the printed total.
+      //
+      // Two separate locks inside `charge`, never nested: recording is a plain
+      // array append under an uncontended lock with no suspension point, so it
+      // cannot widen the window it measures.
+      charge(now() - started, label: label)
     }
     return body()
   }
@@ -273,13 +288,17 @@ package enum TerminalContextResolver {
   /// documented, and inert — a wedged terminal would have repeated its delay on
   /// every single dictation forever. Tests that only trip it by hand cannot
   /// catch that; this is the one place the product itself does.
+  /// - Parameter label: names this cost in the timing trace, or `nil` when the
+  ///   cost was already recorded by `budget.step` and charging it again here
+  ///   would double-count it.
   static func overspent(
     by elapsed: Double,
+    label: String?,
     budget: TerminalResolutionBudget,
     breaker: TerminalCircuitBreaker,
     pid: pid_t
   ) -> Bool {
-    budget.charge(elapsed)
+    budget.charge(elapsed, label: label)
     guard budget.isExhausted else { return false }
     breaker.trip(for: pid)
     return true
@@ -315,7 +334,8 @@ package enum TerminalContextResolver {
     let scanStart = dependencies.now()
     let scan = dependencies.scanProcesses()
     if overspent(
-      by: dependencies.now() - scanStart, budget: budget, breaker: breaker, pid: targetPID)
+      by: dependencies.now() - scanStart, label: "scan", budget: budget, breaker: breaker,
+      pid: targetPID)
     {
       return .refused(.deadline)
     }
@@ -336,7 +356,9 @@ package enum TerminalContextResolver {
     // cumulative. Timing it again from out here would double-count it and
     // halve the effective budget.
     let tail = dependencies.readScreenTail()
-    if overspent(by: 0, budget: budget, breaker: breaker, pid: targetPID) {
+    // `nil` label and zero cost: `budget.step` already recorded the read under
+    // `screen`. This call exists only to re-test exhaustion after it.
+    if overspent(by: 0, label: nil, budget: budget, breaker: breaker, pid: targetPID) {
       // The evidence may well be complete, and it is discarded anyway. A result
       // that arrived after the deadline is a result the user already waited too
       // long for, and accepting it would make the promised bound meaningless.
