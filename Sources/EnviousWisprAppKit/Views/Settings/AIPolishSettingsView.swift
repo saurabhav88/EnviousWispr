@@ -1031,10 +1031,11 @@ struct AIPolishSettingsView: View {
       // path, and the audio never leaves the Mac on either.
       Text(
         """
-        Ollama runs open models through a free tool you install once, with no API key or \
-        per-use cost. Models on your Mac keep your dictation on your Mac. Ollama also offers \
+        Ollama is a free tool you install once. Models on your Mac need no API key and \
+        no per-use cost, and they keep your dictation on your Mac. Ollama also offers \
         hosted models, which run on Ollama's servers. Those are listed separately below \
-        and are never selected for you.
+        and are never selected for you. A hosted model needs you signed in to Ollama, \
+        and some of them need a paid Ollama plan.
         """
       )
       .settingsReadingCopy()
