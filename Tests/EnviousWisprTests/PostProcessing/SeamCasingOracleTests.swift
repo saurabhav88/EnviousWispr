@@ -20,8 +20,8 @@ import os
 // this `warmingRefuses` can reset the phase while `timeoutLatchIsPermanent`
 // expects it still latched — an order-dependent flake that passes until it does
 // not (local diff review r3).
-@Suite("EnglishWordOracle", .serialized)
-struct EnglishWordOracleTests {
+@Suite("SeamCasingOracle", .serialized)
+struct SeamCasingOracleTests {
 
   /// An oracle with fixed answers. `isName` defaults to false so a case that is
   /// not about the name recogniser cannot fail because of it.
@@ -29,8 +29,8 @@ struct EnglishWordOracleTests {
     ordinary: Set<String> = [],
     learned: Set<String> = [],
     isName: Bool = false
-  ) -> EnglishWordOracle {
-    EnglishWordOracle(
+  ) -> SeamCasingOracle {
+    SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { ordinary.contains($0) ? .ordinary : .notOrdinary },
       isLearnedWord: { learned.contains($0) },
@@ -101,7 +101,7 @@ struct EnglishWordOracleTests {
     // Order is the design: a name is decided before the dictionary is asked, so
     // `mark` being a perfectly good English word is irrelevant.
     let probe = ConsultationSpy()
-    let oracle = EnglishWordOracle(
+    let oracle = SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { _ in
         probe.record()
@@ -168,7 +168,7 @@ struct EnglishWordOracleTests {
       .wordClassUnavailable, .oracleWarming, .oracleTimedOut,
     ])
   func unavailableOracleRefuses(_ reason: CursorInsertionRepair.CaseSkipReason) {
-    let decision = EnglishWordOracle.unavailable(reason)
+    let decision = SeamCasingOracle.unavailable(reason)
       .mayLower(word: "Go", left: "I want to ", payload: "Go home.")
     #expect(decision == reason)
   }
@@ -182,24 +182,24 @@ struct EnglishWordOracleTests {
     // word correctly spelled — it fails OPEN. Choosing from `availableLanguages`
     // makes that unreachable rather than merely detected.
     let installed = ["fr", "en_GB", "de", "en", "en_AU"]
-    #expect(EnglishWordOracleRuntime.resolveEnglishLanguage(from: installed) == "en")
+    #expect(SeamCasingOracleRuntime.resolveEnglishLanguage(from: installed) == "en")
   }
 
   @Test("A machine with no English dictionary yields no identifier")
   func noEnglishYieldsNil() {
-    #expect(EnglishWordOracleRuntime.resolveEnglishLanguage(from: ["fr", "de", "ja"]) == nil)
+    #expect(SeamCasingOracleRuntime.resolveEnglishLanguage(from: ["fr", "de", "ja"]) == nil)
   }
 
   @Test("A regional English is accepted when plain English is absent")
   func regionalEnglishAccepted() {
-    #expect(EnglishWordOracleRuntime.resolveEnglishLanguage(from: ["de", "en_GB"]) == "en_GB")
+    #expect(SeamCasingOracleRuntime.resolveEnglishLanguage(from: ["de", "en_GB"]) == "en_GB")
   }
 
   @Test("Language matching is on the base code, not a prefix of the string")
   func baseCodeNotPrefix() {
     // `eng` and `enm` start with "en" but are not English identifiers we want to
     // silently accept; matching must split on the separator.
-    #expect(EnglishWordOracleRuntime.resolveEnglishLanguage(from: ["eng", "enm"]) == nil)
+    #expect(SeamCasingOracleRuntime.resolveEnglishLanguage(from: ["eng", "enm"]) == nil)
   }
 
   // MARK: - The spell service failing OPEN
@@ -207,7 +207,7 @@ struct EnglishWordOracleTests {
   @Test("A healthy service: a valid word is ordinary and the sentinel is refused")
   func healthyServiceAcceptsWord() {
     var failed = false
-    let ordinary = EnglishWordOracleRuntime.isOrdinary(
+    let ordinary = SeamCasingOracleRuntime.isOrdinary(
       "go", sentinel: "zqx123456vkj",
       spelledCorrectly: { $0 == "go" },
       onServiceFailure: { failed = true })
@@ -221,7 +221,7 @@ struct EnglishWordOracleTests {
     // same NSNotFound. Without this guard every word would read as ordinary and
     // names would be lowercased wholesale — silent, and the worst direction.
     var failed = false
-    let ordinary = EnglishWordOracleRuntime.isOrdinary(
+    let ordinary = SeamCasingOracleRuntime.isOrdinary(
       "Rose", sentinel: "zqx123456vkj",
       spelledCorrectly: { _ in true },
       onServiceFailure: { failed = true })
@@ -234,7 +234,7 @@ struct EnglishWordOracleTests {
     // Refusing is the safe direction, so it needs no confirmation. This keeps
     // the second lookup off every decision that keeps its capital.
     var probed: [String] = []
-    let ordinary = EnglishWordOracleRuntime.isOrdinary(
+    let ordinary = SeamCasingOracleRuntime.isOrdinary(
       "Zorbitrax", sentinel: "zqx123456vkj",
       spelledCorrectly: {
         probed.append($0)
@@ -259,7 +259,7 @@ struct EnglishWordOracleTests {
     // design used left contexts already ending in a space, so none of them could
     // catch it (local diff review r2, P1).
     let seenLeft = LeftContextRecorder()
-    let recorder = EnglishWordOracle(
+    let recorder = SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { _ in .ordinary },
       isLearnedWord: { _ in false },
@@ -290,9 +290,9 @@ struct EnglishWordOracleTests {
     // Cross-suite exclusion: this test mutates the process-wide runtime,
     // and since #1921 a second suite does too. `.serialized` orders this
     // suite only; Swift Testing runs suites concurrently.
-    await withEnglishWordOracleExclusion {
-      EnglishWordOracleRuntime.resetForTesting()
-      let snapshot = EnglishWordOracleRuntime.snapshot()
+    await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+      let snapshot = SeamCasingOracleRuntime.snapshot()
       #expect(snapshot.isAvailable == false)
       #expect(snapshot.unavailableReason == .oracleWarming)
     }
@@ -303,16 +303,16 @@ struct EnglishWordOracleTests {
     // Cross-suite exclusion: this test mutates the process-wide runtime,
     // and since #1921 a second suite does too. `.serialized` orders this
     // suite only; Swift Testing runs suites concurrently.
-    await withEnglishWordOracleExclusion {
+    await withSeamCasingOracleExclusion {
       // The product call: the first dictation after a cold launch keeps its
       // capital — today's behaviour — rather than paying the measured 105.6 ms of
       // one-time setup on the paste path.
-      EnglishWordOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.resetForTesting()
       let payloads = CursorInsertionRepair.repair(
         text: "Go home.",
         context: CursorInsertionRepair.CaretText(left: "I can't wait to", right: ""),
         protectedWords: [],
-        oracle: EnglishWordOracleRuntime.snapshot())
+        oracle: SeamCasingOracleRuntime.snapshot())
 
       #expect(payloads.candidateRules.contains(.caseSkipped(.oracleWarming)))
       #expect(payloads.repairedText?.contains("Go home.") == true, "capital kept")
@@ -325,18 +325,18 @@ struct EnglishWordOracleTests {
     // Cross-suite exclusion: this test mutates the process-wide runtime,
     // and since #1921 a second suite does too. `.serialized` orders this
     // suite only; Swift Testing runs suites concurrently.
-    await withEnglishWordOracleExclusion {
+    await withSeamCasingOracleExclusion {
       // `withOrderedDeadline.claim()` discards a late decision but cannot roll
       // back side effects inside the abandoned operation. The latch must therefore
       // outlast anything that call does afterwards, or a stalled service could be
       // waited on twice.
-      EnglishWordOracleRuntime.resetForTesting()
-      EnglishWordOracleRuntime.installForTesting(Self.oracle(ordinary: ["go"]))
-      #expect(EnglishWordOracleRuntime.snapshot().isAvailable)
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.installForTesting(Self.oracle(ordinary: ["go"]))
+      #expect(SeamCasingOracleRuntime.snapshot().isAvailable)
 
-      EnglishWordOracleRuntime.disableAfterTimeout()
+      SeamCasingOracleRuntime.disableAfterTimeout()
 
-      let after = EnglishWordOracleRuntime.snapshot()
+      let after = SeamCasingOracleRuntime.snapshot()
       #expect(after.isAvailable == false)
       #expect(after.unavailableReason == .oracleTimedOut)
       #expect(
@@ -350,7 +350,7 @@ struct EnglishWordOracleTests {
     // Cross-suite exclusion: this test mutates the process-wide runtime,
     // and since #1921 a second suite does too. `.serialized` orders this
     // suite only; Swift Testing runs suites concurrently.
-    await withEnglishWordOracleExclusion {
+    await withSeamCasingOracleExclusion {
       // `prewarmStarted` guards STARTING a prewarm, not one already in flight. A
       // prepare launched by another suite's driver construction can finish after
       // `resetForTesting()` restores `.warming` — which is exactly the condition
@@ -358,13 +358,13 @@ struct EnglishWordOracleTests {
       //
       // The epoch closes it. Simulated here by latching, which bumps the epoch,
       // and then letting a prewarm attempt to publish.
-      EnglishWordOracleRuntime.resetForTesting()
-      EnglishWordOracleRuntime.disableAfterTimeout()
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.disableAfterTimeout()
 
-      await EnglishWordOracleRuntime.prewarm()
+      await SeamCasingOracleRuntime.prewarm()
 
       #expect(
-        EnglishWordOracleRuntime.snapshot().unavailableReason == .oracleTimedOut,
+        SeamCasingOracleRuntime.snapshot().unavailableReason == .oracleTimedOut,
         "a prewarm must never overwrite state established after it began")
     }
   }
@@ -374,16 +374,16 @@ struct EnglishWordOracleTests {
     // Cross-suite exclusion: this test mutates the process-wide runtime,
     // and since #1921 a second suite does too. `.serialized` orders this
     // suite only; Swift Testing runs suites concurrently.
-    await withEnglishWordOracleExclusion {
-      EnglishWordOracleRuntime.resetForTesting()
-      EnglishWordOracleRuntime.installForTesting(Self.oracle(ordinary: ["go"]))
-      EnglishWordOracleRuntime.disableAfterTimeout()
+    await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.installForTesting(Self.oracle(ordinary: ["go"]))
+      SeamCasingOracleRuntime.disableAfterTimeout()
 
       // `installForTesting` marks prewarm started, so this is the real
       // idempotence guard rather than an accident of ordering.
-      await EnglishWordOracleRuntime.prewarm()
+      await SeamCasingOracleRuntime.prewarm()
 
-      #expect(EnglishWordOracleRuntime.snapshot().unavailableReason == .oracleTimedOut)
+      #expect(SeamCasingOracleRuntime.snapshot().unavailableReason == .oracleTimedOut)
     }
   }
 
@@ -395,7 +395,7 @@ struct EnglishWordOracleTests {
     // first would silently weaken the contract shipped in PR #1804 — and the
     // dictionary would accept `olive` happily.
     let consulted = ConsultationSpy()
-    let spy = EnglishWordOracle(
+    let spy = SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { _ in
         consulted.record()
@@ -418,7 +418,7 @@ struct EnglishWordOracleTests {
   @Test("Non-English dictation never reaches the oracle at all")
   func nonEnglishNeverConsultsOracle() {
     let consulted = ConsultationSpy()
-    let spy = EnglishWordOracle(
+    let spy = SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { _ in
         consulted.record()
@@ -456,7 +456,7 @@ struct EnglishWordOracleTests {
   @Test("#1921 An authorized wrapper reaches the underlying oracle on every closure")
   func authorizedWrapperPassesThrough() {
     let calls = OSAllocatedUnfairLock(initialState: 0)
-    let underlying = EnglishWordOracle(
+    let underlying = SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { _ in
         calls.withLock { $0 += 1 }
@@ -491,7 +491,7 @@ struct EnglishWordOracleTests {
     // counting: a count can be asserted after the damage, this cannot pass at
     // all if the guard is missing.
     let calls = OSAllocatedUnfairLock(initialState: 0)
-    let underlying = EnglishWordOracle(
+    let underlying = SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { _ in
         calls.withLock { $0 += 1 }
@@ -522,7 +522,7 @@ struct EnglishWordOracleTests {
     // `mayLower` short-circuits at `isRecognizedName`, so the test above proves
     // only that ONE refusal is safe. If a later refactor reorders those checks,
     // the other two refusals become load-bearing. Assert each in isolation.
-    let permissive = EnglishWordOracle(
+    let permissive = SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { _ in .ordinary },
       isLearnedWord: { _ in false },

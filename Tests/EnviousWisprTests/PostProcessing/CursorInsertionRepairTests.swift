@@ -13,7 +13,7 @@ import Testing
 //
 // Repair MECHANICS are tested against an injected oracle with fixed answers,
 // so these cases never touch the system dictionary or the part-of-speech model
-// and stay deterministic on every machine and CI image. `EnglishWordOracleTests`
+// and stay deterministic on every machine and CI image. `SeamCasingOracleTests`
 // covers the live oracle's own behaviour (#1803).
 @Suite("CursorInsertionRepair")
 struct CursorInsertionRepairTests {
@@ -34,10 +34,10 @@ struct CursorInsertionRepairTests {
   ///
   /// `isRecognizedName` always returns false so these cases test repair MECHANICS
   /// exactly as they did against the old lexicon, which had no part-of-speech
-  /// layer. The word-class filter has its own coverage in `EnglishWordOracleTests`;
+  /// layer. The word-class filter has its own coverage in `SeamCasingOracleTests`;
   /// letting it fire here would silently change what these assertions mean.
-  static func oracle(_ words: Set<String>) -> EnglishWordOracle {
-    EnglishWordOracle(
+  static func oracle(_ words: Set<String>) -> SeamCasingOracle {
+    SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { words.contains($0) ? .ordinary : .notOrdinary },
       isLearnedWord: { _ in false },
@@ -1571,7 +1571,7 @@ struct CursorInsertionRepairTests {
   /// (`...with Mark said`) recognised 5. A terminal renders a row up to its last
   /// VISIBLE character, so the trailing space the user typed is not on screen
   /// and the fused reading is the one the repair would otherwise get.
-  private static let seamSensitiveOracle = EnglishWordOracle(
+  private static let seamSensitiveOracle = SeamCasingOracle(
     unavailableReason: nil,
     dictionaryVerdict: { ["mark", "with", "and", "now"].contains($0) ? .ordinary : .notOrdinary },
     isLearnedWord: { _ in false },
@@ -1637,7 +1637,7 @@ struct CursorInsertionRepairTests {
         left: "I want to test if this works", right: "",
         leftReachesDocumentStart: true, isScreenDerived: true),
       protectedWords: [],
-      oracle: EnglishWordOracle(
+      oracle: SeamCasingOracle(
         unavailableReason: nil,
         dictionaryVerdict: { ["and", "now"].contains($0) ? .ordinary : .notOrdinary },
         isLearnedWord: { _ in false },

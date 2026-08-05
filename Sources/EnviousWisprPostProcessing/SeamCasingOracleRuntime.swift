@@ -36,11 +36,11 @@ import os
 /// `.warming`, decisions refuse, and capitals are kept — today's behaviour.
 ///
 /// Issue #1803.
-package enum EnglishWordOracleRuntime {
+package enum SeamCasingOracleRuntime {
 
   private enum Phase: Sendable {
     case warming
-    case ready(EnglishWordOracle)
+    case ready(SeamCasingOracle)
     case unavailable(CursorInsertionRepair.CaseSkipReason)
   }
 
@@ -126,7 +126,7 @@ package enum EnglishWordOracleRuntime {
     // advance.
     let sentinel = "zqx\(UInt32.random(in: 100_000...999_999))vkj"
 
-    let oracle = EnglishWordOracle(
+    let oracle = SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { word in
         let checker = NSSpellChecker.shared
@@ -230,7 +230,7 @@ package enum EnglishWordOracleRuntime {
   // MARK: - Decisions
 
   /// The oracle as it stands right now. Never blocks.
-  package static func snapshot() -> EnglishWordOracle {
+  package static func snapshot() -> SeamCasingOracle {
     state.withLock { state in
       switch state.phase {
       case .warming: return .unavailable(.oracleWarming)
@@ -290,7 +290,7 @@ package enum EnglishWordOracleRuntime {
   }
 
   /// Install a fixed phase without touching a system service.
-  package static func installForTesting(_ oracle: EnglishWordOracle) {
+  package static func installForTesting(_ oracle: SeamCasingOracle) {
     state.withLock { state in
       state.epoch += 1
       state.prewarmStarted = true

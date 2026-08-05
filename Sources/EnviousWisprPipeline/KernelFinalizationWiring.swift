@@ -195,8 +195,8 @@ struct KernelFinalizationWiring {
     // a fixed oracle so a case never depends on the machine's dictionaries — and
     // so no test has to MUTATE the process-global runtime, which would race the
     // suites that legitimately do (local diff review, P2).
-    englishWordOracle: @escaping @MainActor () -> EnglishWordOracle = {
-      EnglishWordOracleRuntime.snapshot()
+    englishWordOracle: @escaping @MainActor () -> SeamCasingOracle = {
+      SeamCasingOracleRuntime.snapshot()
     },
     // #1921 language-resolver seam. `@Sendable`, not `@MainActor`, because
     // resolution now runs INSIDE the `@Sendable` deadline operation. Defaults to
@@ -509,7 +509,7 @@ struct KernelFinalizationWiring {
         // revision of the plan asserted was already true and was not.
         //
         // One gate arbitrates both stages, because "which stage timed out" now
-        // decides whether `EnglishWordOracleRuntime` may be disabled, and a
+        // decides whether `SeamCasingOracleRuntime` may be disabled, and a
         // plain flag cannot answer it safely: cancellation here is best-effort
         // and cannot preempt a running operation, so the timeout can look, see
         // the language stage, decline to disable, and the un-preempted operation
@@ -565,7 +565,7 @@ struct KernelFinalizationWiring {
             // Only a genuinely RUNNING oracle. A language-stage stall must not
             // disable an unrelated healthy component for the rest of the
             // process, and neither must one that had already succeeded.
-            if timeout.shouldDisableOracle { EnglishWordOracleRuntime.disableAfterTimeout() }
+            if timeout.shouldDisableOracle { SeamCasingOracleRuntime.disableAfterTimeout() }
           }
         )
 

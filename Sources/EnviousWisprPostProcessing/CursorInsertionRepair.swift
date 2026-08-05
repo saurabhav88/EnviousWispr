@@ -302,7 +302,7 @@ public enum CursorInsertionRepair {
     context: CaretText?,
     protectedWords: Set<String>,
     language: String? = "en",
-    oracle: EnglishWordOracle
+    oracle: SeamCasingOracle
   ) -> PreparedPayloads {
     let legacy = legacyPayload(text)
     guard let context else {
@@ -387,7 +387,7 @@ public enum CursorInsertionRepair {
     context: CaretText,
     protectedWords: Set<String>,
     language: LanguageRules,
-    oracle: EnglishWordOracle
+    oracle: SeamCasingOracle
   ) -> (String, [AppliedRule]) {
     var out = text
     var rules: [AppliedRule] = []
@@ -544,7 +544,7 @@ public enum CursorInsertionRepair {
     leftWindow: String,
     isScreenDerived: Bool,
     protectedWords: Set<String>,
-    oracle: EnglishWordOracle
+    oracle: SeamCasingOracle
   ) -> (String, AppliedRule) {
     let leadingWhitespace = text.prefix(while: \.isWhitespace)
     let stripped = text.dropFirst(leadingWhitespace.count)

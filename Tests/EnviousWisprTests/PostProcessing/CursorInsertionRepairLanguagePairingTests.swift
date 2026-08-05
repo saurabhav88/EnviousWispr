@@ -23,7 +23,7 @@ struct CursorInsertionRepairLanguagePairingTests {
 
   /// Permits lowering any word it knows, so the casing rule is free to fire.
   /// A refusing oracle would make every case identical and the suite vacuous.
-  static let oracle = EnglishWordOracle(
+  static let oracle = SeamCasingOracle(
     unavailableReason: nil,
     dictionaryVerdict: { _ in .ordinary },
     isLearnedWord: { _ in false },

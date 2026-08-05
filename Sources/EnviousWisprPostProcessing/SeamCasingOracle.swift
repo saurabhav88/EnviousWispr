@@ -4,14 +4,14 @@ import Foundation
 ///
 /// A VALUE, not a service: the four closures are the only contact with the
 /// operating system, so unit tests inject fixed answers and never touch a
-/// system facility. `EnglishWordOracleRuntime` is the only thing that builds a
+/// system facility. `SeamCasingOracleRuntime` is the only thing that builds a
 /// live one, which keeps `AppKit` and `NaturalLanguage` confined to that file.
 ///
 /// Replaces `OrdinaryLowercaseLexicon`, a hand-authored 799-word allowlist that
 /// could not contain the English language: `go`, `send`, `call`, `buy`, `email`
 /// and `learn` were all absent, so ordinary continuations kept a wrong capital.
 /// Issue #1803.
-package struct EnglishWordOracle: Sendable {
+package struct SeamCasingOracle: Sendable {
   /// Why this oracle cannot decide, or `nil` when it can.
   package let unavailableReason: CursorInsertionRepair.CaseSkipReason?
 
@@ -91,8 +91,8 @@ package struct EnglishWordOracle: Sendable {
   /// pure function of the oracle it is handed.
   package func authorized(
     by authorize: @escaping @Sendable () -> Bool
-  ) -> EnglishWordOracle {
-    EnglishWordOracle(
+  ) -> SeamCasingOracle {
+    SeamCasingOracle(
       unavailableReason: unavailableReason,
       dictionaryVerdict: { word in
         guard authorize() else { return .unavailable(.oracleTimedOut) }
@@ -110,8 +110,8 @@ package struct EnglishWordOracle: Sendable {
 
   package static func unavailable(
     _ reason: CursorInsertionRepair.CaseSkipReason
-  ) -> EnglishWordOracle {
-    EnglishWordOracle(
+  ) -> SeamCasingOracle {
+    SeamCasingOracle(
       unavailableReason: reason,
       dictionaryVerdict: { _ in .unavailable(reason) },
       isLearnedWord: { _ in false },

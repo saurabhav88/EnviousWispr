@@ -362,7 +362,7 @@ public enum KernelDictationDriverFactory {
     // `AppLifecycleCoordinator` have import ceilings that exclude
     // PostProcessing, and their doctrine is right — the layer that consumes the
     // oracle should be the layer that prepares it. Both ceilings caught this.
-    Task { await EnglishWordOracleRuntime.prewarm() }
+    Task { await SeamCasingOracleRuntime.prewarm() }
 
     // 1. LimbSteps — same instances driver + wiring hold by reference.
     // #832/#913 PR8: the live-dictation LLMPolishStep receives the app-owned

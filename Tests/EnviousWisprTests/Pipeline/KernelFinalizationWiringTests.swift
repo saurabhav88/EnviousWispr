@@ -22,15 +22,15 @@ import os
   ///
   /// Six cases here drive the real production repair, which needs word
   /// knowledge. This is INJECTED rather than installed into
-  /// `EnglishWordOracleRuntime`: mutating that process-global would race
-  /// `EnglishWordOracleTests`, which legitimately resets and latches it, and
+  /// `SeamCasingOracleRuntime`: mutating that process-global would race
+  /// `SeamCasingOracleTests`, which legitimately resets and latches it, and
   /// Swift Testing runs suites concurrently — a flake that passes until it does
   /// not (local diff review, P2).
   ///
   /// A FAKE rather than a real prewarm, because the live oracle reads the
   /// machine's dictionaries, part-of-speech assets and the user's learned words;
   /// gating CI on those would be flaky by construction (#1803 plan §11.2).
-  static let testOracle = EnglishWordOracle(
+  static let testOracle = SeamCasingOracle(
     unavailableReason: nil,
     dictionaryVerdict: {
       ["review", "the", "store", "testing"].contains($0) ? .ordinary : .notOrdinary
@@ -1386,8 +1386,8 @@ import os
     // stands in for exactly that state; language tests vary the code.
     adapter: (any ASREngineAdapter)? = nil,
     // Injected, never installed into the process-global runtime: mutating that
-    // would race `EnglishWordOracleTests` under concurrent suite execution.
-    englishWordOracle: @escaping @MainActor () -> EnglishWordOracle = { Self.testOracle },
+    // would race `SeamCasingOracleTests` under concurrent suite execution.
+    englishWordOracle: @escaping @MainActor () -> SeamCasingOracle = { Self.testOracle },
     // #1921 language-resolver seam. Defaults to the real resolver so every
     // pre-existing case keeps today's behaviour; the two deadline tests inject a
     // blocking one to drive the REAL 100 ms deadline into its timeout paths.
@@ -1659,11 +1659,11 @@ import os
     // the rest of the process. A naive "did the oracle begin" flag gets this
     // right only by luck, because cancellation here cannot preempt the blocked
     // call.
-    try await withEnglishWordOracleExclusion {
-      EnglishWordOracleRuntime.resetForTesting()
-      EnglishWordOracleRuntime.installForTesting(Self.testOracle)
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.installForTesting(Self.testOracle)
       #expect(
-        EnglishWordOracleRuntime.snapshot().isAvailable,
+        SeamCasingOracleRuntime.snapshot().isAvailable,
         "precondition: the oracle starts enabled, or this test cannot fail")
 
       let entered = DispatchSemaphore(value: 0)
@@ -1725,7 +1725,7 @@ import os
         "nothing was resolved in time, and the field must say so rather than guess")
       #expect(outcome.languageConfidenceBucket == "none")
       #expect(
-        EnglishWordOracleRuntime.snapshot().isAvailable,
+        SeamCasingOracleRuntime.snapshot().isAvailable,
         "the oracle never ran, so the language stall must NOT have latched it off")
     }
   }
@@ -1736,16 +1736,16 @@ import os
     // must be preserved exactly — and the resolution the language stage already
     // produced must survive into telemetry rather than being reported as `none`,
     // which is what a gate without a payload would do.
-    try await withEnglishWordOracleExclusion {
-      EnglishWordOracleRuntime.resetForTesting()
-      EnglishWordOracleRuntime.installForTesting(Self.testOracle)
-      #expect(EnglishWordOracleRuntime.snapshot().isAvailable, "precondition")
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.installForTesting(Self.testOracle)
+      #expect(SeamCasingOracleRuntime.snapshot().isAvailable, "precondition")
 
       let entered = DispatchSemaphore(value: 0)
       let release = DispatchSemaphore(value: 0)
       let exited = DispatchSemaphore(value: 0)
       let releaseOutcome = OSAllocatedUnfairLock<DispatchTimeoutResult?>(initialState: nil)
-      let blockingOracle = EnglishWordOracle(
+      let blockingOracle = SeamCasingOracle(
         unavailableReason: nil,
         dictionaryVerdict: { _ in
           entered.signal()
@@ -1798,7 +1798,7 @@ import os
         request.legacyText == "Review this before the meeting ",
         "and the delivered payload must be exactly today's")
       #expect(
-        EnglishWordOracleRuntime.snapshot().unavailableReason == .oracleTimedOut,
+        SeamCasingOracleRuntime.snapshot().unavailableReason == .oracleTimedOut,
         "a genuinely stuck oracle must still be latched off, exactly as before #1921")
       #expect(
         outcome.languageResolutionSource == "dictation",
