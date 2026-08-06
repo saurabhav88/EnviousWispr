@@ -193,10 +193,46 @@ public final class OllamaSetupService {
     Self.dynamicCatalog(from: downloadedModels)
   }
 
+  /// #1956: shared identity for a hosted model, which reaches us under two
+  /// different names.
+  ///
+  /// Ollama ADVERTISES `glm-5.2` at its cloud endpoint but REGISTERS it locally
+  /// as `glm-5.2:cloud`, and advertises `gpt-oss:120b` while registering
+  /// `gpt-oss:120b-cloud`. Without one key for both, a model the user has already
+  /// added would render twice: once as a downloaded row and once as a suggestion
+  /// to add it.
+  ///
+  /// Strips ONE trailing `:cloud` or `-cloud`, then applies the existing
+  /// `canonicalModelName`, so this extends the module's identity authority rather
+  /// than becoming a second one. Only a trailing occurrence: a model legitimately
+  /// named `cloud-thing` or `my:cloudy` keeps its name.
+  ///
+  /// `package` rather than internal because `OllamaCatalogPresentation` in
+  /// AppKit applies the same key when it groups rows by tier, and a second copy
+  /// of this rule there would be free to drift.
+  package nonisolated static func hostedCatalogKey(_ name: String) -> String {
+    var base = name
+    for suffix in [":cloud", "-cloud"] where base.hasSuffix(suffix) {
+      base = String(base.dropLast(suffix.count))
+      break
+    }
+    return canonicalModelName(base)
+  }
+
   /// Pure catalog assembly (extracted for testability, #1269 — behavior unchanged).
-  nonisolated static func dynamicCatalog(from downloadedModels: [OllamaDownloadedModel])
-    -> [OllamaModelCatalogEntry]
-  {
+  ///
+  /// #1956: `cloudCatalogIDs` carries the models Ollama's own cloud endpoint
+  /// advertises. It defaults to empty, so every existing caller and test keeps
+  /// the pre-#1956 output byte for byte.
+  ///
+  /// That array is the SOLE proof a suggestion is remote. Nothing here reads a
+  /// name to decide remoteness — that is the name-based classification #1914
+  /// deliberately replaced with capability reads, and re-introducing it for
+  /// suggestions would reopen it by the back door.
+  nonisolated static func dynamicCatalog(
+    from downloadedModels: [OllamaDownloadedModel],
+    cloudCatalogIDs: [String] = []
+  ) -> [OllamaModelCatalogEntry] {
     let canonicalDownloaded = Set(downloadedModels.map(\.canonicalName))
 
     // Build catalog entries from downloaded models
@@ -242,7 +278,34 @@ public final class OllamaSetupService {
       return entry
     }
 
-    return downloadedEntries + suggestions
+    // #1956: hosted suggestions, appended last so the two existing sections keep
+    // their order and their meaning.
+    //
+    // Dedupe runs through `hostedCatalogKey` on BOTH sides, because a registered
+    // row carries the pullable name (`glm-5.2:cloud`) while the endpoint
+    // advertises the bare one (`glm-5.2`). Matching raw strings would let an
+    // already-added model render a second time as an Add row.
+    //
+    // The registered row always wins: it is the one with real daemon-derived
+    // facts, and it is what the picker can actually select.
+    let hostedKeysDownloaded = Set(downloadedModels.map { Self.hostedCatalogKey($0.exactName) })
+    let hostedSuggestions: [OllamaModelCatalogEntry] = cloudCatalogIDs.compactMap { advertisedID in
+      guard !hostedKeysDownloaded.contains(Self.hostedCatalogKey(advertisedID)) else { return nil }
+      return OllamaModelCatalogEntry(
+        name: advertisedID,
+        displayName: Self.inferDisplayName(from: advertisedID),
+        // Size and quality are meaningless for a model that is not on this disk,
+        // and `showsSizeAndQuality` suppresses both for any remote row, so these
+        // are placeholders that never reach the screen rather than claims.
+        parameterCount: "",
+        qualityTier: .medium,
+        downloadSize: "",
+        isDownloaded: false,
+        isRemote: true
+      )
+    }
+
+    return downloadedEntries + suggestions + hostedSuggestions
   }
 
   // MARK: - Name Normalization
