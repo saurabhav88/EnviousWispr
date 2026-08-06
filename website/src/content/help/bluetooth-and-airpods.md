@@ -6,23 +6,25 @@ section: "Input Configuration"
 order: 2
 keywords: ["airpods", "air pods", "bluetooth", "wireless headphones", "headphones", "earbuds", "sounds muffled", "quality drops", "music stops", "beats", "headset"]
 related: ["choosing-your-microphone"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. AirPods and Bluetooth headsets work with it, and there are two things worth knowing before you rely on them.
+AirPods and Bluetooth headsets work with EnviousWispr, and there are two things worth knowing before you rely on them.
 
 ### Which microphone gets used
 
 On **Auto**, EnviousWispr records from whatever input your Mac is set to. If that is your AirPods, it records from your AirPods.
 
-To use your Mac's built-in microphone instead, either change the input in **System Settings** \> **Sound**, or name it directly under **Settings** \> **Microphone** in EnviousWispr.
+To use your Mac's built-in microphone instead, change the input in **System Settings** \> **Sound**, or name it directly under **Settings** \> **Microphone** in EnviousWispr.
 
 ### Why your music dips when you record
 
 A Bluetooth headset has a music mode and a microphone mode, and it cannot do both at once. The moment anything uses the microphone, the headset switches over, and audio quality drops for as long as the recording lasts.
 
-That switch also takes a moment, which is why a first word can go missing if you start talking instantly. Hold your hotkey for a beat before speaking on the first recording after connecting.
+That switch also takes a moment, which is why a first word can go missing if you start talking instantly.
 
-If that bothers you, record from your Mac's built-in microphone instead. Your headset then stays in music mode the whole time.
+**Wait a beat before speaking.** Hold your hotkey for a moment before you start talking on the first recording after connecting.
+
+If that drop in audio quality bothers you, record from your Mac's built-in microphone instead. Your headset then stays in music mode the whole time.
 
 ### If it disconnects mid-recording
 

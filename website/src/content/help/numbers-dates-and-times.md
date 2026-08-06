@@ -7,11 +7,11 @@ order: 4
 keywords: ["numbers", "dates", "times", "money", "dollars", "percent", "phone number", "email address", "url", "formatting numbers", "writes out numbers", "spelled out"]
 related: ["spoken-punctuation-and-emoji"]
 seeAlso: "spoken-text-formatting-dates-numbers-emails"
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. It writes numbers, money, dates, times, phone numbers, email addresses and web addresses the way you would type them, not the way you said them. This is always on and there is nothing to set up.
+Numbers, dates, and times are converted automatically from spoken words into the standard written forms. EnviousWispr writes numbers, money, dates, times, phone numbers, email addresses, and web addresses the way you would type them, rather than spelling out every word you said. It is switched on when you install the app, and there is nothing to configure.
 
-### What you get
+### Examples of spoken input and written output
 
 | You say | You get |
 |---|---|
@@ -22,14 +22,14 @@ EnviousWispr is a free dictation app for macOS. It writes numbers, money, dates,
 
 ### Small numbers stay as words
 
-Numbers below ten are written out, and ten upwards use digits. That is standard style in most writing.
+Numbers below ten are written out as words, while numbers from ten upwards use digits. That follows the standard style used in most professional and general writing.
 
-### It happens before AI Polish
+### When the formatting happens
 
-So if polish is switched off or fails, this formatting is what gets pasted. A successful AI polish may still reword it.
+Formatting runs before any AI polish. If polish is switched off or hits an error, this formatted text is what gets pasted into your app. If a polish step runs successfully, the AI model may still reword it.
 
-### Where it stops
+### Ambiguous phrases
 
-Some phrases are genuinely ambiguous. "Meet at one twenty" is a time and "paid one twenty" is money, and only the surrounding words say which. EnviousWispr leaves those alone rather than guessing.
+Some phrases carry more than one meaning depending on the context. "Meet at one twenty" is a time, whereas "paid one twenty" is an amount of money. EnviousWispr leaves ambiguous phrases as you spoke them rather than guessing which you meant.
 
-This works on English dictation. Other languages are written as spoken.
+This conversion applies only to English dictation. Other languages are written out word for word, exactly as you spoke them.
