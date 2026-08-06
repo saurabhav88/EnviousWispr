@@ -26,7 +26,7 @@ You need an internet connection to install Ollama and download a model, but poli
 
 **Select your model.** Choose **Ollama** as your provider, then pick your downloaded model from the list.
 
-EnviousWispr finds your installed models on its own, so they appear in that list without any configuration. You can also download and remove models from the same settings page.
+EnviousWispr finds your installed models on its own, so they appear in that list without any configuration. You can download and remove local models from the same settings page. Hosted models use Add instead, and there is nothing on your Mac to remove.
 
 ### Picking a model
 
