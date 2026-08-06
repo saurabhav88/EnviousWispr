@@ -13,6 +13,17 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.5.0
+
+    Entry(
+      id: "ollama-cloud-models-appear-automatically",
+      icon: "cloud",
+      title: "Ollama Cloud models now appear automatically",
+      description:
+        "Ollama Cloud models used to appear in Manage Models only after you added them on that Mac. The full lineup now appears there automatically on every install and after every update. The button now says Add instead of Download because nothing is downloading, and cloud models can no longer be deleted. The models available without a paid Ollama plan when checked on August 5, 2026 are listed first.",
+      version: "2.5.0"
+    ),
+
     // MARK: - v2.4.3
 
     Entry(
