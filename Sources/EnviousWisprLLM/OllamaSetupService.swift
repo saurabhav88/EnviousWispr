@@ -739,13 +739,14 @@ public final class OllamaSetupService {
 
   /// Add a hosted model by resolving its pullable name against the daemon.
   ///
-  /// Ollama advertises a hosted model under one id and pulls it under another,
-  /// and which suffix applies depends on whether the advertised id already
-  /// carries a tag. That pattern holds 18/18 in measurement and is still used
-  /// ONLY to order the two probes, never as proof: #1914's binding decision
-  /// forbids name-based classification, and the #1956 issue comment named that
-  /// exact inference as a reason to reject this whole approach. The daemon
-  /// decides; we only ask twice and require an unambiguous answer.
+  /// Ollama advertises a hosted model under one id and pulls it under another.
+  /// The measured suffix pattern holds 18/18, but it is never used as proof or
+  /// to skip a probe. Both candidates are probed in fixed dash-then-colon order,
+  /// and only exactly one 200 paired with one 404 proves a pullable name.
+  ///
+  /// #1914's binding decision forbids name-based classification, and the #1956
+  /// issue comment named that exact inference as a reason to reject this whole
+  /// approach. So the shape informs nothing at runtime: the daemon decides.
   package func addHostedModel(advertisedID: String) async {
     await addHostedModel(
       advertisedID: advertisedID,
