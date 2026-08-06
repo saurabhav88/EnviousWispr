@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -512,4 +513,498 @@ private final class CapturedRequest: @unchecked Sendable {
   var body: Data? { read { request, _ in request?.httpBody } }
   var timeout: TimeInterval? { read { request, _ in request?.timeoutInterval } }
   var maximumBytes: Int? { read { _, bytes in bytes } }
+}
+
+/// #1956 Chunk 3: the refresh state machine, its 15-minute reuse window, and its
+/// single-flight commit barrier.
+///
+/// A separate suite from the client tests because this one is concurrency and
+/// timing shaped, so it needs to be filterable and repeatable on its own.
+///
+/// No test here sleeps. The reuse window is driven by an injected clock
+/// (swift-patterns RULE: tests-no-real-time-scheduling-precision), and every
+/// wait for a concurrent condition polls actor state inside a bounded
+/// `withThrowingTimeout` rather than parking on a continuation that might never
+/// resume (swift-patterns RULE: tests-no-unconditional-continuation-await).
+/// Every such loop also calls `try Task.checkCancellation()`, which is what
+/// makes the bound real — see `waitUntil` for why omitting it turns the
+/// deadline into a hang.
+@MainActor
+@Suite("Ollama hosted catalog refresh (#1956)")
+struct OllamaSetupServiceCloudCatalogRefreshTests {
+
+  // MARK: - Test doubles
+
+  /// Counts transport invocations and can hold a request until released, so the
+  /// single-flight barrier is observable without any timing assumption.
+  ///
+  /// Parking is owned HERE and nowhere else. It used to be a second switch on
+  /// `client(gate:parked:)`, captured when the client was built, while
+  /// `reconfigure(parked:)` moved only this actor's flag — two switches that had
+  /// to agree with nothing enforcing it. `priorLoadedStaysVisibleDuringRefresh`
+  /// set the one that was never read, so its second request was never actually
+  /// held in flight and the assertion merely raced it: 45 of 50 repeated runs
+  /// passed, and every one of those passes proved nothing. A test double whose
+  /// configuration can be silently ignored is worse than no double, so the
+  /// duplicate switch is gone rather than corrected.
+  private actor Gate {
+    private(set) var startedCount = 0
+    private var released: Bool
+    private var ids: [String]
+    private var failure: Error?
+
+    init(ids: [String] = ["kimi-k3"], failure: Error? = nil, parked: Bool = false) {
+      self.ids = ids
+      self.failure = failure
+      self.released = !parked
+    }
+
+    func begin() { startedCount += 1 }
+    func release() { released = true }
+    func isReleased() -> Bool { released }
+    func outcome() throws -> [String] {
+      if let failure { throw failure }
+      return ids
+    }
+    func reconfigure(ids: [String]? = nil, failure: Error? = nil, parked: Bool) {
+      if let ids { self.ids = ids }
+      self.failure = failure
+      released = !parked
+    }
+  }
+
+  /// A transport that records each invocation and waits for the gate to be
+  /// released. An unparked gate starts released, so the wait falls straight
+  /// through and a test that never parks pays nothing.
+  ///
+  /// The wait is deadline-bounded because a diverged test may never release it.
+  /// A timeout becomes an ordinary transport failure. Success and in-flight tests
+  /// assert terminal IDs and therefore catch that failure; failure-only tests use
+  /// gates constructed unparked.
+  private func client(gate: Gate) -> OllamaCloudCatalogClient {
+    OllamaCloudCatalogClient { request, _ in
+      await gate.begin()
+      try await withThrowingTimeout(seconds: 5) {
+        while await gate.isReleased() == false {
+          try Task.checkCancellation()
+          await Task.yield()
+        }
+      }
+      let ids = try await gate.outcome()
+      return try stubbedResponse(ids: ids, for: request)
+    }
+  }
+
+  /// A transport that always fails, for the failure populations.
+  ///
+  /// It honours the gate's park for the same reason `client(gate:)` does. No
+  /// test parks a failing gate today, so this is a footgun rather than a live
+  /// defect — but leaving one double that silently ignores `parked` while the
+  /// other honours it recreates exactly the two-switches-must-agree shape that
+  /// made `priorLoadedStaysVisibleDuringRefresh` vacuous.
+  private func failingClient(gate: Gate, error: Error = URLError(.notConnectedToInternet))
+    -> OllamaCloudCatalogClient
+  {
+    OllamaCloudCatalogClient { _, _ in
+      await gate.begin()
+      try await withThrowingTimeout(seconds: 5) {
+        while await gate.isReleased() == false {
+          try Task.checkCancellation()
+          await Task.yield()
+        }
+      }
+      throw error
+    }
+  }
+
+  /// A settable clock. `@MainActor` because the seam is, and a class so the test
+  /// can advance it after construction.
+  @MainActor private final class Clock {
+    var now: Date
+    init(_ start: Date = Date(timeIntervalSince1970: 1_000_000)) { self.now = start }
+    func advance(_ seconds: TimeInterval) { now += seconds }
+    var read: @MainActor () -> Date { { [self] in now } }
+  }
+
+  /// Polls `condition` until it holds, bounded by `seconds`.
+  ///
+  /// `try Task.checkCancellation()` is load-bearing, not defensive.
+  /// `withThrowingTimeout` cancels the losing child and its task-group scope
+  /// then AWAITS it, so an operation that ignores cancellation makes the
+  /// "bounded" wait unbounded. A plain `while … { await Task.yield() }` never
+  /// observes cancellation — `Task.yield()` does not throw — so a condition
+  /// that never becomes true hangs the suite for the whole run instead of
+  /// failing it. Found by mutation controls M6 and M10, each of which stops a
+  /// second transport from starting: both wedged past 600s where the healthy
+  /// suite finishes in 0.02s. That shape reaching CI would stall the required
+  /// `build-debug` check rather than turning it red.
+  ///
+  /// The timeout carries no label, so the failure below is what names the wait
+  /// that expired; without it a timeout reports only a duration. One halting
+  /// requirement rather than record-then-rethrow, which would report the same
+  /// timeout twice: once as the recorded issue and again as an unhandled error.
+  private func waitUntil(
+    _ label: String, seconds: Double = 5,
+    sourceLocation: SourceLocation = #_sourceLocation,
+    _ condition: @escaping @Sendable () async -> Bool
+  ) async throws {
+    do {
+      try await withThrowingTimeout(seconds: seconds) {
+        while await condition() == false {
+          try Task.checkCancellation()
+          await Task.yield()
+        }
+      }
+    } catch {
+      try #require(
+        false,
+        "waitUntil never satisfied: \(label); underlying error: \(error)",
+        sourceLocation: sourceLocation)
+    }
+  }
+
+  private func loadedIDs(_ state: CloudCatalogState) -> [String]? {
+    if case .loaded(let ids, _) = state { return ids }
+    return nil
+  }
+
+  private func loadedAt(_ state: CloudCatalogState) -> Date? {
+    if case .loaded(_, let at) = state { return at }
+    return nil
+  }
+
+  // MARK: - Construction
+
+  @Test("all three construction paths start idle, and the #1914 seam keeps its models")
+  func everyInitialiserStartsIdle() {
+    #expect(OllamaSetupService().cloudCatalog == .idle)
+
+    let injected = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    #expect(injected.cloudCatalog == .idle)
+
+    let seamed = OllamaSetupService(downloadedModelsForTesting: [
+      OllamaDownloadedModel(
+        exactName: "llama3.2", canonicalName: "llama3.2", parameterSize: "3B",
+        parameterBillions: 3.0, fileSizeBytes: 1, displayName: "llama3.2",
+        facts: OllamaModelFacts(isRemote: false, thinks: false))
+    ])
+    #expect(seamed.cloudCatalog == .idle)
+    #expect(seamed.downloadedModels.count == 1)
+  }
+
+  // MARK: - The three transitions
+
+  @Test("a first successful refresh goes idle to loaded and records the completion clock")
+  func firstSuccessLoads() async {
+    let gate = Gate(ids: ["kimi-k3", "glm-5.2"])
+    let clock = Clock()
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate), now: clock.read)
+
+    await service.refreshCloudCatalog()
+
+    #expect(loadedIDs(service.cloudCatalog) == ["kimi-k3", "glm-5.2"])
+    #expect(loadedAt(service.cloudCatalog) == clock.now)
+  }
+
+  @Test("fetchedAt is the clock at completion, not at request start")
+  func fetchedAtIsCompletionTime() async throws {
+    let gate = Gate(parked: true)
+    let clock = Clock()
+    let service = OllamaSetupService(
+      cloudCatalogClient: client(gate: gate), now: clock.read)
+
+    let start = clock.now
+    let refresh = Task { @MainActor in await service.refreshCloudCatalog() }
+    try await waitUntil("transport started") { await gate.startedCount == 1 }
+    clock.advance(42)
+    await gate.release()
+    await refresh.value
+
+    #expect(loadedAt(service.cloudCatalog) == start + 42)
+    #expect(loadedAt(service.cloudCatalog) != start)
+  }
+
+  @Test("an initial failure becomes exactly catalog_unavailable")
+  func initialFailureIsFailed() async {
+    let gate = Gate()
+    let service = OllamaSetupService(cloudCatalogClient: failingClient(gate: gate))
+    await service.refreshCloudCatalog()
+    #expect(service.cloudCatalog == .failed(reason: "catalog_unavailable"))
+  }
+
+  @Test("a transport-thrown cancellation with no prior success is an ordinary failure")
+  func transportCancellationWithoutPriorSuccess() async {
+    let gate = Gate()
+    let service = OllamaSetupService(
+      cloudCatalogClient: failingClient(gate: gate, error: CancellationError()))
+    await service.refreshCloudCatalog()
+    #expect(service.cloudCatalog == .failed(reason: "catalog_unavailable"))
+  }
+
+  // MARK: - Retention
+
+  @Test("a prior loaded value stays visible while a refresh is in flight")
+  func priorLoadedStaysVisibleDuringRefresh() async throws {
+    let gate = Gate(ids: ["kimi-k3"])
+    let clock = Clock()
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate), now: clock.read)
+    await service.refreshCloudCatalog()
+    let firstLoaded = service.cloudCatalog
+
+    await gate.reconfigure(ids: ["glm-5.2"], parked: true)
+    let refresh = Task { @MainActor in await service.refreshCloudCatalog(force: true) }
+    try await waitUntil("second transport started") { await gate.startedCount == 2 }
+
+    #expect(service.cloudCatalog == firstLoaded)
+    #expect(service.cloudCatalog != .loading)
+
+    await gate.release()
+    await refresh.value
+
+    // Anti-vacuity control. The two assertions above are satisfied by a second
+    // request that was never made at all, which is precisely how this test used
+    // to pass while proving nothing. Requiring the NEW ids after release proves
+    // the request was real and was genuinely pending across those assertions.
+    #expect(loadedIDs(service.cloudCatalog) == ["glm-5.2"])
+  }
+
+  @Test("a failure after a success retains the previous loaded value exactly")
+  func failureAfterSuccessRetainsPriorLoaded() async {
+    let gate = Gate(ids: ["kimi-k3"])
+    let clock = Clock()
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate), now: clock.read)
+    await service.refreshCloudCatalog()
+    let priorLoaded = service.cloudCatalog
+
+    await gate.reconfigure(failure: URLError(.timedOut), parked: false)
+    clock.advance(1000)
+    await service.refreshCloudCatalog()
+
+    #expect(service.cloudCatalog == priorLoaded)
+    #expect(loadedIDs(service.cloudCatalog) == ["kimi-k3"])
+  }
+
+  /// The second of the two transport-cancellation populations. Its sibling above
+  /// covers the no-prior-success case; this one exists because "no
+  /// `CancellationError` special case" is a claim about BOTH, and only a prior
+  /// success can show that a cancellation is treated as an ordinary failure
+  /// rather than as something that discards a good list.
+  @Test("a transport-thrown cancellation after success retains the prior loaded value")
+  func transportCancellationAfterSuccessRetainsPriorLoaded() async {
+    let gate = Gate(ids: ["kimi-k3"])
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate))
+    await service.refreshCloudCatalog()
+    let priorLoaded = service.cloudCatalog
+
+    await gate.reconfigure(failure: CancellationError(), parked: false)
+    await service.refreshCloudCatalog(force: true)
+
+    #expect(service.cloudCatalog == priorLoaded)
+    #expect(loadedIDs(service.cloudCatalog) == ["kimi-k3"])
+  }
+
+  @Test("a later success replaces the ids and the recorded clock")
+  func laterSuccessReplaces() async {
+    let gate = Gate(ids: ["kimi-k3"])
+    let clock = Clock()
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate), now: clock.read)
+    await service.refreshCloudCatalog()
+    let firstAt = loadedAt(service.cloudCatalog)
+
+    await gate.reconfigure(ids: ["glm-5.2", "minimax-m3"], parked: false)
+    clock.advance(1000)
+    await service.refreshCloudCatalog()
+
+    #expect(loadedIDs(service.cloudCatalog) == ["glm-5.2", "minimax-m3"])
+    #expect(loadedAt(service.cloudCatalog) == clock.now)
+    #expect(loadedAt(service.cloudCatalog) != firstAt)
+  }
+
+  // MARK: - The reuse window, driven by the injected clock
+
+  @Test("at 899 seconds the result is reused and no request is made")
+  func reuseUnderFifteenMinutes() async {
+    let gate = Gate()
+    let clock = Clock()
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate), now: clock.read)
+    await service.refreshCloudCatalog()
+    #expect(await gate.startedCount == 1)
+
+    clock.advance(899)
+    await service.refreshCloudCatalog()
+    #expect(await gate.startedCount == 1)
+  }
+
+  @Test("at exactly 900 seconds the result is refreshed")
+  func refreshAtExactlyFifteenMinutes() async {
+    let gate = Gate()
+    let clock = Clock()
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate), now: clock.read)
+    await service.refreshCloudCatalog()
+
+    clock.advance(900)
+    await service.refreshCloudCatalog()
+    #expect(await gate.startedCount == 2)
+  }
+
+  @Test("at 901 seconds the result is refreshed")
+  func refreshPastFifteenMinutes() async {
+    let gate = Gate()
+    let clock = Clock()
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate), now: clock.read)
+    await service.refreshCloudCatalog()
+
+    clock.advance(901)
+    await service.refreshCloudCatalog()
+    #expect(await gate.startedCount == 2)
+  }
+
+  @Test("force bypasses a still-fresh result")
+  func forceBypassesFreshness() async {
+    let gate = Gate()
+    let clock = Clock()
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate), now: clock.read)
+    await service.refreshCloudCatalog()
+
+    clock.advance(899)
+    await service.refreshCloudCatalog(force: true)
+    #expect(await gate.startedCount == 2)
+  }
+
+  // MARK: - Task lifecycle
+
+  @Test("the task is cleared after a success, so a later forced refresh starts a new request")
+  func taskClearedAfterSuccess() async {
+    let gate = Gate()
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate))
+    await service.refreshCloudCatalog()
+    await service.refreshCloudCatalog(force: true)
+    #expect(await gate.startedCount == 2)
+  }
+
+  @Test("the task is cleared after a failure, so a retry starts a new request")
+  func taskClearedAfterFailure() async {
+    let gate = Gate()
+    let service = OllamaSetupService(cloudCatalogClient: failingClient(gate: gate))
+    await service.refreshCloudCatalog()
+    await service.refreshCloudCatalog()
+    #expect(await gate.startedCount == 2)
+  }
+
+  // MARK: - Single-flight commit barrier
+
+  /// The defect this exists to catch: if the stored task owned only the
+  /// transport and each caller committed separately, both become runnable when
+  /// the transport finishes and the joining caller can return while the state is
+  /// still `.loading`.
+  ///
+  /// Both callers pass `force: true` as the anti-vacuity control. If the second
+  /// caller did NOT join the in-flight task, `force` guarantees it would start a
+  /// second request and the exactly-once assertion would fail — so a passing
+  /// result cannot be explained by the freshness guard.
+  @Test("two concurrent callers share one request and both see the committed result")
+  func singleFlightBarrier() async throws {
+    let gate = Gate(ids: ["kimi-k3"], parked: true)
+    let clock = Clock()
+    let service = OllamaSetupService(
+      cloudCatalogClient: client(gate: gate), now: clock.read)
+
+    let first = Task { @MainActor () -> CloudCatalogState in
+      await service.refreshCloudCatalog(force: true)
+      return service.cloudCatalog
+    }
+    try await waitUntil("first transport started") { await gate.startedCount == 1 }
+
+    // Queued on the MainActor, and deliberately NOT awaited here. It cannot run
+    // until this turn suspends, and the next line is what suspends it — inside
+    // the second refresh, at the point where that call joins the stored task.
+    // So the join is reached before the transport is ever released.
+    let releaser = Task { @MainActor in await gate.release() }
+    await service.refreshCloudCatalog(force: true)
+    let secondTerminal = service.cloudCatalog
+    let firstTerminal = await first.value
+    _ = await releaser.value
+
+    #expect(await gate.startedCount == 1)
+    #expect(loadedIDs(firstTerminal) == ["kimi-k3"])
+    #expect(loadedIDs(secondTerminal) == ["kimi-k3"])
+    #expect(firstTerminal == secondTerminal)
+  }
+
+  @Test("cancelling an awaiting caller does not cancel the service-owned refresh")
+  func callerCancellationDoesNotCancelTheRefresh() async throws {
+    let gate = Gate(ids: ["kimi-k3"], parked: true)
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate))
+
+    let caller = Task { @MainActor in await service.refreshCloudCatalog(force: true) }
+    try await waitUntil("transport started") { await gate.startedCount == 1 }
+    caller.cancel()
+    await gate.release()
+    await caller.value
+
+    #expect(loadedIDs(service.cloudCatalog) == ["kimi-k3"])
+  }
+
+  // MARK: - Instance catalog wiring
+
+  @Test("a loaded catalog contributes hosted suggestions to the instance catalog")
+  func loadedStateReachesTheInstanceCatalog() async {
+    let gate = Gate(ids: ["kimi-k3"])
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate))
+    await service.refreshCloudCatalog()
+
+    let suggestion = service.dynamicCatalog.first { $0.name == "kimi-k3" }
+    #expect(suggestion?.isRemote == true)
+    #expect(suggestion?.isDownloaded == false)
+  }
+
+  @Test("idle, loading and failed contribute no hosted suggestion")
+  func nonLoadedStatesContributeNothing() async throws {
+    let idle = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    #expect(idle.dynamicCatalog.allSatisfy { $0.isRemote == false })
+
+    let failGate = Gate()
+    let failed = OllamaSetupService(cloudCatalogClient: failingClient(gate: failGate))
+    await failed.refreshCloudCatalog()
+    #expect(failed.cloudCatalog == .failed(reason: "catalog_unavailable"))
+    #expect(failed.dynamicCatalog.allSatisfy { $0.isRemote == false })
+
+    let loadGate = Gate(ids: ["kimi-k3"], parked: true)
+    let loading = OllamaSetupService(cloudCatalogClient: client(gate: loadGate))
+    let refresh = Task { @MainActor in await loading.refreshCloudCatalog() }
+    try await waitUntil("transport started") { await loadGate.startedCount == 1 }
+    #expect(loading.cloudCatalog == .loading)
+    #expect(loading.dynamicCatalog.allSatisfy { $0.isRemote == false })
+    await loadGate.release()
+    await refresh.value
+  }
+
+  @Test("the existing local catalog is still present alongside hosted suggestions")
+  func localCatalogSurvives() async {
+    let gate = Gate(ids: ["kimi-k3"])
+    let service = OllamaSetupService(cloudCatalogClient: client(gate: gate))
+    await service.refreshCloudCatalog()
+
+    let catalog = service.dynamicCatalog
+    #expect(catalog.contains { $0.isRemote == false })
+    #expect(catalog.contains { $0.name == "kimi-k3" })
+  }
+}
+
+/// Builds the stub cloud-catalog response. A free function rather than a method
+/// on the `@MainActor` suite: the transport closure is `@Sendable` and runs off
+/// the MainActor, so a MainActor-isolated helper would need an actor hop there.
+///
+/// Throws rather than forcing, so a malformed stub reports as a test failure at
+/// the call site instead of trapping inside the double.
+private func stubbedResponse(ids: [String], for request: URLRequest) throws
+  -> (Data, URLResponse)
+{
+  let rows = ids.map { ["id": $0, "object": "model"] as [String: Any] }
+  let body = try JSONSerialization.data(withJSONObject: ["object": "list", "data": rows])
+  guard let url = request.url,
+    let response = HTTPURLResponse(
+      url: url, statusCode: 200, httpVersion: nil, headerFields: nil)
+  else { throw CloudCatalogError.invalidResponse }
+  return (body, response)
 }

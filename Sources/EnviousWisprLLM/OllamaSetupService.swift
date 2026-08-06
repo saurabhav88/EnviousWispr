@@ -100,6 +100,23 @@ public struct OllamaDownloadedModel: Sendable {
   public let facts: OllamaModelFacts
 }
 
+/// #1956: the hosted-catalog fetch, as a state rather than a bare array.
+///
+/// Four cases distinguish never attempted, an initial request in progress, a
+/// validated non-empty result, and an initial failure. The client rejects an
+/// empty or malformed provider document, so no state here means "Ollama offers
+/// nothing."
+///
+/// `.loading` is explicit only for an INITIAL fetch. A refresh after a success
+/// stays `.loaded` so the last good rows remain on screen; the stored refresh
+/// task is what records that work is in flight.
+package enum CloudCatalogState: Equatable {
+  case idle
+  case loading
+  case loaded(ids: [String], fetchedAt: Date)
+  case failed(reason: String)
+}
+
 /// Guides users through Ollama installation, server startup, and model pulling.
 @MainActor
 @Observable
@@ -113,6 +130,16 @@ public final class OllamaSetupService {
   public private(set) var currentPullingModel: String?
   public private(set) var downloadedModels: [OllamaDownloadedModel] = []
   public private(set) var warmupState: OllamaWarmupState = .idle
+
+  /// #1956: what Ollama's own cloud endpoint last told us, and whether we have
+  /// asked yet. Never written by any daemon path, and a failure here never
+  /// touches `setupState` — the hosted catalog is a limb, so its absence must
+  /// degrade the list rather than replace the settings pane with an error.
+  package private(set) var cloudCatalog: CloudCatalogState = .idle
+
+  private let cloudCatalogClient: OllamaCloudCatalogClient
+  private let cloudCatalogNow: @MainActor () -> Date
+  private var cloudCatalogRefreshTask: Task<Void, Never>?
 
   // Per-pull generation token. Bumped on every pullModel/cancelPull call so stale
   // tasks can no-op their writes (Swift Task cancellation is cooperative; without
@@ -189,8 +216,15 @@ public final class OllamaSetupService {
   }
 
   /// Dynamic catalog: downloaded models first (with real metadata), then undownloaded suggestions.
+  ///
+  /// #1956: hosted suggestions are supplied only from a `.loaded` cloud catalog.
+  /// `.idle`, `.loading` and `.failed` all contribute nothing, so the list
+  /// degrades to exactly its pre-#1956 contents rather than to a guess.
   public var dynamicCatalog: [OllamaModelCatalogEntry] {
-    Self.dynamicCatalog(from: downloadedModels)
+    if case .loaded(let ids, _) = cloudCatalog {
+      return Self.dynamicCatalog(from: downloadedModels, cloudCatalogIDs: ids)
+    }
+    return Self.dynamicCatalog(from: downloadedModels)
   }
 
   /// #1956: shared identity for a hosted model, which reaches us under two
@@ -422,7 +456,44 @@ public final class OllamaSetupService {
 
   // MARK: - Detection Pipeline
 
-  public init() {}
+  /// #1956: ONE designated initializer, three convenience paths.
+  ///
+  /// Every construction route funnels through here specifically so that adding a
+  /// stored dependency cannot silently break one of them. That is not
+  /// hypothetical: the first draft of this chunk added two stored `let`s and
+  /// accounted for only two of the three initializers, which does not compile.
+  /// A single designated initializer makes the next added dependency impossible
+  /// to miss rather than merely something to remember.
+  private init(
+    cloudCatalogClient: OllamaCloudCatalogClient,
+    now: @escaping @MainActor () -> Date,
+    downloadedModels: [OllamaDownloadedModel]
+  ) {
+    self.cloudCatalogClient = cloudCatalogClient
+    self.cloudCatalogNow = now
+    self.downloadedModels = downloadedModels
+  }
+
+  public convenience init() {
+    self.init(cloudCatalogClient: OllamaCloudCatalogClient(), now: Date.init, downloadedModels: [])
+  }
+
+  /// #1956 injection seam. `package` rather than public because a public
+  /// initializer cannot carry a `package`-only parameter, and nothing outside
+  /// this package constructs the service with a substitute client.
+  ///
+  /// The clock is `@MainActor () -> Date` with no `@Sendable`: under this
+  /// package's Swift 6 mode a `@MainActor` function type is already `Sendable`
+  /// (swift-concurrency-patterns `mainactor-fntype-implicitly-sendable`), so
+  /// writing it would be redundant. It exists so the 15-minute reuse boundary is
+  /// tested by advancing a clock rather than by sleeping
+  /// (swift-patterns RULE: tests-no-real-time-scheduling-precision).
+  package convenience init(
+    cloudCatalogClient: OllamaCloudCatalogClient,
+    now: @escaping @MainActor () -> Date = Date.init
+  ) {
+    self.init(cloudCatalogClient: cloudCatalogClient, now: now, downloadedModels: [])
+  }
 
   /// #1914 test seam, approved by the founder on 2026-08-04 (test seams are a
   /// founder decision per `workflow-process.md` RULE: chunked-build-orchestration).
@@ -431,8 +502,10 @@ public final class OllamaSetupService {
   /// Live Ollama operations normally populate or mutate `downloadedModels`.
   /// This initializer lets the eviction wiring test distinguish populated
   /// remote and local catalogs without making a network request.
-  init(downloadedModelsForTesting: [OllamaDownloadedModel]) {
-    downloadedModels = downloadedModelsForTesting
+  convenience init(downloadedModelsForTesting: [OllamaDownloadedModel]) {
+    self.init(
+      cloudCatalogClient: OllamaCloudCatalogClient(), now: Date.init,
+      downloadedModels: downloadedModelsForTesting)
   }
 
   /// Run the full detection pipeline: binary -> server -> models.
@@ -548,6 +621,68 @@ public final class OllamaSetupService {
   }
 
   // MARK: - Model Management
+
+  /// #1956: fetch the hosted catalog from Ollama's cloud endpoint, at most once
+  /// at a time, reusing a recent success.
+  ///
+  /// **The stored task owns the COMMIT, not just the transport.** If each caller
+  /// committed state after awaiting a shared transport task, both would become
+  /// runnable when the transport finished and the joining caller could resume
+  /// first — returning while `cloudCatalog` was still `.loading`. That is the
+  /// post-`await` stale-read shape swift-concurrency-patterns
+  /// `actor-reentrancy-await` exists to prevent. Joining therefore means
+  /// awaiting the commit, not awaiting the bytes.
+  ///
+  /// **The existing-task check precedes the freshness check deliberately**, so a
+  /// `force: true` caller arriving during an in-flight refresh joins it rather
+  /// than starting a second identical request.
+  ///
+  /// There is no `CancellationError` branch. This runs in a separate unstructured
+  /// `Task`, which does not inherit caller cancellation
+  /// (swift-concurrency-patterns `task-cancel-flag-not-abort`), so the only way
+  /// to see one is a transport that throws it — and a transport-thrown
+  /// cancellation is just a failure, which the ordinary `catch` already handles
+  /// correctly.
+  package func refreshCloudCatalog(force: Bool = false) async {
+    if let existing = cloudCatalogRefreshTask {
+      await existing.value
+      return
+    }
+
+    if !force, case .loaded(_, let fetchedAt) = cloudCatalog,
+      cloudCatalogNow().timeIntervalSince(fetchedAt) < 15 * 60
+    {
+      return
+    }
+
+    let previous = cloudCatalog
+    // A refresh after a success keeps the last good rows visible. Only an
+    // initial fetch shows `.loading`, because there is nothing else to show.
+    if case .loaded = previous {} else { cloudCatalog = .loading }
+
+    // Created and stored on `@MainActor` with no `await` between, so no second
+    // caller can slip in and install a competing task.
+    let task = Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.cloudCatalogRefreshTask = nil }
+      do {
+        let ids = try await self.cloudCatalogClient.fetchIDs()
+        // The clock is read at COMPLETION, not at request start: the reuse
+        // window should begin when the answer arrived.
+        self.cloudCatalog = .loaded(ids: ids, fetchedAt: self.cloudCatalogNow())
+      } catch {
+        // A failure never discards a prior success. Losing a good list because a
+        // later refresh failed would be worse than showing a slightly stale one.
+        if case .loaded = previous {
+          self.cloudCatalog = previous
+        } else {
+          self.cloudCatalog = .failed(reason: "catalog_unavailable")
+        }
+      }
+    }
+    cloudCatalogRefreshTask = task
+    await task.value
+  }
 
   /// Refresh the list of downloaded models from GET /api/tags, parsing full metadata.
   public func refreshDownloadedModels() async {
