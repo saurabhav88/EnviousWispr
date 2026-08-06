@@ -972,7 +972,12 @@ test("the weekly badge window is the reported week, absolutely, not a relative l
   const issuesUrl = new URL(urls.find((u) => u.includes("/issues/")));
   assert.equal(issuesUrl.searchParams.get("start"), "2026-07-27T00:00:00");
   assert.equal(issuesUrl.searchParams.get("end"), "2026-08-03T00:00:00");
-  assert.doesNotMatch(issuesUrl.searchParams.get("query") || "", /firstSeen:-/);
+  // Asserted EXACTLY. The negative form alone passed with an empty query, so it
+  // could not tell a correct absolute filter from no filter at all.
+  assert.equal(
+    issuesUrl.searchParams.get("query"),
+    "firstSeen:>=2026-07-27T00:00:00 firstSeen:<2026-08-03T00:00:00"
+  );
 });
 
 test("a Sentry outage costs the Sentry section and nothing else", async () => {

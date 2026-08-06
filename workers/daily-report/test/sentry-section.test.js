@@ -151,11 +151,23 @@ test("every ErrorCategory in the Swift enum is classified", () => {
   assert.ok(start !== -1, "ErrorCategory declaration not found - this test's parse is broken, not the map");
   const end = source.indexOf("\n  }", start);
   assert.ok(end !== -1, "ErrorCategory declaration has no closing brace - parse is broken");
-  // `[^"]+`, not `[a-z_]+`: a raw value containing a hyphen or a digit would
-  // not match the narrower class, so the new case would be invisible here AND
-  // the 27 lower bound would still pass. The regex has to be able to see
-  // everything the enum can express.
-  const raws = [...source.slice(start, end).matchAll(/case\s+\w+\s*=\s*"([^"]+)"/g)].map((m) => m[1]);
+  // Parses BOTH forms Swift allows, and proves it saw every one.
+  //
+  // Two rounds of review went into this line. `[a-z_]+` could not match a raw
+  // value containing a hyphen or a digit. Widening to `[^"]+` fixed that and
+  // still missed a case with an IMPLICIT raw value - `case newCategory`, whose
+  // raw value is its own name - which is legal Swift and would have been
+  // invisible while the 27 lower bound still passed.
+  //
+  // The count check is what makes this non-vacuous: it compares what the
+  // detailed pattern matched against a plain count of `case` lines, so a third
+  // unparsed form fails loudly instead of silently shrinking the enum.
+  const enumBody = source.slice(start, end);
+  const declarations = [...enumBody.matchAll(/^\s*case\s+(\w+)(?:\s*=\s*"([^"]+)")?\s*$/gm)];
+  const caseLines = enumBody.match(/^\s*case\b/gm) || [];
+  assert.equal(declarations.length, caseLines.length,
+    "an ErrorCategory declaration was not parsed - the parser is incomplete, not the enum");
+  const raws = declarations.map(([, name, explicitRaw]) => explicitRaw ?? name);
 
   // POSITIVE CONTROL. A regex that silently matches nothing would make this
   // whole test vacuous and it would pass forever. 27 is the measured count on
@@ -860,11 +872,20 @@ test("an untruncated section still says the totals include the omitted rows", as
 test("the section's Discord cap matches the transport's own limit", () => {
   // The cap is duplicated as a number rather than imported across the
   // policy/transport boundary, so this is what stops the two drifting apart.
-  const data = { empty: true, reason: "no-errors" };
+  // The empty-section render that used to sit here was vacuous: its output is a
+  // fixed two lines, so it fits any cap. The 300-row test below is the real one.
   assert.equal(DISCORD_LIMITS.embedDescription, 4096);
-  // A caller asking for more than Discord accepts is capped, not obeyed.
-  const lines = formatSentrySection(data, { title: "Sentry", budget: 99999 });
-  assert.ok(lines.slice(1).join("\n").length <= DISCORD_LIMITS.embedDescription);
+});
+
+test("a budget that is not a positive safe integer is refused, never obeyed", async () => {
+  // NaN makes every `> budget` comparison FALSE, so it disabled every check
+  // silently: review rendered a 21,824-character description that way.
+  const { fetchFn } = digestFetch({ problems: [problemRow("EW-1", "paste_failed", 1, 1)] });
+  const data = await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
+  for (const bad of [Number.NaN, Infinity, -1, 0, 1.5, "1200", null]) {
+    assert.throws(() => formatSentrySection(data, { title: "Sentry", budget: bad }), TypeError,
+      `budget ${String(bad)} must be refused`);
+  }
 });
 
 // ── Gaps a mutation sweep found, each with the mutation it now kills ────────
@@ -908,4 +929,106 @@ test("a generous caller cannot push the description past Discord's own limit", a
   assert.ok(description.length > DEFAULT_SECTION_BUDGET, "the fixture must actually exceed the default budget");
   assert.ok(description.length <= DISCORD_LIMITS.embedDescription,
     `description ${description.length} exceeds Discord's ${DISCORD_LIMITS.embedDescription} limit`);
+});
+
+test("the prior aggregate ends exactly where the reported window begins", () => {
+  // Asserted against the REAL request rather than by restating the window
+  // object back to itself. The version this replaces assigned the value it then
+  // compared, so it could not fail for any input.
+  return (async () => {
+    const { fetchFn, urls } = digestFetch({ problems: [problemRow("EW-1", "paste_failed", 1, 1)] });
+    await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
+    const parsed = urls.map((u) => new URL(u));
+    const prior = parsed.find((u) => u.searchParams.get("start") === WINDOW.priorStartISO);
+    assert.ok(prior, "no request was made over the prior window");
+    assert.equal(prior.searchParams.get("end"), WINDOW.startISO,
+      "the prior window must end where the reported one starts");
+    // And the reported window is the one everything else measures.
+    const current = parsed.filter((u) => u.searchParams.get("start") === WINDOW.startISO);
+    assert.ok(current.length >= 2, "the reported window is used by more than one call");
+    for (const u of current) assert.equal(u.searchParams.get("end"), WINDOW.endISO);
+  })();
+});
+
+test("an incomplete badge set is disclosed rather than left silent", async () => {
+  // A full page of genuinely-new issues means some NEW marks are missing, and
+  // an absent badge is indistinguishable from a problem that is not new.
+  // Disclosed rather than thrown: reaching 100 new issues in one window means a
+  // catastrophic release, which is exactly when the ranked list is most worth
+  // reading.
+  const newIssues = Array.from({ length: 100 }, (_, i) => ({
+    shortId: `EW-${i}`, firstSeen: "2026-08-05T12:00:00Z",
+  }));
+  const { lines } = await render({ problems: [problemRow("EW-1", "paste_failed", 1, 1)], newIssues });
+  assert.match(lines.join("\n"), /the NEW marks below are not complete/);
+});
+
+test("a normal badge set says nothing about completeness", async () => {
+  // Two-way control: the disclosure must appear ONLY when the page was full.
+  const { lines } = await render({
+    problems: [problemRow("EW-1", "paste_failed", 1, 1)],
+    newIssues: [{ shortId: "EW-1", firstSeen: "2026-08-05T12:00:00Z" }],
+  });
+  assert.doesNotMatch(lines.join("\n"), /not complete/);
+});
+
+test("a generated ordinal never collides with a label that already exists", () => {
+  // The exact shape review proved: counting duplicates first and numbering them
+  // produces `same (1)` twice when a row is ALREADY called `same (1)`.
+  const row = (shortId, label) =>
+    ({ shortId, people: 1, events: 1, group: LOST, label, deliveryProven: true, isNew: false });
+  // TWO shapes, because they defeat different wrong implementations and the
+  // first alone left a mutation alive:
+  //   a) three identical labels - a single bump produces `same (1)` twice,
+  //      since it cannot advance past an ordinal it has already used;
+  //   b) a duplicate plus a row already NAMED `same (1)` - a count-then-number
+  //      pass collides with the pre-existing label.
+  for (const labels of [
+    ["same", "same", "same"],
+    ["same", "same", "same (1)"],
+    ["same", "same", "same", "same (1)", "same (2)"],
+  ]) {
+    const data = {
+      empty: false, floor: "2.4.0", tailPeople: 0,
+      people: labels.length, priorPeople: labels.length, events: labels.length, truncated: false,
+      rows: labels.map((label) => row(null, label)),
+    };
+    const rendered = formatSentrySection(data, { title: "Sentry" }).filter((l) => l.startsWith("  1 person"));
+    assert.equal(rendered.length, labels.length, `all rows render for ${JSON.stringify(labels)}`);
+    assert.equal(new Set(rendered).size, labels.length,
+      `rows must render distinctly for ${JSON.stringify(labels)}, got ${JSON.stringify(rendered)}`);
+  }
+});
+
+test("even the fixed empty-section copy is checked against the budget", () => {
+  // The two empty paths return short fixed text, which is exactly why it was
+  // tempting to let them skip the final check. A guard with exceptions is not a
+  // guard, and a budget small enough proves the check is actually applied.
+  for (const data of [{ empty: true, reason: "no-errors" }, { empty: true, reason: "no-release-line" }]) {
+    assert.throws(() => formatSentrySection(data, { title: "Sentry", budget: 10 }), RangeError,
+      `${data.reason} must be budget-checked too`);
+    // Two-way: it renders normally at a sane budget.
+    assert.ok(formatSentrySection(data, { title: "Sentry" }).length === 2);
+  }
+});
+
+test("a people total too large to be exact is refused, never published", () => {
+  // Each addend is a validated safe integer; their SUM need not be. An earlier
+  // version returned a fabricated ZERO here, which reads as "nobody is on an
+  // old build" - the one answer this line must never give.
+  const huge = Number.MAX_SAFE_INTEGER;
+  assert.throws(() => resolveReleaseLine([
+    // All three tie on people, so the NEWEST wins and the floor is 2.4.0.
+    { release: "com.enviouswispr.app@2.4.3", "count_unique(user)": huge },
+    { release: "com.enviouswispr.app@2.3.1", "count_unique(user)": huge },
+    { release: "com.enviouswispr.app@2.2.0", "count_unique(user)": huge },
+  ]), TypeError);
+});
+
+test("an event total too large to be exact is refused, never published", async () => {
+  const huge = Number.MAX_SAFE_INTEGER;
+  const { fetchFn } = digestFetch({
+    problems: [problemRow("EW-1", "asr_failed", 1, huge), problemRow("EW-2", "paste_failed", 1, huge)],
+  });
+  await assert.rejects(() => fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn }), TypeError);
 });

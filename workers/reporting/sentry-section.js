@@ -263,11 +263,10 @@ export function resolveReleaseLine(rows) {
     if (version === null) continue;
     if (compareKeys(version, [best[0], best[1], 0]) < 0) {
       const people = countOrNull(row["count_unique(user)"]);
-      if (people !== null) tailPeople += people;
-      // Each addend is a safe integer; their SUM need not be. Past that point
-      // the number is no longer exact, and an inexact person count is worse
-      // than an absent one.
-      if (!Number.isSafeInteger(tailPeople)) return { floor, tailPeople: 0 };
+      // Each addend is a safe integer; their SUM need not be. An earlier
+      // version returned a FABRICATED ZERO on overflow, which is the one answer
+      // this section must never give: it reads as "nobody is on an old build".
+      if (people !== null) tailPeople = addCounts(tailPeople, people, "old-build people total");
     }
   }
   return { floor, tailPeople };
@@ -451,6 +450,21 @@ export async function fetchSentrySection(env, window, opts = {}) {
   // would misclassify issues near either edge.
   const startMs = windowInstant(startISO);
   const endMs = windowInstant(endISO);
+  // A FULL PAGE OF NEW ISSUES MEANS THE BADGE SET IS INCOMPLETE, and that is
+  // disclosed rather than thrown.
+  //
+  // The review prescribed throwing here, which would make the whole section
+  // unavailable. That is the wrong trade: reaching 100 genuinely-new issues in
+  // one window means a catastrophic release, which is precisely when the
+  // ranked problem list is most worth reading. Losing it entirely to protect a
+  // badge inverts the value.
+  //
+  // Disclosure is also what this section already does one layer up: the problem
+  // list discloses its own 100-row ceiling rather than refusing to render. A
+  // guard that behaves one way for problems and the opposite way for badges
+  // would be two policies for one situation.
+  const badgesIncomplete = newIssues.truncated;
+
   const newShortIds = new Set(
     newIssues.issues
       .filter((issue) => {
@@ -487,13 +501,28 @@ export async function fetchSentrySection(env, window, opts = {}) {
     // Derived, not bought: event counts ARE additive and were verified to sum
     // exactly to the aggregate. The people total above cannot be derived the
     // same way, because one person can hit several problems.
-    events: rows.reduce((sum, r) => sum + r.events, 0),
+    events: rows.reduce((sum, r) => addCounts(sum, r.events, "event total"), 0),
     rows,
     // Over-reported rather than under-reported: a full page is treated as
     // "there may be more" even without a next-page header, because the only
     // consequence is the section printing its honest limited-breakdown wording.
     truncated: problems.truncated,
+    badgesIncomplete,
   };
+}
+
+/** Adds two counts and refuses a result that is no longer exact.
+ *
+ * Every addend here is already a validated safe integer, but their SUM need not
+ * be, and past that point the number silently stops being the number. Throwing
+ * costs one unavailable section; publishing costs the founder a figure he has
+ * no way to tell is wrong. */
+function addCounts(left, right, label) {
+  const total = left + right;
+  if (!Number.isSafeInteger(total)) {
+    throw new TypeError(`Sentry ${label} exceeds the safe integer range`);
+  }
+  return total;
 }
 
 /** Parses one of the window's naive ISO instants as UTC.
@@ -583,10 +612,17 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
   if (typeof title !== "string" || title.length === 0) {
     throw new TypeError("formatSentrySection requires a title");
   }
-  // A caller-supplied budget is capped at Discord's own per-description limit.
-  // Without the cap, a generous caller could ask for more than Discord accepts
-  // and the whole payload would be refused at delivery - the failure this
-  // budget exists to prevent, reached through the budget itself.
+  // VALIDATED BEFORE IT IS CAPPED. `NaN` makes every `> budget` comparison
+  // false, so a NaN budget disables every check silently and renders whatever
+  // it likes - measured at 21,824 characters during review. `Math.min` does not
+  // rescue it either, because `Math.min(NaN, 4096)` is NaN.
+  if (typeof requestedBudget !== "number" || !Number.isSafeInteger(requestedBudget) || requestedBudget <= 0) {
+    throw new TypeError("formatSentrySection budget must be a positive safe integer");
+  }
+  // Capped at Discord's own per-description limit. Without the cap a generous
+  // caller could ask for more than Discord accepts and the whole payload would
+  // be refused at delivery - the failure this budget exists to prevent,
+  // reached through the budget itself.
   const budget = Math.min(requestedBudget, DISCORD_EMBED_DESCRIPTION_LIMIT);
   const lines = [title];
 
@@ -594,12 +630,12 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
     // Distinct from "no errors": errors existed and could not be scoped to a
     // release line, which is a measurement failure, not good news.
     lines.push("Errors were recorded but could not be matched to a release, so they are not summarised here.");
-    return lines;
+    return finishSection(lines, budget);
   }
   if (data.empty) {
     // An EXPLICIT good-news line. An empty section reads as a broken section.
     lines.push("No errors were recorded on current versions.");
-    return lines;
+    return finishSection(lines, budget);
   }
 
   // THE TRUNCATED CASE IS A DIFFERENT SENTENCE, not the same one with a note.
@@ -645,25 +681,45 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
   // length of the sentence explaining that it ran out - measured at 24
   // characters over a 1200 budget, which is the shape that eventually pushes an
   // assembled payload past a Discord limit and sends nothing at all.
-  const reserve = omittedLine(data.rows.length, data.truncated).length + 1 + TRUNCATED_LINE.length + 1;
+  const reserve =
+    omittedLine(data.rows.length, data.truncated).length + 1 +
+    TRUNCATED_LINE.length + 1 +
+    BADGES_INCOMPLETE_LINE.length + 1;
   const state = { budget: budget - reserve, omitted: 0 };
   appendGroup(lines, "LOST THE DICTATION", lost, state);
   appendGroup(lines, "STILL WORKED, JUST WORSE", degraded, state);
 
   if (state.omitted > 0) lines.push(omittedLine(state.omitted, data.truncated));
   if (data.truncated) lines.push(TRUNCATED_LINE);
+  // Stated plainly, because an absent badge is indistinguishable from a problem
+  // that is not new, and the reader has no other way to tell.
+  if (data.badgesIncomplete) lines.push(BADGES_INCOMPLETE_LINE);
 
-  // ENFORCES THE ACTUAL OUTPUT, not the counter that produced it. If the
-  // reservation arithmetic above is ever wrong again, this turns a silent
-  // over-budget description into one unavailable SECTION. That is the right
-  // failure direction: an over-budget assembled payload is refused whole by
-  // Discord, which costs the founder the entire report rather than one part.
+  return finishSection(lines, budget);
+}
+
+/** ENFORCES THE ACTUAL OUTPUT, not the counter that produced it, on EVERY exit.
+ *
+ * If the reservation arithmetic is ever wrong again, this turns a silent
+ * over-budget description into one unavailable SECTION. That is the right
+ * failure direction: an over-budget assembled payload is refused whole by
+ * Discord, which costs the founder the entire report rather than one part of
+ * it. Both callers convert this into an unavailable section, never a whole-run
+ * failure.
+ *
+ * Applied at all three returns. Two of them are the short empty-result paths,
+ * whose output is fixed and tiny - which is exactly why it was tempting to skip
+ * them, and exactly why a guard with exceptions is not a guard. */
+function finishSection(lines, budget) {
   const rendered = descriptionLength(lines);
   if (rendered > budget) {
     throw new RangeError(`Sentry section rendered ${rendered} characters, over its ${budget}-character budget`);
   }
   return lines;
 }
+
+const BADGES_INCOMPLETE_LINE =
+  "100 or more problems were seen for the first time in this window, so the NEW marks below are not complete.";
 
 const TRUNCATED_LINE =
   "100 or more problems were recorded. The affected-people total covers all of them; " +
@@ -713,20 +769,26 @@ function disambiguate(rows) {
       : row
   );
 
-  // Second pass, because the first is NOT sufficient and a single pass looked
-  // like it was. Two rows can still collide after it: rows sharing a shortId,
-  // and rows with no shortId at all - both of which render as two identical
-  // lines, which is the exact defect this function exists to prevent. An
-  // ordinal is not informative, but it is honest, and two lines the reader can
-  // tell apart beat two they cannot.
-  const after = new Map();
-  for (const row of withIds) after.set(row.label, (after.get(row.label) || 0) + 1);
-  const seen = new Map();
+  // Second pass, because the first is NOT sufficient: rows sharing a shortId,
+  // and rows with no shortId at all, still collide after it.
+  //
+  // A COUNT-THEN-NUMBER pass is not enough either, and that is the subtle part.
+  // Counting duplicates first and appending an ordinal to each produces a label
+  // that can collide with one already present: `["same", "same", "same (1)"]`
+  // renders two identical `same (1)` lines. Demonstrated by review, not
+  // theorised. So the labels are claimed one at a time against a set of what
+  // has actually been used, and the ordinal advances until the result is free.
+  const used = new Set();
   return withIds.map((row) => {
-    if (after.get(row.label) <= 1) return row;
-    const n = (seen.get(row.label) || 0) + 1;
-    seen.set(row.label, n);
-    return { ...row, label: `${row.label} (${n})` };
+    const base = row.label;
+    let label = base;
+    let ordinal = 1;
+    while (used.has(label)) {
+      label = `${base} (${ordinal})`;
+      ordinal += 1;
+    }
+    used.add(label);
+    return label === base ? row : { ...row, label };
   });
 }
 

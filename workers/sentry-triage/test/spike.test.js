@@ -221,13 +221,61 @@ test("an unlabelled environment counts as dev, the conservative direction", () =
   assert.equal(s.realEvents, 0);
 });
 
-test("summarizeSpike skips a malformed count rather than treating it as zero", () => {
-  const s = summarizeSpike([
-    row("EW-1", "asr_failed", "com.enviouswispr.app@2.4.3", "production", "lots", 1),
-    row("EW-2", "paste_failed", "com.enviouswispr.app@2.4.3", "production", 3, 1),
-  ]);
-  assert.equal(s.totalEvents, 3, "a malformed row contributes nothing, and never a fabricated 0 total");
-  assert.equal(s.problems.length, 1);
+test("a malformed count is refused, never skipped into a partial total", () => {
+  // Skipping the row and carrying on left a PARTIAL sum being published as
+  // "N errors in the last hour" with nothing marking it short. Number() also
+  // accepts null, "", false, [] and ["7"], any of which would become a
+  // plausible figure on a card the founder acts on.
+  for (const bad of ["lots", null, "", false, [], ["7"], 1.5, -1, "3", {}]) {
+    assert.throws(
+      () => summarizeSpike([row("EW-1", "asr_failed", "com.enviouswispr.app@2.4.3", "production", bad, 1)]),
+      TypeError,
+      `event count ${JSON.stringify(bad)} must be refused`
+    );
+    assert.throws(
+      () => summarizeSpike([row("EW-1", "asr_failed", "com.enviouswispr.app@2.4.3", "production", 3, bad)]),
+      TypeError,
+      `people count ${JSON.stringify(bad)} must be refused`
+    );
+  }
+  // Two-way: a genuine zero is a real answer and is accepted.
+  assert.equal(summarizeSpike([row("EW-1", "asr_failed", "com.enviouswispr.app@2.4.3", "production", 0, 0)]).totalEvents, 0);
+});
+
+test("a malformed breakdown buzzes once with the honest card, never a partial total", async () => {
+  const h = harness({ sentry: () => sentryResponse([row("EW-1", "asr_failed", "app@2.4.3", "production", "lots", 1)]) });
+  try {
+    await handleTriage(metricPayload(), h.env);
+    assert.equal(h.embeds.length, 1);
+    assert.match(JSON.stringify(h.embeds[0]), /breakdown could not be read/);
+  } finally {
+    h.restore();
+  }
+});
+
+test("a FULL page fails open rather than publishing a short total as exact", async () => {
+  // The card's whole content is the number, so unlike the digest there is
+  // nothing left to qualify with a disclosure line.
+  const many = Array.from({ length: 100 }, (_, i) =>
+    row(`EW-${i}`, "asr_failed", "com.enviouswispr.app@2.4.3", "production", 5, 1));
+  const h = harness({ sentry: () => sentryResponse(many) });
+  try {
+    await handleTriage(metricPayload(), h.env);
+    assert.equal(h.embeds.length, 1);
+    assert.doesNotMatch(h.embeds[0].title, /500 errors/, "a short sum must not be published as exact");
+    assert.match(JSON.stringify(h.embeds[0]), /breakdown could not be read/);
+  } finally {
+    h.restore();
+  }
+});
+
+test("a page just under the ceiling still renders the enriched card", () => {
+  // Two-way control for the truncation rule: 99 rows is a complete answer and
+  // must NOT fail open, or a busy-but-readable hour would lose its breakdown.
+  const many = Array.from({ length: 99 }, (_, i) =>
+    row(`EW-${i}`, "asr_failed", "com.enviouswispr.app@2.4.3", "production", 5, 1));
+  const s = summarizeSpike(many);
+  assert.equal(s.totalEvents, 495);
 });
 
 test("a blank category falls back to the title's type, never to an empty label", () => {

@@ -508,22 +508,26 @@ export function summarizeSpike(rows) {
   let devEvents = 0;
 
   for (const row of rows) {
-    const events = Number(row["count()"]);
-    const people = Number(row["count_unique(user)"]);
-    if (!Number.isFinite(events) || events < 0) continue;
-    totalEvents += events;
+    // THROWS rather than skipping. An earlier version skipped a malformed row
+    // and carried on, which left a PARTIAL sum being published as "N errors in
+    // the last hour" with nothing marking it short. The caller turns this into
+    // the fail-open card, which says the breakdown could not be read - honest,
+    // and still one buzz.
+    const events = requireSpikeCount(row["count()"], "event count");
+    const people = requireSpikeCount(row["count_unique(user)"], "people count");
+    totalEvents = addSpikeCounts(totalEvents, events, "event total");
 
     // Anything not explicitly production counts as dev here. The split exists
     // to stop a founder's own testing reading as a user-facing incident, so the
     // conservative direction is to attribute an unlabelled event to dev rather
     // than to real users.
-    if (row.environment !== "production") devEvents += events;
+    if (row.environment !== "production") devEvents = addSpikeCounts(devEvents, events, "dev-event total");
 
     const category = typeof row["error.category"] === "string" ? row["error.category"].trim() : "";
     const label = category || (typeof row.title === "string" ? row.title.split(":", 1)[0].trim() : "") || "uncategorised";
     const existing = byProblem.get(label) || { label, events: 0, atLeastPeople: 0 };
-    existing.events += events;
-    if (Number.isFinite(people)) existing.atLeastPeople = Math.max(existing.atLeastPeople, people);
+    existing.events = addSpikeCounts(existing.events, events, "problem-event total");
+    existing.atLeastPeople = Math.max(existing.atLeastPeople, people);
     byProblem.set(label, existing);
 
     if (typeof row.release === "string" && row.release.length > 0) {
@@ -538,6 +542,25 @@ export function summarizeSpike(rows) {
     problems: [...byProblem.values()].sort((a, b) => b.events - a.events),
     releases: [...releases].sort(),
   };
+}
+
+/** Same discipline as the digest section, for the same reason: `Number()`
+ * accepts `null`, `""`, `false`, `[]` and `["7"]`, and every one of those would
+ * become a plausible figure in a card the founder acts on. */
+function requireSpikeCount(value, field) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError(`Sentry spike breakdown returned an invalid ${field}`);
+  }
+  return value;
+}
+
+/** Each addend is a safe integer; their sum need not be. */
+function addSpikeCounts(left, right, field) {
+  const total = left + right;
+  if (!Number.isSafeInteger(total)) {
+    throw new TypeError(`Sentry spike breakdown ${field} exceeded the safe integer range`);
+  }
+  return total;
 }
 
 const SPIKE_PROBLEM_ROWS = 5;
@@ -629,12 +652,17 @@ async function handleSpike({ issue, issueId, env, lookupDeadlineAt, operationDea
 
   let embed;
   try {
-    const { rows } = await fetchSpikeBreakdown(env, lookupDeadlineAt);
-    const summary = summarizeSpike(rows);
-    // A spike whose breakdown is empty is not a spike anybody can act on, and
-    // the enriched card would read "0 errors in the last hour" beside an alert
-    // saying the opposite. Fail open to the honest card instead.
-    embed = summary.totalEvents > 0
+    const breakdown = await fetchSpikeBreakdown(env, lookupDeadlineAt);
+    // A FULL PAGE means the sum is short, and the card's headline states an
+    // exact count. Unlike the digest - which discloses its ceiling in a list the
+    // founder is already reading - this card's whole content IS the number, so
+    // there is nothing left to qualify. Fail open instead of publishing a
+    // partial total as exact.
+    const summary = breakdown.truncated ? null : summarizeSpike(breakdown.rows);
+    // An empty breakdown is the same problem from the other end: the enriched
+    // card would read "0 errors in the last hour" beside an alert that fired
+    // because there were more than five.
+    embed = summary && summary.totalEvents > 0
       ? buildSpikeEmbed(summary, { issueId, title, permalink })
       : buildSpikeFailOpenEmbed({ issueId, title, permalink });
   } catch (err) {

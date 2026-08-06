@@ -4094,12 +4094,8 @@ test("the Sentry prior window is the previous EASTERN day, not a duration subtra
   }
 });
 
-test("the prior window abuts the reported one exactly, with no gap and no overlap", () => {
-  for (const day of ["2026-07-17", "2026-11-01", "2026-03-08"]) {
-    const w = sentryWindowFor(resolveReportWindow(new Date("2026-12-01T12:00:00Z"), day));
-    const priorEnd = w.startISO;
-    assert.ok(w.priorStartISO < priorEnd, `${day}: prior window must have positive length`);
-    // The prior window ends exactly where the reported one starts.
-    assert.equal(priorEnd, w.startISO, `${day}: contiguous`);
-  }
-});
+// The "abuts" assertion that used to sit here was TAUTOLOGICAL: it assigned
+// `priorEnd = w.startISO` and then asserted they were equal, so it could not
+// fail for any input. Contiguity is now asserted against the REAL prior request
+// in workers/daily-report/test/sentry-section.test.js, where the query the
+// section actually issues is observable.
