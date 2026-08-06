@@ -718,8 +718,18 @@ function finishSection(lines, budget) {
   return lines;
 }
 
+/** "MAY not be complete", not "are not".
+ *
+ * `hasMorePages` deliberately treats any full page as "there may be more", even
+ * when exactly 100 complete rows arrived and there is no next page, because a
+ * missing Link header proves nothing. That over-reporting is the right default
+ * - but it means this line cannot assert incompleteness as a fact, only as a
+ * possibility. Every other truncation sentence survives the same scrutiny
+ * ("at least N errors", "100 or more problems", "cover the largest 100 only"
+ * are all true when exactly 100 arrive); this one did not, and was swept for
+ * alongside them rather than fixed alone. */
 const BADGES_INCOMPLETE_LINE =
-  "100 or more problems were seen for the first time in this window, so the NEW marks below are not complete.";
+  "100 or more problems were seen for the first time in this window, so the NEW marks below may not be complete.";
 
 const TRUNCATED_LINE =
   "100 or more problems were recorded. The affected-people total covers all of them; " +

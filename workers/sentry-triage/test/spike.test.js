@@ -269,13 +269,25 @@ test("a FULL page fails open rather than publishing a short total as exact", asy
   }
 });
 
-test("a page just under the ceiling still renders the enriched card", () => {
+test("a page just under the ceiling still renders the enriched card", async () => {
   // Two-way control for the truncation rule: 99 rows is a complete answer and
   // must NOT fail open, or a busy-but-readable hour would lose its breakdown.
+  //
+  // Driven through handleTriage, not summarizeSpike. Calling the summariser
+  // directly never touches the truncation branch at all, so it proved the sum
+  // and nothing about which card is actually posted - which is the whole
+  // behaviour under test.
   const many = Array.from({ length: 99 }, (_, i) =>
     row(`EW-${i}`, "asr_failed", "com.enviouswispr.app@2.4.3", "production", 5, 1));
-  const s = summarizeSpike(many);
-  assert.equal(s.totalEvents, 495);
+  const h = harness({ sentry: () => sentryResponse(many) });
+  try {
+    await handleTriage(metricPayload(), h.env);
+    assert.equal(h.embeds.length, 1);
+    assert.equal(h.embeds[0].title, "[Sentry Spike] 495 errors in the last hour");
+    assert.doesNotMatch(JSON.stringify(h.embeds[0]), /breakdown could not be read/);
+  } finally {
+    h.restore();
+  }
 });
 
 test("a blank category falls back to the title's type, never to an empty label", () => {

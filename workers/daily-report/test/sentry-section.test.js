@@ -869,13 +869,11 @@ test("an untruncated section still says the totals include the omitted rows", as
   assert.doesNotMatch(text, /at least/);
 });
 
-test("the section's Discord cap matches the transport's own limit", () => {
-  // The cap is duplicated as a number rather than imported across the
-  // policy/transport boundary, so this is what stops the two drifting apart.
-  // The empty-section render that used to sit here was vacuous: its output is a
-  // fixed two lines, so it fits any cap. The 300-row test below is the real one.
-  assert.equal(DISCORD_LIMITS.embedDescription, 4096);
-});
+// A test asserting only `DISCORD_LIMITS.embedDescription === 4096` used to sit
+// here. It claimed to stop the section's own copy of that number drifting from
+// the transport's, and did nothing of the sort: it never read the section's
+// cap at all, so it would pass while the two diverged. The 300-row test below
+// is what actually proves the cap holds.
 
 test("a budget that is not a positive safe integer is refused, never obeyed", async () => {
   // NaN makes every `> budget` comparison FALSE, so it disabled every check
@@ -960,7 +958,7 @@ test("an incomplete badge set is disclosed rather than left silent", async () =>
     shortId: `EW-${i}`, firstSeen: "2026-08-05T12:00:00Z",
   }));
   const { lines } = await render({ problems: [problemRow("EW-1", "paste_failed", 1, 1)], newIssues });
-  assert.match(lines.join("\n"), /the NEW marks below are not complete/);
+  assert.match(lines.join("\n"), /the NEW marks below may not be complete/);
 });
 
 test("a normal badge set says nothing about completeness", async () => {
