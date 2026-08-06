@@ -6,17 +6,17 @@ section: "Privacy"
 order: 2
 keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "tracking", "crash reports"]
 related: ["privacy-overview"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. Nothing you say ever reaches Envious Labs, the company that makes it. Not your audio, not your transcripts, not a word of it.
+EnviousWispr collects anonymous usage data and crash reports. Nothing you say is part of that. Your audio and your transcripts never reach Envious Labs, the company that makes the app.
 
 ### What stays on your Mac
 
 Your transcripts are saved to your History so you can find them later. They sit in your user folder, and Envious Labs never receives a copy.
 
-While you dictate, the app keeps an encrypted backup of the recording. Once your text is safely saved, the app requests deletion of that backup. If the app quits first, EnviousWispr makes one recovery attempt the next time it runs, then requests deletion whether recovery succeeded or failed.
+While you dictate, the app keeps an encrypted backup of the recording. Once your text is safely saved, the app requests deletion of that backup. If the app quits first, EnviousWispr makes one recovery attempt the next time it runs, then requests deletion whether that recovery succeeded or failed.
 
-Your custom words, settings and API keys live here too. They stay here unless you turn on cloud polish, which is covered below.
+Your custom words, settings, and API keys live here too. They stay on your Mac unless you turn on cloud polish, which is covered below.
 
 ### What Envious Labs never receives
 
@@ -29,16 +29,16 @@ Your custom words, settings and API keys live here too. They stay here unless yo
 
 ### What the app does collect
 
-Anonymous usage and crash data. It shows that a release broke dictation on a particular macOS version, or that nobody has ever opened a setting that took a month to build. It is on by default and cannot be turned off.
+The app collects anonymous usage and crash data. That data shows whether a release broke dictation on a particular macOS version, or whether anyone ever opens a setting that took a month to build. It is on by default and cannot be turned off.
 
-It records how the app is used, never what you said. There is no account and nothing in it names you, though each install gets a random ID so one Mac counts as one user. The privacy policy has the full detail.
+The app records how you use it, never what you said. There is no account, and nothing in the data names you, although each installation gets a random ID so that one Mac counts as one user. The privacy policy has the full detail.
 
-If you would rather run without it, EnviousWispr is open source. Build it yourself and dictation works exactly the same.
+If you would rather run without it, EnviousWispr is open source under the GPLv3 license. You can build the app yourself, and dictation works in exactly the same way.
 
-### If you use cloud AI polish
+### Where your text goes if you use cloud AI polish
 
-Polish runs on your Mac by default. Choose OpenAI, Gemini or Claude instead and you add your own API key, and your transcript is sent to them, along with your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Audio is never sent. The app tells you this when you set it up. That is your account with that company, on their terms.
+Polish runs on your Mac by default. If you choose OpenAI, Gemini, or Claude instead, you add your own API key. Your transcript is then sent to that provider, along with your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Audio is never sent. The app tells you this when you set it up. That connection is your account with that company, governed by their terms.
 
-Ollama works in two ways, and only one of them keeps your transcript on your Mac. A model you have downloaded runs on your Mac and sends nothing. A hosted model runs on Ollama's servers, so your transcript goes to Ollama the same way it would go to any other cloud provider. EnviousWispr lists the two kinds under separate headings so you can tell which you are picking.
+Ollama works in two ways, and only one of them keeps your transcript on your Mac. A model you download runs on your Mac and sends nothing anywhere. A hosted model runs on Ollama's servers, so your transcript goes to Ollama in the same way it would go to any other cloud provider. EnviousWispr lists the two kinds under separate headings so you can tell which you are picking.
 
-Envious Labs is not in the middle of any of this. Everything goes straight from your Mac to the provider, so it is never seen here either way.
+Envious Labs is not in the middle of any of these requests. Everything goes straight from your Mac to the provider, so Envious Labs never sees it either way.

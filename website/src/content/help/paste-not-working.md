@@ -6,28 +6,28 @@ section: "Paste System"
 order: 3
 keywords: ["paste not working", "wont paste", "nothing pastes", "text not appearing", "goes to the wrong app", "vs code", "slack", "discord", "notion", "no text in my app"]
 related: ["accessibility-permission-not-working", "how-text-gets-pasted-into-your-app"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. When your dictation does not appear in the app you were typing in, work through these in order.
+When your dictation does not appear in the app you were typing in, work through these steps in order.
 
 ### 1. Check Accessibility permission
 
-This is the cause most of the time. Open **System Settings** \> **Privacy & Security** \> **Accessibility**. EnviousWispr should be listed with its switch on. Without this permission, nothing can be typed into your apps.
+macOS requires explicit permission before any app can type text into other windows, and this is the cause of missing text most of the time. Open **System Settings**, click **Privacy & Security**, and select **Accessibility**. Find EnviousWispr in the list and make sure its switch is turned on. Without this permission, EnviousWispr cannot deliver your text.
 
-If the switch already looks on, remove EnviousWispr from the list with **-** and add it back with **+**.
+If the switch already looks on but nothing is typed, remove EnviousWispr from the list using the minus button, then add it back using the plus button.
 
 ### 2. Check your cursor was in a text box
 
-EnviousWispr sends the text to wherever your cursor was when you **started** recording. Click into the box first, then press your hotkey.
+EnviousWispr delivers text to whichever text field your cursor was in when you started recording. Click directly into your target text box first, then press your hotkey and begin speaking.
 
 ### 3. The text went to a different app
 
-Same reason. If you switched apps during the dictation, the text still goes to the one you started in. That is deliberate, so a slow AI polish cannot drop your words somewhere unexpected.
+If you switched windows while dictating, the text still goes to the app you were in when you started. That is deliberate. It makes sure a slow AI polish cannot drop your words into an unexpected window if you change tasks mid-sentence.
 
-### 4. VS Code, Slack, Discord and similar
+### 4. VS Code, Slack, Discord and similar apps
 
-These sometimes accept text and then quietly ignore it. EnviousWispr checks for that and delivers a different way, which handles most cases. If yours is not one of them, make sure the app is in front and your cursor is in the field before you record.
+Some apps built on web technology accept text input and then quietly drop it. EnviousWispr has fallback delivery methods that handle this for most of them. If your text still fails to appear, bring the target app to the front and make sure your cursor is inside the text field before you record.
 
 ### 5. You were told the text is on your clipboard
 
-That means every delivery method failed. Your dictation is safe. Press Cmd+V to paste it, then work through the checks above.
+If every delivery method fails, EnviousWispr copies your words to the clipboard and tells you. Your dictation is safe. Press Cmd+V to paste it yourself, then work through the checks above to get normal delivery back.

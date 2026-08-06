@@ -32,7 +32,7 @@ Exporting creates a file holding your whole custom word list, which you can keep
 
 If you want to clear out several terms together, you can select them as a group rather than deleting them one at a time.
 
-**Turn on selection.** Click **Select**, which sits just above your list of terms.
+**Turn on selection.** Click **Select**, which sits directly above your list of terms.
 
 **Choose the words.** Tick the box next to every word you want to remove.
 

@@ -14,15 +14,15 @@ Push-to-talk is the default recording mode. You hold your hotkey down for as lon
 
 **Use any text box.** Click into any text box on your Mac, then use the hotkey you assigned during setup.
 
-**Hold the hotkey.** Press and hold your designated hotkey, and begin speaking into your microphone.
+**Press and hold.** Keep your designated hotkey pressed, and begin speaking into your microphone.
 
-**Release the hotkey.** Let go of the hotkey when you finish your sentence. Your text appears at the cursor.
+**Release it.** Let go when you finish your sentence. Your text appears at the cursor.
 
 Recording stops the exact moment you release the key. Because of that, a cough, a deep breath, or a passing conversation after you finish speaking never reaches the transcript.
 
 ### Dictating for longer periods
 
-If you would rather not hold the key down through a long block of speech, tap your hotkey and then press it again within half a second. Recording stays on after you let go. That is hands-free mode, and [_Hands-Free Mode (Long Dictation)_](/help/hands-free-mode-long-dictation/) covers it in full.
+For a long block of speech there is a way to keep recording with your finger off the hotkey. Tap it, then press it again within half a second. Recording stays on after you let go. That is hands-free mode, and [_Hands-Free Mode (Long Dictation)_](/help/hands-free-mode-long-dictation/) covers it in full.
 
 ### Configuring the mode
 

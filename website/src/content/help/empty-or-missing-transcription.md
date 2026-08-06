@@ -1,6 +1,6 @@
 ---
 title: "Empty or Missing Transcription"
-description: "What to check when a recording finishes but no text appears."
+description: "What to check when your microphone is not working and no text appears."
 category: "troubleshooting"
 section: "Transcription Issues"
 order: 3
