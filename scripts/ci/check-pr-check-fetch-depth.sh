@@ -20,7 +20,13 @@
 #   check-pr-check-fetch-depth.sh --self-test
 set -euo pipefail
 
-# lint <file>: 0 if every fetch-depth key is 0 and >=2 are present; else 1.
+# lint <file>: 0 if every fetch-depth key is 0 and >=3 are present; else 1.
+#
+# Raised 2 -> 3 when website-check landed (#1944). The count is not decoration:
+# at >=2, dropping fetch-depth from website-check would leave the two build
+# lanes and keep the lint GREEN, while the help-centre conversion gate silently
+# lost the base commit it reads its source JSON from. A guard that stops arming
+# for the case it was extended to cover is worse than no guard.
 lint() {
   local file="$1"
   if [ ! -f "$file" ]; then
@@ -32,8 +38,8 @@ lint() {
   local depth_lines count bad=0
   depth_lines="$(grep -nE '^[[:space:]]*fetch-depth:[[:space:]]*[0-9]+' "$file" || true)"
   count="$(printf '%s' "$depth_lines" | grep -c . || true)"
-  if [ "$count" -lt 2 ]; then
-    echo "::error title=fetch-depth-lint::expected >=2 'fetch-depth: 0' PR-lane checkouts in $file, found $count. #825 requires the pull_request build lanes keep full history."
+  if [ "$count" -lt 3 ]; then
+    echo "::error title=fetch-depth-lint::expected >=3 'fetch-depth: 0' PR-lane checkouts in $file, found $count. #825 requires the build lanes keep full history; #1944 added website-check, which reads pull_request.base.sha."
     return 1
   fi
   local ln val
@@ -74,11 +80,12 @@ _expect() {
 
 self_test() {
   # Good: two lane checkouts at fetch-depth: 0 (aggregator has no key).
-  _expect "$(printf '      - uses: actions/checkout\n        with:\n          fetch-depth: 0\n      - uses: actions/checkout\n        with:\n          fetch-depth: 0\n')" 0 "two depth-0 lanes -> pass"
+  _expect "$(printf '      - uses: actions/checkout\n        with:\n          fetch-depth: 0\n      - uses: actions/checkout\n        with:\n          fetch-depth: 0\n      - uses: actions/checkout\n        with:\n          fetch-depth: 0\n')" 0 "three depth-0 lanes -> pass"
+  _expect "$(printf '      - uses: actions/checkout\n        with:\n          fetch-depth: 0\n      - uses: actions/checkout\n        with:\n          fetch-depth: 0\n')" 1 "only two lanes -> fail (website-check dropped its checkout)"
   # Bad: a lane re-shallowed to 2.
   _expect "$(printf '        with:\n          fetch-depth: 0\n        with:\n          fetch-depth: 2\n')" 1 "a re-shallowed lane (2) -> fail"
   # Bad: only one depth-0 declaration (a lane lost its key).
-  _expect "$(printf '        with:\n          fetch-depth: 0\n')" 1 "fewer than two lanes -> fail"
+  _expect "$(printf '        with:\n          fetch-depth: 0\n')" 1 "fewer than three lanes -> fail"
   # False-positive guard: a comment mentioning fetch-depth: 0 does not count;
   # the real key is 2 -> must fail.
   _expect "$(printf '          # keep fetch-depth: 0 here per #825\n          fetch-depth: 2\n          fetch-depth: 0\n')" 1 "comment fetch-depth: 0 does not mask a real 2 -> fail"

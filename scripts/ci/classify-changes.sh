@@ -29,17 +29,39 @@ set -euo pipefail
 # classify: read a newline file list on stdin; write needs_build to
 # $GITHUB_OUTPUT and echo a human-readable reason.
 classify() {
-  local changed
+  local changed website
   changed="$(cat)"
+
+  # needs_website is emitted on EVERY path, including the fail-safe ones below.
+  # A path that leaves it unset makes every heavy step in website-check skip
+  # while the job still reports success — a silent pass, which is worse than a
+  # failure because nothing looks wrong.
+  # Self-force, mirroring the build lane above: a PR that only edits pr-check.yml
+  # could otherwise break website-check and pass, because every website step
+  # would skip and the job would still report success.
+  #
+  # THIS FILE is in the list for the same reason, and it is the easier one to
+  # forget: the script deciding whether website validation runs is exactly the
+  # script whose own breakage that validation would catch. Leaving it out meant
+  # a PR editing only the classifier answered its own question with "no".
+  if grep -qE '^(website/|\.github/workflows/pr-check\.yml$|scripts/ci/classify-changes\.sh$)' <<<"$changed"; then
+    website=true
+  else
+    website=false
+  fi
+
   if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
-    echo "==> CI build workflow changed — full Xcode build required"
+    printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
+    echo "==> CI build workflow changed — full Xcode build required (needs_website=$website)"
   elif grep -qvE '^(website/|docs/|\.github/|\.claude/|CLAUDE\.md)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
-    echo "==> Swift source changes detected — full Xcode build required"
+    printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
+    echo "==> Swift source changes detected — full Xcode build required (needs_website=$website)"
   else
     printf 'needs_build=false\n' >>"$GITHUB_OUTPUT"
-    echo "==> No Swift/build-workflow changes — skipping build"
+    printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
+    echo "==> No Swift/build-workflow changes — skipping build (needs_website=$website)"
   fi
 }
 
@@ -69,8 +91,9 @@ detect() {
     if git cat-file -e "${head}^{commit}" 2>/dev/null; then
       # Checkout is valid (current head present); only the base could not be
       # resolved. Fall back to a FULL build of correct code.
-      echo "==> head present — failing safe to a full build"
+      echo "==> head present — failing safe to a full build and a full website check"
       printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
+      printf 'needs_website=true\n' >>"$GITHUB_OUTPUT"
     else
       # Merge ref is STALE (current head absent): the working tree is the WRONG
       # code. Fail loud (no needs_build written) rather than green a stale tree.
@@ -101,6 +124,7 @@ push_diff() {
   if printf '%s' "$before" | grep -qE '^0+$'; then
     echo "==> before is all-zeroes (new ref) — failing safe to a full build"
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
+    printf 'needs_website=true\n' >>"$GITHUB_OUTPUT"
     return 0
   fi
   local rc=0 err_file changed
@@ -114,6 +138,7 @@ push_diff() {
     echo "::warning::git stderr: $(cat "$err_file" 2>/dev/null || true)"
     echo "==> is_shallow=$(git rev-parse --is-shallow-repository 2>/dev/null || echo unknown)"
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
+    printf 'needs_website=true\n' >>"$GITHUB_OUTPUT"
   else
     echo "==> Changed files:"
     echo "$changed"
@@ -128,17 +153,24 @@ SELFTEST_FAILS=0
 
 # _expect_classify <input> <expected:true|false> <label>
 _expect_classify() {
-  local input="$1" expected="$2" label="$3"
-  local out got
+  local input="$1" expected="$2" label="$3" expected_web="${4:-}"
+  local out got got_web
   out="$(mktemp)"
   GITHUB_OUTPUT="$out"
   classify <<<"$input" >/dev/null
   got="$(grep -oE 'needs_build=(true|false)' "$out" | tail -n1 | cut -d= -f2 || true)"
+  got_web="$(grep -oE 'needs_website=(true|false)' "$out" | tail -n1 | cut -d= -f2 || true)"
   rm -f "$out"
-  if [ "$got" = "$expected" ]; then
-    echo "ok   [$label] needs_build=$expected"
+  local bad=0
+  [ "$got" = "$expected" ] || bad=1
+  # needs_website must be SET on every path, whether or not the row pins its
+  # value: an unset flag makes website-check skip its work and report success.
+  [ -n "$got_web" ] || bad=1
+  [ -z "$expected_web" ] || [ "$got_web" = "$expected_web" ] || bad=1
+  if [ "$bad" -eq 0 ]; then
+    echo "ok   [$label] needs_build=$got needs_website=$got_web"
   else
-    echo "FAIL [$label] expected needs_build=$expected got '$got'"
+    echo "FAIL [$label] expected needs_build=$expected needs_website=${expected_web:-<set>}; got needs_build='$got' needs_website='$got_web'"
     SELFTEST_FAILS=$((SELFTEST_FAILS + 1))
   fi
 }
@@ -213,15 +245,24 @@ _expect_push_exit1() {
 
 self_test() {
   echo "== classify contract (--classify-only path) =="
-  _expect_classify ".github/workflows/pr-check.yml" true "self-force pr-check"
-  _expect_classify "Sources/Foo.swift" true "swift source"
-  _expect_classify $'docs/x.md\nwebsite/y.astro' false "docs+website only"
-  _expect_classify ".github/actions/foo/action.yml" false "github actions dir excluded"
-  _expect_classify ".github/dependabot.yml" false "dependabot excluded"
-  _expect_classify "scripts/ci/classify-changes.sh" true "scripts not excluded"
-  _expect_classify ".gitignore" true "gitignore not excluded"
-  _expect_classify "" true "empty input -> over-build (verbatim quirk)"
-  _expect_classify $'docs/a.md\nSources/B.swift' true "mixed docs+swift"
+  _expect_classify ".github/workflows/pr-check.yml" true "self-force pr-check" true
+  _expect_classify "Sources/Foo.swift" true "swift source" false
+  _expect_classify $'docs/x.md\nwebsite/y.astro' false "docs+website only" true
+  _expect_classify ".github/actions/foo/action.yml" false "github actions dir excluded" false
+  _expect_classify ".github/dependabot.yml" false "dependabot excluded" false
+  # This file self-forces the website lane: it decides whether that lane runs,
+  # so it must not be able to answer "no" about its own change. The row below
+  # keeps the original coverage — an ORDINARY scripts/ path still builds
+  # without dragging the website checks along.
+  _expect_classify "scripts/ci/classify-changes.sh" true "classifier self-forces website" true
+  _expect_classify "scripts/build-dev-app.sh" true "ordinary scripts path: build only" false
+  _expect_classify ".gitignore" true "gitignore not excluded" false
+  _expect_classify "" true "empty input -> over-build (verbatim quirk)" false
+  _expect_classify $'docs/a.md\nSources/B.swift' true "mixed docs+swift" false
+  _expect_classify "website/src/pages/help/index.astro" false "website only -> website check, no build" true
+  _expect_classify $'website/a.astro\nSources/B.swift' true "website+swift -> both" true
+  _expect_classify ".github/workflows/pr-check.yml" true "workflow only -> self-forces website too" true
+  _expect_classify $'website/x.md\n.github/workflows/pr-check.yml' true "workflow+website -> both" true
 
   echo "== three-dot diff + #825 fail-safe (temp repos) =="
   local sb orig head head2 maintip

@@ -32,6 +32,10 @@ const breadcrumbJsonLd = JSON.stringify({
     { "@type": "ListItem", "position": 2, "name": "Contact", "item": `${siteUrl}/contact/` },
   ],
 });
+
+import { getHelpArticles } from '../utils/help';
+const helpTitles = Object.fromEntries((await getHelpArticles()).map((a) => [a.id, a.data.title]));
+
 ---
 
 <BaseLayout
@@ -90,14 +94,23 @@ const breadcrumbJsonLd = JSON.stringify({
 @media (max-width: 640px) {
   .contact-header h1 { font-size: 32px; letter-spacing: -1px; }
 }
+
+.contact-help-callout { font-size: 15px; color: var(--text-3); margin-top: 10px; }
+.contact-help-callout a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.contact-help-callout a:hover { text-decoration: underline; }
 </style>
 
 <section class="contact-header">
   <div class="container">
     <h1>Get in touch</h1>
     <p>Bug reports, feature requests, or just saying hi. We read everything and reply within 24 hours.</p>
+    <p class="contact-help-callout">
+      Looking for a quick answer? <a href="/help/">Search the help centre</a>.
+    </p>
   </div>
 </section>
+
+<script type="application/json" id="help-titles" set:html={JSON.stringify(helpTitles)}></script>
 
 <div class="contact-form-wrap">
   <form id="feedback-form">
@@ -115,6 +128,20 @@ const breadcrumbJsonLd = JSON.stringify({
 </div>
 
 <script>
+  // Pre-fill from ?from=<help-article-slug>, so "it didn't work" arrives with
+  // the article the reader was on. The slug is looked up in a build-time map of
+  // OUR data: nothing from the query string reaches the DOM, and the value is
+  // assigned with .value rather than innerHTML.
+  {
+    const titles = JSON.parse(document.getElementById('help-titles')?.textContent ?? '{}');
+    const from = new URLSearchParams(location.search).get('from');
+    const title = from && Object.prototype.hasOwnProperty.call(titles, from) ? titles[from] : null;
+    const box = document.getElementById('message');
+    if (title && box instanceof HTMLTextAreaElement && !box.value) {
+      box.value = `I was reading: ${title}\n\n`;
+    }
+  }
+
   const form = document.getElementById('feedback-form');
   const status = document.getElementById('form-status');
   const btn = form.querySelector('.form-submit');

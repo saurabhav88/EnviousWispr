@@ -1,0 +1,271 @@
+---
+import { render } from 'astro:content';
+import HelpLayout from '../../layouts/HelpLayout.astro';
+import { HELP_CATEGORIES, helpCategory } from '../../data/help-categories';
+import {
+  getHelpArticles, validateSeeAlso, articlesInCategory, groupBySection,
+  neighbours, related, categoryOf, helpUrl, helpIndexUrl, isoDate,
+  type HelpArticle,
+} from '../../utils/help';
+
+const SITE = 'https://enviouswispr.com';
+
+/**
+ * ONE route emits both category pages and article pages.
+ *
+ * Not a style preference: both live one segment under /help/, and two dynamic
+ * routes cannot both own a single segment. Emitting them together also makes
+ * the namespace collision detectable — Astro errors on a duplicate path, and
+ * the explicit assertion below names the offending slug first.
+ */
+export async function getStaticPaths() {
+  const articles = await getHelpArticles();
+  await validateSeeAlso(articles);
+
+  const categorySlugs = HELP_CATEGORIES.map((c) => c.slug);
+  const articleSlugs = articles.map((a) => a.id);
+  const clash = categorySlugs.filter((s) => articleSlugs.includes(s));
+  if (clash.length) {
+    throw new Error(
+      `help: slug collides between a category and an article: ${clash.join(', ')}. ` +
+      `Both live at /help/<slug>/, so one would shadow the other.`
+    );
+  }
+
+  return [
+    ...HELP_CATEGORIES.map((cat) => ({
+      params: { slug: cat.slug },
+      props: { kind: 'category' as const, categorySlug: cat.slug, articles },
+    })),
+    ...articles.map((a) => ({
+      params: { slug: a.id },
+      props: { kind: 'article' as const, article: a, articles },
+    })),
+  ];
+}
+
+type Props =
+  | { kind: 'category'; categorySlug: string; articles: HelpArticle[] }
+  | { kind: 'article'; article: HelpArticle; articles: HelpArticle[] };
+
+const props = Astro.props as Props;
+const { articles } = props;
+
+const breadcrumb = (trail: { name: string; item: string }[]) => JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: trail.map((t, i) => ({
+    '@type': 'ListItem', position: i + 1, name: t.name, item: t.item,
+  })),
+});
+
+let title: string, description: string, canonicalPath: string, jsonLd: string[];
+let category = props.kind === 'category' ? helpCategory(props.categorySlug)! : categoryOf(props.article);
+
+if (props.kind === 'category') {
+  const inCat = articlesInCategory(articles, props.categorySlug);
+  title = `${category.label}: EnviousWispr Help`;
+  description = category.blurb;
+  canonicalPath = `/help/${category.slug}/`;
+  jsonLd = [
+    JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      // Colon, not a dash: this string is published in structured data and can
+      // surface in search results, so it is human-facing copy under global
+      // Rule 6. It now also matches the page title above.
+      name: `${category.label}: EnviousWispr Help`,
+      description: category.blurb,
+      url: `${SITE}${canonicalPath}`,
+      isPartOf: { '@type': 'WebSite', url: SITE, name: 'EnviousWispr' },
+      hasPart: inCat.map((a) => ({ '@type': 'TechArticle', headline: a.data.title, url: helpUrl(a.id) })),
+    }),
+    breadcrumb([
+      { name: 'Home', item: SITE },
+      { name: 'Help', item: helpIndexUrl },
+      { name: category.label, item: `${SITE}${canonicalPath}` },
+    ]),
+  ];
+} else {
+  const a = props.article;
+  title = `${a.data.title}: EnviousWispr Help`;
+  description = a.data.description;
+  canonicalPath = `/help/${a.id}/`;
+  jsonLd = [
+    JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'TechArticle',
+      headline: a.data.title,
+      description: a.data.description,
+      dateModified: a.data.updated.toISOString(),
+      url: `${SITE}${canonicalPath}`,
+      author: { '@type': 'Organization', name: 'Envious Labs', url: SITE },
+      publisher: { '@type': 'Organization', name: 'Envious Labs', url: SITE },
+      isPartOf: { '@type': 'CollectionPage', name: category.label, url: `${SITE}/help/${category.slug}/` },
+      mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE}${canonicalPath}` },
+    }),
+    breadcrumb([
+      { name: 'Home', item: SITE },
+      { name: 'Help', item: helpIndexUrl },
+      { name: category.label, item: `${SITE}/help/${category.slug}/` },
+      { name: a.data.title, item: `${SITE}${canonicalPath}` },
+    ]),
+  ];
+}
+
+const article = props.kind === 'article' ? props.article : null;
+const Content = article ? (await render(article)).Content : null;
+const sections = props.kind === 'category' ? groupBySection(articlesInCategory(articles, props.categorySlug)) : [];
+const showSectionHeadings = props.kind === 'category' && sections.length > 1
+  && articlesInCategory(articles, props.categorySlug).length > 4;
+const nav = article ? neighbours(articles, article) : { prev: null, next: null };
+const alsoRead = article ? related(articles, article) : [];
+---
+
+<HelpLayout
+  title={title}
+  description={description}
+  canonicalPath={canonicalPath}
+  articles={articles}
+  currentArticle={article?.id}
+  currentCategory={props.kind === 'category' ? props.categorySlug : undefined}
+  jsonLd={jsonLd}
+>
+  <nav class="help-crumbs" aria-label="Breadcrumb">
+    <a href="/help/">Help</a>
+    <span aria-hidden="true">›</span>
+    {article ? <a href={`/help/${category.slug}/`}>{category.label}</a> : <span>{category.label}</span>}
+  </nav>
+
+  {props.kind === 'category' ? (
+    <>
+      <h1 class="help-h1">{category.label}</h1>
+      <p class="help-lede">{category.blurb}</p>
+      {showSectionHeadings ? sections.map((group) => (
+        <section class="help-section">
+          <h2 class="help-section-title">{group.section}</h2>
+          <ul class="help-list" role="list">
+            {group.articles.map((a) => (
+              <li>
+                <a href={`/help/${a.id}/`}>
+                  <span class="help-list-title">{a.data.title}</span>
+                  <span class="help-list-desc">{a.data.description}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )) : (
+        <ul class="help-list" role="list">
+          {articlesInCategory(articles, props.categorySlug).map((a) => (
+            <li>
+              <a href={`/help/${a.id}/`}>
+                <span class="help-list-title">{a.data.title}</span>
+                <span class="help-list-desc">{a.data.description}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  ) : (
+    <article>
+      <h1 class="help-h1">{article!.data.title}</h1>
+      <p class="help-lede">{article!.data.description}</p>
+      <div class="help-body"><Content /></div>
+
+      <footer class="help-foot">
+        {(nav.prev || nav.next) && (
+          <nav class="help-prevnext" aria-label="More in this topic">
+            {nav.prev ? (
+              <a href={`/help/${nav.prev.id}/`} class="help-prev">
+                <span class="help-pn-label">Previous</span>
+                <span class="help-pn-title">{nav.prev.data.title}</span>
+              </a>
+            ) : <span />}
+            {nav.next && (
+              <a href={`/help/${nav.next.id}/`} class="help-next">
+                <span class="help-pn-label">Next</span>
+                <span class="help-pn-title">{nav.next.data.title}</span>
+              </a>
+            )}
+          </nav>
+        )}
+
+        {alsoRead.length > 0 && (
+          <section class="help-related">
+            <h2>Related</h2>
+            <ul role="list">
+              {alsoRead.map((r) => <li><a href={`/help/${r.id}/`}>{r.data.title}</a></li>)}
+            </ul>
+          </section>
+        )}
+
+        {article!.data.seeAlso && (
+          <p class="help-seealso">
+            Want the long version? Read <a href={`/blog/${article!.data.seeAlso}/`}>the full guide</a>.
+          </p>
+        )}
+
+        {/* The space before "against" is explicit: Astro strips the leading
+            whitespace of a continuation line, so a newline here renders as
+            "2026-08-05against". */}
+        <p class="help-checked">
+          Last checked <time datetime={isoDate(article!.data.updated)}>{isoDate(article!.data.updated)}</time>{' '}
+          against the shipping app.
+        </p>
+
+        <section class="help-stuck">
+          <h2>Still stuck?</h2>
+          <p>
+            <a href={`/contact/?from=${article!.id}`}>Contact us</a>
+            <span class="help-stuck-or">or</span>
+            <a href={`https://github.com/saurabhav88/EnviousWispr/issues/new?title=${encodeURIComponent(`Help: ${article!.data.title}`)}`} target="_blank" rel="noopener">open an issue on GitHub</a>
+          </p>
+        </section>
+      </footer>
+    </article>
+  )}
+</HelpLayout>
+
+<style>
+  .help-crumbs { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text-3); margin-bottom: 14px; }
+  .help-crumbs a { color: var(--text-3); text-decoration: none; }
+  .help-crumbs a:hover { color: var(--accent); }
+
+  .help-h1 { font-size: 34px; font-weight: 800; letter-spacing: -1px; margin: 0 0 10px; text-wrap: balance; }
+  .help-lede { font-size: 17px; color: var(--text-2); margin: 0 0 28px; line-height: 1.55; }
+
+  .help-section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-3); margin: 30px 0 10px; }
+
+  .help-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; }
+  .help-list a { display: grid; gap: 2px; padding: 12px 14px; margin: 0 -14px; border-radius: 10px; text-decoration: none; }
+  .help-list a:hover { background: var(--surface); }
+  .help-list-title { font-weight: 650; color: var(--text); }
+  .help-list-desc { font-size: 14px; color: var(--text-3); }
+
+  .help-foot { margin-top: 52px; padding-top: 26px; border-top: 1px solid var(--border); }
+
+  .help-prevnext { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 30px; }
+  .help-prevnext a { display: grid; gap: 3px; padding: 13px 15px; border: 1px solid var(--border); border-radius: 12px; text-decoration: none; }
+  .help-prevnext a:hover { border-color: var(--border-hover); background: var(--surface); }
+  .help-next { text-align: right; }
+  .help-pn-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); }
+  .help-pn-title { font-weight: 650; color: var(--text); font-size: 15px; }
+
+  @media (max-width: 620px) { .help-prevnext { grid-template-columns: 1fr; } .help-next { text-align: left; } }
+
+  .help-related h2, .help-stuck h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-3); margin: 0 0 8px; }
+  .help-related ul { list-style: none; padding: 0; margin: 0 0 26px; display: grid; gap: 5px; }
+  .help-related a { color: var(--accent); text-decoration: none; }
+  .help-related a:hover { text-decoration: underline; }
+
+  .help-seealso { font-size: 14px; color: var(--text-2); margin-bottom: 20px; }
+  .help-checked { font-size: 13px; color: var(--text-3); margin-bottom: 26px; }
+
+  .help-stuck { background: var(--surface); border-radius: var(--radius-card); padding: 18px 20px; }
+  .help-stuck p { margin: 0; font-size: 15px; }
+  .help-stuck a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .help-stuck a:hover { text-decoration: underline; }
+  .help-stuck-or { color: var(--text-3); margin: 0 8px; font-weight: 400; }
+</style>

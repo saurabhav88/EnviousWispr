@@ -1,0 +1,151 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import HelpSidebar from '../components/HelpSidebar.astro';
+import HelpSearch from '../components/HelpSearch.astro';
+import type { HelpArticle } from '../utils/help';
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath: string;
+  articles: HelpArticle[];
+  currentArticle?: string;
+  currentCategory?: string;
+  /** Rendered into BaseLayout's head slot: JSON-LD for this page. */
+  jsonLd?: string[];
+}
+
+const { title, description, canonicalPath, articles, currentArticle, currentCategory, jsonLd = [] } = Astro.props;
+---
+
+<BaseLayout title={title} description={description} activePage="help" canonicalPath={canonicalPath}>
+  <Fragment slot="head">
+    {jsonLd.map((block) => <script type="application/ld+json" set:html={block}></script>)}
+  </Fragment>
+
+  <section class="help-page">
+    <div class="container">
+      <div class="help-grid">
+        <div class="help-rail">
+          <div class="help-rail-search">
+            <HelpSearch variant="compact" withDialog={false} />
+          </div>
+          <HelpSidebar
+            articles={articles}
+            currentArticle={currentArticle}
+            currentCategory={currentCategory}
+          />
+          <details class="help-rail-mobile">
+            <summary>All help topics</summary>
+            <HelpSidebar articles={articles} currentArticle={currentArticle} currentCategory={currentCategory} />
+          </details>
+        </div>
+        <div class="help-main">
+          <slot />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* The dialog lives outside `.help-page > .container`. That container sets
+      `z-index: 1`, creating a stacking context its descendants cannot escape:
+      the overlay asked for z-index 2000 and still rendered BELOW the fixed nav
+      at 1000, which stayed clickable through the open modal. Verified with
+      elementFromPoint over the nav: it returned .nav-logo. */}
+  <HelpSearch variant="compact" withDialog={true} triggerHidden={true} />
+</BaseLayout>
+
+<style is:global>
+  /* The nav is `position: fixed` (global.css:99), so page content has to clear
+     it. 120px is what blog/index.astro, BlogPost.astro and contact.astro all
+     use; matching it is what keeps the help centre from starting higher than
+     every other page. An earlier 48px put the sidebar's search box underneath
+     the nav bar — invisible to every build check, obvious in a browser. */
+  .help-page { padding: 120px 0 96px; }
+
+  .help-grid { display: block; }
+
+  /* Same breakpoint and content width as BlogPost.astro's two-column layout, so
+     the two page types read as one site. Columns are reversed: the help rail is
+     navigation and belongs on the left. */
+  @media (min-width: 1080px) {
+    .help-grid {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 720px);
+      gap: 56px;
+      align-items: start;
+    }
+  }
+
+  /* The RAIL is the sticky unit, not just the tree inside it, so the search
+     trigger stays reachable while reading a long article. The plan called for
+     "a sticky sidebar with the search trigger at its top"; making only the tree
+     sticky let search scroll away, which is the opposite. */
+  @media (min-width: 1080px) {
+    .help-rail {
+      position: sticky;
+      top: 88px;
+      max-height: calc(100vh - 108px);
+      display: flex;
+      flex-direction: column;
+    }
+  }
+
+  .help-rail-search { margin-bottom: 20px; flex: 0 0 auto; }
+
+  /* Below the breakpoint the tree becomes a disclosure above the content, so a
+     phone reader is never scrolled past a long nav to reach the article. */
+  .help-rail-mobile { margin-bottom: 28px; }
+  .help-rail-mobile summary {
+    cursor: pointer; font-weight: 650; font-size: 14px; color: var(--text-2);
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .help-rail-mobile[open] summary { margin-bottom: 12px; }
+  /* Two traps here, both hit in one round.
+     1. `:global()` is the escape hatch for SCOPED style blocks. Inside
+        `is:global` it is an invalid selector that silently matches nothing, so
+        the sidebar's own `display: none` stayed in force and the disclosure
+        opened to an empty box.
+     2. Fixing that with an unconditional `display: block` then defeated the
+        browser's own hiding of closed <details> content, so the tree was
+        ALWAYS visible. Keying on [open] makes the CSS itself drive the
+        open/closed states rather than depending on UA behaviour. */
+  .help-rail-mobile .help-sidebar { display: none; }
+  .help-rail-mobile[open] .help-sidebar {
+    display: block; position: static; max-height: none; overflow: visible;
+  }
+
+  @media (min-width: 1080px) {
+    .help-rail-mobile { display: none; }
+  }
+
+  .help-main { min-width: 0; }
+
+  /* Article prose. Sized for reading, with space already reserved for images so
+     adding a screenshot later is a Markdown line rather than a layout change. */
+  .help-body { font-size: 16.5px; line-height: 1.68; color: var(--text-2); }
+  .help-body > * + * { margin-top: 1.05em; }
+  .help-body h3 {
+    font-size: 19px; font-weight: 700; color: var(--text);
+    margin-top: 1.9em; letter-spacing: -0.01em; text-wrap: balance;
+  }
+  .help-body h4 { font-size: 16px; font-weight: 700; color: var(--text); margin-top: 1.6em; }
+  .help-body strong { color: var(--text); font-weight: 650; }
+  .help-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+  .help-body ul, .help-body ol { padding-left: 1.35em; }
+  .help-body li + li { margin-top: 0.45em; }
+  .help-body code {
+    font-family: var(--font-mono); font-size: 0.87em;
+    background: var(--surface); padding: 1px 5px; border-radius: 5px; color: var(--text);
+  }
+  .help-body img { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); }
+  .help-body figcaption { font-size: 13px; color: var(--text-3); margin-top: 6px; }
+
+  /* Wide content scrolls inside its own container so the page body never does. */
+  .help-body .table-wrap, .help-body table { display: block; overflow-x: auto; }
+  .help-body table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .help-body th, .help-body td {
+    text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top;
+  }
+  .help-body th { color: var(--text); font-weight: 650; white-space: nowrap; }
+</style>
