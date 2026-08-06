@@ -53,13 +53,19 @@ node --test                     # pure query-shape/bucketing/formatting logic, n
 ```
 
 Pre-deploy live-query smoke (runs the real HogQL against production
-PostHog, asserts the completeness check passes, prints the would-be
-message, posts nothing):
+PostHog **and the real Sentry queries**, asserts the completeness check
+passes, prints the would-be message, posts nothing):
 
 ```bash
 ~/.claude/bin/get-key launch posthog-personal-api-key POSTHOG_KEY -- \
+  ~/.claude/bin/get-key launch sentry-master-key SENTRY_KEY -- \
   node workers/daily-report/live-query-smoke.mjs [YYYY-MM-DD]
 ```
+
+`SENTRY_KEY` uses the existing admin read credential **for this local smoke
+only**, because no worker-grade credential can reach the Discover endpoint the
+Sentry section needs (measured 2026-08-06: both worker tokens 403). Never
+install `sentry-master-key` as a Cloudflare Worker secret.
 
 The optional date argument overrides "yesterday" — useful for testing
 against a known day, and mirrors the deployed worker's `?date=` recovery

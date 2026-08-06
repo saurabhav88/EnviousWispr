@@ -962,14 +962,17 @@ test("the weekly Sentry section spends the fixed call budget and scopes to the r
   assert.match(sentry.description, /up to 2 people on builds older than 2\.4\.0/);
 });
 
-test("the weekly section asks for a SEVEN-day first-seen window, not the daily report's 24h", async () => {
-  // A default would be right for one caller and silently wrong for the other,
-  // badging only the last day of a seven-day window.
+test("the weekly badge window is the reported week, absolutely, not a relative lookback", async () => {
+  // The relative form was measured from NOW, and this worker runs 13 hours
+  // after its window closes, so `firstSeen:-7d` straddled the window in both
+  // directions. The window is now derived from the reported one.
   const urls = [];
   const h = harness({ sentry: (url) => { urls.push(url); return undefined; } });
   await h.run();
-  const issuesUrl = urls.find((u) => u.includes("/issues/"));
-  assert.match(decodeURIComponent(issuesUrl), /firstSeen:-7d/);
+  const issuesUrl = new URL(urls.find((u) => u.includes("/issues/")));
+  assert.equal(issuesUrl.searchParams.get("start"), "2026-07-27T00:00:00");
+  assert.equal(issuesUrl.searchParams.get("end"), "2026-08-03T00:00:00");
+  assert.doesNotMatch(issuesUrl.searchParams.get("query") || "", /firstSeen:-/);
 });
 
 test("a Sentry outage costs the Sentry section and nothing else", async () => {
@@ -983,6 +986,9 @@ test("a Sentry outage costs the Sentry section and nothing else", async () => {
   assert.match(digest.embeds[0].title, /All website traffic/);
   for (const embed of digest.embeds.slice(0, 4)) {
     assert.doesNotMatch(embed.title, /unavailable/);
+    // The DESCRIPTION too: these sections put their degraded wording in the
+    // body, so a title-only check would pass a mutation that degraded all four.
+    assert.doesNotMatch(embed.description, /temporarily unavailable|not a report of zero/);
   }
 });
 

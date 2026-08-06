@@ -479,14 +479,19 @@ const SENTRY_TITLE = "Sentry, yesterday";
  * five calls is how a report ends up comparing windows that do not abut. */
 export function sentryWindowFor(context) {
   const naiveISO = (date) => date.toISOString().slice(0, 19);
-  const priorStart = new Date(context.startUTC.getTime() - (context.endUTC - context.startUTC));
+  // The prior window is the PREVIOUS EASTERN CALENDAR DAY, resolved through the
+  // same midnight machinery as the reported one. Subtracting the reported day's
+  // DURATION instead looks equivalent and is wrong twice a year: on 2026-11-01
+  // the reported day is 25 hours long, so a duration subtraction would compare
+  // it against a 25-hour "yesterday" that reaches an hour back into Oct 30; on
+  // 2026-03-08 the day is 23 hours and the comparison would MISS an hour of
+  // Mar 7. Either way the founder reads "1 fewer than yesterday" against a
+  // window that is not yesterday, and nothing in the output would say so.
+  const priorStart = findUTCForEasternMidnight(shiftDateString(context.dateStr, -1));
   return {
     startISO: naiveISO(context.startUTC),
     endISO: naiveISO(context.endUTC),
     priorStartISO: naiveISO(priorStart),
-    // Matches the report window. The daily report badges an issue as new only
-    // when its FIRST-EVER event is inside the day being reported.
-    firstSeenPeriod: "24h",
   };
 }
 

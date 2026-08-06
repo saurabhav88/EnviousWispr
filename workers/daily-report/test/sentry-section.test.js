@@ -8,7 +8,7 @@
 // Run: node --test (from workers/daily-report/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -16,6 +16,7 @@ import {
   SentryQueryError,
   SentryShapeError,
   SentryDeadlineError,
+  SentryNetworkError,
   discoverAggregate,
   issueList,
 } from "../../shared/sentry.js";
@@ -31,6 +32,7 @@ import {
   fetchSentrySection,
   formatSentrySection,
   formatSentryUnavailable,
+  windowInstant,
 } from "../../reporting/sentry-section.js";
 import { DISCORD_LIMITS } from "../../shared/discord.js";
 
@@ -45,7 +47,6 @@ const WINDOW = {
   startISO: "2026-08-05T04:00:00",
   endISO: "2026-08-06T04:00:00",
   priorStartISO: "2026-08-04T04:00:00",
-  firstSeenPeriod: "24h",
 };
 
 // ── Fake transport ──────────────────────────────────────────────────────────
@@ -132,6 +133,15 @@ function digestFetch({ releases = RELEASE_ROWS, problems = [], newIssues = [], p
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SWIFT_ENUM = resolve(HERE, "../../../Sources/EnviousWisprServices/SentryBreadcrumb.swift");
 
+/** Every Swift source concatenated, so a producer search sees the whole app
+ * rather than one declaration file. */
+function readAllSwift(dir) {
+  return readdirSync(dir, { recursive: true })
+    .filter((name) => String(name).endsWith(".swift"))
+    .map((name) => readFileSync(resolve(dir, String(name)), "utf8"))
+    .join("\n");
+}
+
 test("every ErrorCategory in the Swift enum is classified", () => {
   const source = readFileSync(SWIFT_ENUM, "utf8");
   // Scoped to the ErrorCategory declaration: the file contains other enums, and
@@ -141,7 +151,11 @@ test("every ErrorCategory in the Swift enum is classified", () => {
   assert.ok(start !== -1, "ErrorCategory declaration not found - this test's parse is broken, not the map");
   const end = source.indexOf("\n  }", start);
   assert.ok(end !== -1, "ErrorCategory declaration has no closing brace - parse is broken");
-  const raws = [...source.slice(start, end).matchAll(/case\s+\w+\s*=\s*"([a-z_]+)"/g)].map((m) => m[1]);
+  // `[^"]+`, not `[a-z_]+`: a raw value containing a hyphen or a digit would
+  // not match the narrower class, so the new case would be invisible here AND
+  // the 27 lower bound would still pass. The regex has to be able to see
+  // everything the enum can express.
+  const raws = [...source.slice(start, end).matchAll(/case\s+\w+\s*=\s*"([^"]+)"/g)].map((m) => m[1]);
 
   // POSITIVE CONTROL. A regex that silently matches nothing would make this
   // whole test vacuous and it would pass forever. 27 is the measured count on
@@ -171,11 +185,26 @@ test("every classification declares a group, a label and a delivery claim", () =
   }
 });
 
-test("the three unemitted categories are marked unemitted and classified conservatively", () => {
+test("the unemitted categories have no producer in the app, not just a flag saying so", () => {
+  // Checking the hand-written `emitted` flag alone proves nothing: adding a
+  // real producer in Swift would leave the flag lying and this test green. So
+  // the claim is re-derived from the source every run.
+  // The WHOLE source tree, not the enum's own file. Producers live in the
+  // pipeline and services modules; the declaration file merely lists the cases.
+  // Scoping this to SWIFT_ENUM made every assertion below vacuous, and the
+  // positive control at the bottom is what caught it.
+  const source = readAllSwift(resolve(HERE, "../../../Sources"));
   for (const raw of ["availability_check_failed", "fallback_failed", "state_mismatch"]) {
     assert.equal(ERROR_CATEGORIES[raw].emitted, false, raw);
     assert.equal(ERROR_CATEGORIES[raw].group, LOST, raw);
+    const swiftCase = raw.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    const uses = source.match(new RegExp(`\\.${swiftCase}\\b`, "g")) || [];
+    assert.equal(uses.length, 0, `${raw} now has a producer; reclassify it and clear emitted:false`);
   }
+  // POSITIVE CONTROL for the search itself. A search that matched nothing would
+  // make every assertion above vacuous and would pass forever.
+  assert.ok((source.match(/\.modelLoadFailed\b/g) || []).length > 0,
+    "the producer search matched nothing at all - the search is broken, not the map");
 });
 
 test("grounded-review corrections stay corrected", () => {
@@ -356,12 +385,18 @@ test("discoverAggregate demands exactly one window form", async () => {
 });
 
 test("discoverAggregate stops at the caller's deadline instead of sleeping past it", async () => {
+  // The sleep THROWS rather than no-opping. With a no-op sleep, moving the
+  // deadline check to after the sleep passes this test while burning the
+  // caller's whole remaining budget in a wait that could not have helped.
+  let slept = false;
+  const sleepFn = async () => { slept = true; throw new Error("slept past the deadline"); };
   const { fetchFn } = recorder(() => response(429, {}));
   await assert.rejects(
     () => discoverAggregate(ENV, { queryName: "q", fields: ["count()"], statsPeriod: "24h" },
-      { ...OPTS, fetchFn, deadlineAt: Date.now() + 5 }),
+      { ...OPTS, fetchFn, sleepFn, deadlineAt: Date.now() + 5 }),
     SentryDeadlineError
   );
+  assert.equal(slept, false, "the deadline must be checked BEFORE the backoff sleep");
 });
 
 test("discoverAggregate refuses to run without configuration", async () => {
@@ -422,7 +457,9 @@ test("the badge marks only the genuinely-new issue", async () => {
       problemRow("EW-OLD", "paste_failed", 5, 9),
       problemRow("EW-NEW", "", 1, 4, "fatal"),
     ],
-    newIssues: [{ shortId: "EW-NEW", firstSeen: "2026-08-06T12:07:21Z" }],
+    // firstSeen INSIDE the reported window. The section re-checks the boundary
+    // locally, so a fixture outside it would not badge however Sentry answered.
+    newIssues: [{ shortId: "EW-NEW", firstSeen: "2026-08-05T12:07:21Z" }],
   });
   const data = await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
   assert.equal(data.rows.find((r) => r.shortId === "EW-OLD").isNew, false);
@@ -459,19 +496,39 @@ test("no usable release line reports a measurement failure, not good news", asyn
   assert.doesNotMatch(lines.join("\n"), /No errors/);
 });
 
-test("window fields are required, including the first-seen period", async () => {
+test("every window field is required", async () => {
   const { fetchFn } = digestFetch();
-  for (const key of ["startISO", "endISO", "priorStartISO", "firstSeenPeriod"]) {
+  for (const key of ["startISO", "endISO", "priorStartISO"]) {
     const broken = { ...WINDOW, [key]: undefined };
     await assert.rejects(() => fetchSentrySection(ENV, broken, { ...OPTS, fetchFn }), TypeError, key);
   }
 });
 
-test("the first-seen period reaches the query verbatim", async () => {
+test("the badge window is ABSOLUTE and matches the reported window", async () => {
+  // `firstSeen:-24h` is measured from NOW, and neither report runs at the
+  // instant its window closes, so the relative form straddles the window in
+  // both directions. Measured live: `firstSeen:-5d` returned 3 issues where the
+  // equivalent absolute range returned 4.
   const { fetchFn, urls } = digestFetch({ problems: [problemRow("EW-1", "paste_failed", 1, 1)] });
-  await fetchSentrySection(ENV, { ...WINDOW, firstSeenPeriod: "7d" }, { ...OPTS, fetchFn });
-  const issuesUrl = urls.find((u) => u.includes("/issues/"));
-  assert.match(decodeURIComponent(issuesUrl), /firstSeen:-7d/);
+  await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
+  const issuesUrl = new URL(urls.find((u) => u.includes("/issues/")));
+  assert.equal(issuesUrl.searchParams.get("start"), WINDOW.startISO);
+  assert.equal(issuesUrl.searchParams.get("end"), WINDOW.endISO);
+  const query = issuesUrl.searchParams.get("query") || "";
+  assert.match(query, /firstSeen:>=2026-08-05T04:00:00/);
+  assert.match(query, /firstSeen:<2026-08-06T04:00:00/);
+  assert.doesNotMatch(query, /firstSeen:-/, "the relative form must be gone");
+});
+
+test("an issue Sentry returns from OUTSIDE the window is still not badged", async () => {
+  // The local boundary re-check. If Sentry's search semantics ever change, this
+  // degrades to a MISSING badge rather than a wrong one.
+  const { fetchFn } = digestFetch({
+    problems: [problemRow("EW-OLD", "paste_failed", 1, 1)],
+    newIssues: [{ shortId: "EW-OLD", firstSeen: "2026-07-02T00:00:00Z" }],
+  });
+  const data = await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
+  assert.equal(data.rows[0].isNew, false);
 });
 
 // ── Presentation ────────────────────────────────────────────────────────────
@@ -571,7 +628,7 @@ test("an over-budget section discloses what it omitted instead of truncating sil
 test("a full page of problems is disclosed as a limited breakdown", async () => {
   const many = Array.from({ length: 100 }, (_, i) => problemRow(`EW-${i}`, "asr_failed", 1, 1));
   const { lines } = await render({ problems: many });
-  assert.match(lines.join("\n"), /breakdown covers the largest 100 only/);
+  assert.match(lines.join("\n"), /the error count and the breakdown cover the largest 100 only/);
 });
 
 test("a full page issues no second Sentry request", async () => {
@@ -712,4 +769,143 @@ test("a release row with a junk user count cannot win the release-line ranking",
   ]);
   assert.equal(line.floor, "2.4.0");
   assert.equal(line.tailPeople, 0, "and cannot contribute to the tail either");
+});
+
+// ── Privacy, retries and shapes the reviewer found untested ─────────────────
+
+test("a raw network error never carries its message across the privacy boundary", async () => {
+  // Both digest workers put `err.message` into their HTTP trigger response, and
+  // the weekly one also records it in its failure summary. A fetch or runtime
+  // error carrying a URL fragment would escape there, and the URL is the one
+  // part of a Sentry request that contains search terms.
+  const leaked = "https://us.sentry.io/api/0/x?query=release:secret-thing token=abcd1234";
+  await assert.rejects(
+    () => discoverAggregate(ENV, { queryName: "q", fields: ["count()"], statsPeriod: "24h" },
+      { ...OPTS, fetchFn: async () => { throw new Error(leaked); } }),
+    (err) =>
+      err instanceof SentryNetworkError &&
+      !err.message.includes("sentry.io") &&
+      !err.message.includes("secret-thing") &&
+      !err.message.includes("abcd1234")
+  );
+});
+
+test("a retry that then succeeds returns the real answer", async () => {
+  // The retry path was only ever tested to exhaustion, so a bug that dropped a
+  // successful second attempt would not have shown up.
+  let attempt = 0;
+  const { fetchFn } = recorder(() => {
+    attempt += 1;
+    return attempt === 1 ? response(503, {}) : response(200, aggregate([{ "count()": 7 }], ["count()"]));
+  });
+  const result = await discoverAggregate(ENV, {
+    queryName: "q", fields: ["count()"], requiredFields: ["count()"], statsPeriod: "24h",
+  }, { ...OPTS, fetchFn });
+  assert.equal(attempt, 2);
+  assert.deepEqual(result.rows, [{ "count()": 7 }]);
+});
+
+test("issueList refuses a non-array body and an unusable firstSeen", async () => {
+  for (const body of [{ issues: [] }, "nope", null, [{ shortId: "EW-1" }], [{ shortId: "EW-1", firstSeen: "soon" }]]) {
+    const { fetchFn } = recorder(() => response(200, body));
+    await assert.rejects(
+      () => issueList(ENV, { queryName: "q" }, { ...OPTS, fetchFn }),
+      SentryShapeError,
+      `body ${JSON.stringify(body)} must be refused`
+    );
+  }
+});
+
+test("issueList demands start and end together, never one alone", async () => {
+  const { fetchFn } = recorder(() => response(200, []));
+  for (const params of [
+    { queryName: "q", start: "2026-08-05T00:00:00" },
+    { queryName: "q", end: "2026-08-06T00:00:00" },
+  ]) {
+    await assert.rejects(() => issueList(ENV, params, { ...OPTS, fetchFn }), TypeError);
+  }
+});
+
+test("an unusable release line stops after the two stage-one calls", async () => {
+  // The remaining three cannot be scoped honestly, and an unscoped answer would
+  // silently re-admit every fixed bug on every old build.
+  const { fetchFn, urls } = digestFetch({ releases: [{ release: "garbage", "count_unique(user)": 4 }] });
+  const data = await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
+  assert.equal(data.empty, true);
+  assert.equal(urls.length, 2, "stage two must not run without a resolved floor");
+});
+
+test("the truncated headline says 'at least', and never claims the totals are complete", async () => {
+  // `events` is summed from the returned rows, so on a truncated page it
+  // EXCLUDES everything past the first hundred. Printing it as the total
+  // understates it, and the old disclosure then said the totals included them.
+  const many = Array.from({ length: 100 }, (_, i) => problemRow(`EW-${i}`, "asr_failed", 1, 1));
+  const { lines } = await render({ problems: many });
+  const text = lines.join("\n");
+  assert.match(text, /at least \d+ errors across 100 or more problems/);
+  assert.doesNotMatch(text, /The totals above include them/);
+  assert.match(text, /The affected-people total covers all of them/);
+});
+
+test("an untruncated section still says the totals include the omitted rows", async () => {
+  // Two-way control: the qualifier above must apply ONLY when truncated, or the
+  // section would hedge a number it knows exactly.
+  const many = Array.from({ length: 60 }, (_, i) => problemRow(`EW-${i}`, "asr_failed", 1, 1));
+  const { lines } = await render({ problems: many });
+  const text = lines.join("\n");
+  assert.match(text, /The totals above include them/);
+  assert.doesNotMatch(text, /at least/);
+});
+
+test("the section's Discord cap matches the transport's own limit", () => {
+  // The cap is duplicated as a number rather than imported across the
+  // policy/transport boundary, so this is what stops the two drifting apart.
+  const data = { empty: true, reason: "no-errors" };
+  assert.equal(DISCORD_LIMITS.embedDescription, 4096);
+  // A caller asking for more than Discord accepts is capped, not obeyed.
+  const lines = formatSentrySection(data, { title: "Sentry", budget: 99999 });
+  assert.ok(lines.slice(1).join("\n").length <= DISCORD_LIMITS.embedDescription);
+});
+
+// ── Gaps a mutation sweep found, each with the mutation it now kills ────────
+
+test("window instants are read as UTC, whatever the machine's timezone", () => {
+  // Tested on the HELPER, not through the section: a boundary fixture driven
+  // end to end passes trivially on a UTC runner and can only fail on a
+  // developer's machine, which is the wrong way round. Sentry reads these
+  // strings as UTC; Date.parse without a zone reads them as LOCAL time.
+  assert.equal(windowInstant("2026-08-05T04:00:00"), Date.UTC(2026, 7, 5, 4, 0, 0));
+  assert.equal(windowInstant("2026-01-01T00:00:00"), Date.UTC(2026, 0, 1, 0, 0, 0));
+  assert.throws(() => windowInstant("not a date"), TypeError);
+});
+
+test("a release component too large to be exact is refused, not ordered", () => {
+  // Past 2^53 a component loses precision and compares equal to its
+  // neighbours, so the ordering would be arbitrary rather than merely odd.
+  assert.equal(parseReleaseVersion("app@9007199254740993.0.0"), null);
+  assert.equal(parseReleaseVersion("app@1.99999999999999999.0"), null);
+  // Two-way: an ordinary large-but-exact version still parses.
+  assert.deepEqual(parseReleaseVersion("app@2.40.100"), [2, 40, 100]);
+
+  // And such a release cannot win the ranking or join the tail.
+  const line = resolveReleaseLine([
+    { release: "app@9007199254740993.0.0", "count_unique(user)": 99 },
+    { release: "com.enviouswispr.app@2.4.3", "count_unique(user)": 1 },
+  ]);
+  assert.equal(line.floor, "2.4.0");
+  assert.equal(line.tailPeople, 0);
+});
+
+test("a generous caller cannot push the description past Discord's own limit", async () => {
+  // The cap only bites when there is enough content to exceed 4096, so this
+  // renders enough rows to get there. An uncapped budget would be obeyed and
+  // the whole payload refused at delivery.
+  const many = Array.from({ length: 300 }, (_, i) =>
+    problemRow(`EW-${i}`, `a_long_category_name_number_${i}_${"x".repeat(30)}`, 3, 3));
+  const { fetchFn } = digestFetch({ problems: many });
+  const data = await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
+  const description = formatSentrySection(data, { title: "Sentry", budget: 99999 }).slice(1).join("\n");
+  assert.ok(description.length > DEFAULT_SECTION_BUDGET, "the fixture must actually exceed the default budget");
+  assert.ok(description.length <= DISCORD_LIMITS.embedDescription,
+    `description ${description.length} exceeds Discord's ${DISCORD_LIMITS.embedDescription} limit`);
 });

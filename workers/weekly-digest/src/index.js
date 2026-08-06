@@ -657,9 +657,8 @@ const SENTRY_TITLE = "Sentry, last 7 days";
  * Sentry section cover windows offset by the Eastern UTC offset and will not
  * reconcile to the exact person.
  *
- * `firstSeenPeriod` is "7d" here and "24h" in the daily report. It is required
- * rather than defaulted for exactly that reason: a default would be right for
- * one caller and silently wrong for the other. */
+ * There is no first-seen lookback to supply: the badge window is derived from
+ * the reported window itself, so neither caller can get it wrong. */
 export function sentryWindowFor(window) {
   const naiveISO = (date) => date.toISOString().slice(0, 19);
   const priorStart = new Date(window.start.getTime() - REPORT_DAYS * 86400000);
@@ -667,7 +666,6 @@ export function sentryWindowFor(window) {
     startISO: naiveISO(window.start),
     endISO: naiveISO(window.end),
     priorStartISO: naiveISO(priorStart),
-    firstSeenPeriod: `${REPORT_DAYS}d`,
   };
 }
 

@@ -198,8 +198,10 @@ export function parseReleaseVersion(release) {
   const version = at === -1 ? release : release.slice(at + 1);
   const parts = version.split(".");
   if (parts.length !== 3) return null;
-  const nums = parts.map((p) => (/^\d+$/.test(p) ? Number(p) : null));
-  return nums.some((n) => n === null) ? null : nums;
+  const nums = parts.map((p) => (/^\d+$/.test(p) ? Number(p) : NaN));
+  // Safe integers only. A component past 2^53 loses precision and would
+  // then compare equal to its neighbours, making the ordering arbitrary.
+  return nums.every(Number.isSafeInteger) ? nums : null;
 }
 
 /**
@@ -262,6 +264,10 @@ export function resolveReleaseLine(rows) {
     if (compareKeys(version, [best[0], best[1], 0]) < 0) {
       const people = countOrNull(row["count_unique(user)"]);
       if (people !== null) tailPeople += people;
+      // Each addend is a safe integer; their SUM need not be. Past that point
+      // the number is no longer exact, and an inexact person count is worse
+      // than an absent one.
+      if (!Number.isSafeInteger(tailPeople)) return { floor, tailPeople: 0 };
     }
   }
   return { floor, tailPeople };
@@ -278,13 +284,17 @@ function compareKeys(a, b) {
 
 // ── Queries ─────────────────────────────────────────────────────────────────
 
-/** THE CALL BUDGET, in one place, asserted by a test.
+/** THE MAXIMUM CALL BUDGET, in one place, asserted by a test.
  *
  * FIVE fixed Sentry requests per digest run, whatever the error volume. The
  * plan's original three assumed the release line arrived free and that the
  * headline totals came from the same response as the per-problem rows; neither
  * held, because Discover returns EITHER a grouped result OR an aggregate, never
  * both (measured 2026-08-06).
+ *
+ * FIVE is the MAXIMUM, not a fixed toll. A run that finds no usable release
+ * line stops after its two stage-one calls, because the remaining three cannot
+ * be scoped honestly and an unscoped answer is worse than no answer.
  *
  * The constraint that actually matters is unchanged: NO CALL FANS OUT PER
  * ISSUE, so the count does not move with volume. Measured cost of all five:
@@ -323,16 +333,16 @@ const PROD = "production";
  * work at all.
  */
 export async function fetchSentrySection(env, window, opts = {}) {
-  const { startISO, endISO, priorStartISO, firstSeenPeriod } = window;
-  // firstSeenPeriod is REQUIRED, never defaulted. A default of "24h" would be
-  // correct for the daily report and silently wrong for the weekly digest,
-  // which would then badge only the last day of a seven-day window - an answer
-  // that looks right everywhere a human would look.
+  const { startISO, endISO, priorStartISO } = window;
+  // There is no `firstSeenPeriod` any more. It was a RELATIVE lookback each
+  // caller had to get right ("24h" here, "7d" there), and being caller-supplied
+  // did not make it correct - it was measured against the wrong instant in both
+  // workers. The badge window is now derived from the reported window itself,
+  // so there is nothing left for a caller to get wrong.
   for (const [name, value] of [
     ["startISO", startISO],
     ["endISO", endISO],
     ["priorStartISO", priorStartISO],
-    ["firstSeenPeriod", firstSeenPeriod],
   ]) {
     if (typeof value !== "string" || value.length === 0) {
       throw new TypeError(`fetchSentrySection requires window.${name}`);
@@ -358,10 +368,28 @@ export async function fetchSentrySection(env, window, opts = {}) {
     // is scoped to events MATCHING the query, not to the issue's lifetime, so
     // every still-active problem read as new. ENVIOUSWISPR-24, first seen
     // 2026-07-02, returned a min(timestamp) of today.
+    //
+    // ABSOLUTE, not `firstSeen:-24h`. The relative form is measured from NOW,
+    // and neither report runs at the instant its window closes: the daily one
+    // runs after the Eastern day ends and can be backfilled to any historical
+    // day, the weekly one runs 13 hours after its window. So the relative form
+    // straddles the window in both directions - it excludes part of what is
+    // being reported and includes issues from outside it. Demonstrated on live
+    // data 2026-08-06: `firstSeen:-5d` returned 3 issues where the equivalent
+    // absolute range returned 4, silently dropping one first seen 4 hours
+    // outside the relative cutoff.
+    //
+    // Sentry filters this SERVER-side, which is what keeps the result small:
+    // the same live check returned 3 rows for the absolute range against 45
+    // for an unfiltered window query. That matters because an unfiltered form
+    // would hit the 100-row page cap on any busy week and force a choice
+    // between a wrong badge and a refused section.
     issueList(env, {
       queryName: "sentry_new_issues",
-      query: `firstSeen:-${firstSeenPeriod}`,
+      query: `firstSeen:>=${startISO} firstSeen:<${endISO}`,
       environment: PROD,
+      start: startISO,
+      end: endISO,
       limit: 100,
     }, opts),
   ]);
@@ -415,7 +443,22 @@ export async function fetchSentrySection(env, window, opts = {}) {
     }, opts),
   ]);
 
-  const newShortIds = new Set(newIssues.issues.map((i) => i.shortId));
+  // Belt as well as braces: the query already filters server-side, and this
+  // re-checks the boundary locally so a change in Sentry's search semantics
+  // degrades to a missing badge rather than to a wrong one. `Z` is appended
+  // because the window strings are naive instants that Sentry reads as UTC, and
+  // Date.parse would otherwise read them as LOCAL time - a silent offset that
+  // would misclassify issues near either edge.
+  const startMs = windowInstant(startISO);
+  const endMs = windowInstant(endISO);
+  const newShortIds = new Set(
+    newIssues.issues
+      .filter((issue) => {
+        const firstSeenMs = Date.parse(issue.firstSeen);
+        return firstSeenMs >= startMs && firstSeenMs < endMs;
+      })
+      .map((issue) => issue.shortId)
+  );
 
   const rows = problems.rows.map((row) => {
     const classified = classifyProblem({
@@ -453,6 +496,23 @@ export async function fetchSentrySection(env, window, opts = {}) {
   };
 }
 
+/** Parses one of the window's naive ISO instants as UTC.
+ *
+ * Exported ONLY so this can be tested independently of the machine's timezone.
+ * A test that fed a boundary fixture through the whole section would pass
+ * trivially on a UTC runner and could only ever fail on a developer's machine,
+ * which is the wrong way round.
+ *
+ * The `Z` is the entire point. Sentry reads these strings as UTC, but
+ * `Date.parse` without a zone reads them as LOCAL time - a four or five hour
+ * shift on this machine - and the badge boundary would then be silently offset,
+ * misclassifying every issue first seen near either edge of the window. */
+export function windowInstant(naiveISO) {
+  const ms = Date.parse(`${naiveISO}Z`);
+  if (Number.isNaN(ms)) throw new TypeError(`window instant is not a valid ISO timestamp: ${naiveISO}`);
+  return ms;
+}
+
 /** A count, or null if the value is not one.
  *
  * `Number()` is far too permissive to validate with, and every one of these is
@@ -465,7 +525,7 @@ export async function fetchSentrySection(env, window, opts = {}) {
  * non-negative INTEGER: Sentry counts people and events, and 1.5 people is a
  * response shape this code should refuse rather than round. */
 function countOrNull(value) {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return null;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return null;
   return value;
 }
 
@@ -506,15 +566,28 @@ const people = (n) => `${n} ${n === 1 ? "person" : "people"}`;
  * DISCLOSED, never silently dropped. */
 export const DEFAULT_SECTION_BUDGET = 1200;
 
+/** Discord's own per-description cap. Duplicated as a NUMBER rather than
+ * imported from workers/shared/discord.js on purpose: this module is report
+ * policy and that one is transport, and reaching across the boundary for a
+ * constant is how the boundary stops meaning anything. The value is asserted
+ * against the transport's own DISCORD_LIMITS in the test suite, so the two
+ * cannot drift apart silently. */
+const DISCORD_EMBED_DESCRIPTION_LIMIT = 4096;
+
 /**
  * The section, as LINES whose FIRST line titles its embed - the same shape every
  * other section formatter returns, so the payload assembler never authors a
  * sentence of its own.
  */
-export function formatSentrySection(data, { title, budget = DEFAULT_SECTION_BUDGET } = {}) {
+export function formatSentrySection(data, { title, budget: requestedBudget = DEFAULT_SECTION_BUDGET } = {}) {
   if (typeof title !== "string" || title.length === 0) {
     throw new TypeError("formatSentrySection requires a title");
   }
+  // A caller-supplied budget is capped at Discord's own per-description limit.
+  // Without the cap, a generous caller could ask for more than Discord accepts
+  // and the whole payload would be refused at delivery - the failure this
+  // budget exists to prevent, reached through the budget itself.
+  const budget = Math.min(requestedBudget, DISCORD_EMBED_DESCRIPTION_LIMIT);
   const lines = [title];
 
   if (data.empty && data.reason === "no-release-line") {
@@ -529,10 +602,20 @@ export function formatSentrySection(data, { title, budget = DEFAULT_SECTION_BUDG
     return lines;
   }
 
-  lines.push(
-    `${people(data.people)} hit ${data.events} ${data.events === 1 ? "error" : "errors"} ` +
-      `across ${data.rows.length} ${data.rows.length === 1 ? "problem" : "problems"}, on ${data.floor} and newer.`
-  );
+  // THE TRUNCATED CASE IS A DIFFERENT SENTENCE, not the same one with a note.
+  // `events` is summed from the returned problem rows, so on a truncated page
+  // it EXCLUDES everything past the first hundred: printing it as the error
+  // total understates it, and the old disclosure then said "the totals above
+  // include them", which was flatly untrue. The PEOPLE figure is unaffected -
+  // it comes from an ungrouped aggregate that is never paginated - so only the
+  // error count and the problem count need qualifying.
+  const errorText = data.truncated
+    ? `at least ${data.events} ${data.events === 1 ? "error" : "errors"}`
+    : `${data.events} ${data.events === 1 ? "error" : "errors"}`;
+  const problemText = data.truncated
+    ? "100 or more problems"
+    : `${data.rows.length} ${data.rows.length === 1 ? "problem" : "problems"}`;
+  lines.push(`${people(data.people)} hit ${errorText} across ${problemText}, on ${data.floor} and newer.`);
 
   // The action metric. An absolute count rises with usage, so it cannot answer
   // "is this spreading", which is the entire reason this section exists.
@@ -562,20 +645,36 @@ export function formatSentrySection(data, { title, budget = DEFAULT_SECTION_BUDG
   // length of the sentence explaining that it ran out - measured at 24
   // characters over a 1200 budget, which is the shape that eventually pushes an
   // assembled payload past a Discord limit and sends nothing at all.
-  const reserve = omittedLine(data.rows.length).length + 1 + TRUNCATED_LINE.length + 1;
+  const reserve = omittedLine(data.rows.length, data.truncated).length + 1 + TRUNCATED_LINE.length + 1;
   const state = { budget: budget - reserve, omitted: 0 };
   appendGroup(lines, "LOST THE DICTATION", lost, state);
   appendGroup(lines, "STILL WORKED, JUST WORSE", degraded, state);
 
-  if (state.omitted > 0) lines.push(omittedLine(state.omitted));
+  if (state.omitted > 0) lines.push(omittedLine(state.omitted, data.truncated));
   if (data.truncated) lines.push(TRUNCATED_LINE);
+
+  // ENFORCES THE ACTUAL OUTPUT, not the counter that produced it. If the
+  // reservation arithmetic above is ever wrong again, this turns a silent
+  // over-budget description into one unavailable SECTION. That is the right
+  // failure direction: an over-budget assembled payload is refused whole by
+  // Discord, which costs the founder the entire report rather than one part.
+  const rendered = descriptionLength(lines);
+  if (rendered > budget) {
+    throw new RangeError(`Sentry section rendered ${rendered} characters, over its ${budget}-character budget`);
+  }
   return lines;
 }
 
-const TRUNCATED_LINE = "100 or more problems were recorded; the breakdown covers the largest 100 only.";
+const TRUNCATED_LINE =
+  "100 or more problems were recorded. The affected-people total covers all of them; " +
+  "the error count and the breakdown cover the largest 100 only.";
 
-const omittedLine = (n) =>
-  `${n} more ${n === 1 ? "problem is" : "problems are"} not listed here. The totals above include them.`;
+/** `truncated` changes the CLAIM, not just the wording: when the problem page
+ * was cut off, the totals above genuinely do NOT include the omitted rows, so
+ * the sentence that says they do must not be printed. */
+const omittedLine = (n, truncated) =>
+  `${n} more ${n === 1 ? "problem is" : "problems are"} not listed here.` +
+  (truncated ? "" : " The totals above include them.");
 
 /** The rendered description length, which is every line EXCEPT the title.
  *

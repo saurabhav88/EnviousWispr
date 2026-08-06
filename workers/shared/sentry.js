@@ -113,6 +113,24 @@ export class SentryDeadlineError extends Error {
   }
 }
 
+/** The request failed before any response arrived.
+ *
+ * EXISTS TO STOP A MESSAGE CROSSING THE PRIVACY BOUNDARY, not to add a category.
+ * Every other failure here is already sanitized into a fixed sentence, but a raw
+ * `fetch` rejection was rethrown unchanged - and both digest workers put
+ * `err.message` straight into their HTTP trigger response, while the weekly one
+ * also records it in its failure summary. A runtime or fetch-implementation
+ * error carrying a URL fragment would therefore have escaped, and the URL is
+ * the one part of a Sentry request that contains search terms. The original
+ * error is deliberately NOT attached: an unreachable field is not a boundary. */
+export class SentryNetworkError extends Error {
+  constructor(queryName) {
+    super(`Sentry query ${queryName} failed before receiving a response`);
+    this.name = "SentryNetworkError";
+    this.queryName = queryName;
+  }
+}
+
 /** Identifies the calling worker in Sentry's audit log and in Cloudflare logs.
  *
  * REQUIRED, never defaulted, for the same reason `hogql` requires it: a default
@@ -153,12 +171,13 @@ async function fetchBounded(url, token, { fetchFn, deadlineAt, requestTimeoutMs,
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       signal: controller.signal,
     });
-  } catch (err) {
+  } catch (_) {
     // An abort is indistinguishable from a network error at the catch site
     // unless the signal is consulted, and reporting a deadline as a network
     // fault would send the reader looking for an outage that never happened.
     if (controller.signal.aborted) throw new SentryDeadlineError(queryName);
-    throw err;
+    // The caught error is DISCARDED rather than wrapped. See SentryNetworkError.
+    throw new SentryNetworkError(queryName);
   } finally {
     clearTimeout(timer);
   }
@@ -370,10 +389,15 @@ export async function discoverAggregate(env, params, opts = {}) {
  */
 export async function issueList(env, params, opts = {}) {
   const config = requireConfig(env);
-  const { queryName, query = "", environment = null, limit = 100 } = params;
+  const { queryName, query = "", environment = null, limit = 100, start = null, end = null } = params;
 
   if (typeof queryName !== "string" || queryName.length === 0) {
     throw new TypeError("issueList requires a queryName");
+  }
+  // Both or neither. One alone silently falls back to the relative form, which
+  // is the exact confusion this parameter was added to remove.
+  if ((start === null) !== (end === null)) {
+    throw new TypeError(`${queryName}: start and end must be supplied together`);
   }
   const project = env?.SENTRY_PROJECT_SLUG;
   if (typeof project !== "string" || project.length === 0) {
@@ -382,8 +406,15 @@ export async function issueList(env, params, opts = {}) {
 
   const url = new URL(`${config.regionUrl}/api/0/projects/${config.org}/${project}/issues/`);
   url.searchParams.set("query", query);
-  url.searchParams.set("statsPeriod", "");
   url.searchParams.set("limit", String(limit));
+  if (start !== null) {
+    url.searchParams.set("start", start);
+    url.searchParams.set("end", end);
+  } else {
+    // `statsPeriod: ""` suppresses the per-issue hourly stats array. It is NOT
+    // valid alongside start/end, which is why it sits in the else branch.
+    url.searchParams.set("statsPeriod", "");
+  }
   if (environment !== null) url.searchParams.set("environment", environment);
 
   const { body, headers } = await requestJson(url.toString(), queryName, config, opts);
@@ -408,9 +439,16 @@ export async function issueList(env, params, opts = {}) {
     if (typeof shortId !== "string" || shortId.length === 0) {
       throw new SentryShapeError(queryName, `issue ${i} had no shortId`);
     }
+    // `firstSeen` is REQUIRED, not defaulted to null. Every caller uses it to
+    // decide whether an issue is new, and a null would silently classify a
+    // genuinely-new issue as old - a missing badge nobody would ever notice.
+    const firstSeen = body[i].firstSeen;
+    if (typeof firstSeen !== "string" || Number.isNaN(Date.parse(firstSeen))) {
+      throw new SentryShapeError(queryName, `issue ${i} had no usable firstSeen`);
+    }
     issues.push({
       shortId,
-      firstSeen: typeof body[i].firstSeen === "string" ? body[i].firstSeen : null,
+      firstSeen,
       level: typeof body[i].level === "string" ? body[i].level : null,
       title: typeof body[i].title === "string" ? body[i].title : null,
     });
@@ -418,5 +456,9 @@ export async function issueList(env, params, opts = {}) {
 
   return { issues, truncated: hasMorePages(headers, issues.length, limit) };
 }
+
+/** Exported so a caller's subrequest-budget arithmetic reads the REAL retry
+ * maximum rather than restating a literal that can drift away from it. */
+export const SENTRY_MAX_ATTEMPTS = RETRY_DELAY_MS.length + 1;
 
 export { RETRYABLE_SENTRY_STATUSES, SENTRY_REGION_URL, DEFAULT_REQUEST_TIMEOUT_MS };

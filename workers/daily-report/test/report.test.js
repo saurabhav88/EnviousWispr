@@ -38,6 +38,8 @@ import {
 } from "../src/version-scorecard.js";
 import { formatScorecard, formatScorecardUnavailable } from "../src/report-format.js";
 import { SENTRY_CALLS_PER_DIGEST } from "../../reporting/sentry-section.js";
+import { SENTRY_MAX_ATTEMPTS } from "../../shared/sentry.js";
+import { sentryWindowFor } from "../src/index.js";
 // #1838 chunk 1: the PostHog transport/concurrency/production-filter
 // infrastructure now has ONE owner. Tests import it from there directly - a
 // re-export from index.js would be a forwarding shim kept alive solely for
@@ -1348,11 +1350,14 @@ test("worst-case explicit fetch count stays under Cloudflare's 50-subrequest cap
   // No Sentry path fans out per issue, so this does not move with error volume.
   const SENTRY_REQUESTS = SENTRY_CALLS_PER_DIGEST;
   const MAX_ATTEMPTS_PER_REQUEST = 3;
-  // Sentry retries TWICE, not three times, precisely so this arithmetic keeps
-  // headroom under the 50 cap. At three it lands on 49, and the next query
-  // added anywhere in this worker would take the WHOLE report over the cap
-  // rather than just the Sentry section. See workers/shared/sentry.js.
-  const SENTRY_ATTEMPTS = 2;
+  // READ FROM THE TRANSPORT, never restated. A literal 2 here would keep this
+  // assertion green while the real retry budget changed underneath it, which is
+  // precisely the drift that makes a subrequest-cap check worthless.
+  // Sentry retries twice, not three times, so this arithmetic keeps headroom
+  // under the 50 cap: at three it lands on 49, and the next query added
+  // anywhere in this worker would take the WHOLE report over.
+  const SENTRY_ATTEMPTS = SENTRY_MAX_ATTEMPTS;
+  assert.equal(SENTRY_ATTEMPTS, 2, "the Sentry retry budget changed; re-check the 50-subrequest cap");
   const DISCORD_POSTS = 1; // one atomic payload, one attempt, never a retry
 
   assert.equal(SENTRY_REQUESTS, 5, "the Sentry call budget is five fixed requests");
@@ -4067,4 +4072,34 @@ test("installs counts BEGAN-ONBOARDING, not the launch-time fresh-install state"
   assert.ok(weeklyQuery, "expected weekly appUsageSql");
   assert.match(weeklyQuery, /uniqExactIf\(distinct_id, event = 'onboarding\.started'\) AS fresh/);
   assert.doesNotMatch(weeklyQuery, /is_fresh_install/);
+});
+
+test("the Sentry prior window is the previous EASTERN day, not a duration subtraction", () => {
+  // Subtracting the reported day's own duration looks equivalent and is wrong
+  // twice a year. On 2026-11-01 the reported day is 25 hours long, so a
+  // duration subtraction reaches an hour back into Oct 30; on 2026-03-08 the
+  // day is 23 hours and it MISSES an hour of Mar 7. Either way the founder
+  // reads "1 fewer than yesterday" against a window that is not yesterday.
+  const cases = [
+    // [reported day, prior start, window start, window end]
+    ["2026-07-17", "2026-07-16T04:00:00", "2026-07-17T04:00:00", "2026-07-18T04:00:00"],
+    ["2026-11-01", "2026-10-31T04:00:00", "2026-11-01T04:00:00", "2026-11-02T05:00:00"], // fall back, 25h day
+    ["2026-03-08", "2026-03-07T05:00:00", "2026-03-08T05:00:00", "2026-03-09T04:00:00"], // spring forward, 23h day
+  ];
+  for (const [day, priorStartISO, startISO, endISO] of cases) {
+    const w = sentryWindowFor(resolveReportWindow(new Date("2026-12-01T12:00:00Z"), day));
+    assert.equal(w.startISO, startISO, `${day} start`);
+    assert.equal(w.endISO, endISO, `${day} end`);
+    assert.equal(w.priorStartISO, priorStartISO, `${day} prior start`);
+  }
+});
+
+test("the prior window abuts the reported one exactly, with no gap and no overlap", () => {
+  for (const day of ["2026-07-17", "2026-11-01", "2026-03-08"]) {
+    const w = sentryWindowFor(resolveReportWindow(new Date("2026-12-01T12:00:00Z"), day));
+    const priorEnd = w.startISO;
+    assert.ok(w.priorStartISO < priorEnd, `${day}: prior window must have positive length`);
+    // The prior window ends exactly where the reported one starts.
+    assert.equal(priorEnd, w.startISO, `${day}: contiguous`);
+  }
 });
