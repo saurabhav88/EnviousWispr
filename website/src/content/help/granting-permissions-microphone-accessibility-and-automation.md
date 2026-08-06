@@ -8,30 +8,34 @@ keywords: ["permissions", "permission", "allow", "access", "microphone access", 
 related: ["accessibility-permission-not-working", "paste-not-working"]
 updated: 2026-08-05
 ---
-EnviousWispr needs two permissions, and a third only in rare cases. The **Permissions** page in Settings always shows where you stand.
+EnviousWispr is a free dictation app for macOS. Because it listens to your microphone and types into other apps, macOS makes you grant it permission first. Two permissions are needed, and a third only in rare cases. The **Permissions** page in EnviousWispr's settings always shows where each one stands.
 
 ### Microphone
 
-Needed to hear you. macOS asks the first time you record.
+This one lets EnviousWispr hear you while you dictate.
 
-If you missed the prompt, open **System Settings** \> **Privacy & Security** \> **Microphone** and switch EnviousWispr on.
+macOS asks the first time you record. If you missed the prompt, open **System Settings** \> **Privacy & Security** \> **Microphone** and switch EnviousWispr on.
+
+You will know it worked when you hold your hotkey and the meter on the recording bar moves as you speak.
 
 ### Accessibility
 
-Needed to put the text into your app for you.
+This one lets EnviousWispr put the finished text into your app for you.
 
 Open **System Settings** \> **Privacy & Security** \> **Accessibility**, click **+**, and add EnviousWispr from your Applications folder.
 
-Without it, dictation still works. EnviousWispr copies your text to the clipboard instead and tells you, so you can paste it with Cmd+V.
+You will know it worked when your next dictation lands in the text box on its own.
+
+Without this permission, dictation still works. EnviousWispr copies your text to the clipboard instead and tells you it has done so, and you paste it yourself with Cmd+V.
 
 ### Automation
 
-Asked for only if the usual ways of pasting do not work in a particular app. macOS asks whether EnviousWispr can control "System Events". Click **OK**.
+This one is a fallback, asked for only when the usual ways of pasting fail in a particular app.
 
-To change it later, open **System Settings** \> **Privacy & Security** \> **Automation**.
+macOS asks whether EnviousWispr can control "System Events". Click **OK**. To change your answer later, open **System Settings** \> **Privacy & Security** \> **Automation**.
 
 Declining is fine. Most apps never need it.
 
 ### Your hotkey needs no permission
 
-The recording hotkey works everywhere on its own. These permissions are only about hearing you and delivering the text.
+The key you hold to record works everywhere on its own. These permissions are only about hearing you and delivering the text.

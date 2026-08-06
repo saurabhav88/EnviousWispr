@@ -8,24 +8,24 @@ keywords: ["accessibility not working", "permission wont stick", "toggle keeps t
 related: ["granting-permissions-microphone-accessibility-and-automation", "paste-not-working"]
 updated: 2026-08-05
 ---
-EnviousWispr needs Accessibility permission to put text into your apps. Without it, nothing gets pasted.
+EnviousWispr is a free dictation app for macOS, and it uses the Accessibility permission to put your finished text into whatever app you are working in. Without that permission, your words are transcribed but nothing is pasted.
 
-### Granting it
+### Grant it
 
 1. Open **System Settings** \> **Privacy & Security** \> **Accessibility**.
 2. Click **+** and add EnviousWispr from your Applications folder.
-3. Make sure its switch is on.
+3. Make sure the switch beside it is on.
 
-You do not need to restart the app. It notices within a few seconds.
+You do not need to restart EnviousWispr. It notices within a few seconds. You will know it worked when your next dictation lands in the text box on its own.
 
-### If it was working and stopped
+### If it was working and then stopped
 
-macOS lets permission be turned off while an app is running, and a system update can do it. EnviousWispr shows a warning when that happens. Switch it back on in the same place.
+macOS can turn a permission off while an app is running, and a system update sometimes does exactly that. EnviousWispr shows a warning when it happens. Switch the permission back on in the same place.
 
 ### If the switch looks on but nothing pastes
 
-Remove EnviousWispr from the Accessibility list with the **-** button, then add it back and switch it on.
+macOS occasionally holds on to a stale record of the app. Remove EnviousWispr from the Accessibility list with the **-** button, then add it back with **+** and switch it on again.
 
-### Meanwhile
+### Your dictation is not lost meanwhile
 
-Your dictation is not lost. EnviousWispr copies it to the clipboard instead and tells you. Paste it with Cmd+V.
+When EnviousWispr cannot paste, it copies your text to the clipboard instead and tells you it has done so. Press Cmd+V to put it in yourself.
