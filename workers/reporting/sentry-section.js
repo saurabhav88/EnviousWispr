@@ -237,8 +237,8 @@ export function resolveReleaseLine(rows) {
   for (const row of rows) {
     const version = parseReleaseVersion(row?.release);
     if (version === null) continue;
-    const people = Number(row["count_unique(user)"]);
-    if (!Number.isFinite(people)) continue;
+    const people = countOrNull(row["count_unique(user)"]);
+    if (people === null) continue;
     // Compare people first, then the version itself, so an exact tie resolves
     // to the newer release rather than to whichever Sentry happened to sort up.
     const key = [people, ...version];
@@ -260,8 +260,8 @@ export function resolveReleaseLine(rows) {
     const version = parseReleaseVersion(row?.release);
     if (version === null) continue;
     if (compareKeys(version, [best[0], best[1], 0]) < 0) {
-      const people = Number(row["count_unique(user)"]);
-      if (Number.isFinite(people)) tailPeople += people;
+      const people = countOrNull(row["count_unique(user)"]);
+      if (people !== null) tailPeople += people;
     }
   }
   return { floor, tailPeople };
@@ -453,13 +453,30 @@ export async function fetchSentrySection(env, window, opts = {}) {
   };
 }
 
-/** A count that is not a finite number is a defect in the response, not a zero.
+/** A count, or null if the value is not one.
+ *
+ * `Number()` is far too permissive to validate with, and every one of these is
+ * a real Sentry response shape away from being a wrong number in a sentence:
+ * `Number(null)`, `Number("")`, `Number(false)` and `Number([])` are all 0, and
+ * `Number(["7"])` is 7. A single-element array reading as a person count is the
+ * dangerous one, because it is silent and plausible.
+ *
+ * So the type is checked BEFORE the value, and the value must be a
+ * non-negative INTEGER: Sentry counts people and events, and 1.5 people is a
+ * response shape this code should refuse rather than round. */
+function countOrNull(value) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return null;
+  return value;
+}
+
+/** The throwing form, for a count the section cannot render without.
+ *
  * Zero is a real and common answer here, so a `|| 0` fallback would make a
  * malformed row indistinguishable from a quiet day. */
 function toCount(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) {
-    throw new TypeError(`Sentry returned a non-numeric count: ${String(value)}`);
+  const n = countOrNull(value);
+  if (n === null) {
+    throw new TypeError(`Sentry returned a value that is not a count: ${JSON.stringify(value) ?? String(value)}`);
   }
   return n;
 }
@@ -539,21 +556,34 @@ export function formatSentrySection(data, { title, budget = DEFAULT_SECTION_BUDG
   const lost = rows.filter((r) => r.group === LOST);
   const degraded = rows.filter((r) => r.group === DEGRADED);
 
-  const budgetState = { used: lines.join("\n").length, budget, omitted: 0 };
-  appendGroup(lines, "LOST THE DICTATION", lost, budgetState);
-  appendGroup(lines, "STILL WORKED, JUST WORSE", degraded, budgetState);
+  // The disclosure lines are appended AFTER the rows, so their cost has to be
+  // reserved BEFORE the rows are laid out. Without the reservation the section
+  // spends the whole budget on rows and then overshoots it by exactly the
+  // length of the sentence explaining that it ran out - measured at 24
+  // characters over a 1200 budget, which is the shape that eventually pushes an
+  // assembled payload past a Discord limit and sends nothing at all.
+  const reserve = omittedLine(data.rows.length).length + 1 + TRUNCATED_LINE.length + 1;
+  const state = { budget: budget - reserve, omitted: 0 };
+  appendGroup(lines, "LOST THE DICTATION", lost, state);
+  appendGroup(lines, "STILL WORKED, JUST WORSE", degraded, state);
 
-  if (budgetState.omitted > 0) {
-    lines.push(
-      `${budgetState.omitted} more ${budgetState.omitted === 1 ? "problem is" : "problems are"} ` +
-        "not listed here. The totals above include them."
-    );
-  }
-  if (data.truncated) {
-    lines.push("100 or more problems were recorded; the breakdown covers the largest 100 only.");
-  }
+  if (state.omitted > 0) lines.push(omittedLine(state.omitted));
+  if (data.truncated) lines.push(TRUNCATED_LINE);
   return lines;
 }
+
+const TRUNCATED_LINE = "100 or more problems were recorded; the breakdown covers the largest 100 only.";
+
+const omittedLine = (n) =>
+  `${n} more ${n === 1 ? "problem is" : "problems are"} not listed here. The totals above include them.`;
+
+/** The rendered description length, which is every line EXCEPT the title.
+ *
+ * Measured from the lines themselves on each check rather than tracked
+ * incrementally. An incremental counter has to model every separator the join
+ * will add, and the version that did drifted - which is invisible until the
+ * assembled payload is refused by Discord and the whole report disappears. */
+const descriptionLength = (lines) => lines.slice(1).join("\n").length;
 
 /** Appends the Sentry issue id to rows whose labels would otherwise be
  * identical.
@@ -571,43 +601,70 @@ export function formatSentrySection(data, { title, budget = DEFAULT_SECTION_BUDG
  *
  * Applied across the WHOLE row set before the groups are split, because a
  * collision can straddle the lost/degraded boundary and would be invisible to a
- * per-group pass. Rows with no id are left alone: an id-less row cannot be
- * disambiguated and a bare "(unknown)" would say nothing. */
+ * per-group pass. */
 function disambiguate(rows) {
   const counts = new Map();
   for (const row of rows) counts.set(row.label, (counts.get(row.label) || 0) + 1);
-  return rows.map((row) =>
+
+  // First pass: the issue id, which is the meaningful separator and the thing
+  // the founder would search for.
+  const withIds = rows.map((row) =>
     counts.get(row.label) > 1 && row.shortId
       ? { ...row, label: `${row.label} ${row.shortId}` }
       : row
   );
+
+  // Second pass, because the first is NOT sufficient and a single pass looked
+  // like it was. Two rows can still collide after it: rows sharing a shortId,
+  // and rows with no shortId at all - both of which render as two identical
+  // lines, which is the exact defect this function exists to prevent. An
+  // ordinal is not informative, but it is honest, and two lines the reader can
+  // tell apart beat two they cannot.
+  const after = new Map();
+  for (const row of withIds) after.set(row.label, (after.get(row.label) || 0) + 1);
+  const seen = new Map();
+  return withIds.map((row) => {
+    if (after.get(row.label) <= 1) return row;
+    const n = (seen.get(row.label) || 0) + 1;
+    seen.set(row.label, n);
+    return { ...row, label: `${row.label} (${n})` };
+  });
 }
 
+/** Renders one group, adding rows only while the WHOLE description still fits.
+ *
+ * Every check re-measures the real rendered length, and any line that would not
+ * fit is popped straight back off. That is slightly wasteful and it is exactly
+ * what makes the budget true: there is no separate model of the output that can
+ * disagree with the output.
+ *
+ * A group whose heading alone does not fit contributes its rows to the omitted
+ * count rather than printing an empty heading. */
 function appendGroup(lines, heading, rows, state) {
   if (rows.length === 0) return;
-  const headingCost = heading.length + 2;
-  if (state.used + headingCost > state.budget) {
+
+  lines.push(heading);
+  if (descriptionLength(lines) > state.budget) {
+    lines.pop();
     state.omitted += rows.length;
     return;
   }
-  lines.push(heading);
-  state.used += headingCost;
+
   for (const row of rows) {
     // Appended for every conservative row, so a classification made on missing
     // evidence never reads as a demonstrated loss. The founder acts on this
     // list, and "lost the dictation" is a strong claim to make on a category
     // whose producers disagree.
     const suffix = row.deliveryProven ? "" : ", delivery not proven";
-    const text = `  ${people(row.people)}   ${row.label}${suffix}${row.isNew ? "   NEW" : ""}`;
-    if (state.used + text.length + 1 > state.budget) {
+    lines.push(`  ${people(row.people)}   ${row.label}${suffix}${row.isNew ? "   NEW" : ""}`);
+    if (descriptionLength(lines) > state.budget) {
+      lines.pop();
       state.omitted += 1;
-      continue;
     }
-    lines.push(text);
-    state.used += text.length + 1;
   }
+
   lines.push("");
-  state.used += 1;
+  if (descriptionLength(lines) > state.budget) lines.pop();
 }
 
 /** Plain-language unavailable copy, owned here so no integration ever authors

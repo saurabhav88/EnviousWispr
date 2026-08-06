@@ -452,9 +452,16 @@ final class KernelLifecycleTelemetrySink {
       // (`.maxDurationReached` was deleted by #1408 A3 — the cap is a normal
       // auto-stop and no longer stamps a cause at all. `.captureSessionLost`
       // was deleted by #1524; the XPC-connection cause by #1543 with the audio
-      // boundary.) Category is `.audioCaptureFailed`, never `.xpcServiceError` —
-      // a benign device disconnect must not page the "XPC Service Crash >1/hr"
-      // alert.
+      // boundary.) Category is `.audioCaptureFailed`, never `.xpcServiceError`,
+      // because a device disconnect is an audio failure and not an XPC one.
+      //
+      // The old justification here claimed the category choice kept a benign
+      // disconnect from paging the "XPC Service Crash >1/hr" alert. That was
+      // FALSE and is deleted rather than reworded: the rate rules were plain
+      // `count()` over `is:unresolved` and filtered by no category at all, so
+      // both categories fed the same counter and the choice changed nothing
+      // about what fired (#1965, verified against the live rule definitions).
+      // The category is still right; only the stated reason was wrong.
       //
       // NOTE: reaching this terminal at all now means salvage did not produce a
       // transcript. A salvaged dictation ends `.completed` and never lands here,

@@ -560,7 +560,12 @@ test("an over-budget section discloses what it omitted instead of truncating sil
   const { lines } = await render({ problems: many });
   const text = lines.join("\n");
   assert.match(text, /more problems are not listed here\. The totals above include them\./);
-  assert.ok(text.length <= DEFAULT_SECTION_BUDGET + 200, `description ${text.length} should stay near its budget`);
+  // STRICT. A "near its budget" tolerance is what let a real 24-character
+  // overrun pass: the disclosure line was appended after the budget was already
+  // spent. The budget governs the DESCRIPTION, so the title is excluded.
+  const description = lines.slice(1).join("\n");
+  assert.ok(description.length <= DEFAULT_SECTION_BUDGET,
+    `description ${description.length} exceeds the ${DEFAULT_SECTION_BUDGET} budget`);
 });
 
 test("a full page of problems is disclosed as a limited breakdown", async () => {
@@ -593,7 +598,7 @@ test("the worst realistic section still fits Discord's per-embed limits", async 
   assert.ok(body.join("\n").length <= DISCORD_LIMITS.embedDescription);
   // And well inside the shared 6000 budget, so it cannot crowd out the other
   // sections and take the whole report down with it.
-  assert.ok(body.join("\n").length <= DEFAULT_SECTION_BUDGET + 200);
+  assert.ok(body.join("\n").length <= DEFAULT_SECTION_BUDGET);
 });
 
 test("a crash label carries the exception type and never the message", () => {
@@ -651,4 +656,60 @@ test("a collision straddling the two groups is still disambiguated", () => {
   const text = formatSentrySection(data, { title: "Sentry" }).join("\n");
   assert.match(text, /same thing EW-A/);
   assert.match(text, /same thing EW-B/);
+});
+
+test("the description never exceeds its budget, at any problem count", async () => {
+  // Swept rather than spot-checked: the overrun appeared only at counts where
+  // the rows filled the budget exactly and the disclosure line then pushed past
+  // it, which a single fixture size can miss entirely.
+  for (const n of [1, 2, 3, 5, 8, 13, 21, 34, 40, 45, 50, 55, 60, 80, 100]) {
+    const problems = Array.from({ length: n }, (_, i) =>
+      problemRow(`EW-${i}`, i % 3 === 0 ? "audio_capture_stalled" : "paste_failed", 2, 2));
+    const { lines } = await render({ problems });
+    const description = lines.slice(1).join("\n");
+    assert.ok(description.length <= DEFAULT_SECTION_BUDGET,
+      `${n} problems produced a ${description.length}-character description`);
+    assert.ok(description.length <= DISCORD_LIMITS.embedDescription);
+  }
+});
+
+test("rows that share an issue id, or have none, are still told apart", () => {
+  // The issue id is the meaningful separator, and it is NOT always sufficient.
+  // Two rows with the same id and two with no id both rendered as identical
+  // lines under the first version of this pass.
+  const row = (shortId, label, group = LOST) =>
+    ({ shortId, people: 1, events: 1, group, label, deliveryProven: true, isNew: false });
+  const data = {
+    empty: false, floor: "2.4.0", tailPeople: 0, people: 2, priorPeople: 1, events: 4, truncated: false,
+    rows: [row("EW-X", "same"), row("EW-X", "same"), row(null, "none", DEGRADED), row(null, "none", DEGRADED)],
+  };
+  const body = formatSentrySection(data, { title: "Sentry" }).slice(1);
+  const rendered = body.filter((l) => l.startsWith("  1 person"));
+  assert.equal(rendered.length, 4, "all four rows render");
+  assert.equal(new Set(rendered).size, 4, `four rows must render as four distinct lines, got ${JSON.stringify(rendered)}`);
+});
+
+test("a count that is not a non-negative integer is refused, never coerced", async () => {
+  // Number() is far too permissive to validate with: null, "", false and []
+  // are all 0, and ["7"] is 7. A single-element array reading as a person
+  // count is the dangerous one, because it is silent and plausible.
+  for (const bad of [null, "", false, [], ["7"], "  ", 1.5, -1, "3", {}]) {
+    const { fetchFn } = digestFetch({ problems: [problemRow("EW-1", "paste_failed", bad, 4)] });
+    await assert.rejects(() => fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn }), TypeError,
+      `people count ${JSON.stringify(bad)} must be refused`);
+  }
+  // Two-way: a genuine zero is a real answer and must NOT be refused.
+  const { fetchFn } = digestFetch({ problems: [problemRow("EW-1", "paste_failed", 0, 0)] });
+  const data = await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
+  assert.equal(data.rows[0].people, 0);
+});
+
+test("a release row with a junk user count cannot win the release-line ranking", () => {
+  // Number(["7"]) is 7, so an array once out-ranked a real release.
+  const line = resolveReleaseLine([
+    { release: "com.enviouswispr.app@2.2.0", "count_unique(user)": ["99"] },
+    { release: "com.enviouswispr.app@2.4.3", "count_unique(user)": 1 },
+  ]);
+  assert.equal(line.floor, "2.4.0");
+  assert.equal(line.tailPeople, 0, "and cannot contribute to the tail either");
 });
