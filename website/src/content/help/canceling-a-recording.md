@@ -6,18 +6,22 @@ section: "Recording"
 order: 5
 keywords: ["cancel", "stop without pasting", "throw away", "discard", "escape", "abort", "undo", "didnt mean to record", "delete recording"]
 related: ["recording-won-t-stop-or-seems-stuck"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. If you misspeak, get interrupted, or start recording by accident, press **Escape**. The recording stops, the audio is thrown away, and nothing is typed. This works in every recording mode, at any point during a recording.
+If you misspeak, get interrupted, or start recording by accident, you can stop the recording without leaving any text behind. EnviousWispr ends the recording, discards the audio, and leaves your cursor untouched. This works in every recording mode and at any point during a recording.
 
-In push to talk, you can also triple-press your hotkey to cancel, so you do not need to reach for the Escape key.
+### How to cancel
 
-### In hands-free mode
+**Press Escape.** Press the Escape key on your keyboard while the recording is running.
 
-Press **Escape**. Do not press your recording hotkey again, because in hands-free mode that stops the recording and transcribes it instead of canceling.
+**Or press your hotkey three times.** In push-to-talk mode, a triple press of your recording hotkey cancels the session without reaching for the Escape key.
 
-### What happens
+### Canceling in hands-free mode
 
-Nothing is transcribed, nothing is pasted, and nothing is saved to your History. The bar disappears from the screen and EnviousWispr goes back to waiting, which is how you know it worked.
+In hands-free mode, pressing your recording hotkey stops the recording and sends the audio for transcription. To cancel instead, press **Escape**. Do not use your hotkey for this.
 
-You can change the cancel key under **Settings** \> **Shortcuts**, reached from the EnviousWispr icon in your menu bar.
+### What happens when you cancel
+
+EnviousWispr ends the session entirely. Nothing is transcribed, nothing is pasted into the app you were working in, and no entry is saved to your History. The recording bar disappears from the screen and EnviousWispr returns to waiting, which is how you know the cancellation worked.
+
+You can change the cancel key if you prefer a different shortcut. Click the EnviousWispr icon in your menu bar, choose **Settings**, and select **Shortcuts**.

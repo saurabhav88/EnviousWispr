@@ -5,31 +5,35 @@ category: "recording-and-hotkeys"
 section: "Recording"
 order: 4
 keywords: ["hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "fn key", "caps lock", "conflicts with another app"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. Your hotkey is the key you hold or press to record, and you can change it to whatever suits your hands. It arrives set to the right Option key.
+Your hotkey is the key you hold or press to record, and you can change it to whatever suits your hands. EnviousWispr arrives set to the right Option key.
 
 ### Changing it
 
-1. Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Shortcuts**.
-2. Click the **Recording hotkey** box.
-3. Press the keys you want.
+You can assign any key combination to your recording hotkey in settings.
 
-The new combination is saved straight away and shown in the box. Try it in any text field to confirm.
+1. **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Shortcuts**.
+2. **Select the hotkey box.** Click the **Recording hotkey** box.
+3. **Press your new keys.** Press the keys you want to use.
 
-### What you can use
+The new combination saves immediately and appears in the box. Click into any text field and try it to confirm it works.
 
-- Any key, with or without Command, Option, Control or Shift.
-- A modifier key on its own, such as Option by itself or Control by itself. This is worth considering, because your hand never has to leave the keys it already rests on.
+### Available key combinations
+
+You can choose almost any combination that fits how you work.
+
+- **A key with modifiers.** Any key, with or without Command, Option, Control, or Shift.
+- **A modifier on its own.** A modifier key by itself, such as Option alone or Control alone. This is worth considering, because your hand never has to leave the keys it already rests on.
 
 ### One key for both modes
 
-The recording hotkey is the same whether you use push to talk or toggle mode. Switching mode changes what a press does, never which key you press.
+The recording hotkey stays the same whether you use push to talk or toggle mode. Switching between modes changes what a press does to your recording, but never which key you press.
 
 ### The cancel key
 
-Escape throws a recording away. You can change it on the same **Shortcuts** page.
+Pressing Escape throws the current recording away without transcribing it. You can change this cancel key on the same **Shortcuts** page if you prefer a different one.
 
 ### If your hotkey stops working
 
-Something else is probably using the same combination. macOS shortcuts and other apps take priority over EnviousWispr. Pick a different combination.
+Another application or system feature is usually using the same key combination. macOS system shortcuts and other running apps take priority over EnviousWispr. Pick a different combination in **Shortcuts** to resolve the conflict.

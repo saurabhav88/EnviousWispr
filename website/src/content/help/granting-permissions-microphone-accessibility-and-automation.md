@@ -6,23 +6,23 @@ section: "Basics"
 order: 5
 keywords: ["permissions", "permission", "allow", "access", "microphone access", "accessibility", "privacy settings", "system settings", "grant", "it is asking for permission", "blocked", "denied"]
 related: ["accessibility-permission-not-working", "paste-not-working"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. Because it listens to your microphone and types into other apps, macOS makes you grant it permission first. Two permissions are needed, and a third only in rare cases. The **Permissions** page in EnviousWispr's settings always shows where each one stands.
+Because EnviousWispr listens to your microphone and types into other apps, macOS requires you to grant specific permissions first. Two permissions are always needed, and a third is required only in rare cases. The **Permissions** page in EnviousWispr settings always shows the current status of each one.
 
 ### Microphone
 
-This one lets EnviousWispr hear you while you dictate.
+This permission allows EnviousWispr to hear your voice while you dictate.
 
-macOS asks the first time you record. If you missed the prompt, open **System Settings** \> **Privacy & Security** \> **Microphone** and switch EnviousWispr on.
+**Grant permission.** macOS asks the first time you record. If you missed the prompt, open **System Settings**, select **Privacy & Security**, click **Microphone**, and switch EnviousWispr on.
 
 You will know it worked when you hold your hotkey and the meter on the recording bar moves as you speak.
 
 ### Accessibility
 
-This one lets EnviousWispr put the finished text into your app for you.
+This permission allows EnviousWispr to place the finished text directly into the app you are working in.
 
-Open **System Settings** \> **Privacy & Security** \> **Accessibility**, click **+**, and add EnviousWispr from your Applications folder.
+**Grant permission.** Open **System Settings**, select **Privacy & Security**, click **Accessibility**, click the plus button, and add EnviousWispr from your Applications folder.
 
 You will know it worked when your next dictation lands in the text box on its own.
 
@@ -30,12 +30,12 @@ Without this permission, dictation still works. EnviousWispr copies your text to
 
 ### Automation
 
-This one is a fallback, asked for only when the usual ways of pasting fail in a particular app.
+This permission is a fallback, requested only when the usual ways of pasting fail inside a particular application.
 
-macOS asks whether EnviousWispr can control "System Events". Click **OK**. To change your answer later, open **System Settings** \> **Privacy & Security** \> **Automation**.
+**Grant permission.** macOS asks whether EnviousWispr can control System Events. Click **OK**. To change your answer later, open **System Settings**, select **Privacy & Security**, and click **Automation**.
 
-Declining is fine. Most apps never need it.
+Declining this permission is fine, because most applications never require it.
 
 ### Your hotkey needs no permission
 
-The key you hold to record works everywhere on its own. These permissions are only about hearing you and delivering the text.
+The key you hold to record works everywhere on its own. These permissions are strictly about hearing your voice and delivering the text.

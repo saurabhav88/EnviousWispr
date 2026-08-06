@@ -6,25 +6,37 @@ section: "Recording"
 order: 3
 keywords: ["toggle", "press once", "click to start click to stop", "on off mode", "start stop"]
 related: ["customizing-your-hotkey"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS that turns what you say into typed text. Toggle is one of its two recording modes. You press your hotkey once to start recording and press it again to stop, instead of holding the key down the whole time.
+Toggle mode changes how you interact with your recording hotkey. Instead of holding the key down for every sentence, you press the hotkey once to start recording and press it again to stop.
 
-### Using it
+### Using toggle mode
 
-1. Press your hotkey. Recording starts and the bar appears on screen.
-2. Speak.
-3. Press it again. Your text appears at the cursor.
+When you want to capture speech without keeping a finger on a key, one press is enough to begin.
 
-### When to pick it
+**Press your hotkey.** Click into any text box and press your hotkey once. Recording starts and the audio bar appears on your screen.
 
-- You would rather not hold a key while you talk.
-- You know in advance when you want to stop.
+**Speak your thoughts.** Dictate at your normal pace while EnviousWispr captures your voice.
 
-### Choosing it
+**Press the hotkey again.** Stop the recording with a second press. The transcribed text appears at your cursor.
 
-Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Shortcuts**. Under **1. Choose recording mode**, pick **Toggle**. You will know it took effect when a single press starts recording instead of needing to be held.
+### When to select toggle mode
 
-The recording hotkey itself is the same in both modes, so nothing else about your setup changes. Escape still throws a recording away.
+This mode suits some working styles better than the default push-to-talk behaviour.
 
-The double-press lock from push to talk does not apply here. In toggle mode your hands are already free.
+- You would rather not hold a key down while you talk.
+- You know in advance exactly when you want to stop recording.
+
+### Configuring toggle mode
+
+You can switch to this mode in settings.
+
+**Open settings.** Click the EnviousWispr icon in your menu bar and choose **Settings**.
+
+**Go to Shortcuts.** Open the **Shortcuts** tab.
+
+**Select Toggle.** Under **1. Choose recording mode**, pick **Toggle**.
+
+You will know the setting took effect when a single press starts recording instead of requiring a constant hold. The recording hotkey stays the same in both modes, so the rest of your setup remains unchanged. Pressing the Escape key still cancels and discards a recording.
+
+The double-press lock from push to talk does not apply in toggle mode. There is nothing to lock on, because your hands are already free.

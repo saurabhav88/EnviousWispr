@@ -6,41 +6,50 @@ section: "Basics"
 order: 6
 keywords: ["uninstall", "remove", "delete", "get rid of it", "clean up", "free up space", "leftover files", "models taking up space"]
 related: ["model-downloads-and-management"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. Removing it has two parts: deleting the app, and deleting the files it saved on your Mac.
+Removing the app involves two parts: deleting the application itself, and deleting the support files it saved on your Mac.
 
 ### Remove the app
 
-1. Click the EnviousWispr icon in your menu bar and choose **Quit**.
-2. Open your Applications folder and drag EnviousWispr to the Trash.
+Quit the application first, so macOS is not holding the program files open when you send them to the Trash.
 
-The app is now gone. Your history, custom words and downloaded speech models are still on the Mac.
+**Quit the application.** Click the EnviousWispr icon in your menu bar and choose **Quit**.
+
+**Move it to the Trash.** Open your Applications folder in Finder and drag EnviousWispr to the Trash.
+
+The application is now gone, but your dictation history, custom words, and downloaded speech models remain on the Mac.
 
 ### Remove your data and settings
 
-Those files can add up to a few gigabytes.
+Those remaining files can add up to a few gigabytes of storage. Follow these steps to clear them.
 
-1. In Finder, press **Shift+Cmd+G** to open the Go to Folder box.
-2. Go to `~/Library/Application Support/EnviousWispr` and move that folder to the Trash. It holds your dictation history, your custom words, and the WhisperKit and EG-1 models.
-3. Go to `~/Library/Preferences` and move `com.enviouswispr.app.plist` to the Trash. That file is your settings.
+**Open the Go to Folder box.** In Finder, press **Shift+Cmd+G** on your keyboard.
 
-### The Parakeet model sits somewhere else
+**Delete the application support folder.** Paste `~/Library/Application Support/EnviousWispr` into the box, press Enter, and move that folder to the Trash. It holds your dictation history, your custom words, and the WhisperKit and EG-1 models.
 
-Parakeet is one of the two speech engines. It lives in a folder shared with other apps, so the step above does not remove it. Go to `~/Library/Application Support/FluidAudio/Models` and move `parakeet-tdt-0.6b-v3` to the Trash.
+**Delete the preferences file.** Press **Shift+Cmd+G** again, paste `~/Library/Preferences`, press Enter, and move `com.enviouswispr.app.plist` to the Trash. That file stores your settings.
 
-Move only that one folder. Anything else in there may belong to a different app, which would then have to download it again.
+### Remove the Parakeet model
 
-If you installed Ollama, its models belong to Ollama and are removed from there.
+Parakeet is one of the two speech engines the app can use. It lives in a folder shared with other applications, so the steps above do not remove it.
 
-### Your API key
+**Open the shared model folder.** Press **Shift+Cmd+G** in Finder and go to `~/Library/Application Support/FluidAudio/Models`.
 
-If you added a key for OpenAI, Gemini or Claude, it lives in your macOS Keychain rather than in any of the folders above. Clearing the field in EnviousWispr's settings before you uninstall removes it. If the app is already gone, open Keychain Access, search for EnviousWispr, and delete every entry you find. There can be one for each provider.
+**Delete the Parakeet folder.** Move only the `parakeet-tdt-0.6b-v3` folder to the Trash. Anything else in that folder may belong to a different application, which would then have to download its files again.
+
+If you installed Ollama for text polish, those models belong to Ollama and are removed from there.
+
+### Remove your API key
+
+If you added a personal key for OpenAI, Gemini, or Claude, it lives in your macOS Keychain rather than in the support folders above.
+
+If you cleared the field in EnviousWispr settings before uninstalling, the key is already gone. If the app is already deleted, open the macOS Keychain Access application, search for EnviousWispr, and delete every entry you find. There can be one entry for each provider.
 
 Revoking the key in that company's own dashboard is worth doing either way.
 
 ### If you come back
 
-Leave those files in place and reinstalling brings your History, custom words, models and settings back. Delete them first and you start fresh.
+If you plan to reinstall later, leave those support files in place. Reinstalling brings your history, custom words, models, and settings back on its own. Delete them first if you want to start fresh.
 
-Once you delete them they are gone. Envious Labs cannot restore them, because we never had a copy.
+Once you move those files to the Trash and empty it, they are gone for good. Envious Labs cannot restore them, because we never had a copy.

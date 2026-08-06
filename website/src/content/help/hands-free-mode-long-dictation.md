@@ -6,29 +6,36 @@ section: "Recording"
 order: 2
 keywords: ["hands free", "handsfree", "long dictation", "dont want to hold", "without holding", "let go", "keep recording", "long recording", "stop holding the key"]
 related: ["voice-activity-detection-and-auto-stop", "recording-won-t-stop-or-seems-stuck"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. Hands-free mode locks recording on, so you can keep talking without holding a key down. It is worth using for anything longer than a sentence or two: a blog post, a long email, notes after a meeting.
+Hands-free mode locks recording on so you can dictate without holding a key down. This mode suits any text longer than a sentence or two, such as a blog post, a long email, or meeting notes.
 
-### Turning it on
+### Turning on hands-free mode
 
-1. Tap your hotkey to start recording.
-2. Press it again within half a second.
-3. Let go. Recording keeps going.
+EnviousWispr relies on a double tap of your hotkey to lock the recording in place. This works whenever you have push to talk selected as your recording mode.
 
-The bar on screen grows to confirm that recording is locked on. If nothing locks, you were too slow. Tap and press again a little quicker.
+**Tap, then tap again.** Start your recording with a normal press of your hotkey, then press it a second time within half a second, before you let go.
 
-Hands-free works with push to talk, so you can use it whenever that recording mode is selected.
+The on-screen bar grows to confirm that recording is locked on. If the bar does not change, the second press came too late, and the recording ends as usual when you release the key. Try the double tap a little quicker.
 
-### Stopping
+### Stopping recording
 
-- **Press your hotkey once** to stop and get your text.
-- **Press Escape** to throw the recording away.
+You have two choices when you finish speaking, depending on whether you want to keep what you said.
 
-### How long you can talk
+**Press your hotkey once.** Stop recording and insert your text into the app you were working in.
 
-Up to an hour. You get a warning a minute before the limit, then EnviousWispr stops on its own and writes out what you said.
+**Press Escape.** Stop recording and discard the audio without producing any text.
 
-### Stopping automatically when you go quiet
+### Time limits
 
-You can have recording end by itself after a pause. Open EnviousWispr's settings, go to **Transcription**, and switch on **Stop recording on silence**. It is off unless you turn it on. The slider under it sets how long a pause has to be, from half a second to three seconds.
+A single hands-free session can last up to one hour. EnviousWispr shows a warning one minute before that limit, then stops on its own and writes out everything you said.
+
+### Stopping automatically on silence
+
+You can have EnviousWispr end a recording by itself after a pause in your speech.
+
+**Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to the **Transcription** tab.
+
+**Switch on silence detection.** Turn on **Stop recording on silence**. This setting is off by default.
+
+**Set the pause length.** Use the slider beneath the switch to choose how long you have to pause before recording stops, anywhere from half a second to three seconds.
