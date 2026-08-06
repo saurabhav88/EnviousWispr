@@ -13,7 +13,7 @@ import Testing
 //
 // Repair MECHANICS are tested against an injected oracle with fixed answers,
 // so these cases never touch the system dictionary or the part-of-speech model
-// and stay deterministic on every machine and CI image. `EnglishWordOracleTests`
+// and stay deterministic on every machine and CI image. `SeamCasingOracleTests`
 // covers the live oracle's own behaviour (#1803).
 @Suite("CursorInsertionRepair")
 struct CursorInsertionRepairTests {
@@ -34,14 +34,21 @@ struct CursorInsertionRepairTests {
   ///
   /// `isRecognizedName` always returns false so these cases test repair MECHANICS
   /// exactly as they did against the old lexicon, which had no part-of-speech
-  /// layer. The word-class filter has its own coverage in `EnglishWordOracleTests`;
+  /// layer. The word-class filter has its own coverage in `SeamCasingOracleTests`;
   /// letting it fire here would silently change what these assertions mean.
-  static func oracle(_ words: Set<String>) -> EnglishWordOracle {
-    EnglishWordOracle(
+  ///
+  /// `isNoun` is unreachable from this suite — the veto runs only where
+  /// `CasingPolicy.nounVeto` is set, which is German alone, and every case here
+  /// is English. It answers `false` rather than the conservative `true` so that
+  /// a future case which DOES reach it fails visibly instead of quietly keeping
+  /// every capital and looking like a passing test of something else.
+  static func oracle(_ words: Set<String>) -> SeamCasingOracle {
+    SeamCasingOracle(
       unavailableReason: nil,
       dictionaryVerdict: { words.contains($0) ? .ordinary : .notOrdinary },
       isLearnedWord: { _ in false },
-      isRecognizedName: { _, _ in false })
+      isRecognizedName: { _, _ in false },
+      isNoun: { _ in false })
   }
 
   /// The prototype's representative word set. Proves the SHAPE of the rule
@@ -1294,11 +1301,27 @@ struct CursorInsertionRepairTests {
     "A word that is English-lowercase and a German noun is recased only in English",
     arguments: germanNounCollisions)
   func germanNounsKeepTheirCapital(_ word: String) {
-    // An oracle that AGREES these are ordinary English words, which is what the
-    // real dictionary says and what the deleted 799-word list said too. The
-    // contract under test is the LANGUAGE GATE, not dictionary membership: the
-    // English arm must lowercase, or the German arm proves nothing.
-    let agrees = Self.oracle(Set(Self.germanNounCollisions.map { $0.lowercased() }))
+    // The best case in this file, and #1922 changed only WHY it passes.
+    //
+    // It used to pass because German was not a casing language at all. German now
+    // is one, so the capital is kept by the noun VETO instead — which is a real
+    // improvement, because the old mechanism kept the capital on every German
+    // word and this one keeps it on the nouns.
+    //
+    // The oracle AGREES these are ordinary English words, which is what the real
+    // dictionary says and what the deleted 799-word list said too, and calls them
+    // nouns, which is what `NLTagger` answers in German. The contract under test
+    // is that the two languages disagree; the English arm must lowercase, or the
+    // German arm proves nothing.
+    let agrees = SeamCasingOracle(
+      unavailableReason: nil,
+      dictionaryVerdict: {
+        Set(Self.germanNounCollisions.map { $0.lowercased() }).contains($0)
+          ? .ordinary : .notOrdinary
+      },
+      isLearnedWord: { _ in false },
+      isRecognizedName: { _, _ in false },
+      isNoun: { _ in true })
 
     let english = CursorInsertionRepair.repair(
       text: "\(word) is fine.",
@@ -1313,20 +1336,47 @@ struct CursorInsertionRepairTests {
       context: CursorInsertionRepair.CaretText(left: "Ich gehe zum ", right: ""),
       protectedWords: [], language: "de", oracle: agrees)
     #expect(german.repairedText?.hasPrefix(word) == true, "\(word) must keep its capital")
-    #expect(german.candidateRules.contains(.caseSkipped(.languageNotSupported)))
+    #expect(german.candidateRules.contains(.caseSkipped(.nounInNounCapitalisingLanguage)))
     #expect(german.candidateRules.contains(.lowercasedFirst) == false)
   }
 
   @Test(
-    "Only English is recased; every other language keeps the capital it was given",
-    arguments: ["de", "fr", "es", "nl", "it", "pt", "ru", "sv", "tr", "ja", "zh"])
-  func nonEnglishIsNeverRecased(_ language: String) {
+    "A language with no casing policy keeps the capital it was given",
+    arguments: ["pl", "cs", "hu", "ro", "el", "uk", "ja", "zh"])
+  func unsupportedLanguageIsNeverRecased(_ language: String) {
+    // This case used to list de/fr/es/nl/it/pt/ru/sv/tr and assert that ALL of
+    // them kept the capital, under the title "Only English is recased". #1922 is
+    // precisely the change that gives those nine a rule of their own, so leaving
+    // the list alone would have frozen the defect. The eleven are covered by
+    // `CursorInsertionRepairLanguagePairingTests` and `SeamCasingPolicyTests`.
+    //
+    // What survives unchanged, and still matters, is the abstain half: a language
+    // we have not measured must keep doing exactly what the app did before this
+    // feature existed. `ja` and `zh` also stand for the unsegmented set, which
+    // has never had a casing rule to lose.
     let payloads = CursorInsertionRepair.repair(
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
       protectedWords: [], language: language, oracle: Self.prototypeOracle)
     #expect(payloads.candidateRules.contains(.caseSkipped(.languageNotSupported)))
     #expect(payloads.repairedText?.contains("Store") == true)
+  }
+
+  @Test(
+    "A language WITH a casing policy is recased, which is the other half of the same gate",
+    arguments: ["en", "de", "fr", "es", "nl", "it", "pt", "ru", "sv", "tr", "da", "fi"])
+  func supportedLanguageIsRecased(_ language: String) {
+    // The two-way control. Without it, the case above is satisfied by a build
+    // where NOTHING is ever recased — including English, which would be the
+    // largest regression this change could possibly ship.
+    let payloads = CursorInsertionRepair.repair(
+      text: "Store today.",
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: ""),
+      protectedWords: [], language: language, oracle: Self.prototypeOracle)
+    #expect(
+      payloads.candidateRules.contains(.lowercasedFirst),
+      "\(language) has a policy, so it must act")
+    #expect(payloads.repairedText?.contains("store") == true)
   }
 
   @Test("Region variants resolve to their base language", arguments: ["en-US", "en_GB", "EN"])
@@ -1571,11 +1621,12 @@ struct CursorInsertionRepairTests {
   /// (`...with Mark said`) recognised 5. A terminal renders a row up to its last
   /// VISIBLE character, so the trailing space the user typed is not on screen
   /// and the fused reading is the one the repair would otherwise get.
-  private static let seamSensitiveOracle = EnglishWordOracle(
+  private static let seamSensitiveOracle = SeamCasingOracle(
     unavailableReason: nil,
     dictionaryVerdict: { ["mark", "with", "and", "now"].contains($0) ? .ordinary : .notOrdinary },
     isLearnedWord: { _ in false },
-    isRecognizedName: { left, _ in left.last?.isWhitespace == true })
+    isRecognizedName: { left, _ in left.last?.isWhitespace == true },
+    isNoun: { _ in false })
 
   @Test("A terminal seam asks the SEPARATED reading too, so a name keeps its capital")
   func screenDerivedSeamProtectsAName() {
@@ -1637,11 +1688,12 @@ struct CursorInsertionRepairTests {
         left: "I want to test if this works", right: "",
         leftReachesDocumentStart: true, isScreenDerived: true),
       protectedWords: [],
-      oracle: EnglishWordOracle(
+      oracle: SeamCasingOracle(
         unavailableReason: nil,
         dictionaryVerdict: { ["and", "now"].contains($0) ? .ordinary : .notOrdinary },
         isLearnedWord: { _ in false },
-        isRecognizedName: { _, _ in false }))
+        isRecognizedName: { _, _ in false },
+        isNoun: { _ in false }))
     #expect(payloads.repairedText?.hasPrefix("and now") == true)
   }
 

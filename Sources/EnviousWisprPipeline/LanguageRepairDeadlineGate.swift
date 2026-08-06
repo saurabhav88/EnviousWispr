@@ -8,7 +8,7 @@ import os
 /// resolution ran ahead of it, unbounded, on the paste path. Moving resolution
 /// inside the same deadline creates a question the old code never had to answer:
 /// **which stage timed out?** It matters because the existing `onTimeout`
-/// permanently disables `EnglishWordOracleRuntime`, and doing that because the
+/// permanently disables `SeamCasingOracleRuntime`, and doing that because the
 /// LANGUAGE stage stalled would kill an unrelated, healthy component for the
 /// rest of the process.
 ///

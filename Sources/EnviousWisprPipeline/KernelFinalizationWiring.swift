@@ -195,8 +195,18 @@ struct KernelFinalizationWiring {
     // a fixed oracle so a case never depends on the machine's dictionaries — and
     // so no test has to MUTATE the process-global runtime, which would race the
     // suites that legitimately do (local diff review, P2).
-    englishWordOracle: @escaping @MainActor () -> EnglishWordOracle = {
-      EnglishWordOracleRuntime.snapshot()
+    // Takes the RESOLVED language, so it must be called after resolution, not
+    // before it (grounded review r1: the snapshot used to be taken above the
+    // deadline, where the language is not yet known).
+    seamCasingOracle: @escaping @MainActor (String?) -> SeamCasingOracle = {
+      SeamCasingOracleRuntime.snapshot(for: $0)
+    },
+    // Paired with the seam above. A READY snapshot holds a lease that stops the
+    // preparation drain entering the shared spell checker underneath a decision
+    // already in flight; releasing is mandatory and happens in a `defer`.
+    // Injected tests pass a no-op, because their oracle takes no lease.
+    releaseOracleLease: @escaping @MainActor () -> Void = {
+      SeamCasingOracleRuntime.releaseDecisionLease()
     },
     // #1921 language-resolver seam. `@Sendable`, not `@MainActor`, because
     // resolution now runs INSIDE the `@Sendable` deadline operation. Defaults to
@@ -502,14 +512,13 @@ struct KernelFinalizationWiring {
         // insertion this feature exists for.
         let surroundingText = caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? ""
         let protectedSpellings = context.protectedSpellings
-        let oracleSnapshot = englishWordOracle()
 
         // #1921: language resolution now runs INSIDE this deadline. It used to
         // run above it, unbounded, on the paste path — a claim an earlier
         // revision of the plan asserted was already true and was not.
         //
         // One gate arbitrates both stages, because "which stage timed out" now
-        // decides whether `EnglishWordOracleRuntime` may be disabled, and a
+        // decides whether `SeamCasingOracleRuntime` may be disabled, and a
         // plain flag cannot answer it safely: cancellation here is best-effort
         // and cannot preempt a running operation, so the timeout can look, see
         // the language stage, decline to disable, and the un-preempted operation
@@ -546,6 +555,23 @@ struct KernelFinalizationWiring {
             // review round 2). Every refusal keeps the capital.
             // `CursorInsertionRepair` stays unaware of the deadline: it remains
             // a pure function of the oracle it is handed.
+            // Taken HERE, below resolution, because the oracle is per-language
+            // now and the language is not known any earlier. A ready snapshot
+            // holds a lease; `defer` releases it on every exit including the
+            // discarded-on-timeout one, since the deadline cannot preempt this
+            // closure and it always runs to completion.
+            let oracleSnapshot = await MainActor.run { seamCasingOracle(resolution.language) }
+            // Release ONLY IF a lease was actually taken. `snapshot(for:)` leases
+            // on a ready answer and not on a refusal, so an unconditional release
+            // is not merely harmless bookkeeping: leases carry no identity, so an
+            // unmatched release decrements whichever decision currently holds the
+            // count, and the drain may then start preparing while that decision is
+            // still inside the shared spell checker — precisely the race the lease
+            // exists to close. Grounded review r3, MED.
+            let holdsOracleLease = oracleSnapshot.isAvailable
+            defer {
+              if holdsOracleLease { Task { @MainActor in releaseOracleLease() } }
+            }
             let gatedOracle = oracleSnapshot.authorized { gate.authorizeOracleUse() }
             let repaired = CursorInsertionRepair.repair(
               text: text,
@@ -565,7 +591,7 @@ struct KernelFinalizationWiring {
             // Only a genuinely RUNNING oracle. A language-stage stall must not
             // disable an unrelated healthy component for the rest of the
             // process, and neither must one that had already succeeded.
-            if timeout.shouldDisableOracle { EnglishWordOracleRuntime.disableAfterTimeout() }
+            if timeout.shouldDisableOracle { SeamCasingOracleRuntime.disableAfterTimeout() }
           }
         )
 

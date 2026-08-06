@@ -9,11 +9,17 @@ import Testing
 // created after the language reaches the consumer is invisible to all of them.
 //
 // #1921 changes the resolver so it answers where it used to abstain. The safety
-// argument for that is a closed-set claim about `LanguageRules`: it has exactly
-// two policy fields; `knowsCasing` differs from `.unknown` only for English, and
-// `usesWordSpacing` differs only for the six effective unsegmented values
-// (`yue` normalises to `zh`). This suite is that claim executed against the real
-// `CursorInsertionRepair.repair` rather than asserted in a document.
+// argument for that is a closed-set claim about `LanguageRules`, executed here
+// against the real `CursorInsertionRepair.repair` rather than asserted in a
+// document.
+//
+// #1922 MOVED that claim, and this suite moved with it. `knowsCasing: Bool`
+// became `casingPolicy: CasingPolicy?`, and eleven more languages now have one,
+// so "every non-English language is byte-identical to nil" — what this suite
+// used to freeze — is no longer the contract and asserting it would freeze the
+// bug. The contract now has two halves and both are below: a language WITHOUT a
+// policy is still byte-identical to nil, and a language WITH one differs on the
+// casing axis and on nothing else.
 //
 // The oracle is injected and fixed, so these cases never touch the system
 // dictionary and stay deterministic on every machine and CI image — the same
@@ -23,11 +29,22 @@ struct CursorInsertionRepairLanguagePairingTests {
 
   /// Permits lowering any word it knows, so the casing rule is free to fire.
   /// A refusing oracle would make every case identical and the suite vacuous.
-  static let oracle = EnglishWordOracle(
+  ///
+  /// `isNoun` mirrors what `NLTagger`'s `.lexicalClass` actually answers for the
+  /// German words this suite dictates, rather than a constant. A double thinner
+  /// than the guard it stands in for cannot demonstrate the guard: `false`
+  /// everywhere would make the German case fail for the right reason by the
+  /// wrong route, and `true` everywhere would make it pass without the veto
+  /// being what passed it.
+  static let oracle = SeamCasingOracle(
     unavailableReason: nil,
     dictionaryVerdict: { _ in .ordinary },
     isLearnedWord: { _ in false },
-    isRecognizedName: { _, _ in false })
+    isRecognizedName: { _, _ in false },
+    isNoun: { payload in
+      let first = payload.split(separator: " ").first.map(String.init) ?? payload
+      return ["Gift", "Brot", "Haus"].contains(first)
+    })
 
   static let protectedWords: Set<String> = []
 
@@ -47,23 +64,30 @@ struct CursorInsertionRepairLanguagePairingTests {
       oracle: oracle)
   }
 
-  // MARK: - Segmented non-English: resolving must change NOTHING
+  // MARK: - A language WITHOUT a policy: resolving must still change NOTHING
 
   @Test(
-    "A segmented non-English language is byte-identical to no language at all",
+    "A segmented language with no casing policy is byte-identical to no language at all",
     arguments: [
-      ("Gift ist gefährlich.", "de", "Ich sagte dass das "),
-      ("Merci beaucoup vraiment.", "fr", "Je voulais dire que "),
-      ("Muchas gracias de verdad.", "es", "Queria decir que "),
-      ("Tot straks dan maar.", "nl", "Ik wilde zeggen dat "),
       ("Dziekuje bardzo za to.", "pl", "Chcialem powiedziec ze "),
-      ("Grazie mille davvero.", "it", "Volevo dire che "),
+      ("Dekuji moc za to.", "cs", "Chtel jsem rici ze "),
+      ("Nagyon szepen koszonom.", "hu", "Azt akartam mondani hogy "),
+      ("Multumesc mult pentru asta.", "ro", "Voiam sa spun ca "),
+      ("Efcharisto poly gia afto.", "el", "Ithela na po oti "),
+      ("Duzhe dyakuyu za tse.", "uk", "Ya khotiv skazaty shcho "),
     ])
-  func segmentedNonEnglishIsIdenticalToNil(_ payload: String, _ language: String, _ left: String) {
-    // This is the load-bearing half of the closed-set proof. Before #1921 these
-    // insertions resolved to nil; after it they resolve to their own language.
-    // If ANY field differs, returning a confident language is not the no-op the
-    // plan claims and the change is unsafe.
+  func unsupportedSegmentedLanguageIsIdenticalToNil(
+    _ payload: String, _ language: String, _ left: String
+  ) {
+    // The abstain half of the contract, and the control that makes the other
+    // half meaningful. #1922 gave eleven languages a policy; these six deliberately
+    // have none, so a confident resolution must still be a complete no-op for
+    // them. If any field moves here, the policy table is reaching languages it
+    // was never measured on.
+    //
+    // Six rather than one because "the table is keyed correctly" is a claim about
+    // absence, and one row cannot carry it — a prefix or fallback bug that
+    // admitted, say, every Slavic code would pass on Polish alone.
     let withNil = Self.repaired(payload, nil, left: left, right: "")
     let withLanguage = Self.repaired(payload, language, left: left, right: "")
 
@@ -73,6 +97,59 @@ struct CursorInsertionRepairLanguagePairingTests {
       withNil.candidateRules.map(\.telemetryName)
         == withLanguage.candidateRules.map(\.telemetryName),
       "\(language): applied rules")
+    #expect(
+      withLanguage.candidateRules.map(\.telemetryName)
+        .contains("case_skipped:language_not_supported"),
+      "\(language): and it must say WHY it abstained, not merely produce the same bytes")
+  }
+
+  // MARK: - A language WITH a policy: exactly one axis may change
+
+  @Test(
+    "A supported non-English language differs from nil ONLY by the casing rule",
+    arguments: [
+      ("Merci beaucoup vraiment.", "fr", "Je voulais dire que ", "merci beaucoup vraiment. "),
+      ("Muchas gracias de verdad.", "es", "Queria decir que ", "muchas gracias de verdad. "),
+      ("Tot straks dan maar.", "nl", "Ik wilde zeggen dat ", "tot straks dan maar. "),
+      ("Grazie mille davvero.", "it", "Volevo dire che ", "grazie mille davvero. "),
+      ("Tack sa mycket verkligen.", "sv", "Jag ville saga att ", "tack sa mycket verkligen. "),
+      ("Tusind tak for det.", "da", "Jeg ville sige at ", "tusind tak for det. "),
+      ("Kiitos oikein paljon.", "fi", "Halusin sanoa etta ", "kiitos oikein paljon. "),
+      ("Cok tesekkur ederim.", "tr", "Sunu soylemek istedim ", "cok tesekkur ederim. "),
+      ("Obrigado mesmo por isso.", "pt", "Eu queria dizer que ", "obrigado mesmo por isso. "),
+      ("Spasibo bolshoe za eto.", "ru", "Ya khotel skazat chto ", "spasibo bolshoe za eto. "),
+    ])
+  func supportedLanguageDiffersOnlyByCasing(
+    _ payload: String, _ language: String, _ left: String, _ expected: String
+  ) {
+    // The half #1922 adds. Before it, every one of these was byte-identical to
+    // nil and the seam kept a capital the user never asked for — wrong 92.9% of
+    // the time on held-out published text.
+    //
+    // EXACT bytes, never `!=` plus a `contains`. The loose form passes alongside
+    // unrelated text damage, which is precisely what "only one axis moved" is
+    // supposed to rule out.
+    let withNil = Self.repaired(payload, nil, left: left, right: "")
+    let withLanguage = Self.repaired(payload, language, left: left, right: "")
+
+    #expect(withNil.legacyText == withLanguage.legacyText, "\(language): legacy must not move")
+    #expect(
+      withLanguage.repairedText == expected,
+      "\(language): must produce exactly the lowered payload plus today's trailing space")
+    #expect(
+      withNil.repairedText == payload + " ",
+      "\(language): and the nil arm must produce exactly the payload unchanged")
+
+    // Every rule other than the casing decision must be identical. This is what
+    // would catch a spacing or duplicate-word change riding along.
+    let casingRules: Set<String> = ["lowercased_first", "case_skipped:language_not_supported"]
+    let nilOther = withNil.candidateRules.map(\.telemetryName).filter { !casingRules.contains($0) }
+    let langOther = withLanguage.candidateRules.map(\.telemetryName).filter {
+      !casingRules.contains($0)
+    }
+    #expect(
+      nilOther == langOther,
+      "\(language): only the casing rule may differ, got \(nilOther) vs \(langOther)")
   }
 
   // MARK: - English: exactly one axis may change
@@ -194,14 +271,42 @@ struct CursorInsertionRepairLanguagePairingTests {
     // English case and it applies identically here: `contains("Gift")` is
     // satisfied by a payload that kept its capital and was damaged elsewhere.
     //
-    // Derived from the rules: `left` already ends in a space so rule 1 adds
-    // none, German `knowsCasing` is false so rule 2 cannot fire, and rule 3
-    // appends the trailing space because German IS word-spaced.
+    // Derived from the rules, and the derivation CHANGED with #1922. It used to
+    // read "German `knowsCasing` is false so rule 2 cannot fire" — German now has
+    // a policy and rule 2 fires, reaches the oracle, is authorised to lower, and
+    // is then withdrawn by the noun veto. Same bytes out, entirely different
+    // route through, which is why the reason is asserted below: without it this
+    // case would keep passing if the veto were deleted and German were simply
+    // dropped from the table again.
     #expect(
       asGerman.repairedText == "Gift ist gefährlich. ",
       "the German noun must keep its capital, and nothing else may move")
     #expect(
+      asGerman.candidateRules.map(\.telemetryName)
+        .contains("case_skipped:noun_in_noun_capitalising_language"),
+      "and the VETO must be what kept it, not an abstention")
+    #expect(
       asEnglish.repairedText == "gift ist gefährlich. ",
       "and English rules WOULD have lowered it, which is what makes this test meaningful")
+  }
+
+  @Test("German lowers an ordinary non-noun continuation — the veto is not a blanket refusal")
+  func germanNonNounStillLowers() {
+    // The two-way control the case above cannot supply. A veto that answered
+    // "noun" to everything would satisfy every German assertion in this suite
+    // while disabling the feature for the whole language, and nothing would show
+    // it. Measured on held-out German against the BUILT code: 22.0% correct
+    // before, 88.5% after — and that gain is entirely made of continuations like
+    // this one.
+    let lowered = Self.repaired(
+      "Und dann sagte er nichts.", "de",
+      left: "Ich habe den ganzen Morgen an dieser Mail geschrieben ", right: "")
+
+    #expect(
+      lowered.repairedText == "und dann sagte er nichts. ",
+      "an ordinary German continuation must still lower")
+    #expect(
+      lowered.candidateRules.map(\.telemetryName).contains("lowercased_first"),
+      "and it must be the casing rule that did it")
   }
 }

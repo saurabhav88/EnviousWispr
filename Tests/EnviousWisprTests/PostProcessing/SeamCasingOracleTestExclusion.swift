@@ -2,17 +2,17 @@ import Foundation
 
 @testable import EnviousWisprPostProcessing
 
-/// Cross-SUITE exclusion for the process-wide `EnglishWordOracleRuntime`.
+/// Cross-SUITE exclusion for the process-wide `SeamCasingOracleRuntime`.
 ///
 /// Modelled on `AppLoggerTestExclusion` (#1361), which exists for the identical
 /// problem: `.serialized` orders tests within ONE suite and nothing more, and
 /// Swift Testing runs suites concurrently, so two suites touching the same
 /// process global interleave at every `await`.
 ///
-/// Until #1921 only `EnglishWordOracleTests` mutated this runtime, and its
+/// Until #1921 only `SeamCasingOracleTests` mutated this runtime, and its
 /// `.serialized` was sufficient BY ACCIDENT — it was the only participant.
 /// `KernelFinalizationWiringTests` deliberately injected a fake oracle instead,
-/// with a comment saying mutating the global "would race `EnglishWordOracleTests`".
+/// with a comment saying mutating the global "would race `SeamCasingOracleTests`".
 /// #1921's two deadline tests must assert what the timeout does to the real
 /// runtime, so they cannot avoid it, and the accident ends.
 ///
@@ -22,8 +22,8 @@ import Foundation
 /// one — so this is a correctness fix, not tidiness.
 ///
 /// Fair FIFO, so a suite cannot be starved by a busy neighbour.
-actor EnglishWordOracleTestExclusion {
-  static let shared = EnglishWordOracleTestExclusion()
+actor SeamCasingOracleTestExclusion {
+  static let shared = SeamCasingOracleTestExclusion()
 
   private var held = false
   private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -50,7 +50,7 @@ actor EnglishWordOracleTestExclusion {
   }
 }
 
-/// Runs `body` with exclusive access to `EnglishWordOracleRuntime`, then resets
+/// Runs `body` with exclusive access to `SeamCasingOracleRuntime`, then resets
 /// it so the next holder starts from a known state.
 ///
 /// Free function, NOT a method on the actor: as a method the caller's closure
@@ -76,23 +76,36 @@ actor EnglishWordOracleTestExclusion {
 ///
 /// A leaked hold would deadlock every other participating suite for the rest of
 /// the run, so restoration and release happen on both exits.
-func withEnglishWordOracleExclusion<T>(
+func withSeamCasingOracleExclusion<T>(
   isolation: isolated (any Actor)? = #isolation,
   _ body: () async throws -> T
 ) async rethrows -> T {
-  await EnglishWordOracleTestExclusion.shared.acquire()
+  await SeamCasingOracleTestExclusion.shared.acquire()
 
-  let prior = EnglishWordOracleRuntime.snapshot()
+  // READ-ONLY, and that is load-bearing rather than tidy.
+  //
+  // The obvious way to save prior state is `snapshot(for: "en")`. That is a
+  // decision-time call and is deliberately NOT read-only: an absent language is
+  // enqueued and a real `NSSpellChecker` preparation is started. The body then
+  // calls `resetForTesting()`, which clears `preparing` without being able to
+  // cancel a builder already running — so the test's own preparation could
+  // overlap the stray one and produce exactly the concurrent access these suites
+  // exist to prove cannot happen. Observation manufacturing the defect it
+  // observes. Confirming whole-diff review, P2.
+  //
+  // ENGLISH only, and that is a deliberate limit. The runtime holds one phase per
+  // language now (#1922), and there is no way to enumerate them without
+  // requesting them. English is the only language the app prewarms at launch, so
+  // it is the only one a holder can realistically destroy; every other language
+  // is left reset, which costs one re-preparation and can never produce a wrong
+  // answer. Warming and unavailable phases are not restored for the same reason —
+  // both recompute safely.
+  let prior = SeamCasingOracleRuntime.installedOracleForTesting("en")
 
   @Sendable func restoreAndRelease() async {
-    EnglishWordOracleRuntime.resetForTesting()
-    // `oracleWarming` IS what a reset produces, so reinstalling it would be a
-    // no-op at best. Any other prior state was a real oracle this holder must
-    // hand back.
-    if prior.unavailableReason != .oracleWarming {
-      EnglishWordOracleRuntime.installForTesting(prior)
-    }
-    await EnglishWordOracleTestExclusion.shared.release()
+    SeamCasingOracleRuntime.resetForTesting()
+    if let prior { SeamCasingOracleRuntime.installForTesting(prior, for: "en") }
+    await SeamCasingOracleTestExclusion.shared.release()
   }
 
   do {

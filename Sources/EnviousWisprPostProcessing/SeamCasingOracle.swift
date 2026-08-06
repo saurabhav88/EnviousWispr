@@ -1,17 +1,25 @@
 import Foundation
 
-/// Whether a capitalised English word may be lowered where it sits.
+/// Whether a capitalised word may be lowered where it sits, in any of the
+/// twelve languages that have a casing policy.
 ///
-/// A VALUE, not a service: the four closures are the only contact with the
+/// A VALUE, not a service: its four closures — `dictionaryVerdict`,
+/// `isLearnedWord`, `isRecognizedName`, `isNoun` — are the only contact with the
 /// operating system, so unit tests inject fixed answers and never touch a
-/// system facility. `EnglishWordOracleRuntime` is the only thing that builds a
+/// system facility. `SeamCasingOracleRuntime` is the only thing that builds a
 /// live one, which keeps `AppKit` and `NaturalLanguage` confined to that file.
+///
+/// Named `EnglishWordOracle` until #1922 (2026-08-05) made it serve twelve
+/// languages. `mayLower` still asks the two questions below; the German noun
+/// VETO that issue added lives OUTSIDE it, in
+/// `CursorInsertionRepair.applyLeadingCase`, which is what keeps it structurally
+/// a veto rather than a decider.
 ///
 /// Replaces `OrdinaryLowercaseLexicon`, a hand-authored 799-word allowlist that
 /// could not contain the English language: `go`, `send`, `call`, `buy`, `email`
 /// and `learn` were all absent, so ordinary continuations kept a wrong capital.
 /// Issue #1803.
-package struct EnglishWordOracle: Sendable {
+package struct SeamCasingOracle: Sendable {
   /// Why this oracle cannot decide, or `nil` when it can.
   package let unavailableReason: CursorInsertionRepair.CaseSkipReason?
 
@@ -49,6 +57,20 @@ package struct EnglishWordOracle: Sendable {
   /// It does not catch everything. A name it has never seen falls through to
   /// the dictionary, which is why that second step exists.
   package let isRecognizedName: @Sendable (_ left: String, _ payload: String) -> Bool
+
+  /// Does the word-class tagger call the payload's first word a noun?
+  ///
+  /// Consulted ONLY where `CasingPolicy.nounVeto` is set, which today is German
+  /// alone — the one supported language that capitalises every noun. #1922.
+  ///
+  /// Takes the payload and not the joined seam on purpose: #1803 measured that
+  /// feeding the surrounding document made German WORSE, flipping `Morgen` from
+  /// adverb to noun. This is the opposite of `isRecognizedName`, which needs the
+  /// left context because a name is recognised from its neighbours.
+  ///
+  /// Answering `true` KEEPS the capital, so `true` is the conservative direction
+  /// and every refusal path returns it.
+  package let isNoun: @Sendable (_ payload: String) -> Bool
 
   package var isAvailable: Bool { unavailableReason == nil }
 
@@ -91,8 +113,8 @@ package struct EnglishWordOracle: Sendable {
   /// pure function of the oracle it is handed.
   package func authorized(
     by authorize: @escaping @Sendable () -> Bool
-  ) -> EnglishWordOracle {
-    EnglishWordOracle(
+  ) -> SeamCasingOracle {
+    SeamCasingOracle(
       unavailableReason: unavailableReason,
       dictionaryVerdict: { word in
         guard authorize() else { return .unavailable(.oracleTimedOut) }
@@ -105,17 +127,25 @@ package struct EnglishWordOracle: Sendable {
       isRecognizedName: { left, payload in
         guard authorize() else { return true }
         return isRecognizedName(left, payload)
+      },
+      // `true` on refusal, same as the others and for the same reason: a veto
+      // answering "noun" keeps the capital, which is what the app did before
+      // this feature existed.
+      isNoun: { payload in
+        guard authorize() else { return true }
+        return isNoun(payload)
       })
   }
 
   package static func unavailable(
     _ reason: CursorInsertionRepair.CaseSkipReason
-  ) -> EnglishWordOracle {
-    EnglishWordOracle(
+  ) -> SeamCasingOracle {
+    SeamCasingOracle(
       unavailableReason: reason,
       dictionaryVerdict: { _ in .unavailable(reason) },
       isLearnedWord: { _ in false },
-      isRecognizedName: { _, _ in true })
+      isRecognizedName: { _, _ in true },
+      isNoun: { _ in true })
   }
 
   /// The decision, in one place.
@@ -144,10 +174,18 @@ package struct EnglishWordOracle: Sendable {
   /// this feature existed, so no failure here can damage text that was already
   /// correct.
   package func mayLower(
-    word: String, left: String, payload: String
+    word: String, left: String, payload: String, languageCode: String? = nil
   ) -> CursorInsertionRepair.CaseSkipReason? {
     if let unavailableReason { return unavailableReason }
-    let lower = word.lowercased()
+    // LOCALE-AWARE, and it has to be: `lowercased()` uses the root locale, so a
+    // Turkish word opening with dotless `I` was queried as `işık` rather than
+    // `ışık` — the Turkish dictionary rejects that, so an ordinary word kept its
+    // capital. The defect fails SAFE, which is exactly why nothing caught it: it
+    // costs Turkish recall and never damages text. Whole-diff review, P2.
+    //
+    // Defaults to nil (root locale) so the many test call sites that pass no
+    // language keep their existing behaviour, which is correct for English.
+    let lower = word.lowercased(with: CursorInsertionRepair.casingLocale(for: languageCode))
     guard !isRecognizedName(left, payload) else { return .recognizedName }
     // Queried lowercased, and that is sufficient: `hasLearnedWord` folds case in
     // both directions. Measured with clean before-teaching controls — teach

@@ -15,13 +15,14 @@ struct TerminalInsertionPolicyTests {
 
   /// Every word this suite dictates is an ordinary lowercase word, so the
   /// leading-case rule is exercised rather than skipped as a proper noun.
-  static let ordinaryWords = EnglishWordOracle(
+  static let ordinaryWords = SeamCasingOracle(
     unavailableReason: nil,
     dictionaryVerdict: {
       ["fix", "first", "second", "a", "b"].contains($0) ? .ordinary : .notOrdinary
     },
     isLearnedWord: { _ in false },
-    isRecognizedName: { _, _ in false })
+    isRecognizedName: { _, _ in false },
+    isNoun: { _ in false })
 
   private func terminalContext(line: String) -> PasteService.CaretContext {
     PasteService.CaretContext(
