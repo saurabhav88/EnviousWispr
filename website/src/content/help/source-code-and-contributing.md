@@ -7,7 +7,7 @@ order: 2
 keywords: ["source code", "github", "open source", "license", "gpl", "contribute", "pull request", "build it myself", "repo"]
 updated: 2026-08-05
 ---
-EnviousWispr is open source. The whole app is at [github.com/saurabhav88/EnviousWispr](https://github.com/saurabhav88/EnviousWispr), so every privacy claim we make can be checked against the code.
+EnviousWispr is a free dictation app for macOS, and it is open source. The whole app is at [github.com/saurabhav88/EnviousWispr](https://github.com/saurabhav88/EnviousWispr), so every privacy claim on this site can be checked against the code that makes it.
 
 ### The license
 
@@ -21,7 +21,7 @@ GNU General Public License v3. In short:
 
 - Report a bug or ask for a feature on GitHub Issues.
 - Send a pull request.
-- Read the code and tell us if we have got something wrong.
+- Read the code and say so if something we claim does not match what it does.
 
 ### Building it yourself
 

@@ -8,17 +8,17 @@ keywords: ["what data", "analytics", "telemetry", "collected", "do you see my te
 related: ["privacy-overview"]
 updated: 2026-08-05
 ---
-Nothing you say ever reaches us. Not your audio, not your transcripts, not a word of it.
+EnviousWispr is a free dictation app for macOS. Nothing you say ever reaches Envious Labs, the company that makes it. Not your audio, not your transcripts, not a word of it.
 
 ### What stays on your Mac
 
-Your transcripts are saved to your History so you can find them later. They sit in your user folder, and we never receive a copy.
+Your transcripts are saved to your History so you can find them later. They sit in your user folder, and Envious Labs never receives a copy.
 
-While you dictate, the app keeps an encrypted backup of the recording. Once your text is safely saved, the app requests deletion of that backup. If the app quits first, EnviousWispr makes one recovery attempt the next time it runs, then requests deletion whether recovery succeeds or fails.
+While you dictate, the app keeps an encrypted backup of the recording. Once your text is safely saved, the app requests deletion of that backup. If the app quits first, EnviousWispr makes one recovery attempt the next time it runs, then requests deletion whether recovery succeeded or failed.
 
 Your custom words, settings and API keys live here too. They stay here unless you turn on cloud polish, which is covered below.
 
-### What we never receive
+### What Envious Labs never receives
 
 - Your audio
 - Your transcripts, before or after polish
@@ -27,11 +27,11 @@ Your custom words, settings and API keys live here too. They stay here unless yo
 - Your API keys
 - Your name or email address
 
-### What we do collect
+### What the app does collect
 
-Anonymous usage and crash data. It tells us that a release broke dictation on a particular macOS version, or that nobody has ever opened a setting we spent a month on. It is on by default and cannot be turned off.
+Anonymous usage and crash data. It shows that a release broke dictation on a particular macOS version, or that nobody has ever opened a setting that took a month to build. It is on by default and cannot be turned off.
 
-It records how the app is used, never what you said. There is no account and nothing in it names you, though each install gets a random ID so we can count one Mac as one user. Our privacy policy has the full detail.
+It records how the app is used, never what you said. There is no account and nothing in it names you, though each install gets a random ID so one Mac counts as one user. The privacy policy has the full detail.
 
 If you would rather run without it, EnviousWispr is open source. Build it yourself and dictation works exactly the same.
 
@@ -39,6 +39,6 @@ If you would rather run without it, EnviousWispr is open source. Build it yourse
 
 Polish runs on your Mac by default. Choose OpenAI, Gemini or Claude instead and you add your own API key, and your transcript is sent to them, along with your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Audio is never sent. The app tells you this when you set it up. That is your account with that company, on their terms.
 
-Ollama is worth reading twice, because it can be either. A model you have downloaded runs on your Mac and sends nothing. A hosted one runs on Ollama's servers, so your transcript goes there just as it would to any other cloud provider. EnviousWispr lists the two under separate headings so you can tell which you are picking.
+Ollama works in two ways, and only one of them keeps your transcript on your Mac. A model you have downloaded runs on your Mac and sends nothing. A hosted model runs on Ollama's servers, so your transcript goes to Ollama the same way it would go to any other cloud provider. EnviousWispr lists the two kinds under separate headings so you can tell which you are picking.
 
-We are not in the middle of it. Everything goes straight from your Mac to them, so we never see it either way.
+Envious Labs is not in the middle of any of this. Everything goes straight from your Mac to the provider, so it is never seen here either way.
