@@ -9,7 +9,7 @@ updated: 2026-08-05
 ---
 EnviousWispr is a free dictation app for macOS. When the start of your speech goes missing, it is because the microphone was still waking up as you began to talk.
 
-While the microphone is still awake from a recent dictation, EnviousWispr keeps the half second of audio from just before you pressed the key, so an early start is captured anyway. On a cold start there is no earlier audio to keep, and the first word or two can be lost.
+While the microphone is still awake from a recent dictation, EnviousWispr keeps the half second of audio from immediately before you pressed the key, so an early start is captured anyway. On a cold start there is no earlier audio to keep, and the first word or two can be lost.
 
 ### Keep the microphone awake for longer
 

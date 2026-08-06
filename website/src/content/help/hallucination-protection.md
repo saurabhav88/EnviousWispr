@@ -8,7 +8,7 @@ keywords: ["hallucination", "made up words", "invented text", "wrong words added
 related: ["why-is-my-dictation-inaccurate"]
 updated: 2026-08-05
 ---
-AI models sometimes make things up. EnviousWispr checks the result before it reaches you and rejects the clear failures.
+EnviousWispr is a free dictation app for macOS. It can hand your dictation to an AI to tidy up, and AI models sometimes make things up. EnviousWispr checks the result before it reaches you and throws out the clear failures.
 
 ### What it checks
 
@@ -18,10 +18,10 @@ AI models sometimes make things up. EnviousWispr checks the result before it rea
 - **Chatter.** Openers like "Certainly!" are stripped rather than pasted.
 - **Very short dictations.** These skip AI Polish entirely and keep the earlier clean-up result.
 
-Apple Intelligence also checks longer non-English results for a switch of language.
+Apple Intelligence also checks longer results in other languages in case the AI switched language on you.
 
 ### What you get when a check rejects the result
 
-The tidied-up version of your dictation from just before the AI step. You never lose what you said because polish went wrong.
+The tidied-up version of your dictation from immediately before the AI step. You never lose what you said if the polish goes wrong.
 
 These checks catch the obvious failures, not every bad edit. Read anything important before you send it.
