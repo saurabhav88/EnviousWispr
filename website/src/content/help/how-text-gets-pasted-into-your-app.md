@@ -24,6 +24,8 @@ If none of that works, your text goes to your clipboard and you are told, so you
 
 EnviousWispr looks at the text either side of your cursor and matches it. Dictating into the middle of a sentence adds a space where one is needed and keeps the capital letter right, instead of jamming your words against what is already there.
 
+Capitals are matched in English, German, French, Italian, Spanish, Portuguese, Dutch, Danish, Swedish, Finnish, Russian and Turkish. German is handled on its own terms, so nouns keep the capital they are supposed to have. In any other language EnviousWispr takes care of the spacing and leaves your capitals exactly as you said them.
+
 You can switch this off under **Clipboard** in Settings, where it is called **Smart insertion**.
 
 ### Your clipboard
