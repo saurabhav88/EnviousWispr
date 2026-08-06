@@ -39,7 +39,12 @@ classify() {
   # Self-force, mirroring the build lane above: a PR that only edits pr-check.yml
   # could otherwise break website-check and pass, because every website step
   # would skip and the job would still report success.
-  if grep -qE '^(website/|\.github/workflows/pr-check\.yml$)' <<<"$changed"; then
+  #
+  # THIS FILE is in the list for the same reason, and it is the easier one to
+  # forget: the script deciding whether website validation runs is exactly the
+  # script whose own breakage that validation would catch. Leaving it out meant
+  # a PR editing only the classifier answered its own question with "no".
+  if grep -qE '^(website/|\.github/workflows/pr-check\.yml$|scripts/ci/classify-changes\.sh$)' <<<"$changed"; then
     website=true
   else
     website=false
@@ -245,7 +250,12 @@ self_test() {
   _expect_classify $'docs/x.md\nwebsite/y.astro' false "docs+website only" true
   _expect_classify ".github/actions/foo/action.yml" false "github actions dir excluded" false
   _expect_classify ".github/dependabot.yml" false "dependabot excluded" false
-  _expect_classify "scripts/ci/classify-changes.sh" true "scripts not excluded" false
+  # This file self-forces the website lane: it decides whether that lane runs,
+  # so it must not be able to answer "no" about its own change. The row below
+  # keeps the original coverage — an ORDINARY scripts/ path still builds
+  # without dragging the website checks along.
+  _expect_classify "scripts/ci/classify-changes.sh" true "classifier self-forces website" true
+  _expect_classify "scripts/build-dev-app.sh" true "ordinary scripts path: build only" false
   _expect_classify ".gitignore" true "gitignore not excluded" false
   _expect_classify "" true "empty input -> over-build (verbatim quirk)" false
   _expect_classify $'docs/a.md\nSources/B.swift' true "mixed docs+swift" false

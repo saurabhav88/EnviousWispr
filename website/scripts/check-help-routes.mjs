@@ -78,7 +78,28 @@ for (const route of built) {
   }
 }
 
+// Em and en dashes, checked on the BUILT pages rather than the sources.
+//
+// check-help-content.mjs already scans article Markdown, but the layer above it
+// was uncovered: an em dash written into a layout, a component, or a JSON-LD
+// string reaches every page it renders and no source check was looking. One did
+// — the category structured-data name, on all twelve category pages, which is
+// exactly the kind of string that surfaces in a search result.
+//
+// The build is the right place to look because it is the only place that sees
+// every contributor at once, and because code COMMENTS (which may use dashes)
+// never survive into it.
+const dashed = [];
+for (const route of built) {
+  const file = path.join(dist, route.replace(/^\//, ''), 'index.html');
+  if (!fs.existsSync(file)) continue;
+  const html = fs.readFileSync(file, 'utf8');
+  const hits = [...html.matchAll(/[^<>]{0,40}[—–][^<>]{0,40}/g)].map((m) => m[0].trim());
+  if (hits.length) dashed.push(`${route}: ${hits.slice(0, 2).join(' | ')}`);
+}
+
 const problems = [];
+if (dashed.length) problems.push(`em/en dash in built help pages (global Rule 6): ${dashed.join(' ;; ')}`);
 if (linksChecked === 0) problems.push('no internal help links found at all — the link scan is broken, not the pages');
 if (deadLinks.length) problems.push(`internal help links pointing nowhere: ${deadLinks.join(', ')}`);
 if (missing.length) problems.push(`routes missing from the build: ${missing.join(', ')}`);

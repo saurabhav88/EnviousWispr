@@ -71,7 +71,10 @@ if (props.kind === 'category') {
     JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'CollectionPage',
-      name: `${category.label} — EnviousWispr Help`,
+      // Colon, not a dash: this string is published in structured data and can
+      // surface in search results, so it is human-facing copy under global
+      // Rule 6. It now also matches the page title above.
+      name: `${category.label}: EnviousWispr Help`,
       description: category.blurb,
       url: `${SITE}${canonicalPath}`,
       isPartOf: { '@type': 'WebSite', url: SITE, name: 'EnviousWispr' },
