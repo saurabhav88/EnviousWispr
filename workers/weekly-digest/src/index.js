@@ -2,8 +2,9 @@
  * EnviousWispr Weekly Digest - Cloudflare Worker (issues #1243, #1589)
  *
  * Runs Monday 13:00 UTC via a Cloudflare cron trigger and posts ONE Discord
- * message with four sections: all website traffic (Cloudflare), tracked visitor
- * activity (PostHog), downloads (GitHub + PostHog), and app usage (PostHog).
+ * message with five sections: all website traffic (Cloudflare), tracked visitor
+ * activity (PostHog), downloads (GitHub + PostHog), app usage (PostHog), and
+ * the week's errors on the current release line (Sentry, #1965).
  *
  * ORCHESTRATION OWNERSHIP. This file resolves the report window ONCE, resolves
  * the dev-ID exclusion ONCE, schedules every outbound query itself under one
@@ -41,6 +42,11 @@ import {
   windowClause,
 } from "../../shared/posthog.js";
 import { deliverReport } from "../../shared/discord.js";
+import {
+  fetchSentrySection,
+  formatSentrySection,
+  formatSentryUnavailable,
+} from "../../reporting/sentry-section.js";
 
 const WORKER_LABEL = "weekly_digest";
 
@@ -638,6 +644,33 @@ async function postFailureNotice(env, label, { fetchFn = fetch } = {}) {
   }
 }
 
+/** This digest always reports the same complete week for every section, so the
+ * title needs no date of its own; the range is on the message's content line. */
+const SENTRY_TITLE = "Sentry, last 7 days";
+
+/** Sentry's window, derived from the ONE resolved week and nothing else.
+ *
+ * Sentry's `start`/`end` are naive ISO instants read as UTC, and this worker's
+ * week is already UTC, so it converts with no second timezone calculation. The
+ * KNOWN LIMIT this file already records applies unchanged: the daily report
+ * measures EASTERN days, so a week of daily Sentry sections and one weekly
+ * Sentry section cover windows offset by the Eastern UTC offset and will not
+ * reconcile to the exact person.
+ *
+ * `firstSeenPeriod` is "7d" here and "24h" in the daily report. It is required
+ * rather than defaulted for exactly that reason: a default would be right for
+ * one caller and silently wrong for the other. */
+export function sentryWindowFor(window) {
+  const naiveISO = (date) => date.toISOString().slice(0, 19);
+  const priorStart = new Date(window.start.getTime() - REPORT_DAYS * 86400000);
+  return {
+    startISO: naiveISO(window.start),
+    endISO: naiveISO(window.end),
+    priorStartISO: naiveISO(priorStart),
+    firstSeenPeriod: `${REPORT_DAYS}d`,
+  };
+}
+
 /** Unwraps a settled outcome, returning `null` where the section failed, so a
  * formatter renders "temporarily unavailable" instead of a fabricated number. */
 function valueOrNull(outcome, failures, name) {
@@ -696,7 +729,7 @@ export async function runDigest(env, deps = {}) {
     posthogTasks.push(() => querySection(env, onboardActivateSql(prod, window.win), "onboard_activate", hogqlOpts));
   }
 
-  const [posthogOutcome, cfOutcome, ghOutcome] = await Promise.allSettled([
+  const [posthogOutcome, cfOutcome, ghOutcome, sentryOutcome] = await Promise.allSettled([
     runLimited(posthogTasks.map((task) => async () => {
       try {
         return { status: "fulfilled", value: await task() };
@@ -706,6 +739,10 @@ export async function runDigest(env, deps = {}) {
     }), CONCURRENCY_LIMIT),
     fetchCloudflareStats(env, window, { fetchFn }),
     fetchGitHubDownloads(env, { fetchFn }),
+    // Sentry is a fourth API with no shared ceiling, so it runs alongside the
+    // limiter exactly as Cloudflare and GitHub do rather than queueing behind
+    // PostHog's 3-query allowance for work that is not PostHog's.
+    fetchSentrySection(env, sentryWindowFor(window), { fetchFn, workerLabel: WORKER_LABEL }),
   ]);
 
   // A rejection here is a programming error in the limiter itself, not a query
@@ -852,6 +889,20 @@ export async function runDigest(env, deps = {}) {
 
   const cf = valueOrNull(cfOutcome, failures, "cloudflare");
   const gh = valueOrNull(ghOutcome, failures, "github");
+  const sentry = valueOrNull(sentryOutcome, failures, "sentry");
+
+  // Rendered inside its own try, so a section that computes cleanly and formats
+  // badly costs only itself. Validated at delivery it would fail the whole
+  // payload and take the other four sections down with it.
+  let sentryLines;
+  try {
+    sentryLines = sentry === null
+      ? formatSentryUnavailable(SENTRY_TITLE)
+      : formatSentrySection(sentry, { title: SENTRY_TITLE });
+  } catch (err) {
+    failures.push(`sentry_format: ${err.message}`);
+    sentryLines = formatSentryUnavailable(SENTRY_TITLE);
+  }
 
   const payload = {
     content: `EnviousWispr Weekly Digest, ${label}`,
@@ -860,6 +911,7 @@ export async function runDigest(env, deps = {}) {
       toEmbed(formatWebsite(site, downloads ? downloads.intents : null)),
       toEmbed(formatDownloads(gh, sources, downloads ? downloads.bots_excluded : null)),
       toEmbed(formatAppUsage(usage, funnel)),
+      toEmbed(sentryLines),
     ],
   };
 

@@ -4,10 +4,19 @@ Infrastructure shared by more than one Cloudflare Worker in this repo.
 
 ## Consumers
 
-- `workers/daily-report`
-- `workers/weekly-digest`
+Per module, because they are no longer the same set. Redeploy every consumer of
+the module you changed, not every worker in this table.
 
-Keep that list accurate. It is the deploy checklist.
+| Module | Consumers |
+|---|---|
+| `posthog.js` | `workers/daily-report`, `workers/weekly-digest` |
+| `discord.js` | `workers/daily-report`, `workers/weekly-digest` |
+| `sentry.js` | `workers/daily-report`, `workers/weekly-digest`, `workers/sentry-triage` |
+
+Keep that table accurate. It is the deploy checklist. A single flat list was
+enough until `sentry.js` arrived with a third consumer that uses only it
+(#1965), and a flat list would now over-report the blast radius of a
+posthog.js change and under-report a sentry.js one.
 
 ## THE RULE THAT BITES: editing a file here changes nothing in production
 
@@ -41,6 +50,11 @@ Transport and protocol only:
   resolution, the production predicate, SQL literal escaping, row conversion.
 - `discord.js` — Discord's transport limits and the supported subset of its
   payload protocol, plus one-attempt delivery.
+- `sentry.js` — Sentry's HTTP, authentication, retryable-status set, bounded
+  retry, deadline enforcement, response-shape validation and row normalization.
+  Which window to ask about, which releases count, and what an error category
+  MEANS are all product judgement and live in `workers/reporting/sentry-section.js`
+  instead.
 
 ## What must NOT come here
 
@@ -66,6 +80,7 @@ Two specific traps, both learned the hard way:
 
 There is no test package here. The shared modules are exercised by
 `workers/daily-report/test/report.test.js`, which is where they were tested
-before the extraction, and by `workers/weekly-digest/test/digest.test.js`.
+before the extraction, by `workers/daily-report/test/sentry-section.test.js`
+(`sentry.js`), and by `workers/weekly-digest/test/digest.test.js`.
 Both suites run in CI via the `worker-tests` job feeding the required
 `build-check`, so a change here that breaks either consumer blocks the PR.

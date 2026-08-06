@@ -11,6 +11,10 @@
  *   Version scorecard - the last complete Eastern week, per release, with the
  *                       two largest ranked changes against each measure's own
  *                       normal week-to-week movement (#1838).
+ *   Sentry            - yesterday's errors on the current release line, split
+ *                       into dictations LOST and dictations that still worked
+ *                       but worse, with the change in affected people against
+ *                       the day before (#1965).
  *
  * Gates nothing and alerts on nothing. Defect detection belongs to the Sentry
  * triage routines; this is a digest, and the threshold-alarm shape it replaced
@@ -43,6 +47,11 @@ import {
   formatScorecard,
   formatScorecardUnavailable,
 } from "./report-format.js";
+import {
+  fetchSentrySection,
+  formatSentrySection,
+  formatSentryUnavailable,
+} from "../../reporting/sentry-section.js";
 
 export default {
   async fetch(request, env) {
@@ -455,6 +464,54 @@ async function postFailureNotice(env, dateStr) {
   }
 }
 
+/** Just "Sentry, yesterday": the day is on the message's content line, and this
+ * section always reports the day the rest of the report is about. */
+const SENTRY_TITLE = "Sentry, yesterday";
+
+/** Sentry's window, derived from the ONE resolved report context and nothing
+ * else - this file's orchestration rule, applied to a third vendor. Sentry's
+ * `start`/`end` are naive ISO instants interpreted as UTC, so the Eastern day
+ * boundary already computed in `context` converts directly with no second
+ * timezone calculation.
+ *
+ * `statsPeriod` is deliberately NOT used. It cannot express "the day before
+ * yesterday", which the people delta needs, and mixing the two forms across
+ * five calls is how a report ends up comparing windows that do not abut. */
+export function sentryWindowFor(context) {
+  const naiveISO = (date) => date.toISOString().slice(0, 19);
+  const priorStart = new Date(context.startUTC.getTime() - (context.endUTC - context.startUTC));
+  return {
+    startISO: naiveISO(context.startUTC),
+    endISO: naiveISO(context.endUTC),
+    priorStartISO: naiveISO(priorStart),
+    // Matches the report window. The daily report badges an issue as new only
+    // when its FIRST-EVER event is inside the day being reported.
+    firstSeenPeriod: "24h",
+  };
+}
+
+/** Runs the Sentry section and converts every failure into a settled record.
+ *
+ * NEVER whole-run fatal, deliberately. A Sentry outage must not cost the
+ * founder the adoption numbers, which are measured from an entirely different
+ * vendor and are perfectly good. The trigger still fails afterwards, so a
+ * section that quietly stopped working cannot look healthy forever.
+ */
+async function settleSentrySection(env, context, deps) {
+  try {
+    const opts = { ...(deps.sentryOpts || {}), workerLabel: "daily_report" };
+    const data = await fetchSentrySection(env, sentryWindowFor(context), opts);
+    // Rendering AND its shape check both sit inside the settled outcome, for
+    // the same reason driveSections puts them there: a section that computes
+    // cleanly and renders badly is an unavailable section, and validating it
+    // later at delivery would fail the whole payload and cost the OTHER
+    // sections their place in the report.
+    return { status: "fulfilled", value: toEmbed(formatSentrySection(data, { title: SENTRY_TITLE })) };
+  } catch (reason) {
+    return { status: "rejected", reason: asError(reason, "sentry section") };
+  }
+}
+
 // `deps` is a test-only injection seam (production passes nothing, every
 // default applies): `deps.resolveBuckets` lets a degraded-engine test prove
 // resolveBuckets was never CALLED rather than that its output merely looks
@@ -500,7 +557,15 @@ export async function runReport(env, dateOverride = null, deps = {}) {
     },
   ];
 
-  const outcomes = await driveSections(sections, CONCURRENCY_LIMIT);
+  // Sentry runs ALONGSIDE the PostHog work, not inside its limiter. The limiter
+  // exists for PostHog's 3-query project ceiling; Sentry is a different vendor
+  // with its own limits (30 per window, 15 concurrent), so a Sentry read that
+  // waited for a PostHog slot would block a PostHog query for ~1.8s while doing
+  // no PostHog work at all.
+  const [outcomes, sentryOutcome] = await Promise.all([
+    driveSections(sections, CONCURRENCY_LIMIT),
+    settleSentrySection(env, context, deps),
+  ]);
 
   // A release-resolution CONTRACT failure - misconfiguration, a malformed
   // response, no eligible release - means we cannot know which releases this
@@ -525,9 +590,14 @@ export async function runReport(env, dateOverride = null, deps = {}) {
     content: reportHeader(context.dateStr),
     // A fulfilled outcome is ALREADY an embed, validated inside its own
     // section. Only the fixed unavailable copy is rendered here.
-    embeds: sections.map((s, i) =>
-      outcomes[i].status === "fulfilled" ? outcomes[i].value : toEmbed(s.unavailable())
-    ),
+    embeds: [
+      ...sections.map((s, i) =>
+        outcomes[i].status === "fulfilled" ? outcomes[i].value : toEmbed(s.unavailable())
+      ),
+      sentryOutcome.status === "fulfilled"
+        ? sentryOutcome.value
+        : toEmbed(formatSentryUnavailable(SENTRY_TITLE)),
+    ],
   };
 
   // Validated and sent as ONE object inside deliverReport. An over-budget
@@ -536,8 +606,11 @@ export async function runReport(env, dateOverride = null, deps = {}) {
   await deliverReport(env.DISCORD_WEBHOOK_URL, payload);
 
   // The founder has the report; the trigger still has to fail, or a section
-  // that silently stopped working would look like a healthy run forever.
-  const failed = outcomes.find((o) => o.status === "rejected");
+  // that silently stopped working would look like a healthy run forever. The
+  // Sentry outcome is checked with the others, not separately: it is exactly as
+  // capable of failing quietly, and a missing Sentry section for months is the
+  // shape this whole issue exists to prevent.
+  const failed = [...outcomes, sentryOutcome].find((o) => o.status === "rejected");
   if (failed) throw failed.reason;
   return payload.content;
 }

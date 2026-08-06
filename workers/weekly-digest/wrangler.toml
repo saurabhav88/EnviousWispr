@@ -9,9 +9,19 @@ crons = ["0 13 * * 1"]  # Every Monday at 1pm UTC = 9am ET
 CF_ZONE_ID = "b4416a0f0ebd699e96969a331c7ad7ff"
 GITHUB_REPO = "saurabhav88/EnviousWispr"
 POSTHOG_PROJECT_ID = "354235"
+# Sentry section (#1965). Identifiers only, no credential.
+SENTRY_ORG = "envious-labs-llc"
+SENTRY_PROJECT_ID = "4511097112428544"
+SENTRY_PROJECT_SLUG = "enviouswispr"
 
 # Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
 #   POSTHOG_PERSONAL_API_KEY  - GCP secret `posthog-personal-api-key`
+#   SENTRY_AUTH_TOKEN         - reads the Sentry section's aggregates (#1965).
+#     Same token and the same caveat as workers/daily-report/wrangler.toml:
+#     neither `sentry-triage-worker-token` nor `sentry-auth-token` can make this
+#     call (both 403 on `/organizations/<org>/events/`, measured 2026-08-06).
+#     Absent, the section renders "unavailable today" and the other four
+#     sections are unaffected.
 #   DISCORD_WEBHOOK_URL       - the session-logs webhook
 #   CF_EMAIL / CF_API_KEY     - Cloudflare Analytics GraphQL auth
 #   GITHUB_TOKEN              - optional; raises the releases rate limit
