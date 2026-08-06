@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 import Testing
 import os
 
@@ -509,6 +510,102 @@ struct SeamCasingRuntimeSerializationTests {
 
       #expect(Self.probe("da").unavailableReason == .dictionaryUnavailable)
       #expect(Self.probe("en").isAvailable, "one language's outage must not disable another")
+    }
+  }
+
+  // MARK: - The tagger's ordering contract
+
+  /// Is German word-class tagging actually available here? CI's hosted runner
+  /// may not carry the assets, and a missing model must SKIP rather than fail.
+  static var germanWordClassAvailable: Bool {
+    NLTagger.availableTagSchemes(for: .word, language: .german).contains(.lexicalClass)
+  }
+
+  @Test(
+    "#1922 The tagger is pinned AFTER its string, or the pin is silently discarded",
+    .enabled(if: SeamCasingRuntimeSerializationTests.germanWordClassAvailable))
+  func taggerLanguagePinSurvivesTheStringAssignment() {
+    // Cloud review, P2. Assigning `NLTagger.string` RESETS the tagger, so calling
+    // `setLanguage` first threw the pin away — and the shipped comment claimed the
+    // pin was load-bearing, which made a false claim look deliberate.
+    //
+    // This asserts the API contract directly rather than through the runtime,
+    // because the runtime's closure only exists after a real `NSSpellChecker`
+    // preparation and this question is purely about `NLTagger`.
+    //
+    // SINGLE WORDS, deliberately. A first probe of eight multi-word German
+    // sentences found ZERO differences — auto-detection gets German right when it
+    // has a sentence to work with — so a test built from those would have frozen
+    // nothing. The divergence is on one-word payloads, which is exactly the
+    // dictation this feature serves.
+    func tag(_ payload: String, pinFirst: Bool) -> NLTag? {
+      let tagger = NLTagger(tagSchemes: [.lexicalClass])
+      if pinFirst {
+        tagger.setLanguage(.german, range: payload.startIndex..<payload.endIndex)
+        tagger.string = payload
+      } else {
+        tagger.string = payload
+        tagger.setLanguage(.german, range: payload.startIndex..<payload.endIndex)
+      }
+      return tagger.tag(at: payload.startIndex, unit: .word, scheme: .lexicalClass).0
+    }
+
+    // Ordinary German nouns. Each MUST tag as a noun so the veto keeps its
+    // capital; pinned-first they came back `OtherWord` and were lowercased.
+    for noun in ["Hut", "Bad", "Boot"] {
+      #expect(
+        tag(noun, pinFirst: false) == .noun,
+        "\(noun) must tag as a noun when the language is pinned AFTER the string")
+    }
+
+    // The two-way control. Without it this passes on a machine where BOTH orders
+    // happen to answer `.noun`, which would prove nothing about the ordering.
+    let divergent = ["Hut", "Bad", "Boot"].filter { tag($0, pinFirst: true) != .noun }
+    #expect(
+      divergent.isEmpty == false,
+      "at least one word must differ between the orderings, or this test cannot fail")
+  }
+
+  @Test(
+    "#1922 The SHIPPED German veto answers noun for a one-word noun",
+    .enabled(if: SeamCasingRuntimeSerializationTests.germanWordClassAvailable))
+  func shippedGermanVetoTagsAOneWordNoun() async throws {
+    // The case above freezes an `NLTagger` FACT and is therefore blind to the
+    // shipped call site — reverting the ordering in `prepare` left it green, which
+    // the mutation control exposed. This one drives the REAL closure the product
+    // uses, so it fails when that ordering regresses.
+    //
+    // No preparation override: the point is to exercise the real
+    // `NSSpellChecker` + `NLTagger` build. Gated on German word-class
+    // availability so a runner without the assets SKIPS rather than fails.
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+
+      // The read-only seam, so waiting cannot itself re-request — and so the
+      // closure stays `@Sendable` without capturing a mutable local.
+      _ = await Self.waitUntil(timeout: .seconds(30)) {
+        SeamCasingOracleRuntime.installedOracleForTesting("de") != nil
+          || SeamCasingOracleRuntime.snapshot(for: "de").unavailableReason != .oracleWarming
+      }
+
+      guard let german = SeamCasingOracleRuntime.installedOracleForTesting("de") else {
+        // A machine without a usable German dictionary cannot answer this, and a
+        // fabricated pass would be worse than no coverage.
+        Issue.record(
+          "German did not become available; skipping is correct but the case ran anyway")
+        return
+      }
+
+      for noun in ["Hut", "Bad", "Boot"] {
+        #expect(
+          german.isNoun(noun),
+          "the shipped veto must read `\(noun)` as a noun, or German loses its capital")
+      }
+      // Two-way control: the veto must NOT answer noun to everything, or it would
+      // pass here while disabling German entirely.
+      #expect(
+        german.isNoun("gestern") == false,
+        "and it must still answer NOT-a-noun for an ordinary adverb")
     }
   }
 

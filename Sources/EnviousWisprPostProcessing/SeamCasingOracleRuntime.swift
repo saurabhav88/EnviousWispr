@@ -337,8 +337,21 @@ package enum SeamCasingOracleRuntime {
         // Pinned, not sniffed. `NLTagger` guesses the language of a short
         // fragment badly, and this closure is only ever built for a language
         // whose `.lexicalClass` availability was already probed in `prepare`.
-        tagger.setLanguage(nlLanguage, range: payload.startIndex..<payload.endIndex)
+        //
+        // ORDER IS LOAD-BEARING: `string` FIRST, then `setLanguage`. Assigning
+        // the string RESETS the tagger, so pinning first threw the pin away and
+        // the comment above was describing something that was not happening.
+        //
+        // Measured, because the API contract alone understates it (cloud review,
+        // P2). On multi-word payloads the two orders agree — auto-detection gets
+        // German right — so a first probe of eight sentences found zero
+        // differences. On SINGLE-WORD payloads they diverge: `Hut`, `Bad` and
+        // `Boot` tag as `OtherWord` pinned-last and `Noun` pinned-correctly. The
+        // veto reads `tag == .noun`, so the wrong order LOWERCASED three ordinary
+        // German nouns — exactly the one-word dictation this feature is for.
+        // Probe: `issue-1922-artifacts/2026-08-05-tagger-order-probe.swift`.
         tagger.string = payload
+        tagger.setLanguage(nlLanguage, range: payload.startIndex..<payload.endIndex)
         guard
           let tag = tagger.tag(at: payload.startIndex, unit: .word, scheme: .lexicalClass).0
         else {
