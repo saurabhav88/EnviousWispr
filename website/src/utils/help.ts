@@ -1,5 +1,6 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { HELP_CATEGORIES, helpCategory, type HelpCategory } from '../data/help-categories';
+import { getPublishedPosts } from './posts';
 
 export type HelpArticle = CollectionEntry<'help'>;
 
@@ -49,15 +50,29 @@ export async function getHelpArticles(): Promise<HelpArticle[]> {
   });
 }
 
-/** Validates every `seeAlso` against the blog collection. Separate because it
- *  reaches into a second collection and only the article route needs it. */
+/** Validates every `seeAlso` against the blog posts that are actually PUBLISHED.
+ *
+ *  Separate because it reaches into a second collection and only the article
+ *  route needs it.
+ *
+ *  It asks `getPublishedPosts()` rather than `getCollection('blog')` because
+ *  that is the exact set the blog route emits: a draft or future-dated post
+ *  exists in the collection but has no page, so validating against the
+ *  collection would approve a link that 404s. The check has to use the route's
+ *  own definition of "exists", not a looser one that happens to be nearby.
+ *
+ *  Nothing else would catch it: the post-build link scan only follows /help/
+ *  hrefs, so a dead /blog/ link leaves no trace in either check. */
 export async function validateSeeAlso(articles: HelpArticle[]): Promise<void> {
   const withSeeAlso = articles.filter((a) => a.data.seeAlso);
   if (withSeeAlso.length === 0) return;
-  const blog = new Set((await getCollection('blog')).map((p) => p.id));
+  const published = new Set((await getPublishedPosts()).map((p) => p.id));
   for (const a of withSeeAlso) {
-    if (!blog.has(a.data.seeAlso!)) {
-      throw new Error(`help: ${a.id} seeAlso points at a blog post that does not exist: ${a.data.seeAlso}`);
+    if (!published.has(a.data.seeAlso!)) {
+      throw new Error(
+        `help: ${a.id} seeAlso points at a blog post that is not published: ${a.data.seeAlso}. ` +
+        `It must exist AND be non-draft with a pubDate that has arrived, or the link 404s.`
+      );
     }
   }
 }

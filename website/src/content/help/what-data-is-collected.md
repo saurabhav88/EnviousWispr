@@ -39,4 +39,6 @@ If you would rather run without it, EnviousWispr is open source. Build it yourse
 
 Polish runs on your Mac by default. Choose OpenAI, Gemini or Claude instead and you add your own API key, and your transcript is sent to them, along with your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Audio is never sent. The app tells you this when you set it up. That is your account with that company, on their terms.
 
+Ollama is worth reading twice, because it can be either. A model you have downloaded runs on your Mac and sends nothing. A hosted one runs on Ollama's servers, so your transcript goes there just as it would to any other cloud provider. EnviousWispr lists the two under separate headings so you can tell which you are picking.
+
 We are not in the middle of it. Everything goes straight from your Mac to them, so we never see it either way.
