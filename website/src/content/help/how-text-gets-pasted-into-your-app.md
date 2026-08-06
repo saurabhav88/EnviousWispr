@@ -6,32 +6,32 @@ section: "Paste System"
 order: 1
 keywords: ["paste", "how does it type", "where does the text go", "delivery", "spacing", "capitals", "capitalisation", "capitalization", "stop capitalising", "stop capitalizing", "capital letters", "extra space", "no space", "jams words together", "smart insertion", "middle of a sentence", "cursor"]
 related: ["clipboard-preservation", "paste-not-working"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. It remembers the app and text field that were focused when you started recording, and delivers your text there. It works anywhere you can type: native Mac apps, browsers, and apps built on web technology such as VS Code, Slack, Discord and Notion.
+EnviousWispr remembers the app and text field that were focused when you started recording, and delivers your text there. It works anywhere you can type, including native Mac apps, web browsers, and apps built on web technology such as VS Code, Slack, Discord, and Notion.
 
-### It picks the destination at the start
+### The destination is locked in at the start
 
-Not at the end. AI Polish can take a few seconds, and by then you may have clicked elsewhere. Locking the destination in at the start means your words land where you were talking. Keep that field open until the text arrives.
+EnviousWispr captures your active text field when you begin recording rather than when you finish. AI polish can take a few seconds, and you might click into a different window while you wait. Locking the destination at the beginning is what makes sure your words land where you started talking. Keep that text field open until your text arrives.
 
-### It tries the cleanest method first
+### Three ways to deliver the text, tried in order
 
-The cleanest method is writing straight into the text box, without touching your clipboard. Some apps will not accept that, so EnviousWispr falls back to an ordinary paste, and then to the app's own Edit \> Paste menu.
+EnviousWispr first tries to write your text directly into the text box, without touching your clipboard. Some apps reject direct input, so it falls back to an ordinary paste command, and then to the app's own Edit \> Paste menu.
 
-If none of those work, your text goes to your clipboard and EnviousWispr tells you, so you can paste it yourself. You never lose a dictation to a failed paste.
+If all three fail, EnviousWispr copies your text to your clipboard and tells you, so you can paste it yourself. You never lose a dictation to a failed paste.
 
-### Spacing and capitals
+### Spacing and capitals are handled for you
 
-EnviousWispr looks at the text on either side of your cursor and matches it. Dictating into the middle of a sentence adds a space where one is needed and keeps the capital letter right, instead of jamming your words up against what is already there.
+EnviousWispr looks at the text on either side of your cursor and matches it. Dictating into the middle of a sentence adds a space where one is needed and gets the capital letter right, instead of jamming your new words against what is already there.
 
-Capitals are matched in English, German, French, Italian, Spanish, Portuguese, Dutch, Danish, Swedish, Finnish, Russian and Turkish. German is handled on its own terms, so nouns keep the capital they are supposed to have. In any other language EnviousWispr takes care of the spacing and leaves your capitals exactly as you said them.
+Capital matching works in English, German, French, Italian, Spanish, Portuguese, Dutch, Danish, Swedish, Finnish, Russian, and Turkish. German follows its own rules, so nouns keep the capital letters they are supposed to have. In every other language, EnviousWispr handles the spacing and leaves your capitals exactly as you spoke them.
 
-You can switch this off under **Settings** \> **Clipboard**, where it is called **Smart insertion**.
+You can turn this behaviour off under **Settings** \> **Clipboard**, where the setting is named **Smart insertion**.
 
-### Your clipboard
+### Your clipboard contents are preserved
 
-When **Restore clipboard after paste** is on, EnviousWispr saves what was on your clipboard and puts it back after pasting. It is on out of the box. See [_Clipboard Preservation_](/help/clipboard-preservation/).
+When **Restore clipboard after paste** is switched on, EnviousWispr saves whatever was on your clipboard before you dictated and puts it back immediately after pasting. This setting is on by default. See [_Clipboard Preservation_](/help/clipboard-preservation/) for the detail.
 
-### What this needs
+### The permission this needs
 
-Accessibility permission. Without it, EnviousWispr copies your text to the clipboard and tells you instead. Full-screen games and apps that block simulated typing are the other exceptions.
+EnviousWispr needs macOS Accessibility permission to insert text for you. Without it, the app copies your text to your clipboard and tells you instead. Full-screen games and applications that block simulated typing also prevent direct insertion.

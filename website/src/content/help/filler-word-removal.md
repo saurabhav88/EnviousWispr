@@ -5,22 +5,28 @@ category: "features"
 section: "Text Processing"
 order: 2
 keywords: ["um", "uh", "filler", "filler words", "remove um", "you know", "like", "stop words", "cleaner speech"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. It strips "um", "uh", "hmm", "er" and similar noises out of your text before you ever see them. This is on out of the box.
+EnviousWispr automatically removes spoken noises like "um", "uh", "hmm", and "er" from your dictated text before it reaches your app. This is on by default.
 
 ### Turning it off
 
-Go to **Settings** \> **Transcription** and switch off **Remove filler words**. Your next dictation will keep the noises in.
+You can switch this off if you would rather keep your spoken hesitations in the final text.
 
-### It does not need AI
+**Open settings.** Click the EnviousWispr menu bar icon and select **Settings**, or press Cmd+,.
 
-This runs on your Mac with no AI model involved. It works when AI Polish is switched off, and it works with no internet connection.
+**Go to Transcription.** Click the **Transcription** tab.
+
+**Switch off the setting.** Turn off **Remove filler words**. Your next dictation keeps every noise in the text.
+
+### How it runs without AI
+
+This runs on your Mac against a fixed list of noises, with no AI model involved. It works with no internet connection, and it works even when AI Polish is switched off.
 
 ### What it leaves alone
 
-It only removes those noises when they stand on their own as words. The "um" inside "umbrella" is safe.
+EnviousWispr only removes these noises when they stand on their own as separate words. The "um" inside the word "umbrella" is left alone.
 
 ### If you want more than this
 
-AI Polish also removes hesitations, false starts and repeated words, which a fixed list of noises cannot catch.
+A fixed list only catches those specific sounds. AI Polish, which is on by default, goes further and also removes false starts, repeated words, and general hesitations that no list can anticipate.

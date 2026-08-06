@@ -5,24 +5,26 @@ category: "updates-and-source"
 section: "Source Code"
 order: 2
 keywords: ["source code", "github", "open source", "license", "gpl", "contribute", "pull request", "build it myself", "repo"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS, and it is open source. The whole app is at [github.com/saurabhav88/EnviousWispr](https://github.com/saurabhav88/EnviousWispr), so every privacy claim on this site can be checked against the code that makes it.
+EnviousWispr is a free dictation app for macOS, and the entire application is open source under the GPLv3 license. You can inspect every part of the codebase at [github.com/saurabhav88/EnviousWispr](https://github.com/saurabhav88/EnviousWispr) and check every privacy claim on this site against the code that runs on your Mac.
 
 ### The license
 
-GNU General Public License v3. In short:
+EnviousWispr is distributed under the terms of the GNU General Public License v3. That license grants specific rights and sets clear boundaries for use and distribution.
 
-- Free to use, study, change and share, including commercially.
-- If you share a changed version, that version has to be open source too.
-- The EnviousWispr name and logo belong to Envious Labs LLC and are not covered by the license.
+- **Use freely.** You are free to use, study, change, and share the software, including for commercial purposes.
+- **Share modifications.** If you distribute a modified version of EnviousWispr, that version has to be open source under the same license terms.
+- **Trademarks are excluded.** The EnviousWispr name and logo belong to Envious Labs LLC and are not covered by the open source license.
 
 ### Helping out
 
-- Report a bug or ask for a feature on GitHub Issues.
-- Send a pull request.
-- Read the code and say so if something we claim does not match what it does.
+Contributions make the project more stable and easier to trust. There are three ways to take part.
+
+- **Report bugs and request features.** Open an issue on GitHub Issues to report unexpected behaviour or suggest something new.
+- **Submit code.** Send a pull request with a bug fix or an improvement.
+- **Audit the code.** Read the source and report any gap between what the documentation claims and what the app actually does.
 
 ### Building it yourself
 
-You need a Mac with Apple Silicon and Xcode. The current steps are in the repository README.
+You can compile the application from source on your own machine. Building EnviousWispr needs a Mac with Apple Silicon and Xcode installed. The current compilation steps are kept up to date in the repository README.

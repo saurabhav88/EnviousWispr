@@ -5,14 +5,14 @@ category: "audio-and-microphone"
 section: "Audio Processing"
 order: 3
 keywords: ["noise", "background noise", "noisy room", "cafe", "fan", "noise cancelling", "suppression", "echo"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS, and it has no noise suppression setting. It records your microphone as it is and lets the speech model handle the audio.
+EnviousWispr has no noise suppression setting. It records your microphone as it is and lets the speech model handle the audio directly.
 
-### Why it went
+### Why noise suppression was removed
 
-Processing the audio first hurt transcription accuracy more than it helped, and it slowed every recording down. The setting was removed in version 2.0.2, and switched off for you when you updated.
+Running the audio through a suppression filter before transcription hurt accuracy more than it helped, and it added a noticeable delay to every recording. The setting was removed in version 2.0.2, and switched off automatically when you updated.
 
-### If background noise is hurting your accuracy
+### How to manage background noise
 
-Move closer to your microphone, or try a headset microphone. Dictate the same sentence both ways and compare the results in **History**.
+If sound around you is hurting your accuracy, change your physical setup rather than looking for a software filter. Move closer to your microphone, or switch to a headset microphone. You can test any change by dictating the same sentence both ways and comparing the results in **History**.

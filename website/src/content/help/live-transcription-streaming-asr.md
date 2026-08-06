@@ -6,9 +6,9 @@ section: "Transcription"
 order: 4
 keywords: ["live", "live text", "see words as i speak", "real time", "realtime", "streaming", "as you talk", "preview"]
 seeAlso: "live-transcription-that-keeps-up-with-you"
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. It normally writes your text once you stop talking. Live transcription writes it while you are still speaking, and it is off unless you turn it on.
+EnviousWispr normally writes your text once you stop talking. Live transcription writes it while you are still speaking, and it is off unless you turn it on.
 
 **Leave it off on Parakeet. On WhisperKit, turn it on if you have picked a language and you often dictate for more than a minute.**
 
@@ -16,7 +16,7 @@ EnviousWispr is a free dictation app for macOS. It normally writes your text onc
 
 Go to **Settings** \> **Transcription** and switch on **Live transcription**. The question mark beside it explains what changes for the engine you are on.
 
-### Why we say leave it off on Parakeet
+### Why you should leave it off on Parakeet
 
 Parakeet writes your speech in overlapping pieces and joins them together. The joins are where mistakes appear, and the longer you talk the more joins there are.
 

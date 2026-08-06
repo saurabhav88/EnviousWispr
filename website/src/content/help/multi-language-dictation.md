@@ -6,20 +6,24 @@ section: "Transcription"
 order: 2
 keywords: ["language", "languages", "spanish", "french", "german", "hindi", "not english", "foreign language", "bilingual", "multilingual", "change language", "accent"]
 related: ["choosing-a-speech-engine-parakeet-vs-whisperkit"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS, and it is not English-only. Most people need to change nothing: Parakeet, the engine you start with, handles 25 European languages on its own, with no language to set.
+EnviousWispr handles dozens of languages without asking you to change a setting before every session. Parakeet, the transcription engine you start with, recognises 25 European languages on its own, with nothing to configure.
 
-### If your language is not one of those 25
+### Switching to WhisperKit for more languages
 
-1. Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Transcription**.
-2. Choose **WhisperKit** and click **Download WhisperKit Model** if you have not already.
-3. Pick your language from the list, or leave it on auto-detect.
+If your spoken language is not among the 25 Parakeet covers, switch to the WhisperKit engine, which supports 99 languages.
 
-WhisperKit covers 99 languages. You will know it is working when your next dictation comes back in the language you spoke.
+**Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Transcription**.
 
-### Tips
+**Select WhisperKit.** Choose **WhisperKit** from the transcription engine options. If you have not downloaded the engine yet, click **Download WhisperKit Model**.
 
-- On WhisperKit, naming your language is more accurate than leaving it on auto-detect.
-- Auto-detect copes with one language at a time. It struggles when you switch language mid-sentence.
-- AI Polish will not translate you. Dictate in French and you get French back.
+**Choose your language.** Pick your language from the list, or leave the setting on auto-detect.
+
+You will know the setup is working when your next dictation comes back in the language you spoke.
+
+### Tips for the best results
+
+- **Name your language rather than auto-detecting.** Choosing your language in settings gives higher accuracy than leaving it on auto-detect.
+- **Keep to one language per sentence.** Auto-detect handles one language at a time and struggles when you switch languages mid-sentence.
+- **Expect correction, not translation.** AI Polish cleans up grammar and filler words, but it does not translate. Dictating in French returns French text.

@@ -6,28 +6,38 @@ section: "AI Polish Issues"
 order: 5
 keywords: ["ollama not working", "ollama error", "cant connect to ollama", "ollama failed", "local ai broken"]
 related: ["using-ollama-for-fully-offline-ai-polish"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. Ollama is one of the AI options it can use to tidy up what you dictated. When that step fails, it is nearly always because Ollama itself is not running.
+When Ollama polish fails to tidy up your dictation, the cause is nearly always that Ollama itself is not running.
 
-### Work through these
+### Confirm Ollama is installed
 
-1. **Is Ollama installed?** Get it from [ollama.com](https://ollama.com).
-2. **Is it running?** Open the Ollama app, or run `ollama serve` in Terminal. It has to be running before you start recording.
-3. **Do you have a model?** Run `ollama list` in Terminal. If nothing comes back, run `ollama pull llama3.2`.
-4. **Is the right model selected?** Open EnviousWispr's settings, go to **AI Polish**, and check the model picker.
+Ollama must be installed on your Mac before EnviousWispr can send any text to it. Download the app from [ollama.com](https://ollama.com) if you have not installed it yet.
 
-### If you picked one of Ollama's hosted models
+### Start the application
 
-Ollama offers models that run on its own servers as well as models you download to your Mac. Hosted models still go through the Ollama app, so everything above still applies, and two more things matter:
+Ollama needs to be running before you start recording. Open your Applications folder and launch the Ollama app, or run `ollama serve` in Terminal.
 
-- **You have to be signed in to Ollama.** Run `ollama signin` in Terminal. If you are not signed in, EnviousWispr says so after the first failed dictation.
-- **Some hosted models are paid.** If the one you picked needs a subscription you do not have, Ollama refuses the request. Choose a free model instead, or subscribe.
+### Verify your model
 
-### If it is slow rather than broken
+EnviousWispr relies on a model you have downloaded to process your text. Run `ollama list` in Terminal to see which models are on your machine. If the list is empty, run `ollama pull llama3.2` to download a working one.
 
-A large model on a busy Mac can take longer than EnviousWispr waits, which is about fifteen seconds. Try a smaller model.
+### Match your settings
 
-### What happens meanwhile
+The model selected in EnviousWispr has to match one that is installed on your system. Open EnviousWispr settings, go to **AI Polish**, and check the model picker.
 
-You still get your dictation. It arrives without the AI clean-up, which is the only part that failed.
+### Sign in for hosted models
+
+Ollama offers both models you download to your Mac and models it hosts on its own servers. Hosted models still route through the Ollama app, so everything above still applies, and you also have to be signed in to your Ollama account. Run `ollama signin` in Terminal. EnviousWispr tells you after the first failed dictation if you are not signed in.
+
+### Check subscription status
+
+Some hosted models need a paid account with Ollama. If the model you selected requires a subscription you do not have, Ollama rejects the request. Choose a free model in your settings, or subscribe through Ollama.
+
+### Address slow processing times
+
+A large model running on a busy Mac can take longer than the fifteen seconds EnviousWispr waits. Switch to a smaller model if your dictations time out often.
+
+### You still get your dictation
+
+The polish step is the only part that failed. Your text still arrives, carrying the clean-up EnviousWispr does on your Mac, such as filler-word removal and your custom words. Only the AI rewrite is missing.
