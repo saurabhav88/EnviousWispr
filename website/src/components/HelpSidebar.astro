@@ -15,10 +15,18 @@ const { articles, currentArticle, currentCategory } = Astro.props;
 
 <aside class="help-sidebar" aria-label="Help centre contents">
   <nav class="help-nav">
+    {/* The tree is deliberately FULL rather than collapsed to the current
+        category (plan §3, "the full category tree ... with the current article
+        marked"): making the shape of what we cover visible from any article is
+        the reason this reads as a help centre and not a pile of pages, and it
+        is what a reader who distrusts search boxes navigates by. The rail
+        scrolls inside itself, so the length costs no page height.
+
+        An earlier draft carried an `is-open` class here for a collapsing tree.
+        Nothing ever styled it, so it changed nothing — and left the next reader
+        with evidence of an intent the plan had already decided against. */}
     {HELP_CATEGORIES.map((cat) => {
       const inCat = articlesInCategory(articles, cat.slug);
-      const isCurrent = cat.slug === currentCategory
-        || inCat.some((a) => a.id === currentArticle);
       return (
         <div class="help-nav-group">
           <a
@@ -29,7 +37,7 @@ const { articles, currentArticle, currentCategory } = Astro.props;
             {cat.label}
             <span class="help-nav-count">{inCat.length}</span>
           </a>
-          <ul class:list={['help-nav-list', { 'is-open': isCurrent }]} role="list">
+          <ul class="help-nav-list" role="list">
             {inCat.map((a) => (
               <li>
                 <a
