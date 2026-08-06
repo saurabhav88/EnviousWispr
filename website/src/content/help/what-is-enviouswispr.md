@@ -16,7 +16,7 @@ You dictate by holding a hotkey while your cursor rests in a text field.
 
 - **Click into a text field.** Click inside any window or document where you want your words to appear.
 - **Hold your hotkey and talk.** Press and hold the hotkey down, then speak your thoughts out loud.
-- **Release the hotkey.** Let go of the key when you finish speaking. The transcribed text appears at your cursor.
+- **Release the hotkey.** Let go of the key when you finish speaking. The transcribed text appears at your cursor a moment later.
 
 ### What you get
 

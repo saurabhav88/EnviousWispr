@@ -8,7 +8,7 @@ keywords: ["push to talk", "hold to talk", "hold the key", "ptt", "press and hol
 related: ["customizing-your-hotkey", "first-word-gets-cut-off"]
 updated: 2026-08-06
 ---
-Push-to-talk is the default recording mode. You hold your hotkey down for as long as you are speaking, and your transcribed words appear at your cursor the moment you let go.
+Push-to-talk is the default recording mode. You hold your hotkey down for as long as you are speaking. Letting go ends the recording, and your transcribed words appear at your cursor once EnviousWispr has worked out what you said.
 
 ### Using push-to-talk
 
@@ -16,7 +16,7 @@ Push-to-talk is the default recording mode. You hold your hotkey down for as lon
 
 **Press and hold.** Keep your designated hotkey pressed, and begin speaking into your microphone.
 
-**Release it.** Let go when you finish your sentence. Your text appears at the cursor.
+**Release it.** Let go when you finish your sentence. Your text appears at the cursor a moment later, once the audio has been transcribed.
 
 Recording stops the exact moment you release the key. Because of that, a cough, a deep breath, or a passing conversation after you finish speaking never reaches the transcript.
 
