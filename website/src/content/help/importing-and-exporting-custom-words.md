@@ -8,7 +8,7 @@ keywords: ["import", "export", "backup my words", "csv", "move to a new mac", "t
 related: ["adding-custom-words"]
 updated: 2026-08-05
 ---
-Open Settings and go to **Your Words**.
+EnviousWispr is a free dictation app for macOS. Your custom words are the names and terms you have taught it, and you can move them to another Mac or bring them in from another dictation app. Everything on this page lives under **Settings** \> **Your Words**.
 
 ### Importing
 
@@ -16,7 +16,7 @@ Open Settings and go to **Your Words**.
 2. Choose to paste a list of words, open a file, or bring them in from another dictation app.
 3. Review what it found, then add them.
 
-A file can be one you exported from EnviousWispr, or a plain text list with one word per line. If you have Wispr Flow, FluidVoice or Superwhisper installed, EnviousWispr can read your words straight out of them.
+The file can be one you exported from EnviousWispr, or a plain text list with one word per line. If you have Wispr Flow, FluidVoice or Superwhisper installed, EnviousWispr can read your words straight out of them.
 
 Importing only adds. Words you already have are left alone.
 
@@ -25,7 +25,7 @@ Importing only adds. Words you already have are left alone.
 1. Click **Export your words**.
 2. Choose where to save the file.
 
-Keep the file as a backup, or import it on another Mac.
+Keep that file as a backup, or import it on another Mac.
 
 ### Removing several at once
 

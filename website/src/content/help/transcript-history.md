@@ -8,7 +8,7 @@ keywords: ["history", "past dictations", "previous", "find an old dictation", "w
 related: ["clipboard-preservation"]
 updated: 2026-08-05
 ---
-Finished dictations are normally saved automatically. Open the EnviousWispr window and go to **History**.
+EnviousWispr is a free dictation app for macOS. It saves each finished dictation so you can find it again later. Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **History**.
 
 Recordings you cancelled, and recordings where no speech was found, are not saved. If saving fails for a storage reason, EnviousWispr tells you.
 
@@ -20,7 +20,7 @@ Recordings you cancelled, and recordings where no speech was found, are not save
 
 ### Where it is kept
 
-On your Mac, in your user folder. It survives quitting, updating and restarting. We never receive a copy, and there is no limit on how many are kept.
+On your Mac, in your user folder. It survives quitting, updating and restarting. Envious Labs never receives a copy, and there is no limit on how many dictations are kept.
 
 ### If History looks empty
 

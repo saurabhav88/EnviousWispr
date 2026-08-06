@@ -9,7 +9,7 @@ related: ["numbers-dates-and-times"]
 seeAlso: "speak-emoji-dictation"
 updated: 2026-08-05
 ---
-Two settings let you say something out loud and get a symbol. Both are under **Transcription** in Settings.
+EnviousWispr is a free dictation app for macOS. Two of its settings let you say something out loud and get a symbol instead of the words. Both live under **Settings** \> **Transcription**.
 
 ### Spoken emoji, on out of the box
 
@@ -21,7 +21,7 @@ The setting is **Convert spoken emoji**.
 
 ### Spoken punctuation, off out of the box
 
-Say "comma" and you get a comma. Worth understanding before you switch it on.
+Say "comma" and you get a comma. This one is worth understanding before you switch it on.
 
 | Say this | You get |
 |---|---|
@@ -38,4 +38,4 @@ Say "comma" and you get a comma. Worth understanding before you switch it on.
 
 **Why it is off.** EnviousWispr already punctuates for you, so this competes with it. It also cannot tell when you meant the word: say "the grace period expires" and you get a full stop in the middle of your sentence.
 
-Turn it on if you need exact control of punctuation and do not mind fixing the occasional sentence. The setting is **Convert spoken punctuation**.
+Turn it on if you need exact control over punctuation and do not mind fixing the occasional sentence. The setting is **Convert spoken punctuation**.
