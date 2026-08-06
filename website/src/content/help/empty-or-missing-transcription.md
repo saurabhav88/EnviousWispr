@@ -6,9 +6,9 @@ section: "Transcription Issues"
 order: 3
 keywords: ["nothing happens", "no text", "empty", "microphone not working", "mic not working", "not hearing me", "no output", "blank", "nothing appears", "not transcribing", "not working at all", "silent", "no sound"]
 related: ["choosing-your-microphone", "granting-permissions-microphone-accessibility-and-automation"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. When a recording finishes and no text appears, something between your microphone and the speech model did not deliver. Work through these in order.
+When a recording finishes and no text appears, something between your microphone and the speech model did not deliver. These checks run from the most common cause to the least, so work through them in order.
 
 ### 1. Is the app hearing you?
 
@@ -16,24 +16,24 @@ Watch the recording bar on screen while you talk. Its meter moves with your voic
 
 ### 2. Check the microphone permission
 
-Open **System Settings** \> **Privacy & Security** \> **Microphone**. EnviousWispr should be in the list with its switch on. If it is not in the list at all, it has never been asked. Record once and macOS will prompt you.
+macOS requires explicit permission for an app to use your microphone. Open **System Settings**, click **Privacy & Security**, and click **Microphone**. EnviousWispr should be in the list with its switch turned on. If the app is not in the list at all, macOS has never been asked for permission. Record once and macOS will prompt you to allow access.
 
 ### 3. Check for a hardware mute
 
-Check the microphone itself, the cable, and any switch on a desk stand. Many headsets have a mute switch on the earcup or a button partway down the cable. A muted microphone still records. It records silence.
+A physical mute switch stops your voice reaching the app even when everything else is set up correctly. Check the microphone itself, the cable, and any switch on a desk stand. Many headsets have a mute switch on the earcup or a button partway down the cable. A muted microphone still records, but it records only silence.
 
 ### 4. Check the right microphone is selected
 
-Open EnviousWispr's settings and go to **Microphone**. On Auto, EnviousWispr records from whatever input your Mac is set to, which may not be the one you are speaking into. Pick a device from the list to be sure.
+EnviousWispr needs to listen to the device you are actually speaking into. Open EnviousWispr settings and go to **Microphone**. When set to Auto, EnviousWispr records from whatever input your Mac is using, which may not be the device at your mouth. Pick a specific device from the list to remove the ambiguity.
 
 ### 5. Is the speech model ready?
 
-The first launch downloads it, and until that download finishes there is nothing to transcribe with. Progress is shown on screen.
+The app downloads its speech model on first launch. Until that download finishes, there is no model available to transcribe your voice. Progress is shown on screen.
 
 ### 6. Was the recording very short?
 
-A recording of well under a second may not give the model enough to work with. Hold the key a moment longer, and pause for a beat before you start speaking.
+Very brief audio does not give the speech model enough to work with. A recording of well under a second may come back empty. Hold the hotkey a moment longer, and pause for a beat before you start speaking.
 
 ### 7. Were you quiet, or far from the microphone?
 
-Speaking softly or from across the room is a common reason a recording comes back looking silent. Move closer, or use a headset microphone.
+Quiet audio can register with the speech model as background noise rather than speech. Speaking softly or sitting far from the microphone is a common reason a recording comes back looking silent. Move closer, or use a headset microphone.

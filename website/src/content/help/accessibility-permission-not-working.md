@@ -6,17 +6,19 @@ section: "Permissions"
 order: 1
 keywords: ["accessibility not working", "permission wont stick", "toggle keeps turning off", "already allowed but still broken", "granted but not working", "reset permission"]
 related: ["granting-permissions-microphone-accessibility-and-automation", "paste-not-working"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS, and it uses the Accessibility permission to put your finished text into whatever app you are working in. Without that permission, your words are transcribed but nothing is pasted.
+EnviousWispr uses the Accessibility permission to put your finished text into whatever app you are working in. Without that permission, your words are transcribed but nothing is pasted.
 
 ### Grant it
+
+Granting Accessibility allows EnviousWispr to insert text into the app you are working in.
 
 1. Open **System Settings** \> **Privacy & Security** \> **Accessibility**.
 2. Click **+** and add EnviousWispr from your Applications folder.
 3. Make sure the switch beside it is on.
 
-You do not need to restart EnviousWispr. It notices within a few seconds. You will know it worked when your next dictation lands in the text box on its own.
+You do not need to restart EnviousWispr. The app notices within a few seconds. You will know it worked when your next dictation lands in the text box on its own.
 
 ### If it was working and then stopped
 
@@ -28,4 +30,4 @@ macOS occasionally holds on to a stale record of the app. Remove EnviousWispr fr
 
 ### Your dictation is not lost meanwhile
 
-When EnviousWispr cannot paste, it copies your text to the clipboard instead and tells you it has done so. Press Cmd+V to put it in yourself.
+When EnviousWispr cannot paste, it copies your text to the clipboard instead and tells you it has done so. Press Cmd+V to put the text into your document yourself.
