@@ -1008,3 +1008,550 @@ private func stubbedResponse(ids: [String], for request: URLRequest) throws
   else { throw CloudCatalogError.invalidResponse }
   return (body, response)
 }
+
+/// #1956 Chunk 4: resolving a hosted model's pullable name at Add time.
+///
+/// Ollama advertises a hosted model under one id and pulls it under another. This
+/// suite pins that we ASK the daemon which name is real rather than inferring it
+/// from the id's shape, and that we refuse rather than guess whenever the answer
+/// is not exactly one proven name.
+///
+/// Every wait here is inside a bounded `withThrowingTimeout` AND calls
+/// `try Task.checkCancellation()`. Without the second, the bound cannot fire and
+/// a regression hangs the required `build-debug` check instead of turning it red
+/// (Chunk 3 defect A).
+///
+/// The script has ONE owner for parking and ONE owner for each candidate's
+/// reply, and `showScript` requires both candidates to be scripted explicitly.
+/// A double whose configuration can be silently ignored produced 45 vacuous
+/// passes out of 50 in Chunk 3; a missing reply here is unwriteable rather than
+/// defaulted. An UNEXPECTED candidate is caught by `add(...)`, which asserts it
+/// for every test routed through it; the concurrent test drives the service
+/// directly and asserts it itself.
+@MainActor
+@Suite("Ollama hosted Add (#1956)")
+struct OllamaSetupServiceHostedAddTests {
+
+  // MARK: - Test doubles
+
+  private enum ShowReply: Sendable {
+    case status(Int)
+    case nonHTTP
+    case thrown(ShowFailure)
+  }
+
+  /// A concrete error type rather than `any Error`, so the script stays `Sendable`
+  /// without an unchecked escape hatch.
+  private enum ShowFailure: Error, Sendable {
+    case transport
+    case cancelled
+
+    var asError: Error {
+      switch self {
+      case .transport: return URLError(.notConnectedToInternet)
+      case .cancelled: return CancellationError()
+      }
+    }
+  }
+
+  private struct RecordedShowRequest: Equatable, Sendable {
+    let url: String
+    let method: String
+    let timeout: TimeInterval
+    let contentType: String?
+    let bodyJSON: [String: String]
+
+    var candidate: String? { bodyJSON["model"] }
+  }
+
+  /// Owns the scripted replies, the record of what was asked, and whether the
+  /// requests are held. Parking is owned here and nowhere else.
+  private actor ShowScript {
+    private let dashReply: ShowReply
+    private let colonReply: ShowReply
+    private let dashCandidate: String
+    private let colonCandidate: String
+    private var released: Bool
+
+    private(set) var recorded: [RecordedShowRequest] = []
+    /// A candidate nobody scripted. Asserted empty by every test, so a typo in a
+    /// candidate name surfaces as itself rather than as an indeterminate result
+    /// that several tests would happily accept.
+    private(set) var unscripted: [String] = []
+
+    init(
+      advertisedID: String, dash: ShowReply, colon: ShowReply, parked: Bool = false
+    ) {
+      self.dashCandidate = "\(advertisedID)-cloud"
+      self.colonCandidate = "\(advertisedID):cloud"
+      self.dashReply = dash
+      self.colonReply = colon
+      self.released = !parked
+    }
+
+    func record(_ request: RecordedShowRequest) { recorded.append(request) }
+    func release() { released = true }
+    func isReleased() -> Bool { released }
+    var requestCount: Int { recorded.count }
+    var candidates: [String] { recorded.compactMap(\.candidate) }
+
+    func reply(for candidate: String) -> ShowReply {
+      if candidate == dashCandidate { return dashReply }
+      if candidate == colonCandidate { return colonReply }
+      unscripted.append(candidate)
+      return .thrown(.transport)
+    }
+  }
+
+  /// Records what the production code asked to pull, and what the Add state was
+  /// at the moment it asked.
+  @MainActor private final class PullLog {
+    var pulled: [String] = []
+    var statesWhenCalled: [HostedModelAddState] = []
+  }
+
+  private func showScript(
+    advertisedID: String, dash: ShowReply, colon: ShowReply, parked: Bool = false
+  ) -> ShowScript {
+    ShowScript(advertisedID: advertisedID, dash: dash, colon: colon, parked: parked)
+  }
+
+  private func transport(_ script: ShowScript) -> HostedShowTransport {
+    { request in
+      let recorded = try Self.record(request)
+      await script.record(recorded)
+      guard let candidate = recorded.candidate else { throw ShowFailure.transport }
+
+      try await withThrowingTimeout(seconds: 5) {
+        while await script.isReleased() == false {
+          try Task.checkCancellation()
+          await Task.yield()
+        }
+      }
+
+      switch await script.reply(for: candidate) {
+      case .status(let code):
+        guard let url = request.url,
+          let response = HTTPURLResponse(
+            url: url, statusCode: code, httpVersion: nil, headerFields: nil)
+        else { throw ShowFailure.transport }
+        return (Data(), response)
+      case .nonHTTP:
+        guard let url = request.url else { throw ShowFailure.transport }
+        return (
+          Data(),
+          URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil)
+        )
+      case .thrown(let failure):
+        throw failure.asError
+      }
+    }
+  }
+
+  /// Decodes the request into a Sendable record. `throws` rather than forcing, so
+  /// a malformed request fails the test that produced it.
+  private nonisolated static func record(_ request: URLRequest) throws -> RecordedShowRequest {
+    let json: [String: String]
+    if let body = request.httpBody,
+      let decoded = try? JSONSerialization.jsonObject(with: body) as? [String: String]
+    {
+      json = decoded
+    } else {
+      json = [:]
+    }
+    return RecordedShowRequest(
+      url: request.url?.absoluteString ?? "",
+      method: request.httpMethod ?? "",
+      timeout: request.timeoutInterval,
+      contentType: request.value(forHTTPHeaderField: "Content-Type"),
+      bodyJSON: json)
+  }
+
+  private func starter(_ log: PullLog, service: @escaping @MainActor () -> OllamaSetupService)
+    -> HostedPullStarter
+  {
+    { name in
+      log.pulled.append(name)
+      log.statesWhenCalled.append(service().hostedModelAddState)
+    }
+  }
+
+  /// A cloud-catalog client that always serves the given ids, so a test can put
+  /// the service into `.loaded` before adding.
+  private func catalogClient(ids: [String]) -> OllamaCloudCatalogClient {
+    OllamaCloudCatalogClient { request, _ in
+      try stubbedResponse(ids: ids, for: request)
+    }
+  }
+
+  private func failedMessage(_ state: HostedModelAddState) -> String? {
+    if case .failed(_, let message) = state { return message }
+    return nil
+  }
+
+  private func failedID(_ state: HostedModelAddState) -> String? {
+    if case .failed(let id, _) = state { return id }
+    return nil
+  }
+
+  /// Runs one Add against a scripted daemon and returns everything worth
+  /// asserting. Both candidates must be scripted; neither has a default.
+  ///
+  /// The unexpected-candidate check lives HERE rather than in each test, so it
+  /// cannot be forgotten. It was originally written into two tests only, while a
+  /// comment claimed every test made it — and the tests it was missing from are
+  /// exactly the refusal tests, where a misspelled production candidate turns
+  /// into an indeterminate reply and passes as the refusal the test wanted.
+  private func add(
+    _ advertisedID: String, dash: ShowReply, colon: ShowReply,
+    on service: OllamaSetupService? = nil,
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) async -> (service: OllamaSetupService, script: ShowScript, log: PullLog) {
+    let script = showScript(advertisedID: advertisedID, dash: dash, colon: colon)
+    let service = service ?? OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    let log = PullLog()
+    await service.addHostedModel(
+      advertisedID: advertisedID,
+      show: transport(script),
+      startPull: starter(log, service: { service }))
+
+    let unscripted = await script.unscripted
+    #expect(
+      unscripted.isEmpty, "unexpected candidate(s): \(unscripted)",
+      sourceLocation: sourceLocation)
+
+    return (service, script, log)
+  }
+
+  /// Compares two catalogs field by field. `zip` after a count check rather than
+  /// subscripting, because `#expect` does not halt and a count regression would
+  /// otherwise turn a readable failure into an out-of-bounds crash.
+  private func expectSameCatalog(
+    _ actual: [OllamaModelCatalogEntry],
+    _ expected: [OllamaModelCatalogEntry],
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) {
+    #expect(actual.count == expected.count, sourceLocation: sourceLocation)
+    for (index, pair) in zip(actual, expected).enumerated() {
+      let (lhs, rhs) = pair
+      #expect(lhs.name == rhs.name, "name at \(index)", sourceLocation: sourceLocation)
+      #expect(
+        lhs.displayName == rhs.displayName, "displayName at \(index)",
+        sourceLocation: sourceLocation)
+      #expect(
+        lhs.parameterCount == rhs.parameterCount, "parameterCount at \(index)",
+        sourceLocation: sourceLocation)
+      #expect(
+        lhs.downloadSize == rhs.downloadSize, "downloadSize at \(index)",
+        sourceLocation: sourceLocation)
+      #expect(
+        lhs.qualityTier == rhs.qualityTier, "qualityTier at \(index)",
+        sourceLocation: sourceLocation)
+      #expect(
+        lhs.isDownloaded == rhs.isDownloaded, "isDownloaded at \(index)",
+        sourceLocation: sourceLocation)
+      #expect(
+        lhs.isRemote == rhs.isRemote, "isRemote at \(index)", sourceLocation: sourceLocation)
+    }
+  }
+
+  // MARK: - Construction
+
+  @Test("all three construction paths start with no Add in progress")
+  func everyInitialiserStartsIdle() {
+    #expect(OllamaSetupService().hostedModelAddState == .idle)
+    #expect(
+      OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient()).hostedModelAddState
+        == .idle)
+    #expect(
+      OllamaSetupService(downloadedModelsForTesting: []).hostedModelAddState == .idle)
+  }
+
+  // MARK: - The request itself
+
+  @Test("both candidates are probed in dash-then-colon order, as bare localhost POSTs")
+  func requestShape() async throws {
+    let result = await add("glm-5.2", dash: .status(200), colon: .status(404))
+
+    let recorded = await result.script.recorded
+    #expect(recorded.count == 2)
+
+    let expectedCandidates = ["glm-5.2-cloud", "glm-5.2:cloud"]
+    #expect(await result.script.candidates == expectedCandidates)
+
+    for (request, candidate) in zip(recorded, expectedCandidates) {
+      #expect(request.url == "http://localhost:11434/api/show")
+      #expect(request.method == "POST")
+      #expect(request.timeout == 5)
+      #expect(request.contentType == "application/json")
+      #expect(request.bodyJSON == ["model": candidate])
+      #expect(request.bodyJSON.count == 1)
+    }
+  }
+
+  // MARK: - Exactly one proven name
+
+  @Test("a proven dash name and an absent colon name pulls the dash name once")
+  func dashProvenPullsDash() async {
+    let result = await add("gpt-oss:120b", dash: .status(200), colon: .status(404))
+    #expect(result.log.pulled == ["gpt-oss:120b-cloud"])
+    #expect(result.service.hostedModelAddState == .idle)
+  }
+
+  @Test("an absent dash name and a proven colon name pulls the colon name once")
+  func colonProvenPullsColon() async {
+    let result = await add("glm-5.2", dash: .status(404), colon: .status(200))
+    #expect(result.log.pulled == ["glm-5.2:cloud"])
+    #expect(result.service.hostedModelAddState == .idle)
+  }
+
+  /// The anti-first-wins control. A 200 on the first candidate must not end the
+  /// resolution, because stopping there would make probe ORDER the authority on
+  /// which name is real.
+  @Test("the second candidate is probed even after the first returns a proven name")
+  func firstProvenStillProbesSecond() async {
+    let result = await add("glm-5.2", dash: .status(200), colon: .status(404))
+    #expect(await result.script.requestCount == 2)
+    #expect(await result.script.candidates == ["glm-5.2-cloud", "glm-5.2:cloud"])
+  }
+
+  @Test("the starter sees the Add state already cleared when it is invoked")
+  func starterObservesIdle() async {
+    let result = await add("glm-5.2", dash: .status(200), colon: .status(404))
+    #expect(result.log.statesWhenCalled == [.idle])
+  }
+
+  // MARK: - Refusals
+
+  @Test("two proven names refuse as ambiguous and pull nothing")
+  func bothProvenRefuses() async {
+    let result = await add("glm-5.2", dash: .status(200), colon: .status(200))
+    #expect(result.log.pulled.isEmpty)
+    #expect(
+      failedMessage(result.service.hostedModelAddState)
+        == "Ollama returned two valid names for this model. Add it in Ollama, then refresh this list."
+    )
+  }
+
+  @Test("two absent names refuse with the no-usable-name message and pull nothing")
+  func bothAbsentRefuses() async {
+    let result = await add("glm-5.2", dash: .status(404), colon: .status(404))
+    #expect(result.log.pulled.isEmpty)
+    #expect(
+      failedMessage(result.service.hostedModelAddState)
+        == "Ollama listed this model but did not return a name EnviousWispr can add. Try again after updating Ollama."
+    )
+  }
+
+  @Test("a proven name plus an indeterminate answer refuses without pulling")
+  func provenPlusIndeterminateRefuses() async {
+    let result = await add("glm-5.2", dash: .status(200), colon: .status(500))
+    #expect(result.log.pulled.isEmpty)
+    #expect(failedMessage(result.service.hostedModelAddState) == Self.unreachableMessage)
+  }
+
+  @Test("an indeterminate answer plus a proven name refuses without pulling")
+  func indeterminatePlusProvenRefuses() async {
+    let result = await add("glm-5.2", dash: .status(500), colon: .status(200))
+    #expect(result.log.pulled.isEmpty)
+    #expect(failedMessage(result.service.hostedModelAddState) == Self.unreachableMessage)
+  }
+
+  @Test("an absent name plus an indeterminate answer refuses without pulling")
+  func absentPlusIndeterminateRefuses() async {
+    let result = await add("glm-5.2", dash: .status(404), colon: .nonHTTP)
+    #expect(result.log.pulled.isEmpty)
+    #expect(failedMessage(result.service.hostedModelAddState) == Self.unreachableMessage)
+  }
+
+  @Test("a transport throw on the first probe still probes the second, and refuses")
+  func throwOnFirstStillProbesSecond() async {
+    let result = await add("glm-5.2", dash: .thrown(.transport), colon: .status(200))
+    #expect(await result.script.candidates == ["glm-5.2-cloud", "glm-5.2:cloud"])
+    #expect(result.log.pulled.isEmpty)
+    #expect(failedMessage(result.service.hostedModelAddState) == Self.unreachableMessage)
+  }
+
+  @Test("a transport throw on the second probe refuses even though the first was proven")
+  func throwOnSecondRefuses() async {
+    let result = await add("glm-5.2", dash: .status(200), colon: .thrown(.transport))
+    #expect(await result.script.requestCount == 2)
+    #expect(result.log.pulled.isEmpty)
+    #expect(failedMessage(result.service.hostedModelAddState) == Self.unreachableMessage)
+  }
+
+  @Test("a response that is not an HTTP response is indeterminate")
+  func nonHTTPIsIndeterminate() async {
+    let result = await add("glm-5.2", dash: .nonHTTP, colon: .nonHTTP)
+    #expect(result.log.pulled.isEmpty)
+    #expect(failedMessage(result.service.hostedModelAddState) == Self.unreachableMessage)
+  }
+
+  @Test(
+    "no status other than 200 or 404 is ever treated as an answer",
+    arguments: [201, 202, 401, 403, 429, 500, 503])
+  func otherStatusesAreIndeterminate(status: Int) async {
+    let result = await add("glm-5.2", dash: .status(status), colon: .status(status))
+    #expect(result.log.pulled.isEmpty)
+    #expect(failedMessage(result.service.hostedModelAddState) == Self.unreachableMessage)
+  }
+
+  /// Matches Chunk 3's contract: a transport-thrown cancellation is an ordinary
+  /// failure, not a special case, and it certainly never starts a pull.
+  @Test("a transport-thrown cancellation is indeterminate and starts no pull")
+  func cancellationIsIndeterminate() async {
+    let result = await add("glm-5.2", dash: .thrown(.cancelled), colon: .thrown(.cancelled))
+    #expect(result.log.pulled.isEmpty)
+    #expect(failedMessage(result.service.hostedModelAddState) == Self.unreachableMessage)
+  }
+
+  // MARK: - What a refusal must not disturb
+
+  @Test("no refusal changes the setup state, so Manage Models cannot vanish")
+  func refusalsLeaveSetupStateUntouched() async {
+    let combinations: [(ShowReply, ShowReply)] = [
+      (.status(200), .status(200)),
+      (.status(404), .status(404)),
+      (.status(200), .status(500)),
+      (.status(500), .status(200)),
+      (.nonHTTP, .nonHTTP),
+      (.thrown(.transport), .thrown(.transport)),
+      (.thrown(.cancelled), .status(404)),
+    ]
+    for (dash, colon) in combinations {
+      let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+      let entry = service.setupState
+      let result = await add("glm-5.2", dash: dash, colon: colon, on: service)
+      #expect(result.service.setupState == entry)
+      #expect(result.log.pulled.isEmpty)
+    }
+  }
+
+  /// All three refusal branches, not just the one that prompted the test.
+  /// Production refuses in three distinct places — both proven, both absent, and
+  /// the indeterminate default — and each is its own opportunity to disturb the
+  /// list. Covering one of three would have left two untested.
+  @Test("every refusal preserves the loaded cloud state and the complete catalog")
+  func refusalsRetainTheAdvertisedCatalog() async {
+    let combinations: [(ShowReply, ShowReply)] = [
+      (.status(200), .status(200)),
+      (.status(404), .status(404)),
+      (.status(200), .status(500)),
+    ]
+
+    for (dash, colon) in combinations {
+      let service = OllamaSetupService(cloudCatalogClient: catalogClient(ids: ["glm-5.2"]))
+      await service.refreshCloudCatalog()
+
+      let beforeCloud = service.cloudCatalog
+      let beforeCatalog = service.dynamicCatalog
+      #expect(beforeCatalog.contains { $0.name == "glm-5.2" })
+
+      let result = await add("glm-5.2", dash: dash, colon: colon, on: service)
+
+      #expect(result.log.pulled.isEmpty)
+      #expect(service.cloudCatalog == beforeCloud)
+      expectSameCatalog(service.dynamicCatalog, beforeCatalog)
+      #expect(service.dynamicCatalog.contains { $0.name == "glm-5.2" })
+    }
+  }
+
+  @Test("a failure is keyed to the row that started it, never another")
+  func failureIsKeyedToTheInitiatingRow() async {
+    let result = await add("kimi-k3", dash: .status(404), colon: .status(404))
+    #expect(failedID(result.service.hostedModelAddState) == "kimi-k3")
+    #expect(failedID(result.service.hostedModelAddState) != "glm-5.2")
+  }
+
+  // MARK: - Retry
+
+  @Test("a retry after a failure probes again and can succeed")
+  func retryAfterFailureCanSucceed() async {
+    let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    let first = await add("glm-5.2", dash: .status(404), colon: .status(404), on: service)
+    #expect(failedID(service.hostedModelAddState) == "glm-5.2")
+    #expect(first.log.pulled.isEmpty)
+
+    let second = await add("glm-5.2", dash: .status(404), colon: .status(200), on: service)
+    #expect(await second.script.requestCount == 2)
+    #expect(second.log.pulled == ["glm-5.2:cloud"])
+    #expect(service.hostedModelAddState == .idle)
+  }
+
+  // MARK: - Two clicks
+
+  /// The defect this exists to catch: `pullModel` cancels any in-flight pull, so
+  /// a second Add reaching it would cancel the first one's download.
+  ///
+  /// The second call is made while the first is PROVABLY parked mid-probe, and
+  /// the assertions before release prove the second did nothing. The post-release
+  /// half is the anti-vacuity control: without it, "no second request" would also
+  /// be satisfied by a first Add that had already finished.
+  @Test("a second Add during a resolution does nothing, and the first still completes")
+  func secondAddDuringResolutionIsRefused() async throws {
+    let script = showScript(
+      advertisedID: "glm-5.2", dash: .status(404), colon: .status(200), parked: true)
+    let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    let log = PullLog()
+
+    let first = Task { @MainActor in
+      await service.addHostedModel(
+        advertisedID: "glm-5.2",
+        show: transport(script),
+        startPull: starter(log, service: { service }))
+    }
+
+    try await waitUntilAdd("the first probe started") { await script.requestCount == 1 }
+    #expect(service.hostedModelAddState == .resolving(advertisedID: "glm-5.2"))
+
+    let otherScript = showScript(advertisedID: "kimi-k3", dash: .status(200), colon: .status(404))
+    await service.addHostedModel(
+      advertisedID: "kimi-k3",
+      show: transport(otherScript),
+      startPull: starter(log, service: { service }))
+
+    #expect(await otherScript.requestCount == 0)
+    #expect(log.pulled.isEmpty)
+    #expect(service.hostedModelAddState == .resolving(advertisedID: "glm-5.2"))
+
+    await script.release()
+    await first.value
+
+    #expect(await script.candidates == ["glm-5.2-cloud", "glm-5.2:cloud"])
+    #expect(log.pulled == ["glm-5.2:cloud"])
+    #expect(service.hostedModelAddState == .idle)
+    #expect(await otherScript.requestCount == 0)
+    // This test drives `addHostedModel` directly, so it does not inherit the
+    // unexpected-candidate check that `add(...)` performs for every other test.
+    #expect(await script.unscripted.isEmpty)
+    #expect(await otherScript.unscripted.isEmpty)
+  }
+
+  // MARK: - Helpers
+
+  private static let unreachableMessage =
+    "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment."
+
+  /// See the suite doc: `try Task.checkCancellation()` is what makes the bound
+  /// real, because `withThrowingTimeout` cancels the losing child and then awaits
+  /// it, and `Task.yield()` never throws.
+  private func waitUntilAdd(
+    _ label: String, seconds: Double = 5,
+    sourceLocation: SourceLocation = #_sourceLocation,
+    _ condition: @escaping @Sendable () async -> Bool
+  ) async throws {
+    do {
+      try await withThrowingTimeout(seconds: seconds) {
+        while await condition() == false {
+          try Task.checkCancellation()
+          await Task.yield()
+        }
+      }
+    } catch {
+      try #require(
+        false,
+        "waitUntilAdd never satisfied: \(label); underlying error: \(error)",
+        sourceLocation: sourceLocation)
+    }
+  }
+}

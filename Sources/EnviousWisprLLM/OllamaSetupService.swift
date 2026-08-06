@@ -117,6 +117,28 @@ package enum CloudCatalogState: Equatable {
   case failed(reason: String)
 }
 
+/// #1956: the state of a hosted-model Add, which has to resolve a pullable name
+/// before it can pull anything.
+///
+/// Both non-idle cases carry the advertised id they were started for, so a
+/// failure can only ever render beneath the row that caused it. An unkeyed
+/// `String?` would put one row's failure under another.
+package enum HostedModelAddState: Equatable, Sendable {
+  case idle
+  case resolving(advertisedID: String)
+  case failed(advertisedID: String, message: String)
+}
+
+/// #1956 injection seams for hosted Add. Method-local rather than stored, so no
+/// initializer carries them and the three construction paths are untouched.
+package typealias HostedShowTransport =
+  @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
+/// No `@Sendable`: a `@MainActor` function type is already `Sendable` under this
+/// package's Swift 6 mode (swift-concurrency-patterns
+/// `mainactor-fntype-implicitly-sendable`), so writing it would be redundant.
+package typealias HostedPullStarter = @MainActor (String) -> Void
+
 /// Guides users through Ollama installation, server startup, and model pulling.
 @MainActor
 @Observable
@@ -136,6 +158,10 @@ public final class OllamaSetupService {
   /// touches `setupState` — the hosted catalog is a limb, so its absence must
   /// degrade the list rather than replace the settings pane with an error.
   package private(set) var cloudCatalog: CloudCatalogState = .idle
+
+  /// #1956: the in-progress or failed hosted Add, if any. Written only by
+  /// `addHostedModel`, and never by any daemon, pull, or catalog path.
+  package private(set) var hostedModelAddState: HostedModelAddState = .idle
 
   private let cloudCatalogClient: OllamaCloudCatalogClient
   private let cloudCatalogNow: @MainActor () -> Date
@@ -682,6 +708,130 @@ public final class OllamaSetupService {
     }
     cloudCatalogRefreshTask = task
     await task.value
+  }
+
+  // MARK: - Hosted model Add (#1956)
+
+  /// What one `/api/show` probe proved about a candidate name.
+  ///
+  /// Three cases, not two, because "the daemon said no" and "we could not get an
+  /// answer" must never collapse. Only 404 is a denial; everything else — any
+  /// other status, a non-HTTP response, a transport throw, a cancellation — is
+  /// an absence of information, and treating it as denial is how a reachable
+  /// model gets told it does not exist.
+  private enum HostedCandidateOutcome: Equatable {
+    case proven
+    case absent
+    case indeterminate
+  }
+
+  private static let hostedAddAmbiguousMessage =
+    "Ollama returned two valid names for this model. Add it in Ollama, then refresh this list."
+
+  private static let hostedAddNoUsableNameMessage =
+    "Ollama listed this model but did not return a name EnviousWispr can add. Try again after updating Ollama."
+
+  /// Deliberately asserts no cause. Whether a signed-out user's `/api/show`
+  /// succeeds is unverified (plan §2.5.5), so naming a cause here would risk a
+  /// confident wrong claim in exactly the branch that exists to avoid one.
+  private static let hostedAddUnreachableMessage =
+    "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment."
+
+  /// Add a hosted model by resolving its pullable name against the daemon.
+  ///
+  /// Ollama advertises a hosted model under one id and pulls it under another,
+  /// and which suffix applies depends on whether the advertised id already
+  /// carries a tag. That pattern holds 18/18 in measurement and is still used
+  /// ONLY to order the two probes, never as proof: #1914's binding decision
+  /// forbids name-based classification, and the #1956 issue comment named that
+  /// exact inference as a reason to reject this whole approach. The daemon
+  /// decides; we only ask twice and require an unambiguous answer.
+  package func addHostedModel(advertisedID: String) async {
+    await addHostedModel(
+      advertisedID: advertisedID,
+      show: { try await URLSession.shared.data(for: $0) },
+      startPull: { self.pullModel($0) })
+  }
+
+  /// Injection overload. The production overload above routes through this exact
+  /// body, so a test never exercises a reimplementation of the resolution.
+  package func addHostedModel(
+    advertisedID: String,
+    show: HostedShowTransport,
+    startPull: HostedPullStarter
+  ) async {
+    // Global gate, not per-row: the view disables every hosted Add button while
+    // a resolution is in flight, and this is the floor under that. Without it a
+    // second Add reaching `pullModel` would cancel the first one's pull.
+    if case .resolving = hostedModelAddState { return }
+    hostedModelAddState = .resolving(advertisedID: advertisedID)
+
+    let dashCandidate = "\(advertisedID)-cloud"
+    let colonCandidate = "\(advertisedID):cloud"
+
+    // Both are probed unconditionally. Stopping at the first 200 would make
+    // probe ORDER the authority on the model's identity, which is the hidden
+    // assumption this design exists to remove.
+    let dashOutcome = await Self.probeHostedCandidate(dashCandidate, show: show)
+    let colonOutcome = await Self.probeHostedCandidate(colonCandidate, show: show)
+
+    switch (dashOutcome, colonOutcome) {
+    case (.proven, .absent):
+      hostedModelAddState = .idle
+      startPull(dashCandidate)
+    case (.absent, .proven):
+      hostedModelAddState = .idle
+      startPull(colonCandidate)
+    case (.proven, .proven):
+      // Refuse. Nothing in a 200 proves the two names denote one model, and
+      // registering the wrong one is worse than asking the user to choose.
+      hostedModelAddState = .failed(
+        advertisedID: advertisedID, message: Self.hostedAddAmbiguousMessage)
+    case (.absent, .absent):
+      hostedModelAddState = .failed(
+        advertisedID: advertisedID, message: Self.hostedAddNoUsableNameMessage)
+    default:
+      // At least one probe returned no information, so no combination here can
+      // prove a name. Never claims the model is missing.
+      hostedModelAddState = .failed(
+        advertisedID: advertisedID, message: Self.hostedAddUnreachableMessage)
+    }
+  }
+
+  /// Not `nonisolated`: `baseURL` is MainActor-isolated, and the transport is
+  /// `@Sendable` so it leaves the actor on its own. Matching the isolation of
+  /// the existing `refreshDownloadedModels` daemon call rather than inventing a
+  /// second convention.
+  private static func probeHostedCandidate(
+    _ candidate: String, show: HostedShowTransport
+  ) async -> HostedCandidateOutcome {
+    guard let request = hostedShowRequest(candidate: candidate) else { return .indeterminate }
+    do {
+      let (_, response) = try await show(request)
+      guard let http = response as? HTTPURLResponse else { return .indeterminate }
+      switch http.statusCode {
+      case 200: return .proven
+      case 404: return .absent
+      default: return .indeterminate
+      }
+    } catch {
+      return .indeterminate
+    }
+  }
+
+  /// The body carries exactly one field, the candidate name. No user content, no
+  /// identifier, and the existing localhost daemon boundary rather than a new
+  /// public-internet call.
+  private static func hostedShowRequest(candidate: String) -> URLRequest? {
+    guard let url = URL(string: "\(baseURL)/api/show"),
+      let body = try? JSONSerialization.data(withJSONObject: ["model": candidate])
+    else { return nil }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 5
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = body
+    return request
   }
 
   /// Refresh the list of downloaded models from GET /api/tags, parsing full metadata.
