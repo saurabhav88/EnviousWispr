@@ -6,32 +6,36 @@ section: "Polish"
 order: 6
 keywords: ["ollama", "offline ai", "local ai", "local model", "llama", "run ai locally", "no internet ai", "free local"]
 related: ["ollama-polish-not-working"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. Ollama is a separate free app that runs language models on your own Mac, and EnviousWispr can hand your dictation to one of them for tidying up. Once it is set up there is no key, no account, and none of your dictation goes to the internet.
+Ollama is a separate free application that runs language models directly on your Mac, and EnviousWispr can hand your dictation to one of those models for tidying up. Once you have completed the setup, you do not need an API key or an account, and your transcribed text stays on your Mac.
 
-This page is about those on-Mac models. Ollama also offers hosted models that run on its own servers, and those do send your transcribed text off your Mac. EnviousWispr lists them under their own heading in the model list and never selects one for you, so if you want everything to stay local, pick a model that is not in that group.
+Ollama offers both models that download to run on your machine and models that run on Ollama's own servers. The hosted models send your transcribed text over the internet. EnviousWispr lists them under their own heading in the model list and never selects one automatically, so if you want your text to stay local, choose a model that is not in that group.
 
-### Setting it up
+### Setting up Ollama
 
-1. Install Ollama from [ollama.com](https://ollama.com).
-2. Open it, so the Ollama app is running.
-3. Download a model. In Terminal that is `ollama pull llama3.2`, or you can do it from the Ollama app.
-4. In EnviousWispr, go to **Settings** \> **AI Polish**.
-5. Choose **Ollama**, then pick your model from the list.
+You need an internet connection to install Ollama and download a model, but polish works offline after that. Follow these steps to connect EnviousWispr to Ollama.
 
-Installing Ollama and downloading a model need an internet connection. Polishing after that does not.
+**Install Ollama.** Download and install the application from [ollama.com](https://ollama.com).
 
-EnviousWispr finds your installed models on its own, so they appear in that list without you telling it where they are. You can also download and remove models from the same page.
+**Open Ollama.** Launch the application so it runs in the background.
+
+**Download a model.** Open Terminal and run `ollama pull llama3.2`, or use the model download tools inside the Ollama application.
+
+**Open AI Polish settings.** Open EnviousWispr, go to **Settings**, and select **AI Polish**.
+
+**Select your model.** Choose **Ollama** as your provider, then pick your downloaded model from the list.
+
+EnviousWispr finds your installed models on its own, so they appear in that list without any configuration. You can also download and remove models from the same settings page.
 
 ### Picking a model
 
-Start with llama3.2, the one EnviousWispr suggests. If polish feels slow, try a smaller model. Larger models use more memory and take longer, and they do not automatically write better.
+Start with `llama3.2`, the model EnviousWispr suggests. If polish feels too slow, switch to a smaller model. Larger models use more memory and take longer, and they do not automatically produce better text.
 
 ### If Ollama is not running
 
-Polish is skipped and you get your text anyway, without the AI clean-up. Ollama has to be running by the time AI Polish starts, which is a moment after your speech is transcribed.
+If Ollama is not running when you dictate, the polish step is skipped. You still get your text, without the AI clean-up. Ollama has to be running by the time AI polish starts, which is a moment after your speech finishes transcribing.
 
-### A simpler local option
+### An option with nothing to install
 
-If you want AI Polish on your Mac with nothing separate to install, try EG-1, the model EnviousWispr built. It downloads from inside Settings and needs no other app.
+If you want AI polish on your Mac without installing a separate application, try EG-1, the model Envious Labs built for this. It downloads from inside the EnviousWispr settings and needs no other software.

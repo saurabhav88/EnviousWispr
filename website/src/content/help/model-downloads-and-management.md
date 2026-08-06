@@ -6,15 +6,15 @@ section: "Transcription"
 order: 3
 keywords: ["download model", "model download", "stuck downloading", "how big", "disk space", "gb", "storage", "redownload", "model files", "where are the models"]
 related: ["uninstalling-enviouswispr"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. It turns your speech into text using a model kept on your own Mac rather than on a server, so there is a download the first time and some disk space to manage afterwards.
+EnviousWispr keeps its speech models on your own Mac rather than on a server, which is what lets your audio stay on the device. The trade for that is a download the first time and some disk space to manage afterwards.
 
 ### The two downloads
 
-Parakeet, the engine you start with, is downloaded for you during setup, and you watch the progress as it goes. It is about 480 MB.
+**Parakeet.** This engine is downloaded for you during setup, and you watch the progress as it goes. It is about 480 MB.
 
-WhisperKit is not downloaded for you. If you switch to it, go to **Settings** \> **Transcription** and click **Download WhisperKit Model**. It is about 1.5 GB.
+**WhisperKit.** This engine is not downloaded for you. If you switch to it, go to **Settings** \> **Transcription** and click **Download WhisperKit Model**. It is about 1.5 GB.
 
 Each download is checked before it is used, so a broken or half-finished file is never loaded.
 
@@ -26,14 +26,18 @@ EnviousWispr retries some temporary network problems by itself. Anything else st
 
 The model stays in your Mac's memory between dictations so there is nothing to load next time. If you would rather have the memory back, go to **Settings** \> **Transcription** and change **Unload model after**.
 
-It arrives set to **Never**, so the model stays loaded. The other choices unload it after 2, 5, 10, 15 or 60 minutes of not being used, or straight after every recording. Each one costs you a short wait next time you dictate.
+It arrives set to **Never**, so the model stays loaded. The other choices unload it after 2, 5, 10, 15 or 60 minutes of not being used, or straight after every recording. Each one costs you a short wait the next time you dictate.
 
 ### Freeing up disk space
 
-For WhisperKit, open **Transcription** and use **Remove Model**. For EG-1, the polish model EnviousWispr built, open **AI Polish** and use the remove button there. Ollama models are removed from that same AI Polish page.
+You can remove models you no longer need to recover storage, and you can download any of them again later.
 
-You can download any of them again later.
+**Remove a WhisperKit model.** Open **Transcription** and use **Remove Model**.
+
+**Remove EG-1.** EG-1 is the polish model EnviousWispr built. Open **AI Polish** and use the remove button there.
+
+**Remove Ollama models.** Ollama models are removed from that same **AI Polish** page.
 
 ### The other speed setting
 
-How quickly a dictation _starts_ is a different setting, under **Microphone**. See [_First Word Gets Cut Off_](/help/first-word-gets-cut-off/).
+How quickly a dictation starts is a different setting, under **Microphone**. See [_First Word Gets Cut Off_](/help/first-word-gets-cut-off/).

@@ -6,26 +6,30 @@ section: "Polish"
 order: 5
 keywords: ["apple intelligence", "apple ai", "on device ai", "free ai", "macos 26", "set up apple intelligence", "enable apple intelligence"]
 related: ["apple-intelligence-not-available"]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
-EnviousWispr is a free dictation app for macOS. Apple Intelligence is Apple's own AI, built into newer versions of macOS, and EnviousWispr can use it to tidy up your dictation. It is free, there is no key to enter, and your text never leaves the Mac.
+Apple Intelligence is Apple's built-in system for processing language on your Mac, and EnviousWispr can use it to tidy up your dictation by removing filler words and fixing punctuation. This option is free to use, requires no API key, and keeps your text on your Mac.
 
 ### What you need
 
-- macOS 26 or later.
-- A Mac that supports Apple Intelligence.
-- Apple Intelligence switched on in System Settings.
+Before you select Apple Intelligence in EnviousWispr, make sure your Mac meets these requirements:
+
+- **macOS version.** You need macOS 26 or later.
+- **Hardware.** You need a Mac that supports Apple Intelligence.
+- **System setting.** You need Apple Intelligence switched on in System Settings.
 
 ### Setting it up
 
-1. Open **System Settings** \> **Apple Intelligence & Siri** and switch it on.
-2. In EnviousWispr, go to **Settings** \> **AI Polish**.
-3. Choose **Apple Intelligence**.
+Follow these steps to turn on Apple Intelligence polish inside EnviousWispr:
 
-You will know it worked when your next dictation comes back with the filler words gone and the punctuation fixed.
+1. **Open System Settings.** Open **System Settings**, click **Apple Intelligence & Siri**, and switch it on.
+2. **Open EnviousWispr settings.** Open EnviousWispr, go to **Settings**, and click **AI Polish**.
+3. **Select Apple Intelligence.** Choose **Apple Intelligence** from the list of polish options.
+
+You will know the setup worked when your next dictation comes back with the filler words removed and the punctuation corrected.
 
 ### If it is not available
 
-EnviousWispr checks your Mac and names the missing requirement on that same **AI Polish** page. The usual reasons are an older version of macOS, Apple Intelligence not switched on yet, or the model still downloading in the background.
+EnviousWispr checks your Mac and names the missing requirement directly on the **AI Polish** page. The usual reasons are an older version of macOS, Apple Intelligence not switched on yet, or the model still downloading in the background.
 
-See [_Apple Intelligence Not Available_](/help/apple-intelligence-not-available/) if you get stuck.
+Read [_Apple Intelligence Not Available_](/help/apple-intelligence-not-available/) if you run into any of those.
