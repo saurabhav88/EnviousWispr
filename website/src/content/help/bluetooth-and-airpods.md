@@ -8,17 +8,17 @@ keywords: ["airpods", "air pods", "bluetooth", "wireless headphones", "headphone
 related: ["choosing-your-microphone"]
 updated: 2026-08-05
 ---
-They work. There are two things worth knowing.
+EnviousWispr is a free dictation app for macOS. AirPods and Bluetooth headsets work with it, and there are two things worth knowing before you rely on them.
 
 ### Which microphone gets used
 
 On **Auto**, EnviousWispr records from whatever input your Mac is set to. If that is your AirPods, it records from your AirPods.
 
-To use your Mac's built-in microphone instead, either change the input in **System Settings** \> **Sound**, or pick it directly under **Microphone** in EnviousWispr.
+To use your Mac's built-in microphone instead, either change the input in **System Settings** \> **Sound**, or name it directly under **Settings** \> **Microphone** in EnviousWispr.
 
 ### Why your music dips when you record
 
-A Bluetooth headset has a music mode and a microphone mode, and it cannot do both at once. The moment anything uses the microphone, the headset switches, and audio quality drops for as long as it is recording.
+A Bluetooth headset has a music mode and a microphone mode, and it cannot do both at once. The moment anything uses the microphone, the headset switches over, and audio quality drops for as long as the recording lasts.
 
 That switch also takes a moment, which is why a first word can go missing if you start talking instantly. Hold your hotkey for a beat before speaking on the first recording after connecting.
 

@@ -8,17 +8,17 @@ keywords: ["microphone", "mic", "input device", "which microphone", "headset", "
 related: ["bluetooth-and-airpods", "empty-or-missing-transcription"]
 updated: 2026-08-05
 ---
-Open Settings and go to **Microphone**.
+EnviousWispr is a free dictation app for macOS. It can follow whichever microphone your Mac is set to, or use one you name yourself. Both choices live under **Settings** \> **Microphone**.
 
 ### Auto
 
-EnviousWispr records from whatever input your Mac is currently set to, and follows it when devices come and go. This is what you start with and it suits most setups.
+EnviousWispr records from whatever input your Mac is currently set to, and follows it as devices come and go. This is what you start with, and it suits most setups.
 
 To change what Auto follows, set your input in **System Settings** \> **Sound**.
 
 ### Choosing one yourself
 
-Pick a device from the list and EnviousWispr always uses it, whatever your Mac is set to. Worth doing if you keep ending up on the wrong microphone.
+Pick a device from the list and EnviousWispr always uses that one, whatever your Mac is set to. This is worth doing if you keep ending up on the wrong microphone. The picker shows the device name in place of Auto once you have chosen.
 
 ### If your microphone is unplugged mid-recording
 

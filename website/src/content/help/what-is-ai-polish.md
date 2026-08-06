@@ -8,7 +8,7 @@ keywords: ["polish", "ai polish", "cleanup", "clean up my text", "grammar", "pun
 related: ["choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
 updated: 2026-08-05
 ---
-AI Polish tidies up what you said. It fixes grammar and punctuation, cuts filler words, and is instructed to keep your meaning and your language.
+EnviousWispr is a free dictation app for macOS. AI Polish is the optional step it runs after transcribing you, to tidy up what you said. It fixes grammar and punctuation, cuts filler words, and is instructed to keep your meaning and your language.
 
 ### What it is designed not to do
 
@@ -21,10 +21,10 @@ AI can still get things wrong. EnviousWispr checks the result and rejects the ob
 
 ### It cannot lose your words
 
-If polish is unavailable, too slow, or gives back something unusable, EnviousWispr pastes the tidied-up text it already had before the AI step. You still get your dictation. How long the app waits depends on which option you chose.
+If polish is unavailable, too slow, or gives back something unusable, EnviousWispr pastes the tidied-up text it already had before the AI step. You still get your dictation. How long the app waits before giving up depends on which option you chose.
 
 ### What it starts as
 
-Apple Intelligence is the option you begin with. On a Mac that cannot run it, the AI step is quietly skipped and you get your text without it.
+Apple Intelligence is the option you begin with, and it needs macOS 26 or later. On a Mac that cannot run it, the AI step is quietly skipped and you get your text without it.
 
-There is one polish style, tuned for dictation. To change the option or switch polish off, open Settings and go to **AI Polish**.
+There is one polish style, tuned for dictation. To change the option or switch polish off, go to **Settings** \> **AI Polish**.

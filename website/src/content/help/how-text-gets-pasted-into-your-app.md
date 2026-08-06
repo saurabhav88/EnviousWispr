@@ -8,25 +8,25 @@ keywords: ["paste", "how does it type", "where does the text go", "delivery", "s
 related: ["clipboard-preservation", "paste-not-working"]
 updated: 2026-08-05
 ---
-EnviousWispr remembers the app and text field that were focused when you started recording, and delivers your text there. It works anywhere you can type: native Mac apps, browsers, and apps built on web technology such as VS Code, Slack, Discord and Notion.
+EnviousWispr is a free dictation app for macOS. It remembers the app and text field that were focused when you started recording, and delivers your text there. It works anywhere you can type: native Mac apps, browsers, and apps built on web technology such as VS Code, Slack, Discord and Notion.
 
 ### It picks the destination at the start
 
-Not at the end. AI Polish can take a few seconds, and you may have clicked elsewhere. Locking it in at the start means your words land where you were talking. Keep that field open until the text arrives.
+Not at the end. AI Polish can take a few seconds, and by then you may have clicked elsewhere. Locking the destination in at the start means your words land where you were talking. Keep that field open until the text arrives.
 
 ### It tries the cleanest method first
 
-Writing straight into the text box, without touching your clipboard. Some apps will not accept that, so EnviousWispr falls back to a normal paste, and then to the app's own Edit \> Paste menu.
+The cleanest method is writing straight into the text box, without touching your clipboard. Some apps will not accept that, so EnviousWispr falls back to an ordinary paste, and then to the app's own Edit \> Paste menu.
 
-If none of that works, your text goes to your clipboard and you are told, so you can paste it yourself. You never lose a dictation to a failed paste.
+If none of those work, your text goes to your clipboard and EnviousWispr tells you, so you can paste it yourself. You never lose a dictation to a failed paste.
 
 ### Spacing and capitals
 
-EnviousWispr looks at the text either side of your cursor and matches it. Dictating into the middle of a sentence adds a space where one is needed and keeps the capital letter right, instead of jamming your words against what is already there.
+EnviousWispr looks at the text on either side of your cursor and matches it. Dictating into the middle of a sentence adds a space where one is needed and keeps the capital letter right, instead of jamming your words up against what is already there.
 
 Capitals are matched in English, German, French, Italian, Spanish, Portuguese, Dutch, Danish, Swedish, Finnish, Russian and Turkish. German is handled on its own terms, so nouns keep the capital they are supposed to have. In any other language EnviousWispr takes care of the spacing and leaves your capitals exactly as you said them.
 
-You can switch this off under **Clipboard** in Settings, where it is called **Smart insertion**.
+You can switch this off under **Settings** \> **Clipboard**, where it is called **Smart insertion**.
 
 ### Your clipboard
 

@@ -8,7 +8,7 @@ keywords: ["free", "is this free", "price", "cost", "pricing", "subscription", "
 related: ["source-code-and-contributing", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
 updated: 2026-08-05
 ---
-Yes. Everything, with no subscription, no trial and no account.
+EnviousWispr is a free dictation app for macOS, and free means all of it. There is no subscription, no trial period and no account to create.
 
 ### What you get
 
@@ -16,14 +16,14 @@ Yes. Everything, with no subscription, no trial and no account.
 - AI Polish, including options that run entirely on your Mac.
 - Every recording mode, and hotkeys you can set to anything.
 - Your own dictionary of custom words, plus ready-made vocabulary packs.
-- Unlimited dictation, and History with no limit.
+- Unlimited dictation, and a History with no limit on how much it keeps.
 
 ### The one thing that can cost money
 
 If you choose OpenAI, Gemini or Claude for AI Polish, you bring your own key and pay that company for what you use. EnviousWispr charges nothing either way.
 
-You never have to. Apple Intelligence, EG-1, and Ollama models on your Mac all polish for free. Ollama's hosted models run on Ollama's servers and some of them need a paid Ollama plan.
+You never have to go that route. Apple Intelligence, EG-1, and Ollama models you download to your Mac all polish for free. Ollama's hosted models run on Ollama's servers, and some of those need a paid Ollama plan.
 
 ### Why free
 
-We want EnviousWispr in as many hands as possible. It is also open source, so you can read it, build it, and keep using it whatever we do later.
+We want EnviousWispr in as many hands as possible. It is also open source, so you can read it, build it, and keep using it whatever Envious Labs does later.

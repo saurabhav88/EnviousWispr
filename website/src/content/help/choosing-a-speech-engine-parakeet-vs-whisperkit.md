@@ -8,22 +8,24 @@ keywords: ["parakeet", "whisperkit", "whisper", "which engine", "engine", "speec
 related: ["multi-language-dictation", "why-is-my-dictation-inaccurate"]
 updated: 2026-08-05
 ---
-**Keep Parakeet.** It is what you start with, it is the faster of the two, and it covers 25 European languages. Switch to WhisperKit only if you dictate in a language it does not cover.
+EnviousWispr is a free dictation app for macOS, and it can turn your speech into text using either of two engines, Parakeet or WhisperKit.
 
-Both run on your Mac. Neither sends your audio anywhere, and neither needs an internet connection once its model is downloaded.
+**Keep Parakeet.** It is what you start with, it is the faster of the two, and it covers 25 European languages. Switch to WhisperKit only if you dictate in a language Parakeet does not cover.
+
+Both engines run on your Mac. Neither sends your audio anywhere, and neither needs an internet connection once its model has been downloaded.
 
 ### The difference
 
 |  | Parakeet | WhisperKit |
 |---|---|---|
-| Languages | 25 European | Over 90 |
+| Languages | 25 European | 99 |
 | Speed | Faster | Slower |
 | Setup | Downloaded for you during setup | You download it, about 1.5 GB |
 | Best for | Everyday dictation | Languages Parakeet does not cover |
 
 ### Switching
 
-1. Open Settings and go to **Transcription**.
+1. Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Transcription**.
 2. Pick your engine.
 3. The first time you choose WhisperKit, click **Download WhisperKit Model**. It does not download on its own.
 
@@ -31,8 +33,8 @@ The change applies to your next recording.
 
 ### What happens when you dictate
 
-1. The app takes the audio it recorded.
-2. It trims the silence at the start and end.
+1. EnviousWispr takes the audio it recorded.
+2. It trims the silence at the start and the end.
 3. Your engine reads it and writes out the text.
 4. Any clean-up you have switched on runs, then the text is pasted.
 

@@ -7,15 +7,15 @@ order: 1
 keywords: ["update", "updates", "new version", "upgrade", "auto update", "check for updates", "latest version"]
 updated: 2026-08-05
 ---
-EnviousWispr checks for updates by itself and tells you when one is ready. Click to install, and the app restarts into the new version.
+EnviousWispr is a free dictation app for macOS. It checks for updates by itself and tells you when one is ready. Click to install, and the app restarts into the new version.
 
 ### Checking now
 
-Open the EnviousWispr window and click **Check for Updates**.
+Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Check for Updates**.
 
 ### Where updates come from
 
-Every update is downloaded from our official release page, and its signature is checked before it installs. An update that fails that check is refused.
+Every update is downloaded from the official EnviousWispr release page, and its signature is checked before it installs. An update that fails that check is refused.
 
 ### What is new
 

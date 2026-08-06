@@ -8,24 +8,24 @@ keywords: ["custom words", "vocabulary", "add a word", "my name", "names", "jarg
 related: ["why-is-my-dictation-inaccurate", "how-custom-word-correction-works"]
 updated: 2026-08-05
 ---
-If the app keeps getting a name or a term wrong, teach it. Open Settings and go to **Your Words**.
+EnviousWispr is a free dictation app for macOS. When it keeps getting a name or a term wrong, you can teach it the spelling you want.
 
 ### Adding one
 
-1. Open Settings and go to **Your Words**.
+1. Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Your Words**.
 2. Add the spelling you want.
 
-From then on, when you say it, you get your spelling. If the app writes "Chat G P T", adding "ChatGPT" fixes it.
+From then on, when you say that word, you get your spelling. If EnviousWispr writes "Chat G P T", adding "ChatGPT" fixes it.
 
 ### Worth adding
 
 - Names of people you write to.
 - Your company and product names.
-- Terms your field uses that nobody else does.
+- Terms your field uses that nobody outside it does.
 
 ### Ready-made packs
 
-The same page offers vocabulary packs you can switch on: Tech, Medical, Legal, Brands and Names. Turn on the ones that match your work rather than typing those terms in yourself.
+The same page offers vocabulary packs you can switch on: Tech, Medical, Legal, Brands and Names. Turn on the ones that match your work rather than typing all those terms in yourself.
 
 ### Importing from Contacts
 
@@ -41,8 +41,8 @@ This needs macOS 26 or later with Apple Intelligence switched on, and it happens
 
 ### When your words are used
 
-Your spellings are applied to your text before AI Polish runs, on every dictation, whether or not polish is on.
+Your spellings are applied to your text before AI Polish runs, on every dictation, whether or not polish is switched on.
 
-OpenAI, Gemini and Claude are also given your list, so their rewriting keeps your spellings. Whether Ollama is depends on the model you picked. Apple Intelligence and EG-1 are not, because they do better with shorter instructions and your words have already been applied by then.
+OpenAI, Gemini and Claude are also given your list, so their rewriting keeps your spellings. Whether Ollama is given the list depends on the model you picked. Apple Intelligence and EG-1 are not given it, because they do better with shorter instructions and your words have already been applied by then.
 
 To move your words between Macs, or bring them in from another app, see [_Importing and Exporting Custom Words_](/help/importing-and-exporting-custom-words/).

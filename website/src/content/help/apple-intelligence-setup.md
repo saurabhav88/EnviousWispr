@@ -8,7 +8,7 @@ keywords: ["apple intelligence", "apple ai", "on device ai", "free ai", "macos 2
 related: ["apple-intelligence-not-available"]
 updated: 2026-08-05
 ---
-Apple Intelligence tidies up your text on your Mac. It is free, there is no key to enter, and nothing leaves the machine.
+EnviousWispr is a free dictation app for macOS. Apple Intelligence is Apple's own AI, built into newer versions of macOS, and EnviousWispr can use it to tidy up your dictation. It is free, there is no key to enter, and your text never leaves the Mac.
 
 ### What you need
 
@@ -19,11 +19,13 @@ Apple Intelligence tidies up your text on your Mac. It is free, there is no key 
 ### Setting it up
 
 1. Open **System Settings** \> **Apple Intelligence & Siri** and switch it on.
-2. In EnviousWispr, open Settings and go to **AI Polish**.
+2. In EnviousWispr, go to **Settings** \> **AI Polish**.
 3. Choose **Apple Intelligence**.
+
+You will know it worked when your next dictation comes back with the filler words gone and the punctuation fixed.
 
 ### If it is not available
 
-EnviousWispr checks and tells you which requirement is missing, on that same page. The usual reasons are an older macOS, Apple Intelligence not switched on yet, or the model still downloading in the background.
+EnviousWispr checks your Mac and names the missing requirement on that same **AI Polish** page. The usual reasons are an older version of macOS, Apple Intelligence not switched on yet, or the model still downloading in the background.
 
 See [_Apple Intelligence Not Available_](/help/apple-intelligence-not-available/) if you get stuck.

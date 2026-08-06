@@ -9,7 +9,7 @@ related: ["spoken-punctuation-and-emoji"]
 seeAlso: "spoken-text-formatting-dates-numbers-emails"
 updated: 2026-08-05
 ---
-EnviousWispr writes numbers, money, dates, times, phone numbers, email addresses and web addresses the way you would type them, not the way you said them. This is always on and there is nothing to set up.
+EnviousWispr is a free dictation app for macOS. It writes numbers, money, dates, times, phone numbers, email addresses and web addresses the way you would type them, not the way you said them. This is always on and there is nothing to set up.
 
 ### What you get
 
@@ -22,14 +22,14 @@ EnviousWispr writes numbers, money, dates, times, phone numbers, email addresses
 
 ### Small numbers stay as words
 
-Numbers below ten are written out and ten upwards use digits, which is standard style in most writing.
+Numbers below ten are written out, and ten upwards use digits. That is standard style in most writing.
 
 ### It happens before AI Polish
 
-So if polish is off or fails, your formatting is what gets pasted. A successful AI polish may still reword it.
+So if polish is switched off or fails, this formatting is what gets pasted. A successful AI polish may still reword it.
 
 ### Where it stops
 
-Some phrases are genuinely ambiguous. "Meet at one twenty" is a time and "paid one twenty" is money, and only the surrounding words say which. Those are left alone rather than guessed at.
+Some phrases are genuinely ambiguous. "Meet at one twenty" is a time and "paid one twenty" is money, and only the surrounding words say which. EnviousWispr leaves those alone rather than guessing.
 
-This works on English dictation. Other languages are left as spoken.
+This works on English dictation. Other languages are written as spoken.

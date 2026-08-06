@@ -8,7 +8,7 @@ keywords: ["how correction works", "why didnt my word work", "fuzzy match", "sou
 related: ["adding-custom-words"]
 updated: 2026-08-05
 ---
-You add the spelling you want. EnviousWispr then recognises the many ways it can come out wrong, and fixes them.
+EnviousWispr is a free dictation app for macOS. When you teach it a custom word, you give it one spelling, and it then recognises the many ways that word can come out wrong and corrects them for you.
 
 ### Three kinds of mistake it catches
 
@@ -18,10 +18,10 @@ You add the spelling you want. EnviousWispr then recognises the many ways it can
 
 ### It happens first
 
-Your words are corrected before anything else touches the text, so they are already right by the time filler removal and AI Polish see it.
+Your words are corrected before anything else touches the text, so they are already right by the time filler removal and AI Polish see them.
 
 ### If a word is not being caught
 
-- Check the spelling you saved is exactly what you want to see.
-- Say it as you normally would, then look in **History** to see what the app actually heard. That tells you what to add.
-- Very short words are harder to match safely, because doing so would change words you did not mean.
+- Check that the spelling you saved is exactly what you want to see.
+- Say the word as you normally would, then look in **History** to see what EnviousWispr actually heard. That tells you which version to add.
+- Very short words are harder to match safely, because matching them would change words you did not mean.
