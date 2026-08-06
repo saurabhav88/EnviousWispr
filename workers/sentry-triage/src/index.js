@@ -167,8 +167,20 @@ export async function handleTriage(body, env) {
   // Rate alerts take a DIFFERENT path entirely, before any of the error-issue
   // policy below. Scoring one as an error is what produced the empty card: it
   // has no user count to score, no release to scope to, and no category to name.
+  //
+  // BEING FIRST MEANS IT SKIPS THE TERMINAL-ACTION GUARDS BELOW, so the spike
+  // path carries its own action eligibility rather than inheriting theirs by
+  // placement. Cloud review caught this: a metric issue arriving as `resolved`,
+  // `archived` or `assigned` reached handleSpike and would buzz whenever the
+  // six-hour throttle happened to be absent or expired - a Discord post saying
+  // errors are spiking, sent because the alert had just been RESOLVED.
+  //
+  // Fixed in the policy rather than by moving this branch below the guards.
+  // Placement is not a contract: the next edit that reorders these blocks would
+  // silently reopen it, and `decideSpike` is where a reader looks for what the
+  // spike path does.
   if (isMetricIssue(issue)) {
-    await handleSpike({ issue, issueId, env, lookupDeadlineAt, operationDeadlineAt, now: startedAt });
+    await handleSpike({ action, issue, issueId, env, lookupDeadlineAt, operationDeadlineAt, now: startedAt });
     return;
   }
 
@@ -624,7 +636,19 @@ export function buildSpikeFailOpenEmbed({ issueId, title, permalink }) {
 }
 
 /** Pure, so the whole policy is testable without a KV or a network. */
-export function decideSpike({ throttleLookup, now }) {
+export function decideSpike({ action, throttleLookup, now }) {
+  // ELIGIBILITY FIRST, mirroring rule 1 for error issues. Only a firing posts:
+  // `created`, or `unresolved` when Sentry reopens the metric issue on the next
+  // breach. Everything else - `resolved`, `archived`, `assigned` - is somebody
+  // tidying up, and a spike card sent because an alert was RESOLVED is worse
+  // than no card at all.
+  //
+  // Checked BEFORE the throttle, so an ineligible action costs no KV read and
+  // cannot be rescued by a fail-open throttle path.
+  if (action !== "created" && action !== "unresolved") {
+    return { post: false, reason: "ineligible-action" };
+  }
+
   // A throttle READ failure fails open, exactly as rule 6 does for errors:
   // never let an unavailable KV suppress a real signal.
   if (throttleLookup?.status !== "complete") {
@@ -639,9 +663,16 @@ export function decideSpike({ throttleLookup, now }) {
   return { post: true, reason: "throttle-expired" };
 }
 
-async function handleSpike({ issue, issueId, env, lookupDeadlineAt, operationDeadlineAt, now }) {
+async function handleSpike({ action, issue, issueId, env, lookupDeadlineAt, operationDeadlineAt, now }) {
   const kvKey = spikeKey(issueId);
-  const decision = decideSpike({ throttleLookup: await readThrottle(env, kvKey), now });
+  // The eligibility check inside decideSpike needs no KV read, so an ineligible
+  // action is decided before one is spent.
+  const eligibility = decideSpike({ action, throttleLookup: null, now });
+  if (!eligibility.post && eligibility.reason === "ineligible-action") {
+    console.log(`[sentry-triage] Spike ${issueId} ${action} — no post`);
+    return;
+  }
+  const decision = decideSpike({ action, throttleLookup: await readThrottle(env, kvKey), now });
   if (!decision.post) {
     console.log(`[sentry-triage] Spike ${issueId} suppressed (${decision.reason})`);
     return;

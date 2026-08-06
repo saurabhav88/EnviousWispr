@@ -33,9 +33,9 @@ function fakeKV(seed = {}) {
 /** The real shape Sentry sends for a metric-alert firing: issueCategory
  * "metric", userCount 0, no release, no error.category. Every one of those is
  * why scoring it as an error produced the empty card. */
-function metricPayload(overrides = {}) {
+function metricPayload(overrides = {}, action = "created") {
   return JSON.stringify({
-    action: "created",
+    action,
     data: {
       issue: {
         id: "7654321",
@@ -141,18 +141,18 @@ test("a metric payload DOES carry data.issue, which is why the old guard never f
 // ── Throttle policy ─────────────────────────────────────────────────────────
 
 test("decideSpike enforces six hours on its own key, ignoring priority and regression", () => {
-  assert.equal(decideSpike({ throttleLookup: { status: "complete", value: null }, now: NOW }).post, true);
+  assert.equal(decideSpike({ action: "created", throttleLookup: { status: "complete", value: null }, now: NOW }).post, true);
 
   const fresh = { status: "complete", value: { lastNotifiedAt: NOW - 5 * HOUR, priority: "spike" } };
-  assert.equal(decideSpike({ throttleLookup: fresh, now: NOW }).post, false);
+  assert.equal(decideSpike({ action: "created", throttleLookup: fresh, now: NOW }).post, false);
 
   const expired = { status: "complete", value: { lastNotifiedAt: NOW - 6 * HOUR, priority: "spike" } };
-  assert.equal(decideSpike({ throttleLookup: expired, now: NOW }).post, true);
+  assert.equal(decideSpike({ action: "created", throttleLookup: expired, now: NOW }).post, true);
 });
 
 test("a throttle READ failure fails open, exactly as the error path does", () => {
   for (const status of ["unavailable", "malformed", undefined]) {
-    const r = decideSpike({ throttleLookup: { status }, now: NOW });
+    const r = decideSpike({ action: "created", throttleLookup: { status }, now: NOW });
     assert.equal(r.post, true, `status ${status} must not suppress`);
     assert.equal(r.reason, "throttle-unavailable-failopen");
   }
@@ -429,4 +429,53 @@ test("the card truncates a runaway breakdown instead of exceeding Discord's fiel
     assert.ok(field.value.length <= 1024, `field ${field.name} is ${field.value.length} chars, over Discord's 1024 limit`);
   }
   assert.ok(embed.title.length <= 256);
+});
+
+test("a terminal action never posts a spike card", async () => {
+  // The spike branch runs BEFORE the terminal-action guards, so it carries its
+  // own eligibility rather than inheriting theirs by placement. Without it, a
+  // metric issue arriving as `resolved` would buzz whenever the six-hour
+  // throttle happened to be absent or expired: a Discord post saying errors are
+  // spiking, sent because the alert had just been RESOLVED. Cloud review, #1968.
+  for (const action of ["resolved", "archived", "assigned", "ignored", ""]) {
+    const h = harness();
+    try {
+      await handleTriage(metricPayload({}, action), h.env);
+      assert.equal(h.embeds.length, 0, `${action} must not post`);
+      assert.equal(h.requests.length, 0, `${action} must not spend a Sentry call`);
+      assert.equal(h.kv.store.has("spike:7654321"), false, `${action} must not write a throttle`);
+    } finally {
+      h.restore();
+    }
+  }
+});
+
+test("both firing actions DO post", async () => {
+  // Two-way control. Eligibility that refused everything would satisfy the test
+  // above while silently disabling the whole card.
+  for (const action of ["created", "unresolved"]) {
+    const h = harness();
+    try {
+      await handleTriage(metricPayload({}, action), h.env);
+      assert.equal(h.embeds.length, 1, `${action} must post`);
+    } finally {
+      h.restore();
+    }
+  }
+});
+
+test("an ineligible action is decided without spending a KV read", async () => {
+  // Cheap, and it also means a fail-open throttle path cannot rescue an action
+  // that was never eligible.
+  let reads = 0;
+  const kv = fakeKV();
+  const counting = { ...kv, async get(key) { reads += 1; return kv.get(key); } };
+  const h = harness({ kv: counting });
+  try {
+    await handleTriage(metricPayload({}, "resolved"), h.env);
+    // One read is the replay-protection lookup that runs before any policy.
+    assert.equal(reads, 1, "no throttle read for an ineligible action");
+  } finally {
+    h.restore();
+  }
 });
