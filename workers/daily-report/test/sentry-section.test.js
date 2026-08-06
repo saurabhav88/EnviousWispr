@@ -628,8 +628,10 @@ test("two problems that would render identically are separated by their issue id
     ],
   });
   const text = lines.join("\n");
-  assert.match(text, /app crash \(paste_failed\) EW-34|app crash EW-34/);
-  assert.match(text, /EW-3V/);
+  // These fixtures carry no exception type, so both land on the bare "app
+  // crash" label and the issue id is the ONLY thing separating them.
+  assert.match(text, /1 person {3}app crash EW-34, delivery not proven/);
+  assert.match(text, /1 person {3}app crash EW-3V, delivery not proven/);
   // The row that does NOT collide keeps its clean label, so the id is a
   // targeted disambiguation rather than noise on every line.
   assert.match(text, /5 people {3}microphone capture stalled(\n|$)/);

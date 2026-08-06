@@ -9,6 +9,12 @@
 #     one is scoped to CI release uploads only and 403s on event reads (org
 #     tokens on this Sentry plan only support the org:ci scope; event:read
 #     requires a personal token instead). The worker never writes back to Sentry.
+#     #1965 UPDATE: the rate-alert breakdown reads
+#     `/organizations/<org>/events/`, and the CURRENT triage token 403s on THAT
+#     endpoint too (measured 2026-08-06) even though it reads per-issue events
+#     fine. The token needs org scope added, or the spike card degrades to its
+#     fail-open form: one honest buzz saying the rule fired and the breakdown
+#     could not be read. The per-issue error path is unaffected either way.
 #   GITHUB_ISSUES_READ_TOKEN — fine-grained GitHub token scoped to
 #     saurabhav88/EnviousWispr, repository permission Issues:read ONLY, no writes
 #     (#1470). Reads open issues to check whether a fingerprint already carries an
@@ -26,6 +32,11 @@ compatibility_date = "2026-04-15"
 
 [vars]
 GITHUB_REPO = "saurabhav88/EnviousWispr"
+# Scopes the rate-alert breakdown query to this project (#1965). Identifier
+# only, no credential. The org lives as a module constant in src/index.js, which
+# has owned it since this worker was written; adding a second copy here would
+# make two authorities for one value.
+SENTRY_PROJECT_ID = "4511097112428544"
 
 [[kv_namespaces]]
 binding = "SENTRY_DEDUP"
