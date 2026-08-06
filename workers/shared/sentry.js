@@ -160,22 +160,38 @@ function requireConfig(env) {
 /** One HTTP attempt, bounded by BOTH a per-request timeout and the caller's
  * absolute deadline. Modelled on sentry-triage's `fetchBefore`, which already
  * had to solve this for the webhook path. */
-async function fetchBounded(url, token, { fetchFn, deadlineAt, requestTimeoutMs, queryName }) {
+async function fetchBounded(url, token, { fetchFn, deadlineAt, requestTimeoutMs, queryName }, consume) {
   const remainingMs = deadlineAt === null ? requestTimeoutMs : deadlineAt - Date.now();
   if (remainingMs <= 0) throw new SentryDeadlineError(queryName);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(1, Math.min(requestTimeoutMs, remainingMs)));
   try {
-    return await fetchFn(url, {
+    const res = await fetchFn(url, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       signal: controller.signal,
     });
-  } catch (_) {
+    // THE BODY IS READ INSIDE THE TIMER, not after it.
+    //
+    // An earlier version returned the response and let the caller await
+    // `res.json()`, by which point `finally` had already cleared the abort
+    // timer. Headers arriving in time says nothing about the body: a server
+    // that stalls mid-stream would hang that read with no bound at all,
+    // overrunning both the per-request timeout AND the caller's absolute
+    // deadline. In the triage worker that deadline is a hard Cloudflare
+    // `waitUntil` cancellation, so the overrun would not be a slow post but a
+    // silently dropped one.
+    return await consume(res);
+  } catch (err) {
     // An abort is indistinguishable from a network error at the catch site
     // unless the signal is consulted, and reporting a deadline as a network
     // fault would send the reader looking for an outage that never happened.
     if (controller.signal.aborted) throw new SentryDeadlineError(queryName);
+    // Errors the CONSUMER raised are deliberate classifications and pass
+    // through unchanged; only a genuine transport failure is sanitized. Without
+    // this, a shape error would be relabelled as a network error and its cause
+    // lost.
+    if (err instanceof SentryShapeError || err instanceof SentryQueryError) throw err;
     // The caught error is DISCARDED rather than wrapped. See SentryNetworkError.
     throw new SentryNetworkError(queryName);
   } finally {
@@ -202,41 +218,47 @@ async function requestJson(url, queryName, config, opts) {
   const maxAttempts = RETRY_DELAY_MS.length + 1;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const res = await fetchBounded(url, config.token, {
-      fetchFn,
-      deadlineAt,
-      requestTimeoutMs,
-      queryName,
-    });
+    // Everything that touches the response happens INSIDE the bounded region,
+    // including reading and discarding the body, so no part of it can outlive
+    // the timeout.
+    const outcome = await fetchBounded(
+      url,
+      config.token,
+      { fetchFn, deadlineAt, requestTimeoutMs, queryName },
+      async (res) => {
+        if (res?.ok) {
+          let body;
+          try {
+            body = await res.json();
+          } catch (_) {
+            // A 200 whose body is not JSON is a shape failure, never a
+            // transient one. Retrying it would burn the window and then report
+            // the same thing, with the original cause three attempts further
+            // away.
+            throw new SentryShapeError(queryName, "body was not JSON");
+          }
+          return { ok: true, body, headers: res.headers };
+        }
 
-    if (res?.ok) {
-      let body;
-      try {
-        body = await res.json();
-      } catch (_) {
-        // A 200 whose body is not JSON is a shape failure, never a transient
-        // one. Retrying it would burn the window and then report the same
-        // thing, with the original cause three attempts further away.
-        throw new SentryShapeError(queryName, "body was not JSON");
+        // Draining the failed body matters specifically because a retry
+        // immediately opens a NEW outbound request: an uncancelled body holds
+        // its Cloudflare subrequest connection open, and enough of those across
+        // retries could exhaust the account's outbound-connection ceiling.
+        if (res?.body) {
+          try {
+            await res.body.cancel();
+          } catch (_) {
+            // The status remains the authoritative failure; a failed cancel
+            // must not mask it.
+          }
+        }
+        return { ok: false, status: res?.status };
       }
-      return { body, headers: res.headers };
-    }
+    );
 
-    const status = res?.status;
-    // Draining the failed body matters specifically because a retry immediately
-    // opens a NEW outbound request: an uncancelled body holds its Cloudflare
-    // subrequest connection open, and enough of those across retries could
-    // exhaust the account's outbound-connection ceiling. Same reasoning, and
-    // the same best-effort swallow, as posthog.js.
-    if (res?.body) {
-      try {
-        await res.body.cancel();
-      } catch (_) {
-        // The status remains the authoritative failure; a failed cancel must
-        // not mask it.
-      }
-    }
+    if (outcome.ok) return { body: outcome.body, headers: outcome.headers };
 
+    const status = outcome.status;
     if (attempt === maxAttempts || !RETRYABLE_SENTRY_STATUSES.has(status)) {
       throw new SentryQueryError(queryName, status);
     }

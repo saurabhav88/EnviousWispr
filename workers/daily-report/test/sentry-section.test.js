@@ -1030,3 +1030,61 @@ test("an event total too large to be exact is refused, never published", async (
   });
   await assert.rejects(() => fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn }), TypeError);
 });
+
+test("a stalled response BODY is bounded by the same deadline as the headers", async () => {
+  // Headers arriving in time say nothing about the body. An earlier version
+  // cleared the abort timer as soon as the response object existed, so a server
+  // that stalled mid-stream hung the `json()` read with no bound at all,
+  // overrunning both the per-request timeout and the caller's absolute
+  // deadline. In the triage worker that deadline is a hard Cloudflare
+  // cancellation, so the overrun is a silently dropped post, not a slow one.
+  const fetchFn = async (_url, init) => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    body: { cancel: async () => {} },
+    // Never resolves on its own; only the abort signal ends it.
+    json: () => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+    }),
+  });
+
+  const started = Date.now();
+  await assert.rejects(
+    () => discoverAggregate(ENV, { queryName: "q", fields: ["count()"], statsPeriod: "24h" },
+      { ...OPTS, fetchFn, requestTimeoutMs: 50 }),
+    SentryDeadlineError
+  );
+  // Bounded in fact, not merely in intent: without the fix this never returns.
+  assert.ok(Date.now() - started < 5000, "the body read must be abandoned at the timeout");
+});
+
+test("a failed response still has its body drained inside the bounded region", async () => {
+  // The drain protects Cloudflare's outbound-connection ceiling across retries.
+  // It moved inside the timer with the rest of the response handling, so this
+  // asserts it did not get lost in the move.
+  let cancelled = 0;
+  const fetchFn = async () => ({
+    ok: false,
+    status: 500,
+    headers: { get: () => null },
+    body: { cancel: async () => { cancelled += 1; } },
+  });
+  await assert.rejects(
+    () => discoverAggregate(ENV, { queryName: "q", fields: ["count()"], statsPeriod: "24h" },
+      { ...OPTS, fetchFn }),
+    SentryQueryError
+  );
+  assert.equal(cancelled, 2, "every failed attempt drains its body exactly once");
+});
+
+test("a shape error is not relabelled as a network error on its way out", async () => {
+  // The consumer now runs inside the transport's catch, so a deliberate
+  // classification it raises must pass through rather than being sanitized into
+  // SentryNetworkError and losing its cause.
+  const { fetchFn } = recorder(() => response(200, "not-json"));
+  await assert.rejects(
+    () => discoverAggregate(ENV, { queryName: "q", fields: ["count()"], statsPeriod: "24h" }, { ...OPTS, fetchFn }),
+    (err) => err instanceof SentryShapeError && !(err instanceof SentryNetworkError)
+  );
+});
