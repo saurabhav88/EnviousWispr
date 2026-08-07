@@ -1438,9 +1438,11 @@ struct OllamaSetupServiceHostedAddTests {
   @Test("a per-registration timestamp does not make two aliases look different")
   func aliasMatchIgnoresModifiedAt() {
     let a = OllamaSetupService.hostedIdentityFingerprint(
-      fromShowBody: Data(#"{"details":{"parent_model":"m","family":"test"},"modified_at":"2026-01-01"}"#.utf8))
+      fromShowBody: Data(
+        #"{"details":{"parent_model":"m","family":"test"},"modified_at":"2026-01-01"}"#.utf8))
     let b = OllamaSetupService.hostedIdentityFingerprint(
-      fromShowBody: Data(#"{"details":{"parent_model":"m","family":"test"},"modified_at":"2026-12-31"}"#.utf8))
+      fromShowBody: Data(
+        #"{"details":{"parent_model":"m","family":"test"},"modified_at":"2026-12-31"}"#.utf8))
     #expect(a != nil)
     #expect(a == b)
   }
@@ -1852,6 +1854,29 @@ struct OllamaSetupServiceHostedAddTests {
     await second.value
     #expect(log.pulled == ["glm-5.2:cloud"])
     #expect(service.hostedModelAddState == .idle)
+  }
+
+  /// Review r8: leaving Ollama ends the whole episode, a failure included.
+  /// Otherwise a stale error re-renders under that row on return, as if a
+  /// current attempt had just failed.
+  @Test("leaving Ollama clears a previous Add failure, not only a resolution")
+  func leavingOllamaClearsAFailure() async {
+    let result = await add("glm-5.2", dash: .status(404), colon: .status(404))
+    #expect(failedMessage(result.service.hostedModelAddState) != nil, "precondition: it failed")
+
+    result.service.cancelHostedResolution()
+    #expect(result.service.hostedModelAddState == .idle)
+  }
+
+  /// Two-way control: clearing on provider exit must not clear it at any other
+  /// time, or a failure would vanish before the user could read it.
+  @Test("an Add failure survives until the user actually leaves Ollama")
+  func failureSurvivesUntilProviderExit() async {
+    let result = await add("glm-5.2", dash: .status(404), colon: .status(404))
+    result.service.cancelPull()
+    #expect(
+      failedMessage(result.service.hostedModelAddState) != nil,
+      "cancelling a pull is not leaving Ollama and must not clear the failure")
   }
 
   /// Cancelling an unrelated LOCAL download must not abandon a hosted Add.

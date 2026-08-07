@@ -846,9 +846,12 @@ public final class OllamaSetupService {
   /// Call this for "the user left Ollama", never for "a pull was cancelled".
   public func cancelHostedResolution() {
     hostedAddEpoch &+= 1
-    if case .resolving = hostedModelAddState {
-      hostedModelAddState = .idle
-    }
+    // EVERY non-idle state, not just `.resolving` (review r8). A `.failed`
+    // survives a provider round trip otherwise, so leaving Ollama and coming
+    // back later re-renders an old error under a row where nothing has been
+    // attempted since — and the conditions that produced it may well have
+    // changed. Leaving Ollama ends the whole episode, failure included.
+    hostedModelAddState = .idle
   }
 
   /// Add a hosted model by resolving its pullable name against the daemon.
