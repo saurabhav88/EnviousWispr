@@ -59,6 +59,117 @@ import Testing
     #expect(result.verifiedComponents == ["Encoder.mlmodelc"])
   }
 
+  @Test func staleInnerFileForcesComponentToFail() async throws {
+    // #1372: a manifest revision that removes or renames a file INSIDE an
+    // existing component leaves the stale file on disk. Every MANIFEST-listed
+    // file here still hashes correctly, but a file the manifest no longer
+    // names survives beside them, inside Encoder.mlmodelc.
+    let (install, metadata, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+    try write(
+      Data("leftover-from-a-prior-revision".utf8), under: install,
+      path: "Encoder.mlmodelc/stale_leftover.bin")
+    let gate = try admission(files: files, dirs: (install, metadata))
+    let result = await gate.validateExistingCache()
+    #expect(result.failedComponents == ["Encoder.mlmodelc"])
+    #expect(result.verifiedComponents == ["vocab.json"])
+  }
+
+  @Test func symlinkedComponentRootForcesComponentToFail() async throws {
+    // Cloud review P2: when the COMPONENT ROOT itself (Encoder.mlmodelc) is
+    // a symlink to a directory holding all expected files plus stale ones,
+    // `fileExists(atPath:isDirectory:)` follows it and the OLD code's
+    // enumerator could return zero descendants for a symlink root, so the
+    // stale contents were never examined and the component was admitted.
+    let (install, metadata, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    let realTarget = install.deletingLastPathComponent().appendingPathComponent(
+      "real-encoder-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: realTarget, withIntermediateDirectories: true)
+    for f in files where f.component == "Encoder.mlmodelc" {
+      let relative = String(f.path.dropFirst("Encoder.mlmodelc/".count))
+      let dest = realTarget.appendingPathComponent(relative)
+      try FileManager.default.createDirectory(
+        at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try f.content.write(to: dest)
+    }
+    try Data("stale-outside-the-manifest".utf8).write(
+      to: realTarget.appendingPathComponent("stale.bin"))
+    try write(
+      files.first { $0.component == "vocab.json" }!.content, under: install, path: "vocab.json")
+    try FileManager.default.createSymbolicLink(
+      atPath: install.appendingPathComponent("Encoder.mlmodelc").path,
+      withDestinationPath: realTarget.path)
+
+    let gate = try admission(files: files, dirs: (install, metadata))
+    let result = await gate.validateExistingCache()
+    #expect(result.failedComponents == ["Encoder.mlmodelc"])
+  }
+
+  @Test func unlistedSymlinkForcesComponentToFail() async throws {
+    // Cloud review P2: a symlink is neither a regular file nor a directory,
+    // so an `isRegularFile`-only check silently skipped an unlisted
+    // dangling link left by manual cache manipulation, and the component
+    // could be admitted despite containing it.
+    let (install, metadata, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+    try FileManager.default.createSymbolicLink(
+      atPath: install.appendingPathComponent("Encoder.mlmodelc/dangling.bin").path,
+      withDestinationPath: "/nonexistent-target")
+    let gate = try admission(files: files, dirs: (install, metadata))
+    let result = await gate.validateExistingCache()
+    #expect(result.failedComponents == ["Encoder.mlmodelc"])
+  }
+
+  @Test func unreadableSubdirectoryFailsClosed() async throws {
+    // Whole-diff review P2: `FileManager.enumerator` silently STOPS
+    // traversal on an unreadable subdirectory rather than throwing, so a
+    // stale file hidden behind that failure would never be seen. An
+    // unverified traversal must never read as "nothing extra found."
+    let (install, metadata, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+    let lockedDir = install.appendingPathComponent("Encoder.mlmodelc/locked", isDirectory: true)
+    try FileManager.default.createDirectory(at: lockedDir, withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: lockedDir.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: lockedDir.path)
+    }
+    let gate = try admission(files: files, dirs: (install, metadata))
+    let result = await gate.validateExistingCache()
+    #expect(result.failedComponents == ["Encoder.mlmodelc"])
+  }
+
+  @Test func exactComponentContentsStayVerified() async throws {
+    // Two-way control for the test above: EXACTLY the manifest-listed files,
+    // nothing extra — the new check must not false-positive on the common case.
+    let (install, metadata, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+    let gate = try admission(files: files, dirs: (install, metadata))
+    let result = await gate.validateExistingCache()
+    #expect(result.failedComponents.isEmpty)
+    #expect(result.verifiedComponents.contains("Encoder.mlmodelc"))
+  }
+
+  @Test func looseComponentHasNoExtraFilesCheck() {
+    // A loose (non-directory) component has nothing to recurse into.
+    let (path:path, content:_, component:component) = ManifestFixture.smallFiles[2]
+    let installDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("admission-loose-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(
+      at: installDirectory, withIntermediateDirectories: true)
+    try? Data("{}".utf8).write(to: installDirectory.appendingPathComponent(path))
+    let manifest = try! ManifestFixture.manifest(files: ManifestFixture.smallFiles)
+    let expected = manifest.filesByComponent.first { $0.component == component }!.files
+    #expect(
+      !CacheAdmission.hasExtraFiles(
+        component: component, expectedFiles: expected, installDirectory: installDirectory))
+  }
+
   @Test func corruptComponentMemberWithCorrectSizeIsCaughtByHash() async throws {
     // Same-size, different-bytes corruption: only the hash gate sees it —
     // this is exactly what presence/size checks (the old world) admit.
