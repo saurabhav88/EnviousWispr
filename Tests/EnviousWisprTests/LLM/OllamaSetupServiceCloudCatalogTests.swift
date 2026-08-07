@@ -1081,6 +1081,8 @@ struct OllamaSetupServiceHostedAddTests {
     case statusWithIdentity(Int, String)
     /// A 200 with a body that is not JSON at all, so the fingerprint fails.
     case statusUnreadableBody(Int)
+    /// A 200 whose JSON parses but carries no model identity — the r7 shape.
+    case statusIdentityFreeBody(Int)
     case nonHTTP
     case thrown(ShowFailure)
   }
@@ -1210,6 +1212,12 @@ struct OllamaSetupServiceHostedAddTests {
             url: url, statusCode: code, httpVersion: nil, headerFields: nil)
         else { throw ShowFailure.transport }
         return (Self.showBody(parent: identity), response)
+      case .statusIdentityFreeBody(let code):
+        guard let url = request.url,
+          let response = HTTPURLResponse(
+            url: url, statusCode: code, httpVersion: nil, headerFields: nil)
+        else { throw ShowFailure.transport }
+        return (Data(#"{"modified_at":"2026-08-06T00:00:00Z"}"#.utf8), response)
       case .statusUnreadableBody(let code):
         guard let url = request.url,
           let response = HTTPURLResponse(
@@ -1430,11 +1438,57 @@ struct OllamaSetupServiceHostedAddTests {
   @Test("a per-registration timestamp does not make two aliases look different")
   func aliasMatchIgnoresModifiedAt() {
     let a = OllamaSetupService.hostedIdentityFingerprint(
-      fromShowBody: Data(#"{"details":{"parent_model":"m"},"modified_at":"2026-01-01"}"#.utf8))
+      fromShowBody: Data(#"{"details":{"parent_model":"m","family":"test"},"modified_at":"2026-01-01"}"#.utf8))
     let b = OllamaSetupService.hostedIdentityFingerprint(
-      fromShowBody: Data(#"{"details":{"parent_model":"m"},"modified_at":"2026-12-31"}"#.utf8))
+      fromShowBody: Data(#"{"details":{"parent_model":"m","family":"test"},"modified_at":"2026-12-31"}"#.utf8))
     #expect(a != nil)
     #expect(a == b)
+  }
+
+  /// Review r7: the dangerous shape is PARSEABLE and vacuous, not unparseable.
+  /// `{}` and a body carrying only `modified_at` both fingerprint to the same
+  /// empty document, so two of them would compare equal and register a model
+  /// neither response identified.
+  @Test("a 200 that says nothing about the model produces no fingerprint")
+  func identityFreeBodyHasNoFingerprint() {
+    for body in [
+      #"{}"#, #"{"modified_at":"2026-08-06T00:00:00Z"}"#,
+      #"{"details":{}}"#, #"{"details":{"family":""},"model_info":{}}"#,
+    ] {
+      #expect(
+        OllamaSetupService.hostedIdentityFingerprint(fromShowBody: Data(body.utf8)) == nil,
+        "\(body) should not fingerprint")
+    }
+  }
+
+  /// Either identity signal suffices. `parent_model` is deliberately NOT
+  /// required: measured 2026-08-06 it is populated for a cloud model and EMPTY
+  /// for a local one, so requiring it would reject a legitimate body.
+  @Test("either model_info or details.family is enough identity")
+  func eitherIdentitySignalSuffices() {
+    #expect(
+      OllamaSetupService.hostedIdentityFingerprint(
+        fromShowBody: Data(#"{"details":{"family":"gptoss"}}"#.utf8)) != nil)
+    #expect(
+      OllamaSetupService.hostedIdentityFingerprint(
+        fromShowBody: Data(#"{"model_info":{"general.parameter_count":20}}"#.utf8)) != nil)
+    // And an empty parent_model does not disqualify a body that has the rest.
+    #expect(
+      OllamaSetupService.hostedIdentityFingerprint(
+        fromShowBody: Data(#"{"details":{"parent_model":"","family":"llama"}}"#.utf8)) != nil)
+  }
+
+  /// End to end: two identity-free 200s must refuse rather than register.
+  @Test("two identity-free responses refuse instead of pulling")
+  func identityFreePairRefuses() async {
+    let result = await add(
+      "glm-5.2",
+      dash: .statusIdentityFreeBody(200),
+      colon: .statusIdentityFreeBody(200))
+    #expect(result.log.pulled.isEmpty)
+    #expect(
+      failedMessage(result.service.hostedModelAddState)
+        == "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment.")
   }
 
   /// Two-way control on the fingerprint: a genuinely different model must not
@@ -1442,9 +1496,9 @@ struct OllamaSetupServiceHostedAddTests {
   @Test("different models produce different fingerprints")
   func differentModelsDifferentFingerprints() {
     let a = OllamaSetupService.hostedIdentityFingerprint(
-      fromShowBody: Data(#"{"details":{"parent_model":"one"}}"#.utf8))
+      fromShowBody: Data(#"{"details":{"parent_model":"one","family":"test"}}"#.utf8))
     let b = OllamaSetupService.hostedIdentityFingerprint(
-      fromShowBody: Data(#"{"details":{"parent_model":"two"}}"#.utf8))
+      fromShowBody: Data(#"{"details":{"parent_model":"two","family":"test"}}"#.utf8))
     #expect(a != b)
   }
 

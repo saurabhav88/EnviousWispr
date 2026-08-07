@@ -793,6 +793,29 @@ public final class OllamaSetupService {
       var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     else { return nil }
     json.removeValue(forKey: "modified_at")
+
+    // The body must actually SAY something about the model. Review r7: a 200
+    // carrying `{}` or only `modified_at` parses fine and fingerprints to the
+    // same empty document on both candidates, so two content-free responses
+    // would compare equal and register a model neither of them identified.
+    // Rejecting an unparseable body was not enough — the dangerous shape is
+    // parseable and vacuous.
+    //
+    // `model_info` OR `details.family`, not `parent_model`: measured 2026-08-06,
+    // `parent_model` is populated for a cloud model (`gpt-oss:20b`) and EMPTY
+    // for a local one (`llama3.2:latest`, `gemma3n:e4b`), so requiring it would
+    // reject a legitimate body. Both alternatives were present and non-empty on
+    // all three, so the requirement is satisfied with redundancy while `{}`
+    // still fails.
+    //
+    // Refusing wrongly costs an honest "could not confirm" the user can retry;
+    // accepting wrongly registers an unverified model. The asymmetry is why this
+    // fails closed.
+    let details = json["details"] as? [String: Any]
+    let hasFamily = ((details?["family"] as? String) ?? "").isEmpty == false
+    let hasModelInfo = ((json["model_info"] as? [String: Any]) ?? [:]).isEmpty == false
+    guard hasFamily || hasModelInfo else { return nil }
+
     guard
       let canonical = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
     else { return nil }
