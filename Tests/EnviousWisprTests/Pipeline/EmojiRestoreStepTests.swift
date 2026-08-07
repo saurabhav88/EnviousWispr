@@ -303,6 +303,24 @@ import Testing
     #expect(s.lastRun == nil)
   }
 
+  /// The cap must NOT apply to Apple Intelligence (cloud review r8). AFM restored emoji for
+  /// every successful polish before #1948, bounded only by Apple's own 4096-token preflight
+  /// (~3,000 words). Capping it here would silently withdraw restoration from long AFM
+  /// dictations — a behaviour change on a path this change is not about.
+  @Test("a long Apple Intelligence dictation still restores, uncapped (#1948 r8)")
+  func longAppleIntelligenceStillRestores() async throws {
+    let long = (0..<(EmojiRestoreStep.maxAlignmentTokens + 200))
+      .map { "word\($0 % 97)" }.joined(separator: " ")
+    var c = TextProcessingContext(text: long + " 🙏", language: nil)
+    c.llmProvider = LLMProvider.appleIntelligence.rawValue
+    c.promptFamily = nil
+    c.polishedText = long + "."
+    let s = step()
+    let out = try await s.process(c)
+    #expect(out.polishedText?.contains("🙏") == true, "AFM restoration must not be capped")
+    #expect(s.lastRun?.restored == 1)
+  }
+
   /// Two-way control at the boundary: just UNDER the cap must still restore, so the guard
   /// cannot be satisfied by disabling restoration outright.
   @Test("a dictation just under the cap still restores")

@@ -106,19 +106,15 @@ final class EmojiRestoreStep: TextProcessingStep {
     // from `(provider, model, polishRanRemote)`.
     //
     // Widening later is cheap and should stay evidence-led: add the family, bring the numbers.
-    let restores: Bool
-    if context.llmProvider == LLMProvider.appleIntelligence.rawValue {
-      // AFM returns before the family stamp, so it is matched by provider and has no family.
-      restores = true
-    } else {
-      // BOTH must hold. `.localFixed` is only reachable through Ollama today, but a gate
-      // that relies on that stays correct only by accident — and the first version of this
-      // gate was wrong precisely because it trusted one field to imply the other.
-      restores =
-        context.llmProvider == LLMProvider.ollama.rawValue
-        && context.promptFamily == .localFixed
-    }
-    guard restores else { return context }
+    // AFM returns before the family stamp, so it is matched by provider and has no family.
+    let isAppleIntelligence = context.llmProvider == LLMProvider.appleIntelligence.rawValue
+    // BOTH must hold. `.localFixed` is only reachable through Ollama today, but a gate that
+    // relies on that stays correct only by accident — and the first version of this gate was
+    // wrong precisely because it trusted one field to imply the other.
+    let isLocalOllama =
+      context.llmProvider == LLMProvider.ollama.rawValue
+      && context.promptFamily == .localFixed
+    guard isAppleIntelligence || isLocalOllama else { return context }
     // Polish produced no distinct output (disabled / too-short bypass #1022 /
     // provider `.none`): delivery uses the emoji-bearing `ctx.text`, nothing to do.
     guard let polished = context.polishedText else { return context }
@@ -165,9 +161,18 @@ final class EmojiRestoreStep: TextProcessingStep {
     // URL is ONE whitespace chunk and many alignment tokens, so a whitespace guard passes
     // precisely the pathological inputs it exists to reject. The unit has to match the
     // quantity being bounded.
-    let preTokens = EmojiRestorer.alignmentTokenCount(context.text)
-    let postTokens = EmojiRestorer.alignmentTokenCount(polished)
-    guard max(preTokens, postTokens) <= Self.maxAlignmentTokens else { return context }
+    //
+    // SCOPED TO THE NEWLY WIDENED PATH (cloud review r8). Apple Intelligence restored emoji
+    // for EVERY successful polish before #1948, bounded incidentally by Apple's own
+    // 4096-token preflight — roughly 3,000 words, ~484 ms by the table above. Applying this
+    // cap to AFM as well would silently withdraw restoration from long AFM dictations, which
+    // is a behaviour change on a path this change is not about. Ollama has no equivalent
+    // ceiling and its output cap SCALES with input, which is the exposure being bounded.
+    if isLocalOllama {
+      let preTokens = EmojiRestorer.alignmentTokenCount(context.text)
+      let postTokens = EmojiRestorer.alignmentTokenCount(polished)
+      guard max(preTokens, postTokens) <= Self.maxAlignmentTokens else { return context }
+    }
 
     let start = CFAbsoluteTimeGetCurrent()
     let result = restorer.restore(polished: polished, prePolish: context.text)
