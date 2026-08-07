@@ -51,6 +51,6 @@ This needs macOS 26 or later with Apple Intelligence switched on, and it all hap
 
 Your custom spellings are applied to your transcribed text before AI Polish runs, on every dictation, whether or not polish is switched on.
 
-OpenAI, Gemini, Claude, and every Ollama model also receive your custom word list, so their rewrites keep your spellings. Apple Intelligence and EG-1 do not receive it, because they do better with shorter instructions, and your words have already been applied to the text by that stage.
+OpenAI, Gemini, Claude, and every Ollama model except EG-1 also receive your custom word list, so their rewrites keep your spellings. Apple Intelligence and EG-1 do not receive it, because they do better with shorter instructions, and your words have already been applied to the text by that stage.
 
 To move your words between Macs, or bring them in from another app, read [_Importing and Exporting Custom Words_](/help/importing-and-exporting-custom-words/).
