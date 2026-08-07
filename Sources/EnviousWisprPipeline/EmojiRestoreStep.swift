@@ -78,28 +78,34 @@ final class EmojiRestoreStep: TextProcessingStep {
     // Clear a prior dictation's stamp; only an AFM run below re-stamps it.
     lastRun = nil
 
-    // Provider gate (`llmProvider` rawValue, set by `LLMPolishStep`).
+    // Restore for the two paths whose model measurably strips emoji, and ONLY those.
     //
-    // #1948 added Ollama, MEASURED rather than assumed. Replaying this exact restorer over
-    // the 98 emoji-bearing corpus cases and the stored L3 outputs: `qwen2.5:3b` went from
-    // 53/98 cases keeping every input emoji to **98/98** (55 dropped, 55 restored) and
-    // `llama3.2` from 6/98 to **98/98** (115 dropped, 115 restored), with **zero** already-
-    // complete cases disturbed. The algorithm was never AFM-specific — it LCS-aligns word
-    // streams and re-inserts only deletions — so the old gate was scope, not a constraint.
+    // #1948 added the local Ollama prompt, MEASURED rather than assumed. Replaying this exact
+    // restorer over the 98 emoji-bearing corpus cases and the stored L3 outputs: `qwen2.5:3b`
+    // went from 53/98 cases keeping every input emoji to **98/98** (55 dropped, 55 restored)
+    // and `llama3.2` from 6/98 to **98/98** (115 dropped, 115 restored), with **zero**
+    // already-complete cases disturbed. The algorithm was never AFM-specific — it LCS-aligns
+    // word streams and re-inserts only deletions — so the old gate was scope, not a
+    // constraint.
     //
-    // Cloud providers and EG-1 are deliberately NOT included. There is no measurement for
-    // them here, the fixed v6 prompt already instructs emoji preservation, and widening a
-    // guard past its evidence is how an unmeasured regression ships. Adding one is cheap
-    // when someone measures it: extend this set and bring the numbers.
-    let restoringProviders: Set<String> = [
-      LLMProvider.appleIntelligence.rawValue,
-      LLMProvider.ollama.rawValue,
-    ]
-    // `llmProvider` is optional; a nil provider restores nothing, exactly as the previous
-    // `== appleIntelligence.rawValue` comparison behaved.
-    guard let provider = context.llmProvider, restoringProviders.contains(provider) else {
-      return context
+    // Keyed on the PROMPT FAMILY, not the provider. Cloud review caught that gating on
+    // `provider == .ollama` silently included HOSTED Ollama and EG-1-served-through-Ollama,
+    // because `LLMPolishStep` stamps every Ollama success with the same provider rawValue —
+    // so the code included two paths the comment beside it claimed to exclude. Neither is
+    // measured here: hosted models take the fixed v6 prompt that already instructs emoji
+    // preservation, and EG-1 takes its training prompt. `promptFamily` is the planner's own
+    // decision carried on the context, so this reads the answer rather than rebuilding it
+    // from `(provider, model, polishRanRemote)`.
+    //
+    // Widening later is cheap and should stay evidence-led: add the family, bring the numbers.
+    let restores: Bool
+    if context.llmProvider == LLMProvider.appleIntelligence.rawValue {
+      // AFM returns before the family stamp, so it is matched by provider.
+      restores = true
+    } else {
+      restores = context.promptFamily == PromptFamily.localFixed.rawValue
     }
+    guard restores else { return context }
     // Polish produced no distinct output (disabled / too-short bypass #1022 /
     // provider `.none`): delivery uses the emoji-bearing `ctx.text`, nothing to do.
     guard let polished = context.polishedText else { return context }

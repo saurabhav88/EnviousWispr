@@ -754,6 +754,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // too. Apple Intelligence cannot reach this stamp because its branch returns
     // above.
     ctx.polishRanRemote = ollamaRemote
+    // #1948: same stamp site, same reasoning — set only after a real polish returned.
+    ctx.promptFamily = plan.family.rawValue
     return ctx
   }
 

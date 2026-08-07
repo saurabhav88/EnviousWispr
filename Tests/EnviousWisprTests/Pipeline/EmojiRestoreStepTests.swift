@@ -125,9 +125,15 @@ import Testing
   /// With the restorer both reach 98/98, and zero already-complete cases are disturbed. These
   /// tests pin the wiring that makes that true; `EmojiRestorerTests` owns the algorithm.
 
-  private func ollamaContext(pre: String, polished: String?) -> TextProcessingContext {
+  /// A LOCAL Ollama context: provider plus the family `LLMPolishStep` stamps from
+  /// `PolishPlan.family`. Both are required — the gate keys on the family, because the
+  /// provider alone cannot distinguish local from hosted or from EG-1-served-via-Ollama.
+  private func ollamaContext(
+    pre: String, polished: String?, family: PromptFamily = .localFixed
+  ) -> TextProcessingContext {
     var c = TextProcessingContext(text: pre, language: nil)
     c.llmProvider = LLMProvider.ollama.rawValue
+    c.promptFamily = family.rawValue
     c.polishedText = polished
     return c
   }
@@ -155,35 +161,71 @@ import Testing
     #expect(s.lastRun?.dropped == 0)
   }
 
-  /// The gate is a SET, so this pins its exact membership. A future widening past measured
-  /// evidence has to change this test and bring numbers with it.
+  /// Cloud review caught that gating on `provider == .ollama` silently included HOSTED
+  /// Ollama and EG-1-served-through-Ollama, because `LLMPolishStep` stamps all three with the
+  /// same provider rawValue — the code included two paths its own comment excluded. The gate
+  /// keys on the prompt FAMILY now, and this pins every Ollama sub-path separately so the
+  /// distinction cannot silently collapse back to the provider.
   @Test(
-    "only Apple Intelligence and Ollama restore; every other provider is untouched (#1948)",
+    "only the LOCAL Ollama family restores; hosted and EG-1-via-Ollama do not (#1948)",
     arguments: [
-      (LLMProvider.appleIntelligence.rawValue, true),
-      (LLMProvider.ollama.rawValue, true),
-      (LLMProvider.openAI.rawValue, false),
-      (LLMProvider.gemini.rawValue, false),
-      (LLMProvider.claude.rawValue, false),
-      (LLMProvider.egOne.rawValue, false),
-      (LLMProvider.none.rawValue, false),
+      (PromptFamily.localFixed, true),
+      (PromptFamily.cloudFixed, false),  // hosted Ollama — takes the fixed v6 prompt
+      (PromptFamily.egOneFixed, false),  // EG-1 served through Ollama — training prompt
     ])
-  func gateMembership(provider: String, shouldRestore: Bool) async throws {
-    var c = TextProcessingContext(text: "shipped it 🚀", language: nil)
-    c.llmProvider = provider
-    c.polishedText = "Shipped it."
+  func ollamaFamilyGate(family: PromptFamily, shouldRestore: Bool) async throws {
     let s = step()
-    let out = try await s.process(c)
+    let out = try await s.process(
+      ollamaContext(pre: "shipped it 🚀", polished: "Shipped it.", family: family))
     #expect((out.polishedText?.contains("🚀") ?? false) == shouldRestore)
     #expect((s.lastRun != nil) == shouldRestore)
   }
 
-  /// A nil provider must restore nothing — the pre-#1948 `==` comparison behaved this way and
-  /// the `Set.contains` rewrite had to preserve it.
-  @Test("nil provider restores nothing (#1948 optional-handling regression)")
+  /// Every non-Ollama provider except Apple Intelligence stays untouched, whatever family
+  /// happens to be stamped. A future widening past measured evidence has to change this test
+  /// and bring numbers with it.
+  @Test(
+    "cloud providers and EG-1 native are untouched (#1948)",
+    arguments: [
+      LLMProvider.openAI.rawValue,
+      LLMProvider.gemini.rawValue,
+      LLMProvider.claude.rawValue,
+      LLMProvider.egOne.rawValue,
+      LLMProvider.none.rawValue,
+    ])
+  func nonRestoringProviders(provider: String) async throws {
+    var c = TextProcessingContext(text: "shipped it 🚀", language: nil)
+    c.llmProvider = provider
+    c.promptFamily = PromptFamily.cloudFixed.rawValue
+    c.polishedText = "Shipped it."
+    let s = step()
+    let out = try await s.process(c)
+    #expect(out.polishedText == "Shipped it.")
+    #expect(s.lastRun == nil)
+  }
+
+  /// Apple Intelligence returns before the family stamp, so it must still be matched by
+  /// provider with a nil family. Without this, moving the gate to the family would have
+  /// silently switched AFM restoration off — the regression that motivated #761.
+  @Test("Apple Intelligence still restores with NO family stamped (#1948)")
+  func appleIntelligenceRestoresWithoutFamily() async throws {
+    var c = TextProcessingContext(text: "shipped it 🚀", language: nil)
+    c.llmProvider = LLMProvider.appleIntelligence.rawValue
+    c.promptFamily = nil
+    c.polishedText = "Shipped it."
+    let s = step()
+    let out = try await s.process(c)
+    #expect(out.polishedText?.contains("🚀") == true)
+    #expect(s.lastRun?.restored == 1)
+  }
+
+  /// A nil provider AND a nil family must restore nothing — the state a skipped or failed
+  /// polish leaves behind, where `polishedText` came from somewhere other than a model.
+  @Test("nil provider and nil family restore nothing (#1948)")
   func nilProviderUntouched() async throws {
     var c = TextProcessingContext(text: "shipped it 🚀", language: nil)
     c.llmProvider = nil
+    c.promptFamily = nil
     c.polishedText = "Shipped it."
     let s = step()
     let out = try await s.process(c)
