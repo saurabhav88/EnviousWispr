@@ -108,9 +108,74 @@ struct CacheAdmission {
         }
         onFileValidated?(file.resolvedInstallPath)
       }
+      // Every manifest-listed file can hash correctly while a STALE file the
+      // current manifest no longer lists survives beside them (#1372) — the
+      // loop above only ever looks at files THIS manifest names, so it has no
+      // way to notice one it doesn't. Catch it here, once, after the listed
+      // files are already known-good.
+      if componentOK,
+        Self.hasExtraFiles(
+          component: component, expectedFiles: files, installDirectory: installDirectory)
+      {
+        componentOK = false
+      }
       if componentOK { verified.insert(component) } else { failed.insert(component) }
     }
     return ValidationResult(verifiedComponents: verified, failedComponents: failed)
+  }
+
+  /// Whether the component's on-disk directory contains any file NOT in
+  /// `expectedFiles` — a stale leftover from a manifest revision that removed
+  /// or renamed a file INSIDE a still-otherwise-valid component. A loose
+  /// (non-directory) component has nothing to hide an extra file inside; only
+  /// a directory component (e.g. a `.mlmodelc` bundle) can. Directory entries
+  /// themselves are never compared (only regular files) — same trap
+  /// `ModelDeliveryController.hasStagedPartials` already documents for this
+  /// exact target (`subpathsOfDirectory` yields the directory name itself as
+  /// an entry).
+  static func hasExtraFiles(
+    component: String, expectedFiles: [DeliveryManifest.File], installDirectory: URL
+  ) -> Bool {
+    let componentRoot = installDirectory.appendingPathComponent(component)
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: componentRoot.path, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else { return false }
+
+    // `enumerator(at:)` returns OS-RESOLVED paths (e.g. `/private/tmp/...`
+    // under a `/tmp` checkout); `componentRoot.path` is not resolved. Naive
+    // string-prefix stripping between the two silently mismatches — the
+    // exact trap `swift-testing-patterns.md` RULE:
+    // repo-root-canonicalize-via-realpath-not-foundation-helpers documents
+    // for this codebase. Resolve through POSIX `realpath(3)` before
+    // comparing, not `URL.resolvingSymlinksInPath()` (documented there as
+    // insufficient for the `/tmp` case).
+    var resolvedBuffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+    guard realpath(componentRoot.path, &resolvedBuffer) != nil else { return true }
+    let resolvedComponentRoot = String(cString: resolvedBuffer)
+
+    let expected = Set(expectedFiles.map(\.resolvedInstallPath))
+    guard
+      let enumerator = FileManager.default.enumerator(
+        at: componentRoot, includingPropertiesForKeys: [.isRegularFileKey])
+    else { return true }  // cannot enumerate ⇒ cannot prove clean; fail closed, not open
+
+    let prefixCount = resolvedComponentRoot.count + 1  // +1 drops the path separator
+    for case let fileURL as URL in enumerator {
+      guard
+        let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
+        values.isRegularFile == true, fileURL.path.count > prefixCount
+      else { continue }
+      // Relative to the RESOLVED component root, then re-prefixed with the
+      // component name as a plain string — never path arithmetic against
+      // `installDirectory` again, which is what mismatched in the first place.
+      let relativeToComponent = String(fileURL.path.dropFirst(prefixCount))
+      let candidatePath = "\(component)/\(relativeToComponent)"
+      if !expected.contains(candidatePath) {
+        return true
+      }
+    }
+    return false
   }
 
   // MARK: - Promotion (grounded r1 revision 4 — explicit crash ordering)

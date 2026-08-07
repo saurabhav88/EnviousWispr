@@ -59,6 +59,50 @@ import Testing
     #expect(result.verifiedComponents == ["Encoder.mlmodelc"])
   }
 
+  @Test func staleInnerFileForcesComponentToFail() async throws {
+    // #1372: a manifest revision that removes or renames a file INSIDE an
+    // existing component leaves the stale file on disk. Every MANIFEST-listed
+    // file here still hashes correctly, but a file the manifest no longer
+    // names survives beside them, inside Encoder.mlmodelc.
+    let (install, metadata, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+    try write(
+      Data("leftover-from-a-prior-revision".utf8), under: install,
+      path: "Encoder.mlmodelc/stale_leftover.bin")
+    let gate = try admission(files: files, dirs: (install, metadata))
+    let result = await gate.validateExistingCache()
+    #expect(result.failedComponents == ["Encoder.mlmodelc"])
+    #expect(result.verifiedComponents == ["vocab.json"])
+  }
+
+  @Test func exactComponentContentsStayVerified() async throws {
+    // Two-way control for the test above: EXACTLY the manifest-listed files,
+    // nothing extra — the new check must not false-positive on the common case.
+    let (install, metadata, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+    let gate = try admission(files: files, dirs: (install, metadata))
+    let result = await gate.validateExistingCache()
+    #expect(result.failedComponents.isEmpty)
+    #expect(result.verifiedComponents.contains("Encoder.mlmodelc"))
+  }
+
+  @Test func looseComponentHasNoExtraFilesCheck() {
+    // A loose (non-directory) component has nothing to recurse into.
+    let (path:path, content:_, component:component) = ManifestFixture.smallFiles[2]
+    let installDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("admission-loose-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(
+      at: installDirectory, withIntermediateDirectories: true)
+    try? Data("{}".utf8).write(to: installDirectory.appendingPathComponent(path))
+    let manifest = try! ManifestFixture.manifest(files: ManifestFixture.smallFiles)
+    let expected = manifest.filesByComponent.first { $0.component == component }!.files
+    #expect(
+      !CacheAdmission.hasExtraFiles(
+        component: component, expectedFiles: expected, installDirectory: installDirectory))
+  }
+
   @Test func corruptComponentMemberWithCorrectSizeIsCaughtByHash() async throws {
     // Same-size, different-bytes corruption: only the hash gate sees it —
     // this is exactly what presence/size checks (the old world) admit.
