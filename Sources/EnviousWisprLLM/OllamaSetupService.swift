@@ -844,16 +844,21 @@ public final class OllamaSetupService {
     let dashOutcome = await Self.probeHostedCandidate(dashCandidate, show: show)
     let colonOutcome = await Self.probeHostedCandidate(colonCandidate, show: show)
 
-    // Superseded: the user cancelled or left Ollama while the probes ran. Start
-    // no pull and publish no failure — there is nothing to report about work the
-    // user walked away from, and a message would appear under a row they are no
-    // longer looking at. The state is only cleared if it is still OURS to clear.
-    guard hostedAddEpoch == epoch else {
-      if case .resolving(let inFlight) = hostedModelAddState, inFlight == advertisedID {
-        hostedModelAddState = .idle
-      }
-      return
-    }
+    // Superseded: the user cancelled, left Ollama, or started a replacement Add
+    // while the probes ran. Start no pull and publish NO STATE AT ALL.
+    //
+    // Writing nothing is the whole fix, and an earlier version got this wrong in
+    // a way review r4 caught. It cleared `.resolving` when the in-flight id
+    // matched its own — but a user who leaves, returns, and retries the SAME
+    // model produces a replacement whose id is identical, so the superseded task
+    // reset the replacement's state to `.idle`, re-enabling every download
+    // control while the replacement was still probing.
+    //
+    // Publishing nothing is unconditionally correct because whoever bumped the
+    // epoch already owns the state: a replacement Add set `.resolving` for
+    // itself, and `cancelHostedResolution` set `.idle`. There is no third
+    // bumper, so there is no case left to clean up here.
+    guard hostedAddEpoch == epoch else { return }
 
     switch (dashOutcome, colonOutcome) {
     case (.proven, .absent):

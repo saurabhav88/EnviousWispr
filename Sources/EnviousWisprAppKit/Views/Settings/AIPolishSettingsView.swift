@@ -1263,6 +1263,12 @@ struct AIPolishSettingsView: View {
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.small)
+          // #1956: the SECOND control that can reach `pullModel`, and the one my
+          // catalog-row sweep missed (review r4). The service has one pull slot,
+          // so if this is pressed while a hosted Add is still probing, the
+          // resolution's own pull arrives second and cancels this download. Both
+          // pull entry points now read the same signal.
+          .disabled(hostedAddIsResolving)
 
           ollamaRefreshButton()
         }

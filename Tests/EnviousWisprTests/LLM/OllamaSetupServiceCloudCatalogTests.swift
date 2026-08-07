@@ -1629,6 +1629,59 @@ struct OllamaSetupServiceHostedAddTests {
     #expect(await script.unscripted.isEmpty)
   }
 
+  /// Review r4: a superseded task must publish NO state, not merely avoid
+  /// starting a pull.
+  ///
+  /// The case that breaks an id-matching version: leave Ollama mid-Add, return,
+  /// and retry the SAME model. The replacement's `advertisedID` is identical, so
+  /// a superseded task that clears `.resolving` when the id matches resets the
+  /// REPLACEMENT's state to `.idle` — re-enabling every download control while
+  /// the replacement is still probing, which is exactly the single-pull-slot
+  /// collision the resolving state exists to prevent.
+  @Test("a superseded task leaves a same-model replacement's state alone")
+  func supersededTaskDoesNotClearReplacementState() async throws {
+    let firstScript = showScript(
+      advertisedID: "glm-5.2", dash: .status(404), colon: .status(200), parked: true)
+    let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    let log = PullLog()
+
+    let first = Task { @MainActor in
+      await service.addHostedModel(
+        advertisedID: "glm-5.2",
+        show: transport(firstScript),
+        startPull: starter(log, service: { service }))
+    }
+    try await waitUntilAdd("the first probe started") { await firstScript.requestCount == 1 }
+
+    // The user leaves Ollama, then comes back and retries the same model.
+    service.cancelHostedResolution()
+    let secondScript = showScript(
+      advertisedID: "glm-5.2", dash: .status(404), colon: .status(200), parked: true)
+    let second = Task { @MainActor in
+      await service.addHostedModel(
+        advertisedID: "glm-5.2",
+        show: transport(secondScript),
+        startPull: starter(log, service: { service }))
+    }
+    try await waitUntilAdd("the replacement started") { await secondScript.requestCount == 1 }
+    #expect(service.hostedModelAddState == .resolving(advertisedID: "glm-5.2"))
+
+    // The superseded first task now finishes. It must not touch that state.
+    await firstScript.release()
+    await first.value
+    #expect(
+      service.hostedModelAddState == .resolving(advertisedID: "glm-5.2"),
+      "the superseded task cleared the replacement's resolving state")
+    #expect(log.pulled.isEmpty, "the superseded task started a pull")
+
+    // And the replacement still completes normally, so the guard did not simply
+    // break every Add.
+    await secondScript.release()
+    await second.value
+    #expect(log.pulled == ["glm-5.2:cloud"])
+    #expect(service.hostedModelAddState == .idle)
+  }
+
   /// Cancelling an unrelated LOCAL download must not abandon a hosted Add.
   ///
   /// This is why the invalidation is its own method instead of living inside
