@@ -1652,24 +1652,53 @@ struct AIPolishSettingsView: View {
     }
   }
 
-  /// The loaded case: ONE neutral group holding every advertised hosted model,
-  /// in the order the catalog produced.
-  ///
-  /// Founder ruling 2026-08-06, after a dated free-verified-first split had been
-  /// built and then removed. No tier heading, no verification date, no reordering.
-  /// The rationale lives with the policy it governs, in
-  /// `OllamaCatalogPresentation`'s "Hosted tier ordering: DELIBERATELY ABSENT"
-  /// note; do not restate it here or the two copies will drift.
+  /// The loaded case, ordered by the policy rather than here. This view never
+  /// inspects snapshot membership, reclassifies, sorts or deduplicates: it renders
+  /// whatever arrays the policy returns, in the order it returns them.
   @ViewBuilder
   private func ollamaHostedLoadedSection(
     _ hosted: [OllamaModelCatalogEntry], isPulling: Bool
   ) -> some View {
-    ollamaHostedHeading(OllamaCatalogPresentation.hostedGroupTitle)
     if hosted.isEmpty {
+      ollamaHostedHeading(OllamaCatalogPresentation.hostedGroupTitle)
       ollamaHostedNotice("No Ollama Cloud models are available right now.")
     } else {
-      ollamaHostedRows(hosted, isPulling: isPulling)
+      switch OllamaCatalogPresentation.hostedTierGroups(entries: hosted) {
+      case .split(let freeVerified, let mayNeedPaid, let checkedAt):
+        // An empty tier's heading is suppressed, but the date is NOT tied to the
+        // free tier: if Ollama stopped advertising all seven snapshot members
+        // while still advertising others, the split would otherwise render a
+        // dated classification with no date on it, which reads as current.
+        // It renders once, under whichever heading appears first.
+        if !freeVerified.isEmpty {
+          ollamaHostedHeading(OllamaCatalogPresentation.freeVerifiedGroupTitle)
+          ollamaHostedCheckedDate(checkedAt)
+          ollamaHostedRows(freeVerified, isPulling: isPulling)
+        }
+        if !mayNeedPaid.isEmpty {
+          ollamaHostedHeading(OllamaCatalogPresentation.mayNeedPaidGroupTitle)
+          if freeVerified.isEmpty {
+            ollamaHostedCheckedDate(checkedAt)
+          }
+          ollamaHostedRows(mayNeedPaid, isPulling: isPulling)
+        }
+      case .neutral(let entries):
+        // The snapshot expired or the clock cannot date it. One heading, no date,
+        // no tier claim.
+        ollamaHostedHeading(OllamaCatalogPresentation.hostedGroupTitle)
+        ollamaHostedRows(entries, isPulling: isPulling)
+      }
     }
+  }
+
+  /// Locale-aware and rendered from the `Date` itself. A preformatted string would
+  /// have to be maintained beside the snapshot and would drift from it; a fixed
+  /// locale would show an American date to everyone else.
+  @ViewBuilder
+  private func ollamaHostedCheckedDate(_ checkedAt: Date) -> some View {
+    Text("Checked on \(checkedAt, format: .dateTime.year().month(.abbreviated).day())")
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
   }
 
   @ViewBuilder

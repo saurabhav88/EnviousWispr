@@ -20,7 +20,7 @@ enum WhatsNewContent {
       icon: "cloud",
       title: "Ollama Cloud models now appear automatically",
       description:
-        "Ollama Cloud models used to appear in Manage Models only after you added them on that Mac. The full lineup now appears there automatically on every install and after every update. The button now says Add instead of Download because nothing is downloading, and cloud models can no longer be deleted. Some Ollama Cloud models need a paid Ollama plan, and Ollama says so when you use one.",
+        "Ollama Cloud models used to appear in Manage Models only after you added them on that Mac. The full lineup now appears there automatically on every install and after every update. The button now says Add instead of Download because nothing is downloading, and cloud models can no longer be deleted. The models available without a paid Ollama plan when checked on August 5, 2026 are listed first.",
       version: "2.5.0"
     ),
 

@@ -243,6 +243,37 @@ struct OllamaManageModelsPresentationTests {
     }
   }
 
+  private func splitTiers(
+    _ groups: OllamaCatalogPresentation.HostedTierGroups
+  ) -> (free: [OllamaModelCatalogEntry], paid: [OllamaModelCatalogEntry], checkedAt: Date)? {
+    if case .split(let free, let paid, let checkedAt) = groups {
+      return (free, paid, checkedAt)
+    }
+    return nil
+  }
+
+  private func neutralEntries(
+    _ groups: OllamaCatalogPresentation.HostedTierGroups
+  ) -> [OllamaModelCatalogEntry]? {
+    if case .neutral(let entries) = groups { return entries }
+    return nil
+  }
+
+  /// `verifiedAt` plus whole days, computed on a UTC calendar so the boundary
+  /// tests do not move with the machine's time zone.
+  private func daysAfterSnapshot(_ days: Int, sourceLocation: SourceLocation = #_sourceLocation)
+    throws -> Date
+  {
+    var calendar = Calendar(identifier: .gregorian)
+    let utc = try #require(TimeZone(identifier: "UTC"), sourceLocation: sourceLocation)
+    calendar.timeZone = utc
+    return try #require(
+      calendar.date(
+        byAdding: .day, value: days,
+        to: OllamaCatalogPresentation.tierSnapshot.verifiedAt),
+      sourceLocation: sourceLocation)
+  }
+
   // MARK: - #1956 Delete policy
 
   @Test("a local row may be deleted")
@@ -423,6 +454,234 @@ struct OllamaManageModelsPresentationTests {
     // prettified rather than shown raw.
     #expect(names.contains("Llama 3.2"), "\(names)")
     #expect(names.contains("Someones Finetune"), "\(names)")
+  }
+
+  // MARK: - #1956 The snapshot itself
+
+  /// Built independently through a UTC calendar rather than by restating the
+  /// production number, so this proves the shipped instant IS that date rather
+  /// than proving the constant equals itself.
+  @Test("the snapshot is dated exactly 2026-08-05, independent of machine time zone")
+  func snapshotDateIsExactlyTheFifthOfAugust() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = try #require(TimeZone(identifier: "UTC"))
+    var components = DateComponents()
+    components.year = 2026
+    components.month = 8
+    components.day = 5
+    let expected = try #require(calendar.date(from: components))
+    #expect(OllamaCatalogPresentation.tierSnapshot.verifiedAt == expected)
+  }
+
+  @Test("the snapshot lists exactly the seven advertised ids measured free on that date")
+  func snapshotMembershipIsExactlyTheSeven() {
+    let expected: Set<String> = [
+      "gemma4:31b", "gpt-oss:120b", "gpt-oss:20b", "minimax-m3",
+      "nemotron-3-nano:30b", "nemotron-3-super", "nemotron-3-ultra",
+    ]
+    #expect(OllamaCatalogPresentation.tierSnapshot.freeVerified == expected)
+    #expect(OllamaCatalogPresentation.tierSnapshot.freeVerified.count == 7)
+  }
+
+  /// The snapshot holds ADVERTISED ids. A pullable form here would still work,
+  /// because membership is normalised, but its presence would mean the shipped
+  /// data had drifted from what the endpoint actually advertises.
+  @Test("the snapshot holds advertised ids, not pullable cloud registrations")
+  func snapshotHoldsAdvertisedIDs() {
+    for id in OllamaCatalogPresentation.tierSnapshot.freeVerified {
+      #expect(id.hasSuffix(":cloud") == false, "\(id) is a pullable form")
+      #expect(id.hasSuffix("-cloud") == false, "\(id) is a pullable form")
+    }
+  }
+
+  // MARK: - #1956 Expiry boundary
+
+  @Test("at 29 days the snapshot still orders the list")
+  func splitAtTwentyNineDays() throws {
+    let entries = [catalogEntry("gpt-oss:20b", isRemote: true)]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries, now: try daysAfterSnapshot(29))
+    let split = try #require(splitTiers(groups))
+    #expect(split.free.map(\.name) == ["gpt-oss:20b"])
+    #expect(split.checkedAt == OllamaCatalogPresentation.tierSnapshot.verifiedAt)
+  }
+
+  @Test("at exactly 30 days the snapshot still orders the list")
+  func splitAtExactlyThirtyDays() throws {
+    let entries = [catalogEntry("gpt-oss:20b", isRemote: true)]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries, now: try daysAfterSnapshot(30))
+    let split = try #require(splitTiers(groups))
+    #expect(split.free.map(\.name) == ["gpt-oss:20b"])
+  }
+
+  /// The point of the whole design: a stale snapshot degrades to NO claim, not a
+  /// wrong one. So the expired form carries no tiers and no date at all.
+  @Test("at 31 days the split disappears entirely and makes no dated claim")
+  func neutralAtThirtyOneDays() throws {
+    let entries = [
+      catalogEntry("gpt-oss:20b", isRemote: true),
+      catalogEntry("deepseek-v4-pro", isRemote: true),
+    ]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries, now: try daysAfterSnapshot(31))
+    let neutral = try #require(neutralEntries(groups))
+    expectSameEntries(neutral, entries, "expired")
+    #expect(splitTiers(groups) == nil)
+  }
+
+  /// A clock earlier than the snapshot date cannot establish its age, so the
+  /// snapshot must make no claim rather than appear infinitely fresh. Without
+  /// this the split would render a verification date in the future.
+  @Test("a clock earlier than the snapshot date makes no tier claim")
+  func neutralWhenClockPredatesSnapshot() throws {
+    let entries = [
+      catalogEntry("gpt-oss:20b", isRemote: true),
+      catalogEntry("deepseek-v4-pro", isRemote: true),
+    ]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries,
+      now: OllamaCatalogPresentation.tierSnapshot.verifiedAt.addingTimeInterval(-1))
+
+    let neutral = try #require(neutralEntries(groups))
+    expectSameEntries(neutral, entries, "backdated clock")
+    #expect(splitTiers(groups) == nil)
+  }
+
+  /// The boundary on the other side: exactly the snapshot instant IS current.
+  @Test("a clock exactly at the snapshot instant still orders the list")
+  func splitAtExactlyTheSnapshotInstant() throws {
+    let entries = [catalogEntry("gpt-oss:20b", isRemote: true)]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries, now: OllamaCatalogPresentation.tierSnapshot.verifiedAt)
+    let split = try #require(splitTiers(groups))
+    #expect(split.free.map(\.name) == ["gpt-oss:20b"])
+  }
+
+  // MARK: - #1956 Tier classification
+
+  @Test("a model absent from the snapshot is kept and placed under may-need-paid")
+  func unknownModelGoesToPaidTier() throws {
+    let entries = [
+      catalogEntry("gpt-oss:20b", isRemote: true),
+      catalogEntry("some-model-ollama-added-yesterday", isRemote: true),
+    ]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries, now: try daysAfterSnapshot(1))
+    let split = try #require(splitTiers(groups))
+    #expect(split.free.map(\.name) == ["gpt-oss:20b"])
+    #expect(split.paid.map(\.name) == ["some-model-ollama-added-yesterday"])
+  }
+
+  /// The line between ordering and membership, asserted directly.
+  @Test("an id present only in the snapshot creates no row")
+  func snapshotOnlyMembershipCreatesNothing() throws {
+    let entries = [catalogEntry("glm-5.2", isRemote: true)]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries, now: try daysAfterSnapshot(1))
+    let split = try #require(splitTiers(groups))
+    #expect(split.free.isEmpty)
+    expectSameEntries(split.paid, entries, "snapshot-only")
+    #expect(split.free.contains { $0.name == "gpt-oss:120b" } == false)
+    #expect(split.paid.contains { $0.name == "gpt-oss:120b" } == false)
+  }
+
+  @Test("a registered cloud row and its advertised suggestion get the same tier")
+  func registeredAndAdvertisedFormsShareATier() throws {
+    let entries = [
+      catalogEntry("gpt-oss:20b-cloud", isRemote: true, isDownloaded: true),
+      catalogEntry("gpt-oss:20b", isRemote: true, isDownloaded: false),
+    ]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries, now: try daysAfterSnapshot(1))
+    let split = try #require(splitTiers(groups))
+    #expect(split.free.map(\.name) == ["gpt-oss:20b-cloud", "gpt-oss:20b"])
+    #expect(split.paid.isEmpty)
+  }
+
+  /// Normalisation has to happen on BOTH sides. This injects a snapshot whose
+  /// membership is written in the pullable form; without membership
+  /// normalisation the advertised row would fall through to may-need-paid.
+  @Test("snapshot membership is normalised too, not only the entry name")
+  func snapshotMembershipIsNormalised() throws {
+    let injected = OllamaCatalogPresentation.HostedTierSnapshot(
+      verifiedAt: OllamaCatalogPresentation.tierSnapshot.verifiedAt,
+      freeVerified: ["kimi-k3:cloud"])
+    let entries = [catalogEntry("kimi-k3", isRemote: true)]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries, snapshot: injected, now: try daysAfterSnapshot(1))
+    let split = try #require(splitTiers(groups))
+    #expect(split.free.map(\.name) == ["kimi-k3"])
+    #expect(split.paid.isEmpty)
+  }
+
+  // MARK: - #1956 Preservation
+
+  @Test("every row survives the split exactly once, with its fields intact")
+  func splitPreservesEveryRowExactlyOnce() throws {
+    let entries = [
+      catalogEntry("gpt-oss:20b", isRemote: true, displayName: "GPT OSS 20B"),
+      catalogEntry("deepseek-v4-pro", isRemote: true, parameterCount: "671B"),
+      catalogEntry("minimax-m3", isRemote: true, downloadSize: ""),
+      catalogEntry("glm-5.2", isRemote: true, qualityTier: .medium),
+    ]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries, now: try daysAfterSnapshot(1))
+    let split = try #require(splitTiers(groups))
+
+    let flattened = split.free + split.paid
+    #expect(flattened.count == entries.count)
+    for entry in entries {
+      #expect(flattened.filter { $0.name == entry.name }.count == 1, "\(entry.name) appears once")
+    }
+    expectSameEntries(
+      flattened.sorted { $0.name < $1.name }, entries.sorted { $0.name < $1.name }, "flattened")
+  }
+
+  @Test("input order is preserved inside each tier")
+  func splitKeepsStableOrderWithinTiers() throws {
+    let entries = [
+      catalogEntry("minimax-m3", isRemote: true),
+      catalogEntry("deepseek-v4-pro", isRemote: true),
+      catalogEntry("gpt-oss:20b", isRemote: true),
+      catalogEntry("glm-5.2", isRemote: true),
+      catalogEntry("gemma4:31b", isRemote: true),
+    ]
+    let groups = OllamaCatalogPresentation.hostedTierGroups(
+      entries: entries, now: try daysAfterSnapshot(1))
+    let split = try #require(splitTiers(groups))
+    #expect(split.free.map(\.name) == ["minimax-m3", "gpt-oss:20b", "gemma4:31b"])
+    #expect(split.paid.map(\.name) == ["deepseek-v4-pro", "glm-5.2"])
+  }
+
+  @Test("an empty hosted list produces empty tiers rather than a crash or a claim")
+  func emptyInputIsHandled() throws {
+    let current = OllamaCatalogPresentation.hostedTierGroups(
+      entries: [], now: try daysAfterSnapshot(1))
+    let split = try #require(splitTiers(current))
+    #expect(split.free.isEmpty)
+    #expect(split.paid.isEmpty)
+
+    let expired = OllamaCatalogPresentation.hostedTierGroups(
+      entries: [], now: try daysAfterSnapshot(31))
+    #expect(try #require(neutralEntries(expired)).isEmpty)
+  }
+
+  // MARK: - #1956 Copy
+
+  @Test("no heading promises current free access")
+  func headingsMakeNoCurrentFreeClaim() {
+    let headings = [
+      OllamaCatalogPresentation.freeVerifiedGroupTitle,
+      OllamaCatalogPresentation.mayNeedPaidGroupTitle,
+      OllamaCatalogPresentation.hostedGroupTitle,
+    ]
+    #expect(OllamaCatalogPresentation.freeVerifiedGroupTitle == "Try these first")
+    #expect(OllamaCatalogPresentation.mayNeedPaidGroupTitle == "May need a paid Ollama plan")
+    for heading in headings {
+      #expect(heading.lowercased().contains("free") == false, "\(heading) claims free")
+      #expect(heading.lowercased().contains("no cost") == false, "\(heading) claims free")
+    }
   }
 
   // MARK: - #1956 Partition still accepts a suggestion

@@ -118,22 +118,138 @@ enum OllamaCatalogPresentation {
     return hostedPullAdvertisedID == entry.name
   }
 
-  // MARK: - Hosted tier ordering: DELIBERATELY ABSENT (#1956)
+  // MARK: - Hosted tier ordering (#1956)
   //
-  // The coverage round proposed a dated free-verified-first ordering, it was
-  // built, and the founder then ruled for ONE NEUTRAL LIST of every advertised
-  // model (2026-08-06). Do not re-add a tier split, a `freeVerified` set, a
-  // `HostedTierSnapshot`, or "Try these first" / "May need a paid Ollama plan"
-  // headings without a new founder decision.
+  // Decision history, because this was removed and restored and the next reader
+  // deserves to know why rather than re-running the argument: the coverage round
+  // proposed this ordering, it shipped, the founder removed it on 2026-08-06
+  // reading the question as "should we ship a list", and restored it the same
+  // day on seeing it rendered — "good UX and helped the user understand what was
+  // free vs not free". The restoring decision is the current one.
   //
-  // The reasoning that survives the removal, so the next reader does not
-  // reconstruct the rejected design: NOTHING in either data source reveals a
-  // model's tier. `https://ollama.com/v1/models` carries exactly `id`, `object`,
-  // `created` and `owned_by`; `POST /api/show` on a paid model returns
-  // `capabilities: ["thinking", "completion", "tools"]` and no access field.
-  // Both measured 2026-08-06. So any tier claim has to be a list WE maintain,
-  // and 3 of 18 models changed tier within 4 days of the 2026-08-01 record in
-  // `ollama-operations.md`. Ollama's own 403 at use time is the only signal that
-  // cannot go stale, and its copy already ships (#1914).
+  // What makes it defensible where a membership list was rejected: NOTHING in
+  // either data source reveals a model's tier. `https://ollama.com/v1/models`
+  // carries exactly `id`, `object`, `created` and `owned_by`; `POST /api/show`
+  // on a paid model returns `capabilities: ["thinking", "completion", "tools"]`
+  // and no access field. Both measured 2026-08-06. So a tier claim can only be a
+  // list we maintain — which is why this one orders rows it can never create or
+  // remove, states a date instead of a promise, and expires into no claim at all
+  // rather than into a wrong one.
 
+  /// A DATED, ADVISORY ordering snapshot.
+  ///
+  /// This is emphatically NOT a membership list. #1956's founder comment rejected
+  /// a shipped model list because it rots the way `phi-2` did (#1951), and that
+  /// objection stands. This snapshot can only REORDER rows that Ollama's live
+  /// catalog already produced: it can never create a row, remove one, or change
+  /// one. An id present only here renders nothing.
+  ///
+  /// `freeVerified` holds ADVERTISED ids, not pullable `:cloud` / `-cloud`
+  /// registrations, and membership is compared through
+  /// `OllamaSetupService.hostedCatalogKey` on BOTH sides so the two forms of the
+  /// same model land in the same tier.
+  struct HostedTierSnapshot: Sendable, Equatable {
+    /// The instant the tiers below were checked. Never "now", never a promise.
+    let verifiedAt: Date
+    let freeVerified: Set<String>
+  }
+
+  /// The hosted group, ordered.
+  ///
+  /// Two cases rather than a Boolean plus arrays, so an expired snapshot cannot
+  /// be represented as a split with empty tiers or a sentinel date. `neutral`
+  /// carries no date because an expired snapshot must make NO claim, not a weak
+  /// one.
+  enum HostedTierGroups {
+    case split(
+      freeVerified: [OllamaModelCatalogEntry],
+      mayNeedPaid: [OllamaModelCatalogEntry],
+      checkedAt: Date
+    )
+    case neutral(entries: [OllamaModelCatalogEntry])
+  }
+
+  /// Headings for the active split. Neither says a model IS free or promises
+  /// current access. Neither mentions a date either: the split result separately
+  /// carries `checkedAt` for the view to render, and the expired neutral result
+  /// carries no date and no tier claim.
+  ///
+  /// A model that turned paid on day 3 may remain in the first group until the
+  /// snapshot expires, and the honest 403 at use time is already shipped (#1914).
+  static let freeVerifiedGroupTitle = "Try these first"
+  static let mayNeedPaidGroupTitle = "May need a paid Ollama plan"
+
+  /// 2026-08-05T00:00:00Z. Stored as an absolute instant so neither the machine's
+  /// time zone nor its locale can move it; `snapshotDateIsExactlyTheFifthOfAugust`
+  /// proves this equals that date by constructing it independently through a UTC
+  /// calendar rather than by restating this number.
+  private static let snapshotVerifiedAt = Date(timeIntervalSince1970: 1_785_888_000)
+
+  /// Measured live against `https://ollama.com/v1/models` and per-model probes on
+  /// 2026-08-05: 18 hosted models, 7 free, 11 requiring a subscription (HTTP 403,
+  /// `this model requires a subscription, upgrade for access`).
+  ///
+  /// Only the free seven are listed. There is deliberately no paid list and no
+  /// 18-model roster here, because anything this file cannot see is simply
+  /// untiered rather than wrong.
+  static let tierSnapshot = HostedTierSnapshot(
+    verifiedAt: snapshotVerifiedAt,
+    freeVerified: [
+      "gemma4:31b",
+      "gpt-oss:120b",
+      "gpt-oss:20b",
+      "minimax-m3",
+      "nemotron-3-nano:30b",
+      "nemotron-3-super",
+      "nemotron-3-ultra",
+    ]
+  )
+
+  /// How long the snapshot's ordering is worth applying.
+  ///
+  /// Sized against measurement, not taste: 3 of 18 models changed tier within 4
+  /// days of `ollama-operations.md`'s 2026-08-01 record. Past this the split
+  /// disappears completely, so a stale snapshot degrades to NO claim rather than
+  /// to a wrong one. That is the whole reason an ordering hint is permitted where
+  /// a membership list was rejected.
+  static let tierSnapshotLifetime: TimeInterval = 30 * 24 * 60 * 60
+
+  /// Splits the hosted rows into free-verified-first order while the snapshot is
+  /// current, and returns them untouched once it expires.
+  ///
+  /// Every input row appears in the output exactly once in both forms. The
+  /// snapshot decides ORDER only.
+  static func hostedTierGroups(
+    entries: [OllamaModelCatalogEntry],
+    snapshot: HostedTierSnapshot = tierSnapshot,
+    now: Date = Date()
+  ) -> HostedTierGroups {
+    // A negative age means the clock predates the snapshot, so the clock cannot
+    // establish the snapshot's age at all. That is not freshness, and treating it
+    // as unlimited freshness would surface a verification date in the future. No
+    // claim is the safe direction, exactly as for an expired snapshot.
+    let age = now.timeIntervalSince(snapshot.verifiedAt)
+    guard age >= 0, age <= tierSnapshotLifetime else {
+      return .neutral(entries: entries)
+    }
+
+    // Both sides go through the same key, so a registered `gpt-oss:20b-cloud`
+    // row and its advertised `gpt-oss:20b` suggestion resolve to one identity.
+    // Normalising only the entry would silently drop every row whose snapshot
+    // membership was written in the pullable form.
+    let freeKeys = Set(snapshot.freeVerified.map(OllamaSetupService.hostedCatalogKey))
+
+    var freeVerified: [OllamaModelCatalogEntry] = []
+    var mayNeedPaid: [OllamaModelCatalogEntry] = []
+    for entry in entries {
+      if freeKeys.contains(OllamaSetupService.hostedCatalogKey(entry.name)) {
+        freeVerified.append(entry)
+      } else {
+        mayNeedPaid.append(entry)
+      }
+    }
+
+    return .split(
+      freeVerified: freeVerified, mayNeedPaid: mayNeedPaid, checkedAt: snapshot.verifiedAt)
+  }
 }
