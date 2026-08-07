@@ -408,12 +408,26 @@ struct EmojiRestorerTests {
 
   // MARK: - Documented v1 limitation (EC-098 over-restore)
 
-  /// EC-098 is the known, founder-accepted ~2% limitation: when AFM CORRECTLY
+  /// EC-098 is the known, founder-accepted ~2% limitation: when the polish model CORRECTLY
   /// resolves a self-correction by dropping the emoji on the mistaken half, the
   /// blind guard re-inserts it. The user still gets the corrected emoji plus, at
   /// worst, one spurious one — never a crash, never silent loss. This test locks
   /// the CURRENT behavior; a future correction-aware guard would intentionally
   /// flip it. See the design notes "DECIDED 2026-06-19" block.
+  ///
+  /// #1948 EXTENDED ITS SCOPE, and cloud review on PR #1971 independently rediscovered it
+  /// (`send 👍, no actually send 👎` → `Send 👍 👎.`, reproduced against this restorer). The
+  /// acceptance now covers local Ollama as well as Apple Intelligence. It was never
+  /// AFM-specific in the first place: the AFM prompt's rule 7 ("delete the abandoned words",
+  /// `scripts/eval/prompts/single-v38.txt`) and L3's SPEECH REPAIR rule ask for the same
+  /// deletion, so the interaction is identical on both paths.
+  ///
+  /// The trade that justifies extending it, measured on the 98 emoji-bearing corpus cases:
+  /// without the guard, local Ollama loses emoji outright on 45 of 98 (`qwen2.5:3b`) and 92
+  /// of 98 (`llama3.2`); with it, both keep 98/98. Zero of those 98 cases place an emoji
+  /// inside a retracted span, so the over-restore did not fire once on a corpus built
+  /// specifically from self-corrections. A frequent, total LOSS is traded for a rare,
+  /// visible EXTRA — which is the same direction the founder accepted in June.
   @Test("EC-098: blind guard over-restores the correctly-dropped emoji (known limitation)")
   func ec098OverRestoreIsKnown() {
     let r = restorer.restore(
