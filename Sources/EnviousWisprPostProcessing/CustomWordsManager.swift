@@ -1687,29 +1687,22 @@ public final class CustomWordsManager {
           ])
       }
 
-      // Codex review: F_FULLFSYNC on the file makes the BYTES durable, but
-      // not the rename itself -- if the Mac loses power after rename()
-      // returns but before APFS commits the directory metadata, the new
-      // file's content is safe on disk while the rename that made it live
-      // can still be lost, reintroducing the exact race this fix exists to
-      // close. Sync the containing directory too.
+      // F_FULLFSYNC on the file makes the BYTES durable, but not the rename
+      // itself -- if the Mac loses power after rename() returns but before
+      // APFS commits the directory metadata, the new file's content is safe
+      // on disk while the rename that made it live can still be lost.
+      // Sync the containing directory too, BEST-EFFORT: by this point
+      // `rename()` has already succeeded, the new content is live, and the
+      // caller's in-memory state is about to be treated as consistent with
+      // disk. Throwing here (round 1 of this fix did) would make the caller
+      // believe the save failed and skip updating its own state while the
+      // file on disk had already changed -- correctness regression Codex
+      // review caught. A failure at this point only narrows the crash
+      // window this hardening closes; it does not undo the save.
       let dirFD = Foundation.open(fileURL.deletingLastPathComponent().path, O_RDONLY)
-      guard dirFD >= 0 else {
-        throw NSError(
-          domain: NSPOSIXErrorDomain, code: Int(errno),
-          userInfo: [
-            NSLocalizedDescriptionKey: String(cString: strerror(errno)),
-            NSFilePathErrorKey: fileURL.deletingLastPathComponent().path,
-          ])
-      }
-      defer { close(dirFD) }
-      guard fcntl(dirFD, F_FULLFSYNC) != -1 else {
-        throw NSError(
-          domain: NSPOSIXErrorDomain, code: Int(errno),
-          userInfo: [
-            NSLocalizedDescriptionKey: String(cString: strerror(errno)),
-            NSFilePathErrorKey: fileURL.deletingLastPathComponent().path,
-          ])
+      if dirFD >= 0 {
+        _ = fcntl(dirFD, F_FULLFSYNC)
+        close(dirFD)
       }
     } catch {
       try? fm.removeItem(at: tmpURL)
