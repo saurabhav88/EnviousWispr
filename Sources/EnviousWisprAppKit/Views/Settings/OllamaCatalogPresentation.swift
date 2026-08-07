@@ -90,23 +90,32 @@ enum OllamaCatalogPresentation {
   /// pull, so the row rendered neither progress nor Cancel while `isPulling`
   /// disabled its button — a dead-looking control for the pull's whole duration.
   ///
-  /// The loose key is scoped to remote rows deliberately, and that scoping is
-  /// the correctness argument rather than a tidiness one: `hostedCatalogKey`
-  /// strips the cloud suffix, so a LOCAL `glm-5.2` and a hosted `glm-5.2:cloud`
-  /// collapse to one key. Applying it to every row would light up a local row's
-  /// progress and Cancel during a hosted pull, and Cancel there would abort a
-  /// pull the user never associated with that row.
+  /// A hosted row matches on the advertised id the SERVICE recorded when it
+  /// started the pull, never on a normalised name.
+  ///
+  /// The first fix here normalised both sides through `hostedCatalogKey`, and
+  /// review round 3 caught that it moved the collision instead of removing it:
+  /// that key strips the cloud suffix, so a LOCAL `gpt-oss:20b` pull and a
+  /// hosted `gpt-oss:20b` row collapse to one key, and both rows can coexist
+  /// (only a REMOTE registration suppresses a hosted suggestion). The hosted row
+  /// would then show progress and a Cancel that aborts a download it never
+  /// started. Name-shape tests such as "does it end in -cloud" would be the same
+  /// guess one layer down, and #1914 forbids exactly that classifier.
+  ///
+  /// `currentPullingModel` still gates liveness for BOTH kinds, so a stale
+  /// `hostedPullAdvertisedID` cannot match once a pull reaches any terminal.
   ///
   /// Lives here rather than in the view for the reason this whole type exists:
   /// a private predicate in `AIPolishSettingsView` cannot be tested, and this
-  /// one is exactly the kind that failed silently.
+  /// one is exactly the kind that fails silently.
   static func rowIsPulling(
-    _ entry: OllamaModelCatalogEntry, currentPullingModel: String?
+    _ entry: OllamaModelCatalogEntry,
+    currentPullingModel: String?,
+    hostedPullAdvertisedID: String?
   ) -> Bool {
     guard let pulling = currentPullingModel else { return false }
     guard entry.isRemote else { return pulling == entry.name }
-    return OllamaSetupService.hostedCatalogKey(pulling)
-      == OllamaSetupService.hostedCatalogKey(entry.name)
+    return hostedPullAdvertisedID == entry.name
   }
 
   // MARK: - Hosted tier ordering: DELIBERATELY ABSENT (#1956)

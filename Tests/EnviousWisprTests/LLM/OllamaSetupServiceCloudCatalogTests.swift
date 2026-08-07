@@ -420,7 +420,15 @@ struct OllamaSetupServiceCloudCatalogTests {
   func hostedSuggestionMetadataIsSuppressed() {
     let catalog = OllamaSetupService.dynamicCatalog(from: [], cloudCatalogIDs: ["kimi-k3"])
     let suggestion = entry("kimi-k3", in: catalog)
-    #expect(suggestion?.displayName == OllamaSetupService.inferDisplayName(from: "kimi-k3"))
+    // Whole-diff review r3 changed this deliberately. It asserted
+    // `inferDisplayName`, which strips everything after the colon — and because
+    // hosted rows also suppress the size and quality line, two models differing
+    // only by tag rendered as one indistinguishable pair. `kimi-k3` carries no
+    // tag, so the old expectation happened to hold for THIS id while the policy
+    // it locked in was wrong for `gpt-oss:20b` versus `gpt-oss:120b`. The
+    // discriminating cases live in `OllamaManageModelsPresentationTests`; this
+    // one now states the policy rather than the coincidence.
+    #expect(suggestion?.displayName == "kimi-k3")
     #expect(suggestion?.parameterCount == "")
     #expect(suggestion?.downloadSize == "")
     #expect(suggestion?.qualityTier == .medium)

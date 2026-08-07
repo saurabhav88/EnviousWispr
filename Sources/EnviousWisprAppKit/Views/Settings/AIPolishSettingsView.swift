@@ -1764,7 +1764,9 @@ struct AIPolishSettingsView: View {
         Spacer()
 
         if OllamaCatalogPresentation.rowIsPulling(
-          entry, currentPullingModel: setup.ollamaSetup.currentPullingModel)
+          entry,
+          currentPullingModel: setup.ollamaSetup.currentPullingModel,
+          hostedPullAdvertisedID: setup.ollamaSetup.hostedPullAdvertisedID)
         {
           // Active pull for THIS row: show progress + Cancel.
           HStack(spacing: 8) {
@@ -1821,9 +1823,15 @@ struct AIPolishSettingsView: View {
           }
           .controlSize(.small)
           .buttonStyle(.borderless)
-          // The resolving clause is scoped to hosted rows on purpose: one hosted
-          // resolution must not freeze the local Download buttons beside it.
-          .disabled(isPulling || (entry.isRemote && hostedAddIsResolving))
+          // EVERY row, not just hosted ones. The earlier version scoped the
+          // resolving clause to remote rows so one hosted Add would not freeze
+          // the local Download buttons beside it, and review round 3 showed that
+          // courtesy was the bug: starting a local download during the two
+          // probes means the hosted resolution's own `pullModel` arrives second
+          // and cancels the local pull the user just asked for. `pullModel` is
+          // single-slot, so the honest UI is one download at a time — which is
+          // already what `isPulling` enforces once a pull is running.
+          .disabled(isPulling || hostedAddIsResolving)
         }
       }
       .padding(.vertical, 2)

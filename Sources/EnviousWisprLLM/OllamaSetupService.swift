@@ -163,6 +163,22 @@ public final class OllamaSetupService {
   /// `addHostedModel`, and never by any daemon, pull, or catalog path.
   package private(set) var hostedModelAddState: HostedModelAddState = .idle
 
+  /// #1956: which ADVERTISED id the current pull was started for, when a hosted
+  /// Add started it. Nil for a local pull.
+  ///
+  /// Exists because a hosted row and the pull it triggered carry DIFFERENT names
+  /// (`gpt-oss:20b` vs `gpt-oss:20b-cloud`), and the obvious fix — normalising
+  /// both through `hostedCatalogKey` — collides in the other direction: a local
+  /// `gpt-oss:20b` pull normalises to the same key, so the hosted row would show
+  /// progress and a Cancel button for a download it did not start. Recording the
+  /// exact id removes the guess instead of relocating it.
+  ///
+  /// Liveness is NOT read from this property. `rowIsPulling` requires
+  /// `currentPullingModel` to be non-nil as well, so a value left behind here
+  /// cannot match anything once the pull reaches any terminal — that keeps the
+  /// five existing clear sites as the single authority on "a pull is running".
+  package private(set) var hostedPullAdvertisedID: String?
+
   private let cloudCatalogClient: OllamaCloudCatalogClient
   private let cloudCatalogNow: @MainActor () -> Date
   private var cloudCatalogRefreshTask: Task<Void, Never>?
@@ -323,7 +339,11 @@ public final class OllamaSetupService {
       }) {
         return OllamaModelCatalogEntry(
           name: model.exactName,
-          displayName: curated.displayName,
+          // #1956: a hosted row keeps Ollama's own name. See `hostedDisplayName`
+          // for why the curated name is wrong here even when one matches.
+          displayName: model.facts.isRemote
+            ? Self.hostedDisplayName(from: model.exactName)
+            : curated.displayName,
           parameterCount: model.parameterSize ?? curated.parameterCount,
           qualityTier: curated.qualityTier,
           downloadSize: Self.formatFileSize(model.fileSizeBytes),
@@ -338,7 +358,12 @@ public final class OllamaSetupService {
       // Unknown/custom model: infer metadata
       return OllamaModelCatalogEntry(
         name: model.exactName,
-        displayName: Self.inferDisplayName(from: model.exactName),
+        // #1956: third and last construction path, same policy. Two registered
+        // hosted models whose ids differ only after the colon rendered
+        // identically before this.
+        displayName: model.facts.isRemote
+          ? Self.hostedDisplayName(from: model.exactName)
+          : Self.inferDisplayName(from: model.exactName),
         parameterCount: model.parameterSize ?? "Unknown",
         qualityTier: Self.inferQualityTier(parameterBillions: model.parameterBillions),
         downloadSize: Self.formatFileSize(model.fileSizeBytes),
@@ -374,7 +399,7 @@ public final class OllamaSetupService {
       guard !hostedKeysDownloaded.contains(Self.hostedCatalogKey(advertisedID)) else { return nil }
       return OllamaModelCatalogEntry(
         name: advertisedID,
-        displayName: Self.inferDisplayName(from: advertisedID),
+        displayName: Self.hostedDisplayName(from: advertisedID),
         // Size and quality are meaningless for a model that is not on this disk,
         // and `showsSizeAndQuality` suppresses both for any remote row, so these
         // are placeholders that never reach the screen rather than claims.
@@ -834,9 +859,14 @@ public final class OllamaSetupService {
     case (.proven, .absent):
       hostedModelAddState = .idle
       startPull(dashCandidate)
+      // AFTER, never before: `pullModel` clears this so that an ordinary local
+      // download cannot inherit a previous hosted Add's id.
+      hostedPullAdvertisedID = advertisedID
     case (.absent, .proven):
       hostedModelAddState = .idle
       startPull(colonCandidate)
+      // AFTER, never before: see the dash branch.
+      hostedPullAdvertisedID = advertisedID
     case (.proven, .proven):
       // Refuse. Nothing in a 200 proves the two names denote one model, and
       // registering the wrong one is worse than asking the user to choose.
@@ -1155,6 +1185,12 @@ public final class OllamaSetupService {
 
     // Reset progress
     currentPullingModel = modelName
+    // #1956: every pull starts as a LOCAL one as far as row matching is
+    // concerned. `addHostedModel` re-stamps this immediately after calling here,
+    // which is why its assignment is ordered after the call. Without this clear,
+    // a local download following a hosted Add would inherit the hosted id and
+    // light up the wrong row.
+    hostedPullAdvertisedID = nil
     pullProgress = 0
     pullStatusText = "Starting download..."
     setupState = .pullingModel(progress: 0, status: "Starting download...")
@@ -1420,6 +1456,29 @@ public final class OllamaSetupService {
   // MARK: - Display Helpers
 
   /// Infer a display name from a raw Ollama model name.
+  /// #1956: what a HOSTED row is called on screen. The name Ollama uses, verbatim.
+  ///
+  /// `inferDisplayName` drops everything after the colon, and for hosted rows
+  /// that tag is the only thing distinguishing two models: of the 18 advertised
+  /// on 2026-08-06, `gpt-oss:20b` and `gpt-oss:120b` both prettify to "Gpt Oss",
+  /// as do `deepseek-v4-flash:0731` and `deepseek-v4-flash:preview`. Hosted rows
+  /// also suppress the size and quality line (`showsSizeAndQuality`), so nothing
+  /// else on the row breaks the tie — four of eighteen rows were two
+  /// indistinguishable pairs, and the user could not tell which Add button
+  /// selected which model.
+  ///
+  /// This applies to REGISTERED hosted rows too, not only advertised
+  /// suggestions. That half is a #1914 defect this change inherits rather than
+  /// introduces, and fixing only the new half would leave the same collision on
+  /// the rows a user already has.
+  ///
+  /// It also overrides curated prettification: a hosted model can match a
+  /// curated entry by name, and a curated display name is written for the local
+  /// model, not for Ollama's hosted build of it.
+  nonisolated static func hostedDisplayName(from name: String) -> String {
+    name
+  }
+
   nonisolated static func inferDisplayName(from name: String) -> String {
     let base = name.components(separatedBy: ":").first ?? name
     return base.replacingOccurrences(of: "-", with: " ")
