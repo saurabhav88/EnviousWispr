@@ -110,6 +110,22 @@ final class EmojiRestoreStep: TextProcessingStep {
     // provider `.none`): delivery uses the emoji-bearing `ctx.text`, nothing to do.
     guard let polished = context.polishedText else { return context }
 
+    // BLANK polish is a SIGNAL, not something to decorate (#1948, cloud review r6).
+    // `KernelFinalizationWiring` (`:349`) treats an empty `polishedText` as the trigger for
+    // its empty-output recovery floor, which delivers the intact deterministic text. Writing
+    // a lone emoji into that empty string makes the result non-empty, so the floor never
+    // fires and the user receives "🙏" INSTEAD OF THEIR WHOLE SENTENCE. Verified end to end:
+    // a model returning "" or whitespace with an emoji-bearing input restores to exactly
+    // "🙏". Reachable because `OllamaConnector` accepts a whitespace response as success and
+    // trims it to "", and `validatePolishOutput` has no empty guard below 10 input words
+    // (the same two facts the recovery floor's own comment names).
+    //
+    // Returning before the `lastRun` stamp is deliberate: no restore happened, so the
+    // telemetry must not claim one.
+    guard !polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return context
+    }
+
     let start = CFAbsoluteTimeGetCurrent()
     let result = restorer.restore(polished: polished, prePolish: context.text)
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000

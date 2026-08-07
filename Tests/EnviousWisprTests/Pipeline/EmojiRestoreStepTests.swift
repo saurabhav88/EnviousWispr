@@ -219,6 +219,46 @@ import Testing
     #expect(s.lastRun?.restored == 1)
   }
 
+  // MARK: - Blank polish must reach the empty-output recovery floor (#1948, cloud review r6)
+
+  /// `KernelFinalizationWiring` treats an EMPTY `polishedText` as the trigger for its
+  /// empty-output recovery floor, which delivers the intact deterministic text. If this step
+  /// writes a lone emoji into that empty string the result becomes non-empty, the floor never
+  /// fires, and the user receives the emoji INSTEAD OF THEIR WHOLE SENTENCE. Verified against
+  /// the real `EmojiRestorer`: `restore(polished: "", prePolish: "on my way now 🙏")` returns
+  /// exactly `"🙏"`.
+  ///
+  /// Reachable in production: `OllamaConnector` accepts a whitespace response as success and
+  /// trims it to `""`, and `validatePolishOutput` has no empty guard below 10 input words.
+  @Test(
+    "blank polish is left untouched so the recovery floor still fires (#1948)",
+    arguments: ["", "   ", "\n", " \n "])
+  func blankPolishUntouched(polished: String) async throws {
+    for provider in [LLMProvider.ollama, .appleIntelligence] {
+      var c = TextProcessingContext(text: "on my way now 🙏", language: nil)
+      c.llmProvider = provider.rawValue
+      c.promptFamily = PromptFamily.localFixed.rawValue
+      c.polishedText = polished
+      let s = step()
+      let out = try await s.process(c)
+      // Byte-for-byte unchanged: the emptiness must survive to finalization.
+      #expect(out.polishedText == polished)
+      // And no telemetry claiming a restore that did not happen.
+      #expect(s.lastRun == nil)
+    }
+  }
+
+  /// Two-way control: a non-blank polish on the same input still restores, so the guard above
+  /// cannot be satisfied by simply disabling restoration.
+  @Test("a non-blank polish on the same input still restores (#1948 control)")
+  func nonBlankStillRestores() async throws {
+    let s = step()
+    let out = try await s.process(
+      ollamaContext(pre: "on my way now 🙏", polished: "On my way now."))
+    #expect(out.polishedText?.contains("🙏") == true)
+    #expect(s.lastRun?.restored == 1)
+  }
+
   /// A nil provider AND a nil family must restore nothing — the state a skipped or failed
   /// polish leaves behind, where `polishedText` came from somewhere other than a model.
   @Test("nil provider and nil family restore nothing (#1948)")
