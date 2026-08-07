@@ -152,6 +152,14 @@ package struct OllamaCloudCatalogClient: Sendable {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.timeoutIntervalForRequest = 5
     configuration.timeoutIntervalForResource = 5
+    // `ephemeral` keeps cookies in MEMORY rather than not at all, and this session
+    // is `static`, so it lives as long as the app. Ollama returns
+    // `Set-Cookie: aid=<UUID>` from this endpoint, which would then be echoed back
+    // on every later catalog fetch — an app-session identifier on a request whose
+    // whole point is to carry none.
+    configuration.httpShouldSetCookies = false
+    configuration.httpCookieAcceptPolicy = .never
+    configuration.httpCookieStorage = nil
     return URLSession(configuration: configuration)
   }()
 

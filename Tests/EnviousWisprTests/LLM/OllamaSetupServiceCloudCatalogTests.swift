@@ -359,6 +359,31 @@ struct OllamaSetupServiceCloudCatalogTests {
     #expect(matching.first?.isRemote == true)
   }
 
+  /// A LOCAL model that happens to share a name with a hosted offering is not the
+  /// hosted registration. Suppressing the suggestion on a name match alone hid an
+  /// addable model from the user, which is the opposite of what this feature is for.
+  @Test("a local model sharing a hosted model's name does not suppress the hosted row")
+  func localNamesakeDoesNotSuppressHostedSuggestion() {
+    let catalog = OllamaSetupService.dynamicCatalog(
+      from: [downloaded("gpt-oss:20b", isRemote: false)], cloudCatalogIDs: ["gpt-oss:20b"])
+    let matching = catalog.filter { OllamaSetupService.hostedCatalogKey($0.name) == "gpt-oss:20b" }
+    #expect(matching.count == 2)
+    #expect(matching.contains { $0.isRemote == false && $0.isDownloaded == true })
+    #expect(matching.contains { $0.isRemote == true && $0.isDownloaded == false })
+  }
+
+  /// The other direction, so the fix cannot be "never dedupe". A REMOTE
+  /// registration still suppresses its own advertised suggestion.
+  @Test("a remote registration still suppresses its advertised suggestion")
+  func remoteRegistrationStillSuppresses() {
+    let catalog = OllamaSetupService.dynamicCatalog(
+      from: [downloaded("gpt-oss:20b-cloud", isRemote: true)], cloudCatalogIDs: ["gpt-oss:20b"])
+    let matching = catalog.filter { OllamaSetupService.hostedCatalogKey($0.name) == "gpt-oss:20b" }
+    #expect(matching.count == 1)
+    #expect(matching.first?.name == "gpt-oss:20b-cloud")
+    #expect(matching.first?.isRemote == true)
+  }
+
   @Test("a registered dash-cloud row plus its advertised id produces exactly one row")
   func dashCloudRegisteredRowDedupes() {
     let catalog = OllamaSetupService.dynamicCatalog(

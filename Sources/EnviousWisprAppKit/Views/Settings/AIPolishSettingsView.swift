@@ -665,6 +665,14 @@ struct AIPolishSettingsView: View {
         // detectState() will set setupState, which triggers the onChange handler
         // for discovery + warm-up. Don't duplicate that work here.
         Task { await setup.ollamaSetup.detectState() }
+        // #1956: the hosted catalog does not depend on the daemon at all, so it
+        // must load on SELECTION rather than on readiness. A daemon running with
+        // zero models settles in `.runningNoModels`, which Manage Models still
+        // displays — so gating the fetch on `.ready` alone left the hosted list
+        // permanently unloaded with no Retry on exactly the fresh-install path
+        // this issue exists to fix. Single-flight and the 15-minute window
+        // absorb the overlap with the other two triggers.
+        Task { await setup.ollamaSetup.refreshCloudCatalog() }
       case .appleIntelligence:
         Task { await aiAvailability.checkAvailability(trigger: "provider_switch") }
       case .egOne:

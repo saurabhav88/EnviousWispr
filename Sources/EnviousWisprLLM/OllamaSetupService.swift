@@ -348,7 +348,11 @@ public final class OllamaSetupService {
     //
     // The registered row always wins: it is the one with real daemon-derived
     // facts, and it is what the picker can actually select.
-    let hostedKeysDownloaded = Set(downloadedModels.map { Self.hostedCatalogKey($0.exactName) })
+    // Only REMOTE registrations suppress a hosted suggestion. A local `gpt-oss:20b`
+    // is a different thing from Ollama's hosted `gpt-oss:20b`: it shares a name and
+    // nothing else, and treating it as the registration hid an addable model.
+    let hostedKeysDownloaded = Set(
+      downloadedModels.filter { $0.facts.isRemote }.map { Self.hostedCatalogKey($0.exactName) })
     let hostedSuggestions: [OllamaModelCatalogEntry] = cloudCatalogIDs.compactMap { advertisedID in
       guard !hostedKeysDownloaded.contains(Self.hostedCatalogKey(advertisedID)) else { return nil }
       return OllamaModelCatalogEntry(
