@@ -12,8 +12,8 @@ import EnviousWisprCore
 /// cannot silently diverge.
 ///
 /// ENRICHMENT SET — a deliberate choice, not an oversight. The measured L3 benchmark arm
-/// sent the system text below verbatim and `Transcript to clean:\n\n<transcript>` as the user
-/// message, with nothing else. This builder therefore does NOT inherit two enrichments that
+/// sent the system text below verbatim, and a user message of `Transcript to clean:` followed
+/// by the raw transcript. Nothing else. This builder therefore does NOT inherit two enrichments that
 /// `CloudFixedPromptBuilder` carries:
 ///   - the unconditional language-preservation preamble, which is redundant with this
 ///     prompt's own first line ("in the input language") and would diverge from the measured
