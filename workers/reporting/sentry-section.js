@@ -343,6 +343,11 @@ const ISSUE_FIELDS = ["issue", "title", "error.category", "level", "count()", "c
 // through. See workers/shared/sentry.js discoverAggregate.
 const ISSUE_REQUIRED_META = ["error.category", "level", "count()", "count_unique(user)"];
 const RELEASE_FIELDS = ["release", "count()", "count_unique(user)"];
+
+/** The release query's page size AND the number the truncation sentence quotes.
+ * One constant because a sentence naming a different limit from the one the
+ * query used is a lie the reader cannot check. */
+const RELEASE_PAGE_LIMIT = 100;
 const HEADLINE_FIELDS = ["count()", "count_unique(user)"];
 
 const PROD = "production";
@@ -389,7 +394,7 @@ export async function fetchSentrySection(env, window, opts = {}) {
       start: startISO,
       end: endISO,
       sort: "-count_unique(user)",
-      perPage: 100,
+      perPage: RELEASE_PAGE_LIMIT,
     }, opts),
     // The badge comes from firstSeen, NEVER from a min(timestamp) over the
     // window. That was the original design and it was measured wrong: min()
@@ -704,20 +709,28 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
   // two identity systems. Saying so is better than inventing a denominator.
   lines.push("Impact rate unavailable: error counts and usage counts come from different identity systems.");
 
-  if (data.tailPeople > 0) {
+  // TWO ERROR SOURCES PULLING OPPOSITE WAYS MEANS NO BOUND EXISTS, SO PRINT NO
+  // NUMBER. The sum OVERSTATES, because per-release people counts are not
+  // additive and one person on three old releases is counted three times. A cut
+  // release page UNDERSTATES, because omitted rows are unseen. Untruncated only
+  // the first applies, so "up to N" is sound. Truncated, both apply and the true
+  // value can sit on either side of the subtotal - "at least N" is exactly as
+  // unsupported as "up to N", and swapping one for the other only moves which
+  // direction the sentence is wrong in.
+  //
+  // Driven by `releasesTruncated` rather than by the subtotal, because a
+  // truncated page with a ZERO visible subtotal is the case that most needs
+  // saying: it looks identical to "nobody is on an old build", which is the one
+  // conclusion this section must never let a reader draw by accident.
+  if (data.releasesTruncated) {
+    lines.push(
+      `Separately, the release list hit its ${RELEASE_PAGE_LIMIT}-row limit, ` +
+        `so people on builds older than ${data.floor} could not be counted.`
+    );
+  } else if (data.tailPeople > 0) {
     // "Up to", because these are per-release counts summed across releases and
     // one person can appear under more than one.
-    //
-    // A TRUNCATED RELEASE PAGE INVERTS THAT BOUND, so the wording cannot stand.
-    // The sum overstates (non-additive people) and a cut-off page understates
-    // (missing old releases), and the two pull opposite ways - so "up to N" is
-    // no longer a claim the data supports in either direction. Say it is
-    // partial instead of picking a bound that might be false.
-    lines.push(
-      data.releasesTruncated
-        ? `Separately, at least ${people(data.tailPeople)} on builds older than ${data.floor}, from a partial release list.`
-        : `Separately, up to ${people(data.tailPeople)} on builds older than ${data.floor}.`
-    );
+    lines.push(`Separately, up to ${people(data.tailPeople)} on builds older than ${data.floor}.`);
   }
   lines.push("");
 

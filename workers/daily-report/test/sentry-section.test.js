@@ -625,10 +625,13 @@ test("a truncated release page drops the upper-bound claim it can no longer supp
   const text = lines.join("\n");
 
   assert.equal(data.releasesTruncated, true);
-  // The sum overstates (non-additive people) and the cut page understates, so
-  // neither bound holds and "up to" would be a claim the data cannot support.
-  assert.match(text, /at least .* on builds older than 2\.4\.0, from a partial release list/);
+  // NEITHER bound holds, so no number is printed at all. The sum overstates
+  // (non-additive people) and the cut page understates, so "at least N" is
+  // exactly as unsupported as "up to N" - swapping them only changes which
+  // direction the sentence is wrong in.
+  assert.match(text, /release list hit its 100-row limit, so people on builds older than 2\.4\.0 could not be counted/);
   assert.doesNotMatch(text, /up to \d+ (person|people) on builds older than/);
+  assert.doesNotMatch(text, /at least \d+ (person|people) on builds older than/);
 
   // The FLOOR survives truncation and the tail does not — the reason one flag
   // cannot serve both. The query sorts by -count_unique(user), so the winner is
@@ -638,6 +641,30 @@ test("a truncated release page drops the upper-bound claim it can no longer supp
   // Two-way: the problem list has its OWN truncation axis and this must not
   // have set it, or the section would claim a limit that did not happen.
   assert.equal(data.truncated, false);
+});
+
+test("a truncated page discloses even when the visible old-build subtotal is zero", async () => {
+  // The case that most needs saying, and the one a `tailPeople > 0` guard hides:
+  // every returned row is AT OR ABOVE the floor, so the tail sums to zero while
+  // the page was still cut off. Silence here is indistinguishable from "nobody
+  // is on an old build", which is the one conclusion this section must never
+  // let a reader draw by accident.
+  const releases = [
+    { release: "com.enviouswispr.app@2.4.3", "count_unique(user)": 8, "count()": 19 },
+    ...Array.from({ length: 99 }, (_, i) => ({
+      release: `com.enviouswispr.app@2.4.${i + 4}`,
+      "count_unique(user)": 1,
+      "count()": 1,
+    })),
+  ];
+  const { data, lines } = await render({
+    releases,
+    problems: [problemRow("EW-1", "asr_failed", 1, 1)],
+  });
+
+  assert.equal(data.releasesTruncated, true);
+  assert.equal(data.tailPeople, 0, "nothing below the floor was returned");
+  assert.match(lines.join("\n"), /could not be counted/, "silence would read as an all-clear");
 });
 
 test("an untruncated release page keeps the upper-bound wording", async () => {
