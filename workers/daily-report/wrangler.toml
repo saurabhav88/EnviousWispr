@@ -24,13 +24,18 @@ SENTRY_PROJECT_SLUG = "enviouswispr"
 #                               the `x-trigger-secret` header (the workers.dev URL is public, so
 #                               the trigger fails closed without it)
 #   SENTRY_AUTH_TOKEN         - reads the Sentry section's aggregates (#1965).
+#     GCP secret `sentry-workers-readonly-token`, scoped to exactly
+#     `event:read` + `org:read`. Install the SAME token on all three Sentry
+#     workers: this one, weekly-digest, and sentry-triage.
 #     NOT the keystore's `sentry-triage-worker-token`, and NOT `sentry-auth-token`.
 #     MEASURED 2026-08-06: both of those 403 on `/organizations/<org>/events/`,
 #     which is the endpoint every number in this section comes from. The triage
 #     token reaches `/projects/<org>/<proj>/issues/` and per-issue events only;
-#     the CI token reaches neither. This section needs a token that also carries
-#     org scope. Without it the section renders "unavailable today" and the rest
-#     of the report is unaffected, which is the intended degradation, not a bug.
+#     the CI token reaches neither. `org:read` is what closes that gap, and
+#     Sentry locks scopes at creation, so it had to be a new token rather than a
+#     widened one. Absent or wrong, the section renders "unavailable today" and
+#     the rest of the report is unaffected, which is the intended degradation,
+#     not a bug.
 #
 # The section is degradable by design: a Sentry outage must never cost the
 # adoption numbers, which come from a different vendor entirely.

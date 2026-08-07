@@ -17,11 +17,13 @@ SENTRY_PROJECT_SLUG = "enviouswispr"
 # Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
 #   POSTHOG_PERSONAL_API_KEY  - GCP secret `posthog-personal-api-key`
 #   SENTRY_AUTH_TOKEN         - reads the Sentry section's aggregates (#1965).
-#     Same token and the same caveat as workers/daily-report/wrangler.toml:
+#     GCP secret `sentry-workers-readonly-token`. Same token and the same
+#     reasoning as workers/daily-report/wrangler.toml, which owns the detail:
 #     neither `sentry-triage-worker-token` nor `sentry-auth-token` can make this
 #     call (both 403 on `/organizations/<org>/events/`, measured 2026-08-06).
-#     Absent, the section renders "unavailable today" and the other four
-#     sections are unaffected.
+#     The same token also goes on sentry-triage, which needs it for the
+#     rate-alert breakdown. Absent, the section renders "unavailable today" and
+#     the other four sections are unaffected.
 #   DISCORD_WEBHOOK_URL       - the session-logs webhook
 #   CF_EMAIL / CF_API_KEY     - Cloudflare Analytics GraphQL auth
 #   GITHUB_TOKEN              - optional; raises the releases rate limit
