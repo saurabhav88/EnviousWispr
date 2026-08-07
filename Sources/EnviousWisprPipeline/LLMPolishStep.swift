@@ -367,6 +367,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // Cleared rather than left alone because this returns the CALLER's context,
     // and a value arriving here could otherwise ride a bypass into telemetry.
     ctx.polishRanRemote = nil
+    // #1948: same reasoning for the route receipt. A stale family riding a bypass would tell
+    // `EmojiRestoreStep` that a polish it never saw used the local prompt.
+    ctx.promptFamily = nil
     return ctx
   }
 
@@ -755,7 +758,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // above.
     ctx.polishRanRemote = ollamaRemote
     // #1948: same stamp site, same reasoning — set only after a real polish returned.
-    ctx.promptFamily = plan.family.rawValue
+    ctx.promptFamily = plan.family
     return ctx
   }
 

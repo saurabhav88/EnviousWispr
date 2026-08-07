@@ -65,8 +65,9 @@ final class KernelFinalizationOutcome {
   var itnLenBefore: Int?
   var itnLenAfter: Int?
   /// #761: deterministic emoji-restore facts, threaded onto `dictation.completed`.
-  /// Counts only (`telemetry-privacy-boundary`). Populated only on an AFM run; the
-  /// optionals stay nil for cloud / Ollama / no-polish dictations.
+  /// Counts only (`telemetry-privacy-boundary`). Populated on a RESTORING run — AFM, plus
+  /// local Ollama on the fixed L3 prompt since #1948; the optionals stay nil for cloud,
+  /// hosted Ollama, EG-1 and no-polish dictations.
   var emojiRan = false
   var emojiInInput: Int?
   var emojiDropped: Int?
@@ -909,8 +910,9 @@ struct KernelFinalizationWiring {
       asrLastTokenEndMs: telemetryState.asrCompletedTelemetry?.asrLastTokenEndMs,
       asrLastTokenGapMs: telemetryState.asrCompletedTelemetry?.asrLastTokenGapMs,
       asrChunked: telemetryState.asrCompletedTelemetry?.asrChunked,
-      // #761 deterministic emoji-restore facts (counts only). Populated only on
-      // an AFM run; nil for cloud / Ollama / no-polish and pre-#761 records.
+      // #761 deterministic emoji-restore facts (counts only). Populated on a RESTORING
+      // run — AFM, plus local Ollama on the fixed L3 prompt since #1948; nil for cloud,
+      // hosted Ollama, EG-1, no-polish and pre-#761 records.
       emojiInInput: outcome.emojiRan ? outcome.emojiInInput : nil,
       emojiDropped: outcome.emojiRan ? outcome.emojiDropped : nil,
       emojiRestored: outcome.emojiRan ? outcome.emojiRestored : nil,

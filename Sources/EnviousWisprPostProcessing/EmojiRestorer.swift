@@ -1,8 +1,9 @@
 import Foundation
 
-/// Deterministic post-polish emoji restore (#761). The Apple on-device (AFM)
-/// polish step strips ~70-90% of the emoji glyphs the deterministic
-/// `EmojiFormatter` inserts BEFORE polish. This type compares the pre-polish
+/// Deterministic post-polish emoji restore (#761). Small local polish models strip the
+/// emoji glyphs the deterministic `EmojiFormatter` inserts BEFORE polish: the Apple on-device
+/// (AFM) step drops ~70-90% of them, and #1948 measured local Ollama dropping them on 45 of
+/// 98 emoji-bearing corpus cases (`qwen2.5:3b`) and 92 of 98 (`llama3.2`). This type compares the pre-polish
 /// text (emoji-bearing) against the polish output (stripped) and re-inserts the
 /// dropped glyphs at their original anchor — never repositioning emoji the model
 /// kept.
@@ -69,7 +70,7 @@ public struct EmojiRestorer: Sendable {
   /// Normalize a glyph for kept-vs-dropped matching ONLY: strip VS16 + skin tone
   /// so `❤️`==`❤` and `👍🏽`==`👍`. Restore is always verbatim from the pre-polish
   /// slice, so a glyph AFM drops outright comes back with its tone intact. The
-  /// strip is deliberate: when AFM keeps an emoji but de-tones it (`👍🏽`->`👍`),
+  /// strip is deliberate: when the polish model keeps an emoji but de-tones it (`👍🏽`->`👍`),
   /// matching on the base treats it as KEPT, so we leave AFM's glyph instead of
   /// inserting a toned duplicate beside it. The only lossy case is that
   /// kept-but-de-toned variant; a true drop never loses the tone.
@@ -223,6 +224,18 @@ public struct EmojiRestorer: Sendable {
 
   /// Re-insert into `polished` every emoji `prePolish` carried that `polished`
   /// lost. Pure; never throws.
+  /// The number of alignment tokens `restore` would derive from `text`. This is the EXACT
+  /// quantity that sizes the quadratic LCS table (`alignWords` allocates
+  /// `(preTokens + 1) * (postTokens + 1)`), exposed so a caller's length guard can measure
+  /// the thing it is bounding.
+  ///
+  /// #1948: a guard counting whitespace-separated chunks instead does NOT bound this —
+  /// `a,b,c,...` or a long URL is one whitespace chunk and many word tokens, so such a guard
+  /// passes exactly the pathological inputs it exists to reject.
+  public static func alignmentTokenCount(_ text: String) -> Int {
+    wordTokens(Array(text)).count
+  }
+
   public func restore(polished: String, prePolish: String) -> Result {
     let pre = Array(prePolish)
     let post = Array(polished)

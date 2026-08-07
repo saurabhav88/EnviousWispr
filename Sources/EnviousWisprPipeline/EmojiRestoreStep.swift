@@ -24,7 +24,8 @@ import Foundation
 /// ALWAYS-ON, data-driven — NOT gated on the emoji-converter toggle. The restore
 /// is coupled to "did THIS dictation carry emoji that polish dropped" (a count
 /// diff), never to the live setting. Gating on the live `emojiFormatterEnabled`
-/// flag was wrong: if the user flips emoji OFF during the ~1s AFM polish — after
+/// flag was wrong: if the user flips emoji OFF mid-polish (~1s on Apple Intelligence,
+/// longer on a local Ollama model) — after
 /// the converter already inserted a glyph — a toggle-gated step would be skipped
 /// and the glyph would be lost, the exact #761 bug it exists to fix. When the
 /// converter is off there is simply no emoji in `context.text`, so this step
@@ -47,7 +48,8 @@ final class EmojiRestoreStep: TextProcessingStep {
   /// onto `dictation.completed`. Metadata only (counts/latency) — never glyphs
   /// or transcript text (`telemetry-privacy-boundary`). Set ONLY on an AFM run
   /// with polish output; `nil` clears a prior dictation's stamp on every other
-  /// path so a non-AFM dictation emits no emoji telemetry.
+  /// path so a dictation on a non-restoring path emits no emoji telemetry (#1948: the
+  /// restoring paths are Apple Intelligence and local Ollama, not Apple Intelligence alone).
   struct RunOutcome: Sendable {
     /// True when the AFM-gated restore actually executed.
     let ran: Bool
@@ -67,6 +69,12 @@ final class EmojiRestoreStep: TextProcessingStep {
   /// Ollama since #1948; nil on every other provider). Read by `KernelFinalizationWiring`
   /// immediately after the chain runs (same actor, no race).
   private(set) var lastRun: RunOutcome?
+
+  /// Alignment-token ceiling above which restoration is skipped rather than run, counted
+  /// with `EmojiRestorer.alignmentTokenCount` so the guard and the allocation measure the
+  /// same thing. See the measurement table at the guard site; 1,000 is where the real
+  /// restorer crosses this step's own declared 50 ms `maxDuration` budget.
+  static let maxAlignmentTokens = 1_000
 
   private let restorer: EmojiRestorer
 
@@ -100,10 +108,15 @@ final class EmojiRestoreStep: TextProcessingStep {
     // Widening later is cheap and should stay evidence-led: add the family, bring the numbers.
     let restores: Bool
     if context.llmProvider == LLMProvider.appleIntelligence.rawValue {
-      // AFM returns before the family stamp, so it is matched by provider.
+      // AFM returns before the family stamp, so it is matched by provider and has no family.
       restores = true
     } else {
-      restores = context.promptFamily == PromptFamily.localFixed.rawValue
+      // BOTH must hold. `.localFixed` is only reachable through Ollama today, but a gate
+      // that relies on that stays correct only by accident — and the first version of this
+      // gate was wrong precisely because it trusted one field to imply the other.
+      restores =
+        context.llmProvider == LLMProvider.ollama.rawValue
+        && context.promptFamily == .localFixed
     }
     guard restores else { return context }
     // Polish produced no distinct output (disabled / too-short bypass #1022 /
@@ -125,6 +138,36 @@ final class EmojiRestoreStep: TextProcessingStep {
     guard !polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return context
     }
+
+    // LENGTH CAP (#1948, cloud review r7). `EmojiRestorer.alignWords` allocates an
+    // (n+1)x(m+1) `[[Int]]` LCS table and runs synchronously on the main actor, so its cost
+    // is quadratic in dictation length. The AFM path was bounded incidentally by Apple's
+    // 4096-token context (polish is skipped above it, so `polishedText` is nil and this step
+    // no-ops). Local Ollama has no such ceiling and its output cap SCALES with input
+    // (`LLMPolishStep` `outputTokenPolicy`), so widening the gate exposed lengths the
+    // algorithm was never asked to handle.
+    //
+    // Measured against the real restorer on this machine: 200 words 3.6 ms / <1 MB;
+    // 1,000 words 54 ms / 8 MB; 3,000 words 484 ms / 69 MB; 6,000 words 1.9 s / 275 MB;
+    // 9,000 words 4.3 s / 618 MB. The app caps recording at 60 minutes (#1060), which is
+    // roughly 9,000 words at a brisk pace, so the top of that table is reachable.
+    //
+    // The cap is set at the step's OWN declared budget rather than an invented number:
+    // `maxDuration` is 50 ms, and 1,000 words is where the measurement crosses it. Above
+    // that the step declines, the user keeps the polished text unchanged, and the only cost
+    // is that emoji dropped from a very long dictation stay dropped. A multi-second main-
+    // actor stall and hundreds of megabytes is the worse trade by a wide margin.
+    //
+    // A linear-space alignment (Hirschberg) would remove the cap, but that is a real change
+    // to a tuned, shipped algorithm and does not belong in this PR.
+    // Measured with the restorer's OWN tokenizer, not by splitting on whitespace. Cloud
+    // review r7 caught that a whitespace count does not bound this: `a,b,c,...` or a long
+    // URL is ONE whitespace chunk and many alignment tokens, so a whitespace guard passes
+    // precisely the pathological inputs it exists to reject. The unit has to match the
+    // quantity being bounded.
+    let preTokens = EmojiRestorer.alignmentTokenCount(context.text)
+    let postTokens = EmojiRestorer.alignmentTokenCount(polished)
+    guard max(preTokens, postTokens) <= Self.maxAlignmentTokens else { return context }
 
     let start = CFAbsoluteTimeGetCurrent()
     let result = restorer.restore(polished: polished, prePolish: context.text)

@@ -58,8 +58,9 @@ public final class RecoveryTextProcessor {
     // (or silently skips when it is not ready) — never crashes on a nil handle.
     llmPolish.egOneRuntime = egOneRuntime
     // `emojiRestore` is the final limb (#761): always-on and data-driven, it
-    // no-ops unless the recovered take polished under Apple Intelligence and a
-    // glyph was dropped, so it needs no settings from the snapshot.
+    // no-ops unless the recovered take polished under a RESTORING path (Apple
+    // Intelligence, or local Ollama since #1948) and a glyph was dropped, so it
+    // needs no settings from the snapshot.
     self.steps = LimbSteps(
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
@@ -146,6 +147,21 @@ public final class RecoveryTextProcessor {
   }
 
   /// Run the chain. Limb failures inside the chain (a step erroring or timing
+  /// A blank polish is not a polish (#1948). Returns nil for nil, empty, or
+  /// whitespace-only input so the caller delivers the deterministic floor instead.
+  ///
+  /// Named and tested rather than inlined because it encodes the same rule as live
+  /// finalization's empty-output floor (`KernelFinalizationWiring` `:349`), which this
+  /// replay path does not share. Without it a blank result is saved to History AS the
+  /// polished text and reported `polishFellBack: false` (`RecoverySpoolReplayer` `:323`,
+  /// `:383`) — telemetry claiming a polish succeeded when it produced nothing.
+  static func usablePolish(_ polished: String?) -> String? {
+    guard let polished,
+      !polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return nil }
+    return polished
+  }
+
   /// out) are absorbed by the runner and surface as a raw-fallback outcome;
   /// only cancellation propagates, and that too falls back to raw.
   public func process(rawText: String, targetAppName: String? = nil) async
@@ -160,9 +176,20 @@ public final class RecoveryTextProcessor {
           steps.wordCorrection, steps.fillerRemoval, steps.emojiFormatter,
           steps.inverseTextNormalization, steps.llmPolish, steps.emojiRestore,
         ])
+      // #1948: a BLANK polish is not a polish. Live finalization has an empty-output
+      // recovery floor (`KernelFinalizationWiring` `:349`) that turns "" into the intact
+      // deterministic text; this replay path has none, so a blank result would be saved to
+      // History as the polished text AND reported as `polishFellBack: false`
+      // (`RecoverySpoolReplayer` `:323`, `:383`) — telemetry claiming a polish succeeded
+      // when it produced nothing. Reachable the same way as on the live path:
+      // `OllamaConnector` accepts a whitespace response as success and trims it to "", and
+      // `validatePolishOutput` has no empty guard below 10 input words.
+      //
+      // Normalising to nil here delivers `context.text`, the post-ITN deterministic floor,
+      // which is what the live path's floor produces for the same input.
       return RecoveryTextOutcome(
         text: result.context.text,
-        polishedText: result.context.polishedText,
+        polishedText: Self.usablePolish(result.context.polishedText),
         polishError: result.polishError)
     } catch {
       return RecoveryTextOutcome(text: rawText, polishedText: nil, polishError: nil)
