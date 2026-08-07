@@ -1176,6 +1176,8 @@ struct OllamaSetupServiceHostedAddTests {
   /// at the moment it asked.
   @MainActor private final class PullLog {
     var pulled: [String] = []
+    /// The advertised id handed to the starter alongside each pullable name.
+    var advertisedIDs: [String] = []
     var statesWhenCalled: [HostedModelAddState] = []
   }
 
@@ -1258,8 +1260,14 @@ struct OllamaSetupServiceHostedAddTests {
   private func starter(_ log: PullLog, service: @escaping @MainActor () -> OllamaSetupService)
     -> HostedPullStarter
   {
-    { name in
+    { name, advertisedID in
       log.pulled.append(name)
+      // r9: the advertised id now travels WITH the start call rather than being
+      // stamped after it, so recording it here is what proves the production
+      // closure passes the right one — a starter that ignored it would pass
+      // every pulled-name assertion while the row keyed by that id showed
+      // nothing.
+      log.advertisedIDs.append(advertisedID)
       log.statesWhenCalled.append(service().hostedModelAddState)
     }
   }
@@ -1854,6 +1862,40 @@ struct OllamaSetupServiceHostedAddTests {
     await second.value
     #expect(log.pulled == ["glm-5.2:cloud"])
     #expect(service.hostedModelAddState == .idle)
+  }
+
+  /// Review r9: the advertised id travels WITH the start call. A starter that
+  /// received only the pullable name would satisfy every existing assertion
+  /// while the row keyed by the advertised id showed no progress at all.
+  @Test("the starter receives the advertised id alongside the pullable name")
+  func starterReceivesTheAdvertisedID() async {
+    let result = await add("gpt-oss:20b", dash: .status(200), colon: .status(404))
+    #expect(result.log.pulled == ["gpt-oss:20b-cloud"])
+    #expect(result.log.advertisedIDs == ["gpt-oss:20b"])
+  }
+
+  /// And it reaches the service, so the row and the status text can both read it.
+  @Test("a hosted Add records its advertised id on the service")
+  func hostedAddRecordsAdvertisedIDOnService() async {
+    let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    await service.addHostedModel(
+      advertisedID: "gpt-oss:20b",
+      show: transport(
+        showScript(advertisedID: "gpt-oss:20b", dash: .status(200), colon: .status(404))),
+      startPull: { name, id in service.pullModel(name, hostedAdvertisedID: id) })
+    #expect(service.hostedPullAdvertisedID == "gpt-oss:20b")
+    // And the status says Adding, not Downloading, for a 0-byte registration.
+    #expect(service.pullStatusText == "Adding...")
+  }
+
+  /// Two-way control: an ordinary local download is still a download, and
+  /// carries no advertised id to light up a hosted row.
+  @Test("a local pull says Downloading and records no advertised id")
+  func localPullKeepsDownloadWording() {
+    let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    service.pullModel("llama3.2")
+    #expect(service.pullStatusText == "Starting download...")
+    #expect(service.hostedPullAdvertisedID == nil)
   }
 
   /// Review r8: leaving Ollama ends the whole episode, a failure included.

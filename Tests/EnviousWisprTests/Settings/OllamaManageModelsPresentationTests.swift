@@ -684,6 +684,31 @@ struct OllamaManageModelsPresentationTests {
     }
   }
 
+  // MARK: - #1956 In-progress wording (review r9)
+
+  /// A hosted registration moves 0 bytes, so "Downloading… 0%" is the same false
+  /// framing the Add label exists to remove, and worse: it implies a percentage
+  /// of something. The r2 progress fix had routed hosted rows straight into the
+  /// existing download branch.
+  @Test("a hosted row in progress says Adding, with no percentage")
+  func hostedProgressSaysAdding() {
+    let hosted = catalogEntry("glm-5.2", isRemote: true, isDownloaded: false)
+    let label = OllamaCatalogPresentation.progressLabel(for: hosted, percent: 0)
+    #expect(label == "Adding…")
+    #expect(!label.contains("%"))
+    #expect(!label.lowercased().contains("download"))
+    // The percentage cannot leak in at any value.
+    #expect(OllamaCatalogPresentation.progressLabel(for: hosted, percent: 73) == "Adding…")
+  }
+
+  /// Two-way control: a local download is still a download, and still shows its
+  /// real percentage.
+  @Test("a local row in progress still says Downloading with its percentage")
+  func localProgressKeepsDownloadWording() {
+    let local = catalogEntry("llama3.2", isRemote: false, isDownloaded: false)
+    #expect(OllamaCatalogPresentation.progressLabel(for: local, percent: 42) == "Downloading… 42%")
+  }
+
   // MARK: - #1956 The verification date is stated in UTC (review r6)
 
   /// The defect, observed in the founder's own screenshot of the shipped build:

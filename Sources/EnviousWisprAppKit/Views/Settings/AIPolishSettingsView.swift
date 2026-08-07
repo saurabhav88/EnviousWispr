@@ -1874,10 +1874,13 @@ struct AIPolishSettingsView: View {
         {
           // Active pull for THIS row: show progress + Cancel.
           HStack(spacing: 8) {
-            Text("Downloading… \(Int(setup.ollamaSetup.pullProgress * 100))%")
-              .font(.stHelper)
-              .foregroundStyle(Color.secondary)
-              .monospacedDigit()
+            Text(
+              OllamaCatalogPresentation.progressLabel(
+                for: entry, percent: Int(setup.ollamaSetup.pullProgress * 100))
+            )
+            .font(.stHelper)
+            .foregroundStyle(Color.secondary)
+            .monospacedDigit()
             Button {
               setup.ollamaSetup.cancelPull()
             } label: {

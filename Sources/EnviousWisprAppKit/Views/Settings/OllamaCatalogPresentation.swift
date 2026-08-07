@@ -90,6 +90,17 @@ enum OllamaCatalogPresentation {
   /// pull, so the row rendered neither progress nor Cancel while `isPulling`
   /// disabled its button — a dead-looking control for the pull's whole duration.
   ///
+  /// #1956: what the in-progress row says while work is happening.
+  ///
+  /// A hosted registration moves 0 bytes, so "Downloading… 0%" is the same false
+  /// framing the Add label exists to remove — and worse than the button was,
+  /// because it also implies a percentage of something. Review r9 caught that
+  /// the r2 progress fix had routed hosted rows straight into the existing
+  /// download branch.
+  static func progressLabel(for entry: OllamaModelCatalogEntry, percent: Int) -> String {
+    entry.isRemote ? "Adding…" : "Downloading… \(percent)%"
+  }
+
   /// A hosted row matches on the advertised id the SERVICE recorded when it
   /// started the pull, never on a normalised name.
   ///

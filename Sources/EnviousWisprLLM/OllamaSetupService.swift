@@ -137,7 +137,10 @@ package typealias HostedShowTransport =
 /// No `@Sendable`: a `@MainActor` function type is already `Sendable` under this
 /// package's Swift 6 mode (swift-concurrency-patterns
 /// `mainactor-fntype-implicitly-sendable`), so writing it would be redundant.
-package typealias HostedPullStarter = @MainActor (String) -> Void
+/// (pullable name, advertised id). The advertised id travels WITH the start
+/// call rather than being stamped after it, so `pullModel` can choose honest
+/// wording from its first line and no ordering rule has to be remembered.
+package typealias HostedPullStarter = @MainActor (String, String) -> Void
 
 /// Guides users through Ollama installation, server startup, and model pulling.
 @MainActor
@@ -868,7 +871,7 @@ public final class OllamaSetupService {
     await addHostedModel(
       advertisedID: advertisedID,
       show: { try await URLSession.shared.data(for: $0) },
-      startPull: { self.pullModel($0) })
+      startPull: { self.pullModel($0, hostedAdvertisedID: $1) })
   }
 
   /// Injection overload. The production overload above routes through this exact
@@ -917,15 +920,10 @@ public final class OllamaSetupService {
     switch (dashOutcome, colonOutcome) {
     case (.proven, .absent):
       hostedModelAddState = .idle
-      startPull(dashCandidate)
-      // AFTER, never before: `pullModel` clears this so that an ordinary local
-      // download cannot inherit a previous hosted Add's id.
-      hostedPullAdvertisedID = advertisedID
+      startPull(dashCandidate, advertisedID)
     case (.absent, .proven):
       hostedModelAddState = .idle
-      startPull(colonCandidate)
-      // AFTER, never before: see the dash branch.
-      hostedPullAdvertisedID = advertisedID
+      startPull(colonCandidate, advertisedID)
 
     case (.proven(let dashIdentity), .proven(let colonIdentity))
     where dashIdentity == colonIdentity:
@@ -943,8 +941,7 @@ public final class OllamaSetupService {
       // only review r5 pointed the instrument at the question the code actually
       // depends on.
       hostedModelAddState = .idle
-      startPull(dashCandidate)
-      hostedPullAdvertisedID = advertisedID
+      startPull(dashCandidate, advertisedID)
 
     case (.proven, .proven):
       // Two names, two DIFFERENT models. Still refuse: registering the wrong one
@@ -1271,7 +1268,10 @@ public final class OllamaSetupService {
   // MARK: - Model Pulling
 
   /// Pull a model by name, streaming progress updates.
-  public func pullModel(_ modelName: String) {
+  /// `hostedAdvertisedID` is non-nil only when a hosted Add started this, and it
+  /// carries the id the ROW is keyed by. It decides two things: which row shows
+  /// progress, and whether the status says Adding or Downloading.
+  public func pullModel(_ modelName: String, hostedAdvertisedID: String? = nil) {
     // Cancel any in-flight pull and invalidate its epoch so stale writes no-op.
     pullTask?.cancel()
     pullTask = nil
@@ -1280,15 +1280,15 @@ public final class OllamaSetupService {
 
     // Reset progress
     currentPullingModel = modelName
-    // #1956: every pull starts as a LOCAL one as far as row matching is
-    // concerned. `addHostedModel` re-stamps this immediately after calling here,
-    // which is why its assignment is ordered after the call. Without this clear,
-    // a local download following a hosted Add would inherit the hosted id and
-    // light up the wrong row.
-    hostedPullAdvertisedID = nil
+    // #1956: nil for a local download, so one cannot inherit a previous hosted
+    // Add's id and light up the wrong row.
+    hostedPullAdvertisedID = hostedAdvertisedID
     pullProgress = 0
-    pullStatusText = "Starting download..."
-    setupState = .pullingModel(progress: 0, status: "Starting download...")
+    // #1956: a hosted registration moves 0 bytes and takes ~0.5 s. Calling it a
+    // download here is the same false framing the Add label exists to remove.
+    let opening = hostedAdvertisedID == nil ? "Starting download..." : "Adding..."
+    pullStatusText = opening
+    setupState = .pullingModel(progress: 0, status: opening)
 
     pullTask = Task { [weak self] in
       guard let self else { return }
