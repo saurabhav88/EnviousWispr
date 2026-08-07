@@ -8,7 +8,9 @@ Polish model: gpt-4o-mini (cheap, standard production polish path).
 Judge model:  gemini-3-pro-preview (thinking, cross-family vs the polish).
 
 Reads scripts/eval/corpus/ci_corpus.jsonl.
-Reads prompts from the Swift source files so the benchmark uses the production prompt.
+The polish prompt is a realistic FIXTURE, not a production-faithful render — see the
+POLISH_SYSTEM note below for exactly how it differs and why that does not affect what
+this benchmark measures.
 """
 from __future__ import annotations
 
@@ -31,19 +33,32 @@ GEMINI_KEY = Path(os.path.expanduser("~/.enviouswispr-keys/gemini-api-key")).rea
 POLISH_MODEL = "gpt-4o-mini"
 JUDGE_MODEL = "gemini-3-pro-preview"
 
-# --- Production polish prompt ---
+# --- Polish prompt: a realistic FIXTURE, deliberately not a production render ---
 #
-# #1948: this used to be a hand-copied mirror of `OpenAIPromptBuilder`'s `.inline` prompt,
-# plus that builder's `<transcript>` sandwich user template. Both were deleted with the
-# `.openAIProse` family, so the copy became a mirror of nothing — the stale-generated-file
-# trap in `self-review-and-grep-before-codex`. The docstring above already claimed prompts
-# were read from source; now they are.
+# #1948 first: this was a hand-copied mirror of `OpenAIPromptBuilder`'s `.inline` prompt,
+# deleted with the `.openAIProse` family, so the copy became a mirror of nothing — the
+# stale-generated-file trap in `self-review-and-grep-before-codex`.
 #
-# `POLISH_MODEL` is a cloud model, so the production prompt for it is the fixed v6 cloud
-# prompt, read from its tracked artifact. This benchmark measures JUDGE CHUNK SIZE, not
-# polish quality — the polish prompt only has to be a realistic fixture, and reading the
-# artifact keeps it realistic without a copy that can rot again.
-POLISH_SYSTEM = (ROOT / "scripts/eval/prompts/cloud-fixed-polish-prompt-v6.txt").read_text().rstrip("\n")
+# #1948 second (cloud review, PR #1971): replacing it with the tracked v6 artifact still does
+# NOT reproduce `CloudFixedPromptBuilder.build`, and the docstring above used to claim it did.
+# Production additionally prepends an unconditional language/script-preservation instruction
+# and appends a short-input guard at `wordCount <= 10` — which fires on **71 of the 161**
+# `ci_corpus` cases (44%, verified). So the candidates generated here are not byte-identical
+# to what a user would get.
+#
+# Left as a fixture rather than mirrored, on purpose. This benchmark measures JUDGE CHUNK
+# SIZE: it scores the SAME candidate set at chunk 10 and chunk 20 and compares the two, so
+# the attenuation it reports is a property of the judge, and both arms share whatever prompt
+# produced the candidates. Adding a third Python mirror of a Swift prompt would create exactly
+# the sync obligation (`polish-eval.md` RULE: manual-swift-python-sync) whose failure produced
+# the stale copy above. The honest fix was the CLAIM, not the prompt.
+#
+# If this file is ever repurposed to judge production polish QUALITY rather than judge
+# chunking, that reasoning stops holding: render through `scripts/eval/prompt_render`, which
+# drives the shipped `DefaultPromptPlanner`.
+POLISH_SYSTEM = (
+    (ROOT / "scripts/eval/prompts/cloud-fixed-polish-prompt-v6.txt").read_text().rstrip("\n")
+)
 
 # Plain user message, no sandwich: the fixed cloud prompt carries its own anti-instruction
 # framing and #1255 removed the wrapper because models echoed the tags into their output.
