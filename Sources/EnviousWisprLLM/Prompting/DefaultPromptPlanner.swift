@@ -7,23 +7,22 @@ public struct DefaultPromptPlanner: PromptPlanning {
   public init() {}
 
   public func plan(input: PromptBuildInput) -> PolishPlan {
-    // #1255: the cloud providers (OpenAI/Gemini) use one fixed, modeless prompt. Force their
-    // plan mode to `.message` so the builder (which ignores mode), the downstream output
-    // validator (`LLMPolishStep` passes `plan.mode` into `validatePolishOutput`), and the
+    // #1255: the cloud providers use one fixed, modeless prompt. Force the plan mode to
+    // `.message` so the builder (which ignores mode), the downstream output validator
+    // (`LLMPolishStep` passes `plan.mode` into `validatePolishOutput`), and the
     // `polish_mode` telemetry all share ONE consistent policy that matches the eval mirror.
-    // #1269: EG-1 (via Ollama) is modeless the same way — same forced `.message` policy.
-    // Other Ollama models keep the analyzer's mode because their builders format by mode.
-    let family = Self.family(for: input.provider, modelID: input.modelID)
-    let mode: PolishMode
-    switch family {
-    case .cloudFixed, .egOneFixed:
-      mode = .message
-    case .openAIProse, .gemmaFewShot:
-      mode = TranscriptAnalyzer.analyzeMode(
-        transcript: input.transcript,
-        appName: input.appName
-      )
-    }
+    // #1269: EG-1 is modeless the same way.
+    // #1948: local Ollama joined them. Every family is now modeless, so there is one policy
+    // rather than a switch — `TranscriptAnalyzer` and its per-transcript selection are gone.
+    // The validator's thresholds are the only remaining consumer of `mode`, and the cost of
+    // moving the former `.structured` inputs onto `.message` thresholds was measured before
+    // the change: +11 fallbacks of 1,690 on `qwen2.5:3b`, +6 on `llama3.2`.
+    let family = Self.family(
+      for: input.provider,
+      modelID: input.modelID,
+      ollamaIsRemote: input.ollamaIsRemote
+    )
+    let mode: PolishMode = .message
 
     // Multilingual v1 (W3): filter polish vocabulary for the active
     // confidence tier + script guardrail BEFORE handing it to the builder.
@@ -34,42 +33,48 @@ public struct DefaultPromptPlanner: PromptPlanning {
 
     let builder = Self.builder(for: family)
     let envelope = builder.build(input: filtered, mode: mode)
-    return PolishPlan(mode: mode, envelope: envelope)
-  }
-
-  /// Select builder by provider + model family, not just provider.
-  /// Ollama running non-Gemma models gets OpenAI-style prose prompt.
-  public static func builder(for provider: LLMProvider, modelID: String) -> any PromptBuilder {
-    builder(for: family(for: provider, modelID: modelID))
+    return PolishPlan(mode: mode, envelope: envelope, family: family)
   }
 
   /// Select builder for an already-computed family (single family computation in `plan`).
   static func builder(for family: PromptFamily) -> any PromptBuilder {
     switch family {
     case .cloudFixed: return CloudFixedPromptBuilder()
-    case .openAIProse: return OpenAIPromptBuilder()
-    case .gemmaFewShot: return GemmaPromptBuilder()
+    case .localFixed: return LocalFixedPromptBuilder()
     case .egOneFixed: return EGOnePromptBuilder()
     }
   }
 
-  /// Map (provider, modelID) to a PromptFamily.
-  public static func family(for provider: LLMProvider, modelID: String) -> PromptFamily {
+  /// Map (provider, model identity, execution location) to a `PromptFamily`.
+  ///
+  /// Non-public and called from exactly one place — `plan()`. Before #1948 the pipeline
+  /// called a public version a second time purely to stamp telemetry; `PolishPlan.family`
+  /// now carries the result so the decision cannot be re-derived differently.
+  static func family(
+    for provider: LLMProvider,
+    modelID: String,
+    ollamaIsRemote: Bool?
+  ) -> PromptFamily {
     switch provider {
     case .openAI, .gemini, .claude:
       // Strong cloud models: one fixed prompt, no per-transcript mode selection (#1255).
       return .cloudFixed
     case .ollama:
-      // EG-1 (our tuned model, #1269) first: explicit precedence for the first-party
-      // model over the generic family heuristics below. Single first-party definition
-      // shared with telemetry: `OllamaSetupService.isFirstPartyModel`.
+      // EG-1 (our tuned model, #1269) first: explicit precedence for the first-party model
+      // over execution location. An EG-1 served from anywhere still needs its exact
+      // training prompt. Single first-party definition shared with telemetry:
+      // `OllamaSetupService.isFirstPartyModel`.
       if OllamaSetupService.isFirstPartyModel(modelID) {
         return .egOneFixed
       }
-      if modelID.lowercased().contains("gemma") {
-        return .gemmaFewShot
-      }
-      return .openAIProse
+      // #1948: the daemon's own report decides it — never the model's name or size.
+      // A HOSTED model runs on Ollama's servers and is frontier-class, so it gets the
+      // prompt already validated for frontier models. Everything else runs on the user's
+      // Mac and gets the one local prompt, whatever it is called and however large it is.
+      //
+      // `nil` (no daemon asked) falls to local with `false`, deliberately: see
+      // `PromptBuildInput.ollamaIsRemote` for why local is the fail-safe direction.
+      return ollamaIsRemote == true ? .cloudFixed : .localFixed
     case .egOne:
       // Native EG-1 (#1271): the bundled first-party server always runs the
       // model's training prompt. Model identity is manifest-enforced by
@@ -77,8 +82,10 @@ public struct DefaultPromptPlanner: PromptPlanning {
       // per-model-id heuristics apply here.
       return .egOneFixed
     case .appleIntelligence, .none:
-      // Should not reach planner. Fallback to openAI prose.
-      return .openAIProse
+      // Should not reach the planner — Apple Intelligence has its own prompt path
+      // (`LLMPolishStep` branches before planning). Fall back to the fixed cloud prompt,
+      // which is provider-agnostic and mode-independent.
+      return .cloudFixed
     }
   }
 

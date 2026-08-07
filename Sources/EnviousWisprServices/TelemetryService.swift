@@ -1054,7 +1054,9 @@ public final class TelemetryService {
     if let lb = itnLenBefore { props["itn_len_before"] = lb }
     if let la = itnLenAfter { props["itn_len_after"] = la }
     // #761: deterministic emoji-restore facts (counts only — `telemetry-privacy-boundary`).
-    // Present only for AFM dictations that ran the guard.
+    // Present for dictations that ran the guard: AFM, plus local Ollama on the fixed L3
+    // prompt since #1948. A dashboard reading `emoji_*` as Apple-Intelligence-only silently
+    // widens on that release boundary and must be re-scoped by provider.
     if let ein = emojiInInput { props["emoji_in_input"] = ein }
     if let ed = emojiDropped { props["emoji_dropped"] = ed }
     if let er = emojiRestored { props["emoji_restored"] = er }

@@ -65,8 +65,9 @@ final class KernelFinalizationOutcome {
   var itnLenBefore: Int?
   var itnLenAfter: Int?
   /// #761: deterministic emoji-restore facts, threaded onto `dictation.completed`.
-  /// Counts only (`telemetry-privacy-boundary`). Populated only on an AFM run; the
-  /// optionals stay nil for cloud / Ollama / no-polish dictations.
+  /// Counts only (`telemetry-privacy-boundary`). Populated on a RESTORING run — AFM, plus
+  /// local Ollama on the fixed L3 prompt since #1948; the optionals stay nil for cloud,
+  /// hosted Ollama, EG-1 and no-polish dictations.
   var emojiRan = false
   var emojiInInput: Int?
   var emojiDropped: Int?
@@ -302,9 +303,15 @@ struct KernelFinalizationWiring {
       }
       // #761: thread the emoji-restore outcome onto `dictation.completed`
       // (counts only — `telemetry-privacy-boundary`). The always-on step stamps
-      // `lastRun` only on an AFM run and clears it to nil otherwise, so RESET on
-      // the nil path — a prior AFM dictation's counts must never ride a later
-      // (cloud / no-polish) transcript through the reused `outcome`.
+      // `lastRun` only on a RESTORING provider (Apple Intelligence, plus Ollama
+      // since #1948) and clears it to nil otherwise, so RESET on the nil path —
+      // a prior restoring dictation's counts must never ride a later (cloud /
+      // no-polish) transcript through the reused `outcome`.
+      //
+      // #1948 telemetry note: `emoji_ran` and its sibling counts begin appearing
+      // for Ollama takes on the release boundary. That is the guard starting to
+      // work, not a regression; a dashboard reading "emoji_ran ⇒ Apple
+      // Intelligence" silently widens and must be re-scoped by provider.
       if let emoji = steps.emojiRestore.lastRun {
         outcome.emojiRan = emoji.ran
         outcome.emojiInInput = emoji.emojiInInput
@@ -903,8 +910,9 @@ struct KernelFinalizationWiring {
       asrLastTokenEndMs: telemetryState.asrCompletedTelemetry?.asrLastTokenEndMs,
       asrLastTokenGapMs: telemetryState.asrCompletedTelemetry?.asrLastTokenGapMs,
       asrChunked: telemetryState.asrCompletedTelemetry?.asrChunked,
-      // #761 deterministic emoji-restore facts (counts only). Populated only on
-      // an AFM run; nil for cloud / Ollama / no-polish and pre-#761 records.
+      // #761 deterministic emoji-restore facts (counts only). Populated on a RESTORING
+      // run — AFM, plus local Ollama on the fixed L3 prompt since #1948; nil for cloud,
+      // hosted Ollama, EG-1, no-polish and pre-#761 records.
       emojiInInput: outcome.emojiRan ? outcome.emojiInInput : nil,
       emojiDropped: outcome.emojiRan ? outcome.emojiDropped : nil,
       emojiRestored: outcome.emojiRan ? outcome.emojiRestored : nil,

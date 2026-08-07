@@ -367,6 +367,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // Cleared rather than left alone because this returns the CALLER's context,
     // and a value arriving here could otherwise ride a bypass into telemetry.
     ctx.polishRanRemote = nil
+    // #1948: same reasoning for the route receipt. A stale family riding a bypass would tell
+    // `EmojiRestoreStep` that a polish it never saw used the local prompt.
+    ctx.promptFamily = nil
     return ctx
   }
 
@@ -683,9 +686,27 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       focusSnapshot: nil,  // PR 3
       customVocabulary: vocabularySnapshot,
       languageDetection: languageDetection,
-      backend: backend
+      backend: backend,
+      // #1948: the daemon-reported execution location decides which Ollama prompt is sent.
+      // Already captured for this attempt at the readiness probe above; nil for every
+      // non-Ollama provider, which routes nothing.
+      ollamaIsRemote: ollamaRemote
     )
     let plan = promptPlanner.plan(input: input)
+
+    // #1948 content-free routing receipt. `prompt_family` otherwise exists only inside the
+    // Sentry breadcrumb below, which Live UAT cannot read — so without this line the UAT
+    // verdict for "did this model get the right prompt" is unobservable. Policy and sizes
+    // only, never transcript or prompt content.
+    let systemChars =
+      plan.envelope.messages.first(where: { $0.role == .system })?.content.count ?? 0
+    Task {
+      await AppLogger.shared.log(
+        "LLM prompt route: provider=\(provider.rawValue), model=\(model), "
+          + "prompt_family=\(plan.family.rawValue), system_chars=\(systemChars)",
+        level: .info, category: "LLM"
+      )
+    }
 
     let llmStart = CFAbsoluteTimeGetCurrent()
     let result = try await polisher.polish(
@@ -695,13 +716,14 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     )
     let llmEnd = CFAbsoluteTimeGetCurrent()
 
-    let family = DefaultPromptPlanner.family(for: provider, modelID: model)
     logPolishCompletion(
       result: result, duration: llmEnd - llmStart,
       provider: provider, model: model,
       extraData: [
         "polish_mode": plan.mode.rawValue,
-        "prompt_family": family.rawValue,
+        // #1948: read the family the planner actually used. This used to re-derive it from
+        // (provider, model), which could report a family that was never sent.
+        "prompt_family": plan.family.rawValue,
       ])
 
     let validatedText = validatePolishOutput(
@@ -735,6 +757,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // too. Apple Intelligence cannot reach this stamp because its branch returns
     // above.
     ctx.polishRanRemote = ollamaRemote
+    // #1948: same stamp site, same reasoning — set only after a real polish returned.
+    ctx.promptFamily = plan.family
     return ctx
   }
 
@@ -782,7 +806,17 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   ) -> String {
     guard !original.isEmpty else { return polished }
 
-    // Mode-aware thresholds (from plan Appendix C)
+    // Mode-aware thresholds (from plan Appendix C).
+    //
+    // #1948: ONLY `.message` is reachable in production. `DefaultPromptPlanner` forces it for
+    // every family now that `TranscriptAnalyzer` is deleted, and the Apple Intelligence path
+    // passes `.message` literally (`:648`), so `.inline` / `.structured` / `.edit` are inert.
+    // They are kept rather than deleted because `PolishMode` is a public Core type and the
+    // switch must stay exhaustive — not because a caller still selects them. The cost of
+    // moving the former `.structured` inputs onto `.message` thresholds was measured before
+    // the change rather than assumed: +11 extra fallbacks of 1,690 on `qwen2.5:3b`, +6 on
+    // `llama3.2`. If you are here to tune a threshold, tune `.message`; the others describe
+    // transcript shapes nothing classifies any more.
     let expansionThreshold: Int
     let contentDropFraction: (numerator: Int, denominator: Int)
     switch mode {

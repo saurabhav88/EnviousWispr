@@ -108,11 +108,13 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var asrLastTokenEndMs: Int?
   public var asrLastTokenGapMs: Int?
   public var asrChunked: Bool?
-  /// Deterministic post-polish emoji-restore telemetry (#761). Populated only for
-  /// Apple on-device (AFM) polish; nil for cloud providers, no-polish dictations,
-  /// and pre-#761 transcripts on disk (additive optional Codable, back-compatible).
+  /// Deterministic post-polish emoji-restore telemetry (#761). Populated for the RESTORING
+  /// paths only: Apple on-device (AFM) polish, and local Ollama on the fixed L3 prompt since
+  /// #1948. Nil for cloud providers, hosted Ollama, EG-1, no-polish dictations, and pre-#761
+  /// transcripts on disk (additive optional Codable, back-compatible).
   /// `emojiInInput` = emoji the converter inserted pre-polish; `emojiDropped` =
-  /// glyphs AFM stripped; `emojiRestored` = glyphs the guard re-inserted (== dropped
+  /// glyphs the polish model stripped (Apple Intelligence, or Ollama since #1948);
+  /// `emojiRestored` = glyphs the guard re-inserted (== dropped
   /// by construction); `emojiRestoreIncomplete` = restored < dropped (anomaly).
   /// Counts only (`telemetry-privacy-boundary`).
   public var emojiInInput: Int?

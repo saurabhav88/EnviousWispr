@@ -55,6 +55,20 @@ public struct TextProcessingContext: Sendable {
   /// of local execution.
   public var polishRanRemote: Bool?
 
+  /// The `PromptFamily` the planner selected for this polish (#1948). Stamped by
+  /// `LLMPolishStep` from `PolishPlan.family` on the success path only, so it is nil for a
+  /// skip, a failure, a bypass, and for Apple Intelligence (whose branch returns earlier).
+  ///
+  /// Carried rather than re-derived. `EmojiRestoreStep` needs to know whether THIS polish
+  /// used the local fixed prompt, and deriving that from `(provider, model, polishRanRemote)`
+  /// downstream would rebuild the planner's decision in a second place — the exact
+  /// duplication #1948 removed from the telemetry stamp.
+  ///
+  /// Typed, not a rawValue string, and `internal` rather than `public`: nothing outside this
+  /// module reads it, and a stringly-typed receipt is what let the first version of the
+  /// emoji gate accept a family from the wrong provider.
+  var promptFamily: PromptFamily?
+
   public init(text: String, language: String?) {
     self.text = text
     self.language = language

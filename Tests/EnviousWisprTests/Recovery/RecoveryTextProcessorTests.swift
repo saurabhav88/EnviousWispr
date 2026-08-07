@@ -1,9 +1,9 @@
 import EnviousWisprCore
-import EnviousWisprPipeline
 import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprPipeline
 
 /// The public recovery text-processing seam (#1063 PR0) must run the SAME chain
 /// a live dictation runs, configured by the recording's settings snapshot. With
@@ -264,4 +264,29 @@ struct RecoveryTextProcessorTests {
       assignsRawSnapshotModel == false,
       "recovery must not replay a raw snapshot model id — a retired one 404s")
   }
+  // MARK: - Blank polish never reaches History (#1948, emoji design review Q1)
+
+  /// Live finalization turns an empty polish into the deterministic floor
+  /// (`KernelFinalizationWiring` `:349`); this replay path has no such floor. Without
+  /// normalisation a blank result is saved to History AS the polished text and reported
+  /// `polishFellBack: false` — telemetry claiming a polish succeeded when it produced
+  /// nothing. Reachable the same way as live: `OllamaConnector` accepts a whitespace
+  /// response as success and trims it to "", and `validatePolishOutput` has no empty guard
+  /// below 10 input words.
+  @Test(
+    "blank polish normalises to nil so recovery delivers the deterministic floor",
+    arguments: [nil, "", "   ", "\n", " \n\t "])
+  func blankPolishBecomesNil(polished: String?) {
+    #expect(RecoveryTextProcessor.usablePolish(polished) == nil)
+  }
+
+  /// Two-way control: real content must survive untouched, including text that merely
+  /// contains whitespace. Without this, returning nil unconditionally would pass above.
+  @Test(
+    "a non-blank polish is returned unchanged",
+    arguments: ["Ship it.", "  padded but real  ", "🙏", "line one\nline two"])
+  func nonBlankPolishSurvives(polished: String) {
+    #expect(RecoveryTextProcessor.usablePolish(polished) == polished)
+  }
+
 }

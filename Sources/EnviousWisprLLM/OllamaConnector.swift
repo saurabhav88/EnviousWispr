@@ -123,10 +123,6 @@ public struct OllamaConnector: TranscriptPolisher {
   /// non-routable host, which a deleted guard still satisfied via fast ECONNREFUSED).
   private let networkExecutor: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
-  /// Simplified prompt for weak/small models that struggle with complex instructions.
-  private static let weakModelSystemPrompt =
-    "Fix grammar and punctuation. Return only the corrected text."
-
   public init(
     baseURL: String = "http://localhost:11434",
     networkExecutor: @Sendable @escaping (URLRequest) async throws -> (Data, URLResponse) = {
@@ -137,6 +133,19 @@ public struct OllamaConnector: TranscriptPolisher {
     self.networkExecutor = networkExecutor
   }
 
+  /// NOT REACHED IN PRODUCTION, and kept only because `TranscriptPolisher` requires it
+  /// (`LLMProtocol.swift:10-15`; the protocol extension's only default covers the
+  /// `envelope:` variant, so removing this would break conformance). Every production Ollama
+  /// polish goes through `polish(envelope:)` below — the sole `polish(text:instructions:)`
+  /// call site in the pipeline sits inside the `provider == .appleIntelligence` branch.
+  ///
+  /// This method used to substitute a nine-word system prompt for any model
+  /// `OllamaSetupService.isWeakModel` accepted, discarding the planned one. Because the
+  /// branch was here rather than on the live path, reading this file was enough to conclude
+  /// the app shipped a nine-word prompt to its default model — it never did, and an issue,
+  /// a plan premise and two benchmark arms were built on that misreading before it was
+  /// caught (#1962, withdrawn). The substitution is gone; this note stays so the next reader
+  /// checks the call site before drawing a conclusion from this overload.
   public func polish(
     text: String,
     instructions: PolishInstructions,
@@ -148,14 +157,8 @@ public struct OllamaConnector: TranscriptPolisher {
       throw LLMError.requestFailed("Invalid Ollama URL: \(endpointURL)")
     }
 
-    // Use a simplified prompt for weak/small models; full prompt for capable models.
-    let systemPrompt =
-      OllamaSetupService.isWeakModel(config.model)
-      ? Self.weakModelSystemPrompt
-      : instructions.systemPrompt
-
     var messages: [[String: String]] = [
-      ["role": "system", "content": systemPrompt]
+      ["role": "system", "content": instructions.systemPrompt]
     ]
     if !text.isEmpty {
       messages.append(["role": "user", "content": text])
@@ -268,9 +271,20 @@ public struct OllamaConnector: TranscriptPolisher {
       }
     }
 
+    // #1948: strip echoed `<transcript>` wrappers ONLY for EG-1, the one builder left on
+    // this connector that still sends them (`EGOnePromptBuilder` wraps the transcript and
+    // escapes any literal tags the user dictated). Local (`LocalFixedPromptBuilder`) and
+    // hosted (`CloudFixedPromptBuilder`) Ollama send a plain user message, so the model is
+    // never shown a tag it could echo — and stripping there could only delete a user's own
+    // dictated `<transcript>` text. That is the same reasoning that made the cloud
+    // connectors pass `false` when #1255 removed their sandwich; removing the Ollama
+    // sandwich without following it would have reintroduced the defect on this path.
+    // Keyed off the same first-party authority the planner routes on, not a string sniff of
+    // the outgoing prompt, which a user's own dictation could satisfy.
+    let sentTranscriptTags = OllamaSetupService.isFirstPartyModel(config.model)
     return LLMResult(
       polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble()
+        .strippingLLMPreamble(stripTranscriptTags: sentTranscriptTags)
     )
   }
 
