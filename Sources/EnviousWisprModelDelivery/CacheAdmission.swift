@@ -170,7 +170,13 @@ struct CacheAdmission {
     guard realpath(componentRoot.path, &resolvedBuffer) != nil else { return true }
     let resolvedComponentRoot = String(cString: resolvedBuffer)
 
-    let expected = Set(expectedFiles.map(\.resolvedInstallPath))
+    // Cloud review P2: a manifest path containing a non-canonical segment
+    // (e.g. `Encoder.mlmodelc/./foo.bin`) would compare unequal to the
+    // enumerator's own canonical form (`Encoder.mlmodelc/foo.bin`), forcing
+    // an unnecessary component repair. `standardizingPath` normalizes both
+    // sides identically before the comparison runs.
+    let expected = Set(
+      expectedFiles.map { ($0.resolvedInstallPath as NSString).standardizingPath })
     // Without an explicit `errorHandler`, `FileManager.enumerator` SILENTLY
     // STOPS traversal on hitting an unreadable subdirectory rather than
     // throwing — a stale file hidden behind that failure would never be
