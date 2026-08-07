@@ -214,6 +214,48 @@ enum OllamaCatalogPresentation {
   /// a membership list was rejected.
   static let tierSnapshotLifetime: TimeInterval = 30 * 24 * 60 * 60
 
+  /// The tier decision itself, over anything that can name a model.
+  ///
+  /// Generic because TWO surfaces ask this question — the Manage Models list
+  /// (`OllamaModelCatalogEntry`) and the selection dropdown (`LLMModelInfo`) —
+  /// and they must never disagree about which bucket a model is in. A second
+  /// implementation on the picker side would be a copy that drifts, which is
+  /// exactly the defect this type's own header warns about.
+  ///
+  /// Returns `nil` when the snapshot cannot be applied, which the callers render
+  /// as one neutral group. `nil` means "make no tier claim", never "no free
+  /// models".
+  static func hostedTierPartition<Row>(
+    _ rows: [Row],
+    modelName: (Row) -> String,
+    snapshot: HostedTierSnapshot = tierSnapshot,
+    now: Date = Date()
+  ) -> (free: [Row], mayNeedPaid: [Row], checkedAt: Date)? {
+    // A negative age means the clock predates the snapshot, so the clock cannot
+    // establish the snapshot's age at all. That is not freshness, and treating it
+    // as unlimited freshness would surface a verification date in the future. No
+    // claim is the safe direction, exactly as for an expired snapshot.
+    let age = now.timeIntervalSince(snapshot.verifiedAt)
+    guard age >= 0, age <= tierSnapshotLifetime else { return nil }
+
+    // Both sides go through the same key, so a registered `gpt-oss:20b-cloud`
+    // row and its advertised `gpt-oss:20b` suggestion resolve to one identity.
+    // Normalising only the row would silently drop every model whose snapshot
+    // membership was written in the pullable form.
+    let freeKeys = Set(snapshot.freeVerified.map(OllamaSetupService.hostedCatalogKey))
+
+    var free: [Row] = []
+    var mayNeedPaid: [Row] = []
+    for row in rows {
+      if freeKeys.contains(OllamaSetupService.hostedCatalogKey(modelName(row))) {
+        free.append(row)
+      } else {
+        mayNeedPaid.append(row)
+      }
+    }
+    return (free, mayNeedPaid, snapshot.verifiedAt)
+  }
+
   /// Splits the hosted rows into free-verified-first order while the snapshot is
   /// current, and returns them untouched once it expires.
   ///
@@ -224,32 +266,14 @@ enum OllamaCatalogPresentation {
     snapshot: HostedTierSnapshot = tierSnapshot,
     now: Date = Date()
   ) -> HostedTierGroups {
-    // A negative age means the clock predates the snapshot, so the clock cannot
-    // establish the snapshot's age at all. That is not freshness, and treating it
-    // as unlimited freshness would surface a verification date in the future. No
-    // claim is the safe direction, exactly as for an expired snapshot.
-    let age = now.timeIntervalSince(snapshot.verifiedAt)
-    guard age >= 0, age <= tierSnapshotLifetime else {
+    guard
+      let split = hostedTierPartition(
+        entries, modelName: \.name, snapshot: snapshot, now: now)
+    else {
       return .neutral(entries: entries)
     }
-
-    // Both sides go through the same key, so a registered `gpt-oss:20b-cloud`
-    // row and its advertised `gpt-oss:20b` suggestion resolve to one identity.
-    // Normalising only the entry would silently drop every row whose snapshot
-    // membership was written in the pullable form.
-    let freeKeys = Set(snapshot.freeVerified.map(OllamaSetupService.hostedCatalogKey))
-
-    var freeVerified: [OllamaModelCatalogEntry] = []
-    var mayNeedPaid: [OllamaModelCatalogEntry] = []
-    for entry in entries {
-      if freeKeys.contains(OllamaSetupService.hostedCatalogKey(entry.name)) {
-        freeVerified.append(entry)
-      } else {
-        mayNeedPaid.append(entry)
-      }
-    }
-
     return .split(
-      freeVerified: freeVerified, mayNeedPaid: mayNeedPaid, checkedAt: snapshot.verifiedAt)
+      freeVerified: split.free, mayNeedPaid: split.mayNeedPaid, checkedAt: split.checkedAt)
   }
+
 }

@@ -174,6 +174,30 @@ enum OllamaModelPickerPresentation {
   /// to describe the same model differently.
   static var hostedGroupTitle: String { OllamaCatalogPresentation.hostedGroupTitle }
 
+  /// The same two tier headings the Manage Models list uses, for the same reason
+  /// the hosted heading is shared.
+  static var freeVerifiedGroupTitle: String { OllamaCatalogPresentation.freeVerifiedGroupTitle }
+  static var mayNeedPaidGroupTitle: String { OllamaCatalogPresentation.mayNeedPaidGroupTitle }
+
+  /// #1956: the dropdown's hosted rows, split into the same three buckets the
+  /// user sees in Manage Models — installed locally, free cloud, paid cloud
+  /// (founder request 2026-08-06).
+  ///
+  /// The tier decision itself is NOT made here. It comes from
+  /// `OllamaCatalogPresentation.hostedTierPartition`, the single authority both
+  /// surfaces read, because a second copy is how the list and the picker would
+  /// come to disagree about which bucket a model is in — the exact defect this
+  /// type's header already warns about for the local/hosted split.
+  ///
+  /// `nil` means the snapshot cannot be applied, and the caller renders one
+  /// neutral hosted section. It never means "no free models".
+  static func hostedTiers(
+    _ hosted: [LLMModelInfo],
+    now: Date = Date()
+  ) -> (free: [LLMModelInfo], mayNeedPaid: [LLMModelInfo], checkedAt: Date)? {
+    OllamaCatalogPresentation.hostedTierPartition(hosted, modelName: \.id, now: now)
+  }
+
   static func groups(from models: [LLMModelInfo], provider: LLMProvider) -> Groups {
     var recommended: [LLMModelInfo] = []
     var other: [LLMModelInfo] = []
@@ -921,10 +945,32 @@ struct AIPolishSettingsView: View {
     // #1914: hosted models stay fully selectable. The group states where they
     // run so the choice is visible while scanning; it is not a warning and not
     // a gate. What the app will not do is choose one FOR the user.
+    //
+    // #1956: and it splits into the same free and paid buckets as Manage Models,
+    // from the same snapshot, so the two surfaces cannot disagree.
     if !groups.hosted.isEmpty {
-      Section(OllamaModelPickerPresentation.hostedGroupTitle) {
-        ForEach(groups.hosted) { model in
-          Text(model.displayName).tag(model.id)
+      if let tiers = OllamaModelPickerPresentation.hostedTiers(groups.hosted) {
+        if !tiers.free.isEmpty {
+          Section(OllamaModelPickerPresentation.freeVerifiedGroupTitle) {
+            ForEach(tiers.free) { model in
+              Text(model.displayName).tag(model.id)
+            }
+          }
+        }
+        if !tiers.mayNeedPaid.isEmpty {
+          Section(OllamaModelPickerPresentation.mayNeedPaidGroupTitle) {
+            ForEach(tiers.mayNeedPaid) { model in
+              Text(model.displayName).tag(model.id)
+            }
+          }
+        }
+      } else {
+        // Snapshot expired or undateable: one neutral hosted section, no tier
+        // claim. Same degradation as the Manage Models list.
+        Section(OllamaModelPickerPresentation.hostedGroupTitle) {
+          ForEach(groups.hosted) { model in
+            Text(model.displayName).tag(model.id)
+          }
         }
       }
     }

@@ -3,6 +3,9 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+// #1956: the cross-surface agreement test compares the picker's tier split
+// against the catalog's, so it needs the catalog row type and the shared key.
+@testable import EnviousWisprLLM
 
 /// #1914: the MODEL SELECTION DROPDOWN — the picker you choose an armed model
 /// from, NOT the Manage Models catalog (that is
@@ -163,6 +166,80 @@ struct OllamaModelPickerPresentationTests {
   }
 
   /// Rule 6: no em or en dashes in user-facing copy.
+  // MARK: - #1956 Three buckets in the dropdown
+
+  /// The founder's request: installed locally, free cloud, paid cloud.
+  @Test("hosted picker rows split into free and may-need-paid")
+  func hostedRowsSplitIntoTiers() throws {
+    let hosted = [
+      model("gpt-oss:20b-cloud", isRemote: true),
+      model("glm-5.2:cloud", isRemote: true),
+      model("nemotron-3-super:cloud", isRemote: true),
+    ]
+    let tiers = try #require(
+      OllamaModelPickerPresentation.hostedTiers(
+        hosted, now: OllamaCatalogPresentation.tierSnapshot.verifiedAt))
+    #expect(tiers.free.map(\.id) == ["gpt-oss:20b-cloud", "nemotron-3-super:cloud"])
+    #expect(tiers.mayNeedPaid.map(\.id) == ["glm-5.2:cloud"])
+    #expect(tiers.checkedAt == OllamaCatalogPresentation.tierSnapshot.verifiedAt)
+  }
+
+  /// The whole reason the picker calls the catalog's partition instead of
+  /// carrying its own: the two surfaces must never disagree about a model's
+  /// bucket. A copied implementation would pass its own tests while drifting.
+  @Test("the picker and the Manage Models list bucket the same model identically")
+  func pickerAndCatalogAgree() throws {
+    let now = OllamaCatalogPresentation.tierSnapshot.verifiedAt
+    // Deliberately the two NAME FORMS of one model: the picker sees the
+    // registered `-cloud` id, the catalog can see the advertised one.
+    let pickerRows = [
+      model("gpt-oss:20b-cloud", isRemote: true),
+      model("glm-5.2:cloud", isRemote: true),
+    ]
+    let catalogRows = [
+      OllamaModelCatalogEntry(
+        name: "gpt-oss:20b", displayName: "gpt-oss:20b", parameterCount: "",
+        qualityTier: .medium, downloadSize: "", isDownloaded: false, isRemote: true),
+      OllamaModelCatalogEntry(
+        name: "glm-5.2", displayName: "glm-5.2", parameterCount: "",
+        qualityTier: .medium, downloadSize: "", isDownloaded: false, isRemote: true),
+    ]
+
+    let picker = try #require(OllamaModelPickerPresentation.hostedTiers(pickerRows, now: now))
+    let catalog = try #require(
+      OllamaCatalogPresentation.hostedTierPartition(catalogRows, modelName: \.name, now: now))
+
+    #expect(picker.free.count == catalog.free.count)
+    #expect(picker.mayNeedPaid.count == catalog.mayNeedPaid.count)
+    #expect(
+      picker.free.map { OllamaSetupService.hostedCatalogKey($0.id) }
+        == catalog.free.map { OllamaSetupService.hostedCatalogKey($0.name) })
+  }
+
+  /// Expiry degrades to no claim, exactly as the list does, and the caller
+  /// renders one neutral section from that.
+  @Test("an expired snapshot makes no tier claim in the picker either")
+  func expiredSnapshotMakesNoPickerClaim() {
+    let expired = OllamaCatalogPresentation.tierSnapshot.verifiedAt
+      .addingTimeInterval(OllamaCatalogPresentation.tierSnapshotLifetime + 1)
+    #expect(
+      OllamaModelPickerPresentation.hostedTiers(
+        [model("gpt-oss:20b-cloud", isRemote: true)], now: expired) == nil)
+  }
+
+  /// Two-way control: nothing is dropped by the split.
+  @Test("every hosted row survives the tier split exactly once")
+  func tierSplitLosesNothing() throws {
+    let hosted =
+      (1...6).map { model("model-\($0):cloud", isRemote: true) }
+      + [model("gpt-oss:120b-cloud", isRemote: true)]
+    let tiers = try #require(
+      OllamaModelPickerPresentation.hostedTiers(
+        hosted, now: OllamaCatalogPresentation.tierSnapshot.verifiedAt))
+    #expect(tiers.free.count + tiers.mayNeedPaid.count == hosted.count)
+    #expect(Set(tiers.free.map(\.id)).isDisjoint(with: Set(tiers.mayNeedPaid.map(\.id))))
+  }
+
   @Test("the hosted heading contains no em or en dash")
   func headingHasNoDashes() {
     let title = OllamaModelPickerPresentation.hostedGroupTitle

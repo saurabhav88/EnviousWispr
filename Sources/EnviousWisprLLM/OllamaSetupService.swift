@@ -1047,7 +1047,16 @@ public final class OllamaSetupService {
         fileSizeBytes = 0
       }
 
-      let displayName = inferDisplayName(from: name)
+      // Decoded from THIS row, never scanned across the payload. Read before the
+      // display name because remoteness decides how that name is built.
+      let facts = OllamaConnector.modelFacts(fromTagsRow: model)
+
+      // #1956: the FOURTH construction site of this policy, and the one that
+      // feeds the model-selection dropdown rather than Manage Models. Missing it
+      // left the picker listing "Deepseek V4 Flash" three times and "Gpt Oss"
+      // twice, which is what the founder screenshotted. See `hostedDisplayName`.
+      let displayName =
+        facts.isRemote ? hostedDisplayName(from: name) : inferDisplayName(from: name)
 
       return OllamaDownloadedModel(
         exactName: name,
@@ -1056,8 +1065,7 @@ public final class OllamaSetupService {
         parameterBillions: parameterBillions,
         fileSizeBytes: fileSizeBytes,
         displayName: displayName,
-        // Decoded from THIS row, never scanned across the payload.
-        facts: OllamaConnector.modelFacts(fromTagsRow: model)
+        facts: facts
       )
     }
   }
