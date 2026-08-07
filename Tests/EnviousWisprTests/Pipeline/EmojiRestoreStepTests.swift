@@ -6,8 +6,9 @@ import Testing
 
 // MARK: - EmojiRestoreStepTests (#761)
 //
-// Unit coverage for the pipeline wrapper around `EmojiRestorer`: the AFM-only
-// gate, the no-op guards (non-AFM, nil polish, nothing dropped), the toggle
+// Unit coverage for the pipeline wrapper around `EmojiRestorer`: the provider
+// gate (Apple Intelligence, plus Ollama since #1948), the no-op guards
+// (non-restoring provider, nil polish, nothing dropped), the toggle
 // closure, and the per-run telemetry outcome. The restore algorithm's own
 // correctness (placement, retention, runs, kept-emoji no-op) is locked by
 // `EmojiRestorerTests`; this suite only proves the wrapper gates and reports.
@@ -44,7 +45,7 @@ import Testing
     #expect(step().maxDuration == .milliseconds(50))
   }
 
-  // MARK: AFM-only gate
+  // MARK: Provider gate
 
   @Test("Non-AFM provider is left completely untouched (no restore, no telemetry)")
   func nonAFMProviderUntouched() async throws {
@@ -113,6 +114,80 @@ import Testing
     cloud.llmProvider = LLMProvider.openAI.rawValue
     cloud.polishedText = "Next one."
     _ = try await s.process(cloud)
+    #expect(s.lastRun == nil)
+  }
+
+  // MARK: - Ollama restoration (#1948)
+
+  /// #1948 routed every local Ollama model to one fixed prompt (L3), which measurably drops
+  /// emoji: replaying this restorer over the 98 emoji-bearing corpus cases and the stored L3
+  /// outputs, `qwen2.5:3b` kept every input emoji in only 53 of 98 cases and `llama3.2` in 6.
+  /// With the restorer both reach 98/98, and zero already-complete cases are disturbed. These
+  /// tests pin the wiring that makes that true; `EmojiRestorerTests` owns the algorithm.
+
+  private func ollamaContext(pre: String, polished: String?) -> TextProcessingContext {
+    var c = TextProcessingContext(text: pre, language: nil)
+    c.llmProvider = LLMProvider.ollama.rawValue
+    c.polishedText = polished
+    return c
+  }
+
+  @Test("Ollama output has dropped emoji restored (#1948)")
+  func ollamaRestoresDroppedEmoji() async throws {
+    let s = step()
+    let out = try await s.process(
+      ollamaContext(pre: "well the appointment ran late but im on my way now 🙏", polished: "Well, the appointment ran late, but I'm on my way now."))
+    #expect(out.polishedText?.contains("🙏") == true)
+    #expect(s.lastRun?.ran == true)
+    #expect(s.lastRun?.dropped == 1)
+    #expect(s.lastRun?.restored == 1)
+  }
+
+  /// Two-way control. Without it, an implementation that rewrote every Ollama output would
+  /// pass the test above while corrupting the majority of dictations that were already fine.
+  @Test("Ollama output that KEPT its emoji is returned byte-for-byte (#1948)")
+  func ollamaLeavesCompleteOutputAlone() async throws {
+    let polished = "Well, the appointment ran late, but I'm on my way now. 🙏"
+    let s = step()
+    let out = try await s.process(
+      ollamaContext(pre: "well the appointment ran late but im on my way now 🙏", polished: polished))
+    #expect(out.polishedText == polished)
+    #expect(s.lastRun?.dropped == 0)
+  }
+
+  /// The gate is a SET, so this pins its exact membership. A future widening past measured
+  /// evidence has to change this test and bring numbers with it.
+  @Test(
+    "only Apple Intelligence and Ollama restore; every other provider is untouched (#1948)",
+    arguments: [
+      (LLMProvider.appleIntelligence.rawValue, true),
+      (LLMProvider.ollama.rawValue, true),
+      (LLMProvider.openAI.rawValue, false),
+      (LLMProvider.gemini.rawValue, false),
+      (LLMProvider.claude.rawValue, false),
+      (LLMProvider.egOne.rawValue, false),
+      (LLMProvider.none.rawValue, false),
+    ])
+  func gateMembership(provider: String, shouldRestore: Bool) async throws {
+    var c = TextProcessingContext(text: "shipped it 🚀", language: nil)
+    c.llmProvider = provider
+    c.polishedText = "Shipped it."
+    let s = step()
+    let out = try await s.process(c)
+    #expect((out.polishedText?.contains("🚀") ?? false) == shouldRestore)
+    #expect((s.lastRun != nil) == shouldRestore)
+  }
+
+  /// A nil provider must restore nothing — the pre-#1948 `==` comparison behaved this way and
+  /// the `Set.contains` rewrite had to preserve it.
+  @Test("nil provider restores nothing (#1948 optional-handling regression)")
+  func nilProviderUntouched() async throws {
+    var c = TextProcessingContext(text: "shipped it 🚀", language: nil)
+    c.llmProvider = nil
+    c.polishedText = "Shipped it."
+    let s = step()
+    let out = try await s.process(c)
+    #expect(out.polishedText == "Shipped it.")
     #expect(s.lastRun == nil)
   }
 }

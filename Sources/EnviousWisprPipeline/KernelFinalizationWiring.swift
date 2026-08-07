@@ -302,9 +302,15 @@ struct KernelFinalizationWiring {
       }
       // #761: thread the emoji-restore outcome onto `dictation.completed`
       // (counts only — `telemetry-privacy-boundary`). The always-on step stamps
-      // `lastRun` only on an AFM run and clears it to nil otherwise, so RESET on
-      // the nil path — a prior AFM dictation's counts must never ride a later
-      // (cloud / no-polish) transcript through the reused `outcome`.
+      // `lastRun` only on a RESTORING provider (Apple Intelligence, plus Ollama
+      // since #1948) and clears it to nil otherwise, so RESET on the nil path —
+      // a prior restoring dictation's counts must never ride a later (cloud /
+      // no-polish) transcript through the reused `outcome`.
+      //
+      // #1948 telemetry note: `emoji_ran` and its sibling counts begin appearing
+      // for Ollama takes on the release boundary. That is the guard starting to
+      // work, not a regression; a dashboard reading "emoji_ran ⇒ Apple
+      // Intelligence" silently widens and must be re-scoped by provider.
       if let emoji = steps.emojiRestore.lastRun {
         outcome.emojiRan = emoji.ran
         outcome.emojiInInput = emoji.emojiInInput

@@ -112,7 +112,8 @@ public struct ExecutionMetrics: Codable, Sendable {
   /// Apple on-device (AFM) polish; nil for cloud providers, no-polish dictations,
   /// and pre-#761 transcripts on disk (additive optional Codable, back-compatible).
   /// `emojiInInput` = emoji the converter inserted pre-polish; `emojiDropped` =
-  /// glyphs AFM stripped; `emojiRestored` = glyphs the guard re-inserted (== dropped
+  /// glyphs the polish model stripped (Apple Intelligence, or Ollama since #1948);
+  /// `emojiRestored` = glyphs the guard re-inserted (== dropped
   /// by construction); `emojiRestoreIncomplete` = restored < dropped (anomaly).
   /// Counts only (`telemetry-privacy-boundary`).
   public var emojiInInput: Int?

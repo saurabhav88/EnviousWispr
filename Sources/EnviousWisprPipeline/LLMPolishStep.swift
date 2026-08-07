@@ -801,7 +801,17 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   ) -> String {
     guard !original.isEmpty else { return polished }
 
-    // Mode-aware thresholds (from plan Appendix C)
+    // Mode-aware thresholds (from plan Appendix C).
+    //
+    // #1948: ONLY `.message` is reachable in production. `DefaultPromptPlanner` forces it for
+    // every family now that `TranscriptAnalyzer` is deleted, and the Apple Intelligence path
+    // passes `.message` literally (`:648`), so `.inline` / `.structured` / `.edit` are inert.
+    // They are kept rather than deleted because `PolishMode` is a public Core type and the
+    // switch must stay exhaustive — not because a caller still selects them. The cost of
+    // moving the former `.structured` inputs onto `.message` thresholds was measured before
+    // the change rather than assumed: +11 extra fallbacks of 1,690 on `qwen2.5:3b`, +6 on
+    // `llama3.2`. If you are here to tune a threshold, tune `.message`; the others describe
+    // transcript shapes nothing classifies any more.
     let expansionThreshold: Int
     let contentDropFraction: (numerator: Int, denominator: Int)
     switch mode {

@@ -3,10 +3,11 @@ import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
 
-/// Restores emoji the Apple on-device (AFM) polish step stripped (#761), as the
-/// FINAL limb in the post-ASR chain — after `LLMPolishStep`. The deterministic
-/// `EmojiFormatterStep` inserts glyphs BEFORE polish; AFM then drops ~70-90% of
-/// them. This step compares the pre-polish text (`context.text`, emoji-bearing)
+/// Restores emoji a small local polish model stripped (#761), as the FINAL limb in the
+/// post-ASR chain — after `LLMPolishStep`. The deterministic `EmojiFormatterStep` inserts
+/// glyphs BEFORE polish; Apple on-device (AFM) then drops ~70-90% of them, and #1948
+/// measured local Ollama dropping them on 45 of 98 emoji-bearing corpus cases
+/// (`qwen2.5:3b`) and 92 of 98 (`llama3.2`). This step compares the pre-polish text (`context.text`, emoji-bearing)
 /// against the polish output (`context.polishedText`, stripped) and re-inserts
 /// the dropped glyphs at their anchor word via the pure `EmojiRestorer`.
 ///
@@ -62,7 +63,8 @@ final class EmojiRestoreStep: TextProcessingStep {
     let latencyMs: Double
   }
 
-  /// The most recent AFM `process(...)` outcome. Read by `KernelFinalizationWiring`
+  /// The most recent RESTORING-provider `process(...)` outcome (Apple Intelligence or
+  /// Ollama since #1948; nil on every other provider). Read by `KernelFinalizationWiring`
   /// immediately after the chain runs (same actor, no race).
   private(set) var lastRun: RunOutcome?
 
@@ -76,8 +78,28 @@ final class EmojiRestoreStep: TextProcessingStep {
     // Clear a prior dictation's stamp; only an AFM run below re-stamps it.
     lastRun = nil
 
-    // AFM-only gate (`appleIntelligence` rawValue, set by `LLMPolishStep`).
-    guard context.llmProvider == LLMProvider.appleIntelligence.rawValue else { return context }
+    // Provider gate (`llmProvider` rawValue, set by `LLMPolishStep`).
+    //
+    // #1948 added Ollama, MEASURED rather than assumed. Replaying this exact restorer over
+    // the 98 emoji-bearing corpus cases and the stored L3 outputs: `qwen2.5:3b` went from
+    // 53/98 cases keeping every input emoji to **98/98** (55 dropped, 55 restored) and
+    // `llama3.2` from 6/98 to **98/98** (115 dropped, 115 restored), with **zero** already-
+    // complete cases disturbed. The algorithm was never AFM-specific — it LCS-aligns word
+    // streams and re-inserts only deletions — so the old gate was scope, not a constraint.
+    //
+    // Cloud providers and EG-1 are deliberately NOT included. There is no measurement for
+    // them here, the fixed v6 prompt already instructs emoji preservation, and widening a
+    // guard past its evidence is how an unmeasured regression ships. Adding one is cheap
+    // when someone measures it: extend this set and bring the numbers.
+    let restoringProviders: Set<String> = [
+      LLMProvider.appleIntelligence.rawValue,
+      LLMProvider.ollama.rawValue,
+    ]
+    // `llmProvider` is optional; a nil provider restores nothing, exactly as the previous
+    // `== appleIntelligence.rawValue` comparison behaved.
+    guard let provider = context.llmProvider, restoringProviders.contains(provider) else {
+      return context
+    }
     // Polish produced no distinct output (disabled / too-short bypass #1022 /
     // provider `.none`): delivery uses the emoji-bearing `ctx.text`, nothing to do.
     guard let polished = context.polishedText else { return context }
