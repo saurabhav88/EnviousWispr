@@ -85,6 +85,102 @@ struct LLMModelDiscoveryTests {
     #expect(candidates.first(where: { $0.id == "gpt-oss:120b-cloud" })?.isRemote == true)
   }
 
+  /// #1947, hosted half: the picker's own data source, not `dynamicCatalog`'s
+  /// (Manage Models' path, covered by `OllamaManageModelsPresentationTests`).
+  /// `parseDownloadedModels` (`OllamaSetupService.swift:~1105`) is the shared
+  /// construction site both paths draw from, and its own comment names this
+  /// exact case ("left the picker listing... 'Gpt Oss' twice, which is what
+  /// the founder screenshotted") — this test pins the fix at the layer #1947
+  /// actually complained about AND through to `LLMModelInfo`, the row the
+  /// picker actually renders (`Text(model.displayName)`,
+  /// `AIPolishSettingsView.swift:977`) — a `DiscoveryCandidate`-only
+  /// assertion stops one hop short of what the picker consumes. Uses the
+  /// daemon's real `remote_host` shape (`"https://ollama.com"`, not a bare
+  /// hostname) per whole-diff review r1.
+  @Test(
+    "two hosted models differing only by tag produce distinct picker labels",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1947",
+      "Ollama model picker shows identical rows")
+  )
+  func hostedCandidatesDifferingOnlyByTagStayDistinct() {
+    let candidates = LLMModelDiscovery.ollamaCandidates(fromTagsModels: [
+      ["name": "gpt-oss:20b-cloud", "remote_host": "https://ollama.com"],
+      ["name": "gpt-oss:120b-cloud", "remote_host": "https://ollama.com"],
+    ])
+    let models = candidates.map {
+      LLMModelDiscovery.modelInfo(from: $0, provider: .ollama, isAvailable: true)
+    }
+
+    #expect(models.map(\.id) == ["gpt-oss:20b-cloud", "gpt-oss:120b-cloud"])
+    #expect(models.map(\.displayName) == ["gpt-oss:20b-cloud", "gpt-oss:120b-cloud"])
+  }
+
+  /// #1947, local half: whole-diff review r1 found the fix above only covered
+  /// HOSTED rows — `parseDownloadedModels` still sent local models through
+  /// `inferDisplayName`, which drops everything after the colon, so two
+  /// installed sizes of one LOCAL family (`llama3.2:1b` / `llama3.2:3b`)
+  /// still both prettified to "Llama 3.2". #1947's own text named this: "Any
+  /// two variants of one family collide. This is not specific to hosted
+  /// models." Fixed by `disambiguateLocalCollisions` appending the parsed
+  /// size, matching this catalog's own "(SIZE)" convention.
+  @Test(
+    "two local models differing only by size get a disambiguating suffix",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/1947",
+      "Ollama model picker shows identical rows")
+  )
+  func localCandidatesDifferingBySizeStayDistinct() {
+    let candidates = LLMModelDiscovery.ollamaCandidates(fromTagsModels: [
+      ["name": "llama3.2:1b", "details": ["parameter_size": "1B"]],
+      ["name": "llama3.2:3b", "details": ["parameter_size": "3B"]],
+    ])
+    let names = candidates.map(\.displayName)
+    // The base is the shared parser's own prettified form, not the CURATED
+    // static-catalog string ("Llama 3.2") — that override belongs to
+    // `dynamicCatalog`'s Manage Models path only, per
+    // `candidateCarriesExactNameAndInferredLabel` above; the picker's own
+    // path never applies it.
+    let base = OllamaSetupService.inferDisplayName(from: "llama3.2")
+
+    #expect(Set(names).count == 2, "collided: \(names)")
+    #expect(names.contains("\(base) (1B)"), "\(names)")
+    #expect(names.contains("\(base) (3B)"), "\(names)")
+  }
+
+  /// Second-pass fallback: two local variants can share a parsed size too
+  /// (two quantizations of the same checkpoint), so the size suffix alone
+  /// would still collide. The exact tag is unique by construction, so the
+  /// fallback pass always resolves it.
+  @Test("two local models sharing both family AND size fall back to the exact tag")
+  func localCandidatesSharingSizeFallBackToExactTag() {
+    let candidates = LLMModelDiscovery.ollamaCandidates(fromTagsModels: [
+      ["name": "llama3.2:3b-instruct-q4_K_M", "details": ["parameter_size": "3B"]],
+      ["name": "llama3.2:3b-instruct-q8_0", "details": ["parameter_size": "3B"]],
+    ])
+    let names = candidates.map(\.displayName)
+
+    #expect(Set(names).count == 2, "collided: \(names)")
+    #expect(names.contains("llama3.2:3b-instruct-q4_K_M"), "\(names)")
+    #expect(names.contains("llama3.2:3b-instruct-q8_0"), "\(names)")
+  }
+
+  /// Two-way control: a local model with no sibling of the same family keeps
+  /// its plain prettified name — the fix must not suffix everything.
+  @Test("a local model with no colliding sibling keeps its plain prettified name")
+  func localCandidateWithNoSiblingStaysPlain() {
+    let candidates = LLMModelDiscovery.ollamaCandidates(fromTagsModels: [
+      ["name": "llama3.2:1b", "details": ["parameter_size": "1B"]],
+      ["name": "mistral:7b", "details": ["parameter_size": "7B"]],
+    ])
+    let expected = [
+      OllamaSetupService.inferDisplayName(from: "llama3.2"),
+      OllamaSetupService.inferDisplayName(from: "mistral"),
+    ].sorted()
+
+    #expect(candidates.map(\.displayName).sorted() == expected)
+  }
+
   /// Identity is the EXACT name, not the canonical one. The picker tags rows by
   /// this value and the runtime arms it, so dropping the `:latest` here would
   /// arm a name the daemon may not answer to.
