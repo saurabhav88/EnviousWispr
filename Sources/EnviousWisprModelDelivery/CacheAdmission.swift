@@ -155,9 +155,20 @@ struct CacheAdmission {
     let resolvedComponentRoot = String(cString: resolvedBuffer)
 
     let expected = Set(expectedFiles.map(\.resolvedInstallPath))
+    // Without an explicit `errorHandler`, `FileManager.enumerator` SILENTLY
+    // STOPS traversal on hitting an unreadable subdirectory rather than
+    // throwing — a stale file hidden behind that failure would never be
+    // seen, and the loop below would wrongly conclude the component is
+    // clean. Record the failure and fail closed on it (whole-diff review
+    // P2 finding).
+    var traversalFailed = false
     guard
       let enumerator = FileManager.default.enumerator(
-        at: componentRoot, includingPropertiesForKeys: [.isRegularFileKey])
+        at: componentRoot, includingPropertiesForKeys: [.isRegularFileKey],
+        errorHandler: { _, _ in
+          traversalFailed = true
+          return false  // stop; the flag alone decides the verdict below
+        })
     else { return true }  // cannot enumerate ⇒ cannot prove clean; fail closed, not open
 
     let prefixCount = resolvedComponentRoot.count + 1  // +1 drops the path separator
@@ -175,7 +186,7 @@ struct CacheAdmission {
         return true
       }
     }
-    return false
+    return traversalFailed
   }
 
   // MARK: - Promotion (grounded r1 revision 4 — explicit crash ordering)

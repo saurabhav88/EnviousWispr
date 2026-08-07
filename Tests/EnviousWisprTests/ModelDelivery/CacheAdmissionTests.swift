@@ -76,6 +76,26 @@ import Testing
     #expect(result.verifiedComponents == ["vocab.json"])
   }
 
+  @Test func unreadableSubdirectoryFailsClosed() async throws {
+    // Whole-diff review P2: `FileManager.enumerator` silently STOPS
+    // traversal on an unreadable subdirectory rather than throwing, so a
+    // stale file hidden behind that failure would never be seen. An
+    // unverified traversal must never read as "nothing extra found."
+    let (install, metadata, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+    let lockedDir = install.appendingPathComponent("Encoder.mlmodelc/locked", isDirectory: true)
+    try FileManager.default.createDirectory(at: lockedDir, withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: lockedDir.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: lockedDir.path)
+    }
+    let gate = try admission(files: files, dirs: (install, metadata))
+    let result = await gate.validateExistingCache()
+    #expect(result.failedComponents == ["Encoder.mlmodelc"])
+  }
+
   @Test func exactComponentContentsStayVerified() async throws {
     // Two-way control for the test above: EXACTLY the manifest-listed files,
     // nothing extra — the new check must not false-positive on the common case.
