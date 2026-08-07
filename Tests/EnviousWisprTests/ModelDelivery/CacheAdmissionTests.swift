@@ -76,6 +76,37 @@ import Testing
     #expect(result.verifiedComponents == ["vocab.json"])
   }
 
+  @Test func symlinkedComponentRootForcesComponentToFail() async throws {
+    // Cloud review P2: when the COMPONENT ROOT itself (Encoder.mlmodelc) is
+    // a symlink to a directory holding all expected files plus stale ones,
+    // `fileExists(atPath:isDirectory:)` follows it and the OLD code's
+    // enumerator could return zero descendants for a symlink root, so the
+    // stale contents were never examined and the component was admitted.
+    let (install, metadata, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    let realTarget = install.deletingLastPathComponent().appendingPathComponent(
+      "real-encoder-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: realTarget, withIntermediateDirectories: true)
+    for f in files where f.component == "Encoder.mlmodelc" {
+      let relative = String(f.path.dropFirst("Encoder.mlmodelc/".count))
+      let dest = realTarget.appendingPathComponent(relative)
+      try FileManager.default.createDirectory(
+        at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try f.content.write(to: dest)
+    }
+    try Data("stale-outside-the-manifest".utf8).write(
+      to: realTarget.appendingPathComponent("stale.bin"))
+    try write(
+      files.first { $0.component == "vocab.json" }!.content, under: install, path: "vocab.json")
+    try FileManager.default.createSymbolicLink(
+      atPath: install.appendingPathComponent("Encoder.mlmodelc").path,
+      withDestinationPath: realTarget.path)
+
+    let gate = try admission(files: files, dirs: (install, metadata))
+    let result = await gate.validateExistingCache()
+    #expect(result.failedComponents == ["Encoder.mlmodelc"])
+  }
+
   @Test func unlistedSymlinkForcesComponentToFail() async throws {
     // Cloud review P2: a symlink is neither a regular file nor a directory,
     // so an `isRegularFile`-only check silently skipped an unlisted

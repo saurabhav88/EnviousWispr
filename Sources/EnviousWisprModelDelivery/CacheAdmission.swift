@@ -137,6 +137,22 @@ struct CacheAdmission {
     component: String, expectedFiles: [DeliveryManifest.File], installDirectory: URL
   ) -> Bool {
     let componentRoot = installDirectory.appendingPathComponent(component)
+
+    // Cloud review P2: a legitimately-installed component is never itself a
+    // symlink. Reject one without following it — `fileExists(atPath:
+    // isDirectory:)` follows symlinks transparently, so a component root
+    // symlinked to a directory containing stale files would pass the
+    // directory check below; worse, `enumerator(at:)` can return ZERO
+    // descendants when its OWN root is a symlink, so the loop below would
+    // never even run and this function would wrongly report "no extra
+    // files" having examined nothing. `.isSymbolicLinkKey` reports the URL
+    // itself, not its target (`lstat` semantics, not `stat`).
+    if let isSymlink = try? componentRoot.resourceValues(forKeys: [.isSymbolicLinkKey])
+      .isSymbolicLink, isSymlink
+    {
+      return true
+    }
+
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: componentRoot.path, isDirectory: &isDirectory),
       isDirectory.boolValue
