@@ -68,7 +68,33 @@ jobs:
           # A single failed attempt already turns this job red (GitHub's own
           # failure-email signal); manual recovery is the documented ?date=
           # override (README § Failure visibility), not an automatic retry.
-          curl -fsS \
+          #
+          # --fail-with-body, NOT -f. Both turn a non-2xx into a nonzero exit, but
+          # plain -f SUPPRESSES the body, and the body is the only place the reason
+          # exists: the worker returns "daily report failed: " + err.message
+          # (src/index.js fetch catch), naming the failing query and its HTTP
+          # status. Under -f with -o /dev/null every failure was diagnostically
+          # empty, so #1969 had to argue about causes from job DURATIONS.
+          BODY_FILE="$(mktemp)"
+          RC=0
+          curl -sS --fail-with-body \
             -H "x-trigger-secret: ${TRIGGER_SECRET}" \
             "$URL" \
-            -o /dev/null -w "worker responded HTTP %{http_code}\n"
+            -o "$BODY_FILE" -w "worker responded HTTP %{http_code}\n" || RC=$?
+          if [ "$RC" -ne 0 ]; then
+            echo "--- worker response body (failure reason) ---"
+            # This repository is PUBLIC, so these logs are world-readable, and
+            # Actions can only mask secrets it holds ITSELF - DISCORD_WEBHOOK_URL
+            # is a CLOUDFLARE secret and is not maskable here. err.message is
+            # whatever was thrown: every shape this exists to capture carries no
+            # URL ("PostHog query <name> HTTP <status>", "Discord rejected the
+            # report: HTTP <status>"), but an unexpected native throw could - a
+            # malformed-URL TypeError out of deliverReport would quote the
+            # webhook. So cap, then mask any URL. Capping FIRST is deliberate: it
+            # keeps a long body from SIGPIPE-ing the masker under pipefail, and
+            # a URL starting inside the kept prefix is still matched at its scheme.
+            head -c 2000 "$BODY_FILE" \
+              | sed -E 's#[a-zA-Z][a-zA-Z0-9+.-]*://[^[:space:]]*#<redacted-url>#g'
+            echo
+            exit "$RC"
+          fi
