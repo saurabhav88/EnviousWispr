@@ -1660,6 +1660,20 @@ public final class CustomWordsManager {
       }
       let fh = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
       try fh.write(contentsOf: data)
+      // #1744: atomic (via the rename below) is not durable on its own — force
+      // the just-written bytes off the drive's write cache before the rename
+      // makes them live, so a crash/power-loss immediately after this call
+      // returns cannot silently revert to the prior save. Mirrors the shipped
+      // pattern in RecoverySpoolStore.writeAttemptMarker (write, F_FULLFSYNC,
+      // then atomic rename) — same primitive, this call's own error shape.
+      guard fcntl(fd, F_FULLFSYNC) != -1 else {
+        throw NSError(
+          domain: NSPOSIXErrorDomain, code: Int(errno),
+          userInfo: [
+            NSLocalizedDescriptionKey: String(cString: strerror(errno)),
+            NSFilePathErrorKey: tmpURL.path,
+          ])
+      }
       try fh.close()
 
       // Same-directory temp file means same filesystem, which is what makes
