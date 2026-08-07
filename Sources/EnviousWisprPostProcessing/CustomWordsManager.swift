@@ -1660,6 +1660,20 @@ public final class CustomWordsManager {
       }
       let fh = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
       try fh.write(contentsOf: data)
+      // #1744: atomic (via the rename below) is not durable on its own — force
+      // the just-written bytes off the drive's write cache before the rename
+      // makes them live, so a crash/power-loss immediately after this call
+      // returns cannot silently revert to the prior save. Mirrors the shipped
+      // pattern in RecoverySpoolStore.writeAttemptMarker (write, F_FULLFSYNC,
+      // then atomic rename) — same primitive, this call's own error shape.
+      guard fcntl(fd, F_FULLFSYNC) != -1 else {
+        throw NSError(
+          domain: NSPOSIXErrorDomain, code: Int(errno),
+          userInfo: [
+            NSLocalizedDescriptionKey: String(cString: strerror(errno)),
+            NSFilePathErrorKey: tmpURL.path,
+          ])
+      }
       try fh.close()
 
       // Same-directory temp file means same filesystem, which is what makes
@@ -1671,6 +1685,24 @@ public final class CustomWordsManager {
             NSLocalizedDescriptionKey: String(cString: strerror(errno)),
             NSFilePathErrorKey: fileURL.path,
           ])
+      }
+
+      // F_FULLFSYNC on the file makes the BYTES durable, but not the rename
+      // itself -- if the Mac loses power after rename() returns but before
+      // APFS commits the directory metadata, the new file's content is safe
+      // on disk while the rename that made it live can still be lost.
+      // Sync the containing directory too, BEST-EFFORT: by this point
+      // `rename()` has already succeeded, the new content is live, and the
+      // caller's in-memory state is about to be treated as consistent with
+      // disk. Throwing here (round 1 of this fix did) would make the caller
+      // believe the save failed and skip updating its own state while the
+      // file on disk had already changed -- correctness regression Codex
+      // review caught. A failure at this point only narrows the crash
+      // window this hardening closes; it does not undo the save.
+      let dirFD = Foundation.open(fileURL.deletingLastPathComponent().path, O_RDONLY)
+      if dirFD >= 0 {
+        _ = fcntl(dirFD, F_FULLFSYNC)
+        close(dirFD)
       }
     } catch {
       try? fm.removeItem(at: tmpURL)
