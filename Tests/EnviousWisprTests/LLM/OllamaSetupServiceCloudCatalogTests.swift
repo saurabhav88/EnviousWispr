@@ -1068,9 +1068,43 @@ struct OllamaSetupServiceHostedAddTests {
   // MARK: - Test doubles
 
   private enum ShowReply: Sendable {
+    /// A 200 carries a REAL-SHAPED body, because the production code reads it to
+    /// decide whether two candidate names are aliases. The body's identity is
+    /// derived from the candidate with its cloud suffix stripped, which is what
+    /// the live daemon does: measured 2026-08-06, `gpt-oss:20b-cloud` and
+    /// `gpt-oss:20b:cloud` both report `parent_model: "gpt-oss:20b"` and are
+    /// byte-identical otherwise. A double that returned an empty body would make
+    /// every 200 unreadable and hide the alias branch entirely.
     case status(Int)
+    /// A 200 whose identity is forced, for the genuinely-two-different-models
+    /// case that the derived form cannot produce.
+    case statusWithIdentity(Int, String)
+    /// A 200 with a body that is not JSON at all, so the fingerprint fails.
+    case statusUnreadableBody(Int)
     case nonHTTP
     case thrown(ShowFailure)
+  }
+
+  /// Mirrors the daemon's own aliasing: both cloud spellings of one model report
+  /// the same parent. Kept in the test rather than reusing production code, so
+  /// this asserts the real-world shape instead of the implementation's opinion
+  /// of it.
+  private nonisolated static func strippedParent(_ candidate: String) -> String {
+    if candidate.hasSuffix("-cloud") { return String(candidate.dropLast("-cloud".count)) }
+    if candidate.hasSuffix(":cloud") { return String(candidate.dropLast(":cloud".count)) }
+    return candidate
+  }
+
+  private nonisolated static func showBody(parent: String) -> Data {
+    let json: [String: Any] = [
+      "details": ["parent_model": parent, "family": "test"],
+      "capabilities": ["completion"],
+      "model_info": ["general.parameter_count": 20],
+      // Present in the real payload and deliberately EXCLUDED from the
+      // fingerprint, so a differing value here must not break alias detection.
+      "modified_at": "2026-08-06T00:00:00Z",
+    ]
+    return (try? JSONSerialization.data(withJSONObject: json)) ?? Data()
   }
 
   /// A concrete error type rather than `any Error`, so the script stays `Sendable`
@@ -1168,7 +1202,20 @@ struct OllamaSetupServiceHostedAddTests {
           let response = HTTPURLResponse(
             url: url, statusCode: code, httpVersion: nil, headerFields: nil)
         else { throw ShowFailure.transport }
-        return (Data(), response)
+        let body = code == 200 ? Self.showBody(parent: Self.strippedParent(candidate)) : Data()
+        return (body, response)
+      case .statusWithIdentity(let code, let identity):
+        guard let url = request.url,
+          let response = HTTPURLResponse(
+            url: url, statusCode: code, httpVersion: nil, headerFields: nil)
+        else { throw ShowFailure.transport }
+        return (Self.showBody(parent: identity), response)
+      case .statusUnreadableBody(let code):
+        guard let url = request.url,
+          let response = HTTPURLResponse(
+            url: url, statusCode: code, httpVersion: nil, headerFields: nil)
+        else { throw ShowFailure.transport }
+        return (Data("not json".utf8), response)
       case .nonHTTP:
         guard let url = request.url else { throw ShowFailure.transport }
         return (
@@ -1354,11 +1401,78 @@ struct OllamaSetupServiceHostedAddTests {
     #expect(result.log.statesWhenCalled == [.idle])
   }
 
+  // MARK: - Aliases (whole-diff review r5)
+
+  /// The P1 this branch exists for. A tagged advertised id resolves under BOTH
+  /// spellings on the live daemon, because they are aliases of one model:
+  /// measured 2026-08-06 on Ollama 0.32.6, `gpt-oss:20b-cloud` and
+  /// `gpt-oss:20b:cloud` both return 200 with byte-identical bodies and a shared
+  /// `parent_model` of `gpt-oss:20b`. Refusing that pair blocked Add for 8 of the
+  /// 18 advertised models, including 4 of the 7 in the free group.
+  @Test("two proven names for the SAME model are aliases and the Add proceeds")
+  func aliasPairAddsTheDashName() async {
+    let result = await add("gpt-oss:20b", dash: .status(200), colon: .status(200))
+    #expect(result.log.pulled == ["gpt-oss:20b-cloud"])
+    #expect(result.service.hostedModelAddState == .idle)
+  }
+
+  /// Both probes still run. Stopping at the first 200 is precisely the mistake
+  /// that hid this defect from the original mapping measurement.
+  @Test("an alias pair still probes both candidates before deciding")
+  func aliasPairProbesBoth() async {
+    let result = await add("gpt-oss:20b", dash: .status(200), colon: .status(200))
+    #expect(await result.script.candidates == ["gpt-oss:20b-cloud", "gpt-oss:20b:cloud"])
+  }
+
+  /// `modified_at` differs between registrations and must not defeat the match.
+  /// The double sets it identically, so this asserts the FIELD is excluded by
+  /// checking a body that carries it at all still matches its alias.
+  @Test("a per-registration timestamp does not make two aliases look different")
+  func aliasMatchIgnoresModifiedAt() {
+    let a = OllamaSetupService.hostedIdentityFingerprint(
+      fromShowBody: Data(#"{"details":{"parent_model":"m"},"modified_at":"2026-01-01"}"#.utf8))
+    let b = OllamaSetupService.hostedIdentityFingerprint(
+      fromShowBody: Data(#"{"details":{"parent_model":"m"},"modified_at":"2026-12-31"}"#.utf8))
+    #expect(a != nil)
+    #expect(a == b)
+  }
+
+  /// Two-way control on the fingerprint: a genuinely different model must not
+  /// compare equal, or the alias branch would accept anything.
+  @Test("different models produce different fingerprints")
+  func differentModelsDifferentFingerprints() {
+    let a = OllamaSetupService.hostedIdentityFingerprint(
+      fromShowBody: Data(#"{"details":{"parent_model":"one"}}"#.utf8))
+    let b = OllamaSetupService.hostedIdentityFingerprint(
+      fromShowBody: Data(#"{"details":{"parent_model":"two"}}"#.utf8))
+    #expect(a != b)
+  }
+
+  /// A 200 whose body cannot be read is not a proven name. Without this, an
+  /// unreadable pair would fingerprint to nil on both sides and nil == nil would
+  /// register a model neither probe identified.
+  @Test("a 200 with an unreadable body proves nothing and starts no pull")
+  func unreadableBodyIsIndeterminate() async {
+    let result = await add(
+      "glm-5.2", dash: .statusUnreadableBody(200), colon: .statusUnreadableBody(200))
+    #expect(result.log.pulled.isEmpty)
+    #expect(
+      failedMessage(result.service.hostedModelAddState)
+        == "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment.")
+  }
+
   // MARK: - Refusals
 
-  @Test("two proven names refuse as ambiguous and pull nothing")
+  @Test("two proven names for DIFFERENT models refuse as ambiguous and pull nothing")
   func bothProvenRefuses() async {
-    let result = await add("glm-5.2", dash: .status(200), colon: .status(200))
+    // Forced distinct identities. The derived form cannot produce this, because
+    // in reality both spellings of one model report the same parent — which is
+    // exactly why the alias case below is the common one and this is the rare
+    // one.
+    let result = await add(
+      "glm-5.2",
+      dash: .statusWithIdentity(200, "glm-5.2"),
+      colon: .statusWithIdentity(200, "something-else"))
     #expect(result.log.pulled.isEmpty)
     #expect(
       failedMessage(result.service.hostedModelAddState)
@@ -1443,7 +1557,9 @@ struct OllamaSetupServiceHostedAddTests {
   @Test("no refusal changes the setup state, so Manage Models cannot vanish")
   func refusalsLeaveSetupStateUntouched() async {
     let combinations: [(ShowReply, ShowReply)] = [
-      (.status(200), .status(200)),
+      // r5: a same-identity (200, 200) is now an ALIAS SUCCESS, not a refusal.
+      // The refusing form of two-proven needs DIFFERENT identities.
+      (.statusWithIdentity(200, "one"), .statusWithIdentity(200, "two")),
       (.status(404), .status(404)),
       (.status(200), .status(500)),
       (.status(500), .status(200)),
@@ -1467,7 +1583,9 @@ struct OllamaSetupServiceHostedAddTests {
   @Test("every refusal preserves the loaded cloud state and the complete catalog")
   func refusalsRetainTheAdvertisedCatalog() async {
     let combinations: [(ShowReply, ShowReply)] = [
-      (.status(200), .status(200)),
+      // r5: a same-identity (200, 200) is now an ALIAS SUCCESS, not a refusal.
+      // The refusing form of two-proven needs DIFFERENT identities.
+      (.statusWithIdentity(200, "one"), .statusWithIdentity(200, "two")),
       (.status(404), .status(404)),
       (.status(200), .status(500)),
     ]

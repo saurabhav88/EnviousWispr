@@ -765,10 +765,38 @@ public final class OllamaSetupService {
   /// other status, a non-HTTP response, a transport throw, a cancellation — is
   /// an absence of information, and treating it as denial is how a reachable
   /// model gets told it does not exist.
+  /// A probe's answer, carrying the model IDENTITY on success.
+  ///
+  /// `proven` gained its payload from review r5. The earlier version was a bare
+  /// case, which made two 200s indistinguishable from two DIFFERENT models and
+  /// forced a refusal — see the `(.proven, .proven)` branch for why that broke
+  /// Add for 8 of the 18 advertised models.
   private enum HostedCandidateOutcome: Equatable {
-    case proven
+    case proven(identity: String)
     case absent
     case indeterminate
+  }
+
+  /// The identity fingerprint of an `/api/show` body, used only to decide
+  /// whether two candidate NAMES are aliases of one model.
+  ///
+  /// `modified_at` is excluded because it is per-registration state, not model
+  /// identity; everything else in the document is what the daemon knows about
+  /// the model itself. Measured 2026-08-06: `gpt-oss:20b-cloud` and
+  /// `gpt-oss:20b:cloud` produce byte-identical `details`, `capabilities` and
+  /// `model_info`, including the same `parent_model` of `gpt-oss:20b`.
+  ///
+  /// A missing or unreadable body yields a value that cannot equal another, so
+  /// an unparseable pair stays ambiguous and is refused rather than guessed.
+  nonisolated static func hostedIdentityFingerprint(fromShowBody data: Data) -> String? {
+    guard
+      var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    else { return nil }
+    json.removeValue(forKey: "modified_at")
+    guard
+      let canonical = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
+    else { return nil }
+    return String(decoding: canonical, as: UTF8.self)
   }
 
   private static let hostedAddAmbiguousMessage =
@@ -872,9 +900,30 @@ public final class OllamaSetupService {
       startPull(colonCandidate)
       // AFTER, never before: see the dash branch.
       hostedPullAdvertisedID = advertisedID
+
+    case (.proven(let dashIdentity), .proven(let colonIdentity))
+    where dashIdentity == colonIdentity:
+      // ALIASES, not ambiguity. Two names, one model, proven by the bodies.
+      //
+      // This branch used to refuse, on the reasoning that nothing in a 200
+      // proves the two names denote one model. That was true of a STATUS CODE
+      // and false of the response body, and refusing broke Add for every
+      // advertised id that already carries a tag — 8 of the 18 live on
+      // 2026-08-06, including 4 of the 7 in the free group.
+      //
+      // The measurement that missed it is worth naming: the mapping probe that
+      // established the suffix rule stopped at the FIRST 200, so it never asked
+      // whether the second also answered. The production code asked both, and
+      // only review r5 pointed the instrument at the question the code actually
+      // depends on.
+      hostedModelAddState = .idle
+      startPull(dashCandidate)
+      hostedPullAdvertisedID = advertisedID
+
     case (.proven, .proven):
-      // Refuse. Nothing in a 200 proves the two names denote one model, and
-      // registering the wrong one is worse than asking the user to choose.
+      // Two names, two DIFFERENT models. Still refuse: registering the wrong one
+      // is worse than asking the user to choose, and now the refusal fires only
+      // when the daemon itself says they differ.
       hostedModelAddState = .failed(
         advertisedID: advertisedID, message: Self.hostedAddAmbiguousMessage)
     case (.absent, .absent):
@@ -897,10 +946,17 @@ public final class OllamaSetupService {
   ) async -> HostedCandidateOutcome {
     guard let request = hostedShowRequest(candidate: candidate) else { return .indeterminate }
     do {
-      let (_, response) = try await show(request)
+      let (data, response) = try await show(request)
       guard let http = response as? HTTPURLResponse else { return .indeterminate }
       switch http.statusCode {
-      case 200: return .proven
+      case 200:
+        // A 200 whose body cannot be read is not a proven name. Treating it as
+        // proven would put an unidentifiable model into the alias comparison,
+        // where "no identity" must never compare equal to another.
+        guard let identity = hostedIdentityFingerprint(fromShowBody: data) else {
+          return .indeterminate
+        }
+        return .proven(identity: identity)
       case 404: return .absent
       default: return .indeterminate
       }
