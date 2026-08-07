@@ -655,6 +655,12 @@ struct AIPolishSettingsView: View {
       // Clean up Ollama state when switching away
       if newProvider != .ollama {
         setup.ollamaSetup.cancelPull()
+        // #1956: `cancelPull()` cannot reach a hosted Add that is still probing
+        // for its registrable name — there is no `pullTask` yet, so both of its
+        // branches are false and it correctly does nothing. Without this the
+        // resolution would finish and start a pull for the provider the user
+        // just left, and that late pull cancels whatever pull is current.
+        setup.ollamaSetup.cancelHostedResolution()
         setup.ollamaSetup.resetWarmup()
       }
 
@@ -1757,7 +1763,9 @@ struct AIPolishSettingsView: View {
 
         Spacer()
 
-        if setup.ollamaSetup.currentPullingModel == entry.name {
+        if OllamaCatalogPresentation.rowIsPulling(
+          entry, currentPullingModel: setup.ollamaSetup.currentPullingModel)
+        {
           // Active pull for THIS row: show progress + Cancel.
           HStack(spacing: 8) {
             Text("Downloading… \(Int(setup.ollamaSetup.pullProgress * 100))%")

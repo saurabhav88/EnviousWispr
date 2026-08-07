@@ -173,6 +173,23 @@ public final class OllamaSetupService {
   // the newer pull's state, most acutely on cancel-then-re-download-same-model).
   private var pullEpoch: UInt64 = 0
 
+  /// #1956: the same generation guard as `pullEpoch`, for the window `pullEpoch`
+  /// cannot cover.
+  ///
+  /// A hosted Add spends two `/api/show` round trips resolving a name BEFORE any
+  /// pull exists. `cancelPull()` is what `onChange(llmProvider)` calls when the
+  /// user leaves Ollama, and during that window it finds `pullTask == nil` and
+  /// `currentPullingModel == nil`, so it correctly does nothing — and the
+  /// resolution then calls `startPull` anyway, beginning a pull for a provider
+  /// the user has already left. Worse, that late pull runs `pullModel`, which
+  /// cancels whatever pull is current, so it can kill a pull the user started
+  /// after switching back.
+  ///
+  /// Ported from `pullEpoch` rather than invented: same wrap-safe `&+=`, same
+  /// read-it-before-you-act discipline, so there is one pattern in this file
+  /// instead of two.
+  private var hostedAddEpoch: UInt64 = 0
+
   /// Canonical names of downloaded models. Backward-compatible with old Set<String> consumers.
   public var downloadedModelNames: Set<String> {
     Set(downloadedModels.map(\.canonicalName))
@@ -741,6 +758,23 @@ public final class OllamaSetupService {
   private static let hostedAddUnreachableMessage =
     "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment."
 
+  /// #1956: abandon a hosted name resolution that is still probing.
+  ///
+  /// Separate from `cancelPull()` rather than folded into it, and the distinction
+  /// is load-bearing. `cancelPull()` also fires when the user cancels an
+  /// unrelated LOCAL download, and local Download buttons stay enabled while a
+  /// hosted row resolves (`AIPolishSettingsView`'s `.disabled` scopes the
+  /// resolving clause to remote rows). Bumping the epoch there would let
+  /// cancelling one model's download silently abandon a different model's Add.
+  ///
+  /// Call this for "the user left Ollama", never for "a pull was cancelled".
+  public func cancelHostedResolution() {
+    hostedAddEpoch &+= 1
+    if case .resolving = hostedModelAddState {
+      hostedModelAddState = .idle
+    }
+  }
+
   /// Add a hosted model by resolving its pullable name against the daemon.
   ///
   /// Ollama advertises a hosted model under one id and pulls it under another.
@@ -771,6 +805,11 @@ public final class OllamaSetupService {
     if case .resolving = hostedModelAddState { return }
     hostedModelAddState = .resolving(advertisedID: advertisedID)
 
+    // Read BEFORE the probes, compared after. Any `cancelPull()` in between —
+    // which is what leaving Ollama triggers — makes every branch below a no-op.
+    hostedAddEpoch &+= 1
+    let epoch = hostedAddEpoch
+
     let dashCandidate = "\(advertisedID)-cloud"
     let colonCandidate = "\(advertisedID):cloud"
 
@@ -779,6 +818,17 @@ public final class OllamaSetupService {
     // assumption this design exists to remove.
     let dashOutcome = await Self.probeHostedCandidate(dashCandidate, show: show)
     let colonOutcome = await Self.probeHostedCandidate(colonCandidate, show: show)
+
+    // Superseded: the user cancelled or left Ollama while the probes ran. Start
+    // no pull and publish no failure — there is nothing to report about work the
+    // user walked away from, and a message would appear under a row they are no
+    // longer looking at. The state is only cleared if it is still OURS to clear.
+    guard hostedAddEpoch == epoch else {
+      if case .resolving(let inFlight) = hostedModelAddState, inFlight == advertisedID {
+        hostedModelAddState = .idle
+      }
+      return
+    }
 
     switch (dashOutcome, colonOutcome) {
     case (.proven, .absent):

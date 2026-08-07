@@ -1552,6 +1552,106 @@ struct OllamaSetupServiceHostedAddTests {
     #expect(await otherScript.unscripted.isEmpty)
   }
 
+  // MARK: - Leaving Ollama mid-resolution (#1956, whole-diff review r2)
+
+  /// The defect: a hosted Add spends two `/api/show` round trips BEFORE any pull
+  /// exists, so `cancelPull()` — which is what switching provider calls — finds
+  /// `pullTask == nil` and does nothing. The resolution then started a pull for
+  /// a provider the user had already left, and because `pullModel` cancels the
+  /// current pull, that late arrival could kill a pull started after switching
+  /// back.
+  ///
+  /// The Add is parked mid-probe so the cancellation provably lands INSIDE the
+  /// resolution window rather than before or after it.
+  @Test("leaving Ollama mid-resolution starts no pull when the probes finish")
+  func hostedResolutionSupersededByLeavingOllama() async throws {
+    let script = showScript(
+      advertisedID: "glm-5.2", dash: .status(404), colon: .status(200), parked: true)
+    let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    let log = PullLog()
+
+    let add = Task { @MainActor in
+      await service.addHostedModel(
+        advertisedID: "glm-5.2",
+        show: transport(script),
+        startPull: starter(log, service: { service }))
+    }
+
+    try await waitUntilAdd("the first probe started") { await script.requestCount == 1 }
+    #expect(service.hostedModelAddState == .resolving(advertisedID: "glm-5.2"))
+
+    // What `onChange(llmProvider)` does when the user picks another provider.
+    service.cancelHostedResolution()
+    #expect(service.hostedModelAddState == .idle)
+
+    await script.release()
+    await add.value
+
+    // The probes still complete — they were already in flight — but nothing acts
+    // on their answer.
+    #expect(log.pulled.isEmpty)
+    #expect(service.hostedModelAddState == .idle)
+    #expect(await script.unscripted.isEmpty)
+  }
+
+  /// Two-way control for the test above. Without it, "no pull started" would be
+  /// satisfied by a resolution that never resolves anything at all — including a
+  /// `cancelHostedResolution` that bumped the epoch unconditionally and broke
+  /// every hosted Add.
+  @Test("the same resolution, not superseded, does start its pull")
+  func hostedResolutionNotSupersededStartsPull() async throws {
+    let script = showScript(
+      advertisedID: "glm-5.2", dash: .status(404), colon: .status(200), parked: true)
+    let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    let log = PullLog()
+
+    let add = Task { @MainActor in
+      await service.addHostedModel(
+        advertisedID: "glm-5.2",
+        show: transport(script),
+        startPull: starter(log, service: { service }))
+    }
+
+    try await waitUntilAdd("the first probe started") { await script.requestCount == 1 }
+    await script.release()
+    await add.value
+
+    #expect(log.pulled == ["glm-5.2:cloud"])
+    #expect(service.hostedModelAddState == .idle)
+    #expect(await script.unscripted.isEmpty)
+  }
+
+  /// Cancelling an unrelated LOCAL download must not abandon a hosted Add.
+  ///
+  /// This is why the invalidation is its own method instead of living inside
+  /// `cancelPull()`: local Download buttons stay enabled while a hosted row
+  /// resolves, so folding the epoch bump into `cancelPull()` would let one
+  /// model's Cancel silently kill a different model's Add.
+  @Test("cancelPull does not abandon a hosted resolution")
+  func cancelPullLeavesHostedResolutionAlone() async throws {
+    let script = showScript(
+      advertisedID: "glm-5.2", dash: .status(404), colon: .status(200), parked: true)
+    let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    let log = PullLog()
+
+    let add = Task { @MainActor in
+      await service.addHostedModel(
+        advertisedID: "glm-5.2",
+        show: transport(script),
+        startPull: starter(log, service: { service }))
+    }
+
+    try await waitUntilAdd("the first probe started") { await script.requestCount == 1 }
+    service.cancelPull()
+    #expect(service.hostedModelAddState == .resolving(advertisedID: "glm-5.2"))
+
+    await script.release()
+    await add.value
+
+    #expect(log.pulled == ["glm-5.2:cloud"])
+    #expect(await script.unscripted.isEmpty)
+  }
+
   // MARK: - Helpers
 
   private static let unreachableMessage =

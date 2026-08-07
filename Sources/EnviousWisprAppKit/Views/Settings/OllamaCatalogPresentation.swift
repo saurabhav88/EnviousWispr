@@ -81,6 +81,34 @@ enum OllamaCatalogPresentation {
     entry.isRemote ? "Add" : "Download"
   }
 
+  /// #1956: whether THIS row is the one currently pulling.
+  ///
+  /// A local row IS its own pull name, so exact equality is correct and stays.
+  /// A hosted suggestion is not: the row is keyed by the ADVERTISED id
+  /// (`glm-5.2`) while `addHostedModel` resolves and pulls the REGISTRABLE name
+  /// (`glm-5.2:cloud`). Exact equality could therefore never match a hosted
+  /// pull, so the row rendered neither progress nor Cancel while `isPulling`
+  /// disabled its button — a dead-looking control for the pull's whole duration.
+  ///
+  /// The loose key is scoped to remote rows deliberately, and that scoping is
+  /// the correctness argument rather than a tidiness one: `hostedCatalogKey`
+  /// strips the cloud suffix, so a LOCAL `glm-5.2` and a hosted `glm-5.2:cloud`
+  /// collapse to one key. Applying it to every row would light up a local row's
+  /// progress and Cancel during a hosted pull, and Cancel there would abort a
+  /// pull the user never associated with that row.
+  ///
+  /// Lives here rather than in the view for the reason this whole type exists:
+  /// a private predicate in `AIPolishSettingsView` cannot be tested, and this
+  /// one is exactly the kind that failed silently.
+  static func rowIsPulling(
+    _ entry: OllamaModelCatalogEntry, currentPullingModel: String?
+  ) -> Bool {
+    guard let pulling = currentPullingModel else { return false }
+    guard entry.isRemote else { return pulling == entry.name }
+    return OllamaSetupService.hostedCatalogKey(pulling)
+      == OllamaSetupService.hostedCatalogKey(entry.name)
+  }
+
   // MARK: - Hosted tier ordering: DELIBERATELY ABSENT (#1956)
   //
   // The coverage round proposed a dated free-verified-first ordering, it was

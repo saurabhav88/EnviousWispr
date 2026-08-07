@@ -306,6 +306,41 @@ struct OllamaManageModelsPresentationTests {
     }
   }
 
+  // MARK: - #1956 Pull-progress row matching (whole-diff review r2)
+
+  /// The defect: a hosted row is keyed by the ADVERTISED id while the pull runs
+  /// under the REGISTRABLE name, so exact equality could never match and the row
+  /// showed no progress and no Cancel for the pull's whole duration.
+  @Test("a hosted row matches the pull started under its registrable name")
+  func hostedRowMatchesResolvedPullName() {
+    let entry = catalogEntry("glm-5.2", isRemote: true, isDownloaded: false)
+    #expect(OllamaCatalogPresentation.rowIsPulling(entry, currentPullingModel: "glm-5.2:cloud"))
+    #expect(OllamaCatalogPresentation.rowIsPulling(entry, currentPullingModel: "glm-5.2-cloud"))
+  }
+
+  /// Mutation control: the pre-fix implementation was exact equality, and it
+  /// passes a test that only ever asks about the advertised name.
+  @Test("a hosted row does not match an unrelated model's pull")
+  func hostedRowIgnoresUnrelatedPull() {
+    let entry = catalogEntry("glm-5.2", isRemote: true, isDownloaded: false)
+    #expect(!OllamaCatalogPresentation.rowIsPulling(entry, currentPullingModel: "kimi-k3:cloud"))
+    #expect(!OllamaCatalogPresentation.rowIsPulling(entry, currentPullingModel: nil))
+  }
+
+  /// The reason the loose key is scoped to remote rows. `hostedCatalogKey`
+  /// collapses `glm-5.2` and `glm-5.2:cloud` to one key, so an unscoped
+  /// implementation would render progress and a Cancel button on the LOCAL row
+  /// during a hosted pull — and that Cancel would abort a pull the user never
+  /// associated with it.
+  @Test("a local row never matches a hosted pull of the same base name")
+  func localRowDoesNotMatchHostedPull() {
+    let local = catalogEntry("glm-5.2", isRemote: false, isDownloaded: false)
+    #expect(!OllamaCatalogPresentation.rowIsPulling(local, currentPullingModel: "glm-5.2:cloud"))
+    // And the local row still matches its own pull, so the scoping did not
+    // simply disable matching for local rows.
+    #expect(OllamaCatalogPresentation.rowIsPulling(local, currentPullingModel: "glm-5.2"))
+  }
+
   // MARK: - #1956 Partition still accepts a suggestion
 
   @Test("a remote not-downloaded suggestion joins the hosted group and nothing is lost")
