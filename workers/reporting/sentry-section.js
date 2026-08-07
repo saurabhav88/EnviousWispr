@@ -222,6 +222,35 @@ export function parseReleaseVersion(release) {
  *    one person appears under several releases - so summing them to rank would
  *    be arithmetic on numbers that do not add.
  *
+ * KNOWN LIMIT, raised by cloud review on PR #1968 and NOT fixed here (#1970).
+ * The ranking key is AFFECTED people, which is a proxy for INSTALLED people and
+ * not the same quantity. They diverge when a new release is both widely adopted
+ * and sharply healthier: a release that fixes a high-frequency crash earns few
+ * error rows, so it cannot win the ranking, and the floor can sit on the older
+ * line while a bug already fixed above it keeps the headline. That is a weaker
+ * form of the very defect this function exists to prevent.
+ *
+ * What was measured (2026-08-06, live, driving these shipped functions rather
+ * than a copy of them): ranking by Sentry affected users and ranking by PostHog
+ * active users produce the SAME floor, 2.4.0, over both the 1-day and 7-day
+ * windows. Affected count tracks population closely enough today because error
+ * volume scales with usage.
+ *
+ * What that did NOT cover: any window in which a release's error RATE changes
+ * sharply, which is exactly the post-fix rollout. One agreeing measurement on a
+ * calm population is not evidence the rule holds through a quality cliff, and
+ * this comment is not a claim that the question is settled.
+ *
+ * Why it was not fixed in the PR that found it: the correction needs per-version
+ * ADOPTION, which lives in PostHog. `weekly-digest` has no per-version usage
+ * query at all, and `daily-report`'s lives in its own version scorecard, so
+ * closing this means either a new cross-vendor query in the weekly worker or
+ * two different release rules in one shared section. Both contradict decisions
+ * this plan made deliberately: the section degrades independently of PostHog so
+ * a Sentry outage cannot cost the adoption numbers, and it prints no impact rate
+ * precisely because the two identity systems join only partially. Reopening that
+ * is a product call, not a review-loop patch.
+ *
  * A single release's user count is used ONLY as a ranking key and is never
  * displayed. Ties break toward the NEWER version, so the rule is deterministic
  * rather than dependent on Sentry's row order.

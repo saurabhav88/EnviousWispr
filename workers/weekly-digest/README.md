@@ -31,14 +31,15 @@ plain `curl -sS` exits 0 on an HTTP 401 or 500.
 ```bash
 ~/.claude/bin/get-key launch posthog-personal-api-key POSTHOG_KEY -- \
   ~/.claude/bin/get-key launch cloudflare-global-api-key CF_KEY -- \
-  ~/.claude/bin/get-key launch sentry-master-key SENTRY_KEY -- \
+  ~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
   node workers/weekly-digest/live-query-smoke.mjs
 ```
 
-`SENTRY_KEY` uses the existing admin read credential **for this local smoke
-only**, because no worker-grade credential can reach the Discover endpoint the
-Sentry section needs (measured 2026-08-06: both worker tokens 403). Never
-install `sentry-master-key` as a Cloudflare Worker secret.
+`SENTRY_KEY` is the same least-privilege token the deployed Worker holds
+(`event:read` + `org:read`), so the smoke exercises exactly the access
+production has. Same reasoning and the same do-not-reintroduce warning as
+`workers/daily-report/README.md`, which owns the detail. Never install
+`sentry-master-key` as a Cloudflare Worker secret.
 
 Runs the real `runDigest` against production with the Discord call intercepted,
 prints per-query timings and the exact message, and **fails loud naming any

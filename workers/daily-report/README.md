@@ -58,14 +58,19 @@ passes, prints the would-be message, posts nothing):
 
 ```bash
 ~/.claude/bin/get-key launch posthog-personal-api-key POSTHOG_KEY -- \
-  ~/.claude/bin/get-key launch sentry-master-key SENTRY_KEY -- \
+  ~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
   node workers/daily-report/live-query-smoke.mjs [YYYY-MM-DD]
 ```
 
-`SENTRY_KEY` uses the existing admin read credential **for this local smoke
-only**, because no worker-grade credential can reach the Discover endpoint the
-Sentry section needs (measured 2026-08-06: both worker tokens 403). Never
-install `sentry-master-key` as a Cloudflare Worker secret.
+`SENTRY_KEY` is the same least-privilege token the deployed Worker holds
+(`event:read` + `org:read`), so the smoke exercises exactly the access
+production has. An earlier version of this file used `sentry-master-key` and
+justified it with "no worker-grade credential can reach the Discover endpoint" —
+true when written, false since `sentry-workers-readonly-token` was minted on
+2026-08-06. Do not reintroduce the admin key here: it grants far more than a
+smoke needs, and running the smoke under wider access than production has can
+pass a query the deployed Worker would be refused. Never install
+`sentry-master-key` as a Cloudflare Worker secret either.
 
 The optional date argument overrides "yesterday" — useful for testing
 against a known day, and mirrors the deployed worker's `?date=` recovery
