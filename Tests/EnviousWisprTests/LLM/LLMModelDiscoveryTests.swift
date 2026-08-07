@@ -85,6 +85,27 @@ struct LLMModelDiscoveryTests {
     #expect(candidates.first(where: { $0.id == "gpt-oss:120b-cloud" })?.isRemote == true)
   }
 
+  /// #1947 verification (closed, already fixed by #1956/PR #1973): the
+  /// picker's own data source, not `dynamicCatalog`'s (Manage Models' path,
+  /// covered by `OllamaManageModelsPresentationTests`). `parseDownloadedModels`
+  /// (`OllamaSetupService.swift:~1105`) is the shared construction site both
+  /// paths draw from, and its own comment names this exact case ("left the
+  /// picker listing... 'Gpt Oss' twice, which is what the founder
+  /// screenshotted") — this test pins that fix at the layer #1947 actually
+  /// complained about, since `ollamaCandidates` re-exercising it is what a
+  /// `dynamicCatalog`-only test cannot prove.
+  @Test("two hosted models differing only by tag render distinct picker labels")
+  func hostedCandidatesDifferingOnlyByTagStayDistinct() {
+    let candidates = LLMModelDiscovery.ollamaCandidates(fromTagsModels: [
+      ["name": "gpt-oss:20b-cloud", "remote_host": "ollama.com"],
+      ["name": "gpt-oss:120b-cloud", "remote_host": "ollama.com"],
+    ])
+
+    #expect(candidates.count == 2)
+    let names = candidates.map(\.displayName)
+    #expect(Set(names).count == 2, "collided: \(names)")
+  }
+
   /// Identity is the EXACT name, not the canonical one. The picker tags rows by
   /// this value and the runtime arms it, so dropping the `:latest` here would
   /// arm a name the daemon may not answer to.
