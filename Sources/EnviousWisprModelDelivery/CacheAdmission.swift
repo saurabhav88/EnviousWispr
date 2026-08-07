@@ -164,7 +164,7 @@ struct CacheAdmission {
     var traversalFailed = false
     guard
       let enumerator = FileManager.default.enumerator(
-        at: componentRoot, includingPropertiesForKeys: [.isRegularFileKey],
+        at: componentRoot, includingPropertiesForKeys: [.isDirectoryKey],
         errorHandler: { _, _ in
           traversalFailed = true
           return false  // stop; the flag alone decides the verdict below
@@ -173,9 +173,15 @@ struct CacheAdmission {
 
     let prefixCount = resolvedComponentRoot.count + 1  // +1 drops the path separator
     for case let fileURL as URL in enumerator {
+      // Cloud review P2: checking `isRegularFile` let an unlisted SYMLINK
+      // (e.g. a dangling link from manual cache manipulation) skip the
+      // check entirely, since a symlink is neither a regular file nor a
+      // directory. Any non-directory leaf must be accounted for — a
+      // directory is just a container and is walked into, never itself
+      // compared against `expected`.
       guard
-        let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
-        values.isRegularFile == true, fileURL.path.count > prefixCount
+        let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey]),
+        values.isDirectory != true, fileURL.path.count > prefixCount
       else { continue }
       // Relative to the RESOLVED component root, then re-prefixed with the
       // component name as a plain string — never path arithmetic against

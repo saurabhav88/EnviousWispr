@@ -76,6 +76,22 @@ import Testing
     #expect(result.verifiedComponents == ["vocab.json"])
   }
 
+  @Test func unlistedSymlinkForcesComponentToFail() async throws {
+    // Cloud review P2: a symlink is neither a regular file nor a directory,
+    // so an `isRegularFile`-only check silently skipped an unlisted
+    // dangling link left by manual cache manipulation, and the component
+    // could be admitted despite containing it.
+    let (install, metadata, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+    try FileManager.default.createSymbolicLink(
+      atPath: install.appendingPathComponent("Encoder.mlmodelc/dangling.bin").path,
+      withDestinationPath: "/nonexistent-target")
+    let gate = try admission(files: files, dirs: (install, metadata))
+    let result = await gate.validateExistingCache()
+    #expect(result.failedComponents == ["Encoder.mlmodelc"])
+  }
+
   @Test func unreadableSubdirectoryFailsClosed() async throws {
     // Whole-diff review P2: `FileManager.enumerator` silently STOPS
     // traversal on an unreadable subdirectory rather than throwing, so a
