@@ -477,6 +477,25 @@ const SPIKE_THROTTLE_HOURS = 6;
  * key or evict each other's window. */
 const spikeKey = (issueId) => `spike:${issueId}`;
 
+/** The breakdown must describe the SAME population the rule counted, or the
+ * card explains a firing with numbers that did not cause it.
+ *
+ * VERBATIM from the live rules, re-queried 2026-08-06 rather than read from
+ * notes: 415417 "Error Spike (>5/hr)", 415418 "XPC Service Crash (>1/hr)" and
+ * 415419 "AI Failure Spike (>3/hr)" are all `count()` over `is:unresolved` on a
+ * 60-minute window. Copy the string; do not improve on it. A cleverer predicate
+ * that is merely equivalent today drifts the moment Sentry changes what
+ * `is:unresolved` covers, and the card would then be confidently wrong rather
+ * than obviously stale.
+ *
+ * Measured overcount at the time of writing: ZERO resolved-issue events over
+ * both 24h and 7d, so this corrects a mechanism rather than a live wrong
+ * number. It is still worth having, because the failure is silent - an inflated
+ * card looks exactly like a real spike - and because #1965 collapses the three
+ * rules to one, after which any drift between rule and card has a single place
+ * to go wrong. If that surviving rule's query is ever edited, edit this too. */
+const SPIKE_RULE_PREDICATE = "is:unresolved";
+
 /** ONE Sentry call. Grouped by issue AND release AND environment, because that
  * single response answers all three questions the card asks - which problems,
  * which versions, and how much of it is the founder's own dev machine - and a
@@ -486,7 +505,15 @@ const spikeKey = (issueId) => `spike:${issueId}`;
  * DEV EVENTS ARE KEPT. The digests force production-only; this one must not.
  * The alert rules have `environment: null` by founder decision (2026-08-06):
  * dev events feed the same counters deliberately, because they prove the
- * pipeline is alive. The card's job is to SHOW the split, not to hide it. */
+ * pipeline is alive. The card's job is to SHOW the split, not to hide it.
+ *
+ * BUT THE RESOLVED FILTER IS NOT OPTIONAL, and for the opposite reason. This
+ * card exists to explain ONE firing, so it must describe the population that
+ * actually triggered it. All three metric rules count `is:unresolved` (see
+ * SPIKE_RULE_PREDICATE), so an unfiltered breakdown can attribute the firing to
+ * problems already resolved and inflate both the headline total and the
+ * real-versus-dev split. Environment is widened deliberately; resolution status
+ * is matched deliberately. They are different axes and pull opposite ways. */
 async function fetchSpikeBreakdown(env, deadlineAt) {
   return discoverAggregate(
     { ...env, SENTRY_ORG },
@@ -494,6 +521,7 @@ async function fetchSpikeBreakdown(env, deadlineAt) {
       queryName: "spike_breakdown",
       fields: ["issue", "title", "error.category", "release", "environment", "count()", "count_unique(user)"],
       requiredFields: ["error.category", "count()", "count_unique(user)"],
+      query: SPIKE_RULE_PREDICATE,
       statsPeriod: "1h",
       sort: "-count()",
       perPage: 100,

@@ -343,6 +343,26 @@ test("the spike costs exactly ONE Sentry call and keeps dev events", async () =>
   }
 });
 
+test("the breakdown counts the same population the rule counted", async () => {
+  // The card explains ONE firing, so it has to describe what triggered it. All
+  // three live metric rules are `count()` over `is:unresolved` (re-queried
+  // 2026-08-06). Unfiltered, the breakdown can attribute the firing to problems
+  // already resolved and inflate both the headline total and the dev split.
+  const h = harness();
+  try {
+    await handleTriage(metricPayload(), h.env);
+    const url = decodeURIComponent(
+      h.requests.find((u) => u.startsWith("https://us.sentry.io"))
+    );
+    assert.match(url, /query=is:unresolved/, "matches the rule predicate verbatim");
+    // Two-way: the resolution filter must not have quietly narrowed the
+    // environment axis, which is widened ON PURPOSE and pulls the other way.
+    assert.doesNotMatch(url, /environment=/, "still counts dev events");
+  } finally {
+    h.restore();
+  }
+});
+
 test("a Sentry failure still buzzes once, and says the breakdown is missing", async () => {
   const h = harness({
     sentry: () => ({ ok: false, status: 403, headers: { get: () => null }, body: { cancel: async () => {} } }),
