@@ -684,6 +684,51 @@ struct OllamaManageModelsPresentationTests {
     }
   }
 
+  // MARK: - #1956 The verification date is stated in UTC (review r6)
+
+  /// The defect, observed in the founder's own screenshot of the shipped build:
+  /// "Checked on Aug 4, 2026" for a snapshot dated the 5th. `snapshotVerifiedAt`
+  /// is midnight UTC, so rendering it in a zone west of Greenwich moves it back a
+  /// day — and a dated advisory whose date is wrong points the reader at the
+  /// wrong evidence while looking authoritative.
+  ///
+  /// Locale is pinned here so this asserts the ZONE, which is what changed, and
+  /// not the machine's date-format preferences.
+  @Test("the checked-on date is the snapshot's UTC day, not the viewer's local day")
+  func checkedOnDateIsStatedInUTC() {
+    let text = OllamaCatalogPresentation.checkedOnDateText(
+      OllamaCatalogPresentation.tierSnapshot.verifiedAt, locale: Locale(identifier: "en_US"))
+    #expect(text.contains("5"), "\(text) is not the 5th")
+    #expect(text.contains("Aug"), "\(text) is not August")
+    #expect(!text.contains("4"), "\(text) shows the previous day")
+  }
+
+  /// Two-way control on the zone: the same instant one second later is still the
+  /// 5th, and one second BEFORE midnight UTC is the 4th. Without this, a
+  /// hard-coded string would pass the test above.
+  @Test("the formatter reads the instant, not a constant")
+  func checkedOnDateTracksTheInstant() {
+    let us = Locale(identifier: "en_US")
+    let midnight = OllamaCatalogPresentation.tierSnapshot.verifiedAt
+    #expect(
+      OllamaCatalogPresentation.checkedOnDateText(midnight.addingTimeInterval(-1), locale: us)
+        .contains("4"))
+    #expect(
+      OllamaCatalogPresentation.checkedOnDateText(midnight.addingTimeInterval(1), locale: us)
+        .contains("5"))
+  }
+
+  /// The sentence and the bare date share one formatter, so the list and the
+  /// picker cannot drift on wording or zone.
+  @Test("the sentence form wraps the same date text")
+  func checkedOnSentenceWrapsTheDate() {
+    let date = OllamaCatalogPresentation.tierSnapshot.verifiedAt
+    let us = Locale(identifier: "en_US")
+    #expect(
+      OllamaCatalogPresentation.checkedOnText(date, locale: us)
+        == "Checked on \(OllamaCatalogPresentation.checkedOnDateText(date, locale: us))")
+  }
+
   // MARK: - #1956 Partition still accepts a suggestion
 
   @Test("a remote not-downloaded suggestion joins the hosted group and nothing is lost")

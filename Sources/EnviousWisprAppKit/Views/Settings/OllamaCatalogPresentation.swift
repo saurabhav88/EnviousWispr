@@ -214,6 +214,37 @@ enum OllamaCatalogPresentation {
   /// a membership list was rejected.
   static let tierSnapshotLifetime: TimeInterval = 30 * 24 * 60 * 60
 
+  /// The snapshot's verification date, as text, in UTC.
+  ///
+  /// UTC is not a detail here. `snapshotVerifiedAt` is midnight UTC on the day
+  /// the tiers were checked, so rendering it in the viewer's own zone moves it
+  /// backwards for everyone west of Greenwich: the founder's screenshot of the
+  /// shipped build read "Checked on Aug 4, 2026" for a snapshot dated the 5th,
+  /// which is the release note's date and the one in every audit. A dated
+  /// advisory whose date is wrong is worse than an undated one, because the
+  /// wrongness is invisible and points the reader at the wrong evidence.
+  ///
+  /// Still locale-aware for ORDER and month name — an American date format
+  /// shown to everyone was the reason this renders from the `Date` rather than
+  /// from a preformatted string. Only the zone is pinned.
+  /// Just the date, for callers that compose their own sentence around it.
+  static func checkedOnDateText(_ checkedAt: Date, locale: Locale = .autoupdatingCurrent) -> String
+  {
+    // The zone belongs in the STYLE's initializer. `.timeZone(_:)` on a built
+    // style takes a format SYMBOL — it controls how a zone is spelled out, not
+    // which zone the date is read in — so chaining it there compiles into a
+    // no-op for this purpose on any type where it does compile.
+    let style = Date.FormatStyle(
+      date: .abbreviated,
+      locale: locale,
+      timeZone: TimeZone(identifier: "UTC") ?? .gmt)
+    return checkedAt.formatted(style)
+  }
+
+  static func checkedOnText(_ checkedAt: Date, locale: Locale = .autoupdatingCurrent) -> String {
+    "Checked on \(checkedOnDateText(checkedAt, locale: locale))"
+  }
+
   /// The tier decision itself, over anything that can name a model.
   ///
   /// Generic because TWO surfaces ask this question — the Manage Models list

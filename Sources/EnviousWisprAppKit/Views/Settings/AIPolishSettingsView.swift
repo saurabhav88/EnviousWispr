@@ -198,6 +198,19 @@ enum OllamaModelPickerPresentation {
     OllamaCatalogPresentation.hostedTierPartition(hosted, modelName: \.id, now: now)
   }
 
+  /// A picker section header that carries its own verification date.
+  ///
+  /// The Manage Models list renders the date on a separate line under the
+  /// heading; a `Picker` `Section` header is a single string, so it goes inline.
+  /// Same text, same UTC zone, one owner — `OllamaCatalogPresentation` still
+  /// formats it, so the two surfaces cannot drift on wording or time zone.
+  static func tierSectionTitle(
+    _ title: String, checkedAt: Date, locale: Locale = .autoupdatingCurrent
+  ) -> String {
+    let date = OllamaCatalogPresentation.checkedOnDateText(checkedAt, locale: locale)
+    return "\(title) (checked \(date))"
+  }
+
   static func groups(from models: [LLMModelInfo], provider: LLMProvider) -> Groups {
     var recommended: [LLMModelInfo] = []
     var other: [LLMModelInfo] = []
@@ -950,15 +963,26 @@ struct AIPolishSettingsView: View {
     // from the same snapshot, so the two surfaces cannot disagree.
     if !groups.hosted.isEmpty {
       if let tiers = OllamaModelPickerPresentation.hostedTiers(groups.hosted) {
+        // The DATE travels with the tier claim on this surface too. A picker
+        // section header is the only text a dropdown affords, so it carries the
+        // date inline rather than on its own line as the list does. Without it
+        // this surface presents a dated snapshot as if it were current, which is
+        // the one thing the snapshot design promises never to do.
         if !tiers.free.isEmpty {
-          Section(OllamaModelPickerPresentation.freeVerifiedGroupTitle) {
+          Section(
+            OllamaModelPickerPresentation.tierSectionTitle(
+              OllamaModelPickerPresentation.freeVerifiedGroupTitle, checkedAt: tiers.checkedAt)
+          ) {
             ForEach(tiers.free) { model in
               Text(model.displayName).tag(model.id)
             }
           }
         }
         if !tiers.mayNeedPaid.isEmpty {
-          Section(OllamaModelPickerPresentation.mayNeedPaidGroupTitle) {
+          Section(
+            OllamaModelPickerPresentation.tierSectionTitle(
+              OllamaModelPickerPresentation.mayNeedPaidGroupTitle, checkedAt: tiers.checkedAt)
+          ) {
             ForEach(tiers.mayNeedPaid) { model in
               Text(model.displayName).tag(model.id)
             }
@@ -1743,12 +1767,11 @@ struct AIPolishSettingsView: View {
     }
   }
 
-  /// Locale-aware and rendered from the `Date` itself. A preformatted string would
-  /// have to be maintained beside the snapshot and would drift from it; a fixed
-  /// locale would show an American date to everyone else.
+  /// The wording and the time zone are production policy, not view code — see
+  /// `OllamaCatalogPresentation.checkedOnText` for why the zone is pinned.
   @ViewBuilder
   private func ollamaHostedCheckedDate(_ checkedAt: Date) -> some View {
-    Text("Checked on \(checkedAt, format: .dateTime.year().month(.abbreviated).day())")
+    Text(OllamaCatalogPresentation.checkedOnText(checkedAt))
       .font(.stHelper)
       .foregroundStyle(Color.stTextSecondary)
   }

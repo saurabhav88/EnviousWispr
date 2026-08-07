@@ -165,7 +165,6 @@ struct OllamaModelPickerPresentationTests {
     #expect(OllamaModelPickerPresentation.hostedGroupTitle == "Runs on Ollama's servers")
   }
 
-  /// Rule 6: no em or en dashes in user-facing copy.
   // MARK: - #1956 Three buckets in the dropdown
 
   /// The founder's request: installed locally, free cloud, paid cloud.
@@ -240,6 +239,35 @@ struct OllamaModelPickerPresentationTests {
     #expect(Set(tiers.free.map(\.id)).isDisjoint(with: Set(tiers.mayNeedPaid.map(\.id))))
   }
 
+  /// Review r6: the picker rendered the tier headings with no date, so a dated
+  /// snapshot read as current guidance on that surface. A `Section` header is a
+  /// single string, so the date goes inline rather than on its own line.
+  @Test("a picker tier heading carries its verification date")
+  func tierSectionTitleCarriesTheDate() {
+    let title = OllamaModelPickerPresentation.tierSectionTitle(
+      OllamaModelPickerPresentation.freeVerifiedGroupTitle,
+      checkedAt: OllamaCatalogPresentation.tierSnapshot.verifiedAt,
+      locale: Locale(identifier: "en_US"))
+    #expect(title.hasPrefix("Try these first"))
+    #expect(title.contains("checked"))
+    // The same UTC day the list shows, not the viewer's local day.
+    #expect(title.contains("5"), "\(title)")
+    #expect(title.contains("Aug"), "\(title)")
+  }
+
+  /// Both surfaces format the date through one owner, so neither can drift on
+  /// wording or time zone.
+  @Test("the picker heading's date matches the Manage Models date exactly")
+  func pickerDateMatchesListDate() {
+    let date = OllamaCatalogPresentation.tierSnapshot.verifiedAt
+    let us = Locale(identifier: "en_US")
+    let listDate = OllamaCatalogPresentation.checkedOnDateText(date, locale: us)
+    let pickerTitle = OllamaModelPickerPresentation.tierSectionTitle(
+      "Try these first", checkedAt: date, locale: us)
+    #expect(pickerTitle.contains(listDate), "\(pickerTitle) does not contain \(listDate)")
+  }
+
+  /// Rule 6: no em or en dashes in user-facing copy.
   @Test("the hosted heading contains no em or en dash")
   func headingHasNoDashes() {
     let title = OllamaModelPickerPresentation.hostedGroupTitle
