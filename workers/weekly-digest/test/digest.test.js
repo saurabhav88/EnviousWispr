@@ -28,6 +28,7 @@ import worker, {
   formatAppUsage,
   SOURCE_LABELS,
 } from "../src/index.js";
+import { SENTRY_CALLS_PER_DIGEST } from "../../reporting/sentry-section.js";
 
 // Every event-property reference must be qualified as properties.<name>: a bare
 // name does not resolve in PostHog HogQL. This regex catches the regression
@@ -43,7 +44,60 @@ const ENV = {
   GITHUB_REPO: "saurabhav88/EnviousWispr",
   DISCORD_WEBHOOK_URL: "https://discord.test/hook",
   TRIGGER_SECRET: "s3cret",
+  // #1965. A deployment without these is a legitimate state (the secret has not
+  // been installed on this Worker yet) and has its own test below.
+  SENTRY_ORG: "envious-labs-llc",
+  SENTRY_PROJECT_ID: "4511097112428544",
+  SENTRY_PROJECT_SLUG: "enviouswispr",
+  SENTRY_AUTH_TOKEN: "sentry-test-token",
 };
+
+// The real 2026-08-05 production release split, so the release line these tests
+// resolve is the one the rule actually produces rather than a shape invented to
+// match it. 2.4.3 has the most people, so the line is 2.4.0 and 2.3.1 is tail.
+const SENTRY_RELEASE_ROWS = [
+  { release: "com.enviouswispr.app@2.4.3", "count_unique(user)": 8, "count()": 19 },
+  { release: "com.enviouswispr.app@2.4.1", "count_unique(user)": 3, "count()": 12 },
+  { release: "com.enviouswispr.app@2.3.1", "count_unique(user)": 2, "count()": 5 },
+];
+const SENTRY_PROBLEM_ROWS = [
+  {
+    issue: "ENVIOUSWISPR-2C", "issue.id": 1, title: "audio_capture_stalled: HeartPathError#0",
+    "error.category": "audio_capture_stalled", level: "error",
+    "count_unique(user)": 25, "count()": 103,
+  },
+  {
+    issue: "ENVIOUSWISPR-24", "issue.id": 2, title: "paste_failed: HeartPathError#3",
+    "error.category": "paste_failed", level: "error",
+    "count_unique(user)": 13, "count()": 18,
+  },
+];
+
+/** Carries `meta.fields`, which the LIVE endpoint returns even for an empty
+ * result (measured 2026-08-06). A double that omitted it would hide the very
+ * defect the shape check exists to catch. */
+function sentryBody(rows, names) {
+  return { data: rows, meta: { fields: Object.fromEntries(names.map((n) => [n, "integer"])) } };
+}
+
+function sentryAnswer(url, overrides) {
+  if (overrides.sentry) {
+    const custom = overrides.sentry(url);
+    if (custom !== undefined) return custom;
+  }
+  if (url.includes("/issues/")) return ok([{ shortId: "ENVIOUSWISPR-4P", firstSeen: "2026-08-01T12:00:00Z" }]);
+  if (url.includes("field=release")) {
+    return ok(sentryBody(SENTRY_RELEASE_ROWS, ["release", "count_unique(user)", "count()"]));
+  }
+  if (url.includes("field=issue")) {
+    return ok(sentryBody(SENTRY_PROBLEM_ROWS,
+      ["title", "issue.id", "error.category", "level", "count_unique(user)", "count()"]));
+  }
+  // The prior window starts seven days before the reported one.
+  const isPrior = url.includes(encodeURIComponent("2026-07-20T00:00:00"));
+  return ok(sentryBody([{ "count_unique(user)": isPrior ? 30 : 38, "count()": 121 }],
+    ["count_unique(user)", "count()"]));
+}
 
 // Pinned so the window is deterministic: Monday 2026-08-03 13:00 UTC ->
 // window 2026-07-27 .. 2026-08-03 exclusive, last included day 2026-08-02.
@@ -83,7 +137,7 @@ const RELEASES_PAGE = (count, startTag = 1) =>
  * Cloudflare / GitHub behaviour.
  */
 function harness(overrides = {}) {
-  const state = { posts: [], queryNames: [], inFlight: 0, peakInFlight: 0, posthogCalls: 0, githubPages: [], sql: [] };
+  const state = { posts: [], queryNames: [], inFlight: 0, peakInFlight: 0, posthogCalls: 0, sentryCalls: 0, githubPages: [], sql: [] };
 
   const fetchFn = async (url, init) => {
     if (String(url).includes("posthog.com")) {
@@ -115,6 +169,10 @@ function harness(overrides = {}) {
       state.githubPages.push(page);
       if (overrides.github) return overrides.github(page);
       return ok(page === 1 ? RELEASES_PAGE(100) : RELEASES_PAGE(45, 101));
+    }
+    if (String(url).includes("us.sentry.io")) {
+      state.sentryCalls += 1;
+      return sentryAnswer(String(url), overrides);
     }
     if (String(url).includes("discord.test")) {
       state.posts.push(JSON.parse(init.body));
@@ -306,7 +364,11 @@ test("a dev_ids 401 costs app usage only; a METRIC 401 fails the whole run", asy
   const devAuth = harness({ posthog: { dev_ids: () => fail(401) } });
   await assert.rejects(() => devAuth.run(), /unavailable sections/);
   assert.equal(devAuth.state.posts.length, 1, "a partial digest still posts");
-  assert.equal(devAuth.state.posts[0].embeds.length, 4);
+  assert.equal(devAuth.state.posts[0].embeds.length, 5);
+  // Sentry is a different vendor entirely, so a PostHog credential failure must
+  // not cost it. A section that failed because an unrelated API failed would be
+  // a coupling this design does not have.
+  assert.doesNotMatch(devAuth.state.posts[0].embeds[4].title, /unavailable/);
 
   const metricAuth = harness({ posthog: { website: () => fail(401) } });
   await assert.rejects(() => metricAuth.run(), /HTTP 401/);
@@ -455,13 +517,14 @@ test("GitHub non-2xx on the first page degrades instead of returning '?'", async
 
 // ---- Payload -----------------------------------------------------------------
 
-test("the digest posts four section embeds carrying the brand colour", async () => {
+test("the digest posts five section embeds carrying the brand colour", async () => {
   const h = harness();
   await h.run();
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 4);
+  assert.equal(digest.embeds.length, 5);
   assert.deepEqual(digest.embeds.map((e) => e.title), [
     "All website traffic", "Tracked visitor activity", "Downloads", "App usage",
+    "Sentry, last 7 days",
   ]);
   for (const embed of digest.embeds) {
     assert.equal(embed.color, 0x7c3aed);
@@ -879,4 +942,70 @@ test("the install line claims setup BEGAN, never that it was a first time", asyn
   const text = h.state.posts[0].embeds[3].description;
   assert.match(text, /51 people began setting up\./);
   assert.doesNotMatch(text, /first time/);
+});
+
+// ---- Sentry section (#1965) --------------------------------------------------
+
+test("the weekly Sentry section spends the fixed call budget and scopes to the release line", async () => {
+  const h = harness();
+  await h.run();
+  assert.equal(h.state.sentryCalls, SENTRY_CALLS_PER_DIGEST,
+    "five fixed Sentry calls, never a per-issue fan-out");
+  const [digest] = h.state.posts;
+  const sentry = digest.embeds[4];
+  assert.match(sentry.description, /on 2\.4\.0 and newer/);
+  assert.match(sentry.description, /25 people {3}microphone capture stalled/);
+  assert.match(sentry.description, /13 people {3}paste fell back to the clipboard/);
+  // 8 more people than the prior week (38 vs 30).
+  assert.match(sentry.description, /8 more than the previous period \(30 people\)/);
+  // The tail line: 2.3.1 sits below the resolved 2.4.0 line.
+  assert.match(sentry.description, /up to 2 people on builds older than 2\.4\.0/);
+});
+
+test("the weekly badge window is the reported week, absolutely, not a relative lookback", async () => {
+  // The relative form was measured from NOW, and this worker runs 13 hours
+  // after its window closes, so `firstSeen:-7d` straddled the window in both
+  // directions. The window is now derived from the reported one.
+  const urls = [];
+  const h = harness({ sentry: (url) => { urls.push(url); return undefined; } });
+  await h.run();
+  const issuesUrl = new URL(urls.find((u) => u.includes("/issues/")));
+  assert.equal(issuesUrl.searchParams.get("start"), "2026-07-27T00:00:00");
+  assert.equal(issuesUrl.searchParams.get("end"), "2026-08-03T00:00:00");
+  // Asserted EXACTLY. The negative form alone passed with an empty query, so it
+  // could not tell a correct absolute filter from no filter at all.
+  assert.equal(
+    issuesUrl.searchParams.get("query"),
+    "firstSeen:>=2026-07-27T00:00:00 firstSeen:<2026-08-03T00:00:00"
+  );
+});
+
+test("a Sentry outage costs the Sentry section and nothing else", async () => {
+  const h = harness({ sentry: () => fail(503) });
+  await assert.rejects(() => h.run(), /unavailable sections/);
+  const [digest] = h.state.posts;
+  assert.equal(digest.embeds.length, 5, "the digest still posts, whole");
+  assert.match(digest.embeds[4].title, /unavailable today/);
+  assert.match(digest.embeds[4].description, /not a report of zero/);
+  // The other four sections are untouched and REAL.
+  assert.match(digest.embeds[0].title, /All website traffic/);
+  for (const embed of digest.embeds.slice(0, 4)) {
+    assert.doesNotMatch(embed.title, /unavailable/);
+    // The DESCRIPTION too: these sections put their degraded wording in the
+    // body, so a title-only check would pass a mutation that degraded all four.
+    assert.doesNotMatch(embed.description, /temporarily unavailable|not a report of zero/);
+  }
+});
+
+test("a worker without the Sentry credential degrades that section only", async () => {
+  // A real deployment state: §12.1 installs the secret before deploying the
+  // code, and between those two steps this is exactly what the digest looks
+  // like. It must not be a whole-run failure.
+  const { SENTRY_AUTH_TOKEN, ...noToken } = ENV;
+  const h = harness();
+  await assert.rejects(() => h.run(noToken), /unavailable sections/);
+  const [digest] = h.state.posts;
+  assert.equal(digest.embeds.length, 5);
+  assert.match(digest.embeds[4].title, /unavailable today/);
+  assert.equal(h.state.sentryCalls, 0, "a missing credential makes no request at all");
 });

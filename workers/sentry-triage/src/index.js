@@ -20,6 +20,14 @@
  * basic embed when event data is unavailable — an alert is never lost.
  */
 
+// The SHARED Sentry transport, and nothing else from workers/. This worker does
+// NOT import workers/reporting/sentry-section.js: the digest section renders a
+// lost-vs-degraded breakdown this card does not show, over a different window,
+// production-only where this one deliberately keeps dev events. Importing it
+// would add a third independently-deployed consumer of that module without
+// removing any real duplicate authority (#1965).
+import { discoverAggregate } from "../../shared/sentry.js";
+
 const DISCORD_COLOR = { P0: 0xe74c3c, P1: 0xe67e22, P2: 0xf1c40f, P3: 0x95a5a6 };
 const SENTRY_ORG = "envious-labs-llc";
 const SENTRY_FETCH_TIMEOUT_MS = 5000;
@@ -135,10 +143,17 @@ export async function handleTriage(body, env) {
   }
   await env.SENTRY_DEDUP.put(replayKey, "1", { expirationTtl: 5400 }); // 90 min
 
-  // Validate payload shape — skip metric alerts (no data.issue) and malformed payloads
+  // Validate payload shape. Malformed payloads carry no issue and are dropped.
+  //
+  // THIS COMMENT USED TO SAY it skipped metric alerts "(no data.issue)". That
+  // was false, and it mattered: Sentry files every metric-alert firing as an
+  // ISSUE, with `issueCategory: "metric"`, `userCount: 0` and no release. Those
+  // payloads DO carry `data.issue`, so this guard never once fired for them and
+  // every rate alert fell straight through to the ordinary error path, where it
+  // rendered as `What: unknown / Version: unknown / Impact: 0 user(s)` (#1965).
   const issue = payload?.data?.issue;
   if (!issue) {
-    console.log("[sentry-triage] No data.issue — skipping (metric alert or unknown type)");
+    console.log("[sentry-triage] No data.issue — skipping malformed or unknown payload");
     return;
   }
 
@@ -146,6 +161,26 @@ export async function handleTriage(body, env) {
   const issueId = issue.id ?? "";
   if (!issueId) {
     console.error("[sentry-triage] Missing issue ID, skipping");
+    return;
+  }
+
+  // Rate alerts take a DIFFERENT path entirely, before any of the error-issue
+  // policy below. Scoring one as an error is what produced the empty card: it
+  // has no user count to score, no release to scope to, and no category to name.
+  //
+  // BEING FIRST MEANS IT SKIPS THE TERMINAL-ACTION GUARDS BELOW, so the spike
+  // path carries its own action eligibility rather than inheriting theirs by
+  // placement. Cloud review caught this: a metric issue arriving as `resolved`,
+  // `archived` or `assigned` reached handleSpike and would buzz whenever the
+  // six-hour throttle happened to be absent or expired - a Discord post saying
+  // errors are spiking, sent because the alert had just been RESOLVED.
+  //
+  // Fixed in the policy rather than by moving this branch below the guards.
+  // Placement is not a contract: the next edit that reorders these blocks would
+  // silently reopen it, and `decideSpike` is where a reader looks for what the
+  // spike path does.
+  if (isMetricIssue(issue)) {
+    await handleSpike({ action, issue, issueId, env, lookupDeadlineAt, operationDeadlineAt, now: startedAt });
     return;
   }
 
@@ -417,6 +452,306 @@ export function classifySeverity(userCount, timesSeen, level) {
   return "P3";
 }
 
+// ── Rate-alert (spike) path (#1965) ────────────────────────────────────────────
+
+/** Sentry files each metric-alert firing as an issue. `issueCategory` is the
+ * documented discriminator; `issueType` is checked too because a payload
+ * carrying one and not the other is exactly the ambiguity that should take the
+ * safe path rather than be guessed at. */
+export function isMetricIssue(issue) {
+  return issue?.issueCategory === "metric" || issue?.issueType === "metric_issue";
+}
+
+/** SIX HOURS, fixed, on a key of its own.
+ *
+ * NOT inherited from THROTTLE_HOURS. That table is keyed by PRIORITY, and a
+ * metric issue whose count has passed 20 scores P1 and then flips to
+ * `substatus: "regressed"` on every single firing - which hits rule 7's
+ * explicit regression bypass and would post every time, throttle or no. The
+ * generic policy cannot deliver a six-hour gap for this shape, so this is new
+ * policy rather than a free inheritance. An earlier draft of the plan claimed
+ * otherwise and contradicted itself two sections later. */
+const SPIKE_THROTTLE_HOURS = 6;
+
+/** Its own namespace, so a rate alert and an error issue can never collide on a
+ * key or evict each other's window. */
+const spikeKey = (issueId) => `spike:${issueId}`;
+
+/** The breakdown must describe the SAME population the rule counted, or the
+ * card explains a firing with numbers that did not cause it.
+ *
+ * VERBATIM from the live rules, re-queried 2026-08-06 rather than read from
+ * notes: 415417 "Error Spike (>5/hr)", 415418 "XPC Service Crash (>1/hr)" and
+ * 415419 "AI Failure Spike (>3/hr)" are all `count()` over `is:unresolved` on a
+ * 60-minute window. Copy the string; do not improve on it. A cleverer predicate
+ * that is merely equivalent today drifts the moment Sentry changes what
+ * `is:unresolved` covers, and the card would then be confidently wrong rather
+ * than obviously stale.
+ *
+ * Measured overcount at the time of writing: ZERO resolved-issue events over
+ * both 24h and 7d, so this corrects a mechanism rather than a live wrong
+ * number. It is still worth having, because the failure is silent - an inflated
+ * card looks exactly like a real spike - and because #1965 collapses the three
+ * rules to one, after which any drift between rule and card has a single place
+ * to go wrong. If that surviving rule's query is ever edited, edit this too. */
+const SPIKE_RULE_PREDICATE = "is:unresolved";
+
+/** ONE Sentry call. Grouped by issue AND release AND environment, because that
+ * single response answers all three questions the card asks - which problems,
+ * which versions, and how much of it is the founder's own dev machine - and a
+ * separate call per question would be three round trips inside a webhook
+ * deadline for data Sentry will hand over at once.
+ *
+ * DEV EVENTS ARE KEPT. The digests force production-only; this one must not.
+ * The alert rules have `environment: null` by founder decision (2026-08-06):
+ * dev events feed the same counters deliberately, because they prove the
+ * pipeline is alive. The card's job is to SHOW the split, not to hide it.
+ *
+ * BUT THE RESOLVED FILTER IS NOT OPTIONAL, and for the opposite reason. This
+ * card exists to explain ONE firing, so it must describe the population that
+ * actually triggered it. All three metric rules count `is:unresolved` (see
+ * SPIKE_RULE_PREDICATE), so an unfiltered breakdown can attribute the firing to
+ * problems already resolved and inflate both the headline total and the
+ * real-versus-dev split. Environment is widened deliberately; resolution status
+ * is matched deliberately. They are different axes and pull opposite ways. */
+async function fetchSpikeBreakdown(env, deadlineAt) {
+  return discoverAggregate(
+    { ...env, SENTRY_ORG },
+    {
+      queryName: "spike_breakdown",
+      fields: ["issue", "title", "error.category", "release", "environment", "count()", "count_unique(user)"],
+      requiredFields: ["error.category", "count()", "count_unique(user)"],
+      query: SPIKE_RULE_PREDICATE,
+      statsPeriod: "1h",
+      sort: "-count()",
+      perPage: 100,
+    },
+    { workerLabel: "sentry_triage", deadlineAt, requestTimeoutMs: SENTRY_FETCH_TIMEOUT_MS }
+  );
+}
+
+/**
+ * Reduces the grouped rows to the card's four numbers.
+ *
+ * EVENTS ARE THE UNIT, deliberately, and every total below is a sum of event
+ * counts. Event counts ARE additive across rows; distinct-user counts are NOT,
+ * because the same person appears under several (issue, release, environment)
+ * rows. Summing them would produce a confident number that is simply wrong, so
+ * per-problem people is reported as the largest single row - a genuine LOWER
+ * bound - and worded as "at least". This is also the right unit on its own
+ * terms: the rule that fires this card counts errors per hour.
+ */
+export function summarizeSpike(rows) {
+  const byProblem = new Map();
+  const releases = new Set();
+  let totalEvents = 0;
+  let devEvents = 0;
+
+  for (const row of rows) {
+    // THROWS rather than skipping. An earlier version skipped a malformed row
+    // and carried on, which left a PARTIAL sum being published as "N errors in
+    // the last hour" with nothing marking it short. The caller turns this into
+    // the fail-open card, which says the breakdown could not be read - honest,
+    // and still one buzz.
+    const events = requireSpikeCount(row["count()"], "event count");
+    const people = requireSpikeCount(row["count_unique(user)"], "people count");
+    totalEvents = addSpikeCounts(totalEvents, events, "event total");
+
+    // Anything not explicitly production counts as dev here. The split exists
+    // to stop a founder's own testing reading as a user-facing incident, so the
+    // conservative direction is to attribute an unlabelled event to dev rather
+    // than to real users.
+    if (row.environment !== "production") devEvents = addSpikeCounts(devEvents, events, "dev-event total");
+
+    const category = typeof row["error.category"] === "string" ? row["error.category"].trim() : "";
+    const label = category || (typeof row.title === "string" ? row.title.split(":", 1)[0].trim() : "") || "uncategorised";
+    const existing = byProblem.get(label) || { label, events: 0, atLeastPeople: 0 };
+    existing.events = addSpikeCounts(existing.events, events, "problem-event total");
+    existing.atLeastPeople = Math.max(existing.atLeastPeople, people);
+    byProblem.set(label, existing);
+
+    if (typeof row.release === "string" && row.release.length > 0) {
+      releases.add(displayVersion(row.release));
+    }
+  }
+
+  return {
+    totalEvents,
+    devEvents,
+    realEvents: totalEvents - devEvents,
+    problems: [...byProblem.values()].sort((a, b) => b.events - a.events),
+    releases: [...releases].sort(),
+  };
+}
+
+/** Same discipline as the digest section, for the same reason: `Number()`
+ * accepts `null`, `""`, `false`, `[]` and `["7"]`, and every one of those would
+ * become a plausible figure in a card the founder acts on. */
+function requireSpikeCount(value, field) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError(`Sentry spike breakdown returned an invalid ${field}`);
+  }
+  return value;
+}
+
+/** Each addend is a safe integer; their sum need not be. */
+function addSpikeCounts(left, right, field) {
+  const total = left + right;
+  if (!Number.isSafeInteger(total)) {
+    throw new TypeError(`Sentry spike breakdown ${field} exceeded the safe integer range`);
+  }
+  return total;
+}
+
+const SPIKE_PROBLEM_ROWS = 5;
+
+/** The card. Names the problems, the versions and the dev split, which is
+ * everything the old card could not say. */
+export function buildSpikeEmbed(summary, { issueId, title, permalink }) {
+  const top = summary.problems.slice(0, SPIKE_PROBLEM_ROWS);
+  const remainder = summary.problems.length - top.length;
+  const lines = top.map(
+    (p) => `${p.events} × ${p.label} (at least ${p.atLeastPeople} ${p.atLeastPeople === 1 ? "person" : "people"})`
+  );
+  if (remainder > 0) lines.push(`plus ${remainder} more, included in the total`);
+
+  return {
+    // Says what it measured, not what the rule happens to be called. The three
+    // old rules asserted diagnoses their `count()` query could not make.
+    title: `[Sentry Spike] ${summary.totalEvents} errors in the last hour`,
+    color: DISCORD_COLOR.P1,
+    fields: [
+      {
+        name: "Real vs dev",
+        value: `${summary.realEvents} from real users, ${summary.devEvents} from dev builds`,
+        inline: true,
+      },
+      {
+        name: "Versions",
+        value: truncate(summary.releases.length ? summary.releases.join(", ") : "unknown"),
+        inline: true,
+      },
+      { name: "Alert", value: `[${issueId}](${permalink})`, inline: true },
+      {
+        name: "What is driving it",
+        value: truncate(lines.length ? lines.join("\n") : "no breakdown available", 900),
+        inline: false,
+      },
+    ],
+    footer: { text: `EnviousWispr Sentry Triage. Rate alert, ${SPIKE_THROTTLE_HOURS}h between posts` },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/** Fail-open card. A rate alert that cannot be enriched is still worth one
+ * buzz: the founder learns the rule fired, and learns explicitly that the
+ * breakdown is missing rather than being shown a confident empty one. */
+export function buildSpikeFailOpenEmbed({ issueId, title, permalink }) {
+  return {
+    title: `[Sentry Spike] ${truncate(title || "error rate alert fired")}`,
+    color: DISCORD_COLOR.P1,
+    fields: [
+      { name: "Alert", value: `[${issueId}](${permalink})`, inline: true },
+      {
+        name: "Breakdown",
+        value: "Unavailable. The rule fired, but the hourly breakdown could not be read from Sentry.",
+        inline: false,
+      },
+    ],
+    footer: { text: `EnviousWispr Sentry Triage. Rate alert, ${SPIKE_THROTTLE_HOURS}h between posts` },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/** Pure, so the whole policy is testable without a KV or a network. */
+export function decideSpike({ action, throttleLookup, now }) {
+  // ELIGIBILITY FIRST, mirroring rule 1 for error issues. Only a firing posts:
+  // `created`, or `unresolved` when Sentry reopens the metric issue on the next
+  // breach. Everything else - `resolved`, `archived`, `assigned` - is somebody
+  // tidying up, and a spike card sent because an alert was RESOLVED is worse
+  // than no card at all.
+  //
+  // Checked BEFORE the throttle, so an ineligible action costs no KV read and
+  // cannot be rescued by a fail-open throttle path.
+  if (action !== "created" && action !== "unresolved") {
+    return { post: false, reason: "ineligible-action" };
+  }
+
+  // A throttle READ failure fails open, exactly as rule 6 does for errors:
+  // never let an unavailable KV suppress a real signal.
+  if (throttleLookup?.status !== "complete") {
+    return { post: true, reason: "throttle-unavailable-failopen" };
+  }
+  const stored = throttleLookup.value;
+  if (stored == null) return { post: true, reason: "no-throttle" };
+  const elapsedMs = now - stored.lastNotifiedAt;
+  if (elapsedMs < SPIKE_THROTTLE_HOURS * 3600_000) {
+    return { post: false, reason: "throttled" };
+  }
+  return { post: true, reason: "throttle-expired" };
+}
+
+async function handleSpike({ action, issue, issueId, env, lookupDeadlineAt, operationDeadlineAt, now }) {
+  const kvKey = spikeKey(issueId);
+  // The eligibility check inside decideSpike needs no KV read, so an ineligible
+  // action is decided before one is spent.
+  const eligibility = decideSpike({ action, throttleLookup: null, now });
+  if (!eligibility.post && eligibility.reason === "ineligible-action") {
+    console.log(`[sentry-triage] Spike ${issueId} ${action} — no post`);
+    return;
+  }
+  const decision = decideSpike({ action, throttleLookup: await readThrottle(env, kvKey), now });
+  if (!decision.post) {
+    console.log(`[sentry-triage] Spike ${issueId} suppressed (${decision.reason})`);
+    return;
+  }
+
+  const title = issue.title ?? "";
+  const permalink = issue.permalink ?? issue.web_url ?? "";
+
+  let embed;
+  try {
+    const breakdown = await fetchSpikeBreakdown(env, lookupDeadlineAt);
+    // A FULL PAGE means the sum is short, and the card's headline states an
+    // exact count. Unlike the digest - which discloses its ceiling in a list the
+    // founder is already reading - this card's whole content IS the number, so
+    // there is nothing left to qualify. Fail open instead of publishing a
+    // partial total as exact.
+    const summary = breakdown.truncated ? null : summarizeSpike(breakdown.rows);
+    // An empty breakdown is the same problem from the other end: the enriched
+    // card would read "0 errors in the last hour" beside an alert that fired
+    // because there were more than five.
+    embed = summary && summary.totalEvents > 0
+      ? buildSpikeEmbed(summary, { issueId, title, permalink })
+      : buildSpikeFailOpenEmbed({ issueId, title, permalink });
+  } catch (err) {
+    console.warn(`[sentry-triage] Spike ${issueId} breakdown unavailable: ${err.message}`);
+    embed = buildSpikeFailOpenEmbed({ issueId, title, permalink });
+  }
+
+  const result = await postDiscord(env.DISCORD_WEBHOOK_URL, embed, {
+    issueId,
+    deadlineAt: operationDeadlineAt,
+  });
+  if (!result.ok) {
+    // Same transport-commit invariant as the error path: no confirmed delivery,
+    // no throttle, so the next firing stays eligible.
+    console.warn(`[sentry-triage] Spike ${issueId} NOT delivered after ${result.attempts} attempt(s), no throttle written`);
+    return;
+  }
+
+  try {
+    await env.SENTRY_DEDUP.put(
+      kvKey,
+      JSON.stringify({ lastNotifiedAt: now, priority: "spike" }),
+      { expirationTtl: KV_TTL_SECONDS }
+    );
+  } catch (err) {
+    console.error(`[sentry-triage] Spike throttle write failed for ${issueId}:`, err.message);
+  }
+  console.log(`[sentry-triage] Spike ${issueId} posted (${decision.reason})`);
+}
+
 // ── Data acquisition (§3.2) ─────────────────────────────────────────────────────
 
 /**
@@ -613,10 +948,19 @@ async function readThrottle(env, kvKey) {
   if (!("lastNotifiedAt" in parsed)) return { status: "complete", value: null };
 
   const { lastNotifiedAt, priority } = parsed;
+  // "spike" joins the four priorities because the rate-alert path stores its
+  // window through this same reader (#1965). Without it, every spike record
+  // read back as MALFORMED, decideSpike fell open, and the six-hour throttle
+  // never once applied - which is the exact triple-buzz this was built to stop.
+  // Caught by its own test rather than in production.
+  //
+  // The two record kinds cannot be confused: error windows live under
+  // `sentry:<id>` and spike windows under `spike:<id>`, so neither path can
+  // ever read the other's value however this list grows.
   if (
     typeof lastNotifiedAt !== "number" ||
     !Number.isFinite(lastNotifiedAt) ||
-    !["P0", "P1", "P2", "P3"].includes(priority)
+    !["P0", "P1", "P2", "P3", "spike"].includes(priority)
   ) {
     return { status: "malformed" };
   }

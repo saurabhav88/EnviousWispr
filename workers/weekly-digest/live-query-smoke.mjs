@@ -31,11 +31,18 @@ const env = {
   GITHUB_REPO: "saurabhav88/EnviousWispr",
   GITHUB_TOKEN: process.env.GITHUB_TOKEN,
   DISCORD_WEBHOOK_URL: CAPTURED_WEBHOOK,
+  SENTRY_ORG: "envious-labs-llc",
+  SENTRY_PROJECT_ID: "4511097112428544",
+  SENTRY_PROJECT_SLUG: "enviouswispr",
+  SENTRY_AUTH_TOKEN: process.env.SENTRY_KEY,
 };
 
+// SENTRY_KEY is required for the same reason the others are: a smoke that
+// silently skips a section proves nothing about it.
 const missing = [
   ["POSTHOG_KEY", env.POSTHOG_PERSONAL_API_KEY],
   ["CF_KEY", env.CF_API_KEY],
+  ["SENTRY_KEY", env.SENTRY_AUTH_TOKEN],
 ].filter(([, value]) => !value).map(([name]) => name);
 if (missing.length) {
   console.error(`missing ${missing.join(", ")} - see the usage header for the launcher form`);

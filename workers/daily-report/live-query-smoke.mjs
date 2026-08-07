@@ -26,9 +26,21 @@ const env = {
   POSTHOG_PERSONAL_API_KEY: process.env.POSTHOG_KEY,
   GITHUB_REPO: "saurabhav88/EnviousWispr",
   DISCORD_WEBHOOK_URL: CAPTURED_WEBHOOK,
+  SENTRY_ORG: "envious-labs-llc",
+  SENTRY_PROJECT_ID: "4511097112428544",
+  SENTRY_PROJECT_SLUG: "enviouswispr",
+  SENTRY_AUTH_TOKEN: process.env.SENTRY_KEY,
 };
 if (!env.POSTHOG_PERSONAL_API_KEY) {
   console.error("POSTHOG_KEY not set - run via get-key launch posthog-personal-api-key POSTHOG_KEY -- ...");
+  process.exit(1);
+}
+// Sentry is REQUIRED here, not optional. The whole point of a pre-deploy
+// smoke is to prove the section answers against live Sentry before the
+// worker is deployed; skipping it on a missing key would print "Smoke OK"
+// for a run that never exercised the new section at all.
+if (!env.SENTRY_AUTH_TOKEN) {
+  console.error("SENTRY_KEY not set - the Sentry section would not be exercised, so this smoke proves nothing about it");
   process.exit(1);
 }
 
@@ -43,7 +55,9 @@ globalThis.fetch = async (url, init) => {
       ? `posthog:${JSON.parse(init.body).name}`
       : target.startsWith("https://api.github.com")
         ? "github:releases"
-        : target
+        : target.startsWith("https://us.sentry.io")
+          ? `sentry:${new URL(target).pathname}`
+          : target
   );
   if (target === CAPTURED_WEBHOOK) {
     captured = JSON.parse(init.body);

@@ -53,13 +53,24 @@ node --test                     # pure query-shape/bucketing/formatting logic, n
 ```
 
 Pre-deploy live-query smoke (runs the real HogQL against production
-PostHog, asserts the completeness check passes, prints the would-be
-message, posts nothing):
+PostHog **and the real Sentry queries**, asserts the completeness check
+passes, prints the would-be message, posts nothing):
 
 ```bash
 ~/.claude/bin/get-key launch posthog-personal-api-key POSTHOG_KEY -- \
+  ~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
   node workers/daily-report/live-query-smoke.mjs [YYYY-MM-DD]
 ```
+
+`SENTRY_KEY` is the same least-privilege token the deployed Worker holds
+(`event:read` + `org:read`), so the smoke exercises exactly the access
+production has. An earlier version of this file used `sentry-master-key` and
+justified it with "no worker-grade credential can reach the Discover endpoint" —
+true when written, false since `sentry-workers-readonly-token` was minted on
+2026-08-06. Do not reintroduce the admin key here: it grants far more than a
+smoke needs, and running the smoke under wider access than production has can
+pass a query the deployed Worker would be refused. Never install
+`sentry-master-key` as a Cloudflare Worker secret either.
 
 The optional date argument overrides "yesterday" — useful for testing
 against a known day, and mirrors the deployed worker's `?date=` recovery
@@ -127,6 +138,16 @@ security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-se
 # local Keychain. An earlier version of this file said Keychain; that item does
 # not exist on the machine (verified 2026-07-18, #1655).
 ~/.claude/bin/get-key launch daily-report-trigger-secret V -- sh -c 'printf "%s" "$V" | npx wrangler secret put TRIGGER_SECRET'
+
+# SENTRY_AUTH_TOKEN goes on ALL THREE Sentry workers, not just this one (#1965).
+# sentry-triage needs it for the rate-alert breakdown; its older token reads
+# per-issue events fine but 403s on the aggregate endpoint, so leaving that one
+# in place degrades every spike card while the error path keeps working and
+# hides the gap.
+for w in daily-report weekly-digest sentry-triage; do
+  (cd "../$w" && ~/.claude/bin/get-key launch sentry-workers-readonly-token V -- \
+     sh -c 'printf "%s" "$V" | npx wrangler secret put SENTRY_AUTH_TOKEN')
+done
 
 # verify (posts a REAL report to EnviousNotes) - needs the token:
 curl -fsS "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>"

@@ -520,7 +520,12 @@ jobs:
       - name: Worker unit tests
         run: |
           set -euo pipefail
-          for w in daily-report weekly-digest; do
+          # sentry-triage joined this list in #1965. Its 60 tests had existed
+          # since #1586 and had never run in CI, which nobody noticed because a
+          # test that is never executed reports nothing at all. #1965 added 26
+          # more, so the silence would have covered the whole spike-card path.
+          # It has no package.json and needs none; `node --test` finds test/.
+          for w in daily-report weekly-digest sentry-triage; do
             echo "==> $w"
             ( cd "workers/$w" && node --test )
           done

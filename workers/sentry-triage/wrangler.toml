@@ -1,14 +1,28 @@
 # Secrets (set via `wrangler secret put <NAME>`, not committed here):
 #   SENTRY_WEBHOOK_SECRET — HMAC key for verifying inbound Sentry webhooks.
 #   DISCORD_WEBHOOK_URL   — Discord channel webhook for triage alerts.
-#   SENTRY_AUTH_TOKEN     — a personal Sentry token scoped to event:read ONLY
-#     (keystore: sentry-triage-worker-token), used to page a captured issue's
-#     events (release/environment/build_type/level/user tags for release-scoped
-#     severity scoring, plus category/stage/OS/device for the source-labeled
-#     Discord embed, #1229/#1470). NOT the keystore's `sentry-auth-token` — that
-#     one is scoped to CI release uploads only and 403s on event reads (org
-#     tokens on this Sentry plan only support the org:ci scope; event:read
-#     requires a personal token instead). The worker never writes back to Sentry.
+#   SENTRY_AUTH_TOKEN     — GCP secret `sentry-workers-readonly-token`, a
+#     personal Sentry token scoped to exactly `event:read` + `org:read`. This
+#     worker makes TWO different Sentry calls and one token has to serve both:
+#       - per-issue events, `/organizations/<org>/issues/<id>/events/` (:736) —
+#         release/environment/build_type/level/user tags for release-scoped
+#         severity scoring, plus category/stage/OS/device for the source-labeled
+#         Discord embed (#1229/#1470). Needs `event:read`.
+#       - the rate-alert breakdown, `/organizations/<org>/events/` (:491, via
+#         shared/sentry.js discoverAggregate, #1965). Needs `org:read` ON TOP.
+#     The same token is installed on daily-report and weekly-digest, which make
+#     only the second kind of call. Install it HERE TOO: this worker's older
+#     `sentry-triage-worker-token` reads per-issue events fine but 403s on the
+#     aggregate endpoint (measured 2026-08-06), so leaving it in place degrades
+#     every spike card to its fail-open form — one honest buzz saying the rule
+#     fired and the breakdown could not be read — while the per-issue error path
+#     keeps working and hides the gap. Both endpoints were verified 200 under
+#     the new token before the swap, so it is a superset and cannot regress the
+#     existing path. NOT the keystore's `sentry-auth-token` — that one is scoped
+#     to CI release uploads only and 403s on event reads (org tokens on this
+#     Sentry plan only support the org:ci scope; event:read requires a personal
+#     token instead). Sentry LOCKS scopes at creation, so a missing scope is
+#     always a new token, never an edit. The worker never writes back to Sentry.
 #   GITHUB_ISSUES_READ_TOKEN — fine-grained GitHub token scoped to
 #     saurabhav88/EnviousWispr, repository permission Issues:read ONLY, no writes
 #     (#1470). Reads open issues to check whether a fingerprint already carries an
@@ -26,6 +40,11 @@ compatibility_date = "2026-04-15"
 
 [vars]
 GITHUB_REPO = "saurabhav88/EnviousWispr"
+# Scopes the rate-alert breakdown query to this project (#1965). Identifier
+# only, no credential. The org lives as a module constant in src/index.js, which
+# has owned it since this worker was written; adding a second copy here would
+# make two authorities for one value.
+SENTRY_PROJECT_ID = "4511097112428544"
 
 [[kv_namespaces]]
 binding = "SENTRY_DEDUP"
