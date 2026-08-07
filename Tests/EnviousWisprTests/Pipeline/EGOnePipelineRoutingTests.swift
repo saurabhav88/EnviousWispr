@@ -186,8 +186,12 @@ struct EGOnePipelineRoutingTests {
 
   @Test("planner maps .egOne to the egOneFixed family regardless of model id")
   func plannerRoutesEGOne() {
-    #expect(DefaultPromptPlanner.family(for: .egOne, modelID: "eg-1") == .egOneFixed)
-    #expect(DefaultPromptPlanner.family(for: .egOne, modelID: "anything") == .egOneFixed)
+    #expect(
+      DefaultPromptPlanner.family(for: .egOne, modelID: "eg-1", ollamaIsRemote: nil)
+        == .egOneFixed)
+    #expect(
+      DefaultPromptPlanner.family(for: .egOne, modelID: "anything", ollamaIsRemote: nil)
+        == .egOneFixed)
   }
 
   @Test("skip reasons carry the local_polish_ telemetry prefix")

@@ -39,6 +39,24 @@ public struct PromptBuildInput: Sendable {
   /// and preserves legacy passthrough behavior as a safety net.
   public let backend: ASRBackendType?
 
+  // MARK: - Ollama execution location (#1948)
+
+  /// Does this Ollama model execute on Ollama's servers rather than on the user's Mac?
+  /// Taken from the daemon's own `/api/tags` report via `OllamaModelFacts.isRemote`, which
+  /// the pipeline already captures per attempt — never inferred from a model name or a size
+  /// threshold, because that is a hand-authored prediction about which models other people
+  /// install (the shape #1914 deleted for thinking detection).
+  ///
+  /// `nil` means "no daemon to ask": a non-Ollama provider, or a tooling call site. It is
+  /// deliberately NOT a production Ollama state — readiness assigns a non-optional `Bool`
+  /// and every failed readiness arm throws before planning.
+  ///
+  /// Both `nil` and `false` route to the LOCAL prompt. That is the fail-safe direction:
+  /// sending the local prompt to a hosted frontier model costs a suboptimal prompt, while
+  /// sending the cloud prompt to a local model is the larger error and the one that would
+  /// break the on-device expectation users choose local Ollama for.
+  public let ollamaIsRemote: Bool?
+
   public init(
     transcript: String,
     provider: LLMProvider,
@@ -49,7 +67,8 @@ public struct PromptBuildInput: Sendable {
     focusSnapshot: FocusSnapshot? = nil,
     customVocabulary: PromptVocabulary? = nil,
     languageDetection: LanguageDetectionResult? = nil,
-    backend: ASRBackendType? = nil
+    backend: ASRBackendType? = nil,
+    ollamaIsRemote: Bool? = nil
   ) {
     self.transcript = transcript
     self.provider = provider
@@ -64,11 +83,16 @@ public struct PromptBuildInput: Sendable {
     self.customVocabulary = customVocabulary ?? PromptVocabulary.fromLegacy(polishVocabulary.terms)
     self.languageDetection = languageDetection
     self.backend = backend
+    self.ollamaIsRemote = ollamaIsRemote
   }
 
   /// Returns a copy of this input with `polishVocabulary` replaced. Used by
   /// the planner to hand the builders a filtered vocabulary after applying
   /// the confidence-tiered + script-guardrail policy.
+  ///
+  /// This reconstructs the value field by field, so it SILENTLY DROPS any field it does not
+  /// name. Every field added to this type must be forwarded here in the same change; a
+  /// dropped one compiles cleanly and reaches the builders as the type's default.
   public func withPolishVocabulary(_ newPolishVocabulary: PolishVocabulary) -> PromptBuildInput {
     PromptBuildInput(
       transcript: transcript,
@@ -80,7 +104,8 @@ public struct PromptBuildInput: Sendable {
       focusSnapshot: focusSnapshot,
       customVocabulary: customVocabulary,
       languageDetection: languageDetection,
-      backend: backend
+      backend: backend,
+      ollamaIsRemote: ollamaIsRemote
     )
   }
 }

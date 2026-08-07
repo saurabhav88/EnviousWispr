@@ -27,10 +27,10 @@ How much context is sent depends on the polish option you selected in settings.
 | Polish option | App name included | Custom words included |
 | :--- | :--- | :--- |
 | **OpenAI, Gemini, and Claude** | Yes | Yes |
-| **Ollama** | Varies | Varies |
+| **Ollama** | Yes | Yes |
 | **Apple Intelligence and EG-1** | No | No |
 
-What Ollama receives depends on the model you picked. Some Ollama models get both the app name and your custom words, and others get neither. Apple Intelligence and EG-1 get neither. Both are compact on-device models that do better with short instructions, and EG-1 was trained without those context fields.
+Every Ollama model gets both, whichever one you picked and wherever it runs. Apple Intelligence and EG-1 get neither. Both are compact on-device models that do better with short instructions, and EG-1 was trained without those context fields.
 
 Your custom words are applied to your text before AI Polish runs anyway, as long as custom words are switched on under **Your Words**. Sending them to the AI as well is a second layer, not the only one.
 

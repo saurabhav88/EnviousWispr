@@ -31,8 +31,11 @@ struct EGOnePromptBuilder: PromptBuilder {
     _ = mode
 
     // Neutralize embedded wrapper tags so dictated text can never close/reopen the
-    // quoted-transcript boundary (same zero-width-non-joiner mechanism as
-    // `buildSandwichUserMessage`; both cases covered since the wrapper is uppercase).
+    // quoted-transcript boundary. #1948 note: this is now the ONLY builder that wraps the
+    // transcript at all — the shared `buildSandwichUserMessage` helper and its sole other
+    // consumer were deleted with the Ollama prose family. `OllamaConnector` keys its
+    // echoed-tag cleanup off first-party model identity for exactly that reason, so if this
+    // wrapper is ever removed, that cleanup must go with it.
     // Unreachable by voice (ASR never emits <>), so this only fires on non-speech
     // inputs (eval corpora, edited text) — which are off-training-distribution anyway.
     let safeTranscript = input.transcript
