@@ -1304,7 +1304,9 @@ struct AIPolishSettingsView: View {
 
     case .pullingModel(let progress, let status):
       VStack(alignment: .leading, spacing: 8) {
-        ollamaStepIndicators(current: 3, currentLabel: "Downloading...")
+        // #1956: reads the service rather than hard-coding, so a hosted Add is
+        // not announced as a download on the one panel that fills the pane.
+        ollamaStepIndicators(current: 3, currentLabel: setup.ollamaSetup.pullStepLabel)
 
         ProgressView(value: progress)
           .progressViewStyle(.linear)

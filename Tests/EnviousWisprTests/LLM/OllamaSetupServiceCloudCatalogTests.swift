@@ -1864,6 +1864,37 @@ struct OllamaSetupServiceHostedAddTests {
     #expect(service.hostedModelAddState == .idle)
   }
 
+  /// Review r10: the row and the opening status were fixed, and the setup
+  /// panel's step label, the disk-space branch and three URLError strings still
+  /// said Download for an operation that moves 0 bytes. Every surface outside
+  /// the row now reads one owner.
+  @Test("every pull-state surface says Adding for a hosted registration")
+  func hostedPullWordingIsConsistentEverywhere() async {
+    let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    await service.addHostedModel(
+      advertisedID: "gpt-oss:20b",
+      show: transport(
+        showScript(advertisedID: "gpt-oss:20b", dash: .status(200), colon: .status(404))),
+      startPull: { name, id in service.pullModel(name, hostedAdvertisedID: id) })
+
+    #expect(service.pullOperationIsHostedRegistration)
+    #expect(service.pullStepLabel == "Adding...")
+    #expect(service.pullStatusText == "Adding...")
+    #expect(!service.pullStepLabel.lowercased().contains("download"))
+  }
+
+  /// Two-way control: a local download keeps every download word, so the fix did
+  /// not simply rename the operation for everyone.
+  @Test("every pull-state surface still says Downloading for a local pull")
+  func localPullWordingIsUnchanged() {
+    let service = OllamaSetupService(cloudCatalogClient: OllamaCloudCatalogClient())
+    service.pullModel("llama3.2")
+
+    #expect(!service.pullOperationIsHostedRegistration)
+    #expect(service.pullStepLabel == "Downloading...")
+    #expect(service.pullStatusText == "Starting download...")
+  }
+
   /// Review r9: the advertised id travels WITH the start call. A starter that
   /// received only the pullable name would satisfy every existing assertion
   /// while the row keyed by the advertised id showed no progress at all.

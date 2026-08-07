@@ -1328,14 +1328,17 @@ public final class OllamaSetupService {
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
         let message = error.localizedDescription.lowercased()
-        if message.contains("no space") || message.contains("errno 28") {
+        let hosted = self.pullOperationIsHostedRegistration
+        // A hosted registration writes a manifest and nothing else, so it cannot
+        // plausibly exhaust the disk. Keeping the disk branch local-only means a
+        // hosted failure never blames the user's free space for something that
+        // needed none.
+        if !hosted, message.contains("no space") || message.contains("errno 28") {
           self.setupState = .error(
             "Not enough disk space. The model needs about 2 GB free."
           )
         } else {
-          self.setupState = .error(
-            "Download failed. Check your internet connection and try again."
-          )
+          self.setupState = .error(self.failedMessage(hosted: hosted))
         }
       }
     }
@@ -1602,16 +1605,48 @@ public final class OllamaSetupService {
     return String(format: "%.0f MB", mb)
   }
 
+  // MARK: - Operation wording (#1956)
+
+  /// What the in-flight operation is CALLED, everywhere outside the catalog row.
+  ///
+  /// Review r10: fixing the row and the opening status left the setup panel's
+  /// step label, the disk-space branch and three URLError strings all still
+  /// saying Download for an operation that moves 0 bytes. Rather than patch each
+  /// one again, every one of them now reads this, so a new string cannot
+  /// reintroduce the false framing by forgetting the distinction.
+  ///
+  /// Reads the live `hostedPullAdvertisedID`, which `pullModel` sets on its
+  /// first lines from its own argument, so it is correct for the whole pull.
+  package var pullOperationIsHostedRegistration: Bool { hostedPullAdvertisedID != nil }
+
+  /// Step label for the setup panel while a pull runs.
+  package var pullStepLabel: String {
+    pullOperationIsHostedRegistration ? "Adding..." : "Downloading..."
+  }
+
+  private func failedMessage(hosted: Bool) -> String {
+    hosted
+      ? "Couldn't add the model. Check your internet connection and try again."
+      : "Download failed. Check your internet connection and try again."
+  }
+
+  private func interruptedMessage(hosted: Bool) -> String {
+    hosted
+      ? "Adding the model was interrupted. Tap retry to try again."
+      : "Download was interrupted. Tap retry to resume where you left off."
+  }
+
   // MARK: - Error Mapping
 
   private func friendlyMessage(for urlError: URLError) -> String {
+    let hosted = pullOperationIsHostedRegistration
     switch urlError.code {
     case .notConnectedToInternet:
-      return "Download failed. Check your internet connection and try again."
+      return failedMessage(hosted: hosted)
     case .cancelled, .networkConnectionLost, .timedOut:
-      return "Download was interrupted. Tap retry to resume where you left off."
+      return interruptedMessage(hosted: hosted)
     default:
-      return "Download failed. Check your internet connection and try again."
+      return failedMessage(hosted: hosted)
     }
   }
 }
