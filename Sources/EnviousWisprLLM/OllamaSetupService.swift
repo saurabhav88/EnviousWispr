@@ -1076,6 +1076,12 @@ public final class OllamaSetupService {
   nonisolated static func parseDownloadedModels(
     fromTagsModels models: [[String: Any]]
   ) -> [OllamaDownloadedModel] {
+    disambiguateLocalCollisions(parseDownloadedModelsWithoutDisambiguation(fromTagsModels: models))
+  }
+
+  nonisolated private static func parseDownloadedModelsWithoutDisambiguation(
+    fromTagsModels models: [[String: Any]]
+  ) -> [OllamaDownloadedModel] {
     models.compactMap { model -> OllamaDownloadedModel? in
       guard let name = model["name"] as? String else { return nil }
       let canonical = canonicalModelName(name)
@@ -1114,6 +1120,68 @@ public final class OllamaSetupService {
         fileSizeBytes: fileSizeBytes,
         displayName: displayName,
         facts: facts
+      )
+    }
+  }
+
+  /// #1947: the LOCAL half of the same defect #1956 fixed for hosted rows.
+  /// `inferDisplayName` drops everything after the colon, so two locally
+  /// installed sizes of one family (`llama3.2:1b` and `llama3.2:3b`, say)
+  /// both prettify to "Llama 3.2" — hosted rows dodge this by showing the
+  /// exact name verbatim (`hostedDisplayName`), but doing the same for every
+  /// local row would blank the prettification that already works for the
+  /// overwhelmingly common non-colliding case. Instead, only names that
+  /// ACTUALLY collide within this response get a disambiguating suffix.
+  ///
+  /// Two passes, because one suffix source is not always enough: pass 1
+  /// appends the parsed parameter size (the same "(SIZE)" convention the
+  /// curated static catalog already uses, e.g. `"Llama 3.2 (1B)"`), which
+  /// resolves the common case (two different sizes of one family) without
+  /// losing prettification. But two variants can share a size too (e.g. two
+  /// quantizations of the same 3B checkpoint), so pass 2 re-checks for a
+  /// SURVIVING collision after pass 1 and falls back to the exact tag for
+  /// just those — `exactName` is unique by construction (Ollama will not
+  /// list the same tag twice), so pass 2 cannot fail to resolve it.
+  nonisolated private static func disambiguateLocalCollisions(
+    _ models: [OllamaDownloadedModel]
+  ) -> [OllamaDownloadedModel] {
+    let localDisplayNames = models.filter { !$0.facts.isRemote }.map(\.displayName)
+    guard localDisplayNames.count != Set(localDisplayNames).count else { return models }
+
+    let sizeDisambiguated = renamingCollisions(in: models) { model in
+      let suffix = model.parameterSize.map { " (\($0.uppercased()))" } ?? " (\(model.exactName))"
+      return model.displayName + suffix
+    }
+    // Full replacement, not another suffix — appending the exact tag onto an
+    // already-suffixed name (e.g. "Llama3 2 (3B)") would still not be unique
+    // if two entries shared that same suffixed form, and reads worse besides.
+    return renamingCollisions(in: sizeDisambiguated) { model in model.exactName }
+  }
+
+  /// Shared collision pass: among LOCAL rows only, find every `displayName`
+  /// shared by more than one model and replace each with `rename(model)`.
+  /// Idempotent when nothing collides (returns `models` unchanged).
+  nonisolated private static func renamingCollisions(
+    in models: [OllamaDownloadedModel],
+    rename: (OllamaDownloadedModel) -> String
+  ) -> [OllamaDownloadedModel] {
+    var counts: [String: Int] = [:]
+    for model in models where !model.facts.isRemote {
+      counts[model.displayName, default: 0] += 1
+    }
+    let colliding = Set(counts.filter { $0.value > 1 }.keys)
+    guard !colliding.isEmpty else { return models }
+
+    return models.map { model in
+      guard !model.facts.isRemote, colliding.contains(model.displayName) else { return model }
+      return OllamaDownloadedModel(
+        exactName: model.exactName,
+        canonicalName: model.canonicalName,
+        parameterSize: model.parameterSize,
+        parameterBillions: model.parameterBillions,
+        fileSizeBytes: model.fileSizeBytes,
+        displayName: rename(model),
+        facts: model.facts
       )
     }
   }
