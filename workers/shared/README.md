@@ -30,17 +30,36 @@ snapshot of this code. So:
 - **`git revert` does not roll back production.** It changes the repo. Rolling
   back means reverting *and* redeploying every consumer.
 
-After changing anything in this directory:
+After changing anything in this directory, redeploy **every consumer of the
+module you changed**, read off the table above. The sets differ, so there is no
+single recipe — that is the whole reason the table is per-module.
+
+Changed `posthog.js` or `discord.js` (two consumers):
 
 ```bash
 cd workers/weekly-digest && npx wrangler deploy    # deploy the CHANGED consumer first
 cd ../daily-report      && npx wrangler deploy     # then the one that should not change
 ```
 
+Changed `sentry.js` (**three** consumers — `sentry-triage` uses the transport
+and none of the reporting policy, so it is easy to forget and its failure is
+quiet: rate-alert cards silently lose their breakdown while ordinary error posts
+keep working):
+
+```bash
+cd workers/sentry-triage && npx wrangler deploy    # the CHANGED consumer first
+cd ../daily-report       && npx wrangler deploy
+cd ../weekly-digest      && npx wrangler deploy
+```
+
 Deploy the worker whose behaviour is meant to change **first**. If the shared
 change is broken, the failure lands on the worker that was already being
 modified, and the healthy one is never touched. Credentials wrapper and the
 `curl -fsS` verification step: `workers/daily-report/README.md` § Deploy.
+
+If you add a consumer to the table, add it to the matching recipe in the same
+edit. A table row without a recipe line is how a worker gets left on a stale
+bundle, which is invisible until its numbers disagree with another worker's.
 
 ## What belongs here
 

@@ -536,6 +536,17 @@ export async function fetchSentrySection(env, window, opts = {}) {
     // "there may be more" even without a next-page header, because the only
     // consequence is the section printing its honest limited-breakdown wording.
     truncated: problems.truncated,
+    // A SEPARATE truncation axis from `truncated` above, and they are not
+    // interchangeable: that one bounds the PROBLEM list, this one bounds the
+    // RELEASE list, and only this one can make the old-build tail understate.
+    //
+    // The FLOOR is safe under it and the tail is not, which is why one flag
+    // cannot serve both. `sentry_releases` sorts by `-count_unique(user)`, so
+    // the release with the most affected people is on the first page by
+    // construction and `resolveReleaseLine` still picks the right winner. The
+    // tail sums releases BELOW that line - precisely the low-count rows a cut
+    // page drops - so it is the half that breaks.
+    releasesTruncated: releaseResult.truncated,
     badgesIncomplete,
   };
 }
@@ -696,7 +707,17 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
   if (data.tailPeople > 0) {
     // "Up to", because these are per-release counts summed across releases and
     // one person can appear under more than one.
-    lines.push(`Separately, up to ${people(data.tailPeople)} on builds older than ${data.floor}.`);
+    //
+    // A TRUNCATED RELEASE PAGE INVERTS THAT BOUND, so the wording cannot stand.
+    // The sum overstates (non-additive people) and a cut-off page understates
+    // (missing old releases), and the two pull opposite ways - so "up to N" is
+    // no longer a claim the data supports in either direction. Say it is
+    // partial instead of picking a bound that might be false.
+    lines.push(
+      data.releasesTruncated
+        ? `Separately, at least ${people(data.tailPeople)} on builds older than ${data.floor}, from a partial release list.`
+        : `Separately, up to ${people(data.tailPeople)} on builds older than ${data.floor}.`
+    );
   }
   lines.push("");
 

@@ -21,6 +21,9 @@ snapshot of this code.
 - **`git revert` does not roll back production.** Rolling back means reverting
   *and* redeploying every consumer.
 
+After changing a file **in this directory** (two consumers — read the next
+paragraph before assuming that covers you):
+
 ```bash
 cd workers/daily-report  && npx wrangler deploy    # deploy the CHANGED consumer first
 cd ../weekly-digest      && npx wrangler deploy

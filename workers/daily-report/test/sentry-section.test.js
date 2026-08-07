@@ -603,6 +603,51 @@ test("the old-build tail is reported as an upper bound", async () => {
   assert.match(lines.join("\n"), /up to 2 people on builds older than 2\.4\.0/);
 });
 
+test("a truncated release page drops the upper-bound claim it can no longer support", async () => {
+  // A FULL PAGE, not a synthetic Link header: `hasMorePages` treats 100 rows as
+  // "there may be more" on its own, so this exercises the real rule rather than
+  // a fixture's idea of it.
+  //
+  // The winner stays 2.4.3 at 8 people; the other 99 are older, low-count rows
+  // of exactly the kind a cut-off page would drop.
+  const releases = [
+    { release: "com.enviouswispr.app@2.4.3", "count_unique(user)": 8, "count()": 19 },
+    ...Array.from({ length: 99 }, (_, i) => ({
+      release: `com.enviouswispr.app@1.${i}.0`,
+      "count_unique(user)": 1,
+      "count()": 1,
+    })),
+  ];
+  const { data, lines } = await render({
+    releases,
+    problems: [problemRow("EW-1", "asr_failed", 1, 1)],
+  });
+  const text = lines.join("\n");
+
+  assert.equal(data.releasesTruncated, true);
+  // The sum overstates (non-additive people) and the cut page understates, so
+  // neither bound holds and "up to" would be a claim the data cannot support.
+  assert.match(text, /at least .* on builds older than 2\.4\.0, from a partial release list/);
+  assert.doesNotMatch(text, /up to \d+ (person|people) on builds older than/);
+
+  // The FLOOR survives truncation and the tail does not — the reason one flag
+  // cannot serve both. The query sorts by -count_unique(user), so the winner is
+  // on the first page by construction.
+  assert.equal(data.floor, "2.4.0");
+
+  // Two-way: the problem list has its OWN truncation axis and this must not
+  // have set it, or the section would claim a limit that did not happen.
+  assert.equal(data.truncated, false);
+});
+
+test("an untruncated release page keeps the upper-bound wording", async () => {
+  // The control for the test above. Without it, an implementation that always
+  // printed the partial-list sentence would pass.
+  const { data, lines } = await render({ problems: [problemRow("EW-1", "asr_failed", 1, 1)] });
+  assert.equal(data.releasesTruncated, false);
+  assert.doesNotMatch(lines.join("\n"), /partial release list/);
+});
+
 test("zero problems renders an explicit good-news line", async () => {
   const { data, lines } = await render({ problems: [] });
   assert.equal(data.empty, true);
