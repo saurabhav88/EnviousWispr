@@ -174,6 +174,43 @@ enum OllamaModelPickerPresentation {
   /// to describe the same model differently.
   static var hostedGroupTitle: String { OllamaCatalogPresentation.hostedGroupTitle }
 
+  /// The same two tier headings the Manage Models list uses, for the same reason
+  /// the hosted heading is shared.
+  static var freeVerifiedGroupTitle: String { OllamaCatalogPresentation.freeVerifiedGroupTitle }
+  static var mayNeedPaidGroupTitle: String { OllamaCatalogPresentation.mayNeedPaidGroupTitle }
+
+  /// #1956: the dropdown's hosted rows, split into the same three buckets the
+  /// user sees in Manage Models — installed locally, free cloud, paid cloud
+  /// (founder request 2026-08-06).
+  ///
+  /// The tier decision itself is NOT made here. It comes from
+  /// `OllamaCatalogPresentation.hostedTierPartition`, the single authority both
+  /// surfaces read, because a second copy is how the list and the picker would
+  /// come to disagree about which bucket a model is in — the exact defect this
+  /// type's header already warns about for the local/hosted split.
+  ///
+  /// `nil` means the snapshot cannot be applied, and the caller renders one
+  /// neutral hosted section. It never means "no free models".
+  static func hostedTiers(
+    _ hosted: [LLMModelInfo],
+    now: Date = Date()
+  ) -> (free: [LLMModelInfo], mayNeedPaid: [LLMModelInfo], checkedAt: Date)? {
+    OllamaCatalogPresentation.hostedTierPartition(hosted, modelName: \.id, now: now)
+  }
+
+  /// A picker section header that carries its own verification date.
+  ///
+  /// The Manage Models list renders the date on a separate line under the
+  /// heading; a `Picker` `Section` header is a single string, so it goes inline.
+  /// Same text, same UTC zone, one owner — `OllamaCatalogPresentation` still
+  /// formats it, so the two surfaces cannot drift on wording or time zone.
+  static func tierSectionTitle(
+    _ title: String, checkedAt: Date, locale: Locale = .autoupdatingCurrent
+  ) -> String {
+    let date = OllamaCatalogPresentation.checkedOnDateText(checkedAt, locale: locale)
+    return "\(title) (checked \(date))"
+  }
+
   static func groups(from models: [LLMModelInfo], provider: LLMProvider) -> Groups {
     var recommended: [LLMModelInfo] = []
     var other: [LLMModelInfo] = []
@@ -630,6 +667,13 @@ struct AIPolishSettingsView: View {
               provider: .ollama, settings: settings)
           }
         }
+        // #1956: a SEPARATE task, deliberately not chained behind detection or
+        // discovery. This one talks to ollama.com rather than the local daemon,
+        // so putting it in the sequence above would let a slow public network
+        // delay the daemon check the rest of this pane depends on. The service's
+        // single-flight and 15-minute reuse rules absorb any overlap with the
+        // readiness-transition refresh below.
+        Task { await setup.ollamaSetup.refreshCloudCatalog() }
       } else if settings.llmProvider == .appleIntelligence {
         Task { await aiAvailability.checkAvailability(trigger: "settings_open") }
       } else if settings.llmProvider == .egOne {
@@ -648,6 +692,12 @@ struct AIPolishSettingsView: View {
       // Clean up Ollama state when switching away
       if newProvider != .ollama {
         setup.ollamaSetup.cancelPull()
+        // #1956: `cancelPull()` cannot reach a hosted Add that is still probing
+        // for its registrable name — there is no `pullTask` yet, so both of its
+        // branches are false and it correctly does nothing. Without this the
+        // resolution would finish and start a pull for the provider the user
+        // just left, and that late pull cancels whatever pull is current.
+        setup.ollamaSetup.cancelHostedResolution()
         setup.ollamaSetup.resetWarmup()
       }
 
@@ -658,6 +708,14 @@ struct AIPolishSettingsView: View {
         // detectState() will set setupState, which triggers the onChange handler
         // for discovery + warm-up. Don't duplicate that work here.
         Task { await setup.ollamaSetup.detectState() }
+        // #1956: the hosted catalog does not depend on the daemon at all, so it
+        // must load on SELECTION rather than on readiness. A daemon running with
+        // zero models settles in `.runningNoModels`, which Manage Models still
+        // displays — so gating the fetch on `.ready` alone left the hosted list
+        // permanently unloaded with no Retry on exactly the fresh-install path
+        // this issue exists to fix. Single-flight and the 15-minute window
+        // absorb the overlap with the other two triggers.
+        Task { await setup.ollamaSetup.refreshCloudCatalog() }
       case .appleIntelligence:
         Task { await aiAvailability.checkAvailability(trigger: "provider_switch") }
       case .egOne:
@@ -681,6 +739,11 @@ struct AIPolishSettingsView: View {
           await llmDiscovery.validateKeyAndDiscoverModels(
             provider: .ollama, settings: settings)
         }
+        // #1956: the hosted catalog does not depend on the daemon being ready,
+        // but this is the moment a user who just started Ollama reaches the list,
+        // so it is the second and last automatic trigger. Separate task for the
+        // same reason as the appearance one.
+        Task { await setup.ollamaSetup.refreshCloudCatalog() }
         // Warm up the selected model when Ollama becomes ready
         if !settings.llmModel.isEmpty {
           setup.ollamaSetup.warmUpModel(settings.llmModel)
@@ -895,10 +958,43 @@ struct AIPolishSettingsView: View {
     // #1914: hosted models stay fully selectable. The group states where they
     // run so the choice is visible while scanning; it is not a warning and not
     // a gate. What the app will not do is choose one FOR the user.
+    //
+    // #1956: and it splits into the same free and paid buckets as Manage Models,
+    // from the same snapshot, so the two surfaces cannot disagree.
     if !groups.hosted.isEmpty {
-      Section(OllamaModelPickerPresentation.hostedGroupTitle) {
-        ForEach(groups.hosted) { model in
-          Text(model.displayName).tag(model.id)
+      if let tiers = OllamaModelPickerPresentation.hostedTiers(groups.hosted) {
+        // The DATE travels with the tier claim on this surface too. A picker
+        // section header is the only text a dropdown affords, so it carries the
+        // date inline rather than on its own line as the list does. Without it
+        // this surface presents a dated snapshot as if it were current, which is
+        // the one thing the snapshot design promises never to do.
+        if !tiers.free.isEmpty {
+          Section(
+            OllamaModelPickerPresentation.tierSectionTitle(
+              OllamaModelPickerPresentation.freeVerifiedGroupTitle, checkedAt: tiers.checkedAt)
+          ) {
+            ForEach(tiers.free) { model in
+              Text(model.displayName).tag(model.id)
+            }
+          }
+        }
+        if !tiers.mayNeedPaid.isEmpty {
+          Section(
+            OllamaModelPickerPresentation.tierSectionTitle(
+              OllamaModelPickerPresentation.mayNeedPaidGroupTitle, checkedAt: tiers.checkedAt)
+          ) {
+            ForEach(tiers.mayNeedPaid) { model in
+              Text(model.displayName).tag(model.id)
+            }
+          }
+        }
+      } else {
+        // Snapshot expired or undateable: one neutral hosted section, no tier
+        // claim. Same degradation as the Manage Models list.
+        Section(OllamaModelPickerPresentation.hostedGroupTitle) {
+          ForEach(groups.hosted) { model in
+            Text(model.displayName).tag(model.id)
+          }
         }
       }
     }
@@ -1191,6 +1287,12 @@ struct AIPolishSettingsView: View {
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.small)
+          // #1956: the SECOND control that can reach `pullModel`, and the one my
+          // catalog-row sweep missed (review r4). The service has one pull slot,
+          // so if this is pressed while a hosted Add is still probing, the
+          // resolution's own pull arrives second and cancels this download. Both
+          // pull entry points now read the same signal.
+          .disabled(hostedAddIsResolving)
 
           ollamaRefreshButton()
         }
@@ -1202,7 +1304,9 @@ struct AIPolishSettingsView: View {
 
     case .pullingModel(let progress, let status):
       VStack(alignment: .leading, spacing: 8) {
-        ollamaStepIndicators(current: 3, currentLabel: "Downloading...")
+        // #1956: reads the service rather than hard-coding, so a hosted Add is
+        // not announced as a download on the one panel that fills the pane.
+        ollamaStepIndicators(current: 3, currentLabel: setup.ollamaSetup.pullStepLabel)
 
         ProgressView(value: progress)
           .progressViewStyle(.linear)
@@ -1578,20 +1682,155 @@ struct AIPolishSettingsView: View {
           entry, isPulling: isPulling, isLastInGroup: entry.id == groups.local.last?.id)
       }
 
-      if !groups.hosted.isEmpty {
-        Text(OllamaCatalogPresentation.hostedGroupTitle)
-          .font(.stSectionHeader)
-          .foregroundStyle(Color.stAccent)
-          .textCase(.uppercase)
-          .padding(.top, 10)
-          .accessibilityAddTraits(.isHeader)
-        ForEach(groups.hosted) { entry in
-          ollamaCatalogRow(
-            entry, isPulling: isPulling, isLastInGroup: entry.id == groups.hosted.last?.id)
-        }
-      }
+      ollamaHostedSection(groups.hosted, isPulling: isPulling)
     }
     .padding(.top, 4)
+  }
+
+  /// #1956: the hosted group, including WHY it has no rows when it has none.
+  ///
+  /// The old `if !groups.hosted.isEmpty` suppression is gone deliberately. Once
+  /// the list comes from a live fetch, an absent hosted section can mean four
+  /// different things — never asked, in flight, the fetch failed, or genuinely
+  /// nothing — and blank space says all four at once. The issue this closes was
+  /// caused by a screen that did not explain itself.
+  ///
+  /// Registered hosted rows keep rendering through idle, loading and an initial
+  /// failure: they are already on the Mac and their presence has nothing to do
+  /// with whether ollama.com answered.
+  @ViewBuilder
+  private func ollamaHostedSection(
+    _ hosted: [OllamaModelCatalogEntry], isPulling: Bool
+  ) -> some View {
+    switch setup.ollamaSetup.cloudCatalog {
+    case .idle:
+      ollamaHostedHeading(OllamaCatalogPresentation.hostedGroupTitle)
+      ollamaHostedRows(hosted, isPulling: isPulling)
+      ollamaHostedNotice("Ollama Cloud models have not been loaded yet.")
+    case .loading:
+      ollamaHostedHeading(OllamaCatalogPresentation.hostedGroupTitle)
+      ollamaHostedRows(hosted, isPulling: isPulling)
+      ollamaHostedNotice("Loading Ollama Cloud models…")
+    case .failed:
+      ollamaHostedHeading(OllamaCatalogPresentation.hostedGroupTitle)
+      ollamaHostedRows(hosted, isPulling: isPulling)
+      ollamaHostedNotice(
+        "Ollama Cloud models could not be loaded. Check your connection and try again.")
+      Button {
+        // Forced: the user asking again is exactly the case the 15-minute reuse
+        // window must not swallow.
+        Task { await setup.ollamaSetup.refreshCloudCatalog(force: true) }
+      } label: {
+        Text("Retry")
+      }
+      .controlSize(.small)
+      .buttonStyle(.borderless)
+    case .loaded:
+      ollamaHostedLoadedSection(hosted, isPulling: isPulling)
+    }
+  }
+
+  /// The loaded case, ordered by the policy rather than here. This view never
+  /// inspects snapshot membership, reclassifies, sorts or deduplicates: it renders
+  /// whatever arrays the policy returns, in the order it returns them.
+  @ViewBuilder
+  private func ollamaHostedLoadedSection(
+    _ hosted: [OllamaModelCatalogEntry], isPulling: Bool
+  ) -> some View {
+    if hosted.isEmpty {
+      ollamaHostedHeading(OllamaCatalogPresentation.hostedGroupTitle)
+      ollamaHostedNotice("No Ollama Cloud models are available right now.")
+    } else {
+      switch OllamaCatalogPresentation.hostedTierGroups(entries: hosted) {
+      case .split(let freeVerified, let mayNeedPaid, let checkedAt):
+        // An empty tier's heading is suppressed, but the date is NOT tied to the
+        // free tier: if Ollama stopped advertising all seven snapshot members
+        // while still advertising others, the split would otherwise render a
+        // dated classification with no date on it, which reads as current.
+        // It renders once, under whichever heading appears first.
+        if !freeVerified.isEmpty {
+          ollamaHostedHeading(OllamaCatalogPresentation.freeVerifiedGroupTitle)
+          ollamaHostedCheckedDate(checkedAt)
+          ollamaHostedRows(freeVerified, isPulling: isPulling)
+        }
+        if !mayNeedPaid.isEmpty {
+          ollamaHostedHeading(OllamaCatalogPresentation.mayNeedPaidGroupTitle)
+          if freeVerified.isEmpty {
+            ollamaHostedCheckedDate(checkedAt)
+          }
+          ollamaHostedRows(mayNeedPaid, isPulling: isPulling)
+        }
+      case .neutral(let entries):
+        // The snapshot expired or the clock cannot date it. One heading, no date,
+        // no tier claim.
+        ollamaHostedHeading(OllamaCatalogPresentation.hostedGroupTitle)
+        ollamaHostedRows(entries, isPulling: isPulling)
+      }
+    }
+  }
+
+  /// The wording and the time zone are production policy, not view code — see
+  /// `OllamaCatalogPresentation.checkedOnText` for why the zone is pinned.
+  @ViewBuilder
+  private func ollamaHostedCheckedDate(_ checkedAt: Date) -> some View {
+    Text(OllamaCatalogPresentation.checkedOnText(checkedAt))
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+  }
+
+  @ViewBuilder
+  private func ollamaHostedHeading(_ title: String) -> some View {
+    Text(title)
+      .font(.stSectionHeader)
+      .foregroundStyle(Color.stAccent)
+      .textCase(.uppercase)
+      .padding(.top, 10)
+      .accessibilityAddTraits(.isHeader)
+  }
+
+  @ViewBuilder
+  private func ollamaHostedNotice(_ message: String) -> some View {
+    Text(message)
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  @ViewBuilder
+  private func ollamaHostedRows(
+    _ entries: [OllamaModelCatalogEntry], isPulling: Bool
+  ) -> some View {
+    ForEach(entries) { entry in
+      ollamaCatalogRow(
+        entry, isPulling: isPulling, isLastInGroup: entry.id == entries.last?.id)
+    }
+  }
+
+  /// True while ANY hosted Add is resolving. The service refuses a second
+  /// resolution anyway; disabling here is what stops the user discovering that by
+  /// clicking into silence.
+  private var hostedAddIsResolving: Bool {
+    if case .resolving = setup.ollamaSetup.hostedModelAddState { return true }
+    return false
+  }
+
+  /// The failure message for THIS hosted SUGGESTION, or nil.
+  ///
+  /// A matching name is insufficient, and so is remoteness. The row must still be
+  /// remote AND not downloaded, because a stale Add failure otherwise migrates
+  /// twice over: onto a local model the user later pulls under the same name (the
+  /// merge suppresses the suggestion, and the local row inherits the message), and
+  /// onto the same model once it is registered outside this flow, where the row no
+  /// longer even offers an Add to retry. Row identity here is name, kind, and
+  /// installed state.
+  private func hostedAddFailure(for entry: OllamaModelCatalogEntry) -> String? {
+    guard entry.isRemote, !entry.isDownloaded else { return nil }
+    if case .failed(let advertisedID, let message) = setup.ollamaSetup.hostedModelAddState,
+      advertisedID == entry.name
+    {
+      return message
+    }
+    return nil
   }
 
   /// One catalog row. Extracted so the local and hosted groups render through
@@ -1630,13 +1869,20 @@ struct AIPolishSettingsView: View {
 
         Spacer()
 
-        if setup.ollamaSetup.currentPullingModel == entry.name {
+        if OllamaCatalogPresentation.rowIsPulling(
+          entry,
+          currentPullingModel: setup.ollamaSetup.currentPullingModel,
+          hostedPullAdvertisedID: setup.ollamaSetup.hostedPullAdvertisedID)
+        {
           // Active pull for THIS row: show progress + Cancel.
           HStack(spacing: 8) {
-            Text("Downloading… \(Int(setup.ollamaSetup.pullProgress * 100))%")
-              .font(.stHelper)
-              .foregroundStyle(Color.secondary)
-              .monospacedDigit()
+            Text(
+              OllamaCatalogPresentation.progressLabel(
+                for: entry, percent: Int(setup.ollamaSetup.pullProgress * 100))
+            )
+            .font(.stHelper)
+            .foregroundStyle(Color.secondary)
+            .monospacedDigit()
             Button {
               setup.ollamaSetup.cancelPull()
             } label: {
@@ -1646,7 +1892,7 @@ struct AIPolishSettingsView: View {
             .controlSize(.small)
             .buttonStyle(.borderless)
           }
-        } else if entry.isDownloaded {
+        } else if entry.isDownloaded, OllamaCatalogPresentation.showsDeleteAction(entry) {
           Button {
             // #1305: sequence delete → discovery refresh so the model picker
             // (and the armed selection, via applyDiscoveredModels) never
@@ -1665,18 +1911,48 @@ struct AIPolishSettingsView: View {
           .controlSize(.small)
           .buttonStyle(.borderless)
           .disabled(isPulling)
+        } else if entry.isDownloaded {
+          // #1956: a registered hosted row. NO action control of any kind, not a
+          // renamed Remove — deleting one was the one-way door this issue exists
+          // to close, because a hosted model could only re-enter the list by
+          // already being registered on the Mac.
+          EmptyView()
         } else {
           Button {
-            setup.ollamaSetup.pullModel(entry.name)
+            // #1956: a hosted row's name has to be RESOLVED against the daemon
+            // before anything can be pulled, so it cannot go straight to
+            // `pullModel` the way a local row does.
+            if entry.isRemote {
+              Task { await setup.ollamaSetup.addHostedModel(advertisedID: entry.name) }
+            } else {
+              setup.ollamaSetup.pullModel(entry.name)
+            }
           } label: {
-            Text("Download")
+            Text(OllamaCatalogPresentation.actionLabel(for: entry))
           }
           .controlSize(.small)
           .buttonStyle(.borderless)
-          .disabled(isPulling)
+          // EVERY row, not just hosted ones. The earlier version scoped the
+          // resolving clause to remote rows so one hosted Add would not freeze
+          // the local Download buttons beside it, and review round 3 showed that
+          // courtesy was the bug: starting a local download during the two
+          // probes means the hosted resolution's own `pullModel` arrives second
+          // and cancels the local pull the user just asked for. `pullModel` is
+          // single-slot, so the honest UI is one download at a time — which is
+          // already what `isPulling` enforces once a pull is running.
+          .disabled(isPulling || hostedAddIsResolving)
         }
       }
       .padding(.vertical, 2)
+
+      // #1956: beneath its own row, never a pane-wide banner, and never removing
+      // the row it belongs to — the advertised model is still there to retry.
+      if let failure = hostedAddFailure(for: entry) {
+        Text(failure)
+          .font(.stHelper)
+          .foregroundStyle(Color.stWarning)
+          .fixedSize(horizontal: false, vertical: true)
+      }
 
       if !isLastInGroup {
         Divider()

@@ -94,7 +94,7 @@ Transcription gets your words down. AI polish cleans them up: it drops filler, f
 |---|---|---|---|
 | **EG-1** (recommended) | Our own model, custom fine-tuned for dictation cleanup | On-device, macOS 14+ | ~2.9 GB (optional) |
 | **Apple Intelligence** | Apple's on-device model, no extra download | On-device, macOS 26+ | none |
-| **Ollama** | Bring your own local model (3B or larger recommended) | On-device | varies |
+| **Ollama** | Use a model on your Mac or one hosted by Ollama | On-device or Ollama's servers | varies for local models; none for hosted |
 | **OpenAI / Gemini** | Bring-your-own-key cloud polish, text only | Cloud (your key) | none |
 
 **EG-1** is our own AI model, fine-tuned specifically for dictation cleanup and optimized for Apple Silicon. It runs entirely on your Mac with no internet required, and it closes the gaps a general on-device model leaves: reliably turning a spoken list into a real list, splitting a wall of speech into clean paragraphs, and keeping only the corrected version when you fix yourself mid-sentence. Because it is our own model rather than Apple's, it works across the full supported range (macOS 14 and later), not just macOS 26. EG-1 is distributed under its own model license, not the GPLv3 that covers the app code (see [License](#license)).
@@ -193,7 +193,7 @@ This project uses conventional commits: `feat(scope):`, `fix(scope):`, `refactor
 EnviousWispr is built on a simple principle: **your voice is yours.**
 
 - Audio is captured, transcribed, and discarded locally. Nothing is uploaded, stored, or shared.
-- LLM polish (if enabled) can run entirely on your Mac with EG-1 (our own model), Apple Intelligence, or a local Ollama model, so the polish step makes no network call. If you pick a cloud provider (OpenAI or Gemini), only text is sent (your transcript plus the polish instructions) using your own API key. Audio is never sent.
+- LLM polish (if enabled) can run entirely on your Mac with EG-1 (our own model), Apple Intelligence, or a local Ollama model, so the polish step makes no network call. If you pick OpenAI, Gemini, or Claude, only text is sent (your transcript plus the polish instructions) using your own API key. If you pick a hosted Ollama model, the same text is sent to Ollama using your Ollama sign-in. Audio is never sent.
 - Anonymous product analytics (PostHog) can be disabled in Settings.
 - Crash reporting (Sentry) contains no transcript content, audio, or personal data.
 

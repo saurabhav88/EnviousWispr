@@ -30,13 +30,13 @@ It arrives set to **Never**, so the model stays loaded. The other choices unload
 
 ### Freeing up disk space
 
-You can remove models you no longer need to recover storage, and you can download any of them again later.
+You can remove local models you no longer need to recover storage, and you can download them again later.
 
 **Remove a WhisperKit model.** Open **Transcription** and use **Remove Model**.
 
 **Remove EG-1.** EG-1 is the polish model EnviousWispr built. Open **AI Polish** and use the remove button there.
 
-**Remove Ollama models.** Ollama models are removed from that same **AI Polish** page.
+**Remove Ollama models.** Local Ollama models are removed from that same **AI Polish** page. Hosted Ollama models cannot be removed because there is nothing on your Mac to remove.
 
 ### The other speed setting
 
