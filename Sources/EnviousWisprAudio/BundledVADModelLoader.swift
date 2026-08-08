@@ -31,20 +31,22 @@ enum BundledVADModelLoader {
       throw LoadError.resourceNotFound
     }
     do {
-      // Match the pinned FluidAudio VAD loader (`DownloadUtils.swift:301-303`).
-      // Keep this heart-path policy explicit across dependency updates (#1784).
+      // Match the pinned FluidAudio loader's compute policy
+      // (`ModelHub.swift:356-369` at fork pin a1767d86; the authority re-homed
+      // there through upstream's download-stack unification, #1981). Keep this
+      // heart-path policy explicit across dependency updates (#1784).
       //
-      // Deliberately NOT copied from `DownloadUtils.loadModelsOnce` (#1784
-      // audit, 2026-07-30): its aggregate cache-presence check, its three
-      // per-model structural checks (path exists, path is a directory, contains
-      // `coremldata.bin`), and — in the `loadModels` wrapper around it — the
-      // delete-cache-then-redownload retry. The retry has no equivalent here
-      // because this path has no download source to re-fetch from. The three
-      // structural checks are REDUNDANT rather than unreachable: the `Bundle`
-      // lookup above already proves the named resource exists, and
-      // `MLModel(contentsOf:configuration:)` is the authority on whether the
-      // compiled model is loadable — a failure surfaces as `.loadFailed`
-      // carrying the real CoreML error instead of a synthesized one.
+      // Deliberately NOT copied from `ModelHub.loadModelsOnce` (#1784 audit,
+      // 2026-07-30; re-verified against the new owner, #1981): its per-model
+      // structural layout validation (`ModelCache.validateCompiledModelLayout`)
+      // and — in the `loadModels` wrapper around it — the purge-then-redownload
+      // recovery. The recovery has no equivalent here because this path has no
+      // download source to re-fetch from. The structural checks are REDUNDANT
+      // rather than unreachable: the `Bundle` lookup above already proves the
+      // named resource exists, and `MLModel(contentsOf:configuration:)` is the
+      // authority on whether the compiled model is loadable — a failure
+      // surfaces as `.loadFailed` carrying the real CoreML error instead of a
+      // synthesized one.
       //
       // Do not upgrade that to "corruption is impossible here." App-bundle
       // resources are covered by the code signature's resource seal, but a seal
