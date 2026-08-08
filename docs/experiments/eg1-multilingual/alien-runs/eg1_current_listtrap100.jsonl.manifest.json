@@ -1,0 +1,30 @@
+{
+  "run_id": "eg1-current-listtrap100",
+  "started_at_epoch": 1784097992.6170232,
+  "host": "AlienSV",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "git_head": null,
+  "model_id": "eg1_current",
+  "model_path": "/home/saura/tuning/out/qwen4b_v2/merged16",
+  "tokenizer_path": "/home/saura/tuning/models/Qwen3-4B-Instruct-2507",
+  "tokenizer_hashes": {
+    "tokenizer.json": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "tokenizer_config.json": "a62ff0a2472a0fa1b8eaabcb57c59b58afa42a22831dc141400b6e0cf2b65ce3"
+  },
+  "corpus_path": "/mnt/c/Users/saura/eg1-overnight/list_format_trap_v1.jsonl",
+  "corpus_sha256": "c592140f120c83ec41c9c51624ed3bae351267eb7273720ffba8ecaaeb6d0fa3",
+  "prompt_path": "/mnt/c/Users/saura/eg1-overnight/eg1-polish-prompt-v1.txt",
+  "prompt_sha256": "7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62",
+  "split": "all",
+  "languages": "all",
+  "case_count": 100,
+  "batch_size": 8,
+  "max_new_tokens": 256,
+  "seed": 1265,
+  "include_language_label": false,
+  "enable_thinking": false,
+  "torch_version": "2.10.0+cu128",
+  "cuda_device": "NVIDIA GeForce RTX 4090",
+  "elapsed_seconds": 11.969,
+  "completed_at_epoch": 1784098004.59829
+}

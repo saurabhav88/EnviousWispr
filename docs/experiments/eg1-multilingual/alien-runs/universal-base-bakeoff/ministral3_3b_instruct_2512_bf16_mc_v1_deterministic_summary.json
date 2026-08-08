@@ -1,0 +1,230 @@
+[
+  {
+    "run_id": "20260715-ministral3-3b-instruct-bf16-mc-v1-ml56",
+    "model_id": "ministral3-3b-instruct-2512-bf16-mc-v1",
+    "n": 56,
+    "warning": "Deterministic checks only; fluency and grammar still require blinded native review.",
+    "metrics": {
+      "nonempty": {
+        "successes": 56,
+        "total": 56,
+        "rate": 1.0,
+        "wilson_95": [
+          0.9358,
+          1.0
+        ]
+      },
+      "script_retained": {
+        "successes": 56,
+        "total": 56,
+        "rate": 1.0,
+        "wilson_95": [
+          0.9358,
+          1.0
+        ]
+      },
+      "required_all": {
+        "successes": 56,
+        "total": 56,
+        "rate": 1.0,
+        "wilson_95": [
+          0.9358,
+          1.0
+        ]
+      },
+      "forbidden_all": {
+        "successes": 56,
+        "total": 56,
+        "rate": 1.0,
+        "wilson_95": [
+          0.9358,
+          1.0
+        ]
+      },
+      "structure_ok": {
+        "successes": 56,
+        "total": 56,
+        "rate": 1.0,
+        "wilson_95": [
+          0.9358,
+          1.0
+        ]
+      },
+      "strict_deterministic_pass": {
+        "successes": 56,
+        "total": 56,
+        "rate": 1.0,
+        "wilson_95": [
+          0.9358,
+          1.0
+        ]
+      }
+    },
+    "by_category": {},
+    "input": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/ministral3_3b_instruct_2512_bf16_mc_v1_ml56.jsonl"
+  },
+  {
+    "run_id": "20260715-ministral3-3b-instruct-bf16-mc-v1-ru_dev16",
+    "model_id": "ministral3-3b-instruct-2512-bf16-mc-v1",
+    "n": 16,
+    "warning": "Deterministic checks only; fluency and grammar still require blinded native review.",
+    "metrics": {
+      "nonempty": {
+        "successes": 16,
+        "total": 16,
+        "rate": 1.0,
+        "wilson_95": [
+          0.8064,
+          1.0
+        ]
+      },
+      "script_retained": {
+        "successes": 16,
+        "total": 16,
+        "rate": 1.0,
+        "wilson_95": [
+          0.8064,
+          1.0
+        ]
+      },
+      "required_all": {
+        "successes": 10,
+        "total": 16,
+        "rate": 0.625,
+        "wilson_95": [
+          0.3864,
+          0.8152
+        ]
+      },
+      "forbidden_all": {
+        "successes": 14,
+        "total": 16,
+        "rate": 0.875,
+        "wilson_95": [
+          0.6398,
+          0.965
+        ]
+      },
+      "structure_ok": {
+        "successes": 15,
+        "total": 16,
+        "rate": 0.9375,
+        "wilson_95": [
+          0.7167,
+          0.9889
+        ]
+      },
+      "strict_deterministic_pass": {
+        "successes": 7,
+        "total": 16,
+        "rate": 0.4375,
+        "wilson_95": [
+          0.231,
+          0.6682
+        ]
+      }
+    },
+    "by_category": {
+      "code_switching": {
+        "successes": 1,
+        "total": 2,
+        "rate": 0.5,
+        "wilson_95": [
+          0.0945,
+          0.9055
+        ]
+      },
+      "entities_numbers": {
+        "successes": 1,
+        "total": 6,
+        "rate": 0.1667,
+        "wilson_95": [
+          0.0301,
+          0.5635
+        ]
+      },
+      "fillers": {
+        "successes": 1,
+        "total": 2,
+        "rate": 0.5,
+        "wilson_95": [
+          0.0945,
+          0.9055
+        ]
+      },
+      "list_bullets": {
+        "successes": 0,
+        "total": 1,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "list_numbered": {
+        "successes": 0,
+        "total": 1,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "morphology_case": {
+        "successes": 3,
+        "total": 3,
+        "rate": 1.0,
+        "wilson_95": [
+          0.4385,
+          1.0
+        ]
+      },
+      "morphology_gender": {
+        "successes": 2,
+        "total": 2,
+        "rate": 1.0,
+        "wilson_95": [
+          0.3424,
+          1.0
+        ]
+      },
+      "morphology_number": {
+        "successes": 3,
+        "total": 3,
+        "rate": 1.0,
+        "wilson_95": [
+          0.4385,
+          1.0
+        ]
+      },
+      "quoted_content": {
+        "successes": 0,
+        "total": 1,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "restraint": {
+        "successes": 1,
+        "total": 4,
+        "rate": 0.25,
+        "wilson_95": [
+          0.0456,
+          0.6994
+        ]
+      },
+      "self_correction": {
+        "successes": 0,
+        "total": 2,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.6576
+        ]
+      }
+    },
+    "input": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/ministral3_3b_instruct_2512_bf16_mc_v1_ru_dev16.jsonl"
+  }
+]

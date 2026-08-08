@@ -1,0 +1,150 @@
+{
+  "schema_version": "eg1-multilingual-development-authoring-contract-v1",
+  "workflow_id": "eg1-multilingual-development-authoring-2026-07-15",
+  "status": "approved_metadata_only_workflow",
+  "seed": 1265,
+  "languages": [
+    "en",
+    "de",
+    "fr",
+    "es",
+    "ru"
+  ],
+  "domains": [
+    "work_admin",
+    "personal_home",
+    "technical_product",
+    "medical",
+    "legal_financial"
+  ],
+  "behaviors": [
+    "filler_removal",
+    "self_correction",
+    "native_morphology",
+    "punctuation_capitalization",
+    "entities_numbers_dates",
+    "names_code_switching",
+    "topic_shift_long_dictation",
+    "mixed_two_to_three_edits",
+    "explicit_two_item_list",
+    "scoped_two_item_list",
+    "natural_three_to_five_item_bullet_list",
+    "spoken_ordinals_numbered_list",
+    "two_item_prose_restraint",
+    "three_plus_item_prose_restraint",
+    "quoted_high_risk_instruction_restraint",
+    "clean_minimal_edit_restraint"
+  ],
+  "allocation": {
+    "split": "development",
+    "cases_per_behavior_domain": 2,
+    "rows_per_language": 160,
+    "total_rows": 800,
+    "native_original_fraction_minimum": 0.8,
+    "shared_concept_fraction": 0.2,
+    "difficulty_values": [
+      "routine",
+      "challenging",
+      "adversarial"
+    ]
+  },
+  "packet_contract": {
+    "author_packets_per_language": 10,
+    "reviewer_packets_per_language": 10,
+    "rows_per_packet": 16,
+    "every_packet_contains_every_behavior_once": true
+  },
+  "shared_brief_contract": {
+    "briefs": 32,
+    "shared_rows": 160,
+    "languages_per_brief": 5,
+    "allocation_publishes_ids_only": true,
+    "strict_descendant_seal_required": true,
+    "independent_concept_review_required": true,
+    "concept_identity_namespace": "private_roster.identity_reference_id",
+    "required_concept_roles": [
+      "concept_author",
+      "concept_reviewer"
+    ],
+    "local_rewrite_fidelity_required": true,
+    "candidate_model_output_seen": false
+  },
+  "inference_contract": {
+    "pooled_cluster_field": "semantic_family_id",
+    "pooled_independent_family_clusters": 672,
+    "per_language_independent_rows": 160,
+    "contrast_pair_field": "contrast_set_id",
+    "contrast_sets": 200,
+    "native_contrast_sets": 160,
+    "shared_contrast_sets": 40,
+    "comparability_approval_required": true,
+    "minimum_comparability_reviewers_per_language": 5,
+    "maximum_contrast_sets_per_comparability_reviewer_language": 8,
+    "human_variance_cluster_fields": [
+      "concept_author_id",
+      "concept_reviewer_id",
+      "author_id",
+      "native_reviewer_id"
+    ]
+  },
+  "roster_contract": {
+    "participant_types_by_role": {
+      "concept_author": "human",
+      "concept_reviewer": "human",
+      "author": "human_native",
+      "native_reviewer": "human_native"
+    },
+    "role_lanes": [
+      "concept_author",
+      "concept_reviewer",
+      "author",
+      "native_reviewer"
+    ],
+    "role_assignments_singular": true,
+    "roles_must_be_disjoint": true,
+    "opaque_identity_references_only": true,
+    "per_language_native_attestation_required": true,
+    "consent_required": true,
+    "minimum_concept_custodians_per_lane": 5,
+    "maximum_briefs_per_concept_custodian": 8,
+    "minimum_participants_per_lane_language": 5,
+    "maximum_packets_per_participant_language": 2
+  },
+  "merge_gates": {
+    "operator_attested_all_rows_native_authored": true,
+    "operator_attested_all_rows_independently_native_reviewed": true,
+    "author_reviewer_identity_separation": true,
+    "required_leakage_roles": [
+      "training",
+      "prior_eval",
+      "blocked_family_registry",
+      "blocked_text_hash_registry"
+    ],
+    "required_leakage_methods": [
+      "exact_normalized",
+      "token_ngram_jaccard",
+      "character_ngram_jaccard",
+      "embedding_cosine"
+    ],
+    "blocked_registry_receipt_required": true,
+    "exhaustive_source_inventory_required": true,
+    "source_producing_receipts_required": true,
+    "authenticated_scanner_provenance_required": true,
+    "approved_scanner_id": "eg1-multilingual-development-leakage-scanner-v1",
+    "approved_scanner_path": "scripts/eval/scan_eg1_multilingual_development_leakage.py",
+    "approved_scanner_contract_path": "scripts/eval/contracts/eg1_multilingual_development_leakage_scanner_v1.json",
+    "contrast_comparability_seal_required": true,
+    "independent_release_custodian_inventory_signature_required": true,
+    "candidate_model_output_seen": false
+  },
+  "publication": {
+    "private_gitignored_bundles": true,
+    "exclusive_bundle": true,
+    "receipt_last": true,
+    "allocation_and_launch_metadata_only": true,
+    "benchmark_prose_before_merge_allowed": false,
+    "raw_names_emails_or_contact_details_allowed": false,
+    "candidate_model_output_allowed": false,
+    "custody_assurance_scope": "operator_attested_unsigned_private_evidence_reopened_by_verifier"
+  }
+}

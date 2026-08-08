@@ -1,0 +1,73 @@
+{
+  "schema_version": "eg1-universal-base-control-v1",
+  "created_at_utc": "2026-07-15T11:24:15Z",
+  "decision": "REJECTED_AT_SMOKE",
+  "hard_stop_applied": true,
+  "development_suites_run": [],
+  "development_suites_not_run": [
+    "ml56",
+    "ru_dev16",
+    "twoitem_v1a",
+    "twoitem_v1b"
+  ],
+  "model": {
+    "repo_id": "utter-project/EuroLLM-9B-Instruct-2512",
+    "publisher_revision": "1acaaeb8d9e8d9b5e3bf0240aacd32fc11ee4213",
+    "official_model_card": "https://huggingface.co/utter-project/EuroLLM-9B-Instruct-2512",
+    "license": "apache-2.0",
+    "official_language_count": 35,
+    "priority_languages_present": [
+      "en",
+      "de",
+      "fr",
+      "es",
+      "ru"
+    ],
+    "snapshot_total_bytes": 18322965727,
+    "snapshot_weight_bytes": 18304683360,
+    "snapshot_file_count": 29,
+    "snapshot_integrity_verified": true,
+    "snapshot_integrity_errors": 0,
+    "snapshot_undeclared_files": 0,
+    "snapshot_missing_files": 0,
+    "download_manifest": "eurollm9b_base_1acaaeb8_download_manifest.json",
+    "download_manifest_sha256_lf": "dde616e0bf218d5ec2b57808748527446283d7c208b5bf2b2912043ca38241de"
+  },
+  "execution": {
+    "host": "AlienSV",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cuda_device": "NVIDIA GeForce RTX 4090",
+    "torch_version": "2.12.1+cu130",
+    "runner_sha256": "623f283391b3f71ac8ce379b2fe8b7a41ff6adf0c0fae70fda1c69e8c86b2b59",
+    "generation_contract_sha256": "d74f79e9b1a7d08697b7a4a41379df47d54cd042f581608c98eaca84bf92c329",
+    "generation_eos_token_id": 4,
+    "batch_size": 1,
+    "max_new_tokens": 256,
+    "seed": 1265,
+    "enable_thinking": false,
+    "elapsed_seconds": 16.565
+  },
+  "smoke": {
+    "corpus_case_count": 5,
+    "language": "es",
+    "unique_ids": 5,
+    "unique_outputs": 5,
+    "empty_outputs": 0,
+    "thinking_marker_outputs": 0,
+    "language_retained_manual_audit": 5,
+    "wrapper_leak_outputs": 2,
+    "wrapper_leak_case_ids": [
+      "ml-es-1",
+      "ml-es-4"
+    ],
+    "repeated_transcript_framing_outputs": 1,
+    "repeated_transcript_framing_case_ids": [
+      "ml-es-1"
+    ],
+    "output": "eurollm9b_base_1acaaeb8_smoke5.jsonl",
+    "output_sha256_lf": "04ba18bb0aa00ecb28c2de8d72b28648b31c361df0102a93d0d2efb8a9ff4dbc",
+    "manifest": "eurollm9b_base_1acaaeb8_smoke5.jsonl.manifest.json",
+    "manifest_sha256_lf": "1802c555586640ad1b7ced391d8f094701c924769b892ef2d0ef0264a7035a0c"
+  },
+  "rejection_reason": "The untouched model leaked transcript or cleaned-text wrapper tags in 2 of 5 smoke outputs. The preset fail-closed gate therefore prohibited ML56, Russian, and English two-item development runs."
+}

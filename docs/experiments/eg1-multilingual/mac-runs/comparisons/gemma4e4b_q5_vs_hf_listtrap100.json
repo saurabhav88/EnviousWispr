@@ -1,0 +1,25 @@
+{
+  "baseline": "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_listtrap100.jsonl",
+  "candidate": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q5_listv2_listtrap100.jsonl",
+  "rows": 100,
+  "exact_matches": 98,
+  "canonical_matches": 98,
+  "changed": 2,
+  "list_structure_changes": 0,
+  "changed_rows": [
+    {
+      "id": "LFT-078",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Given the missing files, the corrupted data, and the tight deadline, we are in big trouble. We need to escalate this.",
+      "candidate": "Given the missing files, the corrupted data, and the tight deadline we are in, big trouble. We need to escalate this."
+    },
+    {
+      "id": "LFT-091",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "The contract is long, complicated, and full of jargon. I tried to read it; it gave me a headache. We need a lawyer to look at this.",
+      "candidate": "The contract is long, complicated, and full of jargon. I tried to read it. It gave me a headache. We need a lawyer to look at this."
+    }
+  ]
+}

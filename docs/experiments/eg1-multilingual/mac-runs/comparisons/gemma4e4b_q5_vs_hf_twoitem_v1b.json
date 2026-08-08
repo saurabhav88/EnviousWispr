@@ -1,0 +1,25 @@
+{
+  "baseline": "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_twoitem_v1b.jsonl",
+  "candidate": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q5_listv2_twoitem_v1b.jsonl",
+  "rows": 10,
+  "exact_matches": 8,
+  "canonical_matches": 8,
+  "changed": 2,
+  "list_structure_changes": 0,
+  "changed_rows": [
+    {
+      "id": "en-two-item-dev-v1b-001",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "Please make me a bullet list of items to include in the Q3 report.\n\n* Performance metrics for the customer success team\n* Churn analysis for the APAC region",
+      "candidate": "* Performance metrics for the customer success team\n* Churn analysis for the APAC region"
+    },
+    {
+      "id": "en-two-item-dev-v1b-005",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "The two critical requirements for the new user auth endpoint are:\n* Request rate limiting of 300 calls per minute\n* Validation for OAuth 2.0 token format",
+      "candidate": "* Request rate limiting of 300 calls per minute\n* Validation for OAuth 2.0 token format"
+    }
+  ]
+}

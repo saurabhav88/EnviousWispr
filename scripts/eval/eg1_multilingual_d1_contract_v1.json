@@ -1,0 +1,151 @@
+{
+  "schema_version": "eg1-multilingual-d1-contract-v1",
+  "stage": "D1",
+  "seed": 1265,
+  "total_rows": 2000,
+  "languages": [
+    "en",
+    "de",
+    "fr",
+    "es",
+    "ru"
+  ],
+  "prompt": {
+    "template_id": "eg1-list-aware-v2-development",
+    "path": "scripts/eval/prompts/eg1-list-aware-v2.txt",
+    "sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75",
+    "development_only": true
+  },
+  "approval": {
+    "training_export_allowed": false,
+    "release_export_allowed": false,
+    "approved_by": null,
+    "approval_reference": null
+  },
+  "language_rows": 400,
+  "origin_modes": {
+    "native_original": 320,
+    "shared_concept_independent_rewrite": 80
+  },
+  "domains": [
+    "work_admin",
+    "personal_home",
+    "technical_product",
+    "medical",
+    "legal_financial"
+  ],
+  "length_buckets": [
+    "short",
+    "medium",
+    "long",
+    "surrounding_context"
+  ],
+  "difficulty_levels": [
+    "low",
+    "medium",
+    "high"
+  ],
+  "strata": {
+    "core": {
+      "rows": 120,
+      "behaviors": [
+        "filler_removal",
+        "self_correction",
+        "native_morphology",
+        "punctuation",
+        "entity_preservation",
+        "number_date_preservation",
+        "names_code_switching",
+        "topic_shift",
+        "minimal_edit",
+        "mixed_behavior"
+      ],
+      "rows_per_behavior": 12,
+      "domain_totals": {
+        "work_admin": 24,
+        "personal_home": 24,
+        "technical_product": 24,
+        "medical": 24,
+        "legal_financial": 24
+      },
+      "length_totals": {
+        "short": 30,
+        "medium": 30,
+        "long": 30,
+        "surrounding_context": 30
+      },
+      "difficulty_totals": {
+        "low": 40,
+        "medium": 40,
+        "high": 40
+      }
+    },
+    "positive_list": {
+      "rows": 140,
+      "item_count_totals": {
+        "2": 35,
+        "3": 35,
+        "5": 35,
+        "7": 35
+      },
+      "list_type_totals": {
+        "explicit_bullets": 28,
+        "explicit_numbering": 28,
+        "scoped_implicit_tasks": 28,
+        "bare_label_list": 28,
+        "correction_format_command": 28
+      },
+      "domain_totals": {
+        "work_admin": 28,
+        "personal_home": 28,
+        "technical_product": 28,
+        "medical": 28,
+        "legal_financial": 28
+      },
+      "length_totals": {
+        "short": 35,
+        "medium": 35,
+        "long": 35,
+        "surrounding_context": 35
+      },
+      "difficulty_totals": {
+        "low": 35,
+        "medium": 70,
+        "high": 35
+      }
+    },
+    "matched_restraint": {
+      "rows": 140,
+      "paired_with": "positive_list",
+      "restraint_type_totals": {
+        "incidental_enumeration": 20,
+        "narrative_action_sequence": 20,
+        "compound_objects": 20,
+        "quoted_content": 20,
+        "alternatives_contrasts": 20,
+        "shared_modifiers": 20,
+        "policy_boundary_two_item_prose": 20
+      }
+    }
+  },
+  "blocked_registry_required_groups": [
+    "old_list_benchmarks",
+    "overflow_origins",
+    "russian_dev_frozen",
+    "multilingual_probes",
+    "novel_benchmarks"
+  ],
+  "leakage_receipt_required_checks": [
+    "exact_normalized",
+    "token_similarity",
+    "char_ngram_similarity",
+    "embedding_similarity"
+  ],
+  "native_review_policy": {
+    "training_export": "all_rows_approved",
+    "release_export": "all_rows_approved",
+    "reviewer_type": "human_native",
+    "reviewer_language_must_match": true,
+    "high_risk_requires_nonempty_timing_and_attribution_checks": true
+  }
+}

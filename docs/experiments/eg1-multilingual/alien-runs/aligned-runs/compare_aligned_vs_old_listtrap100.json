@@ -1,0 +1,36 @@
+{
+  "baseline": [
+    "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_listtrap100.jsonl"
+  ],
+  "candidate": [
+    "docs/experiments/eg1-multilingual/alien-runs/aligned-runs/gemma4e4b_multilingual_listv2_aligned_v1_listtrap100.jsonl"
+  ],
+  "rows": 100,
+  "exact_matches": 97,
+  "canonical_matches": 97,
+  "changed": 3,
+  "list_structure_changes": 1,
+  "changed_rows": [
+    {
+      "id": "LFT-040",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 0,
+      "baseline": "We need to:\n* draft the email\n* review the docs\n* send it out",
+      "candidate": "We need to draft the email, review the docs, and send it out."
+    },
+    {
+      "id": "LFT-046",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "Because of the lease, the movers, and the inspection next week is messy. Let's keep plans loose. I'll make a calendar tonight.",
+      "candidate": "Because of the lease, the movers, and the inspection next week, it's messy. Let's keep plans loose. I'll make a calendar tonight."
+    },
+    {
+      "id": "LFT-089",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 0,
+      "baseline": "I rinsed the berries, chopped the onions, and started the rice. Set a timer for 10 minutes. Don't forget the sauce.",
+      "candidate": "I rinsed the berries, chopped the onions, and started the rice. Set a timer for ten minutes. Don't forget the sauce."
+    }
+  ]
+}

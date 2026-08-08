@@ -1,0 +1,174 @@
+{
+  "schema_version": "eg1-official-hf-snapshot-v1",
+  "repo_id": "Qwen/Qwen3.5-9B",
+  "revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+  "total_bytes": 19329396860,
+  "weight_bytes": 19306310880,
+  "files": [
+    {
+      "path": ".cache/huggingface/.gitignore",
+      "bytes": 1,
+      "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1"
+    },
+    {
+      "path": ".cache/huggingface/CACHEDIR.TAG",
+      "bytes": 195,
+      "sha256": "e8893e2dcb3f4545ef67a0a5b7b769113d38eef1aa61c7c7ba14659b02af955f"
+    },
+    {
+      "path": ".cache/huggingface/download/chat_template.jinja.metadata",
+      "bytes": 103,
+      "sha256": "5f70bedec7f89fa9a9163ff8009489e14b61ce390da51510d2cf79dd762a3b70"
+    },
+    {
+      "path": ".cache/huggingface/download/config.json.metadata",
+      "bytes": 104,
+      "sha256": "f914ca4ad2fb92a67dbb0c1f7771752dd3ce6964a42115159fac72eee57a2378"
+    },
+    {
+      "path": ".cache/huggingface/download/LICENSE.metadata",
+      "bytes": 104,
+      "sha256": "1b3956c47a1bd06661ec810d14be433f9b675366b9d499a13dd203d898039dca"
+    },
+    {
+      "path": ".cache/huggingface/download/merges.txt.metadata",
+      "bytes": 104,
+      "sha256": "87d439e22459b348eef7dc115315790af8e76b536b1615f2f6cf29d93301e7e4"
+    },
+    {
+      "path": ".cache/huggingface/download/model.safetensors-00001-of-00004.safetensors.metadata",
+      "bytes": 128,
+      "sha256": "3bc8d100cb76e3bf3d62c26364e5fdfe780f9788405dcbd29095be0f9c1a8724"
+    },
+    {
+      "path": ".cache/huggingface/download/model.safetensors-00002-of-00004.safetensors.metadata",
+      "bytes": 128,
+      "sha256": "3537eb009c568400c0c219941d656759f19712a7bbccdd7b93ebbd46f08d37f2"
+    },
+    {
+      "path": ".cache/huggingface/download/model.safetensors-00003-of-00004.safetensors.metadata",
+      "bytes": 128,
+      "sha256": "215939bcaee63e5045afc7b3136c08dde40e173db9f27f29b5f0e7541d703c61"
+    },
+    {
+      "path": ".cache/huggingface/download/model.safetensors-00004-of-00004.safetensors.metadata",
+      "bytes": 128,
+      "sha256": "aa4559b0f6220b7217d3539fe05b9c3d27eff7b12e381ce1d883163290a9288a"
+    },
+    {
+      "path": ".cache/huggingface/download/model.safetensors.index.json.metadata",
+      "bytes": 104,
+      "sha256": "a1892294fd8da6bd1de01dcee4d0530895ccb498a85d7ccd907d87094f527624"
+    },
+    {
+      "path": ".cache/huggingface/download/preprocessor_config.json.metadata",
+      "bytes": 104,
+      "sha256": "a084b23d28151156833098cc390f1267ebe9cc3c88909408c686481085e8e4e7"
+    },
+    {
+      "path": ".cache/huggingface/download/README.md.metadata",
+      "bytes": 104,
+      "sha256": "777dde72821dc9aa07c57d4485135105acede6b71c85aaa699051228d2acc069"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer.json.metadata",
+      "bytes": 128,
+      "sha256": "cb7d48a85b6e86cc0bbf882ca33817ca833b6ca0b209659ed05b1fb353a08ea7"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer_config.json.metadata",
+      "bytes": 103,
+      "sha256": "780209d8ec95108f3c6e083c47ee7e507599b7cc0c9cecfa9ebc20a47c1ea348"
+    },
+    {
+      "path": ".cache/huggingface/download/video_preprocessor_config.json.metadata",
+      "bytes": 103,
+      "sha256": "34e515c62ad26496319bd9ea7692184a9e474889e811d4832a533d792224cf1e"
+    },
+    {
+      "path": ".cache/huggingface/download/vocab.json.metadata",
+      "bytes": 104,
+      "sha256": "0e98f5f4a46cecc2b09e0f101d21b402530c4eea3323687e8439ff309a5f7c16"
+    },
+    {
+      "path": ".cache/huggingface/trees/c202236235762e1c871ad0ccb60c8ee5ba337b9a.json",
+      "bytes": 2896,
+      "sha256": "d52a7a5691d0efee404f4f471e9211ac7c47f10c6feea3a4254084e9449b1371"
+    },
+    {
+      "path": "chat_template.jinja",
+      "bytes": 7756,
+      "sha256": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715"
+    },
+    {
+      "path": "config.json",
+      "bytes": 3126,
+      "sha256": "d0883072e01861ed0b2d47be3c16c36a8e81c224c7ffaa310c6558fb3f932b05"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 11544,
+      "sha256": "bbedc3fda3305820b977265f01b8619d87570a6739de3a5582c3464840f1e57a"
+    },
+    {
+      "path": "merges.txt",
+      "bytes": 3353259,
+      "sha256": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    },
+    {
+      "path": "model.safetensors-00001-of-00004.safetensors",
+      "bytes": 5276436216,
+      "sha256": "db6f444b43d318c92f360a13a25561a6a65b10c0631b8ed305a426dbaa6c380e"
+    },
+    {
+      "path": "model.safetensors-00002-of-00004.safetensors",
+      "bytes": 5335161512,
+      "sha256": "31c7d7e2dd5d207840b31cc59083c8f4c4718959149e0358c0364052bb9a0330"
+    },
+    {
+      "path": "model.safetensors-00003-of-00004.safetensors",
+      "bytes": 5368717440,
+      "sha256": "7ec36ba3a4176a44c3c0876ad80c56a2f70c84bf008d82e9501df642f17dadec"
+    },
+    {
+      "path": "model.safetensors-00004-of-00004.safetensors",
+      "bytes": 3325995712,
+      "sha256": "b62b0c4cd7e44edee103ee8f4fe225f246d5e768e07bfd5f25b63a8aa1fdd0c6"
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "bytes": 79657,
+      "sha256": "26d3539b516be613f39563617cb9d33b3f83d401298125be392c80cefb8f7fe5"
+    },
+    {
+      "path": "preprocessor_config.json",
+      "bytes": 390,
+      "sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516"
+    },
+    {
+      "path": "README.md",
+      "bytes": 77643,
+      "sha256": "c5f5a8c2dddab69cfbf05279235aa5fddb137939a06539c4c7637aa900fef6d0"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 12807982,
+      "sha256": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "bytes": 16710,
+      "sha256": "316230d6a809701f4db5ea8f8fc862bc3a6f3229c937c174e674ff3ca0a64ac8"
+    },
+    {
+      "path": "video_preprocessor_config.json",
+      "bytes": 385,
+      "sha256": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13"
+    },
+    {
+      "path": "vocab.json",
+      "bytes": 6722759,
+      "sha256": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003"
+    }
+  ]
+}

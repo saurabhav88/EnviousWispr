@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enviouslabs.co/schemas/eg1-multilingual-benchmark-v2-rating.schema.json",
+  "title": "EG-1 Multilingual Benchmark V2 Blinded Native Rating",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "rating_id",
+    "case_id",
+    "opaque_model_label",
+    "blind_assignment_id",
+    "blinded",
+    "reviewer_id",
+    "reviewer_locale",
+    "reviewer_native_attested",
+    "review_round",
+    "repeat_of_rating_id",
+    "axes",
+    "damage_severity",
+    "reason"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "eg1-multilingual-benchmark-v2-rating"
+    },
+    "rating_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "case_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "opaque_model_label": {
+      "$ref": "#/$defs/identifier"
+    },
+    "blind_assignment_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "blinded": {
+      "const": true
+    },
+    "reviewer_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "reviewer_locale": {
+      "$ref": "#/$defs/nonempty_string"
+    },
+    "reviewer_native_attested": {
+      "const": true
+    },
+    "review_round": {
+      "enum": ["initial", "adjudication", "repeat"]
+    },
+    "repeat_of_rating_id": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "axes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "same_language",
+        "meaning_preserved",
+        "requested_cleanup_completed",
+        "native_grammar_morphology",
+        "entities_preserved",
+        "numbers_preserved",
+        "timing_preserved",
+        "attribution_preserved",
+        "list_contract_satisfied",
+        "no_damaging_extra_edits"
+      ],
+      "properties": {
+        "same_language": {
+          "type": "boolean"
+        },
+        "meaning_preserved": {
+          "type": "boolean"
+        },
+        "requested_cleanup_completed": {
+          "type": "boolean"
+        },
+        "native_grammar_morphology": {
+          "type": "boolean"
+        },
+        "entities_preserved": {
+          "type": "boolean"
+        },
+        "numbers_preserved": {
+          "type": "boolean"
+        },
+        "timing_preserved": {
+          "type": "boolean"
+        },
+        "attribution_preserved": {
+          "type": "boolean"
+        },
+        "list_contract_satisfied": {
+          "type": "boolean"
+        },
+        "no_damaging_extra_edits": {
+          "type": "boolean"
+        }
+      }
+    },
+    "damage_severity": {
+      "enum": ["S0", "S1", "S2", "S3", "S4"]
+    },
+    "reason": {
+      "$ref": "#/$defs/nonempty_string"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "nonempty_string": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "run_id": "RU-QWEN35-BASE-STRICT-NOTHINK-SMOKE",
+  "started_at_epoch": 1784092199.2749095,
+  "host": "AlienSV",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "git_head": null,
+  "model_id": "qwen3.5-4b-base",
+  "model_path": "/home/saura/tuning/models/Qwen3.5-4B",
+  "corpus_path": "/mnt/c/Users/saura/eg1-overnight/eg1_multilingual_ru_v1.jsonl",
+  "corpus_sha256": "2f066967758f2e332fafe14f1182a64ba7e567ae07b71d343bdc70775dc3512c",
+  "prompt_path": "/mnt/c/Users/saura/eg1-overnight/eg1-multilingual-strict-v1.txt",
+  "prompt_sha256": "326c951b2ba6b245f9e59215a3ccbe101715fc4fdd411cfbf9f35838910aa894",
+  "split": "dev",
+  "languages": [
+    "ru"
+  ],
+  "case_count": 2,
+  "batch_size": 2,
+  "max_new_tokens": 256,
+  "seed": 1265,
+  "include_language_label": false,
+  "enable_thinking": false,
+  "torch_version": "2.10.0+cu128",
+  "cuda_device": "NVIDIA GeForce RTX 4090",
+  "elapsed_seconds": 1.43,
+  "completed_at_epoch": 1784092200.7155142
+}

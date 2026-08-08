@@ -1,0 +1,85 @@
+{
+  "schema_version": "eg1-exact-mac-finalist-gate-contract-v1",
+  "status": "definition_only_no_finalist_locked",
+  "required_arms": [
+    "baseline",
+    "finalist"
+  ],
+  "required_suites": [
+    "development",
+    "frozen",
+    "type_b_v2"
+  ],
+  "suite_case_count_policy": {
+    "development": {
+      "exact": 800
+    },
+    "frozen": {
+      "minimum": 1600,
+      "multiple_of": 400
+    },
+    "type_b_v2": {
+      "exact": 1890
+    }
+  },
+  "runtime_contract": {
+    "model_id": "eg-1",
+    "loopback_host": "127.0.0.1",
+    "workers": 1,
+    "exact_shipped_flags": {
+      "--cache-type-k": "q8_0",
+      "--cache-type-v": "q8_0",
+      "-c": "16384",
+      "-fa": "on"
+    },
+    "same_executable_and_runtime_hashes_for_both_arms": true,
+    "per_arm_bundle_and_delivery_manifest_hashes": true,
+    "same_shipped_system_prompt_for_both_arms": true,
+    "same_runtime_session_for_all_suites_within_an_arm": true,
+    "distinct_runtime_sessions_between_arms": true,
+    "stable_process_and_path_identity_before_and_after_each_suite": true,
+    "loaded_executable_and_model_bytes_attested": false,
+    "swift_string_count_uses_lock_pinned_native_runtime": true,
+    "python_evaluation_uses_lock_pinned_isolated_runtime": true,
+    "external_executables_are_lock_pinned": true,
+    "credential_recorded": false
+  },
+  "runtime_provenance": {
+    "generation_receipt_writer": "scripts/eval/eg1_exact_mac_receipt_producer.py",
+    "receipt_signature_scope": "exportable_custodian_key_content_integrity_only",
+    "non_exportable_external_signer_verified": false,
+    "independent_pin_custody_verified": false,
+    "loaded_executable_and_model_bytes_verified": false,
+    "sibling_import_bytes_preverified_before_execution": false,
+    "external_tool_paths_and_bytes_lock_pinned": true,
+    "signed_app_build_provenance_required": true,
+    "build_generated_app_prompt_required": true,
+    "app_bundle_signature_verification": "codesign_verify_deep_strict",
+    "validator_scope": "custodian_signed_operator_pinned_controlled_path_and_mirror_evidence",
+    "may_claim_exact_mac_evidence_complete": false
+  },
+  "evidence_contract": {
+    "receipt_count": 6,
+    "one_receipt_per_arm_and_suite": true,
+    "receipts_bind_lock_manifest": true,
+    "receipts_bind_clean_execution_git_head": true,
+    "receipts_bind_app_bundle_model_path_prompt_and_corpus_hashes": true,
+    "evaluation_config_hash_is_derived_from_executed_settings": true,
+    "shipped_short_input_bypass_is_mirrored": true,
+    "raw_outputs_are_transformed_by_post_validation_mirror": true,
+    "controlled_language_from_locked_corpus_not_live_lid": true,
+    "post_validation_is_mirror_not_app_executed": true,
+    "swift_oracle_source_and_runtime_are_pinned": true,
+    "generation_child_uses_lock_pinned_swift_runtime": true,
+    "evidence_cli_refuses_nonisolated_python": true,
+    "receipt_signatures_are_verified_before_acceptance": true,
+    "receipt_hashes_are_operator_pinned_before_validation": true,
+    "rendered_user_requests_match_corpus_inputs": true,
+    "prompt_requests_match_across_arms": true,
+    "output_ids_match_corpus_order": true,
+    "duplicate_or_missing_ids_fail": true,
+    "generation_errors_or_empty_outputs_fail": true,
+    "output_files_are_reopened_and_rehashed": true,
+    "validated_manifest_publishes_exclusively_after_all_checks": true
+  }
+}

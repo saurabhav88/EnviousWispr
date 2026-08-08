@@ -1,0 +1,61 @@
+{
+  "schema_version": "eg1-leakage-threshold-calibration-contract-v1",
+  "languages": ["en", "de", "fr", "es", "ru"],
+  "axes": ["input_input", "output_output", "input_output", "output_input"],
+  "methods": ["token_ngram_jaccard", "character_ngram_jaccard", "embedding_cosine"],
+  "length_strata": ["1_7", "8_20", "21_50", "51_plus"],
+  "behaviors": [
+    "filler_removal",
+    "self_correction",
+    "native_morphology",
+    "punctuation_capitalization",
+    "entities_numbers_dates",
+    "names_code_switching",
+    "topic_shift_long_dictation",
+    "mixed_two_to_three_edits",
+    "explicit_two_item_list",
+    "scoped_two_item_list",
+    "natural_three_to_five_item_bullet_list",
+    "spoken_ordinals_numbered_list",
+    "two_item_prose_restraint",
+    "three_plus_item_prose_restraint",
+    "quoted_high_risk_instruction_restraint",
+    "clean_minimal_edit_restraint"
+  ],
+  "release_profile": {
+    "calibration_families_per_language": 180,
+    "validation_families_per_language": 120,
+    "minimum_families_per_length_stratum": {"calibration": 20, "validation": 12},
+    "minimum_families_per_behavior": {"calibration": 5, "validation": 3},
+    "minimum_distinct_waves": {"calibration": 2, "validation": 2}
+  },
+  "statistics": {
+    "bootstrap_replicates": 10000,
+    "bootstrap_seed": 1265,
+    "simultaneous_confidence": 0.95,
+    "minimum_simultaneous_sensitivity": 0.95,
+    "threshold_boundary": "score_greater_than_or_equal_is_detected",
+    "bootstrap_unit": "family_component_within_language_shared_across_axes"
+  },
+  "policy": {
+    "exact_normalized_always_blocks": true,
+    "hard_negative_rows_must_be_max_neighbor": true,
+    "overlapping_positive_negative_bands_disable_auto_cutoff": true,
+    "validation_may_select_or_change_thresholds": false,
+    "pilot_is_quality_evidence": false,
+    "candidate_model_output_allowed": false,
+    "output_contains_raw_text": false
+  },
+  "runtime": {
+    "numpy_version": "2.4.4",
+    "score_decimals": 8,
+    "rounding": "decimal_half_up"
+  },
+  "score_generator": {
+    "path": "scripts/eval/generate_eg1_leakage_calibration_scores.py",
+    "sha256": "22ca41d6477a79323018c3a1e8b0f932f356f46e9b57039e2f27424f15026329",
+    "scanner_evidence_policy": "full_recomputation_accept_calibration_required_only",
+    "scanner_path": "scripts/eval/scan_eg1_multilingual_development_leakage.py",
+    "scanner_sha256": "ec9952c7c295f7ed5eb3733efd6d922bba7a1910aa1f484e60c941c89f8ba7f5"
+  }
+}

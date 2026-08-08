@@ -1,0 +1,36 @@
+{
+  "baseline": [
+    "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_ru_dev16.jsonl"
+  ],
+  "candidate": [
+    "docs/experiments/eg1-multilingual/alien-runs/aligned-runs/gemma4e4b_multilingual_listv2_aligned_v1_ru_dev16.jsonl"
+  ],
+  "rows": 16,
+  "exact_matches": 13,
+  "canonical_matches": 13,
+  "changed": 3,
+  "list_structure_changes": 1,
+  "changed_rows": [
+    {
+      "id": "ru-dev-008",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "На завтра:\n* Позвонить стоматологу\n* Отправить договор юристу\n* Забрать заказ из пункта выдачи",
+      "candidate": "На завтра:\n- Позвонить стоматологу\n- Отправить договор юристу\n- Забрать заказ из пункта выдачи"
+    },
+    {
+      "id": "ru-dev-009",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "План такой:\n* Проверить договор\n* Согласовать бюджет\n* Отправить клиенту финальную версию",
+      "candidate": "План такой:\n1. Проверить договор\n2. Согласовать бюджет\n3. Отправить клиенту финальную версию"
+    },
+    {
+      "id": "ru-dev-010",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 0,
+      "baseline": "На встрече мы обсудили:\n* бюджет\n* сроки\n* риски\n\nНо решений пока нет.",
+      "candidate": "На встрече мы обсудили бюджет, сроки и риски, но решений пока нет."
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "baseline": "docs/experiments/eg1-multilingual/alien-runs/gemma4e4b_multilingual_smoke_v1_listv2_twoitem_v1a.jsonl",
+  "candidate": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q6_listv2_twoitem_v1a.jsonl",
+  "rows": 10,
+  "exact_matches": 5,
+  "canonical_matches": 5,
+  "changed": 5,
+  "list_structure_changes": 1,
+  "changed_rows": [
+    {
+      "id": "en-two-item-dev-v1a-001",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "Okay, so I need to create a bullet list here.\n* First goal is increase Q3 pipeline by forty percent.\n* Second goal is hire two senior developers by end of August.",
+      "candidate": "* Increase Q3 pipeline by forty percent\n* Hire two senior developers by end of August"
+    },
+    {
+      "id": "en-two-item-dev-v1a-005",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "I need to make a bulleted list of critical issues before release.\n\n* The memory leak in the WebSocket handler on line 247\n* The UI doesn't render correctly on mobile Safari below iOS 15.3",
+      "candidate": "Critical issues before release:\n* The memory leak in the WebSocket handler on line 247\n* The UI doesn't render correctly on mobile Safari below iOS 15.3"
+    },
+    {
+      "id": "en-two-item-dev-v1a-008",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 0,
+      "baseline": "Okay, so after Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23rd, the post-op care involves:\n* Monitoring for infection and swelling\n* Scheduling PT physical therapy sessions starting two weeks post-op",
+      "candidate": "After Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July twenty-third, the post-op care involves monitoring for infection and swelling, and scheduling PT physical therapy sessions starting two weeks post-op."
+    },
+    {
+      "id": "en-two-item-dev-v1a-009",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "Henderson Estate Final Disposition:\n* Distribute the primary residence at 1540 Oak Hill Drive to beneficiary Robert Henderson.\n* Allocate the investment portfolio of approximately $625,000 to the education trust as specified in the will.",
+      "candidate": "Final disposition for the Henderson estate:\n* Distribute the primary residence at 1540 Oak Hill Drive to beneficiary Robert Henderson.\n* Allocate the investment portfolio of approximately $625,000 to the education trust as specified in the will."
+    },
+    {
+      "id": "en-two-item-dev-v1a-010",
+      "baseline_list_lines": 2,
+      "candidate_list_lines": 2,
+      "baseline": "For the Form 990 filing due October 15th this year, we need to:\n* Reconcile the donor contribution ledger against the bank statements from the full fiscal year.\n* Verify that all restricted fund expenditures align with donor intent per the grant agreements.",
+      "candidate": "For the Form 990 filing due October 15th this year, we need to:\n* Reconcile the donor contribution ledger against the bank statements from the full fiscal year\n* Verify that all restricted fund expenditures align with donor intent per the grant agreements"
+    }
+  ]
+}

@@ -1,0 +1,1109 @@
+{
+  "case_count": 20,
+  "models": {
+    "qwen3-base-q5-scale0-twoitem20": {
+      "candidate_paths": [
+        "docs/experiments/eg1-multilingual/mac-runs/lora-fallback/qwen3-base-q5-scale0-twoitem20.jsonl"
+      ],
+      "strict": 2,
+      "total": 20,
+      "strict_rate": 0.1,
+      "wilson_95": [
+        0.027866481213768224,
+        0.3010336452284873
+      ],
+      "structure_ok": 10,
+      "required_ok": 2,
+      "forbidden_ok": 16,
+      "breakdown": {
+        "domain:legal_financial": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:medical": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:personal_home": {
+          "total": 4,
+          "strict": 1
+        },
+        "domain:technical_product": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:work_admin": {
+          "total": 4,
+          "strict": 1
+        },
+        "list_type:explicit": {
+          "total": 10,
+          "strict": 2
+        },
+        "list_type:scoped_implicit": {
+          "total": 10,
+          "strict": 0
+        }
+      },
+      "failures": [
+        {
+          "id": "en-two-item-dev-v1a-002",
+          "domain": "work_admin",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "The product launch for the Jakarta client requires two tasks: fix the API response timeout issue that has been blocking QA, and finalize the brand asset pack with the new logo variants discussed."
+          ],
+          "absent_required": [
+            "Fix API response timeout",
+            "Finalize brand asset pack",
+            "we discussed"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "The product launch for the Jakarta client requires two tasks: fix the API response timeout issue that has been blocking QA, and finalize the brand asset pack with the new logo variants discussed."
+        },
+        {
+          "id": "en-two-item-dev-v1a-003",
+          "domain": "personal_home",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Weekend errands",
+            "did not show up"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Pick up dry cleaning from Chen's by Saturday noon  \n- Reschedule the plumber visit because he never showed up last Tuesday"
+        },
+        {
+          "id": "en-two-item-dev-v1a-004",
+          "domain": "personal_home",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For the kitchen remodel happening in September, we need to select the subway tile backsplash color—likely the soft gray one—and lock in the contractor for the countertop installation by next Friday."
+          ],
+          "absent_required": [
+            "probably",
+            "next Friday"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "For the kitchen remodel happening in September, we need to select the subway tile backsplash color—likely the soft gray one—and lock in the contractor for the countertop installation by next Friday."
+        },
+        {
+          "id": "en-two-item-dev-v1a-005",
+          "domain": "technical_product",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Critical pre-release issues",
+            "UI rendering issue"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Memory leak in the WebSocket handler on line 247  \n- UI does not render correctly on mobile Safari below iOS 15.3"
+        },
+        {
+          "id": "en-two-item-dev-v1a-006",
+          "domain": "technical_product",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "By the time we ship version 2.4 next month, we must migrate from Stripe's deprecated payment API to the new Connect platform and rewrite the batch processing cron to use Celery instead of the custom scheduler we built in 2021."
+          ],
+          "absent_required": [
+            "Migrate from Stripe's deprecated payment API to the Connect platform",
+            "use Celery instead of the custom scheduler we built in 2021"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "By the time we ship version 2.4 next month, we must migrate from Stripe's deprecated payment API to the new Connect platform and rewrite the batch processing cron to use Celery instead of the custom scheduler we built in 2021."
+        },
+        {
+          "id": "en-two-item-dev-v1a-007",
+          "domain": "medical",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Marcus Chen",
+            "New prescription: Metformin"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Metformin 500 mg extended release, twice daily with food  \n- Refill Lisinopril 10 mg tablets (expiring in November)"
+        },
+        {
+          "id": "en-two-item-dev-v1a-008",
+          "domain": "medical",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "After Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23, post-op care involves monitoring for infection and swelling, and scheduling PT sessions starting two weeks after the surgery."
+          ],
+          "absent_required": [
+            "Post-op care for Jennifer Vasquez",
+            "ACL reconstruction by Dr. Morrison",
+            "Monitor for infection and swelling",
+            "Schedule PT sessions starting two weeks post-op"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "After Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23, post-op care involves monitoring for infection and swelling, and scheduling PT sessions starting two weeks after the surgery."
+        },
+        {
+          "id": "en-two-item-dev-v1a-009",
+          "domain": "legal_financial",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Henderson estate",
+            "Distribute the primary residence at 1540 Oak Hill Drive to beneficiary Robert Henderson",
+            "Allocate the investment portfolio of approximately $625,000 to the education trust as specified in the will"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Distribute the primary residence at fifteen-forty Oak Hill Drive to beneficiary Robert Henderson.  \n- Allocate the investment portfolio of approximately six hundred twenty-five thousand dollars to the education trust as specified in the will."
+        },
+        {
+          "id": "en-two-item-dev-v1a-010",
+          "domain": "legal_financial",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For the Form 990 filing due October 15 this year, we need to reconcile the donor contribution ledger against the bank statements for the full fiscal year and verify that all restricted fund expenditures align with donor intent as specified in the grant agreements."
+          ],
+          "absent_required": [
+            "Reconcile the donor contribution ledger against bank statements for the full fiscal year",
+            "Verify all restricted fund expenditures align with donor intent per the grant agreements"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "For the Form 990 filing due October 15 this year, we need to reconcile the donor contribution ledger against the bank statements for the full fiscal year and verify that all restricted fund expenditures align with donor intent as specified in the grant agreements."
+        },
+        {
+          "id": "en-two-item-dev-v1b-001",
+          "domain": "work_admin",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Q3 report"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Performance metrics for the customer success team  \n- Churn analysis for the APAC region"
+        },
+        {
+          "id": "en-two-item-dev-v1b-002",
+          "domain": "work_admin",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For my one-on-one with Priya tomorrow at 2 PM, I need to prepare two things: first, discuss her career development plan in the UX strategy track, and second, review the Q3 OKR alignment."
+          ],
+          "absent_required": [
+            "Discuss career development plan",
+            "Review Q3 OKR alignment"
+          ],
+          "present_forbidden": [
+            "I need to prepare two things",
+            "first"
+          ],
+          "strict": false,
+          "output": "For my one-on-one with Priya tomorrow at 2 PM, I need to prepare two things: first, discuss her career development plan in the UX strategy track, and second, review the Q3 OKR alignment."
+        },
+        {
+          "id": "en-two-item-dev-v1b-004",
+          "domain": "personal_home",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For Nora's birthday party this Sunday, we need to reserve the park picnic shelter by Friday and order nut-free cupcakes for eighteen children."
+          ],
+          "absent_required": [
+            "18 children"
+          ],
+          "present_forbidden": [
+            "we need to"
+          ],
+          "strict": false,
+          "output": "For Nora's birthday party this Sunday, we need to reserve the park picnic shelter by Friday and order nut-free cupcakes for eighteen children."
+        },
+        {
+          "id": "en-two-item-dev-v1b-005",
+          "domain": "technical_product",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "new user authentication endpoint",
+            "critical requirements"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Request rate limiting of 300 calls per minute  \n- OAuth 2.0 token format validation"
+        },
+        {
+          "id": "en-two-item-dev-v1b-006",
+          "domain": "technical_product",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For the PostgreSQL to Cloud SQL migration, completed by the end of the month, we need to complete two key tasks: first, validate the schema against the current production environment, and then perform data integrity checks for all customer records before flipping the switch."
+          ],
+          "absent_required": [
+            "end of month",
+            "schema validation",
+            "before cutover"
+          ],
+          "present_forbidden": [
+            "first"
+          ],
+          "strict": false,
+          "output": "For the PostgreSQL to Cloud SQL migration, completed by the end of the month, we need to complete two key tasks: first, validate the schema against the current production environment, and then perform data integrity checks for all customer records before flipping the switch."
+        },
+        {
+          "id": "en-two-item-dev-v1b-007",
+          "domain": "medical",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Margaret Chen",
+            "today",
+            "discharge instructions",
+            "Take prescribed antibiotics",
+            "6 hours",
+            "10 days",
+            "full course",
+            "3 weeks"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Take the prescribed antibiotics every six hours for ten days and complete the full course.  \n- Follow up with cardiology in three weeks."
+        },
+        {
+          "id": "en-two-item-dev-v1b-008",
+          "domain": "medical",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For Dr. Patel's follow-up plan for patient James Rodriguez after the blood work, repeat the fasting glucose on next Monday and schedule an endocrinology consult within two weeks."
+          ],
+          "absent_required": [
+            "Dr. Patel",
+            "after blood work",
+            "within two weeks"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "For Dr. Patel's follow-up plan for patient James Rodriguez after the blood work, repeat the fasting glucose on next Monday and schedule an endocrinology consult within two weeks."
+        },
+        {
+          "id": "en-two-item-dev-v1b-009",
+          "domain": "legal_financial",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Vendor agreement review",
+            "Verify indemnification clause",
+            "Verify non-compete duration",
+            "18 months",
+            "tech sector"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Check the indemnification clause for mutual liability protection.  \n- Verify that the non-compete duration does not exceed eighteen months in the tech sector."
+        },
+        {
+          "id": "en-two-item-dev-v1b-010",
+          "domain": "legal_financial",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "For the will revision that Sarah Martinez is executing, we need to document two critical items: the executor is her brother, David Martinez, and we need to update the trust beneficiary list to include her two nieces, Elena and Sophie."
+          ],
+          "absent_required": [
+            "Sophie"
+          ],
+          "present_forbidden": [
+            "we need to document"
+          ],
+          "strict": false,
+          "output": "For the will revision that Sarah Martinez is executing, we need to document two critical items: the executor is her brother, David Martinez, and we need to update the trust beneficiary list to include her two nieces, Elena and Sophie."
+        }
+      ]
+    },
+    "qwen3-base-q5-scale1-twoitem20": {
+      "candidate_paths": [
+        "docs/experiments/eg1-multilingual/mac-runs/lora-fallback/qwen3-base-q5-scale1-twoitem20.jsonl"
+      ],
+      "strict": 2,
+      "total": 20,
+      "strict_rate": 0.1,
+      "wilson_95": [
+        0.027866481213768224,
+        0.3010336452284873
+      ],
+      "structure_ok": 19,
+      "required_ok": 4,
+      "forbidden_ok": 11,
+      "breakdown": {
+        "domain:legal_financial": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:medical": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:personal_home": {
+          "total": 4,
+          "strict": 1
+        },
+        "domain:technical_product": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:work_admin": {
+          "total": 4,
+          "strict": 1
+        },
+        "list_type:explicit": {
+          "total": 10,
+          "strict": 1
+        },
+        "list_type:scoped_implicit": {
+          "total": 10,
+          "strict": 1
+        }
+      },
+      "failures": [
+        {
+          "id": "en-two-item-dev-v1a-002",
+          "domain": "work_admin",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "The product launch for the Jakarta client needs two things done:"
+          ],
+          "absent_required": [
+            "Fix API response timeout",
+            "Finalize brand asset pack"
+          ],
+          "present_forbidden": [
+            "needs two things done"
+          ],
+          "strict": false,
+          "output": "The product launch for the Jakarta client needs two things done:\n- Fix the API response timeout issue that's been blocking QA\n- Finalize the brand asset pack with the new logo variants we discussed"
+        },
+        {
+          "id": "en-two-item-dev-v1a-003",
+          "domain": "personal_home",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Make a list of the errands I need to do this weekend:"
+          ],
+          "absent_required": [
+            "Weekend errands",
+            "did not show up"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "Make a list of the errands I need to do this weekend:\n- Pick up dry cleaning from Chen's by Saturday noon\n- Reschedule the plumber visit because he never showed up last Tuesday"
+        },
+        {
+          "id": "en-two-item-dev-v1a-005",
+          "domain": "technical_product",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Critical pre-release issues",
+            "UI rendering issue"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Memory leak in the WebSocket handler on line 247\n- UI doesn't render correctly on mobile Safari below iOS 15.3"
+        },
+        {
+          "id": "en-two-item-dev-v1a-006",
+          "domain": "technical_product",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "By the time we ship version 2.4 next month, we have to:"
+          ],
+          "absent_required": [
+            "Migrate from Stripe's deprecated payment API to the Connect platform"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "By the time we ship version 2.4 next month, we have to:\n- Migrate from Stripe's deprecated payment API to the new Connect platform\n- Rewrite the batch processing cron to use Celery instead of the custom scheduler we built in 2021"
+        },
+        {
+          "id": "en-two-item-dev-v1a-007",
+          "domain": "medical",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Marcus Chen"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- New prescription: metformin 500 mg extended release, twice daily with food\n- Refill: lisinopril 10 mg tablets, expiring in November"
+        },
+        {
+          "id": "en-two-item-dev-v1a-008",
+          "domain": "medical",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "After Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23, the post-op care involves monitoring for infection and swelling, and scheduling PT physical therapy sessions starting two weeks post-op."
+          ],
+          "absent_required": [
+            "Post-op care for Jennifer Vasquez",
+            "ACL reconstruction by Dr. Morrison",
+            "Monitor for infection and swelling",
+            "Schedule PT sessions starting two weeks post-op"
+          ],
+          "present_forbidden": [
+            "the post-op care involves"
+          ],
+          "strict": false,
+          "output": "After Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23, the post-op care involves monitoring for infection and swelling, and scheduling PT physical therapy sessions starting two weeks post-op."
+        },
+        {
+          "id": "en-two-item-dev-v1a-009",
+          "domain": "legal_financial",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Make a list for the Henderson estate final disposition:"
+          ],
+          "absent_required": [
+            "Distribute the primary residence at 1540 Oak Hill Drive to beneficiary Robert Henderson",
+            "Allocate the investment portfolio of approximately $625,000 to the education trust as specified in the will"
+          ],
+          "present_forbidden": [
+            "make a list"
+          ],
+          "strict": false,
+          "output": "Make a list for the Henderson estate final disposition:\n- Distribute the primary residence at 1540 Oak Hill Drive to beneficiary Robert Henderson.\n- Allocate the investment portfolio of approximately $625,000 to the education trust as specified in the will."
+        },
+        {
+          "id": "en-two-item-dev-v1a-010",
+          "domain": "legal_financial",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For the Form 990 filing due October 15 this year, we need to:"
+          ],
+          "absent_required": [
+            "Reconcile the donor contribution ledger against bank statements for the full fiscal year",
+            "Verify all restricted fund expenditures align with donor intent per the grant agreements"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "For the Form 990 filing due October 15 this year, we need to:\n- Reconcile the donor contribution ledger against the bank statements from the full fiscal year\n- Verify that all restricted fund expenditures align with donor intent per the grant agreements"
+        },
+        {
+          "id": "en-two-item-dev-v1b-001",
+          "domain": "work_admin",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Q3 report"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Performance metrics for the customer success team\n- Churn analysis for the APAC region"
+        },
+        {
+          "id": "en-two-item-dev-v1b-002",
+          "domain": "work_admin",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For my one-on-one with Priya tomorrow at 2 PM, I need to prepare two things:"
+          ],
+          "absent_required": [
+            "Discuss career development plan",
+            "Review Q3 OKR alignment"
+          ],
+          "present_forbidden": [
+            "I need to prepare two things",
+            "first",
+            "I want to",
+            "also we should"
+          ],
+          "strict": false,
+          "output": "For my one-on-one with Priya tomorrow at 2 PM, I need to prepare two things:\n- First, I want to discuss her career development plan in the UX strategy track.\n- Also, we should review the Q3 OKR alignment."
+        },
+        {
+          "id": "en-two-item-dev-v1b-003",
+          "domain": "personal_home",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Make a quick list:"
+          ],
+          "absent_required": [],
+          "present_forbidden": [
+            "make a quick list"
+          ],
+          "strict": false,
+          "output": "Make a quick list:\n- Water the basil on Tuesday\n- Put the blue recycling bin out Wednesday night"
+        },
+        {
+          "id": "en-two-item-dev-v1b-004",
+          "domain": "personal_home",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For Nora's birthday party this Sunday, we need to:"
+          ],
+          "absent_required": [],
+          "present_forbidden": [
+            "we need to"
+          ],
+          "strict": false,
+          "output": "For Nora's birthday party this Sunday, we need to:\n- Reserve the park picnic shelter by Friday\n- Order nut-free cupcakes for 18 children"
+        },
+        {
+          "id": "en-two-item-dev-v1b-005",
+          "domain": "technical_product",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "new user authentication endpoint",
+            "critical requirements",
+            "token format validation"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Request rate limiting of 300 calls per minute\n- Validation for OAuth 2.0 token format"
+        },
+        {
+          "id": "en-two-item-dev-v1b-006",
+          "domain": "technical_product",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For the PostgreSQL to Cloud SQL migration completing by end of month, we have two things to do:"
+          ],
+          "absent_required": [
+            "before cutover"
+          ],
+          "present_forbidden": [
+            "we have two things to do",
+            "first"
+          ],
+          "strict": false,
+          "output": "For the PostgreSQL to Cloud SQL migration completing by end of month, we have two things to do:\n- First, the schema validation against current production\n- Then, data integrity checks for all customer records before we flip the switch."
+        },
+        {
+          "id": "en-two-item-dev-v1b-007",
+          "domain": "medical",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Margaret Chen",
+            "today",
+            "discharge instructions",
+            "Take prescribed antibiotics",
+            "6 hours",
+            "10 days",
+            "full course",
+            "3 weeks"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Take the prescribed antibiotics every six hours for ten days. Complete the full course.\n- Follow up with cardiology in three weeks."
+        },
+        {
+          "id": "en-two-item-dev-v1b-008",
+          "domain": "medical",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For Dr. Patel's follow-up plan for patient James Rodriguez after the blood work, we need to:"
+          ],
+          "absent_required": [
+            "Dr. Patel",
+            "after blood work"
+          ],
+          "present_forbidden": [
+            "we need to"
+          ],
+          "strict": false,
+          "output": "For Dr. Patel's follow-up plan for patient James Rodriguez after the blood work, we need to:\n- Repeat the fasting glucose next Monday\n- Schedule an endocrinology consult within two weeks"
+        },
+        {
+          "id": "en-two-item-dev-v1b-009",
+          "domain": "legal_financial",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Vendor agreement review",
+            "Verify indemnification clause",
+            "Verify non-compete duration",
+            "18 months",
+            "tech sector"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Check the indemnification clause for mutual liability protection.\n- Verify that the non-compete duration does not exceed eighteen months in the tech sector."
+        },
+        {
+          "id": "en-two-item-dev-v1b-010",
+          "domain": "legal_financial",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For the will revision that Sarah Martinez is executing, we need to document two critical items:"
+          ],
+          "absent_required": [
+            "David Martinez",
+            "Sophie"
+          ],
+          "present_forbidden": [
+            "we need to document"
+          ],
+          "strict": false,
+          "output": "For the will revision that Sarah Martinez is executing, we need to document two critical items:\n- The executor is her brother David Martinez.\n- We need to update the trust beneficiary list to include her two nieces, Elena and Sophie."
+        }
+      ]
+    },
+    "qwen3-merged-q5-twoitem20": {
+      "candidate_paths": [
+        "docs/experiments/eg1-multilingual/mac-runs/lora-fallback/qwen3-merged-q5-twoitem20.jsonl"
+      ],
+      "strict": 2,
+      "total": 20,
+      "strict_rate": 0.1,
+      "wilson_95": [
+        0.027866481213768224,
+        0.3010336452284873
+      ],
+      "structure_ok": 18,
+      "required_ok": 4,
+      "forbidden_ok": 8,
+      "breakdown": {
+        "domain:legal_financial": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:medical": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:personal_home": {
+          "total": 4,
+          "strict": 1
+        },
+        "domain:technical_product": {
+          "total": 4,
+          "strict": 0
+        },
+        "domain:work_admin": {
+          "total": 4,
+          "strict": 1
+        },
+        "list_type:explicit": {
+          "total": 10,
+          "strict": 1
+        },
+        "list_type:scoped_implicit": {
+          "total": 10,
+          "strict": 1
+        }
+      },
+      "failures": [
+        {
+          "id": "en-two-item-dev-v1a-002",
+          "domain": "work_admin",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "The product launch for the Jakarta client needs two things done:"
+          ],
+          "absent_required": [
+            "Fix API response timeout",
+            "Finalize brand asset pack"
+          ],
+          "present_forbidden": [
+            "needs two things done"
+          ],
+          "strict": false,
+          "output": "The product launch for the Jakarta client needs two things done:\n- Fix the API response timeout issue that's been blocking QA\n- Finalize the brand asset pack with the new logo variants we discussed"
+        },
+        {
+          "id": "en-two-item-dev-v1a-003",
+          "domain": "personal_home",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Let me make a list of the errands I need to do this weekend:"
+          ],
+          "absent_required": [
+            "Weekend errands",
+            "did not show up"
+          ],
+          "present_forbidden": [
+            "let me make a list"
+          ],
+          "strict": false,
+          "output": "Let me make a list of the errands I need to do this weekend:\n- Pick up dry cleaning from Chen's by Saturday noon\n- Reschedule the plumber visit because he never showed up last Tuesday"
+        },
+        {
+          "id": "en-two-item-dev-v1a-005",
+          "domain": "technical_product",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Critical pre-release issues",
+            "UI rendering issue"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- The memory leak in the WebSocket handler on line 247\n- The UI doesn't render correctly on mobile Safari below iOS 15.3"
+        },
+        {
+          "id": "en-two-item-dev-v1a-006",
+          "domain": "technical_product",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "By the time we ship version 2.4 next month, we have to migrate from Stripe's deprecated payment API to the new Connect platform, and we also need to rewrite the batch processing cron to use Celery instead of the custom scheduler we built in 2021."
+          ],
+          "absent_required": [
+            "Migrate from Stripe's deprecated payment API to the Connect platform",
+            "use Celery instead of the custom scheduler we built in 2021"
+          ],
+          "present_forbidden": [
+            "also"
+          ],
+          "strict": false,
+          "output": "By the time we ship version 2.4 next month, we have to migrate from Stripe's deprecated payment API to the new Connect platform, and we also need to rewrite the batch processing cron to use Celery instead of the custom scheduler we built in 2021."
+        },
+        {
+          "id": "en-two-item-dev-v1a-007",
+          "domain": "medical",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Please create a list format for patient Marcus Chen with these prescriptions:"
+          ],
+          "absent_required": [
+            "New prescription: Metformin",
+            "500 mg extended release",
+            "twice daily with food",
+            "Refill lisinopril",
+            "10 mg tablets",
+            "expiring in November"
+          ],
+          "present_forbidden": [
+            "please create a list format",
+            "also"
+          ],
+          "strict": false,
+          "output": "Please create a list format for patient Marcus Chen with these prescriptions:\n- New prescription is metformin 500 milligrams extended release twice daily with food.\n- Also refill the lisinopril 10 milligram tablets that expire in November."
+        },
+        {
+          "id": "en-two-item-dev-v1a-008",
+          "domain": "medical",
+          "list_type": "scoped_implicit",
+          "structure_ok": false,
+          "bullet_count": 0,
+          "extra_lines": [
+            "Okay, so after Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23, the post-op care involves monitoring for infection and swelling, and scheduling PT physical therapy sessions starting two weeks post-op."
+          ],
+          "absent_required": [
+            "Post-op care for Jennifer Vasquez",
+            "ACL reconstruction by Dr. Morrison",
+            "Monitor for infection and swelling",
+            "Schedule PT sessions starting two weeks post-op"
+          ],
+          "present_forbidden": [
+            "okay",
+            "the post-op care involves"
+          ],
+          "strict": false,
+          "output": "Okay, so after Dr. Morrison performs the ACL reconstruction on patient Jennifer Vasquez on July 23, the post-op care involves monitoring for infection and swelling, and scheduling PT physical therapy sessions starting two weeks post-op."
+        },
+        {
+          "id": "en-two-item-dev-v1a-009",
+          "domain": "legal_financial",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Make a list for the Henderson estate final disposition:"
+          ],
+          "absent_required": [
+            "Distribute the primary residence at 1540 Oak Hill Drive to beneficiary Robert Henderson",
+            "Allocate the investment portfolio of approximately $625,000 to the education trust as specified in the will"
+          ],
+          "present_forbidden": [
+            "make a list"
+          ],
+          "strict": false,
+          "output": "Make a list for the Henderson estate final disposition:\n- Distribute the primary residence at 1540 Oak Hill Drive to beneficiary Robert Henderson.\n- Allocate the investment portfolio of approximately $625,000 to the education trust as specified in the will."
+        },
+        {
+          "id": "en-two-item-dev-v1a-010",
+          "domain": "legal_financial",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For the Form 990 filing due October 15 this year, we need to:"
+          ],
+          "absent_required": [
+            "Reconcile the donor contribution ledger against bank statements for the full fiscal year",
+            "Verify all restricted fund expenditures align with donor intent per the grant agreements"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "For the Form 990 filing due October 15 this year, we need to:\n- Reconcile the donor contribution ledger against the bank statements from the full fiscal year\n- Verify that all restricted fund expenditures align with donor intent per the grant agreements"
+        },
+        {
+          "id": "en-two-item-dev-v1b-001",
+          "domain": "work_admin",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Q3 report"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Performance metrics for the customer success team\n- Churn analysis for the APAC region"
+        },
+        {
+          "id": "en-two-item-dev-v1b-002",
+          "domain": "work_admin",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For my one-on-one with Priya tomorrow at 2 PM, I need to prepare two things:"
+          ],
+          "absent_required": [
+            "Discuss career development plan",
+            "Review Q3 OKR alignment"
+          ],
+          "present_forbidden": [
+            "I need to prepare two things",
+            "first",
+            "I want to",
+            "also we should"
+          ],
+          "strict": false,
+          "output": "For my one-on-one with Priya tomorrow at 2 PM, I need to prepare two things:\n- First, I want to discuss her career development plan in the UX strategy track.\n- Also, we should review the Q3 OKR alignment."
+        },
+        {
+          "id": "en-two-item-dev-v1b-003",
+          "domain": "personal_home",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "Make a quick list:"
+          ],
+          "absent_required": [],
+          "present_forbidden": [
+            "make a quick list"
+          ],
+          "strict": false,
+          "output": "Make a quick list:\n- Water the basil on Tuesday\n- Put the blue recycling bin out Wednesday night"
+        },
+        {
+          "id": "en-two-item-dev-v1b-004",
+          "domain": "personal_home",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For Nora's birthday party this Sunday, we need to:"
+          ],
+          "absent_required": [],
+          "present_forbidden": [
+            "we need to"
+          ],
+          "strict": false,
+          "output": "For Nora's birthday party this Sunday, we need to:\n- Reserve the park picnic shelter by Friday\n- Order nut-free cupcakes for 18 children"
+        },
+        {
+          "id": "en-two-item-dev-v1b-005",
+          "domain": "technical_product",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "new user authentication endpoint",
+            "critical requirements",
+            "token format validation"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- request rate limiting of 300 calls per minute\n- validation for OAuth 2.0 token format"
+        },
+        {
+          "id": "en-two-item-dev-v1b-006",
+          "domain": "technical_product",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For the PostgreSQL to Cloud SQL migration completing by end of month, we have two things to do:"
+          ],
+          "absent_required": [
+            "before cutover"
+          ],
+          "present_forbidden": [
+            "we have two things to do",
+            "first"
+          ],
+          "strict": false,
+          "output": "For the PostgreSQL to Cloud SQL migration completing by end of month, we have two things to do:\n- First, the schema validation against current production\n- Then, data integrity checks for all customer records before we flip the switch."
+        },
+        {
+          "id": "en-two-item-dev-v1b-007",
+          "domain": "medical",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Margaret Chen",
+            "today",
+            "discharge instructions",
+            "Take prescribed antibiotics",
+            "6 hours",
+            "10 days",
+            "full course",
+            "3 weeks"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Take the prescribed antibiotics every six hours for ten days. Complete the full course.\n- Follow up with cardiology in three weeks."
+        },
+        {
+          "id": "en-two-item-dev-v1b-008",
+          "domain": "medical",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For Dr. Patel's follow-up plan for patient James Rodriguez after the blood work, we need to:"
+          ],
+          "absent_required": [
+            "Dr. Patel",
+            "after blood work"
+          ],
+          "present_forbidden": [
+            "we need to"
+          ],
+          "strict": false,
+          "output": "For Dr. Patel's follow-up plan for patient James Rodriguez after the blood work, we need to:\n- Repeat the fasting glucose next Monday\n- Schedule an endocrinology consult within two weeks"
+        },
+        {
+          "id": "en-two-item-dev-v1b-009",
+          "domain": "legal_financial",
+          "list_type": "explicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [],
+          "absent_required": [
+            "Vendor agreement review",
+            "Verify indemnification clause",
+            "Verify non-compete duration",
+            "18 months",
+            "tech sector"
+          ],
+          "present_forbidden": [],
+          "strict": false,
+          "output": "- Check the indemnification clause for mutual liability protection.\n- Verify that the non-compete duration does not exceed eighteen months in the tech sector."
+        },
+        {
+          "id": "en-two-item-dev-v1b-010",
+          "domain": "legal_financial",
+          "list_type": "scoped_implicit",
+          "structure_ok": true,
+          "bullet_count": 2,
+          "extra_lines": [
+            "For the will revision that Sarah Martinez is executing, we need to document two critical items:"
+          ],
+          "absent_required": [
+            "David Martinez",
+            "Sophie"
+          ],
+          "present_forbidden": [
+            "we need to document"
+          ],
+          "strict": false,
+          "output": "For the will revision that Sarah Martinez is executing, we need to document two critical items:\n- The executor is her brother David Martinez.\n- We need to update the trust beneficiary list to include her two nieces, Elena and Sophie."
+        }
+      ]
+    }
+  }
+}

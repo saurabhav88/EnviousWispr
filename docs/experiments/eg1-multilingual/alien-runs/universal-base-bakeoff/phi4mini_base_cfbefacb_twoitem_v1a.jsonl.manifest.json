@@ -1,0 +1,33 @@
+{
+  "run_id": "base-bakeoff-phi4mini-twoitem_v1a",
+  "started_at_epoch": 1784113219.9493997,
+  "host": "AlienSV",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "git_head": null,
+  "model_id": "phi4mini_base_cfbefacb",
+  "model_path": "C:\\Users\\saura\\eg1-models\\Phi-4-mini-instruct-cfbefacb",
+  "model_type": "phi3",
+  "model_loader": "AutoModelForCausalLM",
+  "tokenizer_path": "C:\\Users\\saura\\eg1-models\\Phi-4-mini-instruct-cfbefacb",
+  "tokenizer_loader": "AutoTokenizer",
+  "tokenizer_hashes": {
+    "tokenizer.json": "382cc235b56c725945e149cc25f191da667c836655efd0857b004320e90e91ea",
+    "tokenizer_config.json": "9c9b6bc0c94d95f69f826c41069a3e8b387ac3ced89601d201886e99240ac9db"
+  },
+  "corpus_path": "C:\\Users\\saura\\eg1-overnight\\eg1_two_item_list_en_dev_v1a.jsonl",
+  "corpus_sha256": "1f9d8deed18a8c2e5aa7dd39925592c35ad71b8c800f3b3a2b7446a77b2573ef",
+  "prompt_path": "C:\\Users\\saura\\eg1-overnight\\eg1-list-aware-v2.txt",
+  "prompt_sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75",
+  "split": "dev",
+  "languages": "all",
+  "case_count": 10,
+  "batch_size": 2,
+  "max_new_tokens": 256,
+  "seed": 1265,
+  "include_language_label": false,
+  "enable_thinking": false,
+  "torch_version": "2.12.1+cu130",
+  "cuda_device": "NVIDIA GeForce RTX 4090",
+  "elapsed_seconds": 12.102,
+  "completed_at_epoch": 1784113232.0782156
+}

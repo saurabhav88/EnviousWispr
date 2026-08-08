@@ -1,0 +1,166 @@
+[
+  {
+    "run_id": "qwen4b-multilingual-smoke-v1r2-ship-ru-dev16",
+    "model_id": "qwen4b_multilingual_smoke_v1r2",
+    "n": 16,
+    "warning": "Deterministic checks only; fluency and grammar still require blinded native review.",
+    "metrics": {
+      "nonempty": {
+        "successes": 16,
+        "total": 16,
+        "rate": 1.0,
+        "wilson_95": [
+          0.8064,
+          1.0
+        ]
+      },
+      "script_retained": {
+        "successes": 16,
+        "total": 16,
+        "rate": 1.0,
+        "wilson_95": [
+          0.8064,
+          1.0
+        ]
+      },
+      "required_all": {
+        "successes": 9,
+        "total": 16,
+        "rate": 0.5625,
+        "wilson_95": [
+          0.3318,
+          0.769
+        ]
+      },
+      "forbidden_all": {
+        "successes": 13,
+        "total": 16,
+        "rate": 0.8125,
+        "wilson_95": [
+          0.5699,
+          0.9341
+        ]
+      },
+      "structure_ok": {
+        "successes": 16,
+        "total": 16,
+        "rate": 1.0,
+        "wilson_95": [
+          0.8064,
+          1.0
+        ]
+      },
+      "strict_deterministic_pass": {
+        "successes": 7,
+        "total": 16,
+        "rate": 0.4375,
+        "wilson_95": [
+          0.231,
+          0.6682
+        ]
+      }
+    },
+    "by_category": {
+      "code_switching": {
+        "successes": 1,
+        "total": 2,
+        "rate": 0.5,
+        "wilson_95": [
+          0.0945,
+          0.9055
+        ]
+      },
+      "entities_numbers": {
+        "successes": 1,
+        "total": 6,
+        "rate": 0.1667,
+        "wilson_95": [
+          0.0301,
+          0.5635
+        ]
+      },
+      "fillers": {
+        "successes": 1,
+        "total": 2,
+        "rate": 0.5,
+        "wilson_95": [
+          0.0945,
+          0.9055
+        ]
+      },
+      "list_bullets": {
+        "successes": 0,
+        "total": 1,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "list_numbered": {
+        "successes": 0,
+        "total": 1,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "morphology_case": {
+        "successes": 2,
+        "total": 3,
+        "rate": 0.6667,
+        "wilson_95": [
+          0.2077,
+          0.9385
+        ]
+      },
+      "morphology_gender": {
+        "successes": 1,
+        "total": 2,
+        "rate": 0.5,
+        "wilson_95": [
+          0.0945,
+          0.9055
+        ]
+      },
+      "morphology_number": {
+        "successes": 1,
+        "total": 3,
+        "rate": 0.3333,
+        "wilson_95": [
+          0.0615,
+          0.7923
+        ]
+      },
+      "quoted_content": {
+        "successes": 1,
+        "total": 1,
+        "rate": 1.0,
+        "wilson_95": [
+          0.2065,
+          1.0
+        ]
+      },
+      "restraint": {
+        "successes": 3,
+        "total": 4,
+        "rate": 0.75,
+        "wilson_95": [
+          0.3006,
+          0.9544
+        ]
+      },
+      "self_correction": {
+        "successes": 0,
+        "total": 2,
+        "rate": 0.0,
+        "wilson_95": [
+          0.0,
+          0.6576
+        ]
+      }
+    },
+    "input": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/experiments/eg1-multilingual/alien-runs/qwen4b_multilingual_smoke_v1r2_ship_dev16.jsonl"
+  }
+]

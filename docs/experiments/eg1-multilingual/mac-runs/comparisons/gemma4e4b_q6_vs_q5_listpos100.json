@@ -1,0 +1,158 @@
+{
+  "baseline": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q5_listv2_listpos100.jsonl",
+  "candidate": "docs/experiments/eg1-multilingual/mac-runs/gemma4e4b_q6_listv2_listpos100.jsonl",
+  "rows": 100,
+  "exact_matches": 79,
+  "canonical_matches": 79,
+  "changed": 21,
+  "list_structure_changes": 7,
+  "changed_rows": [
+    {
+      "id": "LF-001",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "Patient complains of:\n- headache\n- nausea\n- fatigue",
+      "candidate": "Patient complains of:\n* headache\n* nausea\n* fatigue"
+    },
+    {
+      "id": "LF-008",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 5,
+      "baseline": "Your current diet is okay, but we can improve it. You should add more spinach, kale, broccoli, carrots, and bell peppers to your meals. These vegetables are packed with vitamins. Try roasting them for better flavor.",
+      "candidate": "Your current diet is okay, but we can improve it. You should add more:\n* spinach\n* kale\n* broccoli\n* carrots\n* bell peppers\nto your meals. These vegetables are packed with vitamins. Try roasting them for better flavor."
+    },
+    {
+      "id": "LF-031",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "Podcast topics:\n* Remote work\n* Burnout\n* Manager training\n* Hiring loops\n* Team rituals",
+      "candidate": "Podcast topics:\n* remote work\n* burnout\n* manager training\n* hiring loops\n* team rituals"
+    },
+    {
+      "id": "LF-038",
+      "baseline_list_lines": 7,
+      "candidate_list_lines": 7,
+      "baseline": "The memo went out to:\n* Sales\n* Marketing\n* Product\n* Engineering\n* Design\n* HR\n* Legal",
+      "candidate": "The memo went out to:\n* sales\n* marketing\n* product\n* engineering\n* design\n* hr\n* legal"
+    },
+    {
+      "id": "LF-043",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 0,
+      "baseline": "- React\n- Node\n- Postgres\n- Redis\n- Docker",
+      "candidate": "React\nNode\nPostgres\nRedis\nDocker"
+    },
+    {
+      "id": "LF-044",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "Errands:\n- dry cleaning\n- pharmacy\n- post office",
+      "candidate": "Errands:\n* dry cleaning\n* pharmacy\n* post office"
+    },
+    {
+      "id": "LF-045",
+      "baseline_list_lines": 7,
+      "candidate_list_lines": 7,
+      "baseline": "The inner and outer planets are:\n- Mercury\n- Venus\n- Earth\n- Mars\n- Jupiter\n- Saturn\n- Uranus\n\nPluto is no longer included.",
+      "candidate": "The inner and outer planets are:\n* Mercury\n* Venus\n* Earth\n* Mars\n* Jupiter\n* Saturn\n* Uranus\n\nPluto is no longer included."
+    },
+    {
+      "id": "LF-049",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 3,
+      "baseline": "Good morning class. Take your seats please. For homework tonight, you must read chapter four, answer the questions, and write a short essay. It is due on Friday. No late assignments will be accepted.",
+      "candidate": "Good morning class. Take your seats please. For homework tonight, you must:\n* Read chapter four\n* Answer the questions\n* Write a short essay\n\nIt is due on Friday. No late assignments will be accepted."
+    },
+    {
+      "id": "LF-054",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "Tomorrow:\n- fractions\n- decimals\n- word problems\n- practice quiz\n- review game",
+      "candidate": "Tomorrow:\n* cover fractions\n* decimals\n* word problems\n* practice quiz\n* review game"
+    },
+    {
+      "id": "LF-056",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "Your test results came back. Everything looks relatively normal. I just want you to:\n* lower your sodium intake\n* exercise more\n* get better sleep\n\nLet's schedule a follow up in three months. Have a good day.",
+      "candidate": "Your test results came back. Everything looks relatively normal. I just want you to:\n* lower your sodium intake\n* exercise more\n* get better sleep\n\nLet's schedule a follow-up in three months. Have a good day."
+    },
+    {
+      "id": "LF-064",
+      "baseline_list_lines": 7,
+      "candidate_list_lines": 7,
+      "baseline": "The orchestra is composed of:\n- strings\n- woodwinds\n- brass\n- percussion\n- keyboards\n- harp\n- choir\n\nIt was a beautiful performance.",
+      "candidate": "The orchestra is composed of:\n* strings\n* woodwinds\n* brass\n* percussion\n* keyboards\n* harp\n* choir\n\nIt was a beautiful performance."
+    },
+    {
+      "id": "LF-065",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "Mexico packing:\n- passport\n- swimsuit\n- sandals\n- sunscreen\n- sunglasses",
+      "candidate": "Mexico packing:\n* passport\n* swimsuit\n* sandals\n* sunscreen\n* sunglasses"
+    },
+    {
+      "id": "LF-069",
+      "baseline_list_lines": 8,
+      "candidate_list_lines": 0,
+      "baseline": "- school bag\n- laptop\n- charger\n- notebook\n- calculator\n- water bottle\n- keys\n- headphones",
+      "candidate": "School bag\nLaptop\nCharger\nNotebook\nCalculator\nWater bottle\nKeys\nHeadphones"
+    },
+    {
+      "id": "LF-073",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "Ask the doctor about:\n* Sleep\n* Headaches\n* The new prescription",
+      "candidate": "Ask the doctor about:\n* sleep\n* headaches\n* the new prescription"
+    },
+    {
+      "id": "LF-075",
+      "baseline_list_lines": 3,
+      "candidate_list_lines": 3,
+      "baseline": "In settings, you can:\n* Reset your password\n* Update your email\n* Delete your account",
+      "candidate": "In settings, you can:\n* reset your password\n* update your email\n* delete your account"
+    },
+    {
+      "id": "LF-080",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "Cleaning list:\n- kitchen counters\n- bathroom mirror\n- laundry\n- floors\n- trash",
+      "candidate": "Cleaning list:\n* kitchen counters\n* bathroom mirror\n* laundry\n* floors\n* trash"
+    },
+    {
+      "id": "LF-090",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "We are currently out of stock on:\n* Laptops\n* Monitors\n* Keyboards\n* Mice\n* Docking stations\n\nPlease order more ASAP.",
+      "candidate": "We are currently out of stock on:\n* laptops\n* monitors\n* keyboards\n* mice\n* docking stations\n\nPlease order more ASAP."
+    },
+    {
+      "id": "LF-093",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 3,
+      "baseline": "Flight\nHotel\nRental car",
+      "candidate": "* flight\n* hotel\n* rental car"
+    },
+    {
+      "id": "LF-095",
+      "baseline_list_lines": 7,
+      "candidate_list_lines": 0,
+      "baseline": "- North America\n- South America\n- Europe\n- Asia\n- Africa\n- Australia\n- Antarctica",
+      "candidate": "North America\nSouth America\nEurope\nAsia\nAfrica\nAustralia\nAntarctica"
+    },
+    {
+      "id": "LF-098",
+      "baseline_list_lines": 5,
+      "candidate_list_lines": 5,
+      "baseline": "Our booth setup window is short and the venue is strict. Make sure we have:\n*   Banners\n*   Demo laptop\n*   Scanner\n*   Swag\n*   Backup hotspot\n\nSecurity closes the dock at five. Call me if there is a problem.",
+      "candidate": "Our booth setup window is short and the venue is strict. Make sure we have:\n* banners\n* demo laptop\n* scanner\n* swag\n* backup hotspot\n\nSecurity closes the dock at five. Call me if there is a problem."
+    },
+    {
+      "id": "LF-100",
+      "baseline_list_lines": 0,
+      "candidate_list_lines": 3,
+      "baseline": "Thanks again for helping tonight. Bedtime is usually around eight. Please give Mia pajamas, story, and water by the bed. The monitor is on the dresser. Call if anything feels off.",
+      "candidate": "Thanks again for helping tonight. Bedtime is usually around eight. Please give Mia:\n* Pajamas\n* Story\n* Water by the bed\n\nThe monitor is on the dresser. Call if anything feels off."
+    }
+  ]
+}

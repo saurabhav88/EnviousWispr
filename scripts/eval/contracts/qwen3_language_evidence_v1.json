@@ -1,0 +1,371 @@
+{
+  "schema_version": "qwen3-language-evidence-v1",
+  "priority_languages": [
+    "en",
+    "de",
+    "fr",
+    "es",
+    "ru"
+  ],
+  "tracked_sources": {
+    "base_run_005_receipt": {
+      "path": "docs/experiments/eg1-multilingual/receipts/qwen3-base-run-005.aggregate.json",
+      "sha256": "8413906dd4cf4457d04b6d0992f76ad3038172bf02d935cfa9fb69d7f0959fcc",
+      "format": "json",
+      "source_path": "docs/experiments/eg1-multilingual/OVERNIGHT-LOG-2026-07-15.md",
+      "source_commit": "9a4e7a025b76b252c534f6ea0332f8acafa6fbe5",
+      "source_git_blob_oid": "22bd3ebf3be9f8ddcfe8fa5d0524b7b70002357c",
+      "source_sha256": "5f3ba1c3b6f6d23890d568620d29e8e69a8ca654041a7fe98d7811202f2b9e61",
+      "source_section_start": "### BASE-RUN-005 - Independent universal-base semantic ranking",
+      "source_section_end": "### ARCH-003",
+      "source_section_payload_sha256": "fb99f9b70856c87aa8b1baf540d37ba301d29576f20f51a3b8f824eeb4753d60"
+    },
+    "ru_base_ship": {
+      "path": "docs/experiments/eg1-multilingual/scored/base_ship_dev16.scored.jsonl",
+      "sha256": "5daee00e45de957c5570102ed92ccf9ba52d5831c50baf467faca149e66535f8",
+      "rows": 16,
+      "model_id": "qwen3-4b-base",
+      "prompt_sha256": "7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62",
+      "variant": "untouched_base",
+      "prompt_variant": "shipping"
+    },
+    "ru_base_strict": {
+      "path": "docs/experiments/eg1-multilingual/scored/base_strict_dev16.scored.jsonl",
+      "sha256": "413fbfc79fa24bd0f72b9d3286176bd99df3f843e091bd70d8ace6108b9035ab",
+      "rows": 16,
+      "model_id": "qwen3-4b-base",
+      "prompt_sha256": "326c951b2ba6b245f9e59215a3ccbe101715fc4fdd411cfbf9f35838910aa894",
+      "variant": "untouched_base",
+      "prompt_variant": "strict"
+    },
+    "ru_base_labeled": {
+      "path": "docs/experiments/eg1-multilingual/scored/base_labeled_dev16.scored.jsonl",
+      "sha256": "daaca836db9584d3a24099b0d58ae003712475b9e38e5872f29a8435e1175836",
+      "rows": 16,
+      "model_id": "qwen3-4b-base",
+      "prompt_sha256": "0f39d61c9d84d0558eabf718e77fe369bd8d9dba73a107fa41921d6892bd7fe0",
+      "variant": "untouched_base",
+      "prompt_variant": "labeled"
+    },
+    "ru_eg1_ship": {
+      "path": "docs/experiments/eg1-multilingual/scored/eg1_ship_dev16.scored.jsonl",
+      "sha256": "e56e137644c962fe9593ba2d1ea255925e4bba88d23429c6671f778f06b40a56",
+      "rows": 16,
+      "model_id": "eg1-v1-merged16",
+      "prompt_sha256": "7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62",
+      "variant": "current_eg1_merged_lora",
+      "prompt_variant": "shipping"
+    },
+    "ru_eg1_strict": {
+      "path": "docs/experiments/eg1-multilingual/scored/eg1_strict_dev16.scored.jsonl",
+      "sha256": "5d6e8f7f5f03696f011a5c9f7a60677b4ef6810a43fe51eb700f943771d716e4",
+      "rows": 16,
+      "model_id": "eg1-v1-merged16",
+      "prompt_sha256": "326c951b2ba6b245f9e59215a3ccbe101715fc4fdd411cfbf9f35838910aa894",
+      "variant": "current_eg1_merged_lora",
+      "prompt_variant": "strict"
+    },
+    "ru_eg1_labeled": {
+      "path": "docs/experiments/eg1-multilingual/scored/eg1_labeled_dev16.scored.jsonl",
+      "sha256": "0313d615fe027183d054ee117c027c7a18bd59f7b6b740ef5be20dc06b298976",
+      "rows": 16,
+      "model_id": "eg1-v1-merged16",
+      "prompt_sha256": "0f39d61c9d84d0558eabf718e77fe369bd8d9dba73a107fa41921d6892bd7fe0",
+      "variant": "current_eg1_merged_lora",
+      "prompt_variant": "labeled"
+    },
+    "ru_eg1_ship_basetok": {
+      "path": "docs/experiments/eg1-multilingual/scored/eg1_ship_basetok_dev16.scored.jsonl",
+      "sha256": "50794731377c5c96c0776be56e0e05aa64e24626178d08ef90a6af903fc162f9",
+      "rows": 16,
+      "model_id": "eg1-v1-basetok",
+      "prompt_sha256": "7ea77511b979a15df1ce28e20536b7920e47df42748d3a6e99adadaa5551bf62",
+      "variant": "current_eg1_base_tokenizer_control",
+      "prompt_variant": "shipping"
+    },
+    "ru_eg1_listv2": {
+      "path": "docs/experiments/eg1-multilingual/scored/eg1_current_listv2_ru_dev16.scored.jsonl",
+      "sha256": "cc837c84b15be3b0ecf3db3202b2a4bfbac14e37d1ab9b2018673b1cd42f48dc",
+      "rows": 16,
+      "model_id": "eg1_current",
+      "prompt_sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75",
+      "variant": "current_eg1_merged_lora",
+      "prompt_variant": "list_v2"
+    },
+    "qwen_base_ml56_output": {
+      "path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/qwen3_4b_base_ml56.jsonl",
+      "sha256": "cc042ba7940d9e4a2cc47a8614077a205b9b3497dbab79ba892e0d682d62e772",
+      "rows": 56,
+      "model_id": "qwen3_4b_base",
+      "prompt_sha256": "326c951b2ba6b245f9e59215a3ccbe101715fc4fdd411cfbf9f35838910aa894",
+      "variant": "untouched_base"
+    },
+    "eg1_current_listv2_ml56_output": {
+      "path": "docs/experiments/eg1-multilingual/alien-runs/eg1_current_listv2_ml56.jsonl",
+      "sha256": "dde8ea7ed2ac9d306ead5263568186bbe11cca8bc2bbdd0274f8245084edfd18",
+      "rows": 56,
+      "model_id": "eg1_current",
+      "prompt_sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75",
+      "variant": "current_eg1_merged_lora"
+    },
+    "qwen_base_twoitem_v1a": {
+      "path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/qwen3_4b_base_twoitem_v1a.jsonl",
+      "sha256": "f09dfe797a91a4c07b4c4f9901f697d6aadd0c3b700510bb6b37963c71d896b3",
+      "rows": 10,
+      "model_id": "qwen3_4b_base",
+      "prompt_sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75"
+    },
+    "qwen_base_twoitem_v1b": {
+      "path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/qwen3_4b_base_twoitem_v1b.jsonl",
+      "sha256": "99c04fa8682b2774a3ef2240da5ca6694b054a8d82d0eba55daa924ca3648dbc",
+      "rows": 10,
+      "model_id": "qwen3_4b_base",
+      "prompt_sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75"
+    },
+    "qwen_base_listpos_overflow100": {
+      "path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/qwen3_4b_base_listpos_overflow100.jsonl",
+      "sha256": "68598ec7e4381efd175ec339bb080232c4cd472cd583f1356f074b9e6a2ccbff",
+      "rows": 100,
+      "model_id": "qwen3_4b_base",
+      "prompt_sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75"
+    },
+    "qwen_base_listtrap_overflow100": {
+      "path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/qwen3_4b_base_listtrap_overflow100.jsonl",
+      "sha256": "8ef0d521e6bb1cf156eecf550f2c2fe949a803b5f2099aa4be5b857e32630e89",
+      "rows": 100,
+      "model_id": "qwen3_4b_base",
+      "prompt_sha256": "aaedd651c23e8be935d077a2409380abd7803474c0cbce415ab416f038af7c75"
+    },
+    "qwen_base_twoitem_scores": {
+      "path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/TWOITEM-MECHANICAL-SCORES.json",
+      "sha256": "f7b1a1b04c1590c63ea4f69b97f537f62e1efda28757b140c43594ca422083c0",
+      "format": "json"
+    },
+    "qwen_base_overflow_structure_scores": {
+      "path": "docs/experiments/eg1-multilingual/alien-runs/universal-base-bakeoff/STRUCTURE-SCORES.json",
+      "sha256": "f9de69821be951f4455b3fd1cd553ec91e4809cc81bdbc6dd509e01baaef0e7e",
+      "format": "json"
+    }
+  },
+  "private_sources": {
+    "legacy_ml_cases": {
+      "path": "scripts/eval/runs/bakeoff-1265/probes/multilingual_cases.jsonl",
+      "sha256": "6e4a85ce7955a184cb15bdda78c3542107403e02b0136ad52d569379941a65e3",
+      "rows": 56
+    },
+    "legacy_base_judged": {
+      "path": "scripts/eval/runs/bakeoff-1265/probes/ml_vanilla_judged.jsonl",
+      "sha256": "e0e41e4e1b8fea4219161b245010548eb69b14e58e32fedfc7558a21cb3b879b",
+      "rows": 56,
+      "variant": "untouched_base",
+      "identity_evidence": "path_and_historical_log_only"
+    },
+    "legacy_eg1_judged": {
+      "path": "scripts/eval/runs/bakeoff-1265/probes/ml_tuned_v2_judged.jsonl",
+      "sha256": "3c52c9f36ff152c6f3ee306e2ff53d7c52ff6baab998822b764ca49df15c9890",
+      "rows": 56,
+      "variant": "current_eg1_merged_lora",
+      "identity_evidence": "path_and_historical_log_only"
+    },
+    "legacy_eg1_hi_rejudge": {
+      "path": "scripts/eval/runs/bakeoff-1265/probes/ml_tuned_v2_hi_rejudge.jsonl",
+      "sha256": "4cd96542e1cd8cd547a040cec8ba4f5a19505b1280ee9716d0e54707c5add90a",
+      "rows": 8
+    },
+    "type_b_corpus": {
+      "path": "scripts/eval/corpus/type_b_approved_1890.jsonl",
+      "sha256": "27993adc574242e6bf2aef7430dbc2c6776ebbb6dd547d61f561d4e693d22a6b",
+      "rows": 1890
+    },
+    "eg1_training_v2": {
+      "path": "scripts/eval/runs/bakeoff-1265/train_sft_v2.jsonl",
+      "sha256": "5afc6b9435c7bef08df17ba3c4edcb889b8329cd7c1520c49d681999a666f568",
+      "rows": 5656
+    },
+    "type_b_base_qwen_v38": {
+      "path": "scripts/eval/runs/bakeoff-1265/scores_full1890_qwen_v38/per_case.jsonl",
+      "sha256": "c8b1585702ff84f84854757772d0131b6f4e833cacca3e9fd1c81c345d3bd4dd",
+      "rows": 1882,
+      "variant": "untouched_base",
+      "runtime": "historical_tuning_runtime",
+      "prompt_variant": "v38",
+      "identity_evidence": "path_and_historical_log_only"
+    },
+    "type_b_eg1_q5": {
+      "path": "scripts/eval/runs/bakeoff-1265/scores_full1890_tuned_qwen_v2_q5/per_case.jsonl",
+      "sha256": "44cad2e58068406284e7443700d53678fe6a6a83a2b120fc7cb3d3c111cc6198",
+      "rows": 1882,
+      "variant": "current_eg1_merged_lora",
+      "runtime": "historical_tuning_runtime_q5",
+      "identity_evidence": "path_and_historical_log_only"
+    },
+    "type_b_eg1_exact_mac_hard340": {
+      "path": "scripts/eval/runs/bakeoff-1265/scores_native_ship_config_s5/per_case.jsonl",
+      "sha256": "fff1a83c03ff70bf25b7b05b5c24d69d29a5000fb56886138219d521ca3517a0",
+      "rows": 340,
+      "variant": "current_eg1_merged_lora",
+      "runtime": "native_mac_exact_shipping_config",
+      "identity_evidence": "path_and_historical_log_only"
+    },
+    "type_b_eg1_exact_mac_full": {
+      "path": "scripts/eval/runs/type-b-1199/eg1_native_shipped_1890/scores/per_case.jsonl",
+      "sha256": "0c8bcbcd442d9aafce6f88fababe4979c6408a0a718e8cc673479388018b5491",
+      "rows": 1890,
+      "variant": "current_eg1_merged_lora",
+      "runtime": "native_mac_exact_shipping_config",
+      "identity_evidence": "path_and_historical_log_only"
+    }
+  },
+  "expected_aggregates": {
+    "legacy_base_strict": {
+      "de": 0,
+      "es": 1,
+      "fr": 3,
+      "hi": 1,
+      "ja": 1,
+      "pt": 1,
+      "zh": 6
+    },
+    "legacy_eg1_polish_ok": {
+      "de": 8,
+      "es": 2,
+      "fr": 6,
+      "hi": 2,
+      "ja": 5,
+      "pt": 3,
+      "zh": 7
+    },
+    "legacy_eg1_strict": {
+      "de": 8,
+      "es": 2,
+      "fr": 6,
+      "hi": 2,
+      "ja": 5,
+      "pt": 3,
+      "zh": 6
+    },
+    "ru_deterministic_strict": {
+      "ru_base_ship": 3,
+      "ru_base_strict": 7,
+      "ru_base_labeled": 7,
+      "ru_eg1_ship": 7,
+      "ru_eg1_strict": 6,
+      "ru_eg1_labeled": 6,
+      "ru_eg1_ship_basetok": 7,
+      "ru_eg1_listv2": 6
+    },
+    "qwen_base_twoitem": {
+      "total": 20,
+      "strict": 2,
+      "structure_ok": 10,
+      "required_ok": 2,
+      "forbidden_ok": 16
+    },
+    "qwen_base_overflow": {
+      "positive_total": 100,
+      "activated": 1,
+      "intended_count": 1,
+      "trap_total": 100,
+      "false_lists": 0
+    },
+    "qwen_base_run_005_reported": {
+      "overall": {
+        "total": 56,
+        "same_language": 54,
+        "meaning_safe": 52,
+        "cleanup": 28,
+        "grammar": 45,
+        "damaging": 7,
+        "strict": 26
+      },
+      "strict_by_language": {
+        "de": 6,
+        "es": 3,
+        "fr": 6,
+        "hi": 3,
+        "ja": 3,
+        "pt": 0,
+        "zh": 5
+      },
+      "english_twoitem": {
+        "total": 20,
+        "meaning_safe": 13,
+        "damaging": 7,
+        "strict": 3
+      }
+    },
+    "type_b_leakage": {
+      "exact_id_overlap": 1549,
+      "simple_normalized_input_overlap": 1549,
+      "conservative_normalized_input_overlap": 1551,
+      "id_origin_family_exposed": 1866,
+      "normalized_seeded_family_exposed": 1868
+    },
+    "type_b_metrics": {
+      "type_b_base_qwen_v38": {
+        "total": 1882,
+        "judge_pass_like": 1455,
+        "strict_three_green": 1457,
+        "meaning_preserved": 1777,
+        "s3_s4_judge_severity": 349,
+        "s4_damage": 44,
+        "list_total": 192,
+        "list_strict_three_green": 104,
+        "list_behavior_correct": 108,
+        "list_meaning_preserved": 189,
+        "list_s3_s4_judge_severity": 81,
+        "list_s3_s4_with_meaning_preserved": 80,
+        "list_s3_s4_with_behavior_incorrect": 81,
+        "list_s3_s4_with_clean_output_false": 1
+      },
+      "type_b_eg1_q5": {
+        "total": 1882,
+        "judge_pass_like": 1776,
+        "strict_three_green": 1780,
+        "meaning_preserved": 1845,
+        "s3_s4_judge_severity": 59,
+        "s4_damage": 17,
+        "list_total": 200,
+        "list_strict_three_green": 182,
+        "list_behavior_correct": 184,
+        "list_meaning_preserved": 199,
+        "list_s3_s4_judge_severity": 11,
+        "list_s3_s4_with_meaning_preserved": 11,
+        "list_s3_s4_with_behavior_incorrect": 11,
+        "list_s3_s4_with_clean_output_false": 0
+      },
+      "type_b_eg1_exact_mac_hard340": {
+        "total": 340,
+        "judge_pass_like": 314,
+        "strict_three_green": 316,
+        "meaning_preserved": 335,
+        "s3_s4_judge_severity": 14,
+        "s4_damage": 0,
+        "list_total": 40,
+        "list_strict_three_green": 33,
+        "list_behavior_correct": 34,
+        "list_meaning_preserved": 39,
+        "list_s3_s4_judge_severity": 6,
+        "list_s3_s4_with_meaning_preserved": 6,
+        "list_s3_s4_with_behavior_incorrect": 6,
+        "list_s3_s4_with_clean_output_false": 0
+      },
+      "type_b_eg1_exact_mac_full": {
+        "total": 1890,
+        "judge_pass_like": 1771,
+        "strict_three_green": 1775,
+        "meaning_preserved": 1861,
+        "s3_s4_judge_severity": 79,
+        "s4_damage": 8,
+        "list_total": 200,
+        "list_strict_three_green": 174,
+        "list_behavior_correct": 174,
+        "list_meaning_preserved": 200,
+        "list_s3_s4_judge_severity": 24,
+        "list_s3_s4_with_meaning_preserved": 24,
+        "list_s3_s4_with_behavior_incorrect": 24,
+        "list_s3_s4_with_clean_output_false": 2
+      }
+    }
+  }
+}
