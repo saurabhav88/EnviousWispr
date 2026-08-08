@@ -44,24 +44,28 @@ public actor ParakeetBackend: ASRBackend {
   /// #1348 Phase 2: whether this process may let FluidAudio touch the
   /// network. Cache-only is the delivery-managed invariant — the host admits
   /// verified bytes into FluidAudio's default cache and the service ONLY
-  /// loads them; a cache miss must throw typed (`OfflineError.modelMissing`
-  /// for model dirs, `AsrModelsError` for the vocab), never silently re-enter
-  /// the borrowed downloader. Deterministic last-writer per prepare (the XPC
-  /// handler serializes loads and unloads the previous backend first), so
-  /// flipping the delivery flag works without a service restart.
-  /// `internal` for the legacy-after-cache-only unit test.
+  /// loads them; a cache miss must throw typed (`DownloadError.modelMissing`
+  /// for model dirs, `AsrModelsError.modelNotFound` for the vocab), never
+  /// silently re-enter the borrowed downloader. With offline armed, ModelHub
+  /// throws before its purge/re-download recovery branch, so a corrupt cache
+  /// can never trigger a network repair from this process (#1981). Deterministic
+  /// last-writer per prepare (the XPC handler serializes loads and unloads the
+  /// previous backend first), so flipping the delivery flag works without a
+  /// service restart. `internal` for the legacy-after-cache-only unit test.
   static func configureOfflineMode(cacheOnly: Bool) {
-    DownloadUtils.enforceOffline = cacheOnly
+    ModelHub.offlineMode = cacheOnly
   }
 
   /// Prepare with optional progress reporting.
   /// The callback is called from FluidAudio's download thread — caller must marshal to MainActor.
   ///
-  /// FluidAudio's progress system:
-  /// - `downloadRepo()` downloads ALL model files in one pass with byte-weighted progress.
-  /// - `fractionCompleted` range: [0.0, 0.5] = download, [0.5, 1.0] = CoreML compilation.
-  /// - `downloadRepo()` only fires on the first `loadModels()` call — subsequent calls find
-  ///   files cached and skip. We map directly from FluidAudio's fraction.
+  /// FluidAudio's progress system (ModelHub/ProgressReporter):
+  /// - Repo loads declare a 0.5 download-phase weight, so `fractionCompleted`
+  ///   range is [0.0, 0.5] = download (byte-weighted), [0.5, 1.0] = CoreML
+  ///   compilation; the cached fast path emits 0.5 with `.downloading(0, 0)`
+  ///   and completion emits 1.0 with `.compiling(modelName: "")`.
+  /// - Downloads only happen on the legacy path's first load — cached files
+  ///   skip straight to compilation. We map directly from FluidAudio's fraction.
   ///
   /// Stall detection is host-side (#1339): the kernel's session detector and
   /// the sessionless warm-up guard watch the shared progress file this
@@ -72,8 +76,48 @@ public actor ParakeetBackend: ASRBackend {
   /// The legacy path (`cacheOnly: false`) stays byte-identical for the
   /// staged-rollout window (D5 §5), minus the deleted inert checksum no-op.
   public func prepare(cacheOnly: Bool, progressCallback: ProgressCallback?) async throws {
-    let handler: DownloadUtils.ProgressHandler? = progressCallback.map {
-      callback -> DownloadUtils.ProgressHandler in
+    let handler = Self.makeLoadProgressHandler(progressCallback)
+
+    Self.configureOfflineMode(cacheOnly: cacheOnly)
+    do {
+      let loadedModels: AsrModels
+      if cacheOnly {
+        // Delivery-managed: the default cache was admitted by the host's hash
+        // gate before this call; offlineMode (armed above) turns any gap
+        // into a typed throw the host maps to its repair path.
+        loadedModels = try await AsrModels.loadFromCache(version: .v3, progressHandler: handler)
+      } else {
+        loadedModels = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: handler)
+      }
+      self.fluidModels = loadedModels
+
+      let manager = AsrManager(config: .default)
+      // Vendor API: models load via loadModels(_:) after construction.
+      try await manager.loadModels(loadedModels)
+      self.fluidAsrManager = manager
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // #1525 PR I-B: unlike `transcribe`'s catch below, a non-recognized error
+      // here does NOT stay raw — model loading's own genuinely-non-vendor
+      // errors (a plain CocoaError/CoreML error from inside AsrModels'
+      // own loading calls) are still model-load failures, not a different
+      // physical class, so they normalize to `.unknownLoadFailure` too.
+      throw ParakeetModelLoadSentryError(normalizingLoadError: error)
+    }
+
+    isReady = true
+  }
+
+  /// The production vendor-progress → app-callback mapping, extracted from
+  /// `prepare` unchanged so the mapping itself is directly testable — one
+  /// owner, identical control flow (#1981 chunk 2; the test feeds real
+  /// `DownloadProgress` values through THIS function, not a copy).
+  static func makeLoadProgressHandler(
+    _ progressCallback: ProgressCallback?
+  ) -> ProgressHandler? {
+    progressCallback.map {
+      callback -> ProgressHandler in
       { progress in
         let phase: String
         let detail: String
@@ -104,36 +148,6 @@ public actor ParakeetBackend: ASRBackend {
         callback(progress.fractionCompleted, phase, detail)
       }
     }
-
-    Self.configureOfflineMode(cacheOnly: cacheOnly)
-    do {
-      let loadedModels: AsrModels
-      if cacheOnly {
-        // Delivery-managed: the default cache was admitted by the host's hash
-        // gate before this call; enforceOffline (armed above) turns any gap
-        // into a typed throw the host maps to its repair path.
-        loadedModels = try await AsrModels.loadFromCache(version: .v3, progressHandler: handler)
-      } else {
-        loadedModels = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: handler)
-      }
-      self.fluidModels = loadedModels
-
-      let manager = AsrManager(config: .default)
-      // v0.15.4 API: initialize(models:) became loadModels(_:).
-      try await manager.loadModels(loadedModels)
-      self.fluidAsrManager = manager
-    } catch is CancellationError {
-      throw CancellationError()
-    } catch {
-      // #1525 PR I-B: unlike `transcribe`'s catch below, a non-recognized error
-      // here does NOT stay raw — model loading's own genuinely-non-vendor
-      // errors (a plain CocoaError/CoreML error from inside AsrModels'
-      // own loading calls) are still model-load failures, not a different
-      // physical class, so they normalize to `.unknownLoadFailure` too.
-      throw ParakeetModelLoadSentryError(normalizingLoadError: error)
-    }
-
-    isReady = true
   }
 
   public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
@@ -142,10 +156,11 @@ public actor ParakeetBackend: ASRBackend {
     guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }
 
     let startTime = CFAbsoluteTimeGetCurrent()
-    // v0.15.4 API: the caller owns decoder state (fresh per one-shot batch decode;
-    // upstream's ChunkProcessor also makes fresh state per chunk internally) and the
-    // `source:` parameter is gone. Language hint intentionally NOT passed in PR-2
-    // (parity with the d5fcca4 behavior); G7 language propagation ships in PR-4.
+    // Vendor API: the caller owns decoder state (fresh per one-shot batch decode;
+    // upstream's ChunkProcessor also makes fresh state per chunk internally); there
+    // is no `source:` parameter. Language hint deliberately NOT passed — parked
+    // with #1678 (the fork's decode-time language machinery ships a French-tuned
+    // blocklist that measurably corrupts other languages; FluidInference#840).
     var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
     #if DEBUG
       // #1707 Phase 2: the real shared-engine call boundary for the overlap
@@ -207,7 +222,7 @@ public actor ParakeetBackend: ASRBackend {
 
     let config = SlidingWindowAsrConfig.streaming
     let manager = SlidingWindowAsrManager(config: config)
-    // v0.15.4 API: start(models:source:) split into loadModels(_:) + startStreaming(source:).
+    // Vendor API: streaming starts via loadModels(_:) then startStreaming(source:).
     try await manager.loadModels(models)
     try await manager.startStreaming(source: .microphone)
     self.streamingManager = manager

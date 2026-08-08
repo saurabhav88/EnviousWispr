@@ -4,15 +4,18 @@ import Foundation
 
 /// Batch Parakeet transcription for eval corpora.
 ///
-/// Mirrors `ParakeetBackend.swift` EXACTLY so the text this emits is the text
-/// the shipped app would produce for the same audio:
-///   - `AsrModels.loadFromCache(version: .v3)` (falls back to downloadAndLoad)
+/// Matches the shipped one-shot decode mechanics after model setup, so the
+/// text this emits is the text the app would produce for the same audio:
+///   - a cache-only model load with FluidAudio's network switch armed off —
+///     the app's ModelDelivery path OWNS model setup and admission; this
+///     benchmark only consumes the cache it populated, and must never mutate
+///     the model bytes it measures (#1981)
 ///   - `AsrManager(config: .default)` + `loadModels(_:)`
 ///   - a FRESH `TdtDecoderState` per file, sized by `manager.decoderLayerCount`
 ///     (the app makes one per one-shot batch decode; reusing state across files
 ///     would leak decoder context between unrelated utterances)
 ///   - `manager.transcribe(samples, decoderState: &state)`
-///   - no language hint (parity with the shipped d5fcca4 behaviour)
+///   - no language hint (parity with the shipped behaviour)
 ///
 /// Input:  a JSONL manifest, one {"id": "...", "wav": "/abs/path.wav"} per line.
 /// Output: JSONL, one {"id","text","ms"} or {"id","error"} per line.
@@ -59,12 +62,14 @@ func samples(at path: String) throws -> [Float] {
 let start = Date()
 FileHandle.standardError.write(Data("loading Parakeet v3...\n".utf8))
 
+// Cache-only: the app owns model setup; a benchmark must never mutate the
+// model bytes it measures.
+ModelHub.offlineMode = true
 let models: AsrModels
 do {
   models = try await AsrModels.loadFromCache(version: .v3)
 } catch {
-  FileHandle.standardError.write(Data("cache miss (\(error)); downloading...\n".utf8))
-  models = try await AsrModels.downloadAndLoad(version: .v3)
+  fail("Open EnviousWispr and complete Parakeet model setup once, then rerun.")
 }
 let manager = AsrManager(config: .default)
 try await manager.loadModels(models)

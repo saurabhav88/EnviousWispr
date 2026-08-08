@@ -18,6 +18,8 @@ enum ParakeetModelLoadSentryError: Error, LocalizedError, CustomNSError, Sendabl
   case hfDownloadFailed(String)
   case hfModelNotFound(String)
   case hfHtmlErrorResponse(String)
+  case downloadInvalidArtifact(String)
+  case downloadStalled(String)
   case unknownLoadFailure(String)
 
   static let errorDomain = "EnviousWisprASR.ParakeetModelLoadSentryError"
@@ -36,6 +38,10 @@ enum ParakeetModelLoadSentryError: Error, LocalizedError, CustomNSError, Sendabl
     case .hfModelNotFound: return 9
     case .hfHtmlErrorResponse: return 10
     case .unknownLoadFailure: return 11
+    // #1981: appended for the unified DownloadError's two new cases — codes
+    // 0-11 are a frozen XPC/Sentry contract and never renumber.
+    case .downloadInvalidArtifact: return 12
+    case .downloadStalled: return 13
     }
   }
 
@@ -44,7 +50,8 @@ enum ParakeetModelLoadSentryError: Error, LocalizedError, CustomNSError, Sendabl
     case .modelsModelNotFound(let d), .modelsDownloadFailed(let d), .modelsLoadingFailed(let d),
       .modelsCompilationFailed(let d), .offlineNetworkDisabled(let d), .offlineModelMissing(let d),
       .hfInvalidResponse(let d), .hfRateLimited(let d), .hfDownloadFailed(let d),
-      .hfModelNotFound(let d), .hfHtmlErrorResponse(let d), .unknownLoadFailure(let d):
+      .hfModelNotFound(let d), .hfHtmlErrorResponse(let d), .downloadInvalidArtifact(let d),
+      .downloadStalled(let d), .unknownLoadFailure(let d):
       return d
     }
   }
@@ -74,6 +81,8 @@ enum ParakeetModelLoadSentryError: Error, LocalizedError, CustomNSError, Sendabl
     case .hfDownloadFailed(let d): self = .hfDownloadFailed(d)
     case .hfModelNotFound(let d): self = .hfModelNotFound(d)
     case .hfHtmlErrorResponse(let d): self = .hfHtmlErrorResponse(d)
+    case .downloadInvalidArtifact(let d): self = .downloadInvalidArtifact(d)
+    case .downloadStalled(let d): self = .downloadStalled(d)
     case .unknownLoadFailure(let d): self = .unknownLoadFailure(d)
     }
   }
@@ -108,6 +117,8 @@ enum ParakeetModelLoadSentryError: Error, LocalizedError, CustomNSError, Sendabl
     case 9: self = .hfModelNotFound(d)
     case 10: self = .hfHtmlErrorResponse(d)
     case 11: self = .unknownLoadFailure(d)
+    case 12: self = .downloadInvalidArtifact(d)
+    case 13: self = .downloadStalled(d)
     default: return nil
     }
   }
@@ -130,6 +141,11 @@ extension ParakeetModelLoadSentryError: StableSentryErrorIdentity {
     case .hfDownloadFailed: return "FluidAudio.DownloadUtils.HuggingFaceDownloadError#2"
     case .hfModelNotFound: return "FluidAudio.DownloadUtils.HuggingFaceDownloadError#3"
     case .hfHtmlErrorResponse: return "FluidAudio.DownloadUtils.HuggingFaceDownloadError#4"
+    // #1981: new unified-DownloadError cases get NEW literals under the new type
+    // name; the seven literals above are FROZEN historical identities (Sentry
+    // issue continuity) and deliberately keep the deleted type's name.
+    case .downloadInvalidArtifact: return "FluidAudio.DownloadError.invalidArtifact"
+    case .downloadStalled: return "FluidAudio.DownloadError.stalled"
     case .unknownLoadFailure:
       return "EnviousWisprASR.ParakeetModelLoadSentryError.unknownLoadFailure"
     }
@@ -148,6 +164,8 @@ extension ParakeetModelLoadSentryError: StableSentryErrorIdentity {
     case .hfDownloadFailed: return "parakeet_load.hf_download_failed"
     case .hfModelNotFound: return "parakeet_load.hf_model_not_found"
     case .hfHtmlErrorResponse: return "parakeet_load.hf_html_error_response"
+    case .downloadInvalidArtifact: return "parakeet_load.download_invalid_artifact"
+    case .downloadStalled: return "parakeet_load.download_stalled"
     case .unknownLoadFailure: return "parakeet_load.unknown_load_failure"
     }
   }

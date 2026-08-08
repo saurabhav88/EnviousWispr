@@ -251,7 +251,12 @@ enum ManifestFixture {
   // carrying the finalization fix. `runtimeABI` participates in the canonical
   // JSON, so the digest moves with it — cloud review caught the stale value,
   // which would have made `loadBundled` reject the manifest on every launch.
-  static let goldenDigest = "db47ee6d8eb3bff63a46619ef626bd28618b165e1a48d56ae799871cd31f9232"
+  // Updated 2026-08-07 (#1981): `runtimeABI` advanced to fork pin a1767d86
+  // (upstream catch-up). Identical model bytes; the digest change deliberately
+  // invalidates the prior Parakeet admission marker, causing one full verification
+  // pass and re-admission with no re-download (CacheAdmission.isAdmitted
+  // digest equality; ModelIdentity invariant 9 keeps delivery runtime-agnostic).
+  static let goldenDigest = "2fe5bab08d88b3d0f32c3ab0bce126855c600f3a0cab382953d7a25b56249657"
 
   @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.shippedManifestURL)

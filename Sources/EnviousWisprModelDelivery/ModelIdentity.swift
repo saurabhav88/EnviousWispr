@@ -14,9 +14,10 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
 /// `revision` is the BYTE pin (upstream commit SHA / our version tag);
 /// `runtimeABI` is the CODE pin (the runtime build the bytes were validated
 /// against). They move independently — #1339's existence proof: the FluidAudio
-/// code pin and the HF model revision advanced separately. A `runtimeABI`
-/// change with identical bytes never touches delivery (invariant 9); it
-/// signals the backend adapter, not this layer.
+/// code pin and HF model revision advance independently. `runtimeABI` is part
+/// of the manifest's canonical JSON, so changing it changes `manifestDigest`.
+/// Existing bytes are revalidated once and re-admitted without re-download;
+/// the delivery layer still never loads or compiles the runtime (invariant 9).
 public struct ModelIdentity: Hashable, Codable, Sendable {
   public let family: ModelFamily
   public let name: String

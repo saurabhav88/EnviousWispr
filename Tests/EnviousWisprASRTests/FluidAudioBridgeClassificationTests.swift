@@ -5,13 +5,12 @@ import Testing
 
 @testable import EnviousWisprFluidAudioBridge
 
-/// #1525 PR I-B — classification-completeness tests for the bridge that isolates
-/// FluidAudio's raw error taxonomies (`ASRError`, `AsrModelsError`,
-/// `DownloadUtils.OfflineError`, `DownloadUtils.HuggingFaceDownloadError`) behind
-/// name-collision-free values. Lives in this CONSUMING test target, not inside the
-/// bridge target itself (Codex r9). Both types' `@unknown default`/catch-all
-/// branches are code-inspection-only guarantees — no real FluidAudio SDK value
-/// can exercise them with the currently pinned fork version.
+/// #1525 PR I-B (types updated #1981) — classification-completeness tests for the
+/// bridge that isolates FluidAudio's raw error taxonomies (`ASRError`,
+/// `AsrModelsError`, and the unified `DownloadError`) behind name-collision-free
+/// values. Lives in this CONSUMING test target, not inside the bridge target itself
+/// (Codex r9). The `DownloadError` switch is deliberately exhaustive with no
+/// default branch, so vendor growth is a compile error, never a silent miss.
 @Suite("FluidAudio error classification (#1525 PR I-B)")
 struct FluidAudioBridgeClassificationTests {
 
@@ -60,7 +59,7 @@ struct FluidAudioBridgeClassificationTests {
     #expect(classifyFluidAudioASRError(OtherError()) == nil)
   }
 
-  // MARK: - FluidAudioModelLoadErrorKind (model-load path, 11 real cases across 3 enums)
+  // MARK: - FluidAudioModelLoadErrorKind (model-load path, 13 real cases across 2 enums)
 
   @Test("classifyFluidAudioModelLoadError maps every real AsrModelsError case")
   func classifiesAllAsrModelsErrorCases() {
@@ -88,69 +87,60 @@ struct FluidAudioBridgeClassificationTests {
     }
   }
 
-  @Test("classifyFluidAudioModelLoadError maps every real DownloadUtils.OfflineError case")
-  func classifiesAllOfflineErrorCases() {
-    let cases: [(DownloadUtils.OfflineError, FluidAudioModelLoadErrorKind)] = [
+  @Test("classifyFluidAudioModelLoadError maps every real unified DownloadError case (all 9)")
+  func classifiesAllDownloadErrorCases() {
+    let cases: [(DownloadError, FluidAudioModelLoadErrorKind)] = [
       (
-        .networkDisabled(operation: "downloadRepo(x)"),
+        .networkDisabled(operation: "loadModels(x)"),
         .offlineNetworkDisabled(
-          DownloadUtils.OfflineError.networkDisabled(operation: "downloadRepo(x)")
-            .localizedDescription)
+          DownloadError.networkDisabled(operation: "loadModels(x)").localizedDescription)
       ),
       (
         .modelMissing(repo: "r", missing: ["a.mlmodel"]),
         .offlineModelMissing(
-          DownloadUtils.OfflineError.modelMissing(repo: "r", missing: ["a.mlmodel"])
-            .localizedDescription)
+          DownloadError.modelMissing(repo: "r", missing: ["a.mlmodel"]).localizedDescription)
       ),
-    ]
-    for (vendorError, expected) in cases {
-      #expect(classifyFluidAudioModelLoadError(vendorError) == expected)
-    }
-  }
-
-  @Test(
-    "classifyFluidAudioModelLoadError maps every real DownloadUtils.HuggingFaceDownloadError case"
-  )
-  func classifiesAllHuggingFaceDownloadErrorCases() {
-    let cases: [(DownloadUtils.HuggingFaceDownloadError, FluidAudioModelLoadErrorKind)] = [
       (
         .invalidResponse,
-        .hfInvalidResponse(
-          DownloadUtils.HuggingFaceDownloadError.invalidResponse.localizedDescription)
+        .hfInvalidResponse(DownloadError.invalidResponse.localizedDescription)
       ),
       (
         .rateLimited(statusCode: 429, message: "slow down"),
         .hfRateLimited(
-          DownloadUtils.HuggingFaceDownloadError.rateLimited(
-            statusCode: 429, message: "slow down"
-          ).localizedDescription)
+          DownloadError.rateLimited(statusCode: 429, message: "slow down").localizedDescription)
       ),
       (
         .downloadFailed(path: "p", underlying: NSError(domain: "fixture", code: 3)),
         .hfDownloadFailed(
-          DownloadUtils.HuggingFaceDownloadError.downloadFailed(
-            path: "p", underlying: NSError(domain: "fixture", code: 3)
-          ).localizedDescription)
+          DownloadError.downloadFailed(path: "p", underlying: NSError(domain: "fixture", code: 3))
+            .localizedDescription)
       ),
       (
         .modelNotFound(path: "p"),
-        .hfModelNotFound(
-          DownloadUtils.HuggingFaceDownloadError.modelNotFound(path: "p").localizedDescription)
+        .hfModelNotFound(DownloadError.modelNotFound(path: "p").localizedDescription)
       ),
       (
         .htmlErrorResponse(path: "p", snippet: "<html>"),
         .hfHtmlErrorResponse(
-          DownloadUtils.HuggingFaceDownloadError.htmlErrorResponse(path: "p", snippet: "<html>")
-            .localizedDescription)
+          DownloadError.htmlErrorResponse(path: "p", snippet: "<html>").localizedDescription)
+      ),
+      (
+        .invalidArtifact(path: "p", reason: "truncated"),
+        .downloadInvalidArtifact(
+          DownloadError.invalidArtifact(path: "p", reason: "truncated").localizedDescription)
+      ),
+      (
+        .stalled(path: "p", window: 60),
+        .downloadStalled(DownloadError.stalled(path: "p", window: 60).localizedDescription)
       ),
     ]
+    #expect(cases.count == 9, "the unified DownloadError has exactly 9 cases")
     for (vendorError, expected) in cases {
       #expect(classifyFluidAudioModelLoadError(vendorError) == expected)
     }
   }
 
-  @Test("classifyFluidAudioModelLoadError returns nil for none of the 3 named vendor types")
+  @Test("classifyFluidAudioModelLoadError returns nil for neither named vendor type")
   func returnsNilForNonVendorModelLoadError() {
     struct OtherError: Error {}
     #expect(classifyFluidAudioModelLoadError(OtherError()) == nil)
