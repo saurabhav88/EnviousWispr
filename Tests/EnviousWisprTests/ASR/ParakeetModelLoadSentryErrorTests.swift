@@ -62,6 +62,14 @@ struct ParakeetModelLoadSentryErrorTests {
       "parakeet_load.hf_html_error_response"
     ),
     (
+      .downloadInvalidArtifact("x"), "FluidAudio.DownloadError.invalidArtifact",
+      "parakeet_load.download_invalid_artifact"
+    ),
+    (
+      .downloadStalled("x"), "FluidAudio.DownloadError.stalled",
+      "parakeet_load.download_stalled"
+    ),
+    (
       .unknownLoadFailure("x"), "EnviousWisprASR.ParakeetModelLoadSentryError.unknownLoadFailure",
       "parakeet_load.unknown_load_failure"
     ),
@@ -77,11 +85,16 @@ struct ParakeetModelLoadSentryErrorTests {
     }
   }
 
-  @Test("all 12 declared identities are unique")
+  @Test("all 14 declared identities are unique")
   func identitiesAreUnique() {
     let errors = Self.pins.map(\.0)
-    #expect(Set(errors.map(\.sentryFingerprintDescriptor)).count == 12)
-    #expect(Set(errors.map(\.sentrySemanticID)).count == 12)
+    #expect(Self.pins.count == 14, "every enum case must appear in the pin fixture")
+    #expect(Set(errors.map(\.sentryFingerprintDescriptor)).count == 14)
+    #expect(Set(errors.map(\.sentrySemanticID)).count == 14)
+    // #1981: appended codes only — the numeric contract 0-11 is frozen and the
+    // two new cases take exactly 12 and 13.
+    #expect(ParakeetModelLoadSentryError.downloadInvalidArtifact("x").errorCode == 12)
+    #expect(ParakeetModelLoadSentryError.downloadStalled("x").errorCode == 13)
   }
 
   // MARK: - B. Mapping completeness — built from FluidAudioModelLoadErrorKind
@@ -102,6 +115,8 @@ struct ParakeetModelLoadSentryErrorTests {
       (.hfDownloadFailed("i"), .hfDownloadFailed("i")),
       (.hfModelNotFound("j"), .hfModelNotFound("j")),
       (.hfHtmlErrorResponse("k"), .hfHtmlErrorResponse("k")),
+      (.downloadInvalidArtifact("m"), .downloadInvalidArtifact("m")),
+      (.downloadStalled("n"), .downloadStalled("n")),
       (.unknownLoadFailure("l"), .unknownLoadFailure("l")),
     ]
     for (kind, expected) in cases {
@@ -112,11 +127,11 @@ struct ParakeetModelLoadSentryErrorTests {
   // MARK: - C. Mapping completeness — the real production normalizer
 
   @Test(
-    "init(normalizingLoadError:) recognizes a real FluidAudio model-load vendor error"
+    "init(normalizingLoadError:) maps a genuinely non-vendor error to .unknownLoadFailure"
   )
-  func normalizingLoadErrorRecognizesVendorError() {
-    // classifyFluidAudioModelLoadError only recognizes AsrModelsError/OfflineError/
-    // HuggingFaceDownloadError — a genuinely non-vendor error normalizes to
+  func normalizingLoadErrorMapsNonVendorErrorToUnknown() {
+    // classifyFluidAudioModelLoadError recognizes AsrModelsError and the unified
+    // DownloadError; a genuinely non-vendor error normalizes to
     // .unknownLoadFailure, tested below.
     struct SyntheticNonVendorError: Error, LocalizedError {
       var errorDescription: String? { "a synthetic CoreML-shaped model-load failure" }
@@ -151,15 +166,20 @@ struct ParakeetModelLoadSentryErrorTests {
   /// process cast but NOT an actual XPC-style archive round-trip (confirmed via a
   /// direct `NSKeyedArchiver`/`NSKeyedUnarchiver` probe this session). Only
   /// `errorUserInfo` populating `NSLocalizedDescriptionKey` survives that.
-  @Test("localizedDescription survives an actual NSSecureCoding archive round-trip")
-  func localizedDescriptionSurvivesArchiveRoundTrip() throws {
-    let error = ParakeetModelLoadSentryError.hfRateLimited("a real vendor description")
-    let bridged = error as NSError
-    let data = try NSKeyedArchiver.archivedData(
-      withRootObject: bridged, requiringSecureCoding: true)
-    let decoded = try #require(
-      try NSKeyedUnarchiver.unarchivedObject(ofClass: NSError.self, from: data))
-    #expect(decoded.localizedDescription == "a real vendor description")
+  @Test("every case survives an actual NSSecureCoding archive round-trip")
+  func everyCaseSurvivesArchiveRoundTrip() throws {
+    for (error, _, _) in Self.pins {
+      let bridged = error as NSError
+      let data = try NSKeyedArchiver.archivedData(
+        withRootObject: bridged, requiringSecureCoding: true)
+      let decoded = try #require(
+        try NSKeyedUnarchiver.unarchivedObject(ofClass: NSError.self, from: data))
+
+      #expect(decoded.domain == ParakeetModelLoadSentryError.errorDomain)
+      #expect(decoded.code == error.errorCode)
+      #expect(decoded.localizedDescription == error.errorDescription)
+      #expect(ParakeetModelLoadSentryError(reconstructingFrom: decoded) == error)
+    }
   }
 
   // MARK: - E. Event-construction contract
