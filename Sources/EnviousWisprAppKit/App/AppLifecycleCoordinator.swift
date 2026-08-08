@@ -352,6 +352,8 @@ final class AppLifecycleCoordinator {
       model: settings.llmModel,
       keychainManager: keychainManager
     )
+
+    setup.applicationDidBecomeActive()
   }
 
   func runWillTerminate() {
@@ -368,7 +370,7 @@ final class AppLifecycleCoordinator {
     // PR-B.2 of #763: both window-close observers are torn down by the
     // coordinator now.
     appWindowCoordinator.tearDown()
-    setup.ollamaSetup.cleanup()
+    setup.cleanup()
     // PR10 of #763 — shared HotkeyService is owned by EnviousWisprApp as
     // `@State`; this coordinator holds an injected ref.
     hotkeyService.stop()
