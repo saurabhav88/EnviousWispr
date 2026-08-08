@@ -202,6 +202,23 @@ scripts/eval/apple_runner/Package.resolved
 !scripts/eval/parakeet_runner/**
 scripts/eval/parakeet_runner/.build/
 scripts/eval/parakeet_runner/Package.resolved
+# Per-model Ollama benchmark (#1950) — PUBLIC tracked files.
+# Tracked for the same reason as the #1272 block above: these scripts produce
+# numbers we cite (the recommended-models list, and a planned public write-up),
+# and a gitignored generator has already been lost once.
+# NOT tracked, deliberately: `scripts/eval/corpus/ollama_bench_v1.jsonl` and
+# everything under `scripts/eval/runs/`. The assembled corpus embeds 13 cases
+# copied from the gitignored `type_b_parakeet.jsonl`, and the run outputs quote
+# those inputs verbatim, so committing either would publish private corpus text
+# to a public repo (polish-eval.md RULE: corpus-rules — never publish private
+# corpora). `build_ollama_bench_corpus.py` rebuilds the corpus deterministically
+# from its frozen id list, so the tooling reproduces the run without it.
+!scripts/eval/run_ollama_bench.py
+!scripts/eval/report_ollama_bench.py
+!scripts/eval/judge_ollama_bench.sh
+!scripts/eval/render_bench_prompts.sh
+!scripts/eval/build_ollama_bench_corpus.py
+!scripts/eval/corpus/ollama_bench_international_v1.jsonl
 # Alias suggestion eval harness (#637) — PUBLIC tracked files
 !scripts/eval/alias_runner/
 !scripts/eval/alias_runner/**
