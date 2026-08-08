@@ -33,6 +33,11 @@ internal struct PasteDeliveryRequest {
   let candidateDeletesDictatedText: Bool
   let targetApp: NSRunningApplication?
   let targetElement: AXUIElement?
+  /// True when the delivery-time retry was attempted. If it recovered
+  /// `targetElement`, that element proves same-APP only, never same-window/tab,
+  /// so every commit boundary must re-verify the field before submitting a
+  /// repaired candidate.
+  let targetElementIsRetried: Bool
   let restoreClipboardAfterPaste: Bool
   /// The SAME cumulative terminal-resolution budget the caret read used.
   ///
@@ -332,7 +337,8 @@ internal final class PasteCascadeExecutor {
         legacy: request.legacyText,
         repaired: request.repairedText,
         context: request.caretContext,
-        element: element)
+        element: element,
+        requireFocusedElementMatch: request.targetElementIsRetried)
       let disposition = dispositionForAXDirect(insert.outcome)
       submittedKind = insert.submitted
       axAllowsRetry = disposition.allowsAutomaticRetry
@@ -372,6 +378,7 @@ internal final class PasteCascadeExecutor {
           context: request.caretContext,
           element: request.targetElement,
           candidateDeletesDictatedText: request.candidateDeletesDictatedText,
+          requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
         // Snapshot AFTER that revalidation, immediately before the write. The
         // re-check makes accessibility calls, and anything copied while they run
@@ -422,6 +429,7 @@ internal final class PasteCascadeExecutor {
           context: request.caretContext,
           element: request.targetElement,
           candidateDeletesDictatedText: request.candidateDeletesDictatedText,
+          requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
         // Same ordering as Tier 2: snapshot after the re-check, before the write.
         let snapshot: ClipboardSnapshot? =
@@ -474,6 +482,7 @@ internal final class PasteCascadeExecutor {
           context: request.caretContext,
           element: request.targetElement,
           candidateDeletesDictatedText: request.candidateDeletesDictatedText,
+          requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)

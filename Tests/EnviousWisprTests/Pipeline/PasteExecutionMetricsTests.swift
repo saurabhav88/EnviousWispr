@@ -21,6 +21,10 @@ struct PasteExecutionMetricsTests {
       pasteLatencyMs: 5,
       smartInsertionEnabled: true,
       caretContextOutcome: "read",
+      // #1980. Distinctive, non-default values, matching the #1921 pattern
+      // below: `true`/`137.5` cannot pass by coincidence with an un-set field.
+      caretCaptureRetried: true,
+      caretCaptureRetryMs: 137.5,
       repairRules: "leading_space,lowercased_first",
       pastePayloadKind: "repaired",
       languageResolutionSource: "document",
@@ -29,6 +33,8 @@ struct PasteExecutionMetricsTests {
       ExecutionMetrics.self, from: JSONEncoder().encode(metrics))
     #expect(decoded.smartInsertionEnabled == true)
     #expect(decoded.caretContextOutcome == "read")
+    #expect(decoded.caretCaptureRetried == true)
+    #expect(decoded.caretCaptureRetryMs == 137.5)
     #expect(decoded.repairRules == "leading_space,lowercased_first")
     #expect(decoded.pastePayloadKind == "repaired")
     // #1921. Distinctive values, not defaults, so a hop that silently dropped
@@ -49,6 +55,8 @@ struct PasteExecutionMetricsTests {
     #expect(decoded.pasteTier == "cgevent")
     #expect(decoded.smartInsertionEnabled == nil)
     #expect(decoded.caretContextOutcome == nil)
+    #expect(decoded.caretCaptureRetried == nil)
+    #expect(decoded.caretCaptureRetryMs == nil)
     #expect(decoded.repairRules == nil)
     #expect(decoded.pastePayloadKind == nil)
     // #1921. The literal JSON above is deliberately UNCHANGED — it is the real
@@ -70,6 +78,12 @@ struct PasteExecutionMetricsTests {
     #expect(partial.properties["caret_context"] as? String == "setting_off")
     #expect(partial.properties["repair_rules"] == nil)
     #expect(partial.properties["payload_kind"] == nil)
+    // #1980. Absent, not present-as-nil/false/zero — same discipline as every
+    // other optional field on this type.
+    #expect(empty.properties["caret_capture_retried"] == nil)
+    #expect(empty.properties["caret_capture_retry_ms"] == nil)
+    #expect(partial.properties["caret_capture_retried"] == nil)
+    #expect(partial.properties["caret_capture_retry_ms"] == nil)
     // #1921. Nil must stay ABSENT rather than becoming "none". "none" is a real
     // upstream category meaning "we measured and found nothing"; absent means
     // the fact was never recorded, which is what an old stored transcript has.
@@ -88,6 +102,14 @@ struct PasteExecutionMetricsTests {
       languageResolutionSource: "none", languageConfidenceBucket: "none")
     #expect(measuredNothing.properties["language_resolution_source"] as? String == "none")
     #expect(measuredNothing.properties["language_confidence_bucket"] as? String == "none")
+
+    // #1980. The emission direction for the retry fields — proves the two
+    // properties actually appear, typed, when set, not merely that they
+    // disappear when nil.
+    let retried = TelemetryService.PasteInsertionTelemetry(
+      caretCaptureRetried: true, caretCaptureRetryMs: 137.5)
+    #expect(retried.properties["caret_capture_retried"] as? Bool == true)
+    #expect(retried.properties["caret_capture_retry_ms"] as? Double == 137.5)
   }
 
   @Test("Every rule name is a closed reason, never the word it applied to")

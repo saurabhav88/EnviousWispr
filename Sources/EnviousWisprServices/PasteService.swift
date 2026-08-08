@@ -401,17 +401,36 @@ public enum PasteService {
   ///
   /// Nothing here decides WHERE the paste lands. The write goes to whatever is
   /// focused either way; this only chooses between two strings.
+  ///
+  /// `requireCaretUnchanged` is a SEPARATE trigger for the same re-check,
+  /// independent of `candidateDeletesDictatedText`. That existing gate was
+  /// calibrated for "the caret shifted slightly within the same field" (worst
+  /// case: one wrong capital) and a trailing-space/seam-casing candidate never
+  /// sets it — so without this parameter, a retry-sourced element (which
+  /// carries only a same-APP guarantee, never same-window/tab) would commit
+  /// with no live re-check at all. Default `false` is byte-identical to
+  /// today's behavior for every existing caller.
   package static func payloadAtCommitBoundary(
     legacy: String,
     repaired: String?,
     context: CaretContext?,
     element: AXUIElement?,
     candidateDeletesDictatedText: Bool,
-    terminalBudget: TerminalResolutionBudget? = nil
+    requireCaretUnchanged: Bool = false,
+    terminalBudget: TerminalResolutionBudget? = nil,
+    // Injected seam, defaulting to the real check. Deleting-candidate cases
+    // can force the "changed" direction deterministically with a real-but-
+    // mismatched AX element; the "unchanged" direction this parameter adds
+    // has no such trick from a test process, so it needs a seam to be
+    // testable at all.
+    caretUnchangedCheck: (AXUIElement, CaretContext, TerminalResolutionBudget?) -> Bool =
+      caretUnchanged
   ) -> (text: String, kind: PastePayloadKind) {
     guard let repaired, let context, let element else { return (legacy, .legacy) }
-    guard candidateDeletesDictatedText else { return (repaired, .repaired) }
-    guard caretUnchanged(element: element, since: context, terminalBudget: terminalBudget)
+    guard candidateDeletesDictatedText || requireCaretUnchanged else {
+      return (repaired, .repaired)
+    }
+    guard caretUnchangedCheck(element, context, terminalBudget)
     else { return (legacy, .legacy) }
     return (repaired, .repaired)
   }
@@ -587,6 +606,42 @@ public enum PasteService {
       leftReachesDocumentStart: leftStart == 0)
   }
 
+  /// The app-scoped `kAXFocusedUIElementAttribute` query shared by every
+  /// caller that wants "what is focused in THIS process right now" — never a
+  /// system-wide query, which can answer for a different app.
+  ///
+  /// Owns every defensive check around that one AX round-trip: process trust,
+  /// a usable pid, the messaging timeout bound, CF type validation before the
+  /// cast, and confirming the returned element actually belongs to the
+  /// process that was asked, not one AX resolved to on its own.
+  private static func focusedElementQuery(
+    pid: pid_t,
+    messagingTimeout: Double
+  ) -> AXUIElement? {
+    guard AXIsProcessTrusted(), pid > 0 else { return nil }
+
+    let application = AXUIElementCreateApplication(pid)
+    // Bound every subsequent read. A wedged destination must not hang the
+    // dictation path; this is a failure bound, not a latency target.
+    AXUIElementSetMessagingTimeout(application, Float(messagingTimeout))
+
+    var focusedRef: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(
+        application, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+      let focusedValue = focusedRef,
+      CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
+    else { return nil }
+    // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check.
+    let focused = focusedValue as! AXUIElement
+
+    var focusedPID: pid_t = 0
+    guard AXUIElementGetPid(focused, &focusedPID) == .success, focusedPID == pid else {
+      return nil
+    }
+    return focused
+  }
+
   /// Read the text either side of the caret in the app that owns `element`.
   ///
   /// Synchronous, non-throwing, and fail-open: ANY unavailable, malformed,
@@ -610,35 +665,36 @@ public enum PasteService {
     matching element: AXUIElement,
     messagingTimeout: Double = axMessagingTimeoutSeconds
   ) -> AXUIElement? {
-    guard AXIsProcessTrusted() else { return nil }
-
     // Resolve the owning process from the captured element itself — never from
     // `NSWorkspace.frontmostApplication`, which is stale without a run loop,
     // and never from a system-wide element, which can answer for another app.
     var pid: pid_t = 0
     guard AXUIElementGetPid(element, &pid) == .success, pid > 0 else { return nil }
 
-    let application = AXUIElementCreateApplication(pid)
-    // Bound every subsequent read. A wedged destination must not hang the
-    // dictation path; this is a failure bound, not a latency target.
-    AXUIElementSetMessagingTimeout(application, Float(messagingTimeout))
-
-    var focusedRef: CFTypeRef?
-    guard
-      AXUIElementCopyAttributeValue(
-        application, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-      let focusedValue = focusedRef,
-      CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
-    else { return nil }
-    // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check.
-    let fresh = focusedValue as! AXUIElement
+    guard let fresh = focusedElementQuery(pid: pid, messagingTimeout: messagingTimeout) else {
+      return nil
+    }
 
     // The user may have moved on since capture. Repairing against a different
     // field would edit text they never dictated into.
     guard CFEqual(fresh, element) else { return nil }
-    var freshPid: pid_t = 0
-    guard AXUIElementGetPid(fresh, &freshPid) == .success, freshPid == pid else { return nil }
     return fresh
+  }
+
+  /// The currently focused element of a KNOWN app process, used when there is
+  /// no prior captured element to match against — e.g. the record-start
+  /// capture failed and this is a delivery-time retry. `pid` scopes the query
+  /// by construction, so this can never target an app the caller did not ask
+  /// for.
+  ///
+  /// This proves same-APP only, never same-window/tab within that app —
+  /// callers that need the stronger guarantee re-verify at commit time via
+  /// `payloadAtCommitBoundary`'s `requireCaretUnchanged`.
+  package static func focusedElement(
+    inAppWithPID pid: pid_t,
+    messagingTimeout: Double = axMessagingTimeoutSeconds
+  ) -> AXUIElement? {
+    focusedElementQuery(pid: pid, messagingTimeout: messagingTimeout)
   }
 
   /// Whether the field is still EXACTLY as it was when a contextual candidate
@@ -1022,6 +1078,21 @@ public enum PasteService {
     return resultRef as? String
   }
 
+  /// Whether a Tier 1 write may proceed given the focus-match requirement.
+  ///
+  /// Extracted as a pure function so this ONE new decision (#1980, whole-diff
+  /// review P1) is testable without live AX state. `insertViaAccessibility`
+  /// itself cannot be driven deterministically end to end — its role,
+  /// settable, range, and field reads are all live AX calls — but the rule
+  /// this guard adds can be, matching the existing precedent of
+  /// `classifyInsertOutcome` / `dispositionForAXDirect` / `classifyPasteFocus`.
+  package static func mayCommitAccessibilityWrite(
+    requireFocusedElementMatch: Bool,
+    isFocused: Bool
+  ) -> Bool {
+    !requireFocusedElementMatch || isFocused
+  }
+
   /// Insert text directly into an AX element at the cursor position.
   /// Uses kAXSelectedTextAttribute which inserts at cursor / replaces selection.
   ///
@@ -1033,13 +1104,24 @@ public enum PasteService {
   /// it submitted. The choice belongs here because this function already reads
   /// the selected range in the same breath as the write (#1785, plan §6): a
   /// caller-side check would be check-then-write with an AX round trip in the
-  /// gap. Element identity needs no separate check — the write targets the very
-  /// handle the candidate was computed against.
+  /// gap. For a RECORD-START-captured handle, element identity needs no
+  /// separate check — the write targets the very handle the candidate was
+  /// computed against, and its content/selection re-check (`accessibilityWritePayload`)
+  /// already catches any change.
+  ///
+  /// That is NOT sufficient for a retry-sourced handle (#1980, whole-diff
+  /// review): the content/selection check proves the FIELD hasn't changed,
+  /// never that the user is still FOCUSED on it. A background browser tab's
+  /// field can report byte-identical content long after the user switched
+  /// away, which is exactly how a retry-recovered element (same-APP, never
+  /// same-window/tab) can end up stale. `requireFocusedElementMatch` closes
+  /// that gap with a live focus re-check immediately before the write.
   package static func insertViaAccessibility(
     legacy: String,
     repaired: String? = nil,
     context: CaretContext? = nil,
-    element: AXUIElement
+    element: AXUIElement,
+    requireFocusedElementMatch: Bool = false
   ) -> (outcome: AXInsertOutcome, submitted: PastePayloadKind?) {
     // Verify the element is a text field or text area.
     var roleRef: CFTypeRef?
@@ -1143,6 +1225,32 @@ public enum PasteService {
       fieldBefore: fieldBefore)
     let text = payload.text
     let insertedLength = text.utf16.count
+
+    // #1980 whole-diff review (P1): the field-content re-check above cannot
+    // prove the user is still FOCUSED on this element — only that its content
+    // hasn't changed. For a retry-sourced handle that is not enough (see the
+    // doc comment above), so require a live focus re-check immediately before
+    // the write, narrowing the TOCTOU window to the smallest this function can
+    // offer. Nothing has been mutated yet, so `.noMutation` is correct: Tier 2
+    // remains free to try.
+    //
+    // #1980 whole-diff review round 2 (P2): `isFocused` MUST be computed only
+    // when `requireFocusedElementMatch` is true. Function arguments are not
+    // lazy in Swift, so passing `freshFocusedElement(matching:) != nil`
+    // directly as an argument evaluates it unconditionally — an extra AX
+    // round-trip (up to the full messaging timeout against a slow/wedged app)
+    // on EVERY Tier 1 write, including the common, unaffected, non-retried
+    // path this plan's own goals require to stay byte-identical. The `if`
+    // below is what makes the skip real.
+    if requireFocusedElementMatch {
+      guard
+        mayCommitAccessibilityWrite(
+          requireFocusedElementMatch: true,
+          isFocused: freshFocusedElement(matching: element) != nil)
+      else {
+        return (.noMutation, nil)
+      }
+    }
 
     // Insert at cursor via kAXSelectedTextAttribute.
     let err = AXUIElementSetAttributeValue(

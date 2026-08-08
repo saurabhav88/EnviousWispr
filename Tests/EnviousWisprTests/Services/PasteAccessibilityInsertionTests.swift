@@ -253,3 +253,39 @@ struct PasteAccessibilityInsertionTests {
     #expect(outcome == .unverifiable)
   }
 }
+
+// #1980 whole-diff review (P1): the field-content re-check
+// (`accessibilityWritePayload`) proves the FIELD hasn't changed, never that
+// the user is still FOCUSED on it — a background browser tab's field can
+// report byte-identical content long after the user switched away, which is
+// exactly how a retry-recovered element (same-APP, never same-window/tab) can
+// end up stale. This suite pins the ONE new decision that closes that gap,
+// same precedent as `PasteAccessibilityInsertionTests` above: the live AX
+// focus re-check itself is Live-UAT-only, but the rule it feeds is pure.
+@Suite("PasteService.mayCommitAccessibilityWrite")
+struct PasteAccessibilityFocusMatchTests {
+
+  @Test("The unaffected default: no requirement, write proceeds whatever the focus state")
+  func noRequirementAlwaysProceeds() {
+    #expect(
+      PasteService.mayCommitAccessibilityWrite(
+        requireFocusedElementMatch: false, isFocused: false))
+    #expect(
+      PasteService.mayCommitAccessibilityWrite(
+        requireFocusedElementMatch: false, isFocused: true))
+  }
+
+  @Test("A retry-sourced element that is STILL focused may commit")
+  func requiredAndStillFocusedProceeds() {
+    #expect(
+      PasteService.mayCommitAccessibilityWrite(
+        requireFocusedElementMatch: true, isFocused: true))
+  }
+
+  @Test("A retry-sourced element the user has moved on from is refused — the defect this fixes")
+  func requiredAndNoLongerFocusedRefuses() {
+    #expect(
+      !PasteService.mayCommitAccessibilityWrite(
+        requireFocusedElementMatch: true, isFocused: false))
+  }
+}

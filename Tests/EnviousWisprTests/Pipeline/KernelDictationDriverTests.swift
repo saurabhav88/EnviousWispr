@@ -206,12 +206,19 @@ import Testing
     h.outcome.smartInsertionEnabled = true
     h.outcome.caretContextOutcome = "read"
     h.outcome.repairRules = "leading_space,lowercased_first"
+    // #1980: the delivery-time retry's two fields are written on the same
+    // branch and same schedule as the three above, so they carry the same
+    // stale-session risk.
+    h.outcome.caretCaptureRetried = true
+    h.outcome.caretCaptureRetryMs = 42
 
     try await startDriverToLive(h)
 
     #expect(h.outcome.smartInsertionEnabled == nil)
     #expect(h.outcome.caretContextOutcome == nil)
     #expect(h.outcome.repairRules == nil)
+    #expect(h.outcome.caretCaptureRetried == nil)
+    #expect(h.outcome.caretCaptureRetryMs == nil)
   }
 
   @Test("handle(.reset) clears currentTranscript (event entry — parity with TP:1081-1102)")
@@ -239,7 +246,8 @@ import Testing
       #expect(h.driver.overlayIntent == .error(reason: .modelLoadFailed))
     }
 
-    @Test("hasTerminalResult recognizes every terminal mechanism, including a silent outcome (#1925)")
+    @Test(
+      "hasTerminalResult recognizes every terminal mechanism, including a silent outcome (#1925)")
     func hasTerminalResultRecognizesEveryTerminalMechanism() {
       // Fresh driver, nothing has happened yet.
       let fresh = makeDriver()
