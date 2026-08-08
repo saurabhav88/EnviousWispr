@@ -13,6 +13,28 @@ public enum OllamaSetupState: Equatable {
   case error(String)
 }
 
+extension OllamaSetupState {
+  /// #1918: whether a PASSIVE background refresh (`SetupCoordinator`'s poll
+  /// loop or `applicationDidBecomeActive()`) may silently re-probe this
+  /// state. `.error` IS eligible — a transient failure self-heals without
+  /// user action, and a persistent one keeps showing the same message (no
+  /// new copy, no flicker on re-write since content is identical).
+  /// `.detecting`/`.pullingModel` are excluded: re-probing mid-detection or
+  /// mid-pull would contend with work already in flight. `package`, not
+  /// `public`: consumed from `SetupCoordinator` in the separate
+  /// `EnviousWisprAppKit` module, a sibling target in the same Swift
+  /// package, matching this file's own precedent (`refreshCloudCatalog`,
+  /// `pullStepLabel`).
+  package var allowsSilentBackgroundRefresh: Bool {
+    switch self {
+    case .ready, .installedNotRunning, .runningNoModels, .notInstalled, .error:
+      return true
+    case .detecting, .pullingModel:
+      return false
+    }
+  }
+}
+
 /// Warm-up state for the currently selected Ollama model.
 public enum OllamaWarmupState: Equatable {
   case idle
@@ -186,11 +208,34 @@ public final class OllamaSetupService {
   private let cloudCatalogNow: @MainActor () -> Date
   private var cloudCatalogRefreshTask: Task<Void, Never>?
 
+  /// #1918 test seam: overrides `findOllamaBinary()` for `resolveState`'s full
+  /// detection path, so the two tests exercising it are deterministic on CI,
+  /// which has no guaranteed Ollama install.
+  private let findOllamaBinaryOverride: (@MainActor () -> String?)?
+
   // Per-pull generation token. Bumped on every pullModel/cancelPull call so stale
   // tasks can no-op their writes (Swift Task cancellation is cooperative; without
   // this, a late chunk or terminal-branch cleanup from an old task could clobber
   // the newer pull's state, most acutely on cancel-then-re-download-same-model).
   private var pullEpoch: UInt64 = 0
+
+  /// #1918: generation counter bumped by every direct writer of `setupState`/
+  /// `downloadedModels`/`lastKnownStateKey` OUTSIDE `detectState`'s own commit
+  /// (`deleteModel`, `isServerRunning`, `refreshDownloadedModels`, `startServer`),
+  /// PLUS by `detectState`'s own valid commit, so a background probe suspended
+  /// during any of them backs off instead of overwriting fresher data. Pull
+  /// writes are already covered by `pullEpoch`/`currentPullingModel` and are the
+  /// one exemption; `pullModel`/`cancelPull` still bump this too, since a
+  /// change of pull ownership is itself a competing mutation `startServer`
+  /// needs to see.
+  private var statusMutationEpoch: UInt64 = 0
+
+  /// #1918: single-flight guard for `startServer`. True for the duration of its
+  /// launch + startup poll; a second call while true is a no-op. Also makes
+  /// `detectState` skip PASSIVE (`visible_poll`/`app_active`) triggers while
+  /// true, so a slower background probe never competes with the startup poll's
+  /// own 500ms cadence — an explicit trigger is unaffected.
+  private var isStartingServer = false
 
   /// #1956: the same generation guard as `pullEpoch`, for the window `pullEpoch`
   /// cannot cover.
@@ -506,11 +551,13 @@ public final class OllamaSetupService {
   private init(
     cloudCatalogClient: OllamaCloudCatalogClient,
     now: @escaping @MainActor () -> Date,
-    downloadedModels: [OllamaDownloadedModel]
+    downloadedModels: [OllamaDownloadedModel],
+    findOllamaBinaryOverride: (@MainActor () -> String?)? = nil
   ) {
     self.cloudCatalogClient = cloudCatalogClient
     self.cloudCatalogNow = now
     self.downloadedModels = downloadedModels
+    self.findOllamaBinaryOverride = findOllamaBinaryOverride
   }
 
   public convenience init() {
@@ -529,9 +576,12 @@ public final class OllamaSetupService {
   /// (swift-patterns RULE: tests-no-real-time-scheduling-precision).
   package convenience init(
     cloudCatalogClient: OllamaCloudCatalogClient,
-    now: @escaping @MainActor () -> Date = Date.init
+    now: @escaping @MainActor () -> Date = Date.init,
+    findOllamaBinaryOverride: (@MainActor () -> String?)? = nil
   ) {
-    self.init(cloudCatalogClient: cloudCatalogClient, now: now, downloadedModels: [])
+    self.init(
+      cloudCatalogClient: cloudCatalogClient, now: now, downloadedModels: [],
+      findOllamaBinaryOverride: findOllamaBinaryOverride)
   }
 
   /// #1914 test seam, approved by the founder on 2026-08-04 (test seams are a
@@ -547,41 +597,196 @@ public final class OllamaSetupService {
       downloadedModels: downloadedModelsForTesting)
   }
 
-  /// Run the full detection pipeline: binary -> server -> models.
-  public func detectState() async {
-    setupState = .detecting
+  private static let backgroundTriggers: Set<String> = ["visible_poll", "app_active"]
+  private static let portConflictMessage =
+    "Another app is using Ollama's port (11434). Close it and try again."
 
+  private var detectionToken: UInt64 = 0
+
+  private enum ServerProbeResult: Equatable {
+    case running
+    case unavailable
+    case portConflict
+  }
+
+  /// The ONLY server-health probe used during detection AND the redesigned
+  /// startup poll; `fetchDownloadedModels()` separately fetches `/api/tags`.
+  /// Returns a value instead of writing `setupState` directly, so the caller's
+  /// single commit point is genuinely the only writer during its pass.
+  private func probeServer(
+    transport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
+  ) async -> ServerProbeResult {
+    guard let url = URL(string: Self.baseURL) else { return .unavailable }
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"
+    request.timeoutInterval = 3
+    let send = transport ?? { try await URLSession.shared.data(for: $0) }
+    do {
+      let (_, response) = try await send(request)
+      guard let http = response as? HTTPURLResponse else { return .unavailable }
+      return http.statusCode == 200 ? .running : .portConflict
+    } catch {
+      return .unavailable
+    }
+  }
+
+  /// Value-returning sibling of `refreshDownloadedModels()`. Nil on any
+  /// failure (network error, non-200, malformed JSON), so callers can retain
+  /// their pre-probe list on failure exactly as `refreshDownloadedModels()`
+  /// itself does by leaving `downloadedModels` untouched.
+  private func fetchDownloadedModels(
+    transport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
+  ) async -> [OllamaDownloadedModel]? {
+    guard let url = URL(string: "\(Self.baseURL)/api/tags") else { return nil }
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"
+    request.timeoutInterval = 5
+    let send = transport ?? { try await URLSession.shared.data(for: $0) }
+    do {
+      let (data, response) = try await send(request)
+      guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+      guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let models = json["models"] as? [[String: Any]]
+      else { return nil }
+      return Self.parseDownloadedModels(fromTagsModels: models)
+    } catch {
+      return nil
+    }
+  }
+
+  /// The complete value-return contract for one detection pass. Not part of
+  /// any public API; exists so `resolveState` can make zero direct writes.
+  private struct DetectionResolution {
+    let state: OllamaSetupState
+    let downloadedModels: [OllamaDownloadedModel]?
+    let lastKnownReady: Bool?
+  }
+
+  /// #1918 test seam: resolves `findOllamaBinary()` through the override when
+  /// present, so `resolveState`'s full-detection branch is deterministic on CI.
+  private func findOllamaBinaryForDetection() -> String? {
+    if let findOllamaBinaryOverride {
+      return findOllamaBinaryOverride()
+    }
+    return findOllamaBinary()
+  }
+
+  /// Full detection pipeline, matching every original branch of
+  /// `detectState()`/`hasAnyModels()`: binary -> server -> models. Makes ZERO
+  /// direct writes — `detectState`'s single commit point applies the result.
+  private func resolveState(
+    transport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))?,
+    startingDownloadedModels: [OllamaDownloadedModel]
+  ) async -> DetectionResolution {
     // Fast path: if the user previously reached .ready, try the server directly.
+    // Fast path: original never writes UserDefaults here (only full detection
+    // does), so both branches below return `lastKnownReady: nil`.
     if UserDefaults.standard.bool(forKey: Self.lastKnownStateKey) {
-      if await isServerRunning() {
-        if await hasAnyModels() {
-          setupState = .ready
-          return
-        }
-        setupState = .runningNoModels
-        return
+      if case .running = await probeServer(transport: transport) {
+        let fetched = await fetchDownloadedModels(transport: transport)
+        let effective = fetched ?? startingDownloadedModels
+        return DetectionResolution(
+          state: effective.isEmpty ? .runningNoModels : .ready,
+          downloadedModels: fetched, lastKnownReady: nil)
       }
+      // Fast-path probe failed (unavailable OR port conflict) — fall through
+      // to full detection, which re-checks with a second, fresher probe. A
+      // port conflict that resolves between the two probes correctly reports
+      // `.installedNotRunning` from the second, newer probe — a deliberate
+      // divergence from the original's stale shared-state readback, not an
+      // equivalence claim.
     }
 
     // Full detection
-    guard findOllamaBinary() != nil else {
-      setupState = .notInstalled
-      UserDefaults.standard.set(false, forKey: Self.lastKnownStateKey)
-      return
+    guard findOllamaBinaryForDetection() != nil else {
+      return DetectionResolution(state: .notInstalled, downloadedModels: nil, lastKnownReady: false)
     }
 
-    guard await isServerRunning() else {
-      // isServerRunning may have already set an .error state (port conflict)
-      if case .error = setupState { return }
-      setupState = .installedNotRunning
-      return
+    switch await probeServer(transport: transport) {
+    case .unavailable:
+      return DetectionResolution(
+        state: .installedNotRunning, downloadedModels: nil, lastKnownReady: nil)
+    case .portConflict:
+      return DetectionResolution(
+        state: .error(Self.portConflictMessage), downloadedModels: nil, lastKnownReady: nil)
+    case .running:
+      let fetched = await fetchDownloadedModels(transport: transport)
+      let effective = fetched ?? startingDownloadedModels
+      return DetectionResolution(
+        state: effective.isEmpty ? .runningNoModels : .ready,
+        downloadedModels: fetched, lastKnownReady: effective.isEmpty ? nil : true)
+    }
+  }
+
+  /// Run the full detection pipeline: binary -> server -> models.
+  ///
+  /// `trigger` is diagnostic provenance AND the sole determinant of silence —
+  /// a background trigger (`visible_poll`/`app_active`) bypasses the transient
+  /// `.detecting` UI state, since a passive refresh should not flash the
+  /// spinner over content the user is already looking at.
+  public func detectState(
+    trigger: String = "manual_refresh",
+    transport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
+  ) async {
+    guard currentPullingModel == nil else { return }  // a pull is already active — never contend with it
+
+    let silent = Self.backgroundTriggers.contains(trigger)
+    guard !(silent && isStartingServer) else { return }  // don't compete with the startup poll's own cadence
+
+    detectionToken &+= 1
+    let detectionEpoch = detectionToken
+    let startingPullEpoch = pullEpoch  // snapshot BEFORE the await — catches start-and-finish too
+    let startingStatusMutationEpoch = statusMutationEpoch
+
+    if !silent {
+      setupState = .detecting
     }
 
-    if await hasAnyModels() {
-      setupState = .ready
-      UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
-    } else {
-      setupState = .runningNoModels
+    // Without this snapshot, a failed model-list fetch inside `resolveState`
+    // has no way to preserve the current behavior — `refreshDownloadedModels()`
+    // originally left `downloadedModels` UNTOUCHED on failure, and
+    // `hasAnyModels()` decided readiness from that retained list. Passed
+    // through so `resolveState` can reproduce the same fallback without
+    // reading instance state itself (still zero direct writes).
+    let startingDownloadedModels = downloadedModels
+
+    let resolution = await resolveState(
+      transport: transport, startingDownloadedModels: startingDownloadedModels)
+
+    guard !Task.isCancelled else { return }
+    guard detectionToken == detectionEpoch else { return }  // superseded by a newer detect
+    guard pullEpoch == startingPullEpoch, currentPullingModel == nil else { return }  // a pull started, ran, or finished during our probe
+    guard statusMutationEpoch == startingStatusMutationEpoch else { return }  // deleteModel/isServerRunning/refreshDownloadedModels/startServer wrote fresher state during our probe
+
+    let previous = setupState
+    let writesModels = resolution.downloadedModels != nil
+    let writesDefault = resolution.lastKnownReady != nil
+    let writesState = previous != resolution.state
+
+    guard writesModels || writesDefault || writesState else { return }  // genuine no-op: nothing to make visible
+
+    statusMutationEpoch &+= 1
+
+    // Applied even when `setupState` itself is unchanged below — a background
+    // refresh can legitimately discover a new model list while the visible
+    // state stays `.ready`. This can reassign `downloadedModels` to an equal
+    // array on a genuine no-op detect; `OllamaDownloadedModel` is not
+    // `Equatable` today, so this is real `@Observable` churn with no
+    // consequential `.onChange` consumer — accepted as low-impact.
+    if let models = resolution.downloadedModels {
+      downloadedModels = models
+    }
+    if let lastKnownReady = resolution.lastKnownReady {
+      UserDefaults.standard.set(lastKnownReady, forKey: Self.lastKnownStateKey)
+    }
+
+    guard writesState else { return }  // no `setupState` write, no log — model/default updates above still applied
+
+    setupState = resolution.state
+
+    if silent {
+      let message = "Ollama detect (\(trigger)): \(previous) -> \(resolution.state)"
+      Task { await AppLogger.shared.log(message, level: .debug, category: "LLM") }  // fired AFTER the commit, never between guard and write
     }
   }
 
@@ -627,28 +832,21 @@ public final class OllamaSetupService {
 
   // MARK: - Server Health
 
-  /// Check whether the Ollama server is reachable. Strict 3-second timeout.
-  public func isServerRunning() async -> Bool {
-    guard let url = URL(string: Self.baseURL) else { return false }
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    request.timeoutInterval = 3
-
-    do {
-      let (_, response) = try await URLSession.shared.data(for: request)
-      guard let http = response as? HTTPURLResponse else { return false }
-
-      if http.statusCode == 200 {
-        return true
-      }
-
-      // Port is in use by something other than Ollama
-      setupState = .error(
-        "Another app is using Ollama's port (11434). Close it and try again."
-      )
-      return false
-    } catch {
+  /// Public compatibility wrapper — after #1918, detection and the startup poll
+  /// both use `probeServer` directly, so this has no internal caller; kept as
+  /// public API surface and for its own regression test. Still bumps
+  /// `statusMutationEpoch` before its direct write, so a background probe
+  /// cannot commit stale data over this call's result if a future caller
+  /// reappears.
+  public func isServerRunning(
+    transport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
+  ) async -> Bool {
+    switch await probeServer(transport: transport) {
+    case .running: return true
+    case .unavailable: return false
+    case .portConflict:
+      statusMutationEpoch &+= 1
+      setupState = .error(Self.portConflictMessage)
       return false
     }
   }
@@ -979,6 +1177,7 @@ public final class OllamaSetupService {
       guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
       guard let models = json?["models"] as? [[String: Any]] else { return }
+      statusMutationEpoch &+= 1
       downloadedModels = Self.parseDownloadedModels(fromTagsModels: models)
     } catch {
       // Silently ignore -- server may not be running
@@ -1211,6 +1410,7 @@ public final class OllamaSetupService {
     do {
       let (_, response) = try await send(request)
       if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+        statusMutationEpoch &+= 1
         downloadedModels.removeAll(where: { $0.exactName == name })
         // Reset warm-up if the deleted model was warmed or warming
         let canonical = Self.canonicalModelName(name)
@@ -1234,60 +1434,155 @@ public final class OllamaSetupService {
 
   // MARK: - Server Lifecycle
 
+  private static let autoStartFailureMessage =
+    "Couldn't start Ollama automatically. Try running `ollama serve` in Terminal."
+
   /// Start the Ollama server, preferring the .app bundle, falling back to the CLI binary.
   public func startServer() {
+    startServer(launch: nil, pollDelay: nil, transport: nil)
+  }
+
+  /// Testing seam, mirrors `detectState`'s injected-transport pattern. Production
+  /// supplies the real app/process launch, the real 500ms delay, and the shared
+  /// URLSession transport; tests supply a no-op launch, a signal-controlled
+  /// delay, and canned responses. No test-only state setter is added — every
+  /// seeded state is reached through this same code path production uses.
+  package func startServer(
+    launch: (@MainActor () -> Bool)?,
+    pollDelay: (@MainActor () async -> Void)?,
+    transport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))?
+  ) {
+    guard !isStartingServer else { return }  // single-flight: a second click while starting is a no-op
+    isStartingServer = true
+    statusMutationEpoch &+= 1
+
+    guard (launch ?? realLaunchOllama)() else {
+      // An INJECTED `launch` closure cannot itself write private `setupState`,
+      // so this overload — not the launch closure — owns this commit.
+      // `realLaunchOllama()` is pure: it only reports whether launch was
+      // attempted successfully.
+      statusMutationEpoch &+= 1
+      setupState = .error(Self.autoStartFailureMessage)
+      isStartingServer = false
+      return
+    }
+
+    // Bumping the epoch when startup BEGINS protects every OTHER writer from
+    // a stale startup result, but does not protect startup's OWN eventual
+    // commit from a pull, delete, or explicit detection that lands during
+    // its own two awaits below (the probe, then the fetch). Re-checked after
+    // each await; `expectedStatusMutationEpoch` is tracked forward past this
+    // call's own port-conflict self-bump so a self-caused change is not
+    // misread as someone else's.
+    let startingPullEpoch = pullEpoch
+    var expectedStatusMutationEpoch = statusMutationEpoch
+
+    Task { [weak self] in
+      let maxAttempts = 20
+      for _ in 0..<maxAttempts {
+        if let pollDelay {
+          await pollDelay()
+        } else {
+          try? await Task.sleep(nanoseconds: 500_000_000)  // 500ms
+        }
+        guard let self else { return }
+
+        let probeResult = await self.probeServer(transport: transport)
+        guard self.pullEpoch == startingPullEpoch, self.currentPullingModel == nil,
+          self.statusMutationEpoch == expectedStatusMutationEpoch
+        else {
+          // A pull, delete, or explicit detection landed fresher data during
+          // this probe's await — this startup attempt is now stale; back off
+          // without committing, exactly as `detectState` would.
+          self.isStartingServer = false
+          return
+        }
+
+        // Today's `isServerRunning()`-based poll writes the port-conflict
+        // error immediately on the first such probe while still polling —
+        // preserved here so a naive continue-on-any-non-running case cannot
+        // silently delay it until the timeout branch.
+        switch probeResult {
+        case .unavailable:
+          continue
+        case .portConflict:
+          self.statusMutationEpoch &+= 1
+          expectedStatusMutationEpoch = self.statusMutationEpoch
+          self.setupState = .error(Self.portConflictMessage)
+          continue
+        case .running:
+          break
+        }
+
+        // Value-returning probes only — NEVER the side-effecting
+        // isServerRunning()/hasAnyModels(), which would each need their own
+        // guard against this same Task racing a concurrent explicit
+        // detectState() commit.
+        let fetched = await self.fetchDownloadedModels(transport: transport)
+        guard self.pullEpoch == startingPullEpoch, self.currentPullingModel == nil,
+          self.statusMutationEpoch == expectedStatusMutationEpoch
+        else {
+          self.isStartingServer = false
+          return
+        }
+
+        // `fetched ?? self.downloadedModels` retains the existing model list
+        // on a transient `/api/tags` failure, matching
+        // `refreshDownloadedModels()`'s own no-op-on-failure contract — the
+        // same pattern `resolveState` uses via `startingDownloadedModels`.
+        let effective = fetched ?? self.downloadedModels
+        self.statusMutationEpoch &+= 1  // bump immediately before the one synchronous commit below
+        if let fetched {
+          self.downloadedModels = fetched
+        }
+        self.setupState = effective.isEmpty ? .runningNoModels : .ready
+        if !effective.isEmpty {
+          UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
+        }
+        self.isStartingServer = false
+        return
+      }
+      self?.statusMutationEpoch &+= 1
+      self?.setupState = .error(Self.autoStartFailureMessage)
+      self?.isStartingServer = false
+    }
+  }
+
+  /// Carries today's app-bundle/binary/`Process.run()` decision tree but
+  /// writes no state. Returns `false` when no launch path exists or
+  /// `Process.run()` throws; the `startServer` overload above uniformly
+  /// commits `autoStartFailureMessage` for both production and injected
+  /// failures. Preserves today's exact behavior: the app-bundle path calls
+  /// `NSWorkspace.open`, whose `Bool` return today's code already ignores,
+  /// so returning `true` unconditionally changes nothing observable; the
+  /// binary path's `Process.run()` can still throw.
+  private func realLaunchOllama() -> Bool {
     let appPath = "/Applications/Ollama.app"
 
     if FileManager.default.fileExists(atPath: appPath) {
       NSWorkspace.shared.open(URL(fileURLWithPath: appPath))
-    } else if let binary = findOllamaBinary() {
-      let process = Process()
-      process.executableURL = URL(fileURLWithPath: binary)
-      process.arguments = ["serve"]
-      process.standardOutput = FileHandle.nullDevice
-      process.standardError = FileHandle.nullDevice
-      process.terminationHandler = { [weak self] _ in
-        Task { @MainActor in
-          self?.ollamaProcess = nil
-        }
-      }
-      do {
-        try process.run()
-        ollamaProcess = process
-      } catch {
-        setupState = .error(
-          "Couldn't start Ollama automatically. Try running `ollama serve` in Terminal."
-        )
-        return
-      }
-    } else {
-      setupState = .error(
-        "Couldn't start Ollama automatically. Try running `ollama serve` in Terminal."
-      )
-      return
+      return true
     }
 
-    // Poll until the server is up (up to 10 seconds)
-    Task { [weak self] in
-      let maxAttempts = 20
-      for _ in 0..<maxAttempts {
-        try? await Task.sleep(nanoseconds: 500_000_000)  // 500ms
-        guard let self else { return }
+    guard let binary = findOllamaBinary() else { return false }
 
-        if await self.isServerRunning() {
-          if await self.hasAnyModels() {
-            self.setupState = .ready
-            UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
-          } else {
-            self.setupState = .runningNoModels
-          }
-          return
-        }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: binary)
+    process.arguments = ["serve"]
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    process.terminationHandler = { [weak self] _ in
+      Task { @MainActor in
+        self?.ollamaProcess = nil
       }
+    }
 
-      self?.setupState = .error(
-        "Couldn't start Ollama automatically. Try running `ollama serve` in Terminal."
-      )
+    do {
+      try process.run()
+      ollamaProcess = process
+      return true
+    } catch {
+      return false
     }
   }
 
@@ -1308,6 +1603,7 @@ public final class OllamaSetupService {
     pullTask?.cancel()
     pullTask = nil
     pullEpoch &+= 1
+    statusMutationEpoch &+= 1
     let epoch = pullEpoch
 
     // Reset progress
@@ -1386,6 +1682,7 @@ public final class OllamaSetupService {
       pullTask?.cancel()
       pullTask = nil
       pullEpoch &+= 1
+      statusMutationEpoch &+= 1
       currentPullingModel = nil
       // Bug fix: don't force .runningNoModels if models exist
       if downloadedModels.isEmpty {
@@ -1412,6 +1709,7 @@ public final class OllamaSetupService {
       //      runs. Provider-switch path overwrites this moments later via
       //      detectState() on switch-back; same-pane Cancel just settles here.
       pullEpoch &+= 1
+      statusMutationEpoch &+= 1
       currentPullingModel = nil
       setupState = .ready
     }

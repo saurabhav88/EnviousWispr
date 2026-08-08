@@ -660,8 +660,9 @@ struct AIPolishSettingsView: View {
       }
       if settings.llmProvider == .ollama {
         llmDiscovery.loadCachedModels(for: .ollama)
+        setup.startOllamaStatusWatch()
         Task {
-          await setup.ollamaSetup.detectState()
+          await setup.ollamaSetup.detectState(trigger: "settings_open")
           if case .ready = setup.ollamaSetup.setupState {
             await llmDiscovery.validateKeyAndDiscoverModels(
               provider: .ollama, settings: settings)
@@ -684,6 +685,9 @@ struct AIPolishSettingsView: View {
         llmDiscovery.loadCachedModels(for: settings.llmProvider)
       }
     }
+    .onDisappear {
+      setup.stopOllamaStatusWatch()
+    }
     .onChange(of: settings.llmProvider) { _, newProvider in
       llmDiscovery.reset()
       // Model canonicalization handled by SettingsManager.llmProvider didSet.
@@ -699,15 +703,17 @@ struct AIPolishSettingsView: View {
         // just left, and that late pull cancels whatever pull is current.
         setup.ollamaSetup.cancelHostedResolution()
         setup.ollamaSetup.resetWarmup()
+        setup.stopOllamaStatusWatch()
       }
 
       switch newProvider {
       case .none:
         break
       case .ollama:
+        setup.startOllamaStatusWatch()
         // detectState() will set setupState, which triggers the onChange handler
         // for discovery + warm-up. Don't duplicate that work here.
-        Task { await setup.ollamaSetup.detectState() }
+        Task { await setup.ollamaSetup.detectState(trigger: "provider_switch") }
         // #1956: the hosted catalog does not depend on the daemon at all, so it
         // must load on SELECTION rather than on readiness. A daemon running with
         // zero models settles in `.runningNoModels`, which Manage Models still
@@ -1357,7 +1363,7 @@ struct AIPolishSettingsView: View {
 
         Button("Try Again") {
           Task {
-            await setup.ollamaSetup.detectState()
+            await setup.ollamaSetup.detectState(trigger: "try_again")
             if case .ready = setup.ollamaSetup.setupState {
               await llmDiscovery.validateKeyAndDiscoverModels(
                 provider: .ollama, settings: settings)
