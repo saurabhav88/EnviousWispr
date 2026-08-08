@@ -85,6 +85,13 @@ final class KernelFinalizationOutcome {
   var smartInsertionEnabled: Bool?
   var caretContextOutcome: String?
   var repairRules: String?
+  /// #1980. Whether the delivery-time retry (record-start capture came back
+  /// nil) was ATTEMPTED, independent of whether it recovered an element —
+  /// combine with `caretContextOutcome` to distinguish "retried and still
+  /// nothing" from "retried and recovered". `caretCaptureRetryMs` is set only
+  /// when `caretCaptureRetried == true`.
+  var caretCaptureRetried: Bool?
+  var caretCaptureRetryMs: Double?
   /// #1921. `repairRules` says WHAT the repair decided; these say why the
   /// language question got the answer it did. Without them a fielded regression
   /// in the confidence gate is invisible: `case_skipped:language_not_supported`
@@ -122,7 +129,12 @@ final class KernelSessionContext {
   var config: DictationSessionConfig?
   /// The frontmost app captured at recording start, re-activated before paste.
   var targetApp: NSRunningApplication?
-  /// The focused text element captured at recording start.
+  /// The focused text element captured at recording start, or — if that
+  /// capture failed — a delivery-time retry scoped to the same app (see
+  /// `deliver`'s caret-context computation). Nil if both attempts failed or
+  /// the app has no confirmed focused element. A retry-sourced value proves
+  /// same APP only, never same window/tab — commit-time safety is carried
+  /// separately via `PasteDeliveryRequest.targetElementIsRetried`.
   var targetElement: AXUIElement?
   /// Canonical protected spellings, snapshotted at `processText` entry.
   ///
@@ -191,6 +203,22 @@ struct KernelFinalizationWiring {
       AXUIElement, TerminalResolutionBudget, ((TerminalContextRefusal) -> Void)?
     ) -> PasteService.CaretContext? = {
       PasteService.readCaretContext(element: $0, terminalBudget: $1, onTerminalRefusal: $2)
+    },
+    // #1980 delivery-time retry seam. Production queries the target app's OWN
+    // focused element directly, scoped to its pid by construction, so it can
+    // never resolve to a different app than the one the user was dictating
+    // into. Tests inject a stub so the retry's occurrence, PID routing, and
+    // outcome are provable without depending on real AX focus state.
+    focusedElementInTargetApp: @escaping @MainActor (pid_t) -> AXUIElement? = {
+      PasteService.focusedElement(inAppWithPID: $0)
+    },
+    // #1980 whole-diff review (P1). Whether a retry-recovered element is a
+    // usable insertion target, gating whether it is adopted at all (see the
+    // `deliver` closure). Production reads the live AX role; tests inject a
+    // fixed answer so both directions of this gate are provable without a
+    // real focused text field in the test process.
+    isRetryTargetUsable: @escaping @MainActor (AXUIElement) -> Bool = {
+      PasteService.isTextFieldRole($0)
     },
     // Word-oracle seam. Production takes the live runtime snapshot; tests inject
     // a fixed oracle so a case never depends on the machine's dictionaries — and
@@ -461,12 +489,64 @@ struct KernelFinalizationWiring {
         // The specific terminal refusal, so a wrong-case report can be diagnosed
         // from the log instead of guessed at. Names and shapes only.
         var terminalRefusal: TerminalContextRefusal?
+        // #1980: if the record-start capture failed, retry once here, scoped
+        // directly to the app the user was dictating into (`context.targetApp`'s
+        // pid) — never the earlier system-wide query, which can answer for a
+        // different app. Mutates `context.targetElement` in place so the paste
+        // request built below (and `caretContextOutcome`'s `no_target` check)
+        // both observe the recovered element too, not just this read.
+        //
+        // No `terminalBudget` here: that budget's own design deliberately
+        // exempts non-terminal apps from a tighter cap, and reusing it for the
+        // retry would silently reintroduce exactly that squeeze. The retry
+        // keeps the standard `PasteService.axMessagingTimeoutSeconds` bound.
+        var caretCaptureRetried = false
+        var caretCaptureRetryMs: Double?
         let caretContext: PasteService.CaretContext? = {
-          guard config?.smartInsertion == true, let element = context.targetElement else {
-            return nil
+          guard config?.smartInsertion == true else { return nil }
+          // Whole-diff review (P2): `isTerminated` is checked before reading the
+          // pid, not after. If the target app quit between record-start and
+          // delivery, its pid can be reclaimed by an unrelated new process —
+          // querying a dead app's OWN stored pid at that point would resolve to
+          // whatever now holds it, and a coincidentally text-field-shaped
+          // element there could receive the user's dictated text. A terminated
+          // app can never be the one the user is dictating into.
+          if context.targetElement == nil, let app = context.targetApp, !app.isTerminated {
+            let pid = app.processIdentifier
+            caretCaptureRetried = true
+            let started = currentTime()
+            let recovered = focusedElementInTargetApp(pid)
+            caretCaptureRetryMs = (currentTime() - started) * 1000
+            // Whole-diff review (P1): adopt the recovered element ONLY when it
+            // is a usable text-insertion target. `context.targetElement == nil`
+            // classifies as `.missing` at the paste layer, which STILL attempts
+            // Tier 2 blind Cmd+V (#277's Chromium lazy-AX fallback — the reason
+            // pasting itself already works today even when caret repair
+            // silently no-ops). A recovered element that is NOT a text field
+            // (e.g. Chrome reporting a container/AXWebArea mid-warm-up)
+            // classifies as `.nonText` instead, which skips Tier 2 entirely and
+            // falls to clipboard-only — turning a today-working automatic paste
+            // into one requiring a manual Cmd+V. Keeping a non-text recovery
+            // discarded (not adopted) preserves that existing fallback exactly.
+            // Whole-diff review round 5 (P2): re-checked AFTER the query, not
+            // only before it. `app.isTerminated` is bound to this specific
+            // process instance (not merely a pid number), so if the app died
+            // WHILE `focusedElementInTargetApp` was blocked and its pid was
+            // immediately reclaimed, the pre-query check above cannot see
+            // that — the query can return a real, plausible text field
+            // belonging to the REPLACEMENT process. This narrows that window
+            // to the query's own duration; it does not claim to close it
+            // completely, matching this plan's disclosed same-app-not-same-
+            // window residual-risk posture elsewhere (§2.2, §7).
+            if let recovered, !app.isTerminated, isRetryTargetUsable(recovered) {
+              context.targetElement = recovered
+            }
           }
+          guard let element = context.targetElement else { return nil }
           return readCaretContext(element, terminalBudget, { terminalRefusal = $0 })
         }()
+        outcome.caretCaptureRetried = caretCaptureRetried
+        outcome.caretCaptureRetryMs = caretCaptureRetryMs
 
         // ONE call to the repair, which is the sole owner of the trailing-space
         // rule. Even with no context it returns today's payload, so Pipeline
@@ -663,7 +743,13 @@ struct KernelFinalizationWiring {
             + "caret=\(outcome.caretContextOutcome ?? "nil") "
             + "rules=\(outcome.repairRules ?? "none") "
             + "candidate=\(payloads.repairedText == nil ? "none" : "offered")"
-            + (terminalTiming.isEmpty ? "" : " timing=[\(terminalTiming)]"),
+            + (terminalTiming.isEmpty ? "" : " timing=[\(terminalTiming)]")
+            // #1980: local diagnostic only — production recovery-rate/latency
+            // authority is the `caret_capture_retried`/`caret_capture_retry_ms`
+            // telemetry (Chunk 3), which survives past this DEBUG-only log.
+            + (caretCaptureRetried
+              ? " retry_ms=\(String(format: "%.1f", caretCaptureRetryMs ?? 0))"
+              : ""),
           level: .info, category: "KernelFinalizationWiring")
 
         // The legacy payload is what a route falls back to; §6 decides per route
@@ -685,6 +771,10 @@ struct KernelFinalizationWiring {
             },
             targetApp: context.targetApp,
             targetElement: context.targetElement,
+            // Same local boolean the outcome fields above were stamped from —
+            // not re-derived from `targetElement` presence, which cannot tell
+            // "retried and recovered" apart from "captured at record-start".
+            targetElementIsRetried: caretCaptureRetried,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
             terminalBudget: terminalBudget))
         pasteResult = result
@@ -868,6 +958,8 @@ struct KernelFinalizationWiring {
       // reached a write at all, which is distinct from submitting the legacy one.
       smartInsertionEnabled: outcome.smartInsertionEnabled,
       caretContextOutcome: outcome.caretContextOutcome,
+      caretCaptureRetried: outcome.caretCaptureRetried,
+      caretCaptureRetryMs: outcome.caretCaptureRetryMs,
       repairRules: outcome.repairRules,
       pastePayloadKind: outcome.pasteResult?.submittedPayload?.rawValue,
       // #1921: carried through unchanged. Each hop transports exactly what the

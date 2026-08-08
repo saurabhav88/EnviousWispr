@@ -233,6 +233,8 @@ public final class TelemetryService {
         insertion: PasteInsertionTelemetry(
           smartInsertionEnabled: m?.smartInsertionEnabled,
           caretContextOutcome: m?.caretContextOutcome,
+          caretCaptureRetried: m?.caretCaptureRetried,
+          caretCaptureRetryMs: m?.caretCaptureRetryMs,
           repairRules: m?.repairRules,
           payloadKind: m?.pastePayloadKind,
           languageResolutionSource: m?.languageResolutionSource,
@@ -1726,13 +1728,15 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("paste.completed", properties: props)
   }
 
-  /// Cursor-aware insertion fields for `paste.completed` (#1785, extended #1921).
+  /// Cursor-aware insertion fields for `paste.completed` (#1785, extended #1921,
+  /// #1980).
   ///
-  /// A separate value rather than six more parameters so the projection has one
-  /// owner and one test surface: `paste.completed` is emitted from a metrics
-  /// projection, and six loose optionals threaded through it is how one of them
-  /// eventually gets dropped without any test noticing. #1921 added two of them,
-  /// which is exactly the growth this shape was chosen to absorb.
+  /// A separate value rather than eight more parameters so the projection has
+  /// one owner and one test surface: `paste.completed` is emitted from a
+  /// metrics projection, and eight loose optionals threaded through it is how
+  /// one of them eventually gets dropped without any test noticing. #1921 and
+  /// #1980 each added two of them, which is exactly the growth this shape was
+  /// chosen to absorb.
   ///
   /// Every field is a shape or a closed-set name. `repairRules` carries reasons
   /// (`case_skipped:protected_word`) and never the word a reason applied to,
@@ -1741,6 +1745,12 @@ public final class TelemetryService {
   public struct PasteInsertionTelemetry: Sendable {
     public let smartInsertionEnabled: Bool?
     public let caretContextOutcome: String?
+    /// #1980. `caretCaptureRetried` true means the delivery-time retry was
+    /// ATTEMPTED, independent of success — combine with `caretContextOutcome`
+    /// to distinguish "retried and still nothing" from "retried and
+    /// recovered". `caretCaptureRetryMs` is present only when a retry ran.
+    public let caretCaptureRetried: Bool?
+    public let caretCaptureRetryMs: Double?
     public let repairRules: String?
     public let payloadKind: String?
     /// #1921. Why the language question got its answer, and how confident. A
@@ -1753,6 +1763,8 @@ public final class TelemetryService {
     public init(
       smartInsertionEnabled: Bool? = nil,
       caretContextOutcome: String? = nil,
+      caretCaptureRetried: Bool? = nil,
+      caretCaptureRetryMs: Double? = nil,
       repairRules: String? = nil,
       payloadKind: String? = nil,
       languageResolutionSource: String? = nil,
@@ -1760,6 +1772,8 @@ public final class TelemetryService {
     ) {
       self.smartInsertionEnabled = smartInsertionEnabled
       self.caretContextOutcome = caretContextOutcome
+      self.caretCaptureRetried = caretCaptureRetried
+      self.caretCaptureRetryMs = caretCaptureRetryMs
       self.repairRules = repairRules
       self.payloadKind = payloadKind
       self.languageResolutionSource = languageResolutionSource
@@ -1773,6 +1787,8 @@ public final class TelemetryService {
       var out: [String: Any] = [:]
       if let smartInsertionEnabled { out["smart_insertion"] = smartInsertionEnabled }
       if let caretContextOutcome { out["caret_context"] = caretContextOutcome }
+      if let caretCaptureRetried { out["caret_capture_retried"] = caretCaptureRetried }
+      if let caretCaptureRetryMs { out["caret_capture_retry_ms"] = caretCaptureRetryMs }
       if let repairRules { out["repair_rules"] = repairRules }
       if let payloadKind { out["payload_kind"] = payloadKind }
       if let languageResolutionSource {

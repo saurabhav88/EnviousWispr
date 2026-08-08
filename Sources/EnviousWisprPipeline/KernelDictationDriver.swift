@@ -1139,6 +1139,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.smartInsertionEnabled = nil
         outcome.caretContextOutcome = nil
         outcome.repairRules = nil
+        outcome.caretCaptureRetried = nil
+        outcome.caretCaptureRetryMs = nil
         // #1167: a fresh session starts assuming the save will succeed; the
         // best-effort `store` closure flips these only on a real save throw.
         outcome.historySaved = true

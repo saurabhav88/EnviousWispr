@@ -7,9 +7,9 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var llmLatencySeconds: Double?
   public var pasteTier: String?
   public var pasteLatencyMs: Int?
-  /// Cursor-aware insertion (#1785, extended by #1921). All six are optional and
-  /// additive, so a transcript written before either feature decodes with them
-  /// nil rather than failing. Shapes and closed-set names only — a wrong-case report carries no
+  /// Cursor-aware insertion (#1785, extended by #1921 and #1980). All eight are
+  /// optional and additive, so a transcript written before any of these features
+  /// decodes with them nil rather than failing. Shapes and closed-set names only — a wrong-case report carries no
   /// text, and these are what make it answerable:
   ///
   /// - `smartInsertionEnabled`: the setting as frozen for that recording,
@@ -35,6 +35,15 @@ public struct ExecutionMetrics: Codable, Sendable {
   ///   public carrier across Core -> Pipeline and Core -> Services.
   public var smartInsertionEnabled: Bool?
   public var caretContextOutcome: String?
+  /// #1980. `caretCaptureRetried` is `nil` when this delivery never recorded
+  /// the fact (an older transcript, or auto-paste never entered), `false`
+  /// when it recorded that no delivery-time retry was needed or possible, and
+  /// `true` when a retry was ATTEMPTED — independent of whether it recovered
+  /// an element. Combine with `caretContextOutcome` to distinguish "retried
+  /// and still nothing" from "retried and recovered". `caretCaptureRetryMs`
+  /// is present only when `caretCaptureRetried == true`.
+  public var caretCaptureRetried: Bool?
+  public var caretCaptureRetryMs: Double?
   public var repairRules: String?
   public var pastePayloadKind: String?
   public var languageResolutionSource: String?
@@ -154,6 +163,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     pasteLatencyMs: Int? = nil,
     smartInsertionEnabled: Bool? = nil,
     caretContextOutcome: String? = nil,
+    caretCaptureRetried: Bool? = nil,
+    caretCaptureRetryMs: Double? = nil,
     repairRules: String? = nil,
     pastePayloadKind: String? = nil,
     languageResolutionSource: String? = nil,
@@ -209,6 +220,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.pasteLatencyMs = pasteLatencyMs
     self.smartInsertionEnabled = smartInsertionEnabled
     self.caretContextOutcome = caretContextOutcome
+    self.caretCaptureRetried = caretCaptureRetried
+    self.caretCaptureRetryMs = caretCaptureRetryMs
     self.repairRules = repairRules
     self.pastePayloadKind = pastePayloadKind
     self.languageResolutionSource = languageResolutionSource

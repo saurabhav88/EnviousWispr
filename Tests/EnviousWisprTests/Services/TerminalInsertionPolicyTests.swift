@@ -400,4 +400,65 @@ struct TerminalInsertionPolicyTests {
     }
   }
 
+  // MARK: - `requireCaretUnchanged` (#1980) — the retry-sourced-element gate
+
+  @Test("A retried element that has since changed falls back to legacy")
+  func requireCaretUnchangedRefusesOnAChangedField() {
+    // The "changed" direction: `caretUnchangedCheck` is the injected seam,
+    // proving the new trigger reaches the SAME re-verification the deletion
+    // path already uses, independent of `candidateDeletesDictatedText`.
+    let payload = PasteService.payloadAtCommitBoundary(
+      legacy: "Fix the handler ",
+      repaired: "fix the handler ",
+      context: terminalContext(line: "I can't wait till the weather is"),
+      element: AXUIElementCreateSystemWide(),
+      candidateDeletesDictatedText: false,
+      requireCaretUnchanged: true,
+      caretUnchangedCheck: { _, _, _ in false })
+
+    #expect(payload.kind == .legacy, "a retry-sourced element must be re-verified before commit")
+    #expect(payload.text == "Fix the handler ")
+  }
+
+  @Test("A retried element that is confirmed unchanged commits the repair")
+  func requireCaretUnchangedCommitsOnAConfirmedField() {
+    // The "unchanged" direction: no real AX trick from a test process can
+    // force `caretUnchanged` to return true, so this seam is the only way to
+    // prove this half of the gate at all (grounded review round 2).
+    let payload = PasteService.payloadAtCommitBoundary(
+      legacy: "Fix the handler ",
+      repaired: "fix the handler ",
+      context: terminalContext(line: "I can't wait till the weather is"),
+      element: AXUIElementCreateSystemWide(),
+      candidateDeletesDictatedText: false,
+      requireCaretUnchanged: true,
+      caretUnchangedCheck: { _, _, _ in true })
+
+    #expect(payload.kind == .repaired)
+    #expect(payload.text == "fix the handler ")
+  }
+
+  @Test("The default requireCaretUnchanged never invokes the seam for a non-deleting candidate")
+  func requireCaretUnchangedDefaultsToTodaysBehavior() {
+    // Regression guard: today's unaffected (record-start-succeeded) path must
+    // stay byte-identical. A seam that returns false here would flip this
+    // test's outcome to `.legacy`, so an unexpected invocation is caught, not
+    // merely an unread flag.
+    var seamCalled = false
+    let payload = PasteService.payloadAtCommitBoundary(
+      legacy: "Fix the handler ",
+      repaired: "fix the handler ",
+      context: terminalContext(line: "I can't wait till the weather is"),
+      element: AXUIElementCreateSystemWide(),
+      candidateDeletesDictatedText: false,
+      caretUnchangedCheck: { _, _, _ in
+        seamCalled = true
+        return false
+      })
+
+    #expect(payload.kind == .repaired)
+    #expect(payload.text == "fix the handler ")
+    #expect(!seamCalled, "requireCaretUnchanged defaults to false and must not invoke the seam")
+  }
+
 }

@@ -920,6 +920,29 @@ import os
     AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier)
   }
 
+  /// A real, LIVE `NSRunningApplication` — genuinely running and not
+  /// terminated, which the #1980 P2 retry-liveness guard now depends on.
+  ///
+  /// Two things that look right and are not, verified empirically (`swift`
+  /// one-liner) before writing this: `NSRunningApplication(processIdentifier:
+  /// ProcessInfo.processInfo.processIdentifier)` returns nil for a bare
+  /// xctest process (not a registered `.app` bundle — the earlier crash this
+  /// comment used to warn about). `.current` does NOT crash, but is a
+  /// DEGENERATE stand-in under xctest: `pid == -1`, `isTerminated == true`,
+  /// `bundleIdentifier == nil` — silently wrong for any test that reads
+  /// those properties rather than merely checking `!= nil` (the existing
+  /// `KernelDictationDriverTests.swift` precedent only ever does the latter).
+  ///
+  /// `NSWorkspace.shared.runningApplications` is the real system list and is
+  /// non-empty and genuinely live on any macOS capable of running this AX
+  /// test suite at all (loginwindow/Dock/Finder-class processes are always
+  /// present) — confirmed 100 entries, `.first` live and not terminated.
+  private static func stubTargetApp() -> NSRunningApplication {
+    // swift-format-ignore: NeverForceUnwrap — the system's own running-app
+    // list cannot be empty on a machine capable of running this suite.
+    NSWorkspace.shared.runningApplications.first!
+  }
+
   /// An engine that has already transcribed, which is the only state delivery
   /// runs in: the text being delivered exists BECAUSE a result was produced.
   /// A pre-finalize adapter reports no language, and the repair reads a missing
@@ -1194,6 +1217,252 @@ import os
       "today's payload is delivered unchanged in every cell")
   }
 
+  // MARK: - Delivery-time retry (#1980)
+  //
+  // The record-start focus capture is a single AX read that can transiently
+  // fail (Chromium/Electron lazy-AX warm-up, #277's own documented class).
+  // When it does, `context.targetElement` stays nil for the whole session and
+  // smart insertion silently never fires. These four cases prove the retry:
+  // succeeds, fails, is correctly never armed with no app to retry against,
+  // and stays correctly OFF when the record-start capture already succeeded.
+
+  @Test("a failed record-start capture is retried once, scoped to the target app's pid")
+  func retrySucceedsAndRecoversTheCaretRead() async throws {
+    let captured = DeliveryRequestBox()
+    let reads = SaveCountBox()
+    let retrySeam = RetrySeamBox()
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetApp = Self.stubTargetApp()
+    context.targetElement = nil
+    let recovered = Self.stubCaretElement()
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      currentTime: { retrySeam.tick() },
+      readCaretContext: { element, _, _ in
+        reads.count += 1
+        #expect(element == recovered, "the caret read must use the RECOVERED element")
+        return Self.midSentenceCaret
+      },
+      focusedElementInTargetApp: { pid in
+        retrySeam.callCount += 1
+        retrySeam.lastPID = pid
+        return recovered
+      })
+
+    _ = await wiring.deliver("Review this before the meeting")
+
+    #expect(retrySeam.callCount == 1, "the retry fires exactly once")
+    #expect(retrySeam.lastPID == context.targetApp?.processIdentifier)
+    #expect(reads.count == 1, "the caret read runs against the recovered element")
+    #expect(context.targetElement == recovered, "the retry mutates the shared context in place")
+
+    let request = try #require(captured.requests.first)
+    #expect(request.targetElement == recovered)
+    #expect(request.repairedText != nil)
+    #expect(request.targetElementIsRetried == true)
+    #expect(outcome.caretContextOutcome != "no_target")
+    #expect(outcome.caretCaptureRetried == true)
+    let retryMs = try #require(outcome.caretCaptureRetryMs)
+    #expect(retryMs == 1_000, "matches the deterministic fake clock's one-tick advance")
+  }
+
+  @Test("a retry that also fails leaves today's no_target behavior exactly as it was")
+  func retryAttemptedButAlsoFails() async throws {
+    let captured = DeliveryRequestBox()
+    let reads = SaveCountBox()
+    let retrySeam = RetrySeamBox()
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetApp = Self.stubTargetApp()
+    context.targetElement = nil
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      currentTime: { retrySeam.tick() },
+      readCaretContext: { _, _, _ in
+        reads.count += 1
+        return Self.midSentenceCaret
+      },
+      focusedElementInTargetApp: { pid in
+        retrySeam.callCount += 1
+        retrySeam.lastPID = pid
+        return nil
+      })
+
+    _ = await wiring.deliver("Review this before the meeting")
+
+    #expect(retrySeam.callCount == 1, "the retry still fires exactly once, even though it fails")
+    #expect(retrySeam.lastPID == context.targetApp?.processIdentifier)
+    #expect(reads.count == 0, "no caret read without a recovered element")
+    #expect(context.targetElement == nil)
+
+    let request = try #require(captured.requests.first)
+    #expect(request.targetElement == nil)
+    #expect(request.repairedText == nil)
+    #expect(request.caretContext == nil)
+    #expect(request.targetElementIsRetried == true, "attempted, though it did not recover")
+    #expect(outcome.caretContextOutcome == "no_target")
+    #expect(
+      outcome.caretCaptureRetried == true, "attempted is recorded whether or not it recovers"
+    )
+    let retryMs = try #require(outcome.caretCaptureRetryMs)
+    #expect(retryMs == 1_000, "matches the deterministic fake clock's one-tick advance")
+  }
+
+  @Test(
+    "a retry that recovers a NON-text element is discarded, preserving the missing-target fallback")
+  func retryRecoversAnUnusableElementAndIsDiscarded() async throws {
+    // Whole-diff review (P1): a recovered element that is present but not a
+    // text field must NOT be adopted. `context.targetElement == nil`
+    // classifies at the paste layer as `.missing`, which still attempts Tier 2
+    // blind Cmd+V (#277's Chromium lazy-AX fallback — why paste itself already
+    // works today even when caret repair no-ops). Adopting a non-text element
+    // instead reclassifies as `.nonText`, which skips Tier 2 and falls to
+    // clipboard-only — silently downgrading a today-working automatic paste.
+    let captured = DeliveryRequestBox()
+    let reads = SaveCountBox()
+    let retrySeam = RetrySeamBox()
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetApp = Self.stubTargetApp()
+    context.targetElement = nil
+    let unusable = Self.stubCaretElement()
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      currentTime: { retrySeam.tick() },
+      readCaretContext: { _, _, _ in
+        reads.count += 1
+        return Self.midSentenceCaret
+      },
+      focusedElementInTargetApp: { pid in
+        retrySeam.callCount += 1
+        retrySeam.lastPID = pid
+        return unusable
+      },
+      isRetryTargetUsable: { element in
+        #expect(element == unusable, "the usability check must see exactly the recovered element")
+        return false
+      })
+
+    _ = await wiring.deliver("Review this before the meeting")
+
+    #expect(retrySeam.callCount == 1, "the retry still fires and recovers SOMETHING")
+    #expect(reads.count == 0, "an unusable element must never reach the caret read")
+    #expect(context.targetElement == nil, "the unusable element must not be adopted")
+
+    let request = try #require(captured.requests.first)
+    #expect(
+      request.targetElement == nil,
+      "nil, not the unusable element — preserves .missing classification")
+    #expect(request.repairedText == nil)
+    #expect(request.targetElementIsRetried == true, "the retry WAS attempted")
+    #expect(outcome.caretContextOutcome == "no_target")
+    #expect(outcome.caretCaptureRetried == true)
+  }
+
+  @Test("no target app means the retry is not attempted at all — never a failed retry")
+  func noTargetAppMeansNoRetryAttempt() async throws {
+    let captured = DeliveryRequestBox()
+    let reads = SaveCountBox()
+    let retrySeam = RetrySeamBox()
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetApp = nil
+    context.targetElement = nil
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _, _, _ in
+        reads.count += 1
+        return Self.midSentenceCaret
+      },
+      focusedElementInTargetApp: { pid in
+        retrySeam.callCount += 1
+        retrySeam.lastPID = pid
+        return nil
+      })
+
+    _ = await wiring.deliver("Review this before the meeting")
+
+    #expect(retrySeam.callCount == 0, "no pid to query with — the retry seam must never be called")
+    #expect(reads.count == 0, "no element to read against without a target app")
+    let request = try #require(captured.requests.first)
+    #expect(request.targetElement == nil)
+    #expect(request.repairedText == nil)
+    #expect(request.targetElementIsRetried == false)
+    #expect(outcome.caretContextOutcome == "no_target")
+    #expect(outcome.caretCaptureRetried == false, "unattempted, not a failed attempt")
+    #expect(outcome.caretCaptureRetryMs == nil)
+  }
+
+  @Test("a record-start capture that already succeeded is never retried")
+  func existingTargetElementIsNeverRetried() async throws {
+    let captured = DeliveryRequestBox()
+    let reads = SaveCountBox()
+    let retrySeam = RetrySeamBox()
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetApp = Self.stubTargetApp()
+    let original = Self.stubCaretElement()
+    context.targetElement = original
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { element, _, _ in
+        reads.count += 1
+        #expect(element == original)
+        return Self.midSentenceCaret
+      },
+      focusedElementInTargetApp: { pid in
+        retrySeam.callCount += 1
+        retrySeam.lastPID = pid
+        return Self.stubCaretElement()
+      })
+
+    _ = await wiring.deliver("Review this before the meeting")
+
+    #expect(retrySeam.callCount == 0, "the record-start capture already succeeded — no retry")
+    #expect(reads.count == 1)
+    #expect(
+      context.targetElement == original, "the retry must not overwrite an already-present element")
+
+    let request = try #require(captured.requests.first)
+    #expect(request.targetElement == original)
+    #expect(request.repairedText != nil)
+    #expect(request.targetElementIsRetried == false)
+    #expect(outcome.caretContextOutcome == "read_selected")
+    #expect(outcome.caretCaptureRetried == false)
+    #expect(outcome.caretCaptureRetryMs == nil)
+  }
+
   @Test("an unreadable field yields no candidate, and today's payload still ships")
   func unreadableFieldFallsBackToTodaysPayload() async {
     // The accessibility read fails open. The distinction that matters is that it
@@ -1405,6 +1674,15 @@ import os
     ) -> PasteService.CaretContext? = { _, _, _ in
       nil
     },
+    // #1980 delivery-time retry seam. Defaults to "never recovers", so every
+    // pre-existing test in this suite keeps exactly today's behaviour and
+    // only a test that opts in observes a retry.
+    focusedElementInTargetApp: @escaping @MainActor (pid_t) -> AXUIElement? = { _ in nil },
+    // #1980 whole-diff review (P1) gate. Defaults to "usable", so every
+    // existing retry-success test in this suite keeps treating its recovered
+    // stub as adoptable; the dedicated non-text-recovery test opts into
+    // `{ _ in false }` to prove the OTHER direction.
+    isRetryTargetUsable: @escaping @MainActor (AXUIElement) -> Bool = { _ in true },
     // Delivery only ever runs after a transcription produced the text being
     // delivered, so the adapter it reads has a result by then. The default
     // stands in for exactly that state; language tests vary the code.
@@ -1444,6 +1722,8 @@ import os
       save: save,
       deliverPaste: deliverPaste,
       readCaretContext: readCaretContext,
+      focusedElementInTargetApp: focusedElementInTargetApp,
+      isRetryTargetUsable: isRetryTargetUsable,
       seamCasingOracle: seamCasingOracle,
       releaseOracleLease: releaseOracleLease,
       resolveLanguage: resolveLanguage
@@ -1905,6 +2185,20 @@ private final class SignalFlag {
 private final class SaveCountBox {
   var count = 0
   var last: Transcript?
+}
+
+/// Captures how the #1980 delivery-time retry seam was called, plus a
+/// deterministic fake clock so `caretCaptureRetryMs` is a real, nonzero,
+/// non-flaky advance rather than a real wall-clock read.
+@MainActor
+private final class RetrySeamBox {
+  var callCount = 0
+  var lastPID: pid_t?
+  private var clock: TimeInterval = 0
+  func tick() -> TimeInterval {
+    clock += 1
+    return clock
+  }
 }
 
 @MainActor
