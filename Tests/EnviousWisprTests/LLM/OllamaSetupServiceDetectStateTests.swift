@@ -816,14 +816,24 @@ struct OllamaSetupServiceDetectStateTests {
     var iterator = started.stream.makeAsyncIterator()
     _ = await iterator.next()
 
+    // `pullModel` has no transport seam and calls the real network for its
+    // own streaming pull, so leaving it active here would race the real
+    // connection outcome against this test's gated mock (fast-refuses in a
+    // sandboxed CI runner with no Ollama daemon, unlike a dev machine running
+    // one; CI failure on PR #1984, 2026-08-08). Cancelling immediately
+    // settles setupState synchronously and bumps pullEpoch, so the pull
+    // task's own eventual real-network completion is a guaranteed no-op
+    // regardless of how fast or slow it resolves -- matching
+    // `startServerDoesNotClobberDeleteDuringPoll`'s already-deterministic
+    // pattern of settling the competing write before capturing the snapshot.
     service.pullModel("mistral")
+    service.cancelPull()
     let stateAfterPull = service.setupState
 
     await gate.release()
     for _ in 0..<200 { await Task.yield() }
 
     #expect(service.setupState == stateAfterPull)
-    service.cancelPull()
   }
 
   @Test(
