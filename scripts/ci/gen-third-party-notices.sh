@@ -50,6 +50,12 @@ COMPONENTS=(
   "swift-syntax|603.0.2|Apache-2.0|swift-syntax/LICENSE.txt|https://github.com/swiftlang/swift-syntax|swift-syntax"
   "fastcluster (bundled in FluidAudio)|n/a|BSD-2-Clause|FluidAudio/ThirdPartyLicenses/fastcluster-LICENSE.md|https://github.com/dmuellner/fastcluster|"
   "VBx (bundled in FluidAudio)|n/a|Apache-2.0|FluidAudio/ThirdPartyLicenses/vbx-LICENSE.md|https://github.com/BUTSpeechFIT/VBx|"
+  # #1981: at fork pin a1767d86, FluidAudio's target statically links the
+  # prebuilt NemoTextProcessing xcframework (text-processing-rs v0.3.0). Its
+  # aggregate license file carries the NVIDIA NeMo Text Processing, rustfst,
+  # and Rust-crate attributions the binary embeds. Empty identity — a binary
+  # target inside FluidAudio, not its own SwiftPM pin.
+  "NemoTextProcessing / text-processing-rs (bundled in FluidAudio)|v0.3.0|Apache-2.0 (aggregating Apache-2.0/MIT components)|FluidAudio/ThirdPartyLicenses/NemoTextProcessing-LICENSE.md|https://github.com/FluidInference/text-processing-rs|"
   "PLCrashReporter + protobuf-c (bundled in PostHog)|n/a|MIT / Apache-2.0 / BSD-2-Clause|posthog-ios/vendor/PHPLCrashReporter/LICENSE|https://github.com/microsoft/plcrashreporter|"
   "libwebp (bundled in PostHog)|n/a|BSD-3-Clause|posthog-ios/vendor/libwebp/COPYING|https://chromium.googlesource.com/webm/libwebp|"
   # llama.cpp is NOT a SwiftPM dep — the bundled llama-server binary is built
