@@ -1908,26 +1908,6 @@ public final class TelemetryService {
     accessibilityWarningDismissed: Bool,
     config: [String: String] = [:]
   ) {
-    #if DEBUG
-      var hookStrings: [String: String] = [
-        "asr_backend": asrBackend,
-        "llm_provider": llmProvider,
-        "recording_mode": recordingMode,
-        "microphone_status": microphoneStatus,
-        "accessibility_status": accessibilityStatus,
-      ]
-      hookStrings.merge(config) { _, new in new }
-      testEventHook?(
-        CapturedTelemetryEvent(
-          name: "settings.snapshot",
-          stringProps: hookStrings,
-          intProps: ["custom_words_count": customWordsCount],
-          boolProps: [
-            "filler_removal": fillerRemoval,
-            "has_api_keys": hasApiKeys,
-            "accessibility_warning_dismissed": accessibilityWarningDismissed,
-          ]))
-    #endif
     var props: [String: Any] = [
       "asr_backend": asrBackend,
       "llm_provider": llmProvider,
@@ -1940,6 +1920,19 @@ public final class TelemetryService {
       "accessibility_warning_dismissed": accessibilityWarningDismissed,
     ]
     props.merge(config) { _, new in new }
+    #if DEBUG
+      // #1987: DERIVED from `props`, never re-listed. The previous shape built the
+      // test projection independently of the shipped payload, so a test could
+      // assert a property the real event did not carry, and every new `config` key
+      // had to be remembered twice. Split by value type to keep the existing
+      // string/int/bool capture shape.
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "settings.snapshot",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
     PostHogSDK.shared.capture("settings.snapshot", properties: props)
   }
 
@@ -1952,25 +1945,19 @@ public final class TelemetryService {
   /// codes). Onboarding-time writes are suppressed (the onboarding-completion
   /// baseline captures the final state).
   public func settingsChanged(setting: String, from: String, to: String, source: String) {
+    let props: [String: Any] = [
+      "setting": setting,
+      "from": from,
+      "to": to,
+      "source": source,
+    ]
     #if DEBUG
+      // #1987: derived from the same dictionary PostHog receives.
       testEventHook?(
         CapturedTelemetryEvent(
-          name: "settings.changed",
-          stringProps: [
-            "setting": setting,
-            "from": from,
-            "to": to,
-            "source": source,
-          ]))
+          name: "settings.changed", stringProps: props.compactMapValues { $0 as? String }))
     #endif
-    PostHogSDK.shared.capture(
-      "settings.changed",
-      properties: [
-        "setting": setting,
-        "from": from,
-        "to": to,
-        "source": source,
-      ])
+    PostHogSDK.shared.capture("settings.changed", properties: props)
   }
 
   /// #1635: the WhisperKit setup row's "getting the model ready" copy genuinely entered the
