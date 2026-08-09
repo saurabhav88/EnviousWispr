@@ -31,6 +31,8 @@ final class AppLifecycleCoordinator {
   private var audioEnvironmentSnapshotter: AudioEnvironmentSnapshotter?
   // periphery:ignore - retain anchor: owns audio-system observer lifetime
   private var audioSystemEventReporter: AudioSystemEventReporter?
+  // periphery:ignore - retain anchor: owns app-activation observer lifetime
+  private var accessibilityWarmupObserver: AccessibilityWarmupObserver?
 
   #if DEBUG
     /// V2 fault-injection control surface (issue #291). Started only when
@@ -341,6 +343,14 @@ final class AppLifecycleCoordinator {
         self?.bluetoothAwarenessPresenter.reconcile(trigger: .deviceChanged)
       }
     )
+
+    // #1986: nudge a newly-frontmost app's own on-demand accessibility
+    // activation to start as early as possible, so slow-to-warm apps
+    // (Chrome/Chromium) get the whole time the user spends in that app to
+    // wake up, instead of only the retry #1980 fires at commit time.
+    let warmupObserver = AccessibilityWarmupObserver()
+    warmupObserver.start()
+    accessibilityWarmupObserver = warmupObserver
   }
 
   func runDidBecomeActive() {
@@ -385,5 +395,8 @@ final class AppLifecycleCoordinator {
     audioSystemEventReporter = nil
     SentryBreadcrumb.audioEnvironmentProvider = nil
     audioEnvironmentSnapshotter = nil
+
+    accessibilityWarmupObserver?.stop()
+    accessibilityWarmupObserver = nil
   }
 }
