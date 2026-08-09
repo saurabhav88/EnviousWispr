@@ -463,20 +463,21 @@ public final class TelemetryService {
   /// denominator for `dictation.invoked` (which fires post-commit and under-fires
   /// raw presses). Metadata only (low-cardinality enums; never the key codes).
   public func hotkeyPressed(
-    triggerSource: String, inputMode: String, keyShape: String, pressAction: String
+    triggerSource: String, inputMode: String, keyShape: String, keyIdentity: String,
+    pressAction: String
   ) {
     let props: [String: Any] = [
       "trigger_source": triggerSource, "input_mode": inputMode,
-      "key_shape": keyShape, "press_action": pressAction,
+      "key_shape": keyShape, "key_identity": keyIdentity, "press_action": pressAction,
     ]
     #if DEBUG
+      // #1987: DERIVED from `props`, never re-listed. The previous shape built the
+      // test projection independently of the real payload, so a test could assert a
+      // property the shipped event did not actually carry. A verifier that
+      // re-implements its subject proves only that the copy works.
       testEventHook?(
         CapturedTelemetryEvent(
-          name: "hotkey.pressed",
-          stringProps: [
-            "trigger_source": triggerSource, "input_mode": inputMode,
-            "key_shape": keyShape, "press_action": pressAction,
-          ]))
+          name: "hotkey.pressed", stringProps: props.compactMapValues { $0 as? String }))
     #endif
     PostHogSDK.shared.capture("hotkey.pressed", properties: props)
   }

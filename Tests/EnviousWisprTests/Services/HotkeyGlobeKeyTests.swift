@@ -96,12 +96,16 @@ import Testing
     var cancels = 0
     var toggles = 0
     var actions: [String] = []
+    var identities: [String] = []
     let toggleWaiter = CallbackWaiter()
 
     var sink: HotkeyTelemetrySink {
       HotkeyTelemetrySink(
         registrationFailed: { _, _, _, _ in },
-        pressed: { [weak self] _, _, _, action in self?.actions.append(action) },
+        pressed: { [weak self] _, _, _, identity, action in
+          self?.actions.append(action)
+          self?.identities.append(identity)
+        },
         lockResolved: { _, _ in })
     }
   }
@@ -308,6 +312,55 @@ import Testing
     press(service)
     await spy.toggleWaiter.wait(until: 2)
     #expect(spy.toggles == 2, "a second tap must toggle recording off")
+  }
+
+  // MARK: - Telemetry identity (#1987 chunk 2)
+
+  @Test("A Globe press reports key_identity=globe alongside the existing key_shape")
+  func globePressReportsIdentity() async {
+    let spy = Spy()
+    let clock = ManualClock()
+    let service = makeService(spy, clock: clock)
+
+    press(service)
+    await settle(service)
+
+    #expect(spy.identities == ["globe"])
+    #expect(spy.actions == ["start"], "identity must not change which action is reported")
+  }
+
+  /// The whole point of the property: `key_shape` is `modifier_only` for BOTH keys,
+  /// so only identity can tell adoption of the new key from the old default.
+  @Test("Right Option reports a different identity than Globe for the same shape")
+  func rightOptionReportsDistinctIdentity() async {
+    let spy = Spy()
+    let clock = ManualClock()
+    let service = makeService(spy, clock: clock)
+    service.toggleKeyCode = ModifierKeyCodes.rightOption
+
+    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightOption, flags: [.option])
+    await settle(service)
+
+    #expect(spy.identities == ["right_option"])
+  }
+
+  @Test("Every emitted identity is one of the four classes and never a key code")
+  func identitiesAreAlwaysClassified() async {
+    let spy = Spy()
+    let clock = ManualClock()
+    let service = makeService(spy, clock: clock)
+
+    press(service)
+    await settle(service)
+    release(service)
+    clock.advance(ms: 120)
+    press(service)  // lock
+
+    #expect(!spy.identities.isEmpty)
+    for identity in spy.identities {
+      #expect(["globe", "right_option", "other_modifier", "chord"].contains(identity))
+      #expect(identity.rangeOfCharacter(from: .decimalDigits) == nil)
+    }
   }
 
   // MARK: - Negative controls

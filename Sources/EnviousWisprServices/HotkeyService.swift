@@ -224,7 +224,11 @@ public final class HotkeyService {
     // hands-free actions all ride the toggle key. (Codex code-diff #1.)
     let keyCode = trigger == .cancel ? cancelKeyCode : toggleKeyCode
     let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
-    telemetry.pressed(trigger.rawValue, inputMode, keyShape, action.rawValue)
+    // #1987: same key as key_shape, one level finer. `key_shape` cannot separate
+    // Globe from Right Option because both are modifier-only. Content-free class,
+    // never the key code itself.
+    let keyIdentity = HotkeyKeyIdentity.classify(keyCode: keyCode).rawValue
+    telemetry.pressed(trigger.rawValue, inputMode, keyShape, keyIdentity, action.rawValue)
   }
 
   public func start() {
