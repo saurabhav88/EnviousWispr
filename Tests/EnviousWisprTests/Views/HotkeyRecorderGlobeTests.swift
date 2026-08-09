@@ -42,9 +42,137 @@ import Testing
 
   private func makeView() -> (KeyCaptureNSView, () -> [UInt16]) {
     let view = KeyCaptureNSView()
+    // The state under test. Every capture case below describes what happens WHILE
+    // the user is recording a shortcut; `isRecording` defaults to false precisely
+    // so that a view nobody armed captures nothing.
+    view.isRecording = true
     var captured: [UInt16] = []
     view.onKeyEvent = { captured.append($0.keyCode) }
     return (view, { captured })
+  }
+
+  /// An un-armed view, for the gate cases below.
+  private func makeIdleView() -> (KeyCaptureNSView, () -> [UInt16]) {
+    let view = KeyCaptureNSView()
+    var captured: [UInt16] = []
+    view.onKeyEvent = { captured.append($0.keyCode) }
+    return (view, { captured })
+  }
+
+  /// `characters` is a parameter rather than a fixed "a" so an event that claims to
+  /// be a particular shortcut actually IS one. Review caught the Command+W case
+  /// below carrying W's key code with A's characters, which would have let the test
+  /// keep passing against an implementation that read the characters instead.
+  private func keyDown(
+    keyCode: UInt16,
+    flags: NSEvent.ModifierFlags = [],
+    characters: String = "a"
+  ) -> NSEvent {
+    NSEvent.keyEvent(
+      with: .keyDown,
+      location: .zero,
+      modifierFlags: flags,
+      timestamp: 0,
+      windowNumber: 0,
+      context: nil,
+      characters: characters,
+      charactersIgnoringModifiers: characters,
+      isARepeat: false,
+      keyCode: keyCode
+    )!
+  }
+
+  // MARK: - #1987 the capture view must be ARMED before it captures anything
+  //
+  // Founder-found, 2026-08-09, on the live build. Landing on the Shortcuts page and
+  // pressing any key rebound the shortcut immediately: no click on the box, no
+  // "press a key" prompt.
+  //
+  // The three handlers did not share one cause. `keyDown` and `flagsChanged` relied
+  // on this hidden view lacking the opportunity to become first responder outside
+  // recording, and #1987 removed that absence by making the enclosing control
+  // `.focusable()`. `performKeyEquivalent` had no such protection at any point,
+  // because AppKit can route a key equivalent through the view tree instead of to
+  // the first responder.
+  //
+  // These are the two-way control: the cases above prove capture WORKS when armed,
+  // these prove it does NOTHING when not. Without the second half, a gate that
+  // refused everything would pass the first half completely.
+
+  @Test("An un-armed view ignores a plain key press")
+  func idleViewIgnoresKeyDown() {
+    let (view, captured) = makeIdleView()
+    view.keyDown(with: keyDown(keyCode: 0))
+    #expect(captured().isEmpty)
+  }
+
+  @Test("An un-armed view ignores a bare modifier")
+  func idleViewIgnoresModifier() {
+    let (view, captured) = makeIdleView()
+    view.flagsChanged(with: flagsChanged(keyCode: ModifierKeyCodes.globe, flags: [.function]))
+    #expect(captured().isEmpty)
+  }
+
+  /// The worst arm, because AppKit can route a key equivalent through the view tree
+  /// rather than to the first responder, so it fired even when this view held no
+  /// focus. Returning true also claimed the shortcut, so an ordinary Command+W on
+  /// the Shortcuts page both rebound the hotkey and failed to close the window.
+  @Test("An un-armed view neither captures nor claims a key equivalent")
+  func idleViewIgnoresKeyEquivalent() {
+    let (view, captured) = makeIdleView()
+    let handled = view.performKeyEquivalent(
+      with: keyDown(keyCode: 13, flags: [.command], characters: "w"))
+    #expect(captured().isEmpty)
+    #expect(!handled, "an un-armed capture view must let the system handle the key equivalent")
+  }
+
+  /// The arming edge itself: capture must start and stop with the flag, so a view
+  /// that was armed once does not keep capturing after recording ends.
+  @Test("Capture follows the armed flag in both directions")
+  func captureFollowsTheArmedFlag() {
+    let (view, captured) = makeIdleView()
+
+    view.keyDown(with: keyDown(keyCode: 0))
+    #expect(captured().isEmpty)
+
+    view.isRecording = true
+    view.keyDown(with: keyDown(keyCode: 0))
+    #expect(captured() == [0])
+
+    view.isRecording = false
+    view.keyDown(with: keyDown(keyCode: 1))
+    #expect(captured() == [0], "capture continued after recording ended")
+  }
+
+  /// The one case that needs a real window, and the reason it is worth the cost:
+  /// every other case here builds a detached view, whose `window` is nil, so the
+  /// resignation branch is unreachable and deleting the whole `didSet` body leaves
+  /// them all green. Review caught exactly that.
+  ///
+  /// What it protects: `acceptsFirstResponder` going false does NOT resign an
+  /// existing first-responder status, so without the `didSet` a view that was armed
+  /// once keeps receiving keys after recording ends, until something else happens to
+  /// take focus. That is the founder's bug again, one step later in the sequence.
+  @Test("Ending capture resigns the hidden capture view as first responder")
+  func endingCaptureResignsFirstResponder() {
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+      styleMask: [.titled],
+      backing: .buffered,
+      defer: false
+    )
+    let view = KeyCaptureNSView(frame: window.contentView!.bounds)
+    window.contentView = view
+
+    view.isRecording = true
+    #expect(view.acceptsFirstResponder)
+    #expect(window.makeFirstResponder(view))
+    #expect(window.firstResponder === view, "precondition: the armed view must hold focus")
+
+    view.isRecording = false
+
+    #expect(!view.acceptsFirstResponder)
+    #expect(window.firstResponder !== view, "the view kept keyboard focus after recording ended")
   }
 
   @Test("The recorder accepts a Globe press")

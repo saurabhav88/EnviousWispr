@@ -9,17 +9,59 @@ import SwiftUI
 final class KeyCaptureNSView: NSView {
   var onKeyEvent: ((NSEvent) -> Void)?
 
-  override var acceptsFirstResponder: Bool { true }
+  /// #1987 — whether the owner is actively recording a shortcut.
+  ///
+  /// All three handlers below and first-responder eligibility read this one flag,
+  /// but they did NOT share the same history, and the difference matters to anyone
+  /// tempted to relax one of them:
+  ///
+  /// - `keyDown` and `flagsChanged` relied on this hidden view never becoming first
+  ///   responder outside recording, because the only `makeFirstResponder` call sat
+  ///   in the recording branch. That is an absence of opportunity, not a guard.
+  ///   #1987 removed the absence by making the enclosing control `.focusable()` so
+  ///   the guidance popover could return focus to it, and the founder then hit the
+  ///   consequence in live UAT (2026-08-09): landing on the Shortcuts page and
+  ///   typing rebound the shortcut with no click and no "press a key" prompt.
+  /// - `performKeyEquivalent` was already unsafe before #1987 and for a different
+  ///   reason. See its own note below.
+  ///
+  /// Gated here rather than in each owner because this view is the event SOURCE and
+  /// both recording surfaces share it. A per-owner check would have to be repeated
+  /// and could be forgotten by the next surface.
+  var isRecording = false {
+    didSet {
+      // Stop holding focus the instant recording ends. `acceptsFirstResponder`
+      // going false does not resign an existing first-responder status, so without
+      // this the view keeps receiving keys until something else takes focus.
+      guard !isRecording, oldValue, let window, window.firstResponder === self else { return }
+      window.makeFirstResponder(nil)
+    }
+  }
+
+  override var acceptsFirstResponder: Bool { isRecording }
 
   /// Called BEFORE the system handles key equivalents (e.g. Command+Left, Option+Arrow).
   /// Returning true tells AppKit this view handled the event, preventing system consumption.
+  ///
+  /// AppKit can route a key equivalent through the view tree rather than to the
+  /// first responder, so this arm fires even when this view holds no focus at all.
+  /// That is why it needed the gate independently of the focus story above, and why
+  /// it was unsafe before #1987 rather than because of it. Returning `true`
+  /// unconditionally also told AppKit that every key equivalent REACHING this view
+  /// was handled, so an ordinary shortcut on the page could both rebind the hotkey
+  /// and fail to perform its own action.
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    guard isRecording else { return super.performKeyEquivalent(with: event) }
     onKeyEvent?(event)
     return true
   }
 
   /// Called for regular key presses that are not key equivalents (plain letters, etc.).
   override func keyDown(with event: NSEvent) {
+    guard isRecording else {
+      super.keyDown(with: event)
+      return
+    }
     onKeyEvent?(event)
   }
 
@@ -29,6 +71,11 @@ final class KeyCaptureNSView: NSView {
   /// We only forward it when the modifier count goes UP (a new modifier is added)
   /// so that releasing the key does not trigger a second recording action.
   override func flagsChanged(with event: NSEvent) {
+    guard isRecording else {
+      super.flagsChanged(with: event)
+      return
+    }
+
     // Determine which device-independent modifier bits changed compared to the
     // previous event. NSEvent does not expose a "previous flags" property, so
     // we rely on the keyCode to identify the specific modifier key that changed
@@ -97,11 +144,16 @@ struct KeyCaptureView: NSViewRepresentable {
   func makeNSView(context: Context) -> KeyCaptureNSView {
     let view = KeyCaptureNSView()
     view.onKeyEvent = onKeyEvent
+    view.isRecording = isRecording
     return view
   }
 
   func updateNSView(_ nsView: KeyCaptureNSView, context: Context) {
     nsView.onKeyEvent = onKeyEvent
+    // Set BEFORE requesting first responder: `acceptsFirstResponder` reads this,
+    // so assigning it after would have AppKit refuse the very request below.
+    // Assigning it also resigns focus when recording ends (see its `didSet`).
+    nsView.isRecording = isRecording
     if isRecording {
       // Defer making first responder so the window is ready
       Task { @MainActor in
