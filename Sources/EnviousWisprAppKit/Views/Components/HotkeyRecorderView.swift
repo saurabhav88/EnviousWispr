@@ -35,24 +35,15 @@ final class KeyCaptureNSView: NSView {
     // and the direction of the transition from the modifier flags themselves.
     let currentFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
-    // Map the physical key code to the modifier flag it represents.
-    let addedFlag = flagForModifierKeyCode(event.keyCode)
-    guard addedFlag != [] else { return }  // not a recognised modifier key
+    // Map the physical key code to the modifier flag it represents. One shared
+    // authority with the dispatch path (#1987): nil means "not a standalone
+    // modifier", which is distinguishable from a real flag in a way an empty
+    // OptionSet is not.
+    guard let addedFlag = ModifierKeyCodes.flag(for: event.keyCode) else { return }
 
     // Only forward the event when the modifier is being pressed (added), not released.
     if currentFlags.contains(addedFlag) {
       onKeyEvent?(event)
-    }
-  }
-
-  /// Returns the NSEvent.ModifierFlags bit that corresponds to the given modifier key code.
-  private func flagForModifierKeyCode(_ keyCode: UInt16) -> NSEvent.ModifierFlags {
-    switch keyCode {
-    case 55, 54: return .command
-    case 58, 61: return .option
-    case 59, 62: return .control
-    case 56, 60: return .shift
-    default: return []
     }
   }
 }
@@ -240,7 +231,10 @@ struct HotkeyRecorderView: View {
     KeyCaptureBehavior(
       isRecording: isRecording,
       label: label,
-      valueDescription: KeySymbols.format(keyCode: keyCode, modifiers: modifiers),
+      // Spoken projection, not the visible one (#1987): the visible label leads
+      // with an emoji for the Globe key. Visible text is unchanged.
+      valueDescription: KeySymbols.accessibilityDescription(
+        keyCode: keyCode, modifiers: modifiers),
       onKeyEvent: handleKeyEvent,
       onToggle: toggleRecording
     )

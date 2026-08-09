@@ -737,16 +737,19 @@ public final class HotkeyService {
   /// Processes modifier key changes from pre-extracted values.
   /// Used by the global monitor (which dispatches to main thread with raw values)
   /// and directly by the local monitor via handleFlagsChanged.
-  private func handleFlagsChangedValues(keyCode: UInt16, flags: NSEvent.ModifierFlags) {
+  /// Test seam (#1987): `package` rather than `private` so tests drive the REAL
+  /// modifier dispatch path on a plain import. `internal` would work only through
+  /// `@testable`, which couples the seam to a compilation mode.
+  package func handleFlagsChangedValues(keyCode: UInt16, flags: NSEvent.ModifierFlags) {
     guard !isSuspended else { return }
 
     let currentFlags = flags.intersection(.deviceIndependentFlagsMask)
 
-    // Only process known modifier key codes
-    guard ModifierKeyCodes.isModifierOnly(keyCode) else { return }
+    // Only known standalone modifier key codes; this also supplies the flag, so a
+    // member can never reach the press/release test without one (#1987).
+    guard let flag = ModifierKeyCodes.flag(for: keyCode) else { return }
 
     // Determine press vs. release by checking whether the flag is present
-    let flag = flagForKeyCode(keyCode)
     let isPress = currentFlags.contains(flag)
 
     // Unified shortcut — both modes use toggleKeyCode
@@ -764,16 +767,6 @@ public final class HotkeyService {
     } else {
       // Push-to-talk mode with hands-free support
       handleRecordAction(isPress: isPress)
-    }
-  }
-
-  private func flagForKeyCode(_ keyCode: UInt16) -> NSEvent.ModifierFlags {
-    switch keyCode {
-    case 55, 54: return .command
-    case 58, 61: return .option
-    case 59, 62: return .control
-    case 56, 60: return .shift
-    default: return []
     }
   }
 

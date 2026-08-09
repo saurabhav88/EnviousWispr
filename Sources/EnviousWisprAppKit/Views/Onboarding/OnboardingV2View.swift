@@ -1463,7 +1463,9 @@ private struct KeycapHotkeyView: View {
           .accessibilityValue(
             isRecording
               ? "Recording, press a key combination"
-              : displayLabel
+              // Spoken projection, not the visible keycap text (#1987). Visible
+              // display is unchanged.
+              : KeySymbols.accessibilityDescription(keyCode: keyCode, modifiers: modifiers)
           )
           .accessibilityHint("Activates recording. Then press the key combination you want.")
           .accessibilityAction { toggleRecording() }
