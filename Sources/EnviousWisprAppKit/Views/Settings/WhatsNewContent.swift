@@ -24,6 +24,15 @@ enum WhatsNewContent {
       version: "2.5.0"
     ),
 
+    Entry(
+      id: "globe-key-dictation-hotkey",
+      icon: "globe",
+      title: "Use the Globe key as your dictation shortcut",
+      description:
+        "You can now use the Globe (Fn) key as your dictation shortcut. Right Option stays exactly as it is unless you choose Globe. If macOS also opens emoji or switches your keyboard language when you press it, go to System Settings, then Keyboard, then Press Globe key to, and choose Do Nothing.",
+      version: "2.5.0"
+    ),
+
     // MARK: - v2.4.3
 
     Entry(
