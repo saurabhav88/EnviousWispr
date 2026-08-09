@@ -48,6 +48,44 @@ final class KeyCaptureNSView: NSView {
   }
 }
 
+// MARK: - HotkeyCapture
+
+/// #1987 — the single authority for what a captured key event MEANS.
+///
+/// Two surfaces record shortcuts: Settings, through `HotkeyRecorderView`, and
+/// onboarding, through `KeycapHotkeyView`. Both already shared `KeyCaptureNSView`
+/// for what they RECEIVE, but each carried its own copy of what to ACCEPT, so the
+/// same press could bind differently depending on where the user set it. That
+/// duplication became load-bearing when accepting a binding started deciding
+/// whether to present the Globe guidance, which must happen exactly once across
+/// both surfaces.
+///
+/// Free of `@Environment` and of any view state on purpose: the decision is a
+/// function of the event alone, so it is provable without a rendered hierarchy.
+enum HotkeyCapture {
+  /// True when the event cancels recording instead of binding: Escape pressed
+  /// alone. Restricted to real key presses, since a modifier change never cancels.
+  static func isCancel(_ event: NSEvent) -> Bool {
+    event.type != .flagsChanged
+      && event.keyCode == 53
+      && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
+  }
+
+  /// The shortcut a non-cancelling event binds to.
+  ///
+  /// A standalone modifier reports its OWN flag in `modifierFlags`, so storing
+  /// that flag would require the user to hold Globe while pressing Globe and the
+  /// shortcut could never fire. Those come back with empty modifiers; an ordinary
+  /// chord keeps its modifiers.
+  static func binding(for event: NSEvent) -> (keyCode: UInt16, modifiers: NSEvent.ModifierFlags) {
+    let keyCode = event.keyCode
+    if event.type == .flagsChanged && ModifierKeyCodes.isModifierOnly(keyCode) {
+      return (keyCode, [])
+    }
+    return (keyCode, event.modifierFlags.intersection(.deviceIndependentFlagsMask))
+  }
+}
+
 // MARK: - KeyCaptureView
 
 /// SwiftUI wrapper around `KeyCaptureNSView`. When `isRecording` is true the underlying
@@ -109,6 +147,11 @@ struct HotkeyRecorderView: View {
   let label: String
   var colors: HotkeyRecorderColors = .system
   var style: Style = .compact
+  /// #1987 — fires after a binding is ACCEPTED, so the owning surface can decide
+  /// whether to present the Globe-key guidance. Settings and onboarding have
+  /// separate completion handlers, so the decision cannot live in this view; it
+  /// belongs to `SettingsManager.claimGlobeKeyGuidancePresentation`.
+  var onBindingAccepted: (UInt16, NSEvent.ModifierFlags) -> Void = { _, _ in }
 
   // PR10 of #763: hotkey suspend/resume dispatch through DictationRuntime
   // façade; the shared HotkeyService is no longer accessible via the former root state.
@@ -260,39 +303,42 @@ struct HotkeyRecorderView: View {
     dictationRuntime.resumeHotkeys()
   }
 
+  /// Stays `private`: this method reads `dictationRuntime` from `@Environment` via
+  /// `stopRecording()`, so it traps outside a rendered hierarchy and no test can
+  /// drive it. The parts a test needs — what an event means, and what accepting it
+  /// does — live in `HotkeyCapture` and `acceptBinding(from:)`, neither of which
+  /// touches the environment.
   private func handleKeyEvent(_ event: NSEvent) {
-    // Escape with no modifiers cancels recording (only from keyDown / performKeyEquivalent)
-    if event.type != .flagsChanged
-      && event.keyCode == 53
-      && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
-    {
+    if HotkeyCapture.isCancel(event) {
       Task { @MainActor in
         stopRecording()
       }
       return
     }
-
-    let newKeyCode = event.keyCode
-
-    // Modifier-only hotkey: the keyCode IS the modifier key.
-    // Store the key code as-is and clear modifiers — the modifier IS the key,
-    // so there is no additional modifier to hold down.
-    if event.type == .flagsChanged && ModifierKeyCodes.isModifierOnly(newKeyCode) {
-      Task { @MainActor in
-        keyCode = newKeyCode
-        modifiers = []
-        stopRecording()
-      }
-      return
-    }
-
-    let newModifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
     Task { @MainActor in
-      keyCode = newKeyCode
-      modifiers = newModifiers
+      acceptBinding(from: event)
       stopRecording()
     }
+  }
+
+  /// #1987 — the acceptance EFFECT, extracted from `handleKeyEvent` so it is
+  /// reachable without a rendered view hierarchy. `internal` (not `package`) per
+  /// the chunk contract: the test target already uses
+  /// `@testable import EnviousWisprAppKit`, and an AppKit-local declaration must
+  /// not widen beyond that.
+  ///
+  /// Two things this shape buys beyond testability. The callback would otherwise
+  /// need one invocation per acceptance branch, so a later edit could update one
+  /// and miss the other; there is exactly one. And the bindings are written BEFORE
+  /// the owner is notified, which both surfaces depend on: `onBindingAccepted`
+  /// presents the Globe guidance, and the popover anchors on a control whose label
+  /// must already read the new key.
+  func acceptBinding(from event: NSEvent) {
+    let accepted = HotkeyCapture.binding(for: event)
+    keyCode = accepted.keyCode
+    modifiers = accepted.modifiers
+    onBindingAccepted(accepted.keyCode, accepted.modifiers)
   }
 
   private func resetToDefault() {

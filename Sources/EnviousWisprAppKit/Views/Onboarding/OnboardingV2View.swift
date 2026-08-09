@@ -1294,6 +1294,16 @@ private struct PermissionRow: View {
 // MARK: - Screen 3: Ready
 
 private struct ReadyScreenV2: View {
+  @State private var showGlobeGuidance = false
+  @AccessibilityFocusState private var guidanceReturnFocus: Bool
+  @FocusState private var shortcutFocused: Bool
+
+  private func dismissGlobeGuidance() {
+    showGlobeGuidance = false
+    shortcutFocused = true
+    guidanceReturnFocus = true
+  }
+
   @Environment(SettingsManager.self) private var settings
   @Environment(PermissionsService.self) private var permissions
   let onComplete: () -> Void
@@ -1331,8 +1341,27 @@ private struct ReadyScreenV2: View {
       // Interactive keycap — tap to record, shows result inline
       KeycapHotkeyView(
         keyCode: $settings.toggleKeyCode,
-        modifiers: $settings.toggleModifiers
+        modifiers: $settings.toggleModifiers,
+        onBindingAccepted: { code, _ in
+          // One shared owner across both surfaces (#1987): whichever surface binds
+          // Globe FIRST shows the explanation, and the other never repeats it.
+          if settings.claimGlobeKeyGuidancePresentation(for: code) {
+            showGlobeGuidance = true
+          }
+        }
       )
+      // Same reason as the Settings recorder (#1987): the keycap is a tappable
+      // plain view, not a `Button`, so without `.focusable()` the focus binding
+      // below would succeed in state while keyboard focus went nowhere.
+      .focusable()
+      .focused($shortcutFocused)
+      .accessibilityFocused($guidanceReturnFocus)
+      .popover(isPresented: $showGlobeGuidance, arrowEdge: .bottom) {
+        GlobeGuidancePopover(onDismiss: dismissGlobeGuidance)
+          // Same single dismissal path as Settings (#1987): both surfaces must
+          // return focus, not just the one a reviewer happens to open.
+          .onExitCommand(perform: dismissGlobeGuidance)
+      }
       .padding(.bottom, 20)
 
       if !permissions.accessibilityGranted {
@@ -1404,6 +1433,11 @@ private struct ReadyScreenV2: View {
 private struct KeycapHotkeyView: View {
   @Binding var keyCode: UInt16
   @Binding var modifiers: NSEvent.ModifierFlags
+  /// #1987 — onboarding has its OWN bind-completion handler; it does not share
+  /// `HotkeyRecorderView`. Without this the Globe guidance would only ever appear
+  /// in Settings, and a user who binds Globe during first-run setup, which is the
+  /// likeliest moment, would be told nothing.
+  var onBindingAccepted: (UInt16, NSEvent.ModifierFlags) -> Void = { _, _ in }
 
   // PR10 of #763: hotkey suspend/resume dispatch through DictationRuntime
   // façade; the shared HotkeyService is no longer accessible via the former root state.
@@ -1634,33 +1668,29 @@ private struct KeycapHotkeyView: View {
     dictationRuntime.resumeHotkeys()
   }
 
+  /// #1987 — reads the same `HotkeyCapture` authority as the Settings recorder.
+  /// This method carried its own copy of the accept/cancel logic, so the same
+  /// press could bind differently depending on which surface the user set it in.
   private func handleKeyEvent(_ event: NSEvent) {
-    // Escape with no modifiers cancels
-    if event.type != .flagsChanged,
-      event.keyCode == 53,
-      event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
-    {
+    if HotkeyCapture.isCancel(event) {
       Task { @MainActor in stopRecording() }
       return
     }
 
-    let newKeyCode = event.keyCode
-
-    // Modifier-only hotkey (e.g. bare Option)
-    if event.type == .flagsChanged, ModifierKeyCodes.isModifierOnly(newKeyCode) {
-      Task { @MainActor in
-        keyCode = newKeyCode
-        modifiers = []
-        stopRecording()
-      }
-      return
-    }
-
-    let newModifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
     Task { @MainActor in
-      keyCode = newKeyCode
-      modifiers = newModifiers
+      acceptBinding(from: event)
       stopRecording()
     }
+  }
+
+  /// The acceptance EFFECT, mirroring `HotkeyRecorderView.acceptBinding(from:)`:
+  /// one callback site rather than one per branch, and the bindings written before
+  /// the owner is notified so the guidance popover anchors on a keycap that already
+  /// reads the new key.
+  private func acceptBinding(from event: NSEvent) {
+    let accepted = HotkeyCapture.binding(for: event)
+    keyCode = accepted.keyCode
+    modifiers = accepted.modifiers
+    onBindingAccepted(accepted.keyCode, accepted.modifiers)
   }
 }
