@@ -2,7 +2,12 @@ import EnviousWisprCore
 import Foundation
 
 /// Static "What's New" content, decoupled from the view layer.
-/// Update WhatsNewConstants.currentContentVersion in Core whenever entries change.
+///
+/// The invariant is that the newest group MATCHES `WhatsNewConstants.currentContentVersion`,
+/// not that the constant is bumped whenever entries change. Adding an entry to the
+/// already-open group needs no Core edit; bumping it there would invent a release.
+/// Bump only when starting a group for a version beyond the current one.
+/// `WhatsNewContentTests.newestGroupIsCurrentVersion` enforces the match.
 enum WhatsNewContent {
   struct Entry: Identifiable, Hashable {
     let id: String
@@ -21,6 +26,15 @@ enum WhatsNewContent {
       title: "Ollama Cloud models now appear automatically",
       description:
         "Ollama Cloud models used to appear in Manage Models only after you added them on that Mac. The full lineup now appears there automatically on every install and after every update. The button now says Add instead of Download because nothing is downloading, and cloud models can no longer be deleted. The models available without a paid Ollama plan when checked on August 5, 2026 are listed first.",
+      version: "2.5.0"
+    ),
+
+    Entry(
+      id: "globe-key-dictation-hotkey",
+      icon: "globe",
+      title: "Use the Globe key as your dictation shortcut",
+      description:
+        "You can now use the Globe (Fn) key as your dictation shortcut. Right Option stays exactly as it is unless you choose Globe. If macOS also opens emoji, switches your keyboard language, or starts its own dictation when you press it, go to System Settings, then Keyboard, then Press Globe key to, and choose Do Nothing.",
       version: "2.5.0"
     ),
 

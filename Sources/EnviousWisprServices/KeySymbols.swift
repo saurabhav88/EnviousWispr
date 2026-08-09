@@ -11,17 +11,44 @@ public enum ModifierKeyCodes {
   public static let rightShift: UInt16 = 60
   public static let leftControl: UInt16 = 59
   public static let rightControl: UInt16 = 62
+  /// The Globe / Fn key (`kVK_Function`). Measured on real hardware (#1987): it
+  /// emits `.flagsChanged` with `.function` present on press and absent on
+  /// release, seen by the same NSEvent monitors the other eight use.
+  package static let globe: UInt16 = 63
 
-  public static let all: Set<UInt16> = [
-    leftCommand, rightCommand,
-    leftOption, rightOption,
-    leftShift, rightShift,
-    leftControl, rightControl,
+  /// The ONE mapping of standalone modifier key code to the flag it sets while held.
+  ///
+  /// Membership and flag are the same fact, so they are stored once. Before #1987
+  /// this fact lived in two private switches, one on the dispatch path and one on
+  /// the capture view, plus a separately maintained membership list, so adding a
+  /// key meant remembering all three. Deriving
+  /// membership from the mapping makes "a member with no flag" unrepresentable
+  /// rather than merely guarded: that state would make `flags.contains(flag)` true
+  /// on release as well as press, so push-to-talk would start recording and never
+  /// stop.
+  private static let flagsByKeyCode: [UInt16: NSEvent.ModifierFlags] = [
+    leftCommand: .command, rightCommand: .command,
+    leftOption: .option, rightOption: .option,
+    leftShift: .shift, rightShift: .shift,
+    leftControl: .control, rightControl: .control,
+    globe: .function,
   ]
+
+  public static let all: Set<UInt16> = Set(flagsByKeyCode.keys)
 
   /// Returns true if the given key code is a standalone modifier key.
   public static func isModifierOnly(_ keyCode: UInt16) -> Bool {
-    all.contains(keyCode)
+    flagsByKeyCode[keyCode] != nil
+  }
+
+  /// The modifier flag this standalone key sets while held, or nil if the key code
+  /// is not a standalone modifier.
+  ///
+  /// Optional by design. An empty-set return would be indistinguishable from a real
+  /// flag to `OptionSet.contains`, which is a superset test: `anything.contains([])`
+  /// is always true.
+  package static func flag(for keyCode: UInt16) -> NSEvent.ModifierFlags? {
+    flagsByKeyCode[keyCode]
   }
 
 }
@@ -140,6 +167,22 @@ public enum KeySymbols {
     format(keyCode: keyCode, modifiers: modifiers)
   }
 
+  /// Spoken projection of a shortcut, for accessibility VALUES only.
+  ///
+  /// Separate from `format` because the visible label leads with an emoji, and a
+  /// screen reader announcing "globe showing Europe-Africa Globe (Fn)" is worse
+  /// than useless to the person this key most helps. Presentation-only: nothing
+  /// may key behaviour off the returned string.
+  package static func accessibilityDescription(
+    keyCode: UInt16,
+    modifiers: NSEvent.ModifierFlags
+  ) -> String {
+    if keyCode == ModifierKeyCodes.globe {
+      return "Globe or Function key"
+    }
+    return format(keyCode: keyCode, modifiers: modifiers)
+  }
+
   /// Format just modifiers for push-to-talk display.
   /// When a keyCode is provided the label distinguishes left vs. right physical keys.
   public static func formatModifierOnly(_ flags: NSEvent.ModifierFlags, keyCode: UInt16? = nil)
@@ -155,6 +198,12 @@ public enum KeySymbols {
       case 60: return "Right ⇧"
       case 59: return "Left ⌃"
       case 62: return "Right ⌃"
+      // The Globe key is a single physical key, so unlike the eight above it
+      // carries no Left/Right qualifier. Both names are deliberate: macOS System
+      // Settings calls it the globe key and draws 🌐, which is what our setup
+      // guidance tells the user to look for, while "Fn" is what is printed on the
+      // keyboard and what users arrive saying from other dictation apps.
+      case 63: return "🌐 Globe (Fn)"
       default: break
       }
     }

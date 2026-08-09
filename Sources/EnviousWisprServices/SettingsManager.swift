@@ -86,7 +86,43 @@ public final class SettingsManager {
     "useStreamingASR", "warmEnginePolicy", "appearancePreference", "overlayPillPosition",
     "showBluetoothTips", "playRecordingSounds", "recordingSoundPairing",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
+    globeGuidanceClaimKey,
   ]
+
+  // MARK: - Globe key guidance (#1987)
+
+  /// Not a user setting: a once-per-installation record that the "free up the
+  /// Globe key" explanation has been shown. Deliberately not in `SettingKey`, so
+  /// it emits no settings delta and appears in no snapshot.
+  ///
+  /// `unifiedDefaultsKeys` references this constant rather than repeating the
+  /// string. Written twice, the claim could migrate under one name while the
+  /// build-unification list carried the other, and the user would be re-shown the
+  /// explanation after an update with every test still green.
+  private nonisolated static let globeGuidanceClaimKey = "hasClaimedGlobeKeyGuidance"
+
+  /// Claim the right to present the Globe-key guidance, exactly once per install.
+  ///
+  /// Lives here rather than in a view because Settings and onboarding do NOT share
+  /// bind-completion logic. They share the capture view and, since #1987, the
+  /// `HotkeyCapture` acceptance authority; what remains separate is what each does
+  /// AFTER a bind is accepted, which is exactly where this decision sits. So a
+  /// per-surface flag would show the explanation twice, or show it in one surface
+  /// and never the other. `SettingsManager` already owns the shared `UserDefaults` store both
+  /// surfaces write through, which makes it the one place the answer can be
+  /// consistent.
+  ///
+  /// Returns true to exactly ONE caller, ever. Both binding surfaces call it after
+  /// a successful bind and only the caller receiving true presents the popover.
+  /// A non-Globe key does NOT consume the claim, so a user who binds Right Option
+  /// first still gets the explanation when they later choose Globe.
+  @discardableResult
+  package func claimGlobeKeyGuidancePresentation(for keyCode: UInt16) -> Bool {
+    guard keyCode == ModifierKeyCodes.globe else { return false }
+    guard !defaults.bool(forKey: Self.globeGuidanceClaimKey) else { return false }
+    defaults.set(true, forKey: Self.globeGuidanceClaimKey)
+    return true
+  }
 
   public var selectedBackend: ASRBackendType {
     didSet {

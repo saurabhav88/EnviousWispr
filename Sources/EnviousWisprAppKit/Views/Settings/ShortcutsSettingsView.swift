@@ -8,6 +8,18 @@ import SwiftUI
 /// selectors read as one family; the hotkeys render as big edit buttons.
 struct ShortcutsSettingsView: View {
   @Environment(SettingsManager.self) private var settings
+  @State private var showGlobeGuidance = false
+  /// Where keyboard and VoiceOver focus must return when the guidance closes.
+  @AccessibilityFocusState private var guidanceReturnFocus: Bool
+  @FocusState private var recordingShortcutFocused: Bool
+
+  /// Single dismissal path: closing the guidance ALWAYS returns focus to the
+  /// control the user was operating, whichever way it was closed.
+  private func dismissGlobeGuidance() {
+    showGlobeGuidance = false
+    recordingShortcutFocused = true
+    guidanceReturnFocus = true
+  }
 
   var body: some View {
     @Bindable var settings = settings
@@ -63,8 +75,34 @@ struct ShortcutsSettingsView: View {
             modifiers: $settings.toggleModifiers,
             defaultKeyCode: ModifierKeyCodes.rightOption,
             defaultModifiers: [],
-            accessibilityLabel: "Recording shortcut"
+            accessibilityLabel: "Recording shortcut",
+            onBindingAccepted: { code, _ in
+              // The claim is owned by SettingsManager, not by this view: onboarding
+              // has a separate completion handler and would otherwise show the same
+              // explanation a second time.
+              if settings.claimGlobeKeyGuidancePresentation(for: code) {
+                showGlobeGuidance = true
+              }
+            }
           )
+          // `.focusable()` is load-bearing, not belt-and-braces (#1987): the
+          // shortcut surface is a plain view with `onTapGesture`, deliberately not
+          // a `Button`, so that a Button does not swallow the key events being
+          // recorded. A non-focusable view accepts no keyboard focus, so binding
+          // `@FocusState` to it alone would set a flag nothing honours and leave a
+          // keyboard user stranded after the popover closed.
+          .focusable()
+          .focused($recordingShortcutFocused)
+          .accessibilityFocused($guidanceReturnFocus)
+          .popover(isPresented: $showGlobeGuidance, arrowEdge: .bottom) {
+            GlobeGuidancePopover(onDismiss: dismissGlobeGuidance)
+              // ONE dismissal path for both "Got it" and Escape (#1987). Relying on
+              // AppKit's implicit Escape handling left focus wherever the popover
+              // had taken it, which strands a keyboard or VoiceOver user: every
+              // unit test still passed while the RSI persona this feature exists
+              // for could be forced back to the pointer.
+              .onExitCommand(perform: dismissGlobeGuidance)
+          }
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -209,6 +247,9 @@ private struct ProminentHotkeyRow: View {
   let defaultKeyCode: UInt16
   let defaultModifiers: NSEvent.ModifierFlags
   let accessibilityLabel: String
+  /// #1987 — nil on rows that are not the recording shortcut, so only the toggle
+  /// row can ever present the Globe guidance.
+  var onBindingAccepted: ((UInt16, NSEvent.ModifierFlags) -> Void)?
 
   var body: some View {
     HStack(alignment: .center, spacing: 16) {
@@ -226,9 +267,66 @@ private struct ProminentHotkeyRow: View {
         defaultKeyCode: defaultKeyCode,
         defaultModifiers: defaultModifiers,
         label: accessibilityLabel,
-        style: .prominent
+        style: .prominent,
+        onBindingAccepted: { code, mods in onBindingAccepted?(code, mods) }
       )
       .frame(width: 260)
     }
+  }
+}
+
+// MARK: - Globe key guidance (#1987)
+
+/// The one-time "free up the Globe key" explanation, shared by Settings and
+/// onboarding so both surfaces render identical copy.
+///
+/// Accessibility is load-bearing here, not decoration: the persona this feature
+/// exists for is an RSI user whose card demands no modals. Shipping an
+/// ergonomics feature behind a pointer-only dialog would be self-defeating. So the
+/// dismiss control is a real focusable `Button`, the container carries one spoken
+/// label, and the decorative step numbers are hidden from VoiceOver so it reads
+/// the instructions rather than the bullets.
+///
+/// Escape is handled EXPLICITLY by each host through `.onExitCommand`, not by
+/// AppKit's default popover dismissal. The default closes the popover and leaves
+/// focus wherever it had taken it, so a keyboard user is dropped nowhere; the
+/// hosts route both Escape and the button through one dismissal that restores
+/// focus to the shortcut control.
+struct GlobeGuidancePopover: View {
+  let onDismiss: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text(GlobeKeyCopy.title)
+        .font(.stRowTitle)
+        .foregroundStyle(.stTextPrimary)
+
+      Text(GlobeKeyCopy.body)
+        .settingsReadingCopy()
+
+      VStack(alignment: .leading, spacing: 6) {
+        ForEach(Array(GlobeKeyCopy.steps.enumerated()), id: \.offset) { index, step in
+          HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(index + 1).")
+              .foregroundStyle(.stTextTertiary)
+              .accessibilityHidden(true)
+            Text(step).settingsReadingCopy()
+          }
+        }
+      }
+
+      Text(GlobeKeyCopy.reassurance)
+        .settingsReadingCopy()
+
+      HStack {
+        Spacer()
+        Button(GlobeKeyCopy.dismissButton, action: onDismiss)
+          .keyboardShortcut(.defaultAction)
+      }
+    }
+    .padding(18)
+    .frame(width: 340)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(GlobeKeyCopy.accessibilityLabel)
   }
 }

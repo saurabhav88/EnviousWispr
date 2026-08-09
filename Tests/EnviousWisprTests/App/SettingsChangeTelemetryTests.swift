@@ -73,6 +73,179 @@ import Testing
       #expect(SettingsProjection.value(for: .smartInsertion, settings: settings) == "off")
     }
 
+    // MARK: - #1987 toggle hotkey identity fan-out
+
+    @Test("Binding the Globe key emits an identity delta while shape stays a no-op")
+    func globeBindEmitsShapeAndIdentity() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.toggleKeyCode = ModifierKeyCodes.globe
+      telemetry.flush()
+
+      let identity = deltas(box, setting: "toggle_hotkey_identity")
+      #expect(identity.count == 1)
+      #expect(identity.first?.stringProps["from"] == "right_option")
+      #expect(identity.first?.stringProps["to"] == "globe")
+      // Shape is unchanged: both keys are modifier-only. That is precisely why
+      // identity had to exist, so assert the shape delta is SUPPRESSED as a no-op
+      // rather than merely absent by accident.
+      #expect(deltas(box, setting: "toggle_hotkey_shape").isEmpty)
+    }
+
+    /// The two logicals must coalesce and suppress independently. A chord bind
+    /// changes both, so both must emit.
+    @Test("Binding a chord key emits both shape and identity deltas")
+    func chordBindEmitsBoth() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.toggleKeyCode = 0  // 'A', a chord key
+      telemetry.flush()
+
+      let shape = deltas(box, setting: "toggle_hotkey_shape")
+      let identity = deltas(box, setting: "toggle_hotkey_identity")
+      #expect(shape.count == 1)
+      #expect(shape.first?.stringProps["to"] == "chord")
+      #expect(identity.count == 1)
+      #expect(identity.first?.stringProps["to"] == "chord")
+    }
+
+    @Test("A→B→A on the toggle key is a net no-op for both logicals")
+    func toggleKeyNetNoOpSuppressesBoth() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.toggleKeyCode = ModifierKeyCodes.globe
+      settings.toggleKeyCode = ModifierKeyCodes.rightOption  // back to the default
+      telemetry.flush()
+
+      #expect(deltas(box, setting: "toggle_hotkey_identity").isEmpty)
+      #expect(deltas(box, setting: "toggle_hotkey_shape").isEmpty)
+    }
+
+    /// Guards the "shape-only" instruction: push-to-talk and cancel must NOT gain
+    /// identity telemetry, so a fan-out written for the toggle key cannot leak.
+    @Test("Push-to-talk and cancel hotkeys remain shape-only")
+    func otherHotkeyRolesStayShapeOnly() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.pushToTalkKeyCode = ModifierKeyCodes.globe
+      settings.cancelKeyCode = 0
+      telemetry.flush()
+
+      #expect(box.all.allSatisfy { $0.stringProps["setting"] != "push_to_talk_hotkey_identity" })
+      #expect(box.all.allSatisfy { $0.stringProps["setting"] != "cancel_hotkey_identity" })
+      #expect(deltas(box, setting: "toggle_hotkey_identity").isEmpty)
+    }
+
+    /// The routing contract itself, asserted exactly. The grouped delta tests
+    /// below pass even if `.toggleModifiers` silently loses identity, because a
+    /// key-code write in the same window already enqueued it.
+    @Test("Both toggle raw keys route to exactly shape and identity")
+    func toggleKeysRouteToBothLogicals() {
+      #expect(
+        SettingsProjection.logicals(for: .toggleKeyCode)
+          == [.toggleHotkeyShape, .toggleHotkeyIdentity])
+      #expect(
+        SettingsProjection.logicals(for: .toggleModifiers)
+          == [.toggleHotkeyShape, .toggleHotkeyIdentity])
+    }
+
+    @Test("Other hotkey roles route to shape only, and uninstrumented keys to nothing")
+    func otherKeysRoutingUnchanged() {
+      #expect(SettingsProjection.logicals(for: .pushToTalkKeyCode) == [.pushToTalkHotkeyShape])
+      #expect(SettingsProjection.logicals(for: .pushToTalkModifiers) == [.pushToTalkHotkeyShape])
+      #expect(SettingsProjection.logicals(for: .cancelKeyCode) == [.cancelHotkeyShape])
+      #expect(SettingsProjection.logicals(for: .cancelModifiers) == [.cancelHotkeyShape])
+      #expect(SettingsProjection.logicals(for: .llmModel) == [.llmModel])
+      #expect(SettingsProjection.logicals(for: .ollamaModel) == [.llmModel])
+      #expect(SettingsProjection.logicals(for: .selectedBackend).isEmpty)
+    }
+
+    /// Discriminates the onboarding fan-out: the suppression branch must clear
+    /// pending state and advance the baseline for EVERY returned logical. If that
+    /// loop handled only the first, the stale second logical would emit here.
+    @Test("Onboarding suppression clears pending state for both toggle logicals")
+    func onboardingSuppressionClearsBothLogicals() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      // Create pending deltas on both toggle logicals while completed.
+      settings.toggleKeyCode = 0  // chord: changes shape AND identity
+      // Now drop back into onboarding and write a DIFFERENT identity.
+      settings.onboardingState = .settingUp
+      settings.toggleKeyCode = ModifierKeyCodes.globe
+      telemetry.flush()
+
+      #expect(deltas(box, setting: "toggle_hotkey_shape").isEmpty)
+      #expect(deltas(box, setting: "toggle_hotkey_identity").isEmpty)
+    }
+
+    /// Snapshot proof through the REAL emit path, not a `snapshotConfig`
+    /// reconstruction: `StandingSnapshotBuilder.emit()` -> `settingsSnapshot(...)`
+    /// -> the DEBUG hook, whose projection is now derived from the same dictionary
+    /// PostHog receives.
+    @MainActor
+    @Test("The real settings.snapshot carries toggle_hotkey_identity and no raw key code")
+    func realSnapshotCarriesIdentity() {
+      let suite = UserDefaults(suiteName: "SCT-snap-\(UUID().uuidString)")!
+      let settings = SettingsManager(defaults: suite)
+      let previousHook = TelemetryService.shared.testEventHook
+      defer { TelemetryService.shared.testEventHook = previousHook }
+
+      // The hook is `@Sendable`, so the capture cannot be a local `var`. A locked
+      // box is the same shape `StandingSnapshotBuilderTests` already uses.
+      final class Box: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: CapturedTelemetryEvent?
+        func set(_ e: CapturedTelemetryEvent) { lock.withLock { stored = e } }
+        var value: CapturedTelemetryEvent? { lock.withLock { stored } }
+      }
+
+      func emitSnapshot() -> CapturedTelemetryEvent? {
+        let box = Box()
+        TelemetryService.shared.testEventHook = { @Sendable event in
+          if event.name == "settings.snapshot" { box.set(event) }
+        }
+        StandingSnapshotBuilder(
+          settings: settings,
+          keychainManager: KeychainManager(),
+          customWordsCoordinator: CustomWordsCoordinator(),
+          permissions: PermissionsService(accessibilityReader: { true })
+        ).emit()
+        return box.value
+      }
+
+      // Default install: the shipped default is Right Option, so a snapshot taken
+      // before any bind must say so. Without this, a classifier that returned
+      // `globe` unconditionally would still pass the Globe case below.
+      let atDefault = emitSnapshot()
+      #expect(atDefault?.stringProps["toggle_hotkey_identity"] == "right_option")
+
+      settings.toggleKeyCode = ModifierKeyCodes.globe
+      let afterBind = emitSnapshot()
+      #expect(afterBind?.stringProps["toggle_hotkey_identity"] == "globe")
+      #expect(afterBind?.stringProps["toggle_hotkey_shape"] == "modifier_only")
+
+      // The privacy boundary needs EVERY bucket checked, not just one value and
+      // not just the string bucket. Asserting "globe" has no digit would miss a
+      // separate `toggle_key_code` property beside it, and checking only
+      // `stringProps` would miss it too, because a raw key code is an Int and
+      // lands in `intProps`.
+      let allKeys =
+        Set((afterBind?.stringProps ?? [:]).keys)
+        .union((afterBind?.intProps ?? [:]).keys)
+        .union((afterBind?.doubleProps ?? [:]).keys)
+        .union((afterBind?.boolProps ?? [:]).keys)
+      #expect(!allKeys.contains("key_code"))
+      #expect(!allKeys.contains("toggle_key_code"))
+      #expect(
+        allKeys.allSatisfy { !$0.contains("key_code") },
+        "no snapshot property in any bucket may carry a raw key code")
+    }
+
     @Test("A→B→A net no-op emits nothing")
     func noOpBurst() {
       let (settings, telemetry, box, _) = makeHarness()

@@ -298,4 +298,91 @@ struct SettingsDefaultsRoutingTests {
       bundleID: "com.enviouswispr.app.dev", devStore: dev, shared: shared)
     #expect(shared.object(forKey: "toggleKeyCode") == nil)  // stale dev value NOT resurrected
   }
+
+  // MARK: - #1987 Globe key guidance claim
+
+  /// The claim is one shared owner, so a second caller gets `false` no matter who
+  /// asked first. That single-owner design is what makes the surface ORDER
+  /// irrelevant, which is why it is not simulated here.
+  ///
+  /// An earlier version of this test labelled two identical blocks "onboarding
+  /// first" and "Settings first". They executed the same two calls against
+  /// `SettingsManager`, so the labels described an ordering the code never varied
+  /// and neither surface appeared at all. Removed rather than reworded: a name
+  /// that claims more than the body does is worse than a narrower name, because
+  /// it stops the next reader looking for the missing coverage.
+  ///
+  /// NOT COVERED HERE, deliberately, and on the founder's manual pass instead:
+  /// that `ShortcutsSettingsView` and `ReadyScreenV2` actually CALL this on an
+  /// accepted bind. Both call sites live in SwiftUI view bodies that need a
+  /// rendered hierarchy, so deleting either one leaves every test in this file
+  /// green. A user who binds Globe and sees no explanation is the visible symptom.
+  @Test("A second claim on the same store returns false")
+  func guidanceClaimIsOncePerInstall() {
+    let suite = UserDefaults(suiteName: "GlobeClaim-\(UUID().uuidString)")!
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
+    #expect(!settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
+  }
+
+  /// A separate installation is unaffected by another store's claim. Without this,
+  /// a claim keyed on something process-wide rather than on the defaults store
+  /// would pass every other test in this file.
+  @Test("A fresh store gets its own claim")
+  func guidanceClaimIsPerStore() {
+    let suiteA = UserDefaults(suiteName: "GlobeClaimA-\(UUID().uuidString)")!
+    let suiteB = UserDefaults(suiteName: "GlobeClaimB-\(UUID().uuidString)")!
+    #expect(
+      SettingsManager(defaults: suiteA).claimGlobeKeyGuidancePresentation(
+        for: ModifierKeyCodes.globe))
+    #expect(
+      SettingsManager(defaults: suiteB).claimGlobeKeyGuidancePresentation(
+        for: ModifierKeyCodes.globe))
+  }
+
+  /// The claim must survive a relaunch, or the explanation reappears forever.
+  @Test("The claim persists across a new SettingsManager on the same store")
+  func guidanceClaimPersists() {
+    let suite = UserDefaults(suiteName: "GlobeClaimPersist-\(UUID().uuidString)")!
+    #expect(
+      SettingsManager(defaults: suite).claimGlobeKeyGuidancePresentation(
+        for: ModifierKeyCodes.globe))
+    // A second manager over the same store is what a relaunch looks like.
+    #expect(
+      !SettingsManager(defaults: suite).claimGlobeKeyGuidancePresentation(
+        for: ModifierKeyCodes.globe))
+  }
+
+  /// Binding a non-Globe key must NOT consume the claim, or a user who picks Right
+  /// Option first would never see the explanation when they later choose Globe.
+  @Test("A non-Globe bind does not consume the claim")
+  func nonGlobeBindDoesNotConsumeTheClaim() {
+    let suite = UserDefaults(suiteName: "GlobeClaimOther-\(UUID().uuidString)")!
+    let settings = SettingsManager(defaults: suite)
+
+    #expect(!settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.rightOption))
+    #expect(!settings.claimGlobeKeyGuidancePresentation(for: 0))
+    // The claim is still available.
+    #expect(settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
+  }
+
+  /// Two separate claims, because asserting only the first leaves the gap that
+  /// prompted this test: the list could name one key while the claim wrote another,
+  /// and the claim would silently fall outside build unification. Reading the store
+  /// after a real claim ties the registered name to the key actually persisted.
+  ///
+  /// The production constant is `private`, so this asserts the literal deliberately.
+  /// That is the point: the string is what survives an app update, and changing it
+  /// re-shows the explanation to every existing user.
+  @Test("The key the claim actually writes is the one registered for unification")
+  func claimKeyIsRegisteredAndIsTheKeyWritten() {
+    #expect(SettingsManager.unifiedDefaultsKeys.contains("hasClaimedGlobeKeyGuidance"))
+
+    let suite = UserDefaults(suiteName: "GlobeClaimKeyName-\(UUID().uuidString)")!
+    #expect(suite.object(forKey: "hasClaimedGlobeKeyGuidance") == nil)
+    #expect(
+      SettingsManager(defaults: suite).claimGlobeKeyGuidancePresentation(
+        for: ModifierKeyCodes.globe))
+    #expect(suite.bool(forKey: "hasClaimedGlobeKeyGuidance"))
+  }
 }

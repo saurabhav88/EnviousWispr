@@ -40,6 +40,10 @@ enum SettingsProjection {
     case appearance = "appearance"
     case overlayPillPosition = "overlay_pill_position"
     case toggleHotkeyShape = "toggle_hotkey_shape"
+    /// #1987 — WHICH key is configured, one level finer than shape. `key_shape`
+    /// reports `modifier_only` for both Globe and Right Option, so it cannot
+    /// answer whether the Globe key was adopted. Content-free class only.
+    case toggleHotkeyIdentity = "toggle_hotkey_identity"
     case pushToTalkHotkeyShape = "push_to_talk_hotkey_shape"
     case cancelHotkeyShape = "cancel_hotkey_shape"
     case playRecordingSounds = "play_recording_sounds"
@@ -50,46 +54,52 @@ enum SettingsProjection {
   /// debounce so a drag collapses to one bucketed delta.
   static let sliderLogicals: Set<Logical> = [.vadSilenceTimeout, .vadSensitivity]
 
-  /// Map a raw `SettingKey` to its logical setting; nil = not instrumented.
+  /// Map a raw `SettingKey` to its logical settings; empty = not instrumented.
   /// Each hotkey role groups its keyCode + modifiers keys into one shape logical
   /// (so a key+modifier reassignment is one delta, never two).
-  static func logical(for key: SettingsManager.SettingKey) -> Logical? {
+  ///
+  /// #1987: returns an ARRAY because the toggle hotkey now projects two logicals,
+  /// shape and identity. Every other key returns exactly the one it always did, or
+  /// none. The array is the whole fan-out contract: `handle(_:)` seeds or enqueues
+  /// each element independently, so shape and identity coalesce and suppress net
+  /// no-ops separately rather than as a pair.
+  static func logicals(for key: SettingsManager.SettingKey) -> [Logical] {
     switch key {
-    case .recordingMode: return .recordingMode
-    case .llmProvider: return .llmProvider
+    case .recordingMode: return [.recordingMode]
+    case .llmProvider: return [.llmProvider]
     // #1173: both the cloud `llmModel` and the local `ollamaModel` feed the one
     // `llm_model` logical — the projection reads the EFFECTIVE model
     // (`SettingsManager.effectiveLLMModel`, ollama→ollamaModel else llmModel), so
     // a mirror/discovery write to either field re-emits. Coalescing-by-logical
     // collapses a `.llmModel`+`.ollamaModel` pair (the Ollama mirror) into ONE
     // delta. (Codex r7 pivot.)
-    case .llmModel, .ollamaModel: return .llmModel
-    case .autoCopyToClipboard: return .autoCopy
-    case .hotkeyEnabled: return .hotkeyEnabled
-    case .vadAutoStop: return .vadAutoStop
-    case .vadSilenceTimeout: return .vadSilenceTimeout
-    case .vadSensitivity: return .vadSensitivity
-    case .vadEnergyGate: return .vadEnergyGate
-    case .modelUnloadPolicy: return .modelUnloadPolicy
-    case .restoreClipboardAfterPaste: return .restoreClipboard
-    case .smartInsertion: return .smartInsertion
-    case .wordCorrectionEnabled: return .wordCorrection
-    case .fillerRemovalEnabled: return .fillerRemoval
-    case .contactsSyncOnLaunchEnabled: return .contactsSync
-    case .emojiFormatterEnabled: return .emojiFormatter
-    case .spokenPunctuationEnabled: return .spokenPunctuation
-    case .crashRecoveryEnabled: return .crashRecovery
-    case .useExtendedThinking: return .useExtendedThinking
-    case .languageMode: return .languageMode
-    case .useStreamingASR: return .streamingASR
-    case .warmEnginePolicy: return .warmEnginePolicy
-    case .appearance: return .appearance
-    case .overlayPillPosition: return .overlayPillPosition
-    case .toggleKeyCode, .toggleModifiers: return .toggleHotkeyShape
-    case .pushToTalkKeyCode, .pushToTalkModifiers: return .pushToTalkHotkeyShape
-    case .cancelKeyCode, .cancelModifiers: return .cancelHotkeyShape
-    case .playRecordingSounds: return .playRecordingSounds
-    case .recordingSoundPairing: return .recordingSoundPairing
+    case .llmModel, .ollamaModel: return [.llmModel]
+    case .autoCopyToClipboard: return [.autoCopy]
+    case .hotkeyEnabled: return [.hotkeyEnabled]
+    case .vadAutoStop: return [.vadAutoStop]
+    case .vadSilenceTimeout: return [.vadSilenceTimeout]
+    case .vadSensitivity: return [.vadSensitivity]
+    case .vadEnergyGate: return [.vadEnergyGate]
+    case .modelUnloadPolicy: return [.modelUnloadPolicy]
+    case .restoreClipboardAfterPaste: return [.restoreClipboard]
+    case .smartInsertion: return [.smartInsertion]
+    case .wordCorrectionEnabled: return [.wordCorrection]
+    case .fillerRemovalEnabled: return [.fillerRemoval]
+    case .contactsSyncOnLaunchEnabled: return [.contactsSync]
+    case .emojiFormatterEnabled: return [.emojiFormatter]
+    case .spokenPunctuationEnabled: return [.spokenPunctuation]
+    case .crashRecoveryEnabled: return [.crashRecovery]
+    case .useExtendedThinking: return [.useExtendedThinking]
+    case .languageMode: return [.languageMode]
+    case .useStreamingASR: return [.streamingASR]
+    case .warmEnginePolicy: return [.warmEnginePolicy]
+    case .appearance: return [.appearance]
+    case .overlayPillPosition: return [.overlayPillPosition]
+    case .toggleKeyCode, .toggleModifiers: return [.toggleHotkeyShape, .toggleHotkeyIdentity]
+    case .pushToTalkKeyCode, .pushToTalkModifiers: return [.pushToTalkHotkeyShape]
+    case .cancelKeyCode, .cancelModifiers: return [.cancelHotkeyShape]
+    case .playRecordingSounds: return [.playRecordingSounds]
+    case .recordingSoundPairing: return [.recordingSoundPairing]
     // Not instrumented.
     case .selectedBackend, .onboardingState, .hasCompletedOnboarding,
       .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage,
@@ -97,7 +107,7 @@ enum SettingsProjection {
       // #1480: the popover's own lifecycle telemetry (`bt_awareness.*`) owns this
       // signal, incl. `suppressed_by_setting`; no separate settings.changed delta.
       .showBluetoothTips:
-      return nil
+      return []
     }
   }
 
@@ -131,6 +141,11 @@ enum SettingsProjection {
     case .appearance: return settings.appearancePreference.rawValue
     case .overlayPillPosition: return settings.overlayPillPosition.rawValue
     case .toggleHotkeyShape: return hotkeyShape(settings.toggleKeyCode)
+    // #1987: same key, one level finer. Projected through the Services-owned
+    // classifier so the vocabulary has exactly one authority and no key code can
+    // reach telemetry from here.
+    case .toggleHotkeyIdentity:
+      return HotkeyKeyIdentity.classify(keyCode: settings.toggleKeyCode).rawValue
     case .pushToTalkHotkeyShape: return hotkeyShape(settings.pushToTalkKeyCode)
     case .cancelHotkeyShape: return hotkeyShape(settings.cancelKeyCode)
     case .playRecordingSounds: return onOff(settings.playRecordingSounds)
@@ -346,20 +361,33 @@ final class SettingsChangeTelemetry {
       }
       return
     }
-    guard let logical = SettingsProjection.logical(for: key) else { return }
+    let logicals = SettingsProjection.logicals(for: key)
+    // #1987: an uninstrumented key returns an empty array; the old shape returned
+    // nil. Same outcome, explicitly handled rather than falling out of a `guard`.
+    guard !logicals.isEmpty else { return }
 
     // Suppress onboarding-time writes (the onboarding-completion baseline
     // captures the final state); keep the committed baseline current so the
     // first real post-onboarding change has a truthful `from`.
     if settings.onboardingState != .completed {
-      committedBaseline[logical] = SettingsProjection.value(for: logical, settings: settings)
-      pendingOriginal[logical] = nil
-      pendingSource[logical] = nil
+      // #1987: advance the baseline for EVERY logical this key projects, not just
+      // the first. Missing one would leave a stale `from` and make the first real
+      // post-onboarding change look like a no-op.
+      for logical in logicals {
+        committedBaseline[logical] = SettingsProjection.value(for: logical, settings: settings)
+        pendingOriginal[logical] = nil
+        pendingSource[logical] = nil
+      }
       return
     }
 
     let source: Source = settings.isApplyingSystemWrite ? .system : .user
-    enqueue(logical, source: source)
+    // Each logical coalesces and suppresses net no-ops independently, so a
+    // key-code change that alters identity but not shape (Globe and Right Option
+    // are both modifier-only) emits one delta, not two.
+    for logical in logicals {
+      enqueue(logical, source: source)
+    }
     // `llm_model`'s projection also depends on `llmProvider` (cloud id vs Ollama
     // catalog vs `none`/`apple-intelligence`), so a provider change can alter the
     // projected model even with NO `llmModel` write — e.g. turning polish off →
@@ -368,9 +396,11 @@ final class SettingsChangeTelemetry {
     // keeping a cloud id). The provider switch is a user gesture, so this enqueues
     // `user`; if async discovery then corrects the model inside the same window,
     // last-writer-wins re-stamps it `system` (Codex r6).
-    if logical == .llmProvider {
+    if logicals.contains(.llmProvider) {
       enqueue(.llmModel, source: source)
     }
+    // Once per RAW change, never once per logical: a fan-out must not shorten or
+    // multiply the settle window.
     scheduleSettle()
   }
 
