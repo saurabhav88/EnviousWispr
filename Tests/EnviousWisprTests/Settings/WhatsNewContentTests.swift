@@ -138,9 +138,16 @@ struct WhatsNewContentTests {
     #expect(
       entry.description
         == "You can now use the Globe (Fn) key as your dictation shortcut. Right Option stays "
-        + "exactly as it is unless you choose Globe. If macOS also opens emoji or switches your "
-        + "keyboard language when you press it, go to System Settings, then Keyboard, then Press "
-        + "Globe key to, and choose Do Nothing.")
+        + "exactly as it is unless you choose Globe. If macOS also opens emoji, switches your "
+        + "keyboard language, or starts its own dictation when you press it, go to System "
+        + "Settings, then Keyboard, then Press Globe key to, and choose Do Nothing.")
+
+    // Founder amendment 2026-08-09, same reason as the popover: the macOS menu
+    // offers three actions and the original copy named two. Membership rather than
+    // equality, because the defect being guarded against is a dropped member.
+    #expect(entry.description.contains("emoji"))
+    #expect(entry.description.contains("keyboard language"))
+    #expect(entry.description.contains("its own dictation"))
     #expect(entry.version == "2.5.0")
     #expect(entry.version == WhatsNewConstants.currentContentVersion)
   }

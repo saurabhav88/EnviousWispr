@@ -26,10 +26,27 @@ import Testing
     // ADDED, which is precisely how approved copy drifts.
     #expect(
       GlobeKeyCopy.body
-        == "macOS may already use the Globe key to switch keyboard languages or open the "
-        + "emoji picker. If that happens while you dictate, you can turn it off:")
+        == "macOS may already use the Globe key to switch keyboard languages, open the "
+        + "emoji picker, or start its own dictation. If that happens while you dictate, "
+        + "you can turn it off:")
     #expect(!GlobeKeyCopy.body.contains("is using"))
     #expect(!GlobeKeyCopy.body.lowercased().contains("conflict"))
+  }
+
+  /// Founder amendment, 2026-08-09. The "Press 🌐 key to" menu offers three actions
+  /// besides Do Nothing, and the body must name all three. The original named two
+  /// and dropped Start Dictation, which is the one that takes the microphone and so
+  /// the one most likely to read as our bug.
+  ///
+  /// Asserted as membership rather than by re-stating the sentence, because the
+  /// failure this guards against is an OMISSION: a future rewrite that drops a
+  /// member would still satisfy an exact-equality check written against itself.
+  @Test("The body names every action the macOS menu can take")
+  func bodyNamesEveryMacOSAction() {
+    let body = GlobeKeyCopy.body.lowercased()
+    #expect(body.contains("keyboard languages"))
+    #expect(body.contains("emoji picker"))
+    #expect(body.contains("dictation"))
   }
 
   /// Load-bearing property 2: the closing line answers the question the popover

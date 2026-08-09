@@ -7,7 +7,18 @@ import Foundation
 /// conscious act rather than drift. Stateless. No persistence, no preference
 /// reads, no behaviour.
 ///
-/// **THE COPY IS FOUNDER-APPROVED VERBATIM (2026-08-08). DO NOT REWORD IT.**
+/// **THE COPY IS FOUNDER-APPROVED VERBATIM (2026-08-08, body amended 2026-08-09).
+/// DO NOT REWORD IT.**
+///
+/// The 2026-08-09 amendment added "or start its own dictation" to the body. The
+/// original named two of the three things the "Press 🌐 key to" menu can do and
+/// omitted Start Dictation, which is the worst case for us: Apple's dictation
+/// takes the microphone, so the user gets Apple's panel and nothing from us and
+/// reasonably concludes the app is broken. Someone with that setting read a list
+/// their situation was not in. Naming most of a set and dropping one member is an
+/// omission no search for the missing term can find, which is why it survived
+/// review; the founder supplied the missing member.
+///
 /// Three properties of it are load-bearing and a later edit must preserve them:
 ///
 /// 1. It does NOT assert a conflict exists. `#1987` deliberately reads no macOS
@@ -27,8 +38,9 @@ enum GlobeKeyCopy {
   static let title = "Free up the Globe key"
 
   static let body =
-    "macOS may already use the Globe key to switch keyboard languages or open the "
-    + "emoji picker. If that happens while you dictate, you can turn it off:"
+    "macOS may already use the Globe key to switch keyboard languages, open the "
+    + "emoji picker, or start its own dictation. If that happens while you dictate, "
+    + "you can turn it off:"
 
   static let steps = [
     "Open System Settings, then Keyboard",
