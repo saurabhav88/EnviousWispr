@@ -46,6 +46,12 @@ import Testing
 /// `var` + 20 injected `let`) — `batchDecodeFaultController`, a deliberate,
 /// explicit addition for the new DEBUG fault-injection oracle (§11.1/§3.2a-i),
 /// forwarded into `DebugFaultEndpoint`'s construction; not accretion.
+/// Bible §30 entry (#1986, 2026-08-08): `accessibilityWarmupObserver` added as
+/// one owned process-lifetime `var`. `AppLifecycleCoordinator` only starts,
+/// retains, and stops the narrow observer; activation filtering, cooldown
+/// state, and AX priming remain inside the delegated type. Allowlist 23 → 24
+/// (4 owned `var` + 20 injected `let`); non-private method count and imports
+/// unchanged.
 @Suite struct AppLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift"
@@ -74,6 +80,7 @@ import Testing
     "applicationRelocationCoordinator",
     "bluetoothAwarenessPresenter",
     "batchDecodeFaultController",
+    "accessibilityWarmupObserver",
   ]
 
   @Test func storedPropertyNamesMatchAllowlist() throws {
@@ -86,7 +93,7 @@ import Testing
       extras.isEmpty && missing.isEmpty,
       """
       AppLifecycleCoordinator stored-property set drifted from the \
-      22-name allowlist. Unexpected: \(extras.sorted()). Missing: \
+      24-name allowlist. Unexpected: \(extras.sorted()). Missing: \
       \(missing.sorted()). Adding a stored property is god-object drift — \
       raising the allowlist requires a Bible §30 entry. Removing one means \
       this allowlist must shrink in the same PR.
