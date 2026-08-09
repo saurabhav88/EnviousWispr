@@ -231,9 +231,14 @@ import Testing
   // `HotkeyCapture` is what BOTH recording surfaces read. Settings goes through
   // `HotkeyRecorderView` and onboarding through `KeycapHotkeyView`, and each
   // previously carried its own copy of this logic, so the same press could bind
-  // differently depending on where the user set it. These tests cover the onboarding
-  // surface too, which is otherwise unreachable: `KeycapHotkeyView` is file-private
-  // and `@testable` does not promote private to internal.
+  // differently depending on where the user set it.
+  //
+  // These cover the shared AUTHORITY, not onboarding's delegation to it. That
+  // distinction matters: `KeycapHotkeyView` is file-private and `@testable` does
+  // not promote private to internal, so nothing here would fail if onboarding
+  // stopped calling `HotkeyCapture` and grew a private copy again. What prevents
+  // the drift is that neither view retains its own copy to drift from; what proves
+  // onboarding still delegates is the founder's manual pass.
 
   /// Escape cancels rather than binding. Without this a user pressing Escape to
   /// back out would silently bind Escape as their dictation shortcut.

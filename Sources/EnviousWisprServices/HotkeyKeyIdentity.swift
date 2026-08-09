@@ -3,7 +3,8 @@ import AppKit
 /// #1987 — which shortcut key a hotkey event belongs to, as a content-free class.
 ///
 /// The existing `key_shape` property answers "modifier-only or chord", which puts
-/// the Globe key in the same bucket as Right Option and six other keys. That bucket
+/// the Globe key in the same bucket as Right Option and seven other keys, nine
+/// standalone modifiers in all (`ModifierKeyCodes.all`). That bucket
 /// cannot answer the only question worth asking after shipping a top-requested
 /// shortcut: did anyone actually choose it.
 ///
@@ -13,9 +14,9 @@ import AppKit
 /// no dictated text, transcript, or surrounding document text is involved.
 ///
 /// One authority for the vocabulary, so the four values are not re-derived at each
-/// emit site. Adding a ninth standalone key later without adding a case here lands
-/// it in `otherModifier`, which is the correct default and a conscious call rather
-/// than a silent one.
+/// emit site. Globe is the ninth standalone key; adding a TENTH later without
+/// adding a case here lands it in `otherModifier`, which is the correct default
+/// and a conscious call rather than a silent one.
 package enum HotkeyKeyIdentity: String, Sendable {
   case globe
   case rightOption = "right_option"

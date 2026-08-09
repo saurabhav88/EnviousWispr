@@ -2,7 +2,12 @@ import EnviousWisprCore
 import Foundation
 
 /// Static "What's New" content, decoupled from the view layer.
-/// Update WhatsNewConstants.currentContentVersion in Core whenever entries change.
+///
+/// The invariant is that the newest group MATCHES `WhatsNewConstants.currentContentVersion`,
+/// not that the constant is bumped whenever entries change. Adding an entry to the
+/// already-open group needs no Core edit; bumping it there would invent a release.
+/// Bump only when starting a group for a version beyond the current one.
+/// `WhatsNewContentTests.newestGroupIsCurrentVersion` enforces the match.
 enum WhatsNewContent {
   struct Entry: Identifiable, Hashable {
     let id: String

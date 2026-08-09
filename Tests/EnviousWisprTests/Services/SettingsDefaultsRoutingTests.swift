@@ -301,23 +301,43 @@ struct SettingsDefaultsRoutingTests {
 
   // MARK: - #1987 Globe key guidance claim
 
-  /// The claim must be shared across BOTH binding surfaces, so these cases drive
-  /// both orderings. A single-ordering test cannot distinguish a correct shared
-  /// claim from a per-surface flag: with a per-surface flag, whichever surface the
-  /// test happens to exercise first would still return true exactly once.
-  @Test("The guidance claim returns true exactly once, whichever surface binds first")
+  /// The claim is one shared owner, so a second caller gets `false` no matter who
+  /// asked first. That single-owner design is what makes the surface ORDER
+  /// irrelevant, which is why it is not simulated here.
+  ///
+  /// An earlier version of this test labelled two identical blocks "onboarding
+  /// first" and "Settings first". They executed the same two calls against
+  /// `SettingsManager`, so the labels described an ordering the code never varied
+  /// and neither surface appeared at all. Removed rather than reworded: a name
+  /// that claims more than the body does is worse than a narrower name, because
+  /// it stops the next reader looking for the missing coverage.
+  ///
+  /// NOT COVERED HERE, deliberately, and on the founder's manual pass instead:
+  /// that `ShortcutsSettingsView` and `ReadyScreenV2` actually CALL this on an
+  /// accepted bind. Both call sites live in SwiftUI view bodies that need a
+  /// rendered hierarchy, so deleting either one leaves every test in this file
+  /// green. A user who binds Globe and sees no explanation is the visible symptom.
+  @Test("A second claim on the same store returns false")
   func guidanceClaimIsOncePerInstall() {
-    // Ordering A: onboarding binds first, Settings second.
-    let suiteA = UserDefaults(suiteName: "GlobeClaimA-\(UUID().uuidString)")!
-    let settingsA = SettingsManager(defaults: suiteA)
-    #expect(settingsA.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
-    #expect(!settingsA.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
+    let suite = UserDefaults(suiteName: "GlobeClaim-\(UUID().uuidString)")!
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
+    #expect(!settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
+  }
 
-    // Ordering B: a fresh install where Settings binds first, onboarding second.
+  /// A separate installation is unaffected by another store's claim. Without this,
+  /// a claim keyed on something process-wide rather than on the defaults store
+  /// would pass every other test in this file.
+  @Test("A fresh store gets its own claim")
+  func guidanceClaimIsPerStore() {
+    let suiteA = UserDefaults(suiteName: "GlobeClaimA-\(UUID().uuidString)")!
     let suiteB = UserDefaults(suiteName: "GlobeClaimB-\(UUID().uuidString)")!
-    let settingsB = SettingsManager(defaults: suiteB)
-    #expect(settingsB.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
-    #expect(!settingsB.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
+    #expect(
+      SettingsManager(defaults: suiteA).claimGlobeKeyGuidancePresentation(
+        for: ModifierKeyCodes.globe))
+    #expect(
+      SettingsManager(defaults: suiteB).claimGlobeKeyGuidancePresentation(
+        for: ModifierKeyCodes.globe))
   }
 
   /// The claim must survive a relaunch, or the explanation reappears forever.

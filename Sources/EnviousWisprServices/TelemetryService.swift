@@ -475,9 +475,20 @@ public final class TelemetryService {
       // test projection independently of the real payload, so a test could assert a
       // property the shipped event did not actually carry. A verifier that
       // re-implements its subject proves only that the copy works.
+      //
+      // Every typed bucket is projected, not just strings. Projecting only
+      // `stringProps` makes an integer leak INVISIBLE to the privacy test: adding
+      // `props["key_code"] = 63` would reach PostHog while the hook silently
+      // dropped it, leaving a test named "no raw key code" green. The settings
+      // snapshot already checked the union; this is its twin, fixed after the
+      // integration audit found the class had been closed on one side only.
       testEventHook?(
         CapturedTelemetryEvent(
-          name: "hotkey.pressed", stringProps: props.compactMapValues { $0 as? String }))
+          name: "hotkey.pressed",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
     PostHogSDK.shared.capture("hotkey.pressed", properties: props)
   }

@@ -209,7 +209,6 @@ import Testing
     #expect(service.isModifierHeld)  // press was processed normally
   }
 
-
   // MARK: - #1987 key identity
 
   @Test("The two keys we report on by name classify as themselves")
@@ -291,7 +290,27 @@ import Testing
           "trigger_source": "ptt_hotkey", "input_mode": "pushToTalk",
           "key_shape": "modifier_only", "key_identity": "globe", "press_action": "start",
         ])
-      #expect(box.value?.stringProps["key_code"] == nil)
+
+      // The privacy assertion has to span EVERY typed bucket, not just strings.
+      // A raw key code would arrive as an Int, so checking `stringProps["key_code"]`
+      // asks the one bucket that cannot hold the thing being looked for: the check
+      // would pass while PostHog received the code. Reading the union means a leak
+      // in any bucket fails this test whatever its type.
+      let event = box.value
+      let allKeys =
+        Set(event?.stringProps.keys ?? [:].keys)
+        .union(event?.intProps.keys ?? [:].keys)
+        .union(event?.doubleProps.keys ?? [:].keys)
+        .union(event?.boolProps.keys ?? [:].keys)
+
+      #expect(
+        allKeys == [
+          "trigger_source", "input_mode", "key_shape", "key_identity", "press_action",
+        ],
+        "hotkey.pressed carries an unexpected property: \(allKeys.sorted())")
+      #expect(event?.intProps.isEmpty == true)
+      #expect(event?.doubleProps.isEmpty == true)
+      #expect(event?.boolProps.isEmpty == true)
     }
   #endif
 

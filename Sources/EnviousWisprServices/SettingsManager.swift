@@ -104,9 +104,11 @@ public final class SettingsManager {
   /// Claim the right to present the Globe-key guidance, exactly once per install.
   ///
   /// Lives here rather than in a view because Settings and onboarding do NOT share
-  /// bind-completion logic — they share only the capture view — so a per-surface
-  /// flag would show the explanation twice, or show it in one surface and never the
-  /// other. `SettingsManager` already owns the shared `UserDefaults` store both
+  /// bind-completion logic. They share the capture view and, since #1987, the
+  /// `HotkeyCapture` acceptance authority; what remains separate is what each does
+  /// AFTER a bind is accepted, which is exactly where this decision sits. So a
+  /// per-surface flag would show the explanation twice, or show it in one surface
+  /// and never the other. `SettingsManager` already owns the shared `UserDefaults` store both
   /// surfaces write through, which makes it the one place the answer can be
   /// consistent.
   ///
