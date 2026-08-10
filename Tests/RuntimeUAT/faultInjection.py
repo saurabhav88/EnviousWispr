@@ -42,6 +42,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from ptt_binding import (  # noqa: E402
+    PTTBindingError,
+    resolve,
+    run_instrument_boundary,
+    run_self_tests,
+)
+
 ENDPOINT_HOST = "127.0.0.1"
 ENDPOINT_PORT = 8765
 TOKEN_DIR = Path("~/Library/Logs/EnviousWispr").expanduser()
@@ -105,8 +114,21 @@ def run_scenario(name: str, **kwargs) -> dict:
             f"{name} is Lane B (founder-required). Re-run with founder_present=True after "
             "physically performing the manual step described in SCENARIOS.md."
         )
+    # Open a caching scope; the binding itself is resolved LAZILY on first PTT
+    # use, so menu-driven scenarios (A8a, A8b, B1) that never synthesize the key
+    # are unaffected by the PTT configuration entirely (#1997).
+    global _SCENARIO_DEPTH
+    _SCENARIO_DEPTH += 1
     started = time.monotonic()
-    result = fn(**kwargs)
+    try:
+        result = fn(**kwargs)
+    finally:
+        # Clear on EVERY exit, including the raising one: a binding that outlives
+        # its scenario would be posted by a later tap after the founder rebound
+        # the shortcut, which is this issue's defect all over again.
+        _SCENARIO_DEPTH -= 1
+        if _SCENARIO_DEPTH == 0:
+            clear_ptt_binding()
     elapsed = time.monotonic() - started
     return {"name": name, "lane": meta.lane, "elapsed_seconds": elapsed, "result": result}
 
@@ -463,25 +485,83 @@ def assert_no_zombie() -> dict:
 # ──────────────────────────── recording control helpers ────────────────────
 
 
-_RIGHT_CMD_KEYCODE = 54
+# _RIGHT_CMD_KEYCODE was deleted with the fallback it existed to serve (#1997).
+# Do not reintroduce a default keycode here: pressing a remembered key when the
+# configured one cannot be read is exactly how an instrument failure gets scored
+# as a product failure.
 _ESC_KEYCODE = 53
 
 
-def _ptt_keycode() -> int:
-    """The app's configured PTT key (shared-suite `toggleKeyCode`), falling
-    back to Right Command. The dev bundle reads the founder's REAL settings
-    (#923), so a hardcoded keycode silently misses when the configured key
-    differs — 2026-07-09: taps posted Right Cmd (54) while the configured key
-    was Right Option (61); zero presses reached the app and the A11 recovery
-    cycle failed without exercising anything."""
-    try:
-        out = subprocess.run(
-            ["defaults", "read", "com.enviouswispr.app", "toggleKeyCode"],
-            capture_output=True, text=True, timeout=5,
+def _require_fault_injection_binding(binding):
+    """This module's OWN drivability question, deliberately not `ptt_binding`'s.
+
+    `_tap_rcmd` posts only `flagsChanged` events, so it can drive a standalone
+    modifier and nothing else. `wispr_eyes` can additionally drive ordinary keys
+    through `KEY_CODES`, which is why drivability lives with each consumer rather
+    than in the shared resolver (#1997 plan §3c).
+    """
+    if not binding.is_modifier_only:
+        raise PTTBindingError(
+            "faultInjection can only post modifier events, but the configured "
+            f"key is ordinary: keycode={binding.keycode}, key={binding.key_name}"
         )
-        return int(out.stdout.strip())
-    except Exception:
-        return _RIGHT_CMD_KEYCODE
+    return binding
+
+
+# Scoped to ONE scenario, never process-lifetime. A cache that outlives its
+# scenario is this issue's own defect wearing a new hat: a later tap would post a
+# key the founder had since rebound away from, and the resulting silence would be
+# scored as a product failure. `_SCENARIO_DEPTH` is the scope: caching happens
+# only while it is nonzero, so the ad-hoc path resolves fresh every time (7.3 ms),
+# which is what the pre-#1997 code did anyway.
+_CACHED_BINDING = None
+_SCENARIO_DEPTH = 0
+
+
+def clear_ptt_binding() -> None:
+    global _CACHED_BINDING
+    _CACHED_BINDING = None
+
+
+def _ptt_binding():
+    """Resolve and validate the PTT binding, caching ONLY inside a scenario.
+
+    Three constraints meet here, and the first two drafts each satisfied two of
+    them (whole-diff review r4 and r5):
+
+    * A tap must not pay a `defaults` subprocess. `_tap_rcmd` runs inside
+      `A1_rapid_stop_start`'s 100 ms fuzz interval and the 500 ms double-tap
+      window; measured, a resolve costs 7.3 ms mean / 7.9 ms max (24/49 ms while
+      it was three reads) against 0.1 us for the cached read.
+    * A cached binding must not outlive its scenario. Otherwise a later tap posts
+      a key the founder has since rebound away from — this issue's own defect.
+    * Resolution must be LAZY. Validating up front in `run_scenario` aborted
+      menu-driven scenarios (A8a, A8b, B1) that never synthesize the PTT key at
+      all, so a toggle-mode or chord-bound user could not run valid tests.
+
+    Hence: resolve on FIRST PTT use, cache for the rest of the scenario, and
+    never cache on the ad-hoc path.
+    """
+    global _CACHED_BINDING
+    if _SCENARIO_DEPTH and _CACHED_BINDING is not None:
+        return _CACHED_BINDING
+    binding = _require_fault_injection_binding(resolve())
+    if _SCENARIO_DEPTH:
+        _CACHED_BINDING = binding
+    return binding
+
+
+def _ptt_keycode() -> int:
+    """The app's configured PTT key, or raise `PTTBindingError`.
+
+    This used to own its own `defaults` read and fall back to Right Command on
+    ANY exception. That fallback was the same defect as #1997's other half: a
+    scenario would post a key nothing was listening for and then be scored as a
+    product failure. 2026-07-09 is the recorded instance — taps posted Right Cmd
+    (54) while the configured key was Right Option (61), and the A11 recovery
+    cycle "failed" without exercising anything.
+    """
+    return _ptt_binding().keycode
 
 
 def _import_simulate_input():
@@ -512,8 +592,12 @@ def _tap_rcmd(hold_s: float = 0.05) -> None:
     sim = _import_simulate_input()
     keycode = _ptt_keycode()
     sim.modifier_down(keycode)
-    time.sleep(hold_s)
-    sim.modifier_up(keycode)
+    try:
+        time.sleep(hold_s)  # settle: the hold duration IS the gesture under test, not a wait for a signal
+    finally:
+        # Release even if the sleep is interrupted: a stuck modifier leaves the
+        # app recording and keeps capturing the founder's microphone.
+        sim.modifier_up(keycode)
 
 
 
@@ -1739,11 +1823,139 @@ def wait_crash_boundary_reached(boundary: str, trial_id: str, deadline_sec: floa
     return False
 
 
-def main(argv: list[str]) -> int:
+def _self_test_ordinary_key_is_refused() -> None:
+    """This module's own drivability policy, testable without Quartz."""
+    from ptt_binding import PTTBinding
+
+    ordinary = PTTBinding(
+        keycode=49, key_name="space", modifiers_raw=0,
+        recording_mode="pushToTalk", is_modifier_only=False,
+    )
+    try:
+        _require_fault_injection_binding(ordinary)
+    except PTTBindingError:
+        pass
+    else:
+        raise AssertionError("expected an ordinary key to be refused")
+
+    modifier = PTTBinding(
+        keycode=63, key_name="fn", modifiers_raw=0,
+        recording_mode="pushToTalk", is_modifier_only=True,
+    )
+    # Two-way control: a policy that refused everything would pass the half above.
+    assert _require_fault_injection_binding(modifier) is modifier
+
+
+def _self_test_cache_does_not_outlive_a_scenario() -> None:
+    """A cached binding must not survive its scenario, including on the raising path.
+
+    Whole-diff review r4: a process-lifetime cache means a later ad-hoc tap posts
+    a key the founder may have rebound away from — the same false product failure
+    this change removes, arriving through the fix for the timing regression.
+    """
+    from ptt_binding import PTTBinding
+
+    global _CACHED_BINDING
+    _CACHED_BINDING = PTTBinding(
+        keycode=63, key_name="fn", modifiers_raw=0,
+        recording_mode="pushToTalk", is_modifier_only=True,
+    )
+    clear_ptt_binding()
+    assert _CACHED_BINDING is None, "clear_ptt_binding did not clear"
+
+    # A menu-driven scenario must never resolve the PTT binding at all: A8a, A8b
+    # and B1 drive recording through menu controls, so a toggle-mode or
+    # chord-bound user must still be able to run them (whole-diff review r5).
+    resolves = []
+    original_resolve = globals()["resolve"]
+    original_entry = _REGISTRY.get("__selftest_menu__")
+
+    def counting_resolve(*_a, **_k):
+        resolves.append(1)
+        raise PTTBindingError("resolve must not be reached by a menu-only scenario")
+
+    def menu_only(**_kwargs):
+        return {"ok": True}
+
+    globals()["resolve"] = counting_resolve
+    _REGISTRY["__selftest_menu__"] = (menu_only, _REGISTRY["A1_rapid_stop_start"][1])
+    try:
+        run_scenario("__selftest_menu__")
+    finally:
+        globals()["resolve"] = original_resolve
+        if original_entry is None:
+            _REGISTRY.pop("__selftest_menu__", None)
+        else:
+            _REGISTRY["__selftest_menu__"] = original_entry
+    assert not resolves, "a menu-only scenario resolved the PTT binding"
+
+    # And the ad-hoc path must not populate the scenario cache.
+    stub_adhoc = PTTBinding(
+        keycode=61, key_name="ropt", modifiers_raw=0,
+        recording_mode="pushToTalk", is_modifier_only=True,
+    )
+    original_resolve = globals()["resolve"]
+    globals()["resolve"] = lambda *a, **k: stub_adhoc
+    try:
+        assert _ptt_keycode() == 61
+        assert _CACHED_BINDING is None, "an ad-hoc tap populated the scenario cache"
+    finally:
+        globals()["resolve"] = original_resolve
+
+    # And `run_scenario` must clear even when the scenario raises.
+    #
+    # `resolve` is stubbed rather than called. The first draft let the real one
+    # run, which made this case ARMED on a dev Mac and VACUOUS in CI: with no
+    # PyObjC the resolve refuses, the cache is never set, and `assert is None`
+    # passes having tested nothing — green in the one gate that matters. Proving
+    # that took applying the mutation and finding the case still passed.
+    stub = PTTBinding(
+        keycode=63, key_name="fn", modifiers_raw=0,
+        recording_mode="pushToTalk", is_modifier_only=True,
+    )
+    original_resolve = globals()["resolve"]
+    original_entry = _REGISTRY.get("__selftest__")
+    reached = []
+
+    def boom(**_kwargs):
+        # Resolution is LAZY, so ask for the key first — that is what a real
+        # PTT scenario does — then confirm the scenario cached it.
+        _ptt_keycode()
+        reached.append(_CACHED_BINDING)
+        raise RuntimeError("deliberate scenario failure")
+
+    globals()["resolve"] = lambda *a, **k: stub
+    _REGISTRY["__selftest__"] = (boom, _REGISTRY["A1_rapid_stop_start"][1])
+    try:
+        run_scenario("__selftest__")
+    except RuntimeError:
+        pass
+    finally:
+        globals()["resolve"] = original_resolve
+        if original_entry is None:
+            _REGISTRY.pop("__selftest__", None)
+        else:
+            _REGISTRY["__selftest__"] = original_entry
+
+    # Without these the case could pass by never running the scenario at all.
+    assert reached, "scenario body never ran — the case would be vacuous"
+    assert reached[0] is stub, f"binding not live DURING the scenario: {reached[0]!r}"
+    assert _CACHED_BINDING is None, "cache survived a raising scenario"
+
+
+_SELF_TEST_CASES = [
+    ("ordinary key refused, modifier accepted", _self_test_ordinary_key_is_refused),
+    ("cache does not outlive a scenario", _self_test_cache_does_not_outlive_a_scenario),
+]
+
+
+def _main(argv: list[str]) -> int:
     if not argv or argv[0] in ("-h", "--help", "list", "list_scenarios"):
         print_scenarios()
         return 0
     cmd = argv[0]
+    if cmd == "--self-test":
+        return run_self_tests(_SELF_TEST_CASES)
     if cmd == "run" and len(argv) >= 2:
         wrapped = run_scenario(argv[1])
         print(wrapped)
@@ -1757,6 +1969,13 @@ def main(argv: list[str]) -> int:
         return 0
     print(f"unknown: {cmd}", file=sys.stderr)
     return 2
+
+
+def main(argv: list[str]) -> int:
+    # A CLI boundary: an unresolvable binding is an INSTRUMENT failure and must
+    # never be scored as a scenario result (#1997). Shared adapter so every
+    # boundary emits the identical line.
+    return run_instrument_boundary(lambda: _main(argv))
 
 
 if __name__ == "__main__":

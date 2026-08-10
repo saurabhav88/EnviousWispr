@@ -51,6 +51,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from ptt_binding import run_instrument_boundary  # noqa: E402
 from faultInjection import (  # noqa: E402
     APP_LOG_PATH,
     _active_state,
@@ -91,7 +92,7 @@ def run_trial(index: int) -> dict:
     return {"index": index, "ok": True, **result}
 
 
-def main(argv: list[str]) -> int:
+def _main(argv: list[str]) -> int:
     n = int(argv[0]) if argv else 30
     trials = []
     for i in range(n):
@@ -125,6 +126,11 @@ def main(argv: list[str]) -> int:
         # can never be mistaken for a clean 30/30 measurement.
         return 1
     return 0
+
+
+def main(argv: list[str]) -> int:
+    # CLI boundary: see run_gauntlet.main (#1997).
+    return run_instrument_boundary(lambda: _main(argv))
 
 
 if __name__ == "__main__":

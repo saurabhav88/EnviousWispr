@@ -8,6 +8,7 @@ from ui_helpers import (find_app_pid, get_ax_app, get_attr, set_attr, perform_ac
     find_element, find_all_elements, find_control_for_label, wait_for_condition,
     get_process_memory_mb, get_clipboard_text, validate_app_ready, element_frame,
     _iter_children_with_menubars)
+from ptt_binding import PTTBindingError, require_push_to_talk, resolve
 
 _pid = None
 _app = None
@@ -16,38 +17,36 @@ _TTS_PATH = "/tmp/wispr_eyes_tts.aiff"
 _OPENAI_TTS_PATH = "/tmp/wispr_eyes_tts.mp3"
 _OPENAI_KEY_FILE = os.path.expanduser("~/.enviouswispr-keys/openai-api-key")
 
-# Bundle IDs the harness might attach to (dev first, prod fallback).
-_PTT_BUNDLE_IDS = ["com.enviouswispr.app.dev", "com.enviouswispr.app"]
-# Reverse map of simulate_input.KEY_CODES for modifier keycodes we hold for PTT.
-# 54=rcmd, 55=lcmd, 58=lopt, 61=ropt. Keep in sync with
-# `Tests/RuntimeUAT/simulate_input.py` MODIFIER_KEYS table.
-_PTT_KEYCODE_TO_NAME = {54: "rcmd", 55: "lcmd", 58: "lopt", 61: "ropt"}
+def _resolve_ptt_key():
+    """Resolve the configured PTT key name, or raise `PTTBindingError`.
 
-
-def _resolve_ptt_key(fallback="rcmd"):
-    """Read the active PTT keycode from EnviousWispr's UserDefaults
-    (`toggleKeyCode`) and map it back to the simulate_input key name.
-
-    PR-A of #763 fix: harness was hardcoded to `rcmd` (Right Command). When the
-    founder rebinds PTT to a different modifier (e.g. Right Option = 61), the
-    hardcoded harness presses the wrong key and the recording never engages.
-    This resolver keeps the harness aligned with whatever the app is configured
-    for. Falls back to `fallback` (default 'rcmd') if neither bundle responds.
+    Previously this owned its own domain list, its own 4-entry keycode->name map,
+    and a hardcoded `rcmd` fallback. All three were wrong at once (#1997): it read
+    the retired `.dev` domain, could not name Globe (63), and on any failure
+    pressed a key the app was not listening for — then the caller reported that
+    silence as a product FAIL. `ptt_binding` now owns resolution and REFUSES
+    rather than guessing; see that module's header for why no fallback exists.
     """
-    for bundle_id in _PTT_BUNDLE_IDS:
-        try:
-            result = subprocess.run(
-                ["defaults", "read", bundle_id, "toggleKeyCode"],
-                capture_output=True, text=True, timeout=2,
-            )
-            if result.returncode != 0:
-                continue
-            keycode = int(result.stdout.strip())
-            if keycode in _PTT_KEYCODE_TO_NAME:
-                return _PTT_KEYCODE_TO_NAME[keycode]
-        except (subprocess.SubprocessError, ValueError, OSError):
-            continue
-    return fallback
+    return resolve().key_name
+
+
+def _ptt_binding_diagnostic(pressed_key):
+    """One line of instrument state, printed only when a PTT run produced nothing.
+
+    The 2026-08-10 failure was indistinguishable from "the product ignored the
+    hotkey": no states, no log growth, a bare timeout, and nothing anywhere
+    naming the key actually pressed. This makes the instrument's own view
+    legible at exactly the moment a reader is deciding whether to believe a FAIL.
+    """
+    try:
+        binding = resolve()
+        configured = (
+            f"configured key={binding.key_name} keycode={binding.keycode} "
+            f"modifiers={binding.modifiers_raw} mode={binding.recording_mode}"
+        )
+    except PTTBindingError as error:
+        configured = f"configured binding unreadable: {error}"
+    print(f"INSTRUMENT STATE: pressed={pressed_key}; {configured}")
 
 
 def tts(sentence="The quick brown fox jumps over the lazy dog", voice="echo", engine="openai"):
@@ -1635,10 +1634,17 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     """
     connect()
 
-    # Resolve PTT key from app settings if caller didn't override.
+    # Resolve PTT key from app settings if caller didn't override. Either path
+    # raises PTTBindingError rather than pressing something unverified (#1997).
     if key is None:
-        key = _resolve_ptt_key()
-        print(f"PTT key auto-detected from settings: {key}")
+        binding = resolve()
+        key = binding.key_name
+        print(f"PTT key auto-detected from settings: {key} (keycode {binding.keycode})")
+    else:
+        # An explicit key overrides the CONFIGURED KEY, never the recording mode:
+        # in toggle mode this hold-and-release cannot stop the recording it
+        # starts, whatever key is held (#963 captured real speech that way).
+        require_push_to_talk()
 
     if audio is None:
         if sentence is None:
@@ -1723,6 +1729,11 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     # PTT always uses audio (we played a file), so non-completion is FAIL
     # regardless of "audio was empty" semantics.
     overall_pass = _report_result(completed, audio, expect, transcription)
+    # Nothing happened at all: print what the instrument believed, so a reader
+    # can tell a real product failure from a key the app was never listening
+    # for. Gated on the silent shape so a passing run gains no noise.
+    if not completed and not states_seen:
+        _ptt_binding_diagnostic(key)
     print(f"{'=' * 60}")
     end_test()
     return overall_pass
@@ -1762,10 +1773,15 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     """
     import simulate_input as _si
 
-    # Resolve PTT key from app settings if caller didn't override.
+    # Resolve PTT key from app settings if caller didn't override. See test_ptt:
+    # both paths refuse rather than press an unverified key (#1997), and the
+    # explicit-key path still requires push-to-talk mode.
     if key is None:
-        key = _resolve_ptt_key()
-        print(f"PTT key auto-detected from settings: {key}")
+        binding = resolve()
+        key = binding.key_name
+        print(f"PTT key auto-detected from settings: {key} (keycode {binding.keycode})")
+    else:
+        require_push_to_talk()
 
     # Focus paste target app
     if focus_app:
