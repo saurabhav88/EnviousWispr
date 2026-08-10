@@ -430,7 +430,7 @@ jobs:
 
           echo "==> FoundationModels compile probe PASSED"
 
-      # #1836: scripts/eval/{apple_runner,alias_runner} are tracked STANDALONE
+      # #1836: scripts/eval/{apple_runner,alias_runner,prompt_render} are STANDALONE
       # SwiftPM packages that path-depend on EnviousWisprCore. Nothing compiled
       # them — not scripts/xcode-test.sh, not any workflow — so a public Core
       # signature change broke them with a fully green local suite AND a green
@@ -445,16 +445,21 @@ jobs:
       #
       # `swift build` is correct here and does NOT contravene
       # conventions.md RULE: xcode-build-engine-cli. That rule governs the app,
-      # XPC, release and repo-test gates; these two packages are invisible to
+      # XPC, release and repo-test gates; these packages are invisible to
       # Tuist/Xcode, so SwiftPM is the only thing that can build them. Debug
       # `swift build` is explicitly allowed as an informal compile check.
+      #
+      # prompt_render joined this loop when it was first tracked: it renders the
+      # per-model polish prompts the Ollama benchmark measures, so a Core prompt
+      # -builder signature change breaking it would silently invalidate the next
+      # benchmark rather than fail anything.
       - name: Compile standalone eval packages
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          for pkg in scripts/eval/apple_runner scripts/eval/alias_runner; do
-            # Seed each package's resolution from the app's TRACKED pins. Both
-            # eval Package.resolved files are gitignored, so a fresh runner has
+          for pkg in scripts/eval/apple_runner scripts/eval/alias_runner scripts/eval/prompt_render; do
+            # Seed each package's resolution from the app's TRACKED pins. Every
+            # eval Package.resolved file is gitignored, so a fresh runner has
             # none and SwiftPM would resolve the whole graph fresh — floating
             # ahead of what the app actually ships. Measured locally as of
             # 2026-07-29 (pins have since moved; the drift is the point, not

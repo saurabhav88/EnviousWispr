@@ -66,20 +66,32 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
-    speed: dict[str, dict] = {}
+    # Keyed by (model, arm), NOT by model alone. The documented invocation globs
+    # `run-summary-*.json`, so reporting a shipped run together with a
+    # `--suffix` / `--think-override` / repeat-penalty arm passes the SAME model
+    # more than once. Keying by model silently kept whichever arm was read last
+    # and printed a report that looked complete, which is the worst shape a
+    # measurement tool can have: a number whose scope is smaller than it appears.
+    # The arm identity was already available in the candidate path the runner
+    # records; only the key ignored it.
+    speed: dict[tuple[str, str], dict] = {}
     for p in args.run_summaries:
         if not p.exists():
             print(f"FAIL: missing run summary {p}", file=sys.stderr)
             return 2
         for m in load_json(p)["models"]:
-            speed[m["model"]] = m
+            key = (m["model"], Path(m["candidates"]).stem)
+            if key in speed:
+                # Same model AND same arm from two summaries is ambiguous input,
+                # not a mergeable duplicate. Fail closed rather than pick one.
+                print(f"FAIL: {key[0]} arm {key[1]!r} appears in more than one run "
+                      f"summary; pass one summary per arm", file=sys.stderr)
+                return 2
+            speed[key] = m
 
     rows = []
     problems = []
-    for model, sp in speed.items():
-        # The candidate filename carries the arm suffix; recover it from the path
-        # the runner recorded rather than guessing it here.
-        cand_stem = Path(sp["candidates"]).stem
+    for (model, cand_stem), sp in speed.items():
         jdir = args.judged / cand_stem
         summary_path = jdir / "summary.json"
         per_case_path = jdir / "per_case.jsonl"
@@ -90,7 +102,8 @@ def main() -> int:
             # than no ranking at all.
             if sp["errors"] >= sp["cases"]:
                 rows.append({
-                    "model": model, "isRemote": sp["isRemote"], "thinks": sp["thinks"],
+                    "model": model, "arm": cand_stem,
+                    "isRemote": sp["isRemote"], "thinks": sp["thinks"],
                     "thinkSent": sp["thinkSent"], "parameterSize": sp.get("parameterSize"),
                     "quantization": sp.get("quantization"), "errors": sp["errors"],
                     "cases": sp["cases"], "medianMs": sp["latencyMsMedian"],
@@ -123,6 +136,7 @@ def main() -> int:
         overall = summary.get("overall", {})
         rows.append({
             "model": model,
+            "arm": cand_stem,
             "isRemote": sp["isRemote"],
             "thinks": sp["thinks"],
             "thinkSent": sp["thinkSent"],

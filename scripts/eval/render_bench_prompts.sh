@@ -39,6 +39,14 @@ for m in "${MODELS[@]}"; do
     echo "FAIL: $m rendered $n prompts, corpus has $EXPECTED" >&2
     exit 2
   fi
+  # Record which model this file was rendered FOR. The rendered rows carry only
+  # id/mode/system/user, so nothing inside the file identifies its model, and a
+  # file that is stale, hand-copied, or renamed to another model's slug would be
+  # run under the wrong prompt with every existing check passing — the hazard
+  # this script's own header warns about but could not previously enforce.
+  # `run_ollama_bench.py` refuses to run a prompt file whose sidecar is missing
+  # or disagrees.
+  printf '%s\n' "$m" > "$OUTDIR/$slug.model"
   echo "  $m -> $out ($n)" >&2
 done
 echo "rendered ${#MODELS[@]} prompt files into $OUTDIR" >&2

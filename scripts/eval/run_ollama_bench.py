@@ -252,6 +252,24 @@ def main() -> int:
         if not prompt_path.exists():
             print(f"FAIL: no prompt file for {m} at {prompt_path}", file=sys.stderr)
             return 2
+        # Ollama prompt routing is per model NAME (gemma -> GemmaPromptBuilder,
+        # else OpenAIPromptBuilder, with isWeakModel overriding both), but the
+        # rendered rows record only id/mode/system/user. Matching case IDs is
+        # therefore NOT evidence the file was rendered for THIS model: a stale,
+        # copied, or renamed file passes that check and benchmarks the wrong
+        # prompt, producing plausible numbers with nothing in the output to say
+        # so. Fail closed on a missing or disagreeing sidecar rather than
+        # publish a measurement whose input we cannot name.
+        model_marker = args.prompts_dir / f"{slug}.model"
+        if not model_marker.exists():
+            print(f"FAIL: {m}: {prompt_path.name} has no {model_marker.name} sidecar; "
+                  f"re-render with render_bench_prompts.sh", file=sys.stderr)
+            return 2
+        rendered_for = model_marker.read_text().strip()
+        if rendered_for != m:
+            print(f"FAIL: {prompt_path.name} was rendered for {rendered_for!r}, "
+                  f"not {m!r}; re-render with render_bench_prompts.sh", file=sys.stderr)
+            return 2
         prompts = load_prompts(prompt_path)
         missing = sorted(set(cases) - set(prompts))
         if missing:

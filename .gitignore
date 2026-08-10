@@ -223,6 +223,26 @@ scripts/eval/parakeet_runner/Package.resolved
 !scripts/eval/render_bench_prompts.sh
 !scripts/eval/build_ollama_bench_corpus.py
 !scripts/eval/corpus/ollama_bench_international_v1.jsonl
+# Their two module dependencies. Tracking the entry points without these left
+# the harness importing modules that exist only on one machine, so a fresh
+# checkout died on ModuleNotFoundError at the first import — the harness was
+# tracked and still unreproducible, which is the failure this block exists to
+# prevent. Neither embeds a secret: both read keys from the environment or
+# `~/.enviouswispr-keys`, the same way the already-tracked `acceptance_gate.py`
+# does.
+!scripts/eval/run_ollama_type_b.py
+!scripts/eval/behavior_judge.py
+# `render_bench_prompts.sh` builds this to render each model's REAL production
+# prompt, so without it the benchmark cannot be reproduced at the step that
+# decides WHICH prompt each model was given — the input the whole comparison
+# rests on. Like apple_runner and alias_runner it is a standalone SwiftPM
+# package path-depending on the app, so it is compiled by the same CI guard
+# (#1836); its `Package.resolved` stays ignored, seeded on each run from the
+# app's tracked pins exactly as those two are.
+!scripts/eval/prompt_render/
+!scripts/eval/prompt_render/**
+scripts/eval/prompt_render/.build/
+scripts/eval/prompt_render/Package.resolved
 # Alias suggestion eval harness (#637) — PUBLIC tracked files
 !scripts/eval/alias_runner/
 !scripts/eval/alias_runner/**
