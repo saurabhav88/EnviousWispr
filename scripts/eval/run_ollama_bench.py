@@ -131,8 +131,13 @@ def shipped_think(thinks: bool | None) -> str | None:
 def unload(model: str) -> None:
     """Evict a resident model so the next one is measured on a quiet machine."""
     try:
-        requests.post(OLLAMA_CHAT_URL, json={"model": model, "messages": [], "keep_alive": 0},
-                      timeout=60)
+        r = requests.post(OLLAMA_CHAT_URL, json={"model": model, "messages": [], "keep_alive": 0},
+                          timeout=60)
+        # requests does not raise on 4xx/5xx, so without this a REJECTED unload
+        # returned normally and the warning never printed. The model then stayed
+        # resident and the next model was timed on a machine still holding it —
+        # the one condition this function exists to prevent, failing silently.
+        r.raise_for_status()
     except Exception as e:  # noqa: BLE001 - unload failure is worth seeing, never fatal
         print(f"  warn: unload {model} failed: {e}", file=sys.stderr)
 
@@ -159,7 +164,15 @@ def run_model(model: str, facts: dict, cases: dict[str, str], prompts: dict[str,
 
     print(f"\n=== {model}  remote={facts['isRemote']}  thinks={thinks}  think_sent={think!r} ===",
           file=sys.stderr, flush=True)
-    warm_status = warm(model, think, thinks)
+    # Mirror the shipped warm-up policy: production returns `.skipRemote` for a
+    # hosted model (`OllamaSetupService.warmupPolicy(for:)`, "matched.facts
+    # .isRemote ? .skipRemote : .run") because there is nothing local to load.
+    # Warming one here spent an untimed generation that production never spends,
+    # so hosted models were measured under conditions a user never gets.
+    if facts["isRemote"]:
+        warm_status = "remote"
+    else:
+        warm_status = warm(model, think, thinks)
     print(f"  warm: {warm_status}", file=sys.stderr, flush=True)
 
     ids = sorted(cases)
@@ -261,6 +274,28 @@ def main() -> int:
     # receipts it was supposed to be compared against. Refuse rather than invent
     # a name: a derived suffix the operator did not choose can collide too, and
     # the person running an experiment is the one who knows what to call it.
+    # Every artifact this run writes is named from a slug that maps `:`, `.` and
+    # `/` all to `-`, so the mapping is lossy and two distinct model IDs can
+    # collide (`foo:bar` and `foo-bar`, or `qwen3:0.6b` and `qwen3-0-6b`). The
+    # second model would overwrite the first's candidates while both summaries
+    # kept their own model names, so the report would attribute one model's
+    # outputs to two. A lossy name is fine as long as nothing depends on
+    # inverting it; this is the one place that could break, so refuse here.
+    #
+    # Checked BEFORE the daemon is contacted: this is a property of the arguments
+    # alone. Placed after `model_facts` it was unreachable for the pair most
+    # likely to collide, since one of them is usually not a pulled model and the
+    # absent-model error fired first — a guard that cannot reach its own subject.
+    by_slug: dict[str, list[str]] = {}
+    for m in args.models:
+        by_slug.setdefault(m.replace(":", "-").replace(".", "-").replace("/", "-"), []).append(m)
+    collisions = {s: ms for s, ms in by_slug.items() if len(ms) > 1}
+    if collisions:
+        for slug, ms in collisions.items():
+            print(f"FAIL: {ms} all normalise to the slug {slug!r} and would overwrite each "
+                  f"other's candidates; benchmark them in separate runs", file=sys.stderr)
+        return 2
+
     if (args.think_override or args.repeat_penalty is not None) and not args.suffix:
         print("FAIL: --think-override / --repeat-penalty are experiment arms and need an "
               "explicit --suffix (e.g. --suffix -thinkfalse), or they overwrite the "

@@ -79,7 +79,17 @@ def main() -> int:
         if not p.exists():
             print(f"FAIL: missing run summary {p}", file=sys.stderr)
             return 2
-        for m in load_json(p)["models"]:
+        run = load_json(p)
+        # Case IDs are reused across corpus versions, so merging summaries built
+        # from different corpora would compare models on different inputs while
+        # every ID lined up perfectly. The runner records which corpus it used;
+        # this is the only place that can notice a mismatch.
+        run_corpus = run.get("corpus")
+        if run_corpus is not None and Path(run_corpus).name != Path(args.corpus).name:
+            print(f"FAIL: {p.name} was produced from corpus {run_corpus!r}, but this report "
+                  f"was given {str(args.corpus)!r}; they are not comparable", file=sys.stderr)
+            return 2
+        for m in run["models"]:
             key = (m["model"], Path(m["candidates"]).stem)
             if key in speed:
                 # Same model AND same arm from two summaries is ambiguous input,
