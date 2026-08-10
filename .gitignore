@@ -141,6 +141,10 @@ scripts/*
 !scripts/build-dev-app.sh
 !scripts/check-xpc-error-hygiene.sh
 !scripts/check-contacts-data-flow.sh
+# #1951: catalog ids are pull targets, so a wrong one ships a dead Download
+# button. Tracked deliberately — a gitignored validator can only be run by
+# someone who remembers it exists, which is how the false green happens.
+!scripts/check-ollama-catalog-sizes.sh
 !scripts/xcode-test.sh
 !scripts/indexnow-submit.py
 # UAT scripts — required by workflow tooling (workflow-process.md §1 step 9 + §11)
