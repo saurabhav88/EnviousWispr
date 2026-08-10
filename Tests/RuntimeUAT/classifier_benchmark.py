@@ -30,6 +30,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+from ptt_binding import run_instrument_boundary  # noqa: E402
 from wispr_eyes import record_tts  # noqa: E402
 
 LOG = Path.home() / "Library/Logs/EnviousWispr/app.log"
@@ -88,7 +89,7 @@ def _events_since(t0: float):
     return clf, filt
 
 
-def main() -> int:
+def _main() -> int:
     if not LOG.exists():
         print("FAIL: app.log not found — is the DEBUG dev build running?")
         return 2
@@ -134,6 +135,12 @@ def main() -> int:
     print("Read ~/Library/Logs/EnviousWispr/app.log [OutputClassifier]/[AIPolish] "
           "for the authoritative per-line record.")
     return 0 if ok else 1
+
+
+def main() -> int:
+    # CLI boundary: an invalid binding aborts all ten dictations rather than
+    # scoring them (#1997).
+    return run_instrument_boundary(_main)
 
 
 if __name__ == "__main__":

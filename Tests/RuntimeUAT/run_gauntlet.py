@@ -29,6 +29,8 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+from ptt_binding import PTTBindingError, run_instrument_boundary  # noqa: E402
+
 from faultInjection import (  # noqa: E402
     _assert_dictation_recovers,
     _parse_query_state,
@@ -132,7 +134,7 @@ def _write_scorecard(bench: dict, out_path: str) -> None:
 
 
 
-def main(argv: list[str]) -> int:
+def _main(argv: list[str]) -> int:
     # Subcommand routing; no subcommand ⇒ legacy Lane A gauntlet (back-compat).
 
     parser = argparse.ArgumentParser()
@@ -157,6 +159,13 @@ def main(argv: list[str]) -> int:
             inner = scenario_result.get("result", {})
             print(f"  elapsed={elapsed:.1f}s")
             print(f"  result={inner}")
+        except PTTBindingError:
+            # Re-raise ahead of the generic handler so main()'s boundary adapter
+            # reports INSTRUMENT INVALID. Without this the generic branch below
+            # scores an unresolvable PTT binding as a failed SCENARIO — the same
+            # instrument-failure-as-product-verdict defect #1997 exists to fix,
+            # one layer out.
+            raise
         except Exception as e:
             print(f"  scenario raised: {type(e).__name__}: {e}")
             results.append({
@@ -195,6 +204,12 @@ def main(argv: list[str]) -> int:
             print(f"  FAIL  {scen}  ({reason})")
     print(f"\nfinal-state: {query_state()}")
     return 0 if all(r.get("health", {}).get("healthy") for r in results) else 1
+
+
+def main(argv: list[str]) -> int:
+    # CLI boundary: an unresolvable PTT binding is an INSTRUMENT failure,
+    # never a scenario verdict (#1997).
+    return run_instrument_boundary(lambda: _main(argv))
 
 
 if __name__ == "__main__":

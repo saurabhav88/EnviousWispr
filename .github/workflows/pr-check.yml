@@ -615,6 +615,21 @@ jobs:
           scripts/ci/check-download-link-utms.sh --self-test
           scripts/ci/check-download-link-utms.sh
 
+      - name: RuntimeUAT PTT binding policy + Swift/Python key parity
+        run: |
+          set -euo pipefail
+          # #1997. The UAT harness resolves which key to hold for push-to-talk.
+          # When it cannot, it must REFUSE — a harness that presses a guessed key
+          # reports the resulting silence as a product failure, which is what
+          # happened on 2026-08-10. These self-tests lock that policy, and the
+          # parity case fails if Swift's standalone-modifier set and Python's
+          # MODIFIER_KEYS drift apart in EITHER direction: an app-only key makes
+          # the harness refuse (safe), but a Python-only key makes it post a
+          # modifier event at a Carbon-registered hotkey and produce exactly that
+          # false product FAIL. Neither module imports Quartz, so both run here.
+          python3 Tests/RuntimeUAT/ptt_binding.py --self-test
+          python3 Tests/RuntimeUAT/faultInjection.py --self-test
+
       - name: Require both build lanes
         run: |
           if [ "${{ needs.build-debug.result }}" != "success" ] \
