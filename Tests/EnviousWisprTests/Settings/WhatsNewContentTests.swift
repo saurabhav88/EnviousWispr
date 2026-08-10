@@ -59,7 +59,7 @@ struct WhatsNewContentTests {
     // untouched by #1493; asserting the real sequence is the falsifiable version.
     #expect(
       WhatsNewContent.versions == [
-        "2.5.0", "2.4.3", "2.4.1", "2.4.0",
+        "2.4.4", "2.4.3", "2.4.1", "2.4.0",
         "2.3.2", "2.3.1", "2.3.0",
         "2.2.1", "2.2.0",
         "2.1.4", "2.1.3", "2.1.2", "2.1.1", "2.1.0",
@@ -107,10 +107,9 @@ struct WhatsNewContentTests {
 
   /// #1987 — the Globe-key entry, pinned field by field.
   ///
-  /// Deliberately NOT covered by `currentVersionHasEntries` above: another 2.5.0
-  /// entry is already in the group, so that test passes whether or not this one
-  /// exists. Only an exact-ID lookup can tell the difference. (2.5.0 is the OPEN
-  /// group, not a shipped release; the newest tag is v2.4.3.)
+  /// Deliberately NOT covered by `currentVersionHasEntries` above: other 2.4.4
+  /// entries are already in the group, so that test passes whether or not this one
+  /// exists. Only an exact-ID lookup can tell the difference.
   ///
   /// The description is asserted verbatim because it is founder-approved copy
   /// naming a System Settings route, so a paraphrase sends the user looking for a
@@ -119,11 +118,15 @@ struct WhatsNewContentTests {
   /// Two separate facts, previously conflated here into a causal claim that was
   /// simply false:
   ///
-  /// 1. This wording says "Press Globe key to" while the help article and the
-  ///    popover both use the exact macOS label "Press 🌐 key to". That is a copy
-  ///    decision about this surface, NOT a technical limit. Measured 2026-08-09 by
-  ///    putting the symbol in this description and re-running the renderer: it
-  ///    parsed all 116 entries and emitted the symbol intact.
+  /// 1. This wording now uses the exact macOS label "Press 🌐 key to", matching
+  ///    the help article and the popover. It previously said "Press Globe key to",
+  ///    recorded as a copy decision with no rationale beside it while the sentence
+  ///    directly above asserted the opposite principle — that a paraphrase sends
+  ///    the user looking for a menu that is not there. Three surfaces describe one
+  ///    System Settings route and this was the only one paraphrasing it. Changed
+  ///    2026-08-09 (v2.4.4). It was never a technical limit: measured the same day
+  ///    by putting the symbol in this description and re-running the renderer,
+  ///    which parsed all 116 entries and emitted the symbol intact.
   /// 2. `title`, `description`, and `version` must stay direct Swift literals
   ///    rather than shared constants, because `scripts/ci/render-release-notes.py`
   ///    parses the SOURCE TEXT of this file rather than compiled values.
@@ -134,13 +137,14 @@ struct WhatsNewContentTests {
       "the #1987 Globe key entry is missing from What's New")
 
     #expect(entry.icon == "globe")
-    #expect(entry.title == "Use the Globe key as your dictation shortcut")
+    #expect(entry.title == "Use the Globe key, or Fn, as your dictation shortcut")
     #expect(
       entry.description
-        == "You can now use the Globe (Fn) key as your dictation shortcut. Right Option stays "
-        + "exactly as it is unless you choose Globe. If macOS also opens emoji, switches your "
-        + "keyboard language, or starts its own dictation when you press it, go to System "
-        + "Settings, then Keyboard, then Press Globe key to, and choose Do Nothing.")
+        == "You can now use the Globe key, marked Fn on many Macs, as your dictation shortcut. "
+        + "Right Option stays exactly as it is unless you choose Globe. If macOS also opens "
+        + "emoji, switches your keyboard language, or starts its own dictation when you press "
+        + "it, go to System Settings, then Keyboard, then Press 🌐 key to, and choose Do "
+        + "Nothing.")
 
     // Founder amendment 2026-08-09, same reason as the popover: the macOS menu
     // offers three actions and the original copy named two. Membership rather than
@@ -148,7 +152,7 @@ struct WhatsNewContentTests {
     #expect(entry.description.contains("emoji"))
     #expect(entry.description.contains("keyboard language"))
     #expect(entry.description.contains("its own dictation"))
-    #expect(entry.version == "2.5.0")
+    #expect(entry.version == "2.4.4")
     #expect(entry.version == WhatsNewConstants.currentContentVersion)
   }
 }

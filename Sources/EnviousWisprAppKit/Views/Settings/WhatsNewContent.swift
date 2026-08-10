@@ -18,24 +18,69 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
-    // MARK: - v2.5.0
+    // MARK: - v2.4.4
+
+    Entry(
+      id: "globe-key-dictation-hotkey",
+      icon: "globe",
+      title: "Use the Globe key, or Fn, as your dictation shortcut",
+      description:
+        "You can now use the Globe key, marked Fn on many Macs, as your dictation shortcut. Right Option stays exactly as it is unless you choose Globe. If macOS also opens emoji, switches your keyboard language, or starts its own dictation when you press it, go to System Settings, then Keyboard, then Press 🌐 key to, and choose Do Nothing.",
+      version: "2.4.4"
+    ),
 
     Entry(
       id: "ollama-cloud-models-appear-automatically",
       icon: "cloud",
       title: "Ollama Cloud models now appear automatically",
       description:
-        "Ollama Cloud models used to appear in Manage Models only after you added them on that Mac. The full lineup now appears there automatically on every install and after every update. The button now says Add instead of Download because nothing is downloading, and cloud models can no longer be deleted. The models available without a paid Ollama plan when checked on August 5, 2026 are listed first.",
-      version: "2.5.0"
+        "Ollama Cloud models used to appear in Manage Models only after you added them on that Mac. The full lineup now appears there automatically on every install and after every update. The button now says Add instead of Download because nothing is downloading, and cloud models can no longer be deleted. For 30 days after the August 5, 2026 check, the models available without a paid Ollama plan are listed first. After that the list returns to a neutral order.",
+      version: "2.4.4"
     ),
 
     Entry(
-      id: "globe-key-dictation-hotkey",
-      icon: "globe",
-      title: "Use the Globe key as your dictation shortcut",
+      id: "ollama-cloud-supported-end-to-end",
+      icon: "checkmark.icloud",
+      title: "Ollama Cloud models are now properly supported end to end",
       description:
-        "You can now use the Globe (Fn) key as your dictation shortcut. Right Option stays exactly as it is unless you choose Globe. If macOS also opens emoji, switches your keyboard language, or starts its own dictation when you press it, go to System Settings, then Keyboard, then Press Globe key to, and choose Do Nothing.",
-      version: "2.5.0"
+        "If you polish with an Ollama Cloud model, EnviousWispr used to treat it as a small model running on your Mac. It gave the model too little room to work, spent your cloud quota on warm-up calls it did not need, and when something failed it told you to start Ollama even though Ollama was already running. Cloud models are now recognised for what they are, and if you are signed out of Ollama the message says so. Models that run on your own Mac also get a prompt written for them, replacing one that was quietly working against itself on most dictations.",
+      version: "2.4.4"
+    ),
+
+    Entry(
+      id: "ollama-settings-stay-accurate",
+      icon: "arrow.clockwise.circle",
+      title: "Ollama settings and the model list now stay accurate",
+      description:
+        "The Ollama status in Settings could get stuck: still saying it was starting after it was ready, or still saying ready after you had quit Ollama. It now keeps itself current while you have the panel open. The model picker also showed two different models under one identical name, so there was no way to tell them apart. Each one is now labelled so you can.",
+      version: "2.4.4"
+    ),
+
+    Entry(
+      id: "continuation-casing-eleven-languages",
+      icon: "character.book.closed",
+      title: "Dictating into the middle of a sentence now works in eleven more languages",
+      description:
+        "When you type part of a sentence and dictate the rest, EnviousWispr matches the capitalisation you would have used yourself. Until now that only worked in English, so every other language got a capital letter dropped into the middle of your sentence. It now works in German, French, Italian, Spanish, Portuguese, Dutch, Danish, Swedish, Finnish, Russian and Turkish. Measured against real published writing, this went from right 7% of the time to right 94%. We also found several ways to make it more accurate everywhere, so it now works reliably in far more of the places you dictate.",
+      version: "2.4.4"
+    ),
+
+    Entry(
+      id: "fewer-transcription-errors",
+      icon: "exclamationmark.bubble",
+      title: "Fewer transcription errors",
+      description:
+        "A quick press with no dictation used to fire an error that had nothing to explain. No more. And a microphone that sent no audio at all now asks you to check your mic, instead of blaming transcription for something transcription never saw.",
+      version: "2.4.4"
+    ),
+
+    Entry(
+      id: "fixes-you-should-never-notice",
+      icon: "checkmark.shield",
+      title: "Fixes you should never notice",
+      description:
+        "Custom Words saves are now much more resilient to an app crash or a power cut. After an update, a leftover model file can no longer be mistaken for a good one. And the speech engine has picked up newer transcription repairs from upstream. All real, all invisible unless something goes wrong.",
+      version: "2.4.4"
     ),
 
     // MARK: - v2.4.3
