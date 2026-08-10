@@ -264,40 +264,59 @@ public final class OllamaSetupService {
   /// Curated suggestions for users who haven't downloaded models yet.
   /// `nonisolated`: immutable Sendable constant, readable from the pure catalog
   /// assembly (`dynamicCatalog(from:)`) and telemetry without a MainActor hop.
+  ///
+  /// EVERY `name` HERE IS A PULL TARGET, so a wrong one ships a Download button
+  /// that can only ever fail — `dynamicCatalog` offers each undownloaded entry as
+  /// a suggestion row and its button calls `pullModel(entry.name)`. `phi-2` was
+  /// wrong for the whole life of this table (`phi-2` 404s; Phi-2 is published as
+  /// `phi`), and nothing detected it because a 500 from `/api/pull` looks like
+  /// any other pull failure (#1951).
+  ///
+  /// `downloadSize` is a DATED literal, not a fact about the registry. Sizes
+  /// re-measured against `registry.ollama.ai` on 2026-08-10: six of the ten
+  /// surviving rows had drifted, five of them past the 5% the checker allows.
+  /// Largest was `gemma3n:e4b` at 1.5 GB, then `llama3.2:1b` at 520 MB —
+  /// a row that told the user 800 MB and downloads 1.3 GB.
+  ///
+  /// Re-measure with `scripts/check-ollama-catalog-sizes.sh` rather than by hand.
+  /// It reads the ids and literals out of THIS table, queries the registry for
+  /// each manifest, and fails closed on any non-200, unparseable literal, or
+  /// name/size count mismatch, so a half-broken probe cannot print a plausible
+  /// number. It needs the network, so it is manual and deliberately not in CI.
   public nonisolated static let modelCatalog: [OllamaModelCatalogEntry] = [
     OllamaModelCatalogEntry(
       name: "gemma3n:e4b", displayName: "Gemma 3 Nano (4B)", parameterCount: "4B",
-      qualityTier: .best, downloadSize: "~6 GB"),
+      qualityTier: .best, downloadSize: "~7.5 GB"),
     OllamaModelCatalogEntry(
       name: "llama3.2", displayName: "Llama 3.2", parameterCount: "3B", qualityTier: .best,
       downloadSize: "~2 GB"),
     OllamaModelCatalogEntry(
       name: "llama3.2:1b", displayName: "Llama 3.2 (1B)", parameterCount: "1B",
-      qualityTier: .medium, downloadSize: "~800 MB"),
+      qualityTier: .medium, downloadSize: "~1.3 GB"),
     OllamaModelCatalogEntry(
       name: "mistral", displayName: "Mistral", parameterCount: "7B", qualityTier: .best,
-      downloadSize: "~4 GB"),
+      downloadSize: "~4.4 GB"),
     OllamaModelCatalogEntry(
       name: "phi3", displayName: "Phi-3 Mini", parameterCount: "3.8B", qualityTier: .medium,
-      downloadSize: "~2.3 GB"),
+      downloadSize: "~2.2 GB"),
     OllamaModelCatalogEntry(
       name: "gemma2:2b", displayName: "Gemma 2 (2B)", parameterCount: "2B", qualityTier: .medium,
       downloadSize: "~1.6 GB"),
     OllamaModelCatalogEntry(
       name: "gemma2", displayName: "Gemma 2", parameterCount: "9B", qualityTier: .best,
-      downloadSize: "~5.5 GB"),
+      downloadSize: "~5.4 GB"),
     OllamaModelCatalogEntry(
       name: "qwen2.5:3b", displayName: "Qwen 2.5 (3B)", parameterCount: "3B", qualityTier: .medium,
       downloadSize: "~1.9 GB"),
     OllamaModelCatalogEntry(
       name: "qwen2.5:7b", displayName: "Qwen 2.5 (7B)", parameterCount: "7B", qualityTier: .best,
-      downloadSize: "~4.4 GB"),
+      downloadSize: "~4.7 GB"),
     OllamaModelCatalogEntry(
       name: "tinyllama", displayName: "TinyLlama", parameterCount: "1.1B", qualityTier: .worst,
       downloadSize: "~638 MB"),
     OllamaModelCatalogEntry(
-      name: "phi-2", displayName: "Phi-2", parameterCount: "2.7B", qualityTier: .worst,
-      downloadSize: "~1.7 GB"),
+      name: "phi", displayName: "Phi-2", parameterCount: "2.7B", qualityTier: .worst,
+      downloadSize: "~1.6 GB"),
   ]
 
   /// First-party curated metadata for models that are NOT publicly pullable (#1269).
