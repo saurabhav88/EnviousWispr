@@ -190,17 +190,29 @@ def main() -> int:
     def ms(v):
         return "—" if v is None else (f"{v/1000:.1f}s" if v >= 1000 else f"{v}ms")
 
+    # Preserving both arms in the DATA is pointless if the reader cannot tell
+    # them apart in the artifact they actually read. Disambiguate only where it
+    # is needed: a model with one arm keeps its bare name, so the ordinary
+    # single-run report is unchanged, while two arms of the same model are
+    # labelled with the arm that produced each row.
+    arm_counts: dict[str, int] = {}
+    for r in rows:
+        arm_counts[r["model"]] = arm_counts.get(r["model"], 0) + 1
+
     lines = []
     lines.append("| # | Model | Where | Pass | English | International | S4 | Median | Max | Verdict |")
     lines.append("|---:|---|---|---:|---:|---:|---:|---:|---:|---|")
     for i, r in enumerate(rows, 1):
         where = "Ollama cloud" if r["isRemote"] else "Your Mac"
+        label = f"`{r['model']}`"
+        if arm_counts[r["model"]] > 1:
+            label = f"{label} <br>_{r['arm']}_"
         eng = f"{r['eng']['pass_pct']}%" if r["eng"]["pass_pct"] is not None else "—"
         intl = f"{r['intl']['pass_pct']}%" if r["intl"]["pass_pct"] is not None else "—"
         errnote = f" ({r['errors']} err)" if r["errors"] else ""
         overall = "—" if r["passPct"] is None else f"{r['passPct']}%"
         lines.append(
-            f"| {i} | `{r['model']}` | {where} | {overall} | {eng} | {intl} | "
+            f"| {i} | {label} | {where} | {overall} | {eng} | {intl} | "
             f"{r['s4']} | {ms(r['medianMs'])} | {ms(r['maxMs'])}{errnote} | {r['tier']} |")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

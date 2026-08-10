@@ -30,9 +30,24 @@ unmeasurable=()
 for cand in "$CANDDIR"/*.jsonl; do
   base="$(basename "$cand" .jsonl)"
   dest="$OUTDIR/$base"
+  # Resume-safe skip, keyed on the INPUTS rather than on the mere existence of a
+  # receipt. Judging is the slow, paid step, so skipping already-judged arms is
+  # the point of this loop — but a candidate file regenerated under the same arm
+  # name (a re-run of the default, unsuffixed arm is the common case) left the
+  # old summary in place and skipped it, so the report combined the NEW latency
+  # numbers with the OLD quality scores and said nothing. Same shape as the two
+  # holes above it: a result whose scope is quietly narrower than it looks.
+  stamp="$dest/.inputs-sha256"
+  inputs_sha="$(shasum -a 256 "$cand" "$CORPUS" | shasum -a 256 | cut -d' ' -f1)"
   if [ -f "$dest/summary.json" ]; then
-    skipped+=("$base")
-    continue
+    if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$inputs_sha" ]; then
+      skipped+=("$base")
+      continue
+    fi
+    # Inputs moved under an existing receipt. Re-judge rather than trust it, and
+    # say so: a silent re-judge would hide that a previous report was mixed.
+    echo "=== re-judging $base: candidates or corpus changed since its receipt ===" >&2
+    rm -rf "$dest"
   fi
   # A model that errored on EVERY case has no output to grade. Judging 20 empty
   # strings would return 20 critical failures, which reads as "measured and
@@ -48,6 +63,7 @@ for cand in "$CANDDIR"/*.jsonl; do
   echo "=== judging $base ===" >&2
   if python3 "$ROOT/scripts/eval/behavior_judge.py" \
        --system new --corpus "$CORPUS" --candidates "$cand" --out "$dest" >&2; then
+    printf '%s\n' "$inputs_sha" > "$stamp"
     echo "  ok $base" >&2
   else
     # behavior_judge exits nonzero for BLOCK verdicts too, not only infra
@@ -55,6 +71,10 @@ for cand in "$CANDDIR"/*.jsonl; do
     # failed the gate" from "never graded". Only the latter is an error here:
     # this benchmark ranks models, it does not gate them.
     if [ -f "$dest/summary.json" ]; then
+      # A graded-but-non-CLEAR run is a complete receipt for these inputs, so it
+      # earns a stamp exactly like a CLEAR one. Without this the next run would
+      # re-judge every weak model forever, which is the expensive half.
+      printf '%s\n' "$inputs_sha" > "$stamp"
       echo "  ok $base (non-CLEAR verdict, expected for weak models)" >&2
     else
       echo "  FAILED $base" >&2

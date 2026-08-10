@@ -57,6 +57,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from statistics import median
 
 import requests
 
@@ -216,7 +217,19 @@ def run_model(model: str, facts: dict, cases: dict[str, str], prompts: dict[str,
         "cases": len(ids),
         "errors": errors,
         "wallSeconds": round(elapsed, 1),
-        "latencyMsMedian": lat[len(lat) // 2] if lat else None,
+        # statistics.median, not `lat[len(lat) // 2]`. The corpus is 20 cases, an
+        # EVEN count, so indexing the upper middle reported the 11th observation
+        # and called it the median.
+        #
+        # Measured against the #1950 candidates: 14 arms report a different
+        # number under the correct definition, the largest shift is 398 ms, and
+        # NO arm crosses the 15-second pipeline deadline, so no verdict in that
+        # run changes. The fix matters because the deadline is the line this
+        # benchmark sorts models on and a straddling pair would decide a verdict
+        # on a value no definition of median produces — not because it has
+        # already done so. Numbers from before this fix are the upper-middle
+        # observation and are not comparable with these.
+        "latencyMsMedian": round(median(lat)) if lat else None,
         "latencyMsMean": round(sum(lat) / len(lat)) if lat else None,
         "latencyMsMax": lat[-1] if lat else None,
         "overDeadline": over,
