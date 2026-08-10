@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Merge the #1950 speed and quality receipts into one ranked table.
+
+TWO AXES, NOT ONE COMPOSITE. A single blended score would let a fast model hide
+a trust-breaking failure behind good latency. The ranking is therefore two hard
+gates followed by one sort:
+
+  Gate A — SPEED. Median latency must be inside `LLMPolishStep.maxDuration`
+           (15s). Past it the user never receives the polish at all, so quality
+           is not a question that arises.
+  Gate B — TRUST. Zero S4. S4 is the judge's trust-breaking tier: a changed name,
+           an invented fact, an obeyed instruction, unusable output. One is
+           enough to disqualify a model we would put in front of users.
+  SORT   — pass rate, then median latency.
+
+INTERNATIONAL IS REPORTED SEPARATELY, NOT FOLDED IN. A model can be strong in
+English and answer a Spanish dictation in English; averaging the two hides
+exactly the failure the international cases exist to find.
+
+FAIL CLOSED. A model with a speed receipt but no quality receipt (or the reverse)
+is an error, not a row with blanks — a half-measured model silently ranked low
+is worse than no ranking.
+
+Usage:
+  python3 scripts/eval/report_ollama_bench.py \
+      --run-summaries scripts/eval/runs/ollama-bench-1950/candidates/run-summary-*.json \
+      --judged scripts/eval/runs/ollama-bench-1950/judged \
+      --corpus scripts/eval/corpus/ollama_bench_v1.jsonl \
+      --out scripts/eval/runs/ollama-bench-1950/report.md
+"""
+import argparse
+import json
+import sys
+from pathlib import Path
+
+PIPELINE_DEADLINE_MS = 15_000
+
+
+def slug(model: str) -> str:
+    return model.replace(":", "-").replace(".", "-").replace("/", "-")
+
+
+def load_json(p: Path):
+    with open(p) as f:
+        return json.load(f)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--run-summaries", required=True, nargs="+", type=Path)
+    ap.add_argument("--judged", required=True, type=Path)
+    ap.add_argument("--corpus", required=True, type=Path)
+    ap.add_argument("--out", required=True, type=Path)
+    args = ap.parse_args()
+
+    intl_ids = set()
+    with open(args.corpus) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                row = json.loads(line)
+                if row.get("input_source") == "hand_written_international":
+                    intl_ids.add(row["id"])
+    if not intl_ids:
+        print("FAIL: corpus contains no international cases; the split would be vacuous",
+              file=sys.stderr)
+        return 2
+
+    speed: dict[str, dict] = {}
+    for p in args.run_summaries:
+        if not p.exists():
+            print(f"FAIL: missing run summary {p}", file=sys.stderr)
+            return 2
+        for m in load_json(p)["models"]:
+            speed[m["model"]] = m
+
+    rows = []
+    problems = []
+    for model, sp in speed.items():
+        # The candidate filename carries the arm suffix; recover it from the path
+        # the runner recorded rather than guessing it here.
+        cand_stem = Path(sp["candidates"]).stem
+        jdir = args.judged / cand_stem
+        summary_path = jdir / "summary.json"
+        per_case_path = jdir / "per_case.jsonl"
+        if not summary_path.exists() or not per_case_path.exists():
+            # A model that failed EVERY request produced nothing to judge, so a
+            # missing receipt is the expected state and not an error. Any other
+            # missing receipt is a hole, and a hole silently ranked low is worse
+            # than no ranking at all.
+            if sp["errors"] >= sp["cases"]:
+                rows.append({
+                    "model": model, "isRemote": sp["isRemote"], "thinks": sp["thinks"],
+                    "thinkSent": sp["thinkSent"], "parameterSize": sp.get("parameterSize"),
+                    "quantization": sp.get("quantization"), "errors": sp["errors"],
+                    "cases": sp["cases"], "medianMs": sp["latencyMsMedian"],
+                    "meanMs": sp["latencyMsMean"], "maxMs": sp["latencyMsMax"],
+                    "overDeadline": sp["overDeadline"], "passPct": None, "s4": 0,
+                    "eng": {"n": 0, "pass_pct": None, "s3": 0, "s4": 0},
+                    "intl": {"n": 0, "pass_pct": None, "s3": 0, "s4": 0},
+                    "failure_types": {},
+                    "unmeasuredReason": sp.get("warm", ""),
+                })
+                continue
+            problems.append(f"{model}: no quality receipt at {jdir}")
+            continue
+        summary = load_json(summary_path)
+        per_case = [json.loads(l) for l in open(per_case_path) if l.strip()]
+
+        def split(pred):
+            items = [x for x in per_case if pred(x)]
+            n = len(items)
+            passed = sum(1 for x in items if x["verdict"] in ("pass", "minor"))
+            return {
+                "n": n,
+                "pass_pct": round(100 * passed / n, 1) if n else None,
+                "s3": sum(1 for x in items if x["severity"] == "S3"),
+                "s4": sum(1 for x in items if x["severity"] == "S4"),
+            }
+
+        eng = split(lambda x: x["id"] not in intl_ids)
+        intl = split(lambda x: x["id"] in intl_ids)
+        overall = summary.get("overall", {})
+        rows.append({
+            "model": model,
+            "isRemote": sp["isRemote"],
+            "thinks": sp["thinks"],
+            "thinkSent": sp["thinkSent"],
+            "parameterSize": sp.get("parameterSize"),
+            "quantization": sp.get("quantization"),
+            "errors": sp["errors"],
+            "cases": sp["cases"],
+            "medianMs": sp["latencyMsMedian"],
+            "meanMs": sp["latencyMsMean"],
+            "maxMs": sp["latencyMsMax"],
+            "overDeadline": sp["overDeadline"],
+            "passPct": overall.get("pass_rate_pct"),
+            "s4": overall.get("critical_fail_count", 0),
+            "eng": eng,
+            "intl": intl,
+            "failure_types": overall.get("failure_type_counts", {}),
+        })
+
+    if problems:
+        print("FAIL: incomplete receipts:\n  " + "\n  ".join(problems), file=sys.stderr)
+        return 2
+    if not rows:
+        print("FAIL: no models to report", file=sys.stderr)
+        return 2
+
+    def tier(r) -> str:
+        # UNMEASURED is not a quality verdict and must not be ranked as one. A
+        # model that refused every request behind a paywall produced no evidence
+        # either way; sorting it to the bottom would read as "we tested it and it
+        # was bad", which is a claim the run cannot support.
+        if r["errors"] >= r["cases"]:
+            return "Not measurable"
+        if r["medianMs"] is None or r["medianMs"] > PIPELINE_DEADLINE_MS:
+            return "Not recommended"
+        if r["s4"] > 0:
+            return "Not recommended"
+        if r["errors"] > 0:
+            # A partial failure IS evidence: at shipped settings this model
+            # sometimes returns nothing the user can paste.
+            return "Not recommended"
+        if (r["passPct"] or 0) >= 70:
+            return "Recommended"
+        return "Usable"
+
+    for r in rows:
+        r["tier"] = tier(r)
+
+    order = {"Recommended": 0, "Usable": 1, "Not recommended": 2, "Not measurable": 3}
+    rows.sort(key=lambda r: (order[r["tier"]], -(r["passPct"] or 0), r["medianMs"] or 10**9))
+
+    def ms(v):
+        return "—" if v is None else (f"{v/1000:.1f}s" if v >= 1000 else f"{v}ms")
+
+    lines = []
+    lines.append("| # | Model | Where | Pass | English | International | S4 | Median | Max | Verdict |")
+    lines.append("|---:|---|---|---:|---:|---:|---:|---:|---:|---|")
+    for i, r in enumerate(rows, 1):
+        where = "Ollama cloud" if r["isRemote"] else "Your Mac"
+        eng = f"{r['eng']['pass_pct']}%" if r["eng"]["pass_pct"] is not None else "—"
+        intl = f"{r['intl']['pass_pct']}%" if r["intl"]["pass_pct"] is not None else "—"
+        errnote = f" ({r['errors']} err)" if r["errors"] else ""
+        overall = "—" if r["passPct"] is None else f"{r['passPct']}%"
+        lines.append(
+            f"| {i} | `{r['model']}` | {where} | {overall} | {eng} | {intl} | "
+            f"{r['s4']} | {ms(r['medianMs'])} | {ms(r['maxMs'])}{errnote} | {r['tier']} |")
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text("\n".join(lines) + "\n")
+    with open(args.out.with_suffix(".json"), "w") as f:
+        json.dump(rows, f, indent=2)
+    print("\n".join(lines))
+    print(f"\nwrote {args.out} and {args.out.with_suffix('.json')}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
