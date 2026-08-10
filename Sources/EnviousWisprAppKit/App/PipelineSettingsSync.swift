@@ -171,8 +171,10 @@ final class PipelineSettingsSync {
       if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
     case .cancelKeyCode:
       hotkeyService.cancelKeyCode = settings.cancelKeyCode
+      hotkeyService.reapplyCancelBinding()
     case .cancelModifiers:
       hotkeyService.cancelModifiers = settings.cancelModifiers
+      hotkeyService.reapplyCancelBinding()
     case .toggleKeyCode:
       hotkeyService.toggleKeyCode = settings.toggleKeyCode
       reregisterHotkeys()
@@ -425,7 +427,9 @@ final class PipelineSettingsSync {
   /// Re-register Carbon hotkeys after a config change.
   private func reregisterHotkeys() {
     guard hotkeyService.isEnabled else { return }
-    hotkeyService.stop()
-    hotkeyService.start()
+    // Not `stop()` + `start()`: that pair disarms an in-flight recording's cancel
+    // key, because `start()` deliberately leaves cancel to the recording that
+    // owns it. The service preserves the arming across the restart instead.
+    hotkeyService.restartPreservingCancelArming()
   }
 }

@@ -113,8 +113,16 @@ struct StatusView: View {
               Task { await dictationRuntime.cancelRecording() }
             } label: {
               HStack(spacing: 4) {
-                Text("Esc")
-                  .font(.caption.monospaced())
+                // The CONFIGURED cancel key, not a hard-coded "Esc". This label
+                // said Escape regardless of the setting, so the users whose
+                // cancel key did nothing (#1991) were also being told to press
+                // the wrong key — the display agreed with the default rather
+                // than with them.
+                Text(
+                  KeySymbols.formatHotkey(
+                    keyCode: settings.cancelKeyCode, modifiers: settings.cancelModifiers)
+                )
+                .font(.caption.monospaced())
                 Text("Cancel")
               }
               .foregroundStyle(.secondary)

@@ -69,6 +69,18 @@ public final class HotkeyService {
   private var toggleHotkeyRef: EventHotKeyRef?
   private var cancelHotkeyRef: EventHotKeyRef?
 
+  /// Whether the cancel role is currently armed.
+  ///
+  /// Not derivable from `cancelHotkeyRef`: a bare-modifier cancel key has no
+  /// Carbon registration to hold a ref, so a nil ref means "unarmed" for a chord
+  /// and says nothing at all for a modifier. Tracking arming explicitly is what
+  /// lets the modifier dispatch path know whether a recording is in flight.
+  private var isCancelArmed = false
+
+  /// Cancel's armed state at the moment `suspend()` ran, so `resume()` can put a
+  /// still-running recording back where it was.
+  private var cancelArmedBeforeSuspend = false
+
   // MARK: - NSEvent Modifier Monitors
 
   private var globalModifierMonitor: Any?
@@ -283,7 +295,19 @@ public final class HotkeyService {
   /// Temporarily unregister all hotkeys so the recorder can capture key combos.
   public func suspend() {
     guard isEnabled, !isSuspended else { return }
+    // Remember whether cancel was armed, because the recorder can be opened
+    // while a recording is running and `resume()` must put the user back exactly
+    // where they were. Before #1991 resume restored only the record hotkey and
+    // the monitors, so opening the shortcut box mid-recording silently disarmed
+    // cancel for the rest of that recording.
+    //
+    // Captured BEFORE and assigned AFTER, because `unregisterCancelHotkey()`
+    // deliberately clears the snapshot too — that is what stops the snapshot
+    // outliving its recording. Assigning first would have it wipe the value it
+    // was just given.
+    let wasArmed = isCancelArmed
     unregisterCancelHotkey()
+    cancelArmedBeforeSuspend = wasArmed
     unregisterToggleHotkey()
     removeModifierMonitors()
     isSuspended = true
@@ -297,10 +321,22 @@ public final class HotkeyService {
     registerToggleHotkey()
     installModifierMonitors()
     isSuspended = false
+    if cancelArmedBeforeSuspend { registerCancelHotkey() }
+    cancelArmedBeforeSuspend = false
   }
 
   /// Register the cancel hotkey. Call on `.recording` entry.
+  ///
+  /// Arms the role for BOTH dispatch mechanisms. A chord goes to Carbon exactly
+  /// as before; a bare modifier cannot be registered with Carbon at all, so for
+  /// that shape arming is the flag alone and the already-installed `NSEvent`
+  /// monitors do the observing. Before #1991 this called `registerHotkey`
+  /// unconditionally, so a bare-modifier cancel key was handed to Carbon, failed,
+  /// reported a registration failure, and left the user with a key that is
+  /// stored, displayed, and inert.
   public func registerCancelHotkey() {
+    isCancelArmed = true
+    guard cancelBinding.isCarbonRegistrable else { return }
     guard cancelHotkeyRef == nil else { return }
     cancelHotkeyRef = registerHotkey(
       id: HotkeyID.cancel.rawValue,
@@ -310,11 +346,64 @@ public final class HotkeyService {
   }
 
   /// Remove the cancel hotkey. Call whenever recording ends.
+  ///
+  /// Clears the SUSPENDED snapshot as well as the live flag, because a recording
+  /// can end while the shortcut recorder is still open — VAD auto-stop, the
+  /// duration cap, or the window's own Cancel button all do it. Without this the
+  /// snapshot outlived the recording that justified it, `resume()` re-armed
+  /// cancel onto an idle app, and nothing later would disarm it because the
+  /// recording that owned it had already finished.
   public func unregisterCancelHotkey() {
+    isCancelArmed = false
+    cancelArmedBeforeSuspend = false
     if let ref = cancelHotkeyRef {
       UnregisterEventHotKey(ref)
       cancelHotkeyRef = nil
     }
+  }
+
+  /// Tear down and re-install every hotkey, preserving cancel's armed state.
+  ///
+  /// The settings path re-registers by calling `stop()` then `start()`, which is
+  /// a full teardown: it disarms cancel, and `start()` deliberately does not
+  /// re-arm it because cancel belongs to a recording, not to the service. So
+  /// changing the RECORD key while a recording was in flight silently disarmed
+  /// that recording's cancel key — the same defect as the recorder path, reached
+  /// through a different door.
+  package func restartPreservingCancelArming() {
+    // `!isSuspended` is load-bearing, not defensive. Changing the RECORD binding
+    // is exactly what the shortcut editor does, and the editor suspends first —
+    // so while suspended the armed state lives in `cancelArmedBeforeSuspend` and
+    // `isCancelArmed` reads false. Restarting here would snapshot that false,
+    // and `stop()` would clear the real snapshot on its way through, leaving
+    // cancel dead for the rest of the recording. Precisely the bug this whole
+    // change exists to fix, reintroduced through the most realistic path of all.
+    //
+    // Skipping is safe because `resume()` already registers the latest binding
+    // and restores arming; there is nothing for a restart to add.
+    guard isEnabled, !isSuspended else { return }
+    let wasArmed = isCancelArmed
+    stop()
+    start()
+    if wasArmed { registerCancelHotkey() }
+  }
+
+  /// Re-apply the cancel binding to whichever mechanism now owns it.
+  ///
+  /// The cancel key can change while a recording is in flight (the Settings
+  /// window is reachable then), and it can change shape — chord to bare modifier
+  /// or back — which moves it between Carbon and the monitors. Re-registering
+  /// without re-installing the monitors would leave the new shape unobserved, so
+  /// both are redone together.
+  ///
+  /// Safe while idle: it preserves `isCancelArmed`, so this cannot arm a cancel
+  /// key for a recording that is not running.
+  package func reapplyCancelBinding() {
+    guard isEnabled, !isSuspended else { return }
+    let wasArmed = isCancelArmed
+    unregisterCancelHotkey()
+    installModifierMonitors()
+    if wasArmed { registerCancelHotkey() }
   }
 
   /// Reset all hands-free state. Called before every stop/cancel callback
@@ -623,11 +712,47 @@ public final class HotkeyService {
 
   // MARK: - NSEvent Modifier Monitors
 
+  /// Whether either role needs the `NSEvent` modifier monitors.
+  ///
+  /// #1991, blocker 2. This was `isModifierOnly(toggleKeyCode)` — the RECORD key
+  /// only — so a user pairing a bare-modifier CANCEL key with a chord record key
+  /// got no monitor at all, and nothing could observe their cancel key. That is
+  /// the default record shape, so it is the configuration the affected users are
+  /// actually in. Fixing the dispatch comparison alone would have left them
+  /// exactly as broken while every dispatch-level test passed.
+  ///
+  /// `package` so the install condition is testable directly. Testing it through
+  /// `installModifierMonitors()` would assert on `NSEvent` monitor objects, which
+  /// says nothing about the decision being made here.
+  package var shouldInstallModifierMonitors: Bool {
+    recordBinding.isBareModifier || cancelBinding.isBareModifier
+  }
+
+  /// The current record binding, as one value.
+  package var recordBinding: ShortcutBinding {
+    .keyboard(keyCode: toggleKeyCode, modifiers: toggleModifiers)
+  }
+
+  /// The current cancel binding, as one value.
+  package var cancelBinding: ShortcutBinding {
+    .keyboard(keyCode: cancelKeyCode, modifiers: cancelModifiers)
+  }
+
+  /// Which roles a press may currently trigger.
+  ///
+  /// Record is live whenever the service is; cancel only between
+  /// `registerCancelHotkey()` and `unregisterCancelHotkey()`, which the lifecycle
+  /// drives on `.recording` entry and exit. The Carbon path gets this for free —
+  /// an unregistered hotkey delivers no event — but the modifier monitors stay
+  /// installed the whole time, so the modifier path has to ask.
+  private var armedRoles: Set<ShortcutRole> {
+    isCancelArmed ? [.record, .cancel] : [.record]
+  }
+
   private func installModifierMonitors() {
     removeModifierMonitors()
 
-    // Only install if the hotkey is modifier-only
-    guard ModifierKeyCodes.isModifierOnly(toggleKeyCode) else { return }
+    guard shouldInstallModifierMonitors else { return }
 
     // Read AFTER the teardown above, so both closures carry the identity of the
     // installation being created here rather than the one it replaced. Both
@@ -669,7 +794,18 @@ public final class HotkeyService {
   /// abstracting the whole `NSEvent` stack.
   func recordMonitorInstall(_ monitor: Any?, scope: String) -> Any? {
     if monitor == nil {
-      telemetry.registrationFailed("nsevent_\(scope)", "toggle", nil, "modifier_only")
+      // Which ROLE dies if this monitor is missing. It used to hard-code
+      // "toggle", which was true while the monitors only ever existed for a
+      // modifier-only RECORD key. Now they also install when only CANCEL is a
+      // bare modifier, so a hard-coded kind would report a dead cancel shortcut
+      // as a toggle failure — mislabelling the telemetry for exactly the users
+      // this change is for, in the one signal that would tell us it broke.
+      //
+      // Record wins when both are bare modifiers: it is armed for the whole
+      // session while cancel is armed only during a recording, so it is the
+      // more severe loss and the field holds one value.
+      let kind = recordBinding.isBareModifier ? "toggle" : "cancel"
+      telemetry.registrationFailed("nsevent_\(scope)", kind, nil, "modifier_only")
     }
     return monitor
   }
@@ -704,8 +840,11 @@ public final class HotkeyService {
   private func registerToggleHotkey() {
     unregisterToggleHotkey()
     // Modifier-only hotkeys are handled via NSEvent flagsChanged monitors —
-    // Carbon RegisterEventHotKey cannot register a bare modifier key.
-    guard !ModifierKeyCodes.isModifierOnly(toggleKeyCode) else { return }
+    // Carbon RegisterEventHotKey cannot register a bare modifier key. Asked
+    // through the binding, the same way the cancel path asks it: two spellings
+    // of one question is how the record and cancel paths drifted apart in the
+    // first place.
+    guard recordBinding.isCarbonRegistrable else { return }
     toggleHotkeyRef = registerHotkey(
       id: HotkeyID.toggle.rawValue,
       keyCode: toggleKeyCode,
@@ -817,8 +956,50 @@ public final class HotkeyService {
     // Determine press vs. release by checking whether the flag is present
     let isPress = currentFlags.contains(flag)
 
-    // Unified shortcut — both modes use toggleKeyCode
-    guard keyCode == toggleKeyCode else { return }
+    // #1991, blocker 1. This was `guard keyCode == toggleKeyCode`, which asked
+    // "is this the RECORD key" and returned early for everything else — so a
+    // bare modifier bound to CANCEL reached here and was dropped on the floor.
+    // The comparison now goes through the matcher, which is the single authority
+    // both dispatch paths consult, so a role cannot be handled by one mechanism
+    // and silently omitted from the other again.
+    guard
+      let role = ShortcutMatcher.role(
+        forBareModifierKeyCode: keyCode,
+        record: recordBinding,
+        cancel: cancelBinding,
+        armed: armedRoles)
+    else { return }
+
+    if role == .cancel {
+      // A modifier RELEASE is not a press, on the common path.
+      guard isPress else { return }
+
+      // But `isPress` is NOT proof of a key-down, and this guard alone is not
+      // enough. `.command` / `.option` / `.shift` / `.control` are AGGREGATE,
+      // device-independent flags: with Left Command held, releasing Right
+      // Command leaves `.command` set, so the release reads as a press and the
+      // same physical tap cancels twice. An earlier version of this comment
+      // claimed the guard above prevented exactly that, which was wrong — the
+      // two-key case defeats it, and cloud review caught the claim.
+      //
+      // Disarming here closes it: cancelling ENDS the recording, so the role is
+      // no longer armed the instant it fires, and the stray release finds
+      // nothing to cancel. The lifecycle still calls `unregisterCancelHotkey()`
+      // on the way down; doing it synchronously here also closes the async
+      // window that call leaves open, since `onCancelRecording` is awaited in a
+      // Task that has not run yet when the release arrives.
+      //
+      // Residual, stated rather than engineered around: the aggregate-flag
+      // imprecision is pre-existing and still governs the RECORD path, which
+      // computes `isPress` the same way. Narrowing that needs the device-
+      // dependent left/right masks and would change heart-path dispatch, so it
+      // is not folded into a cancel-key fix.
+      isCancelArmed = false
+      performCleanup()
+      Task { await onCancelRecording?() }
+      emitHotkeyPressed(.cancel, trigger: .cancel)
+      return
+    }
 
     if recordingMode == .toggle {
       guard isPress else { return }
