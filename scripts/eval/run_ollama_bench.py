@@ -254,6 +254,19 @@ def main() -> int:
                          "option, so omitting this flag reproduces shipped behaviour.")
     args = ap.parse_args()
 
+    # An experiment arm MUST be named. Both override flags are documented as
+    # producing a separately-labelled arm, but with the default empty suffix the
+    # candidates land on `<slug>.jsonl` and the summary on `run-summary.json` —
+    # the shipped arm's own filenames — so the experiment silently overwrites the
+    # receipts it was supposed to be compared against. Refuse rather than invent
+    # a name: a derived suffix the operator did not choose can collide too, and
+    # the person running an experiment is the one who knows what to call it.
+    if (args.think_override or args.repeat_penalty is not None) and not args.suffix:
+        print("FAIL: --think-override / --repeat-penalty are experiment arms and need an "
+              "explicit --suffix (e.g. --suffix -thinkfalse), or they overwrite the "
+              "shipped run's candidates and summary", file=sys.stderr)
+        return 2
+
     facts = model_facts(args.models)  # raises before any generation on an absent model
     cases = load_corpus(args.corpus)
     args.outdir.mkdir(parents=True, exist_ok=True)
@@ -278,10 +291,28 @@ def main() -> int:
             print(f"FAIL: {m}: {prompt_path.name} has no {model_marker.name} sidecar; "
                   f"re-render with render_bench_prompts.sh", file=sys.stderr)
             return 2
-        rendered_for = model_marker.read_text().strip()
+        try:
+            marker = json.loads(model_marker.read_text())
+            rendered_for, rendered_hosted = marker["model"], marker["hosted"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            print(f"FAIL: {model_marker.name} is not a current sidecar (expected JSON with "
+                  f"'model' and 'hosted'); re-render with render_bench_prompts.sh",
+                  file=sys.stderr)
+            return 2
         if rendered_for != m:
             print(f"FAIL: {prompt_path.name} was rendered for {rendered_for!r}, "
                   f"not {m!r}; re-render with render_bench_prompts.sh", file=sys.stderr)
+            return 2
+        # Hosting decides the PROMPT FAMILY (.cloudFixed vs .localFixed), so a
+        # file rendered under the wrong one carries the right model name and the
+        # wrong prompt — invisible to a name-only check. `facts` was derived
+        # independently from the daemon, so this compares two sources rather
+        # than trusting the sidecar about itself.
+        if bool(rendered_hosted) != bool(facts[m]["isRemote"]):
+            print(f"FAIL: {prompt_path.name} was rendered with hosted={rendered_hosted}, "
+                  f"but Ollama reports {m!r} as hosted={facts[m]['isRemote']}; the prompt "
+                  f"family would be wrong. Re-render with render_bench_prompts.sh",
+                  file=sys.stderr)
             return 2
         prompts = load_prompts(prompt_path)
         missing = sorted(set(cases) - set(prompts))

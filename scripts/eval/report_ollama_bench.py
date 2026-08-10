@@ -118,6 +118,36 @@ def main() -> int:
             problems.append(f"{model}: no quality receipt at {jdir}")
             continue
         summary = load_json(summary_path)
+
+        # A judge receipt can exist and still be PARTIAL. When cases are dropped
+        # or engine-skipped, behavior_judge writes summary.json, marks its
+        # release gate INCOMPLETE and exits nonzero — but this report read the
+        # file anyway and ranked the model on whatever cases survived, which can
+        # promote it to Recommended on a subset. Refuse the receipt instead: an
+        # unranked model is a gap someone re-runs, a wrongly-ranked one is a
+        # recommendation nobody re-checks.
+        release_verdict = (summary.get("release_gate") or {}).get("verdict")
+        if release_verdict == "INCOMPLETE":
+            problems.append(
+                f"{model} ({cand_stem}): judge receipt is INCOMPLETE — "
+                f"{len(summary.get('skipped', []))} engine-skipped, "
+                f"{len(summary.get('missing_scores', []))} judge-dropped; re-judge the gaps")
+            continue
+
+        # Independent reconciliation against the RUN's own case count, because
+        # the check above trusts the judge to have noticed its own gap. These are
+        # two different sources, so agreeing is evidence and disagreeing is a
+        # hole no single receipt could reveal.
+        judge_overall = summary.get("overall") or {}
+        scored = judge_overall.get("total_scored")
+        infra_skipped = judge_overall.get("infra_skipped") or 0
+        expected_scored = sp["cases"] - sp["errors"]
+        if scored is None or scored + infra_skipped != expected_scored:
+            problems.append(
+                f"{model} ({cand_stem}): judged {scored} + {infra_skipped} skipped does not "
+                f"reconcile with the run's {expected_scored} non-error cases; re-judge")
+            continue
+
         per_case = [json.loads(l) for l in open(per_case_path) if l.strip()]
 
         def split(pred):

@@ -556,10 +556,32 @@ def coerce_new_score(raw: dict, has_production: bool) -> dict:
     verdict = raw.get("verdict")
     if verdict not in NEW_VERDICTS:
         verdict = "major_fail"  # unparseable judgement is a fail, never a silent pass
+    # Verdict and severity are two readings of one judgement, so they are
+    # reconciled here rather than validated independently. Validating them
+    # separately let a plausible-but-malformed response carry a mismatched pair
+    # all the way to the report: `verdict: "pass", severity: "S4"` passed both
+    # checks, counted as a pass, and left the zero-S4 gate reporting no critical
+    # failure on a case the judge had marked critical. Measured on the #1950
+    # judgements, 2 of 315 scored cases came back mismatched, so this is a shape
+    # the judge really produces — those two were the harmless direction, and
+    # nothing prevents the other one.
+    #
+    # A mismatch resolves to the MORE SEVERE of the two readings. Neither is
+    # trustworthy once they disagree, and this is a quality gate, so the safe
+    # direction is the pessimistic one.
+    implied_by_verdict = {"pass": "S0", "minor": "S1", "soft_fail": "S2",
+                          "major_fail": "S3", "critical_fail": "S4"}
+    verdict_for_severity = {v: k for k, v in implied_by_verdict.items()}
+    severity_rank = {"S0": 0, "S1": 1, "S2": 2, "S3": 3, "S4": 4}
+
     sev = raw.get("severity")
     if sev not in NEW_SEVERITIES:
-        sev = {"pass": "S0", "minor": "S1", "soft_fail": "S2",
-               "major_fail": "S3", "critical_fail": "S4"}[verdict]
+        sev = implied_by_verdict[verdict]
+    elif sev != implied_by_verdict[verdict]:
+        if severity_rank[sev] > severity_rank[implied_by_verdict[verdict]]:
+            verdict = verdict_for_severity[sev]
+        else:
+            sev = implied_by_verdict[verdict]
     pw = raw.get("pairwise_vs_production")
     if pw not in PAIRWISE_VALUES:
         pw = "not_available"
@@ -720,7 +742,11 @@ def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list
         "pass_rate_pct": rate(per_case, lambda x: _is_pass(x["verdict"])),
         "soft_fail_pct": rate(per_case, lambda x: x["verdict"] == "soft_fail"),
         "major_fail_pct": rate(per_case, lambda x: x["verdict"] == "major_fail"),
-        "critical_fail_count": sum(1 for x in per_case if x["verdict"] == "critical_fail"),
+        # Counted from SEVERITY, which is what the report's zero-S4 gate is
+        # actually about. `coerce_new_score` now guarantees the two readings
+        # agree, so this is the same number by either route — stated in the
+        # gate's own terms so a future divergence cannot quietly reopen the hole.
+        "critical_fail_count": sum(1 for x in per_case if x["severity"] == "S4"),
         "verdict_breakdown": dict(Counter(x["verdict"] for x in per_case)),
         "severity_breakdown": dict(Counter(x["severity"] for x in per_case)),
         "failure_type_counts": dict(Counter(f for x in per_case for f in x["failure_types"]).most_common()),
