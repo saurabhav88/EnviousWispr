@@ -170,6 +170,36 @@ public final class HotkeyService {
 
   public private(set) var isSuspended = false
 
+  /// Which modifier-monitor installation the currently installed closures belong to.
+  ///
+  /// Neither lifecycle flag can identify an installation, because both are LEVEL
+  /// signals that return to their permissive value. `stop()` then `start()` —
+  /// exactly what `PipelineSettingsSync.reregisterHotkeys()` does when the user
+  /// changes their shortcut — puts `isEnabled` back to `true` inside one
+  /// main-thread turn, so a press the global monitor queued before that turn is
+  /// delivered after both and sees a permissive flag. `suspend()`/`resume()` has
+  /// the same shape for `isSuspended`.
+  ///
+  /// This token changes on every teardown instead, so a delivery stamped by an
+  /// earlier installation is refused. A wrapping `UInt64` could collide only
+  /// after 2^64 bumps, which is unreachable during a queued event's lifetime —
+  /// stated as a bound rather than as "never repeats", which is false for a
+  /// wrapping counter (#1993 grounded review r1).
+  ///
+  /// `package private(set)`: tests read the real generation the product stamped;
+  /// nothing outside this file can write it.
+  ///
+  /// PORTED, NOT INVENTED — and the closest precedent carries the same name.
+  /// `CaptureVADSignalSource.monitorGeneration` (#1780) solves the identical
+  /// problem for the VAD monitor task, bumped from its single cancellation site
+  /// (`invalidateMonitor()`) and compared before every emit; its comment makes
+  /// the same argument this one does, that an identity which can be REUSED is
+  /// not a staleness guard. `OllamaSetupService.pullEpoch` / `hostedAddEpoch`
+  /// are the same shape again. Non-trapping `&+=` follows those two rather than
+  /// `CaptureVADSignalSource`'s `+= 1`, since wrapping is defined behaviour and
+  /// a trap in a teardown path would be worse than a collision that cannot occur.
+  package private(set) var monitorGeneration: UInt64 = 0
+
   // MARK: - Telemetry (Telemetry Bible Phase 6, #1175)
 
   /// Injected hotkey/input-silence telemetry. Default `.noop` keeps legacy/test
@@ -386,7 +416,7 @@ public final class HotkeyService {
   // MARK: - Hands-Free State Machine
 
   /// Unified PTT + hands-free state machine.
-  /// Called by both `handleCarbonHotkey` and `handleFlagsChanged` for
+  /// Called by both `handleCarbonHotkey` and `handleFlagsChangedValues` for
   /// push-to-talk mode press/release events.
   private func handleRecordAction(isPress: Bool) {
     if isPress {
@@ -599,6 +629,12 @@ public final class HotkeyService {
     // Only install if the hotkey is modifier-only
     guard ModifierKeyCodes.isModifierOnly(toggleKeyCode) else { return }
 
+    // Read AFTER the teardown above, so both closures carry the identity of the
+    // installation being created here rather than the one it replaced. Both
+    // monitors are stamped with the same value on purpose: the generation
+    // identifies the INSTALLATION, and these two closures are that installation.
+    let generation = monitorGeneration
+
     globalModifierMonitor = recordMonitorInstall(
       NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) {
         [weak self] event in
@@ -609,7 +645,8 @@ public final class HotkeyService {
         DispatchQueue.main.async {
           guard let self else { return }
           MainActor.assumeIsolated {
-            self.handleFlagsChangedValues(keyCode: keyCode, flags: flags)
+            self.handleInstalledMonitorFlagsChangedValues(
+              keyCode: keyCode, flags: flags, generation: generation)
           }
         }
       }, scope: "global")
@@ -618,7 +655,8 @@ public final class HotkeyService {
       NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) {
         [weak self] event in
         MainActor.assumeIsolated {
-          self?.handleFlagsChanged(event)
+          self?.handleInstalledMonitorFlagsChangedValues(
+            keyCode: event.keyCode, flags: event.modifierFlags, generation: generation)
         }
         return event  // pass the event through
       }, scope: "local")
@@ -645,6 +683,13 @@ public final class HotkeyService {
       NSEvent.removeMonitor(monitor)
       localModifierMonitor = nil
     }
+    // Bump on EVERY teardown, including one that removed nothing. This is the
+    // single writer of `monitorGeneration`, and it is the only NSEvent-monitor
+    // teardown path: `stop()` and `suspend()` call it directly, and
+    // `installModifierMonitors()` calls it first, so `stop(); start()` and
+    // `suspend(); resume()` each burn two generations. An event queued against
+    // any earlier installation can therefore never match again.
+    monitorGeneration &+= 1
   }
 
   private func removeCarbonEventHandler() {
@@ -730,17 +775,33 @@ public final class HotkeyService {
     }
   }
 
-  /// Called from the NSEvent flagsChanged monitors for modifier-only hotkeys.
+  /// The lifecycle gate for a modifier event arriving from an INSTALLED monitor.
   ///
-  /// NSEvent gives us the exact keyCode that changed, so we know precisely which
-  /// modifier was pressed or released without needing to diff against a previous state.
-  private func handleFlagsChanged(_ event: NSEvent) {
-    handleFlagsChangedValues(keyCode: event.keyCode, flags: event.modifierFlags)
+  /// Removing a monitor stops NEW callbacks; it cannot recall one the global
+  /// monitor has already queued with `DispatchQueue.main.async`. Such an event is
+  /// refused here on arrival rather than trusted to have been prevented by the
+  /// teardown — removing an event source does not un-queue what it emitted.
+  ///
+  /// Deliberately separate from `handleFlagsChangedValues`: this answers "is this
+  /// event from the monitor installation we currently have", while the seam below
+  /// answers "a modifier changed, what gesture is that". Folding the generation
+  /// check into the seam would silently re-scope every existing test that drives
+  /// it, none of which installs a monitor.
+  ///
+  /// `isSuspended` is NOT re-checked here — the seam owns it, and duplicating it
+  /// would not help anyway, because `suspend()`/`resume()` leaves it permissive
+  /// for exactly the delivery this guard exists to refuse (#1993).
+  package func handleInstalledMonitorFlagsChangedValues(
+    keyCode: UInt16, flags: NSEvent.ModifierFlags, generation: UInt64
+  ) {
+    guard generation == monitorGeneration else { return }
+    handleFlagsChangedValues(keyCode: keyCode, flags: flags)
   }
 
   /// Processes modifier key changes from pre-extracted values.
-  /// Used by the global monitor (which dispatches to main thread with raw values)
-  /// and directly by the local monitor via handleFlagsChanged.
+  /// Reached from both NSEvent modifier monitors through
+  /// `handleInstalledMonitorFlagsChangedValues`, which owns the installation
+  /// check; this function assumes that has already passed.
   /// Test seam (#1987): `package` rather than `private` so tests drive the REAL
   /// modifier dispatch path on a plain import. `internal` would work only through
   /// `@testable`, which couples the seam to a compilation mode.

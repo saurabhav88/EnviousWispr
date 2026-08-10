@@ -428,4 +428,103 @@ import Testing
     #expect(spy.starts == 1)
     #expect(spy.stops == 1)
   }
+
+  // MARK: - #1993: an event queued by a torn-down monitor must not act
+
+  /// Removing an `NSEvent` monitor stops NEW callbacks but cannot recall one the
+  /// global monitor already queued with `DispatchQueue.main.async`. These four
+  /// drive `handleInstalledMonitorFlagsChangedValues`, the delivery boundary the
+  /// installed closures actually call, rather than the seam above it.
+  ///
+  /// They call the real `start()` / `stop()` because the generation is stamped by
+  /// the product, not by the test — a test-only setter would prove the comparison
+  /// works and nothing about whether the lifecycle arms it
+  /// (validation-discipline.md RULE: a-guard-nothing-arms-is-not-a-guard).
+  ///
+  /// EVERY case that calls `start()` MUST unwind with `stop()`. The Carbon event
+  /// handler stores the service as an UNRETAINED pointer
+  /// (`HotkeyService.swift`, `carbonHotkeyHandler` / `takeUnretainedValue()`), so
+  /// a handler left installed past the service's lifetime dereferences freed
+  /// memory in whatever test runs next.
+
+  @Test("An event from the current installation is delivered — the two-way control")
+  func currentGenerationIsDelivered() async {
+    let spy = Spy()
+    let service = makeService(spy, clock: ManualClock())
+    service.start()
+    defer { service.stop() }
+
+    service.handleInstalledMonitorFlagsChangedValues(
+      keyCode: ModifierKeyCodes.globe, flags: [.function],
+      generation: service.monitorGeneration)
+    await settle(service)
+
+    #expect(spy.starts == 1, "the guard refused a live event — the shortcut is dead for everyone")
+  }
+
+  @Test("An event queued by a monitor that was torn down does nothing")
+  func staleGenerationAfterStopIsRefused() async {
+    let spy = Spy()
+    let service = makeService(spy, clock: ManualClock())
+    service.start()
+    let installed = service.monitorGeneration
+    service.stop()
+
+    service.handleInstalledMonitorFlagsChangedValues(
+      keyCode: ModifierKeyCodes.globe, flags: [.function], generation: installed)
+    await settle(service)
+
+    #expect(spy.starts == 0)
+    #expect(spy.actions.isEmpty)
+  }
+
+  /// The case that decides the whole design. Changing your shortcut runs
+  /// `stop(); start()` (`PipelineSettingsSync.reregisterHotkeys()`), so by the
+  /// time a queued press lands, `isEnabled` is back to `true`. A guard reading
+  /// that flag would admit this event; a guard reading installation identity
+  /// refuses it. The `isEnabled` assertion below is what pins that distinction —
+  /// without it, this case looks identical to the one above.
+  @Test("An event queued before a rebind is refused even though hotkeys are enabled again")
+  func staleGenerationSurvivesStopStartRebind() async {
+    let spy = Spy()
+    let service = makeService(spy, clock: ManualClock())
+    service.start()
+    let firstInstallation = service.monitorGeneration
+    service.stop()
+    service.start()
+    defer { service.stop() }
+
+    #expect(service.isEnabled, "precondition: the rebind re-enabled hotkeys")
+
+    service.handleInstalledMonitorFlagsChangedValues(
+      keyCode: ModifierKeyCodes.globe, flags: [.function], generation: firstInstallation)
+    await settle(service)
+
+    #expect(spy.starts == 0, "an event from the pre-rebind monitor started a dictation")
+  }
+
+  /// Asserts ADJACENT values differ, not that the counter rises forever: it is a
+  /// wrapping `UInt64`, and a comment claiming a guarantee the type cannot honour
+  /// is worse than none (#1993 grounded review r1).
+  @Test("Every lifecycle transition changes the installation identity")
+  func everyLifecycleTransitionChangesGeneration() {
+    let service = makeService(Spy(), clock: ManualClock())
+    defer { service.stop() }
+
+    var seen: [UInt64] = [service.monitorGeneration]
+    service.start()
+    seen.append(service.monitorGeneration)
+    service.suspend()
+    seen.append(service.monitorGeneration)
+    service.resume()
+    seen.append(service.monitorGeneration)
+    service.stop()
+    seen.append(service.monitorGeneration)
+    service.start()
+    seen.append(service.monitorGeneration)
+
+    for (index, pair) in zip(seen, seen.dropFirst()).enumerated() {
+      #expect(pair.0 != pair.1, "transition \(index) reused generation \(pair.0)")
+    }
+  }
 }
