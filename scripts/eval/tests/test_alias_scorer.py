@@ -255,3 +255,56 @@ def test_aggregate_side_gate_degeneration():
     summary = aggregate_corpus("test", cases, results)
     assert summary.side_gates_pass is False
     assert any("degeneration" in f for f in summary.failures)
+
+
+# --------------------------------------------------------------------------- #
+# runner — stdlib, so CI can execute this without installing pytest (#2013)     #
+# --------------------------------------------------------------------------- #
+#
+# This suite was TRACKED and had never been executed by any CI job. Wiring it up
+# needed only an entry point: it uses no pytest feature (no fixtures, no
+# parametrize, no decorators, no `pytest.raises`), so the 23 tests are unchanged
+# and `python3 -m pytest` still works exactly as before.
+
+EXPECTED_TESTS = 23
+
+
+def _run() -> int:
+    """Discover and run every `test_*`, returning a shell exit code.
+
+    Two deliberate differences from the runner in `cleanup_metrics_test.py`:
+
+    1. An EXACT count. A discovery runner returns 0 when it finds ZERO tests, so
+       "green" would carry no information at all — the failure mode this issue is
+       about, one layer in.
+    2. `BaseException`, not `Exception`. `SystemExit` is not an `Exception`, so a
+       `sys.exit` anywhere inside a test would otherwise kill the process
+       mid-suite with no summary line and no count assertion. That is exactly what
+       happened to `behavior_judge_test.py` on its first CI run (#2007).
+    """
+    import traceback
+
+    tests = [v for k, v in sorted(globals().items())
+             if k.startswith("test_") and callable(v)]
+    if len(tests) != EXPECTED_TESTS:
+        print(f"FAIL: discovered {len(tests)} tests, expected {EXPECTED_TESTS}. "
+              f"A suite that silently shrinks still exits 0 without this check.")
+        return 1
+    passed = failed = 0
+    for t in tests:
+        try:
+            t()
+            passed += 1
+            print(f"  PASS {t.__name__}")
+        except KeyboardInterrupt:
+            raise
+        except BaseException:
+            failed += 1
+            print(f"  FAIL {t.__name__}")
+            traceback.print_exc()
+    print(f"\n{passed} passed, {failed} failed ({len(tests)} total)")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(_run())
