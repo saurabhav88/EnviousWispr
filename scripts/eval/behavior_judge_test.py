@@ -697,6 +697,34 @@ def test_shell_resume_does_not_call_a_corrupt_receipt_a_legacy_one():
         assert "predates" not in log, f"{label} was mislabelled as legacy: {log}"
 
 
+def test_shell_resume_names_an_unsupported_verdict_not_legacy():
+    """Cloud review round 4. The shell classified only field-presence, so a
+    hand-edited receipt with no `cacheable` was announced as "predates the
+    cacheable field" — the same defect the report had, one layer over. The two
+    layers must agree on precedence, or they describe the same file differently.
+
+    Includes a non-object `release_gate`, because a bare `.get` there would raise
+    instead of classifying, and a hand-edited file is where that shape lives."""
+    t = shell_tree("false")
+    run_shell(t)
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+
+    for label, receipt in (
+        ("unsupported verdict", {"release_gate": {"verdict": "WEIRD"}}),
+        ("absent verdict", {"release_gate": {}}),
+        ("absent release_gate", {"foo": "bar"}),
+        ("non-object release_gate", {"release_gate": ["bad"]}),
+    ):
+        forge_stamp(t)
+        (d / "summary.json").write_text(json.dumps(receipt))
+        before = invocations(t)
+        _, log = run_shell(t)
+        assert invocations(t) > before, f"{label} must re-judge: {log}"
+        assert "verdict this gate cannot produce" in log, f"{label}: {log}"
+        assert "predates" not in log, f"{label} mislabelled as legacy: {log}"
+
+
 def test_shell_absent_cacheable_field_is_not_stamped():
     # Every receipt written before #2007 lacks the field.
     t = shell_tree("absent")
@@ -847,6 +875,64 @@ def test_report_refuses_a_non_object_per_case_row():
     rc, out = run_report(t)
     assert rc == 2, out
     assert "row that is not an object" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_survives_every_malformed_legacy_metadata_shape():
+    """Cloud review round 4, and the point at which patching one cell per round
+    stopped being the right move. `{"wobble": ["bad"]}` made a `.get` raise
+    AttributeError, so the refusal path CRASHED while explaining why a receipt
+    was untrusted — a refusal treating its own input as well-formed.
+
+    Every one of these carries a VALID verdict, so precedence cannot save them;
+    only the type-safe accessors can. Table-driven because the axis is "any JSON
+    value in any legacy field", not a list of remembered examples."""
+    # EVERY wobble row must also make `adjudication_missing_n` unusable, or the
+    # `rep_coverage` read is never reached and the row proves nothing. My first
+    # version of this table did not, and the mutation control caught it: reverting
+    # the accessors to bare `.get` left all 66 tests green, because
+    # `healthy_receipt` supplies a valid `adjudication_missing_n: 0` that
+    # short-circuits the derivation. A table whose rows cannot enter the branch is
+    # zero coverage wearing a passing badge.
+    no_count = {"adjudicated_n": 20}  # deliberately omits adjudication_missing_n
+    shapes = [
+        {"adjudication": no_count, "wobble": ["bad"]},
+        {"adjudication": no_count, "wobble": "bad"},
+        {"adjudication": no_count, "wobble": 7},
+        {"adjudication": no_count, "wobble": {"rep_coverage": "not a list"}},
+        {"adjudication": no_count, "wobble": {"rep_coverage": [20, "seventeen"]}},
+        {"adjudication": no_count, "wobble": {"rep_coverage": [20]}},
+        {"adjudication": no_count, "wobble": {"rep_coverage": []}},
+        {"adjudication": ["bad"], "wobble": {"rep_coverage": [20, 17]}},
+        {"adjudication": "bad", "wobble": {"rep_coverage": [20, 17]}},
+        {"adjudication": {"adjudicated_n": "twenty"}, "wobble": {"rep_coverage": [20, 17]}},
+        {"adjudication": {"adjudication_missing_n": "seven"}},
+        {"adjudication": {"adjudication_missing_n": True}},
+        {"skipped": "not a list"},
+        {"missing_scores": {"not": "a list"}},
+        {"release_gate": ["bad"]},
+    ]
+    for shape in shapes:
+        r = healthy_receipt(**shape)
+        del r["cacheable"]
+        t = report_tree(r)
+        rc, out = run_report(t)
+        assert rc == 2, f"{shape} -> rc={rc}: {out}"
+        assert "Traceback" not in out, f"{shape} raised: {out}"
+        assert "modelA" in out, f"{shape} did not name the model: {out}"
+
+
+def test_report_classifies_a_hand_edited_receipt_before_reading_its_metadata():
+    """The reviewer's exact example: an unsupported verdict AND malformed legacy
+    metadata together. Classifying the verdict first means the crash-prone reads
+    never run for the receipts most likely to break them."""
+    r = healthy_receipt(release_gate={"verdict": "WEIRD"},
+                        adjudication={"adjudicated_n": 1}, wobble=["bad"])
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "cannot produce" in out, out
     assert "Traceback" not in out, out
 
 
@@ -1079,7 +1165,7 @@ def test_report_refuses_a_truncated_detail_file():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 63
+EXPECTED_TESTS = 66
 
 
 def _run() -> int:

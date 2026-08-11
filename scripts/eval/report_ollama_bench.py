@@ -45,6 +45,33 @@ def load_json(p: Path):
         return json.load(f)
 
 
+# Verdicts this gate can actually emit. A receipt carrying anything else was not
+# produced by `evaluate_new_gate` — it is hand-edited or from another tool.
+ALLOWED_VERDICTS = ("CLEAR", "BLOCK", "INCOMPLETE")
+
+
+# A REFUSAL MUST NEVER RAISE. Four review rounds each found one more receipt
+# shape that made the refusal path crash or mislabel — malformed JSON, a
+# non-object, invalid UTF-8, then a hand-edited `"wobble": ["bad"]` turning a
+# `.get` into an AttributeError. Patching the named cell each round is the
+# iterate-the-gaps failure `parse-structured-input-dont-regex-and-iterate`
+# forbids, so these three accessors close the whole class instead: every field a
+# refusal reads goes through one, and none of them can raise on any JSON value.
+# A receipt being refused is by definition untrusted input; treating it as
+# well-formed while explaining why it is not trusted was the contradiction.
+def _as_dict(v) -> dict:
+    return v if isinstance(v, dict) else {}
+
+
+def _as_list(v) -> list:
+    return v if isinstance(v, list) else []
+
+
+def _as_int(v) -> int:
+    # `bool` is an `int` subclass, and `True` must not read as 1 here.
+    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-summaries", required=True, nargs="+", type=Path)
@@ -168,9 +195,9 @@ def main() -> int:
         # absent or unknown verdict — and INCOMPLETE is included deliberately: a
         # model with some engine errors is INCOMPLETE by coverage yet FINISHED as
         # evidence, and `tier()` below ranks exactly that case "Not recommended".
-        release_verdict = (summary.get("release_gate") or {}).get("verdict")
+        release_verdict = _as_dict(summary.get("release_gate")).get("verdict")
         if summary.get("cacheable") is not True \
-                or release_verdict not in ("CLEAR", "BLOCK", "INCOMPLETE"):
+                or release_verdict not in ALLOWED_VERDICTS:
             # A refusal must NAME ITS OWN REASON. Reporting the three gap counts
             # unconditionally printed "0 engine-skipped, 0 primary judge-dropped,
             # 0 adjudication-dropped" for a receipt written before `cacheable`
@@ -179,50 +206,59 @@ def main() -> int:
             # 14 of 16 arms produced exactly that. Same shape as the adjudication
             # message that printed two zeros before #2007 fixed it.
             #
-            # These are genuinely different situations with different responses, so
-            # they get different sentences: a pre-field receipt needs one re-judge
-            # and nothing else, while a `cacheable: false` receipt has real gaps
-            # worth reading.
-            adj = summary.get("adjudication") or {}
-            adj_dropped = adj.get("adjudication_missing_n")
-            if adj_dropped is None:
-                # A pre-#2007 receipt has no explicit count but DOES carry the
-                # evidence, so defaulting to zero would claim "no adjudication
-                # gap" from a receipt that proves one. `behavior_judge` sets
-                # `rep_scores = [primary_premerge, adjudication]`, so
-                # `wobble.rep_coverage[1]` is how many judged ids the
-                # adjudication pass returned while `adjudicated_n` is how many
-                # were selected; the difference is the drop. Only meaningful
-                # when an adjudication pass ran — with none, `rep_coverage` has
-                # a single entry and there is nothing to compare.
-                #
-                # This matters precisely for old receipts: a silently dropped
-                # adjudication IS the defect #2007 was opened for, so the
-                # receipts most likely to carry one are the legacy ones.
-                rep_coverage = (summary.get("wobble") or {}).get("rep_coverage") or []
-                adj_dropped = (max(0, adj.get("adjudicated_n", 0) - rep_coverage[1])
-                               if len(rep_coverage) > 1 else 0)
-            gaps = (f"{len(summary.get('skipped', []))} engine-skipped, "
-                    f"{len(summary.get('missing_scores', []))} primary judge-dropped, "
-                    f"{adj_dropped} adjudication-dropped")
-            any_gap = (summary.get("skipped") or summary.get("missing_scores") or adj_dropped)
-
-            # ORDER MATTERS, and cloud review caught it the other way round. A
-            # receipt can be BOTH legacy AND carry a verdict this gate cannot
-            # emit; checking field-absence first reported it as merely old and
-            # suppressed the stronger signal. The two also carry different
-            # ADVICE — "re-judge once" is wrong for a file that is not one of
-            # ours — so the verdict check goes first.
+            # THREE REASONS, IN THIS ORDER, AND THE ORDER IS THE DESIGN.
+            #
+            # The verdict is classified FIRST, before any other field is read.
+            # Two independent reasons, both found by review the other way round:
+            # a receipt can be BOTH legacy AND carry a verdict this gate cannot
+            # emit, and calling that one "merely old" suppresses the stronger
+            # signal while giving the wrong advice ("re-judge once" is not what
+            # you do with a file that is not ours). Second, an unsupported
+            # verdict is the marker of a hand-edited file, which is exactly where
+            # malformed metadata lives — so classifying it before touching
+            # `adjudication` or `wobble` means the crash-prone reads never run
+            # for the receipts most likely to break them.
             #
             # Safe against mislabelling a genuine legacy receipt: all 16 shipped
             # #1950 arms carry `BLOCK`, which is allowlisted, so a real
             # pre-#2007 receipt still reaches the legacy message below.
-            if release_verdict not in ("CLEAR", "BLOCK", "INCOMPLETE"):
+            if release_verdict not in ALLOWED_VERDICTS:
                 problems.append(
                     f"{model} ({cand_stem}): judge receipt carries verdict "
                     f"{release_verdict!r}, which this gate cannot produce — the file is "
                     f"not one of ours or was hand-edited; re-judge")
-            elif "cacheable" not in summary:
+                continue
+
+            # Every read below goes through a type-safe accessor, because a
+            # receipt with a VALID verdict can still carry malformed metadata and
+            # ordering alone would not save it.
+            skipped = _as_list(summary.get("skipped"))
+            missing = _as_list(summary.get("missing_scores"))
+            adj = _as_dict(summary.get("adjudication"))
+            adj_dropped = adj.get("adjudication_missing_n")
+            if not isinstance(adj_dropped, int) or isinstance(adj_dropped, bool):
+                # Absent OR non-numeric. A pre-#2007 receipt has no explicit
+                # count but DOES carry the evidence, so defaulting to zero would
+                # claim "no adjudication gap" from a receipt that proves one.
+                # `behavior_judge` sets `rep_scores = [primary_premerge,
+                # adjudication]`, so `wobble.rep_coverage[1]` is how many judged
+                # ids the adjudication pass returned while `adjudicated_n` is how
+                # many were selected; the difference is the drop. Only meaningful
+                # when an adjudication pass ran — with none, `rep_coverage` has a
+                # single entry and there is nothing to compare.
+                #
+                # This matters precisely for old receipts: a silently dropped
+                # adjudication IS the defect #2007 was opened for, so the
+                # receipts most likely to carry one are the legacy ones.
+                rep_coverage = _as_list(_as_dict(summary.get("wobble")).get("rep_coverage"))
+                adj_dropped = (max(0, _as_int(adj.get("adjudicated_n")) - _as_int(rep_coverage[1]))
+                               if len(rep_coverage) > 1 else 0)
+            gaps = (f"{len(skipped)} engine-skipped, "
+                    f"{len(missing)} primary judge-dropped, "
+                    f"{adj_dropped} adjudication-dropped")
+            any_gap = bool(skipped or missing or adj_dropped)
+
+            if "cacheable" not in summary:
                 # A pre-#2007 receipt still RECORDS its gaps; what it lacks is the
                 # judge's acceptance answer. So report the recorded gaps when there
                 # are any and stay silent about them when there are none — saying
