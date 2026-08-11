@@ -1847,7 +1847,9 @@ import os
     // keep the resolution, disable.
     let running = LanguageRepairDeadlineGate()
     #expect(running.beginRepair(Self.gateResolution))
-    #expect(running.authorizeOracleUse(), "an authorised repair may consult the oracle")
+    #expect(
+      running.beginOracleUse("dictionary") != nil,
+      "an authorised repair may consult the oracle")
     let fromOracle = running.timeOut()
     #expect(fromOracle.resolution?.language == "en")
     #expect(fromOracle.resolution?.confidenceBucket == .ge90)
@@ -1878,7 +1880,7 @@ import os
     // Timeout after repair already returned: keep the resolution, do NOT disable.
     let completed = LanguageRepairDeadlineGate()
     #expect(completed.beginRepair(Self.gateResolution))
-    #expect(completed.authorizeOracleUse())
+    #expect(completed.beginOracleUse("dictionary") != nil)
     completed.completeRepair()
     let fromCompleted = completed.timeOut()
     #expect(fromCompleted.resolution?.language == "en", "a finished run keeps its answer")
@@ -1886,10 +1888,27 @@ import os
       fromCompleted.shouldDisableOracle == false,
       "a healthy oracle that already finished must NOT be disabled")
 
-    // A second timeout is inert.
+    // A second timeout is inert — and #1946 CHANGED what "inert" returns.
+    //
+    // The load-bearing invariant is unchanged and asserted first: a repeat must
+    // never punish the oracle again. That is what "inert" was protecting.
+    //
+    // What changed is the second line. Before #1946 a repeat returned a nil
+    // resolution, because the phase had become `.timedOut` and that case mapped
+    // to nil. That was the old implementation's incidental behaviour, not a
+    // required property — and for a DIAGNOSTIC it is the wrong one: the gate now
+    // stores the frozen snapshot and hands back the SAME evidence, so two
+    // readers can never be told two different things about one instant. A
+    // recomputing repeat would also re-measure `oracleInFlightMs` against a
+    // later clock. Asserting the new value rather than deleting the case,
+    // because idempotent evidence is now a property worth freezing.
     let repeated = completed.timeOut()
-    #expect(repeated.resolution == nil)
-    #expect(repeated.shouldDisableOracle == false)
+    #expect(
+      repeated.shouldDisableOracle == false,
+      "a repeated timeout must never disable the oracle a second time")
+    #expect(
+      repeated.resolution?.language == "en",
+      "and it must return the SAME frozen evidence, not a blank one (#1946)")
 
     // Repair can never start once the timeout owns the phase.
     let lateStart = LanguageRepairDeadlineGate()
@@ -1913,7 +1932,7 @@ import os
       lateTimeout.shouldDisableOracle == false,
       "it had not been consulted at the moment the deadline fired")
     #expect(
-      lateOracle.authorizeOracleUse() == false,
+      lateOracle.beginOracleUse("dictionary") == nil,
       "and it must be refused entry afterwards, not merely recorded")
 
     // `completeRepair` from a phase that never began is inert, not a promotion.

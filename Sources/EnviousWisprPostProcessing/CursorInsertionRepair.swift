@@ -60,7 +60,11 @@ public enum CursorInsertionRepair {
   // MARK: - Outputs
 
   /// Why the leading capital was left alone.
-  public enum CaseSkipReason: String, Equatable, Sendable {
+  /// `CaseIterable` so the telemetry-hygiene test can enumerate this set rather
+  /// than restate it. #1946 added a case and the hand-written list in
+  /// `PasteExecutionMetricsTests` did not fail, despite a comment claiming "a
+  /// rule added later without a name cannot slip through" — it could, and did.
+  public enum CaseSkipReason: String, Equatable, Sendable, CaseIterable {
     case alreadyLower = "already_lower"
     case protectedWord = "protected_word"
     case mixedCaseOrAcronym = "mixed_case_or_acronym"
@@ -92,9 +96,24 @@ public enum CursorInsertionRepair {
     /// launch keeps its capital — today's behaviour — rather than paying the
     /// measured 105.6 ms of one-time setup on the paste path.
     case oracleWarming = "oracle_warming"
-    /// A live decision exceeded its deadline. Latched for the process, so a
-    /// stalled spelling service can never be waited on twice.
+    /// A live ORACLE CONSULTATION exceeded its deadline. Latched for the
+    /// process, so a stalled spelling service can never be waited on twice.
+    ///
+    /// #1946 NARROWED this: it used to be applied to ANY miss of the 100 ms
+    /// block, including misses where no oracle had been consulted, which made
+    /// four materially different causes indistinguishable and produced three
+    /// successive wrong diagnoses. It now means what its name says. A miss
+    /// before any consultation is `repairDeadlineMissed`.
+    ///
+    /// The meaning therefore CHANGES at that release boundary; do not pool
+    /// `repair_rules` data across it (`analytics-operations.md` RULE:
+    /// enum-backed-properties-carry-retired-vocabularies-split-by-version).
     case oracleTimedOut = "oracle_timed_out"
+    /// The 100 ms repair deadline expired before any oracle was consulted —
+    /// during language resolution, the main-thread oracle fetch, or repair's
+    /// own work. Names the DEADLINE, because the gate proved no oracle ran
+    /// (#1946). Never latches anything.
+    case repairDeadlineMissed = "repair_deadline_missed"
     /// The dictation is not in a language whose casing rules we know. The
     /// lexicon is English, and applying it to another language is not merely
     /// useless — it is actively wrong. `See`, `Start`, `Test`, `Team` and

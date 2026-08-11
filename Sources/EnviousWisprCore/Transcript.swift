@@ -45,6 +45,23 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var caretCaptureRetried: Bool?
   public var caretCaptureRetryMs: Double?
   public var repairRules: String?
+  /// #1946. Present ONLY when the 100 ms casing deadline actually fired, which
+  /// is the only time "which step was slow" has an answer. Names and durations,
+  /// never text: `casingDeadlinePhase` is a closed-set label and
+  /// `casingOracleClosure` names WHICH lookup was in flight (`dictionary` /
+  /// `learned` / `name` / `noun`), never the word it was asked about.
+  ///
+  /// These exist because `oracle_timed_out` was previously applied to any miss
+  /// of that deadline, including misses where no oracle ran, which made four
+  /// materially different causes indistinguishable in the field.
+  public var casingDeadlinePhase: String?
+  public var casingLanguageMs: Double?
+  public var casingOracleFetchMs: Double?
+  public var casingRepairMs: Double?
+  public var casingOracleClosure: String?
+  public var casingOracleInflightMs: Double?
+  public var casingOracleClosuresCompleted: Int?
+  public var casingOracleClosureMaxMs: Double?
   public var pastePayloadKind: String?
   public var languageResolutionSource: String?
   public var languageConfidenceBucket: String?

@@ -111,31 +111,84 @@ package struct SeamCasingOracle: Sendable {
   /// is internal to this module, and because a type that can be wrapped should
   /// own how it is wrapped. `repair` stays unaware of any of this: it remains a
   /// pure function of the oracle it is handed.
+  /// #1946: `begin` now takes a LABEL and returns a token, and each accepted
+  /// consultation reports its end. That is what lets a post-authorisation
+  /// timeout say WHICH consultation was in flight — without it, the four
+  /// closures below produce byte-identical evidence and the four leading causes
+  /// cannot be told apart.
+  ///
+  /// Tokens rather than labels, because a label cannot be correlated: two
+  /// consultations can carry the same label, and a stale or duplicate
+  /// completion would then clear a newer live one and blank the evidence at
+  /// exactly the moment it matters.
+  ///
+  /// `didFinish` fires from `defer`, so a closure that throws or exits early
+  /// still reports. A REFUSED begin returns `nil` and must not report — that is
+  /// why each guard binds a token rather than testing a Bool.
+  ///
+  /// This module cannot name the gate's type (`EnviousWisprPostProcessing`
+  /// depends on Core only, `Package.swift:75-79`), so the contract is expressed
+  /// entirely in `String` and `UInt64`.
   package func authorized(
-    by authorize: @escaping @Sendable () -> Bool
+    by begin: @escaping @Sendable (String) -> UInt64?,
+    didFinish: @escaping @Sendable (UInt64) -> Void
   ) -> SeamCasingOracle {
     SeamCasingOracle(
       unavailableReason: unavailableReason,
       dictionaryVerdict: { word in
-        guard authorize() else { return .unavailable(.oracleTimedOut) }
+        guard let token = begin("dictionary") else { return .unavailable(.oracleTimedOut) }
+        defer { didFinish(token) }
         return dictionaryVerdict(word)
       },
       isLearnedWord: { word in
-        guard authorize() else { return true }
+        guard let token = begin("learned") else { return true }
+        defer { didFinish(token) }
         return isLearnedWord(word)
       },
       isRecognizedName: { left, payload in
-        guard authorize() else { return true }
+        guard let token = begin("name") else { return true }
+        defer { didFinish(token) }
         return isRecognizedName(left, payload)
       },
       // `true` on refusal, same as the others and for the same reason: a veto
       // answering "noun" keeps the capital, which is what the app did before
       // this feature existed.
       isNoun: { payload in
-        guard authorize() else { return true }
+        guard let token = begin("noun") else { return true }
+        defer { didFinish(token) }
         return isNoun(payload)
       })
   }
+
+  #if DEBUG
+    /// An oracle whose DICTIONARY lookup blocks, for Live UAT only (#1946).
+    ///
+    /// Built here because the memberwise initialiser is internal to this module,
+    /// which is the same reason `authorized` is built here.
+    ///
+    /// Why a real blocking sleep rather than a fake: the defect under test is a
+    /// consultation that does not return inside the deadline, and
+    /// `withOrderedDeadline` explicitly "cannot preempt a blocked thread". A
+    /// cooperative `await` would be preemptible and would therefore exercise a
+    /// different path than the one that latches in the field.
+    ///
+    /// Only `dictionaryVerdict` stalls. The others answer benignly and fast, so
+    /// the resulting trace names exactly one stuck consultation and any other
+    /// name in `stuck=` would be a real defect in the instrument.
+    package static func delayingDictionaryForFaultInjection(
+      milliseconds: Double
+    ) -> SeamCasingOracle {
+      SeamCasingOracle(
+        unavailableReason: nil,
+        dictionaryVerdict: { _ in
+          Thread.sleep(forTimeInterval: milliseconds / 1000)
+          return .ordinary
+        },
+        isLearnedWord: { _ in false },
+        isRecognizedName: { _, _ in false },
+        isNoun: { _ in false })
+    }
+  #endif
 
   package static func unavailable(
     _ reason: CursorInsertionRepair.CaseSkipReason

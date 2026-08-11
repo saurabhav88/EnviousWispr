@@ -238,7 +238,15 @@ public final class TelemetryService {
           repairRules: m?.repairRules,
           payloadKind: m?.pastePayloadKind,
           languageResolutionSource: m?.languageResolutionSource,
-          languageConfidenceBucket: m?.languageConfidenceBucket),
+          languageConfidenceBucket: m?.languageConfidenceBucket,
+          casingDeadlinePhase: m?.casingDeadlinePhase,
+          casingLanguageMs: m?.casingLanguageMs,
+          casingOracleFetchMs: m?.casingOracleFetchMs,
+          casingRepairMs: m?.casingRepairMs,
+          casingOracleClosure: m?.casingOracleClosure,
+          casingOracleInflightMs: m?.casingOracleInflightMs,
+          casingOracleClosuresCompleted: m?.casingOracleClosuresCompleted,
+          casingOracleClosureMaxMs: m?.casingOracleClosureMaxMs),
         takeID: takeID)
     }
   }
@@ -1771,6 +1779,16 @@ public final class TelemetryService {
     /// speaks.
     public let languageResolutionSource: String?
     public let languageConfidenceBucket: String?
+    /// #1946. Typed fields, never a joined timing string: PostHog can aggregate
+    /// numbers and cannot aggregate substrings. Present only on a deadline miss.
+    public let casingDeadlinePhase: String?
+    public let casingLanguageMs: Double?
+    public let casingOracleFetchMs: Double?
+    public let casingRepairMs: Double?
+    public let casingOracleClosure: String?
+    public let casingOracleInflightMs: Double?
+    public let casingOracleClosuresCompleted: Int?
+    public let casingOracleClosureMaxMs: Double?
 
     public init(
       smartInsertionEnabled: Bool? = nil,
@@ -1780,7 +1798,15 @@ public final class TelemetryService {
       repairRules: String? = nil,
       payloadKind: String? = nil,
       languageResolutionSource: String? = nil,
-      languageConfidenceBucket: String? = nil
+      languageConfidenceBucket: String? = nil,
+      casingDeadlinePhase: String? = nil,
+      casingLanguageMs: Double? = nil,
+      casingOracleFetchMs: Double? = nil,
+      casingRepairMs: Double? = nil,
+      casingOracleClosure: String? = nil,
+      casingOracleInflightMs: Double? = nil,
+      casingOracleClosuresCompleted: Int? = nil,
+      casingOracleClosureMaxMs: Double? = nil
     ) {
       self.smartInsertionEnabled = smartInsertionEnabled
       self.caretContextOutcome = caretContextOutcome
@@ -1790,6 +1816,14 @@ public final class TelemetryService {
       self.payloadKind = payloadKind
       self.languageResolutionSource = languageResolutionSource
       self.languageConfidenceBucket = languageConfidenceBucket
+      self.casingDeadlinePhase = casingDeadlinePhase
+      self.casingLanguageMs = casingLanguageMs
+      self.casingOracleFetchMs = casingOracleFetchMs
+      self.casingRepairMs = casingRepairMs
+      self.casingOracleClosure = casingOracleClosure
+      self.casingOracleInflightMs = casingOracleInflightMs
+      self.casingOracleClosuresCompleted = casingOracleClosuresCompleted
+      self.casingOracleClosureMaxMs = casingOracleClosureMaxMs
     }
 
     /// Absent facts are OMITTED rather than sent as a placeholder, so a
@@ -1808,6 +1842,18 @@ public final class TelemetryService {
       }
       if let languageConfidenceBucket {
         out["language_confidence_bucket"] = languageConfidenceBucket
+      }
+      if let casingDeadlinePhase { out["casing_deadline_phase"] = casingDeadlinePhase }
+      if let casingLanguageMs { out["casing_language_ms"] = casingLanguageMs }
+      if let casingOracleFetchMs { out["casing_oracle_fetch_ms"] = casingOracleFetchMs }
+      if let casingRepairMs { out["casing_repair_ms"] = casingRepairMs }
+      if let casingOracleClosure { out["casing_oracle_closure"] = casingOracleClosure }
+      if let casingOracleInflightMs { out["casing_oracle_inflight_ms"] = casingOracleInflightMs }
+      if let casingOracleClosuresCompleted {
+        out["casing_oracle_closures_completed"] = casingOracleClosuresCompleted
+      }
+      if let casingOracleClosureMaxMs {
+        out["casing_oracle_closure_max_ms"] = casingOracleClosureMaxMs
       }
       return out
     }

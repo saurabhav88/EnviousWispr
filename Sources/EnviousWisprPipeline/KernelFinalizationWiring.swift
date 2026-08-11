@@ -90,6 +90,17 @@ final class KernelFinalizationOutcome {
   /// combine with `caretContextOutcome` to distinguish "retried and still
   /// nothing" from "retried and recovered". `caretCaptureRetryMs` is set only
   /// when `caretCaptureRetried == true`.
+  /// #1946. Populated only when the casing deadline fired; see
+  /// `LanguageRepairDeadlineGate.Snapshot`, which is the sole authority these
+  /// are copied from.
+  var casingDeadlinePhase: String?
+  var casingLanguageMs: Double?
+  var casingOracleFetchMs: Double?
+  var casingRepairMs: Double?
+  var casingOracleClosure: String?
+  var casingOracleInflightMs: Double?
+  var casingOracleClosuresCompleted: Int?
+  var casingOracleClosureMaxMs: Double?
   var caretCaptureRetried: Bool?
   var caretCaptureRetryMs: Double?
   /// #1921. `repairRules` says WHAT the repair decided; these say why the
@@ -227,8 +238,15 @@ struct KernelFinalizationWiring {
     // Takes the RESOLVED language, so it must be called after resolution, not
     // before it (grounded review r1: the snapshot used to be taken above the
     // deadline, where the language is not yet known).
-    seamCasingOracle: @escaping @MainActor (String?) -> SeamCasingOracle = {
-      SeamCasingOracleRuntime.snapshot(for: $0)
+    // #1946: `async @Sendable`, not `@MainActor`. The production default below
+    // still hops to the main actor, so runtime behaviour is unchanged — the
+    // change exists so a test can inject a closure that stalls HERE without
+    // occupying the main actor. Blocking a synchronous `@MainActor` seam also
+    // blocks `withOrderedDeadline`'s timer, which is `Task { @MainActor }`
+    // (`TaskTimeout.swift:127-132`), so the timeout could never fire and the
+    // hop-stall case was untestable by construction (grounded r1).
+    seamCasingOracle: @escaping @Sendable (String?) async -> SeamCasingOracle = {
+      language in await MainActor.run { SeamCasingOracleRuntime.snapshot(for: language) }
     },
     // Paired with the seam above. A READY snapshot holds a lease that stops the
     // preparation drain entering the shared spell checker underneath a decision
@@ -611,11 +629,14 @@ struct KernelFinalizationWiring {
         // the language stage, decline to disable, and the un-preempted operation
         // can then enter the oracle anyway.
         let gate = LanguageRepairDeadlineGate()
-        // The timeout path's resolution. It cannot ride the operation's return
-        // value, because on timeout the operation's value is discarded; and
-        // `onTimeout` is `@Sendable`, so it cannot write to a captured `var`.
-        let timedOutResolution = OSAllocatedUnfairLock<DictationLanguageResolver.Resolution?>(
-          initialState: nil)
+        // The timeout path's frozen evidence. It cannot ride the operation's
+        // return value, because on timeout the operation's value is discarded;
+        // and `onTimeout` is `@Sendable`, so it cannot write to a captured
+        // `var`. #1946 widened this from the resolution alone to the whole
+        // snapshot — the gate froze it atomically, so carrying anything less
+        // would reintroduce the two-source problem the gate exists to remove.
+        let timedOutSnapshot =
+          OSAllocatedUnfairLock<LanguageRepairDeadlineGate.Snapshot?>(initialState: nil)
 
         let deadlineResult = await withOrderedDeadline(
           seconds: 0.100,
@@ -627,8 +648,11 @@ struct KernelFinalizationWiring {
               // The deadline already claimed the phase, so repair must not
               // start. This return value is discarded by the deadline's own
               // single-claim rule; it exists to leave the closure, not to be read.
+              // #1946: named for the DEADLINE, not the oracle — nothing here has
+              // consulted one, and the old `.oracleTimedOut` asserted otherwise.
               return (
-                CursorInsertionRepair.legacyOnly(text: text, reason: .oracleTimedOut), resolution
+                CursorInsertionRepair.legacyOnly(text: text, reason: .repairDeadlineMissed),
+                resolution
               )
             }
             // The oracle asks the gate before every consultation, which both
@@ -647,7 +671,12 @@ struct KernelFinalizationWiring {
             // holds a lease; `defer` releases it on every exit including the
             // discarded-on-timeout one, since the deadline cannot preempt this
             // closure and it always runs to completion.
-            let oracleSnapshot = await MainActor.run { seamCasingOracle(resolution.language) }
+            let oracleSnapshot = await seamCasingOracle(resolution.language)
+            // Its OWN duration, because the phase cannot separate this hop from
+            // repair's own work — both sit in `.repair(oracleTouched: false)`.
+            // Measured 2026-08-10: this hop costs exactly as long as the main
+            // thread is occupied, 1:1 (issue-1946-artifacts/2026-08-10-hop-vs-pool.out).
+            gate.mark(.oracleFetched)
             // Release ONLY IF a lease was actually taken. `snapshot(for:)` leases
             // on a ready answer and not on a refusal, so an unconditional release
             // is not merely harmless bookkeeping: leases carry no identity, so an
@@ -659,7 +688,9 @@ struct KernelFinalizationWiring {
             defer {
               if holdsOracleLease { Task { @MainActor in releaseOracleLease() } }
             }
-            let gatedOracle = oracleSnapshot.authorized { gate.authorizeOracleUse() }
+            let gatedOracle = oracleSnapshot.authorized(
+              by: { label in gate.beginOracleUse(label) },
+              didFinish: { token in gate.completeOracleUse(token) })
             let repaired = CursorInsertionRepair.repair(
               text: text,
               context: repairContext,
@@ -673,8 +704,11 @@ struct KernelFinalizationWiring {
             return (repaired, resolution)
           },
           onTimeout: {
+            // One atomic freeze; everything the timeout reports comes from it.
+            // Synchronous by contract (`TaskTimeout.swift:97-103`): this is one
+            // lock take and adds no suspension point.
             let timeout = gate.timeOut()
-            timedOutResolution.withLock { $0 = timeout.resolution }
+            timedOutSnapshot.withLock { $0 = timeout }
             // Only a genuinely RUNNING oracle. A language-stage stall must not
             // disable an unrelated healthy component for the rest of the
             // process, and neither must one that had already succeeded.
@@ -682,9 +716,19 @@ struct KernelFinalizationWiring {
           }
         )
 
+        let casingSnapshot = timedOutSnapshot.withLock { $0 }
         let payloads =
-          deadlineResult?.0 ?? CursorInsertionRepair.legacyOnly(text: text, reason: .oracleTimedOut)
-        let resolution = deadlineResult?.1 ?? timedOutResolution.withLock { $0 }
+          deadlineResult?.0
+          ?? CursorInsertionRepair.legacyOnly(
+            text: text,
+            // #1946: the reason is now READ from what the gate froze, never
+            // assumed. `oracle_timed_out` is reserved for a consultation that
+            // genuinely began; every other stall says so. Reading a stale
+            // `.oracleTimedOut` here is what made three causal theories
+            // indistinguishable in the field.
+            reason: casingSnapshot?.phase == .repairAfterOracle
+              ? .oracleTimedOut : .repairDeadlineMissed)
+        let resolution = deadlineResult?.1 ?? casingSnapshot?.resolution
 
         // Why this dictation was or was not repaired, recorded before delivery
         // so it survives every route outcome. Names and shapes only (#1785 §8).
@@ -726,6 +770,22 @@ struct KernelFinalizationWiring {
         outcome.languageResolutionSource = (resolution?.source ?? .none).rawValue
         outcome.languageConfidenceBucket = (resolution?.confidenceBucket ?? .none).rawValue
 
+        // #1946. Set ONLY when the deadline actually fired, so a healthy
+        // dictation sends nothing and the fields' presence is itself the signal
+        // that this delivery lost its casing to the clock. Absent facts are
+        // omitted rather than defaulted, matching how every other optional on
+        // this carrier behaves.
+        if let casing = casingSnapshot {
+          outcome.casingDeadlinePhase = casing.phase.rawValue
+          outcome.casingLanguageMs = casing.languageMs
+          outcome.casingOracleFetchMs = casing.oracleFetchMs
+          outcome.casingRepairMs = casing.repairMs
+          outcome.casingOracleClosure = casing.oracleInFlight
+          outcome.casingOracleInflightMs = casing.oracleInFlightMs
+          outcome.casingOracleClosuresCompleted = casing.oracleClosuresCompleted
+          outcome.casingOracleClosureMaxMs = casing.oracleClosureMaxMs
+        }
+
         // #1803: the repair decision has only ever gone to telemetry, so a
         // wrong-case report could not be diagnosed locally — which cost three
         // rounds of guessing during founder testing on 2026-07-26. Names and
@@ -738,12 +798,44 @@ struct KernelFinalizationWiring {
         // undiagnosable. Empty when no bounded step ran, so a non-terminal app
         // does not gain a dangling ` timing=` on every dictation.
         let terminalTiming = terminalBudget.timingDescription
+        // #1946. Emitted ONLY on a timeout, because that is the only time the
+        // question "which step was slow" has an answer — a healthy delivery
+        // would add a line to every dictation and say nothing.
+        //
+        // This is the line the whole change exists for. The sibling terminal
+        // timer was settled in ONE session by exactly this shape
+        // (`scan=114.7ms of 115.3ms total`); this path had no equivalent, which
+        // is why three separate causal theories all survived contact with the
+        // data. Metadata only: labels and durations, never text.
+        let casingTiming: String = {
+          // The LOG reports healthy deliveries too; telemetry above does not.
+          // Measuring the main-thread hop per target app is the open question
+          // (#1946: all 9 field timeouts sit in 4 apps, and every app with a
+          // native accessibility bridge is at zero), and a timeout-only trace
+          // can only answer it by waiting for failures.
+          guard let s = casingSnapshot ?? gate.frozenEvidence else { return "" }
+          func ms(_ v: Double?) -> String { v.map { String(format: "%.1f", $0) } ?? "-" }
+          var parts = [
+            "phase=\(s.phase.rawValue)",
+            "lang=\(ms(s.languageMs))ms",
+            "hop=\(ms(s.oracleFetchMs))ms",
+            "repair=\(ms(s.repairMs))ms",
+          ]
+          if let inFlight = s.oracleInFlight {
+            parts.append("stuck=\(inFlight)")
+            parts.append("stuck_for=\(ms(s.oracleInFlightMs))ms")
+          }
+          parts.append("closures=\(s.oracleClosuresCompleted)")
+          if let maxMs = s.oracleClosureMaxMs { parts.append("slowest=\(ms(maxMs))ms") }
+          return parts.joined(separator: " ")
+        }()
         await AppLogger.shared.log(
           "CURSOR_REPAIR app=\(context.targetApp?.bundleIdentifier ?? "nil") "
             + "caret=\(outcome.caretContextOutcome ?? "nil") "
             + "rules=\(outcome.repairRules ?? "none") "
             + "candidate=\(payloads.repairedText == nil ? "none" : "offered")"
             + (terminalTiming.isEmpty ? "" : " timing=[\(terminalTiming)]")
+            + (casingTiming.isEmpty ? "" : " casing=[\(casingTiming)]")
             // #1980: local diagnostic only — production recovery-rate/latency
             // authority is the `caret_capture_retried`/`caret_capture_retry_ms`
             // telemetry (Chunk 3), which survives past this DEBUG-only log.
@@ -1027,6 +1119,21 @@ struct KernelFinalizationWiring {
       // skipped. `emitFallbackFields` owns different telemetry.
       polishRanRemote: outcome.polishRanRemote
     )
+
+    // #1946: assigned AFTER construction, not as eight more initialiser
+    // arguments. With them inline the type-checker gave up on the expression
+    // ("unable to type-check in reasonable time") — a real constraint of a
+    // 40-argument memberwise init with mostly-optional parameters, not a style
+    // choice. Same transport-unchanged rule as every other field here: copied
+    // verbatim from the gate's frozen snapshot, never normalised or defaulted.
+    transcript.metrics?.casingDeadlinePhase = outcome.casingDeadlinePhase
+    transcript.metrics?.casingLanguageMs = outcome.casingLanguageMs
+    transcript.metrics?.casingOracleFetchMs = outcome.casingOracleFetchMs
+    transcript.metrics?.casingRepairMs = outcome.casingRepairMs
+    transcript.metrics?.casingOracleClosure = outcome.casingOracleClosure
+    transcript.metrics?.casingOracleInflightMs = outcome.casingOracleInflightMs
+    transcript.metrics?.casingOracleClosuresCompleted = outcome.casingOracleClosuresCompleted
+    transcript.metrics?.casingOracleClosureMaxMs = outcome.casingOracleClosureMaxMs
     outcome.transcript = transcript
   }
 

@@ -570,7 +570,7 @@ struct SeamCasingOracleTests {
         return false
       })
 
-    let wrapped = underlying.authorized(by: { true })
+    let wrapped = underlying.authorized(by: { _ in 1 }, didFinish: { _ in })
     let skip = wrapped.mayLower(word: "The", left: "I went to ", payload: "The museum.")
 
     #expect(skip == nil, "an authorized oracle decides exactly as the one it wraps")
@@ -618,7 +618,7 @@ struct SeamCasingOracleTests {
         return false
       })
 
-    let wrapped = underlying.authorized(by: { false })
+    let wrapped = underlying.authorized(by: { _ in nil }, didFinish: { _ in })
     let skip = wrapped.mayLower(word: "The", left: "I went to ", payload: "The museum.")
     // The veto is asked separately by the repair, so a refusal that covered only
     // `mayLower` would still let a post-deadline call reach the tagger.
@@ -646,7 +646,7 @@ struct SeamCasingOracleTests {
       isLearnedWord: { _ in false },
       isRecognizedName: { _, _ in false },
       isNoun: { _ in false })
-    let refused = permissive.authorized(by: { false })
+    let refused = permissive.authorized(by: { _ in nil }, didFinish: { _ in })
 
     #expect(
       refused.isRecognizedName("I went to ", "The museum."),

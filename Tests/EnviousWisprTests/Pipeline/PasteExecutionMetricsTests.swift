@@ -114,23 +114,24 @@ struct PasteExecutionMetricsTests {
 
   @Test("Every rule name is a closed reason, never the word it applied to")
   func ruleNamesCarryNoUserText() {
-    // The whole set, so a rule added later without a name cannot slip through.
-    let every: [CursorInsertionRepair.AppliedRule] = [
-      .refusedInsideWord, .refusedNoLeftAnchor, .leadingSpace, .lowercasedFirst,
-      .droppedDuplicateWord, .droppedTerminalPeriod, .trailingSpace,
-      .caseSkipped(.alreadyLower), .caseSkipped(.protectedWord),
-      .caseSkipped(.mixedCaseOrAcronym), .caseSkipped(.containsDigit),
-      .caseSkipped(.pronounI), .caseSkipped(.alwaysCapitalized),
-      .caseSkipped(.notOrdinaryWord), .caseSkipped(.dictionaryUnavailable),
-      .caseSkipped(.recognizedName), .caseSkipped(.wordClassUnavailable),
-      .caseSkipped(.learnedWord), .caseSkipped(.oracleWarming),
-      .caseSkipped(.oracleTimedOut),
-      .caseSkipped(.languageNotSupported),
-      .caseKept(.lineStart), .caseKept(.nothingLeft), .caseKept(.afterOpener),
-      .caseKept(.afterTerminator), .caseKept(.other),
-      .trailingSpaceSkipped(.rightIsSpace), .trailingSpaceSkipped(.rightIsPunctuation),
-      .trailingSpaceSkipped(.unsegmentedScript),
-    ]
+    // #1946: the skip reasons are now ENUMERATED, not restated. The previous
+    // hand-written list carried the comment "a rule added later without a name
+    // cannot slip through" — which it could not enforce, because a hand-written
+    // array cannot notice a case nobody added to it. #1946 added
+    // `repairDeadlineMissed`, this test stayed green, and the gap only surfaced
+    // because the author went looking. `allCases` makes the claim true.
+    let every: [CursorInsertionRepair.AppliedRule] =
+      [
+        .refusedInsideWord, .refusedNoLeftAnchor, .leadingSpace, .lowercasedFirst,
+        .droppedDuplicateWord, .droppedTerminalPeriod, .trailingSpace,
+        .caseKept(.lineStart), .caseKept(.nothingLeft), .caseKept(.afterOpener),
+        .caseKept(.afterTerminator), .caseKept(.other),
+        .trailingSpaceSkipped(.rightIsSpace), .trailingSpaceSkipped(.rightIsPunctuation),
+        .trailingSpaceSkipped(.unsegmentedScript),
+      ] + CursorInsertionRepair.CaseSkipReason.allCases.map { .caseSkipped($0) }
+    #expect(
+      CursorInsertionRepair.CaseSkipReason.allCases.count >= 17,
+      "a shrinking reason set means a case was deleted; check the telemetry contract first")
     let names = Set(every.map(\.telemetryName))
     #expect(names.count == every.count, "every rule needs a distinct name")
     for name in names {
