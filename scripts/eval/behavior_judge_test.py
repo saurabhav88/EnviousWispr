@@ -119,11 +119,34 @@ import os
 # script resolves without editing the stub.
 DEFAULT_JUDGE = os.environ.get("EW_JUDGE", "azure/stub-judge")
 
+# Models the production `--print-judge-identity` contract, including its REFUSAL. A stub
+# that answered for every id would make the shell's pre-loop validation untestable: the
+# case proving a bad judge cannot delete receipts needs this to exit 2, exactly as the real
+# module does for an id with no funded route.
+if "--print-judge-identity" in sys.argv:
+    if not (DEFAULT_JUDGE.startswith("azure/") or DEFAULT_JUDGE.startswith(("claude", "sonnet"))):
+        print(f"judge {{DEFAULT_JUDGE!r}} is unusable: no approved funded grading route",
+              file=sys.stderr)
+        sys.exit(2)
+    suffix = "@stubdigest" if DEFAULT_JUDGE.startswith("azure/") else ""
+    print(DEFAULT_JUDGE)
+    print(DEFAULT_JUDGE + suffix)
+    sys.exit(0)
+
 # Guarded so an IMPORT is side-effect free and exit-free. `sys.exit` at module level
 # would raise SystemExit through the import and leave the caller with no value, which
 # looks identical to a stub that crashed.
 if __name__ == "__main__":
     a = sys.argv
+    # Models `refuse_paid_key_judge` running BEFORE any output is written. Without this the
+    # stub is more permissive than production and hides a real defect: the pre-fix script
+    # deleted a receipt on a stamp mismatch, and only production's refusal-before-write made
+    # that deletion permanent. A stub that always writes a receipt silently repairs it.
+    if "--judge" in a:
+        j = a[a.index("--judge") + 1]
+        if not (j.startswith("azure/") or j.startswith(("claude", "sonnet"))):
+            print(f"REFUSED: --judge {{j}} has no approved funded grading route", file=sys.stderr)
+            sys.exit(2)
     out = a[a.index("--out") + 1]
     d = pathlib.Path(out); d.mkdir(parents=True, exist_ok=True)
     (d.parent / "_invocations").open("a").write("call\\n")
@@ -219,7 +242,9 @@ def forge_stamp(t, judge=None):
     `judge` defaults to the stub's DEFAULT_JUDGE, i.e. what the script itself will
     resolve. Pass a different value to forge a stamp from a DIFFERENT judge, which is
     what makes "a judge change invalidates the stamp" testable."""
-    judge = judge if judge is not None else "azure/stub-judge"
+    # The script stamps the IDENTITY, not the bare label, so a fixture forging a matching
+    # stamp has to use the same value. The stub appends @stubdigest for azure routes.
+    judge = judge if judge is not None else "azure/stub-judge@stubdigest"
     forged = subprocess.run(
         ["bash", "-c",
          'if command -v shasum >/dev/null 2>&1; then H="shasum -a 256"; else H=sha256sum; fi; '
@@ -887,6 +912,54 @@ def test_the_stamp_the_script_writes_depends_on_the_judge():
     a = stamp_under("claude-sonnet-5")
     b = stamp_under("azure/gpt-5-6-luna")
     assert a and b and a != b, f"the script's stamp ignores the judge: {a} == {b}"
+
+
+def test_a_refused_judge_cannot_delete_a_single_cached_receipt():
+    """THE regression test for the P1 cloud review found on PR #2026.
+
+    Putting the judge into the stamp created a destructive path: a refused or mistyped
+    EW_JUDGE mismatches EVERY arm's stamp, the loop `rm -rf`s each receipt on a mismatch, and
+    the judge then exits before writing a replacement — so the whole cached set is destroyed
+    and the log blames "candidates or corpus changed". The fix validates the judge before the
+    loop can touch anything, so this asserts the receipt is STILL THERE afterwards.
+    """
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    receipt = d / "summary.json"
+    receipt.write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": []}))
+    forge_stamp(t)
+    before = receipt.read_text()
+
+    p = subprocess.run(
+        ["bash", str(t / "scripts" / "eval" / "judge_ollama_bench.sh"),
+         str(t / "corpus.jsonl"), str(t / "cand"), str(t / "judged")],
+        capture_output=True, text=True, env=dict(os.environ, EW_JUDGE="gpt-4o"))
+    out = p.stdout + p.stderr
+
+    assert p.returncode == 2, f"expected refusal exit 2, got {p.returncode}:\n{out}"
+    assert receipt.exists(), f"the cached receipt was DELETED by a refused judge:\n{out}"
+    assert receipt.read_text() == before, "the cached receipt was modified"
+    assert (d / ".inputs-sha256").exists(), "the stamp was deleted"
+    assert invocations(t) == 0, f"the judge was invoked despite being refused:\n{out}"
+    assert "Nothing has been touched" in out, out
+
+
+def test_the_refusal_happens_before_any_arm_is_examined():
+    """Two-way control on the guard's PLACEMENT, not just its existence. A check that ran
+    inside the loop would refuse on the first arm and could still have deleted its receipt
+    before doing so; this asserts the script never reached the per-model work at all."""
+    t = shell_tree("true")
+    p = subprocess.run(
+        ["bash", str(t / "scripts" / "eval" / "judge_ollama_bench.sh"),
+         str(t / "corpus.jsonl"), str(t / "cand"), str(t / "judged")],
+        capture_output=True, text=True, env=dict(os.environ, EW_JUDGE="mistral-large"))
+    out = p.stdout + p.stderr
+    assert p.returncode == 2, out
+    assert "=== judging" not in out, f"an arm was entered before the judge was validated:\n{out}"
+    assert "=== judge:" not in out, f"the judge was announced as usable:\n{out}"
 
 
 def test_shell_absent_cacheable_field_is_not_stamped():
@@ -1627,7 +1700,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 86
+EXPECTED_TESTS = 88
 
 
 def _run() -> int:

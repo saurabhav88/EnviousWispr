@@ -37,21 +37,40 @@ skipped=()
 unmeasurable=()
 incomplete=()
 
-# Resolve the judge ONCE, from `behavior_judge.py` itself rather than from a second
-# default written here. Two defaults are a drift bug waiting to happen, and this one
-# would be invisible: the stamp would record the shell's idea of the judge while a
-# different judge did the grading. Reading DEFAULT_JUDGE also honours EW_JUDGE for
-# free, because that is where the override already lives.
+# Resolve AND VALIDATE the judge ONCE, before the loop, from `behavior_judge.py` itself
+# rather than from a second default written here. Two defaults are a drift bug waiting to
+# happen and this one would be invisible: the stamp would record the shell's idea of the
+# judge while a different judge graded.
 #
-# Fails closed. An empty answer would otherwise stamp `judge=` on every arm and make
-# all receipts look mutually comparable, which is the failure this whole change exists
-# to prevent.
-JUDGE="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import behavior_judge; print(behavior_judge.DEFAULT_JUDGE)' "$ROOT/scripts/eval" 2>/dev/null)"
-if [ -z "$JUDGE" ]; then
-  echo "FATAL: could not resolve the default judge from behavior_judge.py" >&2
+# VALIDATION BEFORE THE LOOP IS LOAD-BEARING, NOT TIDINESS. The loop below `rm -rf`s any
+# receipt whose stamp no longer matches, and the judge is part of that stamp — so a refused
+# or mistyped EW_JUDGE mismatches EVERY arm, deletes every cached receipt, and then
+# `behavior_judge.py` refuses the judge and exits before writing replacements. The whole
+# stored set would be gone, with the log blaming "candidates or corpus changed". Cloud
+# review caught this on PR #2026; it is a hazard my own put-the-judge-in-the-stamp fix
+# created, so the fix has to carry its own guard. `--print-judge-identity` exits 2 on any
+# judge with no funded route, and on an endpoint that cannot be resolved or validated.
+#
+# It returns two values: the judge id for `--judge` and the log line, and an IDENTITY for
+# the stamp. They differ on purpose. Azure deployment names are resource-local, so the same
+# `azure/gpt-5-6-luna` label on a different endpoint can be a different model; the identity
+# folds in a digest of the endpoint host and the API version so a resource change
+# invalidates the stamp instead of silently reusing another grader's receipt. A digest, not
+# the host, because this value is printed and stored.
+JUDGE_LINES="$(python3 "$ROOT/scripts/eval/behavior_judge.py" --print-judge-identity 2>&1)"
+if [ $? -ne 0 ]; then
+  echo "FATAL: $JUDGE_LINES" >&2
+  echo "       Refusing to start: a bad judge would invalidate every stamp and this script" >&2
+  echo "       deletes receipts whose stamp does not match. Nothing has been touched." >&2
   exit 2
 fi
-echo "=== judge: $JUDGE ===" >&2
+JUDGE="$(printf '%s\n' "$JUDGE_LINES" | sed -n 1p)"
+JUDGE_IDENTITY="$(printf '%s\n' "$JUDGE_LINES" | sed -n 2p)"
+if [ -z "$JUDGE" ] || [ -z "$JUDGE_IDENTITY" ]; then
+  echo "FATAL: could not resolve the judge and its identity from behavior_judge.py" >&2
+  exit 2
+fi
+echo "=== judge: $JUDGE (stamp identity $JUDGE_IDENTITY) ===" >&2
 
 # `shasum` is Perl-provided and is NOT guaranteed by the ubuntu-latest runner
 # image, which lists coreutils (and therefore `sha256sum`). Our own pr-check.yml
@@ -125,7 +144,11 @@ for cand in "$CANDDIR"/*.jsonl; do
   # numbers with the OLD quality scores and said nothing. Same shape as the two
   # holes above it: a result whose scope is quietly narrower than it looks.
   stamp="$dest/.inputs-sha256"
-  # The JUDGE is part of the inputs. Without it a receipt graded by one judge is
+  # The JUDGE IDENTITY is part of the inputs, which is the judge id plus, for Azure, a digest
+  # of the endpoint host and API version. The bare id is not enough: deployment names are
+  # resource-local, so the same label on another endpoint can be another model.
+  #
+  # Without the judge at all, a receipt graded by one judge is
   # silently reused after the default changes, which is exactly what would have
   # happened on 2026-08-11: 15 arms carried stamped, cacheable Sonnet receipts, so a
   # sweep under the new Azure default would have skipped every one and produced a
@@ -136,7 +159,7 @@ for cand in "$CANDDIR"/*.jsonl; do
   # the next sweep re-grades the full field. That is the only way a comparison stays
   # a comparison, and it is affordable precisely because the new judge is cheap.
   inputs_sha="$(
-    { printf 'judge=%s\n' "$JUDGE"; sha256 "$cand" "$CORPUS"; } | sha256 | cut -d' ' -f1
+    { printf 'judge=%s\n' "$JUDGE_IDENTITY"; sha256 "$cand" "$CORPUS"; } | sha256 | cut -d' ' -f1
   )"
   if [ -f "$dest/summary.json" ]; then
     # Cacheability is checked HERE too, not only after judging. A matching stamp

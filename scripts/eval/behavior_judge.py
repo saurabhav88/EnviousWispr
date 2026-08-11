@@ -57,6 +57,7 @@ Outputs -> <outdir>/ : per_case.jsonl, summary.json, scoreboard.txt.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import random
@@ -392,6 +393,35 @@ def dispatch_judge(model: str, system: str, user: str) -> str:
     # JUDGE_ROUTES has no other transport. Raise rather than fall through, so adding a
     # route without a branch is a loud error and never a silent wrong-vendor call.
     raise RuntimeError(f"no transport for judge {model!r} (JUDGE_ROUTES is out of step)")
+
+
+def judge_identity(model: str) -> str:
+    """What actually graded, as one string safe to hash into a resume stamp.
+
+    The judge ID alone is NOT sufficient identity, and cloud review caught this. Azure
+    deployment names are RESOURCE-LOCAL: `azure/gpt-5-6-luna` on one resource and the same
+    label on another can serve different underlying deployments. `_key` reads the endpoint
+    from the environment first, so the resource can change with no change to the id — and a
+    stamp built from the id alone would then match a receipt graded by a different model and
+    skip it, silently mixing two graders in one comparison. That is exactly the defect
+    putting the judge in the stamp was meant to prevent, one level further down.
+
+    The API version is folded in for the same reason: this route's accepted parameters and
+    behaviour are version-dependent, so a version bump is a different grader.
+
+    Returns a DIGEST of the endpoint host, never the host itself. The value is written into a
+    hashed stamp and printed to a terminal, and neither is a place to put a resource name.
+
+    Raises `MissingSecretError` or `RuntimeError` if the endpoint cannot be resolved or
+    validated, so an unusable configuration fails here rather than after work is deleted.
+    """
+    if judge_lacks_funded_route(model):
+        raise RuntimeError(f"no approved funded grading route for judge {model!r}")
+    if not model.startswith("azure/"):
+        return model
+    host = (urllib.parse.urlsplit(_validated_azure_endpoint()).hostname or "").lower()
+    digest = hashlib.sha256(f"{host}|{AZURE_API_VERSION}".encode()).hexdigest()[:12]
+    return f"{model}@{digest}"
 
 
 def refuse_paid_key_judge(model: str) -> None:
@@ -1551,6 +1581,25 @@ def render_scoreboard(r: dict, system: str) -> str:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
+    # Handled BEFORE argparse deliberately: `--corpus`, `--candidates` and `--out` are all
+    # required, so a caller that only wants to know which judge is configured would have to
+    # invent three paths to ask. Callers use this to VALIDATE the judge before touching any
+    # stored receipt — `judge_ollama_bench.sh` deletes a receipt whose stamp no longer
+    # matches, so a refused or mistyped EW_JUDGE would otherwise delete the whole cached set
+    # and then exit before writing replacements. Exits 2 with a reason instead.
+    #
+    # Prints two lines: the judge id, then its stamp identity. Two lines rather than one so
+    # the caller does not have to split on a separator that could appear inside either value.
+    if "--print-judge-identity" in sys.argv:
+        try:
+            identity = judge_identity(DEFAULT_JUDGE)
+        except Exception as e:
+            print(f"judge {DEFAULT_JUDGE!r} is unusable: {e}", file=sys.stderr)
+            return 2
+        print(DEFAULT_JUDGE)
+        print(identity)
+        return 0
+
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--system", choices=("new", "old"), default="new",
