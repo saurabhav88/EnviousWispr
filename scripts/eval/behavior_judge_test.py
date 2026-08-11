@@ -956,6 +956,15 @@ def test_report_survives_every_malformed_legacy_metadata_shape():
     # adjudication pass ran. Blanket-asserting one expectation over a table is how
     # a row ends up testing the wrong thing.
     malformed_shapes = [
+        # Cloud rounds 7 and 8: the axis was TYPE, and it needed to be type AND
+        # range AND relationship. A negative count passes `_is_int` and prints
+        # "-1 adjudication-dropped"; a coverage exceeding the selected count is
+        # impossible and the derivation's `max(0, ...)` clamped it to zero and
+        # claimed no gap. Both erase corruption instead of naming it.
+        {"adjudication": {"adjudication_missing_n": -1}},
+        {"adjudication": {"adjudicated_n": -5}},
+        {"adjudication": no_count, "wobble": {"rep_coverage": [20, -3]}},
+        {"adjudication": {"adjudicated_n": 1}, "wobble": {"rep_coverage": [20, 5]}},
         {"adjudication": no_count, "wobble": ["bad"]},
         {"adjudication": no_count, "wobble": "bad"},
         {"adjudication": no_count, "wobble": 7},

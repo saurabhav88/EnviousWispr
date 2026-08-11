@@ -56,6 +56,18 @@ def _is_int(v) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
+def _is_count(v) -> bool:
+    """A count: a non-negative integer.
+
+    Type validity alone is not enough, and stopping there was an axis I cut too
+    narrow. `adjudication_missing_n: -1` passes `_is_int` and prints "-1
+    adjudication-dropped", which is not a fact about anything. A number whose
+    VALUE is impossible is as corrupt as one whose type is wrong, and both must be
+    named rather than rendered.
+    """
+    return _is_int(v) and v >= 0
+
+
 def _as_int(v) -> int:
     return v if _is_int(v) else 0
 
@@ -77,13 +89,25 @@ def malformed_metadata_fields(receipt: dict) -> list[str]:
     if isinstance(adj, dict):
         names += [f"adjudication.{k}" for k in
                   ("adjudication_missing_n", "adjudicated_n")
-                  if k in adj and not _is_int(adj[k])]
+                  if k in adj and not _is_count(adj[k])]
 
     wobble = receipt.get("wobble")
+    rc = wobble.get("rep_coverage") if isinstance(wobble, dict) else None
     if isinstance(wobble, dict) and "rep_coverage" in wobble:
-        rc = wobble["rep_coverage"]
-        if not isinstance(rc, list) or not all(_is_int(x) for x in rc):
+        if not isinstance(rc, list) or not all(_is_count(x) for x in rc):
             names.append("wobble.rep_coverage")
+
+    # RELATIONSHIP, not just range. An adjudication pass cannot return more cases
+    # than were selected for it, so `rep_coverage[1] > adjudicated_n` is
+    # impossible — and the derivation's `max(0, ...)` would quietly clamp that to
+    # zero and report "no adjudication gap", erasing the corruption instead of
+    # naming it. Only checked when the derivation would actually run, i.e. when
+    # the explicit count is absent and there are two coverage entries.
+    if (isinstance(adj, dict) and not _is_count(adj.get("adjudication_missing_n"))
+            and isinstance(rc, list) and len(rc) > 1
+            and all(_is_count(x) for x in rc) and _is_count(adj.get("adjudicated_n"))
+            and rc[1] > adj["adjudicated_n"]):
+        names.append("adjudication.adjudicated_n vs wobble.rep_coverage")
 
     return sorted(names)
 
@@ -128,10 +152,14 @@ def adjudication_dropped(receipt: dict) -> int:
     """
     adj = _as_dict(receipt.get("adjudication"))
     explicit = adj.get("adjudication_missing_n")
-    if _is_int(explicit):
+    if _is_count(explicit):
         return explicit
     rep_coverage = _as_list(_as_dict(receipt.get("wobble")).get("rep_coverage"))
     if len(rep_coverage) > 1:
+        # `max(0, ...)` is defence only. An impossible coverage-exceeds-selected
+        # relationship is rejected as malformed before this runs, precisely so the
+        # clamp cannot erase it — clamping a contradiction to zero and calling it
+        # "no gap" is the failure this guard exists to prevent.
         return max(0, _as_int(adj.get("adjudicated_n")) - _as_int(rep_coverage[1]))
     return 0
 
