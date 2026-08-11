@@ -860,16 +860,57 @@ test("a merged people count says it is a lower bound, an unmerged one does not",
 });
 
 test("rows that could not be identified are never fused together (#2023)", async () => {
-  // A null shortId is a missing field, not a group key. Merging on it would put
-  // unrelated problems under one heading.
+  // A missing shortId is not a group key. Merging on it would put unrelated
+  // problems under one heading. BLANK strings count as missing: `""` is a
+  // string, so a bare type check would make it a valid key and fuse every
+  // malformed row into one problem (Codex review r3).
   const { data } = await render({
     problems: [
       { ...problemRow("EW-2C", "audio_capture_stalled", 5, 9), issue: null },
-      { ...problemRow("EW-24", "paste_failed", 3, 4), issue: null },
+      { ...problemRow("EW-24", "paste_failed", 3, 4), issue: "" },
+      { ...problemRow("EW-29", "xpc_service_error", 2, 2), issue: "   " },
+      { ...problemRow("EW-32", "polish_provider_failed", 1, 1), issue: undefined },
     ],
   });
-  assert.equal(data.rows.length, 2, "unidentifiable rows must stay separate");
-  assert.deepEqual(data.rows.map((r) => r.shortId), [null, null]);
+  assert.equal(data.rows.length, 4, "unidentifiable rows must stay separate");
+  assert.deepEqual(data.rows.map((r) => r.shortId), [null, null, null, null]);
+});
+
+test("a collapse reconciles classification conservatively, never by sort order", async () => {
+  // Codex review r3. An earlier comment claimed category/level/type are constant
+  // within an issue; they are not — `level` is per-event. Keeping the first
+  // row's classification would file fatal events under a degraded label and add
+  // their events to it, understating severity in the list the founder acts on.
+  const { data, lines } = await render({
+    problems: [
+      // Sorted first: more people, DEGRADED, delivery proven.
+      problemRow("EW-9", "paste_failed", 5, 5),
+      // Same issue, fatal: LOST, delivery NOT proven.
+      problemRow("EW-9", "", 1, 1, "fatal", ["EXC_BAD_ACCESS"]),
+    ],
+  });
+
+  assert.equal(data.rows.length, 1);
+  const merged = data.rows[0];
+  assert.equal(merged.group, LOST, "lost must win over degraded");
+  assert.equal(merged.deliveryProven, false, "an unproven row makes the merge unproven");
+  assert.equal(merged.events, 6, "events from both rows are still counted");
+  assert.match(lines.join("\n"), /delivery not proven/);
+});
+
+test("a collapse of uniformly degraded rows stays degraded", async () => {
+  // The two-way control for the reconciliation above. Without it, a rule that
+  // forced LOST on every merge would pass the previous test while quietly
+  // reclassifying every merged problem as a lost dictation.
+  const { data } = await render({
+    problems: [
+      problemRow("EW-24", "paste_failed", 5, 5),
+      problemRow("EW-24", "paste_failed", 2, 2),
+    ],
+  });
+  assert.equal(data.rows.length, 1);
+  assert.equal(data.rows[0].group, DEGRADED);
+  assert.equal(data.rows[0].deliveryProven, true);
 });
 
 test("two problems that would render identically are separated by their issue id", async () => {

@@ -536,8 +536,13 @@ export async function fetchSentrySection(env, window, opts = {}) {
       level: row.level,
       type: row["error.type"],
     });
+    // A BLANK id is not an id. `""` is a string, so a bare type check would make
+    // it a valid grouping key and fuse every malformed row into one problem -
+    // the exact opposite of the missing-id rule below, and reached by the same
+    // malformed response that rule exists for.
+    const rawShortId = typeof row.issue === "string" ? row.issue.trim() : "";
     return {
-      shortId: typeof row.issue === "string" ? row.issue : null,
+      shortId: rawShortId.length > 0 ? rawShortId : null,
       people: toCount(row["count_unique(user)"]),
       // False until a collapse merges rows into this one; see the loop below.
       peopleIsLowerBound: false,
@@ -545,7 +550,9 @@ export async function fetchSentrySection(env, window, opts = {}) {
       group: classified.group,
       label: classified.label,
       deliveryProven: classified.deliveryProven,
-      isNew: typeof row.issue === "string" && newShortIds.has(row.issue),
+      // Reads the SAME normalised value, so a blank id cannot be looked up here
+      // while being rejected as a grouping key two lines above.
+      isNew: rawShortId.length > 0 && newShortIds.has(rawShortId),
     };
   });
 
@@ -565,12 +572,18 @@ export async function fetchSentrySection(env, window, opts = {}) {
   // `-count_unique(user)`, so a group's first row already carries its largest
   // value.
   //
-  // The group, label and deliveryProven of the FIRST row win. Every field they
-  // derive from - `error.category`, `level`, `error.type` - is a property of the
-  // fingerprint rather than of the individual event, so an issue's rows agree on
-  // all three and the choice is not observable. Stated rather than assumed,
-  // because if a future field breaks that constancy this is where a second
-  // classification would be dropped silently.
+  // CLASSIFICATION IS RECONCILED CONSERVATIVELY, never taken from whichever row
+  // Sentry happened to sort first. An earlier draft of this comment asserted
+  // that `error.category`, `level` and `error.type` are fingerprint properties
+  // and therefore constant within an issue; review was right that this is an
+  // unchecked premise. `level` in particular is per-EVENT, and a tag can change
+  // across a release while the fingerprint does not.
+  //
+  // Getting it wrong has a direction: keeping the first row's classification
+  // could file fatal events under a degraded label and add their events to it,
+  // which UNDERSTATES severity in the list the founder acts on. So `lost` wins
+  // over `degraded`, and any unproven row makes the merged row unproven — the
+  // same conservative default the category table itself encodes.
   const byShortId = new Map();
   const rows = [];
   for (const row of mapped) {
@@ -593,6 +606,12 @@ export async function fetchSentrySection(env, window, opts = {}) {
     // for - eight rows of one user each would have printed eight people.
     existing.events = addCounts(existing.events, row.events, "event total");
     existing.people = Math.max(existing.people, row.people);
+    // Conservative reconciliation, per the note above. The LABEL stays the first
+    // row's — it is the highest-people row, and inventing a combined label would
+    // put a sentence in front of the founder that no single row supports — but
+    // the GROUP and the delivery claim can only move toward caution.
+    if (row.group === LOST) existing.group = LOST;
+    if (!row.deliveryProven) existing.deliveryProven = false;
     // The row must SAY it is a lower bound rather than print a merged number as
     // though it were exact. Set only when a merge actually happened, so the
     // ordinary row - which after the `error.type` change is every row - carries
