@@ -68,10 +68,6 @@ def _is_count(v) -> bool:
     return _is_int(v) and v >= 0
 
 
-def _as_int(v) -> int:
-    return v if _is_int(v) else 0
-
-
 def malformed_metadata_fields(receipt: dict) -> list[str]:
     """Gap fields that are PRESENT with an unusable type, sorted.
 

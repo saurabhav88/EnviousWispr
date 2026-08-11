@@ -51,7 +51,6 @@ def load_json(p: Path):
 # script correctly called hand-edited and then corrupt. A comment asking for
 # parity cannot enforce it; a shared module can.
 from receipt_state import (  # noqa: E402
-    LEGACY,
     MALFORMED_METADATA,
     NOT_CACHEABLE,
     UNSUPPORTED_VERDICT,
