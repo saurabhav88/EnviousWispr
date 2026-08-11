@@ -228,6 +228,34 @@ struct ApplicationRelocationCoordinatorTests {
     }
   }
 
+  @Test("a post-placement verify failure reports installed, not existing_usable")
+  func postPlacementStripFailureKeepsTheInstalledRoute() async {
+    // We placed this copy ourselves. Reusing the existing-destination case
+    // here reported a FRESH install as an existing copy, erasing the route
+    // distinction in the opposite direction (cloud review, second round).
+    let h = Self.makeHarness(
+      bundleURL: Self.translocatedURL,
+      moverResult: .failure(.stripFailedAfterPlacement))
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.telemetry.lastFailedInstallResolution == "installed")
+    // Still Message A: a copy that may be unclean is never offered for opening.
+    if case .nothingMoved = h.presenter.presentations[0] {} else {
+      Issue.record("a possibly-unclean placed copy must produce Message A")
+    }
+  }
+
+  @Test("every failure case maps to exactly one install_resolution, exhaustively")
+  func everyFailureHasAnImpliedResolution() {
+    // CaseIterable + no default arm means a future case cannot silently
+    // inherit `unresolved`; this asserts the three routes stay partitioned.
+    let byResolution = Dictionary(
+      grouping: RelocationFailure.allCases, by: { $0.impliedInstallResolution })
+    #expect(byResolution["existing_usable"] == [.stripFailedAtDestination])
+    #expect(byResolution["installed"] == [.stripFailedAfterPlacement])
+    #expect(byResolution["unresolved"]?.count == RelocationFailure.allCases.count - 2)
+  }
+
   @Test("a genuinely pre-placement failure still reports unresolved")
   func prePlacementFailureIsUnresolved() async {
     // The two-way control: without it, a mapping that returned existing_usable

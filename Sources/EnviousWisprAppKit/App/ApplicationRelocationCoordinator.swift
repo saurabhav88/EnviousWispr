@@ -107,8 +107,14 @@ public enum RelocationFailure: String, Error, Sendable, CaseIterable {
   case stripFailedBeforePlacement
   /// Quarantine removal failed on a bundle already at the destination, which we
   /// therefore may have left partially stripped. Never invite the user to open
-  /// that copy (#2006).
+  /// that copy (#2006). Arises ONLY on the `.existingUsable` route.
   case stripFailedAtDestination
+  /// The post-placement verification of OUR freshly placed copy failed. A copy
+  /// IS at the destination and may be unclean. Distinct from
+  /// `stripFailedAtDestination` because the route differs and therefore so
+  /// does `install_resolution` — reusing that case reported a fresh install as
+  /// `existing_usable` (cloud review, second round).
+  case stripFailedAfterPlacement
   case relaunchRejected
   // The six ack-specific cases below REPLACE the former `relaunchUnconfirmed`,
   // which collapsed four distinct conditions into one label and so told every
@@ -145,6 +151,9 @@ public enum RelocationFailure: String, Error, Sendable, CaseIterable {
     switch self {
     case .stripFailedAtDestination:
       return InstallResolution.TelemetryLabel.existingUsable
+    case .stripFailedAfterPlacement:
+      // We placed this copy ourselves; the route is `installed`.
+      return InstallResolution.TelemetryLabel.installed
     case .destinationCreation, .destinationRunning, .stagingCopy, .stagedBundleInvalid,
       .signatureInvalid, .destinationConflict, .diskFull, .stripFailedBeforePlacement,
       .relaunchRejected, .ackUnhealthyTranslocated, .ackUnhealthyOther, .ackPathMismatch,
@@ -680,7 +689,10 @@ public final class ApplicationRelocationCoordinator {
     // unhealthy acks are placed-but-suspect, so they must NOT become B.
     case .destinationCreation, .destinationRunning, .stagingCopy, .stagedBundleInvalid,
       .signatureInvalid, .destinationConflict, .diskFull, .stripFailedBeforePlacement,
-      .stripFailedAtDestination, .ackUnhealthyTranslocated, .ackUnhealthyOther, .unknown:
+      .stripFailedAtDestination, .stripFailedAfterPlacement, .ackUnhealthyTranslocated,
+      .ackUnhealthyOther, .unknown:
+      // A copy that may be unclean is never offered for opening, whichever
+      // route left it that way.
       return .nothingMoved(failure)
     }
   }

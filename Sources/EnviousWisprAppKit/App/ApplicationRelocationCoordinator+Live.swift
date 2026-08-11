@@ -250,7 +250,8 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
     // works: this arm also covers a full disk and a non-writable Applications
     // folder, which dragging cannot overcome either.
     case .destinationCreation, .stagingCopy, .stagedBundleInvalid, .signatureInvalid,
-      .stripFailedBeforePlacement, .stripFailedAtDestination, .ackUnhealthyTranslocated,
+      .stripFailedBeforePlacement, .stripFailedAtDestination, .stripFailedAfterPlacement,
+      .ackUnhealthyTranslocated,
       .ackUnhealthyOther, .ackPathMismatch, .ackVersionMismatch, .ackMalformed, .ackTimeout,
       .relaunchRejected, .unknown:
       return (
@@ -439,7 +440,10 @@ public struct FileManagerApplicationMover: ApplicationMoving {
     // that matters. Idempotent and cheap: the probe-first path returns
     // immediately for every already-clean item.
     guard Self.stripQuarantine(at: destination) else {
-      return .failure(.stripFailedAtDestination)
+      // OUR copy, so the route is `installed` — a distinct case from the
+      // existing-destination one, or the telemetry reports a fresh install as
+      // an existing copy (cloud review, second round).
+      return .failure(.stripFailedAfterPlacement)
     }
     // `isStructurallyValid` above asserted the staged bundle's CFBundleVersion
     // equals `currentVersion`, so this IS the version the mover verified.
