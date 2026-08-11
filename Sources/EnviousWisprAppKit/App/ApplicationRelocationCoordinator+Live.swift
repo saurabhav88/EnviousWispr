@@ -502,10 +502,21 @@ public struct FileManagerApplicationMover: ApplicationMoving {
     func remove(_ url: URL) -> Bool {
       let ok = url.withUnsafeFileSystemRepresentation { path -> Bool in
         guard let path else { return false }
-        // XATTR_NOFOLLOW: act on the link itself, never its target.
-        if removexattr(path, attr, XATTR_NOFOLLOW) == 0 { return true }
-        // Nothing to remove is success; anything else is a real failure.
-        return errno == ENOATTR
+        // PROBE BEFORE REMOVING. `removexattr` on an item owned by root or
+        // another admin returns EPERM even when the attribute is ABSENT, so
+        // removing unconditionally would fail a perfectly clean destination
+        // copy and send its user Message A instead of opening it — a
+        // regression on the already-supported existing-destination path
+        // (whole-diff review r3). Reading an xattr needs no write permission,
+        // so the probe succeeds exactly where the removal cannot.
+        // XATTR_NOFOLLOW throughout: act on the link itself, never its target.
+        if getxattr(path, attr, nil, 0, 0, XATTR_NOFOLLOW) < 0 {
+          // Absent is success; any other probe error means we cannot tell.
+          return errno == ENOATTR
+        }
+        // Present: it must actually come off. The ENOATTR retry covers the
+        // benign race where something else removed it after the probe.
+        return removexattr(path, attr, XATTR_NOFOLLOW) == 0 || errno == ENOATTR
       }
       return ok
     }

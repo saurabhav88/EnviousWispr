@@ -73,6 +73,33 @@ struct QuarantineStripTests {
     #expect(FileManager.default.fileExists(atPath: inner.path))
   }
 
+  @Test("a CLEAN item we cannot modify still succeeds (probe before removing)")
+  func cleanButUnmodifiableItemSucceeds() throws {
+    // An app in /Applications owned by root or another admin returns EPERM
+    // from `removexattr` EVEN WHEN the attribute is absent. Removing
+    // unconditionally would fail a perfectly clean destination copy and send
+    // its user the wrong message (whole-diff review r3).
+    //
+    // Reproduced WITHOUT root by setting the user-immutable flag, which makes
+    // `removexattr` fail while `getxattr` still reports the attribute absent —
+    // exactly the shape of the ownership case. This is the test that
+    // discriminates the fix: the clean-tree test above passes either way.
+    let (root, inner) = try Self.makeBundle()
+    defer {
+      _ = inner.withUnsafeFileSystemRepresentation { $0.map { chflags($0, 0) } }
+      try? FileManager.default.removeItem(at: root)
+    }
+    #expect(!Self.hasQuarantine(inner))
+    let flagged = inner.withUnsafeFileSystemRepresentation { path -> Bool in
+      guard let path else { return false }
+      return chflags(path, UInt32(UF_IMMUTABLE)) == 0
+    }
+    // Positive control: if the flag did not take, this proves nothing.
+    try #require(flagged)
+
+    #expect(FileManagerApplicationMover.stripQuarantine(at: root))
+  }
+
   @Test("a symlink inside the bundle is not followed; its target keeps its attribute")
   func doesNotFollowSymlinks() throws {
     let (root, _) = try Self.makeBundle()
