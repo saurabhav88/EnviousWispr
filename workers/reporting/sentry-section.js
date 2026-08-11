@@ -606,17 +606,39 @@ export async function fetchSentrySection(env, window, opts = {}) {
     // for - eight rows of one user each would have printed eight people.
     existing.events = addCounts(existing.events, row.events, "event total");
     existing.people = Math.max(existing.people, row.people);
-    // Conservative reconciliation, per the note above. The LABEL stays the first
-    // row's — it is the highest-people row, and inventing a combined label would
-    // put a sentence in front of the founder that no single row supports — but
-    // the GROUP and the delivery claim can only move toward caution.
-    if (row.group === LOST) existing.group = LOST;
+    // Conservative reconciliation. The delivery claim can only move toward
+    // caution, and a `lost` row drags the whole merged problem into `lost`.
+    //
+    // THE LABEL MOVES WITH THE GROUP. An earlier draft kept the first row's
+    // label while flipping only the group, which rendered "paste fell back to
+    // the clipboard" — a sentence whose whole meaning is that the text survived
+    // — underneath "LOST THE DICTATION". The heading and the line contradicted
+    // each other, and the founder acts on that split. So the label is taken from
+    // the row whose classification WON; a label that no longer matches its
+    // heading is worse than a less specific one.
+    if (row.group === LOST && existing.group !== LOST) {
+      existing.group = LOST;
+      existing.label = row.label;
+    }
     if (!row.deliveryProven) existing.deliveryProven = false;
     // The row must SAY it is a lower bound rather than print a merged number as
-    // though it were exact. Set only when a merge actually happened, so the
-    // ordinary row - which after the `error.type` change is every row - carries
-    // no hedge it has not earned.
+    // though it were exact.
     existing.peopleIsLowerBound = true;
+  }
+
+  // A CUT PAGE MAKES EVERY DISPLAYED ROW POTENTIALLY PARTIAL, not just the ones
+  // that visibly merged. Sentry sorts by affected users, so two rows of ONE
+  // issue can straddle the 100-row boundary: the visible half then renders as a
+  // complete, exact figure while users, events and even a `lost` classification
+  // sit on a page nobody fetched.
+  //
+  // The existing "more problems may exist" notice does not cover this — it says
+  // problems are MISSING, not that a problem already listed is INCOMPLETE, and a
+  // reader has no way to tell the difference. Hedging every row when the page
+  // was cut is the honest reading, and it costs nothing on the ordinary
+  // untruncated day, which is every day the fleet has produced so far.
+  if (problems.truncated) {
+    for (const row of rows) row.peopleIsLowerBound = true;
   }
 
   return {
@@ -844,10 +866,23 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
   // length of the sentence explaining that it ran out - measured at 24
   // characters over a 1200 budget, which is the shape that eventually pushes an
   // assembled payload past a Discord limit and sends nothing at all.
+  // RESERVE WHAT WILL ACTUALLY BE PRINTED. The omitted line must be reserved
+  // unconditionally, because whether it appears depends on this very layout. The
+  // other two do NOT: `truncated` and `badgesIncomplete` are decided by the fetch
+  // and are already known here, so reserving them when they will not be printed
+  // spends the row budget on sentences that never render.
+  //
+  // Found by a live smoke against production, not by a test (#2023). Making
+  // TRUNCATED_LINE accurate had lengthened it by 65 characters, and because the
+  // reserve was unconditional that silently cost the section a PROBLEM ROW on an
+  // ordinary untruncated day — the digest quietly listed less of exactly the
+  // thing it exists to list. No unit test could see it: every fixture that
+  // exercises the budget sets its own, and the regression only shows against the
+  // real row set at the real default budget.
   const reserve =
     omittedLine(data.rows.length, data.truncated).length + 1 +
-    TRUNCATED_LINE.length + 1 +
-    BADGES_INCOMPLETE_LINE.length + 1;
+    (data.truncated ? TRUNCATED_LINE.length + 1 : 0) +
+    (data.badgesIncomplete ? BADGES_INCOMPLETE_LINE.length + 1 : 0);
   const state = { budget: budget - reserve, omitted: 0 };
   appendGroup(lines, "LOST THE DICTATION", lost, state);
   appendGroup(lines, "STILL WORKED, JUST WORSE", degraded, state);

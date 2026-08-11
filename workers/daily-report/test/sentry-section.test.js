@@ -896,6 +896,42 @@ test("a collapse reconciles classification conservatively, never by sort order",
   assert.equal(merged.deliveryProven, false, "an unproven row makes the merge unproven");
   assert.equal(merged.events, 6, "events from both rows are still counted");
   assert.match(lines.join("\n"), /delivery not proven/);
+
+  // THE LABEL MUST MOVE WITH THE GROUP. Keeping the degraded label would render
+  // "paste fell back to the clipboard" — a sentence meaning the text survived —
+  // under "LOST THE DICTATION" (Codex review r4).
+  assert.equal(merged.label, "app crash (EXC_BAD_ACCESS)");
+  const text = lines.join("\n");
+  const lostIndex = text.indexOf("LOST THE DICTATION");
+  assert.ok(lostIndex >= 0);
+  assert.doesNotMatch(text, /paste fell back to the clipboard/,
+    "a degraded label must not survive into a lost row");
+});
+
+test("a cut page marks every displayed row as partial (#2023)", async () => {
+  // Codex review r4. Sentry sorts by affected users, so two rows of ONE issue
+  // can straddle the 100-row boundary. The visible half would otherwise render
+  // as a complete, exact figure while users and events sit on an unfetched page.
+  const many = Array.from({ length: 100 }, (_, i) => problemRow(`EW-${i}`, "asr_failed", 2, 2));
+  const { data, lines } = await render({ problems: many });
+
+  assert.equal(data.truncated, true);
+  assert.ok(data.rows.every((r) => r.peopleIsLowerBound),
+    "every row on a cut page is potentially missing counts from the next page");
+  assert.match(lines.join("\n"), /at least 2 people/);
+});
+
+test("an uncut page leaves exact rows unhedged (#2023)", async () => {
+  // The two-way control for the rule above. Without it, hedging everything would
+  // pass that test while making every ordinary exact figure read as uncertain —
+  // and the ordinary day is every day the fleet has produced so far.
+  const { data, lines } = await render({
+    problems: [problemRow("EW-2C", "audio_capture_stalled", 5, 9)],
+  });
+
+  assert.equal(data.truncated, false);
+  assert.ok(data.rows.every((r) => !r.peopleIsLowerBound));
+  assert.doesNotMatch(lines.join("\n"), /at least/);
 });
 
 test("a collapse of uniformly degraded rows stays degraded", async () => {
