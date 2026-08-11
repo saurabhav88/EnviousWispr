@@ -728,7 +728,12 @@ test("a full page of problems is disclosed as a limited breakdown", async () => 
   const { lines } = await render({ problems: many });
   const text = lines.join("\n");
   assert.match(text, /more problems may exist/);
-  assert.match(text, /the error count and the breakdown cover only those listed above/);
+  // The error total and the visible breakdown are bounded DIFFERENTLY: events
+  // are summed from every returned row, while the list can be cut short again
+  // by the Discord budget. Collapsing both into "those listed above" contradicts
+  // the omission notice printed just above it (Codex review r2).
+  assert.match(text, /the error count covers every problem Sentry returned/);
+  assert.match(text, /the breakdown covers only those listed above/);
   // 100 DISTINCT issues, so the measured count really is 100 here.
   assert.match(text, /across 100 or more problems/);
 });
@@ -832,6 +837,26 @@ test("one Sentry issue is one problem even when it returns several rows (#2023)"
   const crashLines = lines.filter((l) => l.includes("app crash"));
   assert.equal(crashLines.length, 1, `expected one crash line, got ${JSON.stringify(crashLines)}`);
   assert.match(lines.join("\n"), /1 person {3}app crash \(EXC_BAD_ACCESS\)/);
+});
+
+test("a merged people count says it is a lower bound, an unmerged one does not", async () => {
+  // Codex review r2. `Math.max` across a collapse understates whenever two rows
+  // carry disjoint users, and neither max nor sum can recover the real union
+  // from grouped counts — so a merged row must not print its number as exact.
+  const { lines } = await render({
+    problems: [
+      problemRow("EW-4B", "", 2, 2, "fatal", ["EXC_BAD_ACCESS"]),
+      problemRow("EW-4B", "", 3, 3, "fatal", ["EXC_BAD_ACCESS"]),
+      problemRow("EW-2C", "audio_capture_stalled", 5, 9),
+    ],
+  });
+  const text = lines.join("\n");
+
+  assert.match(text, /at least 3 people {3}app crash \(EXC_BAD_ACCESS\)/);
+  // The two-way control. Without it, a hedge applied to EVERY row would pass the
+  // assertion above while quietly making every exact figure look uncertain.
+  assert.match(text, /\n {2}5 people {3}microphone capture stalled/);
+  assert.doesNotMatch(text, /at least 5 people/);
 });
 
 test("rows that could not be identified are never fused together (#2023)", async () => {

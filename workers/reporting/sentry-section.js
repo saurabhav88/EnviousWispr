@@ -355,7 +355,15 @@ const ISSUE_FIELDS = ["issue", "error.type", "error.category", "level", "count()
 // requiring the requested name would fail on a perfectly good response and the
 // obvious repair (deleting the check) is how an empty malformed body gets
 // through. See workers/shared/sentry.js discoverAggregate.
-const ISSUE_REQUIRED_META = ["error.category", "level", "count()", "count_unique(user)"];
+// `error.type` is REQUIRED, because it is consumed: without it every fatal row
+// silently loses its exception label and renders a bare "app crash". Safe to
+// require, and that was measured rather than assumed — a live call requesting
+// all six fields echoes `error.type` in `meta.fields` (2026-08-11, #2023).
+// `issue` stays out for the documented reason: Sentry echoes it as `issue.id`,
+// so requiring the requested name would fail on a perfectly good response.
+const ISSUE_REQUIRED_META = [
+  "error.type", "error.category", "level", "count()", "count_unique(user)",
+];
 const RELEASE_FIELDS = ["release", "count()", "count_unique(user)"];
 
 /** The release query's page size AND the number the truncation sentence quotes.
@@ -531,6 +539,8 @@ export async function fetchSentrySection(env, window, opts = {}) {
     return {
       shortId: typeof row.issue === "string" ? row.issue : null,
       people: toCount(row["count_unique(user)"]),
+      // False until a collapse merges rows into this one; see the loop below.
+      peopleIsLowerBound: false,
       events: toCount(row["count()"]),
       group: classified.group,
       label: classified.label,
@@ -583,6 +593,11 @@ export async function fetchSentrySection(env, window, opts = {}) {
     // for - eight rows of one user each would have printed eight people.
     existing.events = addCounts(existing.events, row.events, "event total");
     existing.people = Math.max(existing.people, row.people);
+    // The row must SAY it is a lower bound rather than print a merged number as
+    // though it were exact. Set only when a merge actually happened, so the
+    // ordinary row - which after the `error.type` change is every row - carries
+    // no hedge it has not earned.
+    existing.peopleIsLowerBound = true;
   }
 
   return {
@@ -878,7 +893,8 @@ const BADGES_INCOMPLETE_LINE =
  * one moved. */
 const TRUNCATED_LINE =
   "Sentry returned a full page, so more problems may exist. The affected-people total " +
-  "covers all of them; the error count and the breakdown cover only those listed above.";
+  "covers all of them; the error count covers every problem Sentry returned, while the " +
+  "breakdown covers only those listed above.";
 
 /** `truncated` changes the CLAIM, not just the wording: when the problem page
  * was cut off, the totals above genuinely do NOT include the omitted rows, so
@@ -972,7 +988,15 @@ function appendGroup(lines, heading, rows, state) {
     // list, and "lost the dictation" is a strong claim to make on a category
     // whose producers disagree.
     const suffix = row.deliveryProven ? "" : ", delivery not proven";
-    lines.push(`  ${people(row.people)}   ${row.label}${suffix}${row.isNew ? "   NEW" : ""}`);
+    // "at least" only when rows were merged into this one. `Math.max` across a
+    // collapse understates whenever two rows carry disjoint users, and neither
+    // max nor sum can recover the real union from grouped counts - so the number
+    // is hedged where it is genuinely a bound, and printed plainly where it is
+    // Sentry's own exact per-issue figure.
+    const peopleText = row.peopleIsLowerBound
+      ? `at least ${people(row.people)}`
+      : people(row.people);
+    lines.push(`  ${peopleText}   ${row.label}${suffix}${row.isNew ? "   NEW" : ""}`);
     if (descriptionLength(lines) > state.budget) {
       lines.pop();
       state.omitted += 1;

@@ -825,14 +825,17 @@ const SENTRY_RELEASE_ROWS = [
   { release: "com.enviouswispr.app@2.4.1", "count_unique(user)": 3, "count()": 12 },
   { release: "com.enviouswispr.app@2.3.1", "count_unique(user)": 2, "count()": 5 },
 ];
+// `error.type`, not `title`: #2023 changed the field the section requests and
+// validates, so a double still carrying `title` describes a response the live
+// endpoint no longer returns. Empty on handled errors, which both of these are.
 const SENTRY_PROBLEM_ROWS = [
   {
-    issue: "ENVIOUSWISPR-2C", "issue.id": 1, title: "audio_capture_stalled: HeartPathError#0",
+    issue: "ENVIOUSWISPR-2C", "issue.id": 1, "error.type": [],
     "error.category": "audio_capture_stalled", level: "error",
     "count_unique(user)": 7, "count()": 19,
   },
   {
-    issue: "ENVIOUSWISPR-24", "issue.id": 2, title: "paste_failed: HeartPathError#3",
+    issue: "ENVIOUSWISPR-24", "issue.id": 2, "error.type": [],
     "error.category": "paste_failed", level: "error",
     "count_unique(user)": 1, "count()": 1,
   },
@@ -855,7 +858,7 @@ function sentryAnswer(target) {
   if (target.includes("field=issue")) {
     return fakeResponse(200, {
       data: SENTRY_PROBLEM_ROWS,
-      meta: sentryMeta(["title", "issue.id", "error.category", "level", "count_unique(user)", "count()"]),
+      meta: sentryMeta(["error.type", "issue.id", "error.category", "level", "count_unique(user)", "count()"]),
     });
   }
   // The two headline aggregates differ only by window; the prior one starts a
