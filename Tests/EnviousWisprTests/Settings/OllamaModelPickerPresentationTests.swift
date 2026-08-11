@@ -98,16 +98,88 @@ struct OllamaModelPickerPresentationTests {
     #expect(groups.hosted.isEmpty)
   }
 
-  // MARK: - Local Ollama rows keep today's behaviour
+  // MARK: - Local Ollama rows are grouped by measurement (#1950)
 
-  @Test("local Ollama rows keep the recommended and other split")
-  func localRowsUnchanged() {
+  @Test("an unmeasured model is not recommended just because its name carries a cloud token")
+  func tokenBearingLocalNameIsNotRecommended() {
+    // This test asserted the OPPOSITE before #1950: it pinned `phi3-mini` into "Recommended for
+    // cleanup" because the token classifier saw `mini`. We have never run a case through that
+    // model. MUTATION CONTROL: restore the classifier for local Ollama and this fails.
+    //
+    // The fixture precondition is what keeps this test meaningful. If a future edit removed `mini`
+    // from the classifier's positives, these names would stop satisfying it and the test would pass
+    // without ever exercising the routing boundary, since an unmeasured model is not recommended
+    // either way. Same guard as `hostedBeatsRecommended` above, for the same reason.
+    for modelID in ["phi3-mini", "acme-mini"] {
+      #expect(
+        AIPolishModelClassifier.isRecommendedForCleanup(modelID),
+        "\(modelID) must genuinely satisfy the cloud token classifier")
+    }
+
     let groups = OllamaModelPickerPresentation.groups(
-      from: [model("phi3-mini"), model("llama3.2")], provider: .ollama)
+      from: [model("phi3-mini"), model("acme-mini"), model("llama3.2")], provider: .ollama)
 
-    #expect(groups.recommended.map(\.id) == ["phi3-mini"])
-    #expect(groups.other.map(\.id) == ["llama3.2"])
+    #expect(groups.recommended.isEmpty)
+    #expect(groups.other.map(\.id) == ["phi3-mini", "acme-mini", "llama3.2"])
     #expect(groups.hosted.isEmpty)
+  }
+
+  @Test("the models we measured well are the ones recommended")
+  func measuredModelsAreRecommended() {
+    // The other half of the old defect: no standard local name carries a cloud token, so every
+    // model we measured landed under "other" including the best one.
+    let groups = OllamaModelPickerPresentation.groups(
+      from: [model("qwen2.5:3b"), model("qwen3:0.6b"), model("qwen2.5:7b")], provider: .ollama)
+
+    #expect(groups.recommended.map(\.id) == ["qwen2.5:3b", "qwen3:0.6b", "qwen2.5:7b"])
+    #expect(groups.other.isEmpty)
+  }
+
+  @Test(
+    "every verdict other than recommended lands under other",
+    arguments: [
+      "gemma2:2b", "gemma2", "gemma3n:e4b",  // mixed
+      "llama3.2", "mistral", "deepseek-r1:1.5b",  // unreliable
+      "phi3", "llama3.2:1b", "tinyllama",  // no acceptable output
+      "eg-1", "eg-1:q4",  // firstParty: makes no claim, so it earns no heading
+      "someones-finetune:7b",  // notTested
+    ])
+  func nonRecommendedVerdictsGoToOther(modelID: String) {
+    let groups = OllamaModelPickerPresentation.groups(
+      from: [model(modelID)], provider: .ollama)
+    #expect(groups.recommended.isEmpty, "\(modelID) must not be recommended")
+    #expect(groups.other.map(\.id) == [modelID])
+  }
+
+  @Test("a locked recommended model stays locked")
+  func lockedBeatsRecommended() {
+    // Precedence: availability is decided before any recommendation question.
+    let groups = OllamaModelPickerPresentation.groups(
+      from: [model("qwen2.5:3b", available: false)], provider: .ollama)
+    #expect(groups.locked.map(\.id) == ["qwen2.5:3b"])
+    #expect(groups.recommended.isEmpty)
+  }
+
+  @Test("a hosted model with a MEASURED-recommended id stays hosted")
+  func hostedBeatsMeasuredVerdict() {
+    // Sibling of `hostedBeatsRecommended` above, which covers the token-classifier era. Remoteness
+    // is still decided before the verdict, so a hosted row never lands under a heading that says
+    // nothing about where it runs, even when we measured that model well locally.
+    let groups = OllamaModelPickerPresentation.groups(
+      from: [model("qwen2.5:3b", isRemote: true)], provider: .ollama)
+    #expect(groups.hosted.map(\.id) == ["qwen2.5:3b"])
+    #expect(groups.recommended.isEmpty)
+  }
+
+  @Test("cloud providers still use the token classifier")
+  func cloudProvidersUnchanged() {
+    // #617's classifier is correct for the providers it was validated against, and #1950 does not
+    // touch them. `gpt-4o-mini` is unmeasured by our local benchmark, so if it were routed through
+    // the verdict authority it would drop out of recommended.
+    let openAI = OllamaModelPickerPresentation.groups(
+      from: [model("gpt-4o-mini"), model("gpt-4o")], provider: .openAI)
+    #expect(openAI.recommended.map(\.id) == ["gpt-4o-mini"])
+    #expect(openAI.other.map(\.id) == ["gpt-4o"])
   }
 
   @Test("group order within each section follows input order")

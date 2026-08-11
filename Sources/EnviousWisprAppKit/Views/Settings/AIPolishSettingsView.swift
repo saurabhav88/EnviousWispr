@@ -100,9 +100,14 @@ enum AIPolishKeychainFailureMessage {
 
 // MARK: - Model Recommendation Classifier (#617)
 
-/// Token-based classifier deciding whether a discovered model should land in the
+/// Token-based classifier deciding whether a discovered CLOUD-PROVIDER model should land in the
 /// "Recommended for cleanup" group of the AI Polish picker. Pure function, no
-/// view dependencies. **Lives at file scope (not private to `AIPolishSettingsView`)
+/// view dependencies.
+///
+/// **#1950: local Ollama models no longer reach this.** They are grouped by `OllamaModelVerdicts`,
+/// from our own benchmark. The tokens below are cloud family names, so for local models this
+/// classifier was wrong in both directions: it recommended nothing we had measured, and it did
+/// recommend an unmeasured model whose name happened to contain one. **Lives at file scope (not private to `AIPolishSettingsView`)
 /// solely so that `AIPolishClassifierTests` in `Tests/EnviousWisprTests/Settings/`
 /// can reach it via `@testable import EnviousWispr`.** Has no other consumers
 /// inside the app module; do not adopt it elsewhere without revisiting placement.
@@ -229,6 +234,24 @@ enum OllamaModelPickerPresentation {
       // that says nothing about where it runs.
       if provider == .ollama && model.isRemote {
         hosted.append(model)
+        continue
+      }
+      // #1950: a LOCAL Ollama model is grouped by what we measured, not by what its name looks
+      // like. The token classifier below was validated against real OpenAI and Gemini ids (#617)
+      // and is right for those providers; for local Ollama it was wrong in both directions. No
+      // standard local name carries `mini`/`nano`/`flash`/`haiku`, so every model we measured, from
+      // 50% down to 0%, landed together under the other heading, while an unmeasured model whose
+      // name merely contained one of those tokens was presented as recommended for cleanup.
+      //
+      // Only `.recommended` earns the heading. `.firstParty` deliberately does not: EG-1 makes no
+      // claim in this vocabulary, and putting it under "Recommended for cleanup" would be inventing
+      // one. Same authority the Manage Models list reads, so the two surfaces cannot disagree.
+      if provider == .ollama {
+        if OllamaModelVerdicts.verdict(for: model.id) == .recommended {
+          recommended.append(model)
+        } else {
+          other.append(model)
+        }
         continue
       }
       if AIPolishModelClassifier.isRecommendedForCleanup(model.id) {
