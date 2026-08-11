@@ -630,6 +630,24 @@ jobs:
           python3 Tests/RuntimeUAT/ptt_binding.py --self-test
           python3 Tests/RuntimeUAT/faultInjection.py --self-test
 
+      - name: Judge-receipt completeness contract (#2007/#2008)
+        run: |
+          set -euo pipefail
+          # A judge run that dropped work must never read as a complete receipt.
+          # Three layers have to agree: behavior_judge.py detects the gap,
+          # judge_ollama_bench.sh refuses to cache a partial receipt, and
+          # report_ollama_bench.py refuses to rank one. Before #2007 an
+          # adjudication pass that returned NOTHING produced a CLEAR receipt
+          # advertising a recheck it never ran, and the benchmark then cached that
+          # receipt and skipped the model forever while the report refused it.
+          #
+          # Wired into build-check because that is the only REQUIRED check — a
+          # suite no gate invokes reports nothing, so nothing ever looks wrong
+          # (#1965, #2013). Pure stdlib, no network, no judge calls; the suite
+          # asserts its own exact test count, because the runner it borrows from
+          # exits 0 when it discovers zero tests.
+          python3 scripts/eval/behavior_judge_test.py
+
       - name: Require both build lanes
         run: |
           if [ "${{ needs.build-debug.result }}" != "success" ] \

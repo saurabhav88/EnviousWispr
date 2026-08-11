@@ -61,6 +61,7 @@ import time
 import urllib.request
 import urllib.error
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
@@ -260,9 +261,68 @@ def judge_chunk(model: str, system: str, payload_cases: list[dict], attempt: int
         return []
 
 
-def run_judge(model: str, system: str, payloads: list[dict], chunk_size: int) -> dict[str, dict]:
-    """Judge all payloads (chunked, threaded). Returns {id: score_obj}. Missing
-    ids (judge dropped them) simply do not appear — callers detect the gap."""
+@dataclass(frozen=True, slots=True)
+class JudgeBatchResult:
+    """One judge batch, reconciled against what was REQUESTED.
+
+    `run_judge` returns this instead of a bare `{id: score}` dict so that no
+    caller can forget to account for what the judge left out. #2007: the primary
+    pass filtered returned ids by hand and the adjudication pass did not, so an
+    adjudication that came back EMPTY produced a `CLEAR` receipt advertising a
+    stability recheck that never ran. A helper the caller must remember to call
+    would have preserved that same bypass, so the accounting lives here, at the
+    boundary the result crosses.
+    """
+
+    accepted: dict[str, dict]   # requested ids the judge returned, in REQUESTED order
+    missing: list[str]          # requested, never came back
+    unexpected: list[str]       # returned but never requested (the judge invented them)
+
+
+def reconcile_judge_batch(raw: dict[str, dict],
+                         requested: list[str]) -> JudgeBatchResult:
+    """Account for every requested id exactly once.
+
+    `accepted` follows REQUESTED order rather than the judge's thread-completion
+    order. That is a deliberate behaviour change: the adjudication sample is
+    drawn with `rng.sample` over `primary`'s key order (`select_adjudication_ids`),
+    so completion order previously leaked thread scheduling into which cases got
+    re-judged. Requested order is what finally makes the fixed seed there mean
+    what its comment claims.
+    """
+    requested = list(dict.fromkeys(str(cid) for cid in requested))
+    requested_set = set(requested)
+    return JudgeBatchResult(
+        accepted={cid: raw[cid] for cid in requested if cid in raw},
+        missing=[cid for cid in requested if cid not in raw],
+        unexpected=[cid for cid in raw if cid not in requested_set],
+    )
+
+
+def batch_counts(batch: JudgeBatchResult, requested_n: int) -> dict:
+    """Persist a batch's reconciliation into the receipt.
+
+    `finalize_new_report` runs at `write_outputs`, where `judged_ids` and the
+    score dicts no longer exist — so the evidence it validates has to be written
+    down here, at the point the batch is actually reconciled.
+    """
+    return {
+        "requested_n": requested_n,
+        "accepted_n": len(batch.accepted),
+        "missing_n": len(batch.missing),
+        "unexpected_n": len(batch.unexpected),
+    }
+
+
+def run_judge(model: str, system: str, payloads: list[dict], chunk_size: int) -> JudgeBatchResult:
+    """Judge all payloads (chunked, threaded), reconciled against the request.
+
+    A dropped id is not an error here — the judge really does omit ids on a
+    syntactically valid response, and `judge_chunk` only retries thrown
+    transient/parse errors. The gap is REPORTED rather than retried (#2014), and
+    reconciling it at this boundary is what stops a caller silently accepting a
+    short answer.
+    """
     chunks = [payloads[i:i + chunk_size] for i in range(0, len(payloads), chunk_size)]
     workers = CLAUDE_JUDGE_MAX_WORKERS if model.startswith(("claude", "sonnet")) else HTTP_JUDGE_MAX_WORKERS
     scores: dict[str, dict] = {}
@@ -278,7 +338,7 @@ def run_judge(model: str, system: str, payloads: list[dict], chunk_size: int) ->
             done += 1
             print(f"  judged chunk {done}/{len(chunks)}  ({len(scores)} scored, {time.time()-start:.0f}s)",
                   file=sys.stderr, flush=True)
-    return scores
+    return reconcile_judge_batch(scores, [str(p["id"]) for p in payloads])
 
 
 # ---------------------------------------------------------------------------
@@ -430,7 +490,20 @@ def partition_candidates(norm_cases: dict, cands: dict) -> tuple[list[str], list
                   if cid in cands and not cands[cid].get("error")
                   and (cands[cid].get("candidate") or "").strip()}
     judged_ids = [cid for cid in norm_cases if cid in judged_set]
-    skipped = [{"id": cid, "reason": "no candidate / engine error",
+
+    def _reason(cid: str) -> str:
+        # THREE distinct causes, named separately. The old catch-all
+        # "no candidate / engine error" hid the one that matters: an EMPTY output
+        # on a SUCCESSFUL call is not an error, so the runner never counts it, and
+        # a consumer reading only the run's error count cannot see it at all. That
+        # let a model be ranked on the subset that did produce output.
+        if cid not in cands:
+            return "absent from the candidates file"
+        if cands[cid].get("error"):
+            return "engine error"
+        return "empty candidate on a successful call (no error reported)"
+
+    skipped = [{"id": cid, "reason": _reason(cid),
                 "error": cands.get(cid, {}).get("error")}
                for cid in norm_cases if cid not in judged_set]
     return judged_ids, skipped
@@ -654,10 +727,16 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
     has_production = prod is not None
     judged_ids, skipped = partition_candidates(norm_cases, cands)
 
+    # Both branches reconcile through the same helper, so `judge_reconciliation`
+    # is present on every path and the finalizer never special-cases a mode.
     if external_verdicts is not None:
         # Subagent-supplied verdicts: no judge calls, nothing to adjudicate.
-        primary = {cid: coerce_new_score(external_verdicts[cid], has_production)
-                  for cid in judged_ids if cid in external_verdicts}
+        primary_batch = reconcile_judge_batch(external_verdicts, judged_ids)
+        adjudication_batch = reconcile_judge_batch({}, [])
+        primary = {cid: coerce_new_score(s, has_production)
+                  for cid, s in primary_batch.accepted.items()}
+        primary_premerge = dict(primary)
+        adjudication: dict[str, dict] = {}
         rep_scores = [primary]
         disagreements: list[dict] = []
         adjudicated_ids: list[str] = []
@@ -666,13 +745,21 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                                       prod.get(cid) if prod else None)
                     for cid in judged_ids]
         print(f"[new] primary pass over {len(payloads)} cases", file=sys.stderr)
-        raw = run_judge(judge, NEW_JUDGE_SYSTEM, payloads, chunk_size)
-        primary = {cid: coerce_new_score(raw[cid], has_production)
-                  for cid in raw if cid in set(judged_ids)}
+        primary_batch = run_judge(judge, NEW_JUDGE_SYSTEM, payloads, chunk_size)
+        primary = {cid: coerce_new_score(s, has_production)
+                  for cid, s in primary_batch.accepted.items()}
 
         adjudicated_ids = []
-        adjudication: dict[str, dict] = {}
+        adjudication = {}
+        adjudication_batch = reconcile_judge_batch({}, [])
         disagreements = []
+        # Frozen BEFORE the merge below. `rep_scores[0]` must be the ORIGINAL
+        # primary: the merge rebinds `primary[cid]` to the worse of the two
+        # scores, so using the merged dict as rep1 compares adjudication against
+        # itself wherever adjudication was the more severe reading — which is the
+        # only case that changes anything. Measured pre-fix: 12 of 12 cases
+        # disagreeing still reported delta_pp 0.0 and judge_stable PASS.
+        primary_premerge = dict(primary)
         if adjudicate and primary:
             rng = random.Random(1199)  # fixed seed: reproducible sample across runs
             adjudicated_ids = select_adjudication_ids(
@@ -682,9 +769,9 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                       f"({len(adjudicated_ids)*100//max(len(primary),1)}% of primary)",
                       file=sys.stderr)
                 adj_payloads = [p for p in payloads if p["id"] in set(adjudicated_ids)]
-                adj_raw = run_judge(judge, NEW_JUDGE_SYSTEM, adj_payloads, chunk_size)
-                adjudication = {cid: coerce_new_score(adj_raw[cid], has_production)
-                                for cid in adj_raw}
+                adjudication_batch = run_judge(judge, NEW_JUDGE_SYSTEM, adj_payloads, chunk_size)
+                adjudication = {cid: coerce_new_score(s, has_production)
+                                for cid, s in adjudication_batch.accepted.items()}
                 for cid, adj_score in adjudication.items():
                     if cid not in primary:
                         continue
@@ -697,9 +784,9 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                             "resolved_verdict": _worse_new_score(primary[cid], adj_score)["verdict"],
                         })
                     primary[cid] = _worse_new_score(primary[cid], adj_score)
-        rep_scores = [primary, adjudication] if adjudicated_ids else [primary]
+        rep_scores = [primary_premerge, adjudication] if adjudicated_ids else [primary]
 
-    missing = [cid for cid in judged_ids if cid not in primary]
+    missing = primary_batch.missing
 
     per_case = []
     for cid in judged_ids:
@@ -711,13 +798,32 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                          "latencyMs": cands[cid].get("latencyMs")})
 
     report = aggregate_new(per_case, rep_scores, judged_ids, has_production,
-                           missing_count=len(missing), skipped_count=len(skipped))
+                           missing_count=len(missing), skipped_count=len(skipped),
+                           adjudication_missing_count=len(adjudication_batch.missing))
     report["skipped"] = skipped
     report["missing_scores"] = missing
     report["per_case"] = per_case
+    # The evidence `finalize_new_report` validates. It runs at `write_outputs`,
+    # by which point `judged_ids` and the score dicts are gone.
+    report["judge_reconciliation"] = {
+        "primary": batch_counts(primary_batch, len(judged_ids)),
+        "adjudication": batch_counts(adjudication_batch, len(adjudicated_ids)),
+    }
     report["adjudication"] = {
+        # SELECTED, not re-judged. Meaning deliberately unchanged: receipts on
+        # disk already encode it this way (runs/ollama-bench-1950/judged/
+        # gemma2-local/summary.json), and #1950 compares across them.
         "adjudicated_n": len(adjudicated_ids),
+        "rejudged_n": len(adjudication),
+        "adjudication_missing_n": len(adjudication_batch.missing),
+        "adjudication_missing": adjudication_batch.missing[:25],
+        "unexpected_n": len(adjudication_batch.unexpected),
+        # Denominator is the PRIMARY size, not the corpus total, so the name
+        # overstates its own scope on a primary drop. Both terms are stored so a
+        # reader can see what the percentage is actually of.
         "adjudicated_pct_of_total": round(100 * len(adjudicated_ids) / len(primary), 1) if primary else 0.0,
+        "pct_numerator": len(adjudicated_ids),
+        "pct_denominator": len(primary),
         "disagreement_n": len(disagreements),
         "disagreements": disagreements[:25],
     }
@@ -729,7 +835,8 @@ def _is_pass(verdict: str) -> bool:
 
 
 def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list[str],
-                  has_production: bool, missing_count: int = 0, skipped_count: int = 0) -> dict:
+                  has_production: bool, missing_count: int = 0, skipped_count: int = 0,
+                  adjudication_missing_count: int = 0) -> dict:
     total = len(per_case)
 
     def rate(items, pred):
@@ -818,28 +925,44 @@ def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list
     if len(rep_scores) >= 2:
         judged_set = set(judged_ids)
         common = [cid for cid in judged_ids if cid in rep_scores[0] and cid in rep_scores[1]]
+        coverage = [len(judged_set & set(rs)) for rs in rep_scores]
 
-        def pr(scores):
-            return round(100 * sum(1 for cid in common if _is_pass(scores[cid]["verdict"])) / len(common), 1) \
-                if common else 0.0
-        r1, r2 = pr(rep_scores[0]), pr(rep_scores[1])
-        wobble = {
-            "common_n": len(common),
-            "rep1_pass_rate_pct": r1,
-            "rep2_pass_rate_pct": r2,
-            "delta_pp": round(abs(r1 - r2), 1),
-            "unreliable": abs(r1 - r2) > REP_PASSRATE_DELTA_MAX,
-            "rep_coverage": [len(judged_set & set(rs)) for rs in rep_scores],
-        }
+        if not common:
+            # Nothing was returned by both replications, so there is no stability
+            # answer to give. Reporting delta 0.0 / unreliable False here is what
+            # let an adjudication that returned NOTHING add `judge_stable: PASS`
+            # on zero compared cases (#2007). Omitting `unreliable` makes
+            # `evaluate_new_gate`'s existing `is not None` guard SKIP the check
+            # rather than invent a passing one — the completeness term below is
+            # what actually refuses the run.
+            wobble = {"status": "no comparable cases (no id returned by both replications)",
+                      "common_n": 0, "rep_coverage": coverage}
+        else:
+            def pr(scores):
+                return round(100 * sum(1 for cid in common if _is_pass(scores[cid]["verdict"])) / len(common), 1)
+            r1, r2 = pr(rep_scores[0]), pr(rep_scores[1])
+            wobble = {
+                "common_n": len(common),
+                "rep1_pass_rate_pct": r1,
+                "rep2_pass_rate_pct": r2,
+                "delta_pp": round(abs(r1 - r2), 1),
+                "unreliable": abs(r1 - r2) > REP_PASSRATE_DELTA_MAX,
+                "rep_coverage": coverage,
+            }
     else:
         wobble = {"status": "single replication (no wobble check)"}
 
     # Release gate — apply the conditions for which we have data.
     gate = evaluate_new_gate(overall, smoke_metrics, trap_metrics, wobble, pairwise,
-                             has_production, missing_count, skipped_count)
+                             has_production, missing_count, skipped_count,
+                             adjudication_missing_count)
 
     return {
         "system": "new",
+        # Completeness on its own, independent of the verdict. `BLOCK` takes
+        # precedence over `INCOMPLETE`, so the verdict alone cannot express
+        # "failed AND partial" — which is why keying a cache on it is wrong.
+        "run_complete": gate["run_complete"],
         "overall": overall,
         "per_behavior": per_behavior,
         "trap_metrics": trap_metrics,
@@ -853,7 +976,8 @@ def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list
 
 
 def evaluate_new_gate(overall, smoke, traps, wobble, pairwise, has_production,
-                      missing_count=0, skipped_count=0) -> dict:
+                      missing_count=0, skipped_count=0,
+                      adjudication_missing_count=0) -> dict:
     """Apply the proposed release gate. Three-valued verdict:
       BLOCK      — a quality check FAILED (S4 / wobble / pairwise).
       INCOMPLETE — quality clean but the run did not cover every case (engine
@@ -883,10 +1007,16 @@ def evaluate_new_gate(overall, smoke, traps, wobble, pairwise, has_production,
         quality_checks.append({"check": "pairwise_vs_production", "status": "N/A",
                                "detail": "no --production baseline supplied"})
 
-    complete = (missing_count == 0 and skipped_count == 0)
+    # An adjudication drop is a COVERAGE gap, not a quality failure: routing it
+    # into `quality_checks` would report BLOCK and tell the reader a transient
+    # judge omission was a quality regression. This gate's own contract keeps the
+    # two separate so "re-run the gaps" is distinguishable from "real failure".
+    complete = (missing_count == 0 and skipped_count == 0
+                and adjudication_missing_count == 0)
     completeness = {"check": "run_complete", "status": "PASS" if complete else "INCOMPLETE",
-                    "detail": f"{skipped_count} engine-skipped, {missing_count} judge-dropped "
-                              f"(both must be 0 to ship; re-run the gaps)"}
+                    "detail": f"{skipped_count} engine-skipped, {missing_count} judge-dropped, "
+                              f"{adjudication_missing_count} adjudication-dropped "
+                              f"(all must be 0 to ship; re-run the gaps)"}
 
     blocking = [c for c in quality_checks if c["status"] == "FAIL"]
     if blocking:
@@ -897,6 +1027,7 @@ def evaluate_new_gate(overall, smoke, traps, wobble, pairwise, has_production,
         verdict = "CLEAR"
     return {
         "verdict": verdict,
+        "run_complete": complete,
         "checks": quality_checks + [completeness],
         "note": ("Behavior-regression, trap-regression and mixed-regression checks "
                  "require a prior run to diff against; run two builds to enable them."),
@@ -958,8 +1089,11 @@ def score_old(norm_cases: dict, cands: dict, judge: str, reps: int, chunk_size: 
     rep_scores: list[dict[str, dict]] = []
     for rep in range(reps):
         print(f"[old] replication {rep+1}/{reps} over {len(payloads)} cases", file=sys.stderr)
-        raw = run_judge(judge, OLD_JUDGE_SYSTEM, payloads, chunk_size)
-        rep_scores.append({cid: coerce_old_score(raw[cid]) for cid in raw if cid in set(judged_ids)})
+        # Routed through the same boundary. Behaviour-preserving: this call site
+        # already filtered returned ids to `judged_ids` by hand, and `accepted` is
+        # that same set. The point is that the filter is no longer optional.
+        batch = run_judge(judge, OLD_JUDGE_SYSTEM, payloads, chunk_size)
+        rep_scores.append({cid: coerce_old_score(s) for cid, s in batch.accepted.items()})
 
     primary = rep_scores[0]
     missing = [cid for cid in judged_ids if cid not in primary]
@@ -1034,7 +1168,83 @@ def score_old(norm_cases: dict, cands: dict, judge: str, reps: int, chunk_size: 
 # Reporting
 # ---------------------------------------------------------------------------
 
+def finalize_new_report(report: dict) -> None:
+    """Set `report["cacheable"]` — the single acceptance decision BOTH consumers read.
+
+    Why a dedicated field rather than the verdict: `evaluate_new_gate` gives a
+    quality failure precedence over incompleteness, so a run that is both
+    quality-failed AND missing coverage reports `BLOCK`. Any cache or ranking rule
+    keyed on the verdict therefore treats a partial receipt as complete — which is
+    the #2008 defect, and was also the first version of its fix.
+
+    This never rewrites the verdict. Operators read that, and BLOCK-first is right
+    for them; only cacheability stops being derived from it.
+
+    The double computation of completeness is DELIBERATE. `evaluate_new_gate`
+    answers from the counts it was handed; this answers from what was actually
+    written into the receipt, then requires the two to AGREE. That is an
+    independent oracle — one sharing its subject's implementation would only prove
+    the code equals itself. Do not DRY these into one expression.
+    """
+    try:
+        rec = report["judge_reconciliation"]
+        primary, adjudication = rec["primary"], rec["adjudication"]
+        adj = report["adjudication"]
+        overall = report["overall"]
+        # Required reads, never `.get(..., [])`: a defaulted read lets an ABSENT
+        # field masquerade as an empty list, which is the same narrower-than-it-
+        # looks shape this change exists to close. A missing key raises and lands
+        # in the fail-closed handler below.
+        skipped = report["skipped"]
+        per_case = report["per_case"]
+        # Mirrors evaluate_new_gate's own `complete`, so the assertion below is a
+        # genuine cross-check of the gate's answer.
+        expected_complete = (
+            isinstance(skipped, list)
+            and not skipped
+            and primary["missing_n"] == 0
+            and adjudication["missing_n"] == 0
+        )
+        # Cacheability is a DIFFERENT question from completeness, and conflating
+        # them created an endless re-judge loop. An engine error is a terminal
+        # fact about the model — it produced nothing to grade — and no amount of
+        # re-judging repairs it, so a receipt carrying accounted engine skips is a
+        # FINISHED answer. `report_ollama_bench.py` relies on that: it ranks a
+        # partially-erroring model "Not recommended" on the grounds that "a
+        # partial failure IS evidence". Refusing to cache such a receipt would
+        # both re-judge it on every invocation and make that ranking unreachable.
+        #
+        # Only DROPPED JUDGE WORK makes a receipt provisional, because that is the
+        # only part a re-judge can actually fix.
+        judge_work_complete = (
+            primary["missing_n"] == 0 and adjudication["missing_n"] == 0
+        )
+        denominator = adj["pct_denominator"]
+        expected_pct = round(100 * adj["pct_numerator"] / denominator, 1) if denominator else 0.0
+        valid = (
+            primary["requested_n"] == primary["accepted_n"] + primary["missing_n"]
+            and adjudication["requested_n"] == adjudication["accepted_n"] + adjudication["missing_n"]
+            and isinstance(per_case, list)
+            and len(per_case) == overall["total_scored"] == primary["accepted_n"]
+            and adj["adjudicated_n"] == adjudication["requested_n"]
+            and adj["rejudged_n"] == adjudication["accepted_n"]
+            and adj["adjudication_missing_n"] == adjudication["missing_n"]
+            and adj["adjudicated_pct_of_total"] == expected_pct
+            and report.get("run_complete") is expected_complete
+        )
+    except (KeyError, TypeError, ZeroDivisionError):
+        valid = False
+        judge_work_complete = False
+    report["cacheable"] = bool(valid and judge_work_complete)
+
+
 def write_outputs(report: dict, outdir: Path, system: str) -> None:
+    # FIRST, and before the `per_case` pop below: this is the non-bypassable
+    # output boundary, and the row-count check needs `per_case` still on the
+    # report. `old` skips it — that system has no adjudication and no release
+    # gate, and nothing consumes `cacheable` for it.
+    if system == "new":
+        finalize_new_report(report)
     outdir.mkdir(parents=True, exist_ok=True)
     per_case = report.pop("per_case", [])
     if report.get("overall") and report["overall"].get("infra_skipped") is None:
@@ -1095,9 +1305,21 @@ def render_scoreboard(r: dict, system: str) -> str:
         L.append(f"PAIRWISE     : {r.get('pairwise')}")
         adj = r.get("adjudication")
         if adj:
-            L.append(f"ADJUDICATION : re-judged {adj['adjudicated_n']} cases "
-                     f"({adj['adjudicated_pct_of_total']}% of total)  "
-                     f"disagreements={adj['disagreement_n']}")
+            # `adjudicated_n` is cases SELECTED. Saying "re-judged" of it was the
+            # #2007 mislabel: with an empty adjudication it claimed a recheck of
+            # every selected case while none came back.
+            line = (f"ADJUDICATION : selected {adj['adjudicated_n']}, "
+                    f"re-judged {adj.get('rejudged_n', adj['adjudicated_n'])}"
+                    f" ({adj['adjudicated_pct_of_total']}% of primary)  "
+                    f"disagreements={adj['disagreement_n']}")
+            if adj.get("adjudication_missing_n"):
+                line += f"  DROPPED={adj['adjudication_missing_n']}"
+            if adj.get("unexpected_n"):
+                line += f"  unexpected={adj['unexpected_n']}"
+            L.append(line)
+        if r.get("cacheable") is False:
+            L.append("CACHEABLE    : NO — this receipt is partial or internally "
+                     "inconsistent; it must not be cached or ranked")
         g = r.get("release_gate", {})
         L.append("")
         L.append(f"RELEASE GATE : {g.get('verdict')}")
@@ -1222,9 +1444,15 @@ def main() -> int:
     }
     write_outputs(report, Path(args.out), args.system)
 
-    # Exit code: new -> gate verdict; old -> batch verdict. (0 clear/pass, 1 block/fail.)
+    # Exit code: new -> gate verdict AND cacheability; old -> batch verdict.
+    # (0 clear/pass, 1 block/fail.) `cacheable` is required because a CLEAR
+    # verdict that finalization invalidated would otherwise exit 0 and read as a
+    # clean run to every caller of this script.
     if args.system == "new":
-        return 0 if report.get("release_gate", {}).get("verdict") == "CLEAR" else 1
+        return 0 if (
+            report.get("cacheable") is True
+            and report.get("release_gate", {}).get("verdict") == "CLEAR"
+        ) else 1
     return 0 if report.get("overall", {}).get("batch_verdict") == "PASS" else 1
 
 

@@ -136,12 +136,27 @@ def main() -> int:
         # promote it to Recommended on a subset. Refuse the receipt instead: an
         # unranked model is a gap someone re-runs, a wrongly-ranked one is a
         # recommendation nobody re-checks.
+        # Read the judge's own acceptance answer; do not infer one from the
+        # verdict. Refusing only the literal string "INCOMPLETE" left two holes:
+        # a receipt with a MISSING or UNKNOWN verdict sailed through and was
+        # ranked (a synthesised `WEIRD_UNKNOWN_VALUE` came out #1 "Recommended"),
+        # and `BLOCK` outranks incompleteness inside the gate, so a run that was
+        # both quality-failed AND partial never said "INCOMPLETE" at all.
+        # `cacheable` carries the real acceptance decision. The verdict allowlist
+        # exists only to reject a receipt this gate could not have produced — an
+        # absent or unknown verdict — and INCOMPLETE is included deliberately: a
+        # model with some engine errors is INCOMPLETE by coverage yet FINISHED as
+        # evidence, and `tier()` below ranks exactly that case "Not recommended".
         release_verdict = (summary.get("release_gate") or {}).get("verdict")
-        if release_verdict == "INCOMPLETE":
+        if summary.get("cacheable") is not True \
+                or release_verdict not in ("CLEAR", "BLOCK", "INCOMPLETE"):
+            adj_dropped = (summary.get("adjudication") or {}).get("adjudication_missing_n", 0)
             problems.append(
-                f"{model} ({cand_stem}): judge receipt is INCOMPLETE — "
+                f"{model} ({cand_stem}): judge receipt is not cacheable "
+                f"(verdict {release_verdict!r}) — "
                 f"{len(summary.get('skipped', []))} engine-skipped, "
-                f"{len(summary.get('missing_scores', []))} judge-dropped; re-judge the gaps")
+                f"{len(summary.get('missing_scores', []))} primary judge-dropped, "
+                f"{adj_dropped} adjudication-dropped; re-judge")
             continue
 
         # Independent reconciliation against the RUN's own case count, because
@@ -151,14 +166,59 @@ def main() -> int:
         judge_overall = summary.get("overall") or {}
         scored = judge_overall.get("total_scored")
         infra_skipped = judge_overall.get("infra_skipped") or 0
-        expected_scored = sp["cases"] - sp["errors"]
-        if scored is None or scored + infra_skipped != expected_scored:
+
+        # The identity that is actually true: every case the runner attempted is
+        # either scored or skipped. This previously compared the sum against
+        # `cases - errors`, which only holds when `errors == 0` — so ANY run with
+        # one engine error compared `19 + 1` against `19` and could never
+        # reconcile. It was unreachable while the INCOMPLETE receipt was refused
+        # outright; admitting INCOMPLETE for engine errors exposed it.
+        if scored is None or scored + infra_skipped != sp["cases"]:
             problems.append(
                 f"{model} ({cand_stem}): judged {scored} + {infra_skipped} skipped does not "
-                f"reconcile with the run's {expected_scored} non-error cases; re-judge")
+                f"reconcile with the run's {sp['cases']} attempted cases; re-judge")
+            continue
+
+        # And every skip must be ATTRIBUTABLE to an engine error, checked PER ENTRY
+        # rather than by count. A count comparison is not an identity check: with
+        # `errors=1` and one skip that is an empty-but-successful candidate, `1 == 1`
+        # passes while the skip does not correspond to the error at all, and the
+        # model is ranked on a mismatched subset.
+        #
+        # The runner increments `errors` only inside its except branch, so a 200
+        # returning an empty string is skipped by the judge and counted as a SUCCESS.
+        # `tier()` reads the run's error count and therefore cannot see it. Keying on
+        # each entry's own `error` field works for receipts written before the precise
+        # reasons existed too, since a genuine engine error has always recorded it.
+        #
+        # Refuse rather than penalise: an unranked model is a gap someone re-runs, a
+        # wrongly-ranked one is a recommendation nobody re-checks.
+        skipped_entries = summary.get("skipped") or []
+        unattributed = [s for s in skipped_entries if not s.get("error")]
+        if unattributed or len(skipped_entries) != sp["errors"]:
+            detail = "; ".join(sorted({s.get("reason", "no reason recorded")
+                                       for s in (unattributed or skipped_entries)})) or "none"
+            problems.append(
+                f"{model} ({cand_stem}): {len(skipped_entries)} judge skip(s) against "
+                f"{sp['errors']} run error(s), and {len(unattributed)} skip(s) carry no engine "
+                f"error — those produced no gradeable text on a successful call, which cannot "
+                f"be ranked ({detail}); re-run those cases")
             continue
 
         per_case = [json.loads(l) for l in open(per_case_path) if l.strip()]
+
+        # The language splits below are computed from per_case.jsonl while the
+        # headline pass rate comes from summary.json. A truncated detail file
+        # would therefore produce a report whose halves disagree, with nothing
+        # saying so. Two sources agreeing is evidence; only comparing them makes
+        # it evidence.
+        summary_scored = (summary.get("overall") or {}).get("total_scored")
+        if summary_scored is None or len(per_case) != summary_scored:
+            problems.append(
+                f"{model} ({cand_stem}): per_case.jsonl has {len(per_case)} rows but the "
+                f"summary reports total_scored={summary_scored}; the detail file is "
+                f"truncated or mismatched, so the language split cannot be trusted")
+            continue
 
         def split(pred):
             items = [x for x in per_case if pred(x)]
