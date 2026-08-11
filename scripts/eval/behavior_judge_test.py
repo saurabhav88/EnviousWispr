@@ -670,6 +670,28 @@ def test_shell_resume_names_a_pre_cacheable_receipt_separately():
     assert "predates the cacheable field" in log_absent, log_absent
 
 
+def test_shell_resume_does_not_call_a_corrupt_receipt_a_legacy_one():
+    """Review r1 P2. A two-way "does it carry the field" test answers false for
+    an unreadable file too, so a corrupt receipt was announced as "predates the
+    cacheable field" — a message asserting a cause it never observed, which is
+    the exact defect this pass exists to remove. Both still re-judge; only the
+    diagnostic differs, and hiding corruption behind "this file is just old" is
+    what sends the reader after the wrong thing."""
+    t = shell_tree("false")
+    run_shell(t)
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+
+    for label, body in (("malformed", "{not json"), ("non-object", "[1,2,3]")):
+        forge_stamp(t)
+        (d / "summary.json").write_text(body)
+        before = invocations(t)
+        _, log = run_shell(t)
+        assert invocations(t) > before, f"{label} must re-judge: {log}"
+        assert "unreadable or is not a JSON object" in log, f"{label}: {log}"
+        assert "predates" not in log, f"{label} was mislabelled as legacy: {log}"
+
+
 def test_shell_absent_cacheable_field_is_not_stamped():
     # Every receipt written before #2007 lacks the field.
     t = shell_tree("absent")
@@ -930,7 +952,7 @@ def test_report_refuses_a_truncated_detail_file():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 53
+EXPECTED_TESTS = 54
 
 
 def _run() -> int:

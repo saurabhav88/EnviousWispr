@@ -64,19 +64,28 @@ raise SystemExit(0 if receipt.get("cacheable") is True else 1)
 PY
 }
 
-# Distinguishes "the field is absent" from "the field says false" for the resume
-# message only. Deliberately NOT part of the caching decision: both cases fail
-# closed and are re-judged, so this changes what the reader is told and nothing
-# else. Fails closed the same way, because an unreadable receipt has no field.
-receipt_has_cacheable_field() {
+# Why the receipt was refused, for the resume MESSAGE only. Deliberately NOT
+# part of the caching decision: every state below fails closed and is re-judged,
+# so this changes what the reader is told and nothing else.
+#
+# Three states, not two. A two-way "does it have the field" test folds an
+# unreadable or non-object receipt in with a legacy one and announces "predates
+# the cacheable field" about a file it could not even parse — asserting a cause
+# it never observed, which is the whole defect this pass exists to remove.
+#   0 = object carrying `cacheable` (so the field says false)
+#   1 = object without it (written before #2007)
+#   2 = unreadable, malformed, or valid JSON that is not an object
+receipt_refusal_state() {
   python3 - "$1" <<'PY'
 import json, sys
 try:
     with open(sys.argv[1]) as f:
         receipt = json.load(f)
 except (OSError, json.JSONDecodeError):
-    raise SystemExit(1)
-raise SystemExit(0 if isinstance(receipt, dict) and "cacheable" in receipt else 1)
+    raise SystemExit(2)
+if not isinstance(receipt, dict):
+    raise SystemExit(2)
+raise SystemExit(0 if "cacheable" in receipt else 1)
 PY
 }
 for cand in "$CANDDIR"/*.jsonl; do
@@ -114,11 +123,12 @@ for cand in "$CANDDIR"/*.jsonl; do
       # so this is the path a reader actually meets. The post-judge branch below
       # keeps the plain wording deliberately: the judge that just wrote that
       # receipt always sets the field, so there `false` is the only way to get in.
-      if receipt_has_cacheable_field "$dest/summary.json"; then
-        reason="receipt is not cacheable"
-      else
-        reason="receipt predates the cacheable field"
-      fi
+      receipt_refusal_state "$dest/summary.json"
+      case $? in
+        0) reason="receipt is not cacheable" ;;
+        1) reason="receipt predates the cacheable field" ;;
+        *) reason="receipt is unreadable or is not a JSON object" ;;
+      esac
     else
       reason="candidates or corpus changed since its receipt"
     fi
