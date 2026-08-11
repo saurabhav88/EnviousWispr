@@ -232,6 +232,13 @@ scripts/eval/parakeet_runner/Package.resolved
 # does.
 !scripts/eval/run_ollama_type_b.py
 !scripts/eval/behavior_judge.py
+# Its self-test suite (#2007/#2008). MUST stay tracked: `build-check` — the only
+# REQUIRED check — invokes it by path, so an ignored copy makes the job fail with
+# "No such file or directory" on every PR, and there is no way to run a gate that
+# is not in the repo. Same reason as the block above, one step further: a
+# gitignored TEST is worse than a gitignored generator, because a green pipeline
+# then means nothing at all.
+!scripts/eval/behavior_judge_test.py
 # `render_bench_prompts.sh` builds this to render each model's REAL production
 # prompt, so without it the benchmark cannot be reproduced at the step that
 # decides WHICH prompt each model was given — the input the whole comparison

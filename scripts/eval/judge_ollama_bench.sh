@@ -27,6 +27,42 @@ mkdir -p "$OUTDIR"
 failed=()
 skipped=()
 unmeasurable=()
+incomplete=()
+
+# `shasum` is Perl-provided and is NOT guaranteed by the ubuntu-latest runner
+# image, which lists coreutils (and therefore `sha256sum`). Our own pr-check.yml
+# only uses `shasum` in the macOS jobs. Measured: the two emit byte-identical
+# `hash  filename` output, and the nested pipeline below agrees across
+# shasum|shasum, sha256sum|sha256sum and mixed — so this shim cannot invalidate a
+# stamp written by the other tool.
+sha256() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$@"
+  else
+    sha256sum "$@"
+  fi
+}
+
+# Is this receipt safe to cache AND to rank? Read the judge's own answer; never
+# infer it from the release verdict. `evaluate_new_gate` gives a quality failure
+# precedence over incompleteness, so a run that is BOTH quality-failed and
+# missing coverage reports BLOCK — and a verdict-based rule would stamp that
+# partial receipt as a finished one. Fails closed on a missing field, unreadable
+# file, or JSON that is valid but not an object; every receipt written before
+# #2007 lacks the field and is therefore re-judged once.
+receipt_cacheable() {
+  python3 - "$1" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        receipt = json.load(f)
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(1)
+if not isinstance(receipt, dict):
+    raise SystemExit(1)
+raise SystemExit(0 if receipt.get("cacheable") is True else 1)
+PY
+}
 for cand in "$CANDDIR"/*.jsonl; do
   base="$(basename "$cand" .jsonl)"
   dest="$OUTDIR/$base"
@@ -38,15 +74,27 @@ for cand in "$CANDDIR"/*.jsonl; do
   # numbers with the OLD quality scores and said nothing. Same shape as the two
   # holes above it: a result whose scope is quietly narrower than it looks.
   stamp="$dest/.inputs-sha256"
-  inputs_sha="$(shasum -a 256 "$cand" "$CORPUS" | shasum -a 256 | cut -d' ' -f1)"
+  inputs_sha="$(sha256 "$cand" "$CORPUS" | sha256 | cut -d' ' -f1)"
   if [ -f "$dest/summary.json" ]; then
-    if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$inputs_sha" ]; then
+    # Cacheability is checked HERE too, not only after judging. A matching stamp
+    # used to `continue` outright, so every arm already stamped with a partial
+    # receipt stayed skipped forever — including the ones this bug has already
+    # produced. Nonzero from the helper inside the final `&&` operand just makes
+    # the condition false; the script sets `set -uo pipefail` with no `errexit`.
+    if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$inputs_sha" ] \
+       && receipt_cacheable "$dest/summary.json"; then
       skipped+=("$base")
       continue
     fi
-    # Inputs moved under an existing receipt. Re-judge rather than trust it, and
-    # say so: a silent re-judge would hide that a previous report was mixed.
-    echo "=== re-judging $base: candidates or corpus changed since its receipt ===" >&2
+    # Re-judge rather than trust it, and say WHICH condition failed: reporting a
+    # non-cacheable receipt as a stamp mismatch sends the reader after the wrong
+    # thing entirely.
+    if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$inputs_sha" ]; then
+      reason="receipt is not cacheable"
+    else
+      reason="candidates or corpus changed since its receipt"
+    fi
+    echo "=== re-judging $base: $reason ===" >&2
     rm -rf "$dest"
   fi
   # A model that errored on EVERY case has no output to grade. Judging 20 empty
@@ -61,32 +109,38 @@ for cand in "$CANDDIR"/*.jsonl; do
     continue
   fi
   echo "=== judging $base ===" >&2
-  if python3 "$ROOT/scripts/eval/behavior_judge.py" \
-       --system new --corpus "$CORPUS" --candidates "$cand" --out "$dest" >&2; then
+  # The exit status is deliberately NOT the cacheability answer. behavior_judge
+  # exits nonzero for a BLOCK verdict as well as for a partial run, so the
+  # receipt itself is inspected either way — a graded-but-failed run IS a
+  # complete answer and must earn its stamp, or every weak model is re-judged
+  # forever, which is the expensive half.
+  python3 "$ROOT/scripts/eval/behavior_judge.py" \
+    --system new --corpus "$CORPUS" --candidates "$cand" --out "$dest" >&2 || true
+
+  if [ -f "$dest/summary.json" ] && receipt_cacheable "$dest/summary.json"; then
     printf '%s\n' "$inputs_sha" > "$stamp"
     echo "  ok $base" >&2
+  elif [ -f "$dest/summary.json" ]; then
+    # A receipt exists but is partial or internally inconsistent. Do NOT stamp:
+    # withholding the stamp is the whole recovery mechanism, because the resume
+    # branch above deletes and re-judges an unstamped receipt. Leaving the file
+    # in place keeps it readable for whoever investigates.
+    echo "  INCOMPLETE $base (receipt is not cacheable; left in place, not stamped)" >&2
+    incomplete+=("$base")
   else
-    # behavior_judge exits nonzero for BLOCK verdicts too, not only infra
-    # failure, so the presence of summary.json is what distinguishes "graded and
-    # failed the gate" from "never graded". Only the latter is an error here:
-    # this benchmark ranks models, it does not gate them.
-    if [ -f "$dest/summary.json" ]; then
-      # A graded-but-non-CLEAR run is a complete receipt for these inputs, so it
-      # earns a stamp exactly like a CLEAR one. Without this the next run would
-      # re-judge every weak model forever, which is the expensive half.
-      printf '%s\n' "$inputs_sha" > "$stamp"
-      echo "  ok $base (non-CLEAR verdict, expected for weak models)" >&2
-    else
-      echo "  FAILED $base" >&2
-      failed+=("$base")
-    fi
+    echo "  FAILED $base" >&2
+    failed+=("$base")
   fi
 done
 
 [ ${#skipped[@]} -gt 0 ] && echo "skipped (already judged): ${skipped[*]}" >&2
 [ ${#unmeasurable[@]} -gt 0 ] && echo "unmeasurable (every case errored): ${unmeasurable[*]}" >&2
-if [ ${#failed[@]} -gt 0 ]; then
-  echo "FAIL: ${#failed[@]} model(s) produced no summary.json: ${failed[*]}" >&2
+[ ${#incomplete[@]} -gt 0 ] && echo "incomplete (partial receipt, will be re-judged): ${incomplete[*]}" >&2
+if [ ${#failed[@]} -gt 0 ] || [ ${#incomplete[@]} -gt 0 ]; then
+  [ ${#failed[@]} -gt 0 ] && \
+    echo "FAIL: ${#failed[@]} model(s) produced no summary.json: ${failed[*]}" >&2
+  [ ${#incomplete[@]} -gt 0 ] && \
+    echo "FAIL: ${#incomplete[@]} model(s) produced a receipt that is not cacheable: ${incomplete[*]}" >&2
   exit 1
 fi
 echo "judged all models into $OUTDIR" >&2
