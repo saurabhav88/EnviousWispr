@@ -83,5 +83,25 @@ class V4AdversarialRunnerTests(unittest.TestCase):
         self.assertFalse(report["per_case"]["JUDGE-NONPASS"]["overall_pass"])
 
 
+EXPECTED_TESTS = 2
+
+
+def _main() -> int:
+    """Run the suite, but refuse to report success on a shrunken one (#2013).
+
+    `unittest.main()` exits 0 when it discovers ZERO tests, so wiring this into CI
+    without a count assertion would buy a green check that means nothing — the
+    failure this issue exists to fix, one layer in.
+    """
+    loader = unittest.TestLoader()
+    suite = loader.loadTestsFromModule(sys.modules[__name__])
+    found = suite.countTestCases()
+    if found != EXPECTED_TESTS:
+        print(f"FAIL: discovered {found} tests, expected {EXPECTED_TESTS}")
+        return 1
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    return 0 if result.wasSuccessful() else 1
+
+
 if __name__ == "__main__":
-    unittest.main()
+    sys.exit(_main())

@@ -648,6 +648,23 @@ jobs:
           # exits 0 when it discovers zero tests.
           python3 scripts/eval/behavior_judge_test.py
 
+      - name: Eval harness self-tests (#2013)
+        run: |
+          set -euo pipefail
+          # These two suites were TRACKED and had NEVER been executed by any CI
+          # job — 25 cases whose green status meant nothing, and which anyone
+          # reading the repo would reasonably assume were guarding something.
+          # Same class as #1965: a suite no gate invokes reports nothing, so
+          # nothing ever looks wrong. Worse than `0 tests`, which prints a zero.
+          #
+          # Neither subject imports outside the stdlib (alias_suggestion_gate:
+          # argparse difflib json os re subprocess sys; v4_adversarial_runner:
+          # argparse json os sys time datetime pathlib), so both run here under
+          # bare python3 with no pytest install. Each asserts its own exact test
+          # count, because both runners exit 0 on ZERO discovered tests.
+          python3 scripts/eval/tests/test_alias_scorer.py
+          python3 scripts/eval/tests/test_v4_adversarial_runner.py
+
       - name: Require both build lanes
         run: |
           if [ "${{ needs.build-debug.result }}" != "success" ] \
