@@ -59,13 +59,16 @@ struct ApplicationRelocationCoordinatorTests {
     private(set) var activatedURL: URL?
     private(set) var lastReason: String?
     private(set) var lastDestinationScope: String?
+    private(set) var lastExpectedVersion: String?
     func relaunch(
-      _ installedURL: URL, attemptID: String, reason: String, destinationScope: String
+      _ installedURL: URL, attemptID: String, reason: String, destinationScope: String,
+      expectedBundleVersion: String
     ) async -> Bool {
       relaunchCalls += 1
       lastAttemptID = attemptID
       lastReason = reason
       lastDestinationScope = destinationScope
+      lastExpectedVersion = expectedBundleVersion
       return success
     }
     func activateRunning(_ url: URL) async -> Bool {
@@ -163,6 +166,10 @@ struct ApplicationRelocationCoordinatorTests {
     bundleURL: URL,
     version: String = "2.3.0",
     relaunchAttemptID: String? = nil,
+    relaunchReason: String? = nil,
+    relaunchDestinationScope: String? = nil,
+    relaunchExpectedPath: String? = nil,
+    relaunchExpectedVersion: String? = nil,
     moverResult: Result<InstallResolution, RelocationFailure> = .success(
       .installed(URL(fileURLWithPath: "/Applications/EnviousWispr.app"), bundleVersion: "1.0")),
     now: Date = Date(timeIntervalSince1970: 1_000_000)
@@ -177,7 +184,10 @@ struct ApplicationRelocationCoordinatorTests {
     let coordinator = ApplicationRelocationCoordinator(
       env: RelocationEnvironment(
         bundleURL: bundleURL, bundleIdentifier: "com.enviouswispr.app",
-        currentVersion: version, relaunchAttemptID: relaunchAttemptID),
+        currentVersion: version, relaunchAttemptID: relaunchAttemptID,
+        relaunchReason: relaunchReason, relaunchDestinationScope: relaunchDestinationScope,
+        relaunchExpectedPath: relaunchExpectedPath,
+        relaunchExpectedVersion: relaunchExpectedVersion),
       detector: ApplicationLocationDetector(),
       suppression: suppression,
       presenter: presenter,
@@ -191,6 +201,70 @@ struct ApplicationRelocationCoordinatorTests {
     return Harness(
       coordinator: coordinator, suppression: suppression, presenter: presenter, mover: mover,
       relauncher: relauncher, handshake: handshake, telemetry: telemetry, terminate: terminate)
+  }
+
+  // MARK: Child completion is claimed ONLY by the copy we actually placed
+
+  /// A real, existing, writable path so the detector reports `.healthy`. With
+  /// a non-existent path the child is unhealthy and every "no completion"
+  /// assertion would pass VACUOUSLY, proving nothing about the guard.
+  private static var placedURL: URL { healthyURL }
+  private static var placedPath: String { placedURL.standardizedFileURL.path }
+
+  @Test("the expected child emits completed")
+  func childCompletedWhenItIsTheExpectedCopy() async {
+    let h = Self.makeHarness(
+      bundleURL: Self.placedURL, version: "2.3.0",
+      relaunchAttemptID: "attempt-1", relaunchReason: "translocated",
+      relaunchDestinationScope: "system_applications",
+      relaunchExpectedPath: Self.placedPath, relaunchExpectedVersion: "2.3.0")
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.telemetry.completedEvents.count == 1)
+    #expect(h.telemetry.completedEvents.first?.source == "child_health")
+    #expect(h.handshake.writes.first?.healthy == true)
+  }
+
+  @Test("a healthy child at ANOTHER path writes its ack but claims NO completion")
+  func childAtWrongPathDoesNotClaimCompletion() async {
+    // Launch Services can route an open request to a different registered copy.
+    // That copy is healthy, so without this guard it would report success for
+    // an attempt the parent is about to fail as ackPathMismatch — one attempt
+    // counted as BOTH, corrupting the success rate (whole-diff review P2).
+    let h = Self.makeHarness(
+      bundleURL: URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),
+      version: "2.3.0", relaunchAttemptID: "attempt-1", relaunchReason: "translocated",
+      relaunchDestinationScope: "system_applications",
+      relaunchExpectedPath: Self.placedPath, relaunchExpectedVersion: "2.3.0")
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.telemetry.completedEvents.isEmpty)
+    // The health ack is safety-critical and must STILL be written.
+    #expect(h.handshake.writes.count == 1)
+  }
+
+  @Test("a healthy child of the RIGHT path but wrong version claims no completion")
+  func childWithWrongVersionDoesNotClaimCompletion() async {
+    let h = Self.makeHarness(
+      bundleURL: Self.placedURL, version: "9.9.9",
+      relaunchAttemptID: "attempt-1", relaunchReason: "translocated",
+      relaunchDestinationScope: "system_applications",
+      relaunchExpectedPath: Self.placedPath, relaunchExpectedVersion: "2.3.0")
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.telemetry.completedEvents.isEmpty)
+    #expect(h.handshake.writes.count == 1)
+  }
+
+  @Test("an OLD parent's child still acks, and simply emits nothing")
+  func childFromOldParentStillAcks() async {
+    let h = Self.makeHarness(
+      bundleURL: Self.placedURL, relaunchAttemptID: "attempt-1")
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.telemetry.completedEvents.isEmpty)
+    #expect(h.handshake.writes.count == 1)
+    #expect(h.handshake.writes.first?.healthy == true)
   }
 
   // MARK: Detection

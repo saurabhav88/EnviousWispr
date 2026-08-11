@@ -258,11 +258,18 @@ public struct RelocationEnvironment: Sendable {
   /// suppress only the telemetry, never the health ack (#2006 §9).
   public let relaunchReason: String?
   public let relaunchDestinationScope: String?
+  /// The path and version the PARENT expects this child to be. The child emits
+  /// `completed` only when it matches BOTH, so a different registered copy that
+  /// Launch Services happened to open cannot report success for an attempt the
+  /// parent is about to fail (whole-diff review P2, #2006).
+  public let relaunchExpectedPath: String?
+  public let relaunchExpectedVersion: String?
 
   public init(
     bundleURL: URL, bundleIdentifier: String, currentVersion: String,
     relaunchAttemptID: String?, relaunchReason: String? = nil,
-    relaunchDestinationScope: String? = nil
+    relaunchDestinationScope: String? = nil, relaunchExpectedPath: String? = nil,
+    relaunchExpectedVersion: String? = nil
   ) {
     self.bundleURL = bundleURL
     self.bundleIdentifier = bundleIdentifier
@@ -270,6 +277,8 @@ public struct RelocationEnvironment: Sendable {
     self.relaunchAttemptID = relaunchAttemptID
     self.relaunchReason = relaunchReason
     self.relaunchDestinationScope = relaunchDestinationScope
+    self.relaunchExpectedPath = relaunchExpectedPath
+    self.relaunchExpectedVersion = relaunchExpectedVersion
   }
 
   /// Production environment read from the running process.
@@ -285,7 +294,9 @@ public struct RelocationEnvironment: Sendable {
       currentVersion: version,
       relaunchAttemptID: attemptID,
       relaunchReason: isRelaunch ? env["EW_RELOCATION_REASON"] : nil,
-      relaunchDestinationScope: isRelaunch ? env["EW_RELOCATION_DESTINATION_SCOPE"] : nil)
+      relaunchDestinationScope: isRelaunch ? env["EW_RELOCATION_DESTINATION_SCOPE"] : nil,
+      relaunchExpectedPath: isRelaunch ? env["EW_RELOCATION_EXPECTED_PATH"] : nil,
+      relaunchExpectedVersion: isRelaunch ? env["EW_RELOCATION_EXPECTED_VERSION"] : nil)
   }
 }
 
@@ -319,7 +330,8 @@ public protocol ApplicationMoving: Sendable {
 /// Launches the installed copy with the relaunch marker + attempt ID.
 public protocol RelocationRelaunching: Sendable {
   func relaunch(
-    _ installedURL: URL, attemptID: String, reason: String, destinationScope: String
+    _ installedURL: URL, attemptID: String, reason: String, destinationScope: String,
+    expectedBundleVersion: String
   ) async -> Bool
   /// Bring an ALREADY-running instance at this URL to the front (no new
   /// instance). Returns false if no such running instance is found.
@@ -470,7 +482,17 @@ public final class ApplicationRelocationCoordinator {
       // Telemetry metadata is best-effort and must NEVER gate the health ack
       // above: an OLD parent launches us without it, and a missing label must
       // cost only the `completed` event, never the handshake itself.
-      if healthy, let reason = env.relaunchReason,
+      // `completed` asserts a usable DESTINATION copy was observed, so the
+      // child must confirm it IS that copy before claiming it. Launch Services
+      // can route an open request to another registered copy; that copy is
+      // healthy, would emit success, and the parent would independently record
+      // a path/version mismatch — one attempt counted as both completed and
+      // failed, corrupting the success rate this change exists to produce
+      // (whole-diff review P2). Match the parent's own criteria exactly.
+      let isExpectedCopy =
+        env.relaunchExpectedPath == env.bundleURL.standardizedFileURL.path
+        && env.relaunchExpectedVersion == env.currentVersion
+      if healthy, isExpectedCopy, let reason = env.relaunchReason,
         let scope = env.relaunchDestinationScope
       {
         telemetry.completed(
@@ -647,7 +669,8 @@ public final class ApplicationRelocationCoordinator {
     guard
       await relauncher.relaunch(
         installedURL, attemptID: attemptID, reason: reason,
-        destinationScope: destination.scope)
+        destinationScope: destination.scope,
+        expectedBundleVersion: resolution.bundleVersion)
     else {
       presenter.dismissProgress()
       telemetry.failed(

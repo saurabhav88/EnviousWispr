@@ -548,7 +548,8 @@ public struct NSWorkspaceRelocationRelauncher: RelocationRelaunching {
   public init() {}
 
   public func relaunch(
-    _ installedURL: URL, attemptID: String, reason: String, destinationScope: String
+    _ installedURL: URL, attemptID: String, reason: String, destinationScope: String,
+    expectedBundleVersion: String
   ) async -> Bool {
     let config = NSWorkspace.OpenConfiguration()
     config.createsNewApplicationInstance = true
@@ -561,6 +562,10 @@ public struct NSWorkspaceRelocationRelauncher: RelocationRelaunching {
       "EW_RELOCATION_ATTEMPT_ID": attemptID,
       "EW_RELOCATION_REASON": reason,
       "EW_RELOCATION_DESTINATION_SCOPE": destinationScope,
+      // The child validates these before claiming completion, so a different
+      // registered copy cannot report success for our attempt (review P2).
+      "EW_RELOCATION_EXPECTED_PATH": installedURL.standardizedFileURL.path,
+      "EW_RELOCATION_EXPECTED_VERSION": expectedBundleVersion,
     ]
     return await withCheckedContinuation { continuation in
       NSWorkspace.shared.openApplication(at: installedURL, configuration: config) { app, error in
