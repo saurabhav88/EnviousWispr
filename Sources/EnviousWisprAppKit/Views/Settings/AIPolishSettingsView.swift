@@ -1683,6 +1683,16 @@ struct AIPolishSettingsView: View {
     let groups = OllamaCatalogPresentation.groups(from: catalog)
 
     VStack(alignment: .leading, spacing: 6) {
+      // #1950: stated ONCE, above the list, because it is true of local polish rather than of any
+      // one model. The best local result is 3 of 7 non-English cases and seven of the twelve
+      // models we measured pass zero of 7, so putting it only on the rows that fail worst would
+      // imply the others are fine. The string lives on the authority, not here, so there is one
+      // copy of the sentence.
+      Text(OllamaModelVerdicts.nonEnglishCaveat)
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+
       ForEach(groups.local) { entry in
         ollamaCatalogRow(
           entry, isPulling: isPulling, isLastInGroup: entry.id == groups.local.last?.id)

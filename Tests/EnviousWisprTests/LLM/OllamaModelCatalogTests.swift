@@ -136,6 +136,81 @@ struct OllamaModelCatalogTests {
     #expect(OllamaModelVerdicts.entry(for: "someones-finetune:7b").note.isEmpty)
   }
 
+  // MARK: - Suggestion ordering (#1950)
+
+  @Test("models with no acceptable output are offered last, in their original relative order")
+  func noAcceptableOutputModelsSortLast() throws {
+    let catalog = OllamaSetupService.dynamicCatalog(from: [])
+    let suggested = catalog.filter { $0.isDownloaded == false }.map(\.name)
+
+    // MUTATION CONTROL: drop the stable partition in `dynamicCatalog` and this fails, because the
+    // three no-acceptable-output models sit interspersed in the curated literal at positions 3, 5
+    // and 10.
+    #expect(
+      suggested == [
+        "gemma3n:e4b", "llama3.2", "mistral", "gemma2:2b", "gemma2", "qwen2.5:3b", "qwen2.5:7b",
+        "llama3.2:1b", "phi3", "tinyllama",
+      ])
+  }
+
+  @Test("the partition boundary is clean: every other verdict precedes not recommended")
+  func partitionBoundaryIsClean() {
+    let catalog = OllamaSetupService.dynamicCatalog(from: [])
+    let suggested = catalog.filter { $0.isDownloaded == false }
+    let lastOtherVerdict =
+      suggested.lastIndex { OllamaModelVerdicts.verdict(for: $0.name) != .notRecommended } ?? -1
+    let firstNotRecommended =
+      suggested.firstIndex { OllamaModelVerdicts.verdict(for: $0.name) == .notRecommended }
+      ?? suggested.count
+    #expect(lastOtherVerdict < firstNotRecommended)
+  }
+
+  @Test("relative order is preserved inside both partitions")
+  func relativeOrderPreservedInBothPartitions() {
+    let catalog = OllamaSetupService.dynamicCatalog(from: [])
+    let suggested = catalog.filter { $0.isDownloaded == false }.map(\.name)
+    let curated = OllamaSetupService.modelCatalog.map(\.name)
+
+    // Each partition must be a SUBSEQUENCE of the curated order, which is what distinguishes a
+    // stable partition from a sort that imposed an order the measurement cannot justify.
+    func isSubsequence(_ part: [String], of whole: [String]) -> Bool {
+      var remaining = whole[...]
+      for name in part {
+        guard let hit = remaining.firstIndex(of: name) else { return false }
+        remaining = remaining[(hit + 1)...]
+      }
+      return true
+    }
+    let otherVerdicts =
+      suggested.filter { OllamaModelVerdicts.verdict(for: $0) != .notRecommended }
+    let notRecommended =
+      suggested.filter { OllamaModelVerdicts.verdict(for: $0) == .notRecommended }
+    #expect(isSubsequence(otherVerdicts, of: curated))
+    #expect(isSubsequence(notRecommended, of: curated))
+  }
+
+  @Test("an installed model with no acceptable output is NOT moved behind the suggestions")
+  func installedModelsAreNotPartitioned() throws {
+    // `phi3` has no acceptable output and `qwen2.5:3b` is recommended, but both are INSTALLED, so
+    // they keep the downloaded segment's display-name order: "phi3" before "qwen2.5:3b".
+    // Reordering what someone already has is a different change, and nobody asked for it.
+    let catalog = OllamaSetupService.dynamicCatalog(
+      from: [downloaded("phi3"), downloaded("qwen2.5:3b")])
+    let installed = catalog.filter { $0.isDownloaded }.map(\.name)
+    let phiIndex = try #require(installed.firstIndex(of: "phi3"))
+    let qwenIndex = try #require(installed.firstIndex(of: "qwen2.5:3b"))
+    #expect(phiIndex < qwenIndex)
+  }
+
+  @Test("every installed model still precedes every suggestion")
+  func installedPrecedeSuggestions() {
+    let catalog = OllamaSetupService.dynamicCatalog(
+      from: [downloaded("phi3"), downloaded("qwen2.5:3b")])
+    let lastInstalled = catalog.lastIndex { $0.isDownloaded } ?? -1
+    let firstSuggested = catalog.firstIndex { $0.isDownloaded == false } ?? catalog.count
+    #expect(lastInstalled < firstSuggested)
+  }
+
   // MARK: - Canonical Name
 
   @Test("strips :latest suffix")

@@ -429,11 +429,30 @@ public final class OllamaSetupService {
     .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
 
     // Undownloaded suggestions (preserve static catalog order)
-    let suggestions: [OllamaModelCatalogEntry] = Self.modelCatalog.compactMap { entry in
+    let available: [OllamaModelCatalogEntry] = Self.modelCatalog.compactMap { entry in
       let canonical = Self.canonicalModelName(entry.name)
       guard !canonicalDownloaded.contains(canonical) else { return nil }
       return entry
     }
+
+    // #1950: models that produced no acceptable output in any of the twenty benchmark cases go
+    // LAST among the suggestions. They stay offered, which is the founder's decision, but a list
+    // that reads top to bottom should place every other offered model before them.
+    //
+    // A stable partition, not a sort: `filter` preserves relative order, so the seven other
+    // suggestions keep their curated sequence and so do the three at the bottom. A comparator over
+    // verdicts would have imposed an order inside each group that the measurement cannot justify.
+    //
+    // Asks the verdict authority rather than naming the three ids, so a re-benchmark that moves a
+    // model moves its position too, with no second list to remember.
+    //
+    // Scope is deliberately just this array: `downloadedEntries` is built above and keeps its own
+    // display-name order even for a model with no acceptable output, because reordering what
+    // someone already installed is a different change nobody asked for. Hosted suggestions are
+    // appended after this and are not partitioned either.
+    let suggestions =
+      available.filter { OllamaModelVerdicts.verdict(for: $0.name) != .notRecommended }
+      + available.filter { OllamaModelVerdicts.verdict(for: $0.name) == .notRecommended }
 
     // #1956: hosted suggestions, appended last so the two existing sections keep
     // their order and their meaning.
