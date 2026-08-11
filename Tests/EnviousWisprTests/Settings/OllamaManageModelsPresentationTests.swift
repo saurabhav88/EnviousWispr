@@ -197,6 +197,33 @@ struct OllamaManageModelsPresentationTests {
 
   // MARK: - #1956 helpers
 
+  // MARK: - Download confirmation policy (#1950)
+
+  @Test(
+    "only a model that passed nothing asks before downloading",
+    arguments: [
+      ("qwen2.5:3b", OllamaModelVerdict.recommended, false),
+      ("gemma2:2b", .mixed, false),
+      ("llama3.2", .unreliable, false),
+      ("tinyllama", .notRecommended, true),
+      ("someones-finetune:7b", .notTested, false),
+      ("eg-1", .firstParty, false),
+    ])
+  func downloadConfirmationPolicy(
+    modelID: String, expectedVerdict: OllamaModelVerdict, requiresConfirmation: Bool
+  ) {
+    // Assert the fixture's verdict FIRST. Without this the case could stop exercising its intended
+    // verdict after a re-benchmark moved that model, and the policy assertion would still pass
+    // while covering a different bucket than its name claims.
+    #expect(
+      OllamaModelVerdicts.verdict(for: modelID) == expectedVerdict,
+      "\(modelID) must be \(expectedVerdict) for this case to test what it says")
+
+    // Drives the REAL policy, not a copy of the condition.
+    #expect(
+      OllamaCatalogPresentation.requiresDownloadConfirmation(for: modelID) == requiresConfirmation)
+  }
+
   /// A catalog entry, built directly rather than through the daemon parser,
   /// because these policies take entries and the parse path is already covered
   /// above.

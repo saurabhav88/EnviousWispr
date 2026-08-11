@@ -302,6 +302,14 @@ struct AIPolishSettingsView: View {
   @State private var geminiKeySaved: Bool?
   @State private var claudeKeySaved: Bool?
 
+  /// #1950: the model id awaiting download confirmation, or nil.
+  ///
+  /// The id itself IS the state; there is deliberately no companion Boolean. A Boolean plus an id
+  /// can disagree, and the disagreement would be "which model did the user actually confirm".
+  /// `confirmPendingOllamaDownload` takes and clears this before any side effect, so the pull uses
+  /// the exact id that was requested even if the list re-renders underneath the dialog.
+  @State private var pendingOllamaDownload: String?
+
   private var isCloudProvider: Bool {
     settings.llmProvider == .openAI || settings.llmProvider == .gemini
       || settings.llmProvider == .claude
@@ -639,6 +647,29 @@ struct AIPolishSettingsView: View {
           }
         }
       }
+    }
+    // #1950: ONE confirmation for both local download entry points, mounted here on the shared
+    // container rather than per button, because two dialogs bound to the same state is how the two
+    // buttons would come to behave differently.
+    //
+    // Presented from a Binding COMPUTED off `pendingOllamaDownload`, so the id is the only stored
+    // state and every dismissal path routes through one setter: Cancel, Escape and clicking outside
+    // all land in the `set` closure and clear it. A separate `@State` Boolean would leave the id
+    // set after a dismissal nobody handled, and the next confirmation would fire on a stale model.
+    .confirmationDialog(
+      "This model did not pass any of our cleanup tests.",
+      isPresented: Binding(
+        get: { pendingOllamaDownload != nil },
+        set: { presented in if !presented { pendingOllamaDownload = nil } }
+      ),
+      titleVisibility: .visible
+    ) {
+      Button("Download anyway") { confirmPendingOllamaDownload() }
+      // Empty action deliberately, matching `CustomWordEditSheet` and `TranscriptHistoryView`.
+      // SwiftUI sets `isPresented` false on dismissal, which invokes the setter above and clears the
+      // id. Clearing it here too would mean two paths doing one job, and would contradict the claim
+      // that every dismissal routes through one setter.
+      Button("Cancel", role: .cancel) {}
     }
     .onAppear {
       // A thrown read leaves `openAIKey`/`geminiKey` at their existing
@@ -1312,7 +1343,10 @@ struct AIPolishSettingsView: View {
 
         HStack {
           Button("Download \(settings.ollamaModel)") {
-            setup.ollamaSetup.pullModel(settings.ollamaModel)
+            // #1950: through the funnel, not straight to `pullModel`. The shipped default is a
+            // recommended model so this normally downloads immediately, but a user who has changed
+            // the setting to something that failed every test gets asked first.
+            requestOllamaDownload(modelID: settings.ollamaModel)
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.small)
@@ -1872,6 +1906,40 @@ struct AIPolishSettingsView: View {
     return nil
   }
 
+  /// #1950: the ONE way a local model gets downloaded from this screen.
+  ///
+  /// Both local entry points call this: the guided no-model button and the catalog row's Download
+  /// button. They used to call `pullModel` independently, and #1956 already had to patch a guard
+  /// onto the second one after a sweep missed it ("the SECOND control that can reach `pullModel`").
+  /// A funnel makes that class of miss structural rather than something to remember.
+  private func requestOllamaDownload(modelID: String) {
+    guard OllamaCatalogPresentation.requiresDownloadConfirmation(for: modelID) else {
+      setup.ollamaSetup.pullModel(modelID)
+      return
+    }
+    pendingOllamaDownload = modelID
+  }
+
+  /// Confirm the pending download, taking the id atomically before acting on it.
+  ///
+  /// Take-and-clear first, for two reasons. The dialog outlives the tap that opened it, so the row
+  /// underneath can re-render or disappear; using `pendingOllamaDownload` after the side effect, or
+  /// reading `settings.ollamaModel` here, would let the list redirect what the user confirmed.
+  ///
+  /// Then re-check, because `pullModel` CANCELS any pull already in flight. Without this a stale
+  /// confirmation, sitting behind a dialog the user left open, would kill a download they started
+  /// afterwards. Also skips a model that finished downloading while the dialog was open.
+  private func confirmPendingOllamaDownload() {
+    guard let modelID = pendingOllamaDownload else { return }
+    pendingOllamaDownload = nil
+
+    guard setup.ollamaSetup.currentPullingModel == nil else { return }
+    let canonical = OllamaSetupService.canonicalModelName(modelID)
+    guard !setup.ollamaSetup.downloadedModelNames.contains(canonical) else { return }
+
+    setup.ollamaSetup.pullModel(modelID)
+  }
+
   /// Colour for a measured verdict (#1950).
   ///
   /// Exhaustive by construction: `OllamaModelVerdict` is package-visible across sibling targets of
@@ -1992,7 +2060,9 @@ struct AIPolishSettingsView: View {
             if entry.isRemote {
               Task { await setup.ollamaSetup.addHostedModel(advertisedID: entry.name) }
             } else {
-              setup.ollamaSetup.pullModel(entry.name)
+              // #1950: the funnel. Hosted Add above is untouched: a hosted model carries no
+              // measured verdict, so there is nothing to warn about.
+              requestOllamaDownload(modelID: entry.name)
             }
           } label: {
             Text(OllamaCatalogPresentation.actionLabel(for: entry))
