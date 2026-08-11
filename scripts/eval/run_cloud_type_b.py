@@ -47,8 +47,11 @@ Usage:
       --corpus scripts/eval/corpus/type_b_parakeet.jsonl \\
       --out scripts/eval/runs/type-b-luna/candidates.jsonl
 
-Score the result with the SAME judge the baseline used:
-  python3 scripts/eval/behavior_judge.py --system new --judge claude-sonnet-5 \\
+Score the result with the SAME judge every other arm of the comparison used. That is
+the harness default (`azure/gpt-5-6-luna` since 2026-08-11), unless you are extending
+an older Sonnet-graded set, in which case pass `--judge claude-sonnet-5` and re-grade
+the whole set rather than mixing:
+  python3 scripts/eval/behavior_judge.py --system new \\
     --corpus scripts/eval/corpus/type_b_parakeet.jsonl \\
     --candidates <out> --out <run-dir>/scores
 """

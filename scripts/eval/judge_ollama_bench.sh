@@ -1,21 +1,29 @@
 #!/bin/bash
 # Grade every model's #1950 benchmark candidates with the existing Type B scorer.
 #
-# ONE MODEL PER INVOCATION, SERIALLY. `behavior_judge.py`'s default judge is the
-# headless Claude CLI on the subscription ($0). Running the models concurrently
-# would put many CLI sessions in flight at once for no wall-clock benefit worth
-# the rate-limit risk, and the whole sweep is ~20 short calls.
+# ONE MODEL PER INVOCATION, SERIALLY. Running the models concurrently would put many
+# judge sessions in flight at once for no wall-clock benefit worth the rate-limit risk,
+# and the whole sweep is ~20 short calls.
 #
-# SAME JUDGE AS EVERY OTHER TYPE B NUMBER WE HOLD (claude-sonnet-5, the harness
-# default). polish-eval.md: never mix judge models within a comparison — a
-# different judge here would make these scores incomparable to #1914's and to
-# the 1,890-case research run, which is most of the value of reusing the harness.
+# WHICHEVER JUDGE `behavior_judge.py` DEFAULTS TO, resolved once below and then passed
+# explicitly. The judge is part of the resume stamp, so changing it invalidates every
+# stamped receipt and the next sweep re-grades the whole field instead of mixing two
+# judges in one scoreboard. Do not read that as "the sweep follows the default
+# automatically" — it does now, and only because the stamp was fixed to include the
+# judge; before that, 15 stamped Sonnet receipts would have been skipped straight
+# through a switch to a different judge. The 12-arm comparison that licensed the move
+# to the Azure credits is recorded on issue #1950.
 #
-# RESUMABLE. A model whose summary.json already exists is skipped, so an
-# interrupted sweep keeps its work.
+# RESUMABLE. A prior receipt is reused only when its summary.json is cacheable AND its
+# stamp matches the candidate file, the corpus and the judge; otherwise it is discarded.
+# An arm with judgeable output is then re-judged, while an arm whose every candidate
+# errored is reported as unmeasurable and never judged at all. So an interrupted sweep
+# keeps confirmed work without reusing a doubtful result.
 #
-# FAIL CLOSED per model: a judge failure leaves no summary.json, is reported at
-# the end, and exits nonzero. It never leaves a partial score that reads as real.
+# FAIL CLOSED per model: a judge failure that leaves no summary.json is reported at the
+# end and exits nonzero. An INCOMPLETE receipt is deliberately kept on disk for diagnosis
+# but never stamped, so it is re-judged next run; it is reported and also exits nonzero.
+# Neither can be mistaken for a finished score.
 set -uo pipefail
 
 CORPUS="${1:?usage: judge_ollama_bench.sh <corpus.jsonl> <candidates-dir> <judged-dir>}"
@@ -28,6 +36,22 @@ failed=()
 skipped=()
 unmeasurable=()
 incomplete=()
+
+# Resolve the judge ONCE, from `behavior_judge.py` itself rather than from a second
+# default written here. Two defaults are a drift bug waiting to happen, and this one
+# would be invisible: the stamp would record the shell's idea of the judge while a
+# different judge did the grading. Reading DEFAULT_JUDGE also honours EW_JUDGE for
+# free, because that is where the override already lives.
+#
+# Fails closed. An empty answer would otherwise stamp `judge=` on every arm and make
+# all receipts look mutually comparable, which is the failure this whole change exists
+# to prevent.
+JUDGE="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import behavior_judge; print(behavior_judge.DEFAULT_JUDGE)' "$ROOT/scripts/eval" 2>/dev/null)"
+if [ -z "$JUDGE" ]; then
+  echo "FATAL: could not resolve the default judge from behavior_judge.py" >&2
+  exit 2
+fi
+echo "=== judge: $JUDGE ===" >&2
 
 # `shasum` is Perl-provided and is NOT guaranteed by the ubuntu-latest runner
 # image, which lists coreutils (and therefore `sha256sum`). Our own pr-check.yml
@@ -101,7 +125,19 @@ for cand in "$CANDDIR"/*.jsonl; do
   # numbers with the OLD quality scores and said nothing. Same shape as the two
   # holes above it: a result whose scope is quietly narrower than it looks.
   stamp="$dest/.inputs-sha256"
-  inputs_sha="$(sha256 "$cand" "$CORPUS" | sha256 | cut -d' ' -f1)"
+  # The JUDGE is part of the inputs. Without it a receipt graded by one judge is
+  # silently reused after the default changes, which is exactly what would have
+  # happened on 2026-08-11: 15 arms carried stamped, cacheable Sonnet receipts, so a
+  # sweep under the new Azure default would have skipped every one and produced a
+  # scoreboard mixing two judges with nothing saying so. The receipt records its own
+  # judge in `meta.judge`, so the mixing was detectable and simply never checked.
+  #
+  # Consequence, and it is intended: changing the judge invalidates every stamp and
+  # the next sweep re-grades the full field. That is the only way a comparison stays
+  # a comparison, and it is affordable precisely because the new judge is cheap.
+  inputs_sha="$(
+    { printf 'judge=%s\n' "$JUDGE"; sha256 "$cand" "$CORPUS"; } | sha256 | cut -d' ' -f1
+  )"
   if [ -f "$dest/summary.json" ]; then
     # Cacheability is checked HERE too, not only after judging. A matching stamp
     # used to `continue` outright, so every arm already stamped with a partial
@@ -156,8 +192,12 @@ for cand in "$CANDDIR"/*.jsonl; do
   # receipt itself is inspected either way — a graded-but-failed run IS a
   # complete answer and must earn its stamp, or every weak model is re-judged
   # forever, which is the expensive half.
+  # `--judge "$JUDGE"` explicitly, never the implicit default: the judge that grades
+  # must be the same value that went into the stamp, and letting each side resolve it
+  # independently is how they drift.
   python3 "$ROOT/scripts/eval/behavior_judge.py" \
-    --system new --corpus "$CORPUS" --candidates "$cand" --out "$dest" >&2 || true
+    --system new --judge "$JUDGE" \
+    --corpus "$CORPUS" --candidates "$cand" --out "$dest" >&2 || true
 
   if [ -f "$dest/summary.json" ] && receipt_cacheable "$dest/summary.json"; then
     printf '%s\n' "$inputs_sha" > "$stamp"

@@ -630,9 +630,15 @@ jobs:
           python3 Tests/RuntimeUAT/ptt_binding.py --self-test
           python3 Tests/RuntimeUAT/faultInjection.py --self-test
 
-      - name: Judge-receipt completeness contract (#2007/#2008)
+      - name: Judge receipt + billing contracts (#2007/#2008)
         run: |
           set -euo pipefail
+          # Also carries the judge BILLING gate: grading on a personal vendor API key is
+          # banned. Routing and the billing classification both derive from one route
+          # table, and an unrecognised id is refused before either funded transport can
+          # run — the personal-key transports were deleted outright, so there is nothing
+          # for a typo to fall through to.
+          #
           # A judge run that dropped work must never read as a complete receipt.
           # Three layers have to agree: behavior_judge.py detects the gap,
           # judge_ollama_bench.sh refuses to cache a partial receipt, and

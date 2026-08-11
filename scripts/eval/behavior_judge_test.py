@@ -31,6 +31,8 @@ TWO STUB LAYERS, BOTH CHOSEN SO THE TEST REACHES ITS SUBJECT.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -106,26 +108,41 @@ def checks_of(receipt):
 
 STUB_JUDGE = '''\
 import sys, json, pathlib
-a = sys.argv
-out = a[a.index("--out") + 1]
-d = pathlib.Path(out); d.mkdir(parents=True, exist_ok=True)
-(d.parent / "_invocations").open("a").write("call\\n")
-mode = {mode!r}
-if mode == "noreceipt":
-    sys.exit(1)
-if mode == "nonobject":
-    (d / "summary.json").write_text("[1,2,3]")
-    sys.exit(1)
-if mode == "badjson":
-    (d / "summary.json").write_text("{{not json")
-    sys.exit(1)
-r = {{"release_gate": {{"verdict": "BLOCK"}}, "skipped": [], "missing_scores": []}}
-if mode == "true":
-    r["cacheable"] = True
-elif mode == "false":
-    r["cacheable"] = False
-json.dump(r, open(d / "summary.json", "w"))
-sys.exit(0 if mode == "true" else 1)
+
+# The shell IMPORTS this module to resolve the default judge, so the module body must
+# survive an import with no argv. Before the judge became part of the resume stamp the
+# stub was only ever executed, and a stub that raises on import made the script exit 2
+# at startup while every shell test still passed — they assert what a receipt or stamp
+# does NOT contain, which is trivially true of a script that never ran.
+import os
+# Honours EW_JUDGE exactly as the real module does, so a test can change the judge the
+# script resolves without editing the stub.
+DEFAULT_JUDGE = os.environ.get("EW_JUDGE", "azure/stub-judge")
+
+# Guarded so an IMPORT is side-effect free and exit-free. `sys.exit` at module level
+# would raise SystemExit through the import and leave the caller with no value, which
+# looks identical to a stub that crashed.
+if __name__ == "__main__":
+    a = sys.argv
+    out = a[a.index("--out") + 1]
+    d = pathlib.Path(out); d.mkdir(parents=True, exist_ok=True)
+    (d.parent / "_invocations").open("a").write("call\\n")
+    mode = {mode!r}
+    if mode == "noreceipt":
+        sys.exit(1)
+    if mode == "nonobject":
+        (d / "summary.json").write_text("[1,2,3]")
+        sys.exit(1)
+    if mode == "badjson":
+        (d / "summary.json").write_text("{{not json")
+        sys.exit(1)
+    r = {{"release_gate": {{"verdict": "BLOCK"}}, "skipped": [], "missing_scores": []}}
+    if mode == "true":
+        r["cacheable"] = True
+    elif mode == "false":
+        r["cacheable"] = False
+    json.dump(r, open(d / "summary.json", "w"))
+    sys.exit(0 if mode == "true" else 1)
 '''
 
 
@@ -153,7 +170,33 @@ def run_shell(t, env=None):
         ["bash", str(t / "scripts" / "eval" / "judge_ollama_bench.sh"),
          str(t / "corpus.jsonl"), str(t / "cand"), str(t / "judged")],
         capture_output=True, text=True, env=env)
-    return p.returncode, p.stdout + p.stderr
+    out = p.stdout + p.stderr
+    # COMPLETED-THE-SUBJECT GUARD. Several shell cases assert that something is absent —
+    # no stamp, no second invocation, a particular refusal wording — and each of those is
+    # also true of a script that died before doing any work. So an early death must be an
+    # error here rather than a silent pass in each case. This fired for real: adding the
+    # judge to the stamp made the script resolve it by importing the module, the stub
+    # raised on import, and the whole suite stayed green while judging nothing.
+    #
+    # Asserts the script reached one of its two TERMINAL outcomes rather than the absence
+    # of one known error string. A guard written the second way only catches the failure
+    # its author already met — a syntax error, a missing command, or the next unforeseen
+    # early exit would sail through it, which is the same fail-open shape as a denylist.
+    # Reads the LAST non-empty stderr line, not any line anywhere. Scanning all output
+    # would let a nested program's own "FAIL:" satisfy the shell's terminal condition —
+    # no current fixture does that, but the guard would be asserting the wrong thing.
+    #
+    # NORMAL completion of the model loop ends in one of two lines: a FAIL: block then
+    # `exit 1`, or the success line. Setup failures exit before either (missing
+    # arguments, an unresolvable judge) and so does any other early death, which is
+    # precisely what this guard is here to reject. Once one of the two IS present, it is
+    # the last non-empty line and it is the shell's verdict.
+    terminal = next((ln for ln in reversed(p.stderr.splitlines()) if ln.strip()), "")
+    completed = terminal.startswith("judged all models into ")
+    reported_failure = terminal.startswith("FAIL: ")
+    assert completed or reported_failure, (
+        f"the script never reached a terminal outcome, so this case tested nothing:\n{out}")
+    return p.returncode, out
 
 
 def invocations(t):
@@ -165,16 +208,23 @@ def stamped(t):
     return (t / "judged" / "modelA" / ".inputs-sha256").exists()
 
 
-def forge_stamp(t):
+def forge_stamp(t, judge=None):
     """Write a stamp that genuinely MATCHES, so the resume fast path is entered
     and only the cacheability check can stop the skip. Computed exactly as the
     script does — over the same absolute argv paths, since the hash covers
-    filenames. Without it the stamp is absent, the fast path is never reached,
-    and a case would pass while testing the stale-inputs branch instead."""
+    filenames, and now over the JUDGE, which is part of the inputs. Without it the
+    stamp is absent, the fast path is never reached, and a case would pass while
+    testing the stale-inputs branch instead.
+
+    `judge` defaults to the stub's DEFAULT_JUDGE, i.e. what the script itself will
+    resolve. Pass a different value to forge a stamp from a DIFFERENT judge, which is
+    what makes "a judge change invalidates the stamp" testable."""
+    judge = judge if judge is not None else "azure/stub-judge"
     forged = subprocess.run(
         ["bash", "-c",
          'if command -v shasum >/dev/null 2>&1; then H="shasum -a 256"; else H=sha256sum; fi; '
-         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}" | $H | cut -d" " -f1'],
+         f'{{ printf "judge=%s\\n" "{judge}"; '
+         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}"; }} | $H | cut -d" " -f1'],
         capture_output=True, text=True).stdout.strip()
     assert forged, "could not compute a stamp"
     (t / "judged" / "modelA" / ".inputs-sha256").write_text(forged + "\n")
@@ -779,6 +829,66 @@ def test_both_layers_give_the_same_diagnosis_for_the_same_receipt():
         assert "Traceback" not in out, f"{receipt} raised: {out}"
 
 
+def test_a_receipt_from_a_different_judge_is_re_judged():
+    # THE finding this guards: the stamp used to cover only candidates + corpus, so a
+    # cacheable receipt graded by one judge was skipped after the default changed. On
+    # 2026-08-11 that was 15 stamped Sonnet arms, and the sweep would have produced a
+    # scoreboard silently mixing two judges.
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": []}))
+
+    # A stamp that is valid in every respect EXCEPT the judge.
+    forge_stamp(t, judge="claude-sonnet-5")
+    before = invocations(t)
+    _, log = run_shell(t)
+    assert invocations(t) > before, (
+        f"a receipt from another judge was skipped instead of re-judged:\n{log}")
+
+
+def test_a_receipt_from_the_same_judge_is_still_skipped():
+    # TWO-WAY CONTROL. Without this, a stamp that never matches would pass the test
+    # above while re-grading every arm on every sweep — which is the expensive failure,
+    # and the one that looks like nothing is wrong.
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": []}))
+
+    forge_stamp(t)  # the judge the script will actually resolve
+    before = invocations(t)
+    _, log = run_shell(t)
+    assert invocations(t) == before, f"a matching receipt was re-judged anyway:\n{log}"
+    assert "skipped (already judged)" in log, log
+
+
+def test_the_stamp_the_script_writes_depends_on_the_judge():
+    # Reads the stamp the REAL script wrote, not one this file computed: a fixture-only
+    # comparison would verify forge_stamp and pass even with the script's stamp
+    # unchanged, which is precisely how a mutation slips through.
+    # ONE tree for both runs. The stamp hashes absolute filenames, so two temp trees
+    # produce different stamps whatever the judge is — a version of this test using a
+    # fresh tree per run passed with the judge stripped back out of the stamp, i.e. it
+    # measured the temp path and not the thing under test.
+    t = shell_tree("true")
+    stamp_file = t / "judged" / "modelA" / ".inputs-sha256"
+
+    def stamp_under(judge):
+        _, log = run_shell(t, env=dict(os.environ, EW_JUDGE=judge))
+        assert f"judge: {judge}" in log, f"script did not resolve {judge}: {log}"
+        assert stamp_file.exists(), f"no stamp written for {judge}: {log}"
+        return stamp_file.read_text().strip()
+
+    a = stamp_under("claude-sonnet-5")
+    b = stamp_under("azure/gpt-5-6-luna")
+    assert a and b and a != b, f"the script's stamp ignores the judge: {a} == {b}"
+
+
 def test_shell_absent_cacheable_field_is_not_stamped():
     # Every receipt written before #2007 lacks the field.
     t = shell_tree("absent")
@@ -1273,12 +1383,251 @@ def test_report_refuses_a_truncated_detail_file():
 
 
 # --------------------------------------------------------------------------- #
+# judge billing gate                                                          #
+# --------------------------------------------------------------------------- #
+
+def _routed_transport(model):
+    """Which transport `dispatch_judge` actually reaches for `model`, with both stubbed
+    so nothing touches a network or a CLI. Returns None when the call is refused.
+
+    Drives the REAL dispatcher rather than restating its rules, so this cannot agree
+    with a router that has changed underneath it."""
+    originals = {n: getattr(bj, f"call_{n}") for n in ("azure", "claude")}
+    for n in originals:
+        setattr(bj, f"call_{n}", (lambda x: lambda *a, **k: x)(n))
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            return bj.dispatch_judge(model, "sys", "usr")
+    except SystemExit:
+        return None
+    finally:
+        for n, fn in originals.items():
+            setattr(bj, f"call_{n}", fn)
+
+
+# `gpt-5-6-luna` is the important trap: it is the Azure DEPLOYMENT name, so without the
+# `azure/` prefix it reads as an OpenAI model id and no funded route accepts it.
+BILLING_IDS = [
+    "azure/gpt-5-6-luna", "azure/anything",
+    "claude-sonnet-5", "claude-opus-5", "sonnet",
+    "gpt-4o", "gpt-5-6-luna", "gemini-3-pro",
+    "mistral-large", "llama-3", "claude/foo", "AZURE/gpt-5-6-luna", "",
+]
+
+
+def test_billing_gate_agrees_with_the_router_on_every_id():
+    # Both answers are DERIVED from JUDGE_ROUTES, so this is a consistency check on the
+    # table rather than on two hand-written lists: a refused id must reach no transport,
+    # and a permitted id must reach one.
+    for model in BILLING_IDS:
+        transport = _routed_transport(model)
+        unfunded = bj.judge_lacks_funded_route(model)
+        assert unfunded == (transport is None), (
+            f"{model!r} reached transport {transport!r} but the gate says "
+            f"lacks_funded_route={unfunded}")
+
+
+def test_every_funded_route_has_a_transport_branch():
+    # A route added to the table with no branch in dispatch_judge would raise. Exhaustive
+    # over the table itself, so it covers rows added after this test was written — which
+    # a fixed id list cannot do.
+    for prefix, transport in bj.JUDGE_ROUTES:
+        assert _routed_transport(f"{prefix}probe") == transport, (
+            f"route {prefix!r} does not reach transport {transport!r}")
+
+
+def test_an_unrecognised_judge_id_reaches_no_transport_at_all():
+    # The original defect: a denylist of gpt/gemini prefixes let an unknown id through
+    # and dispatch billed it to the personal Gemini key. Now there is no such transport
+    # to reach, and the dispatcher refuses before looking for one.
+    for model in ("mistral-large", "gpt-4o", "gemini-3-pro", ""):
+        assert _routed_transport(model) is None, model
+        assert bj.judge_lacks_funded_route(model), model
+
+
+def test_the_personal_key_transports_do_not_exist():
+    # Deleted rather than unrouted: a refusal is a promise, an absent function is a fact.
+    # This is the check that notices a well-meaning restore.
+    for gone in ("call_openai", "call_gemini"):
+        assert not hasattr(bj, gone), (
+            f"{gone} is back. Grading may not bill a personal key; restoring a paid "
+            f"transport here needs a founder decision.")
+
+
+def test_dispatch_refuses_without_help_from_main():
+    # The gate must hold for a caller that never goes through main(), which is what
+    # `score_new`/`run_judge`/a future sibling script would do.
+    with contextlib.redirect_stderr(io.StringIO()) as err:
+        try:
+            bj.dispatch_judge("gpt-4o", "sys", "usr")
+        except SystemExit as e:
+            assert e.code == 2
+        else:
+            raise AssertionError("dispatch_judge did not refuse a personal-key id")
+    assert "REFUSED" in err.getvalue()
+
+
+def test_the_azure_deployment_name_without_its_prefix_is_refused():
+    # `gpt-5-6-luna` is what our Azure resource calls the deployment. Bare, it reads as
+    # an OpenAI id, and it is refused so it cannot be mistaken for one that is funded.
+    assert bj.judge_lacks_funded_route("gpt-5-6-luna")
+    assert not bj.judge_lacks_funded_route("azure/gpt-5-6-luna")
+
+
+def test_refusal_exits_two_and_names_the_funded_alternative():
+    for model in ("gpt-4o", "gemini-3-pro", "mistral-large"):
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err):
+                bj.refuse_paid_key_judge(model)
+        except SystemExit as e:
+            assert e.code == 2, (model, e.code)
+        else:
+            raise AssertionError(f"{model} was not refused")
+        assert "azure/gpt-5-6-luna" in err.getvalue(), err.getvalue()
+
+
+def test_the_two_funded_judges_are_not_refused():
+    # Two-way control: without this, a gate that refuses EVERY id passes the tests
+    # above while making the harness unusable.
+    for model in ("azure/gpt-5-6-luna", "claude-sonnet-5"):
+        with contextlib.redirect_stderr(io.StringIO()):
+            bj.refuse_paid_key_judge(model)     # must not raise SystemExit
+
+
+@contextlib.contextmanager
+def _azure_reply(payload):
+    """Run call_azure against a canned response body, with the secrets stubbed so this
+    works on a runner that has no Azure credentials at all.
+
+    The stub endpoint is a REAL-shaped Azure host, because `_validated_azure_endpoint`
+    now refuses anything else — a placeholder like `https://stub.invalid` would make
+    every transport test fail for the wrong reason and hide whatever it was checking."""
+    class _Resp:
+        def read(self): return json.dumps(payload).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _Opener:
+        def open(self, *a, **k): return _Resp()
+
+    real_key, real_opener = bj._key, bj._no_redirect_opener
+    bj._key = (lambda name: "https://stub-test.openai.azure.com"
+               if "endpoint" in name else "stub-key")
+    bj._no_redirect_opener = lambda: _Opener()
+    try:
+        yield
+    finally:
+        bj._key, bj._no_redirect_opener = real_key, real_opener
+
+
+def _azure_error(payload):
+    with _azure_reply(payload):
+        try:
+            bj.call_azure("gpt-5-6-luna", "s", "u")
+        except RuntimeError as e:
+            return str(e)
+    raise AssertionError(f"call_azure accepted {payload!r}")
+
+
+def test_azure_returns_the_assistant_text_on_a_good_reply():
+    with _azure_reply({"choices": [{"message": {"content": "  [] "},
+                                   "finish_reason": "stop"}]}):
+        assert bj.call_azure("gpt-5-6-luna", "s", "u") == "[]"
+
+
+def test_azure_names_the_token_cap_when_the_budget_ran_out():
+    # Measured shape: this deployment reasons, so exhausting the budget yields
+    # finish_reason='length' with EMPTY content, not a half-written array. The operator
+    # action is a cap or chunk-size change, so the message has to say so.
+    msg = _azure_error({"choices": [{"message": {"content": ""},
+                                     "finish_reason": "length"}]})
+    assert "max_completion_tokens" in msg and "chunk-size" in msg, msg
+
+
+def test_azure_distinguishes_a_dropped_reply_from_a_token_cap():
+    # Same empty body, different finish_reason: a dropped chunk is the #1950 failure and
+    # raising the cap would not help, so it must not borrow the cap's advice.
+    msg = _azure_error({"choices": [{"message": {"content": ""},
+                                     "finish_reason": "stop"}]})
+    assert "max_completion_tokens" not in msg, msg
+    assert "empty content" in msg, msg
+
+
+def test_azure_refuses_a_reply_with_no_choices():
+    assert "no choices" in _azure_error({"choices": []})
+
+
+@contextlib.contextmanager
+def _endpoint(value):
+    """Point the endpoint lookup at `value` without touching the real environment."""
+    real = bj._key
+    bj._key = lambda name: value if "endpoint" in name else "stub-key"
+    try:
+        yield
+    finally:
+        bj._key = real
+
+
+def test_a_non_azure_endpoint_is_refused_before_the_key_is_read():
+    # The risk: `_key` reads the environment first, so an inherited or mistyped
+    # AZURE_OPENAI_ENDPOINT would send our api-key header to somebody else's host.
+    for bad in ("https://evil.example.com", "http://x.openai.azure.com",
+                "https://x.openai.azure.com/steal", "https://x.openai.azure.com?q=1",
+                "https://openai.azure.com.evil.test", ""):
+        try:
+            with _endpoint(bad):
+                bj._validated_azure_endpoint()
+        except RuntimeError as e:
+            assert "refusing to send the Azure key" in str(e), (bad, str(e))
+        else:
+            raise AssertionError(f"accepted endpoint {bad!r}")
+
+
+def test_a_real_azure_endpoint_is_accepted():
+    # Two-way control: a validator that refuses everything would pass the test above
+    # while making the judge unusable. Both suffixes ACCEPTED FOR THIS ROUTE must pass.
+    # Deliberately not "every hostname Azure issues": Foundry exposes more FQDN families
+    # than these two, and not all of them serve this legacy chat-completions route, so
+    # this list is our accepted set rather than a claim about Azure's naming.
+    for good in ("https://x.openai.azure.com", "https://x.openai.azure.com/",
+                 "https://y.cognitiveservices.azure.com"):
+        with _endpoint(good):
+            assert bj._validated_azure_endpoint() == good.rstrip("/")
+
+
+def test_a_redirect_is_refused_rather_than_followed():
+    # A validated host can still 3xx to an arbitrary one, and urllib replays the headers
+    # we set on the Request, so the endpoint check alone does not contain the key.
+    handler = bj._no_redirect_opener().handlers
+    redirect = [h for h in handler if hasattr(h, "redirect_request")]
+    assert redirect, "no redirect handler installed"
+    try:
+        redirect[0].redirect_request(None, None, 302, "Found", {},
+                                     "https://evil.example.com/x")
+    except RuntimeError as e:
+        assert "refusing to follow" in str(e), str(e)
+    else:
+        raise AssertionError("redirect_request did not refuse")
+
+
+def test_the_billing_check_runs_before_the_availability_check():
+    # Refusing to spend the founder's own money must not depend on whether some CLI
+    # happens to be logged in, so the order in main() is load-bearing.
+    src = Path(bj.__file__).read_text()
+    body = src.split("def main(")[1]
+    assert body.index("refuse_paid_key_judge(args.judge)") \
+        < body.index("preflight_judge(args.judge)"), \
+        "refuse_paid_key_judge must be called before preflight_judge in main()"
+
+
+# --------------------------------------------------------------------------- #
 # runner                                                                      #
 # --------------------------------------------------------------------------- #
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 67
+EXPECTED_TESTS = 86
 
 
 def _run() -> int:
