@@ -902,10 +902,15 @@ test("a collapse reconciles classification conservatively, never by sort order",
   // under "LOST THE DICTATION" (Codex review r4).
   assert.equal(merged.label, "app crash (EXC_BAD_ACCESS)");
   const text = lines.join("\n");
-  const lostIndex = text.indexOf("LOST THE DICTATION");
-  assert.ok(lostIndex >= 0);
   assert.doesNotMatch(text, /paste fell back to the clipboard/,
     "a degraded label must not survive into a lost row");
+
+  // AND THE DISPLACED LABEL MUST STILL BE DISCLOSED. This assertion is the one
+  // that was missing: an earlier version replaced the label before comparing
+  // them, so the paste row was swallowed with no trace, and this test passed
+  // anyway because it only checked that the old label was GONE (cloud review r2).
+  assert.match(text, /app crash \(EXC_BAD_ACCESS\) and 1 other failure on the same issue/);
+  assert.equal(merged.mergedLabels.size, 2);
 });
 
 test("a merge of two same-severity labels discloses what it does not name", async () => {

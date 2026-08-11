@@ -616,6 +616,16 @@ export async function fetchSentrySection(env, window, opts = {}) {
     // each other, and the founder acts on that split. So the label is taken from
     // the row whose classification WON; a label that no longer matches its
     // heading is worse than a less specific one.
+    // ORDER IS LOAD-BEARING: record the differing labels BEFORE any replacement.
+    // Written the other way round first, the severity flip overwrote
+    // `existing.label` and the comparison below then saw two equal strings, so a
+    // displaced degraded label was swallowed with no disclosure at all — the
+    // exact case the disclosure exists for, silently defeated by statement
+    // order (cloud review r2).
+    if (row.label !== existing.label) {
+      existing.mergedLabels = existing.mergedLabels || new Set([existing.label]);
+      existing.mergedLabels.add(row.label);
+    }
     if (row.group === LOST && existing.group !== LOST) {
       existing.group = LOST;
       existing.label = row.label;
