@@ -349,9 +349,13 @@ public protocol RelocationHandshaking: Sendable {
   /// `stateLabel` and `bundleVersion` are optional on the wire: an ack written
   /// by an OLDER child carries neither, and absence must mean UNKNOWN, never
   /// mismatch, or every cross-version handoff breaks (#2006 §4).
+  /// Returns whether the ack was actually PUBLISHED. A silent failure here
+  /// (unwritable Application Support, full disk) means the parent will never
+  /// see it and will time out, so the child must not then claim success.
+  @discardableResult
   func writeAck(
     attemptID: String, resolvedPath: String, healthy: Bool, stateLabel: String?,
-    bundleVersion: String?)
+    bundleVersion: String?) -> Bool
 }
 
 /// Bounded `update.relocation_*` telemetry. Live impl forwards to
@@ -473,7 +477,7 @@ public final class ApplicationRelocationCoordinator {
       // Version lets the parent tell "our copy came up" from "some other
       // registered copy answered" — Launch Services may route an open request
       // to an already-registered bundle (#2006 §3.2).
-      handshake.writeAck(
+      let ackPublished = handshake.writeAck(
         attemptID: attemptID,
         resolvedPath: env.bundleURL.standardizedFileURL.path,
         healthy: healthy,
@@ -482,17 +486,31 @@ public final class ApplicationRelocationCoordinator {
       // Telemetry metadata is best-effort and must NEVER gate the health ack
       // above: an OLD parent launches us without it, and a missing label must
       // cost only the `completed` event, never the handshake itself.
-      // `completed` asserts a usable DESTINATION copy was observed, so the
-      // child must confirm it IS that copy before claiming it. Launch Services
-      // can route an open request to another registered copy; that copy is
-      // healthy, would emit success, and the parent would independently record
-      // a path/version mismatch — one attempt counted as both completed and
-      // failed, corrupting the success rate this change exists to produce
-      // (whole-diff review P2). Match the parent's own criteria exactly.
+      // THE RULE FOR THIS EVENT, enumerated once rather than patched per
+      // instance (two review rounds found two members of the same class):
+      // `completed` asserts "a usable DESTINATION copy was observed", so the
+      // child emits it only when it has VERIFIED every part of that claim:
+      //   1. it is healthy;
+      //   2. it IS the copy the parent placed — Launch Services can route an
+      //      open request to another registered copy, which would be healthy
+      //      and would claim success for an attempt the parent fails as a
+      //      path/version mismatch;
+      //   3. its ack was actually published — a silent write failure means the
+      //      parent times out and fails the attempt.
+      // Any of these missing and the same attempt id carries both `completed`
+      // and `failed`, corrupting the success rate this whole change exists to
+      // produce.
+      //
+      // ACCEPTED RESIDUAL, stated rather than engineered around: the child
+      // cannot know the parent's deadline, so a child that comes up healthy
+      // just after the parent gave up still emits `completed` while the parent
+      // emits `ackTimeout`. That pair is genuine information (the copy IS
+      // usable, the handoff was not confirmed) and is reported separately in
+      // the success-rate query rather than silently folded into either column.
       let isExpectedCopy =
         env.relaunchExpectedPath == env.bundleURL.standardizedFileURL.path
         && env.relaunchExpectedVersion == env.currentVersion
-      if healthy, isExpectedCopy, let reason = env.relaunchReason,
+      if healthy, isExpectedCopy, ackPublished, let reason = env.relaunchReason,
         let scope = env.relaunchDestinationScope
       {
         telemetry.completed(

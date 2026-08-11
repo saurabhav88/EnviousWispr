@@ -626,10 +626,11 @@ public struct FileRelocationHandshake: RelocationHandshaking {
     directory.appendingPathComponent("relocation-ack-\(attemptID).json")
   }
 
+  @discardableResult
   public func writeAck(
     attemptID: String, resolvedPath: String, healthy: Bool, stateLabel: String?,
     bundleVersion: String?
-  ) {
+  ) -> Bool {
     let fm = FileManager.default
     try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
     guard
@@ -637,8 +638,16 @@ public struct FileRelocationHandshake: RelocationHandshaking {
         Ack(
           resolvedPath: resolvedPath, healthy: healthy, stateLabel: stateLabel,
           bundleVersion: bundleVersion))
-    else { return }
-    try? data.write(to: ackURL(attemptID), options: .atomic)
+    else { return false }
+    // Report publication rather than swallowing it: an unwritable Application
+    // Support or a full disk means the parent never sees this and times out,
+    // so the child must not go on to claim success (review P2).
+    do {
+      try data.write(to: ackURL(attemptID), options: .atomic)
+      return true
+    } catch {
+      return false
+    }
   }
 
   public func awaitAck(

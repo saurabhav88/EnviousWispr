@@ -95,11 +95,15 @@ struct ApplicationRelocationCoordinatorTests {
       lastExpectedVersion = expectedBundleVersion
       return outcome
     }
+    /// Set false to model an unwritable Application Support or a full disk.
+    var ackPublishes = true
+    @discardableResult
     func writeAck(
       attemptID: String, resolvedPath: String, healthy: Bool, stateLabel: String?,
       bundleVersion: String?
-    ) {
+    ) -> Bool {
       writes.append((attemptID, resolvedPath, healthy, stateLabel, bundleVersion))
+      return ackPublishes
     }
   }
 
@@ -253,6 +257,23 @@ struct ApplicationRelocationCoordinatorTests {
     h.coordinator.evaluateAndOfferIfNeeded()
     await h.coordinator.pendingWork?.value
     #expect(h.telemetry.completedEvents.isEmpty)
+    #expect(h.handshake.writes.count == 1)
+  }
+
+  @Test("a child whose ack cannot be PUBLISHED claims no completion")
+  func childWithUnpublishableAckDoesNotClaimCompletion() async {
+    // Unwritable Application Support or a full disk: the parent will never see
+    // the ack and will fail this attempt on timeout, so a `completed` here
+    // would make one attempt both a success and a failure (review r2 P2).
+    let h = Self.makeHarness(
+      bundleURL: Self.placedURL, version: "2.3.0", relaunchAttemptID: "attempt-1",
+      relaunchReason: "translocated", relaunchDestinationScope: "system_applications",
+      relaunchExpectedPath: Self.placedPath, relaunchExpectedVersion: "2.3.0")
+    h.handshake.ackPublishes = false
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.telemetry.completedEvents.isEmpty)
+    // The attempt to publish still happened; only the CLAIM is withheld.
     #expect(h.handshake.writes.count == 1)
   }
 
