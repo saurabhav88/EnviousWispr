@@ -143,13 +143,23 @@ struct OllamaModelCatalogTests {
     let catalog = OllamaSetupService.dynamicCatalog(from: [])
     let suggested = catalog.filter { $0.isDownloaded == false }.map(\.name)
 
-    // MUTATION CONTROL: drop the stable partition in `dynamicCatalog` and this fails, because the
-    // three no-acceptable-output models sit interspersed in the curated literal at positions 3, 5
-    // and 11.
+    // Full BAND order, best measured first (founder 2026-08-11): the three Recommended models, then
+    // the three Mixed, then the two Unreliable, then the three with no acceptable output. Within
+    // each band the curated order is preserved, which is what makes this a stable band pass rather
+    // than a sort.
+    //
+    // MUTATION CONTROL: drop `orderedByVerdictBand` in `dynamicCatalog` and this fails, because the
+    // curated literal interleaves the bands.
     #expect(
       suggested == [
-        "gemma3n:e4b", "llama3.2", "mistral", "gemma2:2b", "gemma2", "qwen2.5:3b", "qwen2.5:7b",
-        "qwen3:0.6b", "llama3.2:1b", "phi3", "tinyllama",
+        // Recommended
+        "qwen2.5:3b", "qwen2.5:7b", "qwen3:0.6b",
+        // Mixed results
+        "gemma3n:e4b", "gemma2:2b", "gemma2",
+        // Unreliable
+        "llama3.2", "mistral",
+        // No acceptable output
+        "llama3.2:1b", "phi3", "tinyllama",
       ])
   }
 
@@ -171,8 +181,13 @@ struct OllamaModelCatalogTests {
     let suggested = catalog.filter { $0.isDownloaded == false }.map(\.name)
     let curated = OllamaSetupService.modelCatalog.map(\.name)
 
-    // Each partition must be a SUBSEQUENCE of the curated order, which is what distinguishes a
-    // stable partition from a sort that imposed an order the measurement cannot justify.
+    // Each BAND's members must be a SUBSEQUENCE of the curated order. That is the property which
+    // separates a stable band pass from a sort: the bands may be reordered, because the benchmark
+    // measured them, but two models sharing a band must keep the order they already had, because
+    // their measured gap is inside the instrument's own replication tail.
+    //
+    // Per band, not "everything except the worst band" — the earlier two-way version cannot express
+    // this once there are four bands, and would pass a comparator that shuffled models inside one.
     func isSubsequence(_ part: [String], of whole: [String]) -> Bool {
       var remaining = whole[...]
       for name in part {
@@ -181,25 +196,48 @@ struct OllamaModelCatalogTests {
       }
       return true
     }
-    let otherVerdicts =
-      suggested.filter { OllamaModelVerdicts.verdict(for: $0) != .notRecommended }
-    let notRecommended =
-      suggested.filter { OllamaModelVerdicts.verdict(for: $0) == .notRecommended }
-    #expect(isSubsequence(otherVerdicts, of: curated))
-    #expect(isSubsequence(notRecommended, of: curated))
+    var bandsSeen = 0
+    for band in OllamaModelVerdict.allInDisplayOrder {
+      let members = suggested.filter { OllamaModelVerdicts.verdict(for: $0) == band }
+      guard !members.isEmpty else { continue }
+      bandsSeen += 1
+      #expect(
+        isSubsequence(members, of: curated),
+        "band \(band.label) was reordered inside itself: \(members)")
+    }
+    // A per-band loop reports success over zero bands, which would make the assertions above
+    // vacuous. The catalog covers four of them.
+    #expect(bandsSeen == 4, "expected four populated bands, saw \(bandsSeen)")
   }
 
-  @Test("an installed model with no acceptable output is NOT moved behind the suggestions")
-  func installedModelsAreNotPartitioned() throws {
-    // `phi3` has no acceptable output and `qwen2.5:3b` is recommended, but both are INSTALLED, so
-    // they keep the downloaded segment's display-name order: "phi3" before "qwen2.5:3b".
-    // Reordering what someone already has is a different change, and nobody asked for it.
+  @Test("installed models are band-ordered too, so the best one you have is first")
+  func installedModelsAreBandOrdered() throws {
+    // REVERSED DELIBERATELY (founder 2026-08-11). This case previously asserted the opposite, on
+    // the reasoning that reordering what someone already installed was a change nobody asked for.
+    // The founder then looked at the shipped list and asked for it: his two installed models were
+    // an Unreliable one and a Recommended one, and alphabetical order put the Unreliable one first,
+    // which is the single row most likely to be read as a suggestion.
+    //
+    // Alphabetical order is still what decides ties INSIDE a band; the band pass runs after it.
     let catalog = OllamaSetupService.dynamicCatalog(
       from: [downloaded("phi3"), downloaded("qwen2.5:3b")])
     let installed = catalog.filter { $0.isDownloaded }.map(\.name)
     let phiIndex = try #require(installed.firstIndex(of: "phi3"))
     let qwenIndex = try #require(installed.firstIndex(of: "qwen2.5:3b"))
-    #expect(phiIndex < qwenIndex)
+    #expect(qwenIndex < phiIndex, "recommended must precede no-acceptable-output: \(installed)")
+  }
+
+  @Test("alphabetical order still decides ties inside one band")
+  func installedTiesStayAlphabetical() throws {
+    // Two installed models in the SAME band. Nothing in the measurement separates them, so the
+    // section's own alphabetical order must survive the band pass — otherwise the band pass is
+    // reordering models on no evidence, which is exactly what it is built to avoid.
+    let catalog = OllamaSetupService.dynamicCatalog(
+      from: [downloaded("qwen2.5:7b"), downloaded("qwen2.5:3b")])
+    let installed = catalog.filter { $0.isDownloaded }.map(\.displayName)
+    #expect(
+      installed == installed.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending },
+      "same-band ties lost their alphabetical order: \(installed)")
   }
 
   @Test("every installed model still precedes every suggestion")

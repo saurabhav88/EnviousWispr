@@ -320,6 +320,28 @@ public final class OllamaSetupService {
       downloadSize: "~638 MB"),
   ]
 
+  /// Reorders one section so its verdict BANDS read best first, keeping each model's existing
+  /// position relative to others in the same band (#1950, founder 2026-08-11).
+  ///
+  /// A series of stable `filter` passes, deliberately, not `sorted(by:)`. Two reasons and both
+  /// matter: Swift does not document `sorted(by:)` as stable, so equal elements could be reordered
+  /// between releases for no reason a user could understand; and a comparator would be free to
+  /// order two models that share a verdict, where the measured gap is 5pp against an instrument
+  /// whose own replication tail is 5pp. Ranking bands reports the measurement. Ranking inside a
+  /// band would invent one.
+  ///
+  /// Drives off `allInDisplayOrder`, which derives from the exhaustive `displayRank` switch, so a
+  /// new verdict case cannot silently drop its models out of the list. That mattered: this filters
+  /// by band MEMBERSHIP, so a verdict missing from the order would remove every model carrying it
+  /// from the list entirely rather than merely misplacing them.
+  nonisolated static func orderedByVerdictBand(
+    _ entries: [OllamaModelCatalogEntry]
+  ) -> [OllamaModelCatalogEntry] {
+    OllamaModelVerdict.allInDisplayOrder.flatMap { band in
+      entries.filter { OllamaModelVerdicts.verdict(for: $0.name) == band }
+    }
+  }
+
   /// First-party curated metadata for models that are NOT publicly pullable (#1269).
   /// Entries here overlay display metadata onto a model the user already has, but are
   /// NEVER offered as undownloaded suggestions — `ollama pull` would 404 on them, so a
@@ -438,6 +460,11 @@ public final class OllamaSetupService {
       )
     }
     .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    // Then by verdict band, alphabetical WITHIN each band (founder 2026-08-11). Previously this
+    // section was alphabetical only, so somebody whose two installed models were an Unreliable one
+    // and a Recommended one saw the Unreliable one first. The alphabetical sort above is what fills
+    // the within-band order, and the band pass below preserves it.
+    let downloadedEntriesOrdered = Self.orderedByVerdictBand(downloadedEntries)
 
     // Undownloaded suggestions (preserve static catalog order)
     let available: [OllamaModelCatalogEntry] = Self.modelCatalog.compactMap { entry in
@@ -446,24 +473,21 @@ public final class OllamaSetupService {
       return entry
     }
 
-    // #1950: models that produced no acceptable output in any of the twenty benchmark cases go
-    // LAST among the suggestions. They stay offered, which is the founder's decision, but a list
-    // that reads top to bottom should place every other offered model before them.
+    // #1950: order every section best-measured first, so a list read top to bottom goes
+    // Recommended, then Mixed results, then the two failing bands (founder 2026-08-11, who saw the
+    // first cut and pointed out that it buried both Recommended models below three Mixed ones).
+    // Nothing is hidden: the models that produced no acceptable output stay offered, last.
     //
-    // A stable partition, not a sort: `filter` preserves relative order, so the seven other
-    // suggestions keep their curated sequence and so do the three at the bottom. A comparator over
-    // verdicts would have imposed an order inside each group that the measurement cannot justify.
+    // Ordered by BAND with relative order preserved INSIDE each band, which is why this is a series
+    // of stable `filter` passes and not a comparator. `sorted(by:)` is not documented as stable in
+    // Swift, and a comparator would also be free to reorder two models sharing a verdict — and
+    // those gaps are 5pp on an instrument whose own replication tail is 5pp, so any order among
+    // them would be a distinction the measurement cannot support. Bands are measured; within a
+    // band, whatever order the section already had is kept.
     //
-    // Asks the verdict authority rather than naming the three ids, so a re-benchmark that moves a
-    // model moves its position too, with no second list to remember.
-    //
-    // Scope is deliberately just this array: `downloadedEntries` is built above and keeps its own
-    // display-name order even for a model with no acceptable output, because reordering what
-    // someone already installed is a different change nobody asked for. Hosted suggestions are
-    // appended after this and are not partitioned either.
-    let suggestions =
-      available.filter { OllamaModelVerdicts.verdict(for: $0.name) != .notRecommended }
-      + available.filter { OllamaModelVerdicts.verdict(for: $0.name) == .notRecommended }
+    // Asks the verdict authority rather than naming ids, so a re-benchmark that moves a model moves
+    // its position with it and there is no second list to remember.
+    let suggestions = Self.orderedByVerdictBand(available)
 
     // #1956: hosted suggestions, appended last so the two existing sections keep
     // their order and their meaning.
@@ -500,7 +524,10 @@ public final class OllamaSetupService {
       )
     }
 
-    return downloadedEntries + suggestions + hostedSuggestions
+    // Hosted rows are NOT band-ordered and stay last: they are a different kind of thing (they run
+    // on Ollama's servers, are never selected for you, and some need a paid plan), and we have not
+    // measured them on this corpus, so ordering them by a verdict they do not have would imply one.
+    return downloadedEntriesOrdered + suggestions + hostedSuggestions
   }
 
   // MARK: - Name Normalization

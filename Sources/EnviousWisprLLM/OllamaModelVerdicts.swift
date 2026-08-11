@@ -12,7 +12,7 @@ import Foundation
 /// a `public` non-frozen enum from another module forces `@unknown default` at every switch over it,
 /// which is the silent branch a future case would fall into. Package visibility lets sibling targets
 /// switch exhaustively, so adding a case is a compile error at every consumer instead.
-package enum OllamaModelVerdict: Sendable {
+package enum OllamaModelVerdict: Sendable, CaseIterable {
   /// Measured 30% or better on the behaviour corpus.
   case recommended
   /// Measured 14% to 29%. Usable, with a real failure mode worth naming.
@@ -37,6 +37,42 @@ package enum OllamaModelVerdict: Sendable {
     case .notTested: return "Not tested by us"
     case .firstParty: return "Our own model"
     }
+  }
+
+  /// Position in a list a user reads top to bottom, best first (founder 2026-08-11).
+  ///
+  /// Orders the BANDS, never models within a band: two models sharing a verdict keep whatever
+  /// order their section already had. That distinction is the whole point. The bands are what the
+  /// benchmark measured, so ranking them is reporting; the gaps inside a band are 5pp on an
+  /// instrument whose own replication tail is 5pp, so ranking those would invent a distinction the
+  /// data cannot support.
+  ///
+  /// Two placements are judgement rather than measurement, and are called out because a rank looks
+  /// like a fact: `firstParty` leads because EG-1 is tuned for this one job and carries its own
+  /// separate acceptance evidence, and `notTested` sits ahead of the two measured-failing bands on
+  /// the principle that no evidence should outrank bad evidence — a user's own fine-tune deserves
+  /// to appear above a model we measured at 5%.
+  package var displayRank: Int {
+    switch self {
+    case .firstParty: return 0
+    case .recommended: return 1
+    case .mixed: return 2
+    case .notTested: return 3
+    case .unreliable: return 4
+    case .notRecommended: return 5
+    }
+  }
+
+  /// Every case in display order, DERIVED from `displayRank` rather than written out again.
+  ///
+  /// This shape is load-bearing. A hand-written literal here would compile perfectly with a new
+  /// case missing from it, and `orderedByVerdictBand` filters by membership — so every model
+  /// carrying the forgotten verdict would silently vanish from the model list, which is the worst
+  /// possible failure for a list whose job is to show people their options. Deriving from
+  /// `allCases` sorted by `displayRank` moves the obligation into that exhaustive `switch`, where
+  /// a new case genuinely does fail to compile.
+  package static var allInDisplayOrder: [OllamaModelVerdict] {
+    allCases.sorted { $0.displayRank < $1.displayRank }
   }
 }
 
