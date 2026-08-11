@@ -753,8 +753,14 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
   const errorText = data.truncated
     ? `at least ${data.events} ${data.events === 1 ? "error" : "errors"}`
     : `${data.events} ${data.events === 1 ? "error" : "errors"}`;
+  // COUNTED FROM THE ROWS, never from the page size. Before #2023 this said
+  // "100 or more problems", which was sound while one row WAS one problem. Now
+  // that rows collapse by issue, a full 100-row page can yield fewer than 100
+  // unique problems, and a hardcoded 100 would assert a number nobody measured.
+  // `rows.length` is what we actually saw either way; `truncated` only adds the
+  // "or more".
   const problemText = data.truncated
-    ? "100 or more problems"
+    ? `${data.rows.length} or more ${data.rows.length === 1 ? "problem" : "problems"}`
     : `${data.rows.length} ${data.rows.length === 1 ? "problem" : "problems"}`;
   lines.push(`${people(data.people)} hit ${errorText} across ${problemText}, on ${data.floor} and newer.`);
 
@@ -848,15 +854,31 @@ function finishSection(lines, budget) {
  * missing Link header proves nothing. That over-reporting is the right default
  * - but it means this line cannot assert incompleteness as a fact, only as a
  * possibility. Every other truncation sentence survives the same scrutiny
- * ("at least N errors", "100 or more problems", "cover the largest 100 only"
- * are all true when exactly 100 arrive); this one did not, and was swept for
- * alongside them rather than fixed alone. */
+ * ("at least N errors", "N or more problems", "more problems may exist" are all
+ * true when exactly 100 arrive); this one did not, and was swept for alongside
+ * them rather than fixed alone.
+ *
+ * Two of those examples were reworded by #2023, which removed the hardcoded 100
+ * from the PROBLEM sentences once rows began collapsing by issue. The reasoning
+ * above is unchanged and still applies to each of them. */
 const BADGES_INCOMPLETE_LINE =
   "100 or more problems were seen for the first time in this window, so the NEW marks below may not be complete.";
 
+/** Deliberately carries NO number. Sentry cut the page at 100 ROWS, and since
+ * #2023 those rows collapse by issue, so the page size is no longer the count of
+ * problems it covers - "the largest 100" would name a quantity this line cannot
+ * support. The headline sentence above already states the measured count and
+ * qualifies it with "or more"; this line's job is the CLAIM, which is that the
+ * error count and breakdown are bounded by what came back while the people
+ * total is not.
+ *
+ * `BADGES_INCOMPLETE_LINE` above keeps its 100 on purpose: it describes the
+ * ISSUES endpoint, whose rows are one-per-issue and are never collapsed, so the
+ * page size there really is a problem count. Two different axes, and only this
+ * one moved. */
 const TRUNCATED_LINE =
-  "100 or more problems were recorded. The affected-people total covers all of them; " +
-  "the error count and the breakdown cover the largest 100 only.";
+  "Sentry returned a full page, so more problems may exist. The affected-people total " +
+  "covers all of them; the error count and the breakdown cover only those listed above.";
 
 /** `truncated` changes the CLAIM, not just the wording: when the problem page
  * was cut off, the totals above genuinely do NOT include the omitted rows, so

@@ -726,7 +726,30 @@ test("an over-budget section discloses what it omitted instead of truncating sil
 test("a full page of problems is disclosed as a limited breakdown", async () => {
   const many = Array.from({ length: 100 }, (_, i) => problemRow(`EW-${i}`, "asr_failed", 1, 1));
   const { lines } = await render({ problems: many });
-  assert.match(lines.join("\n"), /the error count and the breakdown cover the largest 100 only/);
+  const text = lines.join("\n");
+  assert.match(text, /more problems may exist/);
+  assert.match(text, /the error count and the breakdown cover only those listed above/);
+  // 100 DISTINCT issues, so the measured count really is 100 here.
+  assert.match(text, /across 100 or more problems/);
+});
+
+test("a truncated page never claims more problems than it can count (#2023)", async () => {
+  // Codex review r1, P2. A full 100-ROW page can carry fewer than 100 unique
+  // issues once rows collapse, and the old wording hardcoded 100 - so the
+  // section would have asserted a number nobody measured, in the one sentence
+  // the founder reads first.
+  const many = Array.from({ length: 100 }, (_, i) =>
+    problemRow(`EW-${i % 40}`, "asr_failed", 1, 1));
+  const { data, lines } = await render({ problems: many });
+  const text = lines.join("\n");
+
+  assert.equal(data.rows.length, 40, "100 rows over 40 issues must collapse to 40 problems");
+  assert.equal(data.truncated, true, "a full page is still treated as possibly incomplete");
+  assert.match(text, /across 40 or more problems/);
+  assert.doesNotMatch(text, /100 or more problems/, "the page size is not a problem count");
+  assert.doesNotMatch(text, /largest 100/, "nor is it a claim about what the breakdown covers");
+  // The people total is unaffected by truncation and must keep saying so.
+  assert.match(text, /The affected-people total covers all of them/);
 });
 
 test("a full page issues no second Sentry request", async () => {
