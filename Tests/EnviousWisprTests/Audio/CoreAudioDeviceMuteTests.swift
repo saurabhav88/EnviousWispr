@@ -25,9 +25,17 @@ struct CoreAudioDeviceMuteTests {
     #expect(CoreAudioDeviceMute.interpret(status: noErr, isMuted: 0) == .unmuted)
   }
 
-  /// Most built-in mics have no hardware mute control and simply don't
-  /// implement `kAudioDevicePropertyMute` — that silence must fail closed,
-  /// never read as "confirmed unmuted."
+  /// On a non-`noErr` status the out-parameter's contents are not trustworthy, so
+  /// there is nothing to read and this must fail closed — never "confirmed
+  /// unmuted."
+  ///
+  /// Not because devices lack a mute control: measured across built-in / USB
+  /// webcam / two virtual drivers, all four implement `kAudioDevicePropertyMute`
+  /// on the INPUT scope and all four are settable (#1809, #1578). The earlier
+  /// wording here claimed the opposite and was false on our own hardware.
+  /// (Property-absence IS a separate real path to `.unverified`, but it short-
+  /// circuits in `classify` before `interpret` is ever called, so it is out of
+  /// scope for this parameterised case.)
   @Test(
     "any non-noErr status → unverified, never an unmuted claim",
     arguments: [

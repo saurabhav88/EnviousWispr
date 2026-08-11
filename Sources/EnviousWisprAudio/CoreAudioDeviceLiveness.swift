@@ -85,10 +85,16 @@ public enum DeviceMuteState: Sendable, Equatable {
   case muted
   /// `Mute` answered no.
   case unmuted
-  /// Core Audio failed the query, or it doesn't support the property (common
-  /// on devices with no hardware mute control). We do NOT know whether the
-  /// device is muted, so the caller must fail closed — same posture as
-  /// `DeviceLiveness.unverified`.
+  /// We have no trustworthy answer. `classify` reaches this two ways: the device
+  /// does not advertise the property (`AudioObjectHasProperty` is false, so no
+  /// read happens at all), or the read returned a non-`noErr` status, whose
+  /// out-parameter contents are not trustworthy. Either way we do NOT know
+  /// whether the device is muted, so the caller must fail closed — same posture
+  /// as `DeviceLiveness.unverified`.
+  ///
+  /// Property absence is a real path. On the four devices measured on macOS 26.6,
+  /// however, the input-scope property was present and settable (#1809; three
+  /// re-measured in #1578).
   case unverified
 }
 
@@ -102,17 +108,37 @@ public enum CoreAudioDeviceMute {
   /// The pure decision, split out for boundary testing.
   ///
   /// - Parameter isMuted: the out-parameter as Core Audio left it. Meaningful
-  ///   ONLY when `status == noErr`; on every other status it is still its
-  ///   zero initializer and is deliberately not read.
+  ///   ONLY when `status == noErr`; on every other status its contents are not
+  ///   trustworthy — `AudioObjectGetPropertyData` promises nothing about what it
+  ///   leaves there — so it is deliberately not read.
   public static func interpret(status: OSStatus, isMuted: UInt32) -> DeviceMuteState {
     switch status {
     case noErr:
       return isMuted == 0 ? .unmuted : .muted
 
-    // Many input devices (most built-in mics) have no hardware mute control
-    // and simply don't implement this property — that is NOT evidence the
-    // device is unmuted, so it must fail closed to `.unverified`, same as
-    // any other non-`noErr` status.
+    // On a non-`noErr` status the out-parameter's contents are NOT trustworthy —
+    // `AudioObjectGetPropertyData` makes no promise about what it leaves there —
+    // so there is nothing to read. Absence of an answer is not an answer of
+    // "unmuted", so this fails closed to `.unverified`.
+    //
+    // The previous justification here — "most built-in mics have no hardware
+    // mute control and simply don't implement this property" — was measurably
+    // FALSE on our hardware: built-in, USB webcam and both virtual drivers all
+    // implement it and all are settable (#1809 measured four, #1578 three). The
+    // conclusion was right for the wrong reason, which is worse than no comment,
+    // because it invites the next reader to trust a claim that does not hold.
+    //
+    // Two things this comment deliberately does NOT claim, both because a review
+    // of its first draft caught them as fresh unsupported premises:
+    //   * that the buffer is left untouched or still holds its zero initializer.
+    //     It is merely untrustworthy; the guarantee does not exist.
+    //   * that property-absence cannot produce `.unverified`. It can — `classify`
+    //     returns early when `AudioObjectHasProperty` is false, without reaching
+    //     this switch at all.
+    //
+    // And the genuinely interesting caveat lives one level up, independent of
+    // status: a VIRTUAL driver can accept a mute write and keep reading 0 — the
+    // Teams loopback did exactly that (#1809). So even `noErr` is not proof.
     default:
       return .unverified
     }
@@ -159,7 +185,10 @@ public enum ZeroSignalEligibility: String, Sendable, CaseIterable {
   /// which fails closed per the #1317 binding decision.
   case notAlive = "not_alive"
   /// The input-scope mute read succeeded and reported muted. Trustworthy in this
-  /// direction only: `.unmuted` is NOT trustworthy (`gotchas-audio.md`).
+  /// direction only: `.unmuted` is NOT trustworthy, because a device can mute in
+  /// its own firmware and still report unmuted here (the Plantronics Blackwire
+  /// 5220 does exactly that), and a virtual driver can accept a mute write and
+  /// keep reading 0 (#1809).
   case deviceMuted = "device_muted"
   /// The mute property is absent, or the read returned non-`noErr`. "Cannot
   /// tell" is a distinct answer from "not muted"; collapsing them was part of
