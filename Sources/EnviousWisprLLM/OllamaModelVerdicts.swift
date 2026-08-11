@@ -71,9 +71,11 @@ package enum OllamaModelVerdicts {
 
   /// Every LOCAL model we have measured, whether or not we offer it as a suggestion.
   ///
-  /// "Not in our catalog" is NOT "not tested": `qwen3:0.6b` and `deepseek-r1:1.5b` are measured
-  /// arms we do not suggest, and a user who already has one deserves the number we have rather than
-  /// a shrug. `qwen3:0.6b` in particular is the second best local result we have measured.
+  /// "Not in our catalog" is NOT "not tested": `deepseek-r1:1.5b` is a measured arm we do not
+  /// suggest, and a user who already has it deserves the number we have rather than a shrug.
+  /// `qwen3:0.6b` was in that position until the founder approved adding it (2026-08-11) on the
+  /// strength of its result: the second best local score we have measured, from the smallest
+  /// download of the twelve.
   ///
   /// Keys are canonical names (`canonicalModelName`), so `llama3.2` and `llama3.2:latest` are one
   /// model while `llama3.2` and `llama3.2:1b` stay two.

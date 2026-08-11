@@ -145,11 +145,11 @@ struct OllamaModelCatalogTests {
 
     // MUTATION CONTROL: drop the stable partition in `dynamicCatalog` and this fails, because the
     // three no-acceptable-output models sit interspersed in the curated literal at positions 3, 5
-    // and 10.
+    // and 11.
     #expect(
       suggested == [
         "gemma3n:e4b", "llama3.2", "mistral", "gemma2:2b", "gemma2", "qwen2.5:3b", "qwen2.5:7b",
-        "llama3.2:1b", "phi3", "tinyllama",
+        "qwen3:0.6b", "llama3.2:1b", "phi3", "tinyllama",
       ])
   }
 

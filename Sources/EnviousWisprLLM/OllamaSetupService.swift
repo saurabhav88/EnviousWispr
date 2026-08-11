@@ -304,6 +304,15 @@ public final class OllamaSetupService {
     OllamaModelCatalogEntry(
       name: "qwen2.5:7b", displayName: "Qwen 2.5 (7B)", parameterCount: "7B",
       downloadSize: "~4.7 GB"),
+    // Added on the founder's approval (2026-08-11) after the #1950 benchmark: the second best
+    // local score we measured, from by far the smallest download of the twelve, which makes it
+    // the one row where a user short of disk does not have to trade quality for size. Every
+    // downloadSize in this list is the decimal sum of the registry manifest's layer sizes
+    // (`registry.ollama.ai/v2/library/<repo>/manifests/<tag>`); this one measured 522,653,277
+    // bytes on 2026-08-11. Do not estimate one from a parameter count.
+    OllamaModelCatalogEntry(
+      name: "qwen3:0.6b", displayName: "Qwen 3 (0.6B)", parameterCount: "0.6B",
+      downloadSize: "~523 MB"),
     OllamaModelCatalogEntry(
       name: "tinyllama", displayName: "TinyLlama", parameterCount: "1.1B",
       downloadSize: "~638 MB"),
