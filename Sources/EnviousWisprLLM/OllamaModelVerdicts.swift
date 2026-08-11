@@ -49,13 +49,21 @@ package enum OllamaModelVerdict: Sendable {
 /// this describes what we THINK of it, which is a different question with a different source.
 ///
 /// Membership is a literal a human writes after a benchmark run, never a value computed at launch.
-/// `MeasuredModelVerdictsTests` compares every entry below against a fixture generated from the
-/// judged receipts, so a re run that moves a model produces a failing test rather than a silent
-/// relabel or a stale label nobody notices.
+/// `MeasuredModelVerdictFixtureTests` derives the expected verdict for each entry below from a
+/// TRACKED copy of the measured pass rates and fails on any disagreement, so a re run that moves a
+/// model produces a failing test rather than a silent relabel or a stale label nobody notices. The
+/// fixture is tracked because the receipts are not: a test reading `scripts/eval/runs/` would pass
+/// here and verify nothing in CI, where that directory does not exist.
 ///
 /// Source of every number: `scripts/eval/runs/ollama-bench-1950/judged-rejudged-2026-08-11/`,
-/// judged 2026-08-11 by `claude-sonnet-5` over the twenty case Type B behaviour corpus. Notes are
-/// verbatim from the approved `docs/feature-requests/issue-1950-artifacts/note-copy.md`.
+/// judged 2026-08-11 by `claude-sonnet-5` over the twenty case Type B behaviour corpus. Those run
+/// directories are local only, so the durable record of the measurement, the wording review, and
+/// the independent re-grade that confirmed none of these labels move is on issue #1950.
+///
+/// Re-graded the same day by a second judge on different infrastructure as a check: 0 of 12 labels
+/// moved. Do not read that as the labels being judge independent in general; it means these twelve
+/// sit far enough from their thresholds to survive one substitution. `qwen3:0.6b` is the exception
+/// worth re-checking after any future re-grade, landing exactly on the recommended cut.
 package enum OllamaModelVerdicts {
   /// One model's measured standing.
   package struct Entry: Sendable {
@@ -99,11 +107,14 @@ package enum OllamaModelVerdicts {
 
     // Unreliable: 1% to 13%. All three at 5.0% with 10 to 11 trust breaking failures.
     //
-    // `llama3.2` was the shipped default until #1950. Its automated score reads 6.2% over 16
-    // scored cases, because the judge returns no score for four of its outputs; those four are
-    // hand adjudicated in `issue-1950-artifacts/llama32-ungradeable-four.md` (three translate
-    // non-English dictation into English, one reproduces an injection trap into the user's text),
-    // which puts it at 1 pass in 20 with 11 S4. The automated number is the flattering one.
+    // `llama3.2` was the shipped default until #1950, and it took two grading runs to pin down.
+    // The first left four of its twenty outputs unscored, which flattered it to 6.2% over the 16
+    // that were scored; the cause was a judge chunk whose reply came back empty three times, not
+    // anything about the outputs. A complete re-grade scored all twenty and put it at 5.0% with
+    // 11 S4 failures, which is what this label rests on. Of the four that had gone unscored,
+    // three translate non-English dictation into English and one reproduces an injection trap
+    // into the user's text. Worth remembering as a habit rather than a fact about this model: a
+    // score computed over the cases that happened to come back is not a score over the corpus.
     "llama3.2": Entry(verdict: .unreliable, note: "rarely cleans dictation correctly"),
     "mistral": Entry(verdict: .unreliable, note: "rarely cleans dictation correctly"),
     "deepseek-r1:1.5b": Entry(

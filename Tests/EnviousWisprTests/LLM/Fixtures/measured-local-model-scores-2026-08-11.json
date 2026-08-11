@@ -1,0 +1,39 @@
+{
+  "_README": [
+    "Frozen measurement behind every shipped local-model label (#1950). TRACKED on purpose:",
+    "the judge receipts it was extracted from live under scripts/eval/runs/, which is gitignored,",
+    "so a test reading those directly would pass on this machine and silently test nothing in CI.",
+    "",
+    "pass_rate_pct is (pass + minor) / total_scored from the receipt's overall block. s4_count is",
+    "critical_fail_count. Primary judge: claude-sonnet-5 over the twenty-case Type B behaviour",
+    "corpus, run judged-rejudged-2026-08-11.",
+    "",
+    "confirming_judge_pass_rate_pct is the SAME candidates re-graded by azure/gpt-5-6-luna the same",
+    "day, kept here so the labels' distance from their thresholds is visible rather than asserted.",
+    "It is not the source of any label. Note llama3.2: the primary run left 4 of its 20 outputs",
+    "unscored (an empty judge reply, not a property of the outputs), so its primary rate is over 16",
+    "cases and reads higher than the complete re-grade. Both land in the same band.",
+    "",
+    "TO REGENERATE after a re-benchmark: extract these fields from the new run's summary.json files",
+    "and commit the diff. The diff IS the point. A moved score must be a visible change here and a",
+    "deliberate relabel in OllamaModelVerdicts.swift, never a quiet drift between the two."
+  ],
+  "primary_judge": "claude-sonnet-5",
+  "confirming_judge": "azure/gpt-5-6-luna",
+  "measured_utc": "2026-08-11",
+  "corpus_cases": 20,
+  "models": {
+    "qwen2.5:3b": { "pass_rate_pct": 50.0, "s4_count": 6, "total_scored": 20, "confirming_judge_pass_rate_pct": 35.0 },
+    "qwen3:0.6b": { "pass_rate_pct": 45.0, "s4_count": 4, "total_scored": 20, "confirming_judge_pass_rate_pct": 30.0 },
+    "qwen2.5:7b": { "pass_rate_pct": 35.0, "s4_count": 5, "total_scored": 20, "confirming_judge_pass_rate_pct": 35.0 },
+    "gemma2:2b": { "pass_rate_pct": 25.0, "s4_count": 8, "total_scored": 20, "confirming_judge_pass_rate_pct": 20.0 },
+    "gemma2": { "pass_rate_pct": 20.0, "s4_count": 9, "total_scored": 20, "confirming_judge_pass_rate_pct": 20.0 },
+    "gemma3n:e4b": { "pass_rate_pct": 20.0, "s4_count": 6, "total_scored": 20, "confirming_judge_pass_rate_pct": 20.0 },
+    "llama3.2": { "pass_rate_pct": 6.2, "s4_count": 7, "total_scored": 16, "confirming_judge_pass_rate_pct": 5.0 },
+    "mistral": { "pass_rate_pct": 5.0, "s4_count": 11, "total_scored": 20, "confirming_judge_pass_rate_pct": 5.0 },
+    "deepseek-r1:1.5b": { "pass_rate_pct": 5.0, "s4_count": 10, "total_scored": 20, "confirming_judge_pass_rate_pct": 5.0 },
+    "phi3": { "pass_rate_pct": 0.0, "s4_count": 12, "total_scored": 20, "confirming_judge_pass_rate_pct": 0.0 },
+    "llama3.2:1b": { "pass_rate_pct": 0.0, "s4_count": 16, "total_scored": 20, "confirming_judge_pass_rate_pct": 0.0 },
+    "tinyllama": { "pass_rate_pct": 0.0, "s4_count": 19, "total_scored": 20, "confirming_judge_pass_rate_pct": 0.0 }
+  }
+}
