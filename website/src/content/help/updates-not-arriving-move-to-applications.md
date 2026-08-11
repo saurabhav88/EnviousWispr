@@ -50,7 +50,9 @@ If that offer fails, read what it says before dragging the app across yourself. 
 - **Another copy is already open.** Quit it first.
 - **A different app is already in that spot.** Sort that out first.
 
-Once the reason it gave you is cleared, the manual steps above will work.
+There is one more that the message cannot always name for you. If your Mac is managed by someone else, or your account is not an administrator, the main Applications folder may not accept new apps at all. Finder will refuse the drag, or ask for a password you do not have. In that case, use your own personal Applications folder instead: in Finder choose **Go > Home**, make a folder called `Applications` there if one does not exist, and drag EnviousWispr into that. Updates work from there too.
+
+Once the reason has been cleared, or you have used your personal Applications folder, the move will go through.
 
 ### One thing worth knowing
 
