@@ -95,15 +95,22 @@ struct InputDeviceResolver {
   /// count and transport reported below has to describe the same list the
   /// selected device came from.
   let inputDeviceSnapshot: () -> InputDeviceSnapshot
+  /// The transport of ONE known device. A targeted property read, not a list
+  /// read, so rung 1 can ask what the system default IS without paying for the
+  /// enumeration it exists to avoid (#2022).
+  let transportForDevice: (AudioDeviceID) -> UInt32?
 
   init(
     defaultInputDeviceID: @escaping () -> AudioDeviceID? = AudioDeviceEnumerator
       .defaultInputDeviceID,
     inputDeviceSnapshot: @escaping () -> InputDeviceSnapshot = AudioDeviceEnumerator
-      .inputDeviceSnapshot
+      .inputDeviceSnapshot,
+    transportForDevice: @escaping (AudioDeviceID) -> UInt32? = AudioDeviceEnumerator
+      .transportTypeRaw(for:)
   ) {
     self.defaultInputDeviceID = defaultInputDeviceID
     self.inputDeviceSnapshot = inputDeviceSnapshot
+    self.transportForDevice = transportForDevice
   }
 
   /// Resolve the device to open. `preferredUID` is the user's pinned device;
@@ -112,10 +119,31 @@ struct InputDeviceResolver {
     let defaultID = defaultInputDeviceID()
     let hasPreferred = !(preferredUID ?? "").isEmpty
 
+    // #2022. ONE targeted transport read, computed once and consulted by rung 1
+    // and rung 3, so the two rungs can never disagree about what the default IS.
+    // Eager rather than lazy: rung 2 makes it unused when a pinned device is
+    // found, and one property read on a per-dictation path is not worth a second
+    // code path to avoid.
+    //
+    // PROOF ONLY. `isKnownNonMicrophoneTransport` is deliberately narrower than
+    // "fails the allow-list" - nil, unknown and future transports are all
+    // uncertainty and return false here - so an unreadable transport keeps
+    // today's behaviour exactly. We divert on proof, never on doubt.
+    let defaultProvenNonMicrophone =
+      defaultID.map { AudioDeviceEnumerator.isKnownNonMicrophoneTransport(transportForDevice($0)) }
+      ?? false
+
     // Rung 1 — the ordinary Auto path. A present default is taken WITHOUT
     // touching the device list, so the overwhelmingly common case does no
     // extra hardware work and reports `not_attempted` honestly.
-    if !hasPreferred, let defaultID {
+    //
+    // Unless the default is PROVEN not to be a microphone. A virtual or
+    // aggregate default records bit-exact digital silence, and on the fleet
+    // those two transports carry 21 stall events and ZERO successful dictations
+    // across 2.4.0-2.4.4. Binding one is a guaranteed lost dictation, so this
+    // pays for the enumeration it normally avoids and looks for a real
+    // microphone instead. The cost lands only on the affected cohort.
+    if !hasPreferred, let defaultID, !defaultProvenNonMicrophone {
       return InputDeviceResolution(
         outcome: .selected(defaultID, source: .systemDefault),
         defaultPresent: true,
@@ -218,7 +246,27 @@ struct InputDeviceResolver {
     // The outcome is a failed bind, which `bind_outcome = failed` records; if it
     // instead binds and captures silence, that is the silent-capture family
     // (#1845 / #1578 / #1809), which owns detection and is out of scope here.
-    if let defaultID {
+    //
+    // #2022 adds ONE condition, and its second half is the whole safety of this
+    // change: divert away from a proven non-microphone default ONLY when there
+    // is a real microphone to divert TO.
+    //
+    // An `aggregate` transport is NOT proof of a dead device. macOS can present
+    // a synthetic `CADefaultDeviceAggregate` on the default input path, so the
+    // aggregate we see may be the OS's own wrapper around a working microphone.
+    // Diverting unconditionally would take a user whose only listed device is
+    // that wrapper from dictating fine to "No microphone found", which is a
+    // false claim and a regression.
+    //
+    // With `!eligible.isEmpty` required, this change introduces NO new path to
+    // that message: every input that reaches it today still does, and nothing
+    // new does. The failure directions are asymmetric and decide it - diverting
+    // wrongly withdraws a working microphone, declining to divert merely leaves
+    // today's behaviour in place.
+    //
+    // This one condition serves both entries to this rung: a pinned device that
+    // vanished, and rung 1 falling through on a proven non-microphone default.
+    if let defaultID, !(defaultProvenNonMicrophone && !eligible.isEmpty) {
       return resolution(
         .selected(defaultID, source: .systemDefault),
         transport: candidates.first(where: { $0.id == defaultID })?.rawTransport
