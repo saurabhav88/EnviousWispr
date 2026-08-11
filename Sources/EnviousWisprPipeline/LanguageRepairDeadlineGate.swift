@@ -174,6 +174,15 @@ package final class LanguageRepairDeadlineGate: Sendable {
     self.state = OSAllocatedUnfairLock(initialState: State(lastMarkAt: now()))
   }
 
+  /// The frozen record, whichever path froze it, or nil if neither has yet.
+  ///
+  /// Exists so the DEBUG trace can report a HEALTHY delivery's phase timings.
+  /// Telemetry deliberately stays timeout-only — a healthy dictation must send
+  /// nothing, because the fields' presence is itself the signal — but the local
+  /// log has no such constraint, and without this the per-app cost of the
+  /// main-thread hop could only be measured by waiting for a failure.
+  package var frozenEvidence: Snapshot? { state.withLock { $0.frozen } }
+
   // MARK: - Phase transitions
 
   /// Authorises repair, carrying the resolution the timeout would otherwise lose.

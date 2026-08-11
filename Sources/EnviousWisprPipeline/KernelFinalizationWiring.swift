@@ -808,7 +808,12 @@ struct KernelFinalizationWiring {
         // is why three separate causal theories all survived contact with the
         // data. Metadata only: labels and durations, never text.
         let casingTiming: String = {
-          guard let s = casingSnapshot else { return "" }
+          // The LOG reports healthy deliveries too; telemetry above does not.
+          // Measuring the main-thread hop per target app is the open question
+          // (#1946: all 9 field timeouts sit in 4 apps, and every app with a
+          // native accessibility bridge is at zero), and a timeout-only trace
+          // can only answer it by waiting for failures.
+          guard let s = casingSnapshot ?? gate.frozenEvidence else { return "" }
           func ms(_ v: Double?) -> String { v.map { String(format: "%.1f", $0) } ?? "-" }
           var parts = [
             "phase=\(s.phase.rawValue)",
