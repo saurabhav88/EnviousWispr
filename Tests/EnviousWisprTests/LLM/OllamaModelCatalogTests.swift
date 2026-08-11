@@ -82,13 +82,20 @@ struct OllamaModelCatalogTests {
   }
 
   @Test("downloaded eg-1 gets the curated first-party overlay")
-  func egOneCuratedOverlayWhenDownloaded() {
+  func egOneCuratedOverlayWhenDownloaded() throws {
     let catalog = OllamaSetupService.dynamicCatalog(from: [downloaded("eg-1:latest")])
-    let row = catalog.first { OllamaSetupService.canonicalModelName($0.name) == "eg-1" }
-    #expect(row != nil)
-    #expect(row?.displayName == "EG-1")
-    #expect(row?.qualityTier == .best)
-    #expect(row?.isDownloaded == true)
+    let row = try #require(
+      catalog.first { OllamaSetupService.canonicalModelName($0.name) == "eg-1" })
+    #expect(row.displayName == "EG-1")
+    // #1950: EG-1 is `.firstParty`, not a measured verdict. It has its own acceptance evidence on a
+    // different corpus, so ranking it in this vocabulary would be reading two rulers as one, and
+    // calling it "Not tested by us" would be false.
+    //
+    // Asserted against `row.name`, the id the UI will actually hand the authority, not a hard-coded
+    // string. A hard-coded id would keep passing if the row's name changed shape.
+    #expect(OllamaModelVerdicts.verdict(for: row.name) == .firstParty)
+    #expect(OllamaModelVerdicts.entry(for: row.name).note.isEmpty)
+    #expect(row.isDownloaded == true)
   }
 
   @Test("curated-private entries do not leak into suggestions when other models are downloaded")
@@ -121,9 +128,12 @@ struct OllamaModelCatalogTests {
 
     #expect(row.displayName == "Someones Finetune")
     #expect(row.parameterCount == "4B")
-    #expect(row.qualityTier == .medium)
     #expect(row.downloadSize == "2.7 GB")
     #expect(row.isDownloaded == true)
+    // #1950: metadata is still inferred, but a VERDICT is not. This row used to come back `.medium`
+    // from a parameter count alone; a model we have never run a case through says so.
+    #expect(OllamaModelVerdicts.verdict(for: "someones-finetune:7b") == .notTested)
+    #expect(OllamaModelVerdicts.entry(for: "someones-finetune:7b").note.isEmpty)
   }
 
   // MARK: - Canonical Name

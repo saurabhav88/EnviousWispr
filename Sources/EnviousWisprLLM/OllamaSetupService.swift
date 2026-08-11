@@ -51,27 +51,16 @@ public enum OllamaWarmupState: Equatable {
   }
 }
 
-/// Quality tier for Ollama catalog models.
-public enum OllamaQualityTier: String, Sendable {
-  case best = "best"
-  case medium = "medium"
-  case worst = "worst"
-
-  public var label: String {
-    switch self {
-    case .best: return "Best"
-    case .medium: return "Medium"
-    case .worst: return "Fast"
-    }
-  }
-}
+// #1950: `OllamaQualityTier` lived here. It is gone, not renamed. A catalog entry describes what a
+// model IS; what we THINK of it now comes from `OllamaModelVerdicts`, which is the only authority
+// and is keyed by canonical model id. Do not reintroduce a stored tier or a size derived one:
+// the old heuristic called any 7B model "Best" without running a single case through it.
 
 /// A model entry in the Ollama catalog (curated or dynamic).
 public struct OllamaModelCatalogEntry: Identifiable, Sendable {
   public let name: String
   public let displayName: String
   public let parameterCount: String
-  public let qualityTier: OllamaQualityTier
   public let downloadSize: String
   public let isDownloaded: Bool
   /// #1914: true iff Ollama proxies this model to its own servers. Drives the
@@ -92,7 +81,6 @@ public struct OllamaModelCatalogEntry: Identifiable, Sendable {
     name: String,
     displayName: String,
     parameterCount: String,
-    qualityTier: OllamaQualityTier,
     downloadSize: String,
     isDownloaded: Bool = false,
     isRemote: Bool = false
@@ -100,7 +88,6 @@ public struct OllamaModelCatalogEntry: Identifiable, Sendable {
     self.name = name
     self.displayName = displayName
     self.parameterCount = parameterCount
-    self.qualityTier = qualityTier
     self.downloadSize = downloadSize
     self.isDownloaded = isDownloaded
     self.isRemote = isRemote
@@ -283,40 +270,43 @@ public final class OllamaSetupService {
   /// each manifest, and fails closed on any non-200, unparseable literal, or
   /// name/size count mismatch, so a half-broken probe cannot print a plausible
   /// number. It needs the network, so it is manual and deliberately not in CI.
+  /// #1950: entries carry no verdict. What we say about each of these lives in
+  /// `OllamaModelVerdicts`, keyed by canonical name, so the list and the selection dropdown cannot
+  /// disagree. `phi` (Phi-2) was removed: it was never benchmarked, and a curated suggestion is an
+  /// implied reason to choose something, so offering an unmeasured model superseded by `phi3` (which
+  /// measured 0%) was delegating the experiment to the user. The three measured models with no
+  /// acceptable output STAY listed and are labelled plainly, which is the founder's decision.
   public nonisolated static let modelCatalog: [OllamaModelCatalogEntry] = [
     OllamaModelCatalogEntry(
       name: "gemma3n:e4b", displayName: "Gemma 3 Nano (4B)", parameterCount: "4B",
-      qualityTier: .best, downloadSize: "~7.5 GB"),
+      downloadSize: "~7.5 GB"),
     OllamaModelCatalogEntry(
-      name: "llama3.2", displayName: "Llama 3.2", parameterCount: "3B", qualityTier: .best,
+      name: "llama3.2", displayName: "Llama 3.2", parameterCount: "3B",
       downloadSize: "~2 GB"),
     OllamaModelCatalogEntry(
       name: "llama3.2:1b", displayName: "Llama 3.2 (1B)", parameterCount: "1B",
-      qualityTier: .medium, downloadSize: "~1.3 GB"),
+      downloadSize: "~1.3 GB"),
     OllamaModelCatalogEntry(
-      name: "mistral", displayName: "Mistral", parameterCount: "7B", qualityTier: .best,
+      name: "mistral", displayName: "Mistral", parameterCount: "7B",
       downloadSize: "~4.4 GB"),
     OllamaModelCatalogEntry(
-      name: "phi3", displayName: "Phi-3 Mini", parameterCount: "3.8B", qualityTier: .medium,
+      name: "phi3", displayName: "Phi-3 Mini", parameterCount: "3.8B",
       downloadSize: "~2.2 GB"),
     OllamaModelCatalogEntry(
-      name: "gemma2:2b", displayName: "Gemma 2 (2B)", parameterCount: "2B", qualityTier: .medium,
+      name: "gemma2:2b", displayName: "Gemma 2 (2B)", parameterCount: "2B",
       downloadSize: "~1.6 GB"),
     OllamaModelCatalogEntry(
-      name: "gemma2", displayName: "Gemma 2", parameterCount: "9B", qualityTier: .best,
+      name: "gemma2", displayName: "Gemma 2", parameterCount: "9B",
       downloadSize: "~5.4 GB"),
     OllamaModelCatalogEntry(
-      name: "qwen2.5:3b", displayName: "Qwen 2.5 (3B)", parameterCount: "3B", qualityTier: .medium,
+      name: "qwen2.5:3b", displayName: "Qwen 2.5 (3B)", parameterCount: "3B",
       downloadSize: "~1.9 GB"),
     OllamaModelCatalogEntry(
-      name: "qwen2.5:7b", displayName: "Qwen 2.5 (7B)", parameterCount: "7B", qualityTier: .best,
+      name: "qwen2.5:7b", displayName: "Qwen 2.5 (7B)", parameterCount: "7B",
       downloadSize: "~4.7 GB"),
     OllamaModelCatalogEntry(
-      name: "tinyllama", displayName: "TinyLlama", parameterCount: "1.1B", qualityTier: .worst,
+      name: "tinyllama", displayName: "TinyLlama", parameterCount: "1.1B",
       downloadSize: "~638 MB"),
-    OllamaModelCatalogEntry(
-      name: "phi", displayName: "Phi-2", parameterCount: "2.7B", qualityTier: .worst,
-      downloadSize: "~1.6 GB"),
   ]
 
   /// First-party curated metadata for models that are NOT publicly pullable (#1269).
@@ -327,7 +317,7 @@ public final class OllamaSetupService {
   public nonisolated static let curatedPrivateCatalog: [OllamaModelCatalogEntry] = [
     OllamaModelCatalogEntry(
       name: "eg-1", displayName: "EG-1", parameterCount: "4B",
-      qualityTier: .best, downloadSize: "~2.9 GB")
+      downloadSize: "~2.9 GB")
   ]
 
   /// The single definition of "this Ollama model id is our own first-party model"
@@ -412,7 +402,6 @@ public final class OllamaSetupService {
             ? Self.hostedDisplayName(from: model.exactName)
             : curated.displayName,
           parameterCount: model.parameterSize ?? curated.parameterCount,
-          qualityTier: curated.qualityTier,
           downloadSize: Self.formatFileSize(model.fileSizeBytes),
           isDownloaded: true,
           // #1914: carried on BOTH construction paths. A remote model can match
@@ -432,7 +421,6 @@ public final class OllamaSetupService {
           ? Self.hostedDisplayName(from: model.exactName)
           : Self.inferDisplayName(from: model.exactName),
         parameterCount: model.parameterSize ?? "Unknown",
-        qualityTier: Self.inferQualityTier(parameterBillions: model.parameterBillions),
         downloadSize: Self.formatFileSize(model.fileSizeBytes),
         isDownloaded: true,
         isRemote: model.facts.isRemote
@@ -467,11 +455,15 @@ public final class OllamaSetupService {
       return OllamaModelCatalogEntry(
         name: advertisedID,
         displayName: Self.hostedDisplayName(from: advertisedID),
-        // Size and quality are meaningless for a model that is not on this disk,
-        // and `showsSizeAndQuality` suppresses both for any remote row, so these
-        // are placeholders that never reach the screen rather than claims.
+        // Size is meaningless for a model that is not on this disk, and
+        // `showsSizeAndQuality` suppresses it for any remote row, so this is a
+        // placeholder that never reaches the screen rather than a claim.
+        //
+        // #1950: there is no quality placeholder to supply any more. A hosted id is absent from
+        // `OllamaModelVerdicts`, so it answers `.notTested` with an empty note. That is why the
+        // verdict was moved out of the entry: the old code had to invent `.medium` here, and the
+        // day someone deleted the suppressing `if` that invention would have become a claim.
         parameterCount: "",
-        qualityTier: .medium,
         downloadSize: "",
         isDownloaded: false,
         isRemote: true
@@ -1935,13 +1927,11 @@ public final class OllamaSetupService {
       .joined(separator: " ")
   }
 
-  /// Infer quality tier from parameter count.
-  nonisolated static func inferQualityTier(parameterBillions: Double?) -> OllamaQualityTier {
-    guard let billions = parameterBillions else { return .medium }
-    if billions >= 7.0 { return .best }
-    if billions <= 2.0 { return .worst }
-    return .medium
-  }
+  // #1950: `inferQualityTier(parameterBillions:)` was here. Deleted, not narrowed. It answered a
+  // quality question from a parameter count, so a 13B model the user pulled themselves rendered as
+  // "Best" having never had a single case run through it. A parameter count cannot support any
+  // verdict, so an unmeasured model now returns `.notTested` from `OllamaModelVerdicts` and the
+  // size it was standing in for is still on the row as `parameterCount · downloadSize`.
 
   /// Format file size in bytes to human-readable string.
   nonisolated static func formatFileSize(_ bytes: Int64) -> String {

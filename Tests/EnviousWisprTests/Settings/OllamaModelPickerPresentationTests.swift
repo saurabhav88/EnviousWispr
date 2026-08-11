@@ -198,10 +198,10 @@ struct OllamaModelPickerPresentationTests {
     let catalogRows = [
       OllamaModelCatalogEntry(
         name: "gpt-oss:20b", displayName: "gpt-oss:20b", parameterCount: "",
-        qualityTier: .medium, downloadSize: "", isDownloaded: false, isRemote: true),
+        downloadSize: "", isDownloaded: false, isRemote: true),
       OllamaModelCatalogEntry(
         name: "glm-5.2", displayName: "glm-5.2", parameterCount: "",
-        qualityTier: .medium, downloadSize: "", isDownloaded: false, isRemote: true),
+        downloadSize: "", isDownloaded: false, isRemote: true),
     ]
 
     let picker = try #require(OllamaModelPickerPresentation.hostedTiers(pickerRows, now: now))

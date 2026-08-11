@@ -203,11 +203,14 @@ struct OllamaManageModelsPresentationTests {
   private func catalogEntry(
     _ name: String, isRemote: Bool, isDownloaded: Bool = false,
     displayName: String? = nil, parameterCount: String = "4B",
-    downloadSize: String = "~2 GB", qualityTier: OllamaQualityTier = .best
+    downloadSize: String = "~2 GB"
   ) -> OllamaModelCatalogEntry {
+    // #1950: no verdict parameter. A verdict is a property of the model ID, owned by
+    // `OllamaModelVerdicts`, so it cannot be varied per fixture without inventing a second
+    // authority — which is exactly what this change removed.
     OllamaModelCatalogEntry(
       name: name, displayName: displayName ?? name, parameterCount: parameterCount,
-      qualityTier: qualityTier, downloadSize: downloadSize,
+      downloadSize: downloadSize,
       isDownloaded: isDownloaded, isRemote: isRemote)
   }
 
@@ -230,9 +233,6 @@ struct OllamaManageModelsPresentationTests {
         sourceLocation: sourceLocation)
       #expect(
         lhs.downloadSize == rhs.downloadSize, "\(label): downloadSize at \(index)",
-        sourceLocation: sourceLocation)
-      #expect(
-        lhs.qualityTier == rhs.qualityTier, "\(label): qualityTier at \(index)",
         sourceLocation: sourceLocation)
       #expect(
         lhs.isDownloaded == rhs.isDownloaded, "\(label): isDownloaded at \(index)",
@@ -623,7 +623,7 @@ struct OllamaManageModelsPresentationTests {
       catalogEntry("gpt-oss:20b", isRemote: true, displayName: "GPT OSS 20B"),
       catalogEntry("deepseek-v4-pro", isRemote: true, parameterCount: "671B"),
       catalogEntry("minimax-m3", isRemote: true, downloadSize: ""),
-      catalogEntry("glm-5.2", isRemote: true, qualityTier: .medium),
+      catalogEntry("glm-5.2", isRemote: true),
     ]
     let groups = OllamaCatalogPresentation.hostedTierGroups(
       entries: entries, now: try daysAfterSnapshot(1))

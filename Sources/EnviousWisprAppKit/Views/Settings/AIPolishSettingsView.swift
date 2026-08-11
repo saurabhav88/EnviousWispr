@@ -1839,6 +1839,23 @@ struct AIPolishSettingsView: View {
     return nil
   }
 
+  /// Colour for a measured verdict (#1950).
+  ///
+  /// Exhaustive by construction: `OllamaModelVerdict` is package-visible across sibling targets of
+  /// this same SPM package, so no `@unknown default` is required and adding a verdict case fails
+  /// compilation here until its colour is deliberately assigned. That is the entire reason the
+  /// verdict was not left `public` when it moved off the catalog entry.
+  ///
+  /// `notTested` and `firstParty` read as secondary rather than as a warning: neither is a negative
+  /// verdict, they are the absence of one.
+  static func verdictColor(_ verdict: OllamaModelVerdict) -> Color {
+    switch verdict {
+    case .recommended: return Color.stAccent
+    case .mixed, .notTested, .firstParty: return Color.secondary
+    case .unreliable, .notRecommended: return Color.stWarning
+    }
+  }
+
   /// One catalog row. Extracted so the local and hosted groups render through
   /// exactly the same code — two copies would let the groups drift in actions or
   /// layout, which is the defect a "just duplicate the ForEach" version invites.
@@ -1852,24 +1869,35 @@ struct AIPolishSettingsView: View {
           HStack(spacing: 4) {
             Text(entry.displayName)
               .font(.stHelper)
-            // #1914: quality tier and size are SUPPRESSED for a hosted model.
-            // Both are meaningless for something that is not on this disk — a
-            // cloud row's reported `size` is manifest-only (316 bytes for a
-            // 158-billion-parameter model), so showing it is worse than
-            // showing nothing.
+            // #1914, extended by #1950: verdict, note AND size are all suppressed for a hosted
+            // model. Each is meaningless for something that is not on this disk: a cloud row's
+            // reported `size` is manifest-only (316 bytes for a 158-billion-parameter model), so
+            // showing it is worse than showing nothing, and a hosted id carries no measured
+            // verdict to show.
             if OllamaCatalogPresentation.showsSizeAndQuality(entry) {
-              Text("(\(entry.qualityTier.label))")
+              // #1950: the verdict comes from `OllamaModelVerdicts`, never from the entry. The
+              // switch is exhaustive with no `@unknown default` because the verdict enum is
+              // `package` and this target is in the same package, so adding a case is a compile
+              // error here rather than a silent fall through to a default colour.
+              let verdict = OllamaModelVerdicts.verdict(for: entry.name)
+              Text("(\(verdict.label))")
                 .font(.stHelper)
-                .foregroundStyle(
-                  entry.qualityTier == .best
-                    ? Color.stAccent
-                    : (entry.qualityTier == .medium ? Color.secondary : Color.stWarning))
+                .foregroundStyle(Self.verdictColor(verdict))
             }
           }
           if OllamaCatalogPresentation.showsSizeAndQuality(entry) {
             Text("\(entry.parameterCount) · \(entry.downloadSize)")
               .font(.stHelper)
               .foregroundStyle(Color.stTextSecondary)
+            // #1950: the "what goes wrong" clause, from the same authority as the label. Empty for
+            // a model we have not measured and for EG-1, so the row simply says nothing rather
+            // than implying a reading we do not have.
+            let note = OllamaModelVerdicts.entry(for: entry.name).note
+            if !note.isEmpty {
+              Text(note)
+                .font(.stHelper)
+                .foregroundStyle(Color.stTextSecondary)
+            }
           }
         }
 
