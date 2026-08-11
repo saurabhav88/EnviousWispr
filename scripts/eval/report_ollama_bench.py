@@ -138,7 +138,10 @@ def main() -> int:
         # attribution, and one shared sentence would be wrong for both.
         try:
             summary = load_json(summary_path)
-        except (OSError, json.JSONDecodeError) as exc:
+        # ValueError covers BOTH decode failures: json.JSONDecodeError and
+        # UnicodeDecodeError (invalid UTF-8) are both subclasses, and a
+        # JSONDecodeError-only tuple silently missed the second one.
+        except (OSError, ValueError) as exc:
             problems.append(f"{model} ({cand_stem}): judge receipt is unreadable "
                             f"({exc.__class__.__name__}); re-judge")
             continue
@@ -290,7 +293,10 @@ def main() -> int:
         # cause.
         try:
             per_case = [json.loads(l) for l in open(per_case_path) if l.strip()]
-        except (OSError, json.JSONDecodeError) as exc:
+        # ValueError covers BOTH decode failures: json.JSONDecodeError and
+        # UnicodeDecodeError (invalid UTF-8) are both subclasses, and a
+        # JSONDecodeError-only tuple silently missed the second one.
+        except (OSError, ValueError) as exc:
             problems.append(f"{model} ({cand_stem}): per_case.jsonl is unreadable "
                             f"({exc.__class__.__name__}); re-judge")
             continue

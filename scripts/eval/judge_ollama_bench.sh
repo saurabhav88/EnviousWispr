@@ -56,7 +56,12 @@ import json, sys
 try:
     with open(sys.argv[1]) as f:
         receipt = json.load(f)
-except (OSError, json.JSONDecodeError):
+# ValueError, not JSONDecodeError: invalid UTF-8 raises UnicodeDecodeError,
+# which a JSONDecodeError-only tuple misses. Both are ValueError subclasses,
+# so catching the base is the enumeration rather than a list that can miss
+# the next member — and an escaped exception here exits 1, which the caller
+# maps to "predates the cacheable field" for a file it could not decode.
+except (OSError, ValueError):
     raise SystemExit(1)
 if not isinstance(receipt, dict):
     raise SystemExit(1)
@@ -81,7 +86,12 @@ import json, sys
 try:
     with open(sys.argv[1]) as f:
         receipt = json.load(f)
-except (OSError, json.JSONDecodeError):
+# ValueError, not JSONDecodeError: invalid UTF-8 raises UnicodeDecodeError,
+# which a JSONDecodeError-only tuple misses. Both are ValueError subclasses,
+# so catching the base is the enumeration rather than a list that can miss
+# the next member — and an escaped exception here exits 1, which the caller
+# maps to "predates the cacheable field" for a file it could not decode.
+except (OSError, ValueError):
     raise SystemExit(2)
 if not isinstance(receipt, dict):
     raise SystemExit(2)

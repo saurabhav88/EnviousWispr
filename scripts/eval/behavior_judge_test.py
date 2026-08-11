@@ -682,9 +682,14 @@ def test_shell_resume_does_not_call_a_corrupt_receipt_a_legacy_one():
     d = t / "judged" / "modelA"
     d.mkdir(parents=True, exist_ok=True)
 
-    for label, body in (("malformed", "{not json"), ("non-object", "[1,2,3]")):
+    for label, body in (("malformed", b"{not json"), ("non-object", b"[1,2,3]"),
+                        # Invalid UTF-8: raises UnicodeDecodeError, not
+                        # JSONDecodeError, and an escaped exception exits 1 —
+                        # which this caller maps to the LEGACY branch, so an
+                        # undecodable file was announced as merely old.
+                        ("undecodable", b'{"cacheable": "\xff\xfe"}')):
         forge_stamp(t)
-        (d / "summary.json").write_text(body)
+        (d / "summary.json").write_bytes(body)
         before = invocations(t)
         _, log = run_shell(t)
         assert invocations(t) > before, f"{label} must re-judge: {log}"
@@ -783,6 +788,30 @@ def test_report_refuses_an_unreadable_receipt_by_name():
     assert rc == 2, out
     assert "judge receipt is unreadable" in out, out
     assert "modelA" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_refuses_an_undecodable_receipt():
+    """Cloud review P2, round 2: invalid UTF-8 raises UnicodeDecodeError, which a
+    `json.JSONDecodeError`-only tuple misses entirely. Both are ValueError
+    subclasses, so the guard catches the BASE rather than a list of names that
+    can miss the next member — the axis I under-enumerated was exception TYPE,
+    having already enumerated corrupt SHAPE."""
+    t = report_tree(healthy_receipt())
+    (t / "judged" / "modelA" / "summary.json").write_bytes(b'{"cacheable": "\xff\xfe"}')
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "judge receipt is unreadable" in out, out
+    assert "UnicodeDecodeError" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_refuses_an_undecodable_per_case_file():
+    t = report_tree(healthy_receipt())
+    (t / "judged" / "modelA" / "per_case.jsonl").write_bytes(b'{"id": "\xff\xfe"}\n')
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "per_case.jsonl is unreadable" in out, out
     assert "Traceback" not in out, out
 
 
@@ -1050,7 +1079,7 @@ def test_report_refuses_a_truncated_detail_file():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 61
+EXPECTED_TESTS = 63
 
 
 def _run() -> int:
