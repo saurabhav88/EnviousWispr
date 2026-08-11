@@ -45,31 +45,21 @@ def load_json(p: Path):
         return json.load(f)
 
 
-# Verdicts this gate can actually emit. A receipt carrying anything else was not
-# produced by `evaluate_new_gate` — it is hand-edited or from another tool.
-ALLOWED_VERDICTS = ("CLEAR", "BLOCK", "INCOMPLETE")
-
-
-# A REFUSAL MUST NEVER RAISE. Four review rounds each found one more receipt
-# shape that made the refusal path crash or mislabel — malformed JSON, a
-# non-object, invalid UTF-8, then a hand-edited `"wobble": ["bad"]` turning a
-# `.get` into an AttributeError. Patching the named cell each round is the
-# iterate-the-gaps failure `parse-structured-input-dont-regex-and-iterate`
-# forbids, so these three accessors close the whole class instead: every field a
-# refusal reads goes through one, and none of them can raise on any JSON value.
-# A receipt being refused is by definition untrusted input; treating it as
-# well-formed while explaining why it is not trusted was the contradiction.
-def _as_dict(v) -> dict:
-    return v if isinstance(v, dict) else {}
-
-
-def _as_list(v) -> list:
-    return v if isinstance(v, list) else []
-
-
-def _as_int(v) -> int:
-    # `bool` is an `int` subclass, and `True` must not read as 1 here.
-    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+# Why a receipt is refused is classified in ONE place, shared with
+# `judge_ollama_bench.sh`, because two copies in two languages diverged twice in
+# one PR — the shell announced "predates the `cacheable` field" about files this
+# script correctly called hand-edited and then corrupt. A comment asking for
+# parity cannot enforce it; a shared module can.
+from receipt_state import (  # noqa: E402
+    LEGACY,
+    MALFORMED_METADATA,
+    NOT_CACHEABLE,
+    UNSUPPORTED_VERDICT,
+    _as_dict,
+    _as_list,
+    adjudication_dropped,
+    classify,
+)
 
 
 def main() -> int:
@@ -196,8 +186,8 @@ def main() -> int:
         # model with some engine errors is INCOMPLETE by coverage yet FINISHED as
         # evidence, and `tier()` below ranks exactly that case "Not recommended".
         release_verdict = _as_dict(summary.get("release_gate")).get("verdict")
-        if summary.get("cacheable") is not True \
-                or release_verdict not in ALLOWED_VERDICTS:
+        state, malformed = classify(summary_path)
+        if state != NOT_CACHEABLE or summary.get("cacheable") is not True:
             # A refusal must NAME ITS OWN REASON. Reporting the three gap counts
             # unconditionally printed "0 engine-skipped, 0 primary judge-dropped,
             # 0 adjudication-dropped" for a receipt written before `cacheable`
@@ -222,76 +212,28 @@ def main() -> int:
             # Safe against mislabelling a genuine legacy receipt: all 16 shipped
             # #1950 arms carry `BLOCK`, which is allowlisted, so a real
             # pre-#2007 receipt still reaches the legacy message below.
-            if release_verdict not in ALLOWED_VERDICTS:
+            if state == UNSUPPORTED_VERDICT:
                 problems.append(
                     f"{model} ({cand_stem}): judge receipt carries verdict "
                     f"{release_verdict!r}, which this gate cannot produce — the file is "
                     f"not one of ours or was hand-edited; re-judge")
                 continue
 
-            # VALIDATE BEFORE READING, because coercion makes a FALSE CLAIM.
-            # The accessors below stop the refusal path crashing, but silently
-            # turning a corrupt `"skipped": "not a list"` into `[]` produces
-            # "records no gaps of its own" about a receipt that records nothing
-            # trustworthy — trading a crash for a wrong sentence, which is the
-            # very defect this whole change set exists to remove. A malformed gap
-            # field is no evidence that the gap is zero.
-            #
-            # Absent is fine and means "genuinely nothing recorded". Present with
-            # the wrong type means corrupt or hand-edited, and gets said out loud.
-            # This is the parse-then-use half of
-            # `parse-structured-input-dont-regex-and-iterate`; coercing first was
-            # the shortcut that produced the false claim.
-            def _is_int(v) -> bool:
-                return isinstance(v, int) and not isinstance(v, bool)
-
-            raw_adj = summary.get("adjudication")
-            raw_wobble = summary.get("wobble")
-            checks = [
-                ("skipped", "skipped" in summary, summary.get("skipped"), _as_list),
-                ("missing_scores", "missing_scores" in summary,
-                 summary.get("missing_scores"), _as_list),
-                ("adjudication", "adjudication" in summary, raw_adj, _as_dict),
-                ("wobble", "wobble" in summary, raw_wobble, _as_dict),
-            ]
-            malformed = [name for name, present, value, coerce in checks
-                         if present and coerce(value) is not value]
-            if isinstance(raw_adj, dict):
-                malformed += [f"adjudication.{k}" for k in
-                              ("adjudication_missing_n", "adjudicated_n")
-                              if k in raw_adj and not _is_int(raw_adj[k])]
-            if isinstance(raw_wobble, dict) and "rep_coverage" in raw_wobble:
-                rc = raw_wobble["rep_coverage"]
-                if not isinstance(rc, list) or not all(_is_int(x) for x in rc):
-                    malformed.append("wobble.rep_coverage")
-            if malformed:
+            if state == MALFORMED_METADATA:
+                # Coercing a corrupt `"skipped": "not a list"` to `[]` would
+                # manufacture "records no gaps of its own" about a receipt that
+                # records nothing usable — a false claim, and the very defect this
+                # change set exists to remove. A malformed field is no evidence the
+                # gap is zero, so it is named rather than erased.
                 problems.append(
                     f"{model} ({cand_stem}): judge receipt has malformed "
-                    f"{', '.join(sorted(malformed))}, so its gap counts prove nothing — "
+                    f"{', '.join(malformed)}, so its gap counts prove nothing — "
                     f"the file is corrupt or hand-edited; re-judge")
                 continue
 
             skipped = _as_list(summary.get("skipped"))
             missing = _as_list(summary.get("missing_scores"))
-            adj = _as_dict(summary.get("adjudication"))
-            adj_dropped = adj.get("adjudication_missing_n")
-            if not isinstance(adj_dropped, int) or isinstance(adj_dropped, bool):
-                # Absent OR non-numeric. A pre-#2007 receipt has no explicit
-                # count but DOES carry the evidence, so defaulting to zero would
-                # claim "no adjudication gap" from a receipt that proves one.
-                # `behavior_judge` sets `rep_scores = [primary_premerge,
-                # adjudication]`, so `wobble.rep_coverage[1]` is how many judged
-                # ids the adjudication pass returned while `adjudicated_n` is how
-                # many were selected; the difference is the drop. Only meaningful
-                # when an adjudication pass ran — with none, `rep_coverage` has a
-                # single entry and there is nothing to compare.
-                #
-                # This matters precisely for old receipts: a silently dropped
-                # adjudication IS the defect #2007 was opened for, so the
-                # receipts most likely to carry one are the legacy ones.
-                rep_coverage = _as_list(_as_dict(summary.get("wobble")).get("rep_coverage"))
-                adj_dropped = (max(0, _as_int(adj.get("adjudicated_n")) - _as_int(rep_coverage[1]))
-                               if len(rep_coverage) > 1 else 0)
+            adj_dropped = adjudication_dropped(summary)
             gaps = (f"{len(skipped)} engine-skipped, "
                     f"{len(missing)} primary judge-dropped, "
                     f"{adj_dropped} adjudication-dropped")

@@ -46,6 +46,7 @@ import behavior_judge as bj  # noqa: E402
 
 SHELL = ROOT / "scripts" / "eval" / "judge_ollama_bench.sh"
 REPORT = ROOT / "scripts" / "eval" / "report_ollama_bench.py"
+RECEIPT_STATE = ROOT / "scripts" / "eval" / "receipt_state.py"
 
 
 # --------------------------------------------------------------------------- #
@@ -135,6 +136,12 @@ def shell_tree(mode):
     (t / "cand").mkdir()
     (t / "judged").mkdir()
     (t / "scripts" / "eval" / "judge_ollama_bench.sh").write_bytes(SHELL.read_bytes())
+    # The script derives ROOT from its own location and now DELEGATES refusal
+    # classification to `receipt_state.py`, so the temp ROOT needs a real copy.
+    # Without it `python3 <missing>` exits 2, which collides with the UNREADABLE
+    # state and would make every refusal read "unreadable" — a fixture omission
+    # that produces plausible wrong messages rather than an obvious error.
+    (t / "scripts" / "eval" / "receipt_state.py").write_bytes(RECEIPT_STATE.read_bytes())
     (t / "scripts" / "eval" / "behavior_judge.py").write_text(STUB_JUDGE.format(mode=mode))
     (t / "cand" / "modelA.jsonl").write_text('{"id":"A","candidate":"x"}\n')
     (t / "corpus.jsonl").write_text('{"id":"A"}\n')
@@ -725,6 +732,53 @@ def test_shell_resume_names_an_unsupported_verdict_not_legacy():
         assert "predates" not in log, f"{label} mislabelled as legacy: {log}"
 
 
+def test_both_layers_give_the_same_diagnosis_for_the_same_receipt():
+    """The alignment that two review rounds found broken, now asserted.
+
+    The shell and the report each have to explain a refused receipt, and they must
+    agree — an operator who sees "predates the cacheable field" from one and
+    "corrupt or hand-edited" from the other cannot tell which to believe. Two
+    copies in two languages diverged twice in one PR (verdict classification, then
+    metadata validation), so classification moved into `receipt_state.py` and this
+    test is what stops it drifting apart again.
+
+    Drives the SHELL's real resume path and the REPORT's real entry point over the
+    same receipt bodies, rather than comparing either against a reimplementation.
+    """
+    cases = [
+        # receipt body, shell phrase, report phrase
+        ({"release_gate": {"verdict": "BLOCK"}, "cacheable": False},
+         "receipt is not cacheable", "is not cacheable"),
+        ({"release_gate": {"verdict": "BLOCK"}},
+         "predates the cacheable field", "predates the `cacheable` field"),
+        ({"release_gate": {"verdict": "WEIRD"}},
+         "verdict this gate cannot produce", "cannot produce"),
+        ({"release_gate": {"verdict": "BLOCK"}, "skipped": "not a list"},
+         "malformed metadata", "malformed"),
+        ({"release_gate": ["bad"]},
+         "verdict this gate cannot produce", "cannot produce"),
+    ]
+
+    t = shell_tree("false")
+    run_shell(t)
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+
+    for receipt, shell_phrase, report_phrase in cases:
+        forge_stamp(t)
+        (d / "summary.json").write_text(json.dumps(receipt))
+        before = invocations(t)
+        _, log = run_shell(t)
+        assert invocations(t) > before, f"{receipt} must re-judge: {log}"
+        assert shell_phrase in log, f"shell said the wrong thing for {receipt}: {log}"
+
+        rt = report_tree(receipt)
+        rc, out = run_report(rt)
+        assert rc == 2, f"{receipt} -> rc={rc}: {out}"
+        assert report_phrase in out, f"report said the wrong thing for {receipt}: {out}"
+        assert "Traceback" not in out, f"{receipt} raised: {out}"
+
+
 def test_shell_absent_cacheable_field_is_not_stamped():
     # Every receipt written before #2007 lacks the field.
     t = shell_tree("absent")
@@ -1197,7 +1251,7 @@ def test_report_refuses_a_truncated_detail_file():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 66
+EXPECTED_TESTS = 67
 
 
 def _run() -> int:

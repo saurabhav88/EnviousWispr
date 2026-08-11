@@ -73,44 +73,22 @@ PY
 # part of the caching decision: every state below fails closed and is re-judged,
 # so this changes what the reader is told and nothing else.
 #
-# FOUR states, and every widening here came from a review round finding one more
-# receipt shape the previous set folded into the wrong bucket. A two-way "does it
-# have the field" test announces "predates the cacheable field" about a file it
-# could not even parse, or about a hand-edited one — asserting a cause it never
-# observed, which is the whole defect this pass exists to remove.
+# Why the receipt was refused, for the resume MESSAGE only — DELEGATED, not
+# reimplemented. This used to be an inline copy of the report's logic, and the
+# copy fell behind twice in one PR: first it did not classify verdicts, then it
+# did not validate metadata, and both times it announced "predates the cacheable
+# field" about a file the report correctly called hand-edited or corrupt. A
+# comment asking for parity cannot enforce it, so `receipt_state.py` is the single
+# authority and both layers ask it.
 #
-# These MUST match `report_ollama_bench.py`'s precedence, verdict before
-# field-absence, or the two layers describe the same file differently and the
-# reader cannot tell which to believe.
+# Exit code IS the state; stdout carries malformed field names.
 #   0 = object carrying `cacheable` (so the field says false)
-#   1 = object without it, with a verdict this gate can emit (pre-#2007)
+#   1 = object without it, valid verdict, usable metadata (pre-#2007)
 #   2 = unreadable, malformed, or valid JSON that is not an object
-#   3 = object carrying a verdict this gate cannot emit (not ours / hand-edited)
+#   3 = a verdict this gate cannot emit (not ours / hand-edited)
+#   4 = valid verdict but gap metadata whose types prove nothing
 receipt_refusal_state() {
-  python3 - "$1" <<'PY'
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        receipt = json.load(f)
-# ValueError, not JSONDecodeError: invalid UTF-8 raises UnicodeDecodeError,
-# which a JSONDecodeError-only tuple misses. Both are ValueError subclasses,
-# so catching the base is the enumeration rather than a list that can miss
-# the next member — and an escaped exception here exits 1, which the caller
-# maps to "predates the cacheable field" for a file it could not decode.
-except (OSError, ValueError):
-    raise SystemExit(2)
-if not isinstance(receipt, dict):
-    raise SystemExit(2)
-# Verdict FIRST, matching the report: an unsupported verdict is the stronger
-# signal and carries different advice than "this file is merely old". Read
-# defensively, because a hand-edited receipt is exactly where a non-object
-# `release_gate` shows up and a bare `.get` would raise instead of classifying.
-gate = receipt.get("release_gate")
-verdict = gate.get("verdict") if isinstance(gate, dict) else None
-if verdict not in ("CLEAR", "BLOCK", "INCOMPLETE"):
-    raise SystemExit(3)
-raise SystemExit(0 if "cacheable" in receipt else 1)
-PY
+  python3 "$ROOT/scripts/eval/receipt_state.py" "$1"
 }
 for cand in "$CANDDIR"/*.jsonl; do
   base="$(basename "$cand" .jsonl)"
@@ -147,11 +125,12 @@ for cand in "$CANDDIR"/*.jsonl; do
       # so this is the path a reader actually meets. The post-judge branch below
       # keeps the plain wording deliberately: the judge that just wrote that
       # receipt always sets the field, so there `false` is the only way to get in.
-      receipt_refusal_state "$dest/summary.json"
+      bad_fields="$(receipt_refusal_state "$dest/summary.json")"
       case $? in
         0) reason="receipt is not cacheable" ;;
         1) reason="receipt predates the cacheable field" ;;
         3) reason="receipt carries a verdict this gate cannot produce" ;;
+        4) reason="receipt has malformed metadata ($bad_fields), so its gap counts prove nothing" ;;
         *) reason="receipt is unreadable or is not a JSON object" ;;
       esac
     else

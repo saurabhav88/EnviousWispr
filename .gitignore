@@ -239,6 +239,7 @@ scripts/eval/parakeet_runner/Package.resolved
 # gitignored TEST is worse than a gitignored generator, because a green pipeline
 # then means nothing at all.
 !scripts/eval/behavior_judge_test.py
+!scripts/eval/receipt_state.py
 # `render_bench_prompts.sh` builds this to render each model's REAL production
 # prompt, so without it the benchmark cannot be reproduced at the step that
 # decides WHICH prompt each model was given — the input the whole comparison
