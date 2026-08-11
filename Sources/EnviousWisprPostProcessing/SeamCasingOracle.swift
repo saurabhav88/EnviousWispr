@@ -160,6 +160,36 @@ package struct SeamCasingOracle: Sendable {
       })
   }
 
+  #if DEBUG
+    /// An oracle whose DICTIONARY lookup blocks, for Live UAT only (#1946).
+    ///
+    /// Built here because the memberwise initialiser is internal to this module,
+    /// which is the same reason `authorized` is built here.
+    ///
+    /// Why a real blocking sleep rather than a fake: the defect under test is a
+    /// consultation that does not return inside the deadline, and
+    /// `withOrderedDeadline` explicitly "cannot preempt a blocked thread". A
+    /// cooperative `await` would be preemptible and would therefore exercise a
+    /// different path than the one that latches in the field.
+    ///
+    /// Only `dictionaryVerdict` stalls. The others answer benignly and fast, so
+    /// the resulting trace names exactly one stuck consultation and any other
+    /// name in `stuck=` would be a real defect in the instrument.
+    package static func delayingDictionaryForFaultInjection(
+      milliseconds: Double
+    ) -> SeamCasingOracle {
+      SeamCasingOracle(
+        unavailableReason: nil,
+        dictionaryVerdict: { _ in
+          Thread.sleep(forTimeInterval: milliseconds / 1000)
+          return .ordinary
+        },
+        isLearnedWord: { _ in false },
+        isRecognizedName: { _, _ in false },
+        isNoun: { _ in false })
+    }
+  #endif
+
   package static func unavailable(
     _ reason: CursorInsertionRepair.CaseSkipReason
   ) -> SeamCasingOracle {

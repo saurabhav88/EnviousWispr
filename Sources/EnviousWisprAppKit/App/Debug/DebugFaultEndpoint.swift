@@ -4,6 +4,7 @@
   import EnviousWisprAudio
   import EnviousWisprCore
   import EnviousWisprPipeline
+  import EnviousWisprPostProcessing
   import EnviousWisprServices
   import Foundation
   import Network
@@ -256,6 +257,31 @@
       case "force_default_input_absent":
         guard let audioCapture else { return "ERR no_dependency" }
         return audioCapture.debugSetDefaultInputAbsent(true) ? "OK" : "ERR capture_active"
+
+      // #1946 Live UAT. Makes the casing deadline miss DETERMINISTIC instead of
+      // waiting for a loaded machine to produce one: at load 3.7-9.3 across 8
+      // real dictations it never fired, so a load-based reproduction cannot
+      // prove the trace works in the shipped app.
+      //
+      // Arms the DICTIONARY consultation to block. That is the one closure whose
+      // stall must produce `stuck=dictionary`, so any other name in the trace is
+      // a real defect rather than a quirk of the harness.
+      case let cmd where cmd.hasPrefix("force_oracle_delay("):
+        guard let arg = parseStringArgCommand(cmd, prefix: "force_oracle_delay("),
+          let ms = Double(arg), ms > 0, ms <= 5000
+        else { return "ERR bad_arg" }
+        // Order is load-bearing and documented on the seam: `resetForTesting`
+        // CLEARS any override, so it must run first.
+        SeamCasingOracleRuntime.resetForTesting()
+        SeamCasingOracleRuntime.setPreparationOverrideForTesting { _ in
+          SeamCasingOracle.delayingDictionaryForFaultInjection(milliseconds: ms)
+        }
+        return "OK"
+
+      case "clear_oracle_delay":
+        SeamCasingOracleRuntime.setPreparationOverrideForTesting(nil)
+        SeamCasingOracleRuntime.resetForTesting()
+        return "OK"
 
       case "clear_default_input_absent":
         guard let audioCapture else { return "ERR no_dependency" }
