@@ -644,7 +644,6 @@ struct KernelFinalizationWiring {
             let resolution = resolveLanguage(
               lockedLanguageCode, engineDetectsLanguage, engineReportedLanguage,
               text, surroundingText)
-            gate.mark(.languageResolved)
             guard gate.beginRepair(resolution) else {
               // The deadline already claimed the phase, so repair must not
               // start. This return value is discarded by the deadline's own
@@ -701,7 +700,6 @@ struct KernelFinalizationWiring {
             // Immediately after repair returns and before this closure does, so
             // the window in which a FINISHED oracle still looks stuck is as
             // small as the runtime allows.
-            gate.mark(.repairReturned)
             gate.completeRepair()
             return (repaired, resolution)
           },

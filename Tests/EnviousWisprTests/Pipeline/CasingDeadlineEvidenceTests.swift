@@ -69,16 +69,17 @@ struct CasingDeadlineEvidenceTests {
     let clock = Clock()
     let gate = LanguageRepairDeadlineGate(now: clock.read)
     clock.advance(0.001)
-    gate.mark(.languageResolved)
-    clock.advance(0.002)
+    // The language and repair durations are recorded BY the transitions, in the
+    // same lock take — see the `Mark` doc comment for why they cannot be
+    // separate calls.
     #expect(gate.beginRepair(Self.resolution))
+    clock.advance(0.002)
     gate.mark(.oracleFetched)
     let token = gate.beginOracleUse("dictionary")
     #expect(token != nil)
     clock.advance(0.0005)
     gate.completeOracleUse(token!)
     clock.advance(0.001)
-    gate.mark(.repairReturned)
     let snapshot = gate.completeRepair()
 
     #expect(snapshot.phase == .completed)

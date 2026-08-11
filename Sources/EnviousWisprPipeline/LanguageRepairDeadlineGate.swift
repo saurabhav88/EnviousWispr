@@ -96,11 +96,22 @@ package final class LanguageRepairDeadlineGate: Sendable {
     package var oracleClosureMaxMs: Double?
   }
 
-  /// The three sequencing points the wiring reports.
+  /// The one sequencing point that is NOT already a phase transition.
+  ///
+  /// `languageResolved` and `repairReturned` used to live here too. They are now
+  /// folded into `beginRepair` and `completeRepair`, because a separate `mark`
+  /// call meant TWO lock takes around one logical event, and the timer can claim
+  /// between them. For `repairReturned` that was not merely a lost datum: the
+  /// phase was still `.repair(oracleTouched: true)` in the gap, so a timeout
+  /// landing there would permanently disable an oracle whose work had ALREADY
+  /// completed — the instrument causing the exact failure it exists to diagnose
+  /// (`validation-discipline.md`: a diagnostic must not widen a window in the
+  /// code it observes; whole-diff review r2).
+  ///
+  /// This one is safe to leave standalone because it changes no phase: a timeout
+  /// racing it costs one missing duration, never a wrong action.
   package enum Mark: Sendable {
-    case languageResolved
     case oracleFetched
-    case repairReturned
   }
 
   // MARK: - Internal state
@@ -174,6 +185,9 @@ package final class LanguageRepairDeadlineGate: Sendable {
   package func beginRepair(_ resolution: DictationLanguageResolver.Resolution) -> Bool {
     state.withLock {
       guard $0.frozen == nil, case .resolvingLanguage = $0.phase else { return false }
+      let t = now()
+      $0.languageMs = max(0, t - $0.lastMarkAt) * 1000
+      $0.lastMarkAt = t
       $0.phase = .repair(resolution, oracleTouched: false)
       return true
     }
@@ -190,9 +204,7 @@ package final class LanguageRepairDeadlineGate: Sendable {
       let elapsed = max(0, t - $0.lastMarkAt) * 1000
       $0.lastMarkAt = t
       switch mark {
-      case .languageResolved: $0.languageMs = elapsed
       case .oracleFetched: $0.oracleFetchMs = elapsed
-      case .repairReturned: $0.repairMs = elapsed
       }
     }
   }
@@ -262,10 +274,13 @@ package final class LanguageRepairDeadlineGate: Sendable {
   @discardableResult
   package func completeRepair() -> Snapshot {
     state.withLock {
+      let t = now()
       if $0.frozen == nil, case .repair(let resolution, _) = $0.phase {
+        $0.repairMs = max(0, t - $0.lastMarkAt) * 1000
+        $0.lastMarkAt = t
         $0.phase = .completed(resolution)
       }
-      return Self.freeze(&$0, now: now())
+      return Self.freeze(&$0, now: t)
     }
   }
 
