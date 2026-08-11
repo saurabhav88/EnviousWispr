@@ -187,6 +187,35 @@ struct CasingDeadlineEvidenceTests {
     _ = live
   }
 
+  @Test("A consultation that RETURNED is not reported as a stuck one")
+  func returnedConsultationIsNotReportedAsStuck() {
+    // Whole-diff review (P2). The first version reported this as `repair_oracle`
+    // and therefore as `oracle_timed_out`, asserting a stall that demonstrably
+    // did not happen: the consultation returned, and repair then crossed the
+    // deadline in its own work.
+    let clock = Clock()
+    let gate = LanguageRepairDeadlineGate(now: clock.read)
+    #expect(gate.beginRepair(Self.resolution))
+    let token = gate.beginOracleUse("dictionary")!
+    clock.advance(0.001)
+    gate.completeOracleUse(token)
+    clock.advance(0.105)  // repair's OWN work is what crosses the deadline
+    let snapshot = gate.timeOut()
+
+    #expect(
+      snapshot.phase == .repairAfterOracleReturned,
+      "the evidence must not claim an oracle was stuck when none was in flight")
+    #expect(snapshot.oracleInFlight == nil)
+    #expect(snapshot.oracleClosuresCompleted == 1, "it did run, and it finished")
+    // The latch is UNCHANGED by design: narrowing it is a change to the safety
+    // net, which is out of scope (founder, 2026-08-10). Frozen here so that a
+    // later decision to narrow it is a deliberate, visible edit rather than a
+    // silent drift.
+    #expect(
+      snapshot.shouldDisableOracle,
+      "latch behaviour is deliberately unchanged; only the EVIDENCE got honest")
+  }
+
   // MARK: - Phase honesty
 
   @Test("A stall before any consultation names the deadline, not the oracle")

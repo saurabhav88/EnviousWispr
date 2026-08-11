@@ -62,7 +62,14 @@ package final class LanguageRepairDeadlineGate: Sendable {
     /// is why the hop carries its own duration below — the phase alone cannot
     /// separate them.
     case repairBeforeOracle = "repair_pre_oracle"
+    /// A consultation was IN FLIGHT when the deadline fired. Only this phase
+    /// may honestly be reported as an oracle timeout.
     case repairAfterOracle = "repair_oracle"
+    /// The oracle was consulted, every consultation RETURNED, and repair then
+    /// crossed the deadline in its own work. Whole-diff review found the first
+    /// version reporting this as `repair_oracle`, which asserts a stall that
+    /// demonstrably did not happen — the exact defect this change exists to end.
+    case repairAfterOracleReturned = "repair_post_oracle"
     case completed = "completed"
     case alreadyTimedOut = "already_timed_out"
   }
@@ -298,8 +305,22 @@ package final class LanguageRepairDeadlineGate: Sendable {
     // consulted — repair may have stalled in its own spacing work, or have
     // taken an early exit, without ever reaching it.
     case .repair(let r, let oracleTouched):
-      phase = oracleTouched ? .repairAfterOracle : .repairBeforeOracle
+      // Three outcomes, not two. `oracleTouched` says a consultation happened at
+      // some point; `inFlight` says one is happening NOW, and only the second
+      // justifies reporting an oracle stall.
+      phase =
+        oracleTouched
+        ? (inFlight != nil ? .repairAfterOracle : .repairAfterOracleReturned)
+        : .repairBeforeOracle
       resolution = r
+      // DELIBERATELY UNCHANGED, and this is the one place the diagnostic and the
+      // safety net are allowed to disagree. Whole-diff review proposed gating
+      // this on an active token too, which would NARROW the latch — a change to
+      // the guard, which the founder ruled out for this change (2026-08-10).
+      // So a returned-consultation timeout still latches exactly as it always
+      // has, while the evidence now says honestly that nothing was in flight.
+      // Whether that latch is right is a real question, and it is now ASKABLE
+      // from the data instead of invisible: look for `repair_post_oracle`.
       shouldDisable = oracleTouched
     // Repair already returned, so whatever it consulted answered in time.
     case .completed(let r):

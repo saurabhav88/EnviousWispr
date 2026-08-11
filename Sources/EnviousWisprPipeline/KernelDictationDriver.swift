@@ -1141,6 +1141,19 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.repairRules = nil
         outcome.caretCaptureRetried = nil
         outcome.caretCaptureRetryMs = nil
+        // #1946: same hazard, eight more fields. These are written ONLY when the
+        // casing deadline actually fired, so without clearing them one timeout
+        // would file its evidence against every later healthy recording — in
+        // stored metrics AND in `paste.completed`. Caught by whole-diff review;
+        // the comment above had already named the class.
+        outcome.casingDeadlinePhase = nil
+        outcome.casingLanguageMs = nil
+        outcome.casingOracleFetchMs = nil
+        outcome.casingRepairMs = nil
+        outcome.casingOracleClosure = nil
+        outcome.casingOracleInflightMs = nil
+        outcome.casingOracleClosuresCompleted = nil
+        outcome.casingOracleClosureMaxMs = nil
         // #1167: a fresh session starts assuming the save will succeed; the
         // best-effort `store` closure flips these only on a real save throw.
         outcome.historySaved = true
