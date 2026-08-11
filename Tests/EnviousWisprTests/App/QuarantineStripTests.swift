@@ -100,6 +100,31 @@ struct QuarantineStripTests {
     #expect(FileManagerApplicationMover.stripQuarantine(at: root))
   }
 
+  @Test("replacing a QUARANTINED destination leaves the placed bundle clean")
+  func replacingAQuarantinedDestinationYieldsACleanBundle() throws {
+    // Cloud review P1 argued FileManager.replaceItemAt could merge the old
+    // destination's quarantine back onto our clean staged bundle. Measured on
+    // APFS 2026-08-10: it does not, with default options or with
+    // .usingNewMetadataOnly. This test LOCKS that platform behaviour, so if a
+    // future macOS changes it we find out here rather than from a user who
+    // cannot update. The mover additionally re-verifies the destination after
+    // placement, so the guarantee does not depend on this behaviour holding.
+    let (dest, _) = try Self.makeBundle()
+    let (stage, _) = try Self.makeBundle()
+    defer {
+      try? FileManager.default.removeItem(at: dest)
+      try? FileManager.default.removeItem(at: stage)
+    }
+    Self.setQuarantine(dest)
+    try #require(Self.hasQuarantine(dest))  // positive control
+    #expect(!Self.hasQuarantine(stage))
+
+    _ = try FileManager.default.replaceItemAt(
+      dest, withItemAt: stage, backupItemName: nil, options: .usingNewMetadataOnly)
+
+    #expect(!Self.hasQuarantine(dest))
+  }
+
   @Test("a symlink inside the bundle is not followed; its target keeps its attribute")
   func doesNotFollowSymlinks() throws {
     let (root, _) = try Self.makeBundle()

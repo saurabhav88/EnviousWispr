@@ -416,14 +416,30 @@ public struct FileManagerApplicationMover: ApplicationMoving {
     }
 
     // Place it: atomic replace when a destination exists, else move in.
+    // `.usingNewMetadataOnly` says explicitly: the bundle we just verified and
+    // stripped is the source of truth, not the item it replaces. Measured on
+    // APFS 2026-08-10, quarantine is NOT inherited either way — so this is not
+    // fixing an observed bug, it is removing the need to rely on a metadata
+    // rule we do not control (cloud review P1).
     do {
       if fm.fileExists(atPath: destination.path) {
-        _ = try fm.replaceItemAt(destination, withItemAt: staging)
+        _ = try fm.replaceItemAt(
+          destination, withItemAt: staging, backupItemName: nil,
+          options: .usingNewMetadataOnly)
       } else {
         try fm.moveItem(at: staging, to: destination)
       }
     } catch {
       return .failure(.unknown)
+    }
+
+    // VERIFY THE END STATE, do not assume it. Everything above establishes
+    // that the bundle was clean at its staging path; this establishes that it
+    // is clean WHERE IT WILL ACTUALLY LAUNCH FROM, which is the only property
+    // that matters. Idempotent and cheap: the probe-first path returns
+    // immediately for every already-clean item.
+    guard Self.stripQuarantine(at: destination) else {
+      return .failure(.stripFailedAtDestination)
     }
     // `isStructurallyValid` above asserted the staged bundle's CFBundleVersion
     // equals `currentVersion`, so this IS the version the mover verified.
