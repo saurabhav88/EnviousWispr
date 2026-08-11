@@ -309,6 +309,34 @@ package final class LanguageRepairDeadlineGate: Sendable {
   private static func freeze(_ state: inout State, now: Double) -> Snapshot {
     if let already = state.frozen { return already }
     let inFlight = state.oracleUses.last
+
+    // CHARGE THE UNFINISHED STAGE BEFORE PROJECTING.
+    //
+    // Every duration above is written when its stage FINISHES, so on a timeout
+    // the one stage that never finished — the slow one, the entire reason this
+    // record exists — was reported as `-`. The first version logged
+    // `phase=language lang=-ms` and that blank sat in a passing test's output
+    // without anyone reading it. Whole-diff review r3 caught it.
+    //
+    // Which field it belongs to is derived from the phase, so an in-flight
+    // duration can never be confused with a completed one: the phase names the
+    // stage, and that stage's number is the partial.
+    let running = max(0, now - state.lastMarkAt) * 1000
+    switch state.phase {
+    case .resolvingLanguage:
+      state.languageMs = running
+    case .repair:
+      // Before the fetch completed, the running stage IS the fetch; after it,
+      // repair's own work. `oracleFetchMs` is the only thing that distinguishes
+      // them, because both live in the same phase.
+      if state.oracleFetchMs == nil {
+        state.oracleFetchMs = running
+      } else {
+        state.repairMs = running
+      }
+    case .completed, .timedOut:
+      break  // nothing is running; every stage already recorded its own time
+    }
     let phase: TimeoutPhase
     var resolution: DictationLanguageResolver.Resolution?
     var shouldDisable = false

@@ -217,6 +217,46 @@ struct CasingDeadlineEvidenceTests {
       "latch behaviour is deliberately unchanged; only the EVIDENCE got honest")
   }
 
+  @Test("The stage that timed out reports HOW LONG it had been running")
+  func theSlowStageReportsItsOwnElapsedTime() {
+    // Whole-diff review r3. Every duration is written when its stage FINISHES,
+    // so the stage that never finished — the slow one, the whole reason this
+    // record exists — reported `-`. The first version logged
+    // `phase=language lang=-ms`, which is the instrument failing at its primary
+    // job for its most important field.
+
+    // Language stalls.
+    let c1 = Clock()
+    let g1 = LanguageRepairDeadlineGate(now: c1.read)
+    c1.advance(0.130)
+    let s1 = g1.timeOut()
+    #expect(s1.phase == .resolvingLanguage)
+    #expect((s1.languageMs ?? 0) >= 130, "the stalled stage must carry its elapsed time")
+
+    // The main-thread oracle fetch stalls: same phase as repair's own work, so
+    // the fetch is identified by its duration being the one still unwritten.
+    let c2 = Clock()
+    let g2 = LanguageRepairDeadlineGate(now: c2.read)
+    c2.advance(0.001)
+    #expect(g2.beginRepair(Self.resolution))
+    c2.advance(0.140)
+    let s2 = g2.timeOut()
+    #expect(s2.phase == .repairBeforeOracle)
+    #expect((s2.oracleFetchMs ?? 0) >= 140, "a stalled hop must report how long it hung")
+    #expect((s2.languageMs ?? 0) >= 1, "and the stage that DID finish keeps its real time")
+    #expect(s2.repairMs == nil, "repair never started, so it must not claim a duration")
+
+    // Repair's own work stalls, after the fetch completed.
+    let c3 = Clock()
+    let g3 = LanguageRepairDeadlineGate(now: c3.read)
+    #expect(g3.beginRepair(Self.resolution))
+    g3.mark(.oracleFetched)
+    c3.advance(0.150)
+    let s3 = g3.timeOut()
+    #expect(s3.phase == .repairBeforeOracle)
+    #expect((s3.repairMs ?? 0) >= 150, "once the fetch is recorded, the partial belongs to repair")
+  }
+
   // MARK: - Phase honesty
 
   @Test("A stall before any consultation names the deadline, not the oracle")
