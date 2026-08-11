@@ -61,7 +61,7 @@ enum WhatsNewContent {
       icon: "checkmark.seal",
       title: "Local AI model recommendations now come from our tests",
       description:
-        "Ollama model labels used to be based on model size, which did not show how well they cleaned up dictation. They now reflect our own cleanup tests and explain what went wrong. New Ollama setups now start with qwen2.5:3b, the best result among the local models we offer. Models that produced no acceptable result also ask before downloading.",
+        "Ollama model labels used to be based on model size, which did not show how well they cleaned up dictation. They now reflect our own cleanup tests and explain what went wrong. New Ollama setups now start with qwen2.5:3b, the best result among the local models we offer. There is also a new option, qwen3:0.6b, which scored second best from a download about a quarter the size, so a small download no longer means poor cleanup. Models that produced no acceptable result ask before downloading.",
       version: "2.4.4"
     ),
 

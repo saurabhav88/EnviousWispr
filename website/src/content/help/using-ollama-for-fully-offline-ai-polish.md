@@ -34,9 +34,9 @@ EnviousWispr finds your installed models on its own, so they appear in that list
 
 ### Picking a model
 
-Start with `qwen2.5:3b`, the model EnviousWispr suggests. It scored best of the local models we offer when we tested how well each one cleans up dictation. `qwen2.5:7b` also carries the Recommended label and is the more careful of the two, though it is slower and larger.
+Start with `qwen2.5:3b`, the model EnviousWispr suggests. It scored best of the local models we offer when we tested how well each one cleans up dictation. Two others carry the Recommended label: `qwen3:0.6b`, which scored second best from a download about a quarter the size, and `qwen2.5:7b`, which is the most careful of the three but also the slowest and largest.
 
-The label beside each model in Settings comes from those tests, not from the model's size. Size is not a quality rating. Several of the smallest models EnviousWispr offers produced no acceptable result in our tests, so a smaller download can mean much worse cleanup without reliably solving a timeout. If polish feels slow, choose one of the two Recommended models rather than the smallest one you can find.
+The label beside each model in Settings comes from those tests, not from the model's size. Size is not a quality rating, in either direction. Several of the smallest models EnviousWispr offers produced no acceptable result at all in our tests, while the smallest one we recommend did well, so you cannot read quality off a download size. If polish feels slow, pick a Recommended model rather than the smallest one you can find.
 
 ### If Ollama is not running
 
