@@ -167,18 +167,47 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
     progressPanel = nil
   }
 
-  public func showFailure(_ failure: RelocationFailure) {
+  public func showFailure(_ presentation: RelocationFailurePresentation) {
     dismissProgress()
-    let (title, message) = Self.failureCopy(failure)
+    let (title, message) = Self.failureCopy(presentation)
+    // Show in Finder exists ONLY on Message B, and its target comes from the
+    // presentation rather than being recomputed here — the coordinator owns the
+    // destination (#2006 §3b/§3c). Message A structurally cannot carry one.
+    var revealURL: URL?
+    if case .installedNotConfirmed(_, let destination) = presentation {
+      revealURL = destination
+    }
     let card = RelocationCard(title: title, message: message) {
-      Button {
-        NSApp.stopModal()
-      } label: {
-        Text("OK")
-          .font(.system(size: 17, weight: .semibold))
-          .frame(maxWidth: .infinity).padding(.vertical, 4)
+      VStack(spacing: 10) {
+        if let revealURL {
+          Button {
+            NSWorkspace.shared.activateFileViewerSelecting([revealURL])
+            NSApp.stopModal()
+          } label: {
+            Text("Show in Finder")
+              .font(.system(size: 17, weight: .semibold))
+              .frame(maxWidth: .infinity).padding(.vertical, 4)
+          }
+          .buttonStyle(.borderedProminent).controlSize(.large).tint(Self.accent)
+          Button {
+            NSApp.stopModal()
+          } label: {
+            Text("OK")
+              .font(.system(size: 17, weight: .medium))
+              .frame(maxWidth: .infinity).padding(.vertical, 4)
+          }
+          .buttonStyle(.bordered).controlSize(.large)
+        } else {
+          Button {
+            NSApp.stopModal()
+          } label: {
+            Text("OK")
+              .font(.system(size: 17, weight: .semibold))
+              .frame(maxWidth: .infinity).padding(.vertical, 4)
+          }
+          .buttonStyle(.borderedProminent).controlSize(.large).tint(Self.accent)
+        }
       }
-      .buttonStyle(.borderedProminent).controlSize(.large).tint(Self.accent)
     }
     let panel = makeCardPanel(card)
     NSApp.activate(ignoringOtherApps: true)
@@ -187,8 +216,21 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
     panel.orderOut(nil)
   }
 
-  private static func failureCopy(_ failure: RelocationFailure) -> (String, String) {
-    switch failure {
+  /// TWO message families, not one per failure class (founder 2026-08-10,
+  /// #2006 §3.3). Three pre-placement sentences survive as overrides inside
+  /// Message A because each names a precondition the user must clear before any
+  /// manual drag can succeed — collapsing those would REMOVE information.
+  /// Package-internal (not `private`) so the mapping is exhaustively testable.
+  static func failureCopy(_ presentation: RelocationFailurePresentation) -> (String, String) {
+    // Message B: a verified copy IS at the destination; only handoff failed.
+    if case .installedNotConfirmed = presentation {
+      return (
+        "EnviousWispr is now in your Applications folder.",
+        "You can quit this copy and use the one in Applications."
+      )
+    }
+    // Message A, with the three surviving precondition overrides.
+    switch presentation.failure {
     case .diskFull:
       return (
         "Not enough space to move EnviousWispr.",
@@ -204,10 +246,16 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
         "A different app is already in that Applications spot.",
         "Nothing was changed. EnviousWispr is still working. You can move it yourself in Finder anytime."
       )
-    default:
+    // Generic Message A. Deliberately does NOT promise a manual drag always
+    // works: this arm also covers a full disk and a non-writable Applications
+    // folder, which dragging cannot overcome either.
+    case .destinationCreation, .stagingCopy, .stagedBundleInvalid, .signatureInvalid,
+      .stripFailedBeforePlacement, .stripFailedAtDestination, .ackUnhealthyTranslocated,
+      .ackUnhealthyOther, .ackPathMismatch, .ackVersionMismatch, .ackMalformed, .ackTimeout,
+      .relaunchRejected, .unknown:
       return (
-        "We couldn't move EnviousWispr.",
-        "Nothing was changed. EnviousWispr is still working. Reopen it anytime to try again."
+        "We couldn't move EnviousWispr automatically.",
+        "Drag EnviousWispr to your Applications folder in Finder. EnviousWispr keeps working in the meantime."
       )
     }
   }
@@ -297,7 +345,8 @@ public struct FileManagerApplicationMover: ApplicationMoving {
       let isRunning = Self.isRunning(bundleIdentifier: expectedBundleIdentifier, at: destination)
       // Signature is only load-bearing for the open-existing verdict; compute it
       // once here so the decision function stays pure.
-      let signatureValid = Self.hasValidSignature(destination)
+      let signatureValid = Self.hasValidSignature(
+        destination, expectedBundleIdentifier: expectedBundleIdentifier)
       switch Self.decideExistingDestination(
         existingBundleIdentifier: existing?.bundleIdentifier,
         expectedBundleIdentifier: expectedBundleIdentifier,
@@ -306,12 +355,19 @@ public struct FileManagerApplicationMover: ApplicationMoving {
       {
       case .openExisting:
         // Same-or-newer, verified, not running: open it fresh, do not downgrade
-        // or overwrite.
-        return .success(.existingUsable(destination))
+        // or overwrite. Strip BEFORE launching it: a copy left behind by a
+        // previous failed attempt is still quarantined, which is precisely the
+        // repeat path person A was stuck in — without this, attempt N+1 fails
+        // identically to attempt N (#2006). Verified above, so stripping is a
+        // trust action taken only on a bundle proven ours.
+        guard Self.stripQuarantine(at: destination) else {
+          return .failure(.stripFailedAtDestination)
+        }
+        return .success(.existingUsable(destination, bundleVersion: existingVersion))
       case .activateRunning:
         // Same-or-newer, verified, already running: activate it, never spawn a
         // duplicate (cloud Codex review #1490).
-        return .success(.existingRunning(destination))
+        return .success(.existingRunning(destination, bundleVersion: existingVersion))
       case .refuseRunningOlder:
         // Older + running: never downgrade to it, and a running bundle cannot be
         // safely overwritten. Keep the current app alive (Codex r2 P1).
@@ -346,7 +402,18 @@ public struct FileManagerApplicationMover: ApplicationMoving {
     else { return .failure(.stagedBundleInvalid) }
 
     // A4: code-signature validity + our signing identity, before overwrite.
-    guard Self.hasValidSignature(staging) else { return .failure(.signatureInvalid) }
+    guard Self.hasValidSignature(staging, expectedBundleIdentifier: expectedBundleIdentifier)
+    else { return .failure(.signatureInvalid) }
+
+    // Strip quarantine while the bundle is still at its UUID-named staging
+    // path, so the copy only ever appears under the real destination name
+    // already clean. Order is load-bearing — verify, THEN strip, THEN place:
+    // stripping is a trust action, and doing it before validation could leave
+    // an untrusted staged bundle dequarantined if cleanup were interrupted.
+    // Removing this one xattr does not alter code-signed content (#2006).
+    guard Self.stripQuarantine(at: staging) else {
+      return .failure(.stripFailedBeforePlacement)
+    }
 
     // Place it: atomic replace when a destination exists, else move in.
     do {
@@ -358,7 +425,9 @@ public struct FileManagerApplicationMover: ApplicationMoving {
     } catch {
       return .failure(.unknown)
     }
-    return .success(.installed(destination))
+    // `isStructurallyValid` above asserted the staged bundle's CFBundleVersion
+    // equals `currentVersion`, so this IS the version the mover verified.
+    return .success(.installed(destination, bundleVersion: currentVersion))
   }
 
   static func isRunning(bundleIdentifier: String, at url: URL) -> Bool {
@@ -378,19 +447,95 @@ public struct FileManagerApplicationMover: ApplicationMoving {
     return true
   }
 
-  static func hasValidSignature(_ url: URL) -> Bool {
+  static func hasValidSignature(_ url: URL, expectedBundleIdentifier: String) -> Bool {
+    // The identifier is interpolated into a requirement string, so a value
+    // carrying a quote or backslash could change the requirement's meaning.
+    // Ours cannot, but a requirement built from unvalidated input is a defect
+    // shape regardless of reachability; refuse before building it rather than
+    // relying on SecRequirementCreateWithString to fail closed (#2006).
+    guard !expectedBundleIdentifier.isEmpty,
+      !expectedBundleIdentifier.contains("\""),
+      !expectedBundleIdentifier.contains("\\")
+    else { return false }
     var staticCode: SecStaticCode?
     guard SecStaticCodeCreateWithPath(url as CFURL, [], &staticCode) == errSecSuccess,
       let code = staticCode
     else { return false }
-    // Validity anchored to Apple's chain AND our Developer ID Team ID.
+    // Validity anchored to Apple's chain, our Developer ID Team ID, AND this
+    // exact product. `isStructurallyValid` already asserts the identifier from
+    // the Info.plist a statement earlier; binding it into the requirement makes
+    // identity part of the CRYPTOGRAPHIC assertion instead, so the two checks
+    // cannot pass against different states of the bundle (#2006).
     let requirementText =
-      "anchor apple generic and certificate leaf[subject.OU] = \"\(teamID)\"" as CFString
+      """
+      anchor apple generic \
+      and identifier "\(expectedBundleIdentifier)" \
+      and certificate leaf[subject.OU] = "\(teamID)"
+      """ as CFString
     var requirement: SecRequirement?
     guard SecRequirementCreateWithString(requirementText, [], &requirement) == errSecSuccess,
       let req = requirement
     else { return false }
     return SecStaticCodeCheckValidity(code, [], req) == errSecSuccess
+  }
+
+  // MARK: - Quarantine
+
+  /// Removes `com.apple.quarantine` from `root` and every descendant.
+  ///
+  /// THE fix for #2006. A translocated bundle carries the attribute on its
+  /// randomized mount (measured: `00c3;00000000;Safari;`), `FileManager` copies
+  /// preserve it, and macOS then translocates the placed copy AGAIN under a new
+  /// UUID — so the move "succeeds" and the relaunched copy is still trapped.
+  /// Mirrors Sparkle's `SUFileManager.releaseItemFromQuarantineAtRootURL`
+  /// (`SUFileManager.m:22,86-164`) in shape, with one deliberate difference:
+  /// Sparkle treats aggregate failure as advisory because it is polishing an
+  /// already-installed app, whereas for us stripping IS the transaction, so any
+  /// failure is fatal to the relocation.
+  ///
+  /// Removes ONLY this attribute — never a blanket `xattr -c` — and never
+  /// follows symlinks, so a link inside the bundle cannot be used to clear the
+  /// attribute on a file outside it.
+  static func stripQuarantine(at root: URL) -> Bool {
+    let attr = "com.apple.quarantine"
+
+    func remove(_ url: URL) -> Bool {
+      let ok = url.withUnsafeFileSystemRepresentation { path -> Bool in
+        guard let path else { return false }
+        // XATTR_NOFOLLOW: act on the link itself, never its target.
+        if removexattr(path, attr, XATTR_NOFOLLOW) == 0 { return true }
+        // Nothing to remove is success; anything else is a real failure.
+        return errno == ENOATTR
+      }
+      return ok
+    }
+
+    guard remove(root) else { return false }
+
+    // A subtree we could not read is NOT a clean bundle. Record the first
+    // traversal error and stop; returning success after silently skipping an
+    // inaccessible directory would report a stripped bundle that still carries
+    // the attribute, which is the exact false-negative this change exists to
+    // remove.
+    var traversalFailed = false
+    guard
+      let walker = FileManager.default.enumerator(
+        at: root,
+        includingPropertiesForKeys: nil,
+        // No options: the target IS an .app package, so package descendants
+        // must be visited, and hidden files inside a bundle carry the
+        // attribute too.
+        options: [],
+        errorHandler: { _, _ in
+          traversalFailed = true
+          return false  // stop enumerating
+        })
+    else { return false }
+
+    for case let item as URL in walker {
+      guard remove(item) else { return false }
+    }
+    return !traversalFailed
   }
 }
 
@@ -402,13 +547,20 @@ public struct FileManagerApplicationMover: ApplicationMoving {
 public struct NSWorkspaceRelocationRelauncher: RelocationRelaunching {
   public init() {}
 
-  public func relaunch(_ installedURL: URL, attemptID: String) async -> Bool {
+  public func relaunch(
+    _ installedURL: URL, attemptID: String, reason: String, destinationScope: String
+  ) async -> Bool {
     let config = NSWorkspace.OpenConfiguration()
     config.createsNewApplicationInstance = true
     config.activates = true
+    // Reason + scope let the CHILD emit its own `completed` event. A child that
+    // receives neither (old parent) still writes its health ack and simply
+    // emits nothing (#2006 §9).
     config.environment = [
       "EW_RELOCATION_RELAUNCH": "1",
       "EW_RELOCATION_ATTEMPT_ID": attemptID,
+      "EW_RELOCATION_REASON": reason,
+      "EW_RELOCATION_DESTINATION_SCOPE": destinationScope,
     ]
     return await withCheckedContinuation { continuation in
       NSWorkspace.shared.openApplication(at: installedURL, configuration: config) { app, error in
@@ -442,6 +594,12 @@ public struct FileRelocationHandshake: RelocationHandshaking {
   private struct Ack: Codable {
     let resolvedPath: String
     let healthy: Bool
+    /// Both optional ON THE WIRE. An ack written by an OLDER child carries
+    /// neither. `decodeIfPresent` semantics come free from the optionals; an
+    /// absent value must read as UNKNOWN, never as a mismatch, or every
+    /// cross-version handoff breaks (#2006 §4).
+    let stateLabel: String?
+    let bundleVersion: String?
   }
 
   public init(
@@ -463,28 +621,50 @@ public struct FileRelocationHandshake: RelocationHandshaking {
     directory.appendingPathComponent("relocation-ack-\(attemptID).json")
   }
 
-  public func writeAck(attemptID: String, resolvedPath: String, healthy: Bool) {
+  public func writeAck(
+    attemptID: String, resolvedPath: String, healthy: Bool, stateLabel: String?,
+    bundleVersion: String?
+  ) {
     let fm = FileManager.default
     try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
-    guard let data = try? JSONEncoder().encode(Ack(resolvedPath: resolvedPath, healthy: healthy))
+    guard
+      let data = try? JSONEncoder().encode(
+        Ack(
+          resolvedPath: resolvedPath, healthy: healthy, stateLabel: stateLabel,
+          bundleVersion: bundleVersion))
     else { return }
     try? data.write(to: ackURL(attemptID), options: .atomic)
   }
 
-  public func awaitAck(attemptID: String, destination: URL, timeout: TimeInterval) async -> Bool {
+  public func awaitAck(
+    attemptID: String, destination: URL, expectedBundleVersion: String, timeout: TimeInterval
+  ) async -> RelocationAckOutcome {
     let url = ackURL(attemptID)
     let deadline = Date().addingTimeInterval(timeout)
     defer { try? FileManager.default.removeItem(at: url) }
     while Date() < deadline {
-      if let data = try? Data(contentsOf: url),
-        let ack = try? JSONDecoder().decode(Ack.self, from: data)
-      {
-        return ack.healthy
-          && ack.resolvedPath == destination.standardizedFileURL.path
+      if let data = try? Data(contentsOf: url) {
+        guard let ack = try? JSONDecoder().decode(Ack.self, from: data) else {
+          // A file exists but will not decode. Do not keep polling a corpse.
+          return .malformed
+        }
+        // Order is load-bearing: health, then exact path, then version. A
+        // version check must never pre-empt the two conditions that already
+        // work (#2006 §3.2).
+        guard ack.healthy else { return .unhealthy(stateLabel: ack.stateLabel) }
+        guard ack.resolvedPath == destination.standardizedFileURL.path else {
+          return .pathMismatch
+        }
+        // Compare ONLY when the child supplied a version. Absent means an old
+        // child, which must still confirm.
+        if let actual = ack.bundleVersion, actual != expectedBundleVersion {
+          return .versionMismatch
+        }
+        return .confirmed
       }
       try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
     }
-    return false
+    return .timedOut
   }
 }
 
@@ -500,19 +680,34 @@ public struct TelemetryServiceRelocationSink: RelocationTelemetrySink {
     TelemetryService.shared.updateRelocationOffered(
       reason: reason, destinationScope: destinationScope)
   }
-  public func accepted(reason: String, destinationScope: String) {
+  public func accepted(reason: String, destinationScope: String, attemptID: String) {
     TelemetryService.shared.updateRelocationAccepted(
-      reason: reason, destinationScope: destinationScope)
+      reason: reason, destinationScope: destinationScope, attemptID: attemptID)
   }
   public func declined(reason: String) {
     TelemetryService.shared.updateRelocationDeclined(reason: reason)
   }
-  public func failed(reason: String, failureClass: String) {
-    TelemetryService.shared.updateRelocationFailed(reason: reason, failureClass: failureClass)
+  public func failed(
+    reason: String, failureClass: String, attemptID: String, installResolution: String
+  ) {
+    TelemetryService.shared.updateRelocationFailed(
+      reason: reason, failureClass: failureClass, attemptID: attemptID,
+      installResolution: installResolution)
   }
-  public func relaunched(reason: String, destinationScope: String, relaunchConfirmed: Bool) {
+  public func relaunched(
+    reason: String, destinationScope: String, relaunchConfirmed: Bool, attemptID: String,
+    installResolution: String
+  ) {
     TelemetryService.shared.updateRelocationRelaunched(
-      reason: reason, destinationScope: destinationScope, relaunchConfirmed: relaunchConfirmed)
+      reason: reason, destinationScope: destinationScope, relaunchConfirmed: relaunchConfirmed,
+      attemptID: attemptID, installResolution: installResolution)
+  }
+  public func completed(
+    reason: String, destinationScope: String, attemptID: String, completionSource: String
+  ) {
+    TelemetryService.shared.updateRelocationCompleted(
+      reason: reason, destinationScope: destinationScope, attemptID: attemptID,
+      completionSource: completionSource)
   }
 }
 

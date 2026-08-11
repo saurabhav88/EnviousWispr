@@ -2386,16 +2386,17 @@ public final class TelemetryService {
       properties: ["reason": reason, "destination_scope": destinationScope])
   }
 
-  public func updateRelocationAccepted(reason: String, destinationScope: String) {
+  public func updateRelocationAccepted(
+    reason: String, destinationScope: String, attemptID: String
+  ) {
+    let props = [
+      "reason": reason, "destination_scope": destinationScope, "attempt_id": attemptID,
+    ]
     #if DEBUG
       testEventHook?(
-        CapturedTelemetryEvent(
-          name: "update.relocation_accepted",
-          stringProps: ["reason": reason, "destination_scope": destinationScope]))
+        CapturedTelemetryEvent(name: "update.relocation_accepted", stringProps: props))
     #endif
-    PostHogSDK.shared.capture(
-      "update.relocation_accepted",
-      properties: ["reason": reason, "destination_scope": destinationScope])
+    PostHogSDK.shared.capture("update.relocation_accepted", properties: props)
   }
 
   public func updateRelocationDeclined(reason: String) {
@@ -2407,35 +2408,54 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("update.relocation_declined", properties: ["reason": reason])
   }
 
-  public func updateRelocationFailed(reason: String, failureClass: String) {
+  public func updateRelocationFailed(
+    reason: String, failureClass: String, attemptID: String, installResolution: String
+  ) {
+    let props = [
+      "reason": reason, "failure_class": failureClass, "attempt_id": attemptID,
+      "install_resolution": installResolution,
+    ]
+    #if DEBUG
+      testEventHook?(CapturedTelemetryEvent(name: "update.relocation_failed", stringProps: props))
+    #endif
+    PostHogSDK.shared.capture("update.relocation_failed", properties: props)
+  }
+
+  /// A usable destination copy was OBSERVED. Two legitimate emitters, because
+  /// there are two successful routes: the healthy child after its own health
+  /// check, and the parent after an `.existingRunning` activation, which
+  /// launches no child at all (#2006 §3.4a).
+  public func updateRelocationCompleted(
+    reason: String, destinationScope: String, attemptID: String, completionSource: String
+  ) {
+    let props = [
+      "reason": reason, "destination_scope": destinationScope, "attempt_id": attemptID,
+      "completion_source": completionSource,
+    ]
     #if DEBUG
       testEventHook?(
-        CapturedTelemetryEvent(
-          name: "update.relocation_failed",
-          stringProps: ["reason": reason, "failure_class": failureClass]))
+        CapturedTelemetryEvent(name: "update.relocation_completed", stringProps: props))
     #endif
-    PostHogSDK.shared.capture(
-      "update.relocation_failed",
-      properties: ["reason": reason, "failure_class": failureClass])
+    PostHogSDK.shared.capture("update.relocation_completed", properties: props)
   }
 
   public func updateRelocationRelaunched(
-    reason: String, destinationScope: String, relaunchConfirmed: Bool
+    reason: String, destinationScope: String, relaunchConfirmed: Bool, attemptID: String,
+    installResolution: String
   ) {
+    let stringProps = [
+      "reason": reason, "destination_scope": destinationScope, "attempt_id": attemptID,
+      "install_resolution": installResolution,
+    ]
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
-          name: "update.relocation_relaunched",
-          stringProps: ["reason": reason, "destination_scope": destinationScope],
+          name: "update.relocation_relaunched", stringProps: stringProps,
           boolProps: ["relaunch_confirmed": relaunchConfirmed]))
     #endif
-    PostHogSDK.shared.capture(
-      "update.relocation_relaunched",
-      properties: [
-        "reason": reason,
-        "destination_scope": destinationScope,
-        "relaunch_confirmed": relaunchConfirmed,
-      ])
+    var props: [String: Any] = stringProps
+    props["relaunch_confirmed"] = relaunchConfirmed
+    PostHogSDK.shared.capture("update.relocation_relaunched", properties: props)
   }
 
   /// Issue #958: a proactive launch/foreground trigger evaluated, whether it

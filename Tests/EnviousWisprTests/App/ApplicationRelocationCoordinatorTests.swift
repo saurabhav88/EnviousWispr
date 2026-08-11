@@ -28,11 +28,15 @@ struct ApplicationRelocationCoordinatorTests {
     var choice: RelocationChoice = .move
     var progressShown = 0
     var progressDismissed = 0
-    var failures: [RelocationFailure] = []
+    var presentations: [RelocationFailurePresentation] = []
+    /// Convenience for the many existing assertions that only care about class.
+    var failures: [RelocationFailure] { presentations.map(\.failure) }
     func present() async -> RelocationChoice { choice }
     func showProgress() { progressShown += 1 }
     func dismissProgress() { progressDismissed += 1 }
-    func showFailure(_ failure: RelocationFailure) { failures.append(failure) }
+    func showFailure(_ presentation: RelocationFailurePresentation) {
+      presentations.append(presentation)
+    }
   }
 
   final class FakeMover: ApplicationMoving, @unchecked Sendable {
@@ -53,9 +57,15 @@ struct ApplicationRelocationCoordinatorTests {
     private(set) var lastAttemptID: String?
     private(set) var relaunchCalls = 0
     private(set) var activatedURL: URL?
-    func relaunch(_ installedURL: URL, attemptID: String) async -> Bool {
+    private(set) var lastReason: String?
+    private(set) var lastDestinationScope: String?
+    func relaunch(
+      _ installedURL: URL, attemptID: String, reason: String, destinationScope: String
+    ) async -> Bool {
       relaunchCalls += 1
       lastAttemptID = attemptID
+      lastReason = reason
+      lastDestinationScope = destinationScope
       return success
     }
     func activateRunning(_ url: URL) async -> Bool {
@@ -65,15 +75,28 @@ struct ApplicationRelocationCoordinatorTests {
   }
 
   final class FakeHandshake: RelocationHandshaking, @unchecked Sendable {
-    var ackHealthy = true
-    private(set) var awaitCalls = 0
-    private(set) var writes: [(attemptID: String, path: String, healthy: Bool)] = []
-    func awaitAck(attemptID: String, destination: URL, timeout: TimeInterval) async -> Bool {
-      awaitCalls += 1
-      return ackHealthy
+    /// Existing tests set this; `true` means confirmed, `false` means the
+    /// generic unhealthy-other outcome. New tests set `outcome` directly.
+    var ackHealthy = true {
+      didSet { outcome = ackHealthy ? .confirmed : .unhealthy(stateLabel: "read_only_volume") }
     }
-    func writeAck(attemptID: String, resolvedPath: String, healthy: Bool) {
-      writes.append((attemptID, resolvedPath, healthy))
+    var outcome: RelocationAckOutcome = .confirmed
+    private(set) var awaitCalls = 0
+    private(set) var lastExpectedVersion: String?
+    private(set) var writes:
+      [(attemptID: String, path: String, healthy: Bool, stateLabel: String?, version: String?)] = []
+    func awaitAck(
+      attemptID: String, destination: URL, expectedBundleVersion: String, timeout: TimeInterval
+    ) async -> RelocationAckOutcome {
+      awaitCalls += 1
+      lastExpectedVersion = expectedBundleVersion
+      return outcome
+    }
+    func writeAck(
+      attemptID: String, resolvedPath: String, healthy: Bool, stateLabel: String?,
+      bundleVersion: String?
+    ) {
+      writes.append((attemptID, resolvedPath, healthy, stateLabel, bundleVersion))
     }
   }
 
@@ -83,18 +106,37 @@ struct ApplicationRelocationCoordinatorTests {
     var declinedEvents: [String] = []
     var failedEvents: [(String, String)] = []
     var relaunchedEvents: [(String, String, Bool)] = []
+    var completedEvents: [(reason: String, scope: String, attemptID: String, source: String)] = []
+    var lastAcceptedAttemptID: String?
+    var lastFailedAttemptID: String?
+    var lastFailedInstallResolution: String?
+    var lastRelaunchedInstallResolution: String?
     func offered(reason: String, destinationScope: String) {
       offeredEvents.append((reason, destinationScope))
     }
-    func accepted(reason: String, destinationScope: String) {
+    func accepted(reason: String, destinationScope: String, attemptID: String) {
       acceptedEvents.append((reason, destinationScope))
+      lastAcceptedAttemptID = attemptID
     }
     func declined(reason: String) { declinedEvents.append(reason) }
-    func failed(reason: String, failureClass: String) {
+    func failed(
+      reason: String, failureClass: String, attemptID: String, installResolution: String
+    ) {
       failedEvents.append((reason, failureClass))
+      lastFailedAttemptID = attemptID
+      lastFailedInstallResolution = installResolution
     }
-    func relaunched(reason: String, destinationScope: String, relaunchConfirmed: Bool) {
+    func completed(
+      reason: String, destinationScope: String, attemptID: String, completionSource: String
+    ) {
+      completedEvents.append((reason, destinationScope, attemptID, completionSource))
+    }
+    func relaunched(
+      reason: String, destinationScope: String, relaunchConfirmed: Bool, attemptID: String,
+      installResolution: String
+    ) {
       relaunchedEvents.append((reason, destinationScope, relaunchConfirmed))
+      lastRelaunchedInstallResolution = installResolution
     }
   }
 
@@ -122,7 +164,7 @@ struct ApplicationRelocationCoordinatorTests {
     version: String = "2.3.0",
     relaunchAttemptID: String? = nil,
     moverResult: Result<InstallResolution, RelocationFailure> = .success(
-      .installed(URL(fileURLWithPath: "/Applications/EnviousWispr.app"))),
+      .installed(URL(fileURLWithPath: "/Applications/EnviousWispr.app"), bundleVersion: "1.0")),
     now: Date = Date(timeIntervalSince1970: 1_000_000)
   ) -> Harness {
     let suppression = FakeSuppression()
@@ -286,16 +328,72 @@ struct ApplicationRelocationCoordinatorTests {
 
   // MARK: Handshake failure keeps the original alive (A1)
 
-  @Test("ack unconfirmed -> original NEVER terminates, reports relaunchUnconfirmed")
+  @Test("ack unconfirmed -> original NEVER terminates, and reports the SPECIFIC reason")
   func moveAckTimeout() async {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
-    h.handshake.ackHealthy = false
+    // A read-only-volume child: unhealthy for a reason that is NOT translocation.
+    h.handshake.outcome = .unhealthy(stateLabel: "read_only_volume")
     h.coordinator.evaluateAndOfferIfNeeded()
     await h.coordinator.pendingWork?.value
     #expect(h.terminate.count == 0)  // the only known-good copy stays alive
     #expect(h.telemetry.relaunchedEvents.isEmpty)
-    #expect(h.telemetry.failedEvents.map(\.1) == ["relaunchUnconfirmed"])
-    #expect(h.presenter.failures == [.relaunchUnconfirmed])
+    // #2006: this used to be the single `relaunchUnconfirmed` bucket for four
+    // distinct conditions. The class is now specific, and the user gets
+    // Message A because an unhealthy child is NOT evidence of a good copy.
+    #expect(h.telemetry.failedEvents.map(\.1) == ["ackUnhealthyOther"])
+    #expect(h.presenter.presentations.count == 1)
+    if case .nothingMoved(let f) = h.presenter.presentations[0] {
+      #expect(f == .ackUnhealthyOther)
+    } else {
+      Issue.record("an unhealthy child must never produce Message B")
+    }
+  }
+
+  @Test("a STILL-TRANSLOCATED child is classified apart, and never told to just open it")
+  func moveAckStillTranslocated() async {
+    let h = Self.makeHarness(bundleURL: Self.translocatedURL)
+    h.handshake.outcome = .unhealthy(stateLabel: "translocated")
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.terminate.count == 0)
+    #expect(h.telemetry.failedEvents.map(\.1) == ["ackUnhealthyTranslocated"])
+    // The loop person A repeated four times: "open it from Applications" when
+    // the Applications copy is itself still trapped. Must be Message A.
+    if case .nothingMoved = h.presenter.presentations[0] {} else {
+      Issue.record("a still-translocated child must never produce Message B")
+    }
+  }
+
+  @Test("a healthy ack that never arrives DOES offer the Applications copy")
+  func moveAckTimedOutOffersDestination() async {
+    let h = Self.makeHarness(bundleURL: Self.translocatedURL)
+    h.handshake.outcome = .timedOut
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.terminate.count == 0)
+    #expect(h.telemetry.failedEvents.map(\.1) == ["ackTimeout"])
+    // Placed and signature-verified, no evidence of breakage -> Message B,
+    // carrying the destination so Show in Finder has a real target.
+    if case .installedNotConfirmed(_, let url) = h.presenter.presentations[0] {
+      #expect(url.path == "/Applications/EnviousWispr.app")
+    } else {
+      Issue.record("a timed-out ack on a verified copy should produce Message B")
+    }
+  }
+
+  @Test("the expected version comes from the MOVER, not the running app")
+  func expectedVersionComesFromMover() async {
+    // A NEWER copy already at the destination is explicitly allowed. If the
+    // parent compared against its own version, this would be reported as a
+    // mismatch and the user told to quit every copy — a false failure.
+    let h = Self.makeHarness(
+      bundleURL: Self.translocatedURL,
+      moverResult: .success(
+        .existingUsable(
+          URL(fileURLWithPath: "/Applications/EnviousWispr.app"), bundleVersion: "9.9")))
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.handshake.lastExpectedVersion == "9.9")
   }
 
   @Test("relaunch rejected -> failure, no terminate")
@@ -408,7 +506,7 @@ struct ApplicationRelocationCoordinatorTests {
   func existingUsableHandshakes() async {
     let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
     let h = Self.makeHarness(
-      bundleURL: Self.translocatedURL, moverResult: .success(.existingUsable(dest)))
+      bundleURL: Self.translocatedURL, moverResult: .success(.existingUsable(dest, bundleVersion: "1.0")))
     h.handshake.ackHealthy = true
     h.coordinator.evaluateAndOfferIfNeeded()
     await h.coordinator.pendingWork?.value
@@ -423,7 +521,7 @@ struct ApplicationRelocationCoordinatorTests {
   func existingRunningActivates() async {
     let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
     let h = Self.makeHarness(
-      bundleURL: Self.translocatedURL, moverResult: .success(.existingRunning(dest)))
+      bundleURL: Self.translocatedURL, moverResult: .success(.existingRunning(dest, bundleVersion: "1.0")))
     h.coordinator.evaluateAndOfferIfNeeded()
     await h.coordinator.pendingWork?.value
     #expect(h.relauncher.activatedURL == dest)  // brought the live copy to front
@@ -437,7 +535,7 @@ struct ApplicationRelocationCoordinatorTests {
   func existingRunningActivateFailure() async {
     let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
     let h = Self.makeHarness(
-      bundleURL: Self.translocatedURL, moverResult: .success(.existingRunning(dest)))
+      bundleURL: Self.translocatedURL, moverResult: .success(.existingRunning(dest, bundleVersion: "1.0")))
     h.relauncher.activateSuccess = false
     h.coordinator.evaluateAndOfferIfNeeded()
     await h.coordinator.pendingWork?.value
