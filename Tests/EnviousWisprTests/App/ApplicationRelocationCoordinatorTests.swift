@@ -207,6 +207,38 @@ struct ApplicationRelocationCoordinatorTests {
       relauncher: relauncher, handshake: handshake, telemetry: telemetry, terminate: terminate)
   }
 
+  // MARK: install_resolution keeps the existing-copy distinction
+
+  @Test("a strip failure at the destination is recorded as existing_usable, not unresolved")
+  func stripFailureAtDestinationKeepsTheRoute() async {
+    // This failure can arise ONLY on the existing-copy route, which is the
+    // repeat path that made every retry fail identically. Recording it as
+    // `unresolved` would erase the one distinction the field exists to measure
+    // (whole-diff review r4).
+    let h = Self.makeHarness(
+      bundleURL: Self.translocatedURL,
+      moverResult: .failure(.stripFailedAtDestination))
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.telemetry.failedEvents.map(\.1) == ["stripFailedAtDestination"])
+    #expect(h.telemetry.lastFailedInstallResolution == "existing_usable")
+    // A placed-but-suspect copy must never be offered for opening.
+    if case .nothingMoved = h.presenter.presentations[0] {} else {
+      Issue.record("a partially stripped destination must produce Message A")
+    }
+  }
+
+  @Test("a genuinely pre-placement failure still reports unresolved")
+  func prePlacementFailureIsUnresolved() async {
+    // The two-way control: without it, a mapping that returned existing_usable
+    // for EVERYTHING would pass the test above.
+    let h = Self.makeHarness(
+      bundleURL: Self.translocatedURL, moverResult: .failure(.diskFull))
+    h.coordinator.evaluateAndOfferIfNeeded()
+    await h.coordinator.pendingWork?.value
+    #expect(h.telemetry.lastFailedInstallResolution == "unresolved")
+  }
+
   // MARK: Child completion is claimed ONLY by the copy we actually placed
 
   /// A real, existing, writable path so the detector reports `.healthy`. With

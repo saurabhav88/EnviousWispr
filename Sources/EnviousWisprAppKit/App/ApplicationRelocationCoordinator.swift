@@ -130,6 +130,28 @@ public enum RelocationFailure: String, Error, Sendable, CaseIterable {
   /// `handshakeTimeout`.
   case ackTimeout
   case unknown
+
+  /// The install route this failure ITSELF identifies, for the terminal events
+  /// where the mover returned no resolution to read.
+  ///
+  /// Only `stripFailedAtDestination` identifies one: it can arise ONLY on the
+  /// `.existingUsable` route, where a verified copy was already at the
+  /// destination. Reporting it as `unresolved` would erase exactly the
+  /// existing-copy distinction this field exists to measure, and make the
+  /// repeat path indistinguishable from a failure before any destination was
+  /// resolved (whole-diff review r4). No `default` arm on purpose: a future
+  /// case must answer this question rather than inherit `unresolved`.
+  public var impliedInstallResolution: String {
+    switch self {
+    case .stripFailedAtDestination:
+      return InstallResolution.TelemetryLabel.existingUsable
+    case .destinationCreation, .destinationRunning, .stagingCopy, .stagedBundleInvalid,
+      .signatureInvalid, .destinationConflict, .diskFull, .stripFailedBeforePlacement,
+      .relaunchRejected, .ackUnhealthyTranslocated, .ackUnhealthyOther, .ackPathMismatch,
+      .ackVersionMismatch, .ackMalformed, .ackTimeout, .unknown:
+      return InstallResolution.TelemetryLabel.unresolved
+    }
+  }
 }
 
 /// How the handshake ended. Replaces a `Bool` that could not distinguish the
@@ -216,12 +238,23 @@ public enum InstallResolution: Equatable, Sendable {
     return false
   }
 
+  /// One home for the bounded `install_resolution` vocabulary, so the failure
+  /// path and the success path cannot drift apart.
+  public enum TelemetryLabel {
+    public static let installed = "installed"
+    public static let existingUsable = "existing_usable"
+    public static let existingRunning = "existing_running"
+    /// The mover failed BEFORE producing any resolution. Asserts nothing about
+    /// whether a destination existed.
+    public static let unresolved = "unresolved"
+  }
+
   /// Bounded telemetry label for which route the mover took.
   public var telemetryLabel: String {
     switch self {
-    case .installed: return "installed"
-    case .existingUsable: return "existing_usable"
-    case .existingRunning: return "existing_running"
+    case .installed: return TelemetryLabel.installed
+    case .existingUsable: return TelemetryLabel.existingUsable
+    case .existingRunning: return TelemetryLabel.existingRunning
     }
   }
 }
@@ -613,11 +646,12 @@ public final class ApplicationRelocationCoordinator {
     switch result {
     case .failure(let failure):
       presenter.dismissProgress()
-      // No resolution exists: the mover returns Result<InstallResolution, _>,
-      // so a pre-placement failure has no route to report (#2006 §3.4d).
+      // The mover returns Result<InstallResolution, _>, so a failure carries no
+      // resolution to read — but the failure itself can still identify the
+      // route (see `impliedInstallResolution`).
       telemetry.failed(
         reason: reason, failureClass: failure.rawValue, attemptID: attemptID,
-        installResolution: "unresolved")
+        installResolution: failure.impliedInstallResolution)
       presenter.showFailure(Self.presentation(for: failure, destination: destination.url))
     case .success(let resolution) where resolution.isExistingRunning:
       // A verified same-or-newer copy is already running: bring it to the front
