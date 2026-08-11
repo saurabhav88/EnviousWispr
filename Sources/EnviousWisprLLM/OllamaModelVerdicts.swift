@@ -126,6 +126,13 @@ package enum OllamaModelVerdicts {
   /// model while `llama3.2` and `llama3.2:1b` stay two.
   private static let measured: [String: Entry] = [
     // Recommended: 30% or better.
+    //
+    // "best in our tests" is a RANK claim and was checked against both judges before shipping,
+    // because the sibling claim on `qwen3:0.6b` ("second best") was contradicted by the second one
+    // and had to be removed. This one survives: uniquely best on the primary judge (50.0%, no tie)
+    // and joint best on the confirming judge (35.0%, level with `qwen2.5:7b`). In neither run is it
+    // worse than best, which is exactly what "second best" could not say. Re-check it, do not
+    // assume it, after any re-grade — a tie is one point away from being wrong.
     "qwen2.5:3b": Entry(
       verdict: .recommended, note: "best in our tests, may follow dictated instructions"),
     "qwen3:0.6b": Entry(
