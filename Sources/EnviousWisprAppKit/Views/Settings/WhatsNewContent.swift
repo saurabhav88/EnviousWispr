@@ -57,6 +57,15 @@ enum WhatsNewContent {
     ),
 
     Entry(
+      id: "ollama-model-recommendations-from-tests",
+      icon: "checkmark.seal",
+      title: "Local AI model recommendations now come from our tests",
+      description:
+        "Ollama model labels used to be based on model size, which did not show how well they cleaned up dictation. They now reflect our own cleanup tests and explain what went wrong. New Ollama setups now start with qwen2.5:3b, the best result among the local models we offer. Models that produced no acceptable result also ask before downloading.",
+      version: "2.4.4"
+    ),
+
+    Entry(
       id: "continuation-casing-eleven-languages",
       icon: "character.book.closed",
       title: "Dictating into the middle of a sentence now works in eleven more languages",

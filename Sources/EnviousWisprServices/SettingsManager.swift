@@ -907,9 +907,9 @@ public final class SettingsManager {
     // Test what is actually armed.
     //
     // Matched CANONICALLY for Ollama, because the runtime does. The readiness
-    // preflight treats `llama3.2` and `llama3.2:latest` as the same model, and
-    // the shipped default is `llama3.2` while a daemon commonly reports
-    // `llama3.2:latest` — so an exact compare here would call an installed
+    // preflight treats an untagged name and its `:latest` spelling as the same model, and a user
+    // can have stored either while the daemon reports the other (`llama3.2` stored,
+    // `llama3.2:latest` discovered) — so an exact compare here would call an installed
     // model missing and repair away a selection that works. One rule, in Core,
     // because this module cannot import the Ollama one (PR #1949).
     let armedModel = provider == .ollama ? ollamaModel : llmModel
