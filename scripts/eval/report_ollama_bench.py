@@ -229,9 +229,48 @@ def main() -> int:
                     f"not one of ours or was hand-edited; re-judge")
                 continue
 
-            # Every read below goes through a type-safe accessor, because a
-            # receipt with a VALID verdict can still carry malformed metadata and
-            # ordering alone would not save it.
+            # VALIDATE BEFORE READING, because coercion makes a FALSE CLAIM.
+            # The accessors below stop the refusal path crashing, but silently
+            # turning a corrupt `"skipped": "not a list"` into `[]` produces
+            # "records no gaps of its own" about a receipt that records nothing
+            # trustworthy — trading a crash for a wrong sentence, which is the
+            # very defect this whole change set exists to remove. A malformed gap
+            # field is no evidence that the gap is zero.
+            #
+            # Absent is fine and means "genuinely nothing recorded". Present with
+            # the wrong type means corrupt or hand-edited, and gets said out loud.
+            # This is the parse-then-use half of
+            # `parse-structured-input-dont-regex-and-iterate`; coercing first was
+            # the shortcut that produced the false claim.
+            def _is_int(v) -> bool:
+                return isinstance(v, int) and not isinstance(v, bool)
+
+            raw_adj = summary.get("adjudication")
+            raw_wobble = summary.get("wobble")
+            checks = [
+                ("skipped", "skipped" in summary, summary.get("skipped"), _as_list),
+                ("missing_scores", "missing_scores" in summary,
+                 summary.get("missing_scores"), _as_list),
+                ("adjudication", "adjudication" in summary, raw_adj, _as_dict),
+                ("wobble", "wobble" in summary, raw_wobble, _as_dict),
+            ]
+            malformed = [name for name, present, value, coerce in checks
+                         if present and coerce(value) is not value]
+            if isinstance(raw_adj, dict):
+                malformed += [f"adjudication.{k}" for k in
+                              ("adjudication_missing_n", "adjudicated_n")
+                              if k in raw_adj and not _is_int(raw_adj[k])]
+            if isinstance(raw_wobble, dict) and "rep_coverage" in raw_wobble:
+                rc = raw_wobble["rep_coverage"]
+                if not isinstance(rc, list) or not all(_is_int(x) for x in rc):
+                    malformed.append("wobble.rep_coverage")
+            if malformed:
+                problems.append(
+                    f"{model} ({cand_stem}): judge receipt has malformed "
+                    f"{', '.join(sorted(malformed))}, so its gap counts prove nothing — "
+                    f"the file is corrupt or hand-edited; re-judge")
+                continue
+
             skipped = _as_list(summary.get("skipped"))
             missing = _as_list(summary.get("missing_scores"))
             adj = _as_dict(summary.get("adjudication"))

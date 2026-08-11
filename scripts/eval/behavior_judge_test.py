@@ -895,31 +895,63 @@ def test_report_survives_every_malformed_legacy_metadata_shape():
     # short-circuits the derivation. A table whose rows cannot enter the branch is
     # zero coverage wearing a passing badge.
     no_count = {"adjudicated_n": 20}  # deliberately omits adjudication_missing_n
-    shapes = [
+
+    # THREE GROUPS, because type-validity and value-degeneracy are different axes
+    # and my first table conflated them — it asserted "malformed" for a perfectly
+    # well-formed `rep_coverage: [20]`, which is valid and simply means no
+    # adjudication pass ran. Blanket-asserting one expectation over a table is how
+    # a row ends up testing the wrong thing.
+    malformed_shapes = [
         {"adjudication": no_count, "wobble": ["bad"]},
         {"adjudication": no_count, "wobble": "bad"},
         {"adjudication": no_count, "wobble": 7},
         {"adjudication": no_count, "wobble": {"rep_coverage": "not a list"}},
         {"adjudication": no_count, "wobble": {"rep_coverage": [20, "seventeen"]}},
-        {"adjudication": no_count, "wobble": {"rep_coverage": [20]}},
-        {"adjudication": no_count, "wobble": {"rep_coverage": []}},
-        {"adjudication": ["bad"], "wobble": {"rep_coverage": [20, 17]}},
-        {"adjudication": "bad", "wobble": {"rep_coverage": [20, 17]}},
-        {"adjudication": {"adjudicated_n": "twenty"}, "wobble": {"rep_coverage": [20, 17]}},
+        {"adjudication": ["bad"]},
+        {"adjudication": "bad"},
+        {"adjudication": {"adjudicated_n": "twenty"}},
         {"adjudication": {"adjudication_missing_n": "seven"}},
         {"adjudication": {"adjudication_missing_n": True}},
         {"skipped": "not a list"},
         {"missing_scores": {"not": "a list"}},
-        {"release_gate": ["bad"]},
     ]
-    for shape in shapes:
+    for shape in malformed_shapes:
         r = healthy_receipt(**shape)
         del r["cacheable"]
         t = report_tree(r)
         rc, out = run_report(t)
         assert rc == 2, f"{shape} -> rc={rc}: {out}"
         assert "Traceback" not in out, f"{shape} raised: {out}"
-        assert "modelA" in out, f"{shape} did not name the model: {out}"
+        # Cloud review round 5 found what a "did not crash" assertion allows: the
+        # message claimed the receipt "records no gaps of its own", a false claim
+        # built by coercing a corrupt field to empty. Name it, never erase it.
+        assert "malformed" in out, f"{shape} was coerced instead of refused: {out}"
+        assert "no gaps of its own" not in out, \
+            f"{shape} claimed no gaps from unusable metadata: {out}"
+
+    # Well-formed but degenerate: valid types, nothing to compare. These must
+    # reach the ordinary legacy message, NOT the malformed one — the guard has to
+    # fire on bad types without also rejecting honest empty evidence.
+    for shape in ({"adjudication": no_count, "wobble": {"rep_coverage": [20]}},
+                  {"adjudication": no_count, "wobble": {"rep_coverage": []}}):
+        r = healthy_receipt(**shape)
+        del r["cacheable"]
+        t = report_tree(r)
+        rc, out = run_report(t)
+        assert rc == 2, f"{shape} -> rc={rc}: {out}"
+        assert "Traceback" not in out, f"{shape} raised: {out}"
+        assert "malformed" not in out, f"{shape} wrongly called malformed: {out}"
+        assert "predates the `cacheable` field" in out, f"{shape}: {out}"
+
+    # A non-object `release_gate` is caught EARLIER, by the verdict check, because
+    # its verdict reads as None. Asserting "malformed" here would have been wrong
+    # about which branch owns it.
+    r = healthy_receipt(release_gate=["bad"])
+    del r["cacheable"]
+    rc, out = run_report(report_tree(r))
+    assert rc == 2, out
+    assert "cannot produce" in out, out
+    assert "Traceback" not in out, out
 
 
 def test_report_classifies_a_hand_edited_receipt_before_reading_its_metadata():
