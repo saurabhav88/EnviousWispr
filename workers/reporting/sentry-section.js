@@ -620,6 +620,21 @@ export async function fetchSentrySection(env, window, opts = {}) {
       existing.group = LOST;
       existing.label = row.label;
     }
+    // A LABEL NAMES ONE FAILURE; A MERGED ROW MAY DESCRIBE SEVERAL. Moving the
+    // label with the group fixes the contradiction across severities, but two
+    // rows of the SAME severity and different labels still merge - an
+    // `asr_failed` row and a blank-category fatal are both `lost` - and the
+    // retained label would then silently describe the other row's events too.
+    //
+    // Neither label is wrong and neither is complete, so rather than pick a
+    // winner or invent a generic phrase, the row DISCLOSES that it covers more
+    // than it names. The retained label stays the largest contributor, since
+    // `sentry_problems` sorts by affected users and the first row of a group is
+    // its biggest.
+    if (row.label !== existing.label) {
+      existing.mergedLabels = (existing.mergedLabels || new Set([existing.label]));
+      existing.mergedLabels.add(row.label);
+    }
     if (!row.deliveryProven) existing.deliveryProven = false;
     // The row must SAY it is a lower bound rather than print a merged number as
     // though it were exact.
@@ -1050,7 +1065,14 @@ function appendGroup(lines, heading, rows, state) {
     const peopleText = row.peopleIsLowerBound
       ? `at least ${people(row.people)}`
       : people(row.people);
-    lines.push(`  ${peopleText}   ${row.label}${suffix}${row.isNew ? "   NEW" : ""}`);
+    // When one issue merged rows carrying different labels, the line names its
+    // largest contributor and says so rather than presenting that name as the
+    // whole story.
+    const others = row.mergedLabels ? row.mergedLabels.size - 1 : 0;
+    const mixed = others > 0
+      ? ` and ${others} other ${others === 1 ? "failure" : "failures"} on the same issue`
+      : "";
+    lines.push(`  ${peopleText}   ${row.label}${mixed}${suffix}${row.isNew ? "   NEW" : ""}`);
     if (descriptionLength(lines) > state.budget) {
       lines.pop();
       state.omitted += 1;

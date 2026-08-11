@@ -908,6 +908,37 @@ test("a collapse reconciles classification conservatively, never by sort order",
     "a degraded label must not survive into a lost row");
 });
 
+test("a merge of two same-severity labels discloses what it does not name", async () => {
+  // Cloud review r1, P2. Moving the label with the GROUP fixes the cross-severity
+  // contradiction, but two `lost` rows with different labels still merge, and the
+  // retained label would silently describe the other row's events too.
+  const { data, lines } = await render({
+    problems: [
+      problemRow("EW-7", "asr_failed", 4, 4),
+      problemRow("EW-7", "", 1, 6, "fatal", ["EXC_BAD_ACCESS"]),
+    ],
+  });
+
+  assert.equal(data.rows.length, 1);
+  assert.equal(data.rows[0].events, 10, "both rows' events are counted");
+  // Named for the largest contributor, and honest that it covers more.
+  assert.match(lines.join("\n"),
+    /transcription failed and 1 other failure on the same issue/);
+});
+
+test("a merge of identical labels claims no hidden failures", async () => {
+  // The two-way control. Without it, a disclosure appended to every merge would
+  // pass the test above while adding a phantom "other failure" to the ordinary
+  // duplicate-row collapse this issue was filed for.
+  const { lines } = await render({
+    problems: [
+      problemRow("EW-4B", "", 1, 2, "fatal", ["EXC_BAD_ACCESS"]),
+      problemRow("EW-4B", "", 1, 3, "fatal", ["EXC_BAD_ACCESS"]),
+    ],
+  });
+  assert.doesNotMatch(lines.join("\n"), /other failure/);
+});
+
 test("a cut page marks every displayed row as partial (#2023)", async () => {
   // Codex review r4. Sentry sorts by affected users, so two rows of ONE issue
   // can straddle the 100-row boundary. The visible half would otherwise render
