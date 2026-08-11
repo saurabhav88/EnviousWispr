@@ -204,7 +204,22 @@ def main() -> int:
                     f"{adj_dropped} adjudication-dropped")
             any_gap = (summary.get("skipped") or summary.get("missing_scores") or adj_dropped)
 
-            if "cacheable" not in summary:
+            # ORDER MATTERS, and cloud review caught it the other way round. A
+            # receipt can be BOTH legacy AND carry a verdict this gate cannot
+            # emit; checking field-absence first reported it as merely old and
+            # suppressed the stronger signal. The two also carry different
+            # ADVICE — "re-judge once" is wrong for a file that is not one of
+            # ours — so the verdict check goes first.
+            #
+            # Safe against mislabelling a genuine legacy receipt: all 16 shipped
+            # #1950 arms carry `BLOCK`, which is allowlisted, so a real
+            # pre-#2007 receipt still reaches the legacy message below.
+            if release_verdict not in ("CLEAR", "BLOCK", "INCOMPLETE"):
+                problems.append(
+                    f"{model} ({cand_stem}): judge receipt carries verdict "
+                    f"{release_verdict!r}, which this gate cannot produce — the file is "
+                    f"not one of ours or was hand-edited; re-judge")
+            elif "cacheable" not in summary:
                 # A pre-#2007 receipt still RECORDS its gaps; what it lacks is the
                 # judge's acceptance answer. So report the recorded gaps when there
                 # are any and stay silent about them when there are none — saying
@@ -216,11 +231,6 @@ def main() -> int:
                 problems.append(
                     f"{model} ({cand_stem}): judge receipt predates the `cacheable` "
                     f"field (written before #2007) {detail}; re-judge once")
-            elif release_verdict not in ("CLEAR", "BLOCK", "INCOMPLETE"):
-                problems.append(
-                    f"{model} ({cand_stem}): judge receipt carries verdict "
-                    f"{release_verdict!r}, which this gate cannot produce — the file is "
-                    f"not one of ours or was hand-edited; re-judge")
             else:
                 problems.append(
                     f"{model} ({cand_stem}): judge receipt is not cacheable "

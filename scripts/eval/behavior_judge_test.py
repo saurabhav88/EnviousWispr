@@ -853,6 +853,23 @@ def test_report_claims_no_adjudication_drop_when_none_ran():
     assert "records no gaps of its own" in out, out
 
 
+def test_report_prefers_the_verdict_problem_over_the_legacy_one():
+    """Cloud review P2. A receipt can be BOTH legacy AND carry a verdict this
+    gate cannot emit; checking field-absence first called it merely old and
+    suppressed the stronger signal — and the advice differs, since "re-judge
+    once" is wrong for a file that is not one of ours.
+
+    Safe by measurement: all 16 shipped #1950 arms carry `BLOCK`, so no genuine
+    legacy receipt is mislabelled by this precedence."""
+    r = healthy_receipt(release_gate={"verdict": "WEIRD_UNKNOWN_VALUE", "checks": []})
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "cannot produce" in out, out
+    assert "predates" not in out, out
+
+
 def test_report_names_a_pre_cacheable_receipt_as_such():
     """Every one of the 16 real #1950 arms hits this branch, because no receipt
     written before #2007 carries the field. The old message printed three zero
@@ -1033,7 +1050,7 @@ def test_report_refuses_a_truncated_detail_file():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 60
+EXPECTED_TESTS = 61
 
 
 def _run() -> int:
