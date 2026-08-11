@@ -63,6 +63,22 @@ if not isinstance(receipt, dict):
 raise SystemExit(0 if receipt.get("cacheable") is True else 1)
 PY
 }
+
+# Distinguishes "the field is absent" from "the field says false" for the resume
+# message only. Deliberately NOT part of the caching decision: both cases fail
+# closed and are re-judged, so this changes what the reader is told and nothing
+# else. Fails closed the same way, because an unreadable receipt has no field.
+receipt_has_cacheable_field() {
+  python3 - "$1" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        receipt = json.load(f)
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(1)
+raise SystemExit(0 if isinstance(receipt, dict) and "cacheable" in receipt else 1)
+PY
+}
 for cand in "$CANDDIR"/*.jsonl; do
   base="$(basename "$cand" .jsonl)"
   dest="$OUTDIR/$base"
@@ -90,7 +106,19 @@ for cand in "$CANDDIR"/*.jsonl; do
     # non-cacheable receipt as a stamp mismatch sends the reader after the wrong
     # thing entirely.
     if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$inputs_sha" ]; then
-      reason="receipt is not cacheable"
+      # A refusal must name its own reason, and these are two different
+      # situations: a receipt written before #2007 simply has no acceptance field
+      # and needs one re-judge, while a receipt carrying `cacheable: false`
+      # recorded real gaps. Calling the first one "not cacheable" reads as a
+      # broken receipt. Every arm of the shipped #1950 sweep hits the first case,
+      # so this is the path a reader actually meets. The post-judge branch below
+      # keeps the plain wording deliberately: the judge that just wrote that
+      # receipt always sets the field, so there `false` is the only way to get in.
+      if receipt_has_cacheable_field "$dest/summary.json"; then
+        reason="receipt is not cacheable"
+      else
+        reason="receipt predates the cacheable field"
+      fi
     else
       reason="candidates or corpus changed since its receipt"
     fi

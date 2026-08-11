@@ -158,6 +158,22 @@ def stamped(t):
     return (t / "judged" / "modelA" / ".inputs-sha256").exists()
 
 
+def forge_stamp(t):
+    """Write a stamp that genuinely MATCHES, so the resume fast path is entered
+    and only the cacheability check can stop the skip. Computed exactly as the
+    script does — over the same absolute argv paths, since the hash covers
+    filenames. Without it the stamp is absent, the fast path is never reached,
+    and a case would pass while testing the stale-inputs branch instead."""
+    forged = subprocess.run(
+        ["bash", "-c",
+         'if command -v shasum >/dev/null 2>&1; then H="shasum -a 256"; else H=sha256sum; fi; '
+         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}" | $H | cut -d" " -f1'],
+        capture_output=True, text=True).stdout.strip()
+    assert forged, "could not compute a stamp"
+    (t / "judged" / "modelA" / ".inputs-sha256").write_text(forged + "\n")
+    return forged
+
+
 def report_tree(receipt, per_case_rows=None):
     """Fixtures for report_ollama_bench.py with a caller-chosen receipt."""
     t = Path(tempfile.mkdtemp())
@@ -606,18 +622,7 @@ def test_shell_resume_path_rejudges_a_stamped_not_cacheable_arm():
     if not receipt.exists():
         receipt.write_text(json.dumps({"cacheable": False, "release_gate": {"verdict": "BLOCK"}}))
 
-    # Forge a stamp that genuinely MATCHES, so the fast path is entered and only
-    # the cacheability check can stop the skip. Computed exactly as the script
-    # does — over the same absolute argv paths, since the hash covers filenames.
-    # Without this the stamp is absent, the fast path is never reached, and the
-    # case would pass while testing the stale-inputs branch instead.
-    forged = subprocess.run(
-        ["bash", "-c",
-         'if command -v shasum >/dev/null 2>&1; then H="shasum -a 256"; else H=sha256sum; fi; '
-         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}" | $H | cut -d" " -f1'],
-        capture_output=True, text=True).stdout.strip()
-    assert forged, "could not compute a stamp"
-    (d / ".inputs-sha256").write_text(forged + "\n")
+    forge_stamp(t)
 
     # Control: prove the forged stamp really would have caused a skip. Flip the
     # receipt to cacheable and confirm the arm IS skipped.
@@ -633,6 +638,36 @@ def test_shell_resume_path_rejudges_a_stamped_not_cacheable_arm():
     rc, log = run_shell(t)
     assert invocations(t) > before, f"the arm must be re-judged, not skipped: {log}"
     assert "not cacheable" in log, log
+
+
+def test_shell_resume_names_a_pre_cacheable_receipt_separately():
+    """Both cases are re-judged, so the CACHING behaviour is identical and only
+    the reader is affected — which is the point. A stamped receipt written before
+    #2007 has no acceptance field at all; calling that "not cacheable" sends the
+    reader looking for gaps that were never recorded. Every arm of the shipped
+    #1950 sweep is in exactly this state, so it is the message people will meet."""
+    t = shell_tree("false")
+    run_shell(t)
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    forge_stamp(t)
+
+    # Control: with the field present and false, the wording stays the old one.
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": False, "release_gate": {"verdict": "BLOCK"}}))
+    before = invocations(t)
+    _, log_false = run_shell(t)
+    assert invocations(t) > before, f"must re-judge: {log_false}"
+    assert "not cacheable" in log_false, log_false
+    assert "predates" not in log_false, log_false
+
+    # The case under test: same matching stamp, field absent entirely.
+    forge_stamp(t)
+    (d / "summary.json").write_text(json.dumps({"release_gate": {"verdict": "BLOCK"}}))
+    before = invocations(t)
+    rc, log_absent = run_shell(t)
+    assert invocations(t) > before, f"must re-judge: {log_absent}"
+    assert "predates the cacheable field" in log_absent, log_absent
 
 
 def test_shell_absent_cacheable_field_is_not_stamped():
@@ -701,13 +736,48 @@ def test_report_refuses_an_unknown_verdict():
     t = report_tree(healthy_receipt(release_gate={"verdict": "WEIRD_UNKNOWN", "checks": []}))
     rc, out = run_report(t)
     assert rc == 2, out
-    assert "not cacheable" in out, out
+    # The receipt IS cacheable and its gap counts are all zero, so the generic
+    # "not cacheable — 0, 0, 0" sentence described none of what is wrong. The
+    # refusal now names the actual reason: this gate cannot emit that verdict.
+    assert "cannot produce" in out, out
+    assert "0 engine-skipped" not in out, out
 
 
 def test_report_refuses_clear_but_not_cacheable():
     t = report_tree(healthy_receipt(cacheable=False))
     rc, out = run_report(t)
     assert rc == 2, out
+    assert "not cacheable" in out, out
+
+
+def test_report_names_a_pre_cacheable_receipt_as_such():
+    """Every one of the 16 real #1950 arms hits this branch, because no receipt
+    written before #2007 carries the field. The old message printed three zero
+    counts and refused anyway, which reads as "nothing is wrong, yet rejected"."""
+    r = healthy_receipt()
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "predates the `cacheable` field" in out, out
+    assert "records no gaps of its own" in out, out
+    # The three-count string is the OTHER branch's sentence and must not appear:
+    # printing "0 engine-skipped, 0 primary judge-dropped" here is the defect.
+    assert "engine-skipped" not in out, out
+
+
+def test_report_still_names_the_gaps_a_pre_cacheable_receipt_records():
+    """A pre-field receipt lacks the ACCEPTANCE answer, not its gap record. Real
+    data: llama3.2's #1950 receipt has no `cacheable` and four dropped
+    international scores, so an unconditional "no gap is implied" would be false."""
+    r = healthy_receipt(missing_scores=["INT-1", "INT-2", "INT-3", "INT-4"])
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "predates the `cacheable` field" in out, out
+    assert "4 primary judge-dropped" in out, out
+    assert "no gaps of its own" not in out, out
 
 
 def test_report_names_the_adjudication_gap():
@@ -860,7 +930,7 @@ def test_report_refuses_a_truncated_detail_file():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 50
+EXPECTED_TESTS = 53
 
 
 def _run() -> int:

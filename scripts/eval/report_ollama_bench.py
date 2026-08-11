@@ -150,13 +150,45 @@ def main() -> int:
         release_verdict = (summary.get("release_gate") or {}).get("verdict")
         if summary.get("cacheable") is not True \
                 or release_verdict not in ("CLEAR", "BLOCK", "INCOMPLETE"):
+            # A refusal must NAME ITS OWN REASON. Reporting the three gap counts
+            # unconditionally printed "0 engine-skipped, 0 primary judge-dropped,
+            # 0 adjudication-dropped" for a receipt written before `cacheable`
+            # existed — all zeros, yet refused, which reads as "nothing is wrong
+            # and I rejected it anyway". Measured against the real #1950 run data:
+            # 14 of 16 arms produced exactly that. Same shape as the adjudication
+            # message that printed two zeros before #2007 fixed it.
+            #
+            # These are genuinely different situations with different responses, so
+            # they get different sentences: a pre-field receipt needs one re-judge
+            # and nothing else, while a `cacheable: false` receipt has real gaps
+            # worth reading.
             adj_dropped = (summary.get("adjudication") or {}).get("adjudication_missing_n", 0)
-            problems.append(
-                f"{model} ({cand_stem}): judge receipt is not cacheable "
-                f"(verdict {release_verdict!r}) — "
-                f"{len(summary.get('skipped', []))} engine-skipped, "
-                f"{len(summary.get('missing_scores', []))} primary judge-dropped, "
-                f"{adj_dropped} adjudication-dropped; re-judge")
+            gaps = (f"{len(summary.get('skipped', []))} engine-skipped, "
+                    f"{len(summary.get('missing_scores', []))} primary judge-dropped, "
+                    f"{adj_dropped} adjudication-dropped")
+            any_gap = (summary.get("skipped") or summary.get("missing_scores") or adj_dropped)
+
+            if "cacheable" not in summary:
+                # A pre-#2007 receipt still RECORDS its gaps; what it lacks is the
+                # judge's acceptance answer. So report the recorded gaps when there
+                # are any and stay silent about them when there are none — saying
+                # "no gap is implied" unconditionally would have been false on the
+                # real #1950 data, where llama3.2's receipt records four dropped
+                # international scores.
+                detail = (f"and records {gaps}" if any_gap
+                          else "and records no gaps of its own")
+                problems.append(
+                    f"{model} ({cand_stem}): judge receipt predates the `cacheable` "
+                    f"field (written before #2007) {detail}; re-judge once")
+            elif release_verdict not in ("CLEAR", "BLOCK", "INCOMPLETE"):
+                problems.append(
+                    f"{model} ({cand_stem}): judge receipt carries verdict "
+                    f"{release_verdict!r}, which this gate cannot produce — the file is "
+                    f"not one of ours or was hand-edited; re-judge")
+            else:
+                problems.append(
+                    f"{model} ({cand_stem}): judge receipt is not cacheable "
+                    f"(verdict {release_verdict!r}) — {gaps}; re-judge")
             continue
 
         # Independent reconciliation against the RUN's own case count, because
