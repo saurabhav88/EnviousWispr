@@ -127,7 +127,25 @@ def main() -> int:
                 continue
             problems.append(f"{model}: no quality receipt at {jdir}")
             continue
-        summary = load_json(summary_path)
+        # A corrupt receipt is a refusal like any other and must name the MODEL,
+        # not a line number. Reading it unguarded aborted the WHOLE report on one
+        # bad file — losing fifteen good arms — and printed a traceback where
+        # every sibling refusal prints "<model> (<arm>): <reason>; re-judge".
+        # The caching layer has always shape-checked here (`receipt_cacheable`'s
+        # isinstance guard); this closes the same gap in the ranking layer.
+        # Guarded at the call site rather than inside `load_json`, because the
+        # run-summary caller above wants a DIFFERENT message with no per-model
+        # attribution, and one shared sentence would be wrong for both.
+        try:
+            summary = load_json(summary_path)
+        except (OSError, json.JSONDecodeError) as exc:
+            problems.append(f"{model} ({cand_stem}): judge receipt is unreadable "
+                            f"({exc.__class__.__name__}); re-judge")
+            continue
+        if not isinstance(summary, dict):
+            problems.append(f"{model} ({cand_stem}): judge receipt is valid JSON but not "
+                            f"an object ({type(summary).__name__}); re-judge")
+            continue
 
         # A judge receipt can exist and still be PARTIAL. When cases are dropped
         # or engine-skipped, behavior_judge writes summary.json, marks its
@@ -162,7 +180,25 @@ def main() -> int:
             # they get different sentences: a pre-field receipt needs one re-judge
             # and nothing else, while a `cacheable: false` receipt has real gaps
             # worth reading.
-            adj_dropped = (summary.get("adjudication") or {}).get("adjudication_missing_n", 0)
+            adj = summary.get("adjudication") or {}
+            adj_dropped = adj.get("adjudication_missing_n")
+            if adj_dropped is None:
+                # A pre-#2007 receipt has no explicit count but DOES carry the
+                # evidence, so defaulting to zero would claim "no adjudication
+                # gap" from a receipt that proves one. `behavior_judge` sets
+                # `rep_scores = [primary_premerge, adjudication]`, so
+                # `wobble.rep_coverage[1]` is how many judged ids the
+                # adjudication pass returned while `adjudicated_n` is how many
+                # were selected; the difference is the drop. Only meaningful
+                # when an adjudication pass ran — with none, `rep_coverage` has
+                # a single entry and there is nothing to compare.
+                #
+                # This matters precisely for old receipts: a silently dropped
+                # adjudication IS the defect #2007 was opened for, so the
+                # receipts most likely to carry one are the legacy ones.
+                rep_coverage = (summary.get("wobble") or {}).get("rep_coverage") or []
+                adj_dropped = (max(0, adj.get("adjudicated_n", 0) - rep_coverage[1])
+                               if len(rep_coverage) > 1 else 0)
             gaps = (f"{len(summary.get('skipped', []))} engine-skipped, "
                     f"{len(summary.get('missing_scores', []))} primary judge-dropped, "
                     f"{adj_dropped} adjudication-dropped")
@@ -237,7 +273,22 @@ def main() -> int:
                 f"be ranked ({detail}); re-run those cases")
             continue
 
-        per_case = [json.loads(l) for l in open(per_case_path) if l.strip()]
+        # Same class as the receipt guard above; measured to fail identically.
+        # The row shape-check is not padding: every consumer below reaches rows
+        # through `pred(x)` predicates that call `.get`, so a valid-JSON
+        # non-object row would crash there instead, one layer further from the
+        # cause.
+        try:
+            per_case = [json.loads(l) for l in open(per_case_path) if l.strip()]
+        except (OSError, json.JSONDecodeError) as exc:
+            problems.append(f"{model} ({cand_stem}): per_case.jsonl is unreadable "
+                            f"({exc.__class__.__name__}); re-judge")
+            continue
+        if not all(isinstance(row, dict) for row in per_case):
+            problems.append(f"{model} ({cand_stem}): per_case.jsonl contains a row that is "
+                            f"not an object, so the language split cannot be computed; "
+                            f"re-judge")
+            continue
 
         # The language splits below are computed from per_case.jsonl while the
         # headline pass rate comes from summary.json. A truncated detail file

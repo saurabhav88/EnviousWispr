@@ -772,6 +772,87 @@ def test_report_refuses_clear_but_not_cacheable():
     assert "not cacheable" in out, out
 
 
+def test_report_refuses_an_unreadable_receipt_by_name():
+    """#2019, folded in rather than deferred: shipping "a refusal names its own
+    reason" while one input shape still produces a traceback would make that
+    claim false. Pre-fix both corrupt shapes exit 1 through an unhandled
+    exception, so the exit-code assertion alone fails without the guard."""
+    t = report_tree(healthy_receipt())
+    (t / "judged" / "modelA" / "summary.json").write_text("{not json")
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "judge receipt is unreadable" in out, out
+    assert "modelA" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_refuses_a_non_object_receipt_by_name():
+    t = report_tree(healthy_receipt())
+    (t / "judged" / "modelA" / "summary.json").write_text("[1,2,3]")
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "not an object" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_refuses_an_unreadable_per_case_file():
+    """Checked rather than assumed: a malformed per_case.jsonl crashed the same
+    way, so it is the same class and belongs in the same change."""
+    t = report_tree(healthy_receipt())
+    (t / "judged" / "modelA" / "per_case.jsonl").write_text("{not json")
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "per_case.jsonl is unreadable" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_refuses_a_non_object_per_case_row():
+    """The guard is reachable: a `[1,2]` row parses fine and would reach the
+    `.get`-calling split predicates, so this is a real path, not a formality."""
+    t = report_tree(healthy_receipt(), per_case_rows=[{"id": "EN-1", "verdict": "pass",
+                                                      "severity": "S0",
+                                                      "behavior": "grammar_fix",
+                                                      "failure_types": []}])
+    p = t / "judged" / "modelA" / "per_case.jsonl"
+    p.write_text(p.read_text() + "[1,2]\n")
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "row that is not an object" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_recovers_a_legacy_adjudication_drop():
+    """Review r2 P2, and an incomplete port of my own fix: I read a legacy
+    receipt's `skipped` and `missing_scores` but let `adjudication_missing_n`
+    default to zero, so a receipt whose own fields PROVE an adjudication drop was
+    reported as recording no gaps. `rep_scores[1]` is the adjudication pass, so
+    `rep_coverage[1]` is what it returned against `adjudicated_n` selected.
+
+    The 16 shipped #1950 receipts all compute 0 here, so this case is the only
+    thing standing between the recovery and a silent regression."""
+    r = healthy_receipt(adjudication={"adjudicated_n": 20},
+                        wobble={"common_n": 17, "rep_coverage": [20, 17]})
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "3 adjudication-dropped" in out, out
+    assert "no gaps of its own" not in out, out
+
+
+def test_report_claims_no_adjudication_drop_when_none_ran():
+    """Two-way control for the recovery above. With no adjudication pass,
+    `rep_coverage` has a single entry, so the difference is not computable and
+    must read as zero rather than as `adjudicated_n` dropped."""
+    r = healthy_receipt(adjudication={"adjudicated_n": 0},
+                        wobble={"common_n": 0, "rep_coverage": [20]})
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "records no gaps of its own" in out, out
+
+
 def test_report_names_a_pre_cacheable_receipt_as_such():
     """Every one of the 16 real #1950 arms hits this branch, because no receipt
     written before #2007 carries the field. The old message printed three zero
@@ -952,7 +1033,7 @@ def test_report_refuses_a_truncated_detail_file():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 54
+EXPECTED_TESTS = 60
 
 
 def _run() -> int:
