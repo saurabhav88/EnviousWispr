@@ -162,10 +162,23 @@ def adjudication_dropped(receipt: dict) -> "int | None":
     if _is_count(explicit):
         return explicit
 
+    selected = adj.get("adjudicated_n")
     rep_coverage = _as_list(_as_dict(receipt.get("wobble")).get("rep_coverage"))
     if len(rep_coverage) < 2:
-        # Fewer than two replications means no adjudication pass ran, so nothing
-        # was dropped. Genuinely zero, not unknown.
+        # Fewer than two replications normally means no adjudication pass ran, so
+        # nothing was dropped — genuinely zero, not unknown.
+        #
+        # BUT the two must agree. `behavior_judge` sets `rep_scores =
+        # [primary_premerge, adjudication] if adjudicated_ids else [primary]`, so a
+        # non-zero `adjudicated_n` GUARANTEES two coverage entries. Selected > 0
+        # with fewer than two is internally inconsistent: a pass ran and its result
+        # is missing, which makes the drop unknowable rather than zero.
+        #
+        # This branch is the mirror of the one below, and my previous commit fixed
+        # only the other half — half an invariant is the partial port this file's
+        # own history keeps demonstrating.
+        if _is_count(selected) and selected > 0:
+            return None
         return 0
 
     # A pass DID run, so a count exists in principle and the only question is
@@ -174,7 +187,6 @@ def adjudication_dropped(receipt: dict) -> "int | None":
     # contradictory input reports "no gap" about a receipt that cannot support
     # that claim, which is the same manufactured-fact defect as coercing a
     # corrupt list to empty.
-    selected = adj.get("adjudicated_n")
     returned = rep_coverage[1]
     if not _is_count(selected) or not _is_count(returned) or returned > selected:
         return None

@@ -969,6 +969,11 @@ def test_report_survives_every_malformed_legacy_metadata_shape():
         # absent, so the number dropped is unknowable — and it was coerced to
         # zero and reported as "no gaps". Unknowable is not zero.
         {"adjudication": {}, "wobble": {"rep_coverage": [20, 0]}},
+        # Round 10, the mirror of round 9: `adjudicated_n > 0` guarantees two
+        # coverage entries (behavior_judge.py:787), so one entry means the pass
+        # ran and its result is missing — unknowable, not zero.
+        {"adjudication": no_count, "wobble": {"rep_coverage": [20]}},
+        {"adjudication": {"adjudicated_n": 1}, "wobble": {"rep_coverage": []}},
 
         {"adjudication": no_count, "wobble": ["bad"]},
         {"adjudication": no_count, "wobble": "bad"},
@@ -1000,8 +1005,13 @@ def test_report_survives_every_malformed_legacy_metadata_shape():
     # Well-formed but degenerate: valid types, nothing to compare. These must
     # reach the ordinary legacy message, NOT the malformed one — the guard has to
     # fire on bad types without also rejecting honest empty evidence.
-    for shape in ({"adjudication": no_count, "wobble": {"rep_coverage": [20]}},
-                  {"adjudication": no_count, "wobble": {"rep_coverage": []}},
+    # THIRD time I misclassified a row in this table, so the rule is written out:
+    # a degenerate-but-valid receipt needs `adjudicated_n` to be 0 or absent. With
+    # selected > 0 and fewer than two coverage entries it is inconsistent, not
+    # degenerate, which is what round 10 found — my earlier "valid, just
+    # degenerate" reading of `no_count` + `[20]` was simply wrong.
+    for shape in ({"adjudication": {"adjudicated_n": 0}, "wobble": {"rep_coverage": [20]}},
+                  {"adjudication": {}, "wobble": {"rep_coverage": []}},
                   # Two coverage entries but a VALID explicit count, which wins:
                   # the derivation is never needed, so nothing is unknowable.
                   {"wobble": {"rep_coverage": [20, 0]}}):
