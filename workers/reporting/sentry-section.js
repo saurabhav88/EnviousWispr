@@ -143,19 +143,26 @@ export const ERROR_CATEGORIES = Object.freeze({
  * `NSInternalInconsistencyException` are very different things to see twice in
  * a row.
  *
- * ONLY the type, never the message. A Sentry title is `<type>: <message>`, and
- * the message half is the one place in this whole section where user-derived
- * text could appear. Splitting at the first colon and discarding the remainder
- * keeps the privacy boundary intact by construction rather than by trusting
- * Sentry's own redaction. */
+ * ONLY the type, never the message. This reads `error.type`, which carries the
+ * exception type ALONE - the message half, the one place in this whole section
+ * where user-derived text could appear, is never fetched. #2023 moved here from
+ * splitting a `<type>: <message>` title at the first colon; the privacy
+ * boundary is now upheld by not requesting the message rather than by
+ * discarding it correctly.
+ *
+ * `error.type` arrives as an ARRAY (`["EXC_BAD_ACCESS"]`), empty on handled
+ * errors. An exception CHAIN yields several; the first is taken and the rest
+ * ignored, because this label names the crash for a human rather than
+ * reconstructing the chain. */
 const CRASH_TYPE_MAX = 48;
 
-function crashLabel(title) {
-  if (typeof title !== "string") return "app crash";
-  const type = title.split(":", 1)[0].trim();
-  // A type must look like an identifier. Anything else is a title shape this
-  // code does not recognise, and printing it unexamined is how the message half
-  // would eventually leak through some future format.
+function crashLabel(errorType) {
+  const first = Array.isArray(errorType) ? errorType[0] : errorType;
+  if (typeof first !== "string") return "app crash";
+  const type = first.trim();
+  // A type must look like an identifier. Anything else is a shape this code does
+  // not recognise, and printing it unexamined is how user-derived text would
+  // eventually leak through some future format.
   if (type.length === 0 || type.length > CRASH_TYPE_MAX || !/^[A-Za-z_][A-Za-z0-9_.]*$/.test(type)) {
     return "app crash";
   }
@@ -171,14 +178,14 @@ function crashLabel(title) {
  * discarded. `rawCategory` is preserved in the label precisely so a category
  * added to the app and not added to this table is visible in Discord.
  */
-export function classifyProblem({ category, level, title }) {
+export function classifyProblem({ category, level, type }) {
   const raw = typeof category === "string" ? category.trim() : "";
   if (raw.length === 0) {
     // A blank category on a fatal is a crash. A blank category on a NON-fatal
     // is something this table does not know about, and guessing "crash" for it
     // would put a wrong sentence in front of the founder.
     if (typeof level === "string" && level.toLowerCase() === "fatal") {
-      return { group: LOST, deliveryProven: false, label: crashLabel(title) };
+      return { group: LOST, deliveryProven: false, label: crashLabel(type) };
     }
     return { group: LOST, deliveryProven: false, label: "uncategorised failure" };
   }
@@ -335,7 +342,14 @@ function compareKeys(a, b) {
  * why calls 4 and 5 exist. */
 export const SENTRY_CALLS_PER_DIGEST = 5;
 
-const ISSUE_FIELDS = ["issue", "title", "error.category", "level", "count()", "count_unique(user)"];
+// `error.type`, NOT `title`. Grouping on `title` splits one Sentry issue into one
+// row per distinct message, and a crash message embeds a memory address that is
+// unique per event - `ENVIOUSWISPR-4B` returned EIGHT rows for one issue, one
+// user and nine events (#2023). Every one of those rows then rendered the same
+// sentence and counted as its own "problem". `error.type` is constant per crash
+// signature, so Sentry returns one row per issue and `count_unique(user)` is the
+// issue's TRUE distinct-user count rather than a per-message slice of it.
+const ISSUE_FIELDS = ["issue", "error.type", "error.category", "level", "count()", "count_unique(user)"];
 // Read from meta.fields, which is present on an EMPTY response too. `issue` is
 // deliberately absent from this list: Sentry echoes it back as `issue.id`, so
 // requiring the requested name would fail on a perfectly good response and the
@@ -508,11 +522,11 @@ export async function fetchSentrySection(env, window, opts = {}) {
       .map((issue) => issue.shortId)
   );
 
-  const rows = problems.rows.map((row) => {
+  const mapped = problems.rows.map((row) => {
     const classified = classifyProblem({
       category: row["error.category"],
       level: row.level,
-      title: row.title,
+      type: row["error.type"],
     });
     return {
       shortId: typeof row.issue === "string" ? row.issue : null,
@@ -524,6 +538,52 @@ export async function fetchSentrySection(env, window, opts = {}) {
       isNew: typeof row.issue === "string" && newShortIds.has(row.issue),
     };
   });
+
+  // ONE SENTRY ISSUE IS ONE PROBLEM, guaranteed here rather than hoped for from
+  // the grouping key. `ISSUE_FIELDS` moving to `error.type` removes the CAUSE of
+  // the #2023 split, but any future grouping field that varies within an issue
+  // would silently reintroduce it, and the symptom - a repeated sentence and an
+  // inflated problem count - reads as a rendering bug rather than a query bug.
+  // This makes the invariant structural, so it holds whatever Sentry returns.
+  //
+  // A null `shortId` is NOT a group. Rows that could not be identified stay
+  // separate, because merging them would fuse unrelated problems under one
+  // heading on the strength of a missing field.
+  //
+  // Order is preserved by first occurrence, which keeps the section's
+  // descending-by-people sort intact: `sentry_problems` sorts by
+  // `-count_unique(user)`, so a group's first row already carries its largest
+  // value.
+  //
+  // The group, label and deliveryProven of the FIRST row win. Every field they
+  // derive from - `error.category`, `level`, `error.type` - is a property of the
+  // fingerprint rather than of the individual event, so an issue's rows agree on
+  // all three and the choice is not observable. Stated rather than assumed,
+  // because if a future field breaks that constancy this is where a second
+  // classification would be dropped silently.
+  const byShortId = new Map();
+  const rows = [];
+  for (const row of mapped) {
+    const existing = row.shortId === null ? undefined : byShortId.get(row.shortId);
+    if (existing === undefined) {
+      rows.push(row);
+      if (row.shortId !== null) byShortId.set(row.shortId, row);
+      continue;
+    }
+    // Events ARE additive across rows of one issue and still sum exactly to the
+    // headline aggregate. People are NOT: the same person can appear under two
+    // rows, so a sum would double-count them. `max` is therefore a LOWER BOUND
+    // and can understate when two rows carry disjoint users.
+    //
+    // That understatement is bounded and deliberate. It can only occur when one
+    // issue carries more than one exception-type signature, which the field
+    // change above makes rare; and the headline "N people hit ..." figure comes
+    // from a separate UNGROUPED aggregate, so it stays exact regardless. The
+    // alternative, summing, is wrong in the common case this issue was filed
+    // for - eight rows of one user each would have printed eight people.
+    existing.events = addCounts(existing.events, row.events, "event total");
+    existing.people = Math.max(existing.people, row.people);
+  }
 
   return {
     empty: rows.length === 0,
