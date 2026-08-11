@@ -97,16 +97,21 @@ def malformed_metadata_fields(receipt: dict) -> list[str]:
         if not isinstance(rc, list) or not all(_is_count(x) for x in rc):
             names.append("wobble.rep_coverage")
 
-    # RELATIONSHIP, not just range. An adjudication pass cannot return more cases
-    # than were selected for it, so `rep_coverage[1] > adjudicated_n` is
-    # impossible — and the derivation's `max(0, ...)` would quietly clamp that to
-    # zero and report "no adjudication gap", erasing the corruption instead of
-    # naming it. Only checked when the derivation would actually run, i.e. when
-    # the explicit count is absent and there are two coverage entries.
-    if (isinstance(adj, dict) and not _is_count(adj.get("adjudication_missing_n"))
-            and isinstance(rc, list) and len(rc) > 1
-            and all(_is_count(x) for x in rc) and _is_count(adj.get("adjudicated_n"))
-            and rc[1] > adj["adjudicated_n"]):
+    # UNKNOWABLE IS NOT ZERO, and asking the derivation is how we find out.
+    #
+    # Four separate review rounds landed here, each naming one more way the
+    # two-pass derivation could be handed inputs that cannot support a count while
+    # it confidently returned one: an impossible coverage-exceeds-selected
+    # relationship, a negative entry, and then an ABSENT `adjudicated_n` coerced to
+    # zero. Adding a precondition per round was the wrong shape — the cause is that
+    # the derivation could not express "I do not know", so every missing input
+    # became a confident zero.
+    #
+    # `adjudication_dropped` now returns None for exactly that, and this asks it
+    # rather than re-deriving the preconditions. One authority for "can this be
+    # computed", shared by the validator and the renderer, so the two cannot
+    # disagree about whether a number exists.
+    if adjudication_dropped(receipt) is None:
         names.append("adjudication.adjudicated_n vs wobble.rep_coverage")
 
     return sorted(names)
@@ -137,31 +142,47 @@ def classify(path) -> tuple[int, list[str]]:
     return (NOT_CACHEABLE if "cacheable" in receipt else LEGACY), []
 
 
-def adjudication_dropped(receipt: dict) -> int:
-    """How many adjudication scores this receipt records as dropped.
+def adjudication_dropped(receipt: dict) -> "int | None":
+    """How many adjudication scores this receipt records as dropped, or None if
+    that is UNKNOWABLE from what it records.
 
     A pre-#2007 receipt has no explicit `adjudication_missing_n` but DOES carry
     the evidence, so defaulting to zero would claim "no adjudication gap" from a
     receipt that proves one. `behavior_judge` sets `rep_scores =
     [primary_premerge, adjudication]`, so `wobble.rep_coverage[1]` is how many
     judged ids the adjudication pass returned while `adjudicated_n` is how many
-    were selected; the difference is the drop. Only meaningful when a pass ran —
-    with none, `rep_coverage` has a single entry and there is nothing to compare.
+    were selected; the difference is the drop.
 
-    Callers must reject malformed metadata first; this assumes usable types.
+    THE THREE ANSWERS ARE DISTINCT AND CONFLATING TWO OF THEM WAS THE DEFECT:
+      a number  — computable, from the explicit count or the two-pass difference
+      0         — no adjudication pass ran, so nothing was dropped
+      None      — a pass ran but the receipt does not record enough to say
+
+    `malformed_metadata_fields` asks this and reports None as malformed, so a
+    caller that has already passed validation always gets a number.
     """
     adj = _as_dict(receipt.get("adjudication"))
     explicit = adj.get("adjudication_missing_n")
     if _is_count(explicit):
         return explicit
+
     rep_coverage = _as_list(_as_dict(receipt.get("wobble")).get("rep_coverage"))
-    if len(rep_coverage) > 1:
-        # `max(0, ...)` is defence only. An impossible coverage-exceeds-selected
-        # relationship is rejected as malformed before this runs, precisely so the
-        # clamp cannot erase it — clamping a contradiction to zero and calling it
-        # "no gap" is the failure this guard exists to prevent.
-        return max(0, _as_int(adj.get("adjudicated_n")) - _as_int(rep_coverage[1]))
-    return 0
+    if len(rep_coverage) < 2:
+        # Fewer than two replications means no adjudication pass ran, so nothing
+        # was dropped. Genuinely zero, not unknown.
+        return 0
+
+    # A pass DID run, so a count exists in principle and the only question is
+    # whether this receipt records enough to compute it. Returning None rather
+    # than a clamped zero is the whole point: `max(0, ...)` over a missing or
+    # contradictory input reports "no gap" about a receipt that cannot support
+    # that claim, which is the same manufactured-fact defect as coercing a
+    # corrupt list to empty.
+    selected = adj.get("adjudicated_n")
+    returned = rep_coverage[1]
+    if not _is_count(selected) or not _is_count(returned) or returned > selected:
+        return None
+    return selected - returned
 
 
 def main() -> int:

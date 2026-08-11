@@ -965,6 +965,11 @@ def test_report_survives_every_malformed_legacy_metadata_shape():
         {"adjudication": {"adjudicated_n": -5}},
         {"adjudication": no_count, "wobble": {"rep_coverage": [20, -3]}},
         {"adjudication": {"adjudicated_n": 1}, "wobble": {"rep_coverage": [20, 5]}},
+        # Round 9: a pass RAN (two coverage entries) but `adjudicated_n` is
+        # absent, so the number dropped is unknowable — and it was coerced to
+        # zero and reported as "no gaps". Unknowable is not zero.
+        {"adjudication": {}, "wobble": {"rep_coverage": [20, 0]}},
+
         {"adjudication": no_count, "wobble": ["bad"]},
         {"adjudication": no_count, "wobble": "bad"},
         {"adjudication": no_count, "wobble": 7},
@@ -996,7 +1001,10 @@ def test_report_survives_every_malformed_legacy_metadata_shape():
     # reach the ordinary legacy message, NOT the malformed one — the guard has to
     # fire on bad types without also rejecting honest empty evidence.
     for shape in ({"adjudication": no_count, "wobble": {"rep_coverage": [20]}},
-                  {"adjudication": no_count, "wobble": {"rep_coverage": []}}):
+                  {"adjudication": no_count, "wobble": {"rep_coverage": []}},
+                  # Two coverage entries but a VALID explicit count, which wins:
+                  # the derivation is never needed, so nothing is unknowable.
+                  {"wobble": {"rep_coverage": [20, 0]}}):
         r = healthy_receipt(**shape)
         del r["cacheable"]
         t = report_tree(r)
