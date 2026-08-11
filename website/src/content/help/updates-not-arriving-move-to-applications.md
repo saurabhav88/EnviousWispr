@@ -18,14 +18,23 @@ The side effect is that an app running this way cannot replace itself, which is 
 
 You will usually see this if you opened the app directly from the disk image, or from Downloads, without dragging it into Applications first.
 
-### The fix
+### First, check what is already in Applications
+
+Open your Applications folder and look for EnviousWispr.
+
+- **If there is no copy there**, go straight to the steps below.
+- **If there is a copy there**, open it and choose Check for Updates. If it reports a version the same as or newer than the one you have been using, that copy is the healthy one. Use it from now on, and delete the one in Downloads. Nothing else is needed.
+
+This check matters because replacing a newer copy with an older one leaves you worse off than you started.
+
+### Moving it across
 
 1. Quit EnviousWispr.
-2. Open your Downloads folder, or wherever you saved the app.
-3. Drag EnviousWispr into your Applications folder. If macOS asks whether to replace an existing copy, say yes.
+2. Find the app. If you saved a disk image, the file in Downloads ends in `.dmg` and is not the app itself. Double-click it first, and a window opens showing the EnviousWispr icon next to an Applications folder.
+3. Drag EnviousWispr into your Applications folder. If macOS asks whether to replace an existing copy, only say yes if you confirmed above that the existing copy is older.
 4. Open EnviousWispr from Applications.
 
-That is it. Dragging the app in Finder is the specific action that clears the restriction, which is why it works when other approaches do not.
+Dragging the app in Finder is the specific action that clears the restriction, which is why it works when other approaches do not.
 
 ### Checking it worked
 
@@ -35,8 +44,14 @@ Open EnviousWispr and choose Check for Updates. If it now tells you whether you 
 
 Newer versions notice this situation on launch and offer to move themselves into Applications for you. Accepting that is safe, and it does the same thing as the steps above.
 
-If that offer fails and tells you nothing was moved, drag the app across yourself using the steps above. It works in cases the automatic move cannot handle, such as a full disk, or an Applications folder your account is not allowed to write to.
+If that offer fails, read what it says before dragging the app across yourself. Some failures are about your Mac rather than the app, and a manual drag will not get past them either:
+
+- **Not enough space.** Free some up first, then try again.
+- **Another copy is already open.** Quit it first.
+- **A different app is already in that spot.** Sort that out first.
+
+Once the reason it gave you is cleared, the manual steps above will work.
 
 ### One thing worth knowing
 
-Because this problem prevents updates, a version containing a fix for it cannot reach you through the app. If you are reading this on an older version, the manual drag above is the way out, and after that updates will flow normally.
+Because this problem prevents updates, a version containing a fix for it cannot reach you through the app. If you are reading this on an older version, the manual move above is the way out, and after that updates will flow normally.
