@@ -18,6 +18,17 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.4.5
+
+    Entry(
+      id: "ollama-model-recommendations-from-tests",
+      icon: "checkmark.seal",
+      title: "Local AI model recommendations now come from our tests",
+      description:
+        "Ollama model labels used to be based on model size, which did not show how well they cleaned up dictation. They now reflect our own cleanup tests and explain what went wrong. New Ollama setups now start with qwen2.5:3b, the best result among the local models we offer. There is also a new option, qwen3:0.6b, which earned a Recommended label from a download about a quarter the size, so a small download no longer means poor cleanup. Models that produced no acceptable result ask before downloading.",
+      version: "2.4.5"
+    ),
+
     // MARK: - v2.4.4
 
     Entry(
@@ -53,15 +64,6 @@ enum WhatsNewContent {
       title: "Ollama settings and the model list now stay accurate",
       description:
         "The Ollama status in Settings could get stuck: still saying it was starting after it was ready, or still saying ready after you had quit Ollama. It now keeps itself current while you have the panel open. The model picker also showed two different models under one identical name, so there was no way to tell them apart. Each one is now labelled so you can.",
-      version: "2.4.4"
-    ),
-
-    Entry(
-      id: "ollama-model-recommendations-from-tests",
-      icon: "checkmark.seal",
-      title: "Local AI model recommendations now come from our tests",
-      description:
-        "Ollama model labels used to be based on model size, which did not show how well they cleaned up dictation. They now reflect our own cleanup tests and explain what went wrong. New Ollama setups now start with qwen2.5:3b, the best result among the local models we offer. There is also a new option, qwen3:0.6b, which scored second best from a download about a quarter the size, so a small download no longer means poor cleanup. Models that produced no acceptable result ask before downloading.",
       version: "2.4.4"
     ),
 

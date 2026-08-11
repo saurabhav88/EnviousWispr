@@ -59,7 +59,7 @@ struct WhatsNewContentTests {
     // untouched by #1493; asserting the real sequence is the falsifiable version.
     #expect(
       WhatsNewContent.versions == [
-        "2.4.4", "2.4.3", "2.4.1", "2.4.0",
+        "2.4.5", "2.4.4", "2.4.3", "2.4.1", "2.4.0",
         "2.3.2", "2.3.1", "2.3.0",
         "2.2.1", "2.2.0",
         "2.1.4", "2.1.3", "2.1.2", "2.1.1", "2.1.0",
@@ -152,7 +152,11 @@ struct WhatsNewContentTests {
     #expect(entry.description.contains("emoji"))
     #expect(entry.description.contains("keyboard language"))
     #expect(entry.description.contains("its own dictation"))
+    // Pinned to the release it actually shipped in, NOT to `currentContentVersion`.
+    // Those two agreed only while 2.4.4 was the open group, so the second assertion was
+    // guaranteed to break the moment any later work opened a new one — as 2.4.5 just
+    // did. The durable claim is which release the copy shipped in; coupling a shipped
+    // entry to "whatever is current" expires every release by construction.
     #expect(entry.version == "2.4.4")
-    #expect(entry.version == WhatsNewConstants.currentContentVersion)
   }
 }
