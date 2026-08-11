@@ -46,6 +46,7 @@ import behavior_judge as bj  # noqa: E402
 
 SHELL = ROOT / "scripts" / "eval" / "judge_ollama_bench.sh"
 REPORT = ROOT / "scripts" / "eval" / "report_ollama_bench.py"
+RECEIPT_STATE = ROOT / "scripts" / "eval" / "receipt_state.py"
 
 
 # --------------------------------------------------------------------------- #
@@ -135,6 +136,12 @@ def shell_tree(mode):
     (t / "cand").mkdir()
     (t / "judged").mkdir()
     (t / "scripts" / "eval" / "judge_ollama_bench.sh").write_bytes(SHELL.read_bytes())
+    # The script derives ROOT from its own location and now DELEGATES refusal
+    # classification to `receipt_state.py`, so the temp ROOT needs a real copy.
+    # Without it `python3 <missing>` exits 2, which collides with the UNREADABLE
+    # state and would make every refusal read "unreadable" — a fixture omission
+    # that produces plausible wrong messages rather than an obvious error.
+    (t / "scripts" / "eval" / "receipt_state.py").write_bytes(RECEIPT_STATE.read_bytes())
     (t / "scripts" / "eval" / "behavior_judge.py").write_text(STUB_JUDGE.format(mode=mode))
     (t / "cand" / "modelA.jsonl").write_text('{"id":"A","candidate":"x"}\n')
     (t / "corpus.jsonl").write_text('{"id":"A"}\n')
@@ -156,6 +163,22 @@ def invocations(t):
 
 def stamped(t):
     return (t / "judged" / "modelA" / ".inputs-sha256").exists()
+
+
+def forge_stamp(t):
+    """Write a stamp that genuinely MATCHES, so the resume fast path is entered
+    and only the cacheability check can stop the skip. Computed exactly as the
+    script does — over the same absolute argv paths, since the hash covers
+    filenames. Without it the stamp is absent, the fast path is never reached,
+    and a case would pass while testing the stale-inputs branch instead."""
+    forged = subprocess.run(
+        ["bash", "-c",
+         'if command -v shasum >/dev/null 2>&1; then H="shasum -a 256"; else H=sha256sum; fi; '
+         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}" | $H | cut -d" " -f1'],
+        capture_output=True, text=True).stdout.strip()
+    assert forged, "could not compute a stamp"
+    (t / "judged" / "modelA" / ".inputs-sha256").write_text(forged + "\n")
+    return forged
 
 
 def report_tree(receipt, per_case_rows=None):
@@ -606,18 +629,7 @@ def test_shell_resume_path_rejudges_a_stamped_not_cacheable_arm():
     if not receipt.exists():
         receipt.write_text(json.dumps({"cacheable": False, "release_gate": {"verdict": "BLOCK"}}))
 
-    # Forge a stamp that genuinely MATCHES, so the fast path is entered and only
-    # the cacheability check can stop the skip. Computed exactly as the script
-    # does — over the same absolute argv paths, since the hash covers filenames.
-    # Without this the stamp is absent, the fast path is never reached, and the
-    # case would pass while testing the stale-inputs branch instead.
-    forged = subprocess.run(
-        ["bash", "-c",
-         'if command -v shasum >/dev/null 2>&1; then H="shasum -a 256"; else H=sha256sum; fi; '
-         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}" | $H | cut -d" " -f1'],
-        capture_output=True, text=True).stdout.strip()
-    assert forged, "could not compute a stamp"
-    (d / ".inputs-sha256").write_text(forged + "\n")
+    forge_stamp(t)
 
     # Control: prove the forged stamp really would have caused a skip. Flip the
     # receipt to cacheable and confirm the arm IS skipped.
@@ -633,6 +645,138 @@ def test_shell_resume_path_rejudges_a_stamped_not_cacheable_arm():
     rc, log = run_shell(t)
     assert invocations(t) > before, f"the arm must be re-judged, not skipped: {log}"
     assert "not cacheable" in log, log
+
+
+def test_shell_resume_names_a_pre_cacheable_receipt_separately():
+    """Both cases are re-judged, so the CACHING behaviour is identical and only
+    the reader is affected — which is the point. A stamped receipt written before
+    #2007 has no acceptance field at all; calling that "not cacheable" sends the
+    reader looking for gaps that were never recorded. Every arm of the shipped
+    #1950 sweep is in exactly this state, so it is the message people will meet."""
+    t = shell_tree("false")
+    run_shell(t)
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    forge_stamp(t)
+
+    # Control: with the field present and false, the wording stays the old one.
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": False, "release_gate": {"verdict": "BLOCK"}}))
+    before = invocations(t)
+    _, log_false = run_shell(t)
+    assert invocations(t) > before, f"must re-judge: {log_false}"
+    assert "not cacheable" in log_false, log_false
+    assert "predates" not in log_false, log_false
+
+    # The case under test: same matching stamp, field absent entirely.
+    forge_stamp(t)
+    (d / "summary.json").write_text(json.dumps({"release_gate": {"verdict": "BLOCK"}}))
+    before = invocations(t)
+    rc, log_absent = run_shell(t)
+    assert invocations(t) > before, f"must re-judge: {log_absent}"
+    assert "predates the cacheable field" in log_absent, log_absent
+
+
+def test_shell_resume_does_not_call_a_corrupt_receipt_a_legacy_one():
+    """Review r1 P2. A two-way "does it carry the field" test answers false for
+    an unreadable file too, so a corrupt receipt was announced as "predates the
+    cacheable field" — a message asserting a cause it never observed, which is
+    the exact defect this pass exists to remove. Both still re-judge; only the
+    diagnostic differs, and hiding corruption behind "this file is just old" is
+    what sends the reader after the wrong thing."""
+    t = shell_tree("false")
+    run_shell(t)
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+
+    for label, body in (("malformed", b"{not json"), ("non-object", b"[1,2,3]"),
+                        # Invalid UTF-8: raises UnicodeDecodeError, not
+                        # JSONDecodeError, and an escaped exception exits 1 —
+                        # which this caller maps to the LEGACY branch, so an
+                        # undecodable file was announced as merely old.
+                        ("undecodable", b'{"cacheable": "\xff\xfe"}')):
+        forge_stamp(t)
+        (d / "summary.json").write_bytes(body)
+        before = invocations(t)
+        _, log = run_shell(t)
+        assert invocations(t) > before, f"{label} must re-judge: {log}"
+        assert "unreadable or is not a JSON object" in log, f"{label}: {log}"
+        assert "predates" not in log, f"{label} was mislabelled as legacy: {log}"
+
+
+def test_shell_resume_names_an_unsupported_verdict_not_legacy():
+    """Cloud review round 4. The shell classified only field-presence, so a
+    hand-edited receipt with no `cacheable` was announced as "predates the
+    cacheable field" — the same defect the report had, one layer over. The two
+    layers must agree on precedence, or they describe the same file differently.
+
+    Includes a non-object `release_gate`, because a bare `.get` there would raise
+    instead of classifying, and a hand-edited file is where that shape lives."""
+    t = shell_tree("false")
+    run_shell(t)
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+
+    for label, receipt in (
+        ("unsupported verdict", {"release_gate": {"verdict": "WEIRD"}}),
+        ("absent verdict", {"release_gate": {}}),
+        ("absent release_gate", {"foo": "bar"}),
+        ("non-object release_gate", {"release_gate": ["bad"]}),
+    ):
+        forge_stamp(t)
+        (d / "summary.json").write_text(json.dumps(receipt))
+        before = invocations(t)
+        _, log = run_shell(t)
+        assert invocations(t) > before, f"{label} must re-judge: {log}"
+        assert "verdict this gate cannot produce" in log, f"{label}: {log}"
+        assert "predates" not in log, f"{label} mislabelled as legacy: {log}"
+
+
+def test_both_layers_give_the_same_diagnosis_for_the_same_receipt():
+    """The alignment that two review rounds found broken, now asserted.
+
+    The shell and the report each have to explain a refused receipt, and they must
+    agree — an operator who sees "predates the cacheable field" from one and
+    "corrupt or hand-edited" from the other cannot tell which to believe. Two
+    copies in two languages diverged twice in one PR (verdict classification, then
+    metadata validation), so classification moved into `receipt_state.py` and this
+    test is what stops it drifting apart again.
+
+    Drives the SHELL's real resume path and the REPORT's real entry point over the
+    same receipt bodies, rather than comparing either against a reimplementation.
+    """
+    cases = [
+        # receipt body, shell phrase, report phrase
+        ({"release_gate": {"verdict": "BLOCK"}, "cacheable": False},
+         "receipt is not cacheable", "is not cacheable"),
+        ({"release_gate": {"verdict": "BLOCK"}},
+         "predates the cacheable field", "predates the `cacheable` field"),
+        ({"release_gate": {"verdict": "WEIRD"}},
+         "verdict this gate cannot produce", "cannot produce"),
+        ({"release_gate": {"verdict": "BLOCK"}, "skipped": "not a list"},
+         "malformed metadata", "malformed"),
+        ({"release_gate": ["bad"]},
+         "verdict this gate cannot produce", "cannot produce"),
+    ]
+
+    t = shell_tree("false")
+    run_shell(t)
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+
+    for receipt, shell_phrase, report_phrase in cases:
+        forge_stamp(t)
+        (d / "summary.json").write_text(json.dumps(receipt))
+        before = invocations(t)
+        _, log = run_shell(t)
+        assert invocations(t) > before, f"{receipt} must re-judge: {log}"
+        assert shell_phrase in log, f"shell said the wrong thing for {receipt}: {log}"
+
+        rt = report_tree(receipt)
+        rc, out = run_report(rt)
+        assert rc == 2, f"{receipt} -> rc={rc}: {out}"
+        assert report_phrase in out, f"report said the wrong thing for {receipt}: {out}"
+        assert "Traceback" not in out, f"{receipt} raised: {out}"
 
 
 def test_shell_absent_cacheable_field_is_not_stamped():
@@ -701,13 +845,287 @@ def test_report_refuses_an_unknown_verdict():
     t = report_tree(healthy_receipt(release_gate={"verdict": "WEIRD_UNKNOWN", "checks": []}))
     rc, out = run_report(t)
     assert rc == 2, out
-    assert "not cacheable" in out, out
+    # The receipt IS cacheable and its gap counts are all zero, so the generic
+    # "not cacheable — 0, 0, 0" sentence described none of what is wrong. The
+    # refusal now names the actual reason: this gate cannot emit that verdict.
+    assert "cannot produce" in out, out
+    assert "0 engine-skipped" not in out, out
 
 
 def test_report_refuses_clear_but_not_cacheable():
     t = report_tree(healthy_receipt(cacheable=False))
     rc, out = run_report(t)
     assert rc == 2, out
+    assert "not cacheable" in out, out
+
+
+def test_report_refuses_an_unreadable_receipt_by_name():
+    """#2019, folded in rather than deferred: shipping "a refusal names its own
+    reason" while one input shape still produces a traceback would make that
+    claim false. Pre-fix both corrupt shapes exit 1 through an unhandled
+    exception, so the exit-code assertion alone fails without the guard."""
+    t = report_tree(healthy_receipt())
+    (t / "judged" / "modelA" / "summary.json").write_text("{not json")
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "judge receipt is unreadable" in out, out
+    assert "modelA" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_refuses_an_undecodable_receipt():
+    """Cloud review P2, round 2: invalid UTF-8 raises UnicodeDecodeError, which a
+    `json.JSONDecodeError`-only tuple misses entirely. Both are ValueError
+    subclasses, so the guard catches the BASE rather than a list of names that
+    can miss the next member — the axis I under-enumerated was exception TYPE,
+    having already enumerated corrupt SHAPE."""
+    t = report_tree(healthy_receipt())
+    (t / "judged" / "modelA" / "summary.json").write_bytes(b'{"cacheable": "\xff\xfe"}')
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "judge receipt is unreadable" in out, out
+    assert "UnicodeDecodeError" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_refuses_an_undecodable_per_case_file():
+    t = report_tree(healthy_receipt())
+    (t / "judged" / "modelA" / "per_case.jsonl").write_bytes(b'{"id": "\xff\xfe"}\n')
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "per_case.jsonl is unreadable" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_refuses_a_non_object_receipt_by_name():
+    t = report_tree(healthy_receipt())
+    (t / "judged" / "modelA" / "summary.json").write_text("[1,2,3]")
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "not an object" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_refuses_an_unreadable_per_case_file():
+    """Checked rather than assumed: a malformed per_case.jsonl crashed the same
+    way, so it is the same class and belongs in the same change."""
+    t = report_tree(healthy_receipt())
+    (t / "judged" / "modelA" / "per_case.jsonl").write_text("{not json")
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "per_case.jsonl is unreadable" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_refuses_a_non_object_per_case_row():
+    """The guard is reachable: a `[1,2]` row parses fine and would reach the
+    `.get`-calling split predicates, so this is a real path, not a formality."""
+    t = report_tree(healthy_receipt(), per_case_rows=[{"id": "EN-1", "verdict": "pass",
+                                                      "severity": "S0",
+                                                      "behavior": "grammar_fix",
+                                                      "failure_types": []}])
+    p = t / "judged" / "modelA" / "per_case.jsonl"
+    p.write_text(p.read_text() + "[1,2]\n")
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "row that is not an object" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_survives_every_malformed_legacy_metadata_shape():
+    """Cloud review round 4, and the point at which patching one cell per round
+    stopped being the right move. `{"wobble": ["bad"]}` made a `.get` raise
+    AttributeError, so the refusal path CRASHED while explaining why a receipt
+    was untrusted — a refusal treating its own input as well-formed.
+
+    Every one of these carries a VALID verdict, so precedence cannot save them;
+    only the type-safe accessors can. Table-driven because the axis is "any JSON
+    value in any legacy field", not a list of remembered examples."""
+    # EVERY wobble row must also make `adjudication_missing_n` unusable, or the
+    # `rep_coverage` read is never reached and the row proves nothing. My first
+    # version of this table did not, and the mutation control caught it: reverting
+    # the accessors to bare `.get` left all 66 tests green, because
+    # `healthy_receipt` supplies a valid `adjudication_missing_n: 0` that
+    # short-circuits the derivation. A table whose rows cannot enter the branch is
+    # zero coverage wearing a passing badge.
+    no_count = {"adjudicated_n": 20}  # deliberately omits adjudication_missing_n
+
+    # THREE GROUPS, because type-validity and value-degeneracy are different axes
+    # and my first table conflated them — it asserted "malformed" for a perfectly
+    # well-formed `rep_coverage: [20]`, which is valid and simply means no
+    # adjudication pass ran. Blanket-asserting one expectation over a table is how
+    # a row ends up testing the wrong thing.
+    malformed_shapes = [
+        # Cloud rounds 7 and 8: the axis was TYPE, and it needed to be type AND
+        # range AND relationship. A negative count passes `_is_int` and prints
+        # "-1 adjudication-dropped"; a coverage exceeding the selected count is
+        # impossible and the derivation's `max(0, ...)` clamped it to zero and
+        # claimed no gap. Both erase corruption instead of naming it.
+        {"adjudication": {"adjudication_missing_n": -1}},
+        {"adjudication": {"adjudicated_n": -5}},
+        {"adjudication": no_count, "wobble": {"rep_coverage": [20, -3]}},
+        {"adjudication": {"adjudicated_n": 1}, "wobble": {"rep_coverage": [20, 5]}},
+        # Round 9: a pass RAN (two coverage entries) but `adjudicated_n` is
+        # absent, so the number dropped is unknowable — and it was coerced to
+        # zero and reported as "no gaps". Unknowable is not zero.
+        {"adjudication": {}, "wobble": {"rep_coverage": [20, 0]}},
+        # Round 10, the mirror of round 9: `adjudicated_n > 0` guarantees two
+        # coverage entries (behavior_judge.py:787), so one entry means the pass
+        # ran and its result is missing — unknowable, not zero.
+        {"adjudication": no_count, "wobble": {"rep_coverage": [20]}},
+        {"adjudication": {"adjudicated_n": 1}, "wobble": {"rep_coverage": []}},
+
+        {"adjudication": no_count, "wobble": ["bad"]},
+        {"adjudication": no_count, "wobble": "bad"},
+        {"adjudication": no_count, "wobble": 7},
+        {"adjudication": no_count, "wobble": {"rep_coverage": "not a list"}},
+        {"adjudication": no_count, "wobble": {"rep_coverage": [20, "seventeen"]}},
+        {"adjudication": ["bad"]},
+        {"adjudication": "bad"},
+        {"adjudication": {"adjudicated_n": "twenty"}},
+        {"adjudication": {"adjudication_missing_n": "seven"}},
+        {"adjudication": {"adjudication_missing_n": True}},
+        {"skipped": "not a list"},
+        {"missing_scores": {"not": "a list"}},
+    ]
+    for shape in malformed_shapes:
+        r = healthy_receipt(**shape)
+        del r["cacheable"]
+        t = report_tree(r)
+        rc, out = run_report(t)
+        assert rc == 2, f"{shape} -> rc={rc}: {out}"
+        assert "Traceback" not in out, f"{shape} raised: {out}"
+        # Cloud review round 5 found what a "did not crash" assertion allows: the
+        # message claimed the receipt "records no gaps of its own", a false claim
+        # built by coercing a corrupt field to empty. Name it, never erase it.
+        assert "malformed" in out, f"{shape} was coerced instead of refused: {out}"
+        assert "no gaps of its own" not in out, \
+            f"{shape} claimed no gaps from unusable metadata: {out}"
+
+    # Well-formed but degenerate: valid types, nothing to compare. These must
+    # reach the ordinary legacy message, NOT the malformed one — the guard has to
+    # fire on bad types without also rejecting honest empty evidence.
+    # THIRD time I misclassified a row in this table, so the rule is written out:
+    # a degenerate-but-valid receipt needs `adjudicated_n` to be 0 or absent. With
+    # selected > 0 and fewer than two coverage entries it is inconsistent, not
+    # degenerate, which is what round 10 found — my earlier "valid, just
+    # degenerate" reading of `no_count` + `[20]` was simply wrong.
+    for shape in ({"adjudication": {"adjudicated_n": 0}, "wobble": {"rep_coverage": [20]}},
+                  {"adjudication": {}, "wobble": {"rep_coverage": []}},
+                  # Two coverage entries but a VALID explicit count, which wins:
+                  # the derivation is never needed, so nothing is unknowable.
+                  {"wobble": {"rep_coverage": [20, 0]}}):
+        r = healthy_receipt(**shape)
+        del r["cacheable"]
+        t = report_tree(r)
+        rc, out = run_report(t)
+        assert rc == 2, f"{shape} -> rc={rc}: {out}"
+        assert "Traceback" not in out, f"{shape} raised: {out}"
+        assert "malformed" not in out, f"{shape} wrongly called malformed: {out}"
+        assert "predates the `cacheable` field" in out, f"{shape}: {out}"
+
+    # A non-object `release_gate` is caught EARLIER, by the verdict check, because
+    # its verdict reads as None. Asserting "malformed" here would have been wrong
+    # about which branch owns it.
+    r = healthy_receipt(release_gate=["bad"])
+    del r["cacheable"]
+    rc, out = run_report(report_tree(r))
+    assert rc == 2, out
+    assert "cannot produce" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_classifies_a_hand_edited_receipt_before_reading_its_metadata():
+    """The reviewer's exact example: an unsupported verdict AND malformed legacy
+    metadata together. Classifying the verdict first means the crash-prone reads
+    never run for the receipts most likely to break them."""
+    r = healthy_receipt(release_gate={"verdict": "WEIRD"},
+                        adjudication={"adjudicated_n": 1}, wobble=["bad"])
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "cannot produce" in out, out
+    assert "Traceback" not in out, out
+
+
+def test_report_recovers_a_legacy_adjudication_drop():
+    """Review r2 P2, and an incomplete port of my own fix: I read a legacy
+    receipt's `skipped` and `missing_scores` but let `adjudication_missing_n`
+    default to zero, so a receipt whose own fields PROVE an adjudication drop was
+    reported as recording no gaps. `rep_scores[1]` is the adjudication pass, so
+    `rep_coverage[1]` is what it returned against `adjudicated_n` selected.
+
+    The 16 shipped #1950 receipts all compute 0 here, so this case is the only
+    thing standing between the recovery and a silent regression."""
+    r = healthy_receipt(adjudication={"adjudicated_n": 20},
+                        wobble={"common_n": 17, "rep_coverage": [20, 17]})
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "3 adjudication-dropped" in out, out
+    assert "no gaps of its own" not in out, out
+
+
+def test_report_claims_no_adjudication_drop_when_none_ran():
+    """Two-way control for the recovery above. With no adjudication pass,
+    `rep_coverage` has a single entry, so the difference is not computable and
+    must read as zero rather than as `adjudicated_n` dropped."""
+    r = healthy_receipt(adjudication={"adjudicated_n": 0},
+                        wobble={"common_n": 0, "rep_coverage": [20]})
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "records no gaps of its own" in out, out
+
+
+def test_report_prefers_the_verdict_problem_over_the_legacy_one():
+    """Cloud review P2. A receipt can be BOTH legacy AND carry a verdict this
+    gate cannot emit; checking field-absence first called it merely old and
+    suppressed the stronger signal — and the advice differs, since "re-judge
+    once" is wrong for a file that is not one of ours.
+
+    Safe by measurement: all 16 shipped #1950 arms carry `BLOCK`, so no genuine
+    legacy receipt is mislabelled by this precedence."""
+    r = healthy_receipt(release_gate={"verdict": "WEIRD_UNKNOWN_VALUE", "checks": []})
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "cannot produce" in out, out
+    assert "predates" not in out, out
+
+
+def test_report_names_a_pre_cacheable_receipt_as_such():
+    """Every one of the 16 real #1950 arms hits this branch, because no receipt
+    written before #2007 carries the field. The old message printed three zero
+    counts and refused anyway, which reads as "nothing is wrong, yet rejected"."""
+    r = healthy_receipt()
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "predates the `cacheable` field" in out, out
+    assert "records no gaps of its own" in out, out
+    # The three-count string is the OTHER branch's sentence and must not appear:
+    # printing "0 engine-skipped, 0 primary judge-dropped" here is the defect.
+    assert "engine-skipped" not in out, out
+
+
+def test_report_still_names_the_gaps_a_pre_cacheable_receipt_records():
+    """A pre-field receipt lacks the ACCEPTANCE answer, not its gap record. Real
+    data: llama3.2's #1950 receipt has no `cacheable` and four dropped
+    international scores, so an unconditional "no gap is implied" would be false."""
+    r = healthy_receipt(missing_scores=["INT-1", "INT-2", "INT-3", "INT-4"])
+    del r["cacheable"]
+    t = report_tree(r)
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "predates the `cacheable` field" in out, out
+    assert "4 primary judge-dropped" in out, out
+    assert "no gaps of its own" not in out, out
 
 
 def test_report_names_the_adjudication_gap():
@@ -860,7 +1278,7 @@ def test_report_refuses_a_truncated_detail_file():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 50
+EXPECTED_TESTS = 67
 
 
 def _run() -> int:

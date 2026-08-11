@@ -56,12 +56,39 @@ import json, sys
 try:
     with open(sys.argv[1]) as f:
         receipt = json.load(f)
-except (OSError, json.JSONDecodeError):
+# ValueError, not JSONDecodeError: invalid UTF-8 raises UnicodeDecodeError,
+# which a JSONDecodeError-only tuple misses. Both are ValueError subclasses,
+# so catching the base is the enumeration rather than a list that can miss
+# the next member — and an escaped exception here exits 1, which the caller
+# maps to "predates the cacheable field" for a file it could not decode.
+except (OSError, ValueError):
     raise SystemExit(1)
 if not isinstance(receipt, dict):
     raise SystemExit(1)
 raise SystemExit(0 if receipt.get("cacheable") is True else 1)
 PY
+}
+
+# Why the receipt was refused, for the resume MESSAGE only. Deliberately NOT
+# part of the caching decision: every state below fails closed and is re-judged,
+# so this changes what the reader is told and nothing else.
+#
+# Why the receipt was refused, for the resume MESSAGE only — DELEGATED, not
+# reimplemented. This used to be an inline copy of the report's logic, and the
+# copy fell behind twice in one PR: first it did not classify verdicts, then it
+# did not validate metadata, and both times it announced "predates the cacheable
+# field" about a file the report correctly called hand-edited or corrupt. A
+# comment asking for parity cannot enforce it, so `receipt_state.py` is the single
+# authority and both layers ask it.
+#
+# Exit code IS the state; stdout carries malformed field names.
+#   0 = object carrying `cacheable` (so the field says false)
+#   1 = object without it, valid verdict, usable metadata (pre-#2007)
+#   2 = unreadable, malformed, or valid JSON that is not an object
+#   3 = a verdict this gate cannot emit (not ours / hand-edited)
+#   4 = valid verdict but gap metadata whose types prove nothing
+receipt_refusal_state() {
+  python3 "$ROOT/scripts/eval/receipt_state.py" "$1"
 }
 for cand in "$CANDDIR"/*.jsonl; do
   base="$(basename "$cand" .jsonl)"
@@ -90,7 +117,22 @@ for cand in "$CANDDIR"/*.jsonl; do
     # non-cacheable receipt as a stamp mismatch sends the reader after the wrong
     # thing entirely.
     if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$inputs_sha" ]; then
-      reason="receipt is not cacheable"
+      # A refusal must name its own reason, and these are two different
+      # situations: a receipt written before #2007 simply has no acceptance field
+      # and needs one re-judge, while a receipt carrying `cacheable: false`
+      # recorded real gaps. Calling the first one "not cacheable" reads as a
+      # broken receipt. Every arm of the shipped #1950 sweep hits the first case,
+      # so this is the path a reader actually meets. The post-judge branch below
+      # keeps the plain wording deliberately: the judge that just wrote that
+      # receipt always sets the field, so there `false` is the only way to get in.
+      bad_fields="$(receipt_refusal_state "$dest/summary.json")"
+      case $? in
+        0) reason="receipt is not cacheable" ;;
+        1) reason="receipt predates the cacheable field" ;;
+        3) reason="receipt carries a verdict this gate cannot produce" ;;
+        4) reason="receipt has malformed metadata ($bad_fields), so its gap counts prove nothing" ;;
+        *) reason="receipt is unreadable or is not a JSON object" ;;
+      esac
     else
       reason="candidates or corpus changed since its receipt"
     fi

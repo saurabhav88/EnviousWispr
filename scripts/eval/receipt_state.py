@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""Why a judge receipt cannot be trusted — ONE classifier, two consumers.
+
+`report_ollama_bench.py` (ranking) and `judge_ollama_bench.sh` (caching) both have
+to explain a refused receipt, and they must give the SAME explanation for the same
+file or an operator cannot tell which to believe.
+
+They were two copies of the same logic in two languages, and copies diverge: in
+one PR the shell fell behind twice, first on verdict classification and then on
+malformed metadata, each time announcing "predates the `cacheable` field" about a
+file the report correctly called hand-edited or corrupt. Both were caught by
+review rather than by anything structural, because a comment asking for parity
+cannot enforce it. So this module is the single authority and the shell shells out
+to it rather than reimplementing it.
+
+A REFUSAL MUST NEVER RAISE AND MUST NEVER GUESS. Every field read here goes
+through an accessor that cannot raise on any JSON value, and a field that is
+present with the wrong type is reported as malformed rather than coerced —
+coercing `"skipped": "not a list"` to `[]` manufactures the claim "records no
+gaps", which is a false statement about a receipt that records nothing usable.
+
+CLI contract, used by the shell: exit code IS the state, stdout carries the
+malformed field names (empty otherwise).
+"""
+from __future__ import annotations
+
+import json
+import sys
+
+# Verdicts this gate can actually emit. Anything else means the receipt was not
+# produced by `evaluate_new_gate` — hand-edited, or from another tool.
+ALLOWED_VERDICTS = ("CLEAR", "BLOCK", "INCOMPLETE")
+
+# States, ordered by precedence rather than severity. Verdict is classified before
+# metadata is read, for two independent reasons: an unsupported verdict is the
+# stronger signal and carries different advice than "this file is merely old", and
+# it marks a hand-edited file, which is exactly where malformed metadata lives —
+# so the fragile reads never run for the receipts most likely to break them.
+NOT_CACHEABLE = 0      # object carrying `cacheable`, so the field says false
+LEGACY = 1             # object without it, valid verdict (written before #2007)
+UNREADABLE = 2         # missing, undecodable, malformed JSON, or not an object
+UNSUPPORTED_VERDICT = 3  # a verdict this gate cannot emit
+MALFORMED_METADATA = 4   # valid verdict, but gap fields whose types prove nothing
+
+
+def _as_dict(v):
+    return v if isinstance(v, dict) else {}
+
+
+def _as_list(v):
+    return v if isinstance(v, list) else []
+
+
+def _is_int(v) -> bool:
+    # `bool` is an `int` subclass, and `True` must not read as 1 in a count.
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _is_count(v) -> bool:
+    """A count: a non-negative integer.
+
+    Type validity alone is not enough, and stopping there was an axis I cut too
+    narrow. `adjudication_missing_n: -1` passes `_is_int` and prints "-1
+    adjudication-dropped", which is not a fact about anything. A number whose
+    VALUE is impossible is as corrupt as one whose type is wrong, and both must be
+    named rather than rendered.
+    """
+    return _is_int(v) and v >= 0
+
+
+def malformed_metadata_fields(receipt: dict) -> list[str]:
+    """Gap fields that are PRESENT with an unusable type, sorted.
+
+    Absent is not malformed: it means nothing was recorded, which a pre-#2007
+    receipt does legitimately. Only a present-but-wrong-typed field is a lie
+    waiting to be told.
+    """
+    names = []
+    for key, coerce in (("skipped", _as_list), ("missing_scores", _as_list),
+                        ("adjudication", _as_dict), ("wobble", _as_dict)):
+        if key in receipt and coerce(receipt[key]) is not receipt[key]:
+            names.append(key)
+
+    adj = receipt.get("adjudication")
+    if isinstance(adj, dict):
+        names += [f"adjudication.{k}" for k in
+                  ("adjudication_missing_n", "adjudicated_n")
+                  if k in adj and not _is_count(adj[k])]
+
+    wobble = receipt.get("wobble")
+    rc = wobble.get("rep_coverage") if isinstance(wobble, dict) else None
+    if isinstance(wobble, dict) and "rep_coverage" in wobble:
+        if not isinstance(rc, list) or not all(_is_count(x) for x in rc):
+            names.append("wobble.rep_coverage")
+
+    # UNKNOWABLE IS NOT ZERO, and asking the derivation is how we find out.
+    #
+    # Four separate review rounds landed here, each naming one more way the
+    # two-pass derivation could be handed inputs that cannot support a count while
+    # it confidently returned one: an impossible coverage-exceeds-selected
+    # relationship, a negative entry, and then an ABSENT `adjudicated_n` coerced to
+    # zero. Adding a precondition per round was the wrong shape — the cause is that
+    # the derivation could not express "I do not know", so every missing input
+    # became a confident zero.
+    #
+    # `adjudication_dropped` now returns None for exactly that, and this asks it
+    # rather than re-deriving the preconditions. One authority for "can this be
+    # computed", shared by the validator and the renderer, so the two cannot
+    # disagree about whether a number exists.
+    if adjudication_dropped(receipt) is None:
+        names.append("adjudication.adjudicated_n vs wobble.rep_coverage")
+
+    return sorted(names)
+
+
+def classify(path) -> tuple[int, list[str]]:
+    """Returns (state, malformed field names). Never raises."""
+    try:
+        with open(path) as f:
+            receipt = json.load(f)
+    # ValueError, not JSONDecodeError: invalid UTF-8 raises UnicodeDecodeError,
+    # which a JSONDecodeError-only tuple misses. Both are ValueError subclasses,
+    # so catching the base is the enumeration rather than a list of names that can
+    # miss the next member.
+    except (OSError, ValueError):
+        return UNREADABLE, []
+    if not isinstance(receipt, dict):
+        return UNREADABLE, []
+
+    verdict = _as_dict(receipt.get("release_gate")).get("verdict")
+    if verdict not in ALLOWED_VERDICTS:
+        return UNSUPPORTED_VERDICT, []
+
+    malformed = malformed_metadata_fields(receipt)
+    if malformed:
+        return MALFORMED_METADATA, malformed
+
+    return (NOT_CACHEABLE if "cacheable" in receipt else LEGACY), []
+
+
+def adjudication_dropped(receipt: dict) -> "int | None":
+    """How many adjudication scores this receipt records as dropped, or None if
+    that is UNKNOWABLE from what it records.
+
+    A pre-#2007 receipt has no explicit `adjudication_missing_n` but DOES carry
+    the evidence, so defaulting to zero would claim "no adjudication gap" from a
+    receipt that proves one. `behavior_judge` sets `rep_scores =
+    [primary_premerge, adjudication]`, so `wobble.rep_coverage[1]` is how many
+    judged ids the adjudication pass returned while `adjudicated_n` is how many
+    were selected; the difference is the drop.
+
+    THE THREE ANSWERS ARE DISTINCT AND CONFLATING TWO OF THEM WAS THE DEFECT:
+      a number  — computable, from the explicit count or the two-pass difference
+      0         — no adjudication pass ran, so nothing was dropped
+      None      — a pass ran but the receipt does not record enough to say
+
+    `malformed_metadata_fields` asks this and reports None as malformed, so a
+    caller that has already passed validation always gets a number.
+    """
+    adj = _as_dict(receipt.get("adjudication"))
+    explicit = adj.get("adjudication_missing_n")
+    if _is_count(explicit):
+        return explicit
+
+    selected = adj.get("adjudicated_n")
+    rep_coverage = _as_list(_as_dict(receipt.get("wobble")).get("rep_coverage"))
+    if len(rep_coverage) < 2:
+        # Fewer than two replications normally means no adjudication pass ran, so
+        # nothing was dropped — genuinely zero, not unknown.
+        #
+        # BUT the two must agree. `behavior_judge` sets `rep_scores =
+        # [primary_premerge, adjudication] if adjudicated_ids else [primary]`, so a
+        # non-zero `adjudicated_n` GUARANTEES two coverage entries. Selected > 0
+        # with fewer than two is internally inconsistent: a pass ran and its result
+        # is missing, which makes the drop unknowable rather than zero.
+        #
+        # This branch is the mirror of the one below, and my previous commit fixed
+        # only the other half — half an invariant is the partial port this file's
+        # own history keeps demonstrating.
+        if _is_count(selected) and selected > 0:
+            return None
+        return 0
+
+    # A pass DID run, so a count exists in principle and the only question is
+    # whether this receipt records enough to compute it. Returning None rather
+    # than a clamped zero is the whole point: `max(0, ...)` over a missing or
+    # contradictory input reports "no gap" about a receipt that cannot support
+    # that claim, which is the same manufactured-fact defect as coercing a
+    # corrupt list to empty.
+    returned = rep_coverage[1]
+    if not _is_count(selected) or not _is_count(returned) or returned > selected:
+        return None
+    return selected - returned
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("usage: receipt_state.py <summary.json>", file=sys.stderr)
+        return 64
+    state, malformed = classify(sys.argv[1])
+    if malformed:
+        print(", ".join(malformed))
+    return state
+
+
+if __name__ == "__main__":
+    sys.exit(main())

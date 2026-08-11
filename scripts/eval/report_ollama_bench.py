@@ -45,6 +45,22 @@ def load_json(p: Path):
         return json.load(f)
 
 
+# Why a receipt is refused is classified in ONE place, shared with
+# `judge_ollama_bench.sh`, because two copies in two languages diverged twice in
+# one PR — the shell announced "predates the `cacheable` field" about files this
+# script correctly called hand-edited and then corrupt. A comment asking for
+# parity cannot enforce it; a shared module can.
+from receipt_state import (  # noqa: E402
+    MALFORMED_METADATA,
+    NOT_CACHEABLE,
+    UNSUPPORTED_VERDICT,
+    _as_dict,
+    _as_list,
+    adjudication_dropped,
+    classify,
+)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-summaries", required=True, nargs="+", type=Path)
@@ -127,7 +143,28 @@ def main() -> int:
                 continue
             problems.append(f"{model}: no quality receipt at {jdir}")
             continue
-        summary = load_json(summary_path)
+        # A corrupt receipt is a refusal like any other and must name the MODEL,
+        # not a line number. Reading it unguarded aborted the WHOLE report on one
+        # bad file — losing fifteen good arms — and printed a traceback where
+        # every sibling refusal prints "<model> (<arm>): <reason>; re-judge".
+        # The caching layer has always shape-checked here (`receipt_cacheable`'s
+        # isinstance guard); this closes the same gap in the ranking layer.
+        # Guarded at the call site rather than inside `load_json`, because the
+        # run-summary caller above wants a DIFFERENT message with no per-model
+        # attribution, and one shared sentence would be wrong for both.
+        try:
+            summary = load_json(summary_path)
+        # ValueError covers BOTH decode failures: json.JSONDecodeError and
+        # UnicodeDecodeError (invalid UTF-8) are both subclasses, and a
+        # JSONDecodeError-only tuple silently missed the second one.
+        except (OSError, ValueError) as exc:
+            problems.append(f"{model} ({cand_stem}): judge receipt is unreadable "
+                            f"({exc.__class__.__name__}); re-judge")
+            continue
+        if not isinstance(summary, dict):
+            problems.append(f"{model} ({cand_stem}): judge receipt is valid JSON but not "
+                            f"an object ({type(summary).__name__}); re-judge")
+            continue
 
         # A judge receipt can exist and still be PARTIAL. When cases are dropped
         # or engine-skipped, behavior_judge writes summary.json, marks its
@@ -147,16 +184,76 @@ def main() -> int:
         # absent or unknown verdict — and INCOMPLETE is included deliberately: a
         # model with some engine errors is INCOMPLETE by coverage yet FINISHED as
         # evidence, and `tier()` below ranks exactly that case "Not recommended".
-        release_verdict = (summary.get("release_gate") or {}).get("verdict")
-        if summary.get("cacheable") is not True \
-                or release_verdict not in ("CLEAR", "BLOCK", "INCOMPLETE"):
-            adj_dropped = (summary.get("adjudication") or {}).get("adjudication_missing_n", 0)
-            problems.append(
-                f"{model} ({cand_stem}): judge receipt is not cacheable "
-                f"(verdict {release_verdict!r}) — "
-                f"{len(summary.get('skipped', []))} engine-skipped, "
-                f"{len(summary.get('missing_scores', []))} primary judge-dropped, "
-                f"{adj_dropped} adjudication-dropped; re-judge")
+        release_verdict = _as_dict(summary.get("release_gate")).get("verdict")
+        state, malformed = classify(summary_path)
+        if state != NOT_CACHEABLE or summary.get("cacheable") is not True:
+            # A refusal must NAME ITS OWN REASON. Reporting the three gap counts
+            # unconditionally printed "0 engine-skipped, 0 primary judge-dropped,
+            # 0 adjudication-dropped" for a receipt written before `cacheable`
+            # existed — all zeros, yet refused, which reads as "nothing is wrong
+            # and I rejected it anyway". Measured against the real #1950 run data:
+            # 14 of 16 arms produced exactly that. Same shape as the adjudication
+            # message that printed two zeros before #2007 fixed it.
+            #
+            # THREE REASONS, IN THIS ORDER, AND THE ORDER IS THE DESIGN.
+            #
+            # The verdict is classified FIRST, before any other field is read.
+            # Two independent reasons, both found by review the other way round:
+            # a receipt can be BOTH legacy AND carry a verdict this gate cannot
+            # emit, and calling that one "merely old" suppresses the stronger
+            # signal while giving the wrong advice ("re-judge once" is not what
+            # you do with a file that is not ours). Second, an unsupported
+            # verdict is the marker of a hand-edited file, which is exactly where
+            # malformed metadata lives — so classifying it before touching
+            # `adjudication` or `wobble` means the crash-prone reads never run
+            # for the receipts most likely to break them.
+            #
+            # Safe against mislabelling a genuine legacy receipt: all 16 shipped
+            # #1950 arms carry `BLOCK`, which is allowlisted, so a real
+            # pre-#2007 receipt still reaches the legacy message below.
+            if state == UNSUPPORTED_VERDICT:
+                problems.append(
+                    f"{model} ({cand_stem}): judge receipt carries verdict "
+                    f"{release_verdict!r}, which this gate cannot produce — the file is "
+                    f"not one of ours or was hand-edited; re-judge")
+                continue
+
+            if state == MALFORMED_METADATA:
+                # Coercing a corrupt `"skipped": "not a list"` to `[]` would
+                # manufacture "records no gaps of its own" about a receipt that
+                # records nothing usable — a false claim, and the very defect this
+                # change set exists to remove. A malformed field is no evidence the
+                # gap is zero, so it is named rather than erased.
+                problems.append(
+                    f"{model} ({cand_stem}): judge receipt has malformed "
+                    f"{', '.join(malformed)}, so its gap counts prove nothing — "
+                    f"the file is corrupt or hand-edited; re-judge")
+                continue
+
+            skipped = _as_list(summary.get("skipped"))
+            missing = _as_list(summary.get("missing_scores"))
+            adj_dropped = adjudication_dropped(summary)
+            gaps = (f"{len(skipped)} engine-skipped, "
+                    f"{len(missing)} primary judge-dropped, "
+                    f"{adj_dropped} adjudication-dropped")
+            any_gap = bool(skipped or missing or adj_dropped)
+
+            if "cacheable" not in summary:
+                # A pre-#2007 receipt still RECORDS its gaps; what it lacks is the
+                # judge's acceptance answer. So report the recorded gaps when there
+                # are any and stay silent about them when there are none — saying
+                # "no gap is implied" unconditionally would have been false on the
+                # real #1950 data, where llama3.2's receipt records four dropped
+                # international scores.
+                detail = (f"and records {gaps}" if any_gap
+                          else "and records no gaps of its own")
+                problems.append(
+                    f"{model} ({cand_stem}): judge receipt predates the `cacheable` "
+                    f"field (written before #2007) {detail}; re-judge once")
+            else:
+                problems.append(
+                    f"{model} ({cand_stem}): judge receipt is not cacheable "
+                    f"(verdict {release_verdict!r}) — {gaps}; re-judge")
             continue
 
         # Independent reconciliation against the RUN's own case count, because
@@ -205,7 +302,25 @@ def main() -> int:
                 f"be ranked ({detail}); re-run those cases")
             continue
 
-        per_case = [json.loads(l) for l in open(per_case_path) if l.strip()]
+        # Same class as the receipt guard above; measured to fail identically.
+        # The row shape-check is not padding: every consumer below reaches rows
+        # through `pred(x)` predicates that call `.get`, so a valid-JSON
+        # non-object row would crash there instead, one layer further from the
+        # cause.
+        try:
+            per_case = [json.loads(l) for l in open(per_case_path) if l.strip()]
+        # ValueError covers BOTH decode failures: json.JSONDecodeError and
+        # UnicodeDecodeError (invalid UTF-8) are both subclasses, and a
+        # JSONDecodeError-only tuple silently missed the second one.
+        except (OSError, ValueError) as exc:
+            problems.append(f"{model} ({cand_stem}): per_case.jsonl is unreadable "
+                            f"({exc.__class__.__name__}); re-judge")
+            continue
+        if not all(isinstance(row, dict) for row in per_case):
+            problems.append(f"{model} ({cand_stem}): per_case.jsonl contains a row that is "
+                            f"not an object, so the language split cannot be computed; "
+                            f"re-judge")
+            continue
 
         # The language splits below are computed from per_case.jsonl while the
         # headline pass rate comes from summary.json. A truncated detail file
