@@ -193,11 +193,16 @@ struct InputDeviceResolverTests {
     #expect(result.resolutionSource == .listFallback)
   }
 
-  /// THE SAFETY CASE. macOS can present a synthetic `CADefaultDeviceAggregate`
-  /// on the default input path, so an aggregate transport can be the OS wrapping
-  /// a working microphone. If this change diverted with nowhere to divert to,
-  /// such a user would go from dictating fine to being told to connect a
-  /// microphone.
+  /// THE NO-REGRESSION CASE. With no real microphone to divert to, the default
+  /// is bound exactly as before, so #2022 never turns a working take into an
+  /// error and adds no new path to "No microphone found".
+  ///
+  /// This is a known limit rather than a fix: binding a proven non-microphone
+  /// still loses that dictation. Refusing would assert "connect a microphone" to
+  /// someone who may have deliberately built an aggregate device that records
+  /// fine, and would file an alerting error — the opposite of why this was
+  /// prioritised. Freezing the conservative behaviour so a later change to it is
+  /// a deliberate decision, not an accident.
   ///
   /// #2022 therefore introduces NO new path to "no microphone found".
   @Test("a proven non-microphone default is still used when there is no real microphone")

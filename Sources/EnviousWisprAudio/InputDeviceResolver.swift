@@ -247,16 +247,23 @@ struct InputDeviceResolver {
     // instead binds and captures silence, that is the silent-capture family
     // (#1845 / #1578 / #1809), which owns detection and is out of scope here.
     //
-    // #2022 adds ONE condition, and its second half is the whole safety of this
-    // change: divert away from a proven non-microphone default ONLY when there
-    // is a real microphone to divert TO.
+    // #2022 adds ONE condition: divert away from a proven non-microphone default
+    // ONLY when there is a real microphone to divert TO. With no alternative we
+    // bind the default exactly as before, so this change never turns a working
+    // take into an error.
     //
-    // An `aggregate` transport is NOT proof of a dead device. macOS can present
-    // a synthetic `CADefaultDeviceAggregate` on the default input path, so the
-    // aggregate we see may be the OS's own wrapper around a working microphone.
-    // Diverting unconditionally would take a user whose only listed device is
-    // that wrapper from dictating fine to "No microphone found", which is a
-    // false claim and a regression.
+    // WHAT THAT DELIBERATELY DOES NOT FIX. Binding a proven non-microphone with
+    // no alternative still loses the dictation, which is the very failure this
+    // issue targets. Refusing instead would be honest, but the outcome it lands
+    // on (`noBuiltInMicrophoneFound`) both asserts "No microphone found. Please
+    // connect one." — questionable when a user DELIBERATELY built an aggregate
+    // device, which can contain a real microphone and record perfectly well —
+    // and files an ALERTING Sentry error, which is the opposite of the reason
+    // this work was prioritised. Doing it properly needs a non-alerting
+    // environment outcome that does not exist yet.
+    //
+    // So this is a KNOWN, MEASURED LIMIT, not an oversight: aggregate defaults
+    // are one install across four releases. Founder call, not a code call.
     //
     // With `!eligible.isEmpty` required, this change introduces NO new path to
     // that message: every input that reaches it today still does, and nothing
