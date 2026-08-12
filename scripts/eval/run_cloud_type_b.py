@@ -621,12 +621,26 @@ def main() -> int:
                 "declined to think. Not a verdict; run the full corpus to find out.",
                 file=sys.stderr,
             )
+        elif errors:
+            # "No case thought" only supports "the level is inert" if the cases
+            # actually RAN. reason_tok sums successful rows only, so 337 HTTP errors
+            # plus one success that happened not to think looks identical to a whole
+            # corpus declining — and would convict the model of a fault that is ours.
+            # An incomplete arm is reported as incomplete; the errors path already
+            # exits non-zero below.
+            print(
+                f"WARNING: zero reasoning tokens, but {errors} of {len(cases)} cases "
+                f"failed, so only {len(cases) - errors} actually ran at "
+                f"{thinking[0]}={thinking[1]!r}. That is not enough to call the level "
+                "inert — fix the errors and re-run before concluding anything.",
+                file=sys.stderr,
+            )
         else:
             print(
                 f"FAIL: zero reasoning tokens across all {len(cases)} cases at "
-                f"{thinking[0]}={thinking[1]!r} — no case thought, so this level is "
-                "inert on this model and the arm is indistinguishable from thinking-off; "
-                "do not grade it",
+                f"{thinking[0]}={thinking[1]!r}, every one of which succeeded — no case "
+                "thought, so this level is inert on this model and the arm is "
+                "indistinguishable from thinking-off; do not grade it",
                 file=sys.stderr,
             )
             return 2
