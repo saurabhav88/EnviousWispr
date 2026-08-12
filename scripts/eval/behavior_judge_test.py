@@ -1964,6 +1964,35 @@ def test_a_grading_response_from_a_different_model_is_refused():
                 raise AssertionError("a response from a different model was accepted")
 
 
+def test_a_response_that_names_no_model_is_refused_when_pinned():
+    # Cloud review round 9, a fail-open in the round-7 check. It required a differing NONEMPTY
+    # STRING to refuse, so a response omitting `model`, or returning it blank or non-string,
+    # skipped the comparison and had its scores accepted and stamped with the pinned identity.
+    # The question that finds this class: what input makes the condition match NOTHING, and does
+    # it then allow or refuse?
+    for bad in (None, "", "   ", 42, ["gpt"]):
+        with _azure_pin("gpt-5.6-luna-2026-07-09"):
+            with _azure_reply({"model": bad,
+                               "choices": [{"message": {"content": "[]"},
+                                            "finish_reason": "stop"}]}):
+                try:
+                    bj.call_azure("gpt-5-6-luna", "s", "u")
+                except RuntimeError as e:
+                    assert "did not say which model" in str(e), (bad, str(e))
+                else:
+                    raise AssertionError(f"accepted scores with model={bad!r} while pinned")
+
+
+def test_a_missing_model_field_is_tolerated_when_NOT_pinned():
+    # Two-way control on the direction of that strictness. An unpinned process has no version to
+    # verify against and no stamp to corrupt, so requiring the field there would break the
+    # direct-call path for no benefit.
+    with _azure_pin(None):
+        with _azure_reply({"choices": [{"message": {"content": "[]"},
+                                        "finish_reason": "stop"}]}):
+            assert bj.call_azure("gpt-5-6-luna", "s", "u") == "[]"
+
+
 def test_a_grading_response_from_the_pinned_model_is_accepted():
     # Two-way control. A check that refused everything would pass the case above while making
     # every grading call fail — the loud failure, but it would look like Azure was broken.
@@ -2065,7 +2094,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 106
+EXPECTED_TESTS = 108
 
 
 def _run() -> int:

@@ -318,12 +318,23 @@ def call_azure(deployment: str, system: str, user: str) -> str:
     # and this call would otherwise produce scores from a new model under the old model's stamp.
     # Raising aborts the chunk loudly, which the harness reports as a gap rather than caching.
     served = data.get("model")
-    if _azure_pinned_model is not None and isinstance(served, str) and served.strip() \
-            and served.strip() != _azure_pinned_model:
-        raise RuntimeError(
-            f"azure judge: deployment served {served.strip()!r} but this run is pinned to "
-            f"{_azure_pinned_model!r}. The deployment was repointed mid-run; stop and re-grade "
-            f"the whole field so one scoreboard cannot mix two judge versions.")
+    if _azure_pinned_model is not None:
+        # FAILS CLOSED on a missing or unusable field, which the first version of this check did
+        # not. It required a differing NONEMPTY STRING to refuse, so a response that omitted
+        # `model`, or returned it blank or non-string, skipped the comparison entirely and its
+        # scores were accepted — then stamped with the pinned identity. Exactly the guard shape
+        # worth distrusting: ask what input makes the condition match NOTHING, and whether it
+        # then allows or refuses. This one allowed.
+        if not isinstance(served, str) or not served.strip():
+            raise RuntimeError(
+                f"azure judge: the response did not say which model served it "
+                f"(model={served!r}), so these scores cannot be bound to the pinned version "
+                f"{_azure_pinned_model!r}. Refusing rather than stamping unverifiable scores.")
+        if served.strip() != _azure_pinned_model:
+            raise RuntimeError(
+                f"azure judge: deployment served {served.strip()!r} but this run is pinned to "
+                f"{_azure_pinned_model!r}. The deployment was repointed mid-run; stop and "
+                f"re-grade the whole field so one scoreboard cannot mix two judge versions.")
     finish = choices[0].get("finish_reason")
     content = (choices[0].get("message") or {}).get("content")
     if not isinstance(content, str) or not content.strip():
