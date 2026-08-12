@@ -93,6 +93,39 @@ package func fluidAudioStreamingInnerCause(_ error: any Error) -> FluidAudioStre
   }
 }
 
+/// #1654 (cloud review, fourth P2): does this vendor error actually WRAP a cancellation?
+///
+/// **Not reachable at the pinned vendor, and fixed anyway.** Measured at `bf9fe27f`:
+/// `SlidingWindowAsrManager.swift:641-644` returns early on
+/// `error is CancellationError || Task.isCancelled` BEFORE constructing
+/// `.modelProcessingFailed`, so the vendor cannot produce that shape today. Classified
+/// HYPOTHETICAL on that evidence.
+///
+/// It is fixed regardless because the guard is one comparison, the failure would be
+/// SILENT, and — the deciding reason — reachability here is a property of the VENDOR's
+/// code rather than ours. A pin bump that drops that early return would start recording
+/// every cancelled dictation as a streaming failure, with nothing to announce the change.
+/// That is exactly the #2041 shape, where a pin bump added a case nobody re-enumerated.
+///
+/// Callers must treat `true` as "throw cancellation", never as "classify differently":
+/// a cancellation must acquire no failure identity at any layer.
+package func fluidAudioStreamingErrorWrapsCancellation(_ error: any Error) -> Bool {
+  if error is CancellationError { return true }
+  guard let error = error as? SlidingWindowAsrError else { return false }
+  switch error {
+  case .modelProcessingFailed(let inner), .audioBufferProcessingFailed(let inner),
+    .audioConversionFailed(let inner):
+    return inner is CancellationError
+  case .modelsNotLoaded, .streamAlreadyExists, .bufferOverflow, .invalidConfiguration:
+    return false
+  @unknown default:
+    // A vendor case we have never seen cannot be asserted to carry a cancellation.
+    // Answering `false` leaves it to the normal classifier, which is the existing
+    // behaviour rather than a new claim.
+    return false
+  }
+}
+
 package func classifyFluidAudioStreamingError(_ error: any Error) -> FluidAudioStreamingErrorKind? {
   // Unambiguous here: this module declares no other SlidingWindowAsrError.
   guard let error = error as? SlidingWindowAsrError else { return nil }

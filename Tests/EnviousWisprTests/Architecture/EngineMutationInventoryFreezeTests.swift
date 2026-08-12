@@ -612,11 +612,11 @@ import Testing
     // engine state at the throw is whatever the vendor left it as.
     CallSite(
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "finalize",
-      text: "throw Self.streamingIdentity(for: error, operation: .finalize) ?? error",
+      text: "throw Self.streamingThrowable(for: error, operation: .finalize)",
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "finalize",
-      text: "case .finalize: return nil", classification: .structurallySafe),
+      text: "case .finalize: return error", classification: .structurallySafe),
 
     // MARK: WhisperKitBackend — test-seam override, always nil in production.
     CallSite(

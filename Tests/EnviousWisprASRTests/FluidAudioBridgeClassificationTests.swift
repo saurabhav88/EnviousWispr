@@ -216,6 +216,48 @@ struct FluidAudioBridgeClassificationTests {
     #expect(fluidAudioStreamingInnerCause(CancellationError()) == nil)
   }
 
+  /// #1654 cloud review, fourth P2 — cancellation NESTED inside a vendor wrapper.
+  ///
+  /// Unreachable at the pinned vendor (see the next test, which is the control proving
+  /// that), and guarded anyway: reachability here is a property of the VENDOR's code, so a
+  /// pin bump that drops its early return would silently start recording every cancelled
+  /// dictation as a streaming failure.
+  @Test("a cancellation wrapped by the vendor is still recognised as cancellation")
+  func nestedCancellationIsRecognised() {
+    let wrapped = SlidingWindowAsrError.modelProcessingFailed(CancellationError())
+    #expect(fluidAudioStreamingErrorWrapsCancellation(wrapped))
+    // The sibling wrapping cases too — all three carry an arbitrary inner error.
+    #expect(
+      fluidAudioStreamingErrorWrapsCancellation(
+        SlidingWindowAsrError.audioBufferProcessingFailed(CancellationError())))
+    #expect(
+      fluidAudioStreamingErrorWrapsCancellation(
+        SlidingWindowAsrError.audioConversionFailed(CancellationError())))
+    // And a bare one, which is the case the call sites' own `catch` arms handle.
+    #expect(fluidAudioStreamingErrorWrapsCancellation(CancellationError()))
+  }
+
+  /// The two-way control. Without it, a predicate returning `true` for everything would
+  /// pass the test above while suppressing every genuine streaming failure — which is the
+  /// far worse direction, since it fails SILENTLY.
+  @Test("a genuine failure is never mistaken for a cancellation")
+  func genuineFailureIsNotCancellation() {
+    let cases: [SlidingWindowAsrError] = [
+      .modelProcessingFailed(NSError(domain: "f", code: 1)),
+      .audioBufferProcessingFailed(NSError(domain: "f", code: 1)),
+      .audioConversionFailed(NSError(domain: "f", code: 1)),
+      .modelsNotLoaded,
+      .streamAlreadyExists(.microphone),
+      .bufferOverflow,
+      .invalidConfiguration("x"),
+    ]
+    for error in cases {
+      #expect(!fluidAudioStreamingErrorWrapsCancellation(error), "\(error) is not cancellation")
+    }
+    struct ForeignError: Error {}
+    #expect(!fluidAudioStreamingErrorWrapsCancellation(ForeignError()))
+  }
+
   @Test("classifyFluidAudioStreamingError returns nil for a foreign error type")
   func returnsNilForNonStreamingError() {
     struct OtherError: Error {}

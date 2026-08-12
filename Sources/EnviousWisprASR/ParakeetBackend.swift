@@ -319,7 +319,7 @@ public actor ParakeetBackend: ASRBackend {
       // #1654: pin a stable identity before this leaves the service. A cancellation is
       // deliberately excluded above rather than classified — a cancelled stream is not a
       // failure and must never acquire a failure identity.
-      throw Self.streamingIdentity(for: error, operation: .start) ?? error
+      throw Self.streamingThrowable(for: error, operation: .start)
     }
     self.streamingManager = manager
     self.streamingStartTime = CFAbsoluteTimeGetCurrent()
@@ -329,7 +329,7 @@ public actor ParakeetBackend: ASRBackend {
   /// `ASRError` is allowed to become an identity at all.
   private enum StreamingLeg { case start, finalize }
 
-  /// #1654: the one place a raw FluidAudio streaming error becomes an app-owned identity.
+  /// #1654: the one place a raw FluidAudio streaming error becomes what we throw.
   ///
   /// Order matters and is not arbitrary. `SlidingWindowAsrError` is checked first because
   /// it is the vendor's streaming-specific type. A bare `ASRError` is mapped ONLY on the
@@ -339,19 +339,31 @@ public actor ParakeetBackend: ASRBackend {
   /// `startFailed` because that is the mapping in hand would be a reason whose name
   /// contradicts its producer.
   ///
-  /// Returns `nil` for a foreign error — a raw CoreML or converter failure keeps its own
-  /// identity rather than being relabelled as ours, exactly as the batch path leaves
-  /// unrecognised errors unchanged.
-  private static func streamingIdentity(
+  /// A foreign error is returned UNCHANGED — a raw CoreML or converter failure keeps its
+  /// own identity rather than being relabelled as ours, exactly as the batch path leaves
+  /// unrecognised errors alone.
+  ///
+  /// Returns the error to throw rather than an optional identity, deliberately. Cloud
+  /// review's fourth finding needed a cancellation nested inside a vendor wrapper to come
+  /// back out as a `CancellationError`, and an identity-returning function cannot express
+  /// that — the caller would have thrown the raw wrapper, which the adapter's
+  /// `catch is CancellationError` still cannot match. Both decisions (is this a
+  /// cancellation, and what identity does it get) now live in ONE place, so the two catch
+  /// sites cannot drift apart.
+  private static func streamingThrowable(
     for error: any Error,
     operation: StreamingLeg
-  ) -> ParakeetStreamingSentryError? {
+  ) -> any Error {
+    // A cancellation must acquire no failure identity at ANY layer. The `catch is
+    // CancellationError` arms at the call sites see only a BARE cancellation; this is the
+    // nested case, where the vendor has wrapped it.
+    if fluidAudioStreamingErrorWrapsCancellation(error) { return CancellationError() }
     if let kind = classifyFluidAudioStreamingError(error) {
       return ParakeetStreamingSentryError(mapping: kind)
     }
     switch operation {
-    case .start: return ParakeetStreamingSentryError(mappingStartFailure: error)
-    case .finalize: return nil
+    case .start: return ParakeetStreamingSentryError(mappingStartFailure: error) ?? error
+    case .finalize: return error
     }
   }
 
@@ -371,9 +383,9 @@ public actor ParakeetBackend: ASRBackend {
     } catch is CancellationError {
       throw CancellationError()
     } catch {
-      // #1654: same identity pass as the start leg. See `streamingIdentity` for why a
+      // #1654: same identity pass as the start leg. See `streamingThrowable` for why a
       // bare `ASRError` is deliberately NOT named here.
-      throw Self.streamingIdentity(for: error, operation: .finalize) ?? error
+      throw Self.streamingThrowable(for: error, operation: .finalize)
     }
     let finalizeEnd = CFAbsoluteTimeGetCurrent()
 
