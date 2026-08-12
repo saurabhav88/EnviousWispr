@@ -19,8 +19,19 @@ import Testing
 /// The defect was not the value, it was the forward-looking CLAIM — a report emitted at
 /// time T asserting an outcome decided at T+1. These tests drive the real adapter through
 /// the real path and read the real emitted event, rather than asserting a string constant.
+/// `.serialized` because all three tests install and then `defer`-clear the SHARED
+/// `TelemetryService.shared.testEventHook`. `@MainActor` is not sufficient: it serialises
+/// execution, not the whole test — Swift Testing may interleave these at their `await`
+/// points, at which one test's `defer` can clear another's hook mid-run and the victim
+/// then waits for an event nobody records. That failure is intermittent and reads as a
+/// flaky product, which is the worst shape for a test to fail in.
+///
+/// House convention checked rather than assumed: of the 33 suites touching
+/// `testEventHook`, 19 carry `.serialized`. I copied the pattern from
+/// `OllamaReadinessGateTests`, which is one of the 14 that do not — a real precedent, and
+/// the wrong one to have generalised from.
 @MainActor
-@Suite("Streaming start telemetry claims nothing about what follows (#1654)")
+@Suite("Streaming start telemetry claims nothing about what follows (#1654)", .serialized)
 struct ParakeetStreamingStartTelemetryTests {
 
   #if DEBUG
