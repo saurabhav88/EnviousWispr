@@ -196,7 +196,23 @@ for cand in "$CANDDIR"/*.jsonl; do
       reason="candidates or corpus changed since its receipt"
     fi
     echo "=== re-judging $base: $reason ===" >&2
-    rm -rf "$dest"
+    # DELIBERATELY NOT deleted here. The judge writes into a staging directory below and the
+    # old receipt is replaced only once a new one exists, so a judge that produces nothing
+    # cannot destroy the stored set.
+    #
+    # This is the second and structural fix for the same P1 (cloud review, #2026). The first
+    # validated the judge's funded ROUTE before the loop, and the reviewer correctly pointed
+    # out that this only closes one member of the class: `claude-sonet-5` and `azure/typo` are
+    # both routed, so they passed that check, mismatched every stamp, and reached the delete
+    # before the CLI or the endpoint rejected them. Probing harder would have narrowed the
+    # window rather than closing it — a mid-run capacity error or an expired key fails after
+    # any probe. Not deleting until a replacement exists removes every member at once,
+    # including the ones nobody has thought of.
+    #
+    # Leaving the old receipt is SAFE, not merely less destructive: its stamp no longer
+    # matches this judge, so the resume branch above re-judges it and never trusts it. If the
+    # judge is later set back to whatever produced it, the stamp matches again and skipping it
+    # is correct, because that judge really did produce it.
   fi
   # A model that errored on EVERY case has no output to grade. Judging 20 empty
   # strings would return 20 critical failures, which reads as "measured and
@@ -218,9 +234,26 @@ for cand in "$CANDDIR"/*.jsonl; do
   # `--judge "$JUDGE"` explicitly, never the implicit default: the judge that grades
   # must be the same value that went into the stamp, and letting each side resolve it
   # independently is how they drift.
+  # Staged, then swapped. `--out` points at a scratch sibling so a failed run leaves `$dest`
+  # exactly as it was; only a run that actually produced a summary.json replaces it. The
+  # swap is a rename inside $OUTDIR, so it is atomic enough for this purpose and cannot
+  # leave a half-copied receipt behind.
+  staging="$dest.rejudge"
+  rm -rf "$staging"
   python3 "$ROOT/scripts/eval/behavior_judge.py" \
     --system new --judge "$JUDGE" \
-    --corpus "$CORPUS" --candidates "$cand" --out "$dest" >&2 || true
+    --corpus "$CORPUS" --candidates "$cand" --out "$staging" >&2 || true
+  if [ -f "$staging/summary.json" ]; then
+    rm -rf "$dest"
+    mv "$staging" "$dest"
+  else
+    # Nothing to promote. The judge refused, crashed, timed out, or lost its network. The
+    # previous receipt survives untouched and unstamped for this judge, so the next run
+    # re-judges it; before this, the arm was already deleted and the whole cached set could
+    # be wiped by a single typo.
+    rm -rf "$staging"
+    echo "  no receipt produced for $base; previous receipt left in place" >&2
+  fi
 
   if [ -f "$dest/summary.json" ] && receipt_cacheable "$dest/summary.json"; then
     printf '%s\n' "$inputs_sha" > "$stamp"

@@ -947,6 +947,55 @@ def test_a_refused_judge_cannot_delete_a_single_cached_receipt():
     assert "Nothing has been touched" in out, out
 
 
+def test_a_routed_but_unusable_judge_still_cannot_delete_a_receipt():
+    """The SECOND round of the same P1 (cloud review, #2026), and the reason the fix is
+    structural rather than a better check.
+
+    `claude-sonet-5` is a typo that ROUTES: it starts with `claude`, so it has a funded route
+    and passes the pre-loop validation. Its stamp still mismatches every arm, so the loop
+    still re-judges, and the CLI only rejects the model name once the judge actually runs.
+    Under the delete-first design that destroyed the receipt. Under staged-then-swapped the
+    receipt survives, and it survives for ANY reason the judge fails to produce one — a
+    capacity error, an expired key, a dropped network — none of which a probe could predict.
+    """
+    t = shell_tree("noreceipt")          # the judge runs and writes nothing
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    receipt = d / "summary.json"
+    receipt.write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": []}))
+    forge_stamp(t, judge="azure/stub-judge@stubdigest")
+    before = receipt.read_text()
+
+    _, log = run_shell(t, env=dict(os.environ, EW_JUDGE="claude-sonet-5"))
+
+    assert "=== re-judging modelA" in log, f"expected a re-judge attempt:\n{log}"
+    assert receipt.exists(), f"a routed-but-unusable judge DELETED the receipt:\n{log}"
+    assert receipt.read_text() == before, "the receipt was modified"
+    assert "previous receipt left in place" in log, log
+    assert not (t / "judged" / "modelA.rejudge").exists(), "staging directory was left behind"
+
+
+def test_a_successful_rejudge_does_replace_the_old_receipt():
+    """Two-way control. A staging swap that never promoted anything would pass the case above
+    while making every re-judge a no-op, which is the expensive failure and looks like nothing
+    is wrong. The stub writes a cacheable receipt, so the arm must end up stamped."""
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps({"cacheable": False, "stale": "marker"}))
+    forge_stamp(t, judge="claude-sonnet-5")   # a different judge, so it must re-judge
+
+    _, log = run_shell(t)
+
+    fresh = json.loads((d / "summary.json").read_text())
+    assert "stale" not in fresh, f"the old receipt was not replaced:\n{log}"
+    assert fresh.get("cacheable") is True, fresh
+    assert stamped(t), f"a successful re-judge must earn a stamp:\n{log}"
+    assert not (t / "judged" / "modelA.rejudge").exists(), "staging directory was left behind"
+
+
 def test_the_refusal_happens_before_any_arm_is_examined():
     """Two-way control on the guard's PLACEMENT, not just its existence. A check that ran
     inside the loop would refuse on the first arm and could still have deleted its receipt
@@ -1003,7 +1052,10 @@ def test_shell_sha256_shim_produces_an_identical_stamp():
     subprocess.run(["rm", "-rf", str(t / "judged" / "modelA")], check=True)
 
     shim = Path(tempfile.mkdtemp())
-    for cmd in ("python3", "grep", "basename", "dirname", "cat", "mkdir", "rm",
+    # This tuple is in effect a declaration of every external command the script depends on:
+    # anything missing from it is hidden from the script under the shim. `mv` joined the list
+    # when the re-judge became staged-then-swapped, and this case is what caught the omission.
+    for cmd in ("python3", "grep", "basename", "dirname", "cat", "mkdir", "rm", "mv",
                 "printf", "cut", "sha256sum", "bash", "sed", "ls", "env"):
         found = subprocess.run(["bash", "-c", f"command -v {cmd}"],
                                capture_output=True, text=True).stdout.strip()
@@ -1700,7 +1752,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 88
+EXPECTED_TESTS = 90
 
 
 def _run() -> int:
