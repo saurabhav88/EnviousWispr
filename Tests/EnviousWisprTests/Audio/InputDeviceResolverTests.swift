@@ -692,15 +692,19 @@ struct InputDeviceResolverTests {
       resolutionSource: source.rawValue)
   }
 
+  /// `defaultTransport` is injected here for the same reason as the cold helper:
+  /// the #2022 parameter must never fall through to a live CoreAudio read.
   private func warmCompatible(
     _ bound: BoundInputDevice,
     preferredUID: String? = nil,
     defaultID: AudioDeviceID?,
+    defaultTransport: UInt32? = kAudioDeviceTransportTypeBuiltIn,
     spy: SnapshotSpy
   ) -> Bool {
     InputDeviceResolver(
       defaultInputDeviceID: { defaultID },
-      inputDeviceSnapshot: { spy.provide() }
+      inputDeviceSnapshot: { spy.provide() },
+      transportForDevice: { _ in defaultTransport }
     ).isWarmBindCompatible(bound, preferredUID: preferredUID)
   }
 
@@ -815,6 +819,35 @@ struct InputDeviceResolverTests {
     #expect(
       !warmCompatible(
         bind(30, .systemDefault), preferredUID: "airpods", defaultID: nil, spy: spy))
+  }
+
+  @Test("a diverted bind survives while the fake default is still the default (#2022)")
+  func divertedBindKeepsWarmReuse() {
+    // Cloud review found this: once rung 1 diverts, the warm bind is a physical
+    // device while the default is still the virtual one, so plain equality
+    // answers "incompatible" on EVERY later take. The rescued user would trade a
+    // lost dictation for a permanently cold-opening one.
+    let spy = SnapshotSpy(.complete([candidate(7, "builtin", kAudioDeviceTransportTypeBuiltIn)]))
+
+    #expect(
+      warmCompatible(
+        bind(7, .listFallback), defaultID: 60,
+        defaultTransport: kAudioDeviceTransportTypeVirtual, spy: spy))
+    // Auto must still never enumerate to answer this.
+    #expect(spy.callCount == 0)
+  }
+
+  @Test("a fallback bind does NOT survive a real default that differs")
+  func fallbackBindYieldsToARealDefault() {
+    // The two-way control. Without it, keeping every `listFallback` bind would
+    // pass the test above while ignoring a genuine microphone the user just
+    // plugged in and macOS just made the default.
+    let spy = SnapshotSpy(.complete([candidate(7, "builtin", kAudioDeviceTransportTypeBuiltIn)]))
+
+    #expect(
+      !warmCompatible(
+        bind(7, .listFallback), defaultID: 8,
+        defaultTransport: kAudioDeviceTransportTypeUSB, spy: spy))
   }
 
   // MARK: - The per-device failure-vs-empty distinction (whole-diff review)

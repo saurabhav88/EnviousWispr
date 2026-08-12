@@ -372,7 +372,28 @@ struct InputDeviceResolver {
   private func matchesDefaultOrKeepsFallback(
     _ bound: BoundInputDevice, defaultID: AudioDeviceID?
   ) -> Bool {
-    if let defaultID { return bound.deviceID == defaultID }
+    if let defaultID {
+      // #2022: A DEFAULT THE COLD LADDER WOULD REFUSE CANNOT INVALIDATE A BIND
+      // THE COLD LADDER MADE BY REFUSING IT.
+      //
+      // Once rung 1 diverts away from a virtual or aggregate default, the warm
+      // bind is a physical device while the default is still the fake one. The
+      // plain equality below then answers "incompatible" on every subsequent
+      // take, so the user this change rescues would tear down and cold-open
+      // EVERY time — trading a lost dictation for a permanently slow one, on
+      // the exact population the fix exists for.
+      //
+      // A `listFallback` bind is by construction one the ladder chose over the
+      // default, so keeping it is the same answer re-resolving would give. The
+      // cheap source check is FIRST so the ordinary Auto bind — whose source is
+      // `systemDefault` — never pays for the transport read.
+      if bound.resolutionSource == InputResolutionSource.listFallback.rawValue,
+        AudioDeviceEnumerator.isKnownNonMicrophoneTransport(transportForDevice(defaultID))
+      {
+        return true
+      }
+      return bound.deviceID == defaultID
+    }
     return bound.resolutionSource == InputResolutionSource.listFallback.rawValue
   }
 }
