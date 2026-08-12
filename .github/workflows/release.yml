@@ -1027,7 +1027,7 @@ jobs:
             { [ -n "$dwarf" ] && sentry-cli debug-files check "$dwarf" >/dev/null 2>&1; } \
               || { echo "::error::dSYM parse-check failed for $b"; exit 1; }
           done
-          echo "==> dSYM guard: all 3 first-party dSYMs present and parseable."
+          echo "==> dSYM guard: all ${#FIRST_PARTY[@]} first-party dSYMs present and parseable."
 
       - name: Upload dSYMs to Sentry
         env:
