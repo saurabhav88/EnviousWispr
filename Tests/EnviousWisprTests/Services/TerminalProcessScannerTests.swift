@@ -419,4 +419,187 @@ struct TerminalProcessScannerTests {
       "only \(withArguments) processes yielded arguments — argument parsing regressed")
   }
 
+  // MARK: - Filtered sweep (#1943)
+
+  /// Whether this machine has any process holding a controlling terminal.
+  ///
+  /// A hosted CI runner generally has none, and a live control that cannot
+  /// possibly find one would pass VACUOUSLY rather than prove anything. Gating
+  /// makes it SKIP there and RUN here, instead of reporting a green that carries
+  /// no information.
+  static func machineHasATerminalProcess() -> Bool {
+    guard case .available(let snapshots) = TerminalProcessScanner.liveTerminalSnapshot() else {
+      return false
+    }
+    return snapshots.isEmpty == false
+  }
+
+  @Test("Pre-filtering by the terminal flag cannot change the veto's answer")
+  func filteringByTerminalFlagCannotChangeTheVeto() {
+    // The whole #1943 change rests on this one claim, so it is frozen against a
+    // FIXTURE rather than against live data: deterministic, and non-vacuous
+    // because the list deliberately contains both a real CLI that would be kept
+    // and decoys that must be dropped either way.
+    let snapshots = [
+      // Claude Code's executable is named after its VERSION, so `argv[0]` is the
+      // only place its name appears — a fixture without it silently identifies
+      // nothing, which is what the two-way control at the end of this test
+      // caught when it was missing.
+      snapshot(101, claudePath, ["claude"], term: "ghostty"),
+      snapshot(102, homebrewCodexPath, term: "ghostty"),
+      // Detached lookalikes — dropped by the veto today, and dropped earlier by
+      // the filtered sweep. Both routes must agree.
+      snapshot(
+        201, "/Applications/ChatGPT.app/Contents/Resources/codex", term: "ghostty",
+        terminal: false),
+      // Carries `argv[0]` too, so it WOULD identify as Claude Code but for the
+      // terminal flag — a decoy the flag alone rejects, which is the point.
+      snapshot(202, claudePath, ["claude"], term: "ghostty", terminal: false),
+      // A terminal-holding process that is not a supported CLI at all.
+      snapshot(203, "/bin/zsh", term: "ghostty"),
+    ]
+    let preFiltered = snapshots.filter(\.isAttachedToTerminal)
+    #expect(
+      preFiltered.count == 3, "fixture must exercise the filter, not sit entirely on one side")
+
+    for surface in TerminalSurface.allCases {
+      let unfiltered = TerminalProcessScanner.supportedCLIs(in: snapshots, hostedBy: surface)
+      let filtered = TerminalProcessScanner.supportedCLIs(in: preFiltered, hostedBy: surface)
+      #expect(unfiltered == filtered, "veto disagreed for \(surface)")
+    }
+    // Two-way control: the fixture actually produces a positive, so an
+    // implementation returning nothing everywhere could not pass this.
+    #expect(TerminalProcessScanner.supportedCLIs(in: snapshots, hostedBy: .ghostty).count == 2)
+  }
+
+  @Test("The filter skips the expensive reads entirely for a detached process")
+  func filteredSweepDoesNotReadDetachedProcesses() {
+    // THE CI REGRESSION GATE. Every other test of this filter needs a real
+    // process holding a controlling terminal, which a hosted runner does not
+    // have — they SKIP there, or pass vacuously on an empty result. This one
+    // injects the process table, so it runs everywhere and actually asserts the
+    // saving the whole change exists for: the expensive reads are never even
+    // attempted for a detached PID.
+    var pathReads: [pid_t] = []
+    var blobReads: [pid_t] = []
+
+    let scan = TerminalProcessScanner.sweep(
+      prefilterByTerminal: true,
+      pids: { [101, 202] },
+      holdsTerminal: { $0 == 202 },
+      path: {
+        pathReads.append($0)
+        return "/opt/homebrew/bin/codex"
+      },
+      argumentsAndEnvironment: {
+        blobReads.append($0)
+        return (["codex"], ["TERM_PROGRAM": "ghostty"])
+      })
+
+    #expect(pathReads == [202], "executable path was read for a detached process")
+    #expect(blobReads == [202], "the argv/environment blob was read for a detached process")
+
+    guard case .available(let snapshots) = scan else {
+      Issue.record("expected .available")
+      return
+    }
+    #expect(snapshots.map(\.processIdentifier) == [202])
+    #expect(snapshots.first?.isAttachedToTerminal == true)
+  }
+
+  @Test("Without the prefilter the same sweep reads every process — the two-way control")
+  func unfilteredSweepReadsEveryProcess() {
+    // Mutation control for the test above: identical injection, prefilter off.
+    // If the guard stopped doing the filtering, the two tests would agree and
+    // this pair would no longer discriminate.
+    var pathReads: [pid_t] = []
+
+    let scan = TerminalProcessScanner.sweep(
+      prefilterByTerminal: false,
+      pids: { [101, 202] },
+      holdsTerminal: { $0 == 202 },
+      path: {
+        pathReads.append($0)
+        return "/opt/homebrew/bin/codex"
+      },
+      argumentsAndEnvironment: { _ in (["codex"], ["TERM_PROGRAM": "ghostty"]) })
+
+    #expect(pathReads == [101, 202], "the unfiltered sweep must still read every process")
+
+    guard case .available(let snapshots) = scan else {
+      Issue.record("expected .available")
+      return
+    }
+    // And it still reports the flag truthfully rather than hard-coding it.
+    #expect(snapshots.map(\.processIdentifier) == [101, 202])
+    #expect(snapshots.first(where: { $0.processIdentifier == 101 })?.isAttachedToTerminal == false)
+    #expect(snapshots.first(where: { $0.processIdentifier == 202 })?.isAttachedToTerminal == true)
+  }
+
+  @Test("An unreadable PID list is .unavailable in both sweep modes")
+  func sweepPreservesUnavailable() {
+    // `.unavailable` must not collapse into `.available([])` — the distinction
+    // the typed result exists to protect, now checked for the new entry point.
+    for prefilter in [true, false] {
+      let scan = TerminalProcessScanner.sweep(
+        prefilterByTerminal: prefilter,
+        pids: { nil },
+        holdsTerminal: { _ in true },
+        path: { _ in "/bin/zsh" },
+        argumentsAndEnvironment: { _ in ([], [:]) })
+      #expect(scan == .unavailable, "prefilter=\(prefilter) lost the unavailable distinction")
+    }
+  }
+
+  @Test("The filtered sweep returns only processes holding a controlling terminal")
+  func filteredSweepReportsOnlyTerminalHolders() {
+    guard case .available(let snapshots) = TerminalProcessScanner.liveTerminalSnapshot() else {
+      Issue.record("process enumeration was unavailable")
+      return
+    }
+    // Environment-independent: true on a runner that finds none, and the
+    // contract that lets `isAttachedToTerminal: true` be hard-coded in the sweep.
+    // Counted outside the macro because `allSatisfy` is `rethrows`, which
+    // `#expect` cannot prove non-throwing; counts also name the offender.
+    let detached = snapshots.filter { $0.isAttachedToTerminal == false }.count
+    let pathless = snapshots.filter { $0.executablePath.isEmpty }.count
+    #expect(detached == 0, "\(detached) of \(snapshots.count) filtered snapshots hold no terminal")
+    #expect(pathless == 0, "\(pathless) of \(snapshots.count) filtered snapshots have no path")
+  }
+
+  @Test(
+    "The filtered sweep still finds a CLI the unfiltered sweep finds",
+    .enabled(if: machineHasATerminalProcess()))
+  func filteredSweepFindsWhatTheFullSweepFinds() {
+    // The fixture test above proves the PREDICATE is veto-neutral. This proves
+    // the SWEEP implements that predicate and nothing more — a filter that
+    // dropped too much would pass the fixture test and fail here.
+    guard case .available(let full) = TerminalProcessScanner.liveSnapshot(),
+      case .available(let filtered) = TerminalProcessScanner.liveTerminalSnapshot()
+    else {
+      Issue.record("process enumeration was unavailable")
+      return
+    }
+
+    // Compared per surface on the VETO's answer rather than on raw process sets,
+    // because the two sweeps are taken microseconds apart and an unrelated
+    // process starting or exiting between them is not a defect. A supported CLI
+    // is long-lived, so its membership does not turn over in that window.
+    for surface in TerminalSurface.allCases {
+      let fromFull = Set(
+        TerminalProcessScanner.supportedCLIs(in: full, hostedBy: surface)
+          .map(\.processIdentifier))
+      let fromFiltered = Set(
+        TerminalProcessScanner.supportedCLIs(in: filtered, hostedBy: surface)
+          .map(\.processIdentifier))
+      #expect(
+        fromFull == fromFiltered,
+        "\(surface): unfiltered found \(fromFull.sorted()), filtered found \(fromFiltered.sorted())"
+      )
+    }
+
+    // The filtered sweep must be a genuine reduction, or it is not the fix.
+    #expect(filtered.count <= full.count)
+  }
+
 }

@@ -360,17 +360,27 @@ package enum TerminalContextResolver {
     // Timed from out here because the process sweep is NOT an accessibility
     // call, so nothing else charges it.
     //
-    // COST, re-measured 2026-08-05 and corrected: this line previously read
-    // "Measured mean 3 ms / p95 7 ms", and that number is what the old 100 ms
-    // cap was sized against. On the real path it is 4x to 40x higher. The app's
-    // own trace across one ordinary session: 36, 49, 54, 61, 77, 77, then
-    // 114.7 ms — the last exhausted the whole cap here and tripped the breaker
-    // (#1941). A later clean session ran 60-65 ms per dictation. Standalone, the
-    // shipped scanner spans 13 ms to 862 ms depending on queue and machine load.
+    // COST — history, because the numbers here are why the budget is the size it
+    // is and a future reader will otherwise re-derive them.
     //
-    // This step is therefore the dominant consumer of the budget, not a rounding
-    // error, and #1943 exists to make it cheap. Do not restore the 3 ms figure,
-    // and do not size anything against it.
+    // This line once read "Measured mean 3 ms / p95 7 ms", and that number is
+    // what the original 100 ms cap was sized against. It was false on the real
+    // path by 4x to 40x. The app's own trace across one ordinary session ran 36,
+    // 49, 54, 61, 77, 77, then 114.7 ms — the last exhausted the whole cap in
+    // this single step and tripped the breaker, which silently turned terminal
+    // insertion off for the rest of that terminal's life (#1941). The founder
+    // raised the cap to 200 ms as an interim (#1945).
+    //
+    // FIXED in #1943: the sweep now asks the cheap, highly selective
+    // controlling-terminal question FIRST and reads the expensive argv/
+    // environment blob only for the ~3% of processes that pass it. Measured 6.5x
+    // cheaper at mean AND p95, with the veto's answer provably unchanged —
+    // `supportedCLIs` already required that same flag as its first guard.
+    //
+    // Do not restore the 3 ms figure, and do not size anything against it. If
+    // this step ever becomes the dominant consumer again, the next lever is a
+    // per-terminal cache (#1943 considered and declined it: no invalidation
+    // story was needed once the sweep got cheap).
     //
     // Every other step in the same traces is under 0.5 ms.
     let scanStart = dependencies.now()
