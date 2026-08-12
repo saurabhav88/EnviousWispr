@@ -233,7 +233,19 @@ enum DictationNarrator {
   /// The quiet close needs no code: this pill is a transient notice with a 6s
   /// auto-dismiss (`RecordingOverlayPanel`), so a recovery that yields nothing
   /// already ends by the pill simply going away.
-  static let recoverySubtitle = "Anything found goes to History"
+  ///
+  /// **TWO axes can each defeat delivery, and a fix that closes only one is the
+  /// same defect again.** This shipped as "Anything found goes to History" and
+  /// cloud review killed it: conditioning on *found* still asserts the save.
+  /// `RecoverySpoolReplayer` can produce text and then have
+  /// `transcriptStore.save` throw (disk full, History unwritable), returning
+  /// `.failed(.save)`; `RecoveryCoordinator` posts its notice only for
+  /// `.recovered`, so that path shows nothing and the pill has again promised an
+  /// outcome that never happened. Condition on the LAST link instead: only a
+  /// transcript that actually saved reaches History, and that holds by
+  /// construction because `transcriptCoordinator.append` is non-throwing and runs
+  /// immediately after a successful `save`.
+  static let recoverySubtitle = "Anything saved lands in History"
   /// The recovery pill's CONTAINER accessibility label (no ellipsis — distinct
   /// bytes from `recoveryTitle`). VoiceOver reads it as the group's spoken status.
   static let recoveryAccessibilityLabel = "Recovering your last recording"

@@ -254,7 +254,7 @@ import Testing
     #expect(DictationNarrator.clipboardFallbackText == "Copied. Press \u{2318}V to paste")
     #expect(DictationNarrator.accessibilityToastText == "Auto-paste needs Accessibility")
     #expect(DictationNarrator.recoveryTitle == "Recovering your last recording…")
-    #expect(DictationNarrator.recoverySubtitle == "Anything found goes to History")
+    #expect(DictationNarrator.recoverySubtitle == "Anything saved lands in History")
     #expect(DictationNarrator.recoveryAccessibilityLabel == "Recovering your last recording")
     #expect(DictationNarrator.recoverySucceededTitle == "Recovered your last recording")
     #expect(DictationNarrator.recoverySucceededSubtitle == "Saved to History")
@@ -298,6 +298,16 @@ import Testing
   /// A recovery reconstructs the audio perfectly and finds no speech in it about
   /// 93% of the time, so the in-progress pill cannot know that anything will be
   /// saved. Only the success pill, which fires after text has landed, may say so.
+  ///
+  /// **What this test does NOT catch, stated so nobody trusts it further than it
+  /// goes.** It is a REVERT guard, not a promise detector. The first fix for this
+  /// issue shipped "Anything found goes to History", which passes here and was
+  /// still a promise — it conditions on speech being found while silently
+  /// asserting the save, and `transcriptStore.save` can throw. Cloud review
+  /// caught that; this assertion could not have. A differently-worded promise
+  /// will pass. The durable check is the reasoning recorded on
+  /// `DictationNarrator.recoverySubtitle`: enumerate every link that can defeat
+  /// delivery, and condition on the LAST one.
   @Test("the in-progress recovery subtitle never asserts the success claim")
   func recoveryInProgressSubtitleMakesNoPromise() {
     #expect(
