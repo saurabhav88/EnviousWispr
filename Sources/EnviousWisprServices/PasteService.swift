@@ -835,7 +835,11 @@ public enum PasteService {
 
     let dependencies = TerminalContextResolver.Dependencies(
       bundleIdentifier: { NSRunningApplication(processIdentifier: pid)?.bundleIdentifier },
-      scanProcesses: { TerminalProcessScanner.liveSnapshot() },
+      // The FILTERED sweep (#1943). Gate 1 only ever accepts a process holding a
+      // controlling terminal, so reading every other process's argv/environment
+      // blob was work whose result was always discarded — and it was the step
+      // that blew the budget and latched terminal insertion off (#1941).
+      scanProcesses: { TerminalProcessScanner.liveTerminalSnapshot() },
       readScreenTail: {
         budget.step(applying: fresh, label: "screen") { terminalScreenTail(of: fresh) }
       })

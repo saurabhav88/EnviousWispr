@@ -219,27 +219,137 @@ package enum TerminalProcessScanner {
   /// telemetry distinguishes them; an optional invites erasing that at the one
   /// call site where it matters.
   ///
-  /// No pre-filter by executable name. Measured cost for the whole sweep is
-  /// mean 3 ms / p95 7 ms against a 100 ms budget (710 processes, hardened
-  /// runtime, Developer-ID signed), so filtering would buy nothing while adding
-  /// a hand-authored guess about how CLIs are launched — the guess that would
-  /// silently drop an unusual install.
+  /// No pre-filter by executable name, and that half of the old note still
+  /// stands: a filter that guesses how a CLI is LAUNCHED — binary names, install
+  /// paths, argv shapes — is a hand-authored membership set that silently drops
+  /// an unusual install.
+  ///
+  /// **The COST half of that note was false and is deleted (#1943).** It read
+  /// "mean 3 ms / p95 7 ms against a 100 ms budget, so filtering would buy
+  /// nothing". On the real path this sweep is the budget's dominant consumer:
+  /// the app's own trace across one ordinary session ran 36, 49, 54, 61, 77,
+  /// 77 ms and then 114.7 ms, which exhausted the whole cumulative budget in
+  /// this one step and tripped the circuit breaker (#1941). Every accessibility
+  /// read in the same traces is under 0.5 ms. Do not restore the 3 ms figure and
+  /// do not size anything against it.
+  ///
+  /// The veto no longer calls this; it calls ``liveTerminalSnapshot()``, which
+  /// filters on a structural kernel fact rather than on launch shape. This entry
+  /// point remains the honest general reader — it returns EVERY readable
+  /// process, including the ones holding no terminal — and the live tests rely
+  /// on exactly that.
   static func liveSnapshot() -> TerminalProcessScan {
-    guard let pids = allProcessIdentifiers() else { return .unavailable }
+    sweep(prefilterByTerminal: false)
+  }
+
+  /// Snapshot only the processes that hold a controlling terminal — the sweep
+  /// the veto actually needs.
+  ///
+  /// Identical to ``liveSnapshot()`` except that it asks
+  /// ``holdsControllingTerminal(_:)`` FIRST and reads the executable path and
+  /// the argv/environment blob only for the survivors.
+  ///
+  /// **At one observation point this cannot change the veto's answer, and that
+  /// is structural rather than lucky:** `supportedCLIs(in:hostedBy:)`'s own first
+  /// guard is `guard snapshot.isAttachedToTerminal`, so every process dropped
+  /// here would have been dropped one step later anyway. The predicate is not
+  /// duplicated — both sites call this same function.
+  ///
+  /// **Exact TEMPORAL equivalence is not claimed**, because the change moves the
+  /// observation earlier in the per-process sequence. See the note at the guard
+  /// below for the window and why it is bounded.
+  ///
+  /// **Why it is worth a second entry point.** Measured on an 807-process
+  /// machine with the shipped source compiled verbatim (artifacts in
+  /// `docs/feature-requests/issue-1943-artifacts/`): only 24 processes (3.0%)
+  /// hold a terminal, and the tty check is simultaneously the CHEAPEST
+  /// per-process primitive and the most selective filter.
+  ///
+  /// | over all 807 pids | mean |
+  /// |---|---|
+  /// | `proc_pidinfo` (this check) | 0.35 ms |
+  /// | `proc_pidpath` | 1.71 ms |
+  /// | `sysctl KERN_PROCARGS2` | 5.58 ms |
+  ///
+  /// Whole sweep, interleaved A/B, n=100: 5.54 ms mean / 6.13 ms p95 unfiltered
+  /// versus 0.86 ms / 0.94 ms filtered — 6.5x at both. An equivalence control
+  /// over 300 comparisons found 0 mismatches with 100 positive findings.
+  ///
+  /// This is NOT the launch-shape guess that ``liveSnapshot()``'s note warns
+  /// about: holding a controlling terminal is a fact read from the kernel about
+  /// the process, not a prediction about how somebody installed it.
+  static func liveTerminalSnapshot() -> TerminalProcessScan {
+    sweep(prefilterByTerminal: true)
+  }
+
+  /// The one process-sweep both entry points run.
+  ///
+  /// Written as a single worker rather than two loops so the PID walk, the
+  /// fail-closed skips, and the `.unavailable` contract cannot drift apart —
+  /// the two entry points differ by exactly one boolean.
+  ///
+  /// Every kernel read is injected so the sweep is testable WITHOUT a real
+  /// process table. That matters more than it looks: CI runs the Debug suite on
+  /// a hosted runner where nothing holds a controlling terminal, so a test
+  /// driven by live processes would SKIP there and the filter would have no
+  /// regression gate at all.
+  ///
+  /// - Parameter prefilterByTerminal: when true, ask the cheap
+  ///   controlling-terminal question first and read nothing else for processes
+  ///   that fail it.
+  static func sweep(
+    prefilterByTerminal: Bool,
+    pids: () -> [pid_t]? = { allProcessIdentifiers() },
+    holdsTerminal: (pid_t) -> Bool = { holdsControllingTerminal($0) },
+    path: (pid_t) -> String? = { executablePath(of: $0) },
+    argumentsAndEnvironment: (pid_t) -> (arguments: [String], environment: [String: String])? = {
+      Self.argumentsAndEnvironment(of: $0)
+    }
+  ) -> TerminalProcessScan {
+    guard let identifiers = pids() else { return .unavailable }
     var snapshots: [TerminalProcessSnapshot] = []
-    snapshots.reserveCapacity(pids.count)
-    for pid in pids {
-      guard let path = executablePath(of: pid) else { continue }
+    // Allocation hint only, never a limit — the array grows if it is wrong.
+    // 32 is sized from the measured population (24 of 807 held a terminal on an
+    // ordinary day); reserving all ~810 for the filtered sweep would allocate
+    // 97% waste on every dictation.
+    snapshots.reserveCapacity(prefilterByTerminal ? 32 : identifiers.count)
+    for pid in identifiers {
+      // The cheap, selective discriminator first, when the caller wants it. A
+      // process that exits between this call and the reads below simply drops
+      // out at one of them, exactly as in the unfiltered sweep; every primitive
+      // fails closed.
+      //
+      // Honest limit, stated because it is real rather than because it matters:
+      // this reads the tty flag BEFORE the argv/environment blob, where the
+      // unfiltered sweep reads it after. A process that gained or lost its
+      // controlling terminal in that microsecond window is classified at a
+      // slightly different instant. That is not a NEW race — the unfiltered
+      // sweep has the mirror of it — and neither instant is more correct. The
+      // only process it can affect is one whose terminal is opening or closing
+      // mid-sweep, and Gate 1 is a veto whose worst outcome is the already
+      // accepted class: a wrong space or capital in one sentence, never a wrong
+      // destination.
+      var attached = true
+      if prefilterByTerminal {
+        guard holdsTerminal(pid) else { continue }
+      } else {
+        // Unfiltered: the flag is still reported, read in its original position
+        // after the other two so this entry point's timing is unchanged.
+        attached = false
+      }
+      guard let executablePath = path(pid) else { continue }
       // Reading another user's or root's process is refused by the kernel for
       // roughly a third of PIDs. That is expected and is not an error.
-      guard let (arguments, environment) = argumentsAndEnvironment(of: pid) else { continue }
+      guard let (arguments, environment) = argumentsAndEnvironment(pid) else { continue }
       snapshots.append(
         TerminalProcessSnapshot(
           processIdentifier: pid,
-          executablePath: path,
+          executablePath: executablePath,
           arguments: arguments,
           termProgram: environment["TERM_PROGRAM"],
-          isAttachedToTerminal: holdsControllingTerminal(pid)))
+          // Filtered: true by construction, the guard above is the only way in.
+          // Unfiltered: read here, exactly where it was read before.
+          isAttachedToTerminal: attached ? true : holdsTerminal(pid)))
     }
     return .available(snapshots)
   }
