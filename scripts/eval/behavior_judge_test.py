@@ -31,8 +31,11 @@ TWO STUB LAYERS, BOTH CHOSEN SO THE TEST REACHES ITS SUBJECT.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -106,26 +109,64 @@ def checks_of(receipt):
 
 STUB_JUDGE = '''\
 import sys, json, pathlib
-a = sys.argv
-out = a[a.index("--out") + 1]
-d = pathlib.Path(out); d.mkdir(parents=True, exist_ok=True)
-(d.parent / "_invocations").open("a").write("call\\n")
-mode = {mode!r}
-if mode == "noreceipt":
-    sys.exit(1)
-if mode == "nonobject":
-    (d / "summary.json").write_text("[1,2,3]")
-    sys.exit(1)
-if mode == "badjson":
-    (d / "summary.json").write_text("{{not json")
-    sys.exit(1)
-r = {{"release_gate": {{"verdict": "BLOCK"}}, "skipped": [], "missing_scores": []}}
-if mode == "true":
-    r["cacheable"] = True
-elif mode == "false":
-    r["cacheable"] = False
-json.dump(r, open(d / "summary.json", "w"))
-sys.exit(0 if mode == "true" else 1)
+
+# The shell IMPORTS this module to resolve the default judge, so the module body must
+# survive an import with no argv. Before the judge became part of the resume stamp the
+# stub was only ever executed, and a stub that raises on import made the script exit 2
+# at startup while every shell test still passed — they assert what a receipt or stamp
+# does NOT contain, which is trivially true of a script that never ran.
+import os
+# Honours EW_JUDGE exactly as the real module does, so a test can change the judge the
+# script resolves without editing the stub.
+DEFAULT_JUDGE = os.environ.get("EW_JUDGE", "azure/stub-judge")
+
+# Models the production `--print-judge-identity` contract, including its REFUSAL. A stub
+# that answered for every id would make the shell's pre-loop validation untestable: the
+# case proving a bad judge cannot delete receipts needs this to exit 2, exactly as the real
+# module does for an id with no funded route.
+if "--print-judge-identity" in sys.argv:
+    if not (DEFAULT_JUDGE.startswith("azure/") or DEFAULT_JUDGE.startswith(("claude", "sonnet"))):
+        print(f"judge {{DEFAULT_JUDGE!r}} is unusable: no approved funded grading route",
+              file=sys.stderr)
+        sys.exit(2)
+    suffix = "@stubdigest" if DEFAULT_JUDGE.startswith("azure/") else ""
+    print(DEFAULT_JUDGE)
+    print(DEFAULT_JUDGE + suffix)
+    sys.exit(0)
+
+# Guarded so an IMPORT is side-effect free and exit-free. `sys.exit` at module level
+# would raise SystemExit through the import and leave the caller with no value, which
+# looks identical to a stub that crashed.
+if __name__ == "__main__":
+    a = sys.argv
+    # Models `refuse_paid_key_judge` running BEFORE any output is written. Without this the
+    # stub is more permissive than production and hides a real defect: the pre-fix script
+    # deleted a receipt on a stamp mismatch, and only production's refusal-before-write made
+    # that deletion permanent. A stub that always writes a receipt silently repairs it.
+    if "--judge" in a:
+        j = a[a.index("--judge") + 1]
+        if not (j.startswith("azure/") or j.startswith(("claude", "sonnet"))):
+            print(f"REFUSED: --judge {{j}} has no approved funded grading route", file=sys.stderr)
+            sys.exit(2)
+    out = a[a.index("--out") + 1]
+    d = pathlib.Path(out); d.mkdir(parents=True, exist_ok=True)
+    (d.parent / "_invocations").open("a").write("call\\n")
+    mode = {mode!r}
+    if mode == "noreceipt":
+        sys.exit(1)
+    if mode == "nonobject":
+        (d / "summary.json").write_text("[1,2,3]")
+        sys.exit(1)
+    if mode == "badjson":
+        (d / "summary.json").write_text("{{not json")
+        sys.exit(1)
+    r = {{"release_gate": {{"verdict": "BLOCK"}}, "skipped": [], "missing_scores": []}}
+    if mode == "true":
+        r["cacheable"] = True
+    elif mode == "false":
+        r["cacheable"] = False
+    json.dump(r, open(d / "summary.json", "w"))
+    sys.exit(0 if mode == "true" else 1)
 '''
 
 
@@ -153,7 +194,33 @@ def run_shell(t, env=None):
         ["bash", str(t / "scripts" / "eval" / "judge_ollama_bench.sh"),
          str(t / "corpus.jsonl"), str(t / "cand"), str(t / "judged")],
         capture_output=True, text=True, env=env)
-    return p.returncode, p.stdout + p.stderr
+    out = p.stdout + p.stderr
+    # COMPLETED-THE-SUBJECT GUARD. Several shell cases assert that something is absent —
+    # no stamp, no second invocation, a particular refusal wording — and each of those is
+    # also true of a script that died before doing any work. So an early death must be an
+    # error here rather than a silent pass in each case. This fired for real: adding the
+    # judge to the stamp made the script resolve it by importing the module, the stub
+    # raised on import, and the whole suite stayed green while judging nothing.
+    #
+    # Asserts the script reached one of its two TERMINAL outcomes rather than the absence
+    # of one known error string. A guard written the second way only catches the failure
+    # its author already met — a syntax error, a missing command, or the next unforeseen
+    # early exit would sail through it, which is the same fail-open shape as a denylist.
+    # Reads the LAST non-empty stderr line, not any line anywhere. Scanning all output
+    # would let a nested program's own "FAIL:" satisfy the shell's terminal condition —
+    # no current fixture does that, but the guard would be asserting the wrong thing.
+    #
+    # NORMAL completion of the model loop ends in one of two lines: a FAIL: block then
+    # `exit 1`, or the success line. Setup failures exit before either (missing
+    # arguments, an unresolvable judge) and so does any other early death, which is
+    # precisely what this guard is here to reject. Once one of the two IS present, it is
+    # the last non-empty line and it is the shell's verdict.
+    terminal = next((ln for ln in reversed(p.stderr.splitlines()) if ln.strip()), "")
+    completed = terminal.startswith("judged all models into ")
+    reported_failure = terminal.startswith("FAIL: ")
+    assert completed or reported_failure, (
+        f"the script never reached a terminal outcome, so this case tested nothing:\n{out}")
+    return p.returncode, out
 
 
 def invocations(t):
@@ -165,16 +232,25 @@ def stamped(t):
     return (t / "judged" / "modelA" / ".inputs-sha256").exists()
 
 
-def forge_stamp(t):
+def forge_stamp(t, judge=None):
     """Write a stamp that genuinely MATCHES, so the resume fast path is entered
     and only the cacheability check can stop the skip. Computed exactly as the
     script does — over the same absolute argv paths, since the hash covers
-    filenames. Without it the stamp is absent, the fast path is never reached,
-    and a case would pass while testing the stale-inputs branch instead."""
+    filenames, and now over the JUDGE, which is part of the inputs. Without it the
+    stamp is absent, the fast path is never reached, and a case would pass while
+    testing the stale-inputs branch instead.
+
+    `judge` defaults to the stub's DEFAULT_JUDGE, i.e. what the script itself will
+    resolve. Pass a different value to forge a stamp from a DIFFERENT judge, which is
+    what makes "a judge change invalidates the stamp" testable."""
+    # The script stamps the IDENTITY, not the bare label, so a fixture forging a matching
+    # stamp has to use the same value. The stub appends @stubdigest for azure routes.
+    judge = judge if judge is not None else "azure/stub-judge@stubdigest"
     forged = subprocess.run(
         ["bash", "-c",
          'if command -v shasum >/dev/null 2>&1; then H="shasum -a 256"; else H=sha256sum; fi; '
-         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}" | $H | cut -d" " -f1'],
+         f'{{ printf "judge=%s\\n" "{judge}"; '
+         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}"; }} | $H | cut -d" " -f1'],
         capture_output=True, text=True).stdout.strip()
     assert forged, "could not compute a stamp"
     (t / "judged" / "modelA" / ".inputs-sha256").write_text(forged + "\n")
@@ -779,6 +855,344 @@ def test_both_layers_give_the_same_diagnosis_for_the_same_receipt():
         assert "Traceback" not in out, f"{receipt} raised: {out}"
 
 
+def test_a_receipt_from_a_different_judge_is_re_judged():
+    # THE finding this guards: the stamp used to cover only candidates + corpus, so a
+    # cacheable receipt graded by one judge was skipped after the default changed. On
+    # 2026-08-11 that was 15 stamped Sonnet arms, and the sweep would have produced a
+    # scoreboard silently mixing two judges.
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": []}))
+
+    # A stamp that is valid in every respect EXCEPT the judge.
+    forge_stamp(t, judge="claude-sonnet-5")
+    before = invocations(t)
+    _, log = run_shell(t)
+    assert invocations(t) > before, (
+        f"a receipt from another judge was skipped instead of re-judged:\n{log}")
+
+
+def test_a_receipt_from_the_same_judge_is_still_skipped():
+    # TWO-WAY CONTROL. Without this, a stamp that never matches would pass the test
+    # above while re-grading every arm on every sweep — which is the expensive failure,
+    # and the one that looks like nothing is wrong.
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": []}))
+
+    forge_stamp(t)  # the judge the script will actually resolve
+    before = invocations(t)
+    _, log = run_shell(t)
+    assert invocations(t) == before, f"a matching receipt was re-judged anyway:\n{log}"
+    assert "skipped (already judged)" in log, log
+
+
+def test_the_stamp_the_script_writes_depends_on_the_judge():
+    # Reads the stamp the REAL script wrote, not one this file computed: a fixture-only
+    # comparison would verify forge_stamp and pass even with the script's stamp
+    # unchanged, which is precisely how a mutation slips through.
+    # ONE tree for both runs. The stamp hashes absolute filenames, so two temp trees
+    # produce different stamps whatever the judge is — a version of this test using a
+    # fresh tree per run passed with the judge stripped back out of the stamp, i.e. it
+    # measured the temp path and not the thing under test.
+    t = shell_tree("true")
+    stamp_file = t / "judged" / "modelA" / ".inputs-sha256"
+
+    def stamp_under(judge):
+        _, log = run_shell(t, env=dict(os.environ, EW_JUDGE=judge))
+        assert f"judge: {judge}" in log, f"script did not resolve {judge}: {log}"
+        assert stamp_file.exists(), f"no stamp written for {judge}: {log}"
+        return stamp_file.read_text().strip()
+
+    a = stamp_under("claude-sonnet-5")
+    b = stamp_under("azure/gpt-5-6-luna")
+    assert a and b and a != b, f"the script's stamp ignores the judge: {a} == {b}"
+
+
+def test_a_refused_judge_cannot_delete_a_single_cached_receipt():
+    """THE regression test for the P1 cloud review found on PR #2026.
+
+    Putting the judge into the stamp created a destructive path: a refused or mistyped
+    EW_JUDGE mismatches EVERY arm's stamp, the loop `rm -rf`s each receipt on a mismatch, and
+    the judge then exits before writing a replacement — so the whole cached set is destroyed
+    and the log blames "candidates or corpus changed". The fix validates the judge before the
+    loop can touch anything, so this asserts the receipt is STILL THERE afterwards.
+    """
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    receipt = d / "summary.json"
+    receipt.write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": []}))
+    forge_stamp(t)
+    before = receipt.read_text()
+
+    p = subprocess.run(
+        ["bash", str(t / "scripts" / "eval" / "judge_ollama_bench.sh"),
+         str(t / "corpus.jsonl"), str(t / "cand"), str(t / "judged")],
+        capture_output=True, text=True, env=dict(os.environ, EW_JUDGE="gpt-4o"))
+    out = p.stdout + p.stderr
+
+    assert p.returncode == 2, f"expected refusal exit 2, got {p.returncode}:\n{out}"
+    assert receipt.exists(), f"the cached receipt was DELETED by a refused judge:\n{out}"
+    assert receipt.read_text() == before, "the cached receipt was modified"
+    assert (d / ".inputs-sha256").exists(), "the stamp was deleted"
+    assert invocations(t) == 0, f"the judge was invoked despite being refused:\n{out}"
+    assert "Nothing has been touched" in out, out
+
+
+def test_a_routed_but_unusable_judge_still_cannot_delete_a_receipt():
+    """The SECOND round of the same P1 (cloud review, #2026), and the reason the fix is
+    structural rather than a better check.
+
+    `claude-sonet-5` is a typo that ROUTES: it starts with `claude`, so it has a funded route
+    and passes the pre-loop validation. Its stamp still mismatches every arm, so the loop
+    still re-judges, and the CLI only rejects the model name once the judge actually runs.
+    Under the delete-first design that destroyed the receipt. Under staged-then-swapped the
+    receipt survives, and it survives for ANY reason the judge fails to produce one — a
+    capacity error, an expired key, a dropped network — none of which a probe could predict.
+    """
+    t = shell_tree("noreceipt")          # the judge runs and writes nothing
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    receipt = d / "summary.json"
+    receipt.write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": []}))
+    original_stamp = forge_stamp(t, judge="azure/stub-judge@stubdigest")
+    before = receipt.read_text()
+
+    _, log = run_shell(t, env=dict(os.environ, EW_JUDGE="claude-sonet-5"))
+
+    assert "=== re-judging modelA" in log, f"expected a re-judge attempt:\n{log}"
+    assert not (t / "judged" / "modelA.rejudge").exists(), "staging directory was left behind"
+
+    # THREE separate P1s met here, one per review round, and they only reconcile as quarantine.
+    #
+    # 1. The bytes must SURVIVE — deleting them was the original defect, where one typo wiped
+    #    the whole cached set.
+    quarantined = t / "judged" / "modelA.stale" / "summary.json"
+    assert quarantined.exists(), f"the previous receipt was destroyed:\n{log}"
+    assert quarantined.read_text() == before, "the quarantined receipt was modified"
+
+    # 2. They must NOT sit at the canonical path, because `report_ollama_bench.py` reads that
+    #    path and checks cacheability but never the stamp — so a valid receipt from the previous
+    #    judge would be ranked beside newly judged arms and corrupt the comparison silently.
+    assert not receipt.exists(), (
+        f"the previous judge's receipt is still where the report will rank it:\n{log}")
+
+    # 3. Surviving must not mean ADOPTED. Nothing may carry this judge's stamp, or a later run
+    #    would skip the arm and report the previous judge's scores as this judge's.
+    assert not (t / "judged" / "modelA" / ".inputs-sha256").exists(), "canonical stamp survived"
+    stale_stamp = t / "judged" / "modelA.stale" / ".inputs-sha256"
+    assert stale_stamp.read_text().strip() == original_stamp, (
+        "the quarantined receipt was re-stamped with the NEW judge's identity")
+    assert "quarantined at" in log, log
+
+
+
+def test_a_partial_staged_receipt_does_not_evict_a_complete_one():
+    """Cloud review round 3, the sibling P1. A judge that fails AFTER scoring starts still
+    writes a summary with `cacheable: false`, so a presence-only promotion check replaced a
+    good receipt with the failure. Promotion now requires the staged receipt to be cacheable.
+    """
+    t = shell_tree("false")              # judge writes a receipt with cacheable: false
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    receipt = d / "summary.json"
+    receipt.write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": [], "marker": "the good one"}))
+    original_stamp = forge_stamp(t, judge="claude-sonnet-5")   # forces a re-judge
+    _, log = run_shell(t)
+
+    # The complete receipt is preserved, and preserved OUT of the report's path.
+    stale = json.loads((t / "judged" / "modelA.stale" / "summary.json").read_text())
+    assert stale.get("marker") == "the good one", (
+        f"the complete receipt was not preserved:\n{log}")
+    assert (t / "judged" / "modelA.stale" / ".inputs-sha256").read_text().strip() \
+        == original_stamp, "the quarantined receipt lost or changed its own stamp"
+
+    # What sits at the canonical path is what THIS judge produced, and it is not cacheable, so
+    # the report rejects it loudly instead of ranking either receipt.
+    now = json.loads(receipt.read_text())
+    assert now.get("marker") is None, f"the old receipt is still at the ranked path:\n{log}"
+    assert now.get("cacheable") is False, now
+    assert not (d / ".inputs-sha256").exists(), "a non-cacheable receipt must never be stamped"
+    assert "quarantined at" in log, log
+
+
+def test_a_partial_receipt_is_still_promoted_when_there_is_nothing_to_lose():
+    """Two-way control on the clause above. If promotion required cacheable UNCONDITIONALLY, a
+    first-ever run that produced a partial receipt would leave no evidence at all — and the
+    pre-existing behaviour of keeping it for diagnosis, unstamped, would be lost."""
+    t = shell_tree("false")
+    _, log = run_shell(t)
+    d = t / "judged" / "modelA"
+    assert (d / "summary.json").exists(), f"a first partial receipt must be kept:\n{log}"
+    assert not stamped(t), "a non-cacheable receipt must never be stamped"
+    assert "not cacheable" in log, log
+
+
+def test_a_destination_with_no_summary_does_not_swallow_the_staged_receipt():
+    """Cloud review round 6. An earlier run interrupted after creating $dest but before writing
+    summary.json leaves a directory with no receipt. A summary-only "is there a previous?" test
+    called that no-previous, so quarantine skipped it and `mv` moved the staged directory INSIDE
+    it: no canonical summary for the report, and no error anywhere.
+    """
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "per_case.jsonl").write_text('{"id":"A"}\n')   # partial write, no summary.json
+    _, log = run_shell(t)
+
+    assert (d / "summary.json").exists(), (
+        f"the staged receipt was not promoted to the canonical path:\n{log}")
+    assert not (d / "modelA.rejudge").exists(), (
+        f"the staged directory was nested inside the destination:\n{log}")
+    assert not list(d.glob("*.rejudge")), f"nested staging directory found: {list(d.iterdir())}"
+    assert stamped(t), f"a promoted cacheable receipt must be stamped:\n{log}"
+
+
+def test_the_swap_quarantines_before_it_promotes():
+    """Cloud review round 6, the interruption-safety half. The old order was `rm -rf $dest` then
+    `mv`, so an interruption between them destroyed the old receipt while the new one was still
+    under .rejudge — and the next run clears staging, losing both.
+
+    Asserts the ORDER structurally, by its observable effect: after a successful swap the
+    previous receipt must still exist in the quarantine slot. Under `rm -rf` first it is gone.
+    """
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": [], "marker": "the previous one"}))
+    forge_stamp(t, judge="claude-sonnet-5")      # different judge, so it re-judges
+    _, log = run_shell(t)
+
+    fresh = json.loads((d / "summary.json").read_text())
+    assert fresh.get("marker") is None, f"the new receipt was not promoted:\n{log}"
+    assert fresh.get("cacheable") is True, fresh
+
+    preserved = json.loads((t / "judged" / "modelA.stale" / "summary.json").read_text())
+    assert preserved.get("marker") == "the previous one", (
+        f"the previous receipt was deleted rather than quarantined, so an interruption "
+        f"mid-swap would lose it:\n{log}")
+
+
+def test_repeated_failures_keep_the_complete_receipt():
+    """Cloud review round 5, and the reason the quarantine slot has a rule rather than being a
+    plain overwrite. Failure one moves the complete receipt into the slot and promotes a partial;
+    failure two must NOT then displace that complete receipt with the partial."""
+    t = shell_tree("false")            # every attempt writes cacheable: false
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": [], "marker": "the only complete one"}))
+    forge_stamp(t, judge="claude-sonnet-5")
+
+    run_shell(t)                        # attempt 1: complete -> slot, partial -> canonical
+    _, log = run_shell(t)               # attempt 2: must not overwrite the slot
+
+    slot = json.loads((t / "judged" / "modelA.stale" / "summary.json").read_text())
+    assert slot.get("marker") == "the only complete one", (
+        f"a second failure ground the quarantine down to a partial receipt:\n{log}")
+    assert "COMPLETE quarantine" in log, log
+
+
+def test_a_failed_quarantine_aborts_the_arm_instead_of_mis_stamping():
+    """Cloud review round 13. This script runs without `errexit`, so a permission or filesystem
+    error left `quarantine_previous` returning success (its final `echo` succeeded). The caller
+    then moved the staged receipt INSIDE the still-existing destination and the stamp landed on
+    the OLD receipt while the arm reported success — the nest-and-mis-stamp failure arriving
+    through an error path rather than a logic one.
+
+    Made to fail by removing write permission from the judged directory, so the rename genuinely
+    cannot happen. The arm must report FAILED and nothing may be stamped.
+    """
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": [], "marker": "the previous one"}))
+    forge_stamp(t, judge="claude-sonnet-5")          # forces a re-judge
+    judged = t / "judged"
+    mode = judged.stat().st_mode
+    os.chmod(judged, 0o500)                          # readable, not writable: rename fails
+    try:
+        rc, log = run_shell(t)
+    finally:
+        os.chmod(judged, mode)
+
+    assert "FAILED modelA" in log, f"a failed quarantine was not reported as a failure:\n{log}"
+    assert rc != 0, f"the sweep exited successfully despite a failed arm:\n{log}"
+    kept = json.loads((d / "summary.json").read_text())
+    assert kept.get("marker") == "the previous one", (
+        f"the old receipt was replaced or nested into:\n{log}")
+    assert not list(d.glob("*.rejudge")), f"the staged receipt was nested inside: {list(d.iterdir())}"
+
+    # WHY THIS CASE CANNOT ISOLATE THE HELPER, stated rather than implied: both renames happen
+    # inside the same parent directory, so any permission failure trips the promote guard as well
+    # as the quarantine guard. Swallowing the helper's failure therefore still ends in a reported
+    # FAILED arm, and a mutation test over this case passes either way. It verifies the OUTCOME,
+    # which is the property that matters, and the source assertion below covers the mechanism the
+    # reviewer actually flagged.
+    src = SHELL.read_text()
+    body = src.split("quarantine_previous() {")[1].split("\n}")[0]
+    assert 'mv "$dest" "$dest.stale" || return 1' in body, (
+        "the quarantine rename does not propagate failure; without `|| return 1` the helper "
+        "returns success because its final echo does, and the caller promotes into a still-"
+        "occupied destination")
+    for call in ("if ! quarantine_previous; then",):
+        assert src.count(call) >= 3, (
+            f"expected every quarantine call site to check the result, found "
+            f"{src.count(call)} of them")
+
+
+def test_a_successful_rejudge_does_replace_the_old_receipt():
+    """Two-way control. A staging swap that never promoted anything would pass the case above
+    while making every re-judge a no-op, which is the expensive failure and looks like nothing
+    is wrong. The stub writes a cacheable receipt, so the arm must end up stamped."""
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps({"cacheable": False, "stale": "marker"}))
+    forge_stamp(t, judge="claude-sonnet-5")   # a different judge, so it must re-judge
+
+    _, log = run_shell(t)
+
+    fresh = json.loads((d / "summary.json").read_text())
+    assert "stale" not in fresh, f"the old receipt was not replaced:\n{log}"
+    assert fresh.get("cacheable") is True, fresh
+    assert stamped(t), f"a successful re-judge must earn a stamp:\n{log}"
+    assert not (t / "judged" / "modelA.rejudge").exists(), "staging directory was left behind"
+
+
+def test_the_refusal_happens_before_any_arm_is_examined():
+    """Two-way control on the guard's PLACEMENT, not just its existence. A check that ran
+    inside the loop would refuse on the first arm and could still have deleted its receipt
+    before doing so; this asserts the script never reached the per-model work at all."""
+    t = shell_tree("true")
+    p = subprocess.run(
+        ["bash", str(t / "scripts" / "eval" / "judge_ollama_bench.sh"),
+         str(t / "corpus.jsonl"), str(t / "cand"), str(t / "judged")],
+        capture_output=True, text=True, env=dict(os.environ, EW_JUDGE="mistral-large"))
+    out = p.stdout + p.stderr
+    assert p.returncode == 2, out
+    assert "=== judging" not in out, f"an arm was entered before the judge was validated:\n{out}"
+    assert "=== judge:" not in out, f"the judge was announced as usable:\n{out}"
+
+
 def test_shell_absent_cacheable_field_is_not_stamped():
     # Every receipt written before #2007 lacks the field.
     t = shell_tree("absent")
@@ -820,7 +1234,10 @@ def test_shell_sha256_shim_produces_an_identical_stamp():
     subprocess.run(["rm", "-rf", str(t / "judged" / "modelA")], check=True)
 
     shim = Path(tempfile.mkdtemp())
-    for cmd in ("python3", "grep", "basename", "dirname", "cat", "mkdir", "rm",
+    # This tuple is in effect a declaration of every external command the script depends on:
+    # anything missing from it is hidden from the script under the shim. `mv` joined the list
+    # when the re-judge became staged-then-swapped, and this case is what caught the omission.
+    for cmd in ("python3", "grep", "basename", "dirname", "cat", "mkdir", "rm", "mv",
                 "printf", "cut", "sha256sum", "bash", "sed", "ls", "env"):
         found = subprocess.run(["bash", "-c", f"command -v {cmd}"],
                                capture_output=True, text=True).stdout.strip()
@@ -839,6 +1256,180 @@ def test_shell_sha256_shim_produces_an_identical_stamp():
 # --------------------------------------------------------------------------- #
 # report_ollama_bench.py                                                      #
 # --------------------------------------------------------------------------- #
+
+def _two_arm_report_tree(meta_a, meta_b):
+    """A report fixture with TWO arms, each carrying its own receipt metadata.
+
+    Built by extending `report_tree`, deliberately, rather than writing a second fixture from
+    scratch: the report refuses a corpus with no international cases, and a hand-rolled corpus
+    that omitted one failed before reaching the check under test. Reusing the working fixture's
+    shape is what keeps the case pointed at its subject.
+
+    One arm can never show a mixed-judge ranking, which is why two are needed.
+    """
+    healthy = {
+        "cacheable": True,
+        "release_gate": {"verdict": "CLEAR", "checks": []},
+        "overall": {"pass_rate_pct": 50.0, "critical_fail_count": 0, "total_scored": 2,
+                    "infra_skipped": 0, "failure_type_counts": {}},
+        "skipped": [], "missing_scores": [],
+        "judge_reconciliation": {"requested": [], "accepted": [], "missing": [],
+                                 "unexpected": []},
+        "adjudication": {"adjudicated_n": 0, "disagreements": 0},
+    }
+    t = report_tree({**healthy, "meta": meta_a})
+
+    # Second arm, mirroring the first arm's on-disk shape exactly.
+    (t / "judged" / "modelB").mkdir(parents=True)
+    (t / "judged" / "modelB" / "summary.json").write_text(
+        json.dumps({**healthy, "meta": meta_b}))
+    (t / "judged" / "modelB" / "per_case.jsonl").write_text(
+        (t / "judged" / "modelA" / "per_case.jsonl").read_text())
+
+    run = json.loads((t / "run-summary.json").read_text())
+    second = dict(run["models"][0])
+    second["model"] = "modelB"
+    second["candidates"] = str(t / "cand" / "modelB.jsonl")
+    run["models"].append(second)
+    (t / "run-summary.json").write_text(json.dumps(run))
+    return t
+
+
+def test_the_report_refuses_to_rank_two_different_judges():
+    """Cloud review pointed at this root cause three times before I fixed it here rather than in
+    the sweep. A partial sweep, an interrupted sweep, a hand-copied receipt or a repointed
+    deployment all leave some arms graded by one judge and some by another. The sweep cannot close
+    every route; the layer that COMBINES arms can. Validating a receipt by whether it parses and
+    never by who produced it is what let all of them through.
+    """
+    t = _two_arm_report_tree(
+        {"judge": "claude-sonnet-5", "judge_model_version": None},
+        {"judge": "azure/gpt-5-6-luna", "judge_model_version": "gpt-5.6-luna-2026-07-09"})
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "mixes judges" in out, out
+    assert "claude-sonnet-5" in out and "azure/gpt-5-6-luna" in out, out
+
+
+def test_the_report_refuses_two_versions_of_the_same_judge():
+    """The id alone is not identity. An Azure deployment repointed in place leaves two receipts
+    sharing `judge` while holding scores from different models — the one mixing route a
+    judge-name check cannot see."""
+    t = _two_arm_report_tree(
+        {"judge": "azure/gpt-5-6-luna", "judge_model_version": "gpt-5.6-luna-2026-07-09"},
+        {"judge": "azure/gpt-5-6-luna", "judge_model_version": "gpt-5.6-luna-2026-11-01"})
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "mixes judges" in out, out
+    assert "2026-11-01" in out, out
+
+
+def test_the_report_ranks_a_uniform_field():
+    """Two-way control, and the important one: a check that refused any multi-arm run would pass
+    both cases above while making the report useless for its only real job."""
+    meta = {"judge": "azure/gpt-5-6-luna", "judge_model_version": "gpt-5.6-luna-2026-07-09"}
+    rc, out = run_report(_two_arm_report_tree(dict(meta), dict(meta)))
+    assert rc == 0, out
+    assert "mixes judges" not in out, out
+
+
+def test_legacy_receipts_without_a_version_rank_together():
+    """A receipt written before `judge_model_version` existed reports None. Those must group with
+    each other rather than each becoming its own judge, or every historical run turns unrankable."""
+    meta = {"judge": "claude-sonnet-5"}
+    rc, out = run_report(_two_arm_report_tree(dict(meta), dict(meta)))
+    assert rc == 0, out
+    assert "mixes judges" not in out, out
+
+
+def test_an_unmeasurable_arm_does_not_count_as_its_own_judge():
+    """Cloud review round 10. An arm where every case errored has NO receipt, so the row carries
+    no judge. Skipping only rows marked `skipped_reason` left it counted as a separate judge, and
+    any benchmark containing one fully failing or paywalled model became falsely unreportable —
+    a false positive in a guard, which is the direction that destroys trust in it."""
+    meta = {"judge": "azure/gpt-5-6-luna", "judge_identity": "azure/gpt-5-6-luna@abc123",
+            "judge_model_version": "gpt-5.6-luna-2026-07-09"}
+    t = _two_arm_report_tree(dict(meta), dict(meta))
+    # Turn modelB into an every-case-errored arm: no receipt, and the run summary says so.
+    shutil.rmtree(t / "judged" / "modelB")
+    run = json.loads((t / "run-summary.json").read_text())
+    for m in run["models"]:
+        if m["model"] == "modelB":
+            m["errors"], m["cases"] = 2, 2
+    (t / "run-summary.json").write_text(json.dumps(run))
+
+    rc, out = run_report(t)
+    assert "mixes judges" not in out, f"an unmeasurable arm was counted as a judge:\n{out}"
+    assert rc == 0, out
+
+
+def test_the_report_separates_two_azure_resources_serving_the_same_model():
+    """The (judge, version) pair could not see the endpoint. Two different Azure resources serving
+    the same model string compared equal, even though the resume stamp always distinguished them,
+    so an interrupted re-grade across resources could be ranked as one field."""
+    t = _two_arm_report_tree(
+        {"judge": "azure/gpt-5-6-luna", "judge_identity": "azure/gpt-5-6-luna@resourceA",
+         "judge_model_version": "gpt-5.6-luna-2026-07-09"},
+        {"judge": "azure/gpt-5-6-luna", "judge_identity": "azure/gpt-5-6-luna@resourceB",
+         "judge_model_version": "gpt-5.6-luna-2026-07-09"})
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "mixes judges" in out, out
+    assert "resourceA" in out and "resourceB" in out, out
+
+
+def test_a_malformed_meta_is_named_rather_than_crashing_the_report():
+    """A truncated or hand-edited `"meta": [...]` is TRUTHY, so `or {}` leaves a list and the
+    following `.get()` raises AttributeError — aborting the whole report with a traceback instead
+    of naming the one bad receipt, which is what the per-model handling exists to do."""
+    t = report_tree({**healthy_receipt(), "meta": ["not", "an", "object"]})
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "Traceback" not in out, out
+    assert "not an object" in out, out
+
+
+def test_an_absent_meta_still_ranks():
+    """Two-way control. Absent and malformed are different states: a receipt predating `meta`
+    ranks fine, and a first version of this check rejected every one of them."""
+    receipt = healthy_receipt()
+    receipt.pop("meta", None)
+    rc, out = run_report(report_tree(receipt))
+    assert rc == 0, out
+    assert "not an object" not in out, out
+
+
+def test_a_malformed_nested_identity_field_is_named_rather_than_crashing():
+    """Cloud review round 12. A hand-edited `"judge_identity": []` inside an otherwise
+    well-formed `meta` makes the grouping tuple unhashable, so `setdefault` aborts the whole
+    report with a TypeError — the same failure the outer `meta` shape check prevents, one level
+    in. Shape-checking a container and then trusting its contents is half a check."""
+    t = report_tree({**healthy_receipt(),
+                     "meta": {"judge": "azure/gpt-5-6-luna", "judge_identity": [],
+                              "judge_model_version": "v1"}})
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "Traceback" not in out, out
+    assert "not a string" in out, out
+
+
+def test_a_direct_run_records_the_identity_it_resolved_itself():
+    """Cloud review round 12 P1. A run started directly rather than through the sweep resolves a
+    perfectly good identity in preflight, and reading only the sweep's environment variable threw
+    it away — so two direct receipts from different Azure resources recorded the same empty
+    provenance and the report could not tell them apart.
+
+    Asserts the wiring at the source: the meta field falls back to the resolved identity rather
+    than to None.
+    """
+    src = Path(bj.__file__).read_text()
+    line = next(ln for ln in src.splitlines() if '"judge_identity":' in ln and "meta" not in ln)
+    assert "_resolved_judge_identity" in line, line
+    # And the claude route sets it, or a direct claude run would record nothing while a sweep run
+    # records the model id — the two would then refuse to rank together, a false positive.
+    claude_branch = src.split("def preflight_judge(")[1].split("def ")[0]
+    assert "_resolved_judge_identity = model" in claude_branch, claude_branch
+
 
 def test_report_refuses_an_unknown_verdict():
     # Pre-fix this was ranked #1 and labelled "Recommended", exit 0.
@@ -1273,12 +1864,462 @@ def test_report_refuses_a_truncated_detail_file():
 
 
 # --------------------------------------------------------------------------- #
+# judge billing gate                                                          #
+# --------------------------------------------------------------------------- #
+
+def _routed_transport(model):
+    """Which transport `dispatch_judge` actually reaches for `model`, with both stubbed
+    so nothing touches a network or a CLI. Returns None when the call is refused.
+
+    Drives the REAL dispatcher rather than restating its rules, so this cannot agree
+    with a router that has changed underneath it."""
+    originals = {n: getattr(bj, f"call_{n}") for n in ("azure", "claude")}
+    for n in originals:
+        setattr(bj, f"call_{n}", (lambda x: lambda *a, **k: x)(n))
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            return bj.dispatch_judge(model, "sys", "usr")
+    except SystemExit:
+        return None
+    finally:
+        for n, fn in originals.items():
+            setattr(bj, f"call_{n}", fn)
+
+
+# `gpt-5-6-luna` is the important trap: it is the Azure DEPLOYMENT name, so without the
+# `azure/` prefix it reads as an OpenAI model id and no funded route accepts it.
+BILLING_IDS = [
+    "azure/gpt-5-6-luna", "azure/anything",
+    "claude-sonnet-5", "claude-opus-5", "sonnet",
+    "gpt-4o", "gpt-5-6-luna", "gemini-3-pro",
+    "mistral-large", "llama-3", "claude/foo", "AZURE/gpt-5-6-luna", "",
+]
+
+
+def test_billing_gate_agrees_with_the_router_on_every_id():
+    # Both answers are DERIVED from JUDGE_ROUTES, so this is a consistency check on the
+    # table rather than on two hand-written lists: a refused id must reach no transport,
+    # and a permitted id must reach one.
+    for model in BILLING_IDS:
+        transport = _routed_transport(model)
+        unfunded = bj.judge_lacks_funded_route(model)
+        assert unfunded == (transport is None), (
+            f"{model!r} reached transport {transport!r} but the gate says "
+            f"lacks_funded_route={unfunded}")
+
+
+def test_every_funded_route_has_a_transport_branch():
+    # A route added to the table with no branch in dispatch_judge would raise. Exhaustive
+    # over the table itself, so it covers rows added after this test was written — which
+    # a fixed id list cannot do.
+    for prefix, transport in bj.JUDGE_ROUTES:
+        assert _routed_transport(f"{prefix}probe") == transport, (
+            f"route {prefix!r} does not reach transport {transport!r}")
+
+
+def test_an_unrecognised_judge_id_reaches_no_transport_at_all():
+    # The original defect: a denylist of gpt/gemini prefixes let an unknown id through
+    # and dispatch billed it to the personal Gemini key. Now there is no such transport
+    # to reach, and the dispatcher refuses before looking for one.
+    for model in ("mistral-large", "gpt-4o", "gemini-3-pro", ""):
+        assert _routed_transport(model) is None, model
+        assert bj.judge_lacks_funded_route(model), model
+
+
+def test_the_personal_key_transports_do_not_exist():
+    # Deleted rather than unrouted: a refusal is a promise, an absent function is a fact.
+    # This is the check that notices a well-meaning restore.
+    for gone in ("call_openai", "call_gemini"):
+        assert not hasattr(bj, gone), (
+            f"{gone} is back. Grading may not bill a personal key; restoring a paid "
+            f"transport here needs a founder decision.")
+
+
+def test_dispatch_refuses_without_help_from_main():
+    # The gate must hold for a caller that never goes through main(), which is what
+    # `score_new`/`run_judge`/a future sibling script would do.
+    with contextlib.redirect_stderr(io.StringIO()) as err:
+        try:
+            bj.dispatch_judge("gpt-4o", "sys", "usr")
+        except SystemExit as e:
+            assert e.code == 2
+        else:
+            raise AssertionError("dispatch_judge did not refuse a personal-key id")
+    assert "REFUSED" in err.getvalue()
+
+
+def test_the_azure_deployment_name_without_its_prefix_is_refused():
+    # `gpt-5-6-luna` is what our Azure resource calls the deployment. Bare, it reads as
+    # an OpenAI id, and it is refused so it cannot be mistaken for one that is funded.
+    assert bj.judge_lacks_funded_route("gpt-5-6-luna")
+    assert not bj.judge_lacks_funded_route("azure/gpt-5-6-luna")
+
+
+def test_refusal_exits_two_and_names_the_funded_alternative():
+    for model in ("gpt-4o", "gemini-3-pro", "mistral-large"):
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err):
+                bj.refuse_paid_key_judge(model)
+        except SystemExit as e:
+            assert e.code == 2, (model, e.code)
+        else:
+            raise AssertionError(f"{model} was not refused")
+        assert "azure/gpt-5-6-luna" in err.getvalue(), err.getvalue()
+
+
+def test_the_two_funded_judges_are_not_refused():
+    # Two-way control: without this, a gate that refuses EVERY id passes the tests
+    # above while making the harness unusable.
+    for model in ("azure/gpt-5-6-luna", "claude-sonnet-5"):
+        with contextlib.redirect_stderr(io.StringIO()):
+            bj.refuse_paid_key_judge(model)     # must not raise SystemExit
+
+
+@contextlib.contextmanager
+def _azure_reply(payload):
+    """Run call_azure against a canned response body, with the secrets stubbed so this
+    works on a runner that has no Azure credentials at all.
+
+    The stub endpoint is a REAL-shaped Azure host, because `_validated_azure_endpoint`
+    now refuses anything else — a placeholder like `https://stub.invalid` would make
+    every transport test fail for the wrong reason and hide whatever it was checking."""
+    class _Resp:
+        def read(self): return json.dumps(payload).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _Opener:
+        def open(self, *a, **k): return _Resp()
+
+    real_key, real_opener = bj._key, bj._no_redirect_opener
+    bj._key = (lambda name: "https://stub-test.openai.azure.com"
+               if "endpoint" in name else "stub-key")
+    bj._no_redirect_opener = lambda: _Opener()
+    try:
+        yield
+    finally:
+        bj._key, bj._no_redirect_opener = real_key, real_opener
+
+
+def _azure_error(payload):
+    with _azure_reply(payload):
+        try:
+            bj.call_azure("gpt-5-6-luna", "s", "u")
+        except RuntimeError as e:
+            return str(e)
+    raise AssertionError(f"call_azure accepted {payload!r}")
+
+
+def test_azure_returns_the_assistant_text_on_a_good_reply():
+    with _azure_reply({"choices": [{"message": {"content": "  [] "},
+                                   "finish_reason": "stop"}]}):
+        assert bj.call_azure("gpt-5-6-luna", "s", "u") == "[]"
+
+
+def test_azure_names_the_token_cap_when_the_budget_ran_out():
+    # Measured shape: this deployment reasons, so exhausting the budget yields
+    # finish_reason='length' with EMPTY content, not a half-written array. The operator
+    # action is a cap or chunk-size change, so the message has to say so.
+    msg = _azure_error({"choices": [{"message": {"content": ""},
+                                     "finish_reason": "length"}]})
+    assert "max_completion_tokens" in msg and "chunk-size" in msg, msg
+
+
+def test_azure_distinguishes_a_dropped_reply_from_a_token_cap():
+    # Same empty body, different finish_reason: a dropped chunk is the #1950 failure and
+    # raising the cap would not help, so it must not borrow the cap's advice.
+    msg = _azure_error({"choices": [{"message": {"content": ""},
+                                     "finish_reason": "stop"}]})
+    assert "max_completion_tokens" not in msg, msg
+    assert "empty content" in msg, msg
+
+
+def test_azure_refuses_a_reply_with_no_choices():
+    assert "no choices" in _azure_error({"choices": []})
+
+
+@contextlib.contextmanager
+def _endpoint(value):
+    """Point the endpoint lookup at `value` without touching the real environment."""
+    real = bj._key
+    bj._key = lambda name: value if "endpoint" in name else "stub-key"
+    try:
+        yield
+    finally:
+        bj._key = real
+
+
+def test_a_non_azure_endpoint_is_refused_before_the_key_is_read():
+    # The risk: `_key` reads the environment first, so an inherited or mistyped
+    # AZURE_OPENAI_ENDPOINT would send our api-key header to somebody else's host.
+    for bad in ("https://evil.example.com", "http://x.openai.azure.com",
+                "https://x.openai.azure.com/steal", "https://x.openai.azure.com?q=1",
+                "https://openai.azure.com.evil.test", ""):
+        try:
+            with _endpoint(bad):
+                bj._validated_azure_endpoint()
+        except RuntimeError as e:
+            assert "refusing to send the Azure key" in str(e), (bad, str(e))
+        else:
+            raise AssertionError(f"accepted endpoint {bad!r}")
+
+
+def test_a_real_azure_endpoint_is_accepted():
+    # Two-way control: a validator that refuses everything would pass the test above
+    # while making the judge unusable. Both suffixes ACCEPTED FOR THIS ROUTE must pass.
+    # Deliberately not "every hostname Azure issues": Foundry exposes more FQDN families
+    # than these two, and not all of them serve this legacy chat-completions route, so
+    # this list is our accepted set rather than a claim about Azure's naming.
+    for good in ("https://x.openai.azure.com", "https://x.openai.azure.com/",
+                 "https://y.cognitiveservices.azure.com"):
+        with _endpoint(good):
+            assert bj._validated_azure_endpoint() == good.rstrip("/")
+
+
+def test_a_redirect_is_refused_rather_than_followed():
+    # A validated host can still 3xx to an arbitrary one, and urllib replays the headers
+    # we set on the Request, so the endpoint check alone does not contain the key.
+    handler = bj._no_redirect_opener().handlers
+    redirect = [h for h in handler if hasattr(h, "redirect_request")]
+    assert redirect, "no redirect handler installed"
+    try:
+        redirect[0].redirect_request(None, None, 302, "Found", {},
+                                     "https://evil.example.com/x")
+    except RuntimeError as e:
+        assert "refusing to follow" in str(e), str(e)
+    else:
+        raise AssertionError("redirect_request did not refuse")
+
+
+@contextlib.contextmanager
+def _azure_serving(model_field, host="stub-test.openai.azure.com"):
+    """Run judge_identity against a deployment that reports `model_field` as its served model."""
+    class _Resp:
+        def read(self):
+            return json.dumps({"model": model_field,
+                               "choices": [{"message": {"content": "x"},
+                                            "finish_reason": "stop"}]}).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _Opener:
+        def open(self, *a, **k): return _Resp()
+
+    real_key, real_opener = bj._key, bj._no_redirect_opener
+    bj._key = lambda name: (f"https://{host}" if "endpoint" in name else "stub-key")
+    bj._no_redirect_opener = lambda: _Opener()
+    try:
+        yield
+    finally:
+        bj._key, bj._no_redirect_opener = real_key, real_opener
+
+
+def test_the_identity_changes_when_the_deployment_is_repointed():
+    # Cloud review round 6 P1. Azure can upgrade a deployment IN PLACE: hostname, deployment
+    # name and API version all stay identical while the model underneath changes. An identity
+    # built from configuration alone keeps matching receipts graded by the previous model, so a
+    # resumed sweep skips them and combines two models' scores.
+    with _azure_serving("gpt-5.6-luna-2026-07-09"):
+        before = bj.judge_identity("azure/gpt-5-6-luna")
+    with _azure_serving("gpt-5.6-luna-2026-11-01"):
+        after = bj.judge_identity("azure/gpt-5-6-luna")
+    assert before != after, (
+        f"the identity survived a deployment repoint, so old receipts would be reused: {before}")
+
+
+def test_the_identity_is_stable_while_the_deployment_is_not_repointed():
+    # Two-way control. An identity that changed every call would invalidate every stamp on every
+    # sweep and re-grade the whole field forever — the expensive failure, and it looks like
+    # nothing is wrong.
+    with _azure_serving("gpt-5.6-luna-2026-07-09"):
+        a = bj.judge_identity("azure/gpt-5-6-luna")
+        b = bj.judge_identity("azure/gpt-5-6-luna")
+    assert a == b, f"identity is not stable across calls: {a} != {b}"
+
+
+def test_the_served_model_is_never_absent_from_the_identity():
+    # Fail rather than fall back to a version-blind identity: blind reuse across a model change
+    # is worse than refusing to start, and this is the only axis the client cannot see from its
+    # own configuration.
+    for bad in (None, "", "   "):
+        try:
+            with _azure_serving(bad):
+                bj.judge_identity("azure/gpt-5-6-luna")
+        except RuntimeError as e:
+            assert "did not report which model" in str(e), str(e)
+        else:
+            raise AssertionError(f"accepted a served-model field of {bad!r}")
+
+
+def test_the_identity_probe_goes_through_the_no_redirect_opener():
+    # The probe sends the api-key, so it must not be able to follow a redirect off the validated
+    # host any more than the grading calls can. Asserted by construction: with the opener stubbed
+    # the probe succeeds, and `_azure_served_model` has no other transport.
+    src = Path(bj.__file__).read_text()
+    body = src.split("def _azure_served_model(")[1].split("\ndef ")[0]
+    assert "_no_redirect_opener()" in body, "the probe bypasses the no-redirect opener"
+    assert "urllib.request.urlopen" not in body, "the probe uses a raw opener"
+
+
+@contextlib.contextmanager
+def _azure_pin(value):
+    """Pin the process to a model version, and restore it afterwards."""
+    real = bj._azure_pinned_model
+    bj._azure_pinned_model = value
+    try:
+        yield
+    finally:
+        bj._azure_pinned_model = real
+
+
+def test_a_grading_response_from_a_different_model_is_refused():
+    # Cloud review round 7. The identity probe is a time-of-CHECK; each grading call is a
+    # time-of-USE. A repoint between them would stamp post-change scores with the pre-change
+    # identity, so one scoreboard would silently hold two judge versions.
+    with _azure_pin("gpt-5.6-luna-2026-07-09"):
+        with _azure_reply({"model": "gpt-5.6-luna-2026-11-01",
+                           "choices": [{"message": {"content": "[]"},
+                                        "finish_reason": "stop"}]}):
+            try:
+                bj.call_azure("gpt-5-6-luna", "s", "u")
+            except RuntimeError as e:
+                assert "repointed mid-run" in str(e), str(e)
+            else:
+                raise AssertionError("a response from a different model was accepted")
+
+
+def test_a_response_that_names_no_model_is_refused_when_pinned():
+    # Cloud review round 9, a fail-open in the round-7 check. It required a differing NONEMPTY
+    # STRING to refuse, so a response omitting `model`, or returning it blank or non-string,
+    # skipped the comparison and had its scores accepted and stamped with the pinned identity.
+    # The question that finds this class: what input makes the condition match NOTHING, and does
+    # it then allow or refuse?
+    for bad in (None, "", "   ", 42, ["gpt"]):
+        with _azure_pin("gpt-5.6-luna-2026-07-09"):
+            with _azure_reply({"model": bad,
+                               "choices": [{"message": {"content": "[]"},
+                                            "finish_reason": "stop"}]}):
+                try:
+                    bj.call_azure("gpt-5-6-luna", "s", "u")
+                except RuntimeError as e:
+                    assert "did not say which model" in str(e), (bad, str(e))
+                else:
+                    raise AssertionError(f"accepted scores with model={bad!r} while pinned")
+
+
+def test_a_missing_model_field_is_tolerated_when_NOT_pinned():
+    # Two-way control on the direction of that strictness. An unpinned process has no version to
+    # verify against and no stamp to corrupt, so requiring the field there would break the
+    # direct-call path for no benefit.
+    with _azure_pin(None):
+        with _azure_reply({"choices": [{"message": {"content": "[]"},
+                                        "finish_reason": "stop"}]}):
+            assert bj.call_azure("gpt-5-6-luna", "s", "u") == "[]"
+
+
+def test_a_grading_response_from_the_pinned_model_is_accepted():
+    # Two-way control. A check that refused everything would pass the case above while making
+    # every grading call fail — the loud failure, but it would look like Azure was broken.
+    with _azure_pin("gpt-5.6-luna-2026-07-09"):
+        with _azure_reply({"model": "gpt-5.6-luna-2026-07-09",
+                           "choices": [{"message": {"content": "[]"},
+                                        "finish_reason": "stop"}]}):
+            assert bj.call_azure("gpt-5-6-luna", "s", "u") == "[]"
+
+
+def test_an_unpinned_process_still_grades():
+    # The pin is set by preflight, so an unpinned process means nothing probed first. Grading
+    # must still work rather than refusing: this is the path a direct call takes, and there is no
+    # stamp comparison happening for it to corrupt.
+    with _azure_pin(None):
+        with _azure_reply({"model": "anything-at-all",
+                           "choices": [{"message": {"content": "[]"},
+                                        "finish_reason": "stop"}]}):
+            assert bj.call_azure("gpt-5-6-luna", "s", "u") == "[]"
+
+
+def test_preflight_pins_the_model_for_an_azure_judge():
+    # Pinned in preflight rather than left to the caller, so a run started directly still gets
+    # the time-of-use check. Without this, `_azure_pinned_model` stays None for any run that did
+    # not go through the shell, and the check above silently does nothing.
+    with _azure_pin(None):
+        with _azure_serving("gpt-5.6-luna-2026-07-09"):
+            bj.preflight_judge("azure/gpt-5-6-luna")
+            assert bj._azure_pinned_model == "gpt-5.6-luna-2026-07-09", bj._azure_pinned_model
+
+
+def test_an_inherited_pin_is_adopted_instead_of_reprobed():
+    # Cloud review round 8. Each arm is a separate process. If each probes for itself it pins
+    # whatever is CURRENT, so a deployment repointed between arms leaves that process
+    # self-consistent while the sweep still stamps every arm with the first model's identity —
+    # two model versions under one stamp. Adopting the sweep's pin makes such an arm fail on its
+    # first grading response instead.
+    with _azure_pin(None):
+        os.environ["EW_AZURE_PINNED_MODEL"] = "gpt-5.6-luna-2026-07-09"
+        try:
+            # No serving stub: adopting the inherited pin must not require a probe at all, which
+            # is also what saves one request per arm.
+            bj.preflight_judge("azure/gpt-5-6-luna")
+            assert bj._azure_pinned_model == "gpt-5.6-luna-2026-07-09", bj._azure_pinned_model
+        finally:
+            del os.environ["EW_AZURE_PINNED_MODEL"]
+
+
+def test_an_arm_refuses_when_the_deployment_moved_since_the_sweep_probed():
+    # The consequence that makes the propagation worth it: the arm is pinned to the SWEEP's model,
+    # so a deployment now serving something else fails loudly rather than scoring under the
+    # sweep's stamp.
+    with _azure_pin(None):
+        os.environ["EW_AZURE_PINNED_MODEL"] = "gpt-5.6-luna-2026-07-09"
+        try:
+            bj.preflight_judge("azure/gpt-5-6-luna")
+            with _azure_reply({"model": "gpt-5.6-luna-2026-11-01",
+                               "choices": [{"message": {"content": "[]"},
+                                            "finish_reason": "stop"}]}):
+                try:
+                    bj.call_azure("gpt-5-6-luna", "s", "u")
+                except RuntimeError as e:
+                    assert "repointed mid-run" in str(e), str(e)
+                else:
+                    raise AssertionError("the arm graded under the wrong model version")
+        finally:
+            del os.environ["EW_AZURE_PINNED_MODEL"]
+
+
+def test_the_identity_probe_reports_the_served_model_as_its_third_line():
+    # The sweep parses line 3 to build the pin it exports. A probe that printed two lines would
+    # export an empty pin, and every per-response check would then silently do nothing.
+    src = Path(bj.__file__).read_text()
+    block = src.split('if "--print-judge-identity" in sys.argv:')[1].split("return 0")[0]
+    # Counts STDOUT lines only: the error path in the same block prints to stderr, and a naive
+    # count of "print(" includes it — which is how the first version of this assertion failed
+    # against correct code.
+    stdout_prints = [ln.strip() for ln in block.splitlines()
+                     if "print(" in ln and "file=sys.stderr" not in ln]
+    assert len(stdout_prints) == 3, f"expected three stdout lines, got {stdout_prints}"
+    assert "DEFAULT_JUDGE" in stdout_prints[0], stdout_prints
+    assert "identity" in stdout_prints[1], stdout_prints
+    assert "_azure_pinned_model" in stdout_prints[2], stdout_prints
+
+
+def test_the_billing_check_runs_before_the_availability_check():
+    # Refusing to spend the founder's own money must not depend on whether some CLI
+    # happens to be logged in, so the order in main() is load-bearing.
+    src = Path(bj.__file__).read_text()
+    body = src.split("def main(")[1]
+    assert body.index("refuse_paid_key_judge(args.judge)") \
+        < body.index("preflight_judge(args.judge)"), \
+        "refuse_paid_key_judge must be called before preflight_judge in main()"
+
+
+# --------------------------------------------------------------------------- #
 # runner                                                                      #
 # --------------------------------------------------------------------------- #
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 67
+EXPECTED_TESTS = 119
 
 
 def _run() -> int:

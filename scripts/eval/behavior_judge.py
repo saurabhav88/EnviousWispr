@@ -40,10 +40,16 @@ Inputs (both systems):
                 the judge and aggregate these (lets a subagent self-judge, then
                 this harness does the deterministic roll-up).
 
-Judge backend mirrors acceptance_gate.py exactly: `claude-sonnet-4-6` over the
-headless Claude CLI ($0 at the margin, subscription auth) by default; `gpt*` ->
-OpenAI, else Gemini, via --judge / EW_JUDGE. Every Claude sandbox flag is copied
-verbatim from the proven path (each earned a Codex round — do not change here).
+Judge backend, selected with --judge / EW_JUDGE. Two funded routes, and nothing else
+is permitted: `azure/<deployment>` on the Azure startup credits (the DEFAULT), and
+`claude*`/`sonnet*` over the headless Claude CLI (subscription auth, $0 at the margin,
+but it spends the weekly budget needed for building). Direct OpenAI and Gemini model ids
+are REFUSED, as is any unrecognised id — those bill the founder's own money, which
+grading may not do (founder 2026-08-11). Note `claude*` is NOT refused: it reaches the
+logged-in CLI rather than a direct Anthropic API-key transport, which is why it
+counts as funded. What that CLI contacts is its own business; this module only chooses
+how the judge is invoked. Every Claude sandbox flag is copied verbatim from the proven
+path (each earned a Codex round — do not change here).
 
 Outputs -> <outdir>/ : per_case.jsonl, summary.json, scoreboard.txt.
 """
@@ -51,6 +57,7 @@ Outputs -> <outdir>/ : per_case.jsonl, summary.json, scoreboard.txt.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import random
@@ -60,6 +67,7 @@ import tempfile
 import time
 import urllib.request
 import urllib.error
+import urllib.parse
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -69,17 +77,34 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 # ---------------------------------------------------------------------------
-# Judge backend — mirrors acceptance_gate.py. Default = on-subscription Claude
-# Sonnet via headless CLI ($0). DO NOT alter the Claude sandbox flags; each one
-# earned a Codex round (polish-eval.md FACT: bench-judge-is-claude-sonnet).
+# Judge backend. Default = Azure on the startup credits since 2026-08-11; the
+# on-subscription Claude CLI is still supported and is no longer the default, so
+# this no longer mirrors acceptance_gate.py, which stays on Sonnet as the CI gate.
+# DO NOT alter the Claude sandbox flags; each one earned a Codex round
+# (polish-eval.md FACT: bench-judge-is-claude-sonnet, whose sandbox invariants are
+# still live even though its judge SELECTION is marked historical).
 # ---------------------------------------------------------------------------
 
-CLAUDE_JUDGE_MODEL_ID = "claude-sonnet-5"  # founder decision 2026-07-02: Sonnet 5
-# is the PRIMARY judge — it graded the published 1,890-case research run
-# (runs/prompt-tune-2026-07-01/full1890/*/summary.json "judge": "claude-sonnet-5");
-# claude-sonnet-4-6 (the old default) grades measurably harsher, so scores from
-# the two judges are NOT comparable. Never mix judge models within a comparison.
-DEFAULT_JUDGE = os.environ.get("EW_JUDGE", CLAUDE_JUDGE_MODEL_ID)
+CLAUDE_JUDGE_MODEL_ID = "claude-sonnet-5"  # founder decision 2026-07-02, superseded
+# below as the DEFAULT but still the id to pass when a run must be comparable to the
+# published 1,890-case research run, which it graded
+# (runs/prompt-tune-2026-07-01/full1890/*/summary.json "judge": "claude-sonnet-5").
+
+AZURE_JUDGE_DEPLOYMENT_ID = "azure/gpt-5-6-luna"  # founder decision 2026-08-11: the
+# DEFAULT judge, on the expiring Azure startup credits. The reason is which scarce
+# resource each option burns, not accuracy: the Claude subscription is building
+# capacity (~99% used by Thursday) and the Codex plan is adversarial review, while an
+# unspent credit is a pure loss. Validated over 12 local arms before the switch —
+# 0 of 12 shipped labels moved, delta median 0.0pp, and on the three substantive
+# disagreements spot-checked by hand Luna was right all three times. The full comparison
+# is recorded on issue #1950; the receipts themselves are local only, which is why the
+# durable copy lives there rather than behind a path in this repo.
+#
+# Judges are NOT interchangeable mid-comparison: re-grade every arm of a comparison
+# with one judge rather than reading a new arm against an old baseline. The earlier
+# blanket "never mix judge models" was retired by the founder on 2026-08-11 because
+# re-benchmarking is routine here, which makes the cheap judge the enabling one.
+DEFAULT_JUDGE = os.environ.get("EW_JUDGE", AZURE_JUDGE_DEPLOYMENT_ID)
 CLAUDE_JUDGE_MAX_WORKERS = 6            # subprocess per call; cap fan-out. Raised
 # from 3 (#1199 speed pass, 2026-06-30), then 20 -> 32 (founder 2026-07-02:
 # faster judging: no metered cost on the subscription judge, only a transient
@@ -95,6 +120,33 @@ DEFAULT_ADJUDICATE_PCT = 0.15          # new-system: fraction of pass/minor/soft
 DEFAULT_ADJUDICATE_MIN = 15            # cases re-judged as a calibration sample
 REP_PASSRATE_DELTA_MAX = 5.0          # pp; wobble above this flags the run unreliable
 DEFAULT_CHUNK_SIZE = 8
+
+# Azure OpenAI data-plane version for the chat-completions route. Pinned rather than
+# floating because this route's accepted PARAMETERS are version- and model-dependent,
+# and a rejection arrives as a bare HTTP 400 that reads like a broken judge. Measured
+# against this deployment on 2026-08-11, both as HTTP 400:
+#   "'max_tokens' is not supported with this model. Use 'max_completion_tokens'"
+#   "'temperature' does not support 0 with this model. Only the default (1)"
+AZURE_API_VERSION = "2024-10-21"
+
+# The model version pinned for THIS process, set by `judge_identity` when it probes the
+# deployment. Every grading response is then checked against it, because the probe is a
+# time-of-check and each grading call is a time-of-use: Azure can repoint a deployment
+# mid-sweep, and receipts written after that would carry the pre-change identity while holding
+# post-change scores — one scoreboard silently mixing two judge versions. Cloud review found
+# the gap; the check is one comparison on a field the response already carries.
+#
+# None means "not pinned", which happens only when nothing probed first. `call_azure` then
+# cannot verify, so `preflight_judge` pins for every azure run rather than leaving it to the
+# caller to remember.
+_azure_pinned_model: str | None = None
+
+# The full judge identity THIS process resolved, for a run started directly rather than through
+# `judge_ollama_bench.sh`. The receipt records the sweep's `EW_JUDGE_IDENTITY` when there is one
+# and this otherwise: a direct run resolves a perfectly good identity in preflight, and reading
+# only the environment threw it away, so two direct receipts from different Azure resources
+# recorded the same empty provenance and the report could not tell them apart.
+_resolved_judge_identity: str | None = None
 
 
 class MissingSecretError(RuntimeError):
@@ -119,43 +171,15 @@ def _retryable_http_error(exc: Exception) -> bool:
     return isinstance(exc, (urllib.error.URLError, TimeoutError))
 
 
-def call_openai(model: str, system: str, user: str) -> str:
-    body = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "temperature": 0,
-    }
-    req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
-        data=json.dumps(body).encode(),
-        headers={"Authorization": f"Bearer {_key('openai-api-key')}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
-    return data["choices"][0]["message"]["content"].strip()
-
-
-def call_gemini(model: str, system: str, user: str, json_mime: bool = True) -> str:
-    body = {
-        "systemInstruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": user}]}],
-        "generationConfig": {"temperature": 0},
-    }
-    if json_mime:
-        body["generationConfig"]["responseMimeType"] = "application/json"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={_key('gemini-api-key')}"
-    req = urllib.request.Request(
-        url, data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"}, method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
-    parts = data["candidates"][0]["content"]["parts"]
-    return "".join(p.get("text", "") for p in parts).strip()
+# `call_openai` and `call_gemini` are DELETED, not merely unrouted (founder 2026-08-11,
+# grading may not bill a personal key). A refusal check is a promise; a missing transport
+# is a fact, and the two differ the moment somebody calls `dispatch_judge` directly or
+# adds a route. Deleting them also removes the fall-through that made an unrecognised
+# `--judge` value bill the personal Gemini key with no warning.
+#
+# Their code is not lost: `acceptance_gate.py` keeps its own copies for the CI corpus
+# gate, which is a separate tool on a separate corpus with its own judge selection.
+# Restoring one here needs a founder decision, not a paste.
 
 
 def _judge_subprocess_env() -> dict:
@@ -203,27 +227,355 @@ def call_claude(model: str, system: str, user: str) -> str:
     return result.strip()
 
 
+def _validated_azure_endpoint() -> str:
+    """The Azure endpoint, refused unless it uses HTTPS and one of the Azure hostname
+    suffixes accepted for this route.
+
+    `_key` reads the ENVIRONMENT before the key file, so whatever is in
+    `AZURE_OPENAI_ENDPOINT` wins — and this transport then sends the Azure key to that
+    host in an `api-key` header. An endpoint variable inherited from another project, or
+    mistyped, would therefore hand our credential to somebody else's server. Nothing
+    downstream would notice, because a wrong host can answer however it likes: an error
+    that reads as a broken judge, or a plausible-looking reply.
+
+    Checks Azure-owned endpoint SHAPE rather than pinning one resource, so another
+    approved Azure OpenAI resource does not need a code edit, and so a deployment
+    configuration value does not get copied into a tracked file. This contains the
+    inherited-or-mistyped non-Azure-host risk. It is NOT an exact-resource allowlist: a
+    deliberately supplied hostname that is itself an Azure OpenAI resource would pass,
+    and the endpoint is configuration rather than the credential, so do not read this as
+    protecting the key against a hostile operator.
+
+    Redirects are disabled at the opener in `call_azure` rather than checked here: a
+    validated host can still 3xx to an arbitrary one, and urllib replays our headers.
+    """
+    endpoint = _key("azure-openai-endpoint").rstrip("/")
+    parsed = urllib.parse.urlsplit(endpoint)
+    host = (parsed.hostname or "").lower()
+    azure_openai_host = host.endswith(".openai.azure.com") or host.endswith(
+        ".cognitiveservices.azure.com")
+    if (parsed.scheme != "https" or not azure_openai_host
+            or parsed.path not in ("", "/") or parsed.query or parsed.fragment):
+        raise RuntimeError(
+            "azure judge: refusing to send the Azure key to "
+            f"{host or '(no host)'!r} — the endpoint must be an https Azure OpenAI "
+            "resource with no path, query or fragment. Check AZURE_OPENAI_ENDPOINT, "
+            "which overrides the stored key file.")
+    return endpoint
+
+
+def _no_redirect_opener() -> urllib.request.OpenerDirector:
+    """An opener that REFUSES redirects, so a 3xx cannot replay the api-key header at
+    another host. urllib follows redirects by default and re-sends headers set on the
+    Request, which would defeat the endpoint check above."""
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise RuntimeError(
+                f"azure judge: refusing to follow a {code} redirect to {newurl!r}; "
+                f"the api-key header must not leave the validated host")
+
+    return urllib.request.build_opener(_NoRedirect)
+
+
+def call_azure(deployment: str, system: str, user: str) -> str:
+    """Azure OpenAI judge, billed to the startup CREDITS, not to a personal key.
+
+    This is the default grading transport (founder 2026-08-11). The credits expire
+    (Azure ~$5K on 2027-01-13) so an unspent credit is a pure loss, while the Claude
+    subscription and the Codex plan are both capacity the founder needs for work no
+    cloud model can do: building, and adversarial review. Grading is the ideal load to
+    move here because it is bulk, parallel and nobody is waiting on it.
+
+    `deployment` is an Azure DEPLOYMENT name, not a vendor model id. The two differ:
+    `gpt-5-6-luna` is what our resource calls it.
+    """
+    endpoint = _validated_azure_endpoint()
+    url = (f"{endpoint}/openai/deployments/{deployment}/chat/completions"
+           f"?api-version={AZURE_API_VERSION}")
+    body = {
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        # No `temperature`: this model REJECTS an explicit 0 with HTTP 400 and permits
+        # only its default of 1 (measured 2026-08-11, see AZURE_API_VERSION). The Claude
+        # CLI route exposes no temperature control either, so neither supported transport
+        # pins the sampler. What bounds the resulting variation is the receipt's wobble
+        # check: over the 12 validation arms it measured 0.0pp on nine and 5.0pp on
+        # three, every one inside the existing 5.0pp limit. Note "inside" is exact for
+        # those three, which the limit permits because it flags only ABOVE 5.0pp.
+        #
+        # 16000 is measured, not guessed: this is a reasoning model, so a cap too low
+        # for the reasoning burns the whole budget and returns EMPTY (handled below).
+        # 16000 carried chunks of 8 cases with rationales across all 12 arms.
+        "max_completion_tokens": 16000,
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode(),
+        headers={"api-key": _key("azure-openai-key"), "Content-Type": "application/json"},
+        method="POST",
+    )
+    with _no_redirect_opener().open(req, timeout=300) as resp:
+        data = json.loads(resp.read())
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError(f"azure judge: no choices in response: {str(data)[:200]}")
+    # Time-of-use check against the pinned model version. A repoint between the identity probe
+    # and this call would otherwise produce scores from a new model under the old model's stamp.
+    # Raising aborts the chunk loudly, which the harness reports as a gap rather than caching.
+    served = data.get("model")
+    if _azure_pinned_model is not None:
+        # FAILS CLOSED on a missing or unusable field, which the first version of this check did
+        # not. It required a differing NONEMPTY STRING to refuse, so a response that omitted
+        # `model`, or returned it blank or non-string, skipped the comparison entirely and its
+        # scores were accepted — then stamped with the pinned identity. Exactly the guard shape
+        # worth distrusting: ask what input makes the condition match NOTHING, and whether it
+        # then allows or refuses. This one allowed.
+        if not isinstance(served, str) or not served.strip():
+            raise RuntimeError(
+                f"azure judge: the response did not say which model served it "
+                f"(model={served!r}), so these scores cannot be bound to the pinned version "
+                f"{_azure_pinned_model!r}. Refusing rather than stamping unverifiable scores.")
+        if served.strip() != _azure_pinned_model:
+            raise RuntimeError(
+                f"azure judge: deployment served {served.strip()!r} but this run is pinned to "
+                f"{_azure_pinned_model!r}. The deployment was repointed mid-run; stop and "
+                f"re-grade the whole field so one scoreboard cannot mix two judge versions.")
+    finish = choices[0].get("finish_reason")
+    content = (choices[0].get("message") or {}).get("content")
+    if not isinstance(content, str) or not content.strip():
+        # A cap hit and an ordinary empty reply are the same SHAPE here, so the two are
+        # split by finish_reason: only the first has an obvious operator action.
+        #
+        # Measured 2026-08-11 against the live deployment at caps of 16, 300, 800 and
+        # 2000 tokens: every one returned finish_reason='length' with content_len=0.
+        # This is a reasoning model, so the budget goes to reasoning tokens and a run
+        # that exhausts it emits NOTHING visible rather than a half-written array. That
+        # is why there is no separate partial-reply branch: not reachable in any probe.
+        # A future non-reasoning deployment could produce one, and it would surface as
+        # a json.loads error in the caller, which is the pre-existing behaviour for
+        # every other transport.
+        if finish == "length":
+            raise RuntimeError(
+                f"azure judge: no output — the whole "
+                f"max_completion_tokens={body['max_completion_tokens']} budget went to "
+                f"reasoning. Lower --chunk-size or raise the cap.")
+        raise RuntimeError(
+            f"azure judge: empty content (finish_reason={finish!r}). A dropped reply "
+            f"must fail loudly: a chunk that came back empty three times is how four "
+            f"cases went unscored in the #1950 Sonnet run.")
+    return content.strip()
+
+
+# The ONE authority for which judge ids are permitted and where each goes. Routing and
+# the billing decision are the same question, so they read the same table: two functions
+# agreeing by hand is a parity problem, and a test can only check the ids somebody
+# remembered to list. Ordered because the first matching prefix wins; today's prefixes do
+# not overlap, so keep future ones non-overlapping or put the most specific first.
+#
+# Every entry is FUNDED. There is deliberately no row for a personal key, and no
+# fall-through: an id matching nothing is refused, so an unrecognised `--judge` value
+# cannot become a charge.
+JUDGE_ROUTES: tuple[tuple[str, str], ...] = (
+    ("azure/", "azure"),    # Azure OpenAI on the expiring startup credits
+    ("claude", "claude"),   # headless Claude CLI, logged-in subscription, $0 at margin
+    ("sonnet", "claude"),
+)
+
+
+def judge_transport(model: str) -> str | None:
+    """The funded transport for `model`, or None if no funded route accepts it."""
+    for prefix, transport in JUDGE_ROUTES:
+        if model.startswith(prefix):
+            return transport
+    return None
+
+
+def judge_lacks_funded_route(model: str) -> bool:
+    """True when no approved funded route accepts `model`.
+
+    Named for what it can actually establish. The earlier name asserted that grading the
+    id WOULD spend the founder's money, which is true of a known direct-vendor id and
+    overstated for an arbitrary unknown one: an unrecognised name used to reach the
+    Gemini transport under our key, but whether that produced a charge or a rejection is
+    not something this function knows. "No funded route" is the whole test, and refusing
+    on it is correct either way.
+
+    Derived from `JUDGE_ROUTES` rather than restating it, which is what makes drift
+    impossible instead of merely tested: adding a route cannot leave this behind.
+    """
+    return judge_transport(model) is None
+
+
 def dispatch_judge(model: str, system: str, user: str) -> str:
-    """Route by model-id prefix; return raw assistant text (a JSON array, maybe
-    fenced) for the caller to fence-strip + json.loads."""
-    if model.startswith(("claude", "sonnet")):
+    """Route to a funded transport; return raw assistant text (a JSON array, maybe
+    fenced) for the caller to fence-strip + json.loads.
+
+    The billing refusal lives HERE, in the dispatcher immediately before transport
+    selection, not only in `main()`. `main()`
+    checks first for a better error before a long run, but that check is bypassed by any
+    direct call to `dispatch_judge`, `judge_chunk`, `run_judge`, `score_new` or
+    `score_old` — so the check a promise depends on has to sit where the money is spent.
+
+    `azure/<deployment>` is EXPLICIT rather than inferred from the model name, so the
+    billing target is visible in the command that runs the grade. `--judge
+    gpt-5-6-luna` names our Azure deployment but reads as an OpenAI model id, and
+    without the prefix it would spend a different pot of money.
+    """
+    refuse_paid_key_judge(model)
+    transport = judge_transport(model)
+    if transport == "azure":
+        return call_azure(model[len("azure/"):], system, user)
+    if transport == "claude":
         return call_claude(model, system, user)
-    if model.startswith("gpt"):
-        return call_openai(model, system, user)
-    return call_gemini(model, system, user)
+    # Unreachable: refuse_paid_key_judge exits on every id judge_transport rejects, and
+    # JUDGE_ROUTES has no other transport. Raise rather than fall through, so adding a
+    # route without a branch is a loud error and never a silent wrong-vendor call.
+    raise RuntimeError(f"no transport for judge {model!r} (JUDGE_ROUTES is out of step)")
+
+
+def _azure_served_model(deployment: str) -> str:
+    """The model AND VERSION this deployment actually serves right now.
+
+    Azure can upgrade or repoint a deployment IN PLACE: the endpoint hostname, the deployment
+    name and the API version all stay identical while the model underneath changes, depending
+    on the deployment's upgrade policy. An identity built from those three would keep matching
+    receipts graded by the previous model, so a resumed sweep would skip them and combine two
+    models' scores — the silent mixing this whole change exists to prevent, arriving by the one
+    route the client cannot see from configuration alone.
+
+    The data plane reports it: the chat-completions response carries `model`, which on this
+    resource reads `gpt-5.6-luna-2026-07-09` (measured 2026-08-11). It changes when the
+    deployment is repointed, which is exactly the signal needed.
+
+    Costs one 16-token request per sweep, and earns it twice: it also proves the deployment
+    ANSWERS before the sweep touches any receipt, which no amount of name checking can do.
+    `system_fingerprint` would be the stronger signal but this resource returns null for it.
+    """
+    endpoint = _validated_azure_endpoint()
+    url = (f"{endpoint}/openai/deployments/{deployment}/chat/completions"
+           f"?api-version={AZURE_API_VERSION}")
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"messages": [{"role": "user", "content": "."}],
+                         "max_completion_tokens": 16}).encode(),
+        headers={"api-key": _key("azure-openai-key"), "Content-Type": "application/json"},
+        method="POST",
+    )
+    with _no_redirect_opener().open(req, timeout=60) as resp:
+        data = json.loads(resp.read())
+    served = data.get("model")
+    if not isinstance(served, str) or not served.strip():
+        # Fail rather than fall back to a version-blind identity: a blind identity silently
+        # reuses receipts across a model change, which is worse than refusing to start.
+        raise RuntimeError(
+            f"azure judge: deployment {deployment!r} did not report which model served the "
+            f"request, so a receipt stamp cannot be bound to a model version")
+    return served.strip()
+
+
+def judge_identity(model: str) -> str:
+    """What actually graded, as one string safe to hash into a resume stamp.
+
+    The judge ID alone is NOT sufficient identity, and cloud review caught this. Azure
+    deployment names are RESOURCE-LOCAL: `azure/gpt-5-6-luna` on one resource and the same
+    label on another can serve different underlying deployments. `_key` reads the endpoint
+    from the environment first, so the resource can change with no change to the id — and a
+    stamp built from the id alone would then match a receipt graded by a different model and
+    skip it, silently mixing two graders in one comparison. That is exactly the defect
+    putting the judge in the stamp was meant to prevent, one level further down.
+
+    The API version is folded in for the same reason: this route's accepted parameters and
+    behaviour are version-dependent, so a version bump is a different grader.
+
+    And the SERVED MODEL VERSION, because Azure can repoint a deployment in place while all
+    three of those stay the same. That is the only axis a client cannot read from its own
+    configuration, so it is read from the deployment itself. See `_azure_served_model`.
+
+    Returns a DIGEST of the endpoint host, never the host itself. The value is written into a
+    hashed stamp and printed to a terminal, and neither is a place to put a resource name.
+
+    Raises `MissingSecretError` or `RuntimeError` if the endpoint cannot be resolved or
+    validated, so an unusable configuration fails here rather than after work is deleted.
+    """
+    if judge_lacks_funded_route(model):
+        raise RuntimeError(f"no approved funded grading route for judge {model!r}")
+    if not model.startswith("azure/"):
+        return model
+    host = (urllib.parse.urlsplit(_validated_azure_endpoint()).hostname or "").lower()
+    served = _azure_served_model(model[len("azure/"):])
+    global _azure_pinned_model, _resolved_judge_identity
+    _azure_pinned_model = served
+    digest = hashlib.sha256(
+        f"{host}|{AZURE_API_VERSION}|{served}".encode()).hexdigest()[:12]
+    _resolved_judge_identity = f"{model}@{digest}"
+    return _resolved_judge_identity
+
+
+def refuse_paid_key_judge(model: str) -> None:
+    """Grading on a personal vendor API key is BANNED (founder 2026-08-11).
+
+    That money is the founder's own; the Azure/AWS credits are money that expires
+    unspent. The ban is enforced here rather than left to discipline because the old
+    default made it invisible: `--judge gpt-4o` routed to api.openai.com on a personal
+    key and looked exactly like any other judge id at the call site.
+
+    Not a blanket ban on those keys, only on GRADING. Other uses are allowed with the
+    founder's permission, which is a decision no script should make silently.
+    """
+    if not judge_lacks_funded_route(model):
+        return
+    print(
+        f"REFUSED: --judge {model} has no approved funded grading route. Grading runs "
+        f"on the startup credits, never on a personal vendor API key.\n"
+        f"  Use:  --judge azure/gpt-5-6-luna\n"
+        f"  The subscription Claude CLI judge (--judge claude-sonnet-5) still works "
+        f"but consumes the weekly budget needed for building.\n"
+        f"  An unrecognised id is refused for the same reason: no funded route matches "
+        f"it, and the transport it used to fall through to was billed to a personal key.",
+        file=sys.stderr)
+    sys.exit(2)
 
 
 def preflight_judge(model: str) -> None:
-    """For the Claude judge, verify the CLI is installed AND logged in before we
-    spend a long run; abort (exit 2) otherwise. No-op for HTTP judges (a bad key
-    surfaces on the first real call)."""
-    if not model.startswith(("claude", "sonnet")):
+    """Prove the judge can work before a long run, and abort (exit 2) otherwise.
+
+    Claude: the CLI is installed and logged in. Azure: the deployment answers, and the model
+    version it serves is PINNED for the rest of this process so every grading response can be
+    checked against it. Pinning here rather than trusting the caller, because a run started
+    directly (not through `judge_ollama_bench.sh`, which resolves the identity itself) would
+    otherwise grade with no pin and no time-of-use check.
+    """
+    if judge_transport(model) == "azure":
+        global _azure_pinned_model
+        inherited = os.environ.get("EW_AZURE_PINNED_MODEL", "").strip()
+        if inherited:
+            # The SWEEP already probed. Adopt its answer rather than probing again: a fresh probe
+            # would pin whatever is current, so a deployment repointed between arms would make
+            # this arm self-consistent and still wrong relative to the stamp the sweep writes.
+            # Verifying against the sweep's model means such an arm fails loudly on its first
+            # grading response instead of quietly scoring under another model's identity.
+            # It also saves one request per arm.
+            _azure_pinned_model = inherited
+            return
+        try:
+            judge_identity(model)          # probes and sets `_azure_pinned_model`
+        except Exception as e:
+            print(f"INFRA-ERROR: Azure judge unusable ({e}); aborting before any work.",
+                  file=sys.stderr)
+            sys.exit(2)
         return
+    if judge_transport(model) != "claude":
+        return
+    global _resolved_judge_identity
     try:
         call_claude(model, "You output only JSON.", "Reply with exactly: []")
+        _resolved_judge_identity = model
     except Exception as e:
         print(f"INFRA-ERROR: Claude judge CLI unavailable/unauthed ({e}); aborting. "
-              f"Run `claude` once to log in, or pass --judge <paid-id>.", file=sys.stderr)
+              f"Run `claude` once to log in, or pass --judge azure/gpt-5-6-luna.",
+              file=sys.stderr)
         sys.exit(2)
 
 
@@ -324,7 +676,10 @@ def run_judge(model: str, system: str, payloads: list[dict], chunk_size: int) ->
     short answer.
     """
     chunks = [payloads[i:i + chunk_size] for i in range(0, len(payloads), chunk_size)]
-    workers = CLAUDE_JUDGE_MAX_WORKERS if model.startswith(("claude", "sonnet")) else HTTP_JUDGE_MAX_WORKERS
+    # Transport decided by JUDGE_ROUTES, never by a second hand-rolled prefix test.
+    # Each transport carries its own cap, and the progress line reads this same choice.
+    workers = (CLAUDE_JUDGE_MAX_WORKERS if judge_transport(model) == "claude"
+               else HTTP_JUDGE_MAX_WORKERS)
     scores: dict[str, dict] = {}
     start = time.time()
     done = 0
@@ -1341,6 +1696,31 @@ def render_scoreboard(r: dict, system: str) -> str:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
+    # Handled BEFORE argparse deliberately: `--corpus`, `--candidates` and `--out` are all
+    # required, so a caller that only wants to know which judge is configured would have to
+    # invent three paths to ask. Callers use this to VALIDATE the judge before touching any
+    # stored receipt — `judge_ollama_bench.sh` deletes a receipt whose stamp no longer
+    # matches, so a refused or mistyped EW_JUDGE would otherwise delete the whole cached set
+    # and then exit before writing replacements. Exits 2 with a reason instead.
+    #
+    # Prints two lines: the judge id, then its stamp identity. Two lines rather than one so
+    # the caller does not have to split on a separator that could appear inside either value.
+    if "--print-judge-identity" in sys.argv:
+        try:
+            identity = judge_identity(DEFAULT_JUDGE)
+        except Exception as e:
+            print(f"judge {DEFAULT_JUDGE!r} is unusable: {e}", file=sys.stderr)
+            return 2
+        print(DEFAULT_JUDGE)
+        print(identity)
+        # Third line: the model version this probe observed, empty for non-Azure routes. The
+        # sweep exports it so every arm verifies against the SWEEP's model rather than its own
+        # probe. Without it each arm process probed independently, so a repoint between arms left
+        # every process self-consistent while the shell stamped them all with the first arm's
+        # identity — arms graded by different models sharing one stamp. Cloud review found it.
+        print(_azure_pinned_model or "")
+        return 0
+
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--system", choices=("new", "old"), default="new",
@@ -1354,7 +1734,9 @@ def main() -> int:
     ap.add_argument("--verdicts", default=None,
                     help="(new only) pre-computed per-case verdicts JSONL; skip the judge, just aggregate")
     ap.add_argument("--judge", default=DEFAULT_JUDGE,
-                    help=f"judge model id (default {DEFAULT_JUDGE}); claude*/sonnet*->CLI $0, gpt*->OpenAI, else Gemini")
+                    help=f"judge model id (default {DEFAULT_JUDGE}); "
+                         f"azure/<deployment>->Azure credits, claude*/sonnet*->CLI $0. "
+                         f"Any other id is REFUSED: no approved funded route matches it")
     ap.add_argument("--reps", type=int, default=DEFAULT_REPLICATIONS,
                     help=f"(old system only) full-corpus judge replications (default {DEFAULT_REPLICATIONS})")
     ap.add_argument("--adjudicate-pct", type=float, default=DEFAULT_ADJUDICATE_PCT,
@@ -1413,11 +1795,20 @@ def main() -> int:
         prod = load_candidates(pp)
 
     if external_verdicts is None:
+        # Billing check BEFORE the availability check: refusing to spend the founder's
+        # own money must not depend on whether a CLI happens to be logged in.
+        refuse_paid_key_judge(args.judge)
         preflight_judge(args.judge)
         if args.system == "new":
             mode = "single-pass, no adjudication" if args.no_adjudicate else \
                    f"primary + adjudicate(S3/S4 + {args.adjudicate_pct*100:.0f}% sample, min {args.adjudicate_min})"
-            print(f"[judge] {args.judge}  {mode}  chunk={args.chunk_size}  workers={CLAUDE_JUDGE_MAX_WORKERS}",
+            # Report the fan-out this judge will actually use. `run_judge` picks per
+            # transport (Claude spawns a subprocess each, HTTP judges do not), so
+            # printing the Claude cap unconditionally misreported every Azure run.
+            workers = (CLAUDE_JUDGE_MAX_WORKERS
+                       if judge_transport(args.judge) == "claude"
+                       else HTTP_JUDGE_MAX_WORKERS)
+            print(f"[judge] {args.judge}  {mode}  chunk={args.chunk_size}  workers={workers}",
                   file=sys.stderr)
         else:
             print(f"[judge] {args.judge}  reps={args.reps}  chunk={args.chunk_size}", file=sys.stderr)
@@ -1433,6 +1824,19 @@ def main() -> int:
     report["meta"] = {
         "system": args.system,
         "judge": args.judge if external_verdicts is None else "external_verdicts",
+        # The MODEL VERSION that graded, when the transport can tell us. The judge id alone is
+        # not identity: an Azure deployment can be repointed in place, so two receipts can share
+        # `judge` and hold scores from different models. Recorded IN the receipt rather than only
+        # in the sidecar stamp because the report reads receipts, not stamps, and a consumer that
+        # cannot see the identity cannot refuse to mix it.
+        "judge_model_version": _azure_pinned_model,
+        # The FULL identity the sweep resolved: judge id plus a digest of the endpoint host, the
+        # API version and the served model. Passed in rather than recomputed so every arm records
+        # the same value, and so the report can distinguish two Azure resources that serve the
+        # same model string — which the id and version alone cannot, even though the resume stamp
+        # always could. Empty for a run started outside the sweep, which groups with other such
+        # runs rather than pretending to an identity it never resolved.
+        "judge_identity": os.environ.get("EW_JUDGE_IDENTITY") or _resolved_judge_identity,
         "reps": args.reps if args.system == "old" else None,
         "adjudicate_pct": args.adjudicate_pct if args.system == "new" else None,
         "adjudicate_min": args.adjudicate_min if args.system == "new" else None,
