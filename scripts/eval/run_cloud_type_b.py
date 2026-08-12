@@ -673,12 +673,30 @@ def main() -> int:
                 "inert — fix the errors and re-run before concluding anything.",
                 file=sys.stderr,
             )
+        elif thinking == GEMINI_THINKING_FAST.get(args.model.lower()):
+            # Ordered AFTER the errors branch on purpose: an incomplete run establishes
+            # nothing about production either.
+            #
+            # The refusal exists to catch an OVERRIDE that did not take. A shipped
+            # control makes no such claim — it ran production's exact request shape, so
+            # if that configuration is inert, that is a fact ABOUT PRODUCTION, and the
+            # arm is still the baseline every other arm is measured against. Failing it
+            # would discard the control: `gemini-3.1-pro-preview` ships `low` rather
+            # than `minimal`, so a shipped run of it would exit 2 on any corpus where
+            # the model happened never to think.
+            print(
+                f"WARNING: zero reasoning tokens across all {len(cases)} cases at "
+                f"{thinking[0]}={thinking[1]!r} — but this is the SHIPPED configuration, "
+                "so the arm is a valid production control and the finding is that "
+                "production is inert on this corpus, not that the arm is broken.",
+                file=sys.stderr,
+            )
         else:
             print(
                 f"FAIL: zero reasoning tokens across all {len(cases)} cases at "
-                f"{thinking[0]}={thinking[1]!r}, every one of which succeeded — no case "
-                "thought, so this level is inert on this model and the arm is "
-                "indistinguishable from thinking-off; do not grade it",
+                f"{thinking[0]}={thinking[1]!r}, every one of which succeeded, and this "
+                "is NOT the shipped configuration — the override did not take, so the "
+                "arm is indistinguishable from thinking-off; do not grade it",
                 file=sys.stderr,
             )
             return 2
