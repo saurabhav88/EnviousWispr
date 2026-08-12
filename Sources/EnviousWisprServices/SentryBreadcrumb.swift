@@ -421,10 +421,15 @@ public enum SentryBreadcrumb {
     /// mismatch, or an empty/torn prefix). Non-crash limb — the orphan is deleted.
     /// #1897: this said "and the user sees 'couldn't recover'". It does not.
     /// `OverlayIntent` has exactly two recovery cases, `recoveringLastRecording`
-    /// and `recoverySucceeded`; there is no failure case, so nothing is shown and
-    /// the "Saved to History when it's done" promise is dropped in silence. The
-    /// #1063 PR2 plan §2 required "no silent disappearance" and it was never
-    /// built. Do not restore that sentence here without a user-visible surface.
+    /// and `recoverySucceeded`; there is no failure case, so nothing is shown.
+    ///
+    /// That silence is now the INTENDED ending, not a gap. The #1063 PR2 plan §2
+    /// required "no silent disappearance", and the resolution was to remove the
+    /// disappearing promise rather than to announce the failure: the recovery
+    /// pill's subtitle no longer asserts that anything will be saved
+    /// (`DictationNarrator.recoverySubtitle`, founder decision 2026-08-12).
+    /// Do not add a failure sentence here or a failure case to `OverlayIntent`
+    /// without reopening that decision.
     case recoveryDecryptFailed = "recovery_decrypt_failed"
     /// #1063 PR2: transcribing a recovered spool THREW. Non-crash limb (one
     /// attempt) — the orphan is deleted, and see `recoveryDecryptFailed` above

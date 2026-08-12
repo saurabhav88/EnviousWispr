@@ -216,7 +216,51 @@ enum DictationNarrator {
   static let clipboardFallbackText = "Copied. Press \u{2318}V to paste"
   static let accessibilityToastText = "Auto-paste needs Accessibility"
   static let recoveryTitle = "Recovering your last recording…"
-  static let recoverySubtitle = "Saved to History when it's done"
+  /// #1897 — CONDITIONAL, and it must stay that way. This read "Saved to History
+  /// when it's done", which asserts an outcome the app cannot know yet, and a
+  /// recovery that ends without text says nothing at all — so the pill had
+  /// already promised something that never arrived.
+  ///
+  /// Founder decision 2026-08-12, given the choice between adding a failure
+  /// notice and removing the promise: *"stop promising, just close the loop
+  /// quietly."* The defect was only ever the promise. `OverlayIntent` therefore
+  /// keeps exactly its two recovery cases and gains NO failure case, which is
+  /// what this issue's body originally proposed and what that decision
+  /// explicitly declines.
+  ///
+  /// **An announcement would be wrong because the cause is UNKNOWN, not because
+  /// it is known-benign.** The single authority on what an empty recovery result
+  /// does and does not establish is the `recoveryEmptyText` doc comment in
+  /// `SentryBreadcrumb` — read it there rather than trusting any restatement,
+  /// including this one. Its consequence for copy: a recogniser miss on real
+  /// speech and a person who chose not to speak are indistinguishable here, so
+  /// any sentence naming a reason asserts one of two possibilities we cannot
+  /// tell apart.
+  ///
+  /// **Four review rounds on this one string each killed a different unsupported
+  /// claim in this comment** — a promised delivery, a promise conditioned on the
+  /// wrong link, an invented cause, and a statistic quoted with the wrong
+  /// denominator. Every one was a fact restated here that is owned somewhere
+  /// else. Hence the rule this block now follows: state the DECISION and point at
+  /// the owner; do not reproduce its numbers or its reasoning. If you find
+  /// yourself adding a figure here, put it where the contract lives instead.
+  ///
+  /// The quiet close needs no code: this pill is a transient notice with a 6s
+  /// auto-dismiss (`RecordingOverlayPanel`), so a recovery that yields nothing
+  /// already ends by the pill simply going away.
+  ///
+  /// **MORE THAN ONE link can defeat delivery, and a fix that closes only one
+  /// is the same defect again.** This shipped as "Anything found goes to History" and
+  /// cloud review killed it: conditioning on *found* still asserts the save.
+  /// `RecoverySpoolReplayer` can produce text and then have
+  /// `transcriptStore.save` throw (disk full, History unwritable), returning
+  /// `.failed(.save)`; `RecoveryCoordinator` posts its notice only for
+  /// `.recovered`, so that path shows nothing and the pill has again promised an
+  /// outcome that never happened. Condition on the LAST link instead: only a
+  /// transcript that actually saved reaches History, and that holds by
+  /// construction because `transcriptCoordinator.append` is non-throwing and runs
+  /// immediately after a successful `save`.
+  static let recoverySubtitle = "Anything saved lands in History"
   /// The recovery pill's CONTAINER accessibility label (no ellipsis — distinct
   /// bytes from `recoveryTitle`). VoiceOver reads it as the group's spoken status.
   static let recoveryAccessibilityLabel = "Recovering your last recording"

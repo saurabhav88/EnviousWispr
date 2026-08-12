@@ -254,7 +254,7 @@ import Testing
     #expect(DictationNarrator.clipboardFallbackText == "Copied. Press \u{2318}V to paste")
     #expect(DictationNarrator.accessibilityToastText == "Auto-paste needs Accessibility")
     #expect(DictationNarrator.recoveryTitle == "Recovering your last recording…")
-    #expect(DictationNarrator.recoverySubtitle == "Saved to History when it's done")
+    #expect(DictationNarrator.recoverySubtitle == "Anything saved lands in History")
     #expect(DictationNarrator.recoveryAccessibilityLabel == "Recovering your last recording")
     #expect(DictationNarrator.recoverySucceededTitle == "Recovered your last recording")
     #expect(DictationNarrator.recoverySucceededSubtitle == "Saved to History")
@@ -281,5 +281,42 @@ import Testing
     // The recovery AX label has no ellipsis; the visible title does.
     #expect(DictationNarrator.recoveryAccessibilityLabel != DictationNarrator.recoveryTitle)
     #expect(!DictationNarrator.recoveryAccessibilityLabel.contains("…"))
+  }
+
+  /// #1897 — the IN-PROGRESS recovery subtitle must not assert the outcome the
+  /// SUCCESS subtitle asserts. The byte-exact test above pins today's wording;
+  /// this one pins the founder's 2026-08-12 decision ("stop promising"), so a
+  /// future rewording cannot quietly reintroduce a promise while staying green.
+  ///
+  /// The check is a substring test rather than a word list because the defect
+  /// had exactly that shape: the old subtitle was "Saved to History when it's
+  /// done", which CONTAINS the success claim "Saved to History" verbatim and
+  /// merely appends a timing clause. So this assertion is a genuine two-way
+  /// control — it fails against the string this issue removed, and passes
+  /// against the conditional one that replaced it. Verified in both directions.
+  ///
+  /// A recovery can end without producing text, so the in-progress pill cannot
+  /// know that anything will be saved. Only the success pill, which fires after
+  /// text has landed, may say so. Rates and what an empty result does and does
+  /// not establish are owned by the `recoveryEmptyText` doc comment in
+  /// `SentryBreadcrumb`; deliberately not restated here, because four review
+  /// rounds on this change killed four restatements.
+  ///
+  /// **What this test does NOT catch, stated so nobody trusts it further than it
+  /// goes.** It is a REVERT guard, not a promise detector. The first fix for this
+  /// issue shipped "Anything found goes to History", which passes here and was
+  /// still a promise — it conditions on speech being found while silently
+  /// asserting the save, and `transcriptStore.save` can throw. Cloud review
+  /// caught that; this assertion could not have. A differently-worded promise
+  /// will pass. The durable check is the reasoning recorded on
+  /// `DictationNarrator.recoverySubtitle`: enumerate every link that can defeat
+  /// delivery, and condition on the LAST one.
+  @Test("the in-progress recovery subtitle never asserts the success claim")
+  func recoveryInProgressSubtitleMakesNoPromise() {
+    #expect(
+      !DictationNarrator.recoverySubtitle.contains(DictationNarrator.recoverySucceededSubtitle))
+    // Guard the control itself: if the success subtitle ever stopped making an
+    // unconditional save claim, the assertion above would pass vacuously.
+    #expect(DictationNarrator.recoverySucceededSubtitle == "Saved to History")
   }
 }
