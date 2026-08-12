@@ -168,6 +168,21 @@ def resolve_gemini_thinking(model: str, override: str = "") -> tuple[str, object
             "budget, and inventing a number would benchmark a configuration the "
             "app never sends. Vary the budget in GEMINI_THINKING_FAST instead."
         )
+    # An id whose SHIPPED fast level is already `low` is one that cannot go lower: the
+    # table gives it `low` precisely because the provider rejects `minimal` (#1770).
+    # Read the floor off the table rather than keeping a second list of Pro ids, which
+    # would be one more thing to update when a model is added.
+    #
+    # Measured rather than taken from the note: gemini-3.1-pro-preview with
+    # thinkingLevel `minimal` returns HTTP 400 "Thinking level MINIMAL is not supported
+    # for this model" (2026-08-12). Refused here, before the run, because the request
+    # otherwise fails per case and a full corpus is spent discovering it.
+    if override == "minimal" and shipped[1] == "low":
+        raise ValueError(
+            f"{model!r} floors at 'low': the provider rejects thinkingLevel 'minimal' "
+            "with HTTP 400, and this id's shipped fast level is 'low' for that reason. "
+            "Use --thinking-level low as its off-equivalent."
+        )
     return (dialect, override)
 
 
@@ -568,12 +583,29 @@ def main() -> int:
         )
         return 2
     if not asked_off and thinking is not None and not reason_tok:
-        print(
-            f"FAIL: zero reasoning tokens with {thinking[0]}={thinking[1]!r} — the "
-            "request did not run the configuration this arm claims; do not grade it",
-            file=sys.stderr,
-        )
-        return 2
+        # A zero here means "no case chose to think", which is only EVIDENCE of an
+        # inert level over a whole corpus. Under --limit it is an ordinary outcome:
+        # thinking is per-request, and flash-lite at `medium` returned zero on a
+        # 3-case probe and thought on 119 of 338 real cases. Hard-failing a probe
+        # would break the very --limit smoke this file tells operators to run, so
+        # the severity follows what the run IS, not what the number is.
+        if args.limit:
+            print(
+                f"WARNING: zero reasoning tokens across {len(cases)} probe cases at "
+                f"{thinking[0]}={thinking[1]!r}. Thinking is decided per request, so a "
+                "probe this small cannot distinguish an inert level from cases that "
+                "declined to think. Not a verdict; run the full corpus to find out.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"FAIL: zero reasoning tokens across all {len(cases)} cases at "
+                f"{thinking[0]}={thinking[1]!r} — no case thought, so this level is "
+                "inert on this model and the arm is indistinguishable from thinking-off; "
+                "do not grade it",
+                file=sys.stderr,
+            )
+            return 2
     print(
         f"DONE {len(cases) - errors}/{len(cases)} in {int(time.monotonic() - t0)}s | errors={errors} -> {args.out}",
         file=sys.stderr,
