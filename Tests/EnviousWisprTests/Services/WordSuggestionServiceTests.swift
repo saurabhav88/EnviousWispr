@@ -954,7 +954,21 @@ struct WordSuggestionServicePermitQueueTests {
     // physically running (its gate is still closed here), proving the
     // logical permit was released at the deadline despite the
     // non-cooperating first caller.
-    let secondResult = try await withThrowingTimeout(seconds: 5) { await second.value }
+    // 30s, not the suite's usual 5s hang guard, and the difference is deliberate.
+    // Every other guard here bounds a `Task.yield()` loop that completes almost
+    // immediately. This one awaits work that must make progress WHILE a
+    // deliberately non-cooperating task spins on the same cooperative pool, so
+    // under full-suite CI contention (465 suites in parallel) the second task can
+    // legitimately be starved for seconds. A guard TIGHTER than the subject's own
+    // `deadlineSeconds: 30` can therefore fire on correct behaviour, which is what
+    // it did on main post-merge for `c634eb0c`: `Task timed out after 5.0s` on a
+    // run whose diff touched only the kernel scenario simulator.
+    //
+    // This is a hang guard, not the assertion (see the comment above), so raising
+    // it masks nothing: a genuinely stranded permit still fails the test, just
+    // later. That is the opposite of widening a settle window, which WOULD hide the
+    // defect (swift-testing-patterns.md `yield-settle-needs-inflight-signal-not-count`).
+    let secondResult = try await withThrowingTimeout(seconds: 30) { await second.value }
     #expect(secondResult, "the second request must be granted despite the first still running")
 
     let firstResult = await first.value
