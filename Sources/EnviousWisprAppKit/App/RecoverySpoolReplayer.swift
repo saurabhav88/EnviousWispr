@@ -428,14 +428,62 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     }
   }
 
+  /// Reasons that are COUNTED but never alert (#1942).
+  ///
+  /// `empty_text` means the recovered audio was transcribed without error and
+  /// ASR returned nothing. That is not a defect of ours: the overwhelmingly
+  /// likely cause is a recording with no speech in it, and #1900 created this
+  /// reason precisely so it would stop inflating `recovery_transcribe_failed`
+  /// and producing the false P0 in #1813. Splitting it out fixed the
+  /// CONFLATION; it left the benign half filing its own alerting error, which
+  /// is the loop this closes.
+  ///
+  /// Evidence that it is not actionable, rather than an assumption: this issue
+  /// was re-triaged on four consecutive days and every pass reached the same
+  /// verdict — best-effort post-crash replay, no live-dictation impact, hold at
+  /// P3. A condition whose triage conclusion never moves is a counted outcome
+  /// sitting on the wrong channel.
+  ///
+  /// NOTHING GOES DARK, and that was measured before the alert was removed:
+  /// `recovery.completed` already carries `reason`, and production on 2.4.3
+  /// shows `empty_text` at 13 events / 5 people — the SAME 13/5 the Sentry
+  /// fingerprint carries. The count is complete without the error.
+  ///
+  /// Deliberately narrow. `transcribe_error` (ASR threw), `model_load_failed`,
+  /// `key_missing`, `decrypt` and every future reason keep alerting: those are
+  /// ours. The general principle: Sentry errors are for OUR defects, while a
+  /// user-environment or expected outcome is counted in analytics and carries a
+  /// breadcrumb for context, never an alert.
+  nonisolated static func isCountedNotAlerted(_ reason: RecoveryTelemetryReason) -> Bool {
+    switch reason {
+    case .emptyText: return true
+    // Listed exhaustively rather than with a `default`, so a NEW reason is a
+    // compile error here and someone has to decide its channel on purpose
+    // instead of inheriting silence.
+    case .keyMissing, .keyReadFailed, .reconstructionFailed, .emptyOrUnreadableSamples,
+      .modelLoadFailed, .transcribeError, .saveFailed, .markerWriteFailed,
+      .markerClearFailed, .attemptAlreadySpent, .keychainTransient:
+      return false
+    }
+  }
+
+
   private func failUnrecoverable(
     reason: RecoveryTelemetryReason,
     failureClass: RecoveryFailureClass? = nil,
     reconstructedSampleCount: Int? = nil
   ) -> RecoveryReplayOutcome {
     let category = Self.category(for: reason)
-    SentryBreadcrumb.captureError(
-      RecoveryReplayError.failed(reason.rawValue), category: category, stage: "recovery")
+    if Self.isCountedNotAlerted(reason) {
+      SentryBreadcrumb.add(
+        stage: "recovery",
+        message: "recovery.outcome=\(reason.rawValue)",
+        level: .info,
+        data: ["recovery.reason": reason.rawValue])
+    } else {
+      SentryBreadcrumb.captureError(
+        RecoveryReplayError.failed(reason.rawValue), category: category, stage: "recovery")
+    }
     let spoolSeconds = reconstructedSampleCount.map {
       Int((Double($0) / AudioConstants.sampleRate).rounded())
     }

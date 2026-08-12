@@ -128,4 +128,35 @@ import Testing
         "\(reason.rawValue) changed category — is that deliberate?")
     }
   }
+
+  @Test("only the empty-result outcome is counted without alerting (#1942)")
+  func onlyEmptyTextIsCountedNotAlerted() {
+    // `empty_text` means ASR ran cleanly and returned nothing — almost always a
+    // recording with no speech in it, and re-triaged to the same P3 verdict on
+    // four consecutive days. It is counted by `recovery.completed` (measured
+    // 13 events / 5 people on 2.4.3, matching the Sentry fingerprint exactly),
+    // so removing its alert loses no visibility.
+    #expect(RecoverySpoolReplayer.isCountedNotAlerted(.emptyText))
+
+    // THE TWO-WAY CONTROL, and the whole safety of this change: every reason
+    // that IS ours must still alert. A blanket downgrade would pass the
+    // assertion above while silencing a real ASR throw or a decrypt failure.
+    let mustAlert: [RecoveryTelemetryReason] = [
+      .keyMissing, .keyReadFailed, .reconstructionFailed, .emptyOrUnreadableSamples,
+      .modelLoadFailed, .transcribeError, .saveFailed, .markerWriteFailed,
+      .markerClearFailed, .attemptAlreadySpent, .keychainTransient,
+    ]
+    for reason in mustAlert {
+      #expect(
+        !RecoverySpoolReplayer.isCountedNotAlerted(reason),
+        "\(reason.rawValue) must keep alerting — it is a failure we own")
+    }
+
+    // Completeness: the two lists together must cover the enum, so a NEW reason
+    // cannot be silently added to neither and inherit a channel by accident.
+    // `isCountedNotAlerted` switches exhaustively with no `default`, so a new
+    // case is already a compile error there; this asserts the TEST stays
+    // exhaustive too, which the compiler cannot do for an array literal.
+    #expect(mustAlert.count + 1 == 12, "a reason was added — give it a channel here")
+  }
 }
