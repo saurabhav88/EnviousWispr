@@ -86,6 +86,23 @@ sha256() {
   fi
 }
 
+# Move a superseded receipt OUT of the report-visible path without destroying it.
+#
+# Called when a re-judge failed to produce a cacheable receipt while a previous one exists.
+# Deleting it was the original P1 (a typo wiped the cached set); leaving it at `$dest` was the
+# next P1 (`report_ollama_bench.py` validates cacheability but never reads `.inputs-sha256`, so
+# it would rank the old judge's scores beside newly judged arms). Quarantine satisfies both:
+# the bytes survive for inspection, and nothing that ranks receipts can find them.
+#
+# Uses `$dest`/`$base` from the enclosing loop. One slot per arm: a previous quarantine is
+# already superseded, so it is replaced rather than accumulating copies.
+quarantine_previous() {
+  [ "$had_previous" = 1 ] || return 0
+  rm -rf "$dest.stale"
+  mv "$dest" "$dest.stale"
+  echo "  previous receipt for $base quarantined at $dest.stale (not ranked, not stamped)" >&2
+}
+
 # Is this receipt safe to cache AND to rank? Read the judge's own answer; never
 # infer it from the release verdict. `evaluate_new_gate` gives a quality failure
 # precedence over incompleteness, so a run that is BOTH quality-failed and
@@ -278,29 +295,26 @@ for cand in "$CANDDIR"/*.jsonl; do
       echo "  ok $base" >&2
       ;;
     partial)
-      if [ "$had_previous" = 1 ]; then
-        # A partial receipt must not evict a complete one. Presence was the old test, and it
-        # promoted a run that failed after scoring started — `behavior_judge.py` still writes
-        # a summary with `cacheable: false` in that case, so the good receipt was replaced by
-        # the failure. Keep both: the old one in place, the staged one for diagnosis.
-        echo "  INCOMPLETE $base (staged receipt not cacheable; previous receipt KEPT and not" >&2
-        echo "     stamped; the failed attempt is at $staging)" >&2
-      else
-        # Nothing to lose, so promote it: a partial receipt is still the only evidence of what
-        # happened, and the resume branch re-judges it because it is unstamped.
-        mv "$staging" "$dest"
-        echo "  INCOMPLETE $base (receipt is not cacheable; left in place, not stamped)" >&2
-      fi
+      # A partial receipt must not evict a complete one, and the complete one must not stay
+      # where the REPORT can see it. Both halves are cloud-review P1s from consecutive rounds,
+      # and they pull in opposite directions until the old receipt is quarantined rather than
+      # kept or deleted: `report_ollama_bench.py` reads `$dest/summary.json` and checks
+      # cacheability but never the stamp, so a valid receipt from the PREVIOUS judge sitting at
+      # the canonical path gets ranked alongside newly judged arms — a corrupted comparison,
+      # silently, which is the failure this whole change exists to prevent.
+      quarantine_previous
+      # Promote the partial: it is what the current judge actually produced, and the report
+      # rejects a non-cacheable receipt loudly rather than ranking it. Never stamped, so the
+      # resume branch re-judges the arm next time.
+      mv "$staging" "$dest"
+      echo "  INCOMPLETE $base (receipt is not cacheable; left in place, not stamped)" >&2
       incomplete+=("$base")
       ;;
     missing)
       # The judge refused, crashed, timed out, or lost its network before writing anything.
       rm -rf "$staging"
-      if [ "$had_previous" = 1 ]; then
-        echo "  FAILED $base (no receipt produced; previous receipt KEPT and not stamped)" >&2
-      else
-        echo "  FAILED $base" >&2
-      fi
+      quarantine_previous
+      echo "  FAILED $base" >&2
       failed+=("$base")
       ;;
   esac

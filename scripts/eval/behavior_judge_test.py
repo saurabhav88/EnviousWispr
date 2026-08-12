@@ -971,21 +971,29 @@ def test_a_routed_but_unusable_judge_still_cannot_delete_a_receipt():
     _, log = run_shell(t, env=dict(os.environ, EW_JUDGE="claude-sonet-5"))
 
     assert "=== re-judging modelA" in log, f"expected a re-judge attempt:\n{log}"
-    assert receipt.exists(), f"a routed-but-unusable judge DELETED the receipt:\n{log}"
-    assert receipt.read_text() == before, "the receipt was modified"
-    assert "previous receipt KEPT and not stamped" in log, log
     assert not (t / "judged" / "modelA.rejudge").exists(), "staging directory was left behind"
 
-    # THE OTHER HALF, and a separate P1 (cloud review round 3): surviving must not mean
-    # ADOPTED. The post-judge branch used to re-read $dest, find the old cacheable receipt and
-    # write the NEW judge's stamp onto it — so later runs skipped it and reported the previous
-    # judge's scores as this judge's, which is the silently-mixed-judges defect the stamp
-    # exists to prevent. The stamp must still hold the ORIGINAL judge's value.
-    stamp = t / "judged" / "modelA" / ".inputs-sha256"
-    assert stamp.exists(), "the original stamp should be untouched, not removed"
-    assert stamp.read_text().strip() == original_stamp, (
-        "the OLD receipt was stamped with the NEW judge's identity, so the next run would skip "
-        "it and report the previous judge's scores as this judge's")
+    # THREE separate P1s met here, one per review round, and they only reconcile as quarantine.
+    #
+    # 1. The bytes must SURVIVE — deleting them was the original defect, where one typo wiped
+    #    the whole cached set.
+    quarantined = t / "judged" / "modelA.stale" / "summary.json"
+    assert quarantined.exists(), f"the previous receipt was destroyed:\n{log}"
+    assert quarantined.read_text() == before, "the quarantined receipt was modified"
+
+    # 2. They must NOT sit at the canonical path, because `report_ollama_bench.py` reads that
+    #    path and checks cacheability but never the stamp — so a valid receipt from the previous
+    #    judge would be ranked beside newly judged arms and corrupt the comparison silently.
+    assert not receipt.exists(), (
+        f"the previous judge's receipt is still where the report will rank it:\n{log}")
+
+    # 3. Surviving must not mean ADOPTED. Nothing may carry this judge's stamp, or a later run
+    #    would skip the arm and report the previous judge's scores as this judge's.
+    assert not (t / "judged" / "modelA" / ".inputs-sha256").exists(), "canonical stamp survived"
+    stale_stamp = t / "judged" / "modelA.stale" / ".inputs-sha256"
+    assert stale_stamp.read_text().strip() == original_stamp, (
+        "the quarantined receipt was re-stamped with the NEW judge's identity")
+    assert "quarantined at" in log, log
 
 
 
@@ -1004,15 +1012,20 @@ def test_a_partial_staged_receipt_does_not_evict_a_complete_one():
     original_stamp = forge_stamp(t, judge="claude-sonnet-5")   # forces a re-judge
     _, log = run_shell(t)
 
-    kept = json.loads(receipt.read_text())
-    assert kept.get("marker") == "the good one", (
-        f"a partial staged receipt evicted the complete one:\n{log}")
-    assert (d / ".inputs-sha256").read_text().strip() == original_stamp, (
-        "the kept receipt must not carry the new judge's stamp")
-    assert "previous receipt KEPT" in log, log
-    # The failed attempt stays inspectable rather than being silently discarded.
-    assert (t / "judged" / "modelA.rejudge" / "summary.json").exists(), (
-        f"the failed attempt should be left for diagnosis:\n{log}")
+    # The complete receipt is preserved, and preserved OUT of the report's path.
+    stale = json.loads((t / "judged" / "modelA.stale" / "summary.json").read_text())
+    assert stale.get("marker") == "the good one", (
+        f"the complete receipt was not preserved:\n{log}")
+    assert (t / "judged" / "modelA.stale" / ".inputs-sha256").read_text().strip() \
+        == original_stamp, "the quarantined receipt lost or changed its own stamp"
+
+    # What sits at the canonical path is what THIS judge produced, and it is not cacheable, so
+    # the report rejects it loudly instead of ranking either receipt.
+    now = json.loads(receipt.read_text())
+    assert now.get("marker") is None, f"the old receipt is still at the ranked path:\n{log}"
+    assert now.get("cacheable") is False, now
+    assert not (d / ".inputs-sha256").exists(), "a non-cacheable receipt must never be stamped"
+    assert "quarantined at" in log, log
 
 
 def test_a_partial_receipt_is_still_promoted_when_there_is_nothing_to_lose():
