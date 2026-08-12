@@ -51,27 +51,16 @@ public enum OllamaWarmupState: Equatable {
   }
 }
 
-/// Quality tier for Ollama catalog models.
-public enum OllamaQualityTier: String, Sendable {
-  case best = "best"
-  case medium = "medium"
-  case worst = "worst"
-
-  public var label: String {
-    switch self {
-    case .best: return "Best"
-    case .medium: return "Medium"
-    case .worst: return "Fast"
-    }
-  }
-}
+// #1950: `OllamaQualityTier` lived here. It is gone, not renamed. A catalog entry describes what a
+// model IS; what we THINK of it now comes from `OllamaModelVerdicts`, which is the only authority
+// and is keyed by canonical model id. Do not reintroduce a stored tier or a size derived one:
+// the old heuristic called any 7B model "Best" without running a single case through it.
 
 /// A model entry in the Ollama catalog (curated or dynamic).
 public struct OllamaModelCatalogEntry: Identifiable, Sendable {
   public let name: String
   public let displayName: String
   public let parameterCount: String
-  public let qualityTier: OllamaQualityTier
   public let downloadSize: String
   public let isDownloaded: Bool
   /// #1914: true iff Ollama proxies this model to its own servers. Drives the
@@ -92,7 +81,6 @@ public struct OllamaModelCatalogEntry: Identifiable, Sendable {
     name: String,
     displayName: String,
     parameterCount: String,
-    qualityTier: OllamaQualityTier,
     downloadSize: String,
     isDownloaded: Bool = false,
     isRemote: Bool = false
@@ -100,7 +88,6 @@ public struct OllamaModelCatalogEntry: Identifiable, Sendable {
     self.name = name
     self.displayName = displayName
     self.parameterCount = parameterCount
-    self.qualityTier = qualityTier
     self.downloadSize = downloadSize
     self.isDownloaded = isDownloaded
     self.isRemote = isRemote
@@ -283,41 +270,77 @@ public final class OllamaSetupService {
   /// each manifest, and fails closed on any non-200, unparseable literal, or
   /// name/size count mismatch, so a half-broken probe cannot print a plausible
   /// number. It needs the network, so it is manual and deliberately not in CI.
+  /// #1950: entries carry no verdict. What we say about each of these lives in
+  /// `OllamaModelVerdicts`, keyed by canonical name, so the list and the selection dropdown cannot
+  /// disagree. `phi` (Phi-2) was removed: it was never benchmarked, and a curated suggestion is an
+  /// implied reason to choose something, so offering an unmeasured model superseded by `phi3` (which
+  /// measured 0%) was delegating the experiment to the user. The three measured models with no
+  /// acceptable output STAY listed and are labelled plainly, which is the founder's decision.
   public nonisolated static let modelCatalog: [OllamaModelCatalogEntry] = [
     OllamaModelCatalogEntry(
       name: "gemma3n:e4b", displayName: "Gemma 3 Nano (4B)", parameterCount: "4B",
-      qualityTier: .best, downloadSize: "~7.5 GB"),
+      downloadSize: "~7.5 GB"),
     OllamaModelCatalogEntry(
-      name: "llama3.2", displayName: "Llama 3.2", parameterCount: "3B", qualityTier: .best,
+      name: "llama3.2", displayName: "Llama 3.2", parameterCount: "3B",
       downloadSize: "~2 GB"),
     OllamaModelCatalogEntry(
       name: "llama3.2:1b", displayName: "Llama 3.2 (1B)", parameterCount: "1B",
-      qualityTier: .medium, downloadSize: "~1.3 GB"),
+      downloadSize: "~1.3 GB"),
     OllamaModelCatalogEntry(
-      name: "mistral", displayName: "Mistral", parameterCount: "7B", qualityTier: .best,
+      name: "mistral", displayName: "Mistral", parameterCount: "7B",
       downloadSize: "~4.4 GB"),
     OllamaModelCatalogEntry(
-      name: "phi3", displayName: "Phi-3 Mini", parameterCount: "3.8B", qualityTier: .medium,
+      name: "phi3", displayName: "Phi-3 Mini", parameterCount: "3.8B",
       downloadSize: "~2.2 GB"),
     OllamaModelCatalogEntry(
-      name: "gemma2:2b", displayName: "Gemma 2 (2B)", parameterCount: "2B", qualityTier: .medium,
+      name: "gemma2:2b", displayName: "Gemma 2 (2B)", parameterCount: "2B",
       downloadSize: "~1.6 GB"),
     OllamaModelCatalogEntry(
-      name: "gemma2", displayName: "Gemma 2", parameterCount: "9B", qualityTier: .best,
+      name: "gemma2", displayName: "Gemma 2", parameterCount: "9B",
       downloadSize: "~5.4 GB"),
     OllamaModelCatalogEntry(
-      name: "qwen2.5:3b", displayName: "Qwen 2.5 (3B)", parameterCount: "3B", qualityTier: .medium,
+      name: "qwen2.5:3b", displayName: "Qwen 2.5 (3B)", parameterCount: "3B",
       downloadSize: "~1.9 GB"),
     OllamaModelCatalogEntry(
-      name: "qwen2.5:7b", displayName: "Qwen 2.5 (7B)", parameterCount: "7B", qualityTier: .best,
+      name: "qwen2.5:7b", displayName: "Qwen 2.5 (7B)", parameterCount: "7B",
       downloadSize: "~4.7 GB"),
+    // Added on the founder's approval (2026-08-11) after the #1950 benchmark. It cleared the
+    // recommended bar on BOTH judges we ran, from by far the smallest download of the twelve,
+    // which makes it the one row where a user short of disk does not trade quality for size.
+    // Deliberately not called "second best": it ranks second on the primary judge and third on
+    // the confirming one, so the ordering is a property of the judge and only the BAND is robust. Every
+    // downloadSize in this list is the decimal sum of the registry manifest's layer sizes
+    // (`registry.ollama.ai/v2/library/<repo>/manifests/<tag>`); this one measured 522,653,277
+    // bytes on 2026-08-11. Do not estimate one from a parameter count.
     OllamaModelCatalogEntry(
-      name: "tinyllama", displayName: "TinyLlama", parameterCount: "1.1B", qualityTier: .worst,
+      name: "qwen3:0.6b", displayName: "Qwen 3 (0.6B)", parameterCount: "0.6B",
+      downloadSize: "~523 MB"),
+    OllamaModelCatalogEntry(
+      name: "tinyllama", displayName: "TinyLlama", parameterCount: "1.1B",
       downloadSize: "~638 MB"),
-    OllamaModelCatalogEntry(
-      name: "phi", displayName: "Phi-2", parameterCount: "2.7B", qualityTier: .worst,
-      downloadSize: "~1.6 GB"),
   ]
+
+  /// Reorders one section so its verdict BANDS read best first, keeping each model's existing
+  /// position relative to others in the same band (#1950, founder 2026-08-11).
+  ///
+  /// A series of stable `filter` passes, deliberately, not `sorted(by:)`. Two reasons and both
+  /// matter: Swift does not document `sorted(by:)` as stable, so equal elements could be reordered
+  /// between releases for no reason a user could understand; and a comparator would be free to
+  /// order two models that share a verdict, where the measured gap is 5pp against an instrument
+  /// whose own replication tail is 5pp. Ranking bands reports the measurement. Ranking inside a
+  /// band would invent one.
+  ///
+  /// Drives off `allInDisplayOrder`, which derives from the exhaustive `displayRank` switch, so a
+  /// new verdict case cannot silently drop its models out of the list. That mattered: this filters
+  /// by band MEMBERSHIP, so a verdict missing from the order would remove every model carrying it
+  /// from the list entirely rather than merely misplacing them.
+  nonisolated static func orderedByVerdictBand(
+    _ entries: [OllamaModelCatalogEntry]
+  ) -> [OllamaModelCatalogEntry] {
+    OllamaModelVerdict.allInDisplayOrder.flatMap { band in
+      entries.filter { OllamaModelVerdicts.verdict(for: $0.name) == band }
+    }
+  }
 
   /// First-party curated metadata for models that are NOT publicly pullable (#1269).
   /// Entries here overlay display metadata onto a model the user already has, but are
@@ -327,7 +350,7 @@ public final class OllamaSetupService {
   public nonisolated static let curatedPrivateCatalog: [OllamaModelCatalogEntry] = [
     OllamaModelCatalogEntry(
       name: "eg-1", displayName: "EG-1", parameterCount: "4B",
-      qualityTier: .best, downloadSize: "~2.9 GB")
+      downloadSize: "~2.9 GB")
   ]
 
   /// The single definition of "this Ollama model id is our own first-party model"
@@ -412,7 +435,6 @@ public final class OllamaSetupService {
             ? Self.hostedDisplayName(from: model.exactName)
             : curated.displayName,
           parameterCount: model.parameterSize ?? curated.parameterCount,
-          qualityTier: curated.qualityTier,
           downloadSize: Self.formatFileSize(model.fileSizeBytes),
           isDownloaded: true,
           // #1914: carried on BOTH construction paths. A remote model can match
@@ -432,20 +454,50 @@ public final class OllamaSetupService {
           ? Self.hostedDisplayName(from: model.exactName)
           : Self.inferDisplayName(from: model.exactName),
         parameterCount: model.parameterSize ?? "Unknown",
-        qualityTier: Self.inferQualityTier(parameterBillions: model.parameterBillions),
         downloadSize: Self.formatFileSize(model.fileSizeBytes),
         isDownloaded: true,
         isRemote: model.facts.isRemote
       )
     }
     .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    // Then by verdict band, alphabetical WITHIN each band (founder 2026-08-11). Previously this
+    // section was alphabetical only, so somebody whose two installed models were an Unreliable one
+    // and a Recommended one saw the Unreliable one first. The alphabetical sort above is what fills
+    // the within-band order, and the band pass below preserves it.
+    //
+    // LOCAL ROWS ONLY. Installed HOSTED registrations are in this same array (`isRemote` is set on
+    // every construction path), and cloud review caught that band-ordering them applies a local
+    // measurement to a model that only shares its name: nothing here was benchmarked against
+    // Ollama's hosted build, so a verdict cannot rank it. `OllamaCatalogPresentation.groups` splits
+    // this list by `isRemote` and preserves order inside each group, so a hosted row reordered here
+    // really does move within the hosted section on screen. Hosted rows keep the neutral
+    // alphabetical order above, which is also what the hosted SUGGESTIONS already do.
+    let downloadedEntriesOrdered =
+      Self.orderedByVerdictBand(downloadedEntries.filter { !$0.isRemote })
+      + downloadedEntries.filter(\.isRemote)
 
     // Undownloaded suggestions (preserve static catalog order)
-    let suggestions: [OllamaModelCatalogEntry] = Self.modelCatalog.compactMap { entry in
+    let available: [OllamaModelCatalogEntry] = Self.modelCatalog.compactMap { entry in
       let canonical = Self.canonicalModelName(entry.name)
       guard !canonicalDownloaded.contains(canonical) else { return nil }
       return entry
     }
+
+    // #1950: order every section best-measured first, so a list read top to bottom goes
+    // Recommended, then Mixed results, then the two failing bands (founder 2026-08-11, who saw the
+    // first cut and pointed out that it buried both Recommended models below three Mixed ones).
+    // Nothing is hidden: the models that produced no acceptable output stay offered, last.
+    //
+    // Ordered by BAND with relative order preserved INSIDE each band, which is why this is a series
+    // of stable `filter` passes and not a comparator. `sorted(by:)` is not documented as stable in
+    // Swift, and a comparator would also be free to reorder two models sharing a verdict — and
+    // those gaps are 5pp on an instrument whose own replication tail is 5pp, so any order among
+    // them would be a distinction the measurement cannot support. Bands are measured; within a
+    // band, whatever order the section already had is kept.
+    //
+    // Asks the verdict authority rather than naming ids, so a re-benchmark that moves a model moves
+    // its position with it and there is no second list to remember.
+    let suggestions = Self.orderedByVerdictBand(available)
 
     // #1956: hosted suggestions, appended last so the two existing sections keep
     // their order and their meaning.
@@ -467,18 +519,25 @@ public final class OllamaSetupService {
       return OllamaModelCatalogEntry(
         name: advertisedID,
         displayName: Self.hostedDisplayName(from: advertisedID),
-        // Size and quality are meaningless for a model that is not on this disk,
-        // and `showsSizeAndQuality` suppresses both for any remote row, so these
-        // are placeholders that never reach the screen rather than claims.
+        // Size is meaningless for a model that is not on this disk, and
+        // `showsSizeAndQuality` suppresses it for any remote row, so this is a
+        // placeholder that never reaches the screen rather than a claim.
+        //
+        // #1950: there is no quality placeholder to supply any more. A hosted id is absent from
+        // `OllamaModelVerdicts`, so it answers `.notTested` with an empty note. That is why the
+        // verdict was moved out of the entry: the old code had to invent `.medium` here, and the
+        // day someone deleted the suppressing `if` that invention would have become a claim.
         parameterCount: "",
-        qualityTier: .medium,
         downloadSize: "",
         isDownloaded: false,
         isRemote: true
       )
     }
 
-    return downloadedEntries + suggestions + hostedSuggestions
+    // Hosted rows are NOT band-ordered and stay last: they are a different kind of thing (they run
+    // on Ollama's servers, are never selected for you, and some need a paid plan), and we have not
+    // measured them on this corpus, so ordering them by a verdict they do not have would imply one.
+    return downloadedEntriesOrdered + suggestions + hostedSuggestions
   }
 
   // MARK: - Name Normalization
@@ -1935,13 +1994,11 @@ public final class OllamaSetupService {
       .joined(separator: " ")
   }
 
-  /// Infer quality tier from parameter count.
-  nonisolated static func inferQualityTier(parameterBillions: Double?) -> OllamaQualityTier {
-    guard let billions = parameterBillions else { return .medium }
-    if billions >= 7.0 { return .best }
-    if billions <= 2.0 { return .worst }
-    return .medium
-  }
+  // #1950: `inferQualityTier(parameterBillions:)` was here. Deleted, not narrowed. It answered a
+  // quality question from a parameter count, so a 13B model the user pulled themselves rendered as
+  // "Best" having never had a single case run through it. A parameter count cannot support any
+  // verdict, so an unmeasured model now returns `.notTested` from `OllamaModelVerdicts` and the
+  // size it was standing in for is still on the row as `parameterCount · downloadSize`.
 
   /// Format file size in bytes to human-readable string.
   nonisolated static func formatFileSize(_ bytes: Int64) -> String {

@@ -6,7 +6,7 @@ section: "Polish"
 order: 6
 keywords: ["ollama", "offline ai", "local ai", "local model", "llama", "run ai locally", "no internet ai", "free local"]
 related: ["ollama-polish-not-working"]
-updated: 2026-08-06
+updated: 2026-08-11
 ---
 Ollama is a separate free application that runs language models directly on your Mac, and EnviousWispr can hand your dictation to one of those models for tidying up. Once you have completed the setup, you do not need an API key or an account, and your transcribed text stays on your Mac.
 
@@ -14,13 +14,17 @@ Ollama offers both models that download to run on your machine and models that r
 
 ### Setting up Ollama
 
-You need an internet connection to install Ollama and download a model, but polish works offline after that. Follow these steps to connect EnviousWispr to Ollama.
+You need an internet connection to install Ollama and download a model, but polish works offline after that.
+
+One thing to know before you download anything: no local model handled languages other than English well in our tests. If you dictate in another language, this is not the polish option to reach for first.
+
+Follow these steps to connect EnviousWispr to Ollama.
 
 **Install Ollama.** Download and install the application from [ollama.com](https://ollama.com).
 
 **Open Ollama.** Launch the application so it runs in the background.
 
-**Download a model.** Open Terminal and run `ollama pull llama3.2`, or use the model download tools inside the Ollama application.
+**Download a model.** Open Terminal and run `ollama pull qwen2.5:3b`, or use the model download tools inside the Ollama application.
 
 **Open AI Polish settings.** Open EnviousWispr, go to **Settings**, and select **AI Polish**.
 
@@ -30,7 +34,9 @@ EnviousWispr finds your installed models on its own, so they appear in that list
 
 ### Picking a model
 
-Start with `llama3.2`, the model EnviousWispr suggests. If polish feels too slow, switch to a smaller model. Larger models use more memory and take longer, and they do not automatically produce better text.
+Start with `qwen2.5:3b`, the model EnviousWispr suggests. It scored best of the local models we offer when we tested how well each one cleans up dictation. Two others carry the Recommended label: `qwen3:0.6b`, which earned it from a download about a quarter the size, and `qwen2.5:7b`, which is the most careful of the three but also the slowest and largest.
+
+The label beside each model in Settings comes from those tests, not from the model's size. Size is not a quality rating, in either direction. Several of the smallest models EnviousWispr offers produced no acceptable result at all in our tests, while the smallest one we recommend did well, so you cannot read quality off a download size. If polish feels slow, pick a Recommended model rather than the smallest one you can find.
 
 ### If Ollama is not running
 

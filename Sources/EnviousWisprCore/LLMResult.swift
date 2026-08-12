@@ -32,7 +32,13 @@ extension LLMProvider {
   }
 
   /// Default model for a provider. Used to restore a sensible model when switching providers.
-  public static func defaultModel(for provider: LLMProvider, ollamaModel: String = "llama3.2")
+  ///
+  /// The `ollamaModel` default is a FALLBACK for callers that have no saved value; every production
+  /// caller passes the stored setting explicitly. It must nonetheless match
+  /// `SettingsDefaultValues.ollamaModel` (#1950 moved both to `qwen2.5:3b`), or the fallback path
+  /// quietly serves a different model than a fresh install does, and
+  /// `SettingsDefaultsRoutingTests` asserts they agree so the two cannot drift.
+  public static func defaultModel(for provider: LLMProvider, ollamaModel: String = "qwen2.5:3b")
     -> String
   {
     switch provider {
@@ -67,7 +73,7 @@ extension LLMProvider {
   ///
   /// KEYED BY PROVIDER, not a flat set of ids. An Ollama model is named by the
   /// user, so a local model called `gemini-2.0-flash` is a perfectly legitimate
-  /// choice that a flat set would silently rewrite to `llama3.2` on a recovery
+  /// choice that a flat set would silently rewrite to the shipped default on a recovery
   /// replay. Keying also keeps the next entry honest: under a flat set plus a
   /// `provider == .gemini` guard, a future OpenAI retirement added here would be
   /// silently ignored — it would LOOK registered and do nothing.
@@ -242,9 +248,11 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   ///
   /// PR #1949 cloud review: `SettingsManager` compared a remembered name to a
   /// discovered id EXACTLY, while the runtime readiness preflight compares
-  /// canonically. The shipped default is `llama3.2` and a daemon commonly
-  /// reports `llama3.2:latest`, so the two disagreed about whether the user's
-  /// model was installed.
+  /// canonically. An UNTAGGED name is stored as the user picked it while the daemon commonly reports
+  /// the `:latest` form of the same model (`llama3.2` stored, `llama3.2:latest` discovered), so the
+  /// two disagreed about whether the user's model was installed. The example is `llama3.2` because
+  /// that is the shape that exhibits it; a name that already carries a tag, such as the post-#1950
+  /// default `qwen2.5:3b`, does not.
   public static func canonicalOllamaName(_ name: String) -> String {
     name.hasSuffix(":latest") ? String(name.dropLast(":latest".count)) : name
   }

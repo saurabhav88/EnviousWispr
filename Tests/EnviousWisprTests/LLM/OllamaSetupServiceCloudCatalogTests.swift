@@ -431,11 +431,14 @@ struct OllamaSetupServiceCloudCatalogTests {
     #expect(suggestion?.displayName == "kimi-k3")
     #expect(suggestion?.parameterCount == "")
     #expect(suggestion?.downloadSize == "")
-    #expect(suggestion?.qualityTier == .medium)
+    // #1950: there is no quality placeholder on the entry to assert. A hosted id is absent from
+    // `OllamaModelVerdicts`, so it answers `.notTested` with an empty note, and the row suppresses
+    // both anyway.
+    #expect(OllamaModelVerdicts.verdict(for: "kimi-k3") == .notTested)
   }
 
   /// Every field, not a representative one. Comparing only `name` would pass a
-  /// merge that silently rewrote a retained row's metadata, tier or downloaded
+  /// merge that silently rewrote a retained row's metadata or downloaded
   /// state — an outcome-only check where the payload is what matters.
   ///
   /// One helper so the two directions cannot drift into checking different
@@ -454,9 +457,6 @@ struct OllamaSetupServiceCloudCatalogTests {
       sourceLocation: sourceLocation)
     #expect(
       actual.downloadSize == expected.downloadSize, "downloadSize at \(index)",
-      sourceLocation: sourceLocation)
-    #expect(
-      actual.qualityTier == expected.qualityTier, "qualityTier at \(index)",
       sourceLocation: sourceLocation)
     #expect(
       actual.isDownloaded == expected.isDownloaded, "isDownloaded at \(index)",
@@ -1339,9 +1339,6 @@ struct OllamaSetupServiceHostedAddTests {
         sourceLocation: sourceLocation)
       #expect(
         lhs.downloadSize == rhs.downloadSize, "downloadSize at \(index)",
-        sourceLocation: sourceLocation)
-      #expect(
-        lhs.qualityTier == rhs.qualityTier, "qualityTier at \(index)",
         sourceLocation: sourceLocation)
       #expect(
         lhs.isDownloaded == rhs.isDownloaded, "isDownloaded at \(index)",

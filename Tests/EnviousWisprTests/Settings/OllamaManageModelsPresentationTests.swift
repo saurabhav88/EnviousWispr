@@ -197,17 +197,47 @@ struct OllamaManageModelsPresentationTests {
 
   // MARK: - #1956 helpers
 
+  // MARK: - Download confirmation policy (#1950)
+
+  @Test(
+    "only a model that passed nothing asks before downloading",
+    arguments: [
+      ("qwen2.5:3b", OllamaModelVerdict.recommended, false),
+      ("gemma2:2b", .mixed, false),
+      ("llama3.2", .unreliable, false),
+      ("tinyllama", .notRecommended, true),
+      ("someones-finetune:7b", .notTested, false),
+      ("eg-1", .firstParty, false),
+    ])
+  func downloadConfirmationPolicy(
+    modelID: String, expectedVerdict: OllamaModelVerdict, requiresConfirmation: Bool
+  ) {
+    // Assert the fixture's verdict FIRST. Without this the case could stop exercising its intended
+    // verdict after a re-benchmark moved that model, and the policy assertion would still pass
+    // while covering a different bucket than its name claims.
+    #expect(
+      OllamaModelVerdicts.verdict(for: modelID) == expectedVerdict,
+      "\(modelID) must be \(expectedVerdict) for this case to test what it says")
+
+    // Drives the REAL policy, not a copy of the condition.
+    #expect(
+      OllamaCatalogPresentation.requiresDownloadConfirmation(for: modelID) == requiresConfirmation)
+  }
+
   /// A catalog entry, built directly rather than through the daemon parser,
   /// because these policies take entries and the parse path is already covered
   /// above.
   private func catalogEntry(
     _ name: String, isRemote: Bool, isDownloaded: Bool = false,
     displayName: String? = nil, parameterCount: String = "4B",
-    downloadSize: String = "~2 GB", qualityTier: OllamaQualityTier = .best
+    downloadSize: String = "~2 GB"
   ) -> OllamaModelCatalogEntry {
+    // #1950: no verdict parameter. A verdict is a property of the model ID, owned by
+    // `OllamaModelVerdicts`, so it cannot be varied per fixture without inventing a second
+    // authority — which is exactly what this change removed.
     OllamaModelCatalogEntry(
       name: name, displayName: displayName ?? name, parameterCount: parameterCount,
-      qualityTier: qualityTier, downloadSize: downloadSize,
+      downloadSize: downloadSize,
       isDownloaded: isDownloaded, isRemote: isRemote)
   }
 
@@ -230,9 +260,6 @@ struct OllamaManageModelsPresentationTests {
         sourceLocation: sourceLocation)
       #expect(
         lhs.downloadSize == rhs.downloadSize, "\(label): downloadSize at \(index)",
-        sourceLocation: sourceLocation)
-      #expect(
-        lhs.qualityTier == rhs.qualityTier, "\(label): qualityTier at \(index)",
         sourceLocation: sourceLocation)
       #expect(
         lhs.isDownloaded == rhs.isDownloaded, "\(label): isDownloaded at \(index)",
@@ -623,7 +650,7 @@ struct OllamaManageModelsPresentationTests {
       catalogEntry("gpt-oss:20b", isRemote: true, displayName: "GPT OSS 20B"),
       catalogEntry("deepseek-v4-pro", isRemote: true, parameterCount: "671B"),
       catalogEntry("minimax-m3", isRemote: true, downloadSize: ""),
-      catalogEntry("glm-5.2", isRemote: true, qualityTier: .medium),
+      catalogEntry("glm-5.2", isRemote: true),
     ]
     let groups = OllamaCatalogPresentation.hostedTierGroups(
       entries: entries, now: try daysAfterSnapshot(1))

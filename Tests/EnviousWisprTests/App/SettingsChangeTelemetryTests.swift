@@ -396,20 +396,31 @@ import Testing
       defer { TelemetryService.shared.testEventHook = nil }
       // During onboarding: OpenAI (model canonicalizes → gpt-4o-mini), then Ollama
       // — the latter does NOT rewrite llmModel, but the EFFECTIVE model flips to
-      // ollamaModel ("llama3.2") with no `.llmModel`/`.ollamaModel` fire.
+      // the default ollamaModel with no `.llmModel`/`.ollamaModel` fire.
       // committedBaseline[llm_model] would stay stale ("gpt-4o-mini") without the
       // completion re-seed.
+      //
+      // Read off the fresh harness rather than restated. It was hardcoded as "llama3.2",
+      // and changing the shipped default (#1950) broke a test whose subject is the
+      // RE-SEED, not the identity of the default — the value is incidental to everything
+      // this case asserts. Taken from the settings object instead of the defaults enum
+      // because that enum is internal to its module, and because the live value is what
+      // the projection will actually read.
+      let defaultOllamaModel = settings.ollamaModel
+      #expect(!defaultOllamaModel.isEmpty, "the harness must start with a default model")
       settings.llmProvider = .openAI
       settings.llmProvider = .ollama
-      settings.onboardingState = .completed  // snapshot (llm_model=llama3.2) + re-seed
+      // snapshot (llm_model = the default Ollama model) + re-seed
+      settings.onboardingState = .completed
       box.clear()
-      // Post-onboarding: back to OpenAI → effective model llama3.2 → gpt-4o-mini.
+      // Post-onboarding: back to OpenAI → effective model flips to gpt-4o-mini.
       // Must emit a real delta, NOT be skipped against a stale baseline.
       settings.llmProvider = .openAI
       telemetry.flush()
       let d = deltas(box, setting: "llm_model")
       #expect(d.count == 1)
-      #expect(d.first?.stringProps["from"] == "llama3.2")  // re-seeded from effective Ollama model
+      // re-seeded from the effective Ollama model
+      #expect(d.first?.stringProps["from"] == defaultOllamaModel)
       #expect(d.first?.stringProps["to"] == "gpt-4o-mini")
     }
 
@@ -431,7 +442,7 @@ import Testing
     func ollamaMirrorCoalescesToOneDelta() {
       let (settings, telemetry, box, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
-      settings.llmProvider = .ollama  // canonicalizes effective model → default "llama3.2"
+      settings.llmProvider = .ollama  // canonicalizes effective model → the default ollamaModel
       telemetry.flush()
       box.clear()
       // Reproduce the production mirror: the picker writes llmModel, then

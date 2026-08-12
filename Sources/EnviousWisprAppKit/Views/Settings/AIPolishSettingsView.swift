@@ -100,9 +100,14 @@ enum AIPolishKeychainFailureMessage {
 
 // MARK: - Model Recommendation Classifier (#617)
 
-/// Token-based classifier deciding whether a discovered model should land in the
+/// Token-based classifier deciding whether a discovered CLOUD-PROVIDER model should land in the
 /// "Recommended for cleanup" group of the AI Polish picker. Pure function, no
-/// view dependencies. **Lives at file scope (not private to `AIPolishSettingsView`)
+/// view dependencies.
+///
+/// **#1950: local Ollama models no longer reach this.** They are grouped by `OllamaModelVerdicts`,
+/// from our own benchmark. The tokens below are cloud family names, so for local models this
+/// classifier was wrong in both directions: it recommended nothing we had measured, and it did
+/// recommend an unmeasured model whose name happened to contain one. **Lives at file scope (not private to `AIPolishSettingsView`)
 /// solely so that `AIPolishClassifierTests` in `Tests/EnviousWisprTests/Settings/`
 /// can reach it via `@testable import EnviousWispr`.** Has no other consumers
 /// inside the app module; do not adopt it elsewhere without revisiting placement.
@@ -231,6 +236,24 @@ enum OllamaModelPickerPresentation {
         hosted.append(model)
         continue
       }
+      // #1950: a LOCAL Ollama model is grouped by what we measured, not by what its name looks
+      // like. The token classifier below was validated against real OpenAI and Gemini ids (#617)
+      // and is right for those providers; for local Ollama it was wrong in both directions. No
+      // standard local name carries `mini`/`nano`/`flash`/`haiku`, so every model we measured, from
+      // 50% down to 0%, landed together under the other heading, while an unmeasured model whose
+      // name merely contained one of those tokens was presented as recommended for cleanup.
+      //
+      // Only `.recommended` earns the heading. `.firstParty` deliberately does not: EG-1 makes no
+      // claim in this vocabulary, and putting it under "Recommended for cleanup" would be inventing
+      // one. Same authority the Manage Models list reads, so the two surfaces cannot disagree.
+      if provider == .ollama {
+        if OllamaModelVerdicts.verdict(for: model.id) == .recommended {
+          recommended.append(model)
+        } else {
+          other.append(model)
+        }
+        continue
+      }
       if AIPolishModelClassifier.isRecommendedForCleanup(model.id) {
         recommended.append(model)
       } else {
@@ -278,6 +301,14 @@ struct AIPolishSettingsView: View {
   @State private var openAIKeySaved: Bool?
   @State private var geminiKeySaved: Bool?
   @State private var claudeKeySaved: Bool?
+
+  /// #1950: the model id awaiting download confirmation, or nil.
+  ///
+  /// The id itself IS the state; there is deliberately no companion Boolean. A Boolean plus an id
+  /// can disagree, and the disagreement would be "which model did the user actually confirm".
+  /// `confirmPendingOllamaDownload` takes and clears this before any side effect, so the pull uses
+  /// the exact id that was requested even if the list re-renders underneath the dialog.
+  @State private var pendingOllamaDownload: String?
 
   private var isCloudProvider: Bool {
     settings.llmProvider == .openAI || settings.llmProvider == .gemini
@@ -616,6 +647,29 @@ struct AIPolishSettingsView: View {
           }
         }
       }
+    }
+    // #1950: ONE confirmation for both local download entry points, mounted here on the shared
+    // container rather than per button, because two dialogs bound to the same state is how the two
+    // buttons would come to behave differently.
+    //
+    // Presented from a Binding COMPUTED off `pendingOllamaDownload`, so the id is the only stored
+    // state and every dismissal path routes through one setter: Cancel, Escape and clicking outside
+    // all land in the `set` closure and clear it. A separate `@State` Boolean would leave the id
+    // set after a dismissal nobody handled, and the next confirmation would fire on a stale model.
+    .confirmationDialog(
+      "This model did not pass any of our cleanup tests.",
+      isPresented: Binding(
+        get: { pendingOllamaDownload != nil },
+        set: { presented in if !presented { pendingOllamaDownload = nil } }
+      ),
+      titleVisibility: .visible
+    ) {
+      Button("Download anyway") { confirmPendingOllamaDownload() }
+      // Empty action deliberately, matching `CustomWordEditSheet` and `TranscriptHistoryView`.
+      // SwiftUI sets `isPresented` false on dismissal, which invokes the setter above and clears the
+      // id. Clearing it here too would mean two paths doing one job, and would contradict the claim
+      // that every dismissal routes through one setter.
+      Button("Cancel", role: .cancel) {}
     }
     .onAppear {
       // A thrown read leaves `openAIKey`/`geminiKey` at their existing
@@ -1289,7 +1343,10 @@ struct AIPolishSettingsView: View {
 
         HStack {
           Button("Download \(settings.ollamaModel)") {
-            setup.ollamaSetup.pullModel(settings.ollamaModel)
+            // #1950: through the funnel, not straight to `pullModel`. The shipped default is a
+            // recommended model so this normally downloads immediately, but a user who has changed
+            // the setting to something that failed every test gets asked first.
+            requestOllamaDownload(modelID: settings.ollamaModel)
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.small)
@@ -1683,6 +1740,16 @@ struct AIPolishSettingsView: View {
     let groups = OllamaCatalogPresentation.groups(from: catalog)
 
     VStack(alignment: .leading, spacing: 6) {
+      // #1950: stated ONCE, above the list, because it is true of local polish rather than of any
+      // one model. The best local result is 3 of 7 non-English cases and seven of the twelve
+      // models we measured pass zero of 7, so putting it only on the rows that fail worst would
+      // imply the others are fine. The string lives on the authority, not here, so there is one
+      // copy of the sentence.
+      Text(OllamaModelVerdicts.nonEnglishCaveat)
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+
       ForEach(groups.local) { entry in
         ollamaCatalogRow(
           entry, isPulling: isPulling, isLastInGroup: entry.id == groups.local.last?.id)
@@ -1839,6 +1906,57 @@ struct AIPolishSettingsView: View {
     return nil
   }
 
+  /// #1950: the ONE way a local model gets downloaded from this screen.
+  ///
+  /// Both local entry points call this: the guided no-model button and the catalog row's Download
+  /// button. They used to call `pullModel` independently, and #1956 already had to patch a guard
+  /// onto the second one after a sweep missed it ("the SECOND control that can reach `pullModel`").
+  /// A funnel makes that class of miss structural rather than something to remember.
+  private func requestOllamaDownload(modelID: String) {
+    guard OllamaCatalogPresentation.requiresDownloadConfirmation(for: modelID) else {
+      setup.ollamaSetup.pullModel(modelID)
+      return
+    }
+    pendingOllamaDownload = modelID
+  }
+
+  /// Confirm the pending download, taking the id atomically before acting on it.
+  ///
+  /// Take-and-clear first, for two reasons. The dialog outlives the tap that opened it, so the row
+  /// underneath can re-render or disappear; using `pendingOllamaDownload` after the side effect, or
+  /// reading `settings.ollamaModel` here, would let the list redirect what the user confirmed.
+  ///
+  /// Then re-check, because `pullModel` CANCELS any pull already in flight. Without this a stale
+  /// confirmation, sitting behind a dialog the user left open, would kill a download they started
+  /// afterwards. Also skips a model that finished downloading while the dialog was open.
+  private func confirmPendingOllamaDownload() {
+    guard let modelID = pendingOllamaDownload else { return }
+    pendingOllamaDownload = nil
+
+    guard setup.ollamaSetup.currentPullingModel == nil else { return }
+    let canonical = OllamaSetupService.canonicalModelName(modelID)
+    guard !setup.ollamaSetup.downloadedModelNames.contains(canonical) else { return }
+
+    setup.ollamaSetup.pullModel(modelID)
+  }
+
+  /// Colour for a measured verdict (#1950).
+  ///
+  /// Exhaustive by construction: `OllamaModelVerdict` is package-visible across sibling targets of
+  /// this same SPM package, so no `@unknown default` is required and adding a verdict case fails
+  /// compilation here until its colour is deliberately assigned. That is the entire reason the
+  /// verdict was not left `public` when it moved off the catalog entry.
+  ///
+  /// `notTested` and `firstParty` read as secondary rather than as a warning: neither is a negative
+  /// verdict, they are the absence of one.
+  static func verdictColor(_ verdict: OllamaModelVerdict) -> Color {
+    switch verdict {
+    case .recommended: return Color.stAccent
+    case .mixed, .notTested, .firstParty: return Color.secondary
+    case .unreliable, .notRecommended: return Color.stWarning
+    }
+  }
+
   /// One catalog row. Extracted so the local and hosted groups render through
   /// exactly the same code — two copies would let the groups drift in actions or
   /// layout, which is the defect a "just duplicate the ForEach" version invites.
@@ -1852,24 +1970,35 @@ struct AIPolishSettingsView: View {
           HStack(spacing: 4) {
             Text(entry.displayName)
               .font(.stHelper)
-            // #1914: quality tier and size are SUPPRESSED for a hosted model.
-            // Both are meaningless for something that is not on this disk — a
-            // cloud row's reported `size` is manifest-only (316 bytes for a
-            // 158-billion-parameter model), so showing it is worse than
-            // showing nothing.
+            // #1914, extended by #1950: verdict, note AND size are all suppressed for a hosted
+            // model. Each is meaningless for something that is not on this disk: a cloud row's
+            // reported `size` is manifest-only (316 bytes for a 158-billion-parameter model), so
+            // showing it is worse than showing nothing, and a hosted id carries no measured
+            // verdict to show.
             if OllamaCatalogPresentation.showsSizeAndQuality(entry) {
-              Text("(\(entry.qualityTier.label))")
+              // #1950: the verdict comes from `OllamaModelVerdicts`, never from the entry. The
+              // switch is exhaustive with no `@unknown default` because the verdict enum is
+              // `package` and this target is in the same package, so adding a case is a compile
+              // error here rather than a silent fall through to a default colour.
+              let verdict = OllamaModelVerdicts.verdict(for: entry.name)
+              Text("(\(verdict.label))")
                 .font(.stHelper)
-                .foregroundStyle(
-                  entry.qualityTier == .best
-                    ? Color.stAccent
-                    : (entry.qualityTier == .medium ? Color.secondary : Color.stWarning))
+                .foregroundStyle(Self.verdictColor(verdict))
             }
           }
           if OllamaCatalogPresentation.showsSizeAndQuality(entry) {
             Text("\(entry.parameterCount) · \(entry.downloadSize)")
               .font(.stHelper)
               .foregroundStyle(Color.stTextSecondary)
+            // #1950: the "what goes wrong" clause, from the same authority as the label. Empty for
+            // a model we have not measured and for EG-1, so the row simply says nothing rather
+            // than implying a reading we do not have.
+            let note = OllamaModelVerdicts.entry(for: entry.name).note
+            if !note.isEmpty {
+              Text(note)
+                .font(.stHelper)
+                .foregroundStyle(Color.stTextSecondary)
+            }
           }
         }
 
@@ -1931,7 +2060,9 @@ struct AIPolishSettingsView: View {
             if entry.isRemote {
               Task { await setup.ollamaSetup.addHostedModel(advertisedID: entry.name) }
             } else {
-              setup.ollamaSetup.pullModel(entry.name)
+              // #1950: the funnel. Hosted Add above is untouched: a hosted model carries no
+              // measured verdict, so there is nothing to warn about.
+              requestOllamaDownload(modelID: entry.name)
             }
           } label: {
             Text(OllamaCatalogPresentation.actionLabel(for: entry))

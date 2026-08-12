@@ -52,6 +52,19 @@ enum OllamaCatalogPresentation {
     !entry.isRemote
   }
 
+  /// #1950: whether downloading this model should ask first.
+  ///
+  /// True only for `.notRecommended`, meaning the model produced no acceptable output in any of the
+  /// twenty benchmark cases. Those models stay offered, which is the founder's decision, but a
+  /// one-click download of something we measured as failing everything is not an informed choice.
+  ///
+  /// A pure function reading the same authority as the label, so there is no second list of blocked
+  /// models to maintain and a re-benchmark changes both together. It is `static` and takes an id
+  /// rather than living in the view so a test can drive the REAL policy instead of a copy of it.
+  static func requiresDownloadConfirmation(for modelID: String) -> Bool {
+    OllamaModelVerdicts.verdict(for: modelID) == .notRecommended
+  }
+
   // MARK: - Row actions (#1956)
 
   /// #1956: whether a row may be deleted.

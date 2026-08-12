@@ -6,7 +6,7 @@ section: "AI Polish Issues"
 order: 5
 keywords: ["ollama not working", "ollama error", "cant connect to ollama", "ollama failed", "local ai broken"]
 related: ["using-ollama-for-fully-offline-ai-polish"]
-updated: 2026-08-06
+updated: 2026-08-11
 ---
 When Ollama polish fails to tidy up your dictation, the cause is nearly always that Ollama itself is not running.
 
@@ -20,7 +20,7 @@ Ollama needs to be running before you start recording. Open your Applications fo
 
 ### Verify your model
 
-EnviousWispr relies on a model you have downloaded to process your text. Run `ollama list` in Terminal to see which models are on your machine. If the list is empty, run `ollama pull llama3.2` to download a working one.
+EnviousWispr relies on a model you have downloaded to process your text. Run `ollama list` in Terminal to see which models are on your machine. If the list is empty, run `ollama pull qwen2.5:3b` to download a working one.
 
 ### Match your settings
 
@@ -36,7 +36,9 @@ Some hosted models need a paid account with Ollama. If the model you selected re
 
 ### Address slow processing times
 
-A large model running on a busy Mac can take longer than the fifteen seconds EnviousWispr waits. Switch to a smaller model if your dictations time out often.
+A large model running on a busy Mac can take longer than the fifteen seconds EnviousWispr waits. If your dictations time out often, open EnviousWispr settings, go to **AI Polish**, and pick a model labelled Recommended. There are three: `qwen2.5:3b`, `qwen3:0.6b` and `qwen2.5:7b`. For a timeout specifically, `qwen3:0.6b` is the smallest by a wide margin and still scored well in our tests, so try that one first.
+
+Do not choose by size alone. Several of the smallest models EnviousWispr offers produced no acceptable result in our tests, so a smaller download can mean much worse cleanup without reliably solving a timeout. No Recommended model can promise to finish inside fifteen seconds on every Mac or for every dictation, and a long dictation on a busy machine may still run out of time.
 
 ### You still get your dictation
 

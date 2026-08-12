@@ -29,7 +29,9 @@ enum SettingsDefaultValues {
   // no engine was ever remembered (#1285). Mirrors the default engine so a
   // fresh install that toggles off then on lands on Apple Intelligence.
   static let lastLLMProvider: LLMProvider = llmProvider
-  static let ollamaModel = "llama3.2"
+  // #1950: the measured local-model default. This applies only when no choice is stored;
+  // SettingsManager preserves an existing ollamaModel value.
+  static let ollamaModel = "qwen2.5:3b"
 
   static let autoCopyToClipboard = true
   static let hotkeyEnabled = true

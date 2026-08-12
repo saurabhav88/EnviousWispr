@@ -48,6 +48,29 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.languageMode == .auto)
     #expect(settings.warmEnginePolicy == .seconds30)
     #expect(settings.useStreamingASR == false)
+    // #1950: lock the exact shipped value here because a default change must update the settings
+    // authority, Core fallback, canonical-defaults test, knowledge mirror, and What's New together.
+    #expect(settings.ollamaModel == "qwen2.5:3b")
+  }
+
+  @Test("the Ollama default and the Core fallback cannot drift apart")
+  func ollamaDefaultMatchesCoreFallback() {
+    // Two sites hold this string: the settings authority, and `defaultModel`'s fallback parameter
+    // for callers with no saved value. Changing one alone means the fallback path quietly serves a
+    // different model than a fresh install does, which is invisible until someone hits that path.
+    #expect(SettingsDefaultValues.ollamaModel == LLMProvider.defaultModel(for: .ollama))
+  }
+
+  @Test("a model the user already chose survives the default move")
+  func storedOllamaModelSurvives() {
+    // Deliberately neither the old nor the new default, so this cannot pass by coincidence if the
+    // stored value were being ignored and a default substituted.
+    let suite = Self.freshSuite()
+    suite.set("someones-own-finetune:13b", forKey: "ollamaModel")
+
+    let settings = SettingsManager(defaults: suite)
+
+    #expect(settings.ollamaModel == "someones-own-finetune:13b")
   }
 
   // MARK: - Routing
