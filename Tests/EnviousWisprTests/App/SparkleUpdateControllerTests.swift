@@ -513,7 +513,10 @@ struct SparkleUpdateControllerTests {
         noUpdateReason: "on_latest_version",
         checkKind: "background",
         currentAppVersion: "v2.0.4",
-        versionStalenessBucket: "on_latest"
+        // #1979: `on_latest` here would make this the uninformative cycle, which is now
+        // suppressed entirely. `patch_behind` keeps the propagation assertions meaningful
+        // AND is the reason/bucket contradiction we most want to keep emitting.
+        versionStalenessBucket: "patch_behind"
       )
 
       await Task.yield()
@@ -672,6 +675,121 @@ struct SparkleUpdateControllerTests {
 
       let evt = box.events.first { $0.name == "update.sparkle_cycle_finished" }
       #expect(evt?.stringProps["version_staleness_bucket"] == "minor_behind")
+    }
+
+    // MARK: - #1979: uninformative-cycle suppression
+
+    /// Drives the REAL emit path and returns the cycle event if one was emitted.
+    private func capturedCycle(
+      errorCode: String?,
+      noUpdateReason: String?,
+      versionStalenessBucket: String,
+      checkKind: String = "background"
+    ) async -> CapturedTelemetryEvent? {
+      let box = EventBox()
+      let originalHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        Task { @MainActor in box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = originalHook }
+
+      TelemetryService.shared.updateSparkleCycleFinished(
+        version: "2.4.5", isCritical: false, source: "background",
+        errorCode: errorCode, noUpdateReason: noUpdateReason,
+        checkKind: checkKind, currentAppVersion: "2.4.5",
+        versionStalenessBucket: versionStalenessBucket)
+
+      await Task.yield()
+      await Task.yield()
+      return box.events.first { $0.name == "update.sparkle_cycle_finished" }
+    }
+
+    @Test("the self-consistent 'you are already current' cycle is not emitted at all")
+    func uninformativeCycleIsSuppressed() async {
+      let evt = await capturedCycle(
+        errorCode: TelemetryService.sparkleBenignNoUpdateErrorCode,
+        noUpdateReason: "on_latest_version",
+        versionStalenessBucket: "on_latest")
+      #expect(
+        evt == nil,
+        """
+        #1979: reason, staleness bucket and error code all agree that nothing happened, \
+        so this cycle carries no information. It was 48,943 of 56,678 rows and 8.9% of \
+        ALL production telemetry, emitted hourly per user forever.
+        """)
+    }
+
+    struct CycleShape: Sendable {
+      let errorCode: String?
+      let reason: String?
+      let bucket: String
+      let why: String
+      var checkKind: String = "background"
+    }
+
+    @Test(
+      "every cycle shape that still carries information keeps emitting",
+      arguments: [
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.1001", reason: "on_latest_version",
+          bucket: "patch_behind",
+          why: "#847 recurrence: Sparkle claims current, staleness says behind"),
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.1001", reason: "on_latest_version",
+          bucket: "minor_behind", why: "#847 recurrence, a larger gap"),
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.1001", reason: "on_newer_than_latest_version",
+          bucket: "on_latest", why: "a different no-update reason"),
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.1005", reason: nil, bucket: "on_latest",
+          why: "SURunningTranslocated — the user can never update (#1919)"),
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.2001", reason: nil, bucket: "patch_behind",
+          why: "SUDownloadError"),
+        CycleShape(
+          errorCode: nil, reason: nil, bucket: "on_latest",
+          why: "a cycle with no error at all"),
+        CycleShape(
+          errorCode: nil, reason: nil, bucket: "major_behind",
+          why: "an update was found for a badly stale user"),
+        // The outcome tuple below is IDENTICAL to the suppressed one. Only the trigger
+        // differs, and the trigger is what makes it worth keeping: the user asked.
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.1001", reason: "on_latest_version",
+          bucket: "on_latest",
+          why: "the USER clicked Check for Updates and is owed the answer (#2037 r3764532583)",
+          checkKind: "user_initiated"),
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.1001", reason: "on_latest_version",
+          bucket: "on_latest", why: "an informational check, not a background one",
+          checkKind: "informational"),
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.1001", reason: "on_latest_version",
+          bucket: "on_latest",
+          why: "an UNMAPPED future SPUUpdateCheck case must fail OPEN, never vanish",
+          checkKind: "unrecognized"),
+      ])
+    func informativeCyclesStillEmit(shape: CycleShape) async {
+      let evt = await capturedCycle(
+        errorCode: shape.errorCode, noUpdateReason: shape.reason,
+        versionStalenessBucket: shape.bucket, checkKind: shape.checkKind)
+      #expect(
+        evt != nil,
+        Comment(rawValue: "#1979 must KEEP emitting this shape: \(shape.why)"))
+    }
+
+    @Test("the benign no-update code constant still matches Sparkle's own enum")
+    func benignNoUpdateCodeMatchesSparklesOwnEnum() {
+      // `EnviousWisprServices` cannot import Sparkle, so the constant is a string there.
+      // This is the freeze that catches Sparkle renaming or renumbering it.
+      let rendered = "\(SUSparkleErrorDomain).\(SUError.noUpdateError.rawValue)"
+      #expect(
+        TelemetryService.sparkleBenignNoUpdateErrorCode == rendered,
+        """
+        Sparkle's SUNoUpdateError no longer renders as the constant #1979's suppression \
+        keys on. The uninformative cycle would start emitting again (volume regression), \
+        or worse, a DIFFERENT error would start being suppressed.
+        """)
     }
 
   #endif  // DEBUG

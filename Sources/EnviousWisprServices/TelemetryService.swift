@@ -2567,6 +2567,59 @@ public final class TelemetryService {
     )
   }
 
+  /// Sparkle's `SUNoUpdateError` (`SUErrors.h:41`) as `SparkleUpdateController` renders
+  /// it — `"\(domain).\(code)"`. Sparkle reports "no update available" AS an error, so
+  /// this code is the benign outcome, not a failure.
+  ///
+  /// `SparkleUpdateControllerTests.benignNoUpdateCodeMatchesSparklesOwnEnum` fails if
+  /// Sparkle's own enum stops producing this exact string, because this module cannot
+  /// import Sparkle to say so in types.
+  public static let sparkleBenignNoUpdateErrorCode = "SUSparkleErrorDomain.1001"
+
+  /// #1979: true for the ONE cycle shape that carries no information — the reason, the
+  /// staleness bucket and the error code all agree that nothing happened and the user is
+  /// already current. Measured 2026-08-12 (30d production, dev excluded): 48,943 of the
+  /// event's 56,678 rows, which is **8.9% of ALL production telemetry**, emitted hourly
+  /// per user forever.
+  ///
+  /// Everything else still emits, deliberately:
+  /// - reason/bucket CONTRADICTIONS (`on_latest_version` + `patch_behind` 251 +
+  ///   `minor_behind` 86 = 337 rows) — that disagreement is how #847 (Sparkle telling a
+  ///   behind user they are current) would be caught recurring, so it is the case worth
+  ///   the most per row.
+  /// - real failures: `1005` `SURunningTranslocated` (4,144), `2001` `SUDownloadError`
+  ///   (3,078), and every install/verify error.
+  /// - every cycle that actually found an update.
+  ///
+  /// - **any check the USER asked for.** An attended "Check for Updates" from the menu or
+  ///   Settings produces the identical outcome tuple, but it is an intentional user
+  ///   action with a result, not background noise: someone asked a question and we
+  ///   answered it. 419 rows / 248 users in 30d, 0.86% of the shape below, so keeping
+  ///   them costs 0.08% of total volume and preserves the whole signal. Cloud review
+  ///   caught this (PR #2037 r3764532583); the first version keyed on the OUTCOME and
+  ///   ignored the TRIGGER.
+  ///
+  /// `checkKind` is an ALLOWLIST of the one background value, never a denylist of
+  /// `user_initiated`. `SparkleUpdateController.checkKindString` (`:350`) also produces
+  /// `informational` and `unrecognized`, and an unmapped future case must EMIT rather
+  /// than vanish, so the unknown direction has to fail open.
+  ///
+  /// All four fields are checked even though `SparkleUpdateController.noUpdateReason`
+  /// only returns non-nil for domain `SUSparkleErrorDomain` code `1001` (`:322`), which
+  /// makes the error check redundant TODAY. They arrive here as independent parameters,
+  /// so this must not silently depend on a coupling established in another module.
+  static func isUninformativeUpdateCycle(
+    errorCode: String?,
+    noUpdateReason: String?,
+    versionStalenessBucket: String,
+    checkKind: String
+  ) -> Bool {
+    checkKind == "background"
+      && errorCode == sparkleBenignNoUpdateErrorCode
+      && noUpdateReason == "on_latest_version"
+      && versionStalenessBucket == "on_latest"
+  }
+
   public func updateSparkleCycleFinished(
     version: String,
     isCritical: Bool,
@@ -2577,6 +2630,16 @@ public final class TelemetryService {
     currentAppVersion: String,
     versionStalenessBucket: String  // #1178 (Phase 9, B3): on_latest/patch/minor/major_behind.
   ) {
+    // #1979: suppressed BEFORE the DEBUG hook as well as the capture, so a test observes
+    // exactly what production emits rather than a shape only tests can see.
+    if Self.isUninformativeUpdateCycle(
+      errorCode: errorCode,
+      noUpdateReason: noUpdateReason,
+      versionStalenessBucket: versionStalenessBucket,
+      checkKind: checkKind
+    ) {
+      return
+    }
     #if DEBUG
       var hookStringProps: [String: String] = [
         "version": version,
