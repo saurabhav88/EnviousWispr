@@ -254,7 +254,7 @@ import Testing
     #expect(DictationNarrator.clipboardFallbackText == "Copied. Press \u{2318}V to paste")
     #expect(DictationNarrator.accessibilityToastText == "Auto-paste needs Accessibility")
     #expect(DictationNarrator.recoveryTitle == "Recovering your last recording…")
-    #expect(DictationNarrator.recoverySubtitle == "Saved to History when it's done")
+    #expect(DictationNarrator.recoverySubtitle == "Anything found goes to History")
     #expect(DictationNarrator.recoveryAccessibilityLabel == "Recovering your last recording")
     #expect(DictationNarrator.recoverySucceededTitle == "Recovered your last recording")
     #expect(DictationNarrator.recoverySucceededSubtitle == "Saved to History")
@@ -281,5 +281,29 @@ import Testing
     // The recovery AX label has no ellipsis; the visible title does.
     #expect(DictationNarrator.recoveryAccessibilityLabel != DictationNarrator.recoveryTitle)
     #expect(!DictationNarrator.recoveryAccessibilityLabel.contains("…"))
+  }
+
+  /// #1897 — the IN-PROGRESS recovery subtitle must not assert the outcome the
+  /// SUCCESS subtitle asserts. The byte-exact test above pins today's wording;
+  /// this one pins the founder's 2026-08-12 decision ("stop promising"), so a
+  /// future rewording cannot quietly reintroduce a promise while staying green.
+  ///
+  /// The check is a substring test rather than a word list because the defect
+  /// had exactly that shape: the old subtitle was "Saved to History when it's
+  /// done", which CONTAINS the success claim "Saved to History" verbatim and
+  /// merely appends a timing clause. So this assertion is a genuine two-way
+  /// control — it fails against the string this issue removed, and passes
+  /// against the conditional one that replaced it. Verified in both directions.
+  ///
+  /// A recovery reconstructs the audio perfectly and finds no speech in it about
+  /// 93% of the time, so the in-progress pill cannot know that anything will be
+  /// saved. Only the success pill, which fires after text has landed, may say so.
+  @Test("the in-progress recovery subtitle never asserts the success claim")
+  func recoveryInProgressSubtitleMakesNoPromise() {
+    #expect(
+      !DictationNarrator.recoverySubtitle.contains(DictationNarrator.recoverySucceededSubtitle))
+    // Guard the control itself: if the success subtitle ever stopped making an
+    // unconditional save claim, the assertion above would pass vacuously.
+    #expect(DictationNarrator.recoverySucceededSubtitle == "Saved to History")
   }
 }

@@ -216,7 +216,24 @@ enum DictationNarrator {
   static let clipboardFallbackText = "Copied. Press \u{2318}V to paste"
   static let accessibilityToastText = "Auto-paste needs Accessibility"
   static let recoveryTitle = "Recovering your last recording…"
-  static let recoverySubtitle = "Saved to History when it's done"
+  /// #1897 — CONDITIONAL, and it must stay that way. This read "Saved to History
+  /// when it's done", which asserts an outcome the app cannot know yet: ~93% of
+  /// recoveries reconstruct the audio perfectly and find no speech in it, so
+  /// nothing lands in History and the pill has already promised that it would.
+  /// Roughly 302 events across 50 users a month, every one a broken promise.
+  ///
+  /// Founder decision 2026-08-12, given the choice between adding a failure
+  /// notice and removing the promise: *"stop promising, just close the loop
+  /// quietly."* An empty recording is normal behaviour — someone pressed the key
+  /// and chose not to speak — so announcing it would be wrong; the defect was
+  /// only ever the promise. `OverlayIntent` therefore keeps exactly its two
+  /// recovery cases and gains NO failure case, which is what this issue's body
+  /// originally proposed and what that decision explicitly declines.
+  ///
+  /// The quiet close needs no code: this pill is a transient notice with a 6s
+  /// auto-dismiss (`RecordingOverlayPanel`), so a recovery that yields nothing
+  /// already ends by the pill simply going away.
+  static let recoverySubtitle = "Anything found goes to History"
   /// The recovery pill's CONTAINER accessibility label (no ellipsis — distinct
   /// bytes from `recoveryTitle`). VoiceOver reads it as the group's spoken status.
   static let recoveryAccessibilityLabel = "Recovering your last recording"
