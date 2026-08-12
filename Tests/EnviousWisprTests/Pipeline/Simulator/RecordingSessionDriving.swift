@@ -54,6 +54,15 @@ protocol RecordingSessionDriving: AnyObject {
   /// step ordering against a real FSM). No-op for the synchronous stub.
   func drainReadyWork() async
 
+  /// Wait for the SUT's own conclusion signal, then drain (#1868).
+  ///
+  /// A protocol REQUIREMENT rather than an extension-only method so a
+  /// protocol-typed caller dispatches to the kernel wrapper's real
+  /// implementation. As a plain extension member this would statically
+  /// dispatch to the default below and silently do nothing extra, which is
+  /// the failure this exists to remove.
+  func drainUntilConcluded() async
+
   /// Inject a limb / finalizer / storage failure (PR-3 plan §14a). The
   /// kernel-wrapper records it; its `processText` / `store` seams read it.
   /// No-op for the stub (PR-2's `.limb` step was data-only).
@@ -63,6 +72,9 @@ protocol RecordingSessionDriving: AnyObject {
 extension RecordingSessionDriving {
   /// Default — a synchronous SUT (`StubRecordingSession`) has no async work.
   func drainReadyWork() async {}
+  /// Default — a synchronous SUT concludes inline, so there is no separate
+  /// conclusion signal to wait on and quiescence IS conclusion.
+  func drainUntilConcluded() async { await drainReadyWork() }
   /// Default — the stub does not model limb failures.
   func inject(_ limb: LimbDirective) {}
 }

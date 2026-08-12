@@ -60,7 +60,30 @@ struct ScenarioRunner {
     // the released forward-path work run to its terminal state.
     context.clock.drainPending()
     context.vad.finish()
-    await context.sut.drainReadyWork()
+    // #1868: `drainReadyWork` is a QUIESCENCE heuristic, not a completion
+    // signal. Its own Scope note predicted recurrence at continuations other
+    // than the recording-exit hand-off, and CI hit exactly that: A14 ("adapter
+    // fails after audio captured, retry also exhausted") settled while the
+    // finalize-then-retry continuation was still a ready task, so the check
+    // below read a stale `transcribing` and reported a stuck session on a
+    // healthy kernel. A14 has no `advanceClock` and no VAD step, so the
+    // trigger is any continuation losing the scheduler lottery for the whole
+    // 64-yield window, not only a clock-resumed one.
+    //
+    // Where the scenario asserts a TERMINAL state, wait for the kernel's own
+    // conclusion signal instead — the thing being asserted is the thing to
+    // wait on. Do NOT widen the stability window (swift-testing-patterns.md
+    // `yield-settle-needs-inflight-signal-not-count`).
+    //
+    // Gated on `isTerminal` because A16 ("stop without active session")
+    // expects `.idle`: no session is ever minted, so no conclusion is ever
+    // published and a wait would burn the livelock cap and record a failure.
+    // `drainUntilConcluded` ends in `drainReadyWork`, so this is a superset.
+    if scenario.expected.terminalState.isTerminal {
+      await context.sut.drainUntilConcluded()
+    } else {
+      await context.sut.drainReadyWork()
+    }
 
     failures.append(contentsOf: checkOutcome(scenario.expected, context: context))
     return ScenarioResult(scenarioID: scenario.id, failures: failures)

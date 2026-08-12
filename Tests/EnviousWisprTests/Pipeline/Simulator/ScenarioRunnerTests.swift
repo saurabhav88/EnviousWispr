@@ -127,4 +127,65 @@ struct ScenarioRunnerTests {
     _ = await ScenarioRunner().run(scenario, context: makeContext(sut: stub))
     #expect(stub.triggerLog == [.start, .stop, .reset])
   }
+
+  // MARK: - #1868: the runner waits on the asserted signal, not on quiescence
+
+  /// Records which drain the runner chose. The contention tests in
+  /// `DrainReadyWorkSettleTests` are honest that they cannot prove
+  /// red-without-fix (cooperative executor ordering is not controllable from
+  /// test code), so the ROUTING is what gets locked deterministically here.
+  @MainActor
+  private final class DrainSpy: RecordingSessionDriving {
+    private(set) var state: FSMState = .idle
+    private(set) var effects = SessionEffects()
+    private(set) var concludedCalls = 0
+    private(set) var readyWorkCalls = 0
+
+    func apply(_ trigger: SessionTrigger) async {}
+    func drainReadyWork() async { readyWorkCalls += 1 }
+    func drainUntilConcluded() async {
+      concludedCalls += 1
+      await drainReadyWork()
+    }
+    func inject(_ limb: LimbDirective) {}
+  }
+
+  @Test("a scenario asserting a TERMINAL state waits for the conclusion signal")
+  func terminalAssertingScenarioWaitsForConclusion() async {
+    let spy = DrainSpy()
+    let scenario = Scenario(
+      id: "SELFTEST-1868-TERMINAL",
+      name: "terminal-asserting scenario routes to the conclusion wait",
+      steps: [.trigger(.start), .trigger(.stop)],
+      expected: ExpectedOutcome(
+        terminalState: .failed(.asrFailed), pasteCount: 0, pasteOutcome: .none,
+        transcript: .none))
+    _ = await ScenarioRunner().run(scenario, context: makeContext(sut: spy))
+    #expect(
+      spy.concludedCalls == 1,
+      """
+      #1868: the teardown drain must wait for the kernel's own conclusion signal \
+      when a terminal is asserted. Quiescence alone let A14 read a stale \
+      `transcribing` and report a stuck session on a healthy kernel.
+      """)
+  }
+
+  @Test("a scenario asserting a NON-terminal state must not wait for a conclusion")
+  func nonTerminalScenarioDoesNotWaitForConclusion() async {
+    let spy = DrainSpy()
+    // A16's shape: `stop` with no active session, so no session is ever minted
+    // and no conclusion is ever published. Waiting would burn the livelock cap
+    // and record a give-up failure on a scenario that is behaving correctly.
+    let scenario = Scenario(
+      id: "SELFTEST-1868-IDLE",
+      name: "no-session scenario keeps the plain drain",
+      steps: [.trigger(.stop)],
+      expected: ExpectedOutcome(
+        terminalState: .idle, pasteCount: 0, pasteOutcome: .none, transcript: .none))
+    _ = await ScenarioRunner().run(scenario, context: makeContext(sut: spy))
+    #expect(
+      spy.concludedCalls == 0,
+      "#1868: `.idle` is not terminal, so A16 and its kin must keep the plain drain.")
+    #expect(spy.readyWorkCalls > 0, "the plain drain must still run")
+  }
 }
