@@ -31,8 +31,27 @@ struct EngineCoordinatorTests {
     #expect(fake.switchCount == 1)
     let warmed = await enginePoll { fake.whisperKitReadiness == .ready }
     #expect(warmed, "the now-active engine must be warmed")
-    #expect(c.status.active == .whisperKit)
-    #expect(c.status.selectedReadiness == .ready)
+
+    // #2028 — wait for the SNAPSHOT, not for the fake.
+    //
+    // `c.status` is republished by the coordinator (`EngineCoordinator.swift`
+    // `selectedReadiness: deps.readiness(sel)`); it is not a live read of the
+    // fake. Polling `fake.whisperKitReadiness` above converges the moment the
+    // FAKE flips, which is strictly before the coordinator has republished — so
+    // asserting `c.status` on the next line raced, passed on a fast local
+    // machine, and failed on a loaded hosted runner. It failed `build-debug`,
+    // which feeds the required `build-check`, on PRs whose diff contained no
+    // Swift at all.
+    //
+    // This is the less obvious form of the wait-for-a-signal rule: the test DID
+    // wait for a signal rather than sleeping, but it waited for a DIFFERENT
+    // signal than the one it asserts. Both published fields are polled, because
+    // both were asserted straight off a fake-field poll and the issue named only
+    // one of them.
+    let publishedActive = await enginePoll { c.status.active == .whisperKit }
+    #expect(publishedActive, "the coordinator must publish the now-active engine")
+    let publishedReadiness = await enginePoll { c.status.selectedReadiness == .ready }
+    #expect(publishedReadiness, "the coordinator must publish the warmed readiness")
   }
 
   @Test("rapid toggles converge to the latest selection, never the intermediate")
