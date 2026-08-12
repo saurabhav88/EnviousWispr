@@ -12,11 +12,18 @@ struct AudioSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(AudioDeviceList.self) private var audioDeviceList
 
+  /// Names the device Auto would actually OPEN, not the system default.
+  ///
+  /// Since #2022 those differ when the default is a virtual or aggregate device
+  /// the ladder refuses. Reading the default here would print "Using Krisp"
+  /// while the microphone we actually record from is the built-in one — the
+  /// pill's only job is to say what is in use, so naming the refused device is
+  /// the one thing it must not do.
   private var autoInputDeviceName: String? {
     guard settings.preferredInputDeviceIDOverride.isEmpty,
-      let defaultID = AudioDeviceEnumerator.defaultInputDeviceID()
+      let resolvedID = AudioDeviceEnumerator.resolvedAutoInputDeviceID()
     else { return nil }
-    return audioDeviceList.availableInputDevices.first { $0.id == defaultID }?.name
+    return audioDeviceList.availableInputDevices.first { $0.id == resolvedID }?.name
   }
 
   var body: some View {

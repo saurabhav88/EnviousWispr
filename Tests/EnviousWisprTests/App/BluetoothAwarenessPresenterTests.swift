@@ -305,7 +305,7 @@ private func emitEquals(
   @Test func effectiveInput_overrideWinsOverBluetoothDefault() {
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "builtin",
-      defaultInputIsBluetooth: { true },
+      autoInputIsBluetooth: { true },
       uidIsBluetooth: { $0 == "airpods" }  // "builtin" -> false
     )
     #expect(result == false)  // explicit non-BT override beats a BT default
@@ -319,7 +319,7 @@ private func emitEquals(
     // selection would have resolved BT under the old precedence.
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "",
-      defaultInputIsBluetooth: { false },
+      autoInputIsBluetooth: { false },
       uidIsBluetooth: { $0 == "airpods" }
     )
     #expect(result == false)
@@ -328,7 +328,7 @@ private func emitEquals(
   @Test func effectiveInput_defaultBluetoothWhenBothEmpty() {
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "",
-      defaultInputIsBluetooth: { true },
+      autoInputIsBluetooth: { true },
       uidIsBluetooth: { _ in false }
     )
     #expect(result == true)
@@ -337,7 +337,7 @@ private func emitEquals(
   @Test func effectiveInput_defaultNotBluetoothWhenBothEmpty() {
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "",
-      defaultInputIsBluetooth: { false },
+      autoInputIsBluetooth: { false },
       uidIsBluetooth: { _ in true }
     )
     #expect(result == false)
@@ -349,7 +349,7 @@ private func emitEquals(
     // stale UID with a Bluetooth default must show the card, not fail closed.
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "ghost-device",
-      defaultInputIsBluetooth: { true },
+      autoInputIsBluetooth: { true },
       uidIsBluetooth: { _ in nil }  // removed/unknown device
     )
     #expect(result == true)
@@ -359,7 +359,7 @@ private func emitEquals(
     // Stale UID but the default input is NOT Bluetooth → no card (no false positive).
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "ghost-device",
-      defaultInputIsBluetooth: { false },
+      autoInputIsBluetooth: { false },
       uidIsBluetooth: { _ in nil }
     )
     #expect(result == false)
@@ -369,7 +369,7 @@ private func emitEquals(
     // A UID that DOES resolve is authoritative — the default is not consulted.
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "builtin",
-      defaultInputIsBluetooth: { true },  // default is BT...
+      autoInputIsBluetooth: { true },  // default is BT...
       uidIsBluetooth: { _ in false }  // ...but the pinned built-in resolves non-BT
     )
     #expect(result == false)
@@ -378,7 +378,7 @@ private func emitEquals(
   @Test func effectiveInput_noDefaultDevice_failsClosed() {
     let result = BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
       preferredOverride: "",
-      defaultInputIsBluetooth: { nil },  // no default input device
+      autoInputIsBluetooth: { nil },  // no default input device
       uidIsBluetooth: { _ in true }
     )
     #expect(result == false)

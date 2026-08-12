@@ -216,24 +216,26 @@ final class BluetoothAwarenessPresenter {
   /// real CoreAudio devices; the bootstrapper supplies the live `AudioDeviceEnumerator`
   /// resolvers.
   /// - Parameters:
-  ///   - defaultInputIsBluetooth: `nil` when there is no resolvable default device.
+  ///   - autoInputIsBluetooth: `nil` when Auto resolves to no device at all.
   ///   - uidIsBluetooth: `nil` when the UID does not resolve (removed/unknown device).
   static func computeEffectiveInputIsBluetooth(
     preferredOverride: String,
-    defaultInputIsBluetooth: () -> Bool?,
+    autoInputIsBluetooth: () -> Bool?,
     uidIsBluetooth: (String) -> Bool?
   ) -> Bool {
-    // Auto (empty override): capture follows the system-default input, so classify
-    // the default — never a remembered selected device HAL won't open.
+    // Auto (empty override): classify the device capture would actually OPEN —
+    // never a remembered selected device HAL won't open, and since #2022 not
+    // simply the system default either, because a virtual or aggregate default
+    // loses to a real microphone and the fallback may be the Bluetooth one.
     guard !preferredOverride.isEmpty else {
-      return defaultInputIsBluetooth() ?? false
+      return autoInputIsBluetooth() ?? false
     }
     // Explicit override: authoritative when it resolves; a stale/unresolvable
     // override falls back to the default input, mirroring HAL's own fallback.
     if let resolved = uidIsBluetooth(preferredOverride) {
       return resolved
     }
-    return defaultInputIsBluetooth() ?? false
+    return autoInputIsBluetooth() ?? false
   }
 
   // MARK: - Helpers

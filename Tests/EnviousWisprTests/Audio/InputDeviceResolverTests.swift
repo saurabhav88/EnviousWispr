@@ -53,6 +53,14 @@ struct InputDeviceResolverTests {
     }
   }
 
+  /// Counts targeted transport reads (#2022). Same shape as `SnapshotSpy`: the
+  /// point is that a read the resolver performs is COUNTABLE, so "at most one
+  /// per resolve" is a tested property rather than a claim in a comment.
+  private final class TransportReadCounter: @unchecked Sendable {
+    private(set) var count = 0
+    func bump() { count += 1 }
+  }
+
   private func candidate(
     _ id: AudioDeviceID, _ uid: String, _ transport: UInt32?
   ) -> InputDeviceCandidate {
@@ -61,23 +69,35 @@ struct InputDeviceResolverTests {
 
   /// The spy is the ONLY source of the snapshot, so no test can pass a snapshot
   /// that is silently ignored.
+  ///
+  /// `defaultTransport` is injected on EVERY call and never defaulted to the
+  /// production reader: `InputDeviceResolver`'s own contract is that it "cannot
+  /// smuggle in a live CoreAudio read", and leaving the #2022 parameter at its
+  /// production default would have every test below performing one against
+  /// whatever hardware the machine happens to have. Built-in is the neutral
+  /// value — a real microphone, so it changes no pre-#2022 expectation.
   private func resolve(
     preferredUID: String? = nil,
     defaultID: AudioDeviceID?,
+    defaultTransport: UInt32? = kAudioDeviceTransportTypeBuiltIn,
     spy: SnapshotSpy
   ) -> InputDeviceResolution {
     InputDeviceResolver(
       defaultInputDeviceID: { defaultID },
-      inputDeviceSnapshot: { spy.provide() }
+      inputDeviceSnapshot: { spy.provide() },
+      transportForDevice: { _ in defaultTransport }
     ).resolve(preferredUID: preferredUID)
   }
 
   private func resolve(
     preferredUID: String? = nil,
     defaultID: AudioDeviceID?,
+    defaultTransport: UInt32? = kAudioDeviceTransportTypeBuiltIn,
     snapshot: InputDeviceSnapshot
   ) -> InputDeviceResolution {
-    resolve(preferredUID: preferredUID, defaultID: defaultID, spy: SnapshotSpy(snapshot))
+    resolve(
+      preferredUID: preferredUID, defaultID: defaultID, defaultTransport: defaultTransport,
+      spy: SnapshotSpy(snapshot))
   }
 
   /// One accepted transport. A named type rather than a tuple so the
@@ -139,6 +159,142 @@ struct InputDeviceResolverTests {
     #expect(result.selectedDeviceID == 42)
     #expect(result.resolutionSource == .systemDefault)
     #expect(spy.callCount == 0)
+  }
+
+  // MARK: - Rung 1b: a system default that is proven not to be a microphone (#2022)
+
+  @Test("a virtual system default loses Auto to a real microphone")
+  func virtualDefaultDivertsToPhysical() {
+    let spy = SnapshotSpy(
+      .complete([
+        candidate(60, "BlackHole2ch", kAudioDeviceTransportTypeVirtual),
+        candidate(7, "BuiltInMicrophoneDevice", kAudioDeviceTransportTypeBuiltIn),
+      ]))
+    let result = resolve(
+      defaultID: 60, defaultTransport: kAudioDeviceTransportTypeVirtual, spy: spy)
+
+    #expect(result.selectedDeviceID == 7)
+    #expect(result.resolutionSource == .listFallback)
+    // The enumeration rung 1 normally avoids IS paid for here, and only here.
+    #expect(spy.callCount == 1)
+  }
+
+  @Test("an aggregate system default loses Auto to a real microphone")
+  func aggregateDefaultDivertsToPhysical() {
+    let spy = SnapshotSpy(
+      .complete([
+        candidate(61, "aggregate", kAudioDeviceTransportTypeAggregate),
+        candidate(8, "usb-mic", kAudioDeviceTransportTypeUSB),
+      ]))
+    let result = resolve(
+      defaultID: 61, defaultTransport: kAudioDeviceTransportTypeAggregate, spy: spy)
+
+    #expect(result.selectedDeviceID == 8)
+    #expect(result.resolutionSource == .listFallback)
+  }
+
+  /// THE NO-REGRESSION CASE. With no real microphone to divert to, the default
+  /// is bound exactly as before, so #2022 never turns a working take into an
+  /// error and adds no new path to "No microphone found".
+  ///
+  /// This is a known limit rather than a fix: binding a proven non-microphone
+  /// still loses that dictation. Refusing would assert "connect a microphone" to
+  /// someone who may have deliberately built an aggregate device that records
+  /// fine, and would file an alerting error — the opposite of why this was
+  /// prioritised. Freezing the conservative behaviour so a later change to it is
+  /// a deliberate decision, not an accident.
+  ///
+  /// #2022 therefore introduces NO new path to "no microphone found".
+  @Test("a proven non-microphone default is still used when there is no real microphone")
+  func nonMicrophoneDefaultIsKeptWhenNothingElseExists() {
+    let spy = SnapshotSpy(
+      .complete([
+        candidate(60, "BlackHole2ch", kAudioDeviceTransportTypeVirtual),
+        candidate(61, "aggregate", kAudioDeviceTransportTypeAggregate),
+      ]))
+    let result = resolve(
+      defaultID: 61, defaultTransport: kAudioDeviceTransportTypeAggregate, spy: spy)
+
+    #expect(result.selectedDeviceID == 61)
+    #expect(result.resolutionSource == .systemDefault)
+    #expect(result.thrownError == nil, "diverting nowhere must never become an error")
+  }
+
+  @Test("an unreadable default transport keeps today's behaviour, never diverting on doubt")
+  func unreadableDefaultTransportFailsOpen() {
+    let spy = SnapshotSpy(.complete([candidate(7, "built-in", kAudioDeviceTransportTypeBuiltIn)]))
+    let result = resolve(defaultID: 42, defaultTransport: nil, spy: spy)
+
+    #expect(result.selectedDeviceID == 42)
+    #expect(result.resolutionSource == .systemDefault)
+    #expect(result.enumerationOutcome == .notAttempted)
+    #expect(spy.callCount == 0, "uncertainty must not buy an enumeration")
+  }
+
+  @Test("an unknown default transport keeps today's behaviour too")
+  func unknownDefaultTransportFailsOpen() {
+    let spy = SnapshotSpy(.complete([candidate(7, "built-in", kAudioDeviceTransportTypeBuiltIn)]))
+    let result = resolve(defaultID: 42, defaultTransport: 0, spy: spy)
+
+    #expect(result.selectedDeviceID == 42)
+    #expect(result.enumerationOutcome == .notAttempted)
+  }
+
+  @Test("a pinned virtual device is still the user's to choose")
+  func pinnedVirtualDeviceIsUnaffected() {
+    let spy = SnapshotSpy(
+      .complete([
+        candidate(60, "BlackHole2ch", kAudioDeviceTransportTypeVirtual),
+        candidate(7, "built-in", kAudioDeviceTransportTypeBuiltIn),
+      ]))
+    let result = resolve(
+      preferredUID: "BlackHole2ch", defaultID: 60,
+      defaultTransport: kAudioDeviceTransportTypeVirtual, spy: spy)
+
+    // Rung 2 is reached before any of this, and an explicit choice stays the
+    // user's. This is what makes the divert above safe: the deliberate user
+    // pins, so only the accidental default is rescued.
+    #expect(result.selectedDeviceID == 60)
+    #expect(result.resolutionSource == .pinnedUID)
+  }
+
+  @Test("a pinned device that vanished falls through a virtual default to a real microphone")
+  func pinnedGoneWithVirtualDefaultDivertsToPhysical() {
+    let spy = SnapshotSpy(
+      .complete([
+        candidate(60, "BlackHole2ch", kAudioDeviceTransportTypeVirtual),
+        candidate(7, "built-in", kAudioDeviceTransportTypeBuiltIn),
+      ]))
+    let result = resolve(
+      preferredUID: "unplugged-usb-mic", defaultID: 60,
+      defaultTransport: kAudioDeviceTransportTypeVirtual, spy: spy)
+
+    #expect(result.selectedDeviceID == 7)
+    #expect(result.resolutionSource == .listFallback)
+  }
+
+  @Test("the default's transport is read at most once per resolve")
+  func transportIsReadAtMostOnce() {
+    // Both rungs that consult it are mutually exclusive, and the value is
+    // computed once so they can never disagree about what the default IS.
+    let counter = TransportReadCounter()
+    let resolver = InputDeviceResolver(
+      defaultInputDeviceID: { 60 },
+      inputDeviceSnapshot: {
+        .success(
+          candidates: [
+            InputDeviceCandidate(
+              id: 60, uid: "virt", rawTransport: kAudioDeviceTransportTypeVirtual),
+            InputDeviceCandidate(id: 7, uid: "mic", rawTransport: kAudioDeviceTransportTypeBuiltIn),
+          ], complete: true)
+      },
+      transportForDevice: { _ in
+        counter.bump()
+        return kAudioDeviceTransportTypeVirtual
+      })
+
+    _ = resolver.resolve(preferredUID: nil)
+    #expect(counter.count == 1)
   }
 
   // MARK: - Rung 2: a pinned device
@@ -536,15 +692,19 @@ struct InputDeviceResolverTests {
       resolutionSource: source.rawValue)
   }
 
+  /// `defaultTransport` is injected here for the same reason as the cold helper:
+  /// the #2022 parameter must never fall through to a live CoreAudio read.
   private func warmCompatible(
     _ bound: BoundInputDevice,
     preferredUID: String? = nil,
     defaultID: AudioDeviceID?,
+    defaultTransport: UInt32? = kAudioDeviceTransportTypeBuiltIn,
     spy: SnapshotSpy
   ) -> Bool {
     InputDeviceResolver(
       defaultInputDeviceID: { defaultID },
-      inputDeviceSnapshot: { spy.provide() }
+      inputDeviceSnapshot: { spy.provide() },
+      transportForDevice: { _ in defaultTransport }
     ).isWarmBindCompatible(bound, preferredUID: preferredUID)
   }
 
@@ -659,6 +819,35 @@ struct InputDeviceResolverTests {
     #expect(
       !warmCompatible(
         bind(30, .systemDefault), preferredUID: "airpods", defaultID: nil, spy: spy))
+  }
+
+  @Test("a diverted bind survives while the fake default is still the default (#2022)")
+  func divertedBindKeepsWarmReuse() {
+    // Cloud review found this: once rung 1 diverts, the warm bind is a physical
+    // device while the default is still the virtual one, so plain equality
+    // answers "incompatible" on EVERY later take. The rescued user would trade a
+    // lost dictation for a permanently cold-opening one.
+    let spy = SnapshotSpy(.complete([candidate(7, "builtin", kAudioDeviceTransportTypeBuiltIn)]))
+
+    #expect(
+      warmCompatible(
+        bind(7, .listFallback), defaultID: 60,
+        defaultTransport: kAudioDeviceTransportTypeVirtual, spy: spy))
+    // Auto must still never enumerate to answer this.
+    #expect(spy.callCount == 0)
+  }
+
+  @Test("a fallback bind does NOT survive a real default that differs")
+  func fallbackBindYieldsToARealDefault() {
+    // The two-way control. Without it, keeping every `listFallback` bind would
+    // pass the test above while ignoring a genuine microphone the user just
+    // plugged in and macOS just made the default.
+    let spy = SnapshotSpy(.complete([candidate(7, "builtin", kAudioDeviceTransportTypeBuiltIn)]))
+
+    #expect(
+      !warmCompatible(
+        bind(7, .listFallback), defaultID: 8,
+        defaultTransport: kAudioDeviceTransportTypeUSB, spy: spy))
   }
 
   // MARK: - The per-device failure-vs-empty distinction (whole-diff review)

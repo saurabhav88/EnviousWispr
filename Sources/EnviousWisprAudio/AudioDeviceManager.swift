@@ -245,9 +245,32 @@ public enum AudioDeviceEnumerator {
     return devices.first(where: { $0.uid == uid })?.id
   }
 
+  /// The device an Auto capture would actually OPEN.
+  ///
+  /// Since #2022 that is NOT always the system default: a default proven not to
+  /// be a microphone (virtual or aggregate) loses to a real one. Any consumer
+  /// answering "which input is in use" must ask THIS, not
+  /// `defaultInputDeviceID()`, or it will name the device we deliberately
+  /// refused — cloud review found exactly that in the settings pill and the
+  /// Bluetooth awareness card.
+  ///
+  /// Exists because `InputDeviceResolver` is module-internal: this is the one
+  /// public door to it, so the ladder stays the single selection authority
+  /// rather than being re-derived per consumer.
+  ///
+  /// Cost matches `defaultInputDeviceID()` on the healthy path — one extra
+  /// property read, and the enumeration only when the default is refused.
+  public static func resolvedAutoInputDeviceID() -> AudioDeviceID? {
+    InputDeviceResolver().resolve(preferredUID: nil).selectedDeviceID
+  }
+
   /// Returns the UID of the current system-default input device, or nil if
   /// none. Used by Sentry extras (`capture.input_device_uid_system_default`)
   /// so divergence vs the preferred device is measured correctly.
+  ///
+  /// Deliberately the SYSTEM DEFAULT and not the resolved device: its whole
+  /// purpose is to let divergence be measured, so it must keep reporting what
+  /// macOS says even when the ladder refuses it.
   public static func defaultInputDeviceUID() -> String? {
     guard let id = defaultInputDeviceID() else { return nil }
     return stringProperty(for: id, selector: kAudioDevicePropertyDeviceUID)
