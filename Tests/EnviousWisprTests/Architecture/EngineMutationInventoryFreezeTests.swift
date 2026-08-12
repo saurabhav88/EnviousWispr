@@ -925,10 +925,13 @@ import Testing
     // the file's existing `prepare`/`loadModels`/`startStreaming` entries:
     // the concrete `ASRBackend.transcribe` implementation, forwarding to
     // FluidAudio's own manager.
+    // #1678 wrapped this call to pass `language:`, which changed the matched
+    // TEXT without changing the site: same call, same caller, same coverage.
+    // The argument is a decode-time hint (script filter + blocklist gating),
+    // not a mutation of shared engine state, so the classification is unchanged.
     CallSite(
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "transcribe",
-      text:
-        "let fluidResult = try await manager.transcribe(audioSamples, decoderState: &decoderState)",
+      text: "let fluidResult = try await manager.transcribe(",
       classification: .transitivelyCoveredByCaller),
 
     // MARK: WhisperKitBackend — new Chunk 11 entries.

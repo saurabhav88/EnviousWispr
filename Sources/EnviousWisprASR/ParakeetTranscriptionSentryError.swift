@@ -113,7 +113,7 @@ extension ParakeetTranscriptionSentryError: StableSentryErrorIdentity {
     case .unsupportedPlatform: return "FluidAudio.ASRError#5"
     case .streamingConversionFailed: return "FluidAudio.ASRError#6"
     case .fileAccessFailed: return "FluidAudio.ASRError#7"
-    // Vendor declaration ordinal 8 at pin `a1767d86`; `#8` was previously unused.
+    // Vendor declaration ordinal 8 at pin `bf9fe27f`; `#8` was previously unused.
     case .encoderInstantiationFailed: return "FluidAudio.ASRError#8"
     case .unknownTranscriptionFailure:
       return "EnviousWisprASR.ParakeetTranscriptionSentryError.unknownTranscriptionFailure"

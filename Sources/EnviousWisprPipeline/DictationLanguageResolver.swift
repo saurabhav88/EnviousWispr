@@ -10,11 +10,18 @@ import NaturalLanguage
 /// correctly capitalised German noun. This resolves the question from positive
 /// evidence and abstains when there is none.
 ///
-/// Written because the obvious source is not evidence. `ParakeetBackend` stamps
-/// `language: "en"` on EVERY result, while the settings screen advertises
+/// Written because the obvious source is not evidence. `ParakeetBackend` USED TO
+/// stamp `language: "en"` on EVERY result, while the settings screen advertised
 /// "Parakeet's 25 European languages, not just English" — and Parakeet is the
 /// default engine. Reading that field directly meant a German dictation on the
 /// default path was recased with English rules (cloud review, PR #1802).
+///
+/// #1678 removed that constant: Parakeet now reports `nil`, because it performs
+/// no language detection and a user's lock is intent rather than a measurement.
+/// **The precedence rule below is unchanged and still load-bearing** — it keys
+/// on `engineDetectsLanguage`, not on the field's value, so it refuses a
+/// non-detecting engine's answer whatever that answer is. That is exactly why
+/// nil was the right replacement rather than writing the locked code here.
 ///
 /// #1921 replaced a LENGTH floor with a CONFIDENCE floor. The old rule demanded
 /// 24 alphabetic scalars before it would look at the recogniser's answer at all,

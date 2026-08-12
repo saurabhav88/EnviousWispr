@@ -2,9 +2,9 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// Modal sheet that lets users pin WhisperKit to a specific language.
+/// Modal sheet that lets users pin the active engine to a specific language.
 ///
-/// Surfaces all 99 Whisper-supported languages with a search field and an
+/// Surfaces the engine's supported languages with a search field and an
 /// optional "Recent" section driven by the persisted `SessionLanguageMemory`
 /// usage cache. Tapping a row sets `languageMode = .locked(code)` and
 /// dismisses. The sheet is a settings detail, never an interrupt: nothing
@@ -12,6 +12,20 @@ import SwiftUI
 struct LanguageLockSheet: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(\.dismiss) private var dismiss
+
+  /// Codes this engine may be locked to, or nil for "no restriction" (the
+  /// multilingual engine's 99).
+  ///
+  /// #1678: the fast engine claims 25 European languages, so the sheet must not
+  /// offer the rest. A code outside the engine's set is a SILENT failure — it
+  /// maps to no vendor language, the decoder falls back to auto-detect, and the
+  /// user sees a lock they set and are not getting. Filtering the list is what
+  /// makes the setting mean what it says.
+  let lockableCodes: Set<String>?
+
+  init(lockableCodes: Set<String>? = nil) {
+    self.lockableCodes = lockableCodes
+  }
 
   @State private var searchText: String = ""
 
@@ -178,10 +192,17 @@ struct LanguageLockSheet: View {
 
   // MARK: - Filtering
 
+  /// The engine's offerable languages. Applied BEFORE the search filter so a
+  /// search can never surface a language the active engine cannot honour.
+  private var lockableLanguages: [LanguageCatalog.Entry] {
+    guard let lockableCodes else { return LanguageCatalog.sortedByEnglishName }
+    return LanguageCatalog.sortedByEnglishName.filter { lockableCodes.contains($0.code) }
+  }
+
   private var filteredLanguages: [LanguageCatalog.Entry] {
     let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    guard !query.isEmpty else { return LanguageCatalog.sortedByEnglishName }
-    return LanguageCatalog.sortedByEnglishName.filter { entry in
+    guard !query.isEmpty else { return lockableLanguages }
+    return lockableLanguages.filter { entry in
       entry.englishName.lowercased().contains(query)
         || entry.nativeName.lowercased().contains(query)
         || entry.code.lowercased().contains(query)
@@ -252,6 +273,13 @@ struct LanguageLockSheet: View {
     let sorted = memory.usage24h
       .filter { now.timeIntervalSince($0.value.lastSeen) <= ttl }
       .sorted { $0.value.lastSeen > $1.value.lastSeen }
+      // #1678: the engine restriction applies BEFORE the recency cap, not after.
+      // Recents are cross-engine — a user who dictated Japanese on the
+      // multilingual engine and then switched engines would otherwise be offered
+      // Japanese here, which the fast engine cannot honour. Filtering after
+      // `prefix` would also silently shorten the list instead of showing the
+      // next eligible language.
+      .filter { lockableCodes?.contains($0.key) ?? true }
       .prefix(maxRecents)
       .compactMap { pair -> LanguageCatalog.Entry? in
         guard LanguageTypes.isSupported(pair.key) else { return nil }

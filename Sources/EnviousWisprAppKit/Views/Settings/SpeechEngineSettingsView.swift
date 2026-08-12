@@ -1,3 +1,4 @@
+import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprModelDelivery
 import EnviousWisprServices
@@ -138,10 +139,16 @@ struct SpeechEngineSettingsView: View {
         }
       }
 
-      // ── Section 3: Language Selection (only when model is ready) ──
-      if settings.selectedBackend == .whisperKit,
-        case .ready = setup.whisperKitSetup.setupState
-      {
+      // ── Section 3: Language Selection ──
+      // #1678: one control, both engines. It was WhisperKit-only, so a German
+      // speaker on the default engine could not stop auto-detect guessing —
+      // the reported bug (Greek recognised in German speech). The two engines
+      // genuinely do different amounts with a lock, and that difference is
+      // carried by the help copy below, not by a different control or label.
+      // WhisperKit still waits for setup: its language list is only meaningful
+      // once its model is ready. Parakeet's lock is a stored preference that
+      // applies at decode time, so it needs no readiness gate.
+      if languageSectionIsAvailable {
         BrandedSection(header: "Language") {
           BrandedRow {
             HStack(alignment: .top, spacing: 11) {
@@ -161,10 +168,8 @@ struct SpeechEngineSettingsView: View {
                   Text("Auto-detect language").settingsRowLabel()
                 }
                 .toggleStyle(BrandedToggleStyle())
-                Text(
-                  "Auto-detect your language, or lock to a specific one. WhisperKit supports 99 languages."
-                )
-                .settingsReadingCopy()
+                Text(languageSectionCopy)
+                  .settingsReadingCopy()
               }
             }
           }
@@ -180,6 +185,24 @@ struct SpeechEngineSettingsView: View {
                     .foregroundStyle(.stTextSecondary)
                   Text("\(entry.nativeName) (\(entry.englishName))")
                     .settingsRowLabel()
+                  // #1678: a lock can outlive the engine that could honour it.
+                  // Someone locked to Japanese on the multilingual engine who
+                  // switches to the fast one keeps the stored code, and the
+                  // decoder silently falls back to auto-detect — a lock they set
+                  // and are not getting. We say so rather than substituting a
+                  // different language or clearing their choice, because either
+                  // would be us deciding something they did not ask for. The
+                  // stored code is preserved, so switching back restores it.
+                  if !isLockHonouredByActiveEngine(code) {
+                    Text(
+                      "The fast engine can't lock to this language, so it's detecting "
+                        + "automatically. Choose one of its 25 European languages, or switch "
+                        + "to the multilingual engine."
+                    )
+                    .font(.stHelper)
+                    .foregroundStyle(.stWarning)
+                    .fixedSize(horizontal: false, vertical: true)
+                  }
                 }
                 Spacer()
                 Button("Change") {
@@ -391,7 +414,68 @@ struct SpeechEngineSettingsView: View {
       }
     }
     .sheet(isPresented: $showLanguageLockSheet) {
-      LanguageLockSheet()
+      LanguageLockSheet(lockableCodes: lockableLanguageCodes)
+    }
+  }
+
+  // MARK: - Language section (#1678)
+
+  /// WhisperKit's list is only meaningful once its model is ready. Parakeet's
+  /// lock is a stored preference applied at decode time, so it has no such gate.
+  private var languageSectionIsAvailable: Bool {
+    switch settings.selectedBackend {
+    case .whisperKit:
+      if case .ready = setup.whisperKitSetup.setupState { return true }
+      return false
+    case .parakeet:
+      return true
+    }
+  }
+
+  /// Per-engine, because the same control genuinely does different amounts on
+  /// each and one sentence would give one of them wrong advice.
+  ///
+  /// The Parakeet wording is deliberately weaker than "only transcribe German".
+  /// The vendor's filter partitions by SCRIPT, not language, so a German lock
+  /// suppresses Greek and Cyrillic and does nothing to separate German from
+  /// Dutch. Measured: Greek audio under a German lock changes 9 of 9 clips,
+  /// while German audio is byte-identical across 120. A control must describe
+  /// what it does; copy promising more than the mechanism delivers is the
+  /// defect this issue was raised for, not a stylistic preference.
+  private var languageSectionCopy: String {
+    switch settings.selectedBackend {
+    case .whisperKit:
+      return
+        "Auto-detect your language, or lock to a specific one. WhisperKit supports 99 languages."
+    case .parakeet:
+      return """
+        Auto-detect your language, or lock to one of 25 European languages. \
+        Locking helps stop the fast engine reaching for a different alphabet, \
+        like Greek or Cyrillic appearing in German. It cannot tell apart two \
+        languages written in the same alphabet.
+        """
+    }
+  }
+
+  /// Whether the ACTIVE engine can actually honour a stored locked code.
+  ///
+  /// False is not an error state to clean up: the stored code stays exactly as
+  /// the user set it, so switching engines back restores the lock. What must not
+  /// happen is silence — the decoder falls back to auto-detect and nothing on
+  /// screen would say so.
+  private func isLockHonouredByActiveEngine(_ code: String) -> Bool {
+    guard let lockableLanguageCodes else { return true }
+    return lockableLanguageCodes.contains(code)
+  }
+
+  /// The codes the picker may offer. Restricted on the fast engine to what the
+  /// model is declared to transcribe — offering more would be a silent failure,
+  /// because an unclaimed code maps to no vendor language and the decoder
+  /// quietly falls back to auto-detect while the user believes they are locked.
+  private var lockableLanguageCodes: Set<String>? {
+    switch settings.selectedBackend {
+    case .whisperKit: return nil  // all 99
+    case .parakeet: return ParakeetBackend.lockableLanguageCodes
     }
   }
 
@@ -437,13 +521,41 @@ struct SpeechEngineSettingsView: View {
   /// to lock to. Preserve the prior locked code if we have one (comes from
   /// the W2 migration of `whisperKitLanguage`), otherwise default to English.
   private func currentOrDefaultLockCode() -> String {
-    if case .locked(let code) = settings.languageMode {
+    Self.defaultLockCode(
+      currentMode: settings.languageMode,
+      migratedCode: settings.whisperKitLanguage,
+      lockableCodes: lockableLanguageCodes)
+  }
+
+  /// Which code the Auto-detect toggle should lock to when it is switched OFF.
+  ///
+  /// Pure and `static` so it can be tested: this is the one place a lock is
+  /// created without the user choosing from the filtered picker, so it is the
+  /// one place the picker's restriction can be bypassed.
+  ///
+  /// #1678: every candidate must be honourable by the ACTIVE engine. Without
+  /// that, turning Auto off on the fast engine could restore a legacy
+  /// `whisperKitLanguage` such as Japanese — the user asks for a lock, the UI
+  /// shows a lock, and the decoder maps it straight back to auto-detect. That is
+  /// the same silent failure the picker restriction exists to prevent, arriving
+  /// through the toggle instead of the list (Codex review r1).
+  ///
+  /// - Parameter lockableCodes: nil means "no restriction" (the multilingual
+  ///   engine), which preserves the pre-#1678 behaviour exactly.
+  static func defaultLockCode(
+    currentMode: LanguageMode,
+    migratedCode: String,
+    lockableCodes: Set<String>?
+  ) -> String {
+    func honoured(_ code: String) -> Bool { lockableCodes?.contains(code) ?? true }
+
+    if case .locked(let code) = currentMode, honoured(code) {
       return code
     }
-    let migrated = settings.whisperKitLanguage
-    if LanguageTypes.isSupported(migrated) {
-      return migrated
+    if LanguageTypes.isSupported(migratedCode), honoured(migratedCode) {
+      return migratedCode
     }
+    // English is in every engine's set, so this fallback is always honourable.
     return "en"
   }
 
