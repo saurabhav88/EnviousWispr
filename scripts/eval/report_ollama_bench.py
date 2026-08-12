@@ -350,14 +350,37 @@ def main() -> int:
         intl = split(lambda x: x["id"] in intl_ids)
         overall = summary.get("overall", {})
         # Carried onto the row so the one-judge-per-scoreboard check below has something to read.
-        # A check reading fields the rows do not carry would group everything under (None, None)
-        # and never fire — a guard that arms nothing, which is worse than no guard because it
-        # reads as one.
-        receipt_meta = summary.get("meta") or {}
+        # A check reading fields the rows do not carry would group everything under one key and
+        # never fire — a guard that arms nothing, which is worse than no guard because it reads
+        # as one.
+        #
+        # `meta` is shape-checked, not merely defaulted: a hand-edited or truncated
+        # `"meta": [...]` is truthy, so `or {}` leaves a list and the `.get()` below raises
+        # AttributeError — aborting the whole report with a traceback instead of naming the one
+        # bad receipt, which is what the surrounding per-model handling exists to do.
+        # ABSENT and MALFORMED are different states and must not be conflated. A receipt with no
+        # `meta` at all is a legacy one and ranks fine; a receipt whose `meta` is present but not
+        # an object has been truncated or hand-edited and cannot be trusted to say who graded it.
+        # Treating absent as malformed rejected every pre-meta receipt, which the existing
+        # fixtures caught immediately.
+        receipt_meta = summary.get("meta")
+        if receipt_meta is None:
+            receipt_meta = {}
+        elif not isinstance(receipt_meta, dict):
+            problems.append(
+                f"{model} ({cand_stem}): receipt `meta` is {type(receipt_meta).__name__}, not an "
+                f"object, so its judge cannot be identified")
+            receipt_meta = {}
         rows.append({
             "model": model,
             "arm": cand_stem,
+            # A POSITIVE marker that this row came from a receipt. The judge check skips rows
+            # without it. Inferring "no receipt" from a missing judge field was how an
+            # unmeasurable arm — every case errored, so no receipt exists — got counted as its
+            # own judge and made any benchmark containing one falsely unreportable.
+            "from_receipt": True,
             "judge": receipt_meta.get("judge"),
+            "judge_identity": receipt_meta.get("judge_identity"),
             "judge_model_version": receipt_meta.get("judge_model_version"),
             "isRemote": sp["isRemote"],
             "thinks": sp["thinks"],
@@ -391,18 +414,26 @@ def main() -> int:
     # be repointed in place, so `judge_model_version` distinguishes two runs that share an id.
     # A receipt written before that field existed reports None, which groups with other legacy
     # receipts and still separates them from anything newer.
+    # Compares the FULL identity the sweep computed, not just the judge id and model version.
+    # `judge_identity` folds in the endpoint host and the API version too, so two different Azure
+    # resources that happen to serve the same model string no longer compare equal — which the
+    # earlier (judge, version) pair could not distinguish even though the resume stamp already
+    # did. None groups with None, so a field of legacy receipts still ranks together while
+    # mixing a legacy receipt with an identified one refuses, because their provenance genuinely
+    # cannot be shown to match.
     judges = {}
     for row in rows:
-        if row.get("skipped_reason"):
-            continue
-        judges.setdefault((row.get("judge"), row.get("judge_model_version")), []).append(
-            row.get("model"))
+        if not row.get("from_receipt"):
+            continue          # unmeasurable or skipped: no receipt, so no judge to compare
+        judges.setdefault(
+            (row.get("judge"), row.get("judge_identity"), row.get("judge_model_version")),
+            []).append(row.get("model"))
     if len(judges) > 1:
         detail = "; ".join(
-            f"{j[0]}"
-            + (f" ({j[1]})" if j[1] else "")
+            f"{j[1] or j[0]}"
+            + (f" serving {j[2]}" if j[2] else "")
             + f": {', '.join(sorted(m for m in models if m))}"
-            for j, models in sorted(judges.items(), key=lambda kv: str(kv[0])))
+            for j, models in sorted(judges.items(), key=lambda kv: str(kv)))
         problems.append(
             "this run mixes judges, so the ranking would not be a comparison — "
             f"{detail}. Re-grade every arm with one judge.")

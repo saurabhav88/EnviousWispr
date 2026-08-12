@@ -73,6 +73,10 @@ JUDGE_IDENTITY="$(printf '%s\n' "$JUDGE_LINES" | sed -n 2p)"
 # model — two model versions under one stamp, which is the mixing this stamp exists to prevent.
 JUDGE_PINNED_MODEL="$(printf '%s\n' "$JUDGE_LINES" | sed -n 3p)"
 export EW_AZURE_PINNED_MODEL="$JUDGE_PINNED_MODEL"
+# The stamp identity travels into every arm too, so each receipt RECORDS which grader produced
+# it. The report reads receipts rather than stamps, so an identity that lives only in the sidecar
+# is invisible exactly where arms get combined into a ranking.
+export EW_JUDGE_IDENTITY="$JUDGE_IDENTITY"
 if [ -z "$JUDGE" ] || [ -z "$JUDGE_IDENTITY" ]; then
   echo "FATAL: could not resolve the judge and its identity from behavior_judge.py" >&2
   exit 2

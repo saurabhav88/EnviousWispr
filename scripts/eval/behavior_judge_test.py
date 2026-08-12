@@ -35,6 +35,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1291,6 +1292,63 @@ def test_legacy_receipts_without_a_version_rank_together():
     assert "mixes judges" not in out, out
 
 
+def test_an_unmeasurable_arm_does_not_count_as_its_own_judge():
+    """Cloud review round 10. An arm where every case errored has NO receipt, so the row carries
+    no judge. Skipping only rows marked `skipped_reason` left it counted as a separate judge, and
+    any benchmark containing one fully failing or paywalled model became falsely unreportable —
+    a false positive in a guard, which is the direction that destroys trust in it."""
+    meta = {"judge": "azure/gpt-5-6-luna", "judge_identity": "azure/gpt-5-6-luna@abc123",
+            "judge_model_version": "gpt-5.6-luna-2026-07-09"}
+    t = _two_arm_report_tree(dict(meta), dict(meta))
+    # Turn modelB into an every-case-errored arm: no receipt, and the run summary says so.
+    shutil.rmtree(t / "judged" / "modelB")
+    run = json.loads((t / "run-summary.json").read_text())
+    for m in run["models"]:
+        if m["model"] == "modelB":
+            m["errors"], m["cases"] = 2, 2
+    (t / "run-summary.json").write_text(json.dumps(run))
+
+    rc, out = run_report(t)
+    assert "mixes judges" not in out, f"an unmeasurable arm was counted as a judge:\n{out}"
+    assert rc == 0, out
+
+
+def test_the_report_separates_two_azure_resources_serving_the_same_model():
+    """The (judge, version) pair could not see the endpoint. Two different Azure resources serving
+    the same model string compared equal, even though the resume stamp always distinguished them,
+    so an interrupted re-grade across resources could be ranked as one field."""
+    t = _two_arm_report_tree(
+        {"judge": "azure/gpt-5-6-luna", "judge_identity": "azure/gpt-5-6-luna@resourceA",
+         "judge_model_version": "gpt-5.6-luna-2026-07-09"},
+        {"judge": "azure/gpt-5-6-luna", "judge_identity": "azure/gpt-5-6-luna@resourceB",
+         "judge_model_version": "gpt-5.6-luna-2026-07-09"})
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "mixes judges" in out, out
+    assert "resourceA" in out and "resourceB" in out, out
+
+
+def test_a_malformed_meta_is_named_rather_than_crashing_the_report():
+    """A truncated or hand-edited `"meta": [...]` is TRUTHY, so `or {}` leaves a list and the
+    following `.get()` raises AttributeError — aborting the whole report with a traceback instead
+    of naming the one bad receipt, which is what the per-model handling exists to do."""
+    t = report_tree({**healthy_receipt(), "meta": ["not", "an", "object"]})
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "Traceback" not in out, out
+    assert "not an object" in out, out
+
+
+def test_an_absent_meta_still_ranks():
+    """Two-way control. Absent and malformed are different states: a receipt predating `meta`
+    ranks fine, and a first version of this check rejected every one of them."""
+    receipt = healthy_receipt()
+    receipt.pop("meta", None)
+    rc, out = run_report(report_tree(receipt))
+    assert rc == 0, out
+    assert "not an object" not in out, out
+
+
 def test_report_refuses_an_unknown_verdict():
     # Pre-fix this was ranked #1 and labelled "Recommended", exit 0.
     t = report_tree(healthy_receipt(release_gate={"verdict": "WEIRD_UNKNOWN", "checks": []}))
@@ -2179,7 +2237,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 112
+EXPECTED_TESTS = 116
 
 
 def _run() -> int:

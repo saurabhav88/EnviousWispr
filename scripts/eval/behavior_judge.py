@@ -1820,6 +1820,13 @@ def main() -> int:
         # in the sidecar stamp because the report reads receipts, not stamps, and a consumer that
         # cannot see the identity cannot refuse to mix it.
         "judge_model_version": _azure_pinned_model,
+        # The FULL identity the sweep resolved: judge id plus a digest of the endpoint host, the
+        # API version and the served model. Passed in rather than recomputed so every arm records
+        # the same value, and so the report can distinguish two Azure resources that serve the
+        # same model string — which the id and version alone cannot, even though the resume stamp
+        # always could. Empty for a run started outside the sweep, which groups with other such
+        # runs rather than pretending to an identity it never resolved.
+        "judge_identity": os.environ.get("EW_JUDGE_IDENTITY") or None,
         "reps": args.reps if args.system == "old" else None,
         "adjudicate_pct": args.adjudicate_pct if args.system == "new" else None,
         "adjudicate_min": args.adjudicate_min if args.system == "new" else None,
