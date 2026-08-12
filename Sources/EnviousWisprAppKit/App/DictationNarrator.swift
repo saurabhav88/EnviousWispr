@@ -217,12 +217,9 @@ enum DictationNarrator {
   static let accessibilityToastText = "Auto-paste needs Accessibility"
   static let recoveryTitle = "Recovering your last recording…"
   /// #1897 — CONDITIONAL, and it must stay that way. This read "Saved to History
-  /// when it's done", which asserts an outcome the app cannot know yet: ~93% of
-  /// recoveries reconstruct the audio perfectly and then have ASR return an
-  /// empty result, so nothing lands in History and the pill has already promised
-  /// that it would. (An empty ASR result, never "the recording was silent" — see
-  /// the cause paragraph below.)
-  /// Roughly 302 events across 50 users a month, every one a broken promise.
+  /// when it's done", which asserts an outcome the app cannot know yet, and a
+  /// recovery that ends without text says nothing at all — so the pill had
+  /// already promised something that never arrived.
   ///
   /// Founder decision 2026-08-12, given the choice between adding a failure
   /// notice and removing the promise: *"stop promising, just close the loop
@@ -231,27 +228,29 @@ enum DictationNarrator {
   /// what this issue's body originally proposed and what that decision
   /// explicitly declines.
   ///
-  /// **Why an announcement would be wrong is the ABSENCE of a cause, not a known
-  /// one.** All that is observed on this path is that ASR ran without error and
-  /// returned nothing — see the `recoveryEmptyText` contract in
-  /// `SentryBreadcrumb`, which states outright that this is deliberately NOT
-  /// "the recording was silent", because the replay path holds no speech
-  /// evidence and neither duration nor energy can supply it. A recogniser miss
-  /// on real speech and a person who chose not to speak are indistinguishable
-  /// here. That is a STRONGER argument for staying quiet than a known cause
-  /// would be: any sentence naming a reason would be asserting one of two
-  /// possibilities we cannot tell apart.
+  /// **An announcement would be wrong because the cause is UNKNOWN, not because
+  /// it is known-benign.** The single authority on what an empty recovery result
+  /// does and does not establish is the `recoveryEmptyText` doc comment in
+  /// `SentryBreadcrumb` — read it there rather than trusting any restatement,
+  /// including this one. Its consequence for copy: a recogniser miss on real
+  /// speech and a person who chose not to speak are indistinguishable here, so
+  /// any sentence naming a reason asserts one of two possibilities we cannot
+  /// tell apart.
   ///
-  /// (An earlier draft of this comment said "someone pressed the key and chose
-  /// not to speak", which contradicted that contract 200 lines away in this same
-  /// change. Cloud review caught it. Do not reintroduce a cause here.)
+  /// **Four review rounds on this one string each killed a different unsupported
+  /// claim in this comment** — a promised delivery, a promise conditioned on the
+  /// wrong link, an invented cause, and a statistic quoted with the wrong
+  /// denominator. Every one was a fact restated here that is owned somewhere
+  /// else. Hence the rule this block now follows: state the DECISION and point at
+  /// the owner; do not reproduce its numbers or its reasoning. If you find
+  /// yourself adding a figure here, put it where the contract lives instead.
   ///
   /// The quiet close needs no code: this pill is a transient notice with a 6s
   /// auto-dismiss (`RecordingOverlayPanel`), so a recovery that yields nothing
   /// already ends by the pill simply going away.
   ///
-  /// **TWO axes can each defeat delivery, and a fix that closes only one is the
-  /// same defect again.** This shipped as "Anything found goes to History" and
+  /// **MORE THAN ONE link can defeat delivery, and a fix that closes only one
+  /// is the same defect again.** This shipped as "Anything found goes to History" and
   /// cloud review killed it: conditioning on *found* still asserts the save.
   /// `RecoverySpoolReplayer` can produce text and then have
   /// `transcriptStore.save` throw (disk full, History unwritable), returning

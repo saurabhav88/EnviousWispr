@@ -295,12 +295,12 @@ import Testing
   /// control — it fails against the string this issue removed, and passes
   /// against the conditional one that replaced it. Verified in both directions.
   ///
-  /// A recovery reconstructs the audio perfectly and then gets an EMPTY ASR
-  /// result about 93% of the time, so the in-progress pill cannot know that
-  /// anything will be saved. Only the success pill, which fires after text has
-  /// landed, may say so. (Empty result, not "the recording was silent" — that
-  /// inference is refused by the `recoveryEmptyText` contract in
-  /// `SentryBreadcrumb`, because the replay path holds no speech evidence.)
+  /// A recovery can end without producing text, so the in-progress pill cannot
+  /// know that anything will be saved. Only the success pill, which fires after
+  /// text has landed, may say so. Rates and what an empty result does and does
+  /// not establish are owned by the `recoveryEmptyText` doc comment in
+  /// `SentryBreadcrumb`; deliberately not restated here, because four review
+  /// rounds on this change killed four restatements.
   ///
   /// **What this test does NOT catch, stated so nobody trusts it further than it
   /// goes.** It is a REVERT guard, not a promise detector. The first fix for this
