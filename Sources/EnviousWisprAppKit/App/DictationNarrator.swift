@@ -218,17 +218,33 @@ enum DictationNarrator {
   static let recoveryTitle = "Recovering your last recording…"
   /// #1897 — CONDITIONAL, and it must stay that way. This read "Saved to History
   /// when it's done", which asserts an outcome the app cannot know yet: ~93% of
-  /// recoveries reconstruct the audio perfectly and find no speech in it, so
-  /// nothing lands in History and the pill has already promised that it would.
+  /// recoveries reconstruct the audio perfectly and then have ASR return an
+  /// empty result, so nothing lands in History and the pill has already promised
+  /// that it would. (An empty ASR result, never "the recording was silent" — see
+  /// the cause paragraph below.)
   /// Roughly 302 events across 50 users a month, every one a broken promise.
   ///
   /// Founder decision 2026-08-12, given the choice between adding a failure
   /// notice and removing the promise: *"stop promising, just close the loop
-  /// quietly."* An empty recording is normal behaviour — someone pressed the key
-  /// and chose not to speak — so announcing it would be wrong; the defect was
-  /// only ever the promise. `OverlayIntent` therefore keeps exactly its two
-  /// recovery cases and gains NO failure case, which is what this issue's body
-  /// originally proposed and what that decision explicitly declines.
+  /// quietly."* The defect was only ever the promise. `OverlayIntent` therefore
+  /// keeps exactly its two recovery cases and gains NO failure case, which is
+  /// what this issue's body originally proposed and what that decision
+  /// explicitly declines.
+  ///
+  /// **Why an announcement would be wrong is the ABSENCE of a cause, not a known
+  /// one.** All that is observed on this path is that ASR ran without error and
+  /// returned nothing — see the `recoveryEmptyText` contract in
+  /// `SentryBreadcrumb`, which states outright that this is deliberately NOT
+  /// "the recording was silent", because the replay path holds no speech
+  /// evidence and neither duration nor energy can supply it. A recogniser miss
+  /// on real speech and a person who chose not to speak are indistinguishable
+  /// here. That is a STRONGER argument for staying quiet than a known cause
+  /// would be: any sentence naming a reason would be asserting one of two
+  /// possibilities we cannot tell apart.
+  ///
+  /// (An earlier draft of this comment said "someone pressed the key and chose
+  /// not to speak", which contradicted that contract 200 lines away in this same
+  /// change. Cloud review caught it. Do not reintroduce a cause here.)
   ///
   /// The quiet close needs no code: this pill is a transient notice with a 6s
   /// auto-dismiss (`RecordingOverlayPanel`), so a recovery that yields nothing
