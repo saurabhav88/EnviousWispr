@@ -524,8 +524,16 @@ def main() -> int:
         cases = cases[: args.limit]
     # Whether this run is a PROBE is a property of what it covered, not of which flag
     # was typed: `--limit 400` on a 338-case corpus runs every case and must be judged
-    # as a full run. Ask whether slicing actually removed anything.
-    is_probe = len(cases) < corpus_total
+    # as a full run. But a genuinely tiny --corpus is no more representative than a
+    # tiny --limit of a big one, so BOTH make this a probe.
+    #
+    # 100 is derived from the weakest engagement measured (flash-lite at `medium`
+    # thinks on 119 of 338 cases, 35%). P(no case thinks by chance) = 0.65^n: 27% at
+    # n=3, 1.3% at n=10, and 1e-19 at n=100. So 100 puts a false "inert" verdict
+    # far out of reach while sitting well below the smallest canonical corpus (338),
+    # where it can never affect a real arm.
+    MIN_CASES_FOR_INERT_VERDICT = 100
+    is_probe = len(cases) < corpus_total or len(cases) < MIN_CASES_FOR_INERT_VERDICT
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"model    : {args.model} ({args.provider})", file=sys.stderr)
@@ -615,7 +623,8 @@ def main() -> int:
         if is_probe:
             print(
                 f"WARNING: zero reasoning tokens across {len(cases)} probe cases "
-                f"(of {corpus_total} in the corpus) at "
+                f"(of {corpus_total} in the corpus; an inert verdict needs "
+                f"{MIN_CASES_FOR_INERT_VERDICT}) at "
                 f"{thinking[0]}={thinking[1]!r}. Thinking is decided per request, so a "
                 "probe this small cannot distinguish an inert level from cases that "
                 "declined to think. Not a verdict; run the full corpus to find out.",
