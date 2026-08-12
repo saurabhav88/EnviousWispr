@@ -173,7 +173,9 @@ import Testing
     /// for an engine SWITCH specifically, or (c) a call that cannot conflict
     /// with recovery regardless of timing because the callee re-acquires its
     /// own claim internally on every invocation, or performs no actual engine
-    /// mutation (a pure readiness read).
+    /// mutation (a pure readiness read, or — #1654 — pure error classification
+    /// on a throw path, which mutates nothing and only renames the error
+    /// already in hand).
     case structurallySafe
     /// Present in source, reachable in theory, but never exercised by current
     /// production configuration (a test-seam override that is always nil in
@@ -600,6 +602,21 @@ import Testing
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "startStreaming",
       text: "try await manager.startStreaming(source: .microphone)",
       classification: .transitivelyCoveredByCaller),
+
+    // MARK: ParakeetBackend — #1654 streaming error identity. Both sites match
+    // only because the word `finalize` appears in them; neither touches the
+    // engine. The first is the `catch` that renames an already-thrown error
+    // before rethrowing it, the second a `switch` arm inside the pure
+    // classifier that decides whether a bare vendor error may be named on this
+    // leg. Nothing is loaded, unloaded, started or cancelled by either — the
+    // engine state at the throw is whatever the vendor left it as.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "finalize",
+      text: "throw Self.streamingThrowable(for: error, operation: .finalize)",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "finalize",
+      text: "case .finalize: return error", classification: .structurallySafe),
 
     // MARK: WhisperKitBackend — test-seam override, always nil in production.
     CallSite(

@@ -168,4 +168,138 @@ struct FluidAudioBridgeClassificationTests {
       return
     }
   }
+
+  // MARK: - FluidAudioStreamingErrorKind (streaming path, 7 vendor cases) — #1654
+
+  /// Ship criterion 1. Every case is driven from a REAL vendor error value, not a
+  /// hand-built double, so the row fails if the vendor's enum moves under us — the
+  /// #2041 drift is what happens when a classifier is only tested from its own output.
+  @Test("classifyFluidAudioStreamingError maps every SlidingWindowAsrError case")
+  func classifiesAllStreamingErrorCases() {
+    let fixture = NSError(domain: "fixture", code: 1)
+    let cases: [(SlidingWindowAsrError, FluidAudioStreamingErrorKind)] = [
+      (.modelsNotLoaded, .modelsNotLoaded),
+      (.streamAlreadyExists(.microphone), .streamAlreadyExists),
+      (.audioBufferProcessingFailed(fixture), .audioBufferProcessingFailed),
+      (.audioConversionFailed(fixture), .audioConversionFailed),
+      (.bufferOverflow, .bufferOverflow),
+      (.invalidConfiguration("x"), .invalidConfiguration),
+    ]
+    for (vendorError, expected) in cases {
+      #expect(classifyFluidAudioStreamingError(vendorError) == expected)
+    }
+  }
+
+  /// Ship criterion 2 — BOTH directions, because a one-sided test passes whether or not
+  /// the unwrap actually runs.
+  @Test("the allWindowsFailed unwrap recovers a recognised inner cause")
+  func unwrapsRecognisedInnerCause() {
+    let wrapped = SlidingWindowAsrError.modelProcessingFailed(ASRError.processingFailed("x"))
+    #expect(
+      classifyFluidAudioStreamingError(wrapped) == .allWindowsFailed(inner: .processingFailed))
+  }
+
+  @Test("the allWindowsFailed outer case survives an unrecognised inner error")
+  func keepsOuterCaseForForeignInnerError() {
+    struct ForeignError: Error {}
+    let wrapped = SlidingWindowAsrError.modelProcessingFailed(ForeignError())
+    // The outer identity must NOT collapse to nil: we still know every window failed
+    // even when we cannot name why. That distinction is the whole point of the case.
+    #expect(classifyFluidAudioStreamingError(wrapped) == .allWindowsFailed(inner: nil))
+  }
+
+  /// Ship criterion 3. A cancelled stream is not a failure and must never acquire a
+  /// failure identity — neither through the streaming classifier nor the start-path one.
+  @Test("cancellation acquires no streaming identity")
+  func cancellationGetsNoIdentity() {
+    #expect(classifyFluidAudioStreamingError(CancellationError()) == nil)
+    #expect(fluidAudioStreamingInnerCause(CancellationError()) == nil)
+  }
+
+  /// #1654 cloud review, fourth P2 — cancellation NESTED inside a vendor wrapper.
+  ///
+  /// Unreachable at the pinned vendor (see the next test, which is the control proving
+  /// that), and guarded anyway: reachability here is a property of the VENDOR's code, so a
+  /// pin bump that drops its early return would silently start recording every cancelled
+  /// dictation as a streaming failure.
+  @Test("a cancellation wrapped by the vendor is still recognised as cancellation")
+  func nestedCancellationIsRecognised() {
+    let wrapped = SlidingWindowAsrError.modelProcessingFailed(CancellationError())
+    #expect(fluidAudioStreamingErrorWrapsCancellation(wrapped))
+    // The sibling wrapping cases too — all three carry an arbitrary inner error.
+    #expect(
+      fluidAudioStreamingErrorWrapsCancellation(
+        SlidingWindowAsrError.audioBufferProcessingFailed(CancellationError())))
+    #expect(
+      fluidAudioStreamingErrorWrapsCancellation(
+        SlidingWindowAsrError.audioConversionFailed(CancellationError())))
+    // And a bare one, which is the case the call sites' own `catch` arms handle.
+    #expect(fluidAudioStreamingErrorWrapsCancellation(CancellationError()))
+  }
+
+  /// The two-way control. Without it, a predicate returning `true` for everything would
+  /// pass the test above while suppressing every genuine streaming failure — which is the
+  /// far worse direction, since it fails SILENTLY.
+  @Test("a genuine failure is never mistaken for a cancellation")
+  func genuineFailureIsNotCancellation() {
+    let cases: [SlidingWindowAsrError] = [
+      .modelProcessingFailed(NSError(domain: "f", code: 1)),
+      .audioBufferProcessingFailed(NSError(domain: "f", code: 1)),
+      .audioConversionFailed(NSError(domain: "f", code: 1)),
+      .modelsNotLoaded,
+      .streamAlreadyExists(.microphone),
+      .bufferOverflow,
+      .invalidConfiguration("x"),
+    ]
+    for error in cases {
+      #expect(!fluidAudioStreamingErrorWrapsCancellation(error), "\(error) is not cancellation")
+    }
+    struct ForeignError: Error {}
+    #expect(!fluidAudioStreamingErrorWrapsCancellation(ForeignError()))
+  }
+
+  @Test("classifyFluidAudioStreamingError returns nil for a foreign error type")
+  func returnsNilForNonStreamingError() {
+    struct OtherError: Error {}
+    #expect(classifyFluidAudioStreamingError(OtherError()) == nil)
+    // A BATCH vendor error is foreign to the streaming classifier too. Without this the
+    // start-path mapping and the streaming mapping could quietly overlap.
+    #expect(classifyFluidAudioStreamingError(ASRError.notInitialized) == nil)
+  }
+
+  /// The start leg: the vendor throws a bare `ASRError` there, and it must classify into
+  /// the same text-free vocabulary rather than borrowing the batch path's identity.
+  @Test("the start-path classifier maps a bare ASRError to a bare inner cause")
+  func mapsStartPathASRError() {
+    #expect(fluidAudioStreamingInnerCause(ASRError.notInitialized) == .notInitialized)
+    #expect(fluidAudioStreamingInnerCause(ASRError.processingFailed("x")) == .processingFailed)
+    #expect(
+      fluidAudioStreamingInnerCause(ASRError.encoderInstantiationFailed("x"))
+        == .encoderInstantiationFailed)
+  }
+
+  /// Ship criterion 2b. Asserting the inner case is right is not the same as asserting
+  /// nothing else came with it. The vendor interpolates an inner error's own description
+  /// into four of its seven `errorDescription` cases, so this is the guard that the
+  /// streaming kind forwards none of it.
+  @Test("no vendor text rides the streaming kind")
+  func streamingKindCarriesNoVendorText() {
+    let secret = "VENDOR-TEXT-THAT-MUST-NOT-TRAVEL"
+    let inner = NSError(
+      domain: "fixture", code: 1, userInfo: [NSLocalizedDescriptionKey: secret])
+    let wrapped = SlidingWindowAsrError.modelProcessingFailed(inner)
+
+    // Control: prove the fixture actually reaches the vendor's own description, so a
+    // clean result below is the kind's doing and not a fixture that never carried it.
+    #expect(wrapped.localizedDescription.contains(secret))
+
+    let kind = classifyFluidAudioStreamingError(wrapped)
+    #expect(!String(describing: kind).contains(secret))
+
+    // Same check on the case that interpolates a vendor-authored message rather than an
+    // inner error's description.
+    let configured = SlidingWindowAsrError.invalidConfiguration(secret)
+    #expect(configured.localizedDescription.contains(secret))
+    #expect(!String(describing: classifyFluidAudioStreamingError(configured)).contains(secret))
+  }
 }

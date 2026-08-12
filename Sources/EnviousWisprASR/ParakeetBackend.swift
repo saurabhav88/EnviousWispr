@@ -309,11 +309,62 @@ public actor ParakeetBackend: ASRBackend {
     let config = SlidingWindowAsrConfig.streaming
       .applying(language: Self.fluidLanguage(for: options.language))
     let manager = SlidingWindowAsrManager(config: config)
-    // Vendor API: streaming starts via loadModels(_:) then startStreaming(source:).
-    try await manager.loadModels(models)
-    try await manager.startStreaming(source: .microphone)
+    do {
+      // Vendor API: streaming starts via loadModels(_:) then startStreaming(source:).
+      try await manager.loadModels(models)
+      try await manager.startStreaming(source: .microphone)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // #1654: pin a stable identity before this leaves the service. A cancellation is
+      // deliberately excluded above rather than classified — a cancelled stream is not a
+      // failure and must never acquire a failure identity.
+      throw Self.streamingThrowable(for: error, operation: .start)
+    }
     self.streamingManager = manager
     self.streamingStartTime = CFAbsoluteTimeGetCurrent()
+  }
+
+  /// #1654: which streaming leg threw. Not cosmetic — it decides whether a bare vendor
+  /// `ASRError` is allowed to become an identity at all.
+  private enum StreamingLeg { case start, finalize }
+
+  /// #1654: the one place a raw FluidAudio streaming error becomes what we throw.
+  ///
+  /// Order matters and is not arbitrary. `SlidingWindowAsrError` is checked first because
+  /// it is the vendor's streaming-specific type. A bare `ASRError` is mapped ONLY on the
+  /// start leg, where `SlidingWindowAsrManager` genuinely throws one; on finalize the
+  /// vendor wraps every escaping error (`SlidingWindowAsrManager.swift:640`), so a bare
+  /// `ASRError` arriving there is not something we have grounds to name. Calling it
+  /// `startFailed` because that is the mapping in hand would be a reason whose name
+  /// contradicts its producer.
+  ///
+  /// A foreign error is returned UNCHANGED — a raw CoreML or converter failure keeps its
+  /// own identity rather than being relabelled as ours, exactly as the batch path leaves
+  /// unrecognised errors alone.
+  ///
+  /// Returns the error to throw rather than an optional identity, deliberately. Cloud
+  /// review's fourth finding needed a cancellation nested inside a vendor wrapper to come
+  /// back out as a `CancellationError`, and an identity-returning function cannot express
+  /// that — the caller would have thrown the raw wrapper, which the adapter's
+  /// `catch is CancellationError` still cannot match. Both decisions (is this a
+  /// cancellation, and what identity does it get) now live in ONE place, so the two catch
+  /// sites cannot drift apart.
+  private static func streamingThrowable(
+    for error: any Error,
+    operation: StreamingLeg
+  ) -> any Error {
+    // A cancellation must acquire no failure identity at ANY layer. The `catch is
+    // CancellationError` arms at the call sites see only a BARE cancellation; this is the
+    // nested case, where the vendor has wrapped it.
+    if fluidAudioStreamingErrorWrapsCancellation(error) { return CancellationError() }
+    if let kind = classifyFluidAudioStreamingError(error) {
+      return ParakeetStreamingSentryError(mapping: kind)
+    }
+    switch operation {
+    case .start: return ParakeetStreamingSentryError(mappingStartFailure: error) ?? error
+    case .finalize: return error
+    }
   }
 
   public func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
@@ -326,7 +377,16 @@ public actor ParakeetBackend: ASRBackend {
     defer { streamingManager = nil }
 
     let finalizeStart = CFAbsoluteTimeGetCurrent()
-    let text = try await manager.finish()
+    let text: String
+    do {
+      text = try await manager.finish()
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // #1654: same identity pass as the start leg. See `streamingThrowable` for why a
+      // bare `ASRError` is deliberately NOT named here.
+      throw Self.streamingThrowable(for: error, operation: .finalize)
+    }
     let finalizeEnd = CFAbsoluteTimeGetCurrent()
 
     let totalElapsed = finalizeEnd - streamingStartTime
