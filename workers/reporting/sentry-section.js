@@ -143,19 +143,26 @@ export const ERROR_CATEGORIES = Object.freeze({
  * `NSInternalInconsistencyException` are very different things to see twice in
  * a row.
  *
- * ONLY the type, never the message. A Sentry title is `<type>: <message>`, and
- * the message half is the one place in this whole section where user-derived
- * text could appear. Splitting at the first colon and discarding the remainder
- * keeps the privacy boundary intact by construction rather than by trusting
- * Sentry's own redaction. */
+ * ONLY the type, never the message. This reads `error.type`, which carries the
+ * exception type ALONE - the message half, the one place in this whole section
+ * where user-derived text could appear, is never fetched. #2023 moved here from
+ * splitting a `<type>: <message>` title at the first colon; the privacy
+ * boundary is now upheld by not requesting the message rather than by
+ * discarding it correctly.
+ *
+ * `error.type` arrives as an ARRAY (`["EXC_BAD_ACCESS"]`), empty on handled
+ * errors. An exception CHAIN yields several; the first is taken and the rest
+ * ignored, because this label names the crash for a human rather than
+ * reconstructing the chain. */
 const CRASH_TYPE_MAX = 48;
 
-function crashLabel(title) {
-  if (typeof title !== "string") return "app crash";
-  const type = title.split(":", 1)[0].trim();
-  // A type must look like an identifier. Anything else is a title shape this
-  // code does not recognise, and printing it unexamined is how the message half
-  // would eventually leak through some future format.
+function crashLabel(errorType) {
+  const first = Array.isArray(errorType) ? errorType[0] : errorType;
+  if (typeof first !== "string") return "app crash";
+  const type = first.trim();
+  // A type must look like an identifier. Anything else is a shape this code does
+  // not recognise, and printing it unexamined is how user-derived text would
+  // eventually leak through some future format.
   if (type.length === 0 || type.length > CRASH_TYPE_MAX || !/^[A-Za-z_][A-Za-z0-9_.]*$/.test(type)) {
     return "app crash";
   }
@@ -171,14 +178,14 @@ function crashLabel(title) {
  * discarded. `rawCategory` is preserved in the label precisely so a category
  * added to the app and not added to this table is visible in Discord.
  */
-export function classifyProblem({ category, level, title }) {
+export function classifyProblem({ category, level, type }) {
   const raw = typeof category === "string" ? category.trim() : "";
   if (raw.length === 0) {
     // A blank category on a fatal is a crash. A blank category on a NON-fatal
     // is something this table does not know about, and guessing "crash" for it
     // would put a wrong sentence in front of the founder.
     if (typeof level === "string" && level.toLowerCase() === "fatal") {
-      return { group: LOST, deliveryProven: false, label: crashLabel(title) };
+      return { group: LOST, deliveryProven: false, label: crashLabel(type) };
     }
     return { group: LOST, deliveryProven: false, label: "uncategorised failure" };
   }
@@ -335,13 +342,28 @@ function compareKeys(a, b) {
  * why calls 4 and 5 exist. */
 export const SENTRY_CALLS_PER_DIGEST = 5;
 
-const ISSUE_FIELDS = ["issue", "title", "error.category", "level", "count()", "count_unique(user)"];
+// `error.type`, NOT `title`. Grouping on `title` splits one Sentry issue into one
+// row per distinct message, and a crash message embeds a memory address that is
+// unique per event - `ENVIOUSWISPR-4B` returned EIGHT rows for one issue, one
+// user and nine events (#2023). Every one of those rows then rendered the same
+// sentence and counted as its own "problem". `error.type` is constant per crash
+// signature, so Sentry returns one row per issue and `count_unique(user)` is the
+// issue's TRUE distinct-user count rather than a per-message slice of it.
+const ISSUE_FIELDS = ["issue", "error.type", "error.category", "level", "count()", "count_unique(user)"];
 // Read from meta.fields, which is present on an EMPTY response too. `issue` is
 // deliberately absent from this list: Sentry echoes it back as `issue.id`, so
 // requiring the requested name would fail on a perfectly good response and the
 // obvious repair (deleting the check) is how an empty malformed body gets
 // through. See workers/shared/sentry.js discoverAggregate.
-const ISSUE_REQUIRED_META = ["error.category", "level", "count()", "count_unique(user)"];
+// `error.type` is REQUIRED, because it is consumed: without it every fatal row
+// silently loses its exception label and renders a bare "app crash". Safe to
+// require, and that was measured rather than assumed — a live call requesting
+// all six fields echoes `error.type` in `meta.fields` (2026-08-11, #2023).
+// `issue` stays out for the documented reason: Sentry echoes it as `issue.id`,
+// so requiring the requested name would fail on a perfectly good response.
+const ISSUE_REQUIRED_META = [
+  "error.type", "error.category", "level", "count()", "count_unique(user)",
+];
 const RELEASE_FIELDS = ["release", "count()", "count_unique(user)"];
 
 /** The release query's page size AND the number the truncation sentence quotes.
@@ -508,22 +530,141 @@ export async function fetchSentrySection(env, window, opts = {}) {
       .map((issue) => issue.shortId)
   );
 
-  const rows = problems.rows.map((row) => {
+  const mapped = problems.rows.map((row) => {
     const classified = classifyProblem({
       category: row["error.category"],
       level: row.level,
-      title: row.title,
+      type: row["error.type"],
     });
+    // A BLANK id is not an id. `""` is a string, so a bare type check would make
+    // it a valid grouping key and fuse every malformed row into one problem -
+    // the exact opposite of the missing-id rule below, and reached by the same
+    // malformed response that rule exists for.
+    const rawShortId = typeof row.issue === "string" ? row.issue.trim() : "";
     return {
-      shortId: typeof row.issue === "string" ? row.issue : null,
+      shortId: rawShortId.length > 0 ? rawShortId : null,
       people: toCount(row["count_unique(user)"]),
+      // False until a collapse merges rows into this one; see the loop below.
+      peopleIsLowerBound: false,
       events: toCount(row["count()"]),
       group: classified.group,
       label: classified.label,
       deliveryProven: classified.deliveryProven,
-      isNew: typeof row.issue === "string" && newShortIds.has(row.issue),
+      // Reads the SAME normalised value, so a blank id cannot be looked up here
+      // while being rejected as a grouping key two lines above.
+      isNew: rawShortId.length > 0 && newShortIds.has(rawShortId),
     };
   });
+
+  // ONE SENTRY ISSUE IS ONE PROBLEM, guaranteed here rather than hoped for from
+  // the grouping key. `ISSUE_FIELDS` moving to `error.type` removes the CAUSE of
+  // the #2023 split, but any future grouping field that varies within an issue
+  // would silently reintroduce it, and the symptom - a repeated sentence and an
+  // inflated problem count - reads as a rendering bug rather than a query bug.
+  // This makes the invariant structural, so it holds whatever Sentry returns.
+  //
+  // A null `shortId` is NOT a group. Rows that could not be identified stay
+  // separate, because merging them would fuse unrelated problems under one
+  // heading on the strength of a missing field.
+  //
+  // Order is preserved by first occurrence, which keeps the section's
+  // descending-by-people sort intact: `sentry_problems` sorts by
+  // `-count_unique(user)`, so a group's first row already carries its largest
+  // value.
+  //
+  // CLASSIFICATION IS RECONCILED CONSERVATIVELY, never taken from whichever row
+  // Sentry happened to sort first. An earlier draft of this comment asserted
+  // that `error.category`, `level` and `error.type` are fingerprint properties
+  // and therefore constant within an issue; review was right that this is an
+  // unchecked premise. `level` in particular is per-EVENT, and a tag can change
+  // across a release while the fingerprint does not.
+  //
+  // Getting it wrong has a direction: keeping the first row's classification
+  // could file fatal events under a degraded label and add their events to it,
+  // which UNDERSTATES severity in the list the founder acts on. So `lost` wins
+  // over `degraded`, and any unproven row makes the merged row unproven — the
+  // same conservative default the category table itself encodes.
+  const byShortId = new Map();
+  const rows = [];
+  for (const row of mapped) {
+    const existing = row.shortId === null ? undefined : byShortId.get(row.shortId);
+    if (existing === undefined) {
+      rows.push(row);
+      if (row.shortId !== null) byShortId.set(row.shortId, row);
+      continue;
+    }
+    // Events ARE additive across rows of one issue and still sum exactly to the
+    // headline aggregate. People are NOT: the same person can appear under two
+    // rows, so a sum would double-count them. `max` is therefore a LOWER BOUND
+    // and can understate when two rows carry disjoint users.
+    //
+    // That understatement is bounded and deliberate. It can only occur when one
+    // issue carries more than one exception-type signature, which the field
+    // change above makes rare; and the headline "N people hit ..." figure comes
+    // from a separate UNGROUPED aggregate, so it stays exact regardless. The
+    // alternative, summing, is wrong in the common case this issue was filed
+    // for - eight rows of one user each would have printed eight people.
+    existing.events = addCounts(existing.events, row.events, "event total");
+    existing.people = Math.max(existing.people, row.people);
+    // Conservative reconciliation. The delivery claim can only move toward
+    // caution, and a `lost` row drags the whole merged problem into `lost`.
+    //
+    // THE LABEL MOVES WITH THE GROUP. An earlier draft kept the first row's
+    // label while flipping only the group, which rendered "paste fell back to
+    // the clipboard" — a sentence whose whole meaning is that the text survived
+    // — underneath "LOST THE DICTATION". The heading and the line contradicted
+    // each other, and the founder acts on that split. So the label is taken from
+    // the row whose classification WON; a label that no longer matches its
+    // heading is worse than a less specific one.
+    // ORDER IS LOAD-BEARING: record the differing labels BEFORE any replacement.
+    // Written the other way round first, the severity flip overwrote
+    // `existing.label` and the comparison below then saw two equal strings, so a
+    // displaced degraded label was swallowed with no disclosure at all — the
+    // exact case the disclosure exists for, silently defeated by statement
+    // order (cloud review r2).
+    if (row.label !== existing.label) {
+      existing.mergedLabels = existing.mergedLabels || new Set([existing.label]);
+      existing.mergedLabels.add(row.label);
+    }
+    if (row.group === LOST && existing.group !== LOST) {
+      existing.group = LOST;
+      existing.label = row.label;
+    }
+    // A LABEL NAMES ONE FAILURE; A MERGED ROW MAY DESCRIBE SEVERAL. Moving the
+    // label with the group fixes the contradiction across severities, but two
+    // rows of the SAME severity and different labels still merge - an
+    // `asr_failed` row and a blank-category fatal are both `lost` - and the
+    // retained label would then silently describe the other row's events too.
+    //
+    // Neither label is wrong and neither is complete, so rather than pick a
+    // winner or invent a generic phrase, the row DISCLOSES that it covers more
+    // than it names. The retained label stays the largest contributor, since
+    // `sentry_problems` sorts by affected users and the first row of a group is
+    // its biggest.
+    if (row.label !== existing.label) {
+      existing.mergedLabels = (existing.mergedLabels || new Set([existing.label]));
+      existing.mergedLabels.add(row.label);
+    }
+    if (!row.deliveryProven) existing.deliveryProven = false;
+    // The row must SAY it is a lower bound rather than print a merged number as
+    // though it were exact.
+    existing.peopleIsLowerBound = true;
+  }
+
+  // A CUT PAGE MAKES EVERY DISPLAYED ROW POTENTIALLY PARTIAL, not just the ones
+  // that visibly merged. Sentry sorts by affected users, so two rows of ONE
+  // issue can straddle the 100-row boundary: the visible half then renders as a
+  // complete, exact figure while users, events and even a `lost` classification
+  // sit on a page nobody fetched.
+  //
+  // The existing "more problems may exist" notice does not cover this — it says
+  // problems are MISSING, not that a problem already listed is INCOMPLETE, and a
+  // reader has no way to tell the difference. Hedging every row when the page
+  // was cut is the honest reading, and it costs nothing on the ordinary
+  // untruncated day, which is every day the fleet has produced so far.
+  if (problems.truncated) {
+    for (const row of rows) row.peopleIsLowerBound = true;
+  }
 
   return {
     empty: rows.length === 0,
@@ -693,8 +834,14 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
   const errorText = data.truncated
     ? `at least ${data.events} ${data.events === 1 ? "error" : "errors"}`
     : `${data.events} ${data.events === 1 ? "error" : "errors"}`;
+  // COUNTED FROM THE ROWS, never from the page size. Before #2023 this said
+  // "100 or more problems", which was sound while one row WAS one problem. Now
+  // that rows collapse by issue, a full 100-row page can yield fewer than 100
+  // unique problems, and a hardcoded 100 would assert a number nobody measured.
+  // `rows.length` is what we actually saw either way; `truncated` only adds the
+  // "or more".
   const problemText = data.truncated
-    ? "100 or more problems"
+    ? `${data.rows.length} or more ${data.rows.length === 1 ? "problem" : "problems"}`
     : `${data.rows.length} ${data.rows.length === 1 ? "problem" : "problems"}`;
   lines.push(`${people(data.people)} hit ${errorText} across ${problemText}, on ${data.floor} and newer.`);
 
@@ -744,10 +891,23 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
   // length of the sentence explaining that it ran out - measured at 24
   // characters over a 1200 budget, which is the shape that eventually pushes an
   // assembled payload past a Discord limit and sends nothing at all.
+  // RESERVE WHAT WILL ACTUALLY BE PRINTED. The omitted line must be reserved
+  // unconditionally, because whether it appears depends on this very layout. The
+  // other two do NOT: `truncated` and `badgesIncomplete` are decided by the fetch
+  // and are already known here, so reserving them when they will not be printed
+  // spends the row budget on sentences that never render.
+  //
+  // Found by a live smoke against production, not by a test (#2023). Making
+  // TRUNCATED_LINE accurate had lengthened it by 65 characters, and because the
+  // reserve was unconditional that silently cost the section a PROBLEM ROW on an
+  // ordinary untruncated day — the digest quietly listed less of exactly the
+  // thing it exists to list. No unit test could see it: every fixture that
+  // exercises the budget sets its own, and the regression only shows against the
+  // real row set at the real default budget.
   const reserve =
     omittedLine(data.rows.length, data.truncated).length + 1 +
-    TRUNCATED_LINE.length + 1 +
-    BADGES_INCOMPLETE_LINE.length + 1;
+    (data.truncated ? TRUNCATED_LINE.length + 1 : 0) +
+    (data.badgesIncomplete ? BADGES_INCOMPLETE_LINE.length + 1 : 0);
   const state = { budget: budget - reserve, omitted: 0 };
   appendGroup(lines, "LOST THE DICTATION", lost, state);
   appendGroup(lines, "STILL WORKED, JUST WORSE", degraded, state);
@@ -788,15 +948,32 @@ function finishSection(lines, budget) {
  * missing Link header proves nothing. That over-reporting is the right default
  * - but it means this line cannot assert incompleteness as a fact, only as a
  * possibility. Every other truncation sentence survives the same scrutiny
- * ("at least N errors", "100 or more problems", "cover the largest 100 only"
- * are all true when exactly 100 arrive); this one did not, and was swept for
- * alongside them rather than fixed alone. */
+ * ("at least N errors", "N or more problems", "more problems may exist" are all
+ * true when exactly 100 arrive); this one did not, and was swept for alongside
+ * them rather than fixed alone.
+ *
+ * Two of those examples were reworded by #2023, which removed the hardcoded 100
+ * from the PROBLEM sentences once rows began collapsing by issue. The reasoning
+ * above is unchanged and still applies to each of them. */
 const BADGES_INCOMPLETE_LINE =
   "100 or more problems were seen for the first time in this window, so the NEW marks below may not be complete.";
 
+/** Deliberately carries NO number. Sentry cut the page at 100 ROWS, and since
+ * #2023 those rows collapse by issue, so the page size is no longer the count of
+ * problems it covers - "the largest 100" would name a quantity this line cannot
+ * support. The headline sentence above already states the measured count and
+ * qualifies it with "or more"; this line's job is the CLAIM, which is that the
+ * error count and breakdown are bounded by what came back while the people
+ * total is not.
+ *
+ * `BADGES_INCOMPLETE_LINE` above keeps its 100 on purpose: it describes the
+ * ISSUES endpoint, whose rows are one-per-issue and are never collapsed, so the
+ * page size there really is a problem count. Two different axes, and only this
+ * one moved. */
 const TRUNCATED_LINE =
-  "100 or more problems were recorded. The affected-people total covers all of them; " +
-  "the error count and the breakdown cover the largest 100 only.";
+  "Sentry returned a full page, so more problems may exist. The affected-people total " +
+  "covers all of them; the error count covers every problem Sentry returned, while the " +
+  "breakdown covers only those listed above.";
 
 /** `truncated` changes the CLAIM, not just the wording: when the problem page
  * was cut off, the totals above genuinely do NOT include the omitted rows, so
@@ -890,7 +1067,22 @@ function appendGroup(lines, heading, rows, state) {
     // list, and "lost the dictation" is a strong claim to make on a category
     // whose producers disagree.
     const suffix = row.deliveryProven ? "" : ", delivery not proven";
-    lines.push(`  ${people(row.people)}   ${row.label}${suffix}${row.isNew ? "   NEW" : ""}`);
+    // "at least" only when rows were merged into this one. `Math.max` across a
+    // collapse understates whenever two rows carry disjoint users, and neither
+    // max nor sum can recover the real union from grouped counts - so the number
+    // is hedged where it is genuinely a bound, and printed plainly where it is
+    // Sentry's own exact per-issue figure.
+    const peopleText = row.peopleIsLowerBound
+      ? `at least ${people(row.people)}`
+      : people(row.people);
+    // When one issue merged rows carrying different labels, the line names its
+    // largest contributor and says so rather than presenting that name as the
+    // whole story.
+    const others = row.mergedLabels ? row.mergedLabels.size - 1 : 0;
+    const mixed = others > 0
+      ? ` and ${others} other ${others === 1 ? "failure" : "failures"} on the same issue`
+      : "";
+    lines.push(`  ${peopleText}   ${row.label}${mixed}${suffix}${row.isNew ? "   NEW" : ""}`);
     if (descriptionLength(lines) > state.budget) {
       lines.pop();
       state.omitted += 1;

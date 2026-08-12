@@ -60,14 +60,17 @@ const SENTRY_RELEASE_ROWS = [
   { release: "com.enviouswispr.app@2.4.1", "count_unique(user)": 3, "count()": 12 },
   { release: "com.enviouswispr.app@2.3.1", "count_unique(user)": 2, "count()": 5 },
 ];
+// `error.type`, not `title`: #2023 changed what the section requests, and a
+// double still carrying the old field would describe a response the live
+// endpoint no longer returns. Empty on handled errors, which both of these are.
 const SENTRY_PROBLEM_ROWS = [
   {
-    issue: "ENVIOUSWISPR-2C", "issue.id": 1, title: "audio_capture_stalled: HeartPathError#0",
+    issue: "ENVIOUSWISPR-2C", "issue.id": 1, "error.type": [],
     "error.category": "audio_capture_stalled", level: "error",
     "count_unique(user)": 25, "count()": 103,
   },
   {
-    issue: "ENVIOUSWISPR-24", "issue.id": 2, title: "paste_failed: HeartPathError#3",
+    issue: "ENVIOUSWISPR-24", "issue.id": 2, "error.type": [],
     "error.category": "paste_failed", level: "error",
     "count_unique(user)": 13, "count()": 18,
   },
@@ -91,7 +94,7 @@ function sentryAnswer(url, overrides) {
   }
   if (url.includes("field=issue")) {
     return ok(sentryBody(SENTRY_PROBLEM_ROWS,
-      ["title", "issue.id", "error.category", "level", "count_unique(user)", "count()"]));
+      ["error.type", "issue.id", "error.category", "level", "count_unique(user)", "count()"]));
   }
   // The prior window starts seven days before the reported one.
   const isPrior = url.includes(encodeURIComponent("2026-07-20T00:00:00"));

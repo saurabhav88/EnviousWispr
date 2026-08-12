@@ -96,11 +96,11 @@ const RELEASE_ROWS = [
   { release: "com.enviouswispr.app@2.4.0", "count_unique(user)": 2, "count()": 7 },
 ];
 
-function problemRow(issue, category, users, events, level = "error") {
+function problemRow(issue, category, users, events, level = "error", errorType = []) {
   return {
     issue,
     "issue.id": 1,
-    title: `${category}: something`,
+    "error.type": errorType,
     "error.category": category,
     level,
     "count_unique(user)": users,
@@ -108,7 +108,7 @@ function problemRow(issue, category, users, events, level = "error") {
   };
 }
 
-const PROBLEM_FIELDS = ["title", "issue.id", "error.category", "level", "count_unique(user)", "count()"];
+const PROBLEM_FIELDS = ["error.type", "issue.id", "error.category", "level", "count_unique(user)", "count()"];
 
 /** Routes each of the five calls by its query name, which is the only thing
  * that distinguishes them in the URL. */
@@ -241,15 +241,12 @@ test("classifyProblem: unknown, blank-fatal and blank-error are three different 
   assert.equal(unknown.label, "brand_new_category", "an unknown category must show its raw name");
   assert.equal(unknown.deliveryProven, false);
 
-  // The measured real shape: an unhandled crash carries no category at all.
-  const crash = classifyProblem({ category: "", level: "fatal", title: "EXC_BAD_ACCESS:  timed out after  >" });
+  // The measured real shape: an unhandled crash carries no category at all, and
+  // `error.type` arrives as an array.
+  const crash = classifyProblem({ category: "", level: "fatal", type: ["EXC_BAD_ACCESS"] });
   assert.equal(crash.group, LOST);
   assert.equal(crash.label, "app crash (EXC_BAD_ACCESS)");
   assert.equal(crash.deliveryProven, false);
-  // THE MESSAGE HALF NEVER APPEARS. It is the one place user-derived text could
-  // reach Discord, and the split-at-first-colon is what keeps it out by
-  // construction rather than by trusting Sentry's redaction.
-  assert.doesNotMatch(crash.label, /timed out/);
 
   // A blank category that is NOT fatal must not be called a crash.
   const blank = classifyProblem({ category: null, level: "error" });
@@ -450,6 +447,23 @@ test("fetchSentrySection issues exactly the budgeted number of calls", async () 
   const { fetchFn, urls } = digestFetch({ problems: [problemRow("EW-1", "paste_failed", 3, 4)] });
   await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
   assert.equal(urls.length, SENTRY_CALLS_PER_DIGEST);
+});
+
+test("the problems query groups by exception type, never by title (#2023)", async () => {
+  // The SOURCE of the #2023 split. Grouping on `title` returns one row per
+  // distinct crash message, and a crash message embeds a per-event memory
+  // address, so one issue arrives as many rows. The local collapse guarantees
+  // the invariant downstream; this locks the query that stops it arising.
+  //
+  // It is also the privacy boundary: `title` is `<type>: <message>` and the
+  // message half is the one place user-derived text could reach Discord. Not
+  // requesting it is a stronger guarantee than discarding it correctly.
+  const { fetchFn, urls } = digestFetch({ problems: [problemRow("EW-1", "paste_failed", 3, 4)] });
+  await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
+  const problemsUrl = decodeURIComponent(urls.find((u) => u.includes("field=issue")));
+  assert.ok(problemsUrl, "the problems aggregate must have been issued");
+  assert.match(problemsUrl, /field=error\.type/, "the exception type is what separates two crashes");
+  assert.doesNotMatch(problemsUrl, /field=title/, "requesting the title reintroduces the split and the message half");
 });
 
 test("the call count does not move with problem volume", async () => {
@@ -712,7 +726,35 @@ test("an over-budget section discloses what it omitted instead of truncating sil
 test("a full page of problems is disclosed as a limited breakdown", async () => {
   const many = Array.from({ length: 100 }, (_, i) => problemRow(`EW-${i}`, "asr_failed", 1, 1));
   const { lines } = await render({ problems: many });
-  assert.match(lines.join("\n"), /the error count and the breakdown cover the largest 100 only/);
+  const text = lines.join("\n");
+  assert.match(text, /more problems may exist/);
+  // The error total and the visible breakdown are bounded DIFFERENTLY: events
+  // are summed from every returned row, while the list can be cut short again
+  // by the Discord budget. Collapsing both into "those listed above" contradicts
+  // the omission notice printed just above it (Codex review r2).
+  assert.match(text, /the error count covers every problem Sentry returned/);
+  assert.match(text, /the breakdown covers only those listed above/);
+  // 100 DISTINCT issues, so the measured count really is 100 here.
+  assert.match(text, /across 100 or more problems/);
+});
+
+test("a truncated page never claims more problems than it can count (#2023)", async () => {
+  // Codex review r1, P2. A full 100-ROW page can carry fewer than 100 unique
+  // issues once rows collapse, and the old wording hardcoded 100 - so the
+  // section would have asserted a number nobody measured, in the one sentence
+  // the founder reads first.
+  const many = Array.from({ length: 100 }, (_, i) =>
+    problemRow(`EW-${i % 40}`, "asr_failed", 1, 1));
+  const { data, lines } = await render({ problems: many });
+  const text = lines.join("\n");
+
+  assert.equal(data.rows.length, 40, "100 rows over 40 issues must collapse to 40 problems");
+  assert.equal(data.truncated, true, "a full page is still treated as possibly incomplete");
+  assert.match(text, /across 40 or more problems/);
+  assert.doesNotMatch(text, /100 or more problems/, "the page size is not a problem count");
+  assert.doesNotMatch(text, /largest 100/, "nor is it a claim about what the breakdown covers");
+  // The people total is unaffected by truncation and must keep saying so.
+  assert.match(text, /The affected-people total covers all of them/);
 });
 
 test("a full page issues no second Sentry request", async () => {
@@ -745,22 +787,202 @@ test("the worst realistic section still fits Discord's per-embed limits", async 
 test("a crash label carries the exception type and never the message", () => {
   // Two different crashes must not render as two identical rows. A live smoke
   // run printed exactly that before the type was included.
-  const a = classifyProblem({ category: "", level: "fatal", title: "EXC_BAD_ACCESS:  timed out after  >" });
-  const b = classifyProblem({ category: "", level: "fatal", title: "NSInternalInconsistencyException: [REDACTED]" });
+  const a = classifyProblem({ category: "", level: "fatal", type: ["EXC_BAD_ACCESS"] });
+  const b = classifyProblem({ category: "", level: "fatal", type: ["NSInternalInconsistencyException"] });
   assert.notEqual(a.label, b.label);
   assert.equal(b.label, "app crash (NSInternalInconsistencyException)");
 
-  // Any title shape this code does not recognise falls back to the plain label
-  // rather than printing something unexamined.
-  for (const title of [
-    undefined, null, "", ":no type", "a message with no colon at all and spaces",
-    "Type With Spaces: msg", `${"A".repeat(60)}: msg`, "<script>: msg",
+  // An exception CHAIN takes the first entry and ignores the rest.
+  assert.equal(
+    classifyProblem({ category: "", level: "fatal", type: ["EXC_BAD_ACCESS", "SecondaryError"] }).label,
+    "app crash (EXC_BAD_ACCESS)");
+
+  // Any shape this code does not recognise falls back to the plain label rather
+  // than printing something unexamined. `title`-shaped values are in the list
+  // because #2023 changed the field this reads: if a future edit points it back
+  // at `title`, the message half must still not reach Discord.
+  for (const type of [
+    undefined, null, "", [], [null], [""], {},
+    ["Type With Spaces"], [`${"A".repeat(60)}`], ["<script>"],
+    "EXC_BAD_ACCESS:  timed out after  >", ["EXC_BAD_ACCESS:  timed out after  >"],
   ]) {
-    const label = classifyProblem({ category: "", level: "fatal", title }).label;
+    const label = classifyProblem({ category: "", level: "fatal", type }).label;
     assert.ok(label === "app crash" || /^app crash \([A-Za-z_][A-Za-z0-9_.]*\)$/.test(label),
-      `unexpected crash label for ${JSON.stringify(title)}: ${label}`);
-    assert.doesNotMatch(label, /msg/);
+      `unexpected crash label for ${JSON.stringify(type)}: ${label}`);
+    assert.doesNotMatch(label, /timed out/);
   }
+});
+
+test("one Sentry issue is one problem even when it returns several rows (#2023)", async () => {
+  // The real shape: ENVIOUSWISPR-4B returned eight rows for one issue, one user
+  // and nine events, because the crash message embeds a per-event address.
+  // Every row rendered the same sentence and counted as its own problem.
+  const { data, lines } = await render({
+    problems: [
+      problemRow("EW-2C", "audio_capture_stalled", 5, 9),
+      problemRow("EW-4B", "", 1, 2, "fatal", ["EXC_BAD_ACCESS"]),
+      problemRow("EW-4B", "", 1, 3, "fatal", ["EXC_BAD_ACCESS"]),
+      problemRow("EW-4B", "", 1, 4, "fatal", ["EXC_BAD_ACCESS"]),
+    ],
+  });
+
+  assert.equal(data.rows.length, 2, "three rows of one issue must collapse to one problem");
+  const crash = data.rows.find((r) => r.shortId === "EW-4B");
+  assert.equal(crash.events, 9, "events ARE additive across an issue's rows");
+  assert.equal(crash.people, 1, "people are NOT additive: one person must not become three");
+  // The derived event total still reconciles with the ungrouped aggregate.
+  assert.equal(data.events, 18);
+
+  // Exactly one rendered line for that issue, not three.
+  const crashLines = lines.filter((l) => l.includes("app crash"));
+  assert.equal(crashLines.length, 1, `expected one crash line, got ${JSON.stringify(crashLines)}`);
+  assert.match(lines.join("\n"), /1 person {3}app crash \(EXC_BAD_ACCESS\)/);
+});
+
+test("a merged people count says it is a lower bound, an unmerged one does not", async () => {
+  // Codex review r2. `Math.max` across a collapse understates whenever two rows
+  // carry disjoint users, and neither max nor sum can recover the real union
+  // from grouped counts — so a merged row must not print its number as exact.
+  const { lines } = await render({
+    problems: [
+      problemRow("EW-4B", "", 2, 2, "fatal", ["EXC_BAD_ACCESS"]),
+      problemRow("EW-4B", "", 3, 3, "fatal", ["EXC_BAD_ACCESS"]),
+      problemRow("EW-2C", "audio_capture_stalled", 5, 9),
+    ],
+  });
+  const text = lines.join("\n");
+
+  assert.match(text, /at least 3 people {3}app crash \(EXC_BAD_ACCESS\)/);
+  // The two-way control. Without it, a hedge applied to EVERY row would pass the
+  // assertion above while quietly making every exact figure look uncertain.
+  assert.match(text, /\n {2}5 people {3}microphone capture stalled/);
+  assert.doesNotMatch(text, /at least 5 people/);
+});
+
+test("rows that could not be identified are never fused together (#2023)", async () => {
+  // A missing shortId is not a group key. Merging on it would put unrelated
+  // problems under one heading. BLANK strings count as missing: `""` is a
+  // string, so a bare type check would make it a valid key and fuse every
+  // malformed row into one problem (Codex review r3).
+  const { data } = await render({
+    problems: [
+      { ...problemRow("EW-2C", "audio_capture_stalled", 5, 9), issue: null },
+      { ...problemRow("EW-24", "paste_failed", 3, 4), issue: "" },
+      { ...problemRow("EW-29", "xpc_service_error", 2, 2), issue: "   " },
+      { ...problemRow("EW-32", "polish_provider_failed", 1, 1), issue: undefined },
+    ],
+  });
+  assert.equal(data.rows.length, 4, "unidentifiable rows must stay separate");
+  assert.deepEqual(data.rows.map((r) => r.shortId), [null, null, null, null]);
+});
+
+test("a collapse reconciles classification conservatively, never by sort order", async () => {
+  // Codex review r3. An earlier comment claimed category/level/type are constant
+  // within an issue; they are not — `level` is per-event. Keeping the first
+  // row's classification would file fatal events under a degraded label and add
+  // their events to it, understating severity in the list the founder acts on.
+  const { data, lines } = await render({
+    problems: [
+      // Sorted first: more people, DEGRADED, delivery proven.
+      problemRow("EW-9", "paste_failed", 5, 5),
+      // Same issue, fatal: LOST, delivery NOT proven.
+      problemRow("EW-9", "", 1, 1, "fatal", ["EXC_BAD_ACCESS"]),
+    ],
+  });
+
+  assert.equal(data.rows.length, 1);
+  const merged = data.rows[0];
+  assert.equal(merged.group, LOST, "lost must win over degraded");
+  assert.equal(merged.deliveryProven, false, "an unproven row makes the merge unproven");
+  assert.equal(merged.events, 6, "events from both rows are still counted");
+  assert.match(lines.join("\n"), /delivery not proven/);
+
+  // THE LABEL MUST MOVE WITH THE GROUP. Keeping the degraded label would render
+  // "paste fell back to the clipboard" — a sentence meaning the text survived —
+  // under "LOST THE DICTATION" (Codex review r4).
+  assert.equal(merged.label, "app crash (EXC_BAD_ACCESS)");
+  const text = lines.join("\n");
+  assert.doesNotMatch(text, /paste fell back to the clipboard/,
+    "a degraded label must not survive into a lost row");
+
+  // AND THE DISPLACED LABEL MUST STILL BE DISCLOSED. This assertion is the one
+  // that was missing: an earlier version replaced the label before comparing
+  // them, so the paste row was swallowed with no trace, and this test passed
+  // anyway because it only checked that the old label was GONE (cloud review r2).
+  assert.match(text, /app crash \(EXC_BAD_ACCESS\) and 1 other failure on the same issue/);
+  assert.equal(merged.mergedLabels.size, 2);
+});
+
+test("a merge of two same-severity labels discloses what it does not name", async () => {
+  // Cloud review r1, P2. Moving the label with the GROUP fixes the cross-severity
+  // contradiction, but two `lost` rows with different labels still merge, and the
+  // retained label would silently describe the other row's events too.
+  const { data, lines } = await render({
+    problems: [
+      problemRow("EW-7", "asr_failed", 4, 4),
+      problemRow("EW-7", "", 1, 6, "fatal", ["EXC_BAD_ACCESS"]),
+    ],
+  });
+
+  assert.equal(data.rows.length, 1);
+  assert.equal(data.rows[0].events, 10, "both rows' events are counted");
+  // Named for the largest contributor, and honest that it covers more.
+  assert.match(lines.join("\n"),
+    /transcription failed and 1 other failure on the same issue/);
+});
+
+test("a merge of identical labels claims no hidden failures", async () => {
+  // The two-way control. Without it, a disclosure appended to every merge would
+  // pass the test above while adding a phantom "other failure" to the ordinary
+  // duplicate-row collapse this issue was filed for.
+  const { lines } = await render({
+    problems: [
+      problemRow("EW-4B", "", 1, 2, "fatal", ["EXC_BAD_ACCESS"]),
+      problemRow("EW-4B", "", 1, 3, "fatal", ["EXC_BAD_ACCESS"]),
+    ],
+  });
+  assert.doesNotMatch(lines.join("\n"), /other failure/);
+});
+
+test("a cut page marks every displayed row as partial (#2023)", async () => {
+  // Codex review r4. Sentry sorts by affected users, so two rows of ONE issue
+  // can straddle the 100-row boundary. The visible half would otherwise render
+  // as a complete, exact figure while users and events sit on an unfetched page.
+  const many = Array.from({ length: 100 }, (_, i) => problemRow(`EW-${i}`, "asr_failed", 2, 2));
+  const { data, lines } = await render({ problems: many });
+
+  assert.equal(data.truncated, true);
+  assert.ok(data.rows.every((r) => r.peopleIsLowerBound),
+    "every row on a cut page is potentially missing counts from the next page");
+  assert.match(lines.join("\n"), /at least 2 people/);
+});
+
+test("an uncut page leaves exact rows unhedged (#2023)", async () => {
+  // The two-way control for the rule above. Without it, hedging everything would
+  // pass that test while making every ordinary exact figure read as uncertain —
+  // and the ordinary day is every day the fleet has produced so far.
+  const { data, lines } = await render({
+    problems: [problemRow("EW-2C", "audio_capture_stalled", 5, 9)],
+  });
+
+  assert.equal(data.truncated, false);
+  assert.ok(data.rows.every((r) => !r.peopleIsLowerBound));
+  assert.doesNotMatch(lines.join("\n"), /at least/);
+});
+
+test("a collapse of uniformly degraded rows stays degraded", async () => {
+  // The two-way control for the reconciliation above. Without it, a rule that
+  // forced LOST on every merge would pass the previous test while quietly
+  // reclassifying every merged problem as a lost dictation.
+  const { data } = await render({
+    problems: [
+      problemRow("EW-24", "paste_failed", 5, 5),
+      problemRow("EW-24", "paste_failed", 2, 2),
+    ],
+  });
+  assert.equal(data.rows.length, 1);
+  assert.equal(data.rows[0].group, DEGRADED);
+  assert.equal(data.rows[0].deliveryProven, true);
 });
 
 test("two problems that would render identically are separated by their issue id", async () => {
