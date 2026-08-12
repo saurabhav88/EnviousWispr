@@ -257,7 +257,7 @@ The full text of the Apache License, Version 2.0 follows.
 
 --------------------------------------------------------------------------------
 FluidAudio
-  Version: a1767d86 (fork saurabhav88/FluidAudio)
+  Version: bf9fe27f (fork saurabhav88/FluidAudio)
   License: Apache-2.0
   Source:  https://github.com/saurabhav88/FluidAudio
 --------------------------------------------------------------------------------

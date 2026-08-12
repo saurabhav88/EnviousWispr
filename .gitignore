@@ -158,6 +158,13 @@ scripts/*
 !scripts/lid-perf-bench.sh
 !scripts/lid-perf-bench.py
 !scripts/generate-recording-sounds.py
+# #1678: recomputes a delivery manifest's `manifestDigest`. TRACKED deliberately
+# — `DeliveryManifest.loadBundled` recomputes the digest on every launch and
+# throws on mismatch, so any manifest edit without this bricks model loading
+# (#1792 shipped exactly that past a green local build and a working dev app).
+# A gitignored copy would exist on one machine only, which is how the check gets
+# skipped by whoever does the next pin bump.
+!scripts/regen-delivery-manifest-digest.py
 # Output-safety classifier: conversion recipe + its numerical gates (#1226).
 # Tracked because these settings ship to users inside the model bytes.
 !scripts/convert-output-classifier.py

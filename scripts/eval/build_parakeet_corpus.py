@@ -8,7 +8,7 @@ score we hold was therefore measured on an input form the shipped ASR does not
 produce. This rebuilds the inputs through the ASR we actually ship.
 
 Engine fidelity: drives `fluidaudiocli tts-asr-verify` from the PINNED FluidAudio
-checkout (`.build/checkouts/FluidAudio`, revision a1767d86 per Package.resolved),
+checkout (`.build/checkouts/FluidAudio`, revision bf9fe27f per Package.resolved),
 NOT `~/Developer/EnviousLabs/FluidAudio*` — a local checkout's HEAD floats, so
 it can silently measure a different engine; the pinned checkout cannot.
 
@@ -44,7 +44,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / ".build/checkouts/FluidAudio/.build/arm64-apple-macosx/release/fluidaudiocli"
-PIN = "a1767d862dd1ba221593af4b92c81d004c2cc86b"
+PIN = "bf9fe27f837c86ee786a3f0ddb9966eeeeb4915d"
 
 
 def check_engine() -> None:

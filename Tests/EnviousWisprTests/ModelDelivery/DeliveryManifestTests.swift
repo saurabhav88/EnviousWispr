@@ -256,7 +256,15 @@ enum ManifestFixture {
   // invalidates the prior Parakeet admission marker, causing one full verification
   // pass and re-admission with no re-download (CacheAdmission.isAdmitted
   // digest equality; ModelIdentity invariant 9 keeps delivery runtime-agnostic).
-  static let goldenDigest = "2fe5bab08d88b3d0f32c3ab0bce126855c600f3a0cab382953d7a25b56249657"
+  // Updated 2026-08-12 (#1678): `runtimeABI` advanced to fork pin bf9fe27f,
+  // which scopes the decoder's English token blocklist to French so a language
+  // lock stops corrupting German. Identical model bytes — the fork commit
+  // touches only `TdtDecoderV3.swift` and its tests — so this is the same
+  // re-admission-without-re-download case as #1981 above. Regenerated with
+  // `scripts/regen-delivery-manifest-digest.py`, which reproduces a manifest's
+  // existing digest before writing a new one; that control is what makes the
+  // value below trustworthy rather than merely fresh.
+  static let goldenDigest = "65db6162cd87891d15b4e6becbb4ecea2e5b3c41ef32dc98de103f5803c2d24c"
 
   @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.shippedManifestURL)

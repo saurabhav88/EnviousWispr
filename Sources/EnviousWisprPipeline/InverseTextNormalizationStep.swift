@@ -138,7 +138,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// - Explicit English language → run.
   /// - Explicit non-English language → skip (`non_english`).
   /// - No language (nil/empty): the live context carries only the locked-config
-  ///   language else nil; Parakeet stamps "en" internally but it never reaches here.
+  ///   language else nil. (Parakeet used to stamp "en" on its result, which never
+  ///   reached here anyway; #1678 removed that constant — it reports nil now.)
   ///   Run for non-LID backends (Parakeet-class, legacy English); defensively skip
   ///   for LID backends (WhisperKit), where nil means "couldn't identify"
   ///   (`lid_backend_nil`).

@@ -158,10 +158,25 @@ public actor ParakeetBackend: ASRBackend {
     let startTime = CFAbsoluteTimeGetCurrent()
     // Vendor API: the caller owns decoder state (fresh per one-shot batch decode;
     // upstream's ChunkProcessor also makes fresh state per chunk internally); there
-    // is no `source:` parameter. Language hint deliberately NOT passed — parked
-    // with #1678 (the fork's decode-time language machinery ships a French-tuned
-    // blocklist that measurably corrupts other languages; FluidInference#840).
+    // is no `source:` parameter.
+    //
+    // #1678: the language hint IS now passed, and passing it arms TWO vendor
+    // mechanisms rather than one — `TdtDecoderV3.swift:129` computes top-K only
+    // when `language != nil`, so nil switched off both:
+    //
+    //   1. `TokenLanguageFilter` — replaces a wrong-SCRIPT top-1 candidate with
+    //      the best right-script one. Purpose-built for exactly the reported
+    //      symptom: a German dictation coming back in Cyrillic or Greek.
+    //   2. `applyEnglishBlocklist` — a French-tuned token list that was applied
+    //      to all 21 non-English Latin languages and measurably corrupted German
+    //      (25/120 clips, median WER 0.0% -> 2.9%).
+    //
+    // The hint was parked because of (2). That kept (1) — the defence the user
+    // actually needs — switched off with it. (2) is scoped to French as of fork
+    // pin `bf9fe27f` and re-measured at 0/120, so (1) is now reachable at no
+    // measured cost.
     var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
+    let languageHint = Self.fluidLanguage(for: options.language)
     #if DEBUG
       // #1707 Phase 2: the real shared-engine call boundary for the overlap
       // Live UAT oracle (§3.2a-i) — `defer` closes the interval on every
@@ -173,12 +188,37 @@ public actor ParakeetBackend: ASRBackend {
       defer { exitBatchDecodeFaultBoundary(role: batchDecodeFaultRole) }
     #endif
     do {
-      let fluidResult = try await manager.transcribe(audioSamples, decoderState: &decoderState)
+      let fluidResult = try await manager.transcribe(
+        audioSamples, decoderState: &decoderState, language: languageHint)
       let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
       return ASRResult(
         text: fluidResult.text,
-        language: "en",
+        // #1678: nil, and do NOT reintroduce a literal here.
+        //
+        // Parakeet has no language detection. FluidAudio's own result type
+        // declares no language field, so there is nothing to report even if we
+        // wanted to — nil is the honest value, and a lock is INTENT, never a
+        // measurement. Writing the locked code here would make this field
+        // indistinguishable from a real detection and promote it past
+        // `DictationLanguageResolver`'s precedence-2 guard, which exists
+        // precisely to refuse an engine that reports a constant.
+        //
+        // This was `"en"` from the first scaffold, coexisting with our own "25
+        // European languages" claim, and it was never true for a non-English
+        // take. It reached casing until #1785 / PR #1802, where German on the
+        // default engine was recased with English rules. Its remaining
+        // consumers were RECORDS rather than behaviour — History's transcript
+        // language and the `"language"` telemetry property — which is why every
+        // fast-engine dictation was reported as English. Consumers already
+        // handle nil: the telemetry sink renders `unknown`, and
+        // `RecoverySpoolReplayer` falls back to the locked code.
+        //
+        // The invariant, inlined so it travels with the code: this engine has no
+        // language detection, the vendor's own result type declares no language
+        // field, and the `language` parameter above is an INPUT that conditions
+        // decoding — never an output to echo back here.
+        language: nil,
         duration: fluidResult.duration,
         processingTime: elapsed,
         backendType: .parakeet,
@@ -199,6 +239,49 @@ public actor ParakeetBackend: ASRBackend {
     }
   }
 
+  /// Languages Parakeet TDT v3 is DECLARED to transcribe, as the intersection of
+  /// FluidAudio's `Language` enum with NVIDIA's model card for
+  /// `parakeet-tdt-0.6b-v3` (#1678).
+  ///
+  /// The vendor enum carries 27 cases; the model card claims 25. The three extra
+  /// cases below are usable by the script filter but are NOT claimed by the
+  /// model, so offering them would promise transcription quality nobody has
+  /// stated, let alone measured. Expressed as an exclusion rather than a
+  /// hand-copied list of 25 so it cannot silently drift from the enum: a vendor
+  /// adding a case appears here automatically and fails the count test below,
+  /// which forces a decision instead of a silent widening.
+  static let unclaimedByModelCard: Set<Language> = [.bosnian, .belarusian, .serbian]
+
+  /// The language codes this engine may be locked to, for the settings picker.
+  ///
+  /// Deliberately `Set<String>` rather than the vendor's `Language`: the app
+  /// layer must not import FluidAudio to render a list (dependency direction),
+  /// and `Language` is a vendor type whose spelling is not our contract.
+  ///
+  /// Offering a code outside this set would be a silent failure — `fluidLanguage`
+  /// would map it to nil, the decoder would fall back to Auto, and the user would
+  /// see a lock they had set and were not getting.
+  public static var lockableLanguageCodes: Set<String> {
+    Set(Language.allCases.lazy.filter { !unclaimedByModelCard.contains($0) }.map(\.rawValue))
+  }
+
+  /// Our language code -> the vendor's `Language`, or nil for "no hint".
+  ///
+  /// nil means Auto and disables language conditioning in the decoder entirely,
+  /// which is today's shipped behaviour and stays the default. An unrecognised
+  /// or unclaimed code also returns nil: falling back to Auto is strictly safer
+  /// than forcing a script the model was never declared to handle.
+  static func fluidLanguage(for code: String?) -> Language? {
+    guard let code, !code.isEmpty else { return nil }
+    // Normalize `de-DE`/`de_AT` to `de`; the vendor's rawValues are bare ISO codes.
+    let base = code.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).first.map(
+      String.init)
+    guard let base, let language = Language(rawValue: base),
+      !unclaimedByModelCard.contains(language)
+    else { return nil }
+    return language
+  }
+
   /// Numbers-only summary of FluidAudio token timings for tail-clip diagnostics (#1232).
   /// We keep only the count and the end time (ms) of the last token — never token text.
   /// Used to compute how far the decoded text reached vs the captured audio.
@@ -210,7 +293,7 @@ public actor ParakeetBackend: ASRBackend {
 
   // MARK: - Streaming ASR
 
-  public func startStreaming(options _: TranscriptionOptions) async throws {
+  public func startStreaming(options: TranscriptionOptions) async throws {
     guard isReady, let models = fluidModels else { throw ASRError.notReady }
 
     // Cancel any existing streaming session before starting a new one.
@@ -220,7 +303,11 @@ public actor ParakeetBackend: ASRBackend {
       streamingManager = nil
     }
 
+    // #1678: the lock must reach BOTH decode paths. Wiring only the batch call
+    // would give a locked user cross-alphabet protection on one path and not
+    // the other, with nothing in the UI to say which they were on.
     let config = SlidingWindowAsrConfig.streaming
+      .applying(language: Self.fluidLanguage(for: options.language))
     let manager = SlidingWindowAsrManager(config: config)
     // Vendor API: streaming starts via loadModels(_:) then startStreaming(source:).
     try await manager.loadModels(models)
@@ -247,7 +334,9 @@ public actor ParakeetBackend: ASRBackend {
 
     return ASRResult(
       text: text,
-      language: "en",
+      // #1678: nil for the same reason as the batch path above — Parakeet does
+      // not detect a language, so it must not assert one.
+      language: nil,
       duration: totalElapsed,
       processingTime: finalizeElapsed,
       backendType: .parakeet

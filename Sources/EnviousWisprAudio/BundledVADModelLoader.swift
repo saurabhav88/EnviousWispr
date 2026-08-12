@@ -32,7 +32,7 @@ enum BundledVADModelLoader {
     }
     do {
       // Match the pinned FluidAudio loader's compute policy
-      // (`ModelHub.swift:356-369` at fork pin a1767d86; the authority re-homed
+      // (`ModelHub.swift:356-369` at fork pin bf9fe27f; the authority re-homed
       // there through upstream's download-stack unification, #1981). Keep this
       // heart-path policy explicit across dependency updates (#1784).
       //
