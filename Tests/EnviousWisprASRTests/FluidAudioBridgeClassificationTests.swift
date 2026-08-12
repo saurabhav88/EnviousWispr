@@ -14,7 +14,7 @@ import Testing
 @Suite("FluidAudio error classification (#1525 PR I-B)")
 struct FluidAudioBridgeClassificationTests {
 
-  // MARK: - FluidAudioASRErrorKind (transcription path, 8 real cases)
+  // MARK: - FluidAudioASRErrorKind (transcription path, 9 real cases)
 
   @Test("classifyFluidAudioASRError maps every real ASRError case")
   func classifiesAllASRErrorCases() {
@@ -46,6 +46,14 @@ struct FluidAudioBridgeClassificationTests {
           ASRError.fileAccessFailed(
             URL(fileURLWithPath: "/tmp/x"), NSError(domain: "fixture", code: 2)
           ).localizedDescription)
+      ),
+      // #1654: the vendor added this in the 2026-08-08 pin bump (#1985). Until it was
+      // enumerated it fell through `@unknown default` into `unknownFutureCase`, so a
+      // real named cause was reaching Sentry as the junk bucket. This row is what
+      // makes that drift a test failure instead of a silent collapse.
+      (
+        .encoderInstantiationFailed("x"),
+        .encoderInstantiationFailed(ASRError.encoderInstantiationFailed("x").localizedDescription)
       ),
     ]
     for (vendorError, expected) in cases {

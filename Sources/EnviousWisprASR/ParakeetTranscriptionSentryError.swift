@@ -17,6 +17,9 @@ enum ParakeetTranscriptionSentryError: Error, LocalizedError, CustomNSError, Sen
   case unsupportedPlatform(String)
   case streamingConversionFailed(String)
   case fileAccessFailed(String)
+  /// #1654: vendor case added by the 2026-08-08 pin bump (#1985). Appended, never
+  /// inserted — every identity below is pinned by position for Sentry grouping.
+  case encoderInstantiationFailed(String)
   case unknownTranscriptionFailure(String)
 
   static let errorDomain = "EnviousWisprASR.ParakeetTranscriptionSentryError"
@@ -32,6 +35,9 @@ enum ParakeetTranscriptionSentryError: Error, LocalizedError, CustomNSError, Sen
     case .streamingConversionFailed: return 6
     case .fileAccessFailed: return 7
     case .unknownTranscriptionFailure: return 8
+    // Appended as 9, not inserted at 8: renumbering would silently re-point every
+    // existing Sentry group at a different cause.
+    case .encoderInstantiationFailed: return 9
     }
   }
 
@@ -40,7 +46,7 @@ enum ParakeetTranscriptionSentryError: Error, LocalizedError, CustomNSError, Sen
     case .notInitialized(let d), .invalidAudioData(let d), .modelLoadFailed(let d),
       .processingFailed(let d), .modelCompilationFailed(let d), .unsupportedPlatform(let d),
       .streamingConversionFailed(let d), .fileAccessFailed(let d),
-      .unknownTranscriptionFailure(let d):
+      .encoderInstantiationFailed(let d), .unknownTranscriptionFailure(let d):
       return d
     }
   }
@@ -67,6 +73,7 @@ enum ParakeetTranscriptionSentryError: Error, LocalizedError, CustomNSError, Sen
     case .unsupportedPlatform(let d): self = .unsupportedPlatform(d)
     case .streamingConversionFailed(let d): self = .streamingConversionFailed(d)
     case .fileAccessFailed(let d): self = .fileAccessFailed(d)
+    case .encoderInstantiationFailed(let d): self = .encoderInstantiationFailed(d)
     case .unknownFutureCase(let d): self = .unknownTranscriptionFailure(d)
     }
   }
@@ -87,6 +94,7 @@ enum ParakeetTranscriptionSentryError: Error, LocalizedError, CustomNSError, Sen
     case 6: self = .streamingConversionFailed(d)
     case 7: self = .fileAccessFailed(d)
     case 8: self = .unknownTranscriptionFailure(d)
+    case 9: self = .encoderInstantiationFailed(d)
     default: return nil
     }
   }
@@ -105,6 +113,8 @@ extension ParakeetTranscriptionSentryError: StableSentryErrorIdentity {
     case .unsupportedPlatform: return "FluidAudio.ASRError#5"
     case .streamingConversionFailed: return "FluidAudio.ASRError#6"
     case .fileAccessFailed: return "FluidAudio.ASRError#7"
+    // Vendor declaration ordinal 8 at pin `a1767d86`; `#8` was previously unused.
+    case .encoderInstantiationFailed: return "FluidAudio.ASRError#8"
     case .unknownTranscriptionFailure:
       return "EnviousWisprASR.ParakeetTranscriptionSentryError.unknownTranscriptionFailure"
     }
@@ -120,6 +130,8 @@ extension ParakeetTranscriptionSentryError: StableSentryErrorIdentity {
     case .unsupportedPlatform: return "parakeet_transcribe.unsupported_platform"
     case .streamingConversionFailed: return "parakeet_transcribe.streaming_conversion_failed"
     case .fileAccessFailed: return "parakeet_transcribe.file_access_failed"
+    case .encoderInstantiationFailed:
+      return "parakeet_transcribe.encoder_instantiation_failed"
     case .unknownTranscriptionFailure: return "parakeet_transcribe.unknown_transcription_failure"
     }
   }

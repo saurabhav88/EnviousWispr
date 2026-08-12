@@ -15,6 +15,12 @@ package enum FluidAudioASRErrorKind: Sendable, Equatable {
   case unsupportedPlatform(String)
   case streamingConversionFailed(String)
   case fileAccessFailed(String)
+  /// #1654: added by the vendor in the 2026-08-08 pin bump (#1985, `afb9aab` ->
+  /// `a1767d86`). Until now it fell through `@unknown default` into
+  /// `unknownFutureCase`, so a real named cause was arriving as the junk bucket —
+  /// the exact collapse the #1525 epic exists to prevent. Found by the compiler
+  /// while building the streaming classifier; nothing re-verified the pin bump.
+  case encoderInstantiationFailed(String)
   case unknownFutureCase(String)
 }
 
@@ -30,6 +36,7 @@ package func classifyFluidAudioASRError(_ error: any Error) -> FluidAudioASRErro
   case .unsupportedPlatform: return .unsupportedPlatform(description)
   case .streamingConversionFailed: return .streamingConversionFailed(description)
   case .fileAccessFailed: return .fileAccessFailed(description)
+  case .encoderInstantiationFailed: return .encoderInstantiationFailed(description)
   @unknown default: return .unknownFutureCase(description)
   }
 }
