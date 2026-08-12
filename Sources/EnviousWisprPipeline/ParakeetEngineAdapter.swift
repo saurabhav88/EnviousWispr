@@ -820,7 +820,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `EnviousWisprASR` and is internal to it, so this module cannot name it — and should
   /// not want to. Any error that declares a stable identity gets to keep it here,
   /// including the batch and model-load conformers that can also surface on this path.
-  private static func streamingErrorCategory(_ error: any Error) -> String {
+  /// Not `private`: `ParakeetStreamingErrorCategoryTests` drives this directly, because
+  /// the mapping is the whole observable change and testing it through a full adapter run
+  /// would prove the emit path rather than the value.
+  static func streamingErrorCategory(_ error: any Error) -> String {
     if let identified = error as? any StableSentryErrorIdentity {
       return identified.sentrySemanticID
     }
