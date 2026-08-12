@@ -1040,6 +1040,74 @@ def test_a_partial_receipt_is_still_promoted_when_there_is_nothing_to_lose():
     assert "not cacheable" in log, log
 
 
+def test_a_destination_with_no_summary_does_not_swallow_the_staged_receipt():
+    """Cloud review round 6. An earlier run interrupted after creating $dest but before writing
+    summary.json leaves a directory with no receipt. A summary-only "is there a previous?" test
+    called that no-previous, so quarantine skipped it and `mv` moved the staged directory INSIDE
+    it: no canonical summary for the report, and no error anywhere.
+    """
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "per_case.jsonl").write_text('{"id":"A"}\n')   # partial write, no summary.json
+    _, log = run_shell(t)
+
+    assert (d / "summary.json").exists(), (
+        f"the staged receipt was not promoted to the canonical path:\n{log}")
+    assert not (d / "modelA.rejudge").exists(), (
+        f"the staged directory was nested inside the destination:\n{log}")
+    assert not list(d.glob("*.rejudge")), f"nested staging directory found: {list(d.iterdir())}"
+    assert stamped(t), f"a promoted cacheable receipt must be stamped:\n{log}"
+
+
+def test_the_swap_quarantines_before_it_promotes():
+    """Cloud review round 6, the interruption-safety half. The old order was `rm -rf $dest` then
+    `mv`, so an interruption between them destroyed the old receipt while the new one was still
+    under .rejudge — and the next run clears staging, losing both.
+
+    Asserts the ORDER structurally, by its observable effect: after a successful swap the
+    previous receipt must still exist in the quarantine slot. Under `rm -rf` first it is gone.
+    """
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": [], "marker": "the previous one"}))
+    forge_stamp(t, judge="claude-sonnet-5")      # different judge, so it re-judges
+    _, log = run_shell(t)
+
+    fresh = json.loads((d / "summary.json").read_text())
+    assert fresh.get("marker") is None, f"the new receipt was not promoted:\n{log}"
+    assert fresh.get("cacheable") is True, fresh
+
+    preserved = json.loads((t / "judged" / "modelA.stale" / "summary.json").read_text())
+    assert preserved.get("marker") == "the previous one", (
+        f"the previous receipt was deleted rather than quarantined, so an interruption "
+        f"mid-swap would lose it:\n{log}")
+
+
+def test_repeated_failures_keep_the_complete_receipt():
+    """Cloud review round 5, and the reason the quarantine slot has a rule rather than being a
+    plain overwrite. Failure one moves the complete receipt into the slot and promotes a partial;
+    failure two must NOT then displace that complete receipt with the partial."""
+    t = shell_tree("false")            # every attempt writes cacheable: false
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": [], "marker": "the only complete one"}))
+    forge_stamp(t, judge="claude-sonnet-5")
+
+    run_shell(t)                        # attempt 1: complete -> slot, partial -> canonical
+    _, log = run_shell(t)               # attempt 2: must not overwrite the slot
+
+    slot = json.loads((t / "judged" / "modelA.stale" / "summary.json").read_text())
+    assert slot.get("marker") == "the only complete one", (
+        f"a second failure ground the quarantine down to a partial receipt:\n{log}")
+    assert "COMPLETE quarantine" in log, log
+
+
 def test_a_successful_rejudge_does_replace_the_old_receipt():
     """Two-way control. A staging swap that never promoted anything would pass the case above
     while making every re-judge a no-op, which is the expensive failure and looks like nothing
@@ -1815,7 +1883,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 92
+EXPECTED_TESTS = 95
 
 
 def _run() -> int:

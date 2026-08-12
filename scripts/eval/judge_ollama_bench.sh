@@ -115,9 +115,15 @@ sha256() {
 # Uses `$dest`/`$base`/`$had_previous` from the enclosing loop.
 quarantine_previous() {
   [ "$had_previous" = 1 ] || return 0
+  # `receipt_cacheable` is only asked about files that exist: $dest may be a directory with no
+  # summary at all (an interrupted write), which is not cacheable by definition.
+  dest_is_cacheable=1
+  if [ ! -f "$dest/summary.json" ] || ! receipt_cacheable "$dest/summary.json"; then
+    dest_is_cacheable=0
+  fi
   if [ -f "$dest.stale/summary.json" ] \
      && receipt_cacheable "$dest.stale/summary.json" \
-     && ! receipt_cacheable "$dest/summary.json"; then
+     && [ "$dest_is_cacheable" = 0 ]; then
     rm -rf "$dest"
     echo "  discarded an incomplete receipt for $base; the COMPLETE quarantine at" >&2
     echo "     $dest.stale is kept (a partial must never displace a complete one)" >&2
@@ -276,7 +282,7 @@ for cand in "$CANDDIR"/*.jsonl; do
     # old skip counts do not match this run's errors. Quarantine here too: the arm has no
     # gradeable output, so nothing at the ranked path can be current.
     had_previous=0
-    [ -f "$dest/summary.json" ] && had_previous=1
+    [ -e "$dest" ] && had_previous=1
     quarantine_previous
     unmeasurable+=("$base")
     continue
@@ -316,14 +322,34 @@ for cand in "$CANDDIR"/*.jsonl; do
       staged_state=partial
     fi
   fi
+  # The DIRECTORY, not the summary inside it. An earlier run interrupted after `write_outputs`
+  # created $dest or wrote per_case.jsonl but before summary.json leaves a directory with no
+  # receipt: a summary-only test called that "no previous", quarantine skipped it, and
+  # `mv "$staging" "$dest"` then moved the staged directory INSIDE it. No canonical summary for
+  # the report, misplaced diagnostics accumulating, and no error anywhere. Cloud review caught
+  # it; `mv` into an existing directory nesting rather than replacing is the trap.
   had_previous=0
-  [ -f "$dest/summary.json" ] && had_previous=1
+  [ -e "$dest" ] && had_previous=1
 
   case "$staged_state" in
     cacheable)
       # The ONLY path that stamps. A stamp asserts "this judge produced this receipt", so it
       # is written exactly where that is true and nowhere else.
-      rm -rf "$dest"
+      #
+      # Quarantine BEFORE promoting, never `rm -rf` then `mv`. That order had a window: an
+      # interruption between the delete and the rename destroyed the old receipt while the new
+      # one was still under `.rejudge`, and the next run deletes the staging directory — so both
+      # were lost, which contradicted the interruption safety this staging was added for.
+      # Two renames instead, so at every instant at least one complete receipt exists at a
+      # path we can name.
+      #
+      # RESIDUAL LIMIT, recorded rather than engineered around: an interruption in the gap
+      # between the two renames still loses the NEW result, because the next run clears the
+      # staging directory and cannot know the staged receipt matches the current inputs. The old
+      # receipt survives in the quarantine slot and the arm is simply re-judged, so the cost is
+      # one re-run rather than lost data. Auto-promoting a leftover staged receipt would risk
+      # promoting one graded against different inputs, which is worse than a re-run.
+      quarantine_previous
       mv "$staging" "$dest"
       printf '%s\n' "$inputs_sha" > "$stamp"
       echo "  ok $base" >&2
