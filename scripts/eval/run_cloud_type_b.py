@@ -143,6 +143,24 @@ GEMINI_THINKING_FAST = {
 # thinking on 338 of 338, which is what a truly inert setting looks like.
 GEMINI_THINKING_LEVELS = ("minimal", "low", "medium", "high")
 
+# The value that means "do not think", per dialect. One home, because the alternative
+# is a literal `in ("minimal", 0)` membership test at the point of use — a set of values
+# standing in for the concept, which silently misreads any future off-value (a `"none"`
+# or `"off"` level) as thinking-ON and then demands reasoning tokens that cannot arrive.
+GEMINI_THINKING_OFF = {"thinkingLevel": "minimal", "thinkingBudget": 0}
+
+
+def is_thinking_off(thinking: tuple[str, object] | None) -> bool:
+    """True only when the config explicitly asks for NO thinking.
+
+    `None` (no field sent) is deliberately not "off": the provider's own default
+    decides, and measured here that default DOES think.
+    """
+    if thinking is None:
+        return False
+    dialect, value = thinking
+    return dialect in GEMINI_THINKING_OFF and value == GEMINI_THINKING_OFF[dialect]
+
 
 def resolve_gemini_thinking(model: str, override: str = "") -> tuple[str, object] | None:
     """The single source of the thinking config, so the printed receipt and the
@@ -567,7 +585,7 @@ def main() -> int:
     if thinking is None:
         expectation = "no thinking field sent; the provider default decides, nothing asserted"
         asked_off = False
-    elif thinking[1] in ("minimal", 0):
+    elif is_thinking_off(thinking):
         expectation = f"reasoning MUST be 0 at {thinking[0]}={thinking[1]!r}"
         asked_off = True
     else:
