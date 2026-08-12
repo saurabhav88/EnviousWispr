@@ -529,6 +529,17 @@ def preflight_judge(model: str) -> None:
     otherwise grade with no pin and no time-of-use check.
     """
     if judge_transport(model) == "azure":
+        global _azure_pinned_model
+        inherited = os.environ.get("EW_AZURE_PINNED_MODEL", "").strip()
+        if inherited:
+            # The SWEEP already probed. Adopt its answer rather than probing again: a fresh probe
+            # would pin whatever is current, so a deployment repointed between arms would make
+            # this arm self-consistent and still wrong relative to the stamp the sweep writes.
+            # Verifying against the sweep's model means such an arm fails loudly on its first
+            # grading response instead of quietly scoring under another model's identity.
+            # It also saves one request per arm.
+            _azure_pinned_model = inherited
+            return
         try:
             judge_identity(model)          # probes and sets `_azure_pinned_model`
         except Exception as e:
@@ -1681,6 +1692,12 @@ def main() -> int:
             return 2
         print(DEFAULT_JUDGE)
         print(identity)
+        # Third line: the model version this probe observed, empty for non-Azure routes. The
+        # sweep exports it so every arm verifies against the SWEEP's model rather than its own
+        # probe. Without it each arm process probed independently, so a repoint between arms left
+        # every process self-consistent while the shell stamped them all with the first arm's
+        # identity — arms graded by different models sharing one stamp. Cloud review found it.
+        print(_azure_pinned_model or "")
         return 0
 
     ap = argparse.ArgumentParser(description=__doc__,

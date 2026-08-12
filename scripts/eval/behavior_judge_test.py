@@ -1995,6 +1995,60 @@ def test_preflight_pins_the_model_for_an_azure_judge():
             assert bj._azure_pinned_model == "gpt-5.6-luna-2026-07-09", bj._azure_pinned_model
 
 
+def test_an_inherited_pin_is_adopted_instead_of_reprobed():
+    # Cloud review round 8. Each arm is a separate process. If each probes for itself it pins
+    # whatever is CURRENT, so a deployment repointed between arms leaves that process
+    # self-consistent while the sweep still stamps every arm with the first model's identity —
+    # two model versions under one stamp. Adopting the sweep's pin makes such an arm fail on its
+    # first grading response instead.
+    with _azure_pin(None):
+        os.environ["EW_AZURE_PINNED_MODEL"] = "gpt-5.6-luna-2026-07-09"
+        try:
+            # No serving stub: adopting the inherited pin must not require a probe at all, which
+            # is also what saves one request per arm.
+            bj.preflight_judge("azure/gpt-5-6-luna")
+            assert bj._azure_pinned_model == "gpt-5.6-luna-2026-07-09", bj._azure_pinned_model
+        finally:
+            del os.environ["EW_AZURE_PINNED_MODEL"]
+
+
+def test_an_arm_refuses_when_the_deployment_moved_since_the_sweep_probed():
+    # The consequence that makes the propagation worth it: the arm is pinned to the SWEEP's model,
+    # so a deployment now serving something else fails loudly rather than scoring under the
+    # sweep's stamp.
+    with _azure_pin(None):
+        os.environ["EW_AZURE_PINNED_MODEL"] = "gpt-5.6-luna-2026-07-09"
+        try:
+            bj.preflight_judge("azure/gpt-5-6-luna")
+            with _azure_reply({"model": "gpt-5.6-luna-2026-11-01",
+                               "choices": [{"message": {"content": "[]"},
+                                            "finish_reason": "stop"}]}):
+                try:
+                    bj.call_azure("gpt-5-6-luna", "s", "u")
+                except RuntimeError as e:
+                    assert "repointed mid-run" in str(e), str(e)
+                else:
+                    raise AssertionError("the arm graded under the wrong model version")
+        finally:
+            del os.environ["EW_AZURE_PINNED_MODEL"]
+
+
+def test_the_identity_probe_reports_the_served_model_as_its_third_line():
+    # The sweep parses line 3 to build the pin it exports. A probe that printed two lines would
+    # export an empty pin, and every per-response check would then silently do nothing.
+    src = Path(bj.__file__).read_text()
+    block = src.split('if "--print-judge-identity" in sys.argv:')[1].split("return 0")[0]
+    # Counts STDOUT lines only: the error path in the same block prints to stderr, and a naive
+    # count of "print(" includes it — which is how the first version of this assertion failed
+    # against correct code.
+    stdout_prints = [ln.strip() for ln in block.splitlines()
+                     if "print(" in ln and "file=sys.stderr" not in ln]
+    assert len(stdout_prints) == 3, f"expected three stdout lines, got {stdout_prints}"
+    assert "DEFAULT_JUDGE" in stdout_prints[0], stdout_prints
+    assert "identity" in stdout_prints[1], stdout_prints
+    assert "_azure_pinned_model" in stdout_prints[2], stdout_prints
+
+
 def test_the_billing_check_runs_before_the_availability_check():
     # Refusing to spend the founder's own money must not depend on whether some CLI
     # happens to be logged in, so the order in main() is load-bearing.
@@ -2011,7 +2065,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 103
+EXPECTED_TESTS = 106
 
 
 def _run() -> int:

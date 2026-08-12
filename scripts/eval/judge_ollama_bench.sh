@@ -66,11 +66,18 @@ if [ $? -ne 0 ]; then
 fi
 JUDGE="$(printf '%s\n' "$JUDGE_LINES" | sed -n 1p)"
 JUDGE_IDENTITY="$(printf '%s\n' "$JUDGE_LINES" | sed -n 2p)"
+# Third line: the model version the probe observed, empty for non-Azure judges. Exported to
+# every arm so each one verifies against THIS sweep's model instead of probing for itself. An
+# arm that probes independently pins whatever is current, so a deployment repointed between arms
+# stays self-consistent inside that process while the stamp written here still names the first
+# model — two model versions under one stamp, which is the mixing this stamp exists to prevent.
+JUDGE_PINNED_MODEL="$(printf '%s\n' "$JUDGE_LINES" | sed -n 3p)"
+export EW_AZURE_PINNED_MODEL="$JUDGE_PINNED_MODEL"
 if [ -z "$JUDGE" ] || [ -z "$JUDGE_IDENTITY" ]; then
   echo "FATAL: could not resolve the judge and its identity from behavior_judge.py" >&2
   exit 2
 fi
-echo "=== judge: $JUDGE (stamp identity $JUDGE_IDENTITY) ===" >&2
+echo "=== judge: $JUDGE (stamp identity $JUDGE_IDENTITY${JUDGE_PINNED_MODEL:+, serving $JUDGE_PINNED_MODEL}) ===" >&2
 
 # `shasum` is Perl-provided and is NOT guaranteed by the ubuntu-latest runner
 # image, which lists coreutils (and therefore `sha256sum`). Our own pr-check.yml
