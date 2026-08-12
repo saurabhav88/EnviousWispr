@@ -130,6 +130,46 @@ GEMINI_THINKING_FAST = {
     "gemini-2.5-pro": ("thinkingBudget", 128),
 }
 
+# Levels the `thinkingLevel` dialect accepts. `minimal` is NOT universal: the two
+# 3.1 Pro ids reject it and floor at `low` (#1770), which is why the table above
+# gives them a different fast value.
+#
+# Thinking is DYNAMIC and decided per request, so a small --limit probe cannot tell
+# you whether a level takes (measured 2026-08-12, #1832). `gemini-3.5-flash-lite` at
+# `medium` returned no thinking on a 3-case probe and thinking on 119 of 338 real
+# cases; `gemini-3.6-flash` at `low` thinks on 259 of 338. A probe is for "does the
+# API accept this and does the request shape work", never for "does the level engage".
+# The one measured level that genuinely does nothing is flash-lite at `low`: zero
+# thinking on 338 of 338, which is what a truly inert setting looks like.
+GEMINI_THINKING_LEVELS = ("minimal", "low", "medium", "high")
+
+
+def resolve_gemini_thinking(model: str, override: str = "") -> tuple[str, object] | None:
+    """The single source of the thinking config, so the printed receipt and the
+    request body cannot disagree — they are two readers of one value, never two
+    lookups of one table.
+
+    Raises ValueError rather than falling back, because every fallback here
+    silently benchmarks a configuration nobody asked for.
+    """
+    shipped = GEMINI_THINKING_FAST.get(model.lower())
+    if not override:
+        return shipped
+    if shipped is None:
+        raise ValueError(
+            f"--thinking-level given for {model!r}, which is absent from the "
+            "capability table. Production sends NO thinking field for such an id, "
+            "so there is no shipped configuration to vary."
+        )
+    dialect = shipped[0]
+    if dialect != "thinkingLevel":
+        raise ValueError(
+            f"{model!r} takes {dialect}, a token BUDGET. A level does not map to a "
+            "budget, and inventing a number would benchmark a configuration the "
+            "app never sends. Vary the budget in GEMINI_THINKING_FAST instead."
+        )
+    return (dialect, override)
+
 
 # --- Request construction ---------------------------------------------------
 
@@ -151,9 +191,9 @@ def openai_body(model: str, system: str, user: str) -> dict:
     return body
 
 
-def gemini_body(model: str, system: str, user: str) -> dict:
+def gemini_body(model: str, system: str, user: str,
+                thinking: tuple[str, object] | None) -> dict:
     generation_config: dict = {"temperature": 0}
-    thinking = GEMINI_THINKING_FAST.get(model.lower())
     if thinking is not None:
         generation_config["thinkingConfig"] = {thinking[0]: thinking[1]}
     return {
@@ -178,7 +218,8 @@ def claude_body(model: str, system: str, user: str) -> dict:
     }
 
 
-def describe_shape(provider: str, model: str) -> str:
+def describe_shape(provider: str, model: str,
+                   thinking: tuple[str, object] | None = None) -> str:
     if provider == "claude":
         return (
             f"messages | max_tokens={CLAUDE_MAX_OUTPUT_TOKENS} | temperature OMITTED "
@@ -195,7 +236,6 @@ def describe_shape(provider: str, model: str) -> str:
             else "no reasoning_effort"
         )
         return f"chat/completions | store=false | {temp} | {eff} | no max_completion_tokens"
-    thinking = GEMINI_THINKING_FAST.get(model.lower())
     tdesc = f"{thinking[0]}={thinking[1]!r}" if thinking else "NO thinking field (id not in table)"
     return f"generateContent | temperature=0 | {tdesc} | no maxOutputTokens"
 
@@ -211,7 +251,8 @@ def _post(url: str, body: dict, headers: dict, timeout: int) -> dict:
 
 
 def call_once(provider: str, model: str, api_key: str, system: str, user: str,
-              azure_endpoint: str = "") -> tuple[str, dict]:
+              azure_endpoint: str = "",
+              thinking: tuple[str, object] | None = None) -> tuple[str, dict]:
     if provider == "openai":
         # Azure hosts the same OpenAI models on Founders Hub credits. Same
         # Chat Completions body; only the URL and the auth header differ, and
@@ -275,7 +316,7 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
     else:
         data = _post(
             GEMINI_URL.format(model=model, key=api_key),
-            gemini_body(model, system, user),
+            gemini_body(model, system, user, thinking),
             {"Content-Type": "application/json"},
             timeout=120,
         )
@@ -308,7 +349,8 @@ BARE_PROMPT = (ROOT / "scripts/eval/prompts/cloud-fixed-polish-prompt-v6.txt").r
 
 def polish_case(
     provider: str, model: str, api_key: str, case: dict,
-    prompt_mode: str = "production", azure_endpoint: str = ""
+    prompt_mode: str = "production", azure_endpoint: str = "",
+    thinking: tuple[str, object] | None = None
 ) -> dict:
     transcript = case["text"]
     word_count = len(transcript.split())
@@ -321,7 +363,8 @@ def polish_case(
     last_err = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            raw, meta = call_once(provider, model, api_key, system, user, azure_endpoint)
+            raw, meta = call_once(provider, model, api_key, system, user, azure_endpoint,
+                                  thinking)
             # Production strips the LLM preamble before pasting; judge the same
             # text the user would get. Cloud keeps literal <transcript> tags.
             candidate = _strip_llm_preamble_python(raw, strip_transcript_tags=False)
@@ -389,6 +432,14 @@ def main() -> int:
              "never report a bare-prompt score as the shipped product's quality.",
     )
     ap.add_argument(
+        "--thinking-level", choices=GEMINI_THINKING_LEVELS, default="",
+        help="Gemini only. Override the shipped thinking level for this arm, so the "
+             "quality cost of the hard-coded fast value can be MEASURED rather than "
+             "assumed (#1832). Omit to send exactly what production sends. Refused "
+             "for a token-budget id or an id absent from the capability table, "
+             "because both would benchmark a configuration the app never sends.",
+    )
+    ap.add_argument(
         "--azure", action="store_true",
         help="route --provider openai through the Azure deployment on Founders Hub "
              "credits instead of the direct key. --model then takes the DEPLOYMENT "
@@ -398,6 +449,20 @@ def main() -> int:
 
     # Fail fast on prompt drift BEFORE spending anything.
     _selftest_mirrors()
+
+    if args.thinking_level and args.provider != "gemini":
+        print(
+            f"--thinking-level applies to --provider gemini only; {args.provider} "
+            "carries its own reasoning field from the capability table",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        thinking = resolve_gemini_thinking(args.model, args.thinking_level) \
+            if args.provider == "gemini" else None
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
 
     if args.provider == "openai" and not openai_capabilities(args.model)["supports_chat_completions"]:
         print(f"{args.model} is Responses-API-only; the shipped connector cannot call it", file=sys.stderr)
@@ -426,7 +491,13 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"model    : {args.model} ({args.provider})", file=sys.stderr)
-    print(f"shape    : {describe_shape(args.provider, args.model)}", file=sys.stderr)
+    print(f"shape    : {describe_shape(args.provider, args.model, thinking)}", file=sys.stderr)
+    if args.thinking_level:
+        print(
+            f"OVERRIDE : thinking level forced to {args.thinking_level!r} — this arm is "
+            "NOT the shipped configuration",
+            file=sys.stderr,
+        )
     print(f"prompt   : {args.system_prompt}", file=sys.stderr)
     print(f"corpus   : {args.corpus.name} ({len(cases)} cases, {args.workers} workers)", file=sys.stderr)
 
@@ -437,7 +508,7 @@ def main() -> int:
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = [
             pool.submit(polish_case, args.provider, args.model, api_key, c,
-                        args.system_prompt, azure_endpoint)
+                        args.system_prompt, azure_endpoint, thinking)
             for c in cases
         ]
         for fut in as_completed(futures):
@@ -464,11 +535,45 @@ def main() -> int:
             f"latency ms: median={lat[len(lat)//2]} p90={lat[int(len(lat)*0.9)]} max={lat[-1]}",
             file=sys.stderr,
         )
+    # Only ONE direction of this is a real discriminator, and a mutation control is
+    # what established which (2026-08-12, #1832). Deleting the thinking field
+    # entirely and asking for `high` still returned 150 reasoning tokens, because
+    # this model's provider-side DEFAULT is dynamic thinking — so "reasoning > 0"
+    # is satisfied by a dropped override and proves nothing about a thinking-ON arm.
+    # The off direction does discriminate: the same probe returns exactly 0 with
+    # `minimal` and non-zero without the field, so a non-zero on an off arm is proof
+    # the field did not take. Whether an ON arm ran the level it claims is answered
+    # by comparing per-case `reasoningTok` ACROSS arms, not from inside one run.
+    if thinking is None:
+        expectation = "no thinking field sent; the provider default decides, nothing asserted"
+        asked_off = False
+    elif thinking[1] in ("minimal", 0):
+        expectation = f"reasoning MUST be 0 at {thinking[0]}={thinking[1]!r}"
+        asked_off = True
+    else:
+        expectation = (
+            f"reasoning > 0 expected at {thinking[0]}={thinking[1]!r}; necessary, NOT "
+            "sufficient — compare reasoningTok across arms to prove the level took"
+        )
+        asked_off = False
     print(
-        f"tokens: in={in_tok} out={out_tok} reasoning={reason_tok} "
-        f"(reasoning MUST be 0 for a thinking-off run)",
+        f"tokens: in={in_tok} out={out_tok} reasoning={reason_tok} ({expectation})",
         file=sys.stderr,
     )
+    if asked_off and reason_tok:
+        print(
+            f"FAIL: {reason_tok} reasoning tokens with {thinking[0]}={thinking[1]!r} — "
+            "these candidates are not the configuration this arm claims; do not grade them",
+            file=sys.stderr,
+        )
+        return 2
+    if not asked_off and thinking is not None and not reason_tok:
+        print(
+            f"FAIL: zero reasoning tokens with {thinking[0]}={thinking[1]!r} — the "
+            "request did not run the configuration this arm claims; do not grade it",
+            file=sys.stderr,
+        )
+        return 2
     print(
         f"DONE {len(cases) - errors}/{len(cases)} in {int(time.monotonic() - t0)}s | errors={errors} -> {args.out}",
         file=sys.stderr,
