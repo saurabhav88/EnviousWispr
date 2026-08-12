@@ -1814,6 +1814,12 @@ def main() -> int:
     report["meta"] = {
         "system": args.system,
         "judge": args.judge if external_verdicts is None else "external_verdicts",
+        # The MODEL VERSION that graded, when the transport can tell us. The judge id alone is
+        # not identity: an Azure deployment can be repointed in place, so two receipts can share
+        # `judge` and hold scores from different models. Recorded IN the receipt rather than only
+        # in the sidecar stamp because the report reads receipts, not stamps, and a consumer that
+        # cannot see the identity cannot refuse to mix it.
+        "judge_model_version": _azure_pinned_model,
         "reps": args.reps if args.system == "old" else None,
         "adjudicate_pct": args.adjudicate_pct if args.system == "new" else None,
         "adjudicate_min": args.adjudicate_min if args.system == "new" else None,

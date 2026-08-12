@@ -349,9 +349,16 @@ def main() -> int:
         eng = split(lambda x: x["id"] not in intl_ids)
         intl = split(lambda x: x["id"] in intl_ids)
         overall = summary.get("overall", {})
+        # Carried onto the row so the one-judge-per-scoreboard check below has something to read.
+        # A check reading fields the rows do not carry would group everything under (None, None)
+        # and never fire — a guard that arms nothing, which is worse than no guard because it
+        # reads as one.
+        receipt_meta = summary.get("meta") or {}
         rows.append({
             "model": model,
             "arm": cand_stem,
+            "judge": receipt_meta.get("judge"),
+            "judge_model_version": receipt_meta.get("judge_model_version"),
             "isRemote": sp["isRemote"],
             "thinks": sp["thinks"],
             "thinkSent": sp["thinkSent"],
@@ -369,6 +376,36 @@ def main() -> int:
             "intl": intl,
             "failure_types": overall.get("failure_type_counts", {}),
         })
+
+    # ONE JUDGE PER SCOREBOARD, enforced here because this is the layer that combines arms.
+    #
+    # This closes a class the sweep cannot close from its side, and cloud review pointed at it
+    # three times before I moved: a partial sweep, an interrupted sweep, a hand-copied receipt or
+    # a repointed deployment all leave some arms graded by one judge and some by another. The
+    # sweep was patched repeatedly to keep stale receipts out of this path, but a ranking that
+    # combines receipts is the thing that has to check they are comparable — validating a receipt
+    # by whether it PARSES, and never by who produced it, is what let every one of those routes
+    # through.
+    #
+    # Reads the identity the receipt carries. `judge` alone is not enough: an Azure deployment can
+    # be repointed in place, so `judge_model_version` distinguishes two runs that share an id.
+    # A receipt written before that field existed reports None, which groups with other legacy
+    # receipts and still separates them from anything newer.
+    judges = {}
+    for row in rows:
+        if row.get("skipped_reason"):
+            continue
+        judges.setdefault((row.get("judge"), row.get("judge_model_version")), []).append(
+            row.get("model"))
+    if len(judges) > 1:
+        detail = "; ".join(
+            f"{j[0]}"
+            + (f" ({j[1]})" if j[1] else "")
+            + f": {', '.join(sorted(m for m in models if m))}"
+            for j, models in sorted(judges.items(), key=lambda kv: str(kv[0])))
+        problems.append(
+            "this run mixes judges, so the ranking would not be a comparison — "
+            f"{detail}. Re-grade every arm with one judge.")
 
     if problems:
         print("FAIL: incomplete receipts:\n  " + "\n  ".join(problems), file=sys.stderr)

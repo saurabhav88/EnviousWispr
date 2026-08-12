@@ -1206,6 +1206,91 @@ def test_shell_sha256_shim_produces_an_identical_stamp():
 # report_ollama_bench.py                                                      #
 # --------------------------------------------------------------------------- #
 
+def _two_arm_report_tree(meta_a, meta_b):
+    """A report fixture with TWO arms, each carrying its own receipt metadata.
+
+    Built by extending `report_tree`, deliberately, rather than writing a second fixture from
+    scratch: the report refuses a corpus with no international cases, and a hand-rolled corpus
+    that omitted one failed before reaching the check under test. Reusing the working fixture's
+    shape is what keeps the case pointed at its subject.
+
+    One arm can never show a mixed-judge ranking, which is why two are needed.
+    """
+    healthy = {
+        "cacheable": True,
+        "release_gate": {"verdict": "CLEAR", "checks": []},
+        "overall": {"pass_rate_pct": 50.0, "critical_fail_count": 0, "total_scored": 2,
+                    "infra_skipped": 0, "failure_type_counts": {}},
+        "skipped": [], "missing_scores": [],
+        "judge_reconciliation": {"requested": [], "accepted": [], "missing": [],
+                                 "unexpected": []},
+        "adjudication": {"adjudicated_n": 0, "disagreements": 0},
+    }
+    t = report_tree({**healthy, "meta": meta_a})
+
+    # Second arm, mirroring the first arm's on-disk shape exactly.
+    (t / "judged" / "modelB").mkdir(parents=True)
+    (t / "judged" / "modelB" / "summary.json").write_text(
+        json.dumps({**healthy, "meta": meta_b}))
+    (t / "judged" / "modelB" / "per_case.jsonl").write_text(
+        (t / "judged" / "modelA" / "per_case.jsonl").read_text())
+
+    run = json.loads((t / "run-summary.json").read_text())
+    second = dict(run["models"][0])
+    second["model"] = "modelB"
+    second["candidates"] = str(t / "cand" / "modelB.jsonl")
+    run["models"].append(second)
+    (t / "run-summary.json").write_text(json.dumps(run))
+    return t
+
+
+def test_the_report_refuses_to_rank_two_different_judges():
+    """Cloud review pointed at this root cause three times before I fixed it here rather than in
+    the sweep. A partial sweep, an interrupted sweep, a hand-copied receipt or a repointed
+    deployment all leave some arms graded by one judge and some by another. The sweep cannot close
+    every route; the layer that COMBINES arms can. Validating a receipt by whether it parses and
+    never by who produced it is what let all of them through.
+    """
+    t = _two_arm_report_tree(
+        {"judge": "claude-sonnet-5", "judge_model_version": None},
+        {"judge": "azure/gpt-5-6-luna", "judge_model_version": "gpt-5.6-luna-2026-07-09"})
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "mixes judges" in out, out
+    assert "claude-sonnet-5" in out and "azure/gpt-5-6-luna" in out, out
+
+
+def test_the_report_refuses_two_versions_of_the_same_judge():
+    """The id alone is not identity. An Azure deployment repointed in place leaves two receipts
+    sharing `judge` while holding scores from different models — the one mixing route a
+    judge-name check cannot see."""
+    t = _two_arm_report_tree(
+        {"judge": "azure/gpt-5-6-luna", "judge_model_version": "gpt-5.6-luna-2026-07-09"},
+        {"judge": "azure/gpt-5-6-luna", "judge_model_version": "gpt-5.6-luna-2026-11-01"})
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "mixes judges" in out, out
+    assert "2026-11-01" in out, out
+
+
+def test_the_report_ranks_a_uniform_field():
+    """Two-way control, and the important one: a check that refused any multi-arm run would pass
+    both cases above while making the report useless for its only real job."""
+    meta = {"judge": "azure/gpt-5-6-luna", "judge_model_version": "gpt-5.6-luna-2026-07-09"}
+    rc, out = run_report(_two_arm_report_tree(dict(meta), dict(meta)))
+    assert rc == 0, out
+    assert "mixes judges" not in out, out
+
+
+def test_legacy_receipts_without_a_version_rank_together():
+    """A receipt written before `judge_model_version` existed reports None. Those must group with
+    each other rather than each becoming its own judge, or every historical run turns unrankable."""
+    meta = {"judge": "claude-sonnet-5"}
+    rc, out = run_report(_two_arm_report_tree(dict(meta), dict(meta)))
+    assert rc == 0, out
+    assert "mixes judges" not in out, out
+
+
 def test_report_refuses_an_unknown_verdict():
     # Pre-fix this was ranked #1 and labelled "Recommended", exit 0.
     t = report_tree(healthy_receipt(release_gate={"verdict": "WEIRD_UNKNOWN", "checks": []}))
@@ -2094,7 +2179,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 108
+EXPECTED_TESTS = 112
 
 
 def _run() -> int:
