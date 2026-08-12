@@ -32,8 +32,13 @@ extension BluetoothAwarenessPresenter {
         guard let settings else { return false }
         return BluetoothAwarenessPresenter.computeEffectiveInputIsBluetooth(
           preferredOverride: settings.preferredInputDeviceIDOverride,
-          defaultInputIsBluetooth: {
-            guard let id = AudioDeviceEnumerator.defaultInputDeviceID() else { return nil }
+          autoInputIsBluetooth: {
+            // The device Auto would actually OPEN, not the system default. Since
+            // #2022 a virtual or aggregate default loses to a real microphone,
+            // and if that fallback IS a headset then reading the default here
+            // would answer "not Bluetooth" and withhold the whole awareness card
+            // from a user who is on Bluetooth (cloud review).
+            guard let id = AudioDeviceEnumerator.resolvedAutoInputDeviceID() else { return nil }
             return AudioDeviceEnumerator.isBluetoothDevice(id)
           },
           uidIsBluetooth: { uid in
