@@ -67,7 +67,12 @@ final class HeartPathTelemetryEmitter {
     backend: ASRBackendType,
     captureTelemetry: CaptureTelemetryState,
     captureError: @escaping CaptureErrorSink = { error, category, stage, extra in
-      SentryBreadcrumb.captureError(error, category: category, stage: stage, extra: extra)
+      // #2021: promote the two groupable fields from `extra` to per-event TAGS.
+      // Sentry cannot group or filter on `extra`, so without this the transport
+      // split that decides whether a transport-gated fix worked is unanswerable.
+      SentryBreadcrumb.captureError(
+        error, category: category, stage: stage, extra: extra,
+        tags: SentryAudioExtras.promotedTags(from: extra))
     },
     addBreadcrumb: @escaping BreadcrumbSink = { stage, message, data in
       SentryBreadcrumb.add(stage: stage, message: message, level: .warning, data: data)

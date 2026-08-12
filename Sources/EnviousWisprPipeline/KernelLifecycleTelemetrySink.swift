@@ -237,12 +237,20 @@ final class KernelLifecycleTelemetrySink {
         captureNativeChannelCount: captureNativeChannelCount)
     },
     captureError: @escaping CaptureErrorSink = { error, category, stage, extra in
-      SentryBreadcrumb.captureError(error, category: category, stage: stage, extra: extra)
+      // #2021: promote the groupable capture fields to per-event TAGS. This sink
+      // carries `AudioCaptureFailureExtras.build` output, so it emits the same
+      // two fields as the other three default sinks and needs the same
+      // promotion — a partially-tagged population is worse than an untagged one,
+      // because an aggregate over it looks complete.
+      SentryBreadcrumb.captureError(
+        error, category: category, stage: stage, extra: extra,
+        tags: SentryAudioExtras.promotedTags(from: extra))
     },
     captureErrorWithSnapshot: @escaping SnapshotCaptureErrorSink = {
       error, category, stage, extra, snapshot in
       SentryBreadcrumb.captureError(
-        error, category: category, stage: stage, extra: extra, snapshot: snapshot)
+        error, category: category, stage: stage, extra: extra, snapshot: snapshot,
+        tags: SentryAudioExtras.promotedTags(from: extra))
     },
     noAudioCapturedRich: NoAudioCapturedSink? = nil,
     audioCaptureInterrupted: @escaping AudioCaptureInterruptedSink = {

@@ -61,8 +61,13 @@ public enum KernelDictationDriverFactory {
   /// here so both inputs structs share one source of truth.
   package static let defaultCaptureErrorSink: HeartPathCaptureErrorSink = {
     error, category, stage, extra, snapshot in
+    // #2021: same promotion as the emitter's default sink. Both forward to the
+    // one `SentryBreadcrumb.captureError`, so both need the tags or the fleet
+    // sees them on only half the capture errors — which is worse than neither,
+    // because a partial tag makes an aggregate look complete.
     SentryBreadcrumb.captureError(
-      error, category: category, stage: stage, extra: extra, snapshot: snapshot)
+      error, category: category, stage: stage, extra: extra, snapshot: snapshot,
+      tags: SentryAudioExtras.promotedTags(from: extra))
   }
 
   /// Package-typed inputs for the Parakeet engine branch. Narrowed from
