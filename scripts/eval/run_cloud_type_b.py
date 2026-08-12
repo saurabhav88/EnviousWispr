@@ -547,12 +547,25 @@ def main() -> int:
 
     print(f"model    : {args.model} ({args.provider})", file=sys.stderr)
     print(f"shape    : {describe_shape(args.provider, args.model, thinking)}", file=sys.stderr)
+    # The label is a claim about the RESOLVED config, not about which flags were typed.
+    # `--thinking-level minimal` on gemini-3.6-flash resolves to the shipped value, so
+    # calling it "NOT the shipped configuration" mislabels a control arm as a variant —
+    # and the arm most likely to be run this way is exactly the control.
     if args.thinking_level:
-        print(
-            f"OVERRIDE : thinking level forced to {args.thinking_level!r} — this arm is "
-            "NOT the shipped configuration",
-            file=sys.stderr,
-        )
+        shipped = GEMINI_THINKING_FAST.get(args.model.lower())
+        if thinking == shipped:
+            print(
+                f"OVERRIDE : --thinking-level {args.thinking_level!r} equals this model's "
+                "shipped value, so this arm IS the shipped configuration",
+                file=sys.stderr,
+            )
+        else:
+            shipped_desc = f"{shipped[0]}={shipped[1]!r}" if shipped else "no thinking field"
+            print(
+                f"OVERRIDE : thinking level forced to {args.thinking_level!r} (shipped is "
+                f"{shipped_desc}) — this arm is NOT the shipped configuration",
+                file=sys.stderr,
+            )
     print(f"prompt   : {args.system_prompt}", file=sys.stderr)
     print(f"corpus   : {args.corpus.name} ({len(cases)} cases, {args.workers} workers)", file=sys.stderr)
 
