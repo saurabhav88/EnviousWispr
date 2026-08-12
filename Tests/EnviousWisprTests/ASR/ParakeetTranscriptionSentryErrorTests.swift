@@ -35,6 +35,10 @@ struct ParakeetTranscriptionSentryErrorTests {
     ),
     (.fileAccessFailed("x"), "FluidAudio.ASRError#7", "parakeet_transcribe.file_access_failed"),
     (
+      .encoderInstantiationFailed("x"), "FluidAudio.ASRError#8",
+      "parakeet_transcribe.encoder_instantiation_failed"
+    ),
+    (
       .unknownTranscriptionFailure("x"),
       "EnviousWisprASR.ParakeetTranscriptionSentryError.unknownTranscriptionFailure",
       "parakeet_transcribe.unknown_transcription_failure"
@@ -51,11 +55,11 @@ struct ParakeetTranscriptionSentryErrorTests {
     }
   }
 
-  @Test("all 9 declared identities are unique")
+  @Test("all 10 declared identities are unique")
   func identitiesAreUnique() {
     let errors = Self.pins.map(\.0)
-    #expect(Set(errors.map(\.sentryFingerprintDescriptor)).count == 9)
-    #expect(Set(errors.map(\.sentrySemanticID)).count == 9)
+    #expect(Set(errors.map(\.sentryFingerprintDescriptor)).count == 10)
+    #expect(Set(errors.map(\.sentrySemanticID)).count == 10)
   }
 
   // MARK: - B. Mapping completeness — built from FluidAudioASRErrorKind
@@ -71,6 +75,7 @@ struct ParakeetTranscriptionSentryErrorTests {
       (.unsupportedPlatform("f"), .unsupportedPlatform("f")),
       (.streamingConversionFailed("g"), .streamingConversionFailed("g")),
       (.fileAccessFailed("h"), .fileAccessFailed("h")),
+      (.encoderInstantiationFailed("j"), .encoderInstantiationFailed("j")),
       (.unknownFutureCase("i"), .unknownTranscriptionFailure("i")),
     ]
     for (kind, expected) in cases {
