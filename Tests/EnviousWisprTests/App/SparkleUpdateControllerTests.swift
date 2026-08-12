@@ -683,7 +683,8 @@ struct SparkleUpdateControllerTests {
     private func capturedCycle(
       errorCode: String?,
       noUpdateReason: String?,
-      versionStalenessBucket: String
+      versionStalenessBucket: String,
+      checkKind: String = "background"
     ) async -> CapturedTelemetryEvent? {
       let box = EventBox()
       let originalHook = TelemetryService.shared.testEventHook
@@ -695,7 +696,7 @@ struct SparkleUpdateControllerTests {
       TelemetryService.shared.updateSparkleCycleFinished(
         version: "2.4.5", isCritical: false, source: "background",
         errorCode: errorCode, noUpdateReason: noUpdateReason,
-        checkKind: "background", currentAppVersion: "2.4.5",
+        checkKind: checkKind, currentAppVersion: "2.4.5",
         versionStalenessBucket: versionStalenessBucket)
 
       await Task.yield()
@@ -723,6 +724,7 @@ struct SparkleUpdateControllerTests {
       let reason: String?
       let bucket: String
       let why: String
+      var checkKind: String = "background"
     }
 
     @Test(
@@ -750,11 +752,27 @@ struct SparkleUpdateControllerTests {
         CycleShape(
           errorCode: nil, reason: nil, bucket: "major_behind",
           why: "an update was found for a badly stale user"),
+        // The outcome tuple below is IDENTICAL to the suppressed one. Only the trigger
+        // differs, and the trigger is what makes it worth keeping: the user asked.
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.1001", reason: "on_latest_version",
+          bucket: "on_latest",
+          why: "the USER clicked Check for Updates and is owed the answer (#2037 r3764532583)",
+          checkKind: "user_initiated"),
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.1001", reason: "on_latest_version",
+          bucket: "on_latest", why: "an informational check, not a background one",
+          checkKind: "informational"),
+        CycleShape(
+          errorCode: "SUSparkleErrorDomain.1001", reason: "on_latest_version",
+          bucket: "on_latest",
+          why: "an UNMAPPED future SPUUpdateCheck case must fail OPEN, never vanish",
+          checkKind: "unrecognized"),
       ])
     func informativeCyclesStillEmit(shape: CycleShape) async {
       let evt = await capturedCycle(
         errorCode: shape.errorCode, noUpdateReason: shape.reason,
-        versionStalenessBucket: shape.bucket)
+        versionStalenessBucket: shape.bucket, checkKind: shape.checkKind)
       #expect(
         evt != nil,
         Comment(rawValue: "#1979 must KEEP emitting this shape: \(shape.why)"))

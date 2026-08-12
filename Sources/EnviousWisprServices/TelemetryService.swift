@@ -2591,16 +2591,31 @@ public final class TelemetryService {
   ///   (3,078), and every install/verify error.
   /// - every cycle that actually found an update.
   ///
-  /// All three fields are checked even though `SparkleUpdateController.noUpdateReason`
+  /// - **any check the USER asked for.** An attended "Check for Updates" from the menu or
+  ///   Settings produces the identical outcome tuple, but it is an intentional user
+  ///   action with a result, not background noise: someone asked a question and we
+  ///   answered it. 419 rows / 248 users in 30d, 0.86% of the shape below, so keeping
+  ///   them costs 0.08% of total volume and preserves the whole signal. Cloud review
+  ///   caught this (PR #2037 r3764532583); the first version keyed on the OUTCOME and
+  ///   ignored the TRIGGER.
+  ///
+  /// `checkKind` is an ALLOWLIST of the one background value, never a denylist of
+  /// `user_initiated`. `SparkleUpdateController.checkKindString` (`:350`) also produces
+  /// `informational` and `unrecognized`, and an unmapped future case must EMIT rather
+  /// than vanish, so the unknown direction has to fail open.
+  ///
+  /// All four fields are checked even though `SparkleUpdateController.noUpdateReason`
   /// only returns non-nil for domain `SUSparkleErrorDomain` code `1001` (`:322`), which
   /// makes the error check redundant TODAY. They arrive here as independent parameters,
   /// so this must not silently depend on a coupling established in another module.
   static func isUninformativeUpdateCycle(
     errorCode: String?,
     noUpdateReason: String?,
-    versionStalenessBucket: String
+    versionStalenessBucket: String,
+    checkKind: String
   ) -> Bool {
-    errorCode == sparkleBenignNoUpdateErrorCode
+    checkKind == "background"
+      && errorCode == sparkleBenignNoUpdateErrorCode
       && noUpdateReason == "on_latest_version"
       && versionStalenessBucket == "on_latest"
   }
@@ -2620,7 +2635,8 @@ public final class TelemetryService {
     if Self.isUninformativeUpdateCycle(
       errorCode: errorCode,
       noUpdateReason: noUpdateReason,
-      versionStalenessBucket: versionStalenessBucket
+      versionStalenessBucket: versionStalenessBucket,
+      checkKind: checkKind
     ) {
       return
     }
