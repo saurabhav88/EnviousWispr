@@ -527,13 +527,22 @@ def main() -> int:
     # as a full run. But a genuinely tiny --corpus is no more representative than a
     # tiny --limit of a big one, so BOTH make this a probe.
     #
-    # 100 is derived from the weakest engagement measured (flash-lite at `medium`
-    # thinks on 119 of 338 cases, 35%). P(no case thinks by chance) = 0.65^n: 27% at
-    # n=3, 1.3% at n=10, and 1e-19 at n=100. So 100 puts a false "inert" verdict
-    # far out of reach while sitting well below the smallest canonical corpus (338),
-    # where it can never affect a real arm.
+    # 100 is derived from the weakest whole-corpus engagement measured (flash-lite at
+    # `medium` thinks on 119 of 338 cases, 35%). P(no case thinks by chance) = 0.65^n:
+    # 27% at n=3, 1.3% at n=10, 1e-19 at n=100. So 100 puts a false "inert" verdict far
+    # out of reach while sitting below the smallest canonical corpus (338), where it can
+    # never affect a real arm.
+    #
+    # A TRUNCATED run stays a probe at ANY size, and case count cannot rescue it. The
+    # corpora are ordered by bucket — `head -100` of type_b_parakeet.jsonl is 100%
+    # `self_correction` — and engagement is strongly bucket-dependent: measured on
+    # flash-lite at `medium`, 5% on `emoji_retention` against 75% on `self_correction`,
+    # a 15x spread. So 100 truncated cases can be 100 cases of the one bucket this model
+    # rarely thinks about, where P(none think) is ~0.6% rather than 1e-19. Raising the
+    # count does not fix a sample that is one category by construction.
     MIN_CASES_FOR_INERT_VERDICT = 100
-    is_probe = len(cases) < corpus_total or len(cases) < MIN_CASES_FOR_INERT_VERDICT
+    is_truncated = len(cases) < corpus_total
+    is_probe = is_truncated or len(cases) < MIN_CASES_FOR_INERT_VERDICT
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"model    : {args.model} ({args.provider})", file=sys.stderr)
@@ -621,13 +630,20 @@ def main() -> int:
         # would break the very --limit smoke this file tells operators to run, so
         # the severity follows what the run IS, not what the number is.
         if is_probe:
+            why = (
+                f"this run is TRUNCATED ({len(cases)} of {corpus_total}), and these "
+                "corpora are ordered by bucket, so a slice is one category rather than "
+                "a sample — engagement varies 5%-75% across buckets, so no case count "
+                "makes a truncated run safe for this verdict"
+                if is_truncated
+                else f"the corpus itself holds only {corpus_total} cases; an inert "
+                     f"verdict needs {MIN_CASES_FOR_INERT_VERDICT}"
+            )
             print(
-                f"WARNING: zero reasoning tokens across {len(cases)} probe cases "
-                f"(of {corpus_total} in the corpus; an inert verdict needs "
-                f"{MIN_CASES_FOR_INERT_VERDICT}) at "
-                f"{thinking[0]}={thinking[1]!r}. Thinking is decided per request, so a "
-                "probe this small cannot distinguish an inert level from cases that "
-                "declined to think. Not a verdict; run the full corpus to find out.",
+                f"WARNING: zero reasoning tokens across {len(cases)} cases at "
+                f"{thinking[0]}={thinking[1]!r}, but {why}. Thinking is decided per "
+                "request, so this cannot distinguish an inert level from cases that "
+                "declined to think. Not a verdict; run the FULL corpus to find out.",
                 file=sys.stderr,
             )
         elif errors:
