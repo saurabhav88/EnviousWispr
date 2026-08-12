@@ -517,12 +517,21 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // #1654: until now this leg emitted NOTHING — a breadcrumb and a debug-only log,
         // both invisible in production. So "streaming rarely fails" was never a
         // measurement; finalize failures were counted and start failures could not be.
-        // A start failure always ends the same way, in the batch path, which is why
-        // `result` can be stated here honestly: unlike the finalize leg's rescued/failed
-        // split, it does not depend on anything the kernel decides later.
+        //
+        // `result` reports ONLY what is known at this instant: the streaming start
+        // failed. It deliberately makes no claim about what happens next.
+        //
+        // The first version of this line said `fell_back_to_batch`, justified by "a start
+        // failure always ends the same way, in the batch path". Cloud review falsified it
+        // (#2046): `cancel()` calls `discardSession()` and runs no batch decode, so a user
+        // who cancels after a failed start — or capture ending before `finalize()` — makes
+        // that a permanent record of a fallback that never happened. The failure was not
+        // the value but the forward-looking CLAIM; a report emitted at time T must not
+        // assert an outcome decided at time T+1. Whether the fallback delivered is the
+        // finalize leg's and the terminal's to say.
         TelemetryService.shared.limbFailureObserved(
           limb: "asr_streaming", operation: "start",
-          result: "fell_back_to_batch",
+          result: "failed",
           errorCategory: Self.streamingErrorCategory(error),
           durationMs: nil)
       }
