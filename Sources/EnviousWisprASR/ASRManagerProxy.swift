@@ -578,8 +578,11 @@ public final class ASRManagerProxy: ASRManagerInterface {
             // the batch leg reconstructs before falling back to transport — a domain
             // match is exact, so an earlier reconstructor cannot steal another's error,
             // and leaving it last would mean a transport-shaped fallback claimed it.
+            // Cancellation comes before both: it is not a failure of any kind and must
+            // not be given a failure identity (see `reconstructCancellation`).
             let reconstructed: any Error =
-              ParakeetStreamingSentryError(reconstructingFrom: error).map { $0 as any Error }
+              Self.reconstructCancellation(error)
+              ?? ParakeetStreamingSentryError(reconstructingFrom: error).map { $0 as any Error }
               ?? XPCASRTransportError(reconstructingFrom: error).map { $0 as any Error } ?? error
             guard_.resume(throwing: reconstructed)
           } else {
@@ -590,6 +593,37 @@ public final class ASRManagerProxy: ASRManagerInterface {
         guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
       }
     }
+  }
+
+  /// #1654 (cloud review P2): restores a `CancellationError` that the ASR service threw
+  /// and the XPC boundary flattened.
+  ///
+  /// **Why this is needed at all.** `XPCErrorSanitizer` preserves only domain, code and
+  /// description. A `CancellationError` bridges to domain `Swift.CancellationError`,
+  /// code 1 — measured, not assumed — and after a real archive round-trip
+  /// `(error as Error) is CancellationError` is **false**. So a cancellation that
+  /// originates in the service arrives on this side as an ordinary `NSError`.
+  ///
+  /// **What that was silently costing.** `ParakeetEngineAdapter` has three
+  /// `catch is CancellationError` arms, and none of them can match a cancellation that
+  /// crossed the boundary — they cover app-side cancellation only. That was harmless
+  /// while the streaming start leg emitted nothing; #1654 gives that leg a telemetry
+  /// event, at which point a user cancelling a recording would have been recorded as a
+  /// streaming START FAILURE. Cloud review caught it before it shipped.
+  ///
+  /// **Failure direction, stated deliberately.** The bridged domain string is the only
+  /// signal that survives, so this match is stringly-typed and could stop matching if
+  /// Swift changes the bridged name. If it misses, a cancellation is once again counted
+  /// as a failure — noise in a metric. If it over-matched, a real failure would be
+  /// silently swallowed. Matching the exact domain and code, rather than a prefix or the
+  /// description, keeps it on the noisy side of that trade.
+  /// `nonisolated` because it is a pure function of the error handed to it and touches no
+  /// actor state — the enclosing type's `@MainActor` would otherwise be inherited for no
+  /// reason. Not `private`: `ASRManagerProxyCancellationTests` drives it directly, because
+  /// the whole point is a value the XPC boundary produces, which a fake proxy cannot make.
+  nonisolated static func reconstructCancellation(_ error: NSError) -> (any Error)? {
+    guard error.domain == "Swift.CancellationError", error.code == 1 else { return nil }
+    return CancellationError()
   }
 
   public func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
@@ -627,9 +661,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
       // #1654: streaming first on this leg. The batch reconstructor stays in the chain
       // rather than being replaced — `finalizeStreaming` can surface a model-load or
       // transcription-domain error from the service's own guards, and those keep their
-      // existing identities.
+      // existing identities. Cancellation precedes all of them.
       let reconstructed: any Error =
-        ParakeetStreamingSentryError(reconstructingFrom: error).map { $0 as any Error }
+        Self.reconstructCancellation(error)
+        ?? ParakeetStreamingSentryError(reconstructingFrom: error).map { $0 as any Error }
         ?? ParakeetTranscriptionSentryError(reconstructingFrom: error).map { $0 as any Error }
         ?? XPCASRTransportError(reconstructingFrom: error).map { $0 as any Error }
         ?? error

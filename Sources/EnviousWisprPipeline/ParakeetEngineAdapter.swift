@@ -493,6 +493,17 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           "Streaming ASR started during recording",
           level: .info, category: "Pipeline"
         )
+      } catch is CancellationError {
+        // #1654 (cloud review P2): a cancelled start is not a failure and must not be
+        // counted as one. Behaviour is otherwise identical to the failure arm below —
+        // same flag, same fall-through — so this changes what we RECORD, not what we do.
+        //
+        // This arm only became reachable for service-side cancellation once
+        // `ASRManagerProxy.reconstructCancellation` restored the type: the XPC boundary
+        // flattens `CancellationError` to a plain `NSError`, so the guard alone would
+        // have matched app-side cancellation only and let the real case straight through
+        // to the emit below. The mirror of the finalize leg's own cancellation arm.
+        streamingActive = false
       } catch {
         // Streaming setup failed — fall back to batch decode after stop. Not a
         // session failure; the batch rescue over `retainedPCM` covers it.
