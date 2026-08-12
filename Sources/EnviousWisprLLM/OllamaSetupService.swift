@@ -464,7 +464,17 @@ public final class OllamaSetupService {
     // section was alphabetical only, so somebody whose two installed models were an Unreliable one
     // and a Recommended one saw the Unreliable one first. The alphabetical sort above is what fills
     // the within-band order, and the band pass below preserves it.
-    let downloadedEntriesOrdered = Self.orderedByVerdictBand(downloadedEntries)
+    //
+    // LOCAL ROWS ONLY. Installed HOSTED registrations are in this same array (`isRemote` is set on
+    // every construction path), and cloud review caught that band-ordering them applies a local
+    // measurement to a model that only shares its name: nothing here was benchmarked against
+    // Ollama's hosted build, so a verdict cannot rank it. `OllamaCatalogPresentation.groups` splits
+    // this list by `isRemote` and preserves order inside each group, so a hosted row reordered here
+    // really does move within the hosted section on screen. Hosted rows keep the neutral
+    // alphabetical order above, which is also what the hosted SUGGESTIONS already do.
+    let downloadedEntriesOrdered =
+      Self.orderedByVerdictBand(downloadedEntries.filter { !$0.isRemote })
+      + downloadedEntries.filter(\.isRemote)
 
     // Undownloaded suggestions (preserve static catalog order)
     let available: [OllamaModelCatalogEntry] = Self.modelCatalog.compactMap { entry in

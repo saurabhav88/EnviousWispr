@@ -227,6 +227,29 @@ struct OllamaModelCatalogTests {
     #expect(qwenIndex < phiIndex, "recommended must precede no-acceptable-output: \(installed)")
   }
 
+  @Test("installed hosted rows are NOT ordered by a local verdict")
+  func installedHostedRowsKeepNeutralOrder() throws {
+    // Cloud review, PR #2027. Installed hosted registrations sit in the same array as installed
+    // local models, so band-ordering that array applied a LOCAL measurement to a hosted model that
+    // only shares its name. Nothing here was benchmarked against Ollama's hosted build.
+    //
+    // FIXTURE SHAPE IS THE WHOLE TEST. The two ids must canonicalise to measured local models
+    // whose verdict order DISAGREES with their alphabetical order, or the case cannot tell the two
+    // orderings apart. A first draft used tinyllama and qwen2.5:3b, where both orderings agree, and
+    // it passed with the fix reverted — a fixture that cannot contain the counterexample.
+    //
+    // phi3 (no acceptable output) sorts BEFORE qwen2.5:3b (recommended) alphabetically and AFTER it
+    // by band, so under the bug the qwen row is pulled to the front of the hosted section.
+    let remote = OllamaModelFacts(isRemote: true, thinks: false)
+    let catalog = OllamaSetupService.dynamicCatalog(
+      from: [downloaded("phi3", facts: remote), downloaded("qwen2.5:3b", facts: remote)])
+    let hosted = catalog.filter { $0.isRemote }.map(\.displayName)
+    #expect(hosted.count == 2, "fixture must produce two hosted rows: \(hosted)")
+    #expect(
+      hosted == hosted.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending },
+      "hosted rows were reordered by a local verdict: \(hosted)")
+  }
+
   @Test("alphabetical order still decides ties inside one band")
   func installedTiesStayAlphabetical() throws {
     // Two installed models in the SAME band. Nothing in the measurement separates them, so the
