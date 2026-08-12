@@ -1109,6 +1109,56 @@ def test_repeated_failures_keep_the_complete_receipt():
     assert "COMPLETE quarantine" in log, log
 
 
+def test_a_failed_quarantine_aborts_the_arm_instead_of_mis_stamping():
+    """Cloud review round 13. This script runs without `errexit`, so a permission or filesystem
+    error left `quarantine_previous` returning success (its final `echo` succeeded). The caller
+    then moved the staged receipt INSIDE the still-existing destination and the stamp landed on
+    the OLD receipt while the arm reported success — the nest-and-mis-stamp failure arriving
+    through an error path rather than a logic one.
+
+    Made to fail by removing write permission from the judged directory, so the rename genuinely
+    cannot happen. The arm must report FAILED and nothing may be stamped.
+    """
+    t = shell_tree("true")
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "summary.json").write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": [], "marker": "the previous one"}))
+    forge_stamp(t, judge="claude-sonnet-5")          # forces a re-judge
+    judged = t / "judged"
+    mode = judged.stat().st_mode
+    os.chmod(judged, 0o500)                          # readable, not writable: rename fails
+    try:
+        rc, log = run_shell(t)
+    finally:
+        os.chmod(judged, mode)
+
+    assert "FAILED modelA" in log, f"a failed quarantine was not reported as a failure:\n{log}"
+    assert rc != 0, f"the sweep exited successfully despite a failed arm:\n{log}"
+    kept = json.loads((d / "summary.json").read_text())
+    assert kept.get("marker") == "the previous one", (
+        f"the old receipt was replaced or nested into:\n{log}")
+    assert not list(d.glob("*.rejudge")), f"the staged receipt was nested inside: {list(d.iterdir())}"
+
+    # WHY THIS CASE CANNOT ISOLATE THE HELPER, stated rather than implied: both renames happen
+    # inside the same parent directory, so any permission failure trips the promote guard as well
+    # as the quarantine guard. Swallowing the helper's failure therefore still ends in a reported
+    # FAILED arm, and a mutation test over this case passes either way. It verifies the OUTCOME,
+    # which is the property that matters, and the source assertion below covers the mechanism the
+    # reviewer actually flagged.
+    src = SHELL.read_text()
+    body = src.split("quarantine_previous() {")[1].split("\n}")[0]
+    assert 'mv "$dest" "$dest.stale" || return 1' in body, (
+        "the quarantine rename does not propagate failure; without `|| return 1` the helper "
+        "returns success because its final echo does, and the caller promotes into a still-"
+        "occupied destination")
+    for call in ("if ! quarantine_previous; then",):
+        assert src.count(call) >= 3, (
+            f"expected every quarantine call site to check the result, found "
+            f"{src.count(call)} of them")
+
+
 def test_a_successful_rejudge_does_replace_the_old_receipt():
     """Two-way control. A staging swap that never promoted anything would pass the case above
     while making every re-judge a no-op, which is the expensive failure and looks like nothing
@@ -2269,7 +2319,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 118
+EXPECTED_TESTS = 119
 
 
 def _run() -> int:

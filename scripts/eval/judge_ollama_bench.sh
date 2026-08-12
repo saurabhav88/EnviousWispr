@@ -140,8 +140,13 @@ quarantine_previous() {
     echo "     $dest.stale is kept (a partial must never displace a complete one)" >&2
     return 0
   fi
-  rm -rf "$dest.stale"
-  mv "$dest" "$dest.stale"
+  # Returns NONZERO if the move fails. This script runs without `errexit`, so a permission or
+  # filesystem error left the helper returning success (its final `echo` succeeded), the caller
+  # then moved the staged receipt INSIDE the still-existing destination, and the stamp landed on
+  # the old receipt while the arm reported success — the nest-and-mis-stamp failure arriving
+  # through an error path rather than a logic one. Every caller now aborts the arm instead.
+  rm -rf "$dest.stale" || return 1
+  mv "$dest" "$dest.stale" || return 1
   echo "  previous receipt for $base quarantined at $dest.stale (not ranked, not stamped)" >&2
 }
 
@@ -294,7 +299,12 @@ for cand in "$CANDDIR"/*.jsonl; do
     # gradeable output, so nothing at the ranked path can be current.
     had_previous=0
     [ -e "$dest" ] && had_previous=1
-    quarantine_previous
+    if ! quarantine_previous; then
+      echo "  FAILED $base (could not move the stale receipt aside; it stays where the report" >&2
+      echo "     would rank it, so this arm is reported failed rather than silently mixed)" >&2
+      failed+=("$base")
+      continue
+    fi
     unmeasurable+=("$base")
     continue
   fi
@@ -360,8 +370,20 @@ for cand in "$CANDDIR"/*.jsonl; do
       # receipt survives in the quarantine slot and the arm is simply re-judged, so the cost is
       # one re-run rather than lost data. Auto-promoting a leftover staged receipt would risk
       # promoting one graded against different inputs, which is worse than a re-run.
-      quarantine_previous
-      mv "$staging" "$dest"
+      if ! quarantine_previous; then
+        echo "  FAILED $base (could not move the previous receipt aside; refusing to promote," >&2
+        echo "     because a move into an existing directory NESTS, and the stamp would then" >&2
+        echo "     be written onto the old receipt)" >&2
+        rm -rf "$staging"
+        failed+=("$base")
+        continue
+      fi
+      if ! mv "$staging" "$dest"; then
+        echo "  FAILED $base (could not promote the staged receipt; the previous one is at" >&2
+        echo "     $dest.stale and nothing was stamped)" >&2
+        failed+=("$base")
+        continue
+      fi
       printf '%s\n' "$inputs_sha" > "$stamp"
       echo "  ok $base" >&2
       ;;
@@ -373,18 +395,25 @@ for cand in "$CANDDIR"/*.jsonl; do
       # cacheability but never the stamp, so a valid receipt from the PREVIOUS judge sitting at
       # the canonical path gets ranked alongside newly judged arms — a corrupted comparison,
       # silently, which is the failure this whole change exists to prevent.
-      quarantine_previous
+      if ! quarantine_previous; then
+        echo "  FAILED $base (could not move the previous receipt aside)" >&2
+        rm -rf "$staging"
+        failed+=("$base")
+        continue
+      fi
       # Promote the partial: it is what the current judge actually produced, and the report
       # rejects a non-cacheable receipt loudly rather than ranking it. Never stamped, so the
       # resume branch re-judges the arm next time.
-      mv "$staging" "$dest"
+      mv "$staging" "$dest" || true
       echo "  INCOMPLETE $base (receipt is not cacheable; left in place, not stamped)" >&2
       incomplete+=("$base")
       ;;
     missing)
       # The judge refused, crashed, timed out, or lost its network before writing anything.
       rm -rf "$staging"
-      quarantine_previous
+      if ! quarantine_previous; then
+        echo "  (and the stale receipt could not be moved aside, so it stays at $dest)" >&2
+      fi
       echo "  FAILED $base" >&2
       failed+=("$base")
       ;;
