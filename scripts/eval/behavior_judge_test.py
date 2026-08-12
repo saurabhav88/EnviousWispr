@@ -965,7 +965,7 @@ def test_a_routed_but_unusable_judge_still_cannot_delete_a_receipt():
     receipt.write_text(json.dumps(
         {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
          "skipped": [], "missing_scores": []}))
-    forge_stamp(t, judge="azure/stub-judge@stubdigest")
+    original_stamp = forge_stamp(t, judge="azure/stub-judge@stubdigest")
     before = receipt.read_text()
 
     _, log = run_shell(t, env=dict(os.environ, EW_JUDGE="claude-sonet-5"))
@@ -973,8 +973,58 @@ def test_a_routed_but_unusable_judge_still_cannot_delete_a_receipt():
     assert "=== re-judging modelA" in log, f"expected a re-judge attempt:\n{log}"
     assert receipt.exists(), f"a routed-but-unusable judge DELETED the receipt:\n{log}"
     assert receipt.read_text() == before, "the receipt was modified"
-    assert "previous receipt left in place" in log, log
+    assert "previous receipt KEPT and not stamped" in log, log
     assert not (t / "judged" / "modelA.rejudge").exists(), "staging directory was left behind"
+
+    # THE OTHER HALF, and a separate P1 (cloud review round 3): surviving must not mean
+    # ADOPTED. The post-judge branch used to re-read $dest, find the old cacheable receipt and
+    # write the NEW judge's stamp onto it — so later runs skipped it and reported the previous
+    # judge's scores as this judge's, which is the silently-mixed-judges defect the stamp
+    # exists to prevent. The stamp must still hold the ORIGINAL judge's value.
+    stamp = t / "judged" / "modelA" / ".inputs-sha256"
+    assert stamp.exists(), "the original stamp should be untouched, not removed"
+    assert stamp.read_text().strip() == original_stamp, (
+        "the OLD receipt was stamped with the NEW judge's identity, so the next run would skip "
+        "it and report the previous judge's scores as this judge's")
+
+
+
+def test_a_partial_staged_receipt_does_not_evict_a_complete_one():
+    """Cloud review round 3, the sibling P1. A judge that fails AFTER scoring starts still
+    writes a summary with `cacheable: false`, so a presence-only promotion check replaced a
+    good receipt with the failure. Promotion now requires the staged receipt to be cacheable.
+    """
+    t = shell_tree("false")              # judge writes a receipt with cacheable: false
+    d = t / "judged" / "modelA"
+    d.mkdir(parents=True, exist_ok=True)
+    receipt = d / "summary.json"
+    receipt.write_text(json.dumps(
+        {"cacheable": True, "release_gate": {"verdict": "CLEAR"},
+         "skipped": [], "missing_scores": [], "marker": "the good one"}))
+    original_stamp = forge_stamp(t, judge="claude-sonnet-5")   # forces a re-judge
+    _, log = run_shell(t)
+
+    kept = json.loads(receipt.read_text())
+    assert kept.get("marker") == "the good one", (
+        f"a partial staged receipt evicted the complete one:\n{log}")
+    assert (d / ".inputs-sha256").read_text().strip() == original_stamp, (
+        "the kept receipt must not carry the new judge's stamp")
+    assert "previous receipt KEPT" in log, log
+    # The failed attempt stays inspectable rather than being silently discarded.
+    assert (t / "judged" / "modelA.rejudge" / "summary.json").exists(), (
+        f"the failed attempt should be left for diagnosis:\n{log}")
+
+
+def test_a_partial_receipt_is_still_promoted_when_there_is_nothing_to_lose():
+    """Two-way control on the clause above. If promotion required cacheable UNCONDITIONALLY, a
+    first-ever run that produced a partial receipt would leave no evidence at all — and the
+    pre-existing behaviour of keeping it for diagnosis, unstamped, would be lost."""
+    t = shell_tree("false")
+    _, log = run_shell(t)
+    d = t / "judged" / "modelA"
+    assert (d / "summary.json").exists(), f"a first partial receipt must be kept:\n{log}"
+    assert not stamped(t), "a non-cacheable receipt must never be stamped"
+    assert "not cacheable" in log, log
 
 
 def test_a_successful_rejudge_does_replace_the_old_receipt():
@@ -1752,7 +1802,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 90
+EXPECTED_TESTS = 92
 
 
 def _run() -> int:

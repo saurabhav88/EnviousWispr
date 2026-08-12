@@ -209,10 +209,15 @@ for cand in "$CANDDIR"/*.jsonl; do
     # any probe. Not deleting until a replacement exists removes every member at once,
     # including the ones nobody has thought of.
     #
-    # Leaving the old receipt is SAFE, not merely less destructive: its stamp no longer
-    # matches this judge, so the resume branch above re-judges it and never trusts it. If the
-    # judge is later set back to whatever produced it, the stamp matches again and skipping it
-    # is correct, because that judge really did produce it.
+    # Leaving the old receipt is safe ONLY because the block below stamps nothing unless a
+    # cacheable staged receipt was promoted. An earlier version of this comment argued the
+    # receipt was safe "because its stamp no longer matches this judge" — false, and the
+    # reviewer caught it: the post-judge branch re-read $dest and would have written the new
+    # stamp onto that old receipt. The safety lives in the stamping rule, not here.
+    #
+    # Given that rule: if the judge is later set back to whatever produced this receipt, its
+    # original stamp matches again and skipping it is correct, because that judge really did
+    # produce it.
   fi
   # A model that errored on EVERY case has no output to grade. Judging 20 empty
   # strings would return 20 critical failures, which reads as "measured and
@@ -243,32 +248,62 @@ for cand in "$CANDDIR"/*.jsonl; do
   python3 "$ROOT/scripts/eval/behavior_judge.py" \
     --system new --judge "$JUDGE" \
     --corpus "$CORPUS" --candidates "$cand" --out "$staging" >&2 || true
+  # The outcome is CARRIED from the staged run, never re-derived by looking at $dest.
+  #
+  # Third round of cloud review on this one area, and both remaining P1s came from reading
+  # $dest afterwards: that cannot distinguish a receipt THIS run produced from one it merely
+  # failed to replace. It let a failed re-judge write the new judge's stamp onto the previous
+  # judge's receipt, so later runs skipped it and reported the old judge's scores as the new
+  # judge's — the exact silently-mixed-judges defect this whole change exists to prevent, and
+  # one my own staging fix introduced. My comment claimed the surviving receipt was safe
+  # "because its stamp no longer matches"; the very next block was writing that stamp.
+  staged_state=missing
   if [ -f "$staging/summary.json" ]; then
-    rm -rf "$dest"
-    mv "$staging" "$dest"
-  else
-    # Nothing to promote. The judge refused, crashed, timed out, or lost its network. The
-    # previous receipt survives untouched and unstamped for this judge, so the next run
-    # re-judges it; before this, the arm was already deleted and the whole cached set could
-    # be wiped by a single typo.
-    rm -rf "$staging"
-    echo "  no receipt produced for $base; previous receipt left in place" >&2
+    if receipt_cacheable "$staging/summary.json"; then
+      staged_state=cacheable
+    else
+      staged_state=partial
+    fi
   fi
+  had_previous=0
+  [ -f "$dest/summary.json" ] && had_previous=1
 
-  if [ -f "$dest/summary.json" ] && receipt_cacheable "$dest/summary.json"; then
-    printf '%s\n' "$inputs_sha" > "$stamp"
-    echo "  ok $base" >&2
-  elif [ -f "$dest/summary.json" ]; then
-    # A receipt exists but is partial or internally inconsistent. Do NOT stamp:
-    # withholding the stamp is the whole recovery mechanism, because the resume
-    # branch above deletes and re-judges an unstamped receipt. Leaving the file
-    # in place keeps it readable for whoever investigates.
-    echo "  INCOMPLETE $base (receipt is not cacheable; left in place, not stamped)" >&2
-    incomplete+=("$base")
-  else
-    echo "  FAILED $base" >&2
-    failed+=("$base")
-  fi
+  case "$staged_state" in
+    cacheable)
+      # The ONLY path that stamps. A stamp asserts "this judge produced this receipt", so it
+      # is written exactly where that is true and nowhere else.
+      rm -rf "$dest"
+      mv "$staging" "$dest"
+      printf '%s\n' "$inputs_sha" > "$stamp"
+      echo "  ok $base" >&2
+      ;;
+    partial)
+      if [ "$had_previous" = 1 ]; then
+        # A partial receipt must not evict a complete one. Presence was the old test, and it
+        # promoted a run that failed after scoring started — `behavior_judge.py` still writes
+        # a summary with `cacheable: false` in that case, so the good receipt was replaced by
+        # the failure. Keep both: the old one in place, the staged one for diagnosis.
+        echo "  INCOMPLETE $base (staged receipt not cacheable; previous receipt KEPT and not" >&2
+        echo "     stamped; the failed attempt is at $staging)" >&2
+      else
+        # Nothing to lose, so promote it: a partial receipt is still the only evidence of what
+        # happened, and the resume branch re-judges it because it is unstamped.
+        mv "$staging" "$dest"
+        echo "  INCOMPLETE $base (receipt is not cacheable; left in place, not stamped)" >&2
+      fi
+      incomplete+=("$base")
+      ;;
+    missing)
+      # The judge refused, crashed, timed out, or lost its network before writing anything.
+      rm -rf "$staging"
+      if [ "$had_previous" = 1 ]; then
+        echo "  FAILED $base (no receipt produced; previous receipt KEPT and not stamped)" >&2
+      else
+        echo "  FAILED $base" >&2
+      fi
+      failed+=("$base")
+      ;;
+  esac
 done
 
 [ ${#skipped[@]} -gt 0 ] && echo "skipped (already judged): ${skipped[*]}" >&2
