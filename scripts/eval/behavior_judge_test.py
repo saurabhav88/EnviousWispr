@@ -1937,6 +1937,64 @@ def test_the_identity_probe_goes_through_the_no_redirect_opener():
     assert "urllib.request.urlopen" not in body, "the probe uses a raw opener"
 
 
+@contextlib.contextmanager
+def _azure_pin(value):
+    """Pin the process to a model version, and restore it afterwards."""
+    real = bj._azure_pinned_model
+    bj._azure_pinned_model = value
+    try:
+        yield
+    finally:
+        bj._azure_pinned_model = real
+
+
+def test_a_grading_response_from_a_different_model_is_refused():
+    # Cloud review round 7. The identity probe is a time-of-CHECK; each grading call is a
+    # time-of-USE. A repoint between them would stamp post-change scores with the pre-change
+    # identity, so one scoreboard would silently hold two judge versions.
+    with _azure_pin("gpt-5.6-luna-2026-07-09"):
+        with _azure_reply({"model": "gpt-5.6-luna-2026-11-01",
+                           "choices": [{"message": {"content": "[]"},
+                                        "finish_reason": "stop"}]}):
+            try:
+                bj.call_azure("gpt-5-6-luna", "s", "u")
+            except RuntimeError as e:
+                assert "repointed mid-run" in str(e), str(e)
+            else:
+                raise AssertionError("a response from a different model was accepted")
+
+
+def test_a_grading_response_from_the_pinned_model_is_accepted():
+    # Two-way control. A check that refused everything would pass the case above while making
+    # every grading call fail — the loud failure, but it would look like Azure was broken.
+    with _azure_pin("gpt-5.6-luna-2026-07-09"):
+        with _azure_reply({"model": "gpt-5.6-luna-2026-07-09",
+                           "choices": [{"message": {"content": "[]"},
+                                        "finish_reason": "stop"}]}):
+            assert bj.call_azure("gpt-5-6-luna", "s", "u") == "[]"
+
+
+def test_an_unpinned_process_still_grades():
+    # The pin is set by preflight, so an unpinned process means nothing probed first. Grading
+    # must still work rather than refusing: this is the path a direct call takes, and there is no
+    # stamp comparison happening for it to corrupt.
+    with _azure_pin(None):
+        with _azure_reply({"model": "anything-at-all",
+                           "choices": [{"message": {"content": "[]"},
+                                        "finish_reason": "stop"}]}):
+            assert bj.call_azure("gpt-5-6-luna", "s", "u") == "[]"
+
+
+def test_preflight_pins_the_model_for_an_azure_judge():
+    # Pinned in preflight rather than left to the caller, so a run started directly still gets
+    # the time-of-use check. Without this, `_azure_pinned_model` stays None for any run that did
+    # not go through the shell, and the check above silently does nothing.
+    with _azure_pin(None):
+        with _azure_serving("gpt-5.6-luna-2026-07-09"):
+            bj.preflight_judge("azure/gpt-5-6-luna")
+            assert bj._azure_pinned_model == "gpt-5.6-luna-2026-07-09", bj._azure_pinned_model
+
+
 def test_the_billing_check_runs_before_the_availability_check():
     # Refusing to spend the founder's own money must not depend on whether some CLI
     # happens to be logged in, so the order in main() is load-bearing.
@@ -1953,7 +2011,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 99
+EXPECTED_TESTS = 103
 
 
 def _run() -> int:

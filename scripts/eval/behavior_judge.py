@@ -129,6 +129,18 @@ DEFAULT_CHUNK_SIZE = 8
 #   "'temperature' does not support 0 with this model. Only the default (1)"
 AZURE_API_VERSION = "2024-10-21"
 
+# The model version pinned for THIS process, set by `judge_identity` when it probes the
+# deployment. Every grading response is then checked against it, because the probe is a
+# time-of-check and each grading call is a time-of-use: Azure can repoint a deployment
+# mid-sweep, and receipts written after that would carry the pre-change identity while holding
+# post-change scores — one scoreboard silently mixing two judge versions. Cloud review found
+# the gap; the check is one comparison on a field the response already carries.
+#
+# None means "not pinned", which happens only when nothing probed first. `call_azure` then
+# cannot verify, so `preflight_judge` pins for every azure run rather than leaving it to the
+# caller to remember.
+_azure_pinned_model: str | None = None
+
 
 class MissingSecretError(RuntimeError):
     pass
@@ -302,6 +314,16 @@ def call_azure(deployment: str, system: str, user: str) -> str:
     choices = data.get("choices") or []
     if not choices:
         raise RuntimeError(f"azure judge: no choices in response: {str(data)[:200]}")
+    # Time-of-use check against the pinned model version. A repoint between the identity probe
+    # and this call would otherwise produce scores from a new model under the old model's stamp.
+    # Raising aborts the chunk loudly, which the harness reports as a gap rather than caching.
+    served = data.get("model")
+    if _azure_pinned_model is not None and isinstance(served, str) and served.strip() \
+            and served.strip() != _azure_pinned_model:
+        raise RuntimeError(
+            f"azure judge: deployment served {served.strip()!r} but this run is pinned to "
+            f"{_azure_pinned_model!r}. The deployment was repointed mid-run; stop and re-grade "
+            f"the whole field so one scoreboard cannot mix two judge versions.")
     finish = choices[0].get("finish_reason")
     content = (choices[0].get("message") or {}).get("content")
     if not isinstance(content, str) or not content.strip():
@@ -465,6 +487,8 @@ def judge_identity(model: str) -> str:
         return model
     host = (urllib.parse.urlsplit(_validated_azure_endpoint()).hostname or "").lower()
     served = _azure_served_model(model[len("azure/"):])
+    global _azure_pinned_model
+    _azure_pinned_model = served
     digest = hashlib.sha256(
         f"{host}|{AZURE_API_VERSION}|{served}".encode()).hexdigest()[:12]
     return f"{model}@{digest}"
@@ -496,9 +520,22 @@ def refuse_paid_key_judge(model: str) -> None:
 
 
 def preflight_judge(model: str) -> None:
-    """For the Claude judge, verify the CLI is installed AND logged in before we
-    spend a long run; abort (exit 2) otherwise. No-op for HTTP judges (a bad key
-    surfaces on the first real call)."""
+    """Prove the judge can work before a long run, and abort (exit 2) otherwise.
+
+    Claude: the CLI is installed and logged in. Azure: the deployment answers, and the model
+    version it serves is PINNED for the rest of this process so every grading response can be
+    checked against it. Pinning here rather than trusting the caller, because a run started
+    directly (not through `judge_ollama_bench.sh`, which resolves the identity itself) would
+    otherwise grade with no pin and no time-of-use check.
+    """
+    if judge_transport(model) == "azure":
+        try:
+            judge_identity(model)          # probes and sets `_azure_pinned_model`
+        except Exception as e:
+            print(f"INFRA-ERROR: Azure judge unusable ({e}); aborting before any work.",
+                  file=sys.stderr)
+            sys.exit(2)
+        return
     if judge_transport(model) != "claude":
         return
     try:
