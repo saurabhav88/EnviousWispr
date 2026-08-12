@@ -299,6 +299,14 @@ struct KernelASRAdapterDiagnostics {
 
   var streamingResultChars: Int? = nil
   var streamingFinalizeFailed: Bool? = nil
+  /// #1654: no longer a type NAME whenever the error declares a stable identity — it now
+  /// holds that identity's semantic ID (`parakeet_streaming.all_windows_failed.…`) and
+  /// falls back to `String(reflecting: type(of:))` only for an error that declares none.
+  ///
+  /// The property and its Sentry extra key both keep the `…ErrorType` spelling on
+  /// purpose. `asr.streaming_finalize_error_type` is a shipped field name, so renaming it
+  /// would orphan its history for the sake of tidiness, and letting the Swift name drift
+  /// away from the wire name would be worse than one honest comment at the declaration.
   var streamingFinalizeErrorType: String? = nil
   var streamingBuffersDispatched: Int? = nil
   var streamingBuffersFed: Int? = nil

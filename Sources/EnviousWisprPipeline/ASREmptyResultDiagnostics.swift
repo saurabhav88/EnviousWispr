@@ -18,6 +18,9 @@ internal struct ASREmptyResultDiagnostics {
 
   var streamingResultChars: Int?
   var streamingFinalizeFailed: Bool?
+  /// #1654: carries a stable semantic ID rather than a reflected type name whenever the
+  /// error declares one. Owner of that contract is `KernelTelemetryState`'s declaration;
+  /// see it before reading this value as a type.
   var streamingFinalizeErrorType: String?
   var streamingBuffersDispatched: Int?
   var streamingBuffersFed: Int?

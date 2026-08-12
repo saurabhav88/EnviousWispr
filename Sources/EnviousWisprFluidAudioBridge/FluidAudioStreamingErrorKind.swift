@@ -63,9 +63,21 @@ package enum FluidAudioStreamingErrorKind: Sendable, Equatable {
   case unknownFutureCase
 }
 
-/// Maps the inner error of `.modelProcessingFailed` to a bare semantic cause.
+/// Maps a raw FluidAudio `ASRError` to a bare, text-free semantic cause.
+///
+/// Used for two things, and the second is why this is `package` rather than private:
+/// the inner error of `.modelProcessingFailed`, and the streaming START path, where the
+/// vendor throws a bare `ASRError` that is not a `SlidingWindowAsrError` at all.
+///
+/// The batch path has its own classifier (`classifyFluidAudioASRError`) which carries the
+/// vendor's `localizedDescription` on every case. That one is deliberately NOT reused for
+/// streaming: its kinds feed `ParakeetTranscriptionSentryError`, whose semantic IDs all
+/// read `parakeet_transcribe.*`, so a streaming START failure classified through it would
+/// land in a Sentry group named after transcription. A reason's name has to predict its
+/// cause; this keeps streaming identities in the streaming namespace.
+///
 /// Returns `nil` for anything that is not FluidAudio's own `ASRError`.
-private func streamingInnerCause(_ error: any Error) -> FluidAudioStreamingInnerCause? {
+package func fluidAudioStreamingInnerCause(_ error: any Error) -> FluidAudioStreamingInnerCause? {
   guard let error = error as? ASRError else { return nil }
   switch error {
   case .notInitialized: return .notInitialized
@@ -90,7 +102,7 @@ package func classifyFluidAudioStreamingError(_ error: any Error) -> FluidAudioS
   case .audioBufferProcessingFailed: return .audioBufferProcessingFailed
   case .audioConversionFailed: return .audioConversionFailed
   case .modelProcessingFailed(let inner):
-    return .allWindowsFailed(inner: streamingInnerCause(inner))
+    return .allWindowsFailed(inner: fluidAudioStreamingInnerCause(inner))
   case .bufferOverflow: return .bufferOverflow
   case .invalidConfiguration: return .invalidConfiguration
   @unknown default: return .unknownFutureCase

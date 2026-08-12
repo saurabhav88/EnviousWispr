@@ -574,8 +574,13 @@ public final class ASRManagerProxy: ASRManagerInterface {
           // conforming error before throwing to the adapter, matching
           // loadModel/transcribe/finalizeStreaming's reconstruction.
           if let error = nsError {
+            // #1654: the streaming identity is reconstructed FIRST, for the same reason
+            // the batch leg reconstructs before falling back to transport — a domain
+            // match is exact, so an earlier reconstructor cannot steal another's error,
+            // and leaving it last would mean a transport-shaped fallback claimed it.
             let reconstructed: any Error =
-              XPCASRTransportError(reconstructingFrom: error).map { $0 as any Error } ?? error
+              ParakeetStreamingSentryError(reconstructingFrom: error).map { $0 as any Error }
+              ?? XPCASRTransportError(reconstructingFrom: error).map { $0 as any Error } ?? error
             guard_.resume(throwing: reconstructed)
           } else {
             guard_.resume()
@@ -619,8 +624,13 @@ public final class ASRManagerProxy: ASRManagerInterface {
     if let error {
       // #1525 PR I-B: reconstruct the typed, conforming error from the
       // surviving NSError domain/code before throwing to the adapter.
+      // #1654: streaming first on this leg. The batch reconstructor stays in the chain
+      // rather than being replaced — `finalizeStreaming` can surface a model-load or
+      // transcription-domain error from the service's own guards, and those keep their
+      // existing identities.
       let reconstructed: any Error =
-        ParakeetTranscriptionSentryError(reconstructingFrom: error).map { $0 as any Error }
+        ParakeetStreamingSentryError(reconstructingFrom: error).map { $0 as any Error }
+        ?? ParakeetTranscriptionSentryError(reconstructingFrom: error).map { $0 as any Error }
         ?? XPCASRTransportError(reconstructingFrom: error).map { $0 as any Error }
         ?? error
       throw reconstructed

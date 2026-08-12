@@ -503,6 +503,17 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           "Streaming ASR failed to start, will use batch: \(error.localizedDescription)",
           level: .info, category: "Pipeline"
         )
+        // #1654: until now this leg emitted NOTHING — a breadcrumb and a debug-only log,
+        // both invisible in production. So "streaming rarely fails" was never a
+        // measurement; finalize failures were counted and start failures could not be.
+        // A start failure always ends the same way, in the batch path, which is why
+        // `result` can be stated here honestly: unlike the finalize leg's rescued/failed
+        // split, it does not depend on anything the kernel decides later.
+        TelemetryService.shared.limbFailureObserved(
+          limb: "asr_streaming", operation: "start",
+          result: "fell_back_to_batch",
+          errorCategory: Self.streamingErrorCategory(error),
+          durationMs: nil)
       }
     }
   }
@@ -796,6 +807,26 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// saw samples), and the KERNEL re-maps it to `.noSpeech` because it knows the
   /// segments were empty. The rescue always attempts batch when streaming
   /// yields nothing.
+  /// #1654: the low-cardinality category for a streaming failure.
+  ///
+  /// Reads the error's own declared identity when it has one, and falls back to the
+  /// reflected type name when it does not. That fallback is exactly what shipped before
+  /// this change, and it is the reason this issue exists: the only streaming failure
+  /// PostHog has ever recorded (2026-07-30, v2.4.1) carries `error_category: "NSError"`,
+  /// because the typed error did not survive the XPC crossing and every distinct cause
+  /// reads as one wrapper type.
+  ///
+  /// Deliberately keyed on the PROTOCOL, not on a concrete type. The conformer lives in
+  /// `EnviousWisprASR` and is internal to it, so this module cannot name it — and should
+  /// not want to. Any error that declares a stable identity gets to keep it here,
+  /// including the batch and model-load conformers that can also surface on this path.
+  private static func streamingErrorCategory(_ error: any Error) -> String {
+    if let identified = error as? any StableSentryErrorIdentity {
+      return identified.sentrySemanticID
+    }
+    return String(reflecting: type(of: error))
+  }
+
   private func finalizeStreamingWithRescue(
     batchSamples: [Float]?, session: SessionID?, generation: Int
   ) async -> ASREngineOutcome {
@@ -827,7 +858,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     } catch {
       // Streaming finalize failed — fall through to the batch rescue.
       diagnostics.streamingFinalizeFailed = true
-      diagnostics.streamingFinalizeErrorType = String(reflecting: type(of: error))
+      diagnostics.streamingFinalizeErrorType = Self.streamingErrorCategory(error)
       await AppLogger.shared.log(
         "Streaming finalize failed: \(error.localizedDescription), rescue triggered -> batch fallback",
         level: .info, category: "Pipeline"

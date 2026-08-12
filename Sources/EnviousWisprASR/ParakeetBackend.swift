@@ -309,11 +309,50 @@ public actor ParakeetBackend: ASRBackend {
     let config = SlidingWindowAsrConfig.streaming
       .applying(language: Self.fluidLanguage(for: options.language))
     let manager = SlidingWindowAsrManager(config: config)
-    // Vendor API: streaming starts via loadModels(_:) then startStreaming(source:).
-    try await manager.loadModels(models)
-    try await manager.startStreaming(source: .microphone)
+    do {
+      // Vendor API: streaming starts via loadModels(_:) then startStreaming(source:).
+      try await manager.loadModels(models)
+      try await manager.startStreaming(source: .microphone)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // #1654: pin a stable identity before this leaves the service. A cancellation is
+      // deliberately excluded above rather than classified — a cancelled stream is not a
+      // failure and must never acquire a failure identity.
+      throw Self.streamingIdentity(for: error, operation: .start) ?? error
+    }
     self.streamingManager = manager
     self.streamingStartTime = CFAbsoluteTimeGetCurrent()
+  }
+
+  /// #1654: which streaming leg threw. Not cosmetic — it decides whether a bare vendor
+  /// `ASRError` is allowed to become an identity at all.
+  private enum StreamingLeg { case start, finalize }
+
+  /// #1654: the one place a raw FluidAudio streaming error becomes an app-owned identity.
+  ///
+  /// Order matters and is not arbitrary. `SlidingWindowAsrError` is checked first because
+  /// it is the vendor's streaming-specific type. A bare `ASRError` is mapped ONLY on the
+  /// start leg, where `SlidingWindowAsrManager` genuinely throws one; on finalize the
+  /// vendor wraps every escaping error (`SlidingWindowAsrManager.swift:640`), so a bare
+  /// `ASRError` arriving there is not something we have grounds to name. Calling it
+  /// `startFailed` because that is the mapping in hand would be a reason whose name
+  /// contradicts its producer.
+  ///
+  /// Returns `nil` for a foreign error — a raw CoreML or converter failure keeps its own
+  /// identity rather than being relabelled as ours, exactly as the batch path leaves
+  /// unrecognised errors unchanged.
+  private static func streamingIdentity(
+    for error: any Error,
+    operation: StreamingLeg
+  ) -> ParakeetStreamingSentryError? {
+    if let kind = classifyFluidAudioStreamingError(error) {
+      return ParakeetStreamingSentryError(mapping: kind)
+    }
+    switch operation {
+    case .start: return ParakeetStreamingSentryError(mappingStartFailure: error)
+    case .finalize: return nil
+    }
   }
 
   public func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
@@ -326,7 +365,16 @@ public actor ParakeetBackend: ASRBackend {
     defer { streamingManager = nil }
 
     let finalizeStart = CFAbsoluteTimeGetCurrent()
-    let text = try await manager.finish()
+    let text: String
+    do {
+      text = try await manager.finish()
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // #1654: same identity pass as the start leg. See `streamingIdentity` for why a
+      // bare `ASRError` is deliberately NOT named here.
+      throw Self.streamingIdentity(for: error, operation: .finalize) ?? error
+    }
     let finalizeEnd = CFAbsoluteTimeGetCurrent()
 
     let totalElapsed = finalizeEnd - streamingStartTime
