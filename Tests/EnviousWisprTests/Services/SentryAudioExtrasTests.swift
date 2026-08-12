@@ -254,4 +254,82 @@ struct SentryAudioExtrasTests {
     #expect(extras["capture.route_resolution_source"] as? String == "app_derived")
     #expect(extras["capture.input_resolution_source"] as? String == "pinned_uid")
   }
+
+  // MARK: - #2021 tag promotion
+
+  @Test("both promoted fields become tags when present")
+  func promotesBothFields() {
+    let tags = SentryAudioExtras.promotedTags(from: [
+      "capture.effective_transport": "bluetooth",
+      "capture.failure_mode": "all_zero_from_start",
+      "capture.route": "built_in_mic",
+    ])
+    #expect(tags["capture.effective_transport"] == "bluetooth")
+    #expect(tags["capture.failure_mode"] == "all_zero_from_start")
+    // Only the promotion list is promoted; an unrelated extra stays an extra.
+    #expect(tags["capture.route"] == nil)
+    #expect(tags.count == 2)
+  }
+
+  @Test("an absent transport produces NO key, never an empty bucket")
+  func absentTransportOmitsTheKey() {
+    // The two-way control for the exact defect #2021 reports: aggregating on a
+    // field that was written as "" returns one empty bucket, which reads as data
+    // and is the instrument. An absent value must not create a key at all.
+    let tags = SentryAudioExtras.promotedTags(from: [
+      "capture.failure_mode": "became_zero_mid_capture"
+    ])
+    #expect(tags["capture.effective_transport"] == nil)
+    #expect(tags.keys.contains("capture.effective_transport") == false)
+    #expect(tags.count == 1)
+  }
+
+  @Test("an empty-string value is dropped rather than promoted")
+  func emptyStringIsDropped() {
+    let tags = SentryAudioExtras.promotedTags(from: [
+      "capture.effective_transport": "",
+      "capture.failure_mode": "no_buffers",
+    ])
+    #expect(tags["capture.effective_transport"] == nil)
+    #expect(tags.count == 1)
+  }
+
+  @Test("nil extras promote nothing")
+  func nilExtrasPromoteNothing() {
+    #expect(SentryAudioExtras.promotedTags(from: nil).isEmpty)
+  }
+
+  @Test("a non-String value is skipped, not stringified")
+  func nonStringIsSkipped() {
+    // A coerced tag would be a value no query could ever match, which is worse
+    // than an absent one.
+    let tags = SentryAudioExtras.promotedTags(from: [
+      "capture.effective_transport": 42,
+      "capture.failure_mode": "all_zero_from_start",
+    ])
+    #expect(tags["capture.effective_transport"] == nil)
+    #expect(tags.count == 1)
+  }
+
+  @Test("the promotion list matches keys the builder actually writes")
+  func promotionListCannotDriftFromTheBuilder() {
+    // Freezes the one way these can silently diverge: a renamed extra key would
+    // leave the promotion list pointing at a key nobody writes, and every tag
+    // would quietly vanish with no test failing.
+    let extras = SentryAudioExtras.buildCaptureExtras(
+      route: "built_in_mic",
+      sourceType: "hal_device_input",
+      sessionID: 1,
+      isActivelyCapturing: true,
+      inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: nil,
+      failureMode: "all_zero_from_start",
+      effectiveTransport: "usb")
+    for key in SentryAudioExtras.promotedTagKeys {
+      #expect(extras[key] != nil, "builder no longer writes \(key)")
+    }
+    let tags = SentryAudioExtras.promotedTags(from: extras)
+    #expect(tags["capture.failure_mode"] == "all_zero_from_start")
+    #expect(tags["capture.effective_transport"] == "usb")
+  }
 }

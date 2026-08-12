@@ -106,6 +106,53 @@ public enum SentryAudioExtras {
     return extras
   }
 
+  /// The extras that are ALSO promoted to per-event Sentry TAGS.
+  ///
+  /// Sentry cannot group or filter on `extra`, so a field that lives only there
+  /// can be read one event at a time and never aggregated. #2021: that is why
+  /// "what is the transport split on the fixed release" — the question that
+  /// decides whether #1810's transport-gated fix worked — was unanswerable. The
+  /// only axis available was `audio.route`, which is a proxy: a route is not a
+  /// transport, and it cannot separate `all_zero_from_start` from
+  /// `became_zero_mid_capture` at all, which is the exact distinction #1788 and
+  /// #1578 were split along.
+  ///
+  /// **Per-EVENT, not scope.** `audio.route` is a scope tag
+  /// (`SentryBreadcrumb.swift`) because a route is a session property. These two
+  /// describe the FAILURE — the transport bound for that attempt and the shape
+  /// it failed in — so a scope tag would go stale and mis-attribute the NEXT
+  /// event. `captureError`'s existing `tags:` parameter is already per-event.
+  ///
+  /// **A missing value produces NO key.** Never `""` and never `"nil"`: an
+  /// empty-string bucket is the exact trap #2021 reports, where aggregating on
+  /// `input_device_transport` returned a single empty bucket that was the
+  /// instrument rather than the data.
+  ///
+  /// Both vocabularies are closed and small — `CaptureStallFailureMode` has
+  /// three cases, and `AudioDeviceManager.transportLabel(forTransportType:)` is
+  /// an exhaustive switch over CoreAudio transport constants — so neither can
+  /// blow up tag cardinality. Categories only, never content, so the telemetry
+  /// privacy boundary is unaffected.
+  ///
+  /// Reads the SAME keys `buildCaptureExtras` writes, deliberately: a second
+  /// vocabulary here would be able to drift from the payload it describes.
+  public static func promotedTags(from extras: [String: Any]?) -> [String: String] {
+    guard let extras else { return [:] }
+    var tags: [String: String] = [:]
+    for key in promotedTagKeys {
+      // Only a real String is promoted. A non-String value is SKIPPED rather
+      // than stringified — a coerced tag would be a value no query could ever
+      // match, which is worse than an absent one.
+      if let value = extras[key] as? String, !value.isEmpty {
+        tags[key] = value
+      }
+    }
+    return tags
+  }
+
+  /// The promotion list. One place, so the two default sinks cannot disagree.
+  static let promotedTagKeys = ["capture.effective_transport", "capture.failure_mode"]
+
   private static func normalizeDeviceUID(_ uid: String?) -> String? {
     guard let uid, !uid.isEmpty else { return nil }
     return uid
