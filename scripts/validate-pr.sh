@@ -232,7 +232,22 @@ detect_lane_from_diff() {
   if echo "$changed_files" | grep -qE '^(website/|assets/)'; then
     lanes="$lanes Content"
   fi
-  if echo "$changed_files" | grep -qE '^\.github/workflows/|dependabot'; then
+  # `.github/actions/` joined this pattern in #1994, when main-post-merge.yml's
+  # shared Xcode setup moved into a composite action. Measured before the fix:
+  # `.github/actions/xcode-ci-setup/action.yml` matched NO lane at all — not
+  # CI/workflow, not Docs/dev-tooling — so a change to it carried no Phase 3
+  # obligations whatsoever. Third instance of one class in this change, after
+  # `scripts/ci/classify-changes.sh` (build decision) and
+  # `.github/workflows/ci-drift-check.yml` (drift scan): each looked only at
+  # `.github/workflows/`, so moving CI logic one directory sideways escaped it.
+  #
+  # Known and deliberately NOT fixed here: `scripts/ci/*.sh` also matches no
+  # lane, because `^scripts/[^e][^v][^a][^l]/` cannot match `scripts/ci/`. That
+  # predates this change and rewriting the scripts/ lane logic has wider blast
+  # radius than this PR should carry. It does not affect this PR's own lane —
+  # the diff also touches `.github/`, so the union already resolves to
+  # CI/workflow. Recorded on #1994.
+  if echo "$changed_files" | grep -qE '^\.github/(workflows/|actions/)|dependabot'; then
     lanes="$lanes CI/workflow"
   fi
   if echo "$changed_files" | grep -qE '^scripts/eval/'; then

@@ -1,0 +1,127 @@
+name: Xcode CI setup
+description: >-
+  Toolchain selection, Tuist install, DerivedData cache redirect, build-cache
+  restore, and Xcode project generation — the setup every macOS validation job
+  in main-post-merge.yml needs before it can build or test.
+
+# Why this exists (#1994): main-post-merge.yml runs its debug and release
+# validation as two parallel jobs, and each needs an identical eleven-step
+# setup. Two hand-mirrored copies of one decision is the shape that diverges —
+# .claude/rules/workflow-process.md RULE: port-proven-patterns-wholesale
+# records two separate cases in this repo where exactly that happened. One
+# owner, both callers.
+#
+# The caller must check the repository out BEFORE using this action: a local
+# `uses: ./...` action is read from the working tree, so it cannot perform its
+# own checkout.
+
+inputs:
+  derived-data-path:
+    description: DerivedData directory, relative to the workspace.
+    required: true
+  tuist-version:
+    description: Tuist version pinned via mise.
+    required: false
+    default: 4.195.11
+
+outputs:
+  cache-primary-key:
+    description: Primary key the build cache was restored under (for a later save).
+    value: ${{ steps.xcode-cache.outputs.cache-primary-key }}
+  cache-hit:
+    description: Whether the restore was an exact hit on the primary key.
+    value: ${{ steps.xcode-cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode
+      uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Verify environment
+      shell: bash
+      run: |
+        set -euo pipefail
+        swift --version
+        xcodebuild -version
+        SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
+        echo "macOS SDK: $SDK_VER"
+
+        if ! swift --version 2>&1 | grep -q "Swift version 6"; then
+          echo "::error::Swift 6.0+ required"
+          exit 1
+        fi
+
+        if [ "$(printf '%s\n' "26.0" "$SDK_VER" | sort -V | head -n1)" != "26.0" ]; then
+          echo "::error::macOS SDK 26.0+ required for FoundationModels (found: $SDK_VER)"
+          exit 1
+        fi
+
+    - name: Install mise + Tuist
+      shell: bash
+      env:
+        TUIST_VERSION: ${{ inputs.tuist-version }}
+      run: |
+        set -euo pipefail
+        curl https://mise.run | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/mise" install "tuist@${TUIST_VERSION}"
+        "$HOME/.local/bin/mise" x "tuist@${TUIST_VERSION}" -- tuist version
+
+    # See pr-check.yml's "Configure DerivedData cache redirect" comment
+    # (issue #1295) — same rationale. main-post-merge.yml remains the cache
+    # WRITER, so it must produce the same directory shape pr-check.yml restores.
+    - name: Configure DerivedData cache redirect
+      shell: bash
+      run: scripts/ci/configure-tuist-deriveddata-cache.sh "$GITHUB_WORKSPACE/${{ inputs.derived-data-path }}"
+
+    - name: Compute Xcode build cache key
+      id: xcode-cache-key
+      shell: bash
+      env:
+        TUIST_VERSION: ${{ inputs.tuist-version }}
+      run: |
+        set -euo pipefail
+        TOOLCHAIN_ID="$(
+          { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; "$HOME/.local/bin/mise" x "tuist@${TUIST_VERSION}" -- tuist version; } |
+          shasum -a 256 | cut -c1-12
+        )"
+        echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
+
+    # The third path entry is a glob (issue #1295) — see pr-check.yml's restore
+    # step comment for why.
+    #
+    # These paths are derived from the input rather than hardcoded to
+    # `.derivedData/CI`, which is what the single-job version did. With two
+    # callers the hardcoded form becomes a silent trap: a caller passing a
+    # different derived-data-path would build in one place and cache another,
+    # and the only symptom is a permanently cold cache. pr-check.yml's restore
+    # paths must continue to match whatever this resolves to.
+    - name: Restore Xcode build cache
+      id: xcode-cache
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        path: |
+          ${{ inputs.derived-data-path }}/SourcePackages
+          ${{ inputs.derived-data-path }}/Build
+          ${{ inputs.derived-data-path }}/*/SourcePackages
+        key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
+          ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
+          ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-
+
+    - name: Generate Xcode project
+      shell: bash
+      env:
+        TUIST_VERSION: ${{ inputs.tuist-version }}
+      run: |
+        set -euo pipefail
+        "$HOME/.local/bin/mise" x "tuist@${TUIST_VERSION}" -- tuist generate --no-open
+        git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
+
+    - name: Log DerivedData package-resolution location
+      shell: bash
+      run: find "${{ inputs.derived-data-path }}" -maxdepth 3 -type d -name SourcePackages -print 2>/dev/null || true

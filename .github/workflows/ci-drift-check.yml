@@ -14,11 +14,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
+      # Composite actions are scanned alongside workflows (#1994). Every check
+      # in this job looped over `.github/workflows/*` only, so moving CI logic
+      # into `.github/actions/**/action.yml` moved it out of drift coverage
+      # entirely — a floating action ref or a missing script there would pass
+      # this job and fail at runtime post-merge. This is the second instance of
+      # one class in a single change: `scripts/ci/classify-changes.sh` had the
+      # same blind spot for the build decision. Both are fixed together.
+      - name: Enumerate scannable CI definition files
+        id: ci-files
+        run: |
+          set -euo pipefail
+          # `find`, not shell globs. An unmatched glob behaves differently in
+          # bash (passes through literally) and zsh (aborts the command), so a
+          # glob-based list cannot be verified locally against what CI will do.
+          # find has no such dependency and produces the same list in both.
+          {
+            find .github/workflows -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) -type f 2>/dev/null || true
+            find .github/actions -mindepth 2 -maxdepth 2 \( -name 'action.yml' -o -name 'action.yaml' \) -type f 2>/dev/null || true
+          } | sed 's|^\./||' | sort -u > /tmp/ci-definition-files.txt
+
+          COUNT=$(wc -l < /tmp/ci-definition-files.txt | tr -d ' ')
+          echo "==> $COUNT CI definition file(s) in scope:"
+          sed 's/^/    /' /tmp/ci-definition-files.txt
+
+          # Fail closed. An empty list would make every check below vacuously
+          # pass, which is the exact silent-green shape this job exists to stop.
+          if [ "$COUNT" -lt 1 ]; then
+            echo "::error::No CI definition files found — the drift scan would pass vacuously"
+            exit 1
+          fi
+          # Composite actions are optional, but if the directory exists it must
+          # contribute at least one file, or a typo'd path silently drops them.
+          if [ -d .github/actions ] && ! grep -q '^\.github/actions/' /tmp/ci-definition-files.txt; then
+            echo "::error::.github/actions exists but contributed no action.yml — scan glob is wrong"
+            exit 1
+          fi
+
       - name: Check action refs are SHA-pinned
         run: |
           echo "==> Checking for floating action refs ..."
           FAIL=0
-          for WF in .github/workflows/*.yml .github/workflows/*.yaml; do
+          while IFS= read -r WF; do
             [ -f "$WF" ] || continue
             # Find all 'uses:' lines with external actions, filter out SHA-pinned ones
             FLOATING=$(grep -nE 'uses:\s+[a-zA-Z]' "$WF" | grep -vE '@[0-9a-f]{40}' || true)
@@ -27,7 +64,7 @@ jobs:
               echo "::error file=$WF::Floating action ref found — pin to full SHA"
               FAIL=1
             fi
-          done
+          done < /tmp/ci-definition-files.txt
           if [ "$FAIL" -eq 0 ]; then
             echo "All action refs are SHA-pinned."
           else
@@ -38,7 +75,7 @@ jobs:
         run: |
           echo "==> Checking script references ..."
           FAIL=0
-          for WF in .github/workflows/*.yml .github/workflows/*.yaml; do
+          while IFS= read -r WF; do
             [ -f "$WF" ] || continue
             while IFS= read -r SCRIPT; do
               [ -n "$SCRIPT" ] || continue
@@ -52,7 +89,7 @@ jobs:
                 FAIL=1
               fi
             done < <(grep -oE '(\./)?scripts/[a-zA-Z0-9_./-]+\.sh' "$WF" | sort -u)
-          done
+          done < /tmp/ci-definition-files.txt
           if [ "$FAIL" -eq 0 ]; then
             echo "All referenced scripts exist."
           else
@@ -61,11 +98,14 @@ jobs:
 
       - name: Validate workflow YAML syntax
         run: |
-          echo "==> Validating workflow YAML ..."
+          set -euo pipefail
+          echo "==> Validating CI definition YAML ..."
           pip install --quiet yamllint
-          yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable, document-start: disable, comments: disable, brackets: disable, comments-indentation: disable}}" \
-            .github/workflows/*.yml
-          echo "All workflows pass YAML validation."
+          # xargs over the enumerated list rather than a glob, so composite
+          # actions are linted too (#1994).
+          xargs yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable, document-start: disable, comments: disable, brackets: disable, comments-indentation: disable}}" \
+            < /tmp/ci-definition-files.txt
+          echo "All CI definition files pass YAML validation."
 
       - name: Check release-notes renderer parses What's New
         run: |
