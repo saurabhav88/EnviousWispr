@@ -501,8 +501,13 @@ def main() -> int:
         )
 
     cases = load_corpus(args.corpus)
+    corpus_total = len(cases)
     if args.limit:
         cases = cases[: args.limit]
+    # Whether this run is a PROBE is a property of what it covered, not of which flag
+    # was typed: `--limit 400` on a 338-case corpus runs every case and must be judged
+    # as a full run. Ask whether slicing actually removed anything.
+    is_probe = len(cases) < corpus_total
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"model    : {args.model} ({args.provider})", file=sys.stderr)
@@ -589,9 +594,10 @@ def main() -> int:
         # 3-case probe and thought on 119 of 338 real cases. Hard-failing a probe
         # would break the very --limit smoke this file tells operators to run, so
         # the severity follows what the run IS, not what the number is.
-        if args.limit:
+        if is_probe:
             print(
-                f"WARNING: zero reasoning tokens across {len(cases)} probe cases at "
+                f"WARNING: zero reasoning tokens across {len(cases)} probe cases "
+                f"(of {corpus_total} in the corpus) at "
                 f"{thinking[0]}={thinking[1]!r}. Thinking is decided per request, so a "
                 "probe this small cannot distinguish an inert level from cases that "
                 "declined to think. Not a verdict; run the full corpus to find out.",
