@@ -1867,6 +1867,76 @@ def test_a_redirect_is_refused_rather_than_followed():
         raise AssertionError("redirect_request did not refuse")
 
 
+@contextlib.contextmanager
+def _azure_serving(model_field, host="stub-test.openai.azure.com"):
+    """Run judge_identity against a deployment that reports `model_field` as its served model."""
+    class _Resp:
+        def read(self):
+            return json.dumps({"model": model_field,
+                               "choices": [{"message": {"content": "x"},
+                                            "finish_reason": "stop"}]}).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _Opener:
+        def open(self, *a, **k): return _Resp()
+
+    real_key, real_opener = bj._key, bj._no_redirect_opener
+    bj._key = lambda name: (f"https://{host}" if "endpoint" in name else "stub-key")
+    bj._no_redirect_opener = lambda: _Opener()
+    try:
+        yield
+    finally:
+        bj._key, bj._no_redirect_opener = real_key, real_opener
+
+
+def test_the_identity_changes_when_the_deployment_is_repointed():
+    # Cloud review round 6 P1. Azure can upgrade a deployment IN PLACE: hostname, deployment
+    # name and API version all stay identical while the model underneath changes. An identity
+    # built from configuration alone keeps matching receipts graded by the previous model, so a
+    # resumed sweep skips them and combines two models' scores.
+    with _azure_serving("gpt-5.6-luna-2026-07-09"):
+        before = bj.judge_identity("azure/gpt-5-6-luna")
+    with _azure_serving("gpt-5.6-luna-2026-11-01"):
+        after = bj.judge_identity("azure/gpt-5-6-luna")
+    assert before != after, (
+        f"the identity survived a deployment repoint, so old receipts would be reused: {before}")
+
+
+def test_the_identity_is_stable_while_the_deployment_is_not_repointed():
+    # Two-way control. An identity that changed every call would invalidate every stamp on every
+    # sweep and re-grade the whole field forever — the expensive failure, and it looks like
+    # nothing is wrong.
+    with _azure_serving("gpt-5.6-luna-2026-07-09"):
+        a = bj.judge_identity("azure/gpt-5-6-luna")
+        b = bj.judge_identity("azure/gpt-5-6-luna")
+    assert a == b, f"identity is not stable across calls: {a} != {b}"
+
+
+def test_the_served_model_is_never_absent_from_the_identity():
+    # Fail rather than fall back to a version-blind identity: blind reuse across a model change
+    # is worse than refusing to start, and this is the only axis the client cannot see from its
+    # own configuration.
+    for bad in (None, "", "   "):
+        try:
+            with _azure_serving(bad):
+                bj.judge_identity("azure/gpt-5-6-luna")
+        except RuntimeError as e:
+            assert "did not report which model" in str(e), str(e)
+        else:
+            raise AssertionError(f"accepted a served-model field of {bad!r}")
+
+
+def test_the_identity_probe_goes_through_the_no_redirect_opener():
+    # The probe sends the api-key, so it must not be able to follow a redirect off the validated
+    # host any more than the grading calls can. Asserted by construction: with the opener stubbed
+    # the probe succeeds, and `_azure_served_model` has no other transport.
+    src = Path(bj.__file__).read_text()
+    body = src.split("def _azure_served_model(")[1].split("\ndef ")[0]
+    assert "_no_redirect_opener()" in body, "the probe bypasses the no-redirect opener"
+    assert "urllib.request.urlopen" not in body, "the probe uses a raw opener"
+
+
 def test_the_billing_check_runs_before_the_availability_check():
     # Refusing to spend the founder's own money must not depend on whether some CLI
     # happens to be logged in, so the order in main() is load-bearing.
@@ -1883,7 +1953,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 95
+EXPECTED_TESTS = 99
 
 
 def _run() -> int:

@@ -395,6 +395,46 @@ def dispatch_judge(model: str, system: str, user: str) -> str:
     raise RuntimeError(f"no transport for judge {model!r} (JUDGE_ROUTES is out of step)")
 
 
+def _azure_served_model(deployment: str) -> str:
+    """The model AND VERSION this deployment actually serves right now.
+
+    Azure can upgrade or repoint a deployment IN PLACE: the endpoint hostname, the deployment
+    name and the API version all stay identical while the model underneath changes, depending
+    on the deployment's upgrade policy. An identity built from those three would keep matching
+    receipts graded by the previous model, so a resumed sweep would skip them and combine two
+    models' scores — the silent mixing this whole change exists to prevent, arriving by the one
+    route the client cannot see from configuration alone.
+
+    The data plane reports it: the chat-completions response carries `model`, which on this
+    resource reads `gpt-5.6-luna-2026-07-09` (measured 2026-08-11). It changes when the
+    deployment is repointed, which is exactly the signal needed.
+
+    Costs one 16-token request per sweep, and earns it twice: it also proves the deployment
+    ANSWERS before the sweep touches any receipt, which no amount of name checking can do.
+    `system_fingerprint` would be the stronger signal but this resource returns null for it.
+    """
+    endpoint = _validated_azure_endpoint()
+    url = (f"{endpoint}/openai/deployments/{deployment}/chat/completions"
+           f"?api-version={AZURE_API_VERSION}")
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"messages": [{"role": "user", "content": "."}],
+                         "max_completion_tokens": 16}).encode(),
+        headers={"api-key": _key("azure-openai-key"), "Content-Type": "application/json"},
+        method="POST",
+    )
+    with _no_redirect_opener().open(req, timeout=60) as resp:
+        data = json.loads(resp.read())
+    served = data.get("model")
+    if not isinstance(served, str) or not served.strip():
+        # Fail rather than fall back to a version-blind identity: a blind identity silently
+        # reuses receipts across a model change, which is worse than refusing to start.
+        raise RuntimeError(
+            f"azure judge: deployment {deployment!r} did not report which model served the "
+            f"request, so a receipt stamp cannot be bound to a model version")
+    return served.strip()
+
+
 def judge_identity(model: str) -> str:
     """What actually graded, as one string safe to hash into a resume stamp.
 
@@ -409,6 +449,10 @@ def judge_identity(model: str) -> str:
     The API version is folded in for the same reason: this route's accepted parameters and
     behaviour are version-dependent, so a version bump is a different grader.
 
+    And the SERVED MODEL VERSION, because Azure can repoint a deployment in place while all
+    three of those stay the same. That is the only axis a client cannot read from its own
+    configuration, so it is read from the deployment itself. See `_azure_served_model`.
+
     Returns a DIGEST of the endpoint host, never the host itself. The value is written into a
     hashed stamp and printed to a terminal, and neither is a place to put a resource name.
 
@@ -420,7 +464,9 @@ def judge_identity(model: str) -> str:
     if not model.startswith("azure/"):
         return model
     host = (urllib.parse.urlsplit(_validated_azure_endpoint()).hostname or "").lower()
-    digest = hashlib.sha256(f"{host}|{AZURE_API_VERSION}".encode()).hexdigest()[:12]
+    served = _azure_served_model(model[len("azure/"):])
+    digest = hashlib.sha256(
+        f"{host}|{AZURE_API_VERSION}|{served}".encode()).hexdigest()[:12]
     return f"{model}@{digest}"
 
 
