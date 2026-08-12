@@ -94,10 +94,35 @@ sha256() {
 # it would rank the old judge's scores beside newly judged arms). Quarantine satisfies both:
 # the bytes survive for inspection, and nothing that ranks receipts can find them.
 #
-# Uses `$dest`/`$base` from the enclosing loop. One slot per arm: a previous quarantine is
-# already superseded, so it is replaced rather than accumulating copies.
+# ONE slot per arm, and the rule for what may occupy it is the whole point. An earlier version
+# replaced the slot unconditionally, reasoning that a previous quarantine "is already
+# superseded". False, and cloud review caught it: after one failed re-judge the canonical path
+# holds a PARTIAL receipt and the complete one is in the slot, so the next failure displaced the
+# complete receipt with a partial and the only good copy was gone. Repeated outages would grind
+# the quarantine down from complete to worthless, which is precisely the loss it exists to
+# prevent — the third variant of that same loss across four review rounds.
+#
+# The rule: never trade a cacheable receipt for a non-cacheable one. Everything else may be
+# replaced, so the slot cannot grow without bound.
+#
+# | slot holds     | being displaced | action                                  |
+# |----------------|-----------------|-----------------------------------------|
+# | nothing        | anything        | move it in                              |
+# | cacheable      | NOT cacheable   | KEEP the slot, discard the displaced one|
+# | cacheable      | cacheable       | replace (the newer complete one wins)   |
+# | NOT cacheable  | anything        | replace                                 |
+#
+# Uses `$dest`/`$base`/`$had_previous` from the enclosing loop.
 quarantine_previous() {
   [ "$had_previous" = 1 ] || return 0
+  if [ -f "$dest.stale/summary.json" ] \
+     && receipt_cacheable "$dest.stale/summary.json" \
+     && ! receipt_cacheable "$dest/summary.json"; then
+    rm -rf "$dest"
+    echo "  discarded an incomplete receipt for $base; the COMPLETE quarantine at" >&2
+    echo "     $dest.stale is kept (a partial must never displace a complete one)" >&2
+    return 0
+  fi
   rm -rf "$dest.stale"
   mv "$dest" "$dest.stale"
   echo "  previous receipt for $base quarantined at $dest.stale (not ranked, not stamped)" >&2
@@ -244,6 +269,15 @@ for cand in "$CANDDIR"/*.jsonl; do
   errs=$(python3 -c "import json,sys; print(sum(1 for l in open(sys.argv[1]) if l.strip() and json.loads(l).get('error')))" "$cand")
   if [ "$errs" -ge "$total" ]; then
     echo "=== skipping $base: $errs/$total cases errored, nothing to judge ===" >&2
+    # This branch `continue`s, so it never reaches the staged-outcome handling below — and once
+    # the resume branch stopped deleting, a stale receipt could sit at the canonical path while
+    # this arm is reported unmeasurable. `report_ollama_bench.py` would then read that receipt
+    # instead of seeing the missing one it expects, and reject the whole benchmark because the
+    # old skip counts do not match this run's errors. Quarantine here too: the arm has no
+    # gradeable output, so nothing at the ranked path can be current.
+    had_previous=0
+    [ -f "$dest/summary.json" ] && had_previous=1
+    quarantine_previous
     unmeasurable+=("$base")
     continue
   fi
