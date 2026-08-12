@@ -1349,6 +1349,38 @@ def test_an_absent_meta_still_ranks():
     assert "not an object" not in out, out
 
 
+def test_a_malformed_nested_identity_field_is_named_rather_than_crashing():
+    """Cloud review round 12. A hand-edited `"judge_identity": []` inside an otherwise
+    well-formed `meta` makes the grouping tuple unhashable, so `setdefault` aborts the whole
+    report with a TypeError — the same failure the outer `meta` shape check prevents, one level
+    in. Shape-checking a container and then trusting its contents is half a check."""
+    t = report_tree({**healthy_receipt(),
+                     "meta": {"judge": "azure/gpt-5-6-luna", "judge_identity": [],
+                              "judge_model_version": "v1"}})
+    rc, out = run_report(t)
+    assert rc == 2, out
+    assert "Traceback" not in out, out
+    assert "not a string" in out, out
+
+
+def test_a_direct_run_records_the_identity_it_resolved_itself():
+    """Cloud review round 12 P1. A run started directly rather than through the sweep resolves a
+    perfectly good identity in preflight, and reading only the sweep's environment variable threw
+    it away — so two direct receipts from different Azure resources recorded the same empty
+    provenance and the report could not tell them apart.
+
+    Asserts the wiring at the source: the meta field falls back to the resolved identity rather
+    than to None.
+    """
+    src = Path(bj.__file__).read_text()
+    line = next(ln for ln in src.splitlines() if '"judge_identity":' in ln and "meta" not in ln)
+    assert "_resolved_judge_identity" in line, line
+    # And the claude route sets it, or a direct claude run would record nothing while a sweep run
+    # records the model id — the two would then refuse to rank together, a false positive.
+    claude_branch = src.split("def preflight_judge(")[1].split("def ")[0]
+    assert "_resolved_judge_identity = model" in claude_branch, claude_branch
+
+
 def test_report_refuses_an_unknown_verdict():
     # Pre-fix this was ranked #1 and labelled "Recommended", exit 0.
     t = report_tree(healthy_receipt(release_gate={"verdict": "WEIRD_UNKNOWN", "checks": []}))
@@ -2237,7 +2269,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 116
+EXPECTED_TESTS = 118
 
 
 def _run() -> int:

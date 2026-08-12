@@ -141,6 +141,13 @@ AZURE_API_VERSION = "2024-10-21"
 # caller to remember.
 _azure_pinned_model: str | None = None
 
+# The full judge identity THIS process resolved, for a run started directly rather than through
+# `judge_ollama_bench.sh`. The receipt records the sweep's `EW_JUDGE_IDENTITY` when there is one
+# and this otherwise: a direct run resolves a perfectly good identity in preflight, and reading
+# only the environment threw it away, so two direct receipts from different Azure resources
+# recorded the same empty provenance and the report could not tell them apart.
+_resolved_judge_identity: str | None = None
+
 
 class MissingSecretError(RuntimeError):
     pass
@@ -498,11 +505,12 @@ def judge_identity(model: str) -> str:
         return model
     host = (urllib.parse.urlsplit(_validated_azure_endpoint()).hostname or "").lower()
     served = _azure_served_model(model[len("azure/"):])
-    global _azure_pinned_model
+    global _azure_pinned_model, _resolved_judge_identity
     _azure_pinned_model = served
     digest = hashlib.sha256(
         f"{host}|{AZURE_API_VERSION}|{served}".encode()).hexdigest()[:12]
-    return f"{model}@{digest}"
+    _resolved_judge_identity = f"{model}@{digest}"
+    return _resolved_judge_identity
 
 
 def refuse_paid_key_judge(model: str) -> None:
@@ -560,8 +568,10 @@ def preflight_judge(model: str) -> None:
         return
     if judge_transport(model) != "claude":
         return
+    global _resolved_judge_identity
     try:
         call_claude(model, "You output only JSON.", "Reply with exactly: []")
+        _resolved_judge_identity = model
     except Exception as e:
         print(f"INFRA-ERROR: Claude judge CLI unavailable/unauthed ({e}); aborting. "
               f"Run `claude` once to log in, or pass --judge azure/gpt-5-6-luna.",
@@ -1826,7 +1836,7 @@ def main() -> int:
         # same model string — which the id and version alone cannot, even though the resume stamp
         # always could. Empty for a run started outside the sweep, which groups with other such
         # runs rather than pretending to an identity it never resolved.
-        "judge_identity": os.environ.get("EW_JUDGE_IDENTITY") or None,
+        "judge_identity": os.environ.get("EW_JUDGE_IDENTITY") or _resolved_judge_identity,
         "reps": args.reps if args.system == "old" else None,
         "adjudicate_pct": args.adjudicate_pct if args.system == "new" else None,
         "adjudicate_min": args.adjudicate_min if args.system == "new" else None,

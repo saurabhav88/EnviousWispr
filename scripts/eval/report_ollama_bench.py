@@ -425,9 +425,21 @@ def main() -> int:
     for row in rows:
         if not row.get("from_receipt"):
             continue          # unmeasurable or skipped: no receipt, so no judge to compare
-        judges.setdefault(
-            (row.get("judge"), row.get("judge_identity"), row.get("judge_model_version")),
-            []).append(row.get("model"))
+        # Each field is coerced to a hashable str-or-None. A malformed nested value — a
+        # hand-edited `"judge_identity": []` inside an otherwise well-formed `meta` — makes the
+        # tuple unhashable and `setdefault` aborts the whole report with a TypeError, which is
+        # the same failure the outer `meta` shape check was added to prevent, one level in.
+        # Shape-checking a container and then trusting its contents is half a check.
+        key = []
+        for field in ("judge", "judge_identity", "judge_model_version"):
+            value = row.get(field)
+            if value is not None and not isinstance(value, str):
+                problems.append(
+                    f"{row.get('model')} ({row.get('arm')}): receipt `meta.{field}` is "
+                    f"{type(value).__name__}, not a string, so its judge cannot be identified")
+                value = None
+            key.append(value)
+        judges.setdefault(tuple(key), []).append(row.get("model"))
     if len(judges) > 1:
         detail = "; ".join(
             f"{j[1] or j[0]}"
