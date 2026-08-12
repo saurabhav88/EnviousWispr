@@ -50,10 +50,25 @@ classify() {
     website=false
   fi
 
-  if grep -qE '^\.github/workflows/(pr-check|main-post-merge)\.yml$' <<<"$changed"; then
+  # `.github/actions/` is in the build self-force list for the SAME reason as
+  # this script is in the website list above, and it was introduced by #1994:
+  # main-post-merge.yml's shared Xcode setup (toolchain, Tuist, DerivedData
+  # redirect, cache restore, project generation) now lives in a composite
+  # action. Everything under `.github/` is otherwise excluded from the build
+  # decision two branches down, so without this line a change that rewrites the
+  # entire build setup for both macOS jobs classifies as non-code and skips
+  # every validation job — while the run still reports success. Measured, not
+  # reasoned: before this line, `.github/actions/xcode-ci-setup/action.yml`
+  # classified needs_build=false.
+  #
+  # Matched by DIRECTORY rather than by filename because the failure directions
+  # are asymmetric: a needless full build costs CI minutes, whereas a skipped
+  # one ships unvalidated build infrastructure. Any action added under that
+  # directory is by construction used by a workflow here.
+  if grep -qE '^\.github/(workflows/(pr-check|main-post-merge)\.yml$|actions/)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
-    echo "==> CI build workflow changed — full Xcode build required (needs_website=$website)"
+    echo "==> CI build workflow or composite action changed — full Xcode build required (needs_website=$website)"
   elif grep -qvE '^(website/|docs/|\.github/|\.claude/|CLAUDE\.md)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
@@ -248,8 +263,22 @@ self_test() {
   _expect_classify ".github/workflows/pr-check.yml" true "self-force pr-check" true
   _expect_classify "Sources/Foo.swift" true "swift source" false
   _expect_classify $'docs/x.md\nwebsite/y.astro' false "docs+website only" true
-  _expect_classify ".github/actions/foo/action.yml" false "github actions dir excluded" false
-  _expect_classify ".github/dependabot.yml" false "dependabot excluded" false
+  # FLIPPED by #1994, deliberately, and worth reading before flipping it back.
+  # This row asserted `false` because when it was written `.github/actions/`
+  # held nothing that affected the build. main-post-merge.yml now keeps its
+  # shared Xcode setup there as a composite action, so a change to that path
+  # rewrites how both macOS jobs build. The old expectation was correct for the
+  # old world and became a silent hole in the new one: the classifier would
+  # answer "non-code" about the build's own setup and every validation job
+  # would skip while the run reported success.
+  _expect_classify ".github/actions/foo/action.yml" true "composite action self-forces build" false
+  _expect_classify ".github/actions/xcode-ci-setup/action.yml" true "the real composite action self-forces" false
+  # Two-way control: the widening is scoped to `.github/actions/`, so the rest
+  # of `.github/` must still be excluded. Without this pair, a regex that
+  # accidentally matched all of `.github/` would pass the rows above.
+  _expect_classify ".github/dependabot.yml" false "dependabot still excluded" false
+  _expect_classify ".github/ISSUE_TEMPLATE/bug.md" false "issue templates still excluded" false
+  _expect_classify ".github/workflows/release.yml" false "other workflows still excluded" false
   # This file self-forces the website lane: it decides whether that lane runs,
   # so it must not be able to answer "no" about its own change. The row below
   # keeps the original coverage — an ORDINARY scripts/ path still builds

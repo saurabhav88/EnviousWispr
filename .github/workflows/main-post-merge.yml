@@ -5,8 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # Everything this workflow's behaviour depends on, so a PR touching any of
+    # it re-runs the workflow against itself. The composite action and the
+    # revision guard are listed because a change to either silently alters every
+    # job here while leaving the workflow file untouched (#1994).
     paths:
       - '.github/workflows/main-post-merge.yml'
+      - '.github/actions/xcode-ci-setup/action.yml'
+      - 'scripts/ci/verify-checked-out-revision.sh'
   workflow_dispatch:
 
 concurrency:
@@ -20,10 +26,33 @@ env:
   XCODE_SCHEME: EnviousWispr
   XCODE_RELEASE_SCHEME: EnviousWispr-Release
 
+# Job layout (#1994). This ran as ONE job until 2026-08-12 and grew into its
+# 45-minute cap: eleven completed runs measured 34.7 min (min) / 40.4 (median) /
+# 44.0 (max), and five runs were killed at the cap outright, so `main` went
+# unverified. Measured step costs across six complete runs:
+#
+#   release tests  19.5 - 25.8 min   <- the long pole
+#   debug tests     7.0 -  9.5 min   <- was sitting on the critical path
+#   build release   3.9 -  4.8 min
+#   build debug     1.4 -  2.6 min
+#
+# The two test suites were sequential for no sequencing reason. They now run as
+# two parallel jobs with independent budgets, which takes the debug suite off
+# the critical path and gives the release suite its own 45 minutes instead of
+# ~36 after the debug run has eaten into them.
+#
+# `release-validation` remains the sole cache WRITER and still builds BOTH
+# configurations, because pr-check.yml restores this cache (two restore steps,
+# no save) and depends on its directory shape. Splitting the cache across two
+# writers would change that contract; this change deliberately does not.
 jobs:
-  main-post-merge-build:
-    runs-on: macos-26
-    timeout-minutes: 45
+  # Cheap Linux gate so both macOS jobs share ONE classification decision
+  # rather than each computing its own and risking disagreement.
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      needs_build: ${{ steps.changes.outputs.needs_build }}
 
     steps:
       - name: Checkout PR head
@@ -44,23 +73,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          ACTUAL_SHA="$(git rev-parse HEAD)"
-          EXPECTED_SHA="$GITHUB_SHA"
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            EXPECTED_SHA="$PR_HEAD_SHA"
-          fi
-          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
-            echo "::error::Checked out $ACTUAL_SHA, expected $EXPECTED_SHA"
-            exit 1
-          fi
-          echo "==> Running workflow revision $ACTUAL_SHA"
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: latest-stable
+        run: scripts/ci/verify-checked-out-revision.sh
 
       - name: Detect code changes
         id: changes
@@ -89,86 +102,48 @@ jobs:
               ;;
           esac
 
-      - name: Verify environment
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          swift --version
-          xcodebuild -version
-          SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
-          echo "macOS SDK: $SDK_VER"
+  # The long pole, and the cache WRITER. Builds both configurations (the cache
+  # shape pr-check.yml restores) but runs only the release suite.
+  release-validation:
+    needs: classify
+    if: needs.classify.outputs.needs_build == 'true'
+    runs-on: macos-26
+    # Worst observed critical path for this job's steps is ~36 min (44.0 min
+    # whole-run max, less the 8.0 min debug suite that run executed). 45 leaves
+    # ~9 min of headroom against ~1 min before this split.
+    timeout-minutes: 45
 
-          if ! swift --version 2>&1 | grep -q "Swift version 6"; then
-            echo "::error::Swift 6.0+ required"
-            exit 1
-          fi
-
-          if [ "$(printf '%s\n' "26.0" "$SDK_VER" | sort -V | head -n1)" != "26.0" ]; then
-            echo "::error::macOS SDK 26.0+ required for FoundationModels (found: $SDK_VER)"
-            exit 1
-          fi
-
-      - name: Install mise + Tuist
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          curl https://mise.run | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/mise" install tuist@4.195.11
-          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version
-
-      # See pr-check.yml's "Configure DerivedData cache redirect" comment
-      # (issue #1295) — same rationale, mirrored here since this job is the
-      # cache WRITER (main-post-merge.yml must produce the same directory
-      # shape pr-check.yml restores).
-      - name: Configure DerivedData cache redirect
-        if: steps.changes.outputs.needs_build == 'true'
-        run: scripts/ci/configure-tuist-deriveddata-cache.sh "$GITHUB_WORKSPACE/${{ env.DERIVED_DATA_PATH }}"
-
-      - name: Compute Xcode build cache key
-        id: xcode-cache-key
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          TOOLCHAIN_ID="$(
-            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version; } |
-            shasum -a 256 | cut -c1-12
-          )"
-          echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
-
-      # main-post-merge.yml is the cache WRITER: restore freshest compatible
-      # cache, run the full debug+release build+test matrix, then save a new
-      # cache under the rolling commit-keyed primary key (issue #804). The
-      # third path entry is a glob (issue #1295) — see pr-check.yml's restore
-      # step comment for why.
-      - name: Restore Xcode build cache
-        id: xcode-cache
-        if: steps.changes.outputs.needs_build == 'true'
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+    steps:
+      - name: Checkout PR head
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          path: |
-            .derivedData/CI/SourcePackages
-            .derivedData/CI/Build
-            .derivedData/CI/*/SourcePackages
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
-            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
-            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
-      - name: Generate Xcode project
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist generate --no-open
-          git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
+      - name: Checkout push or dispatch ref
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
 
-      - name: Log DerivedData package-resolution location
-        if: steps.changes.outputs.needs_build == 'true'
-        run: find "$DERIVED_DATA_PATH" -maxdepth 3 -type d -name SourcePackages -print 2>/dev/null || true
+      - name: Verify checked-out revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/ci/verify-checked-out-revision.sh
 
+      - name: Xcode CI setup
+        id: setup
+        uses: ./.github/actions/xcode-ci-setup
+        with:
+          derived-data-path: ${{ env.DERIVED_DATA_PATH }}
+
+      # Both configurations are built here because this job writes the cache
+      # pr-check.yml restores for its own debug AND release jobs. Dropping the
+      # debug build would shrink that cache and slow every future PR.
       - name: Build (debug, Xcode)
-        if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
           xcodebuild build \
@@ -182,7 +157,6 @@ jobs:
             VALID_ARCHS=arm64
 
       - name: Build (release, Xcode)
-        if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
           xcodebuild build \
@@ -195,30 +169,6 @@ jobs:
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64
 
-      - name: Run logic tests (debug, Xcode)
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          set -o pipefail
-          xcodebuild test \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -derivedDataPath "$DERIVED_DATA_PATH" \
-            -destination 'platform=macOS,arch=arm64' \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS=arm64 | tee xcode-test-debug.log
-
-          # Require a positive executed-test count (see pr-check.yml rationale):
-          # a presence-grep would green a zero-test run.
-          TESTS_RUN=$(grep -oE "Test run with [0-9]+ test" xcode-test-debug.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
-          if [ "$TESTS_RUN" -lt 1 ]; then
-            echo "::error::Xcode executed 0 debug tests (empty/misconfigured bundle) — failing"
-            exit 1
-          fi
-          echo "==> Xcode executed $TESTS_RUN tests (debug)"
-
       # ENABLE_TESTABILITY=YES is required on the release TEST invocation only:
       # the test targets use `@testable import`, which needs the first-party
       # modules built with `-enable-testing`. Debug enables testability by
@@ -228,7 +178,6 @@ jobs:
       # and fully optimized. (Mirrors the old `swift test -c release` behavior.)
       - name: Run logic tests (release config, Xcode)
         id: release-tests
-        if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
           set -o pipefail
@@ -244,7 +193,8 @@ jobs:
             VALID_ARCHS=arm64 \
             ENABLE_TESTABILITY=YES 2>&1 | tee xcode-test-release.log
 
-          # Require a positive executed-test count (see pr-check.yml rationale).
+          # Require a positive executed-test count (see pr-check.yml rationale):
+          # a presence-grep would green a zero-test run.
           TESTS_RUN=$(grep -oE "Test run with [0-9]+ test" xcode-test-release.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
           if [ "$TESTS_RUN" -lt 1 ]; then
             echo "::error::Xcode executed 0 release tests (empty/misconfigured bundle) — failing"
@@ -292,31 +242,184 @@ jobs:
         if: >-
           github.event_name == 'push' &&
           github.ref == 'refs/heads/main' &&
-          steps.changes.outputs.needs_build == 'true' &&
           success() &&
-          steps.xcode-cache.outputs.cache-hit != 'true'
+          steps.setup.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
+          # MUST stay identical to the restore paths in
+          # .github/actions/xcode-ci-setup/action.yml — a save/restore pair that
+          # disagrees produces a permanently cold cache with no error anywhere.
           path: |
-            .derivedData/CI/SourcePackages
-            .derivedData/CI/Build
-            .derivedData/CI/*/SourcePackages
-          key: ${{ steps.xcode-cache.outputs.cache-primary-key }}
+            ${{ env.DERIVED_DATA_PATH }}/SourcePackages
+            ${{ env.DERIVED_DATA_PATH }}/Build
+            ${{ env.DERIVED_DATA_PATH }}/*/SourcePackages
+          key: ${{ steps.setup.outputs.cache-primary-key }}
 
-      - name: Post result
-        if: always()
+  # Runs in parallel with release-validation. Restore-only: it never writes the
+  # cache, so the writer contract with pr-check.yml has exactly one owner.
+  debug-validation:
+    needs: classify
+    if: needs.classify.outputs.needs_build == 'true'
+    runs-on: macos-26
+    # Worst observed for these steps is ~17 min (setup ~5, debug build 2.6,
+    # debug suite 9.5). 30 is ~1.75x that, sized from the measured spread rather
+    # than a round number.
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout PR head
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Checkout push or dispatch ref
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify checked-out revision
         env:
-          NEEDS_BUILD: ${{ steps.changes.outputs.needs_build }}
-          JOB_STATUS: ${{ job.status }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/ci/verify-checked-out-revision.sh
+
+      - name: Xcode CI setup
+        uses: ./.github/actions/xcode-ci-setup
+        with:
+          derived-data-path: ${{ env.DERIVED_DATA_PATH }}
+
+      - name: Build (debug, Xcode)
         run: |
-          case "$JOB_STATUS:$NEEDS_BUILD" in
-            success:true)
-              echo "Full validation passed"
-              ;;
-            success:false)
-              echo "Change classified as non-code; full Xcode validation intentionally skipped"
-              ;;
-            *)
-              echo "Full validation did not pass: job_status=$JOB_STATUS needs_build=${NEEDS_BUILD:-unknown}"
-              ;;
-          esac
+          set -euo pipefail
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'generic/platform=macOS' \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64
+
+      - name: Run logic tests (debug, Xcode)
+        id: debug-tests
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'platform=macOS,arch=arm64' \
+            -resultBundlePath "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64 2>&1 | tee xcode-test-debug.log
+
+          # Require a positive executed-test count (see pr-check.yml rationale):
+          # a presence-grep would green a zero-test run.
+          TESTS_RUN=$(grep -oE "Test run with [0-9]+ test" xcode-test-debug.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
+          if [ "$TESTS_RUN" -lt 1 ]; then
+            echo "::error::Xcode executed 0 debug tests (empty/misconfigured bundle) — failing"
+            exit 1
+          fi
+          echo "==> Xcode executed $TESTS_RUN tests (debug)"
+
+      # The release job had failure diagnostics and the debug job did not, which
+      # meant a debug-only failure on main left nothing to read. Same treatment
+      # for both suites now that they are peers (#1994).
+      - name: Summarize debug-test failure
+        if: failure() && steps.debug-tests.outcome == 'failure'
+        run: |
+          RESULT_BUNDLE="$GITHUB_WORKSPACE/xcode-test-debug.xcresult"
+          if [ ! -d "$RESULT_BUNDLE" ]; then
+            echo "::warning::Debug-test xcresult was not created"
+            exit 0
+          fi
+
+          echo "::group::xcresult test summary"
+          xcrun xcresulttool get test-results summary \
+            --path "$RESULT_BUNDLE" \
+            --compact || echo "::warning::Test summary unavailable; raw xcresult will be uploaded"
+          echo "::endgroup::"
+
+      - name: Upload debug-test failure diagnostics
+        if: failure() && steps.debug-tests.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: main-debug-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            xcode-test-debug.log
+            xcode-test-debug.xcresult
+          if-no-files-found: warn
+          retention-days: 7
+
+  # One place that says whether main is green. Without this, a reader has to
+  # combine three job results by eye, and a SKIPPED job looks like a failure.
+  post-merge-result:
+    needs: [classify, release-validation, debug-validation]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Post result
+        env:
+          NEEDS_BUILD: ${{ needs.classify.outputs.needs_build }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          RELEASE_RESULT: ${{ needs.release-validation.result }}
+          DEBUG_RESULT: ${{ needs.debug-validation.result }}
+        run: |
+          set -euo pipefail
+          echo "classify=$CLASSIFY_RESULT release=$RELEASE_RESULT debug=$DEBUG_RESULT needs_build=${NEEDS_BUILD:-unknown}"
+
+          if [ "$CLASSIFY_RESULT" != "success" ]; then
+            echo "::error::Change classification did not complete (result=$CLASSIFY_RESULT) — main is UNVERIFIED"
+            exit 1
+          fi
+
+          if [ "$NEEDS_BUILD" != "true" ]; then
+            # Both validation jobs are skipped by their `if:` in this case, which
+            # is the intended outcome, not a failure.
+            echo "Change classified as non-code; full Xcode validation intentionally skipped"
+            exit 0
+          fi
+
+          # needs_build=true, so BOTH suites must have actually run and passed.
+          # Anything else — failure, cancelled (the cap), or skipped — means main
+          # was not verified, and each is reported distinctly so a cap kill is
+          # never mistaken for a test failure.
+          status=0
+          for pair in "release:$RELEASE_RESULT" "debug:$DEBUG_RESULT"; do
+            name="${pair%%:*}"
+            result="${pair#*:}"
+            case "$result" in
+              success)
+                echo "==> $name validation passed"
+                ;;
+              cancelled)
+                echo "::error::$name validation was CANCELLED — either it hit its timeout-minutes cap or a newer commit superseded this run. Check the job duration against its cap before reading this as a test failure (#1994)."
+                status=1
+                ;;
+              skipped)
+                echo "::error::$name validation was SKIPPED while needs_build=true — this is a workflow wiring defect, not a code failure"
+                status=1
+                ;;
+              *)
+                echo "::error::$name validation did not pass (result=$result)"
+                status=1
+                ;;
+            esac
+          done
+
+          if [ "$status" -ne 0 ]; then
+            echo "::error::main is NOT verified green"
+          else
+            echo "Full validation passed"
+          fi
+          exit "$status"
