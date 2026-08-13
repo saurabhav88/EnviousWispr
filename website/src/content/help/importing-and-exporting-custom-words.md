@@ -28,7 +28,9 @@ Importing adds new terms to your list without changing the words you already hav
 
 If an app holds entries but none of them can come across, EnviousWispr tells you how many it found rather than saying it found nothing.
 
-**Nothing is read until you ask for it, and nothing leaves your Mac.** EnviousWispr does not look inside another app's files in the background. It reads them only after you pick that app in the import screen, it reads them on your Mac, and it never sends what it finds anywhere. The other app's own files are only ever read, never changed, and you review every word before anything is added to your list.
+**Nothing is read until you ask for it.** EnviousWispr does not look inside another app's files in the background. It reads them only after you pick that app in the import screen, and it reads them on your Mac. Envious Labs never receives your words. The other app's own files are only ever read, never changed, and you review every word before anything is added to your list.
+
+Once you add them, they are ordinary custom words and behave like any others. If you have chosen a cloud provider for AI Polish, your custom words are sent to that provider along with your text so your spellings survive the rewrite, exactly as described in [Adding custom words](/help/adding-custom-words/). The import itself does not change that either way.
 
 **Review and confirm.** Check the list of terms it found, then add them to your list.
 
