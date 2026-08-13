@@ -750,6 +750,37 @@ DEFAULT_ALLOWED_VARIANTS = [
     "bullet vs numbered list when both preserve intent",
 ]
 
+# Per-behavior additions, for buckets where the transcript genuinely admits more than one
+# correct answer and `expected_output` records only the one the author happened to write.
+#
+# Why this exists: the system prompt already says reference_output is "an ILLUSTRATIVE
+# reference, NOT exact ground truth" and forbids grading by similarity to it — but
+# `allowed_variants` was a single global list of four COSMETIC items, so on a case with two
+# valid repairs the judge had nothing to license the other one and fell back to the
+# reference. Measured 2026-08-12: `reference_overfit` is a defined failure type that had
+# never been emitted once in 6,760 gradings, while grammar sat at 57% with a third of its
+# failures being alternative valid repairs.
+#
+# These entries loosen only WHICH correct answer is accepted. They do not loosen meaning,
+# entity, or content checks — a repair that changes what the speaker said still fails.
+BEHAVIOR_ALLOWED_VARIANTS = {
+    "grammar_fix": [
+        "any grammatically correct repair of the error when the transcript admits more "
+        "than one — e.g. pluralising the noun OR adjusting the verb, adding an article OR "
+        "changing number. Judge whether the error is fixed and the speaker's content "
+        "survives, NOT whether the repair matches reference_output's choice.",
+    ],
+    "topic_shift": [
+        "any device that visibly separates the topics: blank lines, single line breaks, "
+        "or bullets. reference_output uses blank lines as an authoring convention, not a "
+        "product requirement. Do not penalise the choice of separator.",
+    ],
+}
+
+
+def allowed_variants_for(behavior: str) -> list[str]:
+    return DEFAULT_ALLOWED_VARIANTS + BEHAVIOR_ALLOWED_VARIANTS.get(behavior, [])
+
 
 def behavior_key(case: dict) -> str:
     """Canonical behavior name from whatever fields a case carries. Strips the
@@ -975,7 +1006,7 @@ def build_new_payload(norm: dict, cand: dict, prod: dict | None) -> dict:
         "case_type": norm["case_type"],
         "risk_tier": norm["risk_tier"],
         "reference_output": norm["reference_output"],
-        "allowed_variants": DEFAULT_ALLOWED_VARIANTS,
+        "allowed_variants": allowed_variants_for(norm["behavior"]),
     }
 
 
