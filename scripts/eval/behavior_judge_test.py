@@ -250,7 +250,8 @@ def forge_stamp(t, judge=None):
         ["bash", "-c",
          'if command -v shasum >/dev/null 2>&1; then H="shasum -a 256"; else H=sha256sum; fi; '
          f'{{ printf "judge=%s\\n" "{judge}"; '
-         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}"; }} | $H | cut -d" " -f1'],
+         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}" '
+         f'"{t / "scripts" / "eval" / "behavior_judge.py"}"; }} | $H | cut -d" " -f1'],
         capture_output=True, text=True).stdout.strip()
     assert forged, "could not compute a stamp"
     (t / "judged" / "modelA" / ".inputs-sha256").write_text(forged + "\n")
