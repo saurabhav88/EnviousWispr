@@ -475,6 +475,18 @@ def _azure_served_model(deployment: str) -> str:
     return served.strip()
 
 
+def _rubric_identity() -> str:
+    """SHA of this scorer, which IS the rubric: the system prompt, the allowed
+    variants and the severity rules all live here. Over-identifies by design — a
+    comment change mints a new identity and forces a re-grade. That is the correct
+    direction: under-identifying lets two rubrics into one ranking, which is
+    undetectable in the output."""
+    try:
+        return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "unreadable"
+
+
 def judge_identity(model: str) -> str:
     """What actually graded, as one string safe to hash into a resume stamp.
 
@@ -1868,6 +1880,13 @@ def main() -> int:
         # always could. Empty for a run started outside the sweep, which groups with other such
         # runs rather than pretending to an identity it never resolved.
         "judge_identity": os.environ.get("EW_JUDGE_IDENTITY") or _resolved_judge_identity,
+        # WHICH RUBRIC produced this receipt. `judge_identity` answers "who graded
+        # it"; this answers "against what bar". Both change what a score MEANS, so
+        # both have to travel WITH the receipt — the resume stamp cannot serve this,
+        # because an interrupted sweep leaves some arms re-graded and some not, and
+        # `report_ollama_bench.py` compares receipts and never reads that sidecar.
+        # Cloud review P1 on #2055.
+        "rubric_identity": _rubric_identity(),
         "reps": args.reps if args.system == "old" else None,
         "adjudicate_pct": args.adjudicate_pct if args.system == "new" else None,
         "adjudicate_min": args.adjudicate_min if args.system == "new" else None,
