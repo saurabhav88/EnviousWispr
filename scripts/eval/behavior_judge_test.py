@@ -895,6 +895,30 @@ def test_a_receipt_from_the_same_judge_is_still_skipped():
 
 
 
+
+def test_imported_verdicts_do_not_claim_the_local_rubric():
+    """`--verdicts` imports judgments this scorer did not produce, so the receipt
+    must not stamp them with this checkout's rubric digest. Doing so asserts a
+    provenance that never happened, and makes two imports graded under different
+    external rubrics compare equal because they share this checkout.
+
+    The `judge` field beside it has always made this distinction; this is the same
+    rule. Cloud review P1 on #2055, third round of the same class.
+
+    TWO-WAY: a normal run must still record the real digest, or a fix that always
+    returned the sentinel would pass while destroying the guard it feeds.
+    """
+    src = (Path(__file__).parent / "behavior_judge.py").read_text()
+    i = src.index('"rubric_identity": (')
+    expr = src[i:src.index("),", i) + 2]
+    assert "external_verdicts is None" in expr, expr
+    assert '"external_verdicts"' in expr, expr
+    assert "_rubric_identity()" in expr, expr
+
+    # the real digest is a stable 12-hex of this file, not the sentinel
+    a = bj._rubric_identity()
+    assert a != "external_verdicts" and len(a) == 12 and a == bj._rubric_identity(), a
+
 def test_a_mixed_rubric_is_refused_like_a_mixed_judge():
     """Two arms graded under DIFFERENT rubrics must not be ranked together.
 
@@ -2357,7 +2381,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 120
+EXPECTED_TESTS = 121
 
 
 def _run() -> int:

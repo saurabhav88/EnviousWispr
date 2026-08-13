@@ -1886,7 +1886,14 @@ def main() -> int:
         # because an interrupted sweep leaves some arms re-graded and some not, and
         # `report_ollama_bench.py` compares receipts and never reads that sidecar.
         # Cloud review P1 on #2055.
-        "rubric_identity": _rubric_identity(),
+        # Imported verdicts were NOT produced by this scorer, so stamping the local
+        # digest on them would assert a provenance that never happened — and two
+        # imports graded under different external rubrics would then compare equal
+        # because they share this checkout. The judge field one line above already
+        # makes exactly this distinction; this is the same rule, not a new one.
+        # Cloud review P1 on #2055, third round of the same class.
+        "rubric_identity": (_rubric_identity() if external_verdicts is None
+                            else "external_verdicts"),
         "reps": args.reps if args.system == "old" else None,
         "adjudicate_pct": args.adjudicate_pct if args.system == "new" else None,
         "adjudicate_min": args.adjudicate_min if args.system == "new" else None,
