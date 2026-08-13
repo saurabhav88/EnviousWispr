@@ -487,6 +487,23 @@ struct CustomWordsImportReviewFlowTests {
     #expect(later.contains("Replaced 2"))
   }
 
+  @Test("an all-excluded source is told apart from an empty one, with its count")
+  func nothingCompatibleCopyNamesWhatWasRefused() {
+    // "No words were found" is a false statement to a Juno user whose 401
+    // entries were all built-in seeds, so the two outcomes read differently.
+    let empty = CustomWordsImportResultCopy.message(for: .nothingFound)
+    #expect(empty == "No words were found, and nothing was changed.")
+
+    let refused = CustomWordsImportResultCopy.message(for: .nothingCompatible(found: 401))
+    #expect(refused == "Found 401 entries, but none were compatible. Nothing was changed.")
+    #expect(refused != empty)
+
+    // Singular, because "Found 1 entries" reads as a bug to the person seeing it.
+    #expect(
+      CustomWordsImportResultCopy.message(for: .nothingCompatible(found: 1))
+        == "Found 1 entry, but none were compatible. Nothing was changed.")
+  }
+
   @Test("finding no candidates and approving none are different outcomes")
   func nothingFoundAndNothingApprovedAreDistinct() async {
     let compare = CompareSpy()

@@ -140,9 +140,10 @@ struct CustomWordsImportSheet: View {
       Spacer()
       switch model.step {
       case .result:
-        // Routed through requestCancel() (#1700): a `.nothingFound`/`.failed`
-        // result still holds an uncommitted draft, so Done confirms first in
-        // that case; `.completed`/`.nothingApproved` proceed silently, same
+        // Routed through requestCancel() (#1700): a `.nothingFound`,
+        // `.nothingCompatible` or `.failed` result still holds an uncommitted
+        // draft, so Done confirms first in those cases;
+        // `.completed`/`.nothingApproved` proceed silently, same
         // as before. The overlaid, zero-opacity button gives Escape the same
         // route: without it, this screen has no `.cancelAction` button at
         // all, so Escape would dismiss the system sheet directly and reach
@@ -203,6 +204,7 @@ struct CustomWordsImportSheet: View {
     case .working(.committing): return "Saving"
     case .result(.completed): return "Import complete"
     case .result(.nothingFound): return "Nothing to import"
+    case .result(.nothingCompatible): return "Nothing compatible"
     case .result(.nothingApproved): return "Nothing added"
     case .result(.failed): return "Import didn't finish"
     }
@@ -596,7 +598,7 @@ private struct ImportSmartAppPickerScreen: View {
       } else if installed.isEmpty {
         InsetNotice(
           text: "No supported dictation apps found on this Mac. "
-            + "EnviousWispr can read Wispr Flow, FluidVoice, and Superwhisper.")
+            + "EnviousWispr can read \(SmartImportSupportedAppsCopy.sentence(for: registry)).")
       } else {
         ForEach(registry.adapters.filter { installed.contains($0.identifier) }, id: \.identifier) {
           adapter in
@@ -706,7 +708,7 @@ private struct ImportResultScreen: View {
   private var icon: String {
     switch result {
     case .completed: return "checkmark.circle.fill"
-    case .nothingFound, .nothingApproved: return "info.circle"
+    case .nothingFound, .nothingCompatible, .nothingApproved: return "info.circle"
     case .failed: return "exclamationmark.triangle"
     }
   }
@@ -714,7 +716,7 @@ private struct ImportResultScreen: View {
   private var tint: Color {
     switch result {
     case .completed: return .stSuccess
-    case .nothingFound, .nothingApproved: return .stAccent
+    case .nothingFound, .nothingCompatible, .nothingApproved: return .stAccent
     case .failed: return .stWarning
     }
   }
@@ -750,3 +752,27 @@ private struct ImportResultScreen: View {
     }
   }
 #endif
+
+/// The picker's "EnviousWispr can read …" list, built from the registry.
+///
+/// The registry owns the NAMES and this owns the SENTENCE. Keeping the
+/// formatter in AppKit rather than pushing user-facing English down into
+/// PostProcessing is deliberate: moving presentation copy a layer down purely
+/// so a PostProcessing test could reach it is the "convenience is not
+/// justification" case, and the AppKit test target can reach it here anyway.
+///
+/// Generated rather than hand-written because a page that wrongly LEAVES AN
+/// APP OUT contains no mention of it to find — the omission is invisible to any
+/// sweep for the new app's name (#1944). A hand-maintained list goes stale on
+/// the next adapter; this one cannot.
+package enum SmartImportSupportedAppsCopy {
+  package static func sentence(for registry: SmartImportRegistry) -> String {
+    let names = registry.displayNames
+    switch names.count {
+    case 0: return "no apps yet"
+    case 1: return names[0]
+    case 2: return "\(names[0]) and \(names[1])"
+    default: return names.dropLast().joined(separator: ", ") + ", and \(names[names.count - 1])"
+    }
+  }
+}

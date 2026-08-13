@@ -105,6 +105,28 @@ struct CustomWordsImportFlowModelTests {
     #expect(model.step == .result(.nothingFound))
   }
 
+  @Test("an all-excluded import is a discardable draft, like nothing-found")
+  func nothingCompatibleIsDiscardable() {
+    // `.nothingCompatible` is a terminal that changed nothing, so a pasted
+    // draft behind it is still worth confirming before discard — the same
+    // reasoning as `.nothingFound` and `.failed` (#1700).
+    let model = Self.makeModel()
+    model.select(.paste)
+    model.pasteDraft = "some words"
+    model.showResult(.nothingCompatible(found: 401))
+    #expect(model.hasDiscardableDraft)
+  }
+
+  @Test("nothing-compatible is a distinct terminal from nothing-found")
+  func nothingCompatibleIsItsOwnTerminal() {
+    let model = Self.makeModel()
+    model.select(.smartImport)
+    model.beginWork(.loadingCandidates)
+    model.showResult(.nothingCompatible(found: 12))
+    #expect(model.step == .result(.nothingCompatible(found: 12)))
+    #expect(model.step != .result(.nothingFound))
+  }
+
   @Test("reset clears the selected method and returns to the picker")
   func resetClearsSelectedMethodAndReturnsToPicker() {
     let model = Self.makeModel()

@@ -6,6 +6,18 @@ import SQLite3
 package enum SmartImportError: LocalizedError, Sendable, Equatable {
   case appNotFound(String)
   case unreadable(String)
+  /// Spokenly only: the live preferences domain holds nothing and the only
+  /// store present is the pre-migration App Store container copy. Named apart
+  /// from `.unreadable` because the user has a button that fixes this, and
+  /// "try quitting the app" does not (#1773).
+  case legacyMigrationRequired(String)
+  /// More source rows than the shared candidate ceiling, counted BEFORE the
+  /// adapter's own exclusions.
+  ///
+  /// Distinct from `ImportFileError.tooManyWords`, whose copy says "That file"
+  /// and "split it into smaller files" — both false for a competitor's
+  /// database, and which would call deleted rows and snippets "words".
+  case tooManySourceEntries(appName: String, limit: Int)
 
   package var errorDescription: String? {
     switch self {
@@ -14,6 +26,14 @@ package enum SmartImportError: LocalizedError, Sendable, Equatable {
     case .unreadable(let app):
       return
         "Couldn't read your \(app) words. If \(app) is open, try quitting it and importing again."
+    case .legacyMigrationRequired(let app):
+      return
+        "\(app)'s older App Store data can't be imported directly yet. In \(app), choose "
+        + "Migrate Settings from App Store Version, then try again."
+    case .tooManySourceEntries(let app, let limit):
+      return
+        "\(app) has more than \(limit) dictionary entries, including entries it may hide or "
+        + "disable. EnviousWispr stopped without importing anything."
     }
   }
 }
@@ -36,7 +56,7 @@ package protocol SmartImportAdapter: Sendable {
   var candidatePaths: [URL] { get }
   /// Read the canonical words, alongside any misspelling the source app
   /// itself records as correcting to that word.
-  func loadWords(at url: URL) throws -> [SmartImportWord]
+  func loadWords(at url: URL) throws -> SmartImportReadResult
 }
 
 /// One word an adapter found, with the human-typed misspelling it corrects
@@ -46,9 +66,167 @@ package protocol SmartImportAdapter: Sendable {
 package struct SmartImportWord: Sendable, Equatable {
   package let canonical: String
   package let aliases: [String]
-  package init(canonical: String, aliases: [String] = []) {
+  /// Whether the source app records this word as case-sensitive.
+  ///
+  /// `.unspecified` for every source with no such concept, so nothing is
+  /// claimed on their behalf. Only TypeWhisper supplies it today, from its own
+  /// per-entry "Case sensitive" checkbox.
+  package let caseSensitive: CustomWordsImportField<Bool>
+
+  package init(
+    canonical: String,
+    aliases: [String] = [],
+    caseSensitive: CustomWordsImportField<Bool> = .unspecified
+  ) {
     self.canonical = canonical
     self.aliases = aliases
+    self.caseSensitive = caseSensitive
+  }
+}
+
+/// What an adapter read, and how much of the source it deliberately refused.
+///
+/// Five of the seven adapters exclude source rows on purpose — Superwhisper
+/// (no usable destination), Wispr Flow (soft-deletes, snippets), TypeWhisper
+/// (disabled rows, non-allowlisted entry types), Spokenly (regex rules, empty
+/// replacements) and Juno (vocabulary the user did not author). Only the
+/// adapter can know how many, and without that count an import that refused
+/// every row is indistinguishable from a source that was empty — which is a
+/// false statement to a Juno user whose 401 entries were all built-in.
+package struct SmartImportReadResult: Sendable, Equatable {
+  package let words: [SmartImportWord]
+  /// Source rows deliberately refused, before shared normalization. A COUNT
+  /// only — never the content, which would put a competitor's excluded text
+  /// into our UI.
+  package let excludedCount: Int
+
+  package init(words: [SmartImportWord], excludedCount: Int = 0) {
+    self.words = words
+    self.excludedCount = excludedCount
+  }
+}
+
+/// The one owner of a SQLite read: open, prepare, step, verify completion,
+/// finalize, close.
+///
+/// ACQUISITION — how the database being opened came to be safe to open — is
+/// deliberately NOT here. Wispr Flow validates a 151 MB live database in place
+/// and refuses when its sidecars say another process holds uncommitted content;
+/// TypeWhisper takes a bounded stable copy of its 296 KB store because it never
+/// checkpoints its WAL. Those are two measured answers to one question, and
+/// folding them into a single "policy" would be a false single authority. What
+/// they genuinely share is the read sequence below.
+package enum SmartImportSQLiteReader {
+  /// Step every row through `mapRow`, then hand control back to the caller
+  /// while the connection is still open.
+  ///
+  /// `mapRow` returning nil is an ordinary EXCLUSION and is counted; a THROW is
+  /// a malformed source and refuses the whole read. Those are different things.
+  ///
+  /// `afterRowsRead` runs after `SQLITE_DONE` and BEFORE this scope's finalize
+  /// and close defers, which is exactly where Wispr Flow's post-read sidecar
+  /// recheck sat when that adapter owned the whole sequence. Passing the hook
+  /// through the reader rather than letting the caller run it after `read`
+  /// returns is the entire reason this parameter exists: returning first would
+  /// move the check past cleanup and widen the window it exists to close.
+  static func read(
+    uri: String,
+    sql: String,
+    appName: String,
+    mapRow: (OpaquePointer?) throws -> SmartImportWord?,
+    afterRowsRead: () throws -> Void = {}
+  ) throws -> SmartImportReadResult {
+    var db: OpaquePointer?
+    guard
+      sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
+      let db
+    else {
+      sqlite3_close(db)
+      throw SmartImportError.unreadable(appName)
+    }
+    defer { sqlite3_close(db) }
+
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+      sqlite3_finalize(statement)
+      throw SmartImportError.unreadable(appName)
+    }
+    defer { sqlite3_finalize(statement) }
+
+    var words: [SmartImportWord] = []
+    var excludedCount = 0
+    var result = sqlite3_step(statement)
+    while result == SQLITE_ROW {
+      if let word = try mapRow(statement) { words.append(word) } else { excludedCount += 1 }
+      result = sqlite3_step(statement)
+    }
+    // Only SQLITE_DONE means "that was all of them" (code review, #1686). The
+    // first version treated every non-ROW result as the end, so SQLITE_BUSY on
+    // a database the other app was writing — or IOERR, or CORRUPT — returned
+    // whatever prefix had been read, possibly nothing, and reported success. A
+    // partial read presented as a complete one is the same false-pass shape as
+    // a test that never runs.
+    guard result == SQLITE_DONE else { throw SmartImportError.unreadable(appName) }
+    try afterRowsRead()
+    return SmartImportReadResult(words: words, excludedCount: excludedCount)
+  }
+
+  /// The canonical "a corrected spelling is the word, the misspelling that
+  /// prompted it is the alias" mapping (#1706), shared because Wispr Flow and
+  /// TypeWhisper encode exactly that under different column names.
+  static func word(
+    canonical: String?,
+    alias: String,
+    caseSensitive: CustomWordsImportField<Bool> = .unspecified
+  ) -> SmartImportWord {
+    // `.whitespacesAndNewlines` also strips tabs and newlines, unlike the
+    // ASCII-space-only SQL `TRIM()` this replaced.
+    let trimmed = canonical?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let trimmed, !trimmed.isEmpty {
+      return SmartImportWord(canonical: trimmed, aliases: [alias], caseSensitive: caseSensitive)
+    }
+    return SmartImportWord(canonical: alias, caseSensitive: caseSensitive)
+  }
+
+  // MARK: - Strict column reads
+  //
+  // SQLite columns are dynamically typed, so a schema that drifts under us can
+  // hand back an INTEGER where text belongs, or NULL where a value must exist.
+  // Converting those silently turns a malformed source into plausible-looking
+  // words. Malformed STRUCTURE refuses the whole read; valid-but-incompatible
+  // CONTENT is a nil from the mapper and gets counted.
+
+  static func requiredText(
+    _ statement: OpaquePointer?, _ column: Int32, _ appName: String
+  ) throws -> String {
+    guard sqlite3_column_type(statement, column) == SQLITE_TEXT,
+      let value = sqlite3_column_text(statement, column)
+    else { throw SmartImportError.unreadable(appName) }
+    return String(cString: value)
+  }
+
+  static func optionalText(
+    _ statement: OpaquePointer?, _ column: Int32, _ appName: String
+  ) throws -> String? {
+    let type = sqlite3_column_type(statement, column)
+    guard type != SQLITE_NULL else { return nil }
+    guard type == SQLITE_TEXT, let value = sqlite3_column_text(statement, column) else {
+      throw SmartImportError.unreadable(appName)
+    }
+    return String(cString: value)
+  }
+
+  static func requiredBoolean(
+    _ statement: OpaquePointer?, _ column: Int32, _ appName: String
+  ) throws -> Bool {
+    guard sqlite3_column_type(statement, column) == SQLITE_INTEGER else {
+      throw SmartImportError.unreadable(appName)
+    }
+    switch sqlite3_column_int(statement, column) {
+    case 0: return false
+    case 1: return true
+    default: throw SmartImportError.unreadable(appName)
+    }
   }
 }
 
@@ -115,15 +293,17 @@ package struct FluidVoiceAdapter: SmartImportAdapter {
 
   package init() {}
 
-  package func loadWords(at url: URL) throws -> [SmartImportWord] {
+  package func loadWords(at url: URL) throws -> SmartImportReadResult {
     let data = try boundedData(at: url, appName: displayName)
     guard let vocabulary = try? JSONDecoder().decode(Vocabulary.self, from: data) else {
       throw SmartImportError.unreadable(displayName)
     }
     // `terms` absent entirely is a legitimate fresh install, not a failure.
-    return (vocabulary.terms ?? []).map {
-      SmartImportWord(canonical: $0.text, aliases: $0.aliases ?? [])
-    }
+    // FluidVoice excludes nothing: every term it stores is one the user added.
+    return SmartImportReadResult(
+      words: (vocabulary.terms ?? []).map {
+        SmartImportWord(canonical: $0.text, aliases: $0.aliases ?? [])
+      })
   }
 }
 
@@ -160,7 +340,7 @@ package struct SuperwhisperAdapter: SmartImportAdapter {
 
   package init() {}
 
-  package func loadWords(at url: URL) throws -> [SmartImportWord] {
+  package func loadWords(at url: URL) throws -> SmartImportReadResult {
     let data = try boundedData(at: url, appName: displayName)
     guard let settings = try? JSONDecoder().decode(Settings.self, from: data) else {
       throw SmartImportError.unreadable(displayName)
@@ -169,14 +349,24 @@ package struct SuperwhisperAdapter: SmartImportAdapter {
     // the user actually wants, which is the word worth bringing across; its
     // `original` side, when present, is the misspelling that prompted it.
     let plain = (settings.vocabulary ?? []).map { SmartImportWord(canonical: $0) }
-    let corrected = (settings.replacements ?? []).compactMap { replacement -> SmartImportWord? in
+    var corrected: [SmartImportWord] = []
+    var excludedCount = 0
+    for replacement in settings.replacements ?? [] {
+      // A replacement with no destination has no word in it. It was always
+      // dropped here; #1773 only started COUNTING it, so a Superwhisper file
+      // holding nothing but blank replacements stops reporting as "no words
+      // found" and says what it actually did.
       guard let with = replacement.with?.trimmingCharacters(in: .whitespacesAndNewlines),
         !with.isEmpty
-      else { return nil }
+      else {
+        excludedCount += 1
+        continue
+      }
       let alias = replacement.original?.trimmingCharacters(in: .whitespacesAndNewlines)
-      return SmartImportWord(canonical: with, aliases: (alias?.isEmpty == false) ? [alias!] : [])
+      corrected.append(
+        SmartImportWord(canonical: with, aliases: (alias?.isEmpty == false) ? [alias!] : []))
     }
-    return plain + corrected
+    return SmartImportReadResult(words: plain + corrected, excludedCount: excludedCount)
   }
 }
 
@@ -196,7 +386,7 @@ package struct WisprFlowAdapter: SmartImportAdapter {
 
   package init() {}
 
-  package func loadWords(at url: URL) throws -> [SmartImportWord] {
+  package func loadWords(at url: URL) throws -> SmartImportReadResult {
     // isDeleted: a soft-delete flag. Importing unfiltered would resurrect
     // words the user deliberately removed — the single worst thing this
     // adapter could do.
@@ -210,10 +400,16 @@ package struct WisprFlowAdapter: SmartImportAdapter {
     // to mean anything. `id` (VARCHAR(36) PRIMARY KEY) is ordered, not
     // `rowid` — this table's PK does not alias `rowid`, and an unaliased
     // `rowid` is not guaranteed persistent across a `VACUUM`.
+    //
+    // Both filters moved OUT of the WHERE clause in #1773: an adapter cannot
+    // count rows SQL never returns, and without that count an import that
+    // refused everything looks identical to an empty source. The consequence
+    // is deliberate — `LIMIT` now bounds TOTAL rows rather than surviving
+    // ones, so a dictionary above the ceiling is refused rather than silently
+    // importing whichever survivors happened to fit.
     let sql = """
-      SELECT phrase, replacement
+      SELECT phrase, replacement, isDeleted, isSnippet
       FROM Dictionary
-      WHERE isDeleted = 0 AND isSnippet = 0
       ORDER BY id COLLATE BINARY ASC
       LIMIT \(CustomWordsImportLimits.maximumCandidates + 1)
       """
@@ -285,68 +481,409 @@ package struct WisprFlowAdapter: SmartImportAdapter {
     // than report. Immutable cannot create one, so a sidecar found afterwards
     // is always the other app's doing, never ours.
 
-    var db: OpaquePointer?
-    guard
-      sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
-      let db
-    else {
-      sqlite3_close(db)
-      throw SmartImportError.unreadable(displayName)
-    }
-    defer { sqlite3_close(db) }
+    return try SmartImportSQLiteReader.read(
+      uri: uri, sql: sql, appName: displayName,
+      mapRow: { statement in
+        let phrase = try SmartImportSQLiteReader.requiredText(statement, 0, displayName)
+        let replacement = try SmartImportSQLiteReader.optionalText(statement, 1, displayName)
+        let isDeleted = try SmartImportSQLiteReader.requiredBoolean(statement, 2, displayName)
+        let isSnippet = try SmartImportSQLiteReader.requiredBoolean(statement, 3, displayName)
+        // Both exclusions are this adapter's whole point, and both are now
+        // COUNTED rather than hidden by SQL. Returning nil is an exclusion;
+        // a throw above is a malformed database.
+        guard !isDeleted, !isSnippet else { return nil }
+        return SmartImportSQLiteReader.word(canonical: replacement, alias: phrase)
+      },
+      // Re-check the sidecar state the connection mode was chosen from. If
+      // Wispr Flow began or finished writing while this read was in flight,
+      // the mode no longer matches the database and these words may be a stale
+      // view, so refuse rather than hand back something that looks complete.
+      //
+      // This runs INSIDE the reader — after SQLITE_DONE, before its finalize
+      // and close defers — which is exactly where it sat when this adapter
+      // owned the sequence itself. Hoisting it to after `read` returned would
+      // move it past cleanup and widen the window it exists to close.
+      afterRowsRead: {
+        guard !sidecarsExist() else { throw SmartImportError.unreadable(displayName) }
+      })
+  }
+}
 
-    var statement: OpaquePointer?
-    guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-      sqlite3_finalize(statement)
-      throw SmartImportError.unreadable(displayName)
-    }
-    defer { sqlite3_finalize(statement) }
+// MARK: - Vox
 
-    let words = try readWords(from: statement)
+/// Single JSON settings file. `dictionary` is a flat list of terms with no
+/// alias concept — structurally FluidVoice minus its alias array.
+package struct VoxAdapter: SmartImportAdapter {
+  package let identifier = "vox"
+  package let displayName = "Vox"
 
-    // Re-check the sidecar state the mode was chosen from. If Wispr Flow began
-    // or finished writing while this read was in flight, the connection mode no
-    // longer matches the database and these words may be a stale view. Refuse
-    // rather than hand back something that looks complete — the error already
-    // tells the user to quit the other app and try again.
-    guard !sidecarsExist() else {
-      throw SmartImportError.unreadable(displayName)
-    }
-    return words
+  private struct Settings: Decodable {
+    let dictionary: [String]?
   }
 
-  private func readWords(from statement: OpaquePointer?) throws -> [SmartImportWord] {
+  package var candidatePaths: [URL] {
+    [
+      FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/com.vox.app/vox-settings.json")
+    ]
+  }
 
-    var words: [SmartImportWord] = []
-    var result = sqlite3_step(statement)
-    while result == SQLITE_ROW {
-      guard let phraseText = sqlite3_column_text(statement, 0) else {
-        result = sqlite3_step(statement)
-        continue
-      }
-      let phrase = String(cString: phraseText)
-      let replacement = sqlite3_column_text(statement, 1).map { String(cString: $0) }
-      // `.whitespacesAndNewlines` also strips tabs/newlines, unlike the
-      // ASCII-space-only `TRIM()` this replaced — matching the trim already
-      // used everywhere else in this file.
-      let trimmedReplacement = replacement?.trimmingCharacters(in: .whitespacesAndNewlines)
-      if let trimmedReplacement, !trimmedReplacement.isEmpty {
-        words.append(SmartImportWord(canonical: trimmedReplacement, aliases: [phrase]))
-      } else {
-        words.append(SmartImportWord(canonical: phrase))
-      }
-      result = sqlite3_step(statement)
-    }
-    // Only SQLITE_DONE means "that was all of them" (code review). The first
-    // version treated every non-ROW result as the end, so SQLITE_BUSY on a
-    // database Wispr Flow was writing — or IOERR, or CORRUPT — returned
-    // whatever prefix had been read so far, possibly nothing at all, and the
-    // import reported success. A partial read presented as a complete one is
-    // the same false-pass shape as a test that never runs.
-    guard result == SQLITE_DONE else {
+  package init() {}
+
+  package func loadWords(at url: URL) throws -> SmartImportReadResult {
+    let data = try boundedData(at: url, appName: displayName)
+    guard let settings = try? JSONDecoder().decode(Settings.self, from: data) else {
       throw SmartImportError.unreadable(displayName)
     }
-    return words
+    // `dictionary` absent entirely is a legitimate fresh install, not a
+    // failure — the treatment FluidVoice's `terms` already gets.
+    //
+    // Every other key in this file is ignored, and `context` deliberately so:
+    // it is a free-text paragraph the user writes about themselves for Vox's
+    // polish step, not vocabulary, and importing it would drop a whole
+    // sentence into the custom-words list.
+    return SmartImportReadResult(
+      words: (settings.dictionary ?? []).map { SmartImportWord(canonical: $0) })
+  }
+}
+
+// MARK: - TypeWhisper
+
+/// Core Data store, read through a private, stability-checked copy.
+///
+/// Wispr Flow's policy — refuse when a sidecar exists, else open `immutable=1`
+/// — does NOT transfer here, and the difference is measured rather than
+/// assumed. TypeWhisper never checkpoints its WAL: quit the app and
+/// `dictionary.store-wal` remains, 193 KB on the machine this was written
+/// against, holding rows the main file does not have. So refusing on a sidecar
+/// would refuse forever after its first run, and `immutable=1` — which skips
+/// WAL processing — returned 36 rows against a true 38, silently, opened in
+/// place with both sidecars present. Wispr Flow leaves no sidecars once quit,
+/// which is why its own policy is still right for it.
+///
+/// Copying is cheap here and was not there: 296 KB against 151 MB. That number
+/// is the whole reason the same reasoning reaches the opposite answer, so it is
+/// stated rather than the conclusion alone.
+///
+/// The copy is also what makes this read-only in the sense a user would
+/// recognise. Opening the SOURCE read-only returns the right rows too, but it
+/// MODIFIES their `-shm` (verified by hash), and writing inside another app's
+/// data directory is what #1686 removed.
+package struct TypeWhisperAdapter: SmartImportAdapter {
+  package let identifier = "typewhisper"
+  package let displayName = "TypeWhisper"
+
+  /// Bounded read of one store part, injected so a test can mutate the WAL
+  /// between the two verification passes. Returns nil when the part is absent.
+  package typealias PartReader = @Sendable (URL) throws -> Data?
+
+  /// `-shm` is deliberately absent: it is a regenerable shared-memory index,
+  /// not durable vocabulary. Measured — copying main+`-wal` alone still
+  /// returns every row, with SQLite rebuilding the index beside the copy.
+  private static let storeSuffixes = ["", "-wal"]
+
+  /// Two passes must agree before a snapshot is used, and at most this many
+  /// whole acquisitions are attempted.
+  private static let acquisitionAttempts = 3
+
+  private let readPart: PartReader
+
+  package var candidatePaths: [URL] {
+    [
+      FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/TypeWhisper/dictionary.store")
+    ]
+  }
+
+  package init(readPart: @escaping PartReader = TypeWhisperAdapter.readPartFromDisk) {
+    self.readPart = readPart
+  }
+
+  /// Bounded by the shared vocabulary ceiling, applied to the bytes ACTUALLY
+  /// READ rather than to a pre-read file size — a size checked before the read
+  /// does not bound a file that grows during it.
+  package static func readPartFromDisk(_ url: URL) throws -> Data? {
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    guard let handle = try? FileHandle(forReadingFrom: url) else {
+      throw SmartImportError.unreadable("TypeWhisper")
+    }
+    defer { try? handle.close() }
+    let ceiling = TypeWhisperAdapter.maximumVocabularyBytes + 1
+    var data = Data()
+    while data.count < ceiling {
+      let chunk: Data?
+      do { chunk = try handle.read(upToCount: ceiling - data.count) } catch {
+        throw SmartImportError.unreadable("TypeWhisper")
+      }
+      guard let chunk, !chunk.isEmpty else { break }
+      data.append(chunk)
+    }
+    return data
+  }
+
+  package func loadWords(at url: URL) throws -> SmartImportReadResult {
+    let snapshot = try acquireStableSnapshot(at: url)
+
+    let fm = FileManager.default
+    let scratch = fm.temporaryDirectory
+      .appendingPathComponent("ew-typewhisper-\(UUID().uuidString)", isDirectory: true)
+    guard (try? fm.createDirectory(at: scratch, withIntermediateDirectories: true)) != nil else {
+      throw SmartImportError.unreadable(displayName)
+    }
+    // Removed on every exit, including a throw from the read below.
+    defer { try? fm.removeItem(at: scratch) }
+
+    let copy = scratch.appendingPathComponent(url.lastPathComponent)
+    for (suffix, bytes) in snapshot {
+      guard (try? bytes.write(to: URL(fileURLWithPath: copy.path + suffix))) != nil else {
+        throw SmartImportError.unreadable(displayName)
+      }
+    }
+
+    // No filtering WHERE clause: the mapper must SEE disabled and
+    // non-allowlisted rows in order to count them.
+    //
+    // ZENTRYTYPE is an ALLOWLIST. Both members are observed on real rows. A
+    // future third type is refused rather than guessed — TypeWhisper already
+    // ships a separate snippets store, and text expansions are the one thing
+    // Wispr Flow's adapter exists to exclude.
+    //
+    // ZSOURCERAWVALUE is deliberately not read: it is provenance, not
+    // structure, so the unobserved "auto-learned" value flows down the correct
+    // path instead of hitting a branch nobody wrote.
+    let sql = """
+      SELECT ZORIGINAL, ZREPLACEMENT, ZCASESENSITIVE, ZISENABLED, ZENTRYTYPE
+      FROM ZDICTIONARYENTRY
+      ORDER BY Z_PK ASC
+      LIMIT \(CustomWordsImportLimits.maximumCandidates + 1)
+      """
+
+    return try SmartImportSQLiteReader.read(
+      uri: "file:\(copy.path)?mode=ro", sql: sql, appName: displayName
+    ) { statement in
+      let original = try SmartImportSQLiteReader.requiredText(statement, 0, displayName)
+      let replacement = try SmartImportSQLiteReader.optionalText(statement, 1, displayName)
+      let caseSensitive = try SmartImportSQLiteReader.requiredBoolean(statement, 2, displayName)
+      let isEnabled = try SmartImportSQLiteReader.requiredBoolean(statement, 3, displayName)
+      let entryType = try SmartImportSQLiteReader.requiredText(statement, 4, displayName)
+      guard isEnabled, entryType == "term" || entryType == "correction" else { return nil }
+      // A `term` row carries the word in ZORIGINAL with ZREPLACEMENT empty; a
+      // `correction` row carries the wrong spelling in ZORIGINAL and the right
+      // one in ZREPLACEMENT. Reading the row STRUCTURALLY covers both without a
+      // per-type branch, which is what WisprFlowAdapter already does under its
+      // own column names.
+      return SmartImportSQLiteReader.word(
+        canonical: replacement, alias: original, caseSensitive: .supplied(caseSensitive))
+    }
+  }
+
+  /// Read every store part twice and accept only a byte-identical pair.
+  ///
+  /// Copying the parts one after another is NOT enough: TypeWhisper can
+  /// checkpoint or replace the WAL between two sequential reads, producing a
+  /// main file and a WAL from different moments — a snapshot that never
+  /// existed. Two agreeing passes prove the accepted bytes coexisted during
+  /// the overlap between them.
+  private func acquireStableSnapshot(at url: URL) throws -> [(String, Data)] {
+    for _ in 0..<Self.acquisitionAttempts {
+      let first = try readAllParts(at: url)
+      let second = try readAllParts(at: url)
+      if first.map(\.0) == second.map(\.0),
+        zip(first, second).allSatisfy({ $0.1 == $1.1 })
+      {
+        return first
+      }
+    }
+    // The other app is actively writing. Refusing is the honest half, and the
+    // `.unreadable` copy already tells the user to quit it and try again.
+    throw SmartImportError.unreadable(displayName)
+  }
+
+  private func readAllParts(at url: URL) throws -> [(String, Data)] {
+    var parts: [(String, Data)] = []
+    var total = 0
+    for suffix in Self.storeSuffixes {
+      guard let bytes = try readPart(URL(fileURLWithPath: url.path + suffix)) else { continue }
+      total += bytes.count
+      guard total <= Self.maximumVocabularyBytes else {
+        throw SmartImportError.unreadable(displayName)
+      }
+      parts.append((suffix, bytes))
+    }
+    guard !parts.isEmpty else { throw SmartImportError.unreadable(displayName) }
+    return parts
+  }
+}
+
+// MARK: - Spokenly
+
+/// Preferences-backed, read from the LIVE domain rather than the plist file.
+///
+/// Spokenly writes nothing to disk until it terminates — creating a
+/// replacement modified no file anywhere in the home directory — so parsing
+/// `~/Library/Preferences/app.spokenly.plist` returns whatever was last
+/// flushed and quietly omits anything added since. Reading the domain goes
+/// where the OS goes and needs no quit.
+///
+/// Verified to work under HARDENED RUNTIME, which matters because the dev
+/// build is not hardened and the release build is, so a runtime test on the
+/// dev build could never have established it: one binary, run unsigned and
+/// then re-signed with `--options runtime`, returned the identical value.
+package struct SpokenlyAdapter: SmartImportAdapter {
+  package let identifier = "spokenly"
+  package let displayName = "Spokenly"
+
+  /// The shipping build's key. Bare `wordReplacements` is the pre-migration
+  /// App Store copy, which lives in the sandboxed container.
+  private static let liveKey = "wordReplacements.v2"
+  private static let domain = "app.spokenly"
+
+  /// Injected so the domain read can be driven from a test. Ordinary
+  /// dependency injection of a byte source — nothing here is time-dependent,
+  /// so this is NOT one of the timing seams.
+  private let readDomain: @Sendable (String) -> Data?
+
+  package init(
+    readDomain: @escaping @Sendable (String) -> Data? = { key in
+      UserDefaults(suiteName: SpokenlyAdapter.domain)?.data(forKey: key)
+    }
+  ) {
+    self.readDomain = readDomain
+  }
+
+  /// Detection probes BOTH stores, current first, so the card appears for
+  /// either install. Which one was found decides what `loadWords` does when
+  /// the live domain is empty.
+  package var candidatePaths: [URL] {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    return [
+      home.appendingPathComponent("Library/Preferences/app.spokenly.plist"),
+      home.appendingPathComponent(
+        "Library/Containers/app.spokenly/Data/Library/Preferences/app.spokenly.plist"),
+    ]
+  }
+
+  private struct Rule: Decodable {
+    let original: String?
+    let replacement: String?
+    let isRegex: Bool?
+  }
+  private struct Item: Decodable { let value: Rule }
+  private struct Envelope: Decodable { let items: [Item]? }
+  private struct Document: Decodable { let envelope: Envelope? }
+
+  package func loadWords(at url: URL) throws -> SmartImportReadResult {
+    guard let data = readDomain(Self.liveKey) else {
+      // Nothing live. If the only store we found is the sandboxed container,
+      // that is the pre-migration App Store copy — three weeks stale on the
+      // machine this was written against. Reading a store the vendor itself
+      // treats as needing migration is how an importer silently returns words
+      // the user never typed and calls it success. Name the button they have
+      // instead. An absent live value does NOT prove they are on the App Store
+      // build, which is why this keys on which store was detected.
+      let isContainerStore = url.path.contains("/Library/Containers/")
+      throw isContainerStore
+        ? SmartImportError.legacyMigrationRequired(displayName)
+        : SmartImportError.appNotFound(displayName)
+    }
+
+    // Two guarded steps, plist value then JSON — the value is a `data` blob
+    // whose contents are UTF-8 JSON, not a plist array.
+    guard let document = try? JSONDecoder().decode(Document.self, from: data) else {
+      throw SmartImportError.unreadable(displayName)
+    }
+
+    // `tombstones` is never parsed, and that is not a shortcut: deleting a
+    // replacement REMOVES it from `items` and leaves only `{id, deletedAt}`
+    // behind. Verified by creating five and deleting one. So reading `items`
+    // alone cannot resurrect a word the user deleted.
+    var words: [SmartImportWord] = []
+    var excludedCount = 0
+    for item in document.envelope?.items ?? [] {
+      let rule = item.value
+      // A regex rule holds a PATTERN in `original`, not a word — verified by
+      // creating one through Spokenly's own Use Regular Expression checkbox.
+      // An empty replacement is a delete-this-text rule with no word in it.
+      let canonical = rule.replacement?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      guard rule.isRegex != true, !canonical.isEmpty else {
+        excludedCount += 1
+        continue
+      }
+      let alias = rule.original?.trimmingCharacters(in: .whitespacesAndNewlines)
+      words.append(
+        SmartImportWord(canonical: canonical, aliases: (alias?.isEmpty == false) ? [alias!] : []))
+    }
+    return SmartImportReadResult(words: words, excludedCount: excludedCount)
+  }
+}
+
+// MARK: - Juno
+
+/// Single JSON lexicon mixing Juno's own shipped seed vocabulary with the
+/// user's. Only the latter belongs in someone's custom words.
+package struct JunoAdapter: SmartImportAdapter {
+  package let identifier = "juno"
+  package let displayName = "Juno"
+
+  /// The only provenance value that means "the user typed this".
+  ///
+  /// An ALLOWLIST rather than a denylist on the seed value, because the two
+  /// directions do not fail equally: admitting an unseen machine-generated
+  /// provenance puts words in the list the user never chose, while refusing an
+  /// unseen user-ish one costs them a word they can retype and can see is
+  /// missing. Measured on a real install: 400 of 401 rows are seeds, including
+  /// bare lowercase words like `accessibility` and `dictation` that would
+  /// actively bias transcription if imported.
+  private static let userAuthoredSource = "user_edit"
+
+  private struct Entry: Decodable {
+    let term: String?
+    let canonicalForm: String?
+    let aliases: [String]?
+    let source: String?
+
+    enum CodingKeys: String, CodingKey {
+      case term
+      case canonicalForm = "canonical_form"
+      case aliases
+      case source
+    }
+  }
+
+  package var candidatePaths: [URL] {
+    [
+      FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/com.juno.shell/memory/lexicon.json")
+    ]
+  }
+
+  package init() {}
+
+  package func loadWords(at url: URL) throws -> SmartImportReadResult {
+    let data = try boundedData(at: url, appName: displayName)
+    guard let entries = try? JSONDecoder().decode([Entry].self, from: data) else {
+      throw SmartImportError.unreadable(displayName)
+    }
+    var words: [SmartImportWord] = []
+    var excludedCount = 0
+    for entry in entries {
+      guard entry.source == Self.userAuthoredSource else {
+        excludedCount += 1
+        continue
+      }
+      // `canonical_form` is the spelling Juno settles on; `term` is the key it
+      // is filed under. They match on every observed row, but the canonical
+      // form is the one that means "how this should be written".
+      let canonicalForm = entry.canonicalForm?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let fallback = entry.term?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let canonical = (canonicalForm?.isEmpty == false ? canonicalForm : fallback) ?? ""
+      guard !canonical.isEmpty else {
+        excludedCount += 1
+        continue
+      }
+      words.append(SmartImportWord(canonical: canonical, aliases: entry.aliases ?? []))
+    }
+    return SmartImportReadResult(words: words, excludedCount: excludedCount)
   }
 }
 
@@ -355,12 +892,23 @@ package struct WisprFlowAdapter: SmartImportAdapter {
 package struct SmartImportRegistry: Sendable {
   package let adapters: [any SmartImportAdapter]
 
-  /// TypeWhisper is deliberately absent: its schema is confirmed but its table
-  /// is empty on the only machine available, so an adapter would be written
-  /// against a shape nobody has seen populated, and its WAL sidecar files add
-  /// a correctness question that cannot be tested without real content.
+  /// Handy is deliberately absent: its `custom_words` element schema is a bare
+  /// `string[]` grounded from its own public source, but the app is not
+  /// installed on any machine available here, so an adapter could not be
+  /// exercised end to end against real data — the same rule that kept
+  /// TypeWhisper out until #1773 read its populated store (#1773).
   package static let v1 = SmartImportRegistry(
-    adapters: [WisprFlowAdapter(), FluidVoiceAdapter(), SuperwhisperAdapter()])
+    adapters: [
+      WisprFlowAdapter(), FluidVoiceAdapter(), SuperwhisperAdapter(),
+      VoxAdapter(), TypeWhisperAdapter(), SpokenlyAdapter(), JunoAdapter(),
+    ])
+
+  /// The display names, in registry order, for whoever writes the picker copy.
+  ///
+  /// The registry owns the NAMES; AppKit owns the SENTENCE. Keeping the
+  /// formatter out of here stops user-facing English being pushed down a layer
+  /// for test convenience, and the AppKit test target can reach it where it is.
+  package var displayNames: [String] { adapters.map(\.displayName) }
 
   package init(adapters: [any SmartImportAdapter]) {
     self.adapters = adapters
@@ -392,10 +940,12 @@ package struct SmartImportSource: CustomWordsImportSource {
     }
     try Task.checkCancellation()
 
-    let words = try adapter.loadWords(at: path)
+    let readResult = try adapter.loadWords(at: path)
+    let words = readResult.words
     try Task.checkCancellation()
 
-    // Check the RAW row count, before deduplication (code review r10).
+    // Check the SCANNED row count, before deduplication (code review r10) and
+    // before the adapter's own exclusions are subtracted.
     //
     // The adapters read one past the ceiling so that "too many" is knowable.
     // But dedup shrinks the list, so a source whose first 25,001 rows contain
@@ -403,13 +953,18 @@ package struct SmartImportSource: CustomWordsImportSource {
     // import that had silently dropped everything beyond it. Every ceiling
     // needs a signal for having been reached; counting after the shrink loses
     // that signal — the same mistake the pasted-text parser made.
-    guard words.count <= CustomWordsImportLimits.maximumCandidates else {
-      // `found` is a real count here, not a stop-sentinel: the adapters read
-      // exactly one past the ceiling, so this is what was actually seen. The
-      // message says "more than" either way, so it never states a figure it
-      // cannot stand behind.
-      throw ImportFileError.tooManyWords(
-        found: words.count, limit: CustomWordsImportLimits.maximumCandidates)
+    //
+    // Counting SCANNED rather than SURVIVING rows is new in #1773 and closes
+    // the same loophole one layer out: an adapter that filtered 25,001 rows
+    // down to one would otherwise look like a one-row source.
+    let scannedCount = words.count + readResult.excludedCount
+    guard scannedCount <= CustomWordsImportLimits.maximumCandidates else {
+      // Deliberately NOT `ImportFileError.tooManyWords`, whose copy says "That
+      // file" and "split it into smaller files" — a competitor's database is
+      // neither a file the user chose nor splittable, and its deleted rows and
+      // snippets are not "words".
+      throw SmartImportError.tooManySourceEntries(
+        appName: adapter.displayName, limit: CustomWordsImportLimits.maximumCandidates)
     }
 
     // Trim aliases up front so both the ceiling below and candidate
@@ -443,17 +998,32 @@ package struct SmartImportSource: CustomWordsImportSource {
     // downstream — the existing, already-tested owner of "should these merge"
     // (§3c) — rather than re-deciding it locally with a different key.
     var canonicals: [CustomWordsImportCandidate] = []
+    // Blank canonicals dropped HERE are exclusions too. Leaving them out of
+    // the count would let a source that produced only blanks still report
+    // "no words were found", which is the untruth this count exists to stop.
+    var excludedCount = readResult.excludedCount
     for (word, aliases) in zip(words, trimmedAliasesByIndex) {
       let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !CustomWordsImportCompareEngine.normalize(trimmed).isEmpty else { continue }
+      guard !CustomWordsImportCompareEngine.normalize(trimmed).isEmpty else {
+        excludedCount += 1
+        continue
+      }
       canonicals.append(
         CustomWordsImportCandidate(
           canonical: trimmed,
-          aliases: aliases.isEmpty ? .unspecified : .supplied(aliases)))
+          aliases: aliases.isEmpty ? .unspecified : .supplied(aliases),
+          caseSensitive: word.caseSensitive))
     }
+
+    // One notice, only when the source had rows and none of them survived.
+    // Counts only, never content.
+    let notices: [CustomWordsImportNotice] =
+      canonicals.isEmpty && excludedCount > 0
+      ? [.incompatibleSourceEntriesExcluded(count: excludedCount)]
+      : []
 
     return CustomWordsImportBatch(
       sourceID: adapter.identifier, sourceDisplayName: adapter.displayName,
-      candidates: canonicals)
+      candidates: canonicals, notices: notices)
   }
 }
