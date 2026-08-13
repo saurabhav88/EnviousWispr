@@ -132,10 +132,11 @@ package enum CustomWordsImportNotice: Sendable, Equatable {
 
 package struct CustomWordsImportBatch: Sendable, Equatable {
   /// Stable adapter identifier (`ImportFileParser.identifier` /
-  /// `SmartImportSourceDescriptor.id` / "paste" / "backup") — the value
-  /// telemetry emits; never a filename or display string.
+  /// `SmartImportSourceDescriptor.id` / "paste" / "backup"); never a filename
+  /// or display string. Carried through validation with the batch, and read by
+  /// no consumer today — there is no source-attributed import telemetry (#2052).
   package let sourceID: String
-  /// What the UI shows ("Wispr Flow", "CSV file", …); never emitted to telemetry.
+  /// What the UI shows ("Wispr Flow", "CSV file", …).
   package let sourceDisplayName: String
   package let candidates: [CustomWordsImportCandidate]
   package let notices: [CustomWordsImportNotice]

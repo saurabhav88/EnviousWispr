@@ -16,16 +16,19 @@ Importing adds new terms to your list without changing the words you already hav
 
 **Open the import tool.** Click **Import** on the Your Words page.
 
-**Choose your source.** Select whether you want to paste a list of words, open a saved file, or import from another dictation app. EnviousWispr can read your existing vocabulary straight out of Wispr Flow, FluidVoice, Superwhisper, Vox, TypeWhisper, Spokenly, or Juno if you have them installed. If you are importing from a file, that file can be a previous export from EnviousWispr or any plain text document with one word per line.
+**Choose your source.** Select whether you want to paste a list of words, open a saved file, or import from another dictation app. EnviousWispr can read your existing vocabulary straight out of Wispr Flow, FluidVoice, Superwhisper, Vox, TypeWhisper, Spokenly, Juno, or Handy if you have them installed. If you are importing from a file, that file can be a previous export from EnviousWispr or any plain text document with one word per line.
 
 **What comes across, app by app.** EnviousWispr brings over the words you added yourself, along with any misspellings that app was already correcting for you. A few apps store more than a word list, and only the word list comes across:
 
+- **Handy** keeps a separate list of filler words it strips out of your dictation. Those are not brought across, because they are words you asked Handy to remove rather than words you want kept. Its prompts and tuning settings stay behind too. You do not need to quit Handy first.
 - **Juno** ships with around 400 built-in terms of its own. Only the words you added are imported, so your list stays yours.
 - **Spokenly** can store find-and-replace rules written as patterns rather than plain words. Those are skipped, because a pattern is not a word.
 - **TypeWhisper** entries you have switched off stay off, and its case-sensitivity setting for each word comes across with it. Its match-strictness setting does not.
 - **Wispr Flow** text shortcuts are skipped. Those are text expansions rather than vocabulary.
 
 If an app holds entries but none of them can come across, EnviousWispr tells you how many it found rather than saying it found nothing.
+
+**Nothing is read until you ask for it, and nothing leaves your Mac.** EnviousWispr does not look inside another app's files in the background. It reads them only after you pick that app in the import screen, it reads them on your Mac, and it never sends what it finds anywhere. The other app's own files are only ever read, never changed, and you review every word before anything is added to your list.
 
 **Review and confirm.** Check the list of terms it found, then add them to your list.
 

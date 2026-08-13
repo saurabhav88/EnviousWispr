@@ -48,7 +48,8 @@ package enum SmartImportError: LocalizedError, Sendable, Equatable {
 /// inspected in the background. `isInstalled` is only consulted once the user
 /// is looking at the app picker, and `loadWords` only after they choose one.
 package protocol SmartImportAdapter: Sendable {
-  /// Stable identifier emitted as the batch's `sourceID` for telemetry.
+  /// Stable identifier carried in the import batch for source attribution.
+  /// No consumer reads it today (#2052).
   var identifier: String { get }
   /// What the user sees.
   var displayName: String { get }
@@ -86,11 +87,12 @@ package struct SmartImportWord: Sendable, Equatable {
 
 /// What an adapter read, and how much of the source it deliberately refused.
 ///
-/// Five of the seven adapters exclude source rows on purpose — Superwhisper
+/// Five of the eight adapters exclude source rows on purpose — Superwhisper
 /// (no usable destination), Wispr Flow (soft-deletes, snippets), TypeWhisper
 /// (disabled rows, non-allowlisted entry types), Spokenly (regex rules, empty
-/// replacements) and Juno (vocabulary the user did not author). Only the
-/// adapter can know how many, and without that count an import that refused
+/// replacements) and Juno (vocabulary the user did not author). Vox, Handy and
+/// FluidVoice exclude nothing: their stores hold only what the user typed. Only
+/// the adapter can know how many, and without that count an import that refused
 /// every row is indistinguishable from a source that was empty — which is a
 /// false statement to a Juno user whose 401 entries were all built-in.
 package struct SmartImportReadResult: Sendable, Equatable {
@@ -104,6 +106,45 @@ package struct SmartImportReadResult: Sendable, Equatable {
     self.words = words
     self.excludedCount = excludedCount
   }
+}
+
+/// Up to `attempts` acquisitions; each reads twice and accepts only bytes that
+/// agreed, and then only if `accept` succeeds on them.
+///
+/// Two adapters need exactly this and for the same reason: a competitor app can
+/// rewrite its store while we read it, so bytes that merely parsed are not
+/// bytes that coexisted. TypeWhisper can checkpoint its WAL between two
+/// sequential part reads; Handy truncates its JSON file in place, and a read
+/// spanning the rewrite can splice two generations into a document that parses
+/// perfectly and describes a word list that never existed.
+///
+/// `accept` running INSIDE the loop is load-bearing rather than tidiness. Two
+/// identical ZERO-BYTE reads agree perfectly, and Handy's truncation window
+/// produces exactly that — measured, 2 zero-byte reads in 604,959 across three
+/// writes. Accepting outside the loop would spend the whole budget on the first
+/// attempt and then fail (#2052).
+///
+/// Note for a future third caller: a throw from `accept` is swallowed and
+/// becomes `.unreadable`. Correct for both callers today — Handy's is a decode,
+/// TypeWhisper's is the identity function and cannot throw — but an `accept`
+/// that can throw something meaningful, a ceiling error say, would lose it here.
+/// Errors from `read` are NOT swallowed; they propagate immediately.
+private func acquireStableSnapshot<Snapshot, Accepted>(
+  appName: String,
+  attempts: Int,
+  read: () throws -> Snapshot,
+  agrees: (Snapshot, Snapshot) -> Bool,
+  accept: (Snapshot) throws -> Accepted
+) throws -> Accepted {
+  for _ in 0..<attempts {
+    let first = try read()
+    let second = try read()
+    guard agrees(first, second) else { continue }
+    if let accepted = try? accept(first) { return accepted }
+  }
+  // The other app is actively writing. Refusing is the honest half, and the
+  // `.unreadable` copy already tells the user to quit it and try again.
+  throw SmartImportError.unreadable(appName)
 }
 
 /// The one owner of a SQLite read: open, prepare, step, verify completion,
@@ -684,19 +725,28 @@ package struct TypeWhisperAdapter: SmartImportAdapter {
   /// main file and a WAL from different moments — a snapshot that never
   /// existed. Two agreeing passes prove the accepted bytes coexisted during
   /// the overlap between them.
+  ///
+  /// The loop itself lives in `acquireStableSnapshot(appName:attempts:read:agrees:accept:)`,
+  /// shared with Handy. Only the vendor knowledge is here: what the parts are,
+  /// and what it means for two reads of them to agree.
+  /// Every closure below is explicitly typed. Left to inference, the generic
+  /// call takes longer than the type-checker's budget and fails to build.
   private func acquireStableSnapshot(at url: URL) throws -> [(String, Data)] {
-    for _ in 0..<Self.acquisitionAttempts {
-      let first = try readAllParts(at: url)
-      let second = try readAllParts(at: url)
-      if first.map(\.0) == second.map(\.0),
-        zip(first, second).allSatisfy({ $0.1 == $1.1 })
-      {
-        return first
-      }
+    typealias Parts = [(String, Data)]
+    let read: () throws -> Parts = { try readAllParts(at: url) }
+    let agrees: (Parts, Parts) -> Bool = { first, second in
+      first.map(\.0) == second.map(\.0)
+        && zip(first, second).allSatisfy { $0.1 == $1.1 }
     }
-    // The other app is actively writing. Refusing is the honest half, and the
-    // `.unreadable` copy already tells the user to quit it and try again.
-    throw SmartImportError.unreadable(displayName)
+    // Identity: TypeWhisper's acceptance is the agreement itself. The bytes are
+    // opened as SQLite later, from a private copy.
+    let accept: (Parts) throws -> Parts = { $0 }
+    return try EnviousWisprPostProcessing.acquireStableSnapshot(
+      appName: displayName,
+      attempts: Self.acquisitionAttempts,
+      read: read,
+      agrees: agrees,
+      accept: accept)
   }
 
   private func readAllParts(at url: URL) throws -> [(String, Data)] {
@@ -889,18 +939,117 @@ package struct JunoAdapter: SmartImportAdapter {
 
 // MARK: - Registry and source
 
+// MARK: - Handy
+
+/// One JSON file, read twice, with the word list one level down.
+///
+/// Handy writes `settings_store.json` IN PLACE on every settings change — the
+/// inode is unchanged across writes — so there is a real window in which a
+/// reader sees a truncated file. Measured on 0.9.5: 604,959 reads across three
+/// writes returned 2 zero-byte files, and no partial sizes in between. Hence
+/// the shared two-pass acquisition; a document that merely decodes is not a
+/// document that existed, because a read spanning the rewrite can splice two
+/// generations into valid JSON describing a word list nobody typed.
+///
+/// Nothing else about it is hard. It writes on every change rather than on
+/// quit, so the app need not be closed — the file is byte-identical either side
+/// of quitting — and nothing sits beside it: no WAL, no lock, no temp file.
+///
+/// `custom_words` is a flat `[String]` with no alias concept, the same shape as
+/// Vox and TypeWhisper's Terms. Handy ships NO vocabulary of its own, verified
+/// by moving the store aside and letting 0.9.5 author a fresh one: it wrote
+/// `"custom_words": []`. So the Juno seed-word hazard does not apply and no
+/// provenance filter is needed.
+///
+/// `custom_filler_words` is deliberately NOT imported. It is a REMOVAL list —
+/// words the user asked Handy to strip — so importing it would add the very
+/// words they asked to have taken out. Same reasoning that excludes Vox's
+/// `context` paragraph.
+package struct HandyAdapter: SmartImportAdapter {
+  package let identifier = "handy"
+  package let displayName = "Handy"
+
+  /// Bounded read of the store, injected so a test can drive an exact
+  /// torn/torn/good/good sequence without racing a real app.
+  package typealias DataReader = @Sendable (URL) throws -> Data
+
+  /// Two agreeing reads per acquisition, and at most this many acquisitions.
+  private static let acquisitionAttempts = 3
+
+  private let readOverride: DataReader?
+
+  /// Both levels are OPTIONAL because that is what Handy's own decoder does,
+  /// not because it is the lenient choice.
+  ///
+  /// `AppSettings` carries a container-level `#[serde(default)]` and
+  /// `custom_words` a field-level one, and its own test
+  /// `empty_store_parses_with_defaults` asserts that `{}` parses. An explicit
+  /// `null` reaches the same place by a different route: `Vec<String>` cannot
+  /// deserialize from null, so the strict decode fails and Handy's
+  /// `salvage_settings` drops the field and keeps the default empty vector.
+  ///
+  /// So a document missing `settings`, missing `custom_words`, or holding null
+  /// is not damaged — Handy itself reads it as a user with no custom words, and
+  /// refusing it would tell them their store is unreadable while Handy opens
+  /// the same file and shows them an empty list.
+  ///
+  /// Verified in `cjpais/Handy` at commit `db003f38`, `src-tauri/src/settings.rs`
+  /// lines 338-340, 398-399, 949, 1002 and test 1140.
+  ///
+  /// ACCEPTED LIMIT: a future Handy that RENAMES or MOVES `custom_words` is
+  /// therefore indistinguishable from a user with no custom words, and we would
+  /// say "no words were found". Unhandled on purpose — every available fix
+  /// requires predicting a schema nobody has seen, and the alternative refuses
+  /// today's legitimate partial stores to defend against a speculative one.
+  private struct Store: Decodable {
+    struct Settings: Decodable {
+      let customWords: [String]?
+      enum CodingKeys: String, CodingKey { case customWords = "custom_words" }
+    }
+    let settings: Settings?
+  }
+
+  package var candidatePaths: [URL] {
+    [
+      FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/com.pais.handy/settings_store.json")
+    ]
+  }
+
+  package init(readData: DataReader? = nil) {
+    self.readOverride = readData
+  }
+
+  package func loadWords(at url: URL) throws -> SmartImportReadResult {
+    let store: Store = try acquireStableSnapshot(
+      appName: displayName,
+      attempts: Self.acquisitionAttempts,
+      read: { try readData(at: url) },
+      agrees: { $0 == $1 },
+      accept: { try JSONDecoder().decode(Store.self, from: $0) })
+
+    // Only these two keys are decoded, which is also why an unrelated poisoned
+    // field cannot block the read. Handy salvages such a document field by
+    // field and keeps valid vocabulary out of it; decoding its WHOLE settings
+    // object would refuse a file Handy itself reads happily.
+    return SmartImportReadResult(
+      words: (store.settings?.customWords ?? []).map { SmartImportWord(canonical: $0) })
+  }
+
+  private func readData(at url: URL) throws -> Data {
+    if let readOverride { return try readOverride(url) }
+    return try boundedData(at: url, appName: displayName)
+  }
+}
+
 package struct SmartImportRegistry: Sendable {
   package let adapters: [any SmartImportAdapter]
 
-  /// Handy is deliberately absent: its `custom_words` element schema is a bare
-  /// `string[]` grounded from its own public source, but the app is not
-  /// installed on any machine available here, so an adapter could not be
-  /// exercised end to end against real data — the same rule that kept
-  /// TypeWhisper out until #1773 read its populated store (#1773).
   package static let v1 = SmartImportRegistry(
     adapters: [
       WisprFlowAdapter(), FluidVoiceAdapter(), SuperwhisperAdapter(),
       VoxAdapter(), TypeWhisperAdapter(), SpokenlyAdapter(), JunoAdapter(),
+      HandyAdapter(),
     ])
 
   /// The display names, in registry order, for whoever writes the picker copy.

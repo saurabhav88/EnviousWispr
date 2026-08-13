@@ -54,7 +54,8 @@ package enum ImportFileError: LocalizedError, Sendable, Equatable {
 /// That seam is the reason the plan asked for a registry at all, and it stays
 /// even though v1 registers only two formats.
 package protocol ImportFileParser: Sendable {
-  /// Stable identifier, emitted as the batch's `sourceID` for telemetry.
+  /// Stable identifier carried in the import batch for source attribution.
+  /// No consumer reads it today (#2052).
   var identifier: String { get }
   /// What the user sees.
   var displayName: String { get }

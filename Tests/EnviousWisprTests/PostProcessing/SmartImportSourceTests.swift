@@ -126,7 +126,8 @@ struct SmartImportSourceTests {
       as: "settings.json"
     )
 
-    #expect(try SuperwhisperAdapter().loadWords(at: url).words == [SmartImportWord(canonical: "Saurabh")])
+    #expect(
+      try SuperwhisperAdapter().loadWords(at: url).words == [SmartImportWord(canonical: "Saurabh")])
   }
 
   @Test("a Superwhisper replacement carries its original as the alias")
@@ -152,7 +153,9 @@ struct SmartImportSourceTests {
       as: "settings.json")
 
     #expect(
-      try SuperwhisperAdapter().loadWords(at: url).words == [SmartImportWord(canonical: "Superwhisper")])
+      try SuperwhisperAdapter().loadWords(at: url).words == [
+        SmartImportWord(canonical: "Superwhisper")
+      ])
   }
 
   @Test("a Superwhisper replacement missing with is dropped, as today")
@@ -508,7 +511,9 @@ struct SmartImportSourceTests {
       let identifier = "missing"
       let displayName = "Nothing"
       var candidatePaths: [URL] { [URL(fileURLWithPath: "/nonexistent/nope.json")] }
-      func loadWords(at url: URL) throws -> SmartImportReadResult { SmartImportReadResult(words: []) }
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
+        SmartImportReadResult(words: [])
+      }
     }
     await #expect(throws: SmartImportError.appNotFound("Nothing")) {
       _ = try await SmartImportSource(adapter: Missing()).loadCandidates()
@@ -681,20 +686,207 @@ struct SmartImportSourceTests {
     #expect(actualScalars == [Array(nfc.unicodeScalars), Array(nfd.unicodeScalars)])
   }
 
-  @Test("the registry ships every verified app and not the unverifiable one")
+  @Test("the registry ships every app whose store has been read on a live install")
   func registryShipsOnlyVerifiedAdapters() {
     let ids = SmartImportRegistry.v1.adapters.map(\.identifier)
     #expect(
       ids.sorted() == [
-        "fluidvoice", "juno", "spokenly", "superwhisper", "typewhisper", "vox", "wispr-flow",
+        "fluidvoice", "handy", "juno", "spokenly", "superwhisper", "typewhisper", "vox",
+        "wispr-flow",
       ])
-    // Handy is absent deliberately: its element schema is grounded from its
-    // own public source, but the app is not installed on any machine here, so
-    // an adapter could not be exercised end to end against real data (#1773).
-    #expect(!ids.contains("handy"))
-    // Identifiers reach telemetry as `sourceID`, so a collision would silently
-    // merge two competitors' import counts.
+    // Identifiers drive adapter lookup and label the import batch, so a
+    // collision would make the registry ambiguous. They reach no telemetry:
+    // `CustomWordsImportBatch.sourceID` has no consumer (#2052).
     #expect(Set(ids).count == ids.count)
+  }
+
+  // MARK: - Handy
+
+  private func handyStore(_ json: String, in dir: URL) throws -> URL {
+    try write(json, to: dir, as: "settings_store.json")
+  }
+
+  @Test("Handy words import from the nested key with no alias")
+  func handyWordsImport() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try handyStore(
+      #"{ "settings": { "custom_words": ["Handyfold", "Quixotropic"], "word_correction_threshold": 0.18 } }"#,
+      in: dir)
+
+    let result = try HandyAdapter().loadWords(at: url)
+    #expect(
+      result.words == [
+        SmartImportWord(canonical: "Handyfold"), SmartImportWord(canonical: "Quixotropic"),
+      ])
+    // Handy excludes nothing of its own: it ships no seed vocabulary, verified
+    // by letting 0.9.5 author a store from scratch (it wrote `[]`).
+    #expect(result.excludedCount == 0)
+  }
+
+  @Test("a top-level custom_words is not Handy's key and is never imported")
+  func handyIgnoresTopLevelKey() throws {
+    // The trap #2052 names: the list lives one level down, so a top-level read
+    // looks like "this user has no custom words" rather than like a path bug.
+    // Empty is the right answer here, not a refusal — Handy itself defaults a
+    // missing `settings` object to an empty vocabulary.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try handyStore(#"{ "custom_words": ["NeverImportMe"] }"#, in: dir)
+    #expect(try HandyAdapter().loadWords(at: url).words.isEmpty)
+  }
+
+  @Test("Handy's own missing-field defaults are an empty vocabulary, not a damaged store")
+  func handyMissingFieldsAreEmpty() throws {
+    // Verified in cjpais/Handy at commit db003f38, src-tauri/src/settings.rs:
+    // container-level #[serde(default)] on AppSettings (338-340), field-level
+    // on custom_words (398-399), and the test empty_store_parses_with_defaults
+    // (1140). Refusing these would tell the user their store is unreadable
+    // while Handy opens the same file and shows them an empty list.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    for (label, json) in [
+      ("absent settings", #"{ "other": 1 }"#),
+      ("absent custom_words", #"{ "settings": { "debug_mode": false } }"#),
+      ("empty array", #"{ "settings": { "custom_words": [] } }"#),
+      // Null takes a different route to the same place: Vec<String> cannot
+      // deserialize from null, so Handy's strict decode fails and its
+      // salvage_settings (1002) drops the field and keeps the default.
+      ("explicit null", #"{ "settings": { "custom_words": null } }"#),
+    ] {
+      let url = try handyStore(json, in: dir)
+      #expect(try HandyAdapter().loadWords(at: url).words.isEmpty, "\(label) should read as empty")
+    }
+  }
+
+  @Test("a Handy word list of the wrong type refuses the whole import")
+  func handyWrongTypeRefuses() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    for json in [
+      #"{ "settings": { "custom_words": ["Quorvex", 7] } }"#,
+      #"{ "settings": { "custom_words": { "a": "b" } } }"#,
+      #"{ "settings": { "custom_words": "Quorvex" } }"#,
+      #"{ "settings": "not an object" }"#,
+      #"{ not json at all "#,
+    ] {
+      let url = try handyStore(json, in: dir)
+      #expect(throws: SmartImportError.unreadable("Handy")) {
+        _ = try HandyAdapter().loadWords(at: url)
+      }
+    }
+  }
+
+  @Test("an unrelated wrongly-typed Handy setting does not block the word list")
+  func handyUnrelatedPoisonedFieldStillImports() throws {
+    // Handy salvages such a document field by field and keeps valid vocabulary
+    // out of it — its own salvage_drops_only_wrong_typed_fields (1293) puts
+    // exactly this `paste_delay_ms` in and still asserts the words survive. A
+    // reader that decoded Handy's WHOLE settings object would refuse a file
+    // Handy reads happily; ours decodes two keys, so it matches by design.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try handyStore(
+      #"{ "settings": { "custom_words": ["Handyfold"], "paste_delay_ms": "sixty" } }"#, in: dir)
+    #expect(try HandyAdapter().loadWords(at: url).words.map(\.canonical) == ["Handyfold"])
+  }
+
+  @Test("Handy multi-word and non-ASCII entries survive unchanged")
+  func handyPreservesEntriesVerbatim() throws {
+    // Handy's own Add button refuses a space and accepts an umlaut (both
+    // measured on 0.9.5). We inherit neither judgement: the file is the
+    // contract, our shared text policy decides what is storable, and a
+    // hand-edited file may legitimately hold a phrase.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try handyStore(
+      #"{ "settings": { "custom_words": ["Envious Labs", "Müller"] } }"#, in: dir)
+
+    let words = try HandyAdapter().loadWords(at: url).words
+    #expect(words.map(\.canonical) == ["Envious Labs", "Müller"])
+    // Compared by scalars: a normalization slip would still pass a == on the
+    // rendered string in some fonts.
+    #expect(Array(words[1].canonical.unicodeScalars) == Array("Müller".unicodeScalars))
+  }
+
+  @Test("an unknown Handy schema version still imports, and only a moved key reads as empty")
+  func handyForwardCompatibility() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    // Fail-open: a future version we do not recognise must not break an import
+    // whose word list is still exactly where we look for it.
+    let future = try handyStore(
+      #"{ "settings": { "settings_schema_version": 99, "custom_words": ["Zephyrine"], "brand_new_key": {} } }"#,
+      in: dir)
+    #expect(try HandyAdapter().loadWords(at: future).words.map(\.canonical) == ["Zephyrine"])
+
+    // ACCEPTED LIMIT, frozen here so nobody "fixes" it into a refusal without
+    // reading why: a future Handy that MOVED the key is indistinguishable from
+    // a user with no custom words, because Handy defines a missing key AS an
+    // empty vocabulary. Refusing this shape would refuse today's legitimate
+    // partial stores to defend against a schema nobody has seen (#2052).
+    let moved = try handyStore(
+      #"{ "settings": { "settings_schema_version": 99, "vocabulary": ["Zephyrine"] } }"#, in: dir)
+    #expect(try HandyAdapter().loadWords(at: moved).words.isEmpty)
+  }
+
+  @Test("a Handy store caught mid-rewrite is re-read rather than refused or misread")
+  func handyRetriesATornRead() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try handyStore(#"{ "settings": { "custom_words": ["Handyfold"] } }"#, in: dir)
+
+    // Handy rewrites this file in place, so a reader can catch the truncation
+    // window: measured 2 zero-byte reads in 604,959 across three writes. Two
+    // EMPTY reads agree perfectly, which is why acceptance must live inside the
+    // retry — outside it, this exact sequence would consume the whole budget on
+    // attempt one and throw.
+    nonisolated(unsafe) var reads = 0
+    let torn = HandyAdapter(readData: { real in
+      reads += 1
+      if reads <= 2 { return Data() }
+      return try Data(contentsOf: real)
+    })
+    #expect(try torn.loadWords(at: url).words.map(\.canonical) == ["Handyfold"])
+    // Exactly two acquisitions: the first pair agreed but did not decode, the
+    // second pair did. Without this the test would pass against an adapter that
+    // never entered the recovery path at all.
+    #expect(reads == 4)
+
+    // Two-way control: a reader that is torn forever refuses, so the success
+    // above is the recovery working and not the injection being ignored.
+    nonisolated(unsafe) var alwaysTorn = 0
+    let hopeless = HandyAdapter(readData: { _ in
+      alwaysTorn += 1
+      return Data()
+    })
+    #expect(throws: SmartImportError.unreadable("Handy")) {
+      _ = try hopeless.loadWords(at: url)
+    }
+    #expect(alwaysTorn == 6, "three acquisitions × two reads")
+  }
+
+  @Test("Handy bytes that disagree between the two reads are never spliced into a word list")
+  func handyRefusesDisagreeingReads() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try handyStore(#"{ "settings": { "custom_words": ["Handyfold"] } }"#, in: dir)
+
+    // Both reads decode fine and describe DIFFERENT vocabularies. Decoding
+    // alone cannot catch this, which is the whole reason acceptance is not the
+    // agreement check.
+    nonisolated(unsafe) var flip = 0
+    let unstable = HandyAdapter(readData: { _ in
+      flip += 1
+      let word = flip % 2 == 0 ? "Second" : "First"
+      return Data(#"{ "settings": { "custom_words": ["\#(word)"] } }"#.utf8)
+    })
+    #expect(throws: SmartImportError.unreadable("Handy")) {
+      _ = try unstable.loadWords(at: url)
+    }
   }
 
   // MARK: - Shared SQLite reader
@@ -962,6 +1154,11 @@ struct SmartImportSourceTests {
     #expect(throws: SmartImportError.unreadable("TypeWhisper")) {
       _ = try unstable.loadWords(at: store.url)
     }
+    // Freezes the ATTEMPT COUNT, not just the outcome. The counter above has
+    // always existed and was never asserted, so this test passed equally
+    // against an adapter that gave up after one attempt — which is exactly the
+    // regression moving this loop into the shared helper could cause (#2052).
+    #expect(pass == 6, "three acquisitions × two complete reads each")
 
     // Positive counterpart: a reader that returns stable bytes succeeds, so
     // the refusal above is the instability and not the injection itself.
@@ -1022,7 +1219,9 @@ struct SmartImportSourceTests {
   // MARK: - Spokenly
 
   private func spokenlyEnvelope(_ items: String) -> Data {
-    Data(#"{"dirty":true,"serverVersion":0,"envelope":{"orderUpdatedAt":1,"items":[\#(items)],"tombstones":[{"id":"gone","deletedAt":2}]}}"#.utf8)
+    Data(
+      #"{"dirty":true,"serverVersion":0,"envelope":{"orderUpdatedAt":1,"items":[\#(items)],"tombstones":[{"id":"gone","deletedAt":2}]}}"#
+        .utf8)
   }
 
   private func spokenlyItem(
@@ -1045,7 +1244,8 @@ struct SmartImportSourceTests {
     // `original` holds a PATTERN, not a word — verified by creating one
     // through Spokenly's own Use Regular Expression checkbox.
     let data = spokenlyEnvelope(
-      spokenlyItem("hanooman", "Hanuman") + "," + spokenlyItem(#"\\bk\\s*eight\\s*s\\b"#, "k8s", isRegex: true))
+      spokenlyItem("hanooman", "Hanuman") + ","
+        + spokenlyItem(#"\\bk\\s*eight\\s*s\\b"#, "k8s", isRegex: true))
     let result = try SpokenlyAdapter(readDomain: { _ in data })
       .loadWords(at: URL(fileURLWithPath: "/unused"))
     #expect(result.words.map(\.canonical) == ["Hanuman"])
@@ -1072,7 +1272,8 @@ struct SmartImportSourceTests {
       .loadWords(at: URL(fileURLWithPath: "/unused"))
     #expect(withoutItem.words.isEmpty)
 
-    let resurrected = #"{"updatedAt":1,"value":{"id":"gone","original":"a","replacement":"Alive","isRegex":false,"timing":"beforeAI","createdAt":1}}"#
+    let resurrected =
+      #"{"updatedAt":1,"value":{"id":"gone","original":"a","replacement":"Alive","isRegex":false,"timing":"beforeAI","createdAt":1}}"#
     let withItem = try SpokenlyAdapter(readDomain: { _ in self.spokenlyEnvelope(resurrected) })
       .loadWords(at: URL(fileURLWithPath: "/unused"))
     #expect(withItem.words.map(\.canonical) == ["Alive"])
@@ -1241,7 +1442,8 @@ struct SmartImportSourceTests {
       """, in: dir)
 
     let words = try JunoAdapter().loadWords(at: url).words
-    #expect(words[0] == SmartImportWord(canonical: "Apple Silicon", aliases: ["apple silicon chip"]))
+    #expect(
+      words[0] == SmartImportWord(canonical: "Apple Silicon", aliases: ["apple silicon chip"]))
     // A blank canonical form falls back to the term rather than dropping the row.
     #expect(words[1].canonical == "Fallback")
   }
@@ -1277,7 +1479,8 @@ struct SmartImportSourceTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let url = try write(#"{ "terms": [ { "text": "Kubernetes" } ] }"#, to: dir, as: "v.json")
     #expect(
-      try FluidVoiceAdapter().loadWords(at: url).words == [SmartImportWord(canonical: "Kubernetes")])
+      try FluidVoiceAdapter().loadWords(at: url).words == [SmartImportWord(canonical: "Kubernetes")]
+    )
   }
 
   @Test("a truncated read is refused even though nothing shrinks it anymore")
@@ -1405,7 +1608,8 @@ struct SmartImportSourceTests {
       }
     }
     let batch = try await SmartImportSource(adapter: Fixed()).loadCandidates()
-    #expect(batch.candidates.map(\.caseSensitive) == [.supplied(true), .supplied(false), .unspecified])
+    #expect(
+      batch.candidates.map(\.caseSensitive) == [.supplied(true), .supplied(false), .unspecified])
   }
 
   /// FluidVoice is the real amplification vector this ceiling exists for: its
