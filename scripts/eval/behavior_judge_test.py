@@ -896,6 +896,35 @@ def test_a_receipt_from_the_same_judge_is_still_skipped():
 
 
 
+
+def test_two_external_rubrics_get_two_identities():
+    """A provenance field must be DERIVED from what it describes, never a constant.
+
+    A bare "external_verdicts" sentinel gave every import one shared identity, so
+    two verdict files graded under DIFFERENT external rubrics compared equal and
+    the report ranked them together — the same false claim as stamping the local
+    digest, pointing the other way. Cloud review P1 x4 on #2055.
+
+    THREE-WAY: different files must differ, identical CONTENT must match (the
+    identity is the bytes, not the path), and neither may collide with the local
+    digest.
+    """
+    t = Path(tempfile.mkdtemp())
+    a = t / "a.jsonl"; a.write_text('{"id":"A","verdict":"pass"}\n')
+    b = t / "b.jsonl"; b.write_text('{"id":"A","verdict":"critical_fail"}\n')
+    c = t / "c.jsonl"; c.write_text(a.read_text())          # same bytes, other path
+
+    ia, ib, ic = (bj._external_rubric_identity(str(x)) for x in (a, b, c))
+    assert ia != ib, f"two different verdict files share an identity: {ia}"
+    assert ia == ic, f"identical verdicts got different identities: {ia} vs {ic}"
+    assert ia != bj._rubric_identity(), "an import claimed the local rubric"
+    assert ia.startswith("external:"), ia
+
+    # missing and unreadable group with their own kind, not with real imports
+    assert bj._external_rubric_identity(None) == "external:unknown"
+    assert bj._external_rubric_identity(str(t / "nope.jsonl")) == "external:unreadable"
+    assert bj._external_rubric_identity(None) != ia
+
 def test_imported_verdicts_do_not_claim_the_local_rubric():
     """`--verdicts` imports judgments this scorer did not produce, so the receipt
     must not stamp them with this checkout's rubric digest. Doing so asserts a
@@ -912,7 +941,7 @@ def test_imported_verdicts_do_not_claim_the_local_rubric():
     i = src.index('"rubric_identity": (')
     expr = src[i:src.index("),", i) + 2]
     assert "external_verdicts is None" in expr, expr
-    assert '"external_verdicts"' in expr, expr
+    assert "_external_rubric_identity(" in expr, expr
     assert "_rubric_identity()" in expr, expr
 
     # the real digest is a stable 12-hex of this file, not the sentinel
@@ -2381,7 +2410,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 121
+EXPECTED_TESTS = 122
 
 
 def _run() -> int:

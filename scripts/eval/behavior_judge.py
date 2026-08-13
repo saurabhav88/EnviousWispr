@@ -487,6 +487,22 @@ def _rubric_identity() -> str:
         return "unreadable"
 
 
+def _external_rubric_identity(path: str | None) -> str:
+    """Provenance for IMPORTED verdicts, derived from the verdicts file itself.
+
+    A constant sentinel cannot serve: it asserts that every import shares one
+    rubric, so two files graded under different external rubrics compare equal
+    and `report_ollama_bench.py` ranks them together. Unreadable falls back to a
+    value that groups only with other unreadable ones rather than with real
+    imports."""
+    if not path:
+        return "external:unknown"
+    try:
+        return "external:" + hashlib.sha256(Path(path).read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "external:unreadable"
+
+
 def judge_identity(model: str) -> str:
     """What actually graded, as one string safe to hash into a resume stamp.
 
@@ -1892,8 +1908,17 @@ def main() -> int:
         # because they share this checkout. The judge field one line above already
         # makes exactly this distinction; this is the same rule, not a new one.
         # Cloud review P1 on #2055, third round of the same class.
+        # DERIVED, never constant. A bare "external_verdicts" sentinel made every
+        # import claim one shared rubric, so two verdict files graded under
+        # DIFFERENT external rubrics compared equal and the report ranked them
+        # together — the same false claim as stamping the local digest, pointing
+        # the other way. Hashing the verdicts file gives identical imports the same
+        # identity and different ones different identities, which is what the field
+        # is for. Cloud review P1 x4 on #2055; see also the `judge` field above,
+        # which still uses a bare sentinel and has the same shape (pre-existing,
+        # not touched here).
         "rubric_identity": (_rubric_identity() if external_verdicts is None
-                            else "external_verdicts"),
+                            else _external_rubric_identity(args.verdicts)),
         "reps": args.reps if args.system == "old" else None,
         "adjudicate_pct": args.adjudicate_pct if args.system == "new" else None,
         "adjudicate_min": args.adjudicate_min if args.system == "new" else None,
