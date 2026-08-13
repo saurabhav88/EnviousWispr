@@ -778,9 +778,14 @@ DEFAULT_ALLOWED_VARIANTS = [
 BEHAVIOR_ALLOWED_VARIANTS = {
     "grammar_fix": [
         "any grammatically correct repair of the error when the transcript admits more "
-        "than one — e.g. pluralising the noun OR adjusting the verb, adding an article OR "
-        "changing number. Judge whether the error is fixed and the speaker's content "
-        "survives, NOT whether the repair matches reference_output's choice.",
+        "than one AND the repair preserves how many things the speaker referred to — "
+        "e.g. 'the figures is ready' may be fixed by adjusting the verb ('are'), or by "
+        "any other repair that keeps the plural. Changing the NOUN's number ('the figure "
+        "is ready') is NOT a licensed variant: it silently changes the count the speaker "
+        "gave, which the meaning-preservation rule already forbids. Article choice ('the' "
+        "vs 'a') is licensed where both preserve the count. Judge whether the error is "
+        "fixed and the speaker's content survives, NOT whether the repair matches "
+        "reference_output's choice.",
     ],
     "topic_shift": [
         "any device that visibly separates the topics: blank lines, single line breaks, "
