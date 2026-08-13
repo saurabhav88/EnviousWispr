@@ -487,22 +487,6 @@ def _rubric_identity() -> str:
         return "unreadable"
 
 
-def _external_rubric_identity(path: str | None) -> str:
-    """Provenance for IMPORTED verdicts, derived from the verdicts file itself.
-
-    A constant sentinel cannot serve: it asserts that every import shares one
-    rubric, so two files graded under different external rubrics compare equal
-    and `report_ollama_bench.py` ranks them together. Unreadable falls back to a
-    value that groups only with other unreadable ones rather than with real
-    imports."""
-    if not path:
-        return "external:unknown"
-    try:
-        return "external:" + hashlib.sha256(Path(path).read_bytes()).hexdigest()[:12]
-    except OSError:
-        return "external:unreadable"
-
-
 def judge_identity(model: str) -> str:
     """What actually graded, as one string safe to hash into a resume stamp.
 
@@ -1917,8 +1901,24 @@ def main() -> int:
         # is for. Cloud review P1 x4 on #2055; see also the `judge` field above,
         # which still uses a bare sentinel and has the same shape (pre-existing,
         # not touched here).
-        "rubric_identity": (_rubric_identity() if external_verdicts is None
-                            else _external_rubric_identity(args.verdicts)),
+        # None for imported verdicts, exactly as `judge_identity` is empty for a run
+        # started outside the sweep: unknown provenance groups with unknown
+        # provenance rather than pretending to an identity it never resolved.
+        #
+        # Five review rounds reached this. Every invented alternative was worse:
+        # the local digest CLAIMED a rubric the import never ran under; a constant
+        # sentinel made two DIFFERENT external rubrics compare equal; hashing the
+        # verdicts file made two arms under the SAME rubric compare different,
+        # because verdict files differ by candidate outcome, which broke multi-arm
+        # external grading entirely.
+        #
+        # ACCEPTED LIMIT, stated rather than papered over: two imports graded under
+        # genuinely different external rubrics both report None and will be ranked
+        # together. That is the same accepted limit `judge_identity` already
+        # carries for legacy receipts, and the harness cannot close it without a
+        # rubric identifier the verdicts file does not contain. Supplying one is a
+        # separate change with its own flag.
+        "rubric_identity": _rubric_identity() if external_verdicts is None else None,
         "reps": args.reps if args.system == "old" else None,
         "adjudicate_pct": args.adjudicate_pct if args.system == "new" else None,
         "adjudicate_min": args.adjudicate_min if args.system == "new" else None,

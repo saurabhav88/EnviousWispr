@@ -897,56 +897,35 @@ def test_a_receipt_from_the_same_judge_is_still_skipped():
 
 
 
-def test_two_external_rubrics_get_two_identities():
-    """A provenance field must be DERIVED from what it describes, never a constant.
-
-    A bare "external_verdicts" sentinel gave every import one shared identity, so
-    two verdict files graded under DIFFERENT external rubrics compared equal and
-    the report ranked them together — the same false claim as stamping the local
-    digest, pointing the other way. Cloud review P1 x4 on #2055.
-
-    THREE-WAY: different files must differ, identical CONTENT must match (the
-    identity is the bytes, not the path), and neither may collide with the local
-    digest.
-    """
-    t = Path(tempfile.mkdtemp())
-    a = t / "a.jsonl"; a.write_text('{"id":"A","verdict":"pass"}\n')
-    b = t / "b.jsonl"; b.write_text('{"id":"A","verdict":"critical_fail"}\n')
-    c = t / "c.jsonl"; c.write_text(a.read_text())          # same bytes, other path
-
-    ia, ib, ic = (bj._external_rubric_identity(str(x)) for x in (a, b, c))
-    assert ia != ib, f"two different verdict files share an identity: {ia}"
-    assert ia == ic, f"identical verdicts got different identities: {ia} vs {ic}"
-    assert ia != bj._rubric_identity(), "an import claimed the local rubric"
-    assert ia.startswith("external:"), ia
-
-    # missing and unreadable group with their own kind, not with real imports
-    assert bj._external_rubric_identity(None) == "external:unknown"
-    assert bj._external_rubric_identity(str(t / "nope.jsonl")) == "external:unreadable"
-    assert bj._external_rubric_identity(None) != ia
-
-def test_imported_verdicts_do_not_claim_the_local_rubric():
+def test_imported_verdicts_carry_no_rubric_identity():
     """`--verdicts` imports judgments this scorer did not produce, so the receipt
-    must not stamp them with this checkout's rubric digest. Doing so asserts a
-    provenance that never happened, and makes two imports graded under different
-    external rubrics compare equal because they share this checkout.
+    records None — exactly as `judge_identity` is empty for a run started outside
+    the sweep. Unknown provenance groups with unknown provenance rather than
+    claiming an identity it never resolved.
 
-    The `judge` field beside it has always made this distinction; this is the same
-    rule. Cloud review P1 on #2055, third round of the same class.
+    Five review rounds reached this, and every invented alternative was worse: the
+    local digest CLAIMED a rubric the import never ran under; a constant sentinel
+    made two different external rubrics compare equal; hashing the verdicts file
+    made two arms under the SAME rubric compare different, because verdict files
+    differ by candidate outcome — which broke multi-arm external grading.
+
+    ACCEPTED LIMIT, pinned here so it cannot be forgotten: two imports under
+    genuinely different external rubrics both report None and will rank together.
+    Closing it needs a rubric identifier the verdicts file does not carry.
 
     TWO-WAY: a normal run must still record the real digest, or a fix that always
-    returned the sentinel would pass while destroying the guard it feeds.
+    returned None would pass while disabling the guard entirely.
     """
     src = (Path(__file__).parent / "behavior_judge.py").read_text()
-    i = src.index('"rubric_identity": (')
-    expr = src[i:src.index("),", i) + 2]
+    i = src.index('"rubric_identity":')
+    expr = src[i:src.index("\n", i)]
     assert "external_verdicts is None" in expr, expr
-    assert "_external_rubric_identity(" in expr, expr
+    assert expr.rstrip().endswith("else None,"), expr
     assert "_rubric_identity()" in expr, expr
 
-    # the real digest is a stable 12-hex of this file, not the sentinel
     a = bj._rubric_identity()
-    assert a != "external_verdicts" and len(a) == 12 and a == bj._rubric_identity(), a
+    assert a is not None and len(a) == 12 and a == bj._rubric_identity(), a
+
 
 def test_a_mixed_rubric_is_refused_like_a_mixed_judge():
     """Two arms graded under DIFFERENT rubrics must not be ranked together.
@@ -2410,7 +2389,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 122
+EXPECTED_TESTS = 121
 
 
 def _run() -> int:
