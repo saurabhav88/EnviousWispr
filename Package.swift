@@ -23,6 +23,17 @@ let package = Package(
     // TailBenchmarkHarness facade. Purely additive — no production code imports
     // change. (#1276 PR-2)
     .library(name: "EnviousWisprASR", targets: ["EnviousWisprASR"]),
+    // Exposed for the deterministic-layer polish harness at
+    // scripts/eval/deterministic_runner, which grades SHIPPED behaviour by
+    // running the real TextProcessingSteps around polish instead of sending raw
+    // corpus text straight to a connector. Every eval harness before this one
+    // measured polish naked, so deterministic wins (numbers, fillers, emoji
+    // restore) counted as product failures — deterministic-features.md
+    // FACT: benchmark-bypasses-this-whole-layer. Importing the steps THEMSELVES
+    // is the point: re-implementing them in the harness would grade a copy
+    // (validation-discipline.md RULE: measure-with-the-real-tool-never-a-simulation).
+    // Purely additive — no production code imports change.
+    .library(name: "EnviousWisprPipeline", targets: ["EnviousWisprPipeline"]),
   ],
   dependencies: [
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),
