@@ -222,8 +222,20 @@ for cand in "$CANDDIR"/*.jsonl; do
   # Consequence, and it is intended: changing the judge invalidates every stamp and
   # the next sweep re-grades the full field. That is the only way a comparison stays
   # a comparison, and it is affordable precisely because the new judge is cheap.
+  # The RUBRIC belongs in this key for exactly the reason the judge does. Changing
+  # what the scorer will ACCEPT changes what a score means, so a receipt graded
+  # under the old rubric is not comparable with one graded under the new one — and
+  # without the scorer in the hash, a matching stamp silently serves the stale
+  # score. Found by cloud review on PR #2055, which added per-behaviour
+  # `allowed_variants` and would have been masked by every existing stamp.
+  #
+  # Hashing the WHOLE scorer over-invalidates: a comment fix re-grades the field.
+  # That is the correct direction to fail. Under-invalidating produces a number
+  # that looks like a comparison and is not one, which is undetectable afterwards,
+  # and re-grading is affordable on the current judge.
   inputs_sha="$(
-    { printf 'judge=%s\n' "$JUDGE_IDENTITY"; sha256 "$cand" "$CORPUS"; } | sha256 | cut -d' ' -f1
+    { printf 'judge=%s\n' "$JUDGE_IDENTITY"
+      sha256 "$cand" "$CORPUS" "$ROOT/scripts/eval/behavior_judge.py"; } | sha256 | cut -d' ' -f1
   )"
   if [ -f "$dest/summary.json" ]; then
     # Cacheability is checked HERE too, not only after judging. A matching stamp

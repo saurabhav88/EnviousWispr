@@ -475,6 +475,18 @@ def _azure_served_model(deployment: str) -> str:
     return served.strip()
 
 
+def _rubric_identity() -> str:
+    """SHA of this scorer, which IS the rubric: the system prompt, the allowed
+    variants and the severity rules all live here. Over-identifies by design — a
+    comment change mints a new identity and forces a re-grade. That is the correct
+    direction: under-identifying lets two rubrics into one ranking, which is
+    undetectable in the output."""
+    try:
+        return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "unreadable"
+
+
 def judge_identity(model: str) -> str:
     """What actually graded, as one string safe to hash into a resume stamp.
 
@@ -750,6 +762,42 @@ DEFAULT_ALLOWED_VARIANTS = [
     "bullet vs numbered list when both preserve intent",
 ]
 
+# Per-behavior additions, for buckets where the transcript genuinely admits more than one
+# correct answer and `expected_output` records only the one the author happened to write.
+#
+# Why this exists: the system prompt already says reference_output is "an ILLUSTRATIVE
+# reference, NOT exact ground truth" and forbids grading by similarity to it — but
+# `allowed_variants` was a single global list of four COSMETIC items, so on a case with two
+# valid repairs the judge had nothing to license the other one and fell back to the
+# reference. Measured 2026-08-12: `reference_overfit` is a defined failure type that had
+# never been emitted once in 6,760 gradings, while grammar sat at 57% with a third of its
+# failures being alternative valid repairs.
+#
+# These entries loosen only WHICH correct answer is accepted. They do not loosen meaning,
+# entity, or content checks — a repair that changes what the speaker said still fails.
+BEHAVIOR_ALLOWED_VARIANTS = {
+    "grammar_fix": [
+        "any grammatically correct repair of the error when the transcript admits more "
+        "than one AND the repair preserves how many things the speaker referred to — "
+        "e.g. 'the figures is ready' may be fixed by adjusting the verb ('are'), or by "
+        "any other repair that keeps the plural. Changing the NOUN's number ('the figure "
+        "is ready') is NOT a licensed variant: it silently changes the count the speaker "
+        "gave, which the meaning-preservation rule already forbids. Article choice ('the' "
+        "vs 'a') is licensed where both preserve the count. Judge whether the error is "
+        "fixed and the speaker's content survives, NOT whether the repair matches "
+        "reference_output's choice.",
+    ],
+    "topic_shift": [
+        "any device that visibly separates the topics: blank lines, single line breaks, "
+        "or bullets. reference_output uses blank lines as an authoring convention, not a "
+        "product requirement. Do not penalise the choice of separator.",
+    ],
+}
+
+
+def allowed_variants_for(behavior: str) -> list[str]:
+    return DEFAULT_ALLOWED_VARIANTS + BEHAVIOR_ALLOWED_VARIANTS.get(behavior, [])
+
 
 def behavior_key(case: dict) -> str:
     """Canonical behavior name from whatever fields a case carries. Strips the
@@ -975,7 +1023,7 @@ def build_new_payload(norm: dict, cand: dict, prod: dict | None) -> dict:
         "case_type": norm["case_type"],
         "risk_tier": norm["risk_tier"],
         "reference_output": norm["reference_output"],
-        "allowed_variants": DEFAULT_ALLOWED_VARIANTS,
+        "allowed_variants": allowed_variants_for(norm["behavior"]),
     }
 
 
@@ -1837,6 +1885,45 @@ def main() -> int:
         # always could. Empty for a run started outside the sweep, which groups with other such
         # runs rather than pretending to an identity it never resolved.
         "judge_identity": os.environ.get("EW_JUDGE_IDENTITY") or _resolved_judge_identity,
+        # WHICH RUBRIC produced this receipt. `judge_identity` answers "who graded
+        # it"; this answers "against what bar". Both change what a score MEANS, so
+        # both have to travel WITH the receipt — the resume stamp cannot serve this,
+        # because an interrupted sweep leaves some arms re-graded and some not, and
+        # `report_ollama_bench.py` compares receipts and never reads that sidecar.
+        # Cloud review P1 on #2055.
+        # Imported verdicts were NOT produced by this scorer, so stamping the local
+        # digest on them would assert a provenance that never happened — and two
+        # imports graded under different external rubrics would then compare equal
+        # because they share this checkout. The judge field one line above already
+        # makes exactly this distinction; this is the same rule, not a new one.
+        # Cloud review P1 on #2055, third round of the same class.
+        # DERIVED, never constant. A bare "external_verdicts" sentinel made every
+        # import claim one shared rubric, so two verdict files graded under
+        # DIFFERENT external rubrics compared equal and the report ranked them
+        # together — the same false claim as stamping the local digest, pointing
+        # the other way. Hashing the verdicts file gives identical imports the same
+        # identity and different ones different identities, which is what the field
+        # is for. Cloud review P1 x4 on #2055; see also the `judge` field above,
+        # which still uses a bare sentinel and has the same shape (pre-existing,
+        # not touched here).
+        # None for imported verdicts, exactly as `judge_identity` is empty for a run
+        # started outside the sweep: unknown provenance groups with unknown
+        # provenance rather than pretending to an identity it never resolved.
+        #
+        # Five review rounds reached this. Every invented alternative was worse:
+        # the local digest CLAIMED a rubric the import never ran under; a constant
+        # sentinel made two DIFFERENT external rubrics compare equal; hashing the
+        # verdicts file made two arms under the SAME rubric compare different,
+        # because verdict files differ by candidate outcome, which broke multi-arm
+        # external grading entirely.
+        #
+        # ACCEPTED LIMIT, stated rather than papered over: two imports graded under
+        # genuinely different external rubrics both report None and will be ranked
+        # together. That is the same accepted limit `judge_identity` already
+        # carries for legacy receipts, and the harness cannot close it without a
+        # rubric identifier the verdicts file does not contain. Supplying one is a
+        # separate change with its own flag.
+        "rubric_identity": _rubric_identity() if external_verdicts is None else None,
         "reps": args.reps if args.system == "old" else None,
         "adjudicate_pct": args.adjudicate_pct if args.system == "new" else None,
         "adjudicate_min": args.adjudicate_min if args.system == "new" else None,

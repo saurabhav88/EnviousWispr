@@ -250,7 +250,8 @@ def forge_stamp(t, judge=None):
         ["bash", "-c",
          'if command -v shasum >/dev/null 2>&1; then H="shasum -a 256"; else H=sha256sum; fi; '
          f'{{ printf "judge=%s\\n" "{judge}"; '
-         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}"; }} | $H | cut -d" " -f1'],
+         f'$H "{t / "cand" / "modelA.jsonl"}" "{t / "corpus.jsonl"}" '
+         f'"{t / "scripts" / "eval" / "behavior_judge.py"}"; }} | $H | cut -d" " -f1'],
         capture_output=True, text=True).stdout.strip()
     assert forged, "could not compute a stamp"
     (t / "judged" / "modelA" / ".inputs-sha256").write_text(forged + "\n")
@@ -892,6 +893,75 @@ def test_a_receipt_from_the_same_judge_is_still_skipped():
     assert invocations(t) == before, f"a matching receipt was re-judged anyway:\n{log}"
     assert "skipped (already judged)" in log, log
 
+
+
+
+
+def test_imported_verdicts_carry_no_rubric_identity():
+    """`--verdicts` imports judgments this scorer did not produce, so the receipt
+    records None — exactly as `judge_identity` is empty for a run started outside
+    the sweep. Unknown provenance groups with unknown provenance rather than
+    claiming an identity it never resolved.
+
+    Five review rounds reached this, and every invented alternative was worse: the
+    local digest CLAIMED a rubric the import never ran under; a constant sentinel
+    made two different external rubrics compare equal; hashing the verdicts file
+    made two arms under the SAME rubric compare different, because verdict files
+    differ by candidate outcome — which broke multi-arm external grading.
+
+    ACCEPTED LIMIT, pinned here so it cannot be forgotten: two imports under
+    genuinely different external rubrics both report None and will rank together.
+    Closing it needs a rubric identifier the verdicts file does not carry.
+
+    TWO-WAY: a normal run must still record the real digest, or a fix that always
+    returned None would pass while disabling the guard entirely.
+    """
+    src = (Path(__file__).parent / "behavior_judge.py").read_text()
+    i = src.index('"rubric_identity":')
+    expr = src[i:src.index("\n", i)]
+    assert "external_verdicts is None" in expr, expr
+    assert expr.rstrip().endswith("else None,"), expr
+    assert "_rubric_identity()" in expr, expr
+
+    a = bj._rubric_identity()
+    assert a is not None and len(a) == 12 and a == bj._rubric_identity(), a
+
+
+def test_a_mixed_rubric_is_refused_like_a_mixed_judge():
+    """Two arms graded under DIFFERENT rubrics must not be ranked together.
+
+    `judge_identity` answers who graded it; `rubric_identity` answers against what
+    bar. Both change what a score MEANS. The resume stamp cannot cover this: an
+    interrupted sweep leaves some arms re-graded and some not, and this report
+    compares receipts and never reads that sidecar (cloud review P1 on #2055).
+
+    TWO-WAY. Without the matching half, a guard that refused EVERY run would pass
+    the refusal case while making the report permanently unusable.
+    """
+    def tree_with_two(rubric_a, rubric_b):
+        t = report_tree(healthy_receipt(meta={
+            "judge": "azure/j", "judge_identity": "azure/j@aaa",
+            "judge_model_version": "v1", "rubric_identity": rubric_a}))
+        b = t / "judged" / "modelB"
+        b.mkdir(parents=True)
+        (b / "summary.json").write_text(json.dumps(healthy_receipt(meta={
+            "judge": "azure/j", "judge_identity": "azure/j@aaa",
+            "judge_model_version": "v1", "rubric_identity": rubric_b})))
+        (b / "per_case.jsonl").write_text(
+            (t / "judged" / "modelA" / "per_case.jsonl").read_text())
+        run = json.loads((t / "run-summary.json").read_text())
+        m = dict(run["models"][0]); m["model"] = "modelB"
+        m["candidates"] = str(t / "cand" / "modelB.jsonl")
+        run["models"].append(m)
+        (t / "run-summary.json").write_text(json.dumps(run))
+        return t
+
+    rc, log = run_report(tree_with_two("RUBRIC_ONE", "RUBRIC_TWO"))
+    assert "mixes judges or rubrics" in log, f"a mixed rubric was ranked anyway:\n{log}"
+    assert rc != 0, log
+
+    rc, log = run_report(tree_with_two("RUBRIC_ONE", "RUBRIC_ONE"))
+    assert "mixes judges or rubrics" not in log, f"one rubric was refused:\n{log}"
 
 def test_the_stamp_the_script_writes_depends_on_the_judge():
     # Reads the stamp the REAL script wrote, not one this file computed: a fixture-only
@@ -2319,7 +2389,7 @@ def test_the_billing_check_runs_before_the_availability_check():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 119
+EXPECTED_TESTS = 121
 
 
 def _run() -> int:

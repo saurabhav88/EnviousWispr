@@ -381,6 +381,9 @@ def main() -> int:
             "from_receipt": True,
             "judge": receipt_meta.get("judge"),
             "judge_identity": receipt_meta.get("judge_identity"),
+            # WHICH RUBRIC graded this arm. Without it on the row, the mixing guard
+            # below reads a field nobody sets and can never fire.
+            "rubric_identity": receipt_meta.get("rubric_identity"),
             "judge_model_version": receipt_meta.get("judge_model_version"),
             "isRemote": sp["isRemote"],
             "thinks": sp["thinks"],
@@ -431,7 +434,7 @@ def main() -> int:
         # the same failure the outer `meta` shape check was added to prevent, one level in.
         # Shape-checking a container and then trusting its contents is half a check.
         key = []
-        for field in ("judge", "judge_identity", "judge_model_version"):
+        for field in ("judge", "judge_identity", "judge_model_version", "rubric_identity"):
             value = row.get(field)
             if value is not None and not isinstance(value, str):
                 problems.append(
@@ -444,11 +447,12 @@ def main() -> int:
         detail = "; ".join(
             f"{j[1] or j[0]}"
             + (f" serving {j[2]}" if j[2] else "")
+            + (f" under rubric {j[3]}" if len(j) > 3 and j[3] else "")
             + f": {', '.join(sorted(m for m in models if m))}"
             for j, models in sorted(judges.items(), key=lambda kv: str(kv)))
         problems.append(
-            "this run mixes judges, so the ranking would not be a comparison — "
-            f"{detail}. Re-grade every arm with one judge.")
+            "this run mixes judges or rubrics, so the ranking would not be a "
+            f"comparison — {detail}. Re-grade every arm with one judge and one rubric.")
 
     if problems:
         print("FAIL: incomplete receipts:\n  " + "\n  ".join(problems), file=sys.stderr)
