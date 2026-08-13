@@ -43,7 +43,7 @@ struct SmartImportSourceTests {
       """, to: dir, as: "v.json")
 
     #expect(
-      try FluidVoiceAdapter().loadWords(at: url)
+      try FluidVoiceAdapter().loadWords(at: url).words
         == [
           SmartImportWord(canonical: "FluidVoice", aliases: ["fluid voice"]),
           SmartImportWord(canonical: "Kubernetes", aliases: []),
@@ -56,7 +56,7 @@ struct SmartImportSourceTests {
     let dir = makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
     let url = try write(#"{ "alpha": 2.8 }"#, to: dir, as: "v.json")
-    #expect(try FluidVoiceAdapter().loadWords(at: url).isEmpty)
+    #expect(try FluidVoiceAdapter().loadWords(at: url).words.isEmpty)
   }
 
   @Test("FluidVoice aliases present as a non-array refuses the whole import")
@@ -104,7 +104,7 @@ struct SmartImportSourceTests {
       let displayName = "FluidVoice"
       let url: URL
       var candidatePaths: [URL] { [url] }
-      func loadWords(at url: URL) throws -> [SmartImportWord] {
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
         try FluidVoiceAdapter().loadWords(at: url)
       }
     }
@@ -126,7 +126,7 @@ struct SmartImportSourceTests {
       as: "settings.json"
     )
 
-    #expect(try SuperwhisperAdapter().loadWords(at: url) == [SmartImportWord(canonical: "Saurabh")])
+    #expect(try SuperwhisperAdapter().loadWords(at: url).words == [SmartImportWord(canonical: "Saurabh")])
   }
 
   @Test("a Superwhisper replacement carries its original as the alias")
@@ -139,7 +139,7 @@ struct SmartImportSourceTests {
       """, to: dir, as: "settings.json")
 
     #expect(
-      try SuperwhisperAdapter().loadWords(at: url)
+      try SuperwhisperAdapter().loadWords(at: url).words
         == [SmartImportWord(canonical: "Superwhisper", aliases: ["super whisper"])])
   }
 
@@ -152,7 +152,7 @@ struct SmartImportSourceTests {
       as: "settings.json")
 
     #expect(
-      try SuperwhisperAdapter().loadWords(at: url) == [SmartImportWord(canonical: "Superwhisper")])
+      try SuperwhisperAdapter().loadWords(at: url).words == [SmartImportWord(canonical: "Superwhisper")])
   }
 
   @Test("a Superwhisper replacement missing with is dropped, as today")
@@ -163,7 +163,7 @@ struct SmartImportSourceTests {
       #"{ "replacements": [ { "id": "A", "original": "super whisper" } ] }"#, to: dir,
       as: "settings.json")
 
-    #expect(try SuperwhisperAdapter().loadWords(at: url).isEmpty)
+    #expect(try SuperwhisperAdapter().loadWords(at: url).words.isEmpty)
   }
 
   @Test(
@@ -180,7 +180,7 @@ struct SmartImportSourceTests {
                            { "id": "B", "original": "y", "with": "   " } ] }
       """, to: dir, as: "settings.json")
 
-    #expect(try SuperwhisperAdapter().loadWords(at: url).isEmpty)
+    #expect(try SuperwhisperAdapter().loadWords(at: url).words.isEmpty)
   }
 
   @Test("Superwhisper original present as a non-string value refuses the whole import")
@@ -201,7 +201,7 @@ struct SmartImportSourceTests {
     let dir = makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
     let url = try write(#"{ "modeKeys": [] }"#, to: dir, as: "settings.json")
-    #expect(try SuperwhisperAdapter().loadWords(at: url).isEmpty)
+    #expect(try SuperwhisperAdapter().loadWords(at: url).words.isEmpty)
   }
 
   @Test("Superwhisper probes the current location before the legacy one")
@@ -261,7 +261,7 @@ struct SmartImportSourceTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let url = try makeWisprFlowDatabase(in: dir)
 
-    let words = try WisprFlowAdapter().loadWords(at: url)
+    let words = try WisprFlowAdapter().loadWords(at: url).words
     #expect(!words.map(\.canonical).contains("deleted word"))
   }
 
@@ -272,7 +272,7 @@ struct SmartImportSourceTests {
     let url = try makeWisprFlowDatabase(in: dir)
 
     // Snippets are a different feature, not vocabulary.
-    let words = try WisprFlowAdapter().loadWords(at: url).map(\.canonical)
+    let words = try WisprFlowAdapter().loadWords(at: url).words.map(\.canonical)
     #expect(!words.contains("my long signature"))
     #expect(!words.contains("sig"))
   }
@@ -283,7 +283,7 @@ struct SmartImportSourceTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let url = try makeWisprFlowDatabase(in: dir)
 
-    let words = try WisprFlowAdapter().loadWords(at: url)
+    let words = try WisprFlowAdapter().loadWords(at: url).words
     // `btw → by the way`: the corrected side is the word worth having, and
     // the misspelling that prompted it comes across as the alias.
     #expect(words.contains(SmartImportWord(canonical: "by the way", aliases: ["btw"])))
@@ -298,7 +298,7 @@ struct SmartImportSourceTests {
     let url = try makeWisprFlowDatabase(in: dir)
 
     // An empty-but-present replacement would otherwise import a blank word.
-    let words = try WisprFlowAdapter().loadWords(at: url)
+    let words = try WisprFlowAdapter().loadWords(at: url).words
     #expect(words.contains(SmartImportWord(canonical: "blank replacement")))
   }
 
@@ -322,7 +322,7 @@ struct SmartImportSourceTests {
       """
     #expect(sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK)
 
-    let words = try WisprFlowAdapter().loadWords(at: url)
+    let words = try WisprFlowAdapter().loadWords(at: url).words
     #expect(words == [SmartImportWord(canonical: "tab word")])
   }
 
@@ -344,7 +344,7 @@ struct SmartImportSourceTests {
       """
     #expect(sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK)
 
-    let words = try WisprFlowAdapter().loadWords(at: url)
+    let words = try WisprFlowAdapter().loadWords(at: url).words
     #expect(words == [SmartImportWord(canonical: "Superwhisper", aliases: ["Superwhisper"])])
   }
 
@@ -368,7 +368,7 @@ struct SmartImportSourceTests {
       """
     #expect(sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK)
 
-    let canonicals = try WisprFlowAdapter().loadWords(at: url).map(\.canonical)
+    let canonicals = try WisprFlowAdapter().loadWords(at: url).words.map(\.canonical)
     let alphaIndex = try #require(canonicals.firstIndex(of: "alpha word"))
     let zebraIndex = try #require(canonicals.firstIndex(of: "zebra word"))
     #expect(alphaIndex < zebraIndex)
@@ -393,7 +393,7 @@ struct SmartImportSourceTests {
       """
     #expect(sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK)
 
-    let words = try WisprFlowAdapter().loadWords(at: url)
+    let words = try WisprFlowAdapter().loadWords(at: url).words
     #expect(words == [SmartImportWord(canonical: "")])
   }
 
@@ -422,7 +422,7 @@ struct SmartImportSourceTests {
       let displayName = "Wispr Flow"
       let url: URL
       var candidatePaths: [URL] { [url] }
-      func loadWords(at url: URL) throws -> [SmartImportWord] {
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
         try WisprFlowAdapter().loadWords(at: url)
       }
     }
@@ -508,7 +508,7 @@ struct SmartImportSourceTests {
       let identifier = "missing"
       let displayName = "Nothing"
       var candidatePaths: [URL] { [URL(fileURLWithPath: "/nonexistent/nope.json")] }
-      func loadWords(at url: URL) throws -> [SmartImportWord] { [] }
+      func loadWords(at url: URL) throws -> SmartImportReadResult { SmartImportReadResult(words: []) }
     }
     await #expect(throws: SmartImportError.appNotFound("Nothing")) {
       _ = try await SmartImportSource(adapter: Missing()).loadCandidates()
@@ -527,7 +527,7 @@ struct SmartImportSourceTests {
       let displayName = "FluidVoice"
       let url: URL
       var candidatePaths: [URL] { [url] }
-      func loadWords(at url: URL) throws -> [SmartImportWord] {
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
         try FluidVoiceAdapter().loadWords(at: url)
       }
     }
@@ -554,7 +554,7 @@ struct SmartImportSourceTests {
       let displayName = "FluidVoice"
       let url: URL
       var candidatePaths: [URL] { [url] }
-      func loadWords(at url: URL) throws -> [SmartImportWord] {
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
         try FluidVoiceAdapter().loadWords(at: url)
       }
     }
@@ -584,7 +584,7 @@ struct SmartImportSourceTests {
       let displayName = "FluidVoice"
       let url: URL
       var candidatePaths: [URL] { [url] }
-      func loadWords(at url: URL) throws -> [SmartImportWord] {
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
         try FluidVoiceAdapter().loadWords(at: url)
       }
     }
@@ -612,7 +612,7 @@ struct SmartImportSourceTests {
       let displayName = "Superwhisper"
       let url: URL
       var candidatePaths: [URL] { [url] }
-      func loadWords(at url: URL) throws -> [SmartImportWord] {
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
         try SuperwhisperAdapter().loadWords(at: url)
       }
     }
@@ -641,7 +641,7 @@ struct SmartImportSourceTests {
       let displayName = "FluidVoice"
       let url: URL
       var candidatePaths: [URL] { [url] }
-      func loadWords(at url: URL) throws -> [SmartImportWord] {
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
         try FluidVoiceAdapter().loadWords(at: url)
       }
     }
@@ -667,7 +667,7 @@ struct SmartImportSourceTests {
       let displayName = "FluidVoice"
       let url: URL
       var candidatePaths: [URL] { [url] }
-      func loadWords(at url: URL) throws -> [SmartImportWord] {
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
         try FluidVoiceAdapter().loadWords(at: url)
       }
     }
@@ -681,14 +681,579 @@ struct SmartImportSourceTests {
     #expect(actualScalars == [Array(nfc.unicodeScalars), Array(nfd.unicodeScalars)])
   }
 
-  @Test("the registry ships the three verified apps and not the unverified one")
+  @Test("the registry ships every verified app and not the unverifiable one")
   func registryShipsOnlyVerifiedAdapters() {
     let ids = SmartImportRegistry.v1.adapters.map(\.identifier)
-    #expect(ids.sorted() == ["fluidvoice", "superwhisper", "wispr-flow"])
-    // TypeWhisper is absent deliberately: its table is empty on the only
-    // machine available, so an adapter would be written against a shape nobody
-    // has seen populated.
-    #expect(!ids.contains("typewhisper"))
+    #expect(
+      ids.sorted() == [
+        "fluidvoice", "juno", "spokenly", "superwhisper", "typewhisper", "vox", "wispr-flow",
+      ])
+    // Handy is absent deliberately: its element schema is grounded from its
+    // own public source, but the app is not installed on any machine here, so
+    // an adapter could not be exercised end to end against real data (#1773).
+    #expect(!ids.contains("handy"))
+    // Identifiers reach telemetry as `sourceID`, so a collision would silently
+    // merge two competitors' import counts.
+    #expect(Set(ids).count == ids.count)
+  }
+
+  // MARK: - Shared SQLite reader
+
+  private func makeReaderDatabase(in dir: URL) throws -> URL {
+    let url = dir.appendingPathComponent("reader.sqlite")
+    var db: OpaquePointer?
+    #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+    defer { sqlite3_close(db) }
+    #expect(
+      sqlite3_exec(
+        db,
+        """
+        CREATE TABLE T (a VARCHAR, b VARCHAR);
+        INSERT INTO T VALUES ('one', NULL);
+        INSERT INTO T VALUES ('two', 'Two');
+        """, nil, nil, nil) == SQLITE_OK)
+    return url
+  }
+
+  @Test("a row mapper returning nil is an exclusion; a mapper that throws is a failure")
+  func readerDistinguishesExclusionFromFailure() throws {
+    // These are different things and an earlier draft conflated them: nil
+    // means "this row is not vocabulary", a throw means "this database is not
+    // what we think it is".
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try makeReaderDatabase(in: dir)
+
+    let excluded = try SmartImportSQLiteReader.read(
+      uri: "file:\(url.path)?mode=ro", sql: "SELECT a, b FROM T ORDER BY a", appName: "Probe"
+    ) { statement in
+      let a = try SmartImportSQLiteReader.requiredText(statement, 0, "Probe")
+      return a == "one" ? nil : SmartImportWord(canonical: a)
+    }
+    #expect(excluded.words.map(\.canonical) == ["two"])
+    #expect(excluded.excludedCount == 1)
+
+    struct Boom: Error {}
+    #expect(throws: Boom.self) {
+      _ = try SmartImportSQLiteReader.read(
+        uri: "file:\(url.path)?mode=ro", sql: "SELECT a, b FROM T", appName: "Probe"
+      ) { _ in throw Boom() }
+    }
+  }
+
+  @Test("afterRowsRead runs while the connection is still open, and its throw refuses the read")
+  func readerRunsValidationBeforeCleanup() throws {
+    // Wispr Flow's post-read sidecar recheck sits exactly here. Running it
+    // after the reader returned would move it past finalize and close and
+    // widen the window it exists to close.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try makeReaderDatabase(in: dir)
+
+    struct Refused: Error {}
+    var sawRows = false
+    #expect(throws: Refused.self) {
+      _ = try SmartImportSQLiteReader.read(
+        uri: "file:\(url.path)?mode=ro", sql: "SELECT a, b FROM T", appName: "Probe",
+        mapRow: { statement in
+          sawRows = true
+          return SmartImportWord(
+            canonical: try SmartImportSQLiteReader.requiredText(statement, 0, "Probe"))
+        },
+        afterRowsRead: { throw Refused() })
+    }
+    // Ordering: every row was stepped BEFORE validation ran, and no partial
+    // result escaped.
+    #expect(sawRows)
+  }
+
+  @Test("a result other than SQLITE_DONE refuses rather than returning a prefix")
+  func readerRefusesAPartialRead() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("corrupt.sqlite")
+    try Data("SQLite format 3\u{0}garbage-not-a-real-database".utf8).write(to: url)
+    #expect(throws: SmartImportError.unreadable("Probe")) {
+      _ = try SmartImportSQLiteReader.read(
+        uri: "file:\(url.path)?mode=ro", sql: "SELECT a FROM T", appName: "Probe"
+      ) { _ in nil }
+    }
+  }
+
+  @Test("strict column reads refuse a NULL or wrongly-typed required value")
+  func readerStrictColumnTypes() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("types.sqlite")
+    var db: OpaquePointer?
+    #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+    #expect(
+      sqlite3_exec(
+        db,
+        """
+        CREATE TABLE T (required VARCHAR, flag INTEGER);
+        INSERT INTO T VALUES (NULL, 1);
+        """, nil, nil, nil) == SQLITE_OK)
+    sqlite3_close(db)
+
+    #expect(throws: SmartImportError.unreadable("Probe")) {
+      _ = try SmartImportSQLiteReader.read(
+        uri: "file:\(url.path)?mode=ro", sql: "SELECT required, flag FROM T", appName: "Probe"
+      ) { statement in
+        SmartImportWord(
+          canonical: try SmartImportSQLiteReader.requiredText(statement, 0, "Probe"))
+      }
+    }
+  }
+
+  // MARK: - TypeWhisper
+
+  /// Builds a store with TypeWhisper's real Core Data column shape.
+  ///
+  /// Returns the url AND the open writer connection. The caller must keep that
+  /// connection alive across the read and close it in a `defer`: closing it
+  /// first CHECKPOINTS the WAL into the main file (measured — `-wal` drops to
+  /// zero bytes), which destroys the very state the WAL tests exist to
+  /// reproduce and quietly makes them pass against the design they exist to
+  /// reject.
+  private func makeTypeWhisperStore(
+    in dir: URL, walOnlyRow: Bool
+  ) throws -> (url: URL, writer: OpaquePointer?) {
+    let url = dir.appendingPathComponent("dictionary.store")
+    var db: OpaquePointer?
+    #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+    sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nil, nil, nil)
+    sqlite3_exec(db, "PRAGMA wal_autocheckpoint=0;", nil, nil, nil)
+    let schema = """
+      CREATE TABLE ZDICTIONARYENTRY (Z_PK INTEGER PRIMARY KEY, ZISENABLED INTEGER,
+        ZCASESENSITIVE INTEGER, ZENTRYTYPE VARCHAR, ZORIGINAL VARCHAR, ZREPLACEMENT VARCHAR);
+      INSERT INTO ZDICTIONARYENTRY VALUES (1,1,1,'term','Nuxt',NULL);
+      INSERT INTO ZDICTIONARYENTRY VALUES (2,1,0,'correction','envius wisper','EnviousWispr');
+      INSERT INTO ZDICTIONARYENTRY VALUES (3,0,0,'term','DisabledWord',NULL);
+      INSERT INTO ZDICTIONARYENTRY VALUES (4,1,0,'snippet','sig','my long signature');
+      """
+    #expect(sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK)
+    if walOnlyRow {
+      // Force everything so far into the main file, then write one more row
+      // that must stay in the WAL alone.
+      sqlite3_exec(db, "PRAGMA wal_checkpoint(TRUNCATE);", nil, nil, nil)
+      sqlite3_exec(
+        db, "INSERT INTO ZDICTIONARYENTRY VALUES (5,1,0,'term','WalOnlyWord',NULL);",
+        nil, nil, nil)
+    }
+    return (url, db)
+  }
+
+  @Test("TypeWhisper terms and corrections both map through one structural rule")
+  func typeWhisperMapsBothEntryTypes() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try makeTypeWhisperStore(in: dir, walOnlyRow: false)
+    defer { sqlite3_close(store.writer) }
+
+    let result = try TypeWhisperAdapter().loadWords(at: store.url)
+    // A `term` carries the word with no replacement; a `correction` carries
+    // the wrong spelling and the right one.
+    #expect(
+      result.words == [
+        SmartImportWord(canonical: "Nuxt", caseSensitive: .supplied(true)),
+        SmartImportWord(
+          canonical: "EnviousWispr", aliases: ["envius wisper"], caseSensitive: .supplied(false)),
+      ])
+    // The disabled row and the non-allowlisted `snippet` type.
+    #expect(result.excludedCount == 2)
+  }
+
+  @Test("TypeWhisper never imports a row the user disabled, or a type we have not verified")
+  func typeWhisperExcludesDisabledAndUnknownTypes() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try makeTypeWhisperStore(in: dir, walOnlyRow: false)
+    defer { sqlite3_close(store.writer) }
+
+    let canonicals = try TypeWhisperAdapter().loadWords(at: store.url).words.map(\.canonical)
+    #expect(!canonicals.contains("DisabledWord"))
+    // `snippet` is not in the allowlist. Text expansions are the one thing
+    // Wispr Flow's adapter exists to exclude, and TypeWhisper ships a separate
+    // snippets store, so admitting an unverified type is the wrong direction.
+    #expect(!canonicals.contains("my long signature"))
+    #expect(!canonicals.contains("sig"))
+  }
+
+  @Test("rows that live only in an un-checkpointed WAL still come across")
+  func typeWhisperReadsRowsHeldOnlyInTheWAL() throws {
+    // The regression test for the defect that redesigned this adapter.
+    // TypeWhisper never checkpoints: quit the app and the WAL still holds rows
+    // the main file does not have. Reading the main file `immutable=1` — which
+    // skips WAL processing — returned 36 rows against a true 38 on the real
+    // store, silently.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try makeTypeWhisperStore(in: dir, walOnlyRow: true)
+    defer { sqlite3_close(store.writer) }
+
+    // Precondition, so a pass means something: the main file alone genuinely
+    // cannot see the WAL-only row. Without this the test would still pass
+    // against the design it exists to reject.
+    let mainOnly = dir.appendingPathComponent("main-only.store")
+    try FileManager.default.copyItem(at: store.url, to: mainOnly)
+    var probe: OpaquePointer?
+    #expect(
+      sqlite3_open_v2(
+        "file:\(mainOnly.path)?immutable=1", &probe,
+        SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK)
+    var statement: OpaquePointer?
+    #expect(
+      sqlite3_prepare_v2(
+        probe, "SELECT COUNT(*) FROM ZDICTIONARYENTRY WHERE ZORIGINAL = 'WalOnlyWord'", -1,
+        &statement, nil) == SQLITE_OK)
+    #expect(sqlite3_step(statement) == SQLITE_ROW)
+    #expect(sqlite3_column_int(statement, 0) == 0)
+    sqlite3_finalize(statement)
+    sqlite3_close(probe)
+
+    let canonicals = try TypeWhisperAdapter().loadWords(at: store.url).words.map(\.canonical)
+    #expect(canonicals.contains("WalOnlyWord"))
+  }
+
+  @Test("reading TypeWhisper leaves every byte of its store untouched")
+  func typeWhisperLeavesTheSourceUnchanged() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try makeTypeWhisperStore(in: dir, walOnlyRow: true)
+    defer { sqlite3_close(store.writer) }
+
+    func fingerprint() -> [String: Data] {
+      var out: [String: Data] = [:]
+      for suffix in ["", "-wal", "-shm"] {
+        let path = store.url.path + suffix
+        if let data = FileManager.default.contents(atPath: path) { out[suffix] = data }
+      }
+      return out
+    }
+    let before = fingerprint()
+    _ = try TypeWhisperAdapter().loadWords(at: store.url)
+    // Opening the SOURCE read-only also returns the right rows, but it
+    // MODIFIES their `-shm`. Writing inside another app's data directory is
+    // what #1686 removed, so the copy is the point rather than an optimisation.
+    #expect(fingerprint() == before)
+  }
+
+  @Test("a snapshot whose parts change between the two passes is refused, not read")
+  func typeWhisperRefusesAnUnstableSnapshot() throws {
+    // Copying main and WAL one after another can capture two different
+    // generations if the other app checkpoints in between — a snapshot that
+    // never existed. The reader takes two passes and accepts only a matching
+    // pair; this drives the injected byte reader so the branch is reachable
+    // deterministically rather than by racing a real app.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try makeTypeWhisperStore(in: dir, walOnlyRow: true)
+    defer { sqlite3_close(store.writer) }
+
+    nonisolated(unsafe) var pass = 0
+    let unstable = TypeWhisperAdapter(readPart: { url in
+      guard let data = FileManager.default.contents(atPath: url.path) else { return nil }
+      guard url.lastPathComponent.hasSuffix("-wal") else { return data }
+      // A different WAL on every read: no two passes can ever agree.
+      pass += 1
+      return data + Data("\(pass)".utf8)
+    })
+    #expect(throws: SmartImportError.unreadable("TypeWhisper")) {
+      _ = try unstable.loadWords(at: store.url)
+    }
+
+    // Positive counterpart: a reader that returns stable bytes succeeds, so
+    // the refusal above is the instability and not the injection itself.
+    let stable = TypeWhisperAdapter(readPart: { url in
+      FileManager.default.contents(atPath: url.path)
+    })
+    #expect(try !stable.loadWords(at: store.url).words.isEmpty)
+  }
+
+  @Test("a TypeWhisper store whose columns hold the wrong types is refused, never guessed")
+  func typeWhisperMalformedColumnsRefuse() throws {
+    // SQLite columns are dynamically typed, so a schema that drifts under us
+    // can hand back a BLOB where text belongs. Converting silently turns a
+    // malformed source into plausible-looking words.
+    //
+    // A BLOB rather than an integer on purpose: `VARCHAR` carries TEXT
+    // AFFINITY, so SQLite converts an integer literal to text on insert and
+    // the column reads back as SQLITE_TEXT — an integer fixture here asserts
+    // nothing at all. Affinity does not convert blobs.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("dictionary.store")
+    var db: OpaquePointer?
+    #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+    let schema = """
+      CREATE TABLE ZDICTIONARYENTRY (Z_PK INTEGER PRIMARY KEY, ZISENABLED INTEGER,
+        ZCASESENSITIVE INTEGER, ZENTRYTYPE VARCHAR, ZORIGINAL VARCHAR, ZREPLACEMENT VARCHAR);
+      INSERT INTO ZDICTIONARYENTRY VALUES (1,1,1,'term',x'DEADBEEF',NULL);
+      """
+    #expect(sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK)
+    sqlite3_close(db)
+
+    #expect(throws: SmartImportError.unreadable("TypeWhisper")) {
+      _ = try TypeWhisperAdapter().loadWords(at: url)
+    }
+  }
+
+  @Test("a TypeWhisper boolean outside 0 and 1 is refused rather than coerced")
+  func typeWhisperNonBooleanFlagRefuses() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("dictionary.store")
+    var db: OpaquePointer?
+    #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+    let schema = """
+      CREATE TABLE ZDICTIONARYENTRY (Z_PK INTEGER PRIMARY KEY, ZISENABLED INTEGER,
+        ZCASESENSITIVE INTEGER, ZENTRYTYPE VARCHAR, ZORIGINAL VARCHAR, ZREPLACEMENT VARCHAR);
+      INSERT INTO ZDICTIONARYENTRY VALUES (1,7,0,'term','Weird',NULL);
+      """
+    #expect(sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK)
+    sqlite3_close(db)
+
+    #expect(throws: SmartImportError.unreadable("TypeWhisper")) {
+      _ = try TypeWhisperAdapter().loadWords(at: url)
+    }
+  }
+
+  // MARK: - Spokenly
+
+  private func spokenlyEnvelope(_ items: String) -> Data {
+    Data(#"{"dirty":true,"serverVersion":0,"envelope":{"orderUpdatedAt":1,"items":[\#(items)],"tombstones":[{"id":"gone","deletedAt":2}]}}"#.utf8)
+  }
+
+  private func spokenlyItem(
+    _ original: String, _ replacement: String, isRegex: Bool = false
+  ) -> String {
+    #"{"updatedAt":1,"value":{"id":"x","original":"\#(original)","replacement":"\#(replacement)","isRegex":\#(isRegex),"timing":"beforeAI","createdAt":1}}"#
+  }
+
+  @Test("a Spokenly replacement takes the corrected spelling and carries its original as the alias")
+  func spokenlyMapsReplacementDirection() throws {
+    let data = spokenlyEnvelope(spokenlyItem("hanooman", "Hanuman"))
+    let result = try SpokenlyAdapter(readDomain: { _ in data })
+      .loadWords(at: URL(fileURLWithPath: "/unused"))
+    #expect(result.words == [SmartImportWord(canonical: "Hanuman", aliases: ["hanooman"])])
+    #expect(result.excludedCount == 0)
+  }
+
+  @Test("a Spokenly regex rule is never imported as a word")
+  func spokenlyRegexRuleIsExcluded() throws {
+    // `original` holds a PATTERN, not a word — verified by creating one
+    // through Spokenly's own Use Regular Expression checkbox.
+    let data = spokenlyEnvelope(
+      spokenlyItem("hanooman", "Hanuman") + "," + spokenlyItem(#"\\bk\\s*eight\\s*s\\b"#, "k8s", isRegex: true))
+    let result = try SpokenlyAdapter(readDomain: { _ in data })
+      .loadWords(at: URL(fileURLWithPath: "/unused"))
+    #expect(result.words.map(\.canonical) == ["Hanuman"])
+    #expect(result.excludedCount == 1)
+  }
+
+  @Test("a Spokenly rule with an empty replacement has no word in it")
+  func spokenlyEmptyReplacementIsExcluded() throws {
+    let data = spokenlyEnvelope(spokenlyItem("zylo fantric", "") + "," + spokenlyItem("q", "Q"))
+    let result = try SpokenlyAdapter(readDomain: { _ in data })
+      .loadWords(at: URL(fileURLWithPath: "/unused"))
+    #expect(result.words.map(\.canonical) == ["Q"])
+    #expect(result.excludedCount == 1)
+  }
+
+  @Test("a Spokenly entry the user deleted is already absent and cannot come back")
+  func spokenlyTombstonesAreNotItems() throws {
+    // Deleting REMOVES the entry from `items` and leaves only `{id, deletedAt}`
+    // behind — verified by creating five and deleting one. This proves the
+    // tombstone block is not read as a source of words: the fixture's tombstone
+    // carries no text at all, and a hand-crafted item with the same id IS
+    // returned, so the adapter keys on `items` and nothing else.
+    let withoutItem = try SpokenlyAdapter(readDomain: { _ in self.spokenlyEnvelope("") })
+      .loadWords(at: URL(fileURLWithPath: "/unused"))
+    #expect(withoutItem.words.isEmpty)
+
+    let resurrected = #"{"updatedAt":1,"value":{"id":"gone","original":"a","replacement":"Alive","isRegex":false,"timing":"beforeAI","createdAt":1}}"#
+    let withItem = try SpokenlyAdapter(readDomain: { _ in self.spokenlyEnvelope(resurrected) })
+      .loadWords(at: URL(fileURLWithPath: "/unused"))
+    #expect(withItem.words.map(\.canonical) == ["Alive"])
+  }
+
+  @Test("Spokenly bytes that are not valid UTF-8 JSON refuse the whole import")
+  func spokenlyMalformedBytesRefuse() throws {
+    for bytes in [Data([0xFF, 0xFE, 0xFD]), Data("not json".utf8), Data("[1,2,3]".utf8)] {
+      #expect(throws: SmartImportError.unreadable("Spokenly")) {
+        _ = try SpokenlyAdapter(readDomain: { _ in bytes })
+          .loadWords(at: URL(fileURLWithPath: "/unused"))
+      }
+    }
+  }
+
+  @Test("with no live value and only the App Store store, Spokenly says how to migrate")
+  func spokenlyLegacyStoreAsksForMigration() throws {
+    // "No live value" does not prove "App Store build", so this keys on WHICH
+    // store was detected. Reading the pre-migration container copy directly
+    // would import words the user stopped editing weeks ago and call it
+    // success; naming the button they actually have does not.
+    let container = URL(
+      fileURLWithPath:
+        "/Users/x/Library/Containers/app.spokenly/Data/Library/Preferences/app.spokenly.plist")
+    #expect(throws: SmartImportError.legacyMigrationRequired("Spokenly")) {
+      _ = try SpokenlyAdapter(readDomain: { _ in nil }).loadWords(at: container)
+    }
+
+    // Positive counterpart: the CURRENT store with nothing live is an ordinary
+    // not-found, not a migration instruction.
+    let outer = URL(fileURLWithPath: "/Users/x/Library/Preferences/app.spokenly.plist")
+    #expect(throws: SmartImportError.appNotFound("Spokenly")) {
+      _ = try SpokenlyAdapter(readDomain: { _ in nil }).loadWords(at: outer)
+    }
+  }
+
+  @Test("a live value always wins over the legacy store")
+  func spokenlyLiveValueWinsOverLegacy() throws {
+    // Even when the detected path IS the container, a live domain value is
+    // decoded rather than the legacy bytes — so a migrated user can never be
+    // served the stale copy.
+    let container = URL(
+      fileURLWithPath:
+        "/Users/x/Library/Containers/app.spokenly/Data/Library/Preferences/app.spokenly.plist")
+    let data = spokenlyEnvelope(spokenlyItem("q", "Quorvex"))
+    let words = try SpokenlyAdapter(readDomain: { _ in data }).loadWords(at: container).words
+    #expect(words.map(\.canonical) == ["Quorvex"])
+  }
+
+  // MARK: - Vox
+
+  @Test("Vox terms import with no alias")
+  func voxTermsImport() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try write(
+      #"{ "dictionary": ["Zylophantric", "K8s dashboard"], "context": "I am a founder." }"#,
+      to: dir, as: "vox-settings.json")
+
+    let result = try VoxAdapter().loadWords(at: url)
+    #expect(
+      result.words == [
+        SmartImportWord(canonical: "Zylophantric"), SmartImportWord(canonical: "K8s dashboard"),
+      ])
+    #expect(result.excludedCount == 0)
+  }
+
+  @Test("Vox's personal context paragraph is never imported as a word")
+  func voxContextIsNotVocabulary() throws {
+    // `context` is a paragraph the user writes about themselves for Vox's
+    // polish step. Importing it would drop a whole sentence into the
+    // custom-words list.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try write(
+      #"{ "dictionary": ["Quorvex"], "context": "I work on billing at Acme." }"#,
+      to: dir, as: "vox-settings.json")
+
+    let words = try VoxAdapter().loadWords(at: url).words
+    #expect(words.map(\.canonical) == ["Quorvex"])
+  }
+
+  @Test("a Vox file with no dictionary key is a fresh install, not a failure")
+  func voxMissingDictionaryKeyIsEmpty() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try write(#"{ "hotkey": "Cmd+Alt+Period" }"#, to: dir, as: "vox-settings.json")
+    #expect(try VoxAdapter().loadWords(at: url).words.isEmpty)
+  }
+
+  @Test("a Vox dictionary present as a non-array refuses the whole import")
+  func voxNonArrayDictionaryRefuses() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try write(#"{ "dictionary": "Quorvex" }"#, to: dir, as: "vox-settings.json")
+    #expect(throws: SmartImportError.unreadable("Vox")) {
+      _ = try VoxAdapter().loadWords(at: url)
+    }
+  }
+
+  @Test("a non-string element inside the Vox dictionary refuses the whole import")
+  func voxNonStringElementRefuses() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try write(#"{ "dictionary": ["Quorvex", 7] }"#, to: dir, as: "vox-settings.json")
+    #expect(throws: SmartImportError.unreadable("Vox")) {
+      _ = try VoxAdapter().loadWords(at: url)
+    }
+  }
+
+  // MARK: - Juno
+
+  private func junoLexicon(_ rows: String, in dir: URL) throws -> URL {
+    try write(rows, to: dir, as: "lexicon.json")
+  }
+
+  @Test("Juno imports only vocabulary the user authored, never its shipped seeds")
+  func junoKeepsOnlyUserAuthoredEntries() throws {
+    // Measured on a real install: 400 of 401 rows are Juno's own seed list,
+    // including bare lowercase words like `accessibility` that would actively
+    // bias transcription if imported as custom words.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try junoLexicon(
+      """
+      [{"term":"Saurabh","canonical_form":"Saurabh","aliases":[],"source":"user_edit"},
+       {"term":"accessibility","canonical_form":"accessibility","aliases":[],
+        "source":"seed_promotion"},
+       {"term":"Chrome","canonical_form":"Chrome","aliases":[],"source":"seed_promotion"}]
+      """, in: dir)
+
+    let result = try JunoAdapter().loadWords(at: url)
+    #expect(result.words.map(\.canonical) == ["Saurabh"])
+    #expect(result.excludedCount == 2)
+  }
+
+  @Test("an unrecognised Juno provenance is refused, not admitted")
+  func junoUnknownProvenanceIsRefused() throws {
+    // The allowlist's own two-way control. A denylist on the seed value would
+    // ADMIT this row, and an unseen provenance is far more likely to be
+    // another machine-generated list than something the user typed.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try junoLexicon(
+      """
+      [{"term":"Kept","canonical_form":"Kept","aliases":[],"source":"user_edit"},
+       {"term":"Learned","canonical_form":"Learned","aliases":[],"source":"auto_learned"},
+       {"term":"NoSource","canonical_form":"NoSource","aliases":[]},
+       {"term":"NullSource","canonical_form":"NullSource","aliases":[],"source":null}]
+      """, in: dir)
+
+    let result = try JunoAdapter().loadWords(at: url)
+    #expect(result.words.map(\.canonical) == ["Kept"])
+    #expect(result.excludedCount == 3)
+  }
+
+  @Test("Juno prefers the canonical form over the key it is filed under")
+  func junoPrefersCanonicalForm() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try junoLexicon(
+      """
+      [{"term":"apple silicon","canonical_form":"Apple Silicon",
+        "aliases":["apple silicon chip"],"source":"user_edit"},
+       {"term":"Fallback","canonical_form":"   ","aliases":[],"source":"user_edit"}]
+      """, in: dir)
+
+    let words = try JunoAdapter().loadWords(at: url).words
+    #expect(words[0] == SmartImportWord(canonical: "Apple Silicon", aliases: ["apple silicon chip"]))
+    // A blank canonical form falls back to the term rather than dropping the row.
+    #expect(words[1].canonical == "Fallback")
+  }
+
+  @Test("a Juno lexicon that is not an array refuses the whole import")
+  func junoNonArrayRefuses() throws {
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try junoLexicon(#"{"term":"Saurabh"}"#, in: dir)
+    #expect(throws: SmartImportError.unreadable("Juno")) {
+      _ = try JunoAdapter().loadWords(at: url)
+    }
   }
 
   @Test("an implausibly large vocabulary file is refused before decoding")
@@ -712,7 +1277,7 @@ struct SmartImportSourceTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let url = try write(#"{ "terms": [ { "text": "Kubernetes" } ] }"#, to: dir, as: "v.json")
     #expect(
-      try FluidVoiceAdapter().loadWords(at: url) == [SmartImportWord(canonical: "Kubernetes")])
+      try FluidVoiceAdapter().loadWords(at: url).words == [SmartImportWord(canonical: "Kubernetes")])
   }
 
   @Test("a truncated read is refused even though nothing shrinks it anymore")
@@ -726,23 +1291,121 @@ struct SmartImportSourceTests {
       let identifier = "flood"
       let displayName = "Flood"
       var candidatePaths: [URL] { [URL(fileURLWithPath: "/dev/null")] }
-      func loadWords(at url: URL) throws -> [SmartImportWord] {
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
         // One past the ceiling, and all identical — would look like a tiny
         // successful import if this layer merged duplicates, which it no
         // longer does.
-        Array(
-          repeating: SmartImportWord(canonical: "duplicate"),
-          count: CustomWordsImportLimits.maximumCandidates + 1)
+        SmartImportReadResult(
+          words: Array(
+            repeating: SmartImportWord(canonical: "duplicate"),
+            count: CustomWordsImportLimits.maximumCandidates + 1))
       }
     }
 
+    // Deliberately NOT `ImportFileError.tooManyWords` since #1773: its copy
+    // says "That file" and "split it into smaller files", which is false for a
+    // competitor's database, and it would call deleted rows and snippets
+    // "words".
     await #expect(
-      throws: ImportFileError.tooManyWords(
-        found: CustomWordsImportLimits.maximumCandidates + 1,
-        limit: CustomWordsImportLimits.maximumCandidates)
+      throws: SmartImportError.tooManySourceEntries(
+        appName: "Flood", limit: CustomWordsImportLimits.maximumCandidates)
     ) {
       _ = try await SmartImportSource(adapter: Flood()).loadCandidates()
     }
+  }
+
+  @Test("the ceiling counts rows the adapter excluded, not just the survivors")
+  func ceilingCountsScannedRowsNotSurvivors() async throws {
+    // Before #1773 the adapters filtered in SQL, so the ceiling only ever saw
+    // survivors: a source that refused 25,001 rows down to one looked like a
+    // one-row import. Counting what was SCANNED closes that.
+    struct MostlyExcluded: SmartImportAdapter {
+      let identifier = "mostly-excluded"
+      let displayName = "MostlyExcluded"
+      var candidatePaths: [URL] { [URL(fileURLWithPath: "/dev/null")] }
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
+        SmartImportReadResult(
+          words: [SmartImportWord(canonical: "survivor")],
+          excludedCount: CustomWordsImportLimits.maximumCandidates)
+      }
+    }
+    await #expect(
+      throws: SmartImportError.tooManySourceEntries(
+        appName: "MostlyExcluded", limit: CustomWordsImportLimits.maximumCandidates)
+    ) {
+      _ = try await SmartImportSource(adapter: MostlyExcluded()).loadCandidates()
+    }
+  }
+
+  @Test("a source that refused every row says so instead of claiming it was empty")
+  func allExcludedEmitsACountedNotice() async throws {
+    // "No words were found" is a false statement to a Juno user whose 401
+    // entries were all built-in seeds. The notice is what lets the result
+    // screen tell the two apart, and it carries a COUNT only.
+    struct AllExcluded: SmartImportAdapter {
+      let identifier = "all-excluded"
+      let displayName = "AllExcluded"
+      var candidatePaths: [URL] { [URL(fileURLWithPath: "/dev/null")] }
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
+        SmartImportReadResult(words: [], excludedCount: 401)
+      }
+    }
+    let batch = try await SmartImportSource(adapter: AllExcluded()).loadCandidates()
+    #expect(batch.candidates.isEmpty)
+    #expect(batch.notices == [.incompatibleSourceEntriesExcluded(count: 401)])
+  }
+
+  @Test("a genuinely empty source emits no notice, so it still reads as empty")
+  func genuinelyEmptySourceEmitsNoNotice() async throws {
+    // The positive counterpart: without this, any empty result would claim
+    // entries had been refused.
+    struct Empty: SmartImportAdapter {
+      let identifier = "empty"
+      let displayName = "Empty"
+      var candidatePaths: [URL] { [URL(fileURLWithPath: "/dev/null")] }
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
+        SmartImportReadResult(words: [])
+      }
+    }
+    let batch = try await SmartImportSource(adapter: Empty()).loadCandidates()
+    #expect(batch.candidates.isEmpty)
+    #expect(batch.notices.isEmpty)
+  }
+
+  @Test("blank canonicals dropped by shared normalization count as exclusions too")
+  func blankCanonicalsCountTowardTheNotice() async throws {
+    // Otherwise a source whose every row normalizes to blank still reports
+    // "no words found" — the same untruth one layer further down.
+    struct AllBlank: SmartImportAdapter {
+      let identifier = "all-blank"
+      let displayName = "AllBlank"
+      var candidatePaths: [URL] { [URL(fileURLWithPath: "/dev/null")] }
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
+        SmartImportReadResult(words: [SmartImportWord(canonical: "   ")])
+      }
+    }
+    let batch = try await SmartImportSource(adapter: AllBlank()).loadCandidates()
+    #expect(batch.notices == [.incompatibleSourceEntriesExcluded(count: 1)])
+  }
+
+  @Test("TypeWhisper case sensitivity reaches the candidate in both directions")
+  func caseSensitivityTravelsToTheCandidate() async throws {
+    // A one-way test passes for an implementation that returns a constant.
+    struct Fixed: SmartImportAdapter {
+      let identifier = "typewhisper"
+      let displayName = "TypeWhisper"
+      var candidatePaths: [URL] { [URL(fileURLWithPath: "/dev/null")] }
+      func loadWords(at url: URL) throws -> SmartImportReadResult {
+        SmartImportReadResult(
+          words: [
+            SmartImportWord(canonical: "Sensitive", caseSensitive: .supplied(true)),
+            SmartImportWord(canonical: "Insensitive", caseSensitive: .supplied(false)),
+            SmartImportWord(canonical: "Unstated"),
+          ])
+      }
+    }
+    let batch = try await SmartImportSource(adapter: Fixed()).loadCandidates()
+    #expect(batch.candidates.map(\.caseSensitive) == [.supplied(true), .supplied(false), .unspecified])
   }
 
   /// FluidVoice is the real amplification vector this ceiling exists for: its
@@ -760,7 +1423,7 @@ struct SmartImportSourceTests {
     let displayName = "FluidVoice"
     let url: URL
     var candidatePaths: [URL] { [url] }
-    func loadWords(at url: URL) throws -> [SmartImportWord] {
+    func loadWords(at url: URL) throws -> SmartImportReadResult {
       try FluidVoiceAdapter().loadWords(at: url)
     }
   }
@@ -830,7 +1493,7 @@ struct SmartImportSourceTests {
     var identifier: String { base.identifier }
     var displayName: String { base.displayName }
     var candidatePaths: [URL] { [url] }
-    func loadWords(at url: URL) throws -> [SmartImportWord] {
+    func loadWords(at url: URL) throws -> SmartImportReadResult {
       try base.loadWords(at: url)
     }
   }

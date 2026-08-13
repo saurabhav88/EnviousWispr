@@ -120,6 +120,14 @@ package enum CustomWordsImportNotice: Sendable, Equatable {
   case suggestionBudgetReached(remainingCount: Int)
   /// Upload-only row-level parse warning.
   case fileParseWarning(rowNumber: Int, reason: String)
+  /// Smart Import: the source held entries and EVERY one was deliberately
+  /// refused — Juno's built-in seed vocabulary, Spokenly's regex rules,
+  /// TypeWhisper's disabled rows, Wispr Flow's snippets and soft-deletes.
+  ///
+  /// Without it "the source was empty" and "we refused all of it" render
+  /// identically, and the first is a false statement to a Juno user whose 401
+  /// entries were all built-in (#1773). A COUNT only, never the content.
+  case incompatibleSourceEntriesExcluded(count: Int)
 }
 
 package struct CustomWordsImportBatch: Sendable, Equatable {

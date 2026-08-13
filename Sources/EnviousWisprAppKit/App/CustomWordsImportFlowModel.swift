@@ -70,8 +70,14 @@ final class CustomWordsImportFlowModel {
 
   enum Result: Equatable {
     case completed(added: Int, replaced: Int)
-    /// The source produced no candidates at all.
+    /// The source produced no candidates at all, and had nothing to refuse.
     case nothingFound
+    /// The source held entries and every one was deliberately refused —
+    /// Juno's built-in seed vocabulary, Spokenly's regex rules, TypeWhisper's
+    /// disabled rows. Distinct from `.nothingFound` because telling someone
+    /// with 401 Juno entries that "no words were found" is simply untrue
+    /// (#1773).
+    case nothingCompatible(found: Int)
     /// Candidates were found and reviewed, but every one was skipped. Distinct
     /// from `.nothingFound` because "we found nothing" and "you kept nothing"
     /// are different things to tell someone.
@@ -237,8 +243,9 @@ final class CustomWordsImportFlowModel {
 
   /// True iff closing the sheet right now, by any path, would silently throw
   /// away words the user already typed (#1700). Excludes `.working(.committing)`
-  /// — an active write in flight is not "a draft." Includes `.result(.nothingFound)`
-  /// and `.result(.failed)`, since neither committed anything and the pasted
+  /// — an active write in flight is not "a draft." Includes
+  /// `.result(.nothingFound)`, `.result(.nothingCompatible)` and
+  /// `.result(.failed)`, since none of them committed anything and the pasted
   /// text is still sitting, uncommitted, in `pasteDraft`.
   ///
   /// `.result(.completed)`/`.result(.nothingApproved)` are only genuinely
@@ -256,7 +263,7 @@ final class CustomWordsImportFlowModel {
       return hasNonWhitespacePasteDraft
     case .methodPicker, .paste, .upload, .smartImportAppPicker, .review,
       .working(.loadingCandidates), .working(.comparing),
-      .result(.nothingFound), .result(.failed):
+      .result(.nothingFound), .result(.nothingCompatible), .result(.failed):
       return hasNonWhitespacePasteDraft
     }
   }
@@ -273,8 +280,8 @@ final class CustomWordsImportFlowModel {
 
   /// "Keep editing" from a confirmation dialog (#1700). No `.result` case has
   /// a Back button, so any terminal result `hasDiscardableDraft` judged worth
-  /// protecting — `.nothingFound`/`.failed` always, or `.completed`/
-  /// `.nothingApproved` when they're guarding an abandoned draft from a
+  /// protecting — `.nothingFound`/`.nothingCompatible`/`.failed` always, or
+  /// `.completed`/`.nothingApproved` when they're guarding an abandoned draft from a
   /// different, already-finished method (Codex code-diff review) — actively
   /// returns to Paste with the draft intact. Everywhere else there is nothing
   /// to do: the user is already looking at their editable draft, or the guard
@@ -357,7 +364,14 @@ final class CustomWordsImportFlowModel {
       let batch = try await source.loadCandidates()
       guard isCurrent(generation) else { return }
       guard !batch.candidates.isEmpty else {
-        showResult(.nothingFound)
+        // An empty batch is either a source that had nothing or a source whose
+        // every row we refused. Those are different sentences, and the notice
+        // is the only thing that can tell them apart — a field this model has
+        // always received and, until #1773, always discarded.
+        let excludedCount = batch.notices.reduce(into: 0) { count, notice in
+          if case .incompatibleSourceEntriesExcluded(let excluded) = notice { count += excluded }
+        }
+        showResult(excludedCount > 0 ? .nothingCompatible(found: excludedCount) : .nothingFound)
         return
       }
       candidates = batch.candidates

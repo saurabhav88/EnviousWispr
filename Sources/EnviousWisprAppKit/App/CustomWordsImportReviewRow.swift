@@ -29,6 +29,11 @@ enum CustomWordsImportResultCopy {
       return "\(addedPhrase) Replaced \(replaced). Your words are ready to use."
     case .nothingFound:
       return "No words were found, and nothing was changed."
+    case .nothingCompatible(let found):
+      // Names what was there and why it did not come across, instead of
+      // claiming the source was empty when it plainly was not.
+      let entries = found == 1 ? "entry" : "entries"
+      return "Found \(found) \(entries), but none were compatible. Nothing was changed."
     case .nothingApproved:
       return "You skipped everything, so nothing was changed."
     case .failed(let message):
