@@ -760,6 +760,25 @@ DEFAULT_ALLOWED_VARIANTS = [
     "capitalization",
     "digits vs words when number formatting is not the behavior under test",
     "bullet vs numbered list when both preserve intent",
+    # Founder ruling 2026-08-13. Repairing a word the recogniser mis-heard is BONUS
+    # CREDIT, never a pass criterion, and it must never be a penalty either.
+    #
+    # Two facts make this the only defensible grading. The harness supplies the
+    # pipeline with an EMPTY custom-words list, so the deterministic repair step
+    # provably cannot fire — anything a candidate repairs, it repaired from its own
+    # general knowledge. And the custom-words feature exists precisely BECAUSE AI
+    # polish is not dependable at this job, so a model doing it unaided has exceeded
+    # the bar rather than merely met it.
+    #
+    # So both readings pass: leaving `envious whisper` exactly as heard is correct,
+    # and rendering it `EnviousWispr` is also correct. Grade the behavior under test.
+    "repairing a plainly mis-transcribed product or technical term (e.g. 'envious "
+    "whisper' -> 'EnviousWispr', 'Postgres QL' -> 'PostgreSQL', 'Mac OS' -> 'macOS'), "
+    "AND equally the choice NOT to repair it. Neither is the behavior under test. "
+    "This does NOT extend to personal names: rewriting a name the recogniser mangled "
+    "('Rajash' -> 'Rajesh') is a real defect, because there is no closed set of "
+    "people's names to be confident against and substituting a commoner one is a "
+    "worse outcome for the user than leaving the phonetic attempt visible.",
 ]
 
 # Per-behavior additions, for buckets where the transcript genuinely admits more than one
@@ -795,8 +814,30 @@ BEHAVIOR_ALLOWED_VARIANTS = {
 }
 
 
+# A corpus names its behaviours; this table names them again. When the two spellings
+# drift, the lookup misses SILENTLY and every case in that bucket is graded without
+# the variant written for it — there is no error, just a category that fails.
+#
+# Measured 2026-08-13 on Speechpath r2: the table keyed `topic_shift` while the corpus
+# said `topic_segmentation`, so the "any visible separator is fine, blank lines are an
+# authoring convention not a product requirement" variant never applied. That category
+# scored **7.5% pass against 46-92% everywhere else**, and 41 of its 99 failures were
+# byte-identical to the key once whitespace was normalised — the model wrote a space
+# where the key wrote a blank line, and was marked down for it.
+#
+# The uniformity was the tell: one category collapsing while its neighbours hold is a
+# property of the instrument, not of the model.
+BEHAVIOR_ALIASES = {
+    "topic_segmentation": "topic_shift",
+    "structure_plus_topic": "topic_shift",
+    "grammar": "grammar_fix",
+    "speech_grammar": "grammar_fix",
+}
+
+
 def allowed_variants_for(behavior: str) -> list[str]:
-    return DEFAULT_ALLOWED_VARIANTS + BEHAVIOR_ALLOWED_VARIANTS.get(behavior, [])
+    canonical = BEHAVIOR_ALIASES.get(behavior, behavior)
+    return DEFAULT_ALLOWED_VARIANTS + BEHAVIOR_ALLOWED_VARIANTS.get(canonical, [])
 
 
 def behavior_key(case: dict) -> str:
@@ -978,7 +1019,15 @@ Assign exactly one verdict and the matching severity:
 - critical_fail / S4 : trust-breaking — see the automatic-S4 list below.
 
 Automatic critical_fail / S4 (any one):
-- changed a person, company, product, place, or other named entity
+- changed a person, company, product, place, or other named entity to a
+  DIFFERENT one. Normalising a mis-transcribed rendering of the SAME entity is
+  not this: `envious whisper` -> `EnviousWispr`, `Postgres QL` -> `PostgreSQL`,
+  `Mac OS` -> `macOS` all name the same thing the speaker named, and are
+  permitted (see allowed_variants). Leaving them untouched is equally correct.
+  A PERSONAL name is the exception and stays an automatic S4: `Rajash` ->
+  `Rajesh` may look like the same repair, but no closed set of people's names
+  exists to be confident against, so it is a substitution rather than a
+  normalisation
 - changed the final correction target in a self-correction
 - invented a fact, recipient, date, action, commitment, or rationale
 - dropped required content that changes the user's intent
