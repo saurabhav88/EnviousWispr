@@ -2383,6 +2383,31 @@ def test_the_billing_check_runs_before_the_availability_check():
         "refuse_paid_key_judge must be called before preflight_judge in main()"
 
 
+def test_the_s4_entity_rule_and_the_variant_licence_do_not_contradict():
+    # Cloud review P1 on PR #2056. The variant list said a term repair is permitted
+    # while NEW_JUDGE_SYSTEM's automatic-S4 list still said "changed a ... product ...
+    # or other named entity" with no carve-out — so the same output was licensed by
+    # one half of the prompt and an automatic critical failure by the other, and the
+    # stronger instruction would have won. The variant was inert at best.
+    #
+    # This is the failure mode the whole file keeps hitting: two rules naming
+    # different sets, each correct read alone. Only a test that reads them TOGETHER
+    # catches it, which is why it exists rather than a second assertion on either.
+    sysmsg = bj.NEW_JUDGE_SYSTEM.lower()
+    variants = " ".join(bj.allowed_variants_for("verbatim_preservation")).lower()
+
+    assert "envious" in variants, "precondition: the term repair is licensed"
+    assert "to a\n  different one" in sysmsg or "to a different one" in sysmsg, \
+        "the S4 entity rule must fire on a DIFFERENT entity, not on any change"
+    assert "normalising a mis-transcribed rendering of the same entity" in sysmsg, \
+        "the S4 rule must exempt normalising the same entity, or it overrides the variant"
+    # And the exemption must not swallow personal names, which both halves refuse.
+    assert "personal name is the exception" in sysmsg, \
+        "the S4 carve-out must still treat a personal-name substitution as automatic S4"
+    assert "does not extend to personal names" in variants, \
+        "both halves must agree that personal names are excluded"
+
+
 def test_vocabulary_repair_is_a_variant_but_name_repair_is_not():
     # Founder ruling 2026-08-13: repairing a mis-transcribed TERM is bonus credit,
     # so neither doing it nor skipping it may decide a verdict. Repairing a personal
@@ -2414,7 +2439,7 @@ def test_vocabulary_repair_is_a_variant_but_name_repair_is_not():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 122
+EXPECTED_TESTS = 123
 
 
 def _run() -> int:

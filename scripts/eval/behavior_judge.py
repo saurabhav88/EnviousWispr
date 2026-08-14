@@ -997,7 +997,15 @@ Assign exactly one verdict and the matching severity:
 - critical_fail / S4 : trust-breaking — see the automatic-S4 list below.
 
 Automatic critical_fail / S4 (any one):
-- changed a person, company, product, place, or other named entity
+- changed a person, company, product, place, or other named entity to a
+  DIFFERENT one. Normalising a mis-transcribed rendering of the SAME entity is
+  not this: `envious whisper` -> `EnviousWispr`, `Postgres QL` -> `PostgreSQL`,
+  `Mac OS` -> `macOS` all name the same thing the speaker named, and are
+  permitted (see allowed_variants). Leaving them untouched is equally correct.
+  A PERSONAL name is the exception and stays an automatic S4: `Rajash` ->
+  `Rajesh` may look like the same repair, but no closed set of people's names
+  exists to be confident against, so it is a substitution rather than a
+  normalisation
 - changed the final correction target in a self-correction
 - invented a fact, recipient, date, action, commitment, or rationale
 - dropped required content that changes the user's intent
