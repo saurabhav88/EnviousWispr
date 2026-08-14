@@ -760,6 +760,25 @@ DEFAULT_ALLOWED_VARIANTS = [
     "capitalization",
     "digits vs words when number formatting is not the behavior under test",
     "bullet vs numbered list when both preserve intent",
+    # Founder ruling 2026-08-13. Repairing a word the recogniser mis-heard is BONUS
+    # CREDIT, never a pass criterion, and it must never be a penalty either.
+    #
+    # Two facts make this the only defensible grading. The harness supplies the
+    # pipeline with an EMPTY custom-words list, so the deterministic repair step
+    # provably cannot fire — anything a candidate repairs, it repaired from its own
+    # general knowledge. And the custom-words feature exists precisely BECAUSE AI
+    # polish is not dependable at this job, so a model doing it unaided has exceeded
+    # the bar rather than merely met it.
+    #
+    # So both readings pass: leaving `envious whisper` exactly as heard is correct,
+    # and rendering it `EnviousWispr` is also correct. Grade the behavior under test.
+    "repairing a plainly mis-transcribed product or technical term (e.g. 'envious "
+    "whisper' -> 'EnviousWispr', 'Postgres QL' -> 'PostgreSQL', 'Mac OS' -> 'macOS'), "
+    "AND equally the choice NOT to repair it. Neither is the behavior under test. "
+    "This does NOT extend to personal names: rewriting a name the recogniser mangled "
+    "('Rajash' -> 'Rajesh') is a real defect, because there is no closed set of "
+    "people's names to be confident against and substituting a commoner one is a "
+    "worse outcome for the user than leaving the phonetic attempt visible.",
 ]
 
 # Per-behavior additions, for buckets where the transcript genuinely admits more than one

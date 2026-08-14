@@ -2383,13 +2383,38 @@ def test_the_billing_check_runs_before_the_availability_check():
         "refuse_paid_key_judge must be called before preflight_judge in main()"
 
 
+def test_vocabulary_repair_is_a_variant_but_name_repair_is_not():
+    # Founder ruling 2026-08-13: repairing a mis-transcribed TERM is bonus credit,
+    # so neither doing it nor skipping it may decide a verdict. Repairing a personal
+    # NAME is the opposite — a real defect, because no closed set of names exists to
+    # be confident against.
+    #
+    # Two-way on purpose. Asserting only the licence would pass a rubric that
+    # licensed everything, which is exactly the failure this ruling could decay
+    # into: the whole point is that the line falls between terms and names.
+    text = " ".join(bj.allowed_variants_for("verbatim_preservation")).lower()
+    assert "envious" in text and "postgres" in text, \
+        "term repair must be licensed as a variant"
+    assert "not the behavior under test" in text, \
+        "the licence must say the repair is not what is being graded"
+    # Assert the EXCLUSION, not the words. A first version of this checked that
+    # "personal names" appeared anywhere in the rubric — which stays true if the
+    # clause is inverted to "this also covers personal names", so the mutation
+    # control passed a rubric saying the opposite. The phrase that carries the
+    # meaning is the negation itself.
+    assert "does not extend to personal names" in text, \
+        "name repair must be EXCLUDED from the licence, not merely mentioned"
+    assert "real defect" in text, "the exclusion must name name-rewriting as a defect"
+    assert "rajash" in text, "the exclusion needs its concrete example to stay legible"
+
+
 # --------------------------------------------------------------------------- #
 # runner                                                                      #
 # --------------------------------------------------------------------------- #
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 121
+EXPECTED_TESTS = 122
 
 
 def _run() -> int:
