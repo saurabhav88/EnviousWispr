@@ -814,8 +814,30 @@ BEHAVIOR_ALLOWED_VARIANTS = {
 }
 
 
+# A corpus names its behaviours; this table names them again. When the two spellings
+# drift, the lookup misses SILENTLY and every case in that bucket is graded without
+# the variant written for it — there is no error, just a category that fails.
+#
+# Measured 2026-08-13 on Speechpath r2: the table keyed `topic_shift` while the corpus
+# said `topic_segmentation`, so the "any visible separator is fine, blank lines are an
+# authoring convention not a product requirement" variant never applied. That category
+# scored **7.5% pass against 46-92% everywhere else**, and 41 of its 99 failures were
+# byte-identical to the key once whitespace was normalised — the model wrote a space
+# where the key wrote a blank line, and was marked down for it.
+#
+# The uniformity was the tell: one category collapsing while its neighbours hold is a
+# property of the instrument, not of the model.
+BEHAVIOR_ALIASES = {
+    "topic_segmentation": "topic_shift",
+    "structure_plus_topic": "topic_shift",
+    "grammar": "grammar_fix",
+    "speech_grammar": "grammar_fix",
+}
+
+
 def allowed_variants_for(behavior: str) -> list[str]:
-    return DEFAULT_ALLOWED_VARIANTS + BEHAVIOR_ALLOWED_VARIANTS.get(behavior, [])
+    canonical = BEHAVIOR_ALIASES.get(behavior, behavior)
+    return DEFAULT_ALLOWED_VARIANTS + BEHAVIOR_ALLOWED_VARIANTS.get(canonical, [])
 
 
 def behavior_key(case: dict) -> str:

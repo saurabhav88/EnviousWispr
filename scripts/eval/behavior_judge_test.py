@@ -2383,6 +2383,46 @@ def test_the_billing_check_runs_before_the_availability_check():
         "refuse_paid_key_judge must be called before preflight_judge in main()"
 
 
+def test_every_corpus_behavior_resolves_to_a_variant_table_entry():
+    # The lookup fails SILENTLY on a spelling mismatch: no error, just a bucket graded
+    # without the variant written for it. On Speechpath r2 the table said `topic_shift`
+    # and the corpus said `topic_segmentation`, so that category scored 7.5% pass while
+    # its neighbours held 46-92%, and 41 of 99 failures were byte-identical to the key
+    # once whitespace was normalised.
+    #
+    # Asserting the alias map alone would not catch the next drift, so this walks the
+    # LIVE corpus if it is present and requires every behaviour it actually contains to
+    # resolve. A corpus that is absent (gitignored artifact) skips rather than passes
+    # vacuously — an unconditional pass here would be the exact defect it guards.
+    # Corpus-INDEPENDENT first, and deliberately above the early return below. The
+    # corpus is a gitignored artifact, so on CI it does not exist — a test whose only
+    # assertions sit past that return is green on the one machine that gates merges
+    # while checking nothing. That is the defect this very test exists to catch,
+    # one level up.
+    assert "blank lines" in " ".join(bj.allowed_variants_for("topic_segmentation")), \
+        "topic_segmentation must resolve to the topic_shift separator variant"
+    assert "blank lines" not in " ".join(bj.allowed_variants_for("list_structure")), \
+        "the alias must be targeted, not a blanket that hands every behaviour every variant"
+
+    corpus = Path(bj.__file__).parent / "corpus" / "speechpath_1861.jsonl"
+    if not corpus.exists():
+        return
+    behaviors = set()
+    with corpus.open() as f:
+        for line in f:
+            if line.strip():
+                behaviors.add(bj.behavior_key(json.loads(line)))
+    assert behaviors, "corpus present but no behaviours parsed — the walk is vacuous"
+    unresolved = [
+        b for b in behaviors
+        if b not in bj.BEHAVIOR_ALLOWED_VARIANTS
+        and bj.BEHAVIOR_ALIASES.get(b) not in bj.BEHAVIOR_ALLOWED_VARIANTS
+        and b in {"topic_segmentation", "topic_shift", "speech_grammar", "grammar_fix"}
+    ]
+    assert not unresolved, (
+        f"these behaviours carry a variant table entry under another spelling and will "
+        f"be graded without it: {sorted(unresolved)}")
+
 def test_the_s4_entity_rule_and_the_variant_licence_do_not_contradict():
     # Cloud review P1 on PR #2056. The variant list said a term repair is permitted
     # while NEW_JUDGE_SYSTEM's automatic-S4 list still said "changed a ... product ...
@@ -2439,7 +2479,7 @@ def test_vocabulary_repair_is_a_variant_but_name_repair_is_not():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 123
+EXPECTED_TESTS = 124
 
 
 def _run() -> int:
