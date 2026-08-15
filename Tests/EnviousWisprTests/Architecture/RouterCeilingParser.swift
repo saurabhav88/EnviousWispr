@@ -344,7 +344,29 @@ enum RouterCeilingParser {
     if let last = trimmed.last, last == ":" || last == "," || last == "&" {
       return true
     }
+    // A buffer whose last token is an ATTRIBUTE is incomplete by definition —
+    // `@MainActor` cannot end a declaration, so the type it modifies is on the
+    // next line (cloud review, PR #2070):
+    //
+    //     let dependency: @MainActor
+    //       () -> Void
+    //
+    // Handled here rather than by teaching the lookahead to accept a leading
+    // `(`, because "the next line starts with `(`" is also true of an ordinary
+    // following declaration and would over-fold. "This line ended on an
+    // attribute" is unambiguous.
+    if endsWithAttribute(trimmed) { return true }
     return false
+  }
+
+  /// The trailing token is `@Name` — no argument list, since a `)` ending would
+  /// already have been consumed as part of the attribute's arguments and cannot
+  /// be distinguished here from a completed type.
+  private static func endsWithAttribute(_ trimmed: String) -> Bool {
+    guard let lastToken = trimmed.split(whereSeparator: { $0.isWhitespace }).last
+    else { return false }
+    guard lastToken.hasPrefix("@"), lastToken.count > 1 else { return false }
+    return lastToken.dropFirst().allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
   }
 
   /// Returns `buffer` with string-literal contents and `//` line comments
@@ -565,56 +587,78 @@ enum RouterCeilingParser {
   /// makes it optional and unbounded everywhere Swift allows it — the property
   /// the previous pattern kept failing one shape at a time. Comments are already
   /// blanked to spaces by the caller's code view, so they are trivia here too.
-  private static func closureSignatureFollows(_ chars: [Character], from start: Int) -> Bool {
-    var i = skipTrivia(chars, from: start)
-    while i < chars.count, chars[i] == "@" {
+  /// `limit` bounds the scan so a recursive call cannot read past the group it
+  /// was handed. `depth` bounds the recursion itself.
+  private static func closureSignatureFollows(
+    _ chars: [Character], from start: Int, limit: Int? = nil, depth: Int = 0
+  ) -> Bool {
+    let end = min(limit ?? chars.count, chars.count)
+    guard depth <= 8 else { return false }
+    var i = skipTrivia(chars, from: start, limit: end)
+    while i < end, chars[i] == "@" {
       i += 1
-      while i < chars.count, chars[i].isLetter || chars[i].isNumber || chars[i] == "_" { i += 1 }
+      while i < end, chars[i].isLetter || chars[i].isNumber || chars[i] == "_" { i += 1 }
       // An attribute's argument list is ADJACENT to its name — `@available(macOS
       // 26, *)`. Skipping trivia before this check would consume the FUNCTION
       // TYPE's own parameter list in `@MainActor (Int) -> Bool`, where the paren
       // is separated by a space and belongs to the type, not the attribute.
-      if i < chars.count, chars[i] == "(" {
-        guard let close = matchingParen(chars, open: i) else { return false }
+      if i < end, chars[i] == "(" {
+        guard let close = matchingParen(chars, open: i, limit: end) else { return false }
         i = close + 1
       }
-      i = skipTrivia(chars, from: i)
+      i = skipTrivia(chars, from: i, limit: end)
     }
-    guard i < chars.count, chars[i] == "(", let close = matchingParen(chars, open: i)
+    guard i < end, chars[i] == "(", let close = matchingParen(chars, open: i, limit: end)
     else { return false }
-    i = skipTrivia(chars, from: close + 1)
+    let afterGroup = skipTrivia(chars, from: close + 1, limit: end)
+    // An OPTIONAL function type parenthesises the WHOLE type: `(() -> Void)?`.
+    // Read as a parameter list, the outer group swallows the signature and the
+    // `?` that follows is not an arrow, so the property fell to COLLABORATOR
+    // (cloud review, PR #2070). When the arrow does not follow the group, scan
+    // INSIDE it as a type instead. `(AlphaDep)` and `(AlphaDep, BetaDep)` fail
+    // both paths and stay collaborators, which the controls pin.
+    let arrowFollowsGroup =
+      afterGroup + 1 < end && chars[afterGroup] == "-" && chars[afterGroup + 1] == ">"
+    if !arrowFollowsGroup,
+      closureSignatureFollows(chars, from: i + 1, limit: close, depth: depth + 1)
+    {
+      return true
+    }
+    i = afterGroup
     while true {
-      if matchesKeyword(chars, at: i, "async") {
-        i = skipTrivia(chars, from: i + 5)
-      } else if matchesKeyword(chars, at: i, "rethrows") {
-        i = skipTrivia(chars, from: i + 8)
-      } else if matchesKeyword(chars, at: i, "throws") {
-        i = skipTrivia(chars, from: i + 6)
+      if matchesKeyword(chars, at: i, "async", limit: end) {
+        i = skipTrivia(chars, from: i + 5, limit: end)
+      } else if matchesKeyword(chars, at: i, "rethrows", limit: end) {
+        i = skipTrivia(chars, from: i + 8, limit: end)
+      } else if matchesKeyword(chars, at: i, "throws", limit: end) {
+        i = skipTrivia(chars, from: i + 6, limit: end)
         // Typed throws, to any nesting depth: `throws(Failure<(Int, String)>)`.
-        if i < chars.count, chars[i] == "(" {
-          guard let errorClose = matchingParen(chars, open: i) else { return false }
-          i = skipTrivia(chars, from: errorClose + 1)
+        if i < end, chars[i] == "(" {
+          guard let errorClose = matchingParen(chars, open: i, limit: end) else { return false }
+          i = skipTrivia(chars, from: errorClose + 1, limit: end)
         }
       } else {
         break
       }
     }
-    return i + 1 < chars.count && chars[i] == "-" && chars[i + 1] == ">"
+    return i + 1 < end && chars[i] == "-" && chars[i + 1] == ">"
   }
 
-  private static func skipTrivia(_ chars: [Character], from i: Int) -> Int {
+  private static func skipTrivia(_ chars: [Character], from i: Int, limit: Int? = nil) -> Int {
+    let end = min(limit ?? chars.count, chars.count)
     var j = i
-    while j < chars.count, chars[j].isWhitespace { j += 1 }
+    while j < end, chars[j].isWhitespace { j += 1 }
     return j
   }
 
   /// Index of the `)` closing the `(` at `open`, or `nil` if unbalanced. The
   /// caller passes a code view, so parens inside comments and string literals
   /// are already spaces and cannot skew the depth.
-  private static func matchingParen(_ chars: [Character], open: Int) -> Int? {
+  private static func matchingParen(_ chars: [Character], open: Int, limit: Int? = nil) -> Int? {
+    let end = min(limit ?? chars.count, chars.count)
     var depth = 0
     var i = open
-    while i < chars.count {
+    while i < end {
       if chars[i] == "(" { depth += 1 }
       if chars[i] == ")" {
         depth -= 1
@@ -627,12 +671,15 @@ enum RouterCeilingParser {
 
   /// `word` appears at `i` and is not merely the prefix of a longer identifier,
   /// so a type named `asyncResult` is never read as the `async` specifier.
-  private static func matchesKeyword(_ chars: [Character], at i: Int, _ word: String) -> Bool {
+  private static func matchesKeyword(
+    _ chars: [Character], at i: Int, _ word: String, limit: Int? = nil
+  ) -> Bool {
+    let end = min(limit ?? chars.count, chars.count)
     let expected = Array(word)
-    guard i >= 0, i + expected.count <= chars.count else { return false }
+    guard i >= 0, i + expected.count <= end else { return false }
     for k in 0..<expected.count where chars[i + k] != expected[k] { return false }
     let after = i + expected.count
-    guard after < chars.count else { return true }
+    guard after < end else { return true }
     let next = chars[after]
     return !(next.isLetter || next.isNumber || next == "_")
   }

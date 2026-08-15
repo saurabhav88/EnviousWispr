@@ -410,6 +410,81 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
 
+  /// #2068 (cloud review, PR #2070, round seven). An OPTIONAL function type
+  /// parenthesises the whole type — `(() -> Void)?` — so the scanner read the
+  /// outer group as the parameter list, found `?` where it wanted `->`, and gave
+  /// up. Optional callbacks are the single most ordinary closure-dependency
+  /// shape in this codebase, and they fell to COLLABORATOR.
+  @Test func closureCount_countsOptionalAndParenthesisedFunctionTypes() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let onFinish: (() -> Void)?
+          let onFail: ((Error) -> Void)?
+          let wrapped: (@MainActor (Int) async -> Bool)
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 3)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// #2068 (cloud review, PR #2070, round seven). An attribute may sit alone on
+  /// the line before the parameter list. The fold looked for an effect specifier
+  /// or an arrow, and `()` is neither, so line one was emitted as a finished
+  /// declaration.
+  ///
+  /// Closed by termination rather than by lookahead: a buffer whose last token is
+  /// `@MainActor` cannot be a complete declaration, whereas "the next line starts
+  /// with `(`" is also true of an ordinary following declaration and would
+  /// over-fold into an undercount.
+  @Test func closureCount_foldsWhenAnAttributeEndsTheLine() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let deferred: @MainActor
+            () -> Void
+          let beta: BetaDep
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
+  /// The control for the recursive scan: a parenthesised NON-function type must
+  /// not become a closure just because the scanner now looks inside groups.
+  /// `(AlphaDep)` is the exact shape `closureCount_doesNotFoldACompleteParenthesizedType`
+  /// pins, and a tuple of collaborators must stay one collaborator.
+  @Test func closureCount_recursionDoesNotInventClosuresInsidePlainGroups() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let wrapped: (AlphaDep)
+          let pair: (AlphaDep, BetaDep)
+          let nested: ((AlphaDep, BetaDep), GammaDep)
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 0)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 3)
+  }
+
+  /// The control for the attribute-termination rule: an attribute that is NOT at
+  /// the end of the line must not make the declaration unterminated, or every
+  /// `@MainActor (Int) -> Bool` would swallow the line after it.
+  @Test func closureCount_attributeMidLineDoesNotFoldTheNextDeclaration() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let onEvent: @MainActor (Int) -> Bool
+          let beta: BetaDep
+          let gamma: GammaDep
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
   /// The control for both fixtures above: balancing brackets must not turn
   /// ordinary generic collaborators into closures. None of these declares a
   /// function type, and each contains the punctuation the scanner reads.
