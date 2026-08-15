@@ -218,22 +218,29 @@ actor ApplePreviewRecognizer {
     let analyzer = SpeechAnalyzer(modules: [module])
     let collector = Self.collect(from: module, onText: onText)
 
-    func discard() {
+    // Finishing the stream and cancelling the collector is not enough: the analyzer
+    // holds its own analysis and model resources and needs an explicit end, or a
+    // rapid stop-start loop accumulates abandoned ones. `cancelAndFinishNow` rather
+    // than `finalizeAndFinishThroughEndOfInput` because this session is being thrown
+    // away — there is no result anyone will read, and finalizing an analyzer that
+    // never received input does not return (trap 2).
+    func discard() async {
       continuation.finish()
       collector.cancel()
+      await analyzer.cancelAndFinishNow()
     }
 
     do {
       try await analyzer.start(inputSequence: stream)
     } catch {
-      discard()
+      await discard()
       throw error
     }
     // Superseded while `start` was suspended: this session's resources are ours
     // alone, so close them rather than handing back something whose every later
     // call would be rejected.
     guard token == currentToken else {
-      discard()
+      await discard()
       throw LivePreviewError.superseded
     }
     return Session(
@@ -326,11 +333,20 @@ actor ApplePreviewRecognizer {
   /// teardown from an abandoned recording cannot reach the live one.
   func endSession(_ session: Session) async {
     session.continuation.finish()
-    // Only finalize when the analyzer actually received input — see trap 2. A
+    // Only FINALIZE when the analyzer actually received input — see trap 2. A
     // finalize on an empty analyzer never returns, which would leak this task for
     // the life of the process.
+    //
+    // But it must still be ENDED either way. The silent-recording path (press,
+    // say nothing, release) reaches here with nothing fed, and leaving the analyzer
+    // un-ended leaks its analysis and model resources exactly as an abandoned start
+    // does. Review named that leak on the discard path; this is its twin, and a fix
+    // that landed on only one of two symmetric sites would be the partial port this
+    // codebase keeps relearning.
     if session.fedAnyAudio.value {
       try? await session.analyzer.finalizeAndFinishThroughEndOfInput()
+    } else {
+      await session.analyzer.cancelAndFinishNow()
     }
     session.collector.cancel()
   }
