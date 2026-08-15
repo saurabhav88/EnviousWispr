@@ -125,11 +125,33 @@ final class RecordingOverlayPanel {
   /// fixed. `nil` when nothing is showing.
   private var activePanelPosition: OverlayPillPosition?
 
+  /// Whether the showing panel's frame hugs its content exactly (`fitToContent`)
+  /// rather than sitting inside a taller fixed frame. Maintained by `showPanel`,
+  /// read by the inherited-`y` Top transition, which has to preserve a DIFFERENT
+  /// edge for the two geometries — see the branch there for why.
+  private var activePanelIsContentSized = false
+
   /// The origin WE last set programmatically. Used only to DETECT a manual
   /// drag (`isMovableByWindowBackground = true`, an existing feature) by
   /// comparing against the panel's live origin — `wasManuallyDragged` below
   /// is the authoritative, sticky record of that fact once detected. `nil`
   /// when nothing is showing.
+  ///
+  /// **WRITING THIS ERASES THE ONLY EVIDENCE A DRAG HAPPENED, SO EVERY WRITE
+  /// MUST FIRST ASK WHETHER THE LIVE ORIGIN STILL MATCHES.** The drag signal is
+  /// a comparison, not an event: nothing observes the user dragging, so a write
+  /// that re-baselines to wherever the panel now sits makes the drag
+  /// undetectable forever after. This exact bug has been found three times, each
+  /// time at a NEW write site rather than a regression of an old one (Codex
+  /// grounded review r4 and r5, 2026-07-17; cloud review on #1988), which is why
+  /// it is written here as a property of the field instead of a comment at any
+  /// one of them. The three live write sites and how each discharges the
+  /// obligation:
+  /// - `repositionForActiveSpaceChange()` — compares, then returns early on a
+  ///   mismatch, so it only writes when no drag happened.
+  /// - `showPanel`'s inherited-`y` capture — latches `wasManuallyDragged` first.
+  /// - `resizeRecordingPanel(toContentHeight:)` — latches first, using the
+  ///   PRE-resize origin (the resize itself moves the origin in Top position).
   private var lastProgrammaticOrigin: NSPoint?
 
   /// True once the user has manually dragged the panel during the CURRENT
@@ -722,6 +744,16 @@ final class RecordingOverlayPanel {
     let target = contentHeight.rounded()
     guard target > 0, abs(panel.frame.height - target) >= 1 else { return }
 
+    // Latch a drag BEFORE the frame moves, or the re-baseline at the end of this
+    // method silently erases it — see `lastProgrammaticOrigin`. The comparison
+    // has to happen here rather than after `setFrame` because in Top position
+    // the resize itself moves the origin, which would read as a drag.
+    if !wasManuallyDragged, let lastProgrammaticOrigin,
+      !panel.frame.origin.isApproximately(lastProgrammaticOrigin)
+    {
+      wasManuallyDragged = true
+    }
+
     var frame = panel.frame
     if activePanelPosition == .bottom {
       frame.size.height = target
@@ -1116,6 +1148,39 @@ final class RecordingOverlayPanel {
     DispatchQueue.main.async(execute: work)
   }
 
+  /// Where a Top-positioned panel goes when it CONTINUES an existing
+  /// presentation whose frame was a different height (recording -> polishing).
+  ///
+  /// Both branches preserve the same thing — where the VISIBLE pill sits — and
+  /// differ only because the frame relates to that pill differently in the two
+  /// geometries. They agree exactly whenever the heights match, so this can only
+  /// diverge on a transition that actually changes height.
+  ///
+  /// - `outgoingWasContentSized`: the frame hugged its content (`fitToContent`),
+  ///   so the frame IS the visible pill and its TOP edge is the anchor. The
+  ///   #1988 preview grows downward from a fixed top edge
+  ///   (`resizeRecordingPanel`) and can be far taller than what replaces it —
+  ///   five lines of text against a one-line "Polishing..." pill. Preserving the
+  ///   center here would drop that pill by half the height difference.
+  /// - Otherwise: #1650. Content in a FIXED frame is `.center`-aligned inside it
+  ///   (createPanel), so the visible pill's vertical CENTER equals the frame's
+  ///   center regardless of the frame's own height. Preserving that center — not
+  ///   the raw bottom origin — keeps the pill pixel-identical across the 92pt
+  ///   recording frame -> ~44pt polishing pill change, closing the ~24pt drop.
+  ///
+  /// Extracted as a pure function because it is the arithmetic that was wrong,
+  /// and the rest of `showPanel` needs a window server. Tests:
+  /// `RecordingOverlayPanelInheritedGeometryTests`.
+  /// `nonisolated` because it reads no panel state — the inputs are the whole
+  /// story, which is what makes it testable without a window server.
+  nonisolated static func inheritedTopOriginY(
+    inheritedFrame: NSRect, resolvedHeight: CGFloat, outgoingWasContentSized: Bool
+  ) -> CGFloat {
+    outgoingWasContentSized
+      ? inheritedFrame.maxY - resolvedHeight
+      : inheritedFrame.midY - resolvedHeight / 2
+  }
+
   /// Create and show a floating overlay panel with the given SwiftUI content.
   ///
   /// `fitToContent` (#1064): size the panel to the SwiftUI view's own
@@ -1134,6 +1199,10 @@ final class RecordingOverlayPanel {
         ?? NSScreen.main
         ?? NSScreen.screens.first
     else { return }
+
+    // Captured before anything below can overwrite it: this describes the panel
+    // being REPLACED, which is what the inherited-`y` transition reasons about.
+    let outgoingWasContentSized = activePanelIsContentSized
 
     let hostingView = NSHostingView(rootView: content)
     // Resolve the panel size: content-driven when `fitToContent`, else the
@@ -1182,20 +1251,15 @@ final class RecordingOverlayPanel {
       // from the edge the panel's SwiftUI content is actually aligned for,
       // and the next Space swipe would then jump the panel to the wrong edge.
       if activePanelPosition == .top {
-        // #1650: Top-positioned content is `.center`-aligned inside its
-        // frame (createPanel), so the visible pill's vertical CENTER always
-        // equals the frame's center regardless of the frame's own height.
-        // Preserving the outgoing panel's frame center — not its raw bottom
-        // origin — keeps the visible pill's on-screen position
-        // pixel-identical across a panel-height change (e.g. the 92pt
-        // recording frame -> the ~44pt fitToContent polishing pill), closing
-        // the ~24pt drop. clampedOriginY below remains authoritative when
-        // the incoming panel is too tall to fit below the menu bar at the
-        // preserved center. Bottom is unaffected: its content is
-        // `.bottom`-aligned (#1341), so the outgoing frame's bottom edge
-        // already IS the visible bottom with no gap, and preserving it
-        // unchanged (below) is already correct.
-        requestedY = inheritedFrame.midY - resolvedHeight / 2
+        // clampedOriginY below remains authoritative when the incoming panel is
+        // too tall to fit below the menu bar at the preserved position. Bottom
+        // is unaffected either way: its content is `.bottom`-aligned (#1341) and
+        // the preview grows upward from a fixed bottom edge, so the outgoing
+        // frame's bottom origin already IS the visible bottom in both
+        // geometries, and preserving it unchanged (below) is already correct.
+        requestedY = Self.inheritedTopOriginY(
+          inheritedFrame: inheritedFrame, resolvedHeight: resolvedHeight,
+          outgoingWasContentSized: outgoingWasContentSized)
       } else {
         requestedY = inheritedY
       }
@@ -1230,6 +1294,7 @@ final class RecordingOverlayPanel {
 
     p.orderFrontRegardless()
     self.panel = p
+    activePanelIsContentSized = fitToContent
   }
 
   /// #1341: is the CURRENT frontmost app genuinely in native macOS fullscreen
@@ -1451,6 +1516,7 @@ final class RecordingOverlayPanel {
     guard let panelToClose = panel else { return }
     panel = nil
     activePanelPosition = nil
+    activePanelIsContentSized = false
     lastProgrammaticOrigin = nil
     wasManuallyDragged = false
 
