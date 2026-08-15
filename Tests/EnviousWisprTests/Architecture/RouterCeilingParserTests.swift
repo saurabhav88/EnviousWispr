@@ -496,6 +496,44 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
   }
 
+  /// #2068 (cloud review, PR #2070, round ten). The `:` opening a type
+  /// annotation may itself start the continuation line. Line one is then a bare
+  /// `let dependency`, which the fold read as a finished declaration.
+  ///
+  /// Confirmed against the compiler before fixing — `swiftc -swift-version 6
+  /// -typecheck` accepts the form — rather than taken from the report, because
+  /// the sibling finding in the same round asserted a syntax Swift rejects.
+  @Test func closureCount_foldsWhenTheColonStartsTheNextLine() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let deferred
+            : () -> Void
+          let beta: BetaDep
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
+  /// The over-fold control: a `let` that HAS reached its `:` or `=` is complete
+  /// and must not swallow the declaration after it. Without this, "a `let` line
+  /// might continue" would fold every property into its neighbour and undercount
+  /// the whole class.
+  @Test func closureCount_aCompleteLetDoesNotFoldTheNextDeclaration() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let beta: BetaDep
+          let gamma: GammaDep
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 3)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 0)
+  }
+
   /// The control for that rule: a comma belonging to a GENERIC argument list or
   /// to the wrapped function's own parameter list is not a tuple separator, and
   /// must not block the recursion.

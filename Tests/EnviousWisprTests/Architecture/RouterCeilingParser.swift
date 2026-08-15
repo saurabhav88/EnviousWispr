@@ -356,7 +356,30 @@ enum RouterCeilingParser {
     // following declaration and would over-fold. "This line ended on an
     // attribute" is unambiguous.
     if endsWithAttribute(trimmed) { return true }
+    // `let dependency` with neither a type annotation nor an initializer cannot
+    // stand alone, so the `:` opening its type is on a following line (cloud
+    // review, PR #2070, round ten):
+    //
+    //     let dependency
+    //       : () -> Void
+    //
+    // Verified against the compiler rather than taken on the report:
+    // `swiftc -swift-version 6 -typecheck` accepts it.
+    if endsWithBareLetBinding(trimmed) { return true }
     return false
+  }
+
+  /// The buffer is a `let` binding that has not reached its `:` or `=` yet.
+  /// Both are excluded explicitly, so `let alpha: AlphaDep` and `let flag = true`
+  /// are complete and cannot fold into the declaration after them — the
+  /// undercount direction this check must not open.
+  private static func endsWithBareLetBinding(_ trimmed: String) -> Bool {
+    guard !trimmed.contains(":"), !trimmed.contains("=") else { return false }
+    let tokens = trimmed.split(whereSeparator: { $0.isWhitespace })
+    guard tokens.count >= 2, let last = tokens.last, tokens.dropLast().contains("let")
+    else { return false }
+    guard let first = last.first, first.isLetter || first == "_" else { return false }
+    return last.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
   }
 
   /// The line's last token is an attribute, in EITHER of the two forms Swift
