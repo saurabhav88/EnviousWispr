@@ -85,11 +85,21 @@ public final class LLMNetworkSession: Sendable {
         // failure — mirror the A5 evict 2xx/non-2xx split. A missing status code
         // (n/a) is NOT treated as a failure (that path already lacks a real signal).
         if let code = statusCode, !(200...299).contains(code) {
-          await AppLogger.shared.log(
-            "preWarm failure body provider=\(provider.rawValue) model=\(model) "
-              + "status=\(code) body=\(Self.warmupFailureBodyForLog(data))",
-            level: .info, category: "LLM"
-          )
+          // `#if DEBUG` at the CALL SITE, not just inside `AppLogger` (cloud
+          // review, PR #2072). `AppLogger.log` takes a `String`, so the
+          // interpolation — and therefore the whole decode-and-copy of the
+          // response body — is evaluated by the caller before the call. The
+          // logger's own `#if DEBUG` removes only its body, so a release build
+          // would pay to render a multi-KB provider error page and then throw it
+          // away. This whole diagnostic is debug-only by intent; make that true
+          // of the work as well as the output.
+          #if DEBUG
+            await AppLogger.shared.log(
+              "preWarm failure body provider=\(provider.rawValue) model=\(model) "
+                + "status=\(code) body=\(Self.warmupFailureBodyForLog(data))",
+              level: .info, category: "LLM"
+            )
+          #endif
           sink.limbFailure(
             "llm_prewarm", "prewarm", "failed", "\(provider.rawValue)_http_\(code)", ms)
         }
