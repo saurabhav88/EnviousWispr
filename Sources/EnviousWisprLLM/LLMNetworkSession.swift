@@ -159,8 +159,19 @@ public final class LLMNetworkSession: Sendable {
     guard let text = String(data: data, encoding: .utf8) else {
       return "<non-utf8 \(data.count) bytes>"
     }
-    let flattened = text.replacingOccurrences(of: "\n", with: " ")
-      .trimmingCharacters(in: .whitespaces)
+    // Split on the whole `.newlines` set, not just `"\n"` (cloud review, PR
+    // #2072). An HTML or text error body with CRLF endings leaves the `"\r"`
+    // behind when only `"\n"` is replaced, and `.whitespaces` does not strip an
+    // INTERNAL carriage return — so the log line this exists to keep on one line
+    // arrives multi-line anyway. The set also covers U+2028/U+2029, which a
+    // JSON-encoded provider message can legitimately carry. Empty components are
+    // dropped so a blank line does not become a run of spaces.
+    let flattened =
+      text
+      .components(separatedBy: .newlines)
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     guard flattened.utf8.count > limit else { return flattened }
     // Bound by BYTES, on a Character boundary (cloud review, PR #2072).
     // `String.count` measures extended grapheme clusters, so a limit applied to

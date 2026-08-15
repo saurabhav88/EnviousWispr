@@ -121,6 +121,22 @@ struct LLMNetworkSessionWarmupTests {
     #expect(rendered.contains("\n") == false, "the log line must stay one line")
   }
 
+  /// Cloud review, PR #2072. Replacing only `"\n"` leaves the `"\r"` of a CRLF
+  /// body embedded, and `.whitespaces` does not strip an internal carriage
+  /// return — so the "one line" guarantee was not one. Providers returning HTML
+  /// error pages routinely use CRLF.
+  @Test func failureBodyFlattensEveryNewlineForm() {
+    let crlf = Data("<html>\r\n<body>rate limited\r\n</body>\r\n</html>".utf8)
+    let rendered = LLMNetworkSession.warmupFailureBodyForLog(crlf)
+
+    #expect(rendered.contains("\r") == false, "a carriage return still breaks the line")
+    #expect(rendered.contains("\n") == false)
+    #expect(rendered.contains("rate limited"), "the message itself must survive flattening")
+    // U+2028, which a JSON-encoded provider message can legitimately carry.
+    let separator = Data("first\u{2028}second".utf8)
+    #expect(LLMNetworkSession.warmupFailureBodyForLog(separator) == "first second")
+  }
+
   @Test func failureBodyDistinguishesEmptyFromUnreadable() {
     #expect(LLMNetworkSession.warmupFailureBodyForLog(Data()) == "<empty>")
     // Lone continuation bytes: a body that exists and is not decodable. It must
