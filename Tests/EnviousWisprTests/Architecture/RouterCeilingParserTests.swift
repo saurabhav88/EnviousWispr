@@ -691,6 +691,61 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
 
+  /// #2068 (cloud review, PR #2070, round fourteen). The generic-wrapper branch
+  /// added last round returned as soon as its inner type parsed and never
+  /// checked what followed, so `Optional<() -> Void>.Type` — a metatype — read as
+  /// a closure. That is the SAME hole round twelve closed for the parenthesised
+  /// wrapper, reopened by a new path that skipped the shared guard.
+  ///
+  /// Worth pinning as its own test rather than folding into the round-twelve
+  /// one: the lesson is not "metatypes are collaborators", it is that a second
+  /// wrapper path must end at the same trailing check as the first.
+  @Test func closureCount_genericOptionalRejectsAMetatypeSuffix() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let meta: Optional<() -> Void>.Type
+          let real: Optional<() -> Void>
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// #2068 (cloud review, PR #2070, round fourteen). Swift accepts trivia inside
+  /// the generic-Optional prefix — `Optional <…>`, `Swift . Optional<…>`, and
+  /// `Optional /* docs */ <…>`, the last arriving here already blanked to spaces
+  /// by the code view. Two string literals could not see any of them.
+  @Test func closureCount_genericOptionalToleratesTriviaInThePrefix() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let spaced: Optional <() -> Void>
+          let qualified: Swift . Optional<(Int) -> Bool>
+          let commented: Optional /* the callback */ <() -> Void>
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 3)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// The control for that tolerance: a type whose name merely ENDS in `Optional`
+  /// is not the generic wrapper, and `matchesKeyword`'s identifier-boundary
+  /// check is what keeps them apart.
+  @Test func closureCount_aTypeNamedLikeOptionalIsNotTheWrapper() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let custom: MyOptional<() -> Void>
+          let other: OptionalThing<() -> Void>
+          let real: Optional<() -> Void>
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
   /// The control: the whole-type guards must still apply THROUGH the generic
   /// wrapper. `Optional<(() -> Void, AlphaDep)>` wraps a tuple, not a closure,
   /// and an `Optional` of an ordinary collaborator is still a collaborator.

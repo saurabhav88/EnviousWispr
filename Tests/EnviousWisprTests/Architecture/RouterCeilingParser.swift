@@ -707,9 +707,17 @@ enum RouterCeilingParser {
     // blind spot in `containsTopLevelComma` two rounds ago. The recursion
     // carries the same whole-type guards, so `Optional<(() -> Void, AlphaDep)>`
     // still fails the tuple test.
+    //
+    // The trailing guard is the SAME one the parenthesised path uses. Round
+    // thirteen added this branch and returned as soon as the inner type parsed,
+    // which silently reopened the metatype hole round twelve had closed:
+    // `Optional<() -> Void>.Type` is a metatype, and a new wrapper path that
+    // skips the shared check is exactly how a closed class comes back (round
+    // fourteen). Both wrapper paths now end at `onlyOptionalMarkersRemain`.
     if let angleOpen = optionalGenericOpen(chars, at: i, limit: end),
       let angleClose = lastAngleBracket(chars, from: angleOpen + 1, to: end)
     {
+      guard onlyOptionalMarkersRemain(chars, from: angleClose + 1, to: end) else { return false }
       return closureSignatureFollows(chars, from: angleOpen + 1, limit: angleClose)
     }
     guard i < end, chars[i] == "(", let close = matchingParen(chars, open: i, limit: end)
@@ -766,21 +774,29 @@ enum RouterCeilingParser {
   /// the comma in `Result<Int, Error>` is not mistaken for a tuple separator;
   /// `<`/`>` are ambiguous with comparison in general Swift, but inside a type
   /// annotation they are generic delimiters.
-  /// Index of the `<` that opens a generic `Optional<…>` / `Swift.Optional<…>`
-  /// beginning at `at`, or `nil` when the type does not start with one.
+  /// Index of the `<` that opens a generic `Optional<…>`, or `nil` when the type
+  /// does not start with one. An optional `Swift.` qualifier is accepted.
+  ///
+  /// SCANNED with trivia skipped at every join rather than matched against the
+  /// literals `"Optional<"` / `"Swift.Optional<"`, because Swift accepts
+  /// `Optional <…>`, `Swift . Optional<…>`, and `Optional /* docs */ <…>` (round
+  /// fourteen; the comment form arrives here already blanked to spaces by the
+  /// caller's code view, so it is ordinary trivia). Tolerating trivia is also
+  /// what lets the `Swift.` qualifier fall out of the scan instead of needing a
+  /// second literal — the same reason every other position in this file skips
+  /// trivia rather than enumerating spacings.
   private static func optionalGenericOpen(_ chars: [Character], at: Int, limit: Int) -> Int? {
     let end = min(limit, chars.count)
-    for prefix in ["Optional<", "Swift.Optional<"] {
-      let expected = Array(prefix)
-      guard at >= 0, at + expected.count <= end else { continue }
-      var matches = true
-      for k in 0..<expected.count where chars[at + k] != expected[k] {
-        matches = false
-        break
-      }
-      if matches { return at + expected.count - 1 }
+    var i = skipTrivia(chars, from: at, limit: end)
+    if matchesKeyword(chars, at: i, "Swift", limit: end) {
+      let afterSwift = skipTrivia(chars, from: i + 5, limit: end)
+      guard afterSwift < end, chars[afterSwift] == "." else { return nil }
+      i = skipTrivia(chars, from: afterSwift + 1, limit: end)
     }
-    return nil
+    guard matchesKeyword(chars, at: i, "Optional", limit: end) else { return nil }
+    let afterName = skipTrivia(chars, from: i + 8, limit: end)
+    guard afterName < end, chars[afterName] == "<" else { return nil }
+    return afterName
   }
 
   /// The last `>` before the type ends (at `=`, or at `to`). The `>` of an `->`
