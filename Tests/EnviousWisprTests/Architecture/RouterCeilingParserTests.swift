@@ -647,7 +647,15 @@ import Testing
         final class Probe {
           let alpha: AlphaDep
           let isolated: @isolated(any) () -> Void
-          let gated: @available(macOS 26, *) (Int) -> Bool
+          // Was `@available(macOS 26, *)` until the SwiftSyntax rewrite refused
+          // to parse it: `@available` is a DECLARATION attribute and cannot be
+          // applied to a type ("attribute can only be applied to declarations,
+          // not types" — verified with swiftc). The text scanner accepted the
+          // fixture because it validated nothing, so this test spent twelve
+          // rounds asserting behaviour on Swift that cannot exist.
+          // `@convention(c)` is a real TYPE attribute that takes arguments,
+          // which is what the test was always trying to exercise.
+          let gated: @convention(c) (Int) -> Bool
         }
         """)
     #expect(RouterCeilingParser.closureInjectedCount(in: body) == 2)
@@ -746,7 +754,13 @@ import Testing
       of: """
         final class Probe {
           let wrapped: (AlphaDep)
-          let built: Factory(config)
+          // Was `Factory(config)`, which is not a type at all — swiftc rejects
+          // it with "unexpected initializer in pattern". Same story as the
+          // fixture above: invented to end a line in `)`, accepted by a scanner
+          // that never parsed, and only caught once a real parser read it.
+          // A tuple is a genuine type that ends in `)`, which is the property
+          // this control actually needs.
+          let built: (AlphaDep, BetaDep)
           let beta: BetaDep
         }
         """)
