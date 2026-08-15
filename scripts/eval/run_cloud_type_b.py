@@ -58,6 +58,7 @@ the whole set rather than mixing:
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
@@ -338,6 +339,14 @@ def polish_case(
             retryable = e.code in RETRYABLE
         except urllib.error.URLError as e:
             last_err = f"URLError: {e.reason}"
+            retryable = True
+        except (OSError, http.client.HTTPException) as e:
+            # A reset arriving while the RESPONSE BODY is read is a bare
+            # ConnectionResetError, not a URLError, so before this clause it
+            # escaped the retry loop entirely and killed the whole case. Ordered
+            # after the two urllib clauses because HTTPError subclasses URLError
+            # subclasses OSError, and a 4xx must keep its non-retryable verdict.
+            last_err = f"{type(e).__name__}: {e}"
             retryable = True
         except (RuntimeError, KeyError, json.JSONDecodeError) as e:
             last_err = str(e)

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import html
 import json
 import os
@@ -110,6 +111,15 @@ def synth(text: str, out: Path, engine: str, model: str, voice: str,
                 continue
             raise RuntimeError(f"HTTP {e.code}: {e.read().decode(errors='replace')[:200]}") from None
         except urllib.error.URLError:
+            if attempt < MAX_ATTEMPTS:
+                time.sleep(min(2 ** attempt, 30))
+                continue
+            raise
+        except (OSError, http.client.HTTPException):
+            # A reset during the RESPONSE BODY read is a bare ConnectionResetError,
+            # not a URLError, so before this clause it escaped the retry loop and
+            # aborted a whole TTS sweep. Ordered last of the three because
+            # HTTPError subclasses URLError subclasses OSError.
             if attempt < MAX_ATTEMPTS:
                 time.sleep(min(2 ** attempt, 30))
                 continue

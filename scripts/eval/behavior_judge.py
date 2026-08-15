@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import random
@@ -166,9 +167,39 @@ def _key(name: str) -> str:
 
 
 def _retryable_http_error(exc: Exception) -> bool:
+    """True when `exc` is a transient transport failure worth another attempt.
+
+    HTTPError is tested FIRST and is the only branch that can answer False for an
+    OSError, because `HTTPError` subclasses `URLError` subclasses `OSError`: a 400
+    or a 401 is the server's considered answer and retrying it just burns credits.
+
+    Everything below that is transport, and transport is transient. Catch the BASE
+    classes rather than a list of names. The list this replaces --
+    `(urllib.error.URLError, TimeoutError)` -- looked complete and missed six real
+    failure modes, because urllib wraps only what `urlopen` itself raises. A reset
+    arriving while the RESPONSE BODY is being read propagates as a bare
+    `ConnectionResetError`, which is an OSError but not a URLError, so it fell
+    through to FATAL.
+
+    Measured cost of that gap on 2026-08-14: two 1,861-case grading runs each logged
+    exactly three `FATAL on chunk (attempt 1): [Errno 54] Connection reset by peer`
+    and each dropped exactly 24 cases (3 chunks x chunk_size 8). The dropped IDs had
+    ZERO overlap between the two runs, which is what rules out a content trigger and
+    identifies it as transport. Both runs were correctly reported INCOMPLETE by
+    `reconcile_judge_batch`, so nothing wrong was ever published -- the accounting
+    layer did its job. This fixes the layer that manufactured the gap, and
+    deliberately does not touch the one that reports it.
+
+    Verified against constructed instances rather than reasoned about; the two-way
+    control lives in `behavior_judge_test.py::test_transport_resets_are_retryable_
+    but_client_errors_are_not`.
+    """
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code == 429 or 500 <= exc.code < 600
-    return isinstance(exc, (urllib.error.URLError, TimeoutError))
+    # OSError covers URLError, TimeoutError, every ConnectionError (reset, aborted,
+    # broken pipe, refused), socket.gaierror and ssl.SSLError. HTTPException covers
+    # the http.client family that is NOT an OSError, e.g. IncompleteRead.
+    return isinstance(exc, (OSError, http.client.HTTPException))
 
 
 # `call_openai` and `call_gemini` are DELETED, not merely unrouted (founder 2026-08-11,
@@ -612,16 +643,42 @@ def parse_judge_array(raw: str) -> list[dict[str, Any]]:
     return parsed if isinstance(parsed, list) else []
 
 
+JUDGE_CHUNK_ATTEMPTS = 5
+
+
+def _judge_retry_delay(attempt: int) -> float:
+    """Capped exponential backoff with jitter.
+
+    Jitter is not decoration here: every worker shares one deployment, so a
+    rate-limit window knocks several chunks down at the same instant, and a
+    deterministic `2 * attempt` marches them all back in lockstep to collide
+    again. Capped at 30s so five attempts span roughly a minute rather than
+    stalling a run that is otherwise healthy.
+    """
+    return min(2.0 ** attempt, 30.0) + random.uniform(0.0, 1.5)
+
+
 def judge_chunk(model: str, system: str, payload_cases: list[dict], attempt: int = 1) -> list[dict]:
-    """One judge call over a chunk. Retries on transient/parse error (3 attempts)."""
+    """One judge call over a chunk. Retries on transient transport/parse error.
+
+    Returning `[]` here does not corrupt anything: `reconcile_judge_batch` counts
+    every requested id and the receipt's `run_complete` gate fails the run. The
+    cost of landing here is a whole re-run, which is why the retry budget is
+    generous rather than minimal.
+    """
     user = "Score these cases. Return ONLY the JSON array.\n" + json.dumps(payload_cases, ensure_ascii=False)
     try:
         return parse_judge_array(dispatch_judge(model, system, user))
     except Exception as e:
-        if attempt < 3 and (_retryable_http_error(e) or isinstance(e, (json.JSONDecodeError, RuntimeError))):
-            time.sleep(2 * attempt)
+        if (attempt < JUDGE_CHUNK_ATTEMPTS
+                and (_retryable_http_error(e)
+                     or isinstance(e, (json.JSONDecodeError, RuntimeError)))):
+            print(f"[judge] transient on chunk (attempt {attempt}/"
+                  f"{JUDGE_CHUNK_ATTEMPTS}), retrying: {e}", file=sys.stderr)
+            time.sleep(_judge_retry_delay(attempt))
             return judge_chunk(model, system, payload_cases, attempt + 1)
-        print(f"[judge] FATAL on chunk (attempt {attempt}): {e}", file=sys.stderr)
+        print(f"[judge] FATAL on chunk (attempt {attempt}): {type(e).__name__}: {e}",
+              file=sys.stderr)
         return []
 
 

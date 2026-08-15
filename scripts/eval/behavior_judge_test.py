@@ -40,6 +40,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
+import urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -2474,12 +2475,120 @@ def test_vocabulary_repair_is_a_variant_but_name_repair_is_not():
 
 
 # --------------------------------------------------------------------------- #
+# transport retry classification                                              #
+# --------------------------------------------------------------------------- #
+
+def test_transport_resets_are_retryable_but_client_errors_are_not():
+    """Two-way control on `_retryable_http_error`.
+
+    The list it replaced -- `(urllib.error.URLError, TimeoutError)` -- looked
+    complete and answered False for all six transport rows below, including
+    `ConnectionResetError`, which is the one that actually fired: urllib wraps
+    only what `urlopen` raises, so a reset during the RESPONSE BODY read arrives
+    bare. Both directions are asserted in one table because widening the
+    predicate far enough to catch a reset is exactly the change that could make a
+    400 retryable -- `HTTPError` is an `OSError` subclass, so the order of the
+    branches is load-bearing and a positive-only test would not notice.
+    """
+    import http.client
+    import socket
+    import ssl
+
+    must_retry = [
+        ("ConnectionResetError", ConnectionResetError(54, "Connection reset by peer")),
+        ("RemoteDisconnected", http.client.RemoteDisconnected("closed")),
+        ("IncompleteRead", http.client.IncompleteRead(b"", 10)),
+        ("BrokenPipeError", BrokenPipeError(32, "Broken pipe")),
+        ("SSLEOFError", ssl.SSLEOFError("eof")),
+        ("socket.gaierror", socket.gaierror(8, "nodename nor servname")),
+        ("URLError", urllib.error.URLError("unreachable")),
+        ("TimeoutError", TimeoutError("timed out")),
+        ("HTTP 429", urllib.error.HTTPError("u", 429, "rate", {}, None)),
+        ("HTTP 500", urllib.error.HTTPError("u", 500, "ise", {}, None)),
+        ("HTTP 503", urllib.error.HTTPError("u", 503, "unavail", {}, None)),
+    ]
+    must_not_retry = [
+        ("HTTP 400", urllib.error.HTTPError("u", 400, "bad request", {}, None)),
+        ("HTTP 401", urllib.error.HTTPError("u", 401, "unauthorized", {}, None)),
+        ("HTTP 404", urllib.error.HTTPError("u", 404, "not found", {}, None)),
+        ("ValueError", ValueError("not transport at all")),
+        ("KeyError", KeyError("nope")),
+    ]
+    for name, exc in must_retry:
+        assert bj._retryable_http_error(exc), \
+            f"{name} is a transient transport failure and must be retried; " \
+            f"treating it as fatal drops a whole chunk of cases"
+    for name, exc in must_not_retry:
+        assert not bj._retryable_http_error(exc), \
+            f"{name} is the server's considered answer (or not transport at all) " \
+            f"and must NOT be retried"
+
+
+def test_judge_chunk_retries_a_reset_and_returns_the_full_chunk():
+    """Drive the REAL `judge_chunk` through a reset and assert it recovers.
+
+    Asserting only the returned scores would pass on a single successful attempt
+    just as well as on a retry, so the attempt COUNT is asserted too -- a counter
+    that is incremented and never read is the shape that makes a retry test
+    vacuous. `time.sleep` is stubbed so the real backoff schedule does not put a
+    minute of wall clock into the suite.
+    """
+    calls = {"n": 0}
+
+    def flaky_dispatch(model, system, user):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise ConnectionResetError(54, "Connection reset by peer")
+        return json.dumps([{"id": "A1", "verdict": "pass"},
+                           {"id": "A2", "verdict": "pass"}])
+
+    real_dispatch, real_sleep = bj.dispatch_judge, bj.time.sleep
+    bj.dispatch_judge = flaky_dispatch
+    bj.time.sleep = lambda _s: None
+    try:
+        out = bj.judge_chunk("azure/x", "sys", [{"id": "A1"}, {"id": "A2"}])
+    finally:
+        bj.dispatch_judge, bj.time.sleep = real_dispatch, real_sleep
+
+    assert calls["n"] == 3, \
+        f"expected 2 resets then a success = 3 attempts, saw {calls['n']}; " \
+        f"if this is 1 the reset was classified FATAL and the chunk was dropped"
+    assert [r["id"] for r in out] == ["A1", "A2"], \
+        f"the chunk must come back whole after a transient reset, got {out!r}"
+
+
+def test_judge_chunk_gives_up_on_a_client_error_without_burning_retries():
+    """The other direction: a 400 is answered once and not retried.
+
+    Without this, widening the predicate to catch resets could silently turn every
+    malformed request into five paid attempts against the deployment.
+    """
+    calls = {"n": 0}
+
+    def always_400(model, system, user):
+        calls["n"] += 1
+        raise urllib.error.HTTPError("u", 400, "bad request", {}, None)
+
+    real_dispatch, real_sleep = bj.dispatch_judge, bj.time.sleep
+    bj.dispatch_judge = always_400
+    bj.time.sleep = lambda _s: None
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            out = bj.judge_chunk("azure/x", "sys", [{"id": "A1"}])
+    finally:
+        bj.dispatch_judge, bj.time.sleep = real_dispatch, real_sleep
+
+    assert calls["n"] == 1, f"a 400 must be attempted exactly once, saw {calls['n']}"
+    assert out == [], "a chunk that never scored must return empty so reconciliation counts it"
+
+
+# --------------------------------------------------------------------------- #
 # runner                                                                      #
 # --------------------------------------------------------------------------- #
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 124
+EXPECTED_TESTS = 127
 
 
 def _run() -> int:

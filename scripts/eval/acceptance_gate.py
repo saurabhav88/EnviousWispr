@@ -21,6 +21,7 @@ Design refs:
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import random
@@ -310,13 +311,22 @@ def _retryable_http_error(exc: Exception) -> bool:
     """Classify HTTPError responses as transient-retryable. Covers 5xx + 429.
     Returns False for auth/bad-request errors (4xx except 429) which will never
     succeed on retry.
+
+    Everything that is not an HTTPError is transport, and transport is transient.
+    This tests the BASE classes rather than naming `URLError`, because urllib
+    wraps only what `urlopen` itself raises: a reset arriving while the RESPONSE
+    BODY is read propagates as a bare `ConnectionResetError`, which is an OSError
+    and NOT a URLError, so the narrower form answered False for the commonest
+    real failure. Measured in `behavior_judge.py`'s copy of this predicate on
+    2026-08-14 — three chunk drops per run, 24 cases each, across two runs.
+    HTTPError stays first because it subclasses OSError and a 400 must not retry.
     """
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code >= 500 or exc.code == 429
-    if isinstance(exc, urllib.error.URLError):
-        # Network-level (timeouts, DNS hiccup) — retry.
-        return True
-    return False
+    # OSError covers URLError, TimeoutError, every ConnectionError (reset, aborted,
+    # broken pipe, refused), socket.gaierror and ssl.SSLError. HTTPException covers
+    # the http.client family that is not an OSError, e.g. IncompleteRead.
+    return isinstance(exc, (OSError, http.client.HTTPException))
 
 
 def _http_call_with_retry(do_call, attempts: int = 3, base_delay: float = 1.5):
