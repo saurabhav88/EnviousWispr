@@ -218,11 +218,23 @@ enum RouterCeilingParser {
       let (opens, closes) = braceCounts(buffer)
       let depthForThisLine = depth - max(0, closes - opens)
       if depthForThisLine == 0 {
-        while i + 1 < physical.count,
-          isUnterminatedDeclaration(buffer) || continuesWithEffectSpecifier(physical[i + 1])
-        {
-          i += 1
-          buffer += "\n" + physical[i]
+        while i + 1 < physical.count {
+          if isUnterminatedDeclaration(buffer) {
+            i += 1
+            buffer += "\n" + physical[i]
+            continue
+          }
+          // Look PAST blank lines and `//` comments for a continuing effect
+          // specifier or arrow, absorbing the trivia on the way (cloud review,
+          // PR #2070). An immediate-next-line check emits the declaration before
+          // it ever reaches the `async` two lines down.
+          guard let next = nextSignificantIndex(physical, after: i),
+            continuesWithEffectSpecifier(physical[next])
+          else { break }
+          while i < next {
+            i += 1
+            buffer += "\n" + physical[i]
+          }
         }
       }
       result.append(buffer)
@@ -240,6 +252,17 @@ enum RouterCeilingParser {
   /// character is a continuation operator (`:` `,` `&`, or it ends with `->`).
   /// Angle brackets are deliberately not tracked — `>` is ambiguous with `->`
   /// and comparison.
+  /// First line at or after `i + 1` that carries actual code — blank lines and
+  /// `//` comments are trivia and Swift permits them anywhere between tokens.
+  private static func nextSignificantIndex(_ lines: [String], after i: Int) -> Int? {
+    var j = i + 1
+    while j < lines.count {
+      if !codeView(lines[j]).trimmingCharacters(in: .whitespaces).isEmpty { return j }
+      j += 1
+    }
+    return nil
+  }
+
   /// #2068 (cloud review, PR #2070): a function type may wrap so that its effect
   /// specifier or arrow starts the NEXT physical line:
   ///
@@ -454,7 +477,14 @@ enum RouterCeilingParser {
     return primitives.contains { line.contains($0) }
   }
 
-  private static func isClosureTyped(_ line: String) -> Bool {
+  private static func isClosureTyped(_ rawLine: String) -> Bool {
+    // #2068: matched against the CODE VIEW, not the raw text. Swift's function-type
+    // grammar admits arbitrary trivia between every token, so a comment sitting
+    // between `()` and its effect specifier defeats a raw-text match — and a `->`
+    // inside a comment or string literal can fake one in the other direction.
+    // Blanking both to spaces makes the predicate structural, which is the only
+    // form that survives the next syntax shape nobody enumerated.
+    let line = codeView(rawLine)
     // Matches a declared closure type signature: `: (...) -> ...`
     // (with optional `@MainActor` / `@Sendable` attributes before the
     // paren). `line` may be a folded multi-line declaration; `[[:space:]]`
@@ -471,7 +501,7 @@ enum RouterCeilingParser {
     // `throws` may carry a typed-throws clause on this Swift 6 target
     // (`() throws(MyError) -> Void`), so the error type is part of the specifier
     // (cloud review, PR #2070).
-    line.range(
+    return line.range(
       of:
         #":[[:space:]]*(@[A-Za-z]+[[:space:]]+)*\([^)]*\)"#
         + #"([[:space:]]+(async|rethrows|throws([[:space:]]*\([^)]*\))?))*"#

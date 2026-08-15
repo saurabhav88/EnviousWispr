@@ -254,6 +254,57 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
 
+  /// #2068, the CLASS rather than another instance. Three review rounds each
+  /// found one more permitted-but-unhandled placement in the same predicate
+  /// (`async`, then the specifier on the next line, then typed throws), which is
+  /// the signal to stop patching shapes: Swift's function-type grammar admits
+  /// arbitrary trivia between every token, so any matcher keyed to
+  /// physically-adjacent text has an unbounded tail of these.
+  ///
+  /// Closed structurally instead — the predicate matches the CODE VIEW (comments
+  /// and string contents blanked to spaces) and the fold looks PAST trivia — so
+  /// these cases pass by construction rather than by enumeration. This is the
+  /// exhaustive sweep of the class, not the next entry in it.
+  @Test func closureCount_toleratesTriviaAnywhereInTheSignature() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let commented: ()
+            // why this one is async
+            async -> Void
+          let blankLine: (Int)
+
+            throws -> Bool
+          let inlineComment: (String)  // a trailing note
+            -> Int
+          let both: ()
+            // documented
+            async throws(DomainError) -> Void
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 4)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// The other half of matching on the code view: an arrow that only LOOKS like
+  /// a closure type must not create one. Before this, `isClosureTyped` read raw
+  /// text, so a comment or string containing `-> ` could fake a signature — the
+  /// same class of false positive `classBody` already guards against for braces
+  /// (#826).
+  @Test func closureCount_ignoresArrowsInCommentsAndStrings() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep  // maps (Int) -> Bool internally
+          let label: Renderer = makeRenderer("(Int) -> Bool")
+          let real: @MainActor (Int) -> Bool
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
   /// The over-folding control. A complete parenthesized type must NOT swallow
   /// the declaration after it — that would UNDERCOUNT, which is the direction a
   /// ceiling must never fail in. This is why the fold looks ahead for an effect
