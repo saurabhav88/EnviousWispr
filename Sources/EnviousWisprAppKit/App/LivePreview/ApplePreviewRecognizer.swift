@@ -127,6 +127,13 @@ actor ApplePreviewRecognizer {
     let warmModule = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
     let warmAnalyzer = SpeechAnalyzer(modules: [warmModule])
     try await warmAnalyzer.prepareToAnalyze(in: target)
+    // The THIRD abandoned-analyzer site, and the one a sweep of the previous two
+    // missed. Warm-up runs on first use and on every language change, and an
+    // analyzer that is simply dropped retains its analysis and model resources, so
+    // a user switching languages a few times accumulates them. `cancelAndFinishNow`
+    // rather than a finalize: trap 2's hang applies to FINALIZING an analyzer that
+    // received no input, not to cancelling one.
+    await warmAnalyzer.cancelAndFinishNow()
   }
 
   /// Claim a locale for this process before transcribing in it.
@@ -147,7 +154,15 @@ actor ApplePreviewRecognizer {
     if already.count >= AssetInventory.maximumReservedLocales, let victim = already.first {
       _ = await AssetInventory.release(reservedLocale: victim)
     }
-    _ = try await AssetInventory.reserve(locale: locale)
+    // The Bool matters. `reserve` returns false rather than throwing when the claim
+    // was not made — a reservation-limit race, or an eviction that did not take.
+    // Discarding it let `prepare()` report success for a locale that was never
+    // claimed, and the coordinator then CACHES that recognizer as ready, so every
+    // later recording reuses a broken one instead of retrying. The failure would
+    // have surfaced far away, as transcription complaining about a missing asset.
+    guard try await AssetInventory.reserve(locale: locale) else {
+      throw LivePreviewError.localeUnavailable
+    }
   }
 
   /// Turn our ISO 639-1 language code into one of the recognizer's locales, or nil
@@ -390,4 +405,8 @@ enum LivePreviewError: Error {
   case notPrepared
   /// The session was replaced by a newer one before it finished opening.
   case superseded
+  /// The locale could not be claimed for this process, so nothing can transcribe
+  /// in it. Distinct from "Apple does not support this language" — this one is
+  /// worth retrying on the next recording.
+  case localeUnavailable
 }
