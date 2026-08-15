@@ -16,6 +16,23 @@ import Foundation
 typealias LivePreviewSampleReader =
   @MainActor @Sendable (Int) async -> (samples: [Float], totalCount: Int)
 
+/// The most text this session ever handed the pill.
+///
+/// A reference box because the writer is the publish closure and the reader is the
+/// session task that outlives it. The PEAK rather than the last value: the preview
+/// is bounded and trims its front on long dictations, so the final string can be
+/// shorter than what was displayed earlier, and "how much did the user ever see"
+/// is the question this answers.
+///
+/// `@MainActor`-confined by use — every mutation happens inside the publish
+/// closure's main-actor hop, and the single read happens on the same actor — so it
+/// needs no lock and makes no cross-actor promise it cannot keep.
+@MainActor
+final class ShownCharsBox {
+  private(set) var peak = 0
+  func record(_ count: Int) { peak = max(peak, count) }
+}
+
 /// What the recording pill should render for the live preview (#1988).
 ///
 /// `unavailable` carries a sentence rather than being folded into `off` because
@@ -266,9 +283,18 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // The recognizer calls back from its own actor. Hop to the main actor and
     // publish so the 20 Hz pill read is a plain property read. The text arrives
     // already bounded (`LivePreviewTextBound`, applied at the producer).
+    // Counted as it is PUBLISHED, never read back off `display` afterwards.
+    // Reading `display` at the end of the session cannot work: stopping sets it to
+    // `.off` before this task resumes, so the figure was structurally pinned at 0
+    // and reported "heard nothing" for every recording including the ones that
+    // worked. It was the only signal separating "ran and heard nothing" from "never
+    // ran", so a permanently-zero counter made the two indistinguishable — the exact
+    // question it existed to answer.
+    let shownChars = ShownCharsBox()
     let publish: @Sendable (String) -> Void = { [weak self] text in
       Task { @MainActor in
         guard let self, self.isRunning, self.sessionGeneration == generation else { return }
+        shownChars.record(text.count)
         self.display = .text(text)
       }
     }
@@ -290,12 +316,10 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     await feedLoop(session: session) { updates += 1 }
     // Closes the resources THIS session owns, so it cannot reach a newer one.
     await session.end()
-    // Reports what the PILL received, so an empty preview is distinguishable from
-    // a preview that ran and heard nothing. Those look identical on screen and
-    // have completely different causes.
-    let shown: Int
-    if case .text(let t) = display { shown = t.count } else { shown = 0 }
-    await Self.log("session ended, feeds=\(updates) shownChars=\(shown)")
+    // Reports what the PILL was actually given, so an empty preview is
+    // distinguishable from a preview that ran and heard nothing. Those look
+    // identical on screen and have completely different causes.
+    await Self.log("session ended, feeds=\(updates) shownChars=\(shownChars.peak)")
   }
 
   /// Whether the recording that started this session is still the current one AND
