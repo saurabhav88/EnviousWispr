@@ -19,6 +19,35 @@ import Testing
 /// first inner method/init brace. A continuation-line fold (`foldContinuationLines`)
 /// joins a declaration whose type annotation wraps across physical lines, so a
 /// multi-line closure-typed `let` classifies correctly. Fixed in #808.
+///
+/// # Known limits
+///
+/// This is a source approximation of Swift's type grammar, not a Swift parser.
+/// PR #2070's review surfaced these three, each verified valid Swift with
+/// `swiftc -typecheck` and each measured for reachability before being left
+/// open. All three fail toward UNDERCOUNTING closures, so a ceiling silently
+/// reads low rather than raising a false alarm — write any of these forms in a
+/// ceiling-tested home and the freeze will not see it.
+///
+///   1. An attribute whose ARGUMENTS contain nested parens
+///      (`@Attr(Foo<(A, B)>)`). Three regexes still use a non-balancing
+///      `(\([^)]*\))?` for attribute argument lists. Measured: zero attributes
+///      with nested-paren arguments in `Sources/`.
+///   2. MULTI-BINDING declarations (`let a: () -> Void, b: () -> Void`) count
+///      once, and a declaration mixing a closure with a collaborator cannot be
+///      split, because the counter takes a per-line `(String) -> Bool`.
+///      Measured: zero, with a bracket-stripping detector and a two-way control.
+///   3. A GENERIC WRAPPER split across lines after its name (`let x: Optional`
+///      / newline / `<() -> Void>`). The fold joins on effect specifiers and
+///      unterminated brackets, not on a bare type name. Measured: zero uses of
+///      `Optional<` in `Sources/` in any spelling, so this is a line-break
+///      variant of a form the codebase does not write at all.
+///
+/// Each was left open under `validation-discipline.md` RULE:
+/// validate-automated-review-findings, which fixes an unreachable finding only
+/// when the fix is trivial. Closing (1) means balancing brackets in three
+/// regexes, (2) changes what the ceiling COUNTS, and (3) needs the fold to join
+/// on an identifier — which would fold `let a: Foo` into whatever follows it.
 enum RouterCeilingParser {
 
   static func classBody(named typeName: String, at path: String) throws -> String {
