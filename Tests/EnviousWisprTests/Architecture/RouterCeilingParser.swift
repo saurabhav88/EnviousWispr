@@ -197,6 +197,27 @@ enum RouterCeilingParser {
     return (code.filter { $0 == "{" }.count, code.filter { $0 == "}" }.count)
   }
 
+  /// KNOWN LIMIT, recorded rather than fixed (cloud review, PR #2070, round
+  /// fifteen). This counts DECLARATIONS, not bindings, so a multi-binding
+  /// declaration — `let first: () -> Void, second: () -> Void`, which Swift
+  /// accepts — contributes one, and a declaration mixing a closure with a
+  /// collaborator cannot be split at all, because `predicate` answers per LINE
+  /// and returns a Bool.
+  ///
+  /// Left as-is deliberately. Reachability was measured, not assumed: a detector
+  /// that strips bracketed spans before looking for a depth-0 `, name:` (so
+  /// tuple labels and generic arguments do not false-positive, which a plain
+  /// grep does for all ten of its hits) finds ZERO multi-binding declarations
+  /// across `Sources/**/*.swift`, with a two-way control confirming it fires on
+  /// a real one.
+  ///
+  /// Unlike the type-shape findings in this PR, closing this is not a parsing
+  /// fix: it changes what the ceiling COUNTS, which `architecture-rules.md`
+  /// documents, and it requires the predicate to classify per binding rather
+  /// than answer yes/no per line. `validation-discipline.md` RULE:
+  /// validate-automated-review-findings permits fixing an unreachable finding
+  /// only when the fix is trivial; a counting-contract change is not, so the
+  /// limit is written down here instead of guessed at.
   private static func countTopLevelStoredProperties(
     in body: String, where predicate: (String) -> Bool
   ) -> Int {
