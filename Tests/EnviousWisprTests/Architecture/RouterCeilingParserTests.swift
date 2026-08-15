@@ -670,6 +670,43 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
   }
 
+  /// #2068 (cloud review, PR #2070, round thirteen). `Optional<() -> Void>` is
+  /// `(() -> Void)?` desugared — the same wrapped closure, spelled generically.
+  /// The scan required the type to begin with `(`, so it fell to COLLABORATOR.
+  ///
+  /// LATENT, measured: `git grep -n "Optional<" -- 'Sources/**/*.swift'` returns
+  /// zero hits, and the sugared form is what this codebase writes. Fixed anyway
+  /// because the fix is genuinely small and the failure is an undercount of
+  /// closures, which is the silent direction.
+  @Test func closureCount_readsTheGenericOptionalSpelling() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let sugarFree: Optional<() -> Void>
+          let qualified: Swift.Optional<(Int) -> Bool>
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 2)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// The control: the whole-type guards must still apply THROUGH the generic
+  /// wrapper. `Optional<(() -> Void, AlphaDep)>` wraps a tuple, not a closure,
+  /// and an `Optional` of an ordinary collaborator is still a collaborator.
+  @Test func closureCount_genericOptionalStillRejectsNonClosures() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let bundled: Optional<(() -> Void, AlphaDep)>
+          let plain: Optional<AlphaDep>
+          let real: Optional<() -> Void>
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
   /// The control: the markers that may legitimately follow a wrapper must still
   /// leave it a closure — optionals, forced optionals, and a default value,
   /// whose `=` ends the TYPE rather than disqualifying it.

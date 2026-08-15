@@ -699,6 +699,19 @@ enum RouterCeilingParser {
       }
       i = skipTrivia(chars, from: i, limit: end)
     }
+    // The GENERIC optional spelling wraps the whole type exactly as `( … )?`
+    // does: `Optional<() -> Void>` is `(() -> Void)?` desugared (cloud review,
+    // PR #2070, round thirteen). Matched by prefix and closed at the LAST `>`
+    // of the type rather than by balancing `<>`, because a bracket counter has
+    // to special-case the `>` in `->` — the exact ambiguity that already put a
+    // blind spot in `containsTopLevelComma` two rounds ago. The recursion
+    // carries the same whole-type guards, so `Optional<(() -> Void, AlphaDep)>`
+    // still fails the tuple test.
+    if let angleOpen = optionalGenericOpen(chars, at: i, limit: end),
+      let angleClose = lastAngleBracket(chars, from: angleOpen + 1, to: end)
+    {
+      return closureSignatureFollows(chars, from: angleOpen + 1, limit: angleClose)
+    }
     guard i < end, chars[i] == "(", let close = matchingParen(chars, open: i, limit: end)
     else { return false }
     let afterGroup = skipTrivia(chars, from: close + 1, limit: end)
@@ -753,6 +766,38 @@ enum RouterCeilingParser {
   /// the comma in `Result<Int, Error>` is not mistaken for a tuple separator;
   /// `<`/`>` are ambiguous with comparison in general Swift, but inside a type
   /// annotation they are generic delimiters.
+  /// Index of the `<` that opens a generic `Optional<…>` / `Swift.Optional<…>`
+  /// beginning at `at`, or `nil` when the type does not start with one.
+  private static func optionalGenericOpen(_ chars: [Character], at: Int, limit: Int) -> Int? {
+    let end = min(limit, chars.count)
+    for prefix in ["Optional<", "Swift.Optional<"] {
+      let expected = Array(prefix)
+      guard at >= 0, at + expected.count <= end else { continue }
+      var matches = true
+      for k in 0..<expected.count where chars[at + k] != expected[k] {
+        matches = false
+        break
+      }
+      if matches { return at + expected.count - 1 }
+    }
+    return nil
+  }
+
+  /// The last `>` before the type ends (at `=`, or at `to`). The `>` of an `->`
+  /// is skipped, so `Optional<() -> Void>` closes on its own bracket and not on
+  /// the arrow inside it.
+  private static func lastAngleBracket(_ chars: [Character], from: Int, to: Int) -> Int? {
+    let end = min(to, chars.count)
+    var last: Int?
+    var i = from
+    while i < end {
+      if chars[i] == "=" { break }
+      if chars[i] == ">", !(i > 0 && chars[i - 1] == "-") { last = i }
+      i += 1
+    }
+    return last
+  }
+
   /// Everything after a wrapping group is an optional marker (or an initializer,
   /// which ends the TYPE). `(() -> Void)?` and `(() -> Void)!` still describe a
   /// closure; `(() -> Void).Type` describes a metatype and must not be claimed
