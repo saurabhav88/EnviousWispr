@@ -54,6 +54,12 @@ actor ApplePreviewRecognizer {
   /// never disagree about what the microphone heard.
   private static let captureSampleRate: Double = 16000
 
+  /// How many 100 ms audio chunks may wait for the analyzer before the oldest are
+  /// dropped. Fifty is five seconds, comfortably past the ~210-290 ms cadence Apple
+  /// was measured at, so a healthy stream never reaches it and only a genuine stall
+  /// does.
+  private static let maxQueuedChunks = 50
+
   private let locale: Locale
 
   private var targetFormat: AVAudioFormat?
@@ -199,7 +205,16 @@ actor ApplePreviewRecognizer {
     // leaks the previous dictation's audio into this one.
     let converter = source == target ? nil : AVAudioConverter(from: source, to: target)
     let module = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
-    let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+    // **Bounded, because an unbounded queue makes a limb able to hurt the heart.**
+    // The default policy is `.unbounded`: if Apple's analyzer stalls or falls behind
+    // real time, the feed loop keeps handing it a chunk every 100 ms forever and the
+    // preview grows without limit, putting memory pressure on the dictation it is
+    // supposed to be decorating. `.bufferingNewest` caps it and drops the OLDEST
+    // audio, which is the right thing to lose here: the pill shows a tail, so a gap
+    // in the middle of a stalled stretch costs the user nothing they can see, while
+    // stopping the preview outright would.
+    let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream(
+      bufferingPolicy: .bufferingNewest(Self.maxQueuedChunks))
     let analyzer = SpeechAnalyzer(modules: [module])
     let collector = Self.collect(from: module, onText: onText)
 
