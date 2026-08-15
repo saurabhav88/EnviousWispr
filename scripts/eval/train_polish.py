@@ -82,10 +82,28 @@ from datasets import Dataset
 from trl import SFTTrainer, SFTConfig
 import inspect
 
-def _sft_config(**kw):
+def _sft_config(_required=(), **kw):
+    """trl-version shim. Unknown keywords are DROPPED, which is what makes this
+    portable across trl releases -- and is exactly why `_required` exists.
+
+    Silently dropping a knob the OPERATOR explicitly asked for is worse than not
+    having the knob. `--dataset-num-proc` is a crash-bisection tool: if a future
+    trl removes `dataset_num_proc`, the run would fall back to the library's
+    multiprocess default while reporting nothing, and the next crash-or-success
+    would be read as evidence about a setting that never applied. Verified
+    present in trl 0.24.0 on the rig before shipping this, so today it lands;
+    the guard is for the version bump that has not happened yet.
+    """
     sig = set(inspect.signature(SFTConfig.__init__).parameters)
     if "max_seq_length" in kw and "max_seq_length" not in sig:
         kw["max_length"] = kw.pop("max_seq_length")
+    missing = [k for k in _required if k not in sig]
+    if missing:
+        raise SystemExit(
+            f"train_polish: this trl ({getattr(__import__('trl'), '__version__', '?')}) "
+            f"has no SFTConfig parameter(s) {missing}, so the value you passed would "
+            f"be silently ignored and the run would not test what you asked for. "
+            f"Re-run without that flag, or route it through this trl's own API.")
     return SFTConfig(**{k: v for k, v in kw.items() if k in sig})
 
 def _sft_trainer(**kw):
@@ -153,9 +171,12 @@ trainer = _sft_trainer(
         report_to="none",
         seed=1265,
         # Omitted entirely when unset, so the recipe that produced EG-1 is
-        # byte-for-byte unchanged unless a run asks for this.
+        # byte-for-byte unchanged unless a run asks for this. When it IS asked
+        # for, `_required` makes an unsupported trl fail loudly rather than
+        # discard it — see _sft_config.
         **({} if args.dataset_num_proc is None
            else {"dataset_num_proc": args.dataset_num_proc}),
+        _required=() if args.dataset_num_proc is None else ("dataset_num_proc",),
     ),
 )
 
