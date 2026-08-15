@@ -529,8 +529,13 @@ public final class TelemetryService {
   /// raw text or a small glitch, but until now we had zero signal. ONE event for
   /// every quiet-limb site (ASR streaming finalize, output-safety classifier
   /// prewarm, Ollama eviction, cloud pre-warm, legacy-key cleanup). Metadata only —
-  /// never transcript/content/key material. `durationMs` is mirrored to `$value`
-  /// for PostHog aggregation (Phase 6/7 precedent).
+  /// never transcript/content/key material.
+  ///
+  /// #2060: `$value` carries the duration in SECONDS, the house unit for every
+  /// duration-bearing emitter in this file. It used to carry raw milliseconds,
+  /// which made any chart spanning this event and a seconds-based sibling wrong
+  /// by 1000x. The raw millisecond value is unchanged and still queryable under
+  /// `duration_ms`, so nothing is lost by the conversion.
   public func limbFailureObserved(
     limb: String, operation: String, result: String,
     errorCategory: String, durationMs: Int?
@@ -541,11 +546,17 @@ public final class TelemetryService {
     ]
     if let durationMs {
       props["duration_ms"] = durationMs
-      props["$value"] = durationMs
+      props["$value"] = Double(durationMs) / 1000.0
     }
     #if DEBUG
       var intProps: [String: Int] = [:]
-      if let durationMs { intProps["duration_ms"] = durationMs }
+      var doubleProps: [String: Double] = [:]
+      if let durationMs {
+        intProps["duration_ms"] = durationMs
+        // #2060: the unit is the thing under test, so the seam must expose the
+        // emitted `$value` itself rather than the input it was derived from.
+        doubleProps["$value"] = Double(durationMs) / 1000.0
+      }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "limb.failure_observed",
@@ -553,7 +564,8 @@ public final class TelemetryService {
             "limb": limb, "operation": operation, "result": result,
             "error_category": errorCategory,
           ],
-          intProps: intProps))
+          intProps: intProps,
+          doubleProps: doubleProps))
     #endif
     PostHogSDK.shared.capture("limb.failure_observed", properties: props)
   }
@@ -1203,6 +1215,12 @@ public final class TelemetryService {
   /// COUNT of contacts added and the trigger only, NEVER a name. The
   /// `check-contacts-data-flow.sh` hook allow-lists this as the one permitted
   /// telemetry sink in the contacts code.
+  ///
+  /// #2060: `$value` here is a COUNT, not a duration, and that is deliberate.
+  /// PostHog's `$value` is a generic magnitude slot, and on an event that has no
+  /// duration at all there is no unit to be inconsistent with. Kept as-is after
+  /// the seconds sweep; the seconds convention binds duration-bearing emitters
+  /// only. Do not "fix" this to a time.
   public func contactsImported(count: Int, trigger: String) {
     PostHogSDK.shared.capture(
       "contacts_imported",
@@ -1716,6 +1734,12 @@ public final class TelemetryService {
     PostHogSDK.shared.capture(event, properties: properties)
   }
 
+  /// #2060: `$value` carries the latency in SECONDS, matching every other
+  /// duration-bearing emitter here. It used to carry raw milliseconds, so a
+  /// chart placing paste next to `llm.polish_completed` read paste as ~60x
+  /// SLOWER than AI polish when it is in fact ~16x faster. `latency_ms` keeps
+  /// the raw millisecond value, so `$value` is a pure aggregation mirror and
+  /// converting it loses nothing.
   public func pasteCompleted(
     tier: String, targetApp: String?, result: String, latencyMs: Int,
     insertion: PasteInsertionTelemetry = .init(),
@@ -1726,7 +1750,7 @@ public final class TelemetryService {
       "tier": tier,
       "result": result,
       "latency_ms": latencyMs,
-      "$value": Double(latencyMs),
+      "$value": Double(latencyMs) / 1000.0,
     ]
     if let a = targetApp { props["target_app"] = a }
     props.merge(insertion.properties) { current, _ in current }
@@ -2310,23 +2334,21 @@ public final class TelemetryService {
       ])
   }
 
-  /// Emitted when the user deletes more than 50% of pasted text within 5s of insert.
-  /// `lang` is the language detected for the failed transcript.
-  ///
-  /// TODO (W6/#248 follow-up): no call site yet. v1 ships with this method
-  /// available so the analytics schema is ready, but the paste-cascade does
-  /// not observe post-insert user edits. Implementing this requires either
-  /// an AX observer on the focused text field or a clipboard diff heuristic
-  /// that ignores our own restore-clipboard writes. Deferred pending review
-  /// of whether real-world correction rates justify the AX surface.
-  public func trackCorrectionAfterInsert(lang: String?, confidence: Double, charCount: Int) {
-    var props: [String: Any] = [
-      "confidence": String(format: "%.3f", confidence),
-      "char_count": charCount,
-    ]
-    if let l = lang { props["lang"] = l }
-    PostHogSDK.shared.capture("language.correction_after_insert", properties: props)
-  }
+  // #2066: `trackCorrectionAfterInsert` (`language.correction_after_insert`) was
+  // deleted here. It shipped in W6/#248 with its own TODO saying it had no call
+  // site, so that "the analytics schema is ready" — and then had none for the
+  // whole life of the event. A declared-but-uncalled emitter is worse than no
+  // emitter: querying the event returns empty, and an empty result cannot
+  // distinguish "users never correct pasted text" from "we never wired it",
+  // which are opposite investigations.
+  //
+  // Deleted rather than wired because wiring it is not a wiring job. It needs
+  // the paste cascade to observe post-insert user EDITS, via an AX observer on
+  // the focused text field or a clipboard-diff heuristic — new product
+  // behaviour, which `observability-operations.md`
+  // RULE: instrumentation-stays-observation-only forbids adding to expose a
+  // metric. If that observation is ever wanted, it needs its own ticket and the
+  // emitter is eight lines to restore.
 
   /// Emitted when LID abstains (returned nil language).
   /// `reason` is one of: "too_short", "low_confidence", "narrow_margin".
@@ -2348,6 +2370,15 @@ public final class TelemetryService {
   /// Emitted per transcription: surfaces real-time factor per language+model for
   /// per-language perf dashboards. Kept separate from `asr.completed` (generic) so
   /// the multilingual dashboard can slice by lang without schema churn elsewhere.
+  ///
+  /// #2060: `$value` holds `msPerAudioSecond`, a RATE, not a duration — decided
+  /// and kept. This event exists so the multilingual dashboard can compare
+  /// transcription speed ACROSS languages, and a raw duration cannot do that
+  /// (a long German clip would outrank a short English one on nothing but
+  /// length). The rate is normalised and therefore the quantity worth
+  /// aggregating, so it owns the slot. The duration is still carried, beside it,
+  /// as `duration_s`. A rate is not in the seconds-vs-milliseconds family the
+  /// #2060 sweep was about; it is a different quantity, named as one.
   public func trackTranscriptionLatency(
     lang: String?,
     model: String,
@@ -2815,15 +2846,31 @@ public final class TelemetryService {
     )
   }
 
-  public func updateWatchdogFired(version: String, isCritical: Bool) {
-    PostHogSDK.shared.capture(
-      "update.watchdog_fired",
-      properties: [
-        "version": version,
-        "is_critical": isCritical,
-      ]
-    )
-  }
+  // #2066: `updateWatchdogFired` (`update.watchdog_fired`) was deleted here.
+  //
+  // This one was WIRED first and then reverted, which is worth recording because
+  // the reasoning that justified wiring it was wrong in a way that reads
+  // plausible. The 5s watchdog in `UpdateAvailabilityService.triggerInstall()` is
+  // real and does fire, so an event on it looked like a dropped call site.
+  //
+  // It is not a failure signal. `SparkleUpdateController.swift:484` deliberately
+  // does NOT call `noteResolved` on cycle-finish, because that callback fires on
+  // cancel, skip, error and install-on-quit-scheduled alike — so the watchdog is
+  // the DESIGNED path for all of them, including an ordinary user pressing
+  // Cancel. `noteResolved` has no production caller at all. An event here would
+  // therefore have counted routine user behaviour as "Sparkle went silent", and
+  // its name would have asserted the opposite of what it measured. Caught by
+  // cloud review on PR #2069; the premise went unchecked because the watchdog
+  // was read without grepping what does and does not resolve it.
+  //
+  // The outcomes it would have conflated are ALREADY carried by
+  // `update.sparkle_cycle_finished` (`error_code`, `no_update_reason` — 4007 is
+  // user-cancelled). The only thing that event cannot show is a cycle that never
+  // finished at all, and isolating that needs a JOIN, not a second timer-based
+  // counter — which is also the shape the founder rejected on #955.
+  //
+  // If the fleet-level update-failure question is ever picked up, it starts from
+  // that join and from #955, not from re-adding this.
 
   /// Why a telemetry flush was requested. Carried on `telemetry.flush_requested`.
   /// `.updateInstall` = the Sparkle pre-relaunch flush. `.appTerminate` = the
@@ -2936,22 +2983,20 @@ public final class TelemetryService {
     )
   }
 
-  /// Phase 1 (#637) — fired by `WordSuggestionService.suggest(for:)` after
-  /// the degeneration filter. `degenerated == true` means raw was non-empty
-  /// but post-filter list was empty (model returned only self-echoes).
-  /// `categorySuggested` is the category enum raw value or nil if call failed.
-  public func customWordsAfmAliasFilled(
-    resultCount: Int, degenerated: Bool, categorySuggested: String?
-  ) {
-    var props: [String: Any] = [
-      "result_count": resultCount,
-      "degenerated": degenerated,
-    ]
-    if let category = categorySuggested {
-      props["category_suggested"] = category
-    }
-    PostHogSDK.shared.capture("custom_words.afm_alias_filled", properties: props)
-  }
+  // #2066: `customWordsAfmAliasFilled` (`custom_words.afm_alias_filled`) was
+  // deleted here. Its doc named a real producer — `WordSuggestionService
+  // .suggest(for:)` after the degeneration filter — which made it read like a
+  // call site dropped by accident. It was not: that producer lives in
+  // `EnviousWisprPostProcessing`, which cannot import this module under the
+  // dependency-direction guard, and the emitter never had a legal caller. The
+  // deferral is recorded at the producer itself
+  // (`WordSuggestionService.runSuggestion`).
+  //
+  // Wiring it needs a telemetry callback injected across that module boundary,
+  // or a widened return type — `runSuggestion` currently collapses "degenerated"
+  // and "threw" into the same `nil`, so a caller in an importing module cannot
+  // reconstruct `degenerated` either. Both are design changes, not a missing
+  // line, and belong to #620 Phase 8 rather than to a telemetry cleanup.
 
   /// Phase 2 (#638) — fired by `WordCorrectionStep.process(...)` after a
   /// successful correction batch. Single summary event per process() call;

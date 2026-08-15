@@ -881,9 +881,16 @@ public final class WordSuggestionService: Sendable {
         // Empty after filter (with non-empty raw) means AFM degenerated into self-echoes.
         // Treat as model failure so the UI can render "No suggestions available" instead
         // of zero or duplicate chips.
-        // Phase 8 (#620) telemetry hook deferred — PostProcessing module cannot
-        // import EnviousWisprServices per the dep-direction guard. Phase 8 proper
-        // will inject a telemetry callback at the call site.
+        // Phase 8 (#620) telemetry hook still deferred — this module cannot
+        // import EnviousWisprServices under the dep-direction guard, so there is
+        // no legal emit site here. #2066 deleted the matching
+        // `TelemetryService.customWordsAfmAliasFilled` stub rather than leave a
+        // declared emitter no caller could reach.
+        //
+        // Whoever picks Phase 8 up: an injected telemetry callback is not enough
+        // on its own. This function returns `nil` for BOTH degeneration and a
+        // thrown error, so `degenerated` cannot be reconstructed by any caller —
+        // the outcome has to become distinguishable in the return type first.
         guard !filtered.isEmpty else { return nil }
         return WordSuggestions(category: raw.category, suggestedAliases: filtered)
       } catch {
