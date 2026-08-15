@@ -359,10 +359,44 @@ enum RouterCeilingParser {
     return false
   }
 
-  /// The trailing token is `@Name` — no argument list, since a `)` ending would
-  /// already have been consumed as part of the attribute's arguments and cannot
-  /// be distinguished here from a completed type.
+  /// The line's last token is an attribute, in EITHER of the two forms Swift
+  /// allows: bare `@MainActor`, or parameterised `@isolated(any)` /
+  /// `@convention(c)` / `@available(macOS 26, *)`.
+  ///
+  /// The parameterised form was missed when this rule was introduced, on the
+  /// stated reasoning that a `)` ending "cannot be distinguished here from a
+  /// completed type" (cloud review, PR #2070, round eight). It can: scan back
+  /// from the final `)` to its matching `(` and require an attribute NAME
+  /// immediately before it. `let wrapped: (AlphaDep)` finds `:` there and is
+  /// correctly left alone, which the existing over-fold controls pin.
+  ///
+  /// Those two forms are the whole grammar for an attribute, so this closes the
+  /// case rather than adding the next instance of it.
   private static func endsWithAttribute(_ trimmed: String) -> Bool {
+    let chars = Array(trimmed)
+    guard let last = chars.last else { return false }
+    if last == ")" {
+      var depth = 0
+      var i = chars.count - 1
+      var openIndex: Int?
+      while i >= 0 {
+        if chars[i] == ")" { depth += 1 }
+        if chars[i] == "(" {
+          depth -= 1
+          if depth == 0 {
+            openIndex = i
+            break
+          }
+        }
+        i -= 1
+      }
+      // The argument list is adjacent to the name, so the identifier runs right
+      // up to `(` and must be introduced by `@`.
+      guard let open = openIndex, open > 0 else { return false }
+      var j = open - 1
+      while j >= 0, chars[j].isLetter || chars[j].isNumber || chars[j] == "_" { j -= 1 }
+      return j >= 0 && chars[j] == "@" && j < open - 1
+    }
     guard let lastToken = trimmed.split(whereSeparator: { $0.isWhitespace }).last
     else { return false }
     guard lastToken.hasPrefix("@"), lastToken.count > 1 else { return false }

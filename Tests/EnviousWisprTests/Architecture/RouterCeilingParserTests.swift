@@ -452,6 +452,44 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
   }
 
+  /// #2068 (cloud review, PR #2070, round eight). The attribute-termination rule
+  /// landed handling only the BARE form, so a PARAMETERISED attribute ending the
+  /// line — `@isolated(any)`, `@convention(c)` — left the buffer ending in `)`
+  /// and looking complete. Swift allows exactly two attribute forms, so covering
+  /// both closes the case instead of adding its next instance.
+  @Test func closureCount_foldsWhenAParameterisedAttributeEndsTheLine() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let isolated: @isolated(any)
+            () -> Void
+          let cFunc: @convention(c)
+            (Int) -> Void
+          let beta: BetaDep
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 2)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
+  /// The over-fold control for that rule: a line ending in `)` that is a
+  /// COMPLETED type, not an attribute, must still terminate the declaration.
+  /// This is the exact failure the round-seven reasoning was guarding against
+  /// when it wrongly concluded the two cases could not be told apart.
+  @Test func closureCount_trailingParenTypeIsNotMistakenForAnAttribute() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let wrapped: (AlphaDep)
+          let built: Factory(config)
+          let beta: BetaDep
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 0)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 3)
+  }
+
   /// The control for the recursive scan: a parenthesised NON-function type must
   /// not become a closure just because the scanner now looks inside groups.
   /// `(AlphaDep)` is the exact shape `closureCount_doesNotFoldACompleteParenthesizedType`
