@@ -643,6 +643,18 @@ import Testing
       file: "Sources/EnviousWisprPipeline/CaptureVADSignalSource.swift", matcher: "prepare",
       text: "try await detector.prepare()", classification: .unrelatedDomain),
 
+    // MARK: LivePreviewCoordinator (#1988) — Apple's `SpeechAnalyzer`, used for
+    // DISPLAY ONLY. Not an ASR engine and not on the transcription path: nothing
+    // it produces reaches the clipboard, and it holds no `ASREngineAdapter`.
+    // Matched only by method-name coincidence, the same shape as the VAD entry
+    // above. Classified rather than renamed on purpose — renaming to sidestep a
+    // name-based inventory would remove this code from the inventory's view, and
+    // the next reader would have no record that the question was asked.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/LivePreview/LivePreviewCoordinator.swift",
+      matcher: "prepare",
+      text: "try await fresh.prepare()", classification: .unrelatedDomain),
+
     // MARK: KernelDictationDriver
     // The SESSIONLESS load-wedge guard's fire path. `SessionlessLoadWedgeGuard`
     // is armed immediately before, and disarmed immediately after,

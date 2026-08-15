@@ -40,6 +40,17 @@ import Foundation
 ///
 /// Brand rule: no em-dashes or en-dashes in user-facing copy.
 enum LiveTranscriptionCopy {
+  /// #1988 considered renaming this ("Live transcription" promises something this
+  /// setting has never done, and a real user hit exactly that) and MEASURED the
+  /// cost first: the phrase appears 30 times across the app, three live website
+  /// pages, and a published help article whose TITLE and URL slug are the name
+  /// itself. That is a public-URL decision, not a copy tweak, so it is not bundled
+  /// into a feature PR. Tracked on #1988 Part 1.
+  ///
+  /// What #1988 shipped instead costs nothing and solves the confusion it would
+  /// have caused: the new preview setting avoids the word "live" entirely, and both
+  /// descriptions below now say plainly that this toggle changes nothing you can
+  /// see while recording.
   static let toggleLabel = "Live transcription"
   static let helpButtonAccessibilityLabel = "What does Live transcription change?"
 
@@ -95,8 +106,13 @@ enum LiveTranscriptionCopy {
   /// Replaces the pre-#1337 line "Transcribes while you speak for faster results. Turn off
   /// for cleaner text on longer recordings." That claim was measurably wrong for Parakeet:
   /// no perceptible gain below five minutes, so it advertised a benefit the data denies.
+  /// #1988 added the second sentence. It is the one that stops this being confused
+  /// with Live Preview, which is the mistake that named this setting wrongly in the
+  /// first place. True whether or not the preview is on, because the preview runs a
+  /// separate recognizer that this setting does not touch.
   static let parakeetToggleDescription =
-    "Transcribes while you speak instead of once when you stop. This does not save time "
+    "Transcribes while you speak instead of once when you stop. Nothing looks different "
+    + "while you record; this only changes when the work happens. It does not save time "
     + "you can notice on most dictations, and it can drop your last few words."
 
   static let parakeet = Panel(
@@ -136,8 +152,12 @@ enum LiveTranscriptionCopy {
 
   // MARK: - WhisperKit
 
+  /// Carries the same #1988 disambiguating sentence as the Parakeet copy above. A
+  /// clarification that lands on only one of two engine descriptions is the partial
+  /// port this codebase keeps relearning.
   static let whisperKitToggleDescription =
-    "Transcribes while you speak instead of once when you stop. This mainly helps on long "
+    "Transcribes while you speak instead of once when you stop. Nothing looks different "
+    + "while you record; this only changes when the work happens. It mainly helps on long "
     + "recordings, and it needs a language selected."
 
   static let whisperKit = Panel(

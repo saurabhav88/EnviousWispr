@@ -36,6 +36,11 @@ enum SettingsProjection {
     case useExtendedThinking = "use_extended_thinking"
     case languageMode = "language_mode"
     case streamingASR = "streaming_asr"
+    // #1988. Instrumented because adoption is the question this feature was built
+    // to answer, and the answer decides whether the macOS 26 floor is worth
+    // covering with a second engine for older Macs. A boolean setting value,
+    // never any dictated content.
+    case livePreview = "live_preview"
     case warmEnginePolicy = "warm_engine_policy"
     case appearance = "appearance"
     case overlayPillPosition = "overlay_pill_position"
@@ -92,6 +97,7 @@ enum SettingsProjection {
     case .useExtendedThinking: return [.useExtendedThinking]
     case .languageMode: return [.languageMode]
     case .useStreamingASR: return [.streamingASR]
+    case .livePreviewEnabled: return [.livePreview]
     case .warmEnginePolicy: return [.warmEnginePolicy]
     case .appearance: return [.appearance]
     case .overlayPillPosition: return [.overlayPillPosition]
@@ -137,6 +143,7 @@ enum SettingsProjection {
     case .useExtendedThinking: return onOff(settings.useExtendedThinking)
     case .languageMode: return languageModeLabel(settings.languageMode)
     case .streamingASR: return onOff(settings.useStreamingASR)
+    case .livePreview: return onOff(settings.livePreviewEnabled)
     case .warmEnginePolicy: return settings.warmEnginePolicy.rawValue
     case .appearance: return settings.appearancePreference.rawValue
     case .overlayPillPosition: return settings.overlayPillPosition.rawValue

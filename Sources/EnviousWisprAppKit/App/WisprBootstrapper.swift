@@ -460,6 +460,10 @@ public final class WisprBootstrapper {
       permissions?.accessibilityWarningDismissed ?? false
     }
 
+    // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
+    LivePreviewInstaller.install(
+      overlay: recordingOverlay, capture: audioCapture, settings: settings)
+
     // Custom-words propagator wiring (seed → register consumers → install
     // `onWordsChanged`). Phase D (#496). `wireCustomWords` strong-captures the
     // propagator so its lifetime is anchored to `customWordsCoordinator`.

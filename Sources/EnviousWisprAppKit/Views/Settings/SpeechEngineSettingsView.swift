@@ -326,6 +326,32 @@ struct SpeechEngineSettingsView: View {
         }
       }
 
+      // ── Section 4b: Live preview (#1988) ──────────────────────────────
+      // Separate from Transcription Mode above because it changes nothing about
+      // transcription: it is a display feature, and the text that lands in the
+      // document is identical whether this is on or off. Grouping it with a
+      // setting that DOES trade accuracy would tell the user the opposite.
+      BrandedSection(header: LivePreviewSettingsCopy.sectionHeader) {
+        BrandedRow(showDivider: false) {
+          HStack(alignment: .top, spacing: 11) {
+            SettingsRowIcon(systemName: "text.viewfinder")
+            VStack(alignment: .leading, spacing: 4) {
+              Toggle(isOn: $settings.livePreviewEnabled) {
+                Text(LivePreviewSettingsCopy.toggleLabel).settingsRowLabel()
+              }
+              .toggleStyle(BrandedToggleStyle())
+              .disabled(!isLivePreviewSupported)
+              Text(LivePreviewSettingsCopy.toggleDescription)
+                .settingsReadingCopy()
+              if !isLivePreviewSupported {
+                Text(LivePreviewSettingsCopy.needsNewerMacOS)
+                  .settingsReadingCopy()
+              }
+            }
+          }
+        }
+      }
+
       // ── Section 5: Cleanup ────────────────────────────────────────────
       BrandedSection(header: "Cleanup") {
         BrandedRow(showDivider: true) {
@@ -514,6 +540,15 @@ struct SpeechEngineSettingsView: View {
 
   private func isAutoLanguage(_ mode: LanguageMode) -> Bool {
     if case .auto = mode { return true }
+    return false
+  }
+
+  /// #1988: the preview runs on Apple's on-device recognizer, which is macOS 26
+  /// API. Below that the toggle is visible but disabled, with the reason stated,
+  /// rather than hidden: a user who read about the feature should find out why
+  /// they do not have it instead of concluding it was removed.
+  private var isLivePreviewSupported: Bool {
+    if #available(macOS 26.0, *) { return true }
     return false
   }
 
