@@ -624,6 +624,37 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
 
+  /// #2068 (cloud review, PR #2070, round nineteen). The report was that
+  /// `let d: @MainActor@Sendable` — adjacent attributes with NO whitespace —
+  /// followed by `() -> Void` is not folded, because `endsWithAttribute` takes
+  /// the last whitespace-separated token and `@MainActor@Sendable` is not a
+  /// single attribute name. The premise is true and the form compiles.
+  ///
+  /// It cannot persist in this repository, though: swift-format normalises the
+  /// spacing on write. Handed that exact source, the formatter produces the
+  /// shape below — annotation colon on line one, attributes on line two, the
+  /// function type on line three — which is what a contributor's file actually
+  /// contains after saving.
+  ///
+  /// So this pins the reachable form rather than the reported one. It folds
+  /// through two rules already here: the `:`-terminated line (original) and the
+  /// attribute-terminated line (round fourteen). Worth a test because nothing
+  /// previously covered them CHAINED across three physical lines.
+  @Test func closureCount_foldsTheFormatterNormalisedAttributeWrap() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let dependency:
+            @MainActor @Sendable
+            () -> Void
+          let beta: BetaDep
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
   /// The over-fold control: a `let` that HAS reached its `:` or `=` is complete
   /// and must not swallow the declaration after it. Without this, "a `let` line
   /// might continue" would fold every property into its neighbour and undercount
