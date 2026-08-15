@@ -715,9 +715,15 @@ enum RouterCeilingParser {
     // tuple has one, and a wrapped function type does not, because
     // `((A, B) -> C)?`'s comma sits inside the nested parameter list one level
     // down. That makes this a structural test, not another special case.
+    // The group must also be the WHOLE type on the trailing side, not just the
+    // leading one. `(() -> Void).Type` is a function METATYPE — a collaborator —
+    // and the inner scan succeeds on it, so without this the suffix is ignored
+    // and the metatype counts as a closure (round twelve). Only optional markers
+    // may follow a wrapper and leave it still describing a closure.
     let arrowFollowsGroup =
       afterGroup + 1 < end && chars[afterGroup] == "-" && chars[afterGroup + 1] == ">"
     if !arrowFollowsGroup, !containsTopLevelComma(chars, from: i + 1, to: close),
+      onlyOptionalMarkersRemain(chars, from: close + 1, to: end),
       closureSignatureFollows(chars, from: i + 1, limit: close)
     {
       return true
@@ -747,6 +753,23 @@ enum RouterCeilingParser {
   /// the comma in `Result<Int, Error>` is not mistaken for a tuple separator;
   /// `<`/`>` are ambiguous with comparison in general Swift, but inside a type
   /// annotation they are generic delimiters.
+  /// Everything after a wrapping group is an optional marker (or an initializer,
+  /// which ends the TYPE). `(() -> Void)?` and `(() -> Void)!` still describe a
+  /// closure; `(() -> Void).Type` describes a metatype and must not be claimed
+  /// as one. Stopping at `=` matters because a stored property may carry a
+  /// default value — `let onFinish: (() -> Void)? = nil` — and the type ends
+  /// there, so the initializer text must not be read as part of it.
+  private static func onlyOptionalMarkersRemain(_ chars: [Character], from: Int, to: Int) -> Bool {
+    let end = min(to, chars.count)
+    var i = skipTrivia(chars, from: from, limit: end)
+    while i < end {
+      if chars[i] == "=" { return true }
+      guard chars[i] == "?" || chars[i] == "!" else { return false }
+      i = skipTrivia(chars, from: i + 1, limit: end)
+    }
+    return true
+  }
+
   private static func containsTopLevelComma(_ chars: [Character], from: Int, to: Int) -> Bool {
     var depth = 0
     var i = from

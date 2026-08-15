@@ -649,6 +649,44 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 3)
   }
 
+  /// #2068 (cloud review, PR #2070, round twelve). The recursion checked that a
+  /// wrapping group started the type but not that it FINISHED it, so
+  /// `(() -> Void).Type` — a function metatype, which is a collaborator — matched
+  /// on the inner function and the `.Type` suffix was ignored.
+  ///
+  /// Confirmed valid Swift with `swiftc -swift-version 6 -typecheck` before
+  /// fixing, as with every syntax claim since round ten produced one that did
+  /// not compile.
+  @Test func closureCount_aFunctionMetatypeIsACollaborator() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let meta: (() -> Void).Type
+          let alsoMeta: ((Int) -> Bool).Type
+          let real: (() -> Void)?
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
+  /// The control: the markers that may legitimately follow a wrapper must still
+  /// leave it a closure — optionals, forced optionals, and a default value,
+  /// whose `=` ends the TYPE rather than disqualifying it.
+  @Test func closureCount_optionalMarkersAndDefaultsStillCountAsClosures() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let opt: (() -> Void)?
+          let forced: (() -> Void)!
+          let defaulted: (() -> Void)? = nil
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 3)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
   /// The control for the recursive scan: a parenthesised NON-function type must
   /// not become a closure just because the scanner now looks inside groups.
   /// `(AlphaDep)` is the exact shape `closureCount_doesNotFoldACompleteParenthesizedType`
