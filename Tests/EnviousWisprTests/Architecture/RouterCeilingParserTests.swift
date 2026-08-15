@@ -517,6 +517,69 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
   }
 
+  /// #2068 (cloud review, PR #2070, round eleven). `isClosureTyped` retried the
+  /// closure parse after EVERY colon, so a non-closure type holding a closure
+  /// matched on an inner one: `let handlers: [String: () -> Void]` is a
+  /// dictionary — a collaborator — but its value-type colon parses as a closure
+  /// signature. Now only the declaration's own annotation colon (bracket depth 0)
+  /// is tried.
+  ///
+  /// Pre-existing rather than introduced by the scanner: the regex this replaced
+  /// matched the same inner colon. Earlier in this PR I noted the behaviour and
+  /// called it "no regression", which was true and beside the point — it was
+  /// still a miscount.
+  @Test func closureCount_aDictionaryOfClosuresIsACollaborator() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let handlers: [String: () -> Void]
+          let lookup: [Int: (String) -> Bool]
+          let real: (Int) -> Bool
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
+  /// #2068 (cloud review, PR #2070, round eleven). `@Sendable()->Void` is valid
+  /// Swift and its adjacent `()` IS the parameter list, so the adjacency rule
+  /// consumed it as attribute arguments and the property fell to COLLABORATOR.
+  ///
+  /// The report paired it with `@MainActor()->Void`, which does NOT compile
+  /// (`error: expected type`), so the two forms cannot be separated by shape.
+  /// Whether an attribute takes arguments is not knowable here, so the scan
+  /// decides by what FOLLOWS the group: an arrow or effect specifier means the
+  /// group was the parameter list.
+  @Test func closureCount_readsACompactAttributeAndParameterList() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let tight: @Sendable()->Void
+          let effectful: @Sendable()async->Bool
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 2)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// The control for that rewind: an attribute whose adjacent group really IS an
+  /// argument list must keep it, or `@isolated(any) () -> Void` loses its
+  /// parameter list and stops parsing. The discriminator is what follows the
+  /// group — here another `(`, not an arrow.
+  @Test func closureCount_keepsGenuineAttributeArgumentLists() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let isolated: @isolated(any) () -> Void
+          let gated: @available(macOS 26, *) (Int) -> Bool
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 2)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
   /// The over-fold control: a `let` that HAS reached its `:` or `=` is complete
   /// and must not swallow the declaration after it. Without this, "a `let` line
   /// might continue" would fold every property into its neighbour and undercount

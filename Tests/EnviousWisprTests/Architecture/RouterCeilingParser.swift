@@ -628,10 +628,24 @@ enum RouterCeilingParser {
     // shape but a capability. The clause below balances instead, which also
     // subsumes the earlier typed-throws nesting and the whitespace-adjacency
     // cases rather than encoding them as alternatives.
+    // Only the DECLARATION's own type annotation is tried, which is the `:` at
+    // bracket depth 0. Retrying after every colon meant a non-closure type
+    // holding a closure matched on an inner one: `let handlers: [String: () ->
+    // Void]` is a dictionary — a collaborator — but its value-type colon parses
+    // as a closure signature and classified the whole property as one (cloud
+    // review, PR #2070, round eleven). Verified valid Swift before fixing.
     let chars = Array(line)
+    var depth = 0
     var i = 0
     while i < chars.count {
-      if chars[i] == ":", closureSignatureFollows(chars, from: i + 1) { return true }
+      switch chars[i] {
+      case "(", "[", "<": depth += 1
+      case ")", "]": depth -= 1
+      case ">" where !(i > 0 && chars[i - 1] == "-"): depth -= 1
+      case ":" where depth == 0:
+        if closureSignatureFollows(chars, from: i + 1) { return true }
+      default: break
+      }
       i += 1
     }
     return false
@@ -663,8 +677,24 @@ enum RouterCeilingParser {
       // 26, *)`. Skipping trivia before this check would consume the FUNCTION
       // TYPE's own parameter list in `@MainActor (Int) -> Bool`, where the paren
       // is separated by a space and belongs to the type, not the attribute.
+      //
+      // Adjacency alone is not sufficient, though: `@Sendable()->Void` is valid
+      // Swift (verified — `@MainActor()->Void` is NOT, so the two cannot be told
+      // apart by shape), and there the adjacent `()` IS the parameter list.
+      // Whether an attribute accepts arguments is not knowable here, so decide
+      // by what FOLLOWS: if an arrow or effect specifier comes next, the group
+      // just consumed was the parameter list, and the scan rewinds to it (cloud
+      // review, PR #2070, round eleven).
       if i < end, chars[i] == "(" {
         guard let close = matchingParen(chars, open: i, limit: end) else { return false }
+        let afterArgs = skipTrivia(chars, from: close + 1, limit: end)
+        let arrowFollows =
+          afterArgs + 1 < end && chars[afterArgs] == "-" && chars[afterArgs + 1] == ">"
+        let specifierFollows =
+          matchesKeyword(chars, at: afterArgs, "async", limit: end)
+          || matchesKeyword(chars, at: afterArgs, "throws", limit: end)
+          || matchesKeyword(chars, at: afterArgs, "rethrows", limit: end)
+        if arrowFollows || specifierFollows { break }
         i = close + 1
       }
       i = skipTrivia(chars, from: i, limit: end)
