@@ -581,6 +581,15 @@ final class RecordingOverlayPanel {
   private func presentTransientNotice<V: View>(
     content: V, width: CGFloat, height: CGFloat, dismissAfter: Double
   ) {
+    deferringIfPanelIsBeingDragged { [weak self] in
+      self?.presentTransientNoticeNow(
+        content: content, width: width, height: height, dismissAfter: dismissAfter)
+    }
+  }
+
+  private func presentTransientNoticeNow<V: View>(
+    content: V, width: CGFloat, height: CGFloat, dismissAfter: Double
+  ) {
     let existingPanel = panel
     let inheritedFrame = existingPanel?.frame
     panel = nil
@@ -799,9 +808,18 @@ final class RecordingOverlayPanel {
   /// Show a transient "Copied to clipboard" notice that auto-dismisses after 2.5s.
   func showClipboardFallback() {
     guard panel == nil else {
-      // Transition from existing panel (recording/polishing) to clipboard notice
-      transitionToPolishing(label: DictationNarrator.clipboardFallbackText)
-      scheduleAutoDismiss()
+      // Transition from existing panel (recording/polishing) to clipboard
+      // notice. Both steps are inside ONE deferred block (rather than calling
+      // the public `transitionToPolishing(label:)` wrapper and arming the
+      // dismiss timer right after, synchronously) — otherwise, while a drag
+      // defers the actual panel swap, this timer would still arm immediately
+      // for content that has not been shown yet and could fire before the
+      // deferred content ever appears (Codex grounded review, #2075).
+      deferringIfPanelIsBeingDragged { [weak self] in
+        guard let self else { return }
+        self.transitionToPolishingNow(label: DictationNarrator.clipboardFallbackText)
+        self.scheduleAutoDismiss()
+      }
       return
     }
     pendingCreateWork?.cancel()
@@ -822,8 +840,13 @@ final class RecordingOverlayPanel {
   /// Show a transient Accessibility permission notice that auto-dismisses after 6s.
   func showAccessibilityToast() {
     guard panel == nil else {
-      transitionToAccessibilityToast()
-      scheduleAutoDismiss(seconds: 6.0)
+      // Both steps deferred together — see `showClipboardFallback()`'s
+      // comment for why (Codex grounded review, #2075).
+      deferringIfPanelIsBeingDragged { [weak self] in
+        guard let self else { return }
+        self.transitionToAccessibilityToastNow()
+        self.scheduleAutoDismiss(seconds: 6.0)
+      }
       return
     }
     pendingCreateWork?.cancel()
@@ -870,17 +893,32 @@ final class RecordingOverlayPanel {
   /// feature has no business touching. `BulkImportEnrichmentCoordinator`
   /// receives only a closure into this method, never the concrete panel type.
   func showImportStatus(message: String) {
-    let dismissSeconds = Self.importStatusAutoDismissSeconds
     // Heart & Limbs: bulk-import enrichment is a limb and must never
     // interrupt the live dictation overlay. Accepted only when idle, or when
     // replacing THIS feature's own prior import-status pill (#1701 Phase 3
-    // review finding B) — never a genuine recording/processing panel.
+    // review finding B) — never a genuine recording/processing panel. This
+    // permission check stays synchronous/unconditional (unlike the teardown
+    // below): it must reflect the state at CALL time, and every branch it
+    // gates already re-validates itself via `generation`/`importStatusPresentation`
+    // staleness checks inside the deferred work.
     let replacingOwnStatus = importStatusOwnsCurrentSlot
     guard
       replacingOwnStatus
         || (currentIntent == .hidden && panel == nil && pendingCreateWork == nil)
     else { return }
 
+    // #2075: this pill shares the same close-and-recreate shape every other
+    // transition in this file does, and is only ever dragged in the
+    // `replacingOwnStatus` case (its own prior import-status pill — never a
+    // recording/processing panel, per the comment above), so it needs the
+    // same drag guard as the rest.
+    deferringIfPanelIsBeingDragged { [weak self] in
+      self?.showImportStatusNow(message: message, replacingOwnStatus: replacingOwnStatus)
+    }
+  }
+
+  private func showImportStatusNow(message: String, replacingOwnStatus: Bool) {
+    let dismissSeconds = Self.importStatusAutoDismissSeconds
     let inheritedFrame = replacingOwnStatus ? tearDownOwnedImportStatus() : nil
 
     generation &+= 1
@@ -958,8 +996,13 @@ final class RecordingOverlayPanel {
   /// Unified handler for transient notification overlays (errors and warnings).
   private func showNotification(message: String, style: NotificationStyle) {
     guard panel == nil else {
-      transitionToNotification(message: message, style: style)
-      scheduleAutoDismiss(seconds: style.autoDismissSeconds)
+      // Both steps deferred together — see `showClipboardFallback()`'s
+      // comment for why (Codex grounded review, #2075).
+      deferringIfPanelIsBeingDragged { [weak self] in
+        guard let self else { return }
+        self.transitionToNotificationNow(message: message, style: style)
+        self.scheduleAutoDismiss(seconds: style.autoDismissSeconds)
+      }
       return
     }
     pendingCreateWork?.cancel()
@@ -994,6 +1037,12 @@ final class RecordingOverlayPanel {
 
   /// Transition an existing panel to a notification display.
   private func transitionToNotification(message: String, style: NotificationStyle) {
+    deferringIfPanelIsBeingDragged { [weak self] in
+      self?.transitionToNotificationNow(message: message, style: style)
+    }
+  }
+
+  private func transitionToNotificationNow(message: String, style: NotificationStyle) {
     guard let existingPanel = panel else { return }
     let inheritedFrame = existingPanel.frame
 
@@ -1044,6 +1093,12 @@ final class RecordingOverlayPanel {
 
   /// Transition an existing panel to the Accessibility permission notice.
   private func transitionToAccessibilityToast() {
+    deferringIfPanelIsBeingDragged { [weak self] in
+      self?.transitionToAccessibilityToastNow()
+    }
+  }
+
+  private func transitionToAccessibilityToastNow() {
     guard let existingPanel = panel else { return }
     let inheritedFrame = existingPanel.frame
 
@@ -1077,6 +1132,12 @@ final class RecordingOverlayPanel {
 
   /// Transition an existing panel from recording to polishing mode.
   private func transitionToPolishing(label: String) {
+    deferringIfPanelIsBeingDragged { [weak self] in
+      self?.transitionToPolishingNow(label: label)
+    }
+  }
+
+  private func transitionToPolishingNow(label: String) {
     guard let existingPanel = panel else { return }
     clearRecordingNotice()  // #1060 (Codex P3): don't leak a cap notice into the next session.
     let inheritedFrame = existingPanel.frame
@@ -1115,6 +1176,18 @@ final class RecordingOverlayPanel {
   /// A fresh recording starts a new presentation and re-anchors to the user's
   /// configured Top or Bottom position on the next run-loop cycle.
   private func transitionToRecording(
+    audioLevelProvider: @escaping () -> Float,
+    recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
+    isRecordingLocked: Bool = false
+  ) {
+    deferringIfPanelIsBeingDragged { [weak self] in
+      self?.transitionToRecordingNow(
+        audioLevelProvider: audioLevelProvider, recordingElapsedProvider: recordingElapsedProvider,
+        isRecordingLocked: isRecordingLocked)
+    }
+  }
+
+  private func transitionToRecordingNow(
     audioLevelProvider: @escaping () -> Float,
     recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
     isRecordingLocked: Bool = false
@@ -1405,6 +1478,12 @@ final class RecordingOverlayPanel {
   }
 
   private func transitionToPassiveChip(payload: LanguageChipPayload) {
+    deferringIfPanelIsBeingDragged { [weak self] in
+      self?.transitionToPassiveChipNow(payload: payload)
+    }
+  }
+
+  private func transitionToPassiveChipNow(payload: LanguageChipPayload) {
     guard let existingPanel = panel else { return }
     let inheritedFrame = existingPanel.frame
 
@@ -1469,6 +1548,12 @@ final class RecordingOverlayPanel {
   }
 
   private func transitionToBluetoothAwareness() {
+    deferringIfPanelIsBeingDragged { [weak self] in
+      self?.transitionToBluetoothAwarenessNow()
+    }
+  }
+
+  private func transitionToBluetoothAwarenessNow() {
     guard let existingPanel = panel else { return }
     let inheritedFrame = existingPanel.frame
 
@@ -1492,7 +1577,101 @@ final class RecordingOverlayPanel {
     DispatchQueue.main.async(execute: work)
   }
 
+  /// True while the left mouse button is held down with the cursor inside the
+  /// CURRENTLY VISIBLE panel's frame — the live signature of an active
+  /// `isMovableByWindowBackground` drag of THAT panel (background-window
+  /// dragging keeps the cursor at a fixed offset from where the drag started,
+  /// so the cursor stays inside the frame for the drag's whole duration; this
+  /// is the mechanism's own invariant, not a heuristic). Checking button
+  /// state alone would also true-positive on a drag of some unrelated window
+  /// elsewhere on screen — pairing it with frame containment scopes it to
+  /// THIS panel only.
+  private func isDraggingCurrentPanel() -> Bool {
+    guard let panel, NSEvent.pressedMouseButtons & 0x1 != 0 else { return false }
+    return panel.frame.contains(NSEvent.mouseLocation)
+  }
+
+  /// The most recently requested panel-changing operation still waiting for
+  /// a native window drag to end, and the single retry poll driving it.
+  /// LATEST-WINS: a newer call to `deferringIfPanelIsBeingDragged` while an
+  /// older one is still waiting on the SAME drag simply overwrites this slot
+  /// rather than starting a second, independent retry chain — see the
+  /// `deferringIfPanelIsBeingDragged` doc comment for why two chains racing
+  /// each other is itself a bug (Codex grounded review, #2075).
+  private var deferredPanelTransition: (() -> Void)?
+  private var deferredPanelTransitionWork: DispatchWorkItem?
+
+  /// Runs `body` now, or — if `isDraggingCurrentPanel()` — retries shortly
+  /// until the drag ends. #2075: every panel-replacing transition in this
+  /// file closes the CURRENTLY VISIBLE `NSPanel` and asynchronously builds a
+  /// replacement. `isMovableByWindowBackground` dragging is native AppKit
+  /// machinery outside this file's control that keeps moving/repainting that
+  /// exact panel object for as long as the mouse stays down; closing it
+  /// mid-drag doesn't flush visually before the drag moves on, leaving the
+  /// old bitmap stuck on screen at wherever the mouse was at that instant
+  /// while the replacement opens fresh elsewhere — the reported "multiple
+  /// copies" bug. Deferring the whole transition until the drag ends closes
+  /// the race outright. Every one of these already-identical teardown call
+  /// sites gets this same wrap (`workflow-process.md` RULE:
+  /// close-the-window-never-handle-it) — fixing only the reported pill would
+  /// leave the identical race live on every other one.
+  ///
+  /// LATEST-WINS, not one-retry-chain-per-caller (Codex grounded review,
+  /// #2075): a naive version that spawns its own independent `asyncAfter`
+  /// retry per call lets two transitions requested during the same drag
+  /// race each other once it ends — whichever's retry callback happens to
+  /// run first sees `panel` at its live value and can bail out having done
+  /// nothing (every `XyzNow()` guards `panel != nil`/`existingPanel`), while
+  /// `currentIntent` was already updated synchronously by the SECOND,
+  /// "winning" call back in `show(intent:)` — so the visible panel can end
+  /// up showing the FIRST (older, losing) transition's content while
+  /// `currentIntent` records the second. Coalescing every waiting request
+  /// into one `deferredPanelTransition` slot (only the most recent survives)
+  /// and one shared `deferredPanelTransitionWork` retry closure removes that
+  /// race by construction — there is only ever one thing left to apply once
+  /// the drag ends, and it is always the newest.
+  private func deferringIfPanelIsBeingDragged(_ body: @escaping () -> Void) {
+    guard isDraggingCurrentPanel() else {
+      deferredPanelTransition = nil
+      deferredPanelTransitionWork?.cancel()
+      deferredPanelTransitionWork = nil
+      body()
+      return
+    }
+
+    // A pending replacement supersedes the still-visible (being-dragged)
+    // panel's own auto-dismiss timer — that timer was armed for the OLD
+    // content and must not fire while a newer transition is queued behind
+    // the drag; the newest transition (applied below, once the drag ends)
+    // re-arms whatever dismiss timer it needs.
+    autoDismissTask?.cancel()
+    autoDismissTask = nil
+    deferredPanelTransition = body
+
+    guard deferredPanelTransitionWork == nil else { return }
+    let work = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.deferredPanelTransitionWork = nil
+      guard let latest = self.deferredPanelTransition else { return }
+      self.deferringIfPanelIsBeingDragged(latest)
+    }
+    deferredPanelTransitionWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+  }
+
   func hide() {
+    // Record the requested state immediately — mirroring `show(intent:)`'s
+    // own synchronous `currentIntent = intent` (line ~331) — so a later
+    // `show(intent:)` call arriving during the same drag is not incorrectly
+    // deduplicated against a `currentIntent` this queued hide hasn't applied
+    // yet (Codex grounded review round 2, #2075).
+    currentIntent = .hidden
+    deferringIfPanelIsBeingDragged { [weak self] in
+      self?.hideNow()
+    }
+  }
+
+  private func hideNow() {
     currentIntent = .hidden
     // #1988: a direct `hide()` (not every caller routes through `show(intent:)`)
     // must still stop the preview. Idempotent, so the common path that already
