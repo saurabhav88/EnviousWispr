@@ -1201,4 +1201,91 @@ import Testing
         """)
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
   }
+
+  @Test func closureInjectedCount_unwrapsWithNoFixedDepthOfItsOwn() throws {
+    // 15 nested `Optional<...>` layers — the peel carries no limit of its own.
+    //
+    // NOT set past the 64-iteration cap this replaced, because that cap is
+    // unreachable and no passing test could exercise it. Generic angle brackets
+    // DO raise SwiftParser's nesting level, which is 20 under `#if DEBUG`
+    // (`Parser.defaultMaximumNestingLevel`, Parser.swift:134 in the pinned
+    // swift-syntax 603.0.2). Measured on this suite: depth 30 sets `hasError`
+    // so the parser throws, and depth 80 overflows the stack and takes the test
+    // process down with it.
+    //
+    // So no input can reach a 64th unwrap in a DEBUG test build, and neither
+    // bound yields a wrong COUNT — one throws, the other dies loudly. The cap
+    // was removed as dead code carrying a false justifying comment, NOT because
+    // a ceiling could be evaded through it.
+    let depth = 15
+    let type =
+      String(repeating: "Optional<", count: depth) + "() -> Void"
+      + String(repeating: ">", count: depth)
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let deeplyWrapped: \(type)
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 0)
+  }
+
+  @Test func closureInjectedCount_expandsTuplePatternsWithNoFixedDepthOfItsOwn() throws {
+    // 12 levels, comfortably inside SwiftParser's DEBUG nesting budget (see the
+    // fail-closed test below) and past nothing in particular — the point is that
+    // the walk carries no depth limit of its own, so the only bound is the
+    // parser's.
+    let depth = 12
+    // Names must be UNIQUE — two properties cannot share one, and a fixture
+    // that does not compile tests nothing. Two of this suite's original 52
+    // fixtures were invalid Swift for exactly this kind of reason.
+    let pattern =
+      (0..<depth).map { "(leaf\($0), " }.joined() + "last"
+      + String(repeating: ")", count: depth)
+    let type =
+      String(repeating: "(() -> Void, ", count: depth) + "() -> Void"
+      + String(repeating: ")", count: depth)
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let \(pattern): \(type)
+        }
+        """)
+    // One closure per leaf: `depth` left-hand leaves plus the innermost.
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == depth + 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 0)
+  }
+
+  @Test func classBody_failsClosedWhenNestingExceedsTheParsersOwnLimit() {
+    // The REAL bound on nesting is SwiftParser's, not ours:
+    // `Parser.defaultMaximumNestingLevel` is 20 under `#if DEBUG` and 256
+    // otherwise (Parser.swift:134 in the pinned swift-syntax 603.0.2), raised by
+    // every bracket. Tests run DEBUG, so a 30-deep tuple pattern — which
+    // `swiftc` itself accepts — exceeds it.
+    //
+    // This is the test that matters for the ceilings: past that limit the parser
+    // must THROW, never return a small confident number. A cloud-review finding
+    // argued a deeply nested seam could be miscounted as a collaborator and slip
+    // under a `<=` ceiling; it cannot, because the source never reaches the
+    // counters at all (PR #2070).
+    let depth = 30
+    let pattern =
+      (0..<depth).map { "(leaf\($0), " }.joined() + "last"
+      + String(repeating: ")", count: depth)
+    let type =
+      String(repeating: "(() -> Void, ", count: depth) + "() -> Void"
+      + String(repeating: ")", count: depth)
+    // `withKnownIssue` rather than `#expect(throws:)`: the fail-closed path
+    // ALSO calls `Issue.record` on its way out, so the recorded issue would fail
+    // this test even though throwing is the behaviour being asserted.
+    withKnownIssue("parsed(_:context:) records an issue as well as throwing") {
+      _ = try classBody(
+        of: """
+          final class Probe {
+            let \(pattern): \(type)
+          }
+          """)
+    }
+  }
 }

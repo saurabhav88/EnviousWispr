@@ -294,7 +294,7 @@ enum RouterCeilingParser {
         let isBool = binding.initializer.map { isBooleanLiteral($0.value) } ?? false
         expand(
           pattern: binding.pattern, type: binding.typeAnnotation?.type,
-          isBooleanLiteralInitialized: isBool, depth: 0, into: &result)
+          isBooleanLiteralInitialized: isBool, into: &result)
       }
     }
     return result
@@ -312,11 +312,17 @@ enum RouterCeilingParser {
   /// TYPES. Reading only the type would conflate the two and count two injected
   /// closure seams as one collaborator: an undercount, and the direction a
   /// `<=` ceiling never reports (cloud review, PR #2070).
+  /// Unbounded on purpose, for the same reason as `unwrapped(_:)`: each step
+  /// recurses into a CHILD pattern of a finite acyclic tree, so it terminates on
+  /// the structure. A depth cap here emitted the remaining tuple as ONE property
+  /// instead of visiting its leaves — an undercount past the cap, invisible
+  /// because a `<=` ceiling only reports counts that are too HIGH (cloud review,
+  /// PR #2070).
   private static func expand(
     pattern: PatternSyntax, type: TypeSyntax?, isBooleanLiteralInitialized isBool: Bool,
-    depth: Int, into result: inout [StoredLet]
+    into result: inout [StoredLet]
   ) {
-    guard depth < 16, let tuple = pattern.as(TuplePatternSyntax.self) else {
+    guard let tuple = pattern.as(TuplePatternSyntax.self) else {
       result.append(StoredLet(type: type, isBooleanLiteralInitialized: isBool))
       return
     }
@@ -331,18 +337,18 @@ enum RouterCeilingParser {
       for (element, elementType) in zip(elements, types) {
         expand(
           pattern: element.pattern, type: elementType,
-          isBooleanLiteralInitialized: isBool, depth: depth + 1, into: &result)
+          isBooleanLiteralInitialized: isBool, into: &result)
       }
     } else if elements.count == 1, let only = elements.first {
       // `let (a): X` — parenthesised, not a real tuple; keep the type.
       expand(
         pattern: only.pattern, type: type, isBooleanLiteralInitialized: isBool,
-        depth: depth + 1, into: &result)
+        into: &result)
     } else {
       for element in elements {
         expand(
           pattern: element.pattern, type: nil, isBooleanLiteralInitialized: isBool,
-          depth: depth + 1, into: &result)
+          into: &result)
       }
     }
   }
@@ -374,14 +380,23 @@ enum RouterCeilingParser {
   /// (`(() -> Void, AlphaDep)` is a tuple), and any generic other than
   /// `Optional` (`[String: () -> Void]` is a dictionary).
   private static func isFunctionType(_ type: TypeSyntax) -> Bool {
-    unwrapped(type)?.is(FunctionTypeSyntax.self) ?? false
+    unwrapped(type).is(FunctionTypeSyntax.self)
   }
 
-  private static func unwrapped(_ type: TypeSyntax) -> TypeSyntax? {
+  /// Peels wrappers until the type underneath is reached. Total, never nil.
+  ///
+  /// Unbounded on purpose. Every branch below moves `current` to a CHILD of the
+  /// node it just examined, and a SwiftSyntax tree is finite and acyclic, so the
+  /// loop terminates on the structure itself — a depth cap adds nothing a
+  /// malformed tree could defeat, and this one is not reachable from a parse.
+  /// An earlier version capped at 64 and returned nil beyond it, which turned a
+  /// deeply wrapped closure into a collaborator: an UNDERCOUNT, the direction a
+  /// `<=` ceiling never reports (cloud review, PR #2070). The comment justifying
+  /// that cap asserted it "stops a malformed tree from spinning" — a claim about
+  /// SwiftSyntax I had not checked, and which is false.
+  private static func unwrapped(_ type: TypeSyntax) -> TypeSyntax {
     var current = type
-    // Bounded by the nesting of a single declaration, which is finite; the cap
-    // only stops a malformed tree from spinning.
-    for _ in 0..<64 {
+    while true {
       if current.is(FunctionTypeSyntax.self) { return current }
       if let attributed = current.as(AttributedTypeSyntax.self) {
         current = attributed.baseType
@@ -408,7 +423,6 @@ enum RouterCeilingParser {
       }
       return current
     }
-    return nil
   }
 
   /// `Optional<T>` / `Swift.Optional<T>` → `T`. In this swift-syntax version
@@ -441,14 +455,13 @@ enum RouterCeilingParser {
   ]
 
   private static func isPrimitive(_ type: TypeSyntax) -> Bool {
-    guard let base = unwrapped(type) else { return false }
-    guard let identifier = base.as(IdentifierTypeSyntax.self) else { return false }
+    guard let identifier = unwrapped(type).as(IdentifierTypeSyntax.self) else { return false }
     if identifier.genericArgumentClause != nil { return identifier.name.text == "Task" }
     return primitiveNames.contains(identifier.name.text)
   }
 
   private static func isNSObjectProtocol(_ type: TypeSyntax) -> Bool {
-    guard let base = unwrapped(type), let identifier = base.as(IdentifierTypeSyntax.self) else {
+    guard let identifier = unwrapped(type).as(IdentifierTypeSyntax.self) else {
       return false
     }
     return identifier.name.text == "NSObjectProtocol"
