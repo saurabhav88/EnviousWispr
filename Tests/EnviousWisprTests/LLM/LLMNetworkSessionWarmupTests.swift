@@ -69,27 +69,129 @@ struct LLMNetworkSessionWarmupTests {
     }
   }
 
-  @Test func openAIWarmupBodyKeepsLiteralCapOfOne() {
+  /// #2062 replaced this case's old assertion of `1`. The literal cap was NOT
+  /// arbitrary-but-harmless: every `gpt-5.x` model rejects a ceiling of 1 with a
+  /// real HTTP 400, because reasoning tokens are drawn from the same budget, and
+  /// it produced 314 silent warm-up failures in 90 days. The cliff was measured
+  /// against the live API at between 2 and 4 (see
+  /// `openAIWarmupMaxCompletionTokens`); the value asserted here is the shipped
+  /// one, so a revert to any sub-cliff literal turns this red.
+  @Test func openAIWarmupBodyCapClearsTheReasoningModelFloor() {
     let request = LLMNetworkSession.shared.buildWarmupRequest(
       provider: .openAI, model: "gpt-4o-mini", apiKey: "sk-test")
-    #expect(bodyJSON(request)?["max_completion_tokens"] as? Int == 1)
+    let cap = bodyJSON(request)?["max_completion_tokens"] as? Int
+    #expect(cap == LLMNetworkSession.openAIWarmupMaxCompletionTokens)
+    // Independent of the constant, so this cannot pass by restating the
+    // production value back to itself: 4 is the measured 400/200 boundary.
+    #expect((cap ?? 0) >= 4, "a ceiling at or below the measured cliff 400s on every gpt-5 model")
   }
 
-  @Test func geminiWarmupBodyKeepsLiteralCapOfOne() {
-    let body = LLMNetworkSession.makeGeminiWarmupRequestBody()
-    let generationConfig = body["generationConfig"] as? [String: Any]
-    #expect(generationConfig?["maxOutputTokens"] as? Int == 1)
-  }
-
-  @Test func claudeWarmupBodyKeepsLiteralCapOfOne() {
-    let request = LLMNetworkSession.shared.buildWarmupRequest(
+  /// The reason the OpenAI cap moved and these two did not: neither provider
+  /// rejects a ceiling of 1. Gemini's warm-up returned no `400` at all across the
+  /// same 90-day window (only `429` quota and timeouts), and `claude_http_400`
+  /// traced to one account with `out_of_credits`, not to request shape — verified
+  /// live on 2026-08-15 against `claude-haiku-4-5` and `claude-sonnet-5`, both
+  /// HTTP 200 on the exact shipped body. Raising them would spend real tokens on
+  /// every session's ping to fix nothing.
+  @Test func nonOpenAIWarmupCapsDeliberatelyStayAtOne() {
+    let gemini = LLMNetworkSession.makeGeminiWarmupRequestBody()
+    #expect((gemini["generationConfig"] as? [String: Any])?["maxOutputTokens"] as? Int == 1)
+    let claude = LLMNetworkSession.shared.buildWarmupRequest(
       provider: .claude, model: "claude-haiku-4-5", apiKey: "sk-ant-test")
-    #expect(bodyJSON(request)?["max_tokens"] as? Int == 1)
+    #expect(bodyJSON(claude)?["max_tokens"] as? Int == 1)
   }
 
   @Test func nonCloudProviderBuildsNoWarmupRequest() {
     let request = LLMNetworkSession.shared.buildWarmupRequest(
       provider: .ollama, model: "llama3.2", apiKey: "unused")
     #expect(request == nil)
+  }
+
+  // MARK: - #2062: the discarded failure body
+
+  /// The body is logged to the DEBUG app log so a warm-up `400` is diagnosable
+  /// at all. It is bounded and flattened because it lands in a rotating file a
+  /// user may send us, and a provider can answer with an HTML error page.
+  @Test func failureBodyRendersTheProviderMessage() {
+    let body = Data(
+      #"{"error":{"message":"Could not finish the message","type":"invalid_request_error"}}"#
+        .utf8)
+    let rendered = LLMNetworkSession.warmupFailureBodyForLog(body)
+    #expect(rendered.contains("Could not finish the message"))
+    #expect(rendered.contains("\n") == false, "the log line must stay one line")
+  }
+
+  /// Cloud review, PR #2072. Replacing only `"\n"` leaves the `"\r"` of a CRLF
+  /// body embedded, and `.whitespaces` does not strip an internal carriage
+  /// return — so the "one line" guarantee was not one. Providers returning HTML
+  /// error pages routinely use CRLF.
+  @Test func failureBodyFlattensEveryNewlineForm() {
+    let crlf = Data("<html>\r\n<body>rate limited\r\n</body>\r\n</html>".utf8)
+    let rendered = LLMNetworkSession.warmupFailureBodyForLog(crlf)
+
+    #expect(rendered.contains("\r") == false, "a carriage return still breaks the line")
+    #expect(rendered.contains("\n") == false)
+    #expect(rendered.contains("rate limited"), "the message itself must survive flattening")
+    // U+2028, which a JSON-encoded provider message can legitimately carry.
+    let separator = Data("first\u{2028}second".utf8)
+    #expect(LLMNetworkSession.warmupFailureBodyForLog(separator) == "first second")
+  }
+
+  @Test func failureBodyDistinguishesEmptyFromUnreadable() {
+    #expect(LLMNetworkSession.warmupFailureBodyForLog(Data()) == "<empty>")
+    // Lone continuation bytes: a body that exists and is not decodable. It must
+    // not render as "<empty>", or "we got nothing back" and "we got something we
+    // could not read" become the same log line and the same wrong diagnosis.
+    let invalid = Data([0xFF, 0xFE, 0xFD])
+    #expect(LLMNetworkSession.warmupFailureBodyForLog(invalid) == "<non-utf8 3 bytes>")
+  }
+
+  @Test func failureBodyIsBounded() {
+    let huge = Data(String(repeating: "a", count: 4096).utf8)
+    let rendered = LLMNetworkSession.warmupFailureBodyForLog(huge, limit: 64)
+    #expect(rendered.count < 200, "an HTML error page must not flood the log")
+    #expect(rendered.contains("truncated 4096 bytes"), "truncation must be visible, not silent")
+  }
+
+  /// Cloud review, PR #2072. Truncating BYTES before decoding can cut a
+  /// multi-byte scalar in half, and `String(data:encoding:)` then returns nil for
+  /// a body that is perfectly valid UTF-8 — so the log line would read
+  /// `<non-utf8 N bytes>` and discard the provider's message, defeating the whole
+  /// reason the body is captured. A curly quote in an OpenAI message is enough to
+  /// trigger it.
+  @Test func failureBodySurvivesAMultiByteCharacterOnTheBoundary() {
+    // "é" is two bytes. With a 21-byte prefix the cut lands mid-scalar.
+    let body = Data("aaaaaaaaaaaaaaaaaaaaéquota exceeded".utf8)
+    let rendered = LLMNetworkSession.warmupFailureBodyForLog(body, limit: 20)
+
+    #expect(
+      rendered.contains("non-utf8") == false,
+      "a valid UTF-8 body must never be reported as undecodable")
+    #expect(rendered.hasPrefix("aaaaaaaaaaaaaaaaaaaa"), "the readable prefix must survive")
+    #expect(rendered.contains("truncated"))
+  }
+
+  /// Cloud review, PR #2072. The bound is documented in BYTES, but `String.count`
+  /// measures extended grapheme clusters — so applying the limit to it does not
+  /// enforce the byte bound at all. Non-ASCII text runs several times over.
+  @Test func failureBodyBoundIsMeasuredInBytes() {
+    // 200 three-byte characters = 600 UTF-8 bytes but only 200 Characters, so a
+    // Character-counted bound of 512 would wave the whole thing through.
+    let wide = Data(String(repeating: "あ", count: 200).utf8)
+    let rendered = LLMNetworkSession.warmupFailureBodyForLog(wide, limit: 512)
+
+    let payload = rendered.replacingOccurrences(
+      of: "…<truncated \(wide.count) bytes>", with: "")
+    #expect(payload.utf8.count <= 512, "the documented bound is bytes, not characters")
+    #expect(rendered.contains("truncated 600 bytes"))
+    // Still cut on a Character boundary, so nothing is mangled.
+    #expect(payload.allSatisfy { $0 == "あ" })
+  }
+
+  /// The other side of that boundary fix: `<non-utf8>` must still mean what it
+  /// says, so the branch is not simply unreachable now.
+  @Test func failureBodyStillDetectsAGenuinelyUndecodableBody() {
+    let invalid = Data([0xFF, 0xFE, 0xFD] + Array(repeating: UInt8(0xC3), count: 40))
+    #expect(LLMNetworkSession.warmupFailureBodyForLog(invalid).hasPrefix("<non-utf8 "))
   }
 }

@@ -60,7 +60,7 @@ public final class LLMNetworkSession: Sendable {
     Task.detached { [session, sink = keychainManager.telemetrySink] in
       let start = CFAbsoluteTimeGetCurrent()
       do {
-        let (_, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
         let ms = Int(((CFAbsoluteTimeGetCurrent() - start) * 1000).rounded())
         let statusCode = (response as? HTTPURLResponse)?.statusCode
         let status = statusCode?.description ?? "n/a"
@@ -68,11 +68,38 @@ public final class LLMNetworkSession: Sendable {
           "preWarm completed provider=\(provider.rawValue) model=\(model) duration_ms=\(ms) status=\(status)",
           level: .info, category: "LLM"
         )
+        // #2062: the response body used to be discarded (`let (_, response)`),
+        // which made every non-2xx a dead end — we recorded the status code and
+        // threw away the one thing that says why. 314 HTTP 400s were
+        // uninvestigable for it.
+        //
+        // Debug app log ONLY, never telemetry. A provider error body is
+        // free-form vendor text that can quote the request, so it is barred from
+        // PostHog and Sentry by the `TelemetryService.polishFailed` contract
+        // ("No transcript, prompt, provider error body, key, or endpoint URL").
+        // `AppLogger` is entirely `#if DEBUG` and additionally gated on in-app
+        // Debug Mode, so this reaches a release build's disk never.
+        //
         // Cloud review (PR #1211): a non-2xx response does NOT throw (URLSession
         // returns it), so it would otherwise log "completed" and never report the
         // failure — mirror the A5 evict 2xx/non-2xx split. A missing status code
         // (n/a) is NOT treated as a failure (that path already lacks a real signal).
         if let code = statusCode, !(200...299).contains(code) {
+          // `#if DEBUG` at the CALL SITE, not just inside `AppLogger` (cloud
+          // review, PR #2072). `AppLogger.log` takes a `String`, so the
+          // interpolation — and therefore the whole decode-and-copy of the
+          // response body — is evaluated by the caller before the call. The
+          // logger's own `#if DEBUG` removes only its body, so a release build
+          // would pay to render a multi-KB provider error page and then throw it
+          // away. This whole diagnostic is debug-only by intent; make that true
+          // of the work as well as the output.
+          #if DEBUG
+            await AppLogger.shared.log(
+              "preWarm failure body provider=\(provider.rawValue) model=\(model) "
+                + "status=\(code) body=\(Self.warmupFailureBodyForLog(data))",
+              level: .info, category: "LLM"
+            )
+          #endif
           sink.limbFailure(
             "llm_prewarm", "prewarm", "failed", "\(provider.rawValue)_http_\(code)", ms)
         }
@@ -108,6 +135,94 @@ public final class LLMNetworkSession: Sendable {
     }
   }
 
+  /// Renders a warm-up failure body for the DEBUG app log (#2062).
+  ///
+  /// Bounded, because a provider can return an HTML error page or a multi-KB
+  /// JSON blob and this line goes to a rotating file the user may send us. The
+  /// first 512 bytes carry the `error.message` for every provider we route to.
+  /// Non-UTF8 bodies report their size rather than dropping the line silently,
+  /// so "we got a body and could not read it" stays distinguishable from "there
+  /// was no body".
+  static func warmupFailureBodyForLog(_ data: Data, limit: Int = 512) -> String {
+    guard !data.isEmpty else { return "<empty>" }
+    // Decode the WHOLE body, then truncate the STRING — never `data.prefix()`
+    // before decoding (cloud review, PR #2072). A byte cutoff can land inside a
+    // multi-byte scalar, and `String(data:encoding:)` then returns nil for a body
+    // that is perfectly valid UTF-8, so the line would read `<non-utf8 N bytes>`
+    // and throw the provider's message away — defeating the entire reason this
+    // function exists. Any non-ASCII character near the boundary triggers it: a
+    // curly quote in an OpenAI message is enough.
+    //
+    // The body is already fully in memory (URLSession handed us `Data`), so
+    // decoding all of it costs nothing extra, and truncating by Character keeps
+    // the `<non-utf8>` branch meaning what it says: the body really is not UTF-8.
+    guard let text = String(data: data, encoding: .utf8) else {
+      return "<non-utf8 \(data.count) bytes>"
+    }
+    // Split on the whole `.newlines` set, not just `"\n"` (cloud review, PR
+    // #2072). An HTML or text error body with CRLF endings leaves the `"\r"`
+    // behind when only `"\n"` is replaced, and `.whitespaces` does not strip an
+    // INTERNAL carriage return — so the log line this exists to keep on one line
+    // arrives multi-line anyway. The set also covers U+2028/U+2029, which a
+    // JSON-encoded provider message can legitimately carry. Empty components are
+    // dropped so a blank line does not become a run of spaces.
+    let flattened =
+      text
+      .components(separatedBy: .newlines)
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard flattened.utf8.count > limit else { return flattened }
+    // Bound by BYTES, on a Character boundary (cloud review, PR #2072).
+    // `String.count` measures extended grapheme clusters, so a limit applied to
+    // it does not enforce the documented byte bound at all — ordinary non-ASCII
+    // text runs several times over it, and an emoji cluster can be far worse.
+    // Accumulating whole Characters keeps the cut off a scalar boundary, which
+    // is the trap the decode order already exists to avoid.
+    var truncated = ""
+    var bytes = 0
+    for character in flattened {
+      let width = String(character).utf8.count
+      if bytes + width > limit { break }
+      truncated.append(character)
+      bytes += width
+    }
+    return truncated + "…<truncated \(data.count) bytes>"
+  }
+
+  /// Output-token ceiling for the OpenAI warm-up ping (#2062).
+  ///
+  /// Was `1`, which every `gpt-5.x` model rejects with a real HTTP 400:
+  /// `"Could not finish the message because max_tokens or model output limit was
+  /// reached. Please try again with higher max_tokens."` Reasoning models draw
+  /// reasoning tokens from this same budget, so a ceiling of 1 cannot be
+  /// satisfied even by an empty answer. It cost 314 warm-up failures across 4
+  /// users in 90 days, every one of them a silent no-op.
+  ///
+  /// Measured against the live API on 2026-08-15, prompt `"."`, one request per
+  /// cell — the cliff is between 2 and 4 and is identical on all three models:
+  ///
+  /// | max_completion_tokens | gpt-5.4-mini | gpt-5.6-sol | gpt-5-mini | gpt-4o-mini |
+  /// |---|---|---|---|---|
+  /// | 1 | 400 | 400 | 400 | 200 |
+  /// | 2 | 400 | 400 | 400 | 200 |
+  /// | 4 | 200 | 200 | 200 | 200 |
+  /// | 16 | 200 | 200 | 200 | 200 |
+  ///
+  /// 16 rather than the measured minimum of 4: it is 4x the observed cliff, it
+  /// matches OpenAI's documented floor for reasoning models, and the cost of
+  /// being generous is bounded by the ceiling itself (~16 output tokens on one
+  /// ping per session). The cost of being tight is another silent 400 on a model
+  /// family that did not exist when this was written — which is exactly how the
+  /// `1` got here.
+  ///
+  /// Deliberately ONE unconditional value, not a per-family branch. `gpt-4o`,
+  /// `gpt-4o-mini` and `gpt-4.1-mini` were all verified to still return 200 at
+  /// this ceiling, so no branch is needed — and a model-family branch is a table
+  /// that goes stale every time OpenAI ships a family, silently reverting this
+  /// fix for it.
+  static let openAIWarmupMaxCompletionTokens = 16
+
   func buildWarmupRequest(
     provider: LLMProvider, model: String, apiKey: String
   ) -> URLRequest? {
@@ -137,7 +252,7 @@ public final class LLMNetworkSession: Sendable {
       let body: [String: Any] = [
         "model": model,
         "messages": [["role": "user", "content": "."]],
-        "max_completion_tokens": 1,
+        "max_completion_tokens": Self.openAIWarmupMaxCompletionTokens,
         "store": false,
       ]
       request.httpBody = try? JSONSerialization.data(withJSONObject: body)
