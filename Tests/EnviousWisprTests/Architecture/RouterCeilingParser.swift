@@ -539,20 +539,102 @@ enum RouterCeilingParser {
     // `closureInjectedCount` read 8 against 10 closure-typed `let`s, the two
     // missing ones being `makeRecoveryDirective` and
     // `ensureSelectedReadyForPress`, both `async`.
-    // `throws` may carry a typed-throws clause on this Swift 6 target
-    // (`() throws(MyError) -> Void`), so the error type is part of the specifier.
-    // The error type may itself contain one level of parentheses —
-    // `throws(Failure<(Int, String)>)` — so the clause matches a balanced pair
-    // rather than stopping at the first `)` (cloud review, PR #2070). One level
-    // is where a regex's usefulness ends; deeper nesting needs a real parser, and
-    // failing to match simply counts the property as a collaborator, which is the
-    // conservative direction.
-    return line.range(
-      of:
-        #":[[:space:]]*(@[A-Za-z]+[[:space:]]+)*\([^)]*\)"#
-        + #"([[:space:]]+(async|rethrows|throws([[:space:]]*\(([^()]|\([^()]*\))*\))?))*"#
-        + #"[[:space:]]*->[[:space:]]"#,
-      options: .regularExpression) != nil
+    // SCANNED, not matched (cloud review, PR #2070, round six). The parameter
+    // list was `\([^)]*\)`, which stops at the first `)`, so a parenthesis
+    // nested anywhere in the parameter type —
+    // `(Result<(Int, String), DomainError>) -> Void` — ended the match before
+    // the arrow. A regex cannot balance brackets, so no widening of the
+    // character classes could have reached it: five rounds of this file's
+    // review each added one more permitted syntax shape, and this one is not a
+    // shape but a capability. The clause below balances instead, which also
+    // subsumes the earlier typed-throws nesting and the whitespace-adjacency
+    // cases rather than encoding them as alternatives.
+    let chars = Array(line)
+    var i = 0
+    while i < chars.count {
+      if chars[i] == ":", closureSignatureFollows(chars, from: i + 1) { return true }
+      i += 1
+    }
+    return false
+  }
+
+  /// A declared closure type, read structurally from just after its `:`:
+  /// `@Attribute`* `(` balanced `)` effect-specifier* `->`.
+  ///
+  /// Every position skips trivia, so whitespace is optional everywhere Swift
+  /// makes it optional and unbounded everywhere Swift allows it — the property
+  /// the previous pattern kept failing one shape at a time. Comments are already
+  /// blanked to spaces by the caller's code view, so they are trivia here too.
+  private static func closureSignatureFollows(_ chars: [Character], from start: Int) -> Bool {
+    var i = skipTrivia(chars, from: start)
+    while i < chars.count, chars[i] == "@" {
+      i += 1
+      while i < chars.count, chars[i].isLetter || chars[i].isNumber || chars[i] == "_" { i += 1 }
+      // An attribute's argument list is ADJACENT to its name — `@available(macOS
+      // 26, *)`. Skipping trivia before this check would consume the FUNCTION
+      // TYPE's own parameter list in `@MainActor (Int) -> Bool`, where the paren
+      // is separated by a space and belongs to the type, not the attribute.
+      if i < chars.count, chars[i] == "(" {
+        guard let close = matchingParen(chars, open: i) else { return false }
+        i = close + 1
+      }
+      i = skipTrivia(chars, from: i)
+    }
+    guard i < chars.count, chars[i] == "(", let close = matchingParen(chars, open: i)
+    else { return false }
+    i = skipTrivia(chars, from: close + 1)
+    while true {
+      if matchesKeyword(chars, at: i, "async") {
+        i = skipTrivia(chars, from: i + 5)
+      } else if matchesKeyword(chars, at: i, "rethrows") {
+        i = skipTrivia(chars, from: i + 8)
+      } else if matchesKeyword(chars, at: i, "throws") {
+        i = skipTrivia(chars, from: i + 6)
+        // Typed throws, to any nesting depth: `throws(Failure<(Int, String)>)`.
+        if i < chars.count, chars[i] == "(" {
+          guard let errorClose = matchingParen(chars, open: i) else { return false }
+          i = skipTrivia(chars, from: errorClose + 1)
+        }
+      } else {
+        break
+      }
+    }
+    return i + 1 < chars.count && chars[i] == "-" && chars[i + 1] == ">"
+  }
+
+  private static func skipTrivia(_ chars: [Character], from i: Int) -> Int {
+    var j = i
+    while j < chars.count, chars[j].isWhitespace { j += 1 }
+    return j
+  }
+
+  /// Index of the `)` closing the `(` at `open`, or `nil` if unbalanced. The
+  /// caller passes a code view, so parens inside comments and string literals
+  /// are already spaces and cannot skew the depth.
+  private static func matchingParen(_ chars: [Character], open: Int) -> Int? {
+    var depth = 0
+    var i = open
+    while i < chars.count {
+      if chars[i] == "(" { depth += 1 }
+      if chars[i] == ")" {
+        depth -= 1
+        if depth == 0 { return i }
+      }
+      i += 1
+    }
+    return nil
+  }
+
+  /// `word` appears at `i` and is not merely the prefix of a longer identifier,
+  /// so a type named `asyncResult` is never read as the `async` specifier.
+  private static func matchesKeyword(_ chars: [Character], at i: Int, _ word: String) -> Bool {
+    let expected = Array(word)
+    guard i >= 0, i + expected.count <= chars.count else { return false }
+    for k in 0..<expected.count where chars[i + k] != expected[k] { return false }
+    let after = i + expected.count
+    guard after < chars.count else { return true }
+    let next = chars[after]
+    return !(next.isLetter || next.isNumber || next == "_")
   }
 
   private static func isNSObjectProtocolTyped(_ line: String) -> Bool {

@@ -371,6 +371,61 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
   }
 
+  /// #2068 (cloud review, PR #2070, round six). The parameter list was matched
+  /// with `\([^)]*\)`, which stops at the FIRST `)` — so any parenthesis nested
+  /// inside the parameter type ends the match early and the outer `->` is never
+  /// reached. A regex cannot balance brackets; five rounds of widening the
+  /// character classes could not have fixed this, because it is not a missing
+  /// syntax shape but a missing capability.
+  ///
+  /// Fails toward COLLABORATOR, so the closure ceiling silently stops counting
+  /// the dependency it exists to bound.
+  @Test func closureCount_balancesParenthesesNestedInTheParameterType() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let handler: (Result<(Int, String), DomainError>) -> Void
+          let deep: @MainActor (Outcome<(A, (B, C)), Failure>) async -> Bool
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 2)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// Swift requires no whitespace around effect specifiers or the arrow, but the
+  /// pattern demanded at least one space before each. `()async->Void` is a valid
+  /// stored closure and read as a collaborator.
+  @Test func closureCount_acceptsEffectSpecifiersWithNoSurroundingWhitespace() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let tight: ()async->Void
+          let strict: ()throws(DomainError)->Bool
+          let plain: (Int)->String
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 3)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// The control for both fixtures above: balancing brackets must not turn
+  /// ordinary generic collaborators into closures. None of these declares a
+  /// function type, and each contains the punctuation the scanner reads.
+  @Test func closureCount_stillRejectsGenericsThatMerelyContainParentheses() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let store: Storage<(Int, String)>
+          let pair: (AlphaDep, BetaDep)
+          let factory: Provider<Handler>
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 0)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 3)
+  }
+
   /// The two-way control for the fixture above. A multi-line block comment that
   /// is NOT followed by an effect specifier must still leave the declaration
   /// unfolded — otherwise the test above could pass because the fold became
