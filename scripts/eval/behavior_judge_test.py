@@ -2508,23 +2508,24 @@ def test_vocabulary_repair_is_a_variant_but_name_repair_is_not():
 # transport retry classification                                              #
 # --------------------------------------------------------------------------- #
 
-def test_transport_resets_are_retryable_but_client_errors_are_not():
-    """Two-way control on `_retryable_http_error`.
+def test_only_the_network_call_produces_a_retryable_error():
+    """The retry predicate must key on WHERE the failure came from, not its class.
 
-    The list it replaced -- `(urllib.error.URLError, TimeoutError)` -- looked
-    complete and answered False for all six transport rows below, including
-    `ConnectionResetError`, which is the one that actually fired: urllib wraps
-    only what `urlopen` raises, so a reset during the RESPONSE BODY read arrives
-    bare. Both directions are asserted in one table because widening the
-    predicate far enough to catch a reset is exactly the change that could make a
-    400 retryable -- `HTTPError` is an `OSError` subclass, so the order of the
-    branches is load-bearing and a positive-only test would not notice.
+    Every one of the bare exceptions below is an OSError, and an earlier version
+    of this predicate accepted all of them. Cloud review then found three places
+    where that was wrong -- a local WAV write, a subprocess spawn for a missing
+    CLI, and a credential file read -- each of which would have been answered
+    with another PAID request. So the bare forms must now be REFUSED, and only
+    `TransientTransportError`, which `_http_json` raises at the socket, accepted.
+
+    Both directions are asserted together because the failure mode is symmetric:
+    too narrow drops 8 cases per blip, too broad re-bills a permanent local fault.
     """
     import http.client
     import socket
     import ssl
 
-    must_retry = [
+    transport = [
         ("ConnectionResetError", ConnectionResetError(54, "Connection reset by peer")),
         ("RemoteDisconnected", http.client.RemoteDisconnected("closed")),
         ("IncompleteRead", http.client.IncompleteRead(b"", 10)),
@@ -2533,42 +2534,87 @@ def test_transport_resets_are_retryable_but_client_errors_are_not():
         ("socket.gaierror", socket.gaierror(8, "nodename nor servname")),
         ("URLError", urllib.error.URLError("unreachable")),
         ("TimeoutError", TimeoutError("timed out")),
-        ("HTTP 429", urllib.error.HTTPError("u", 429, "rate", {}, None)),
-        ("HTTP 500", urllib.error.HTTPError("u", 500, "ise", {}, None)),
-        ("HTTP 503", urllib.error.HTTPError("u", 503, "unavail", {}, None)),
     ]
-    must_not_retry = [
-        ("HTTP 400", urllib.error.HTTPError("u", 400, "bad request", {}, None)),
-        ("HTTP 401", urllib.error.HTTPError("u", 401, "unauthorized", {}, None)),
-        ("HTTP 404", urllib.error.HTTPError("u", 404, "not found", {}, None)),
-        ("ValueError", ValueError("not transport at all")),
-        ("KeyError", KeyError("nope")),
-    ]
-    for name, exc in must_retry:
-        assert bj._retryable_http_error(exc), \
-            f"{name} is a transient transport failure and must be retried; " \
-            f"treating it as fatal drops a whole chunk of cases"
-    for name, exc in must_not_retry:
+    for name, exc in transport:
+        wrapped = bj.TransientTransportError(exc)
+        assert bj._retryable_http_error(wrapped), \
+            f"{name} raised BY the network call must be retried"
         assert not bj._retryable_http_error(exc), \
-            f"{name} is the server's considered answer (or not transport at all) " \
-            f"and must NOT be retried"
+            f"a BARE {name} must NOT be retried — it could be a file write, a " \
+            f"credential read, or a subprocess spawn in the same try block"
+
+    for name, exc in [("HTTP 429", urllib.error.HTTPError("u", 429, "rate", {}, None)),
+                      ("HTTP 500", urllib.error.HTTPError("u", 500, "ise", {}, None)),
+                      ("HTTP 503", urllib.error.HTTPError("u", 503, "un", {}, None))]:
+        assert bj._retryable_http_error(exc), f"{name} must be retried"
+    for name, exc in [("HTTP 400", urllib.error.HTTPError("u", 400, "bad", {}, None)),
+                      ("HTTP 401", urllib.error.HTTPError("u", 401, "auth", {}, None)),
+                      ("HTTP 404", urllib.error.HTTPError("u", 404, "nf", {}, None)),
+                      ("ValueError", ValueError("not transport")),
+                      ("PermissionError", PermissionError(13, "key file unreadable")),
+                      ("FileNotFoundError", FileNotFoundError(2, "no claude binary"))]:
+        assert not bj._retryable_http_error(exc), f"{name} must NOT be retried"
+
+
+def test_http_json_converts_transport_but_not_status_or_parse_errors():
+    """The conversion has to happen AT the socket, or the structural guarantee is
+    just a comment. Drives the real `_http_json` with a fake opener."""
+    class FakeResp:
+        def __init__(self, body): self.body = body
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return self.body
+
+    class Opener:
+        def __init__(self, behaviour): self.behaviour = behaviour
+        def open(self, req, timeout=None):
+            if isinstance(self.behaviour, Exception):
+                raise self.behaviour
+            return FakeResp(self.behaviour)
+
+    # transport failure -> converted
+    raised = None
+    try:
+        bj._http_json(Opener(ConnectionResetError(54, "reset")), object(), 1)
+    except BaseException as e:  # noqa: BLE001
+        raised = e
+    assert isinstance(raised, bj.TransientTransportError), \
+        f"a socket reset must become TransientTransportError, got {type(raised).__name__}"
+    assert isinstance(raised.cause, ConnectionResetError), "the cause must be preserved"
+
+    # HTTPError -> untouched, so the caller can read its status code
+    raised = None
+    try:
+        bj._http_json(Opener(urllib.error.HTTPError("u", 429, "rate", {}, None)), object(), 1)
+    except BaseException as e:  # noqa: BLE001
+        raised = e
+    assert isinstance(raised, urllib.error.HTTPError) and raised.code == 429, \
+        "HTTPError must pass through with its status intact"
+
+    # a 200 with an unparsable body -> JSONDecodeError, not a transport error
+    raised = None
+    try:
+        bj._http_json(Opener(b"not json"), object(), 1)
+    except BaseException as e:  # noqa: BLE001
+        raised = e
+    assert isinstance(raised, json.JSONDecodeError), \
+        f"a bad body is the server's answer, not transport (got {type(raised).__name__})"
+
+    # happy path
+    assert bj._http_json(Opener(b'{"ok": 1}'), object(), 1) == {"ok": 1}
 
 
 def test_judge_chunk_retries_a_reset_and_returns_the_full_chunk():
-    """Drive the REAL `judge_chunk` through a reset and assert it recovers.
-
-    Asserting only the returned scores would pass on a single successful attempt
-    just as well as on a retry, so the attempt COUNT is asserted too -- a counter
-    that is incremented and never read is the shape that makes a retry test
-    vacuous. `time.sleep` is stubbed so the real backoff schedule does not put a
-    minute of wall clock into the suite.
-    """
+    """Drive the REAL `judge_chunk` through a transport failure and assert it
+    recovers. The attempt COUNT is asserted too: without it, one successful call
+    satisfies the test exactly as well as a retry does."""
     calls = {"n": 0}
 
     def flaky_dispatch(model, system, user):
         calls["n"] += 1
         if calls["n"] < 3:
-            raise ConnectionResetError(54, "Connection reset by peer")
+            raise bj.TransientTransportError(
+                ConnectionResetError(54, "Connection reset by peer"))
         return json.dumps([{"id": "A1", "verdict": "pass"},
                            {"id": "A2", "verdict": "pass"}])
 
@@ -2576,13 +2622,13 @@ def test_judge_chunk_retries_a_reset_and_returns_the_full_chunk():
     bj.dispatch_judge = flaky_dispatch
     bj.time.sleep = lambda _s: None
     try:
-        out = bj.judge_chunk("azure/x", "sys", [{"id": "A1"}, {"id": "A2"}])
+        with contextlib.redirect_stderr(io.StringIO()):
+            out = bj.judge_chunk("azure/x", "sys", [{"id": "A1"}, {"id": "A2"}])
     finally:
         bj.dispatch_judge, bj.time.sleep = real_dispatch, real_sleep
 
     assert calls["n"] == 3, \
-        f"expected 2 resets then a success = 3 attempts, saw {calls['n']}; " \
-        f"if this is 1 the reset was classified FATAL and the chunk was dropped"
+        f"expected 2 transport failures then a success = 3 attempts, saw {calls['n']}"
     assert [r["id"] for r in out] == ["A1", "A2"], \
         f"the chunk must come back whole after a transient reset, got {out!r}"
 
@@ -2677,7 +2723,7 @@ def test_call_claude_converts_a_spawn_failure_into_the_permanent_error():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 129
+EXPECTED_TESTS = 130
 
 
 def _run() -> int:

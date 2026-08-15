@@ -119,6 +119,13 @@ def synth(text: str, out: Path, engine: str, model: str, voice: str,
             # not a URLError, so before this clause it escaped the retry loop and
             # aborted a whole TTS sweep. Ordered last of the three because
             # HTTPError subclasses URLError subclasses OSError.
+            #
+            # Safe to catch broadly ONLY because the `try` above now contains
+            # nothing but `urlopen` + `resp.read()`. The file writes used to live
+            # here, and this same clause then answered a full disk with another
+            # paid TTS request (cloud review, PR #2058). If anything non-network
+            # is ever added back above, convert at the socket the way
+            # behavior_judge.py does instead of widening this.
             if attempt < MAX_ATTEMPTS:
                 time.sleep(min(2 ** attempt, 30))
                 continue

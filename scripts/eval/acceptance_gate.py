@@ -307,6 +307,41 @@ def _key(name: str) -> str:
     return p.read_text().strip()
 
 
+class TransientTransportError(Exception):
+    """A network failure raised BY the network operation itself.
+
+    Mirrors behavior_judge.TransientTransportError, deliberately as a separate
+    copy: this file is the CI gate and keeps its own transports for exactly that
+    reason. Both must agree, and the reason both exist is worth stating once
+    here. Cloud review found that `_http_call_with_retry(lambda: polish_one(...))`
+    wraps `_key()`, which does `Path.read_text()` on a credential file -- so a
+    predicate testing bare `OSError` turned an unreadable key into three retries
+    per case across a whole corpus. Auditing every retry scope for stray I/O is a
+    promise; converting at the one place the socket is touched is a property.
+    """
+
+    def __init__(self, cause: Exception):
+        super().__init__(f"{type(cause).__name__}: {cause}")
+        self.cause = cause
+
+
+def _http_json(req, timeout: float):
+    """Perform the request and decode it, converting ONLY transport failures.
+
+    HTTPError passes through so the caller can read its status code; a decode
+    failure passes through because a 200 with an unparsable body is the server's
+    answer, not a network fault.
+    """
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError:
+        raise
+    except (OSError, http.client.HTTPException) as e:
+        raise TransientTransportError(e) from None
+    return json.loads(raw)
+
+
 def _retryable_http_error(exc: Exception) -> bool:
     """Classify HTTPError responses as transient-retryable. Covers 5xx + 429.
     Returns False for auth/bad-request errors (4xx except 429) which will never
@@ -323,10 +358,11 @@ def _retryable_http_error(exc: Exception) -> bool:
     """
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code >= 500 or exc.code == 429
-    # OSError covers URLError, TimeoutError, every ConnectionError (reset, aborted,
-    # broken pipe, refused), socket.gaierror and ssl.SSLError. HTTPException covers
-    # the http.client family that is not an OSError, e.g. IncompleteRead.
-    return isinstance(exc, (OSError, http.client.HTTPException))
+    # Only what the NETWORK CALL itself raised. A credential read, a file write or
+    # a subprocess spawn anywhere else in the retried scope keeps its own type and
+    # is never retried -- which is the whole point, since `_http_call_with_retry`
+    # wraps `polish_one`, and `polish_one` reads the key file.
+    return isinstance(exc, TransientTransportError)
 
 
 def _http_call_with_retry(do_call, attempts: int = 3, base_delay: float = 1.5):
@@ -367,8 +403,7 @@ def call_openai(model: str, system: str, user: str) -> str:
         headers={"Authorization": f"Bearer {_key('openai-api-key')}", "Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
+    data = _http_json(req, 300)
     return data["choices"][0]["message"]["content"].strip()
 
 
@@ -385,8 +420,7 @@ def call_gemini(model: str, system: str, user: str, json_mime: bool = False) -> 
         url, data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"}, method="POST",
     )
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
+    data = _http_json(req, 300)
     parts = data["candidates"][0]["content"]["parts"]
     return "".join(p.get("text", "") for p in parts).strip()
 

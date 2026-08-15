@@ -182,6 +182,45 @@ def _key(name: str) -> str:
     return p.read_text().strip()
 
 
+class TransientTransportError(Exception):
+    """A network failure raised BY the network operation itself.
+
+    Exists to make the retry predicate's scope structural instead of a promise.
+    The predicate used to test `OSError`, which is correct for a socket and wrong
+    for everything else that can appear in the same `try`: cloud review found
+    three separate instances in this change set -- a local WAV write, a
+    subprocess spawn for a missing CLI, and a credential file read -- where a
+    permanent local failure would have been answered with another paid request.
+
+    Auditing each retry scope for stray I/O is a promise that has to be re-made
+    every time someone adds a line. Converting at the ONE place the network is
+    touched is a property: anything else in the scope raises its own type and is
+    never retried, by construction.
+    """
+
+    def __init__(self, cause: Exception):
+        super().__init__(f"{type(cause).__name__}: {cause}")
+        self.cause = cause
+
+
+def _http_json(opener, req, timeout: float):
+    """Perform the request and decode it, converting ONLY transport failures.
+
+    `HTTPError` is deliberately re-raised untouched: it carries a status code and
+    the caller decides 429/5xx-retryable from that. A JSON decode failure is also
+    left alone -- a 200 with an unparsable body is the server's answer, and the
+    callers that want to retry it already test `json.JSONDecodeError` explicitly.
+    """
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError:
+        raise
+    except (OSError, http.client.HTTPException) as e:
+        raise TransientTransportError(e) from None
+    return json.loads(raw)
+
+
 class JudgeUnavailableError(Exception):
     """The judge transport cannot work at all, and no number of attempts changes
     that: a missing or unexecutable CLI, a route with no funded transport.
@@ -223,10 +262,11 @@ def _retryable_http_error(exc: Exception) -> bool:
     """
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code == 429 or 500 <= exc.code < 600
-    # OSError covers URLError, TimeoutError, every ConnectionError (reset, aborted,
-    # broken pipe, refused), socket.gaierror and ssl.SSLError. HTTPException covers
-    # the http.client family that is NOT an OSError, e.g. IncompleteRead.
-    return isinstance(exc, (OSError, http.client.HTTPException))
+    # Only what the NETWORK CALL itself raised. `_http_json` converts OSError and
+    # http.client.HTTPException at the socket, so a file read, a file write or a
+    # subprocess spawn elsewhere in the same `try` keeps its own type and is not
+    # retried. Testing bare OSError here is what made all three of those retryable.
+    return isinstance(exc, TransientTransportError)
 
 
 # `call_openai` and `call_gemini` are DELETED, not merely unrouted (founder 2026-08-11,
@@ -267,12 +307,12 @@ def call_claude(model: str, system: str, user: str) -> str:
     except subprocess.TimeoutExpired:
         raise RuntimeError("claude judge: CLI timed out after 300s")
     except OSError as e:
-        # A spawn failure (`claude` not on PATH, not executable) is an OSError,
-        # and `_retryable_http_error` answers True for every OSError because in
-        # an HTTP call site that means transport. Here it does not: the CLI will
-        # be just as missing on the fifth attempt, so this must NOT be retried.
-        # Raised as its own type rather than RuntimeError, which judge_chunk
-        # deliberately does retry.
+        # A spawn failure (`claude` not on PATH, not executable) is an OSError.
+        # Since `_retryable_http_error` now only accepts TransientTransportError,
+        # a bare OSError is already non-retryable -- but it would surface as an
+        # opaque FileNotFoundError with no guidance. This converts it into a
+        # named, actionable error instead. RuntimeError is deliberately NOT used:
+        # judge_chunk retries that one.
         raise JudgeUnavailableError(
             f"claude judge: cannot start the CLI ({type(e).__name__}: {e}). "
             f"This is permanent — install/authenticate the CLI or pick another "
@@ -385,8 +425,7 @@ def call_azure(deployment: str, system: str, user: str) -> str:
         headers={"api-key": _key("azure-openai-key"), "Content-Type": "application/json"},
         method="POST",
     )
-    with _no_redirect_opener().open(req, timeout=300) as resp:
-        data = json.loads(resp.read())
+    data = _http_json(_no_redirect_opener(), req, 300)
     choices = data.get("choices") or []
     if not choices:
         raise RuntimeError(f"azure judge: no choices in response: {str(data)[:200]}")
@@ -532,8 +571,7 @@ def _azure_served_model(deployment: str) -> str:
         headers={"api-key": _key("azure-openai-key"), "Content-Type": "application/json"},
         method="POST",
     )
-    with _no_redirect_opener().open(req, timeout=60) as resp:
-        data = json.loads(resp.read())
+    data = _http_json(_no_redirect_opener(), req, 60)
     served = data.get("model")
     if not isinstance(served, str) or not served.strip():
         # Fail rather than fall back to a version-blind identity: a blind identity silently
