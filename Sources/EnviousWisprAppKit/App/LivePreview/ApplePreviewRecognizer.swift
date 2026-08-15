@@ -237,7 +237,21 @@ actor ApplePreviewRecognizer {
 
     // A fresh converter per session, so no resampler tail crosses a boundary and
     // leaks the previous dictation's audio into this one.
-    let converter = source == target ? nil : AVAudioConverter(from: source, to: target)
+    //
+    // A nil converter must mean ONE thing: the formats match and no conversion is
+    // needed. `AVAudioConverter(from:to:)` is failable, so folding its failure into
+    // the same nil makes an unconvertible pair indistinguishable from an identical
+    // one, and `feed` would then hand the analyzer a source-format buffer it did
+    // not ask for. Refusing the session is the honest outcome — the caller degrades
+    // to "preview not ready" and the dictation itself is untouched.
+    let converter: AVAudioConverter?
+    if source == target {
+      converter = nil
+    } else if let made = AVAudioConverter(from: source, to: target) {
+      converter = made
+    } else {
+      throw LivePreviewError.audioFormatUnavailable
+    }
     let module = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
     // **Bounded, because an unbounded queue makes a limb able to hurt the heart.**
     // The default policy is `.unbounded`: if Apple's analyzer stalls or falls behind
