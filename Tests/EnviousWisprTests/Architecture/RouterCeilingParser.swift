@@ -596,6 +596,21 @@ enum RouterCeilingParser {
     // Reject a `let` whose first physical line ends with `{` (trailing-closure
     // initializer body). A Swift computed property is always `var`, so a `let`
     // never reaches here as a computed property.
+    //
+    // DELIBERATE, and the reason belongs here because the mechanism alone reads
+    // like an oversight (cloud review, PR #2070, round sixteen, raised on
+    // exactly that reading). These ceilings bound INJECTED dependencies —
+    // "justify it, or put it behind an existing seam", per the freeze tests. A
+    // closure-typed `let` carrying an inline literal body is the opposite of a
+    // seam: it cannot be substituted by a caller or a test, it is not passed
+    // through `init`, and it is owned behaviour that happens to be spelled as a
+    // closure rather than a private method.
+    //
+    // Counting it would make the closure ceiling fire on a refactor that turns a
+    // private method into a stored closure, which adds no dependency at all —
+    // a false positive on the one axis a ceiling must stay trustworthy about.
+    // Measured while deciding: zero such top-level declarations across the three
+    // ceiling-tested homes, so nothing rests on this today either way.
     let firstLine =
       line.split(separator: "\n", omittingEmptySubsequences: false).first
       .map(String.init) ?? line
