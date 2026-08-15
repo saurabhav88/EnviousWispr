@@ -428,8 +428,18 @@ enum RouterCeilingParser {
     // (with optional `@MainActor` / `@Sendable` attributes before the
     // paren). `line` may be a folded multi-line declaration; `[[:space:]]`
     // already includes the join newline, so the signature matches across it.
+    //
+    // #2068: the effect markers between `)` and `->` are matched too. Without
+    // them `let f: @MainActor () async -> T` was not recognised as a closure at
+    // all, which had it counted as a COLLABORATOR — so an `async` dependency
+    // evaded the very closure ceiling this predicate exists to feed, and
+    // consumed a collaborator slot instead. Measured on `RecordingStarter`:
+    // `closureInjectedCount` read 8 against 10 closure-typed `let`s, the two
+    // missing ones being `makeRecoveryDirective` and
+    // `ensureSelectedReadyForPress`, both `async`.
     line.range(
-      of: #":[[:space:]]*(@[A-Za-z]+[[:space:]]+)*\([^)]*\)[[:space:]]*->[[:space:]]"#,
+      of:
+        #":[[:space:]]*(@[A-Za-z]+[[:space:]]+)*\([^)]*\)([[:space:]]+(async|throws|rethrows))*[[:space:]]*->[[:space:]]"#,
       options: .regularExpression) != nil
   }
 

@@ -185,6 +185,34 @@ import Testing
     #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
   }
 
+  /// #2068: an `async` closure used to match neither `isClosureTyped` nor
+  /// `isPrimitiveTyped`, so it counted as a COLLABORATOR — it evaded the closure
+  /// ceiling entirely while consuming a collaborator slot. Both counters were
+  /// wrong about the same property, in opposite directions.
+  ///
+  /// Measured on the real file: `RecordingStarter.closureInjectedCount` read 8
+  /// against 10 closure-typed `let`s, the two missing being
+  /// `makeRecoveryDirective` and `ensureSelectedReadyForPress` — both `async`,
+  /// and both dependencies of exactly the shape the closure ceiling exists to
+  /// bound.
+  @Test func closureCount_countsEffectfulClosures() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let load: @MainActor () async -> SomeResult
+          let fetch: @MainActor (Int) throws -> Bool
+          let both: @MainActor () async throws -> SomeResult
+          let wrapped:
+            @MainActor (Settings, Backend, Bool) async -> (id: String, payload: Data)?
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 4)
+    // The two-way half: the effectful closures left the collaborator count, they
+    // did not merely join the closure count. `alpha` is the only collaborator.
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
   @Test func nonPrivateMethodCount_countsNonPrivateExcludesPrivateAndInit() throws {
     let body = try classBody(
       of: """
