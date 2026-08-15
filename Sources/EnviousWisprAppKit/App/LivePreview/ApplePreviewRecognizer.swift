@@ -91,6 +91,29 @@ actor ApplePreviewRecognizer {
 
   /// Claim the locale, install its assets if missing, and resolve the audio
   /// format. Throws so the caller can degrade; it is never called from the heart.
+  ///
+  /// **No `SFSpeechRecognizer` authorization call, and no
+  /// `com.apple.security.personal-information.speech-recognition` entitlement:
+  /// this path needs neither. MEASURED, not assumed** — a standalone probe ran
+  /// this exact stack (reserve, `DictationTranscriber`, `SpeechAnalyzer`, real
+  /// audio, real text out) under three signatures: ad-hoc unhardened, self-signed
+  /// with hardened runtime, and the real Developer ID cert with hardened runtime
+  /// and this app's shipping entitlements. All three transcribed, with
+  /// `SFSpeechRecognizer.authorizationStatus()` reporting `notDetermined`
+  /// throughout — never requested, never granted. The legacy authorization gate
+  /// gates the legacy recognizer, which could ship audio to Apple's servers; this
+  /// analyzes on-device audio the app already holds microphone permission for.
+  ///
+  /// Recorded because a review round raised the opposite as a P1, reasoning by
+  /// analogy from the Contacts case (#636), where a usage string without the
+  /// matching entitlement failed SILENTLY on hardened runtime. That analogy is
+  /// sound and the conclusion is still wrong, so the measurement lives here
+  /// rather than in a session log. `NSSpeechRecognitionUsageDescription` stays in
+  /// Info.plist: it is not what grants access, but macOS terminates an app that
+  /// touches a protected class without one, and that is cheap insurance against a
+  /// future OS tightening this.
+  /// Re-measure before contradicting: `scratchpad/speechprobe/` in the #1988
+  /// session, or rebuild the probe from this doc comment.
   func prepare() async throws {
     try await Self.reserveLocale(locale)
 
