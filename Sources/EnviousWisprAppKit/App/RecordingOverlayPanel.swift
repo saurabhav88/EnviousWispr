@@ -1956,14 +1956,14 @@ struct RecordingOverlayView: View {
     case .waiting:
       // One line, so the pill starts compact and the growth the user sees is their
       // own words arriving rather than space that was always reserved.
-      previewText(LivePreviewCopy.listening, dimmed: true, lineLimit: 1)
+      previewText(LivePreviewCopy.listening, dimmed: true, lines: 1)
     case .unavailable(let reason):
       // Say why rather than sitting blank. A blank preview reads as "it did not
       // hear me", which is the exact anxiety this feature exists to remove. Two
       // lines because some of these sentences wrap.
-      previewText(reason, dimmed: true, lineLimit: 2)
+      previewText(reason, dimmed: true, lines: 2)
     case .text(let text):
-      previewText(text, dimmed: false, lineLimit: Self.previewMaxLines)
+      previewText(text, dimmed: false, lines: Self.previewMaxLines)
     }
   }
 
@@ -1972,17 +1972,46 @@ struct RecordingOverlayView: View {
   ///
   /// **No fixed height.** The text takes exactly the lines it needs, the capsule
   /// grows with it, and the panel follows via `onContentHeightChange`. At the cap
-  /// `lineLimit` stops the growth and `.head` truncation drops the OLDEST line, so
-  /// the newest words stay put and the first thing you said scrolls off the top.
-  private func previewText(_ message: String, dimmed: Bool, lineLimit: Int) -> some View {
+  /// the text keeps laying out in full but the box stops growing and pins the text
+  /// to its BOTTOM, so the overflow leaves at the top and the newest words stay
+  /// where the eye already is.
+  ///
+  /// **`.lineLimit(n)` + `.truncationMode(.head)` does NOT do this, despite
+  /// reading as though it should.** Measured by rendering this exact modifier
+  /// stack over 60 numbered words: it keeps the OLDEST four lines and truncates
+  /// only the LAST one, so a long dictation showed `word1...word32`, then a jump
+  /// to `...word53 word60` — the middle silently gone and four fifths of the pill
+  /// frozen on the opening words. Review caught it; the screenshot that had
+  /// "verified" the behaviour showed a transcript at exactly five lines, which
+  /// never exercises overflow at all.
+  ///
+  /// Bottom-pinned clipping is the literal reading of "scrolls off the top", and
+  /// needs no ScrollView (which brings scrollers, elasticity and its own
+  /// scroll-to-bottom timing into a borderless overlay) and no manual text
+  /// measurement.
+  private func previewText(_ message: String, dimmed: Bool, lines: Int) -> some View {
     Text(message)
       .font(.system(size: 12))
       .foregroundStyle(.white.opacity(dimmed ? 0.5 : 0.92))
-      .lineLimit(lineLimit)
-      .truncationMode(.head)
       .multilineTextAlignment(.leading)
       .fixedSize(horizontal: false, vertical: true)
       .frame(maxWidth: .infinity, alignment: .leading)
+      // `maxHeight` CAPS without fixing: below the cap the box is the text's own
+      // height, which is what lets the pill still grow a line at a time.
+      .frame(maxHeight: Self.previewHeight(lines: lines), alignment: .bottom)
+      .clipped()
+  }
+
+  /// Height of `lines` lines of the preview font.
+  ///
+  /// Derived from the font's own metrics rather than a literal, so the cap tracks
+  /// the type size instead of drifting silently if it changes. An exact multiple
+  /// of the line height matters: the clip lands on a line boundary, so no row is
+  /// ever cut through the middle of its glyphs. Verified against the render — five
+  /// lines measured 75pt, matching 5 x 15.
+  private static func previewHeight(lines: Int) -> CGFloat {
+    let font = NSFont.systemFont(ofSize: 12)
+    return ceil(font.ascender - font.descender + font.leading) * CGFloat(lines)
   }
 
   /// Five lines, matching the shape the founder tested against Spokenly: the pill
