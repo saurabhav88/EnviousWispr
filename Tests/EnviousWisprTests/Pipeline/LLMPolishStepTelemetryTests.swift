@@ -417,7 +417,7 @@ struct LLMPolishStepTelemetryTests {
   /// `@MainActor` isolation (`swift-testing-patterns.md`
   /// RULE: swift-testing-mainactor-arguments-needs-nonisolated).
   nonisolated static let noWeightsResident: [OllamaReadiness] = [
-    .serverDown, .modelMissing, .noModelSelected,
+    .daemonUnreachable, .modelMissing, .noModelSelected,
   ]
 
   @Test(
@@ -463,6 +463,45 @@ struct LLMPolishStepTelemetryTests {
     #expect(requests.count == 1, "a live daemon must still be asked to unload")
     #expect(spy.limbFailureCalls.count == 1)
     #expect(spy.limbFailureCalls.first?.cat == "http_500")
+  }
+
+  /// The conservative half, and the reason `.serverDown` is NOT in the list
+  /// above (cloud review, PR #2071). `.serverDown` means something IS listening
+  /// and answered unusably — a non-2xx, an unparseable body, or a blown 1s
+  /// deadline. None of those prove the model is unloaded, and a busy daemon is
+  /// exactly the state a large resident model produces, so treating it as "safe
+  /// to skip" would drop the unload precisely in the #286 case.
+  @Test("an ambiguous daemon answer still evicts, because it is not proof")
+  func ambiguousReadinessStillEvicts() async {
+    let spy = Spy()
+    let step = makeStep(provider: .ollama, telemetry: spy.seams)
+    step.ollamaReadinessProbe = { _ in .serverDown }
+
+    let requests = RequestCounter()
+    step.evictOllamaModel = { _ in
+      requests.bump()
+      return OllamaEvictOutcome(result: "failed", durationMs: 7, reason: "http_500")
+    }
+
+    await step.evictPreviousOllamaModel("qwen2.5:3b")
+
+    #expect(requests.count == 1, "no proof of absence means the unload must still be attempted")
+    #expect(spy.limbFailureCalls.count == 1, "and a genuine failure must still report")
+  }
+
+  /// The decision function directly, exhaustively. The eviction tests above
+  /// cover the wiring; this pins the POLICY, so a new `OllamaReadiness` case
+  /// cannot quietly inherit "safe to skip" — the direction that costs a #286
+  /// regression rather than a redundant localhost request.
+  @Test("only proven-no-residency answers may skip the unload")
+  func skipPolicyIsProofOnly() {
+    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.daemonUnreachable))
+    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.modelMissing))
+    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.noModelSelected))
+    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.serverDown) == false)
+    #expect(
+      LLMPolishStep.evictionIsProvablyUnnecessary(
+        .ready(facts: OllamaModelFacts(isRemote: false, thinks: nil))) == false)
   }
 
   /// A remote model reaches `.ready` too (the daemon lists it in `/api/tags`),

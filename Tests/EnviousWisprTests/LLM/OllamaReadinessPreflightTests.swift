@@ -362,22 +362,45 @@ struct OllamaReadinessPreflightTests {
     #expect(readiness != .noModelSelected)
   }
 
-  @Test("a transport error (connection refused) maps to serverDown")
-  func transportErrorIsServerDown() async {
+  /// #2061 re-pointed this case. A refused connection now reports
+  /// `.daemonUnreachable`, because it is the one transport outcome that PROVES
+  /// no process is holding weights — which is what the eviction gate needs to
+  /// decide whether skipping an unload is safe. Polish treats it identically to
+  /// `.serverDown`, so no user-facing behaviour moved.
+  @Test("connection refused proves nothing is listening")
+  func connectionRefusedIsDaemonUnreachable() async {
     let connector = OllamaConnector()
-    let readiness = await connector.preflightReadiness(
-      model: "llama3.2",
-      executor: { _ in throw URLError(.cannotConnectToHost) })
-    #expect(readiness == .serverDown)
+    for code in [URLError.Code.cannotConnectToHost, .cannotFindHost] {
+      let readiness = await connector.preflightReadiness(
+        model: "llama3.2",
+        executor: { _ in throw URLError(code) })
+      #expect(readiness == .daemonUnreachable)
+    }
   }
 
-  @Test("a request timeout maps to serverDown")
+  /// The conservative half, and the whole point of the split: a timeout means
+  /// something IS there and did not answer in time, so it must NOT read as proof
+  /// of absence. A busy daemon is exactly the state a large resident model
+  /// produces.
+  @Test("a request timeout stays serverDown, never daemonUnreachable")
   func timeoutErrorIsServerDown() async {
     let connector = OllamaConnector()
     let readiness = await connector.preflightReadiness(
       model: "llama3.2",
       executor: { _ in throw URLError(.timedOut) })
     #expect(readiness == .serverDown)
+    #expect(readiness != .daemonUnreachable)
+  }
+
+  /// Unmapped errors fail to the conservative side by construction, so a URLError
+  /// nobody enumerated cannot silently become proof of absence.
+  @Test("an unmapped transport error is serverDown, not proof of absence")
+  func unmappedTransportErrorIsConservative() {
+    #expect(OllamaConnector.classifyTransportFailure(URLError(.networkConnectionLost)) == .serverDown)
+    #expect(OllamaConnector.classifyTransportFailure(URLError(.badServerResponse)) == .serverDown)
+    // Not a URLError at all.
+    struct Odd: Error {}
+    #expect(OllamaConnector.classifyTransportFailure(Odd()) == .serverDown)
   }
 
   @Test("the absolute deadline abandons a wedged transport and reports serverDown")

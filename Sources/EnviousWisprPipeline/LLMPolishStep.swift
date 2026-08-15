@@ -330,15 +330,28 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     guard !modelName.isEmpty else { return }
 
     // Reuses the #1305 readiness authority rather than adding a second one.
-    // `.ready` is a NECESSARY condition for residency: `/api/tags` lists
-    // installed models, and a model resident in VRAM is necessarily installed.
-    // So the three other answers each mean there is nothing here to unload —
-    // `.serverDown` (no daemon, no weights anywhere), `.modelMissing` (daemon up,
-    // model not installed), `.noModelSelected` (nothing armed) — and skipping
-    // them costs no coverage. Probed fresh, never cached: the user can quit or
-    // start Ollama at any moment.
+    // Probed fresh, never cached: the user can quit or start Ollama at any
+    // moment.
+    //
+    // The gate SKIPS ONLY ON PROOF that nothing can be resident, and treats
+    // every ambiguous answer as "evict". That asymmetry is the whole safety
+    // argument, and it is the same default `PipelineSettingsSync` already
+    // applies to an unknown model: a needless unload costs one localhost
+    // request, while a skipped real one leaves a model in VRAM, which is the
+    // #286 Bluetooth-audio regression.
+    //
+    // - `.daemonUnreachable` — nothing is listening, so no process holds
+    //   weights. Proof. Skip.
+    // - `.modelMissing` — the daemon answered and the model is not installed, so
+    //   it cannot be loaded. Proof. Skip.
+    // - `.noModelSelected` — nothing armed (already handled by the guard above).
+    // - `.serverDown` — something IS listening and did not answer usefully: a
+    //   non-2xx, an unparseable body, or a blown 1s deadline. NOT proof, and a
+    //   busy daemon is exactly the state a large resident model produces, so
+    //   this must still evict (cloud review, PR #2071).
+    // - `.ready` — installed, so possibly resident. Evict.
     let readiness = await ollamaReadinessProbe(modelName)
-    guard case .ready = readiness else {
+    if Self.evictionIsProvablyUnnecessary(readiness) {
       await AppLogger.shared.log(
         "Ollama eviction skipped: model=\(modelName) reason=\(Self.evictionSkipReason(readiness))",
         level: .info, category: "Ollama")
@@ -364,9 +377,25 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   static func evictionSkipReason(_ readiness: OllamaReadiness) -> String {
     switch readiness {
     case .ready: return "ready"
-    case .serverDown: return "daemon_unreachable"
+    case .daemonUnreachable: return "daemon_unreachable"
+    case .serverDown: return "daemon_answered_unusably"
     case .modelMissing: return "model_not_installed"
     case .noModelSelected: return "no_model_armed"
+    }
+  }
+
+  /// Is skipping the unload PROVABLY safe (#2061)?
+  ///
+  /// True only for the two answers that establish no weights can be resident.
+  /// Exhaustive with no `default`, so a new `OllamaReadiness` case has to state
+  /// which side it falls on rather than silently inheriting "safe to skip" —
+  /// which is the direction that costs a #286 regression.
+  static func evictionIsProvablyUnnecessary(_ readiness: OllamaReadiness) -> Bool {
+    switch readiness {
+    case .daemonUnreachable, .modelMissing, .noModelSelected:
+      return true
+    case .ready, .serverDown:
+      return false
     }
   }
 
@@ -519,7 +548,13 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       case .ready(let facts):
         ollamaThinks = facts.thinks
         ollamaRemote = facts.isRemote
-      case .serverDown:
+      case .serverDown, .daemonUnreachable:
+        // #2061 split these for the EVICTION path, which must know whether
+        // weights can still be resident. Polish does not care why the daemon
+        // failed to answer — either way there is nothing to polish with — so
+        // both keep the single `providerUnreachable` sentence the user already
+        // sees. Listed explicitly rather than via `default` so a future case has
+        // to be decided here.
         throw LLMError.localPolishNotReady(.providerUnreachable)
       case .modelMissing:
         throw LLMError.localPolishNotReady(.modelUnavailable)
