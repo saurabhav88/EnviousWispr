@@ -370,12 +370,25 @@ struct OllamaReadinessPreflightTests {
   @Test("connection refused proves nothing is listening")
   func connectionRefusedIsDaemonUnreachable() async {
     let connector = OllamaConnector()
-    for code in [URLError.Code.cannotConnectToHost, .cannotFindHost] {
-      let readiness = await connector.preflightReadiness(
-        model: "llama3.2",
-        executor: { _ in throw URLError(code) })
-      #expect(readiness == .daemonUnreachable)
-    }
+    let readiness = await connector.preflightReadiness(
+      model: "llama3.2",
+      executor: { _ in throw URLError(.cannotConnectToHost) })
+    #expect(readiness == .daemonUnreachable)
+  }
+
+  /// `.cannotFindHost` is deliberately NOT proof (cloud review, PR #2071). A DNS
+  /// failure proves DNS failed — the request never reached the host to learn
+  /// whether a daemon is there — and this connector takes a public custom
+  /// `baseURL`, so the name may resolve again a moment later while a model stays
+  /// resident throughout.
+  @Test("a DNS failure is not proof that no daemon is running")
+  func dnsFailureIsServerDown() async {
+    let connector = OllamaConnector()
+    let readiness = await connector.preflightReadiness(
+      model: "llama3.2",
+      executor: { _ in throw URLError(.cannotFindHost) })
+    #expect(readiness == .serverDown)
+    #expect(readiness != .daemonUnreachable)
   }
 
   /// The conservative half, and the whole point of the split: a timeout means

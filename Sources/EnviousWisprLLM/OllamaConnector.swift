@@ -368,9 +368,16 @@ public struct OllamaConnector: TranscriptPolisher {
   static func classifyTransportFailure(_ error: any Error) -> OllamaReadiness {
     guard let urlError = error as? URLError else { return .serverDown }
     switch urlError.code {
-    case .cannotConnectToHost, .cannotFindHost:
+    case .cannotConnectToHost:
+      // Actively refused: the TCP connect reached the host and nothing was
+      // listening on the port, so no process there can be holding weights.
       return .daemonUnreachable
     default:
+      // Everything else, INCLUDING `.cannotFindHost` (cloud review, PR #2071).
+      // A DNS failure proves DNS failed, not that no daemon is running — the
+      // request never reached the host to find out, and this type takes a public
+      // custom `baseURL`, so the name may be resolvable again a moment later
+      // while a model stays resident the whole time.
       return .serverDown
     }
   }
