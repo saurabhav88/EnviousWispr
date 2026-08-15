@@ -315,8 +315,36 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// Ollama model, so the previous model doesn't linger in VRAM and
   /// starve CoreAudio (#286 root cause, #295 mitigation). No-op if
   /// `modelName` is empty. Swallows all errors; only logs.
+  ///
+  /// #2061: gated on the daemon's own answer before the unload is attempted.
+  /// The eviction tracker is seeded from CONFIGURATION — `ollamaModel` defaults
+  /// to `qwen2.5:3b` for every install, so merely SELECTING Ollama in the
+  /// provider picker armed an eviction for a model the user never installed,
+  /// let alone loaded. Switching back out then fired an unload at a daemon that
+  /// was never running. Measured over 90 days: 133 users hit
+  /// `NSURLErrorCannotConnectToHost` and 39 hit `http_404`, against 27 users who
+  /// have ever polished with Ollama at all — and that noise sat at the top of
+  /// every "what is failing most" query, burying the genuine stuck-model case
+  /// this eviction exists to catch.
   public func evictPreviousOllamaModel(_ modelName: String) async {
     guard !modelName.isEmpty else { return }
+
+    // Reuses the #1305 readiness authority rather than adding a second one.
+    // `.ready` is a NECESSARY condition for residency: `/api/tags` lists
+    // installed models, and a model resident in VRAM is necessarily installed.
+    // So the three other answers each mean there is nothing here to unload —
+    // `.serverDown` (no daemon, no weights anywhere), `.modelMissing` (daemon up,
+    // model not installed), `.noModelSelected` (nothing armed) — and skipping
+    // them costs no coverage. Probed fresh, never cached: the user can quit or
+    // start Ollama at any moment.
+    let readiness = await ollamaReadinessProbe(modelName)
+    guard case .ready = readiness else {
+      await AppLogger.shared.log(
+        "Ollama eviction skipped: model=\(modelName) reason=\(Self.evictionSkipReason(readiness))",
+        level: .info, category: "Ollama")
+      return
+    }
+
     let outcome = await evictOllamaModel(modelName)
     // #1177 (Telemetry Bible Phase 8): observe a quiet eviction FAILURE — a model that
     // won't unload lingers in VRAM and has disrupted CoreAudio BT audio (#286). The
@@ -327,6 +355,18 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     if outcome.result == "failed" {
       telemetry.limbFailureObserved(
         "ollama", "evict", "failed", outcome.reason, outcome.durationMs)
+    }
+  }
+
+  /// Log label for a skipped eviction (#2061). A closed set over the readiness
+  /// enum, exhaustive by construction so a future readiness case has to name
+  /// itself here rather than silently joining an existing bucket.
+  static func evictionSkipReason(_ readiness: OllamaReadiness) -> String {
+    switch readiness {
+    case .ready: return "ready"
+    case .serverDown: return "daemon_unreachable"
+    case .modelMissing: return "model_not_installed"
+    case .noModelSelected: return "no_model_armed"
     }
   }
 
