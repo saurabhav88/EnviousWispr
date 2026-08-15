@@ -5,23 +5,38 @@ import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
 
-// MARK: - RecordingSessionKernel (epic #827, PR-3; built from PR-1 §B spec)
+// MARK: - RecordingSessionKernel (epic #827)
 //
-// The single recording-session finite state machine. One kernel owns one
-// dictation's full lifecycle — prepare, warm up, record, stop, transcribe,
-// finalize — as the 14-state FSM in PR-1 §B.1. It delegates transcription to
-// an `ASREngineAdapter` and post-ASR text-processing / storage / delivery to
-// injected closure seams (PR-3 plan §14a — closure seams match
-// the finalization house style; the kernel wires `KernelFinalizationWiring`
-// into them).
+// THE LIVE RECORDING PATH. This is the single recording-session finite state
+// machine and every dictation the product performs runs through it. Production
+// builds it at `KernelDictationDriverFactory.swift`, once per driver, for both
+// engines; the deterministic simulator drives the same type through a test-side
+// `RecordingSessionDriving` wrapper. Treat any change here as touching the
+// heart path.
 //
-// PR-3 ships this production-unwired (epic §14.3): no App-layer caller. It is
-// driven only by the deterministic PR-2 simulator through a test-side
-// `RecordingSessionDriving` wrapper. PR-4 wires it into the live app.
+// One kernel owns one dictation's full lifecycle — prepare, warm up, record,
+// stop, transcribe, finalize. It delegates transcription to an
+// `ASREngineAdapter` and post-ASR text-processing / storage / delivery to
+// injected closure seams, which the kernel wires `KernelFinalizationWiring`
+// into.
 //
-// Transitions are methods, never open `state =` mutation (epic §3.3). A
-// forbidden transition is logged and refused — never a silent no-op, never an
-// `assertionFailure` (PR-3 plan §3.10).
+// The FSM is the FIVE states of `RecordingSessionState` below, not the 14 the
+// original epic spec described: #1548 collapsed them and moved the ending
+// CATEGORY out to the sibling `RecordingOutcome`, so `state` is pure lifecycle
+// POSITION. Read those two declarations, in that order, before changing
+// anything here.
+//
+// Transitions are methods, never open `state =` mutation. A forbidden
+// transition is logged and refused — never a silent no-op, never an
+// `assertionFailure`.
+//
+// (#2067: this header used to say the type was "production-unwired… no
+// App-layer caller" and to describe a 14-state machine. Both were true at
+// PR-3 of the epic and neither has been true since PR-4 and #1548
+// respectively. Forward-looking "PR-n will do X" notes are deliberately gone
+// rather than updated — a header that describes plan sequence goes stale
+// silently, and this is the most expensive file in the product to be
+// confidently wrong about.)
 
 /// A normalized, recoverable failure reason for the `failed` terminal state
 /// (PR-1 §B.1.2 transition table).

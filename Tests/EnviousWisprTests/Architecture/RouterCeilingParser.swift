@@ -1,4 +1,6 @@
 import Foundation
+import SwiftParser
+import SwiftSyntax
 import Testing
 
 /// PR8 of #763 — strict source parser for `*EventRouter` / `WedgeRecoveryRouter`
@@ -10,443 +12,524 @@ import Testing
 /// mutable state, lazy properties, setter-injected outlets, callback closures)
 /// are NOT collaborators and are excluded.
 ///
-/// `let` stored properties at brace-depth 0 are sub-binned into:
+/// `let` stored properties declared directly in the class body are sub-binned:
 ///   - collaborator slot: non-primitive, non-closure, non-NSObjectProtocol
 ///   - closure-injected slot: typed as `(...) -> ...`
 ///
-/// `classBody` anchors the brace-balanced scan on the class declaration's OWN
-/// `{` (found by scanning forward from the start of `final class`), not the
-/// first inner method/init brace. A continuation-line fold (`foldContinuationLines`)
-/// joins a declaration whose type annotation wraps across physical lines, so a
-/// multi-line closure-typed `let` classifies correctly. Fixed in #808.
+/// # Why this reads a syntax tree instead of text
+///
+/// This was 1013 lines of regex and character scanning that approximated
+/// Swift's type grammar. PR #2070's review found TEN genuine defects in it over
+/// twenty rounds, every one the same shape: a valid Swift spelling the
+/// approximation did not recognise. Block-comment state, `async` and
+/// typed-throws effect specifiers, optional and generic-wrapped function types,
+/// function metatypes, tuples containing a closure, dictionaries of closures,
+/// attribute argument lists, the `nonisolated` / `final` / `dynamic` /
+/// `unowned` modifiers, multi-line wrapping. Each fix was proven red-then-green
+/// and each was followed by another.
+///
+/// That is not bad luck, it is the price of approximating a real grammar.
+/// `SwiftParser` IS the grammar, so the class stops existing: a wrapped
+/// optional closure is an `OptionalTypeSyntax` around a `FunctionTypeSyntax`
+/// whether it was written `(() -> Void)?`, `Optional<() -> Void>`, or split
+/// across four lines with a comment in the middle. There is nothing left to
+/// spell differently.
+///
+/// The dependency was already here. `Package.swift` adds `SwiftParser` and
+/// `SwiftSyntax` to THIS test target for `EngineMutationInventoryFreezeTests`,
+/// whose manifest comment reads "real Swift parser (replaces its hand-rolled
+/// comment/string scanner)" — the same migration, already made once, in the
+/// same directory. `EngineProtocolSurfaceFreezeTests` is the second user and
+/// the model this file follows, including its fail-closed posture.
+///
+/// # Fail closed, never plausibly zero
+///
+/// A ceiling that reads LOW passes forever without complaining. So a source
+/// file that does not parse, or a requested class that is not found, throws.
+/// The one thing this must never do is return a confident small number.
 enum RouterCeilingParser {
 
+  struct ScanFailure: Error, CustomStringConvertible {
+    let context: String
+    let reason: String
+    var description: String { "\(context): \(reason)" }
+  }
+
+  // MARK: - Source extraction
+
+  /// The member text of `typeName`'s class body, sliced from the real source.
+  /// Returned as text because every consumer and all 52 regression tests take a
+  /// body string; the counters re-parse it rather than re-scan it.
   static func classBody(named typeName: String, at path: String) throws -> String {
     let source = try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
-    // Search the declaration AND balance the body braces over a CODE VIEW
-    // (string-literal contents + `//` comments blanked to spaces, length
-    // preserved), so a `final class X {` or a stray `{`/`}` inside a comment or
-    // string literal cannot mis-anchor the declaration or unbalance the scan
-    // (#826). `codeView` preserves Character count 1:1, so an offset into the
-    // code view is the same offset into the real source; the body is sliced
-    // from the REAL source because the per-line property/method classifiers
-    // (`isStoredPropertyDeclaration`, `isClosureTyped`, ...) parse the real
-    // declaration text (type names, attributes, default values) — only the
-    // fold's continuation check masks comments/strings internally via `codeView`.
-    let code = codeView(source)
-    let sourceChars = Array(source)
-    let codeChars = Array(code)  // same Character count as sourceChars
-    let declarations = [
-      "final class \(typeName) {",
-      "final class \(typeName):",
-      "class \(typeName) {",
-      "class \(typeName):",
-    ]
-    guard
-      let declOffset =
-        declarations
-        .compactMap({ code.range(of: $0) })
-        .map({ code.distance(from: code.startIndex, to: $0.lowerBound) })
-        .min()
-    else {
+    let tree = try parsed(source, context: "\(typeName) at \(path)")
+    guard let decl = ClassFinder.find(named: typeName, in: tree) else {
       Issue.record("\(typeName) declaration not found at \(path)")
-      throw POSIXError(.ENOENT)
+      throw ScanFailure(context: typeName, reason: "no class declaration named \(typeName)")
     }
-    // The class's OWN `{`: the first brace at or after the declaration start, in
-    // the code view (so a brace inside a comment/string between the declaration
-    // and the class body is never mistaken for it). Between the declaration
-    // start and the class brace the code holds only the type name and an
-    // optional `: Conformance, ...` list — never a real `{`.
-    guard let openBrace = (declOffset..<codeChars.count).first(where: { codeChars[$0] == "{" })
-    else {
-      Issue.record("\(typeName) declaration has no opening brace")
-      throw POSIXError(.EILSEQ)
-    }
-    var depth = 0
-    var idx = openBrace
-    while idx < codeChars.count {
-      let c = codeChars[idx]
-      if c == "{" { depth += 1 }
-      if c == "}" {
-        depth -= 1
-        if depth == 0 {
-          return String(sourceChars[(openBrace + 1)..<idx])
-        }
-      }
-      idx += 1
-    }
-    Issue.record("\(typeName) class body has unbalanced braces")
-    throw POSIXError(.EILSEQ)
+    return decl.memberBlock.members.description
   }
 
-  /// Returns the body of the FIRST function/method named `functionName` in
-  /// the file at `path`. Same anchoring approach as `classBody`: the
-  /// declaration is located and brace-balanced over the `codeView` (so a
-  /// commented-out or string-quoted declaration/brace can't mis-anchor the
-  /// scan), and the returned body is sliced from the real source text.
+  /// The body of the FIRST function/method named `functionName` in the file.
   static func functionBody(named functionName: String, at path: String) throws -> String {
     let source = try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
-    let code = codeView(source, blankBlockComments: true)
-    let sourceChars = Array(source)
-    let codeChars = Array(code)  // same Character count as sourceChars
-    let pattern =
-      #"^[[:space:]]*(?:(?:private|fileprivate|internal|package|public|open|"#
-      + #"static|class|nonisolated|mutating|nonmutating|override|final|required|"#
-      + #"convenience)[[:space:]]+)*func[[:space:]]+"#
-      + NSRegularExpression.escapedPattern(for: functionName)
-      + #"[[:space:]]*\("#
-    let regex = try NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines])
-    let codeRange = NSRange(code.startIndex..<code.endIndex, in: code)
-    guard
-      let match = regex.firstMatch(in: code, range: codeRange),
-      let declRange = Range(match.range, in: code)
-    else {
+    let tree = try parsed(source, context: "\(functionName) at \(path)")
+    guard let fn = FunctionFinder.find(named: functionName, in: tree) else {
       Issue.record("\(functionName) function declaration not found at \(path)")
-      throw POSIXError(.ENOENT)
+      throw ScanFailure(context: functionName, reason: "no function named \(functionName)")
     }
-    let declOffset = code.distance(from: code.startIndex, to: declRange.upperBound)
-    guard let openBrace = (declOffset..<codeChars.count).first(where: { codeChars[$0] == "{" })
-    else {
-      Issue.record("Function declaration for \(functionName) has no opening brace")
-      throw POSIXError(.EILSEQ)
+    guard let body = fn.body else {
+      Issue.record("Function \(functionName) at \(path) has no body")
+      throw ScanFailure(context: functionName, reason: "declaration has no body")
     }
-    var depth = 0
-    var idx = openBrace
-    while idx < codeChars.count {
-      let c = codeChars[idx]
-      if c == "{" { depth += 1 }
-      if c == "}" {
-        depth -= 1
-        if depth == 0 {
-          return String(sourceChars[(openBrace + 1)..<idx])
-        }
-      }
-      idx += 1
-    }
-    Issue.record("Function body for \(functionName) has unbalanced braces")
-    throw POSIXError(.EILSEQ)
+    return body.statements.description
   }
+
+  // MARK: - Counting
 
   /// Collaborator slot: non-primitive non-closure non-NSObjectProtocol `let`
-  /// stored properties at brace-depth 0 inside the class body.
+  /// stored properties declared directly in the class body.
   static func collaboratorCount(in body: String) -> Int {
-    countTopLevelStoredProperties(in: body) { line in
-      !isPrimitiveTyped(line) && !isClosureTyped(line) && !isNSObjectProtocolTyped(line)
-    }
+    storedLetBindings(in: body).filter { binding in
+      guard let type = binding.type else { return !binding.isBooleanLiteralInitialized }
+      return !isPrimitive(type) && !isFunctionType(type) && !isNSObjectProtocol(type)
+    }.count
   }
 
-  /// Closure-injected slot: instance `let` whose declared type is a closure
-  /// (`(...) -> ...`) at brace-depth 0.
+  /// Closure-injected slot: `let` whose declared type is a function type,
+  /// including every wrapping Swift permits around one.
   static func closureInjectedCount(in body: String) -> Int {
-    countTopLevelStoredProperties(in: body) { line in isClosureTyped(line) }
+    storedLetBindings(in: body).filter { binding in
+      guard let type = binding.type else { return false }
+      return isFunctionType(type)
+    }.count
   }
 
-  /// Non-private `func` declarations at brace-depth 0.
+  /// Non-private `func` declarations declared directly in the class body.
   static func nonPrivateMethodCount(in body: String) -> Int {
-    var depth = 0
-    var count = 0
-    for line in foldContinuationLines(body) {
-      let (opens, closes) = braceCounts(line)
-      let depthForThisLine = depth - max(0, closes - opens)
-      if depthForThisLine == 0, isNonPrivateMethodDeclaration(line) {
-        count += 1
-      }
-      depth += opens - closes
-    }
-    return count
+    members(in: body).compactMap { $0.as(FunctionDeclSyntax.self) }
+      .filter { !isPrivate($0.modifiers) }
+      .count
   }
 
+  /// Every module imported by `source`, including imports behind `#if`.
+  ///
+  /// Walked with a `SyntaxVisitor` rather than by iterating `tree.statements`,
+  /// because a `#if` block arrives as ONE statement of kind `IfConfigDeclSyntax`
+  /// and an import inside it is invisible to a hand-written loop. The generated
+  /// `visitChildren` descends into every child unconditionally, so conditional
+  /// compilation needs no case of its own here (cloud review, PR #2070 — the
+  /// THIRD site of this one mistake in this file).
+  ///
+  /// Depth does not matter for imports, which is what makes the visitor usable.
+  /// `members(in:)` cannot do this: it must count only members declared DIRECTLY
+  /// in the class body, and a visitor would happily descend into nested types.
+  /// That is the only hand-written list walk left in this file.
   static func imports(in source: String) -> Set<String> {
-    var result: Set<String> = []
-    let pattern = #"^[[:space:]]*import[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)"#
-    let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines])
-    let ns = source as NSString
-    regex?.enumerateMatches(
-      in: source, options: [],
-      range: NSRange(location: 0, length: ns.length)
-    ) { match, _, _ in
-      guard let m = match, m.numberOfRanges > 1 else { return }
-      result.insert(ns.substring(with: m.range(at: 1)))
+    ImportFinder.modules(in: Parser.parse(source: source))
+  }
+
+  /// Range of the first occurrence of `statement` in `body`, located over the
+  /// syntax tree so a commented-out or string-quoted occurrence cannot match,
+  /// but returned as an index into the REAL `body` text for the caller to slice
+  /// (#1634).
+  static func rangeOfStatement(_ statement: String, in body: String) -> Range<String.Index>? {
+    let needle = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !needle.isEmpty else { return nil }
+    guard let offset = firstCodeOffset(of: needle, in: body) else { return nil }
+    // SwiftSyntax positions are UTF-8 byte offsets; `String.Index` takes UTF-16.
+    // Converting through the UTF-8 view keeps the two in the same unit rather
+    // than assuming they agree, which they do not for any non-ASCII source.
+    let utf8 = body.utf8
+    guard
+      let startUTF8 = utf8.index(utf8.startIndex, offsetBy: offset, limitedBy: utf8.endIndex),
+      let endUTF8 = utf8.index(startUTF8, offsetBy: needle.utf8.count, limitedBy: utf8.endIndex),
+      let start = String.Index(startUTF8, within: body),
+      let end = String.Index(endUTF8, within: body)
+    else { return nil }
+    return start..<end
+  }
+
+  /// UTF-8 offset of the first occurrence of `needle` in REAL CODE — comments
+  /// and string-literal contents masked out first, so a commented-out or quoted
+  /// occurrence cannot match (#1634).
+  ///
+  /// A SUBSTRING search, not a node match. Callers pass fragments such as
+  /// `"assertionFailure("`, which is not a whole syntax node and never equals
+  /// one; an exact-node implementation returned nil for every real call site and
+  /// was caught only by the full suite. The tree supplies the mask; the search
+  /// itself stays textual because the question is textual.
+  ///
+  /// Masking is done on BYTES and the result is used only as a byte offset.
+  /// Blanking a multi-byte character byte-by-byte would change the Character
+  /// count and silently misalign a `String.Index` computed from it.
+  private static func firstCodeOffset(of needle: String, in body: String) -> Int? {
+    var bytes = Array(body.utf8)
+    let space = UInt8(ascii: " ")
+    let newline = UInt8(ascii: "\n")
+
+    func blank(from start: Int, length: Int) {
+      var i = start
+      let end = min(start + length, bytes.count)
+      while i < end {
+        if bytes[i] != newline { bytes[i] = space }
+        i += 1
+      }
     }
-    return result
+
+    for token in Parser.parse(source: body).tokens(viewMode: .sourceAccurate) {
+      var position = token.position.utf8Offset
+      for piece in token.leadingTrivia {
+        let length = piece.sourceLength.utf8Length
+        if piece.isComment { blank(from: position, length: length) }
+        position += length
+      }
+      // `.stringSegment` carries the segment text, so it is matched as a
+      // pattern rather than compared with `==`.
+      if case .stringSegment = token.tokenKind {
+        blank(
+          from: token.positionAfterSkippingLeadingTrivia.utf8Offset,
+          length: token.trimmedLength.utf8Length)
+      }
+      var trailing = token.endPositionBeforeTrailingTrivia.utf8Offset
+      for piece in token.trailingTrivia {
+        let length = piece.sourceLength.utf8Length
+        if piece.isComment { blank(from: trailing, length: length) }
+        trailing += length
+      }
+    }
+
+    // The match must not begin INSIDE an identifier. The retired implementation
+    // spelled this as a `(?<![A-Za-z0-9_])` lookbehind, and dropping it made
+    // `preassertAttached()` satisfy a guard that requires `assertAttached()` —
+    // a false green in a safety check, which is worse than a missed match
+    // (cloud review, PR #2070). Restored explicitly rather than inherited.
+    func isIdentifierByte(_ byte: UInt8) -> Bool {
+      (byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9"))
+        || (byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z"))
+        || (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "z"))
+        || byte == UInt8(ascii: "_")
+    }
+
+    let target = Array(needle.utf8)
+    guard !target.isEmpty, bytes.count >= target.count else { return nil }
+    for start in 0...(bytes.count - target.count) {
+      guard start == 0 || !isIdentifierByte(bytes[start - 1]) else { continue }
+      if Array(bytes[start..<(start + target.count)]) == target { return start }
+    }
+    return nil
   }
 
   // MARK: - Private
 
-  /// Net `{` / `}` counts for a line, measured on its CODE VIEW so a brace
-  /// inside a string literal or `//` comment does not shift brace depth. Every
-  /// depth-tracking loop below uses this, not raw `filter`, so a `}` in a
-  /// string/comment can neither drop a real declaration below depth 0 nor close
-  /// a scope early (#826).
-  private static func braceCounts(_ line: String) -> (opens: Int, closes: Int) {
-    let code = codeView(line)
-    return (code.filter { $0 == "{" }.count, code.filter { $0 == "}" }.count)
-  }
-
-  private static func countTopLevelStoredProperties(
-    in body: String, where predicate: (String) -> Bool
-  ) -> Int {
-    var depth = 0
-    var count = 0
-    for line in foldContinuationLines(body) {
-      let (opens, closes) = braceCounts(line)
-      let depthForThisLine = depth - max(0, closes - opens)
-      if depthForThisLine == 0 {
-        if isStoredPropertyDeclaration(line), predicate(line) {
-          count += 1
-        }
-      }
-      depth += opens - closes
+  private static func parsed(_ source: String, context: String) throws -> SourceFileSyntax {
+    let tree = Parser.parse(source: source)
+    guard !tree.hasError else {
+      Issue.record("Source did not parse cleanly for \(context)")
+      throw ScanFailure(context: context, reason: "source did not parse cleanly (tree.hasError)")
     }
-    return count
+    return tree
   }
 
-  /// Joins each top-level declaration whose type annotation wraps across
-  /// physical lines into a single logical line, so the per-line classifiers
-  /// (`isClosureTyped`, `isPrimitiveTyped`, ...) see the full type signature.
-  /// Folding is applied only at brace-depth 0; the folded logical line carries
-  /// the summed `{`/`}` counts of all merged physical lines, so depth tracking
-  /// downstream is unchanged.
-  private static func foldContinuationLines(_ body: String) -> [String] {
-    let physical = body.split(separator: "\n", omittingEmptySubsequences: false)
-      .map(String.init)
-    var result: [String] = []
-    var depth = 0
-    var i = 0
-    while i < physical.count {
-      var buffer = physical[i]
-      let (opens, closes) = braceCounts(buffer)
-      let depthForThisLine = depth - max(0, closes - opens)
-      if depthForThisLine == 0 {
-        while isUnterminatedDeclaration(buffer), i + 1 < physical.count {
-          i += 1
-          buffer += "\n" + physical[i]
+  /// A class body is not a valid source file on its own, so it is wrapped back
+  /// into a synthetic class before parsing. Wrapping rather than parsing the
+  /// members as top-level code keeps them genuine MEMBERS, where modifiers such
+  /// as `nonisolated` and `final` are legal and mean what they mean in the real
+  /// class.
+  private static func members(in body: String) -> [DeclSyntax] {
+    let tree = Parser.parse(source: "final class __CeilingProbe {\n\(body)\n}")
+    guard let probe = ClassFinder.find(named: "__CeilingProbe", in: tree) else { return [] }
+
+    var collected: [DeclSyntax] = []
+    func collect(_ list: MemberBlockItemListSyntax) {
+      for item in list {
+        // A `#if` block arrives as ONE member of kind `IfConfigDeclSyntax`, so
+        // reading `item.decl` alone skips every declaration inside it. The text
+        // scanner counted those lines — `#if` does not change brace depth — so
+        // not descending here would be a silent UNDERCOUNT relative to it, and
+        // the differential could not catch it because no ceilinged class uses
+        // `#if` today (cloud review, PR #2070).
+        //
+        // `EngineProtocolSurfaceFreezeTests` in this directory already handles
+        // this, and I read that file for its API shape without carrying the
+        // handling across — the same twin-not-copied mistake this PR keeps
+        // finding.
+        if let ifConfig = item.decl.as(IfConfigDeclSyntax.self) {
+          for clause in ifConfig.clauses {
+            if case .decls(let nested) = clause.elements { collect(nested) }
+          }
+          continue
         }
+        collected.append(item.decl)
       }
-      result.append(buffer)
-      // Recount after folding: `buffer` may now span several physical lines.
-      let (bufOpens, bufCloses) = braceCounts(buffer)
-      depth += bufOpens - bufCloses
-      i += 1
+    }
+    collect(probe.memberBlock.members)
+    return collected
+  }
+
+  private struct StoredLet {
+    let type: TypeSyntax?
+    let isBooleanLiteralInitialized: Bool
+  }
+
+  /// Every `let` binding declared directly in the body, one entry PER BINDING —
+  /// so `let a: A, b: B` contributes two, which the text scanner could not do
+  /// because it classified a whole line at a time.
+  ///
+  /// Excluded: `var` (owned mutable state), `static` / `class` type properties,
+  /// and any binding with an accessor block, which is a computed property or an
+  /// inline closure initializer rather than an injected seam.
+  ///
+  /// The type-property exclusion is the one rule here that is a DECISION about
+  /// what the ceiling means rather than a fact about Swift: a type property is
+  /// not an injected instance collaborator.
+  private static func storedLetBindings(in body: String) -> [StoredLet] {
+    var result: [StoredLet] = []
+    for member in members(in: body) {
+      guard let variable = member.as(VariableDeclSyntax.self) else { continue }
+      guard variable.bindingSpecifier.tokenKind == .keyword(.let) else { continue }
+      guard !isTypeProperty(variable.modifiers) else { continue }
+      for binding in variable.bindings {
+        guard binding.accessorBlock == nil else { continue }
+        let isBool = binding.initializer.map { isBooleanLiteral($0.value) } ?? false
+        expand(
+          pattern: binding.pattern, type: binding.typeAnnotation?.type,
+          isBooleanLiteralInitialized: isBool, into: &result)
+      }
     }
     return result
   }
 
-  /// A logical buffer is unterminated (its next physical line continues it)
-  /// when, in its code view (string literals and `//` comments removed), round
-  /// or square brackets are unbalanced-open, or the last non-whitespace
-  /// character is a continuation operator (`:` `,` `&`, or it ends with `->`).
-  /// Angle brackets are deliberately not tracked — `>` is ambiguous with `->`
-  /// and comparison.
-  private static func isUnterminatedDeclaration(_ buffer: String) -> Bool {
-    let code = codeView(buffer)
-    var paren = 0
-    var bracket = 0
-    for ch in code {
-      switch ch {
-      case "(": paren += 1
-      case ")": paren -= 1
-      case "[": bracket += 1
-      case "]": bracket -= 1
-      default: break
-      }
-    }
-    if paren > 0 || bracket > 0 { return true }
-    let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.hasSuffix("->") { return true }
-    if let last = trimmed.last, last == ":" || last == "," || last == "&" {
-      return true
-    }
-    return false
-  }
-
-  /// Returns `buffer` with string-literal contents and `//` line comments
-  /// blanked to spaces (Character count preserved 1:1), so bracket-balance,
-  /// trailing-operator checks, AND `classBody`'s declaration search + brace
-  /// scan see only real code while every offset still aligns with `buffer`. A
-  /// `//` or a bracket inside a `"..."` literal must not be read as syntax (a
-  /// `let x = "https://"` is a complete declaration, not a continuation; a `}`
-  /// inside a string must not close a class body). Handles single-line `"..."`
-  /// with `\` escapes; multi-line (`"""`) and raw (`#"..."#`) string literals
-  /// are out of scope — no ceiling-tested class declaration uses them.
+  /// One `StoredLet` per property a binding actually declares.
   ///
-  /// `blankBlockComments`, when `true`, ALSO blanks `/* ... */` block comments
-  /// (nesting-aware). Defaulted `false` and left off for `braceCounts`'
-  /// per-LINE calls (PR #1634 cloud review r4, 2026-07-17): a multi-line
-  /// block comment spanning several lines would reset its depth to 0 at each
-  /// new per-line call, mis-tracking braces inside it for every OTHER
-  /// existing caller of `braceCounts` (`countTopLevelStoredProperties`,
-  /// `nonPrivateMethodCount`, `foldContinuationLines`). Safe to enable only
-  /// where a single call processes one COMPLETE contiguous buffer in one pass
-  /// (`functionBody`, `rangeOfStatement` below) — block comments are a real,
-  /// if rare, live pattern in this codebase (confirmed via
-  /// `grep -rn '/\*' Sources/EnviousWispr*/`, one hit outside test files).
-  private static func codeView(_ buffer: String, blankBlockComments: Bool = false) -> String {
-    let chars = Array(buffer)
-    var result: [Character] = []
-    result.reserveCapacity(chars.count)
-    var inString = false
-    var blockCommentDepth = 0
-    var i = 0
-    while i < chars.count {
-      let c = chars[i]
-      if inString {
-        if c == "\\" {
-          // Blank the escape pair (`\"`, `\\`, ...): two input chars, two spaces
-          // out, so the escaped char cannot end the string and length is kept.
-          result.append(" ")
-          if i + 1 < chars.count { result.append(" ") }
-          i += 2
-          continue
-        }
-        if c == "\"" {
-          inString = false
-          result.append(" ")  // blank the closing quote (kept as a space, 1:1)
-          i += 1
-          continue
-        }
-        if c == "\n" {
-          inString = false  // a single-line literal cannot cross a newline
-          result.append(c)
-          i += 1
-          continue
-        }
-        result.append(" ")  // blank string content
-        i += 1
-        continue
-      }
-      if blankBlockComments, blockCommentDepth > 0 {
-        if i + 1 < chars.count, c == "/", chars[i + 1] == "*" {
-          blockCommentDepth += 1
-          result.append(" ")
-          result.append(" ")
-          i += 2
-          continue
-        }
-        if i + 1 < chars.count, c == "*", chars[i + 1] == "/" {
-          blockCommentDepth -= 1
-          result.append(" ")
-          result.append(" ")
-          i += 2
-          continue
-        }
-        result.append(c == "\n" ? "\n" : " ")
-        i += 1
-        continue
-      }
-      if c == "\"" {
-        inString = true
-        result.append(" ")  // blank the opening quote
-        i += 1
-        continue
-      }
-      if c == "/", i + 1 < chars.count, chars[i + 1] == "/" {
-        while i < chars.count, chars[i] != "\n" {
-          result.append(" ")  // blank the comment to end of line
-          i += 1
-        }
-        continue
-      }
-      if blankBlockComments, c == "/", i + 1 < chars.count, chars[i + 1] == "*" {
-        blockCommentDepth += 1
-        result.append(" ")
-        result.append(" ")
-        i += 2
-        continue
-      }
-      result.append(c)
-      i += 1
-    }
-    return String(result)
-  }
-
-  /// Returns the range of the FIRST occurrence of `statement` in `body`,
-  /// searched over `body`'s code view (comments/strings/block-comments
-  /// blanked, and a call passing `statement` as a full single buffer is safe
-  /// for `blankBlockComments`) so a commented-out or string-quoted occurrence
-  /// cannot satisfy the search — but the returned range indexes into the REAL
-  /// `body` text (cloud Codex review, PR #1634, 2026-07-17, 2 rounds: a plain
-  /// `body.range(of:)` substring search would let `// assertAttached()` or
-  /// `/* assertAttached() */` false-pass the same way the raw-count check
-  /// this file replaces once did). `codeView` preserves Character count 1:1,
-  /// so an offset into the view is the same offset into `body`.
+  /// A tuple PATTERN declares one property per element: `let (a, b): (X, Y)` is
+  /// two stored properties, and Swift accepts it — including nested, and with
+  /// the type inferred. Both forms compile, checked with `swiftc`, not recalled.
   ///
-  /// Requires an identifier boundary immediately before the match (round 2:
-  /// a plain substring search would let `preassertAttached()` satisfy a
-  /// search for `assertAttached()`). `statement` is always a caller-supplied
-  /// literal (call expressions like `assertAttached()`, not user input), so
-  /// `NSRegularExpression.escapedPattern` + a fixed lookbehind is safe.
-  static func rangeOfStatement(_ statement: String, in body: String) -> Range<String.Index>? {
-    let view = codeView(body, blankBlockComments: true)
-    let pattern = "(?<![A-Za-z0-9_])" + NSRegularExpression.escapedPattern(for: statement)
-    guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-    let viewRange = NSRange(view.startIndex..<view.endIndex, in: view)
-    guard
-      let match = regex.firstMatch(in: view, range: viewRange),
-      let found = Range(match.range, in: view)
-    else { return nil }
-    let startOffset = view.distance(from: view.startIndex, to: found.lowerBound)
-    let endOffset = view.distance(from: view.startIndex, to: found.upperBound)
-    guard
-      let lower = body.index(body.startIndex, offsetBy: startOffset, limitedBy: body.endIndex),
-      let upper = body.index(body.startIndex, offsetBy: endOffset, limitedBy: body.endIndex)
-    else { return nil }
-    return lower..<upper
+  /// The distinction is the PATTERN, not the type. `let pair: (X, Y)` is ONE
+  /// property whose type happens to be a tuple, and it keeps its single slot —
+  /// which is why `unwrapped(_:)` still refuses to peel multi-element tuple
+  /// TYPES. Reading only the type would conflate the two and count two injected
+  /// closure seams as one collaborator: an undercount, and the direction a
+  /// `<=` ceiling never reports (cloud review, PR #2070).
+  /// Unbounded on purpose, for the same reason as `unwrapped(_:)`: each step
+  /// recurses into a CHILD pattern of a finite acyclic tree, so it terminates on
+  /// the structure. A depth cap here emitted the remaining tuple as ONE property
+  /// instead of visiting its leaves — an undercount past the cap, invisible
+  /// because a `<=` ceiling only reports counts that are too HIGH (cloud review,
+  /// PR #2070).
+  private static func expand(
+    pattern: PatternSyntax, type: TypeSyntax?, isBooleanLiteralInitialized isBool: Bool,
+    into result: inout [StoredLet]
+  ) {
+    guard let tuple = pattern.as(TuplePatternSyntax.self) else {
+      result.append(StoredLet(type: type, isBooleanLiteralInitialized: isBool))
+      return
+    }
+    let elements = Array(tuple.elements)
+    // Pair each sub-pattern with its own type only when the annotation is a
+    // tuple of the SAME arity. Anything else (inferred type, or a shape that
+    // does not line up) drops to nil types rather than guessing: an untyped
+    // binding still counts as a collaborator, so the property stays visible to
+    // a ceiling instead of vanishing.
+    let types = type?.as(TupleTypeSyntax.self).map { Array($0.elements).map(\.type) }
+    if let types, types.count == elements.count {
+      for (element, elementType) in zip(elements, types) {
+        expand(
+          pattern: element.pattern, type: elementType,
+          isBooleanLiteralInitialized: isBool, into: &result)
+      }
+    } else if elements.count == 1, let only = elements.first {
+      // `let (a): X` — parenthesised, not a real tuple; keep the type.
+      expand(
+        pattern: only.pattern, type: type, isBooleanLiteralInitialized: isBool,
+        into: &result)
+    } else {
+      for element in elements {
+        expand(
+          pattern: element.pattern, type: nil, isBooleanLiteralInitialized: isBool,
+          into: &result)
+      }
+    }
   }
 
-  private static let storedPropertyPattern: String = {
-    let attrs = #"(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*"#
-    let access = #"(public|internal|private|fileprivate|package|open)?"#
-    return "^[[:space:]]*\(attrs)\(access)[[:space:]]*let[[:space:]]+[A-Za-z_]"
-  }()
+  private static func isTypeProperty(_ modifiers: DeclModifierListSyntax) -> Bool {
+    modifiers.contains {
+      $0.name.tokenKind == .keyword(.static) || $0.name.tokenKind == .keyword(.class)
+    }
+  }
 
-  private static func isStoredPropertyDeclaration(_ line: String) -> Bool {
-    guard line.range(of: storedPropertyPattern, options: .regularExpression) != nil
-    else { return false }
-    // Reject a `let` whose first physical line ends with `{` (trailing-closure
-    // initializer body). A Swift computed property is always `var`, so a `let`
-    // never reaches here as a computed property.
-    let firstLine =
-      line.split(separator: "\n", omittingEmptySubsequences: false).first
-      .map(String.init) ?? line
-    if firstLine.range(of: #"\{[[:space:]]*$"#, options: .regularExpression) != nil {
+  private static func isPrivate(_ modifiers: DeclModifierListSyntax) -> Bool {
+    modifiers.contains {
+      $0.name.tokenKind == .keyword(.private) || $0.name.tokenKind == .keyword(.fileprivate)
+    }
+  }
+
+  private static func isBooleanLiteral(_ expr: ExprSyntax) -> Bool {
+    expr.is(BooleanLiteralExprSyntax.self)
+  }
+
+  /// Peels every wrapper Swift permits around a type and reports whether what is
+  /// left is a function type. This one function replaces the entire class of
+  /// defects the text scanner accumulated: `(() -> Void)?`,
+  /// `Optional<() -> Void>`, `@MainActor () -> Void`, `((Error) -> Void)!` and
+  /// any nesting of those are the same tree shape here.
+  ///
+  /// Deliberately NOT peeled, because each means the property is not a closure:
+  /// a metatype (`(() -> Void).Type` is a type value), a multi-element tuple
+  /// (`(() -> Void, AlphaDep)` is a tuple), and any generic other than
+  /// `Optional` (`[String: () -> Void]` is a dictionary).
+  private static func isFunctionType(_ type: TypeSyntax) -> Bool {
+    unwrapped(type).is(FunctionTypeSyntax.self)
+  }
+
+  /// Peels wrappers until the type underneath is reached. Total, never nil.
+  ///
+  /// Unbounded on purpose. Every branch below moves `current` to a CHILD of the
+  /// node it just examined, and a SwiftSyntax tree is finite and acyclic, so the
+  /// loop terminates on the structure itself — a depth cap adds nothing a
+  /// malformed tree could defeat, and this one is not reachable from a parse.
+  /// An earlier version capped at 64 and returned nil beyond it, which turned a
+  /// deeply wrapped closure into a collaborator: an UNDERCOUNT, the direction a
+  /// `<=` ceiling never reports (cloud review, PR #2070). The comment justifying
+  /// that cap asserted it "stops a malformed tree from spinning" — a claim about
+  /// SwiftSyntax I had not checked, and which is false.
+  private static func unwrapped(_ type: TypeSyntax) -> TypeSyntax {
+    var current = type
+    while true {
+      if current.is(FunctionTypeSyntax.self) { return current }
+      if let attributed = current.as(AttributedTypeSyntax.self) {
+        current = attributed.baseType
+        continue
+      }
+      if let optional = current.as(OptionalTypeSyntax.self) {
+        current = optional.wrappedType
+        continue
+      }
+      if let forced = current.as(ImplicitlyUnwrappedOptionalTypeSyntax.self) {
+        current = forced.wrappedType
+        continue
+      }
+      // A single UNLABELLED element is a parenthesised type, not a tuple.
+      if let tuple = current.as(TupleTypeSyntax.self), tuple.elements.count == 1,
+        let only = tuple.elements.first, only.firstName == nil
+      {
+        current = only.type
+        continue
+      }
+      if let inner = soleOptionalGenericArgument(of: current) {
+        current = inner
+        continue
+      }
+      return current
+    }
+  }
+
+  /// `Optional<T>` / `Swift.Optional<T>` → `T`. In this swift-syntax version
+  /// `GenericArgumentSyntax.argument` is an enum (value generics), so the
+  /// `.type` case is matched explicitly rather than assumed — checked against
+  /// the pinned checkout, not remembered.
+  private static func soleOptionalGenericArgument(of type: TypeSyntax) -> TypeSyntax? {
+    let arguments: GenericArgumentListSyntax?
+    if let identifier = type.as(IdentifierTypeSyntax.self), identifier.name.text == "Optional" {
+      arguments = identifier.genericArgumentClause?.arguments
+    } else if let member = type.as(MemberTypeSyntax.self), member.name.text == "Optional",
+      member.baseType.as(IdentifierTypeSyntax.self)?.name.text == "Swift"
+    {
+      // Qualified only as `Swift.Optional`. Any other base — a project or
+      // dependency type that happens to nest a generic named `Optional`, such
+      // as `Box.Optional<() -> Void>` — is a DIFFERENT type, and unwrapping it
+      // would reclassify a collaborator as a closure on the strength of a name
+      // match alone (cloud review, PR #2070).
+      arguments = member.genericArgumentClause?.arguments
+    } else {
+      return nil
+    }
+    guard let arguments, arguments.count == 1, let only = arguments.first else { return nil }
+    guard case .type(let inner) = only.argument else { return nil }
+    return inner
+  }
+
+  private static let primitiveNames: Set<String> = [
+    "Bool", "Int", "String", "Double", "Float", "UInt64",
+  ]
+
+  private static func isPrimitive(_ type: TypeSyntax) -> Bool {
+    guard let identifier = unwrapped(type).as(IdentifierTypeSyntax.self) else { return false }
+    if identifier.genericArgumentClause != nil { return identifier.name.text == "Task" }
+    return primitiveNames.contains(identifier.name.text)
+  }
+
+  private static func isNSObjectProtocol(_ type: TypeSyntax) -> Bool {
+    guard let identifier = unwrapped(type).as(IdentifierTypeSyntax.self) else {
       return false
     }
-    return true
+    return identifier.name.text == "NSObjectProtocol"
   }
 
-  private static func isPrimitiveTyped(_ line: String) -> Bool {
-    let primitives = [
-      ": Bool", ": Int", ": String", ": Double", ": Float", ": UInt64",
-      "Task<", "= false", "= true",
-    ]
-    return primitives.contains { line.contains($0) }
-  }
+  // MARK: - Finders
 
-  private static func isClosureTyped(_ line: String) -> Bool {
-    // Matches a declared closure type signature: `: (...) -> ...`
-    // (with optional `@MainActor` / `@Sendable` attributes before the
-    // paren). `line` may be a folded multi-line declaration; `[[:space:]]`
-    // already includes the join newline, so the signature matches across it.
-    line.range(
-      of: #":[[:space:]]*(@[A-Za-z]+[[:space:]]+)*\([^)]*\)[[:space:]]*->[[:space:]]"#,
-      options: .regularExpression) != nil
-  }
+  private final class ClassFinder: SyntaxVisitor {
+    let targetName: String
+    var found: ClassDeclSyntax?
 
-  private static func isNSObjectProtocolTyped(_ line: String) -> Bool {
-    line.contains(": NSObjectProtocol")
-  }
-
-  private static let nonPrivateMethodPattern: String =
-    #"^[[:space:]]*(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*(nonisolated[[:space:]]+)?(public|internal|package|open)?[[:space:]]*(static[[:space:]]+)?(class[[:space:]]+)?func[[:space:]]+[A-Za-z_]"#
-
-  private static let privateMethodPattern: String =
-    #"^[[:space:]]*(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*(private|fileprivate)[[:space:]]+(static[[:space:]]+)?(class[[:space:]]+)?func[[:space:]]+[A-Za-z_]"#
-
-  private static func isNonPrivateMethodDeclaration(_ line: String) -> Bool {
-    if line.range(of: privateMethodPattern, options: .regularExpression) != nil {
-      return false
+    init(targetName: String) {
+      self.targetName = targetName
+      super.init(viewMode: .sourceAccurate)
     }
-    return line.range(of: nonPrivateMethodPattern, options: .regularExpression) != nil
+
+    static func find(named name: String, in tree: SourceFileSyntax) -> ClassDeclSyntax? {
+      let finder = ClassFinder(targetName: name)
+      finder.walk(tree)
+      return finder.found
+    }
+
+    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
+      if found == nil, node.name.text == targetName {
+        found = node
+        return .skipChildren
+      }
+      return .visitChildren
+    }
   }
+
+  private final class ImportFinder: SyntaxVisitor {
+    var found: Set<String> = []
+
+    static func modules(in tree: SourceFileSyntax) -> Set<String> {
+      let finder = ImportFinder(viewMode: .sourceAccurate)
+      finder.walk(tree)
+      return finder.found
+    }
+
+    override func visit(_ node: ImportDeclSyntax) -> SyntaxVisitorContinueKind {
+      if let first = node.path.first { found.insert(first.name.text) }
+      return .skipChildren
+    }
+  }
+
+  private final class FunctionFinder: SyntaxVisitor {
+    let targetName: String
+    var found: FunctionDeclSyntax?
+
+    init(targetName: String) {
+      self.targetName = targetName
+      super.init(viewMode: .sourceAccurate)
+    }
+
+    static func find(named name: String, in tree: SourceFileSyntax) -> FunctionDeclSyntax? {
+      let finder = FunctionFinder(targetName: name)
+      finder.walk(tree)
+      return finder.found
+    }
+
+    override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+      if found == nil, node.name.text == targetName {
+        found = node
+        return .skipChildren
+      }
+      return .visitChildren
+    }
+  }
+
 }
