@@ -120,6 +120,50 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
   }
 
+  /// #2068 (cloud review, PR #2070, round eighteen). `nonisolated let` is how a
+  /// `@MainActor` class exposes a Sendable seam, and `RecordingStarter` — whose
+  /// ceilings this parser freezes — is `@MainActor`. The stored-property pattern
+  /// allowed attributes and access control but not `nonisolated`, so such a
+  /// property was invisible to BOTH counters: not a collaborator, not a closure,
+  /// simply absent.
+  ///
+  /// Reachable, unlike the generic-spelling findings recorded as limits:
+  /// `nonisolated` appears at top level in 27 files here. The tell that it was an
+  /// oversight rather than a decision is the twin — `nonPrivateMethodPattern` has
+  /// always carried `nonisolated`, so the method side already knew.
+  ///
+  /// All four orderings verified with `swiftc -swift-version 6 -typecheck`.
+  @Test func collaboratorCount_countsNonisolatedStoredProperties() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          nonisolated let alpha: AlphaDep
+          private nonisolated let beta: BetaDep
+          nonisolated private let gamma: GammaDep
+          nonisolated(unsafe) let delta: DeltaDep
+          nonisolated let onEvent: @Sendable (Int) -> Bool
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 4)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+  }
+
+  /// The control for that widening: `static let` is a TYPE property, not an
+  /// injected instance collaborator, and must stay excluded. Admitting
+  /// `nonisolated` to the modifier alternation is exactly the edit that could
+  /// let `static` in alongside it.
+  @Test func collaboratorCount_stillExcludesStaticTypeProperties() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          static let shared: Registry
+          private static let table: Lookup
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
   @Test func collaboratorCount_excludesVarStoredProperty() throws {
     // `var` is owned mutable state, not a collaborator (architecture-rules.md).
     let body = try classBody(

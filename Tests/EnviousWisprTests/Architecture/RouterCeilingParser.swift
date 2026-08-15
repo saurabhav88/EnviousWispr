@@ -615,8 +615,24 @@ enum RouterCeilingParser {
 
   private static let storedPropertyPattern: String = {
     let attrs = #"(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*"#
-    let access = #"(public|internal|private|fileprivate|package|open)?"#
-    return "^[[:space:]]*\(attrs)\(access)[[:space:]]*let[[:space:]]+[A-Za-z_]"
+    // `nonisolated` is an isolation modifier on an INSTANCE property, so a
+    // `nonisolated let` seam is a collaborator like any other and must be
+    // counted (cloud review, PR #2070, round eighteen). Swift accepts it on
+    // either side of access control and in the `nonisolated(unsafe)` form, all
+    // verified with `swiftc -typecheck`, so one repeating alternation covers
+    // every ordering rather than enumerating the pairings.
+    //
+    // This was an oversight rather than a decision: `nonPrivateMethodPattern`
+    // below has always carried `nonisolated`, so the METHOD side already knew
+    // the modifier occurs here — 27 files use it at top level — while the
+    // property side was never updated to match. The twin is the evidence.
+    //
+    // `static` stays OUT deliberately: a type property is not an injected
+    // instance collaborator, and admitting it would change what the ceiling
+    // counts rather than fix what it reads.
+    let modifiers =
+      #"((public|internal|private|fileprivate|package|open|nonisolated(\(unsafe\))?)[[:space:]]+)*"#
+    return "^[[:space:]]*\(attrs)\(modifiers)let[[:space:]]+[A-Za-z_]"
   }()
 
   private static func isStoredPropertyDeclaration(_ line: String) -> Bool {
