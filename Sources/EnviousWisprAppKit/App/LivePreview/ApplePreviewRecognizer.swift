@@ -126,7 +126,16 @@ actor ApplePreviewRecognizer {
     // Deliberately never finalized: see trap 2.
     let warmModule = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
     let warmAnalyzer = SpeechAnalyzer(modules: [warmModule])
-    try await warmAnalyzer.prepareToAnalyze(in: target)
+    do {
+      try await warmAnalyzer.prepareToAnalyze(in: target)
+    } catch {
+      // The FOURTH abandoned-analyzer site: preparation throwing leaves before the
+      // cancel below. Preparation failure is retried on a later recording, so each
+      // failure would strand another analyzer. `defer` cannot be used here because
+      // the cleanup is async.
+      await warmAnalyzer.cancelAndFinishNow()
+      throw error
+    }
     // The THIRD abandoned-analyzer site, and the one a sweep of the previous two
     // missed. Warm-up runs on first use and on every language change, and an
     // analyzer that is simply dropped retains its analysis and model resources, so
