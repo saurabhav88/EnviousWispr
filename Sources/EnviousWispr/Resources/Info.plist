@@ -38,6 +38,8 @@
 	<string>EnviousWispr needs microphone access for speech-to-text dictation.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>EnviousWispr uses on-device speech recognition to show your words in the recording pill while you speak. This preview stays on your Mac and is never the text that gets pasted.</string>
 	<key>PostHogAPIKey</key>
 	<string>$(POSTHOG_API_KEY)</string>
 	<key>SentryDSN</key>
