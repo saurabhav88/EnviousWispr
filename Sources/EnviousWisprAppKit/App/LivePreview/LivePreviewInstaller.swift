@@ -30,13 +30,24 @@ enum LivePreviewInstaller {
     capture: any AudioCaptureInterface,
     settings: SettingsManager
   ) {
+    // **Effective, not merely persisted.** A value saved as true on macOS 26 and
+    // then read on an older system used to enlarge the pill on every recording and
+    // fill it with "needs macOS 26" — while the toggle that would turn it off was
+    // disabled for the same reason, so the user could not stop it. Folding the OS
+    // check in here means an unsupported system behaves exactly like the setting
+    // being off: normal pill, no message, nothing to escape from. One expression,
+    // used for both the geometry and the coordinator, so the two cannot disagree.
+    let effectivelyEnabled: () -> Bool = {
+      guard #available(macOS 26.0, *) else { return false }
+      return settings.livePreviewEnabled
+    }
     let coordinator = LivePreviewCoordinator(
       audioCapture: capture,
-      isEnabled: { settings.livePreviewEnabled },
+      isEnabled: effectivelyEnabled,
       languageMode: { settings.languageMode }
     )
     overlay.setLivePreviewProviders(
-      enabled: { settings.livePreviewEnabled },
+      enabled: effectivelyEnabled,
       display: { coordinator.display }
     )
     overlay.setRecordingIntentObserver { recording in
