@@ -60,7 +60,7 @@ public final class LLMNetworkSession: Sendable {
     Task.detached { [session, sink = keychainManager.telemetrySink] in
       let start = CFAbsoluteTimeGetCurrent()
       do {
-        let (_, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
         let ms = Int(((CFAbsoluteTimeGetCurrent() - start) * 1000).rounded())
         let statusCode = (response as? HTTPURLResponse)?.statusCode
         let status = statusCode?.description ?? "n/a"
@@ -68,6 +68,24 @@ public final class LLMNetworkSession: Sendable {
           "preWarm completed provider=\(provider.rawValue) model=\(model) duration_ms=\(ms) status=\(status)",
           level: .info, category: "LLM"
         )
+        // #2062: the response body used to be discarded (`let (_, response)`),
+        // which made every non-2xx a dead end — we recorded the status code and
+        // threw away the one thing that says why. 314 HTTP 400s were
+        // uninvestigable for it.
+        //
+        // Debug app log ONLY, never telemetry. A provider error body is
+        // free-form vendor text that can quote the request, so it is barred from
+        // PostHog and Sentry by the `TelemetryService.polishFailed` contract
+        // ("No transcript, prompt, provider error body, key, or endpoint URL").
+        // `AppLogger` is entirely `#if DEBUG` and additionally gated on in-app
+        // Debug Mode, so this reaches a release build's disk never.
+        if let code = statusCode, !(200...299).contains(code) {
+          await AppLogger.shared.log(
+            "preWarm failure body provider=\(provider.rawValue) model=\(model) "
+              + "status=\(code) body=\(Self.warmupFailureBodyForLog(data))",
+            level: .info, category: "LLM"
+          )
+        }
         // Cloud review (PR #1211): a non-2xx response does NOT throw (URLSession
         // returns it), so it would otherwise log "completed" and never report the
         // failure — mirror the A5 evict 2xx/non-2xx split. A missing status code
@@ -108,6 +126,57 @@ public final class LLMNetworkSession: Sendable {
     }
   }
 
+  /// Renders a warm-up failure body for the DEBUG app log (#2062).
+  ///
+  /// Bounded, because a provider can return an HTML error page or a multi-KB
+  /// JSON blob and this line goes to a rotating file the user may send us. The
+  /// first 512 bytes carry the `error.message` for every provider we route to.
+  /// Non-UTF8 bodies report their size rather than dropping the line silently,
+  /// so "we got a body and could not read it" stays distinguishable from "there
+  /// was no body".
+  static func warmupFailureBodyForLog(_ data: Data, limit: Int = 512) -> String {
+    guard !data.isEmpty else { return "<empty>" }
+    guard let text = String(data: data.prefix(limit), encoding: .utf8) else {
+      return "<non-utf8 \(data.count) bytes>"
+    }
+    let flattened = text.replacingOccurrences(of: "\n", with: " ")
+      .trimmingCharacters(in: .whitespaces)
+    return data.count > limit ? flattened + "…<truncated \(data.count) bytes>" : flattened
+  }
+
+  /// Output-token ceiling for the OpenAI warm-up ping (#2062).
+  ///
+  /// Was `1`, which every `gpt-5.x` model rejects with a real HTTP 400:
+  /// `"Could not finish the message because max_tokens or model output limit was
+  /// reached. Please try again with higher max_tokens."` Reasoning models draw
+  /// reasoning tokens from this same budget, so a ceiling of 1 cannot be
+  /// satisfied even by an empty answer. It cost 314 warm-up failures across 4
+  /// users in 90 days, every one of them a silent no-op.
+  ///
+  /// Measured against the live API on 2026-08-15, prompt `"."`, one request per
+  /// cell — the cliff is between 2 and 4 and is identical on all three models:
+  ///
+  /// | max_completion_tokens | gpt-5.4-mini | gpt-5.6-sol | gpt-5-mini | gpt-4o-mini |
+  /// |---|---|---|---|---|
+  /// | 1 | 400 | 400 | 400 | 200 |
+  /// | 2 | 400 | 400 | 400 | 200 |
+  /// | 4 | 200 | 200 | 200 | 200 |
+  /// | 16 | 200 | 200 | 200 | 200 |
+  ///
+  /// 16 rather than the measured minimum of 4: it is 4x the observed cliff, it
+  /// matches OpenAI's documented floor for reasoning models, and the cost of
+  /// being generous is bounded by the ceiling itself (~16 output tokens on one
+  /// ping per session). The cost of being tight is another silent 400 on a model
+  /// family that did not exist when this was written — which is exactly how the
+  /// `1` got here.
+  ///
+  /// Deliberately ONE unconditional value, not a per-family branch. `gpt-4o`,
+  /// `gpt-4o-mini` and `gpt-4.1-mini` were all verified to still return 200 at
+  /// this ceiling, so no branch is needed — and a model-family branch is a table
+  /// that goes stale every time OpenAI ships a family, silently reverting this
+  /// fix for it.
+  static let openAIWarmupMaxCompletionTokens = 16
+
   func buildWarmupRequest(
     provider: LLMProvider, model: String, apiKey: String
   ) -> URLRequest? {
@@ -137,7 +206,7 @@ public final class LLMNetworkSession: Sendable {
       let body: [String: Any] = [
         "model": model,
         "messages": [["role": "user", "content": "."]],
-        "max_completion_tokens": 1,
+        "max_completion_tokens": Self.openAIWarmupMaxCompletionTokens,
         "store": false,
       ]
       request.httpBody = try? JSONSerialization.data(withJSONObject: body)
