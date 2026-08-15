@@ -182,6 +182,17 @@ def _key(name: str) -> str:
     return p.read_text().strip()
 
 
+class JudgeUnavailableError(Exception):
+    """The judge transport cannot work at all, and no number of attempts changes
+    that: a missing or unexecutable CLI, a route with no funded transport.
+
+    Exists because the retry predicate treats every OSError as transport, which
+    is right for an HTTP call and wrong for a subprocess spawn — `FileNotFoundError`
+    from a missing `claude` binary is an OSError and would otherwise be retried
+    once per attempt, per chunk, for the whole corpus.
+    """
+
+
 def _retryable_http_error(exc: Exception) -> bool:
     """True when `exc` is a transient transport failure worth another attempt.
 
@@ -255,6 +266,17 @@ def call_claude(model: str, system: str, user: str) -> str:
         )
     except subprocess.TimeoutExpired:
         raise RuntimeError("claude judge: CLI timed out after 300s")
+    except OSError as e:
+        # A spawn failure (`claude` not on PATH, not executable) is an OSError,
+        # and `_retryable_http_error` answers True for every OSError because in
+        # an HTTP call site that means transport. Here it does not: the CLI will
+        # be just as missing on the fifth attempt, so this must NOT be retried.
+        # Raised as its own type rather than RuntimeError, which judge_chunk
+        # deliberately does retry.
+        raise JudgeUnavailableError(
+            f"claude judge: cannot start the CLI ({type(e).__name__}: {e}). "
+            f"This is permanent — install/authenticate the CLI or pick another "
+            f"--judge; retrying would just burn the wall clock.") from None
     if proc.returncode != 0:
         raise RuntimeError(
             f"claude judge: CLI exited {proc.returncode}: {(proc.stderr or '').strip()[:300]}")
@@ -686,6 +708,13 @@ def judge_chunk(model: str, system: str, payload_cases: list[dict], attempt: int
     try:
         return parse_judge_array(dispatch_judge(model, system, user))
     except Exception as e:
+        # JudgeUnavailableError needs no clause here: it derives from Exception
+        # directly, so it matches neither `_retryable_http_error` (OSError /
+        # HTTPException) nor the parse/RuntimeError arm, and falls through to
+        # FATAL on the first attempt. An explicit guard was written first and a
+        # mutation control proved it dead — the type relationship is the
+        # mechanism, and `test_a_missing_judge_cli_is_not_retried` locks it so a
+        # future re-parenting of that class cannot silently make it retryable.
         if (attempt < JUDGE_CHUNK_ATTEMPTS
                 and (_retryable_http_error(e)
                      or isinstance(e, (json.JSONDecodeError, RuntimeError)))):

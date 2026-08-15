@@ -2612,13 +2612,72 @@ def test_judge_chunk_gives_up_on_a_client_error_without_burning_retries():
     assert out == [], "a chunk that never scored must return empty so reconciliation counts it"
 
 
+def test_a_missing_judge_cli_is_not_retried():
+    """A spawn failure is permanent, so it must not consume the retry budget.
+
+    This is the trap the broadened predicate creates: `FileNotFoundError` from a
+    missing `claude` binary IS an OSError, and every OSError reaching an HTTP
+    call site means transport. Here it means the judge does not exist, and five
+    attempts with backoff per chunk across a whole corpus is pure wall clock.
+    Cloud review found the same shape in tts_corpus.py, where a full disk was
+    being answered with another paid TTS request.
+    """
+    calls = {"n": 0}
+
+    def missing_cli(model, system, user):
+        calls["n"] += 1
+        raise bj.JudgeUnavailableError("claude judge: cannot start the CLI")
+
+    real_dispatch, real_sleep = bj.dispatch_judge, bj.time.sleep
+    bj.dispatch_judge = missing_cli
+    bj.time.sleep = lambda _s: None
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            out = bj.judge_chunk("claude-sonnet-5", "sys", [{"id": "A1"}])
+    finally:
+        bj.dispatch_judge, bj.time.sleep = real_dispatch, real_sleep
+
+    assert calls["n"] == 1, \
+        f"a permanently unavailable judge must be attempted exactly once, " \
+        f"saw {calls['n']} — the retry budget is being spent on a missing binary"
+    assert out == [], "the chunk must return empty so reconciliation counts it"
+
+
+def test_call_claude_converts_a_spawn_failure_into_the_permanent_error():
+    """The conversion happens at the transport, not at the call site.
+
+    Asserting only judge_chunk's behaviour would pass even if `call_claude` let a
+    bare FileNotFoundError escape, because the test above injects the already-
+    converted type. This drives the real `call_claude`.
+    """
+    real_run = bj.subprocess.run
+
+    def no_binary(*a, **kw):
+        raise FileNotFoundError(2, "No such file or directory: 'claude'")
+
+    bj.subprocess.run = no_binary
+    try:
+        raised = None
+        try:
+            bj.call_claude("claude-sonnet-5", "sys", "user")
+        except BaseException as e:  # noqa: BLE001
+            raised = e
+    finally:
+        bj.subprocess.run = real_run
+
+    assert isinstance(raised, bj.JudgeUnavailableError), \
+        f"a missing CLI must surface as JudgeUnavailableError, got {type(raised).__name__}: {raised}"
+    assert not bj._retryable_http_error(raised), \
+        "JudgeUnavailableError must not satisfy the transport predicate"
+
+
 # --------------------------------------------------------------------------- #
 # runner                                                                      #
 # --------------------------------------------------------------------------- #
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 127
+EXPECTED_TESTS = 129
 
 
 def _run() -> int:
