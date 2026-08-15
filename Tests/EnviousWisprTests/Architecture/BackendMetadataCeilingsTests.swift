@@ -40,12 +40,14 @@ import Testing
       named: "BackendMetadata", in: source)
     let total = bodies.reduce(0) { $0 + CeilingsTestSupport.countTopLevelLetCollaborators(in: $1) }
     #expect(
-      total == 4,
+      total == 3,
       """
-      BackendMetadata stored-property count mismatch: expected exactly 4 \
-      (settings + asrManager + llmDiscovery + activeModelLoaded), found \(total). \
-      Adding a stored property requires a Bible §30 entry; if this dropped, \
-      ratchet down.
+      BackendMetadata stored-property count mismatch: expected exactly 3 \
+      (settings + llmDiscovery + activeModelLoaded), found \(total). \
+      Ratcheted 4 → 3 by #2065, which removed `asrManager`: its only reader was \
+      the per-engine branch in `statusText(for:)`, and collapsing that table to \
+      one left it assigned and never read. Adding a stored property requires a \
+      Bible §30 entry; if this dropped again, ratchet down.
       """)
   }
 
