@@ -1014,6 +1014,36 @@ def case_type_of(case: dict, behavior: str) -> str:
     return "positive"
 
 
+def _spoken_truth(case: dict) -> str:
+    """What was ACTUALLY said, across the two corpus schemas that carry it.
+
+    Speechpath (`speechpath_1861.jsonl`, the live corpus) stores it as a top-level
+    `voice_text`. The older `type_b_parakeet.jsonl`, built by
+    `build_refreshed_corpus.py`, stores the pre-ASR text nested at
+    `input_source.original_input` instead. Reading only `voice_text` therefore
+    returned "" for every row of that corpus, and the personal-name rule silently
+    fell through to its empty-truth branch — the rubric change present but inert,
+    which is worse than absent because the receipt looks the same either way.
+
+    Measured on the 1,690-row `type_b_parakeet.jsonl`: `original_input` is
+    populated on 1,458 rows (86.3%); the remaining 13.7% carry an empty value and
+    correctly keep the conservative empty-truth behaviour.
+
+    `input_source` is a dict in that corpus but the type is not guaranteed across
+    older files, so a non-dict is treated as absent rather than raising — this is
+    a grading path, and it must degrade to the safe branch rather than kill a run.
+    """
+    v = case.get("voice_text")
+    if isinstance(v, str) and v.strip():
+        return v
+    src = case.get("input_source")
+    if isinstance(src, dict):
+        v = src.get("original_input")
+        if isinstance(v, str) and v.strip():
+            return v
+    return ""
+
+
 def normalize_case(case: dict) -> dict:
     """corpus case -> normalized judge-input record (behavior-aware system)."""
     behavior = behavior_key(case)
@@ -1051,7 +1081,7 @@ def normalize_case(case: dict) -> dict:
         # (Rajesh->"Rajash", Nadia->"Nodia", Hassan->"Hassen", Noor->"Norr").
         #
         # Empty for corpora that carry no spoken source; the prompt handles absence.
-        "spoken_truth": case.get("voice_text", ""),
+        "spoken_truth": _spoken_truth(case),
         "notes": case.get("notes", ""),
     }
 

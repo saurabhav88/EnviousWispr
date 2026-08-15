@@ -2717,13 +2717,39 @@ def test_call_claude_converts_a_spawn_failure_into_the_permanent_error():
         "JudgeUnavailableError must not satisfy the transport predicate"
 
 
+def test_spoken_truth_reads_both_corpus_schemas():
+    """The personal-name rule is only as good as the field it reads.
+
+    Two corpora carry "what was said" under different names, and reading only
+    Speechpath's `voice_text` made the rule INERT on the older parakeet corpus --
+    present, shipped, and silently doing nothing, which a receipt cannot show.
+    Real shapes from both files, plus the degenerate ones, because this runs on
+    a grading path and must never raise.
+    """
+    # Speechpath: top-level voice_text.
+    assert bj._spoken_truth({"voice_text": "Tell Aoife it is ready"}) == "Tell Aoife it is ready"
+    # type_b_parakeet: nested under input_source.
+    assert bj._spoken_truth(
+        {"input_source": {"original_input": "set aside four plates make that five"}}
+    ) == "set aside four plates make that five"
+    # voice_text wins when both are present.
+    assert bj._spoken_truth(
+        {"voice_text": "top", "input_source": {"original_input": "nested"}}) == "top"
+    # Degenerate shapes all fall back to the conservative empty-truth branch.
+    for case in ({}, {"voice_text": ""}, {"voice_text": "   "},
+                 {"input_source": None}, {"input_source": "a string, not a dict"},
+                 {"input_source": {}}, {"input_source": {"original_input": None}},
+                 {"input_source": {"original_input": "  "}}):
+        assert bj._spoken_truth(case) == "", f"{case!r} must yield empty, not raise"
+
+
 # --------------------------------------------------------------------------- #
 # runner                                                                      #
 # --------------------------------------------------------------------------- #
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 130
+EXPECTED_TESTS = 131
 
 
 def _run() -> int:
