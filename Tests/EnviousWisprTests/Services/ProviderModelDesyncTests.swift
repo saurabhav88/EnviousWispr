@@ -25,14 +25,21 @@ import Testing
 /// and is one deleted `||` clause away from reopening a defect that silently
 /// disables AI polish forever.
 ///
-/// **Mutation-verified, not asserted.** Dropping the
-/// `modelIDLooksLikeCloudProvider` clause from `canonicalizeLLMModelForProvider`
-/// and re-running this suite: 4 of 7 cases fail with 16 issues, and they fail by
-/// reproducing the exact production pairing —
-/// `effectiveLLMModel → "llama3.2"` under `provider = .gemini`. The remaining 3
-/// are the two-way controls below and they stay GREEN under the mutant, which is
-/// what shows they are independent checks rather than the same assertion
-/// restated.
+/// **Mutation-verified in both directions, each measured against this exact
+/// 8-case suite rather than inferred** (the numbers below were re-run after the
+/// launch control was added — cloud review, PR #2074):
+///
+/// 1. Delete the `modelIDLooksLikeCloudProvider` clause from
+///    `canonicalizeLLMModelForProvider`: **4 fail, 16 issues**, and they fail by
+///    reproducing the production pairing exactly —
+///    `effectiveLLMModel → "llama3.2"` under `provider = .gemini`. The 4
+///    controls stay GREEN, which is what shows they are independent checks
+///    rather than the same assertion restated.
+/// 2. Replace that whole `if` with an unconditional reset (a blanket wipe):
+///    **exactly the 2 preservation controls fail** and nothing else.
+///
+/// The partition is clean in both runs — guard cases and controls never fail
+/// together — so neither set is passing for the other's reason.
 @MainActor
 @Suite("Provider/model desync (#2064)")
 struct ProviderModelDesyncTests {
