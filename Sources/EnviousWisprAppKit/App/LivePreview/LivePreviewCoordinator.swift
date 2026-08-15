@@ -64,9 +64,6 @@ final class LivePreviewCoordinator {
   /// none of which a pill can show. Retaining all of it would be permanent
   /// display-only memory growth, so the front is trimmed. Nothing user-visible
   /// depends on the discarded prefix.
-  /// Internal rather than private so the bound is asserted against the real
-  /// constant instead of a copy of it in a test.
-  static let maxRetainedCharacters = 2000
 
   /// Current display state. Read by the pill's provider closure at 20 Hz, the
   /// same way audio level and elapsed time already are.
@@ -93,6 +90,12 @@ final class LivePreviewCoordinator {
   /// separately, it survives the recording that triggered it, is never cancelled,
   /// and is shared rather than duplicated.
   private var preparationTask: Task<Bool, Never>?
+  /// Bumped whenever the preview language changes, so a preparation still running
+  /// for the old language cannot publish itself as the current one.
+  private var preparationGeneration: UInt64 = 0
+  /// Bumped once per recording. Every asynchronous hand-off is checked against it,
+  /// because `isRunning` says "a recording is live" and not "THIS recording".
+  private var sessionGeneration: UInt64 = 0
   private var isRunning = false
 
   init(
@@ -179,12 +182,20 @@ final class LivePreviewCoordinator {
     // times a second and logging each one would bury the log AND charge the main
     // actor for text nobody reads. `updates` is counted here and reported once.
     var updates = 0
+    // This recording's identity. Every asynchronous hand-off below is checked
+    // against it, because `isRunning` alone cannot tell the difference between
+    // "this recording" and "a recording" — and by the time a queued callback from
+    // the previous dictation runs, `isRunning` is true again for the NEW one.
+    sessionGeneration &+= 1
+    let generation = sessionGeneration
+
     // The recognizer calls back from its own actor. Hop to the main actor and
-    // publish, bounded, so the 20 Hz pill read is a plain property read.
+    // publish so the 20 Hz pill read is a plain property read. The text arrives
+    // already bounded (`LivePreviewTextBound`, applied at the producer).
     let publish: @Sendable (String) -> Void = { [weak self] text in
       Task { @MainActor in
-        guard let self, self.isRunning else { return }
-        self.display = .text(Self.bounded(text))
+        guard let self, self.isRunning, self.sessionGeneration == generation else { return }
+        self.display = .text(text)
       }
     }
 
@@ -198,7 +209,7 @@ final class LivePreviewCoordinator {
     }
     await Self.log("session started, locale=\(locale.identifier(.bcp47))")
 
-    await feedLoop(into: recognizer) { updates += 1 }
+    await feedLoop(into: recognizer, token: token) { updates += 1 }
     // Tokened, so a teardown that loses a race against the next recording's
     // `startSession` does nothing instead of closing the live analyzer.
     await recognizer.endSession(token: token)
@@ -229,18 +240,30 @@ final class LivePreviewCoordinator {
   /// A cancelled session that is parked here simply returns and checks
   /// `Task.isCancelled`; the preparation continues, which is what makes the NEXT
   /// recording fast.
+  ///
+  /// **Dropping a reference to a task does not stop the task.** Switching language
+  /// mid-preparation used to clear `preparationTask` and move on, leaving the old
+  /// language's task running with an unconditional write to `preparedRecognizer`
+  /// and `preparedLocale` at the end of it. It could land after the new language's
+  /// task and hand the next recording a German recognizer while every check said
+  /// English was ready. The generation below is what makes the write conditional;
+  /// review caught the original.
   @available(macOS 26.0, *)
   private func ensurePrepared(for locale: Locale) async -> Bool {
     if preparedRecognizer is ApplePreviewRecognizer, preparedLocale == locale { return true }
 
-    // A language change invalidates the in-flight preparation for the old one.
+    // A language change invalidates the in-flight preparation for the old one. The
+    // generation bump is what actually invalidates it; clearing the reference only
+    // stops US waiting on it.
     if preparedLocale != locale {
+      preparationGeneration &+= 1
       preparationTask = nil
       preparedRecognizer = nil
     }
 
     if let existing = preparationTask { return await existing.value }
 
+    let generation = preparationGeneration
     let task = Task<Bool, Never> { [weak self] in
       let fresh = ApplePreviewRecognizer(locale: locale)
       do {
@@ -250,6 +273,8 @@ final class LivePreviewCoordinator {
       }
       guard let self else { return false }
       return await MainActor.run {
+        // Publish only if the language has not moved on while this ran.
+        guard self.preparationGeneration == generation else { return false }
         self.preparedRecognizer = fresh
         self.preparedLocale = locale
         return true
@@ -258,7 +283,9 @@ final class LivePreviewCoordinator {
     preparationTask = task
     preparedLocale = locale
     let ok = await task.value
-    if !ok { preparationTask = nil }  // let a later recording retry
+    // Let a later recording retry, but only if nothing newer has already claimed
+    // the slot — clearing unconditionally would discard a live preparation.
+    if !ok, preparationGeneration == generation { preparationTask = nil }
     return ok
   }
 
@@ -271,7 +298,7 @@ final class LivePreviewCoordinator {
   /// like from here.
   @available(macOS 26.0, *)
   private func feedLoop(
-    into recognizer: ApplePreviewRecognizer, onFeed: @escaping () -> Void
+    into recognizer: ApplePreviewRecognizer, token: UInt64, onFeed: @escaping () -> Void
   ) async {
     let initial = await audioCapture.getSamplesSnapshot(fromIndex: 0)
     var fed = initial.totalCount
@@ -290,7 +317,7 @@ final class LivePreviewCoordinator {
       guard !snapshot.samples.isEmpty else { continue }
       fed = snapshot.totalCount
       onFeed()
-      await recognizer.feed(snapshot.samples)
+      await recognizer.feed(snapshot.samples, token: token)
     }
   }
 
@@ -312,19 +339,6 @@ final class LivePreviewCoordinator {
     }
   }
 
-  // MARK: - Bounding
-
-  /// Keep the tail, drop the head, and do not cut a word in half.
-  ///
-  /// The word-boundary step must never be able to disable the bound: a script with
-  /// no spaces (CJK) or a pathological unbroken run has no boundary to find, and
-  /// the fallback returns the hard-trimmed tail rather than the original.
-  static func bounded(_ text: String) -> String {
-    guard text.count > maxRetainedCharacters else { return text }
-    let tail = String(text.suffix(maxRetainedCharacters))
-    guard let space = tail.firstIndex(of: " ") else { return tail }
-    return String(tail[tail.index(after: space)...])
-  }
 }
 
 /// User-facing copy for the preview's non-running states. One home, so a change
