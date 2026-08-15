@@ -257,7 +257,11 @@ enum RouterCeilingParser {
   private static func nextSignificantIndex(_ lines: [String], after i: Int) -> Int? {
     var j = i + 1
     while j < lines.count {
-      if !codeView(lines[j]).trimmingCharacters(in: .whitespaces).isEmpty { return j }
+      if !codeView(lines[j], blankBlockComments: true)
+        .trimmingCharacters(in: .whitespaces).isEmpty
+      {
+        return j
+      }
       j += 1
     }
     return nil
@@ -280,7 +284,8 @@ enum RouterCeilingParser {
   /// have. No Swift declaration begins with `async` / `throws` / `rethrows` /
   /// `->`, so this predicate cannot over-fold.
   private static func continuesWithEffectSpecifier(_ line: String) -> Bool {
-    let trimmed = codeView(line).trimmingCharacters(in: .whitespaces)
+    let trimmed = codeView(line, blankBlockComments: true)
+      .trimmingCharacters(in: .whitespaces)
     if trimmed.hasPrefix("->") { return true }
     for keyword in ["async", "throws", "rethrows"] where trimmed == keyword
       || trimmed.hasPrefix(keyword + " ") || trimmed.hasPrefix(keyword + "-")
@@ -484,7 +489,12 @@ enum RouterCeilingParser {
     // inside a comment or string literal can fake one in the other direction.
     // Blanking both to spaces makes the predicate structural, which is the only
     // form that survives the next syntax shape nobody enumerated.
-    let line = codeView(rawLine)
+    // `blankBlockComments: true` — the default leaves `/* ... */` intact, which
+    // is the same trivia class this predicate moved to the code view to close
+    // (cloud review, PR #2070). Swift accepts
+    // `let f: () /* effect docs */ async -> Void`. The buffer here is the FOLDED
+    // declaration, so a block comment spanning its physical lines is blanked too.
+    let line = codeView(rawLine, blankBlockComments: true)
     // Matches a declared closure type signature: `: (...) -> ...`
     // (with optional `@MainActor` / `@Sendable` attributes before the
     // paren). `line` may be a folded multi-line declaration; `[[:space:]]`
