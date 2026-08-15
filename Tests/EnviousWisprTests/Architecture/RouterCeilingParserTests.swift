@@ -213,6 +213,44 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
 
+  /// #2068 (cloud review, PR #2070): the effect specifier can START the next
+  /// physical line, leaving line one with balanced parens and no trailing
+  /// continuation operator — so it reads as a finished declaration and the
+  /// closure is missed entirely.
+  @Test func closureCount_foldsWhenTheEffectSpecifierStartsTheNextLine() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let dependency: ()
+            async -> Void
+          let other: (Int)
+            throws -> Bool
+          let arrowOnly: (String)
+            -> Int
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 3)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// The over-folding control. A complete parenthesized type must NOT swallow
+  /// the declaration after it — that would UNDERCOUNT, which is the direction a
+  /// ceiling must never fail in. This is why the fold looks ahead for an effect
+  /// specifier instead of treating a trailing `)` as a continuation.
+  @Test func closureCount_doesNotFoldACompleteParenthesizedType() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let wrapped: (AlphaDep)
+          let beta: BetaDep
+          let gamma: GammaDep
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 0)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 3)
+  }
+
   @Test func nonPrivateMethodCount_countsNonPrivateExcludesPrivateAndInit() throws {
     let body = try classBody(
       of: """

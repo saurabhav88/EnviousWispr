@@ -218,7 +218,9 @@ enum RouterCeilingParser {
       let (opens, closes) = braceCounts(buffer)
       let depthForThisLine = depth - max(0, closes - opens)
       if depthForThisLine == 0 {
-        while isUnterminatedDeclaration(buffer), i + 1 < physical.count {
+        while i + 1 < physical.count,
+          isUnterminatedDeclaration(buffer) || continuesWithEffectSpecifier(physical[i + 1])
+        {
           i += 1
           buffer += "\n" + physical[i]
         }
@@ -238,6 +240,33 @@ enum RouterCeilingParser {
   /// character is a continuation operator (`:` `,` `&`, or it ends with `->`).
   /// Angle brackets are deliberately not tracked — `>` is ambiguous with `->`
   /// and comparison.
+  /// #2068 (cloud review, PR #2070): a function type may wrap so that its effect
+  /// specifier or arrow starts the NEXT physical line:
+  ///
+  ///     let dependency: ()
+  ///       async -> Void
+  ///
+  /// `isUnterminatedDeclaration` cannot see that — line one has balanced
+  /// parentheses and no trailing continuation operator, so it looks finished, and
+  /// the closure is then missed by `isClosureTyped` entirely.
+  ///
+  /// Decided by LOOKING AHEAD rather than by loosening the termination rule. "A
+  /// buffer ending in `)` might continue" would also match the complete and
+  /// common `let x: (Int)`, and folding there would swallow the FOLLOWING
+  /// declaration and undercount — the failure direction a ceiling must never
+  /// have. No Swift declaration begins with `async` / `throws` / `rethrows` /
+  /// `->`, so this predicate cannot over-fold.
+  private static func continuesWithEffectSpecifier(_ line: String) -> Bool {
+    let trimmed = codeView(line).trimmingCharacters(in: .whitespaces)
+    if trimmed.hasPrefix("->") { return true }
+    for keyword in ["async", "throws", "rethrows"] where trimmed == keyword
+      || trimmed.hasPrefix(keyword + " ") || trimmed.hasPrefix(keyword + "-")
+    {
+      return true
+    }
+    return false
+  }
+
   private static func isUnterminatedDeclaration(_ buffer: String) -> Bool {
     let code = codeView(buffer)
     var paren = 0
