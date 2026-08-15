@@ -4,7 +4,6 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
-@testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 
 /// Unit tests for `BackendMetadata` (PR7 of epic #763). Covers the three
@@ -136,80 +135,80 @@ struct BackendMetadataTests {
     #expect(bm.polishLabel == "llama3.2")
   }
 
-  // MARK: - statusText(for:) — Parakeet branch
+  // MARK: - statusText(for:)
 
-  @Test("statusText Parakeet: .recording returns 'Recording'")
-  func statusTextParakeetRecording() {
+  /// #2065 replaced the per-engine cases here. There used to be a Parakeet block
+  /// and a WhisperKit block, each pinning the active engine and
+  /// asserting the same four strings — and only the WhisperKit block covered
+  /// `.loadingModel`, which is precisely why the missing Parakeet case shipped.
+  /// Two tables tested twice still leaves the untested cell untested.
+  ///
+  /// `statusText` no longer reads the engine at all, so an engine dimension here
+  /// would assert a coupling the code does not have.
+  nonisolated static let activeStates: [(PipelineState, String)] = [
+    (.loadingModel, "Loading Model"),
+    (.recording, "Recording"),
+    (.transcribing, "Transcribing"),
+    (.polishing, "Polishing"),
+    (.error(.modelWedged), "Error"),
+  ]
+
+  @Test("statusText names every active phase, whichever engine is running", arguments: activeStates)
+  func statusTextNamesActivePhases(state: PipelineState, expected: String) {
     let bm = makeBackendMetadata()
-    bm.asrManager.setInitialBackendType(.parakeet)
-    #expect(bm.statusText(for: .recording) == "Recording")
+    #expect(bm.statusText(for: state) == expected)
   }
 
-  @Test("statusText Parakeet: .transcribing returns 'Transcribing'")
-  func statusTextParakeetTranscribing() {
-    let bm = makeBackendMetadata()
-    bm.asrManager.setInitialBackendType(.parakeet)
-    #expect(bm.statusText(for: .transcribing) == "Transcribing")
+  /// The regression this issue was filed for. Against pre-fix `main` this case
+  /// returns "Unloaded" — the engine-health label — while the model is loading.
+  @Test("statusText: a loading model never reports the engine-health label")
+  func loadingModelNeverReportsHealthLabel() {
+    // Both health values, because the pre-fix bug rendered whichever one the
+    // health closure happened to hold: "Unloaded" mid-load, or a flat "Loaded"
+    // that is equally wrong while a load is in flight.
+    for loaded in [true, false] {
+      let bm = makeBackendMetadata(modelLoaded: loaded)
+      let text = bm.statusText(for: .loadingModel)
+      #expect(text == "Loading Model")
+      #expect(text != "Unloaded")
+      #expect(text != "Loaded")
+    }
   }
 
-  @Test("statusText Parakeet: .polishing returns 'Polishing'")
-  func statusTextParakeetPolishing() {
-    let bm = makeBackendMetadata()
-    bm.asrManager.setInitialBackendType(.parakeet)
-    #expect(bm.statusText(for: .polishing) == "Polishing")
+  /// The two-way control for the fix: the states that SHOULD show engine health
+  /// still do. Without this, deleting the health fallback entirely would pass
+  /// the case above.
+  @Test("statusText: idle, complete and advisory still report engine health")
+  func restingStatesReportEngineHealth() {
+    let unloaded = makeBackendMetadata(modelLoaded: false)
+    #expect(unloaded.statusText(for: .idle) == "Unloaded")
+    #expect(unloaded.statusText(for: .complete) == "Unloaded")
+
+    let loaded = makeBackendMetadata(modelLoaded: true)
+    #expect(loaded.statusText(for: .idle) == "Loaded")
   }
 
-  @Test("statusText Parakeet: .error returns 'Error'")
-  func statusTextParakeetError() {
-    let bm = makeBackendMetadata()
-    bm.asrManager.setInitialBackendType(.parakeet)
-    #expect(bm.statusText(for: .error(.modelWedged)) == "Error")
-  }
-
-  @Test("statusText Parakeet: .idle falls back to model-loaded label")
-  func statusTextParakeetIdleFallback() {
-    let bm = makeBackendMetadata()
-    bm.asrManager.setInitialBackendType(.parakeet)
-    // Default isModelLoaded is false → "Unloaded"
-    #expect(bm.statusText(for: .idle) == "Unloaded")
-  }
-
-  // MARK: - statusText(for:) — WhisperKit branch
-
-  @Test("statusText WhisperKit: .loadingModel returns 'Loading Model'")
-  func statusTextWhisperKitLoadingModel() {
-    let bm = makeBackendMetadata()
-    bm.asrManager.setInitialBackendType(.whisperKit)
-    #expect(bm.statusText(for: .loadingModel) == "Loading Model")
-  }
-
-  @Test("statusText WhisperKit: .recording returns 'Recording'")
-  func statusTextWhisperKitRecording() {
-    let bm = makeBackendMetadata()
-    bm.asrManager.setInitialBackendType(.whisperKit)
-    #expect(bm.statusText(for: .recording) == "Recording")
-  }
-
-  @Test("statusText WhisperKit: .idle falls back to model-loaded label")
-  func statusTextWhisperKitIdleFallback() {
-    let bm = makeBackendMetadata()
-    bm.asrManager.setInitialBackendType(.whisperKit)
-    #expect(bm.statusText(for: .idle) == "Unloaded")
+  /// #1891, pinned so the #2065 collapse cannot quietly take it with it: an
+  /// advisory is NOT an error in the sidebar. The microphone sent nothing; the
+  /// engine is fine, so the health label is the honest answer.
+  @Test("statusText: advisory keeps falling through to health, never 'Error'")
+  func advisoryIsNotAnError() {
+    let bm = makeBackendMetadata(modelLoaded: true)
+    #expect(bm.statusText(for: .advisory(.noTransport)) == "Loaded")
+    #expect(bm.statusText(for: .advisory(.noTransport)) != "Error")
   }
 
   // MARK: - Fixture
 
-  private func makeBackendMetadata() -> BackendMetadata {
+  /// `modelLoaded` drives the engine-health label, which is what `.loadingModel`
+  /// used to be mistaken for on the non-WhisperKit path (#2065).
+  private func makeBackendMetadata(modelLoaded: Bool = false) -> BackendMetadata {
     let settings = SettingsManager()
-    let asrManager = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: KeychainManager())
     return BackendMetadata(
       settings: settings,
-      asrManager: asrManager,
       llmDiscovery: llmDiscovery,
-      // Mirrors production's closure shape; the fixture manager never loads,
-      // so the idle fallback renders "Unloaded" exactly as before.
-      activeModelLoaded: { [weak asrManager] in asrManager?.isModelLoaded ?? false }
+      activeModelLoaded: { modelLoaded }
     )
   }
 }

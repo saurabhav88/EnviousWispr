@@ -796,7 +796,6 @@ public final class WisprBootstrapper {
     let lastRecordingResult = LastRecordingResult()
     let backendMetadata = BackendMetadata(
       settings: settings,
-      asrManager: asrManager,
       llmDiscovery: llmDiscovery,
       // The coordinator's published snapshot covers BOTH engines; the manager's
       // own flag is Parakeet-only since #1386 (cloud review P2).

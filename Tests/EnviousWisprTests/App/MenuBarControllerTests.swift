@@ -372,7 +372,7 @@ struct MenuBarControllerTests {
       audioCapture: audioCapture, asrManager: asrManager)
     let settings = SettingsManager()
     let backendMetadata = BackendMetadata(
-      settings: settings, asrManager: asrManager,
+      settings: settings,
       llmDiscovery: LLMModelDiscoveryCoordinator(keychainManager: KeychainManager()),
       activeModelLoaded: { [weak asrManager] in asrManager?.isModelLoaded ?? false })
     // Nil-fake updater factory — no real Sparkle boot in the test process.

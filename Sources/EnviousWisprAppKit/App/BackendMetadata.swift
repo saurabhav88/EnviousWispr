@@ -1,4 +1,3 @@
-import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprServices
 import Observation
@@ -11,7 +10,6 @@ import Observation
 @Observable @MainActor
 final class BackendMetadata {
   let settings: SettingsManager
-  let asrManager: any ASRManagerInterface
   let llmDiscovery: LLMModelDiscoveryCoordinator
   /// Whether the ACTIVE engine's model is resident — the EngineCoordinator's
   /// published truth, injected as a closure. The manager's own flag stopped
@@ -19,14 +17,15 @@ final class BackendMetadata {
   /// a warmed multilingual model rendered "Unloaded").
   let activeModelLoaded: @MainActor () -> Bool
 
+  /// #2065 dropped the `asrManager` collaborator: its only reader was the
+  /// per-engine branch in `statusText(for:)`, so collapsing that left it
+  /// assigned and never read.
   init(
     settings: SettingsManager,
-    asrManager: any ASRManagerInterface,
     llmDiscovery: LLMModelDiscoveryCoordinator,
     activeModelLoaded: @escaping @MainActor () -> Bool
   ) {
     self.settings = settings
-    self.asrManager = asrManager
     self.llmDiscovery = llmDiscovery
     self.activeModelLoaded = activeModelLoaded
   }
@@ -60,25 +59,25 @@ final class BackendMetadata {
     return model
   }
 
+  /// #2065: ONE table, not one per engine. This branched on `activeBackendType`
+  /// and the arms were identical apart from `.loadingModel`, which only the
+  /// WhisperKit arm handled — so the sidebar called the fast engine "Unloaded"
+  /// mid-load. Collapsed, not copied across: two hand-synchronised tables is
+  /// what produced the bug. Exhaustive, so a new `PipelineState` fails to
+  /// compile here rather than silently landing on the health label.
   func statusText(for state: PipelineState) -> String {
-    if asrManager.activeBackendType == .whisperKit {
-      switch state {
-      case .loadingModel: return DictationNarrator.loadingModelSidebar
-      case .recording: return DictationNarrator.recordingStatus
-      case .transcribing: return DictationNarrator.shortCopy(for: .transcribing)
-      case .polishing: return DictationNarrator.shortCopy(for: .polishing)
-      case .error: return DictationNarrator.errorStatus
-      // #1891: `.advisory` deliberately falls through to the engine-health
-      // label ("Loaded" / "Unloaded") rather than showing "Error" in the
-      // sidebar. The microphone sent nothing; the engine is fine.
-      default: break
-      }
-    } else {
-      if state == .recording { return DictationNarrator.recordingStatus }
-      if state == .transcribing { return DictationNarrator.shortCopy(for: .transcribing) }
-      if state == .polishing { return DictationNarrator.shortCopy(for: .polishing) }
-      if case .error = state { return DictationNarrator.errorStatus }
+    switch state {
+    case .loadingModel: return DictationNarrator.loadingModelSidebar
+    case .recording: return DictationNarrator.recordingStatus
+    case .transcribing: return DictationNarrator.shortCopy(for: .transcribing)
+    case .polishing: return DictationNarrator.shortCopy(for: .polishing)
+    case .error: return DictationNarrator.errorStatus
+    // #1891: `.advisory` deliberately falls through to the engine-health label
+    // ("Loaded" / "Unloaded") rather than showing "Error" in the sidebar. The
+    // microphone sent nothing; the engine is fine. Kept distinct from `.error`
+    // on purpose — do not collapse them.
+    case .advisory, .idle, .complete:
+      return activeModelLoaded() ? "Loaded" : "Unloaded"
     }
-    return activeModelLoaded() ? "Loaded" : "Unloaded"
   }
 }
