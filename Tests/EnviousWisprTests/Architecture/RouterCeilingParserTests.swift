@@ -1148,4 +1148,57 @@ import Testing
     #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
+
+  @Test func closureInjectedCount_expandsATupleDestructuringPatternIntoOneSlotEach() throws {
+    // `let (a, b): (X, Y)` is TWO stored properties. Reading only the type sees
+    // one non-function tuple and charges a single collaborator slot, so two
+    // injected closure seams cost one — an undercount, which a `<=` ceiling
+    // never reports (cloud review, PR #2070).
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let (first, second): (() -> Void, () -> Void)
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 2)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 0)
+  }
+
+  @Test func closureInjectedCount_expandsNestedTuplePatterns() throws {
+    // Swift accepts nesting here, so the expansion recurses.
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let (outer, (innerA, innerB)): (() -> Void, (() -> Void, () -> Void))
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 3)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 0)
+  }
+
+  @Test func collaboratorCount_aTupleTYPEStillOccupiesOneSlot() throws {
+    // The counterpart the expansion must NOT break: an identifier pattern whose
+    // TYPE is a tuple is one property, not two. The distinction is the pattern.
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let pair: (AlphaDep, BetaDep)
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 0)
+  }
+
+  @Test func collaboratorCount_aDestructuredInferredTupleStaysVisible() throws {
+    // No annotation, so no per-element type is knowable. Each property must
+    // still be COUNTED — dropping to nil types keeps them collaborators rather
+    // than letting them vanish from every ceiling.
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let (first, second) = ({ print(1) }, { print(2) })
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
 }

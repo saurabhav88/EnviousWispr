@@ -292,11 +292,59 @@ enum RouterCeilingParser {
       for binding in variable.bindings {
         guard binding.accessorBlock == nil else { continue }
         let isBool = binding.initializer.map { isBooleanLiteral($0.value) } ?? false
-        result.append(
-          StoredLet(type: binding.typeAnnotation?.type, isBooleanLiteralInitialized: isBool))
+        expand(
+          pattern: binding.pattern, type: binding.typeAnnotation?.type,
+          isBooleanLiteralInitialized: isBool, depth: 0, into: &result)
       }
     }
     return result
+  }
+
+  /// One `StoredLet` per property a binding actually declares.
+  ///
+  /// A tuple PATTERN declares one property per element: `let (a, b): (X, Y)` is
+  /// two stored properties, and Swift accepts it — including nested, and with
+  /// the type inferred. Both forms compile, checked with `swiftc`, not recalled.
+  ///
+  /// The distinction is the PATTERN, not the type. `let pair: (X, Y)` is ONE
+  /// property whose type happens to be a tuple, and it keeps its single slot —
+  /// which is why `unwrapped(_:)` still refuses to peel multi-element tuple
+  /// TYPES. Reading only the type would conflate the two and count two injected
+  /// closure seams as one collaborator: an undercount, and the direction a
+  /// `<=` ceiling never reports (cloud review, PR #2070).
+  private static func expand(
+    pattern: PatternSyntax, type: TypeSyntax?, isBooleanLiteralInitialized isBool: Bool,
+    depth: Int, into result: inout [StoredLet]
+  ) {
+    guard depth < 16, let tuple = pattern.as(TuplePatternSyntax.self) else {
+      result.append(StoredLet(type: type, isBooleanLiteralInitialized: isBool))
+      return
+    }
+    let elements = Array(tuple.elements)
+    // Pair each sub-pattern with its own type only when the annotation is a
+    // tuple of the SAME arity. Anything else (inferred type, or a shape that
+    // does not line up) drops to nil types rather than guessing: an untyped
+    // binding still counts as a collaborator, so the property stays visible to
+    // a ceiling instead of vanishing.
+    let types = type?.as(TupleTypeSyntax.self).map { Array($0.elements).map(\.type) }
+    if let types, types.count == elements.count {
+      for (element, elementType) in zip(elements, types) {
+        expand(
+          pattern: element.pattern, type: elementType,
+          isBooleanLiteralInitialized: isBool, depth: depth + 1, into: &result)
+      }
+    } else if elements.count == 1, let only = elements.first {
+      // `let (a): X` — parenthesised, not a real tuple; keep the type.
+      expand(
+        pattern: only.pattern, type: type, isBooleanLiteralInitialized: isBool,
+        depth: depth + 1, into: &result)
+    } else {
+      for element in elements {
+        expand(
+          pattern: element.pattern, type: nil, isBooleanLiteralInitialized: isBool,
+          depth: depth + 1, into: &result)
+      }
+    }
   }
 
   private static func isTypeProperty(_ modifiers: DeclModifierListSyntax) -> Bool {
