@@ -123,22 +123,49 @@ struct ProviderModelDesyncTests {
   // MARK: - Two-way controls
 
   /// The guard must not be a blanket wipe. A legitimate cloud selection has to
-  /// survive a switch, or "never inherits a foreign model" would be trivially
-  /// satisfiable by resetting the field every time and the tests above would
-  /// pass a strictly worse implementation.
+  /// survive canonicalization, or "never inherits a foreign model" would be
+  /// trivially satisfiable by resetting the field on every switch and the tests
+  /// above would pass a strictly worse implementation.
+  ///
+  /// **Nothing writes `llmModel` after the guard runs** (cloud review, PR #2074).
+  /// An earlier version of this case re-set the model AFTER the provider
+  /// assignments, so the expectation observed that manual write rather than the
+  /// guard's preservation — it would have passed against a canonicalization that
+  /// wiped the field every time, which is the exact implementation it exists to
+  /// rule out. A control that restores the value it is checking is not a control.
   @Test("a legitimate cloud model survives its own provider's canonicalization")
   func legitimateCloudSelectionSurvives() {
     let settings = freshSettings()
     settings.llmProvider = .openAI
     settings.llmModel = "gpt-5.4-mini"
-    // Re-entering the same provider re-runs the guard.
-    settings.llmProvider = .gemini
+
+    // Re-assigning the SAME provider re-runs `canonicalizeLLMModelForProvider`
+    // (its didSet calls it unconditionally, not only on a value change), so the
+    // guard gets another look at a model it must leave alone. A blanket wipe
+    // would make this `gpt-4o-mini`.
     settings.llmProvider = .openAI
-    settings.llmModel = "gpt-5.4-mini"
 
     #expect(
       settings.effectiveLLMModel == "gpt-5.4-mini",
       "the user's own OpenAI pick must not be swept")
+  }
+
+  /// The same control at the OTHER seam. `persistedDesyncIsRepairedAtLaunch`
+  /// proves launch canonicalization REPAIRS a foreign model; this proves it does
+  /// not also flatten a legitimate one. Both run the same guard, and a wipe would
+  /// pass the repair case while silently resetting every valid install on every
+  /// launch.
+  @Test("a legitimate cloud model survives launch canonicalization")
+  func legitimateCloudSelectionSurvivesLaunch() {
+    let suite = UserDefaults(suiteName: "SM-2064-valid-\(UUID().uuidString)")!
+    suite.set(LLMProvider.openAI.rawValue, forKey: "llmProvider")
+    suite.set("gpt-5.4-mini", forKey: "llmModel")
+
+    let settings = SettingsManager(defaults: suite)
+
+    #expect(
+      settings.effectiveLLMModel == "gpt-5.4-mini",
+      "launch must not reset a model the user legitimately chose")
   }
 
   /// The reverse direction is deliberately NOT symmetric, and that is the
