@@ -178,7 +178,25 @@ actor ApplePreviewRecognizer {
     let analyzer = SpeechAnalyzer(modules: [fresh])
     self.analyzer = analyzer
     collector = Self.collect(from: fresh, onText: onText)
-    try await analyzer.start(inputSequence: stream)
+    do {
+      try await analyzer.start(inputSequence: stream)
+    } catch {
+      // The fields above are already stored, and the coordinator's catch does not
+      // call `endSession` — it has no token to call it with. Without this rollback
+      // a failed or superseded start leaks the collector task and the analyzer's
+      // speech resources for the life of the process. Guarded so a start that lost
+      // a race does not tear down the session that beat it.
+      if token == sessionToken {
+        cont.finish()
+        collector?.cancel()
+        collector = nil
+        continuation = nil
+        self.analyzer = nil
+        module = nil
+        converter = nil
+      }
+      throw error
+    }
     return token
   }
 
@@ -214,7 +232,11 @@ actor ApplePreviewRecognizer {
             committed = LivePreviewTextBound.apply(committed + piece)
             inFlight = ""
           } else {
-            inFlight = piece
+            // Bounded on STORAGE, not only on emission. Apple can keep returning
+            // non-final results for a long uninterrupted stretch, and an unbounded
+            // `inFlight` violates the retention invariant for as long as that
+            // lasts even though every emitted string is trimmed.
+            inFlight = LivePreviewTextBound.apply(piece)
           }
           onText(LivePreviewTextBound.apply(committed + inFlight))
         }

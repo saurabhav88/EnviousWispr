@@ -124,8 +124,14 @@ final class LivePreviewCoordinator {
         return
       }
       isRunning = true
+      // Allocated HERE, synchronously, not inside the session task. `isRunning`
+      // flips to true for the new recording immediately, so any window between
+      // that and the generation bump is a window where a queued callback from the
+      // PREVIOUS recording still matches and paints stale words. Locale resolution
+      // and preparation are both awaits inside the task, so that window was real.
+      sessionGeneration &+= 1
       display = .waiting
-      startSession()
+      startSession(generation: sessionGeneration)
     } else {
       guard isRunning else { return }
       isRunning = false
@@ -140,25 +146,33 @@ final class LivePreviewCoordinator {
     }
   }
 
-  private func startSession() {
+  private func startSession(generation: UInt64) {
     sessionTask = Task { @MainActor [weak self] in
       guard let self else { return }
       guard #available(macOS 26.0, *) else {
         self.display = .unavailable(LivePreviewCopy.needsNewerMacOS)
         return
       }
-      await self.runSession()
+      await self.runSession(generation: generation)
     }
   }
 
   @available(macOS 26.0, *)
-  private func runSession() async {
-    let code = Self.previewLanguageCode(languageMode())
+  private func runSession(generation: UInt64) async {
+    let mode = languageMode()
+    let code = Self.previewLanguageCode(mode)
+    // Both the setting and the code derived from it. "Why is there no preview in
+    // my language" is answerable from this one line: it distinguishes a user on
+    // Auto-detect (where we guess from the system) from one who locked a language
+    // Apple cannot transcribe, and those have different answers.
+    await Self.log("resolving language, mode=\(mode) code=\(code)")
     guard let locale = await ApplePreviewRecognizer.resolveLocale(code: code) else {
+      guard isCurrent(generation) else { return }
       display = .unavailable(LivePreviewCopy.languageUnsupported)
       await Self.log("no recognizer locale for language=\(code)")
       return
     }
+    guard isCurrent(generation) else { return }
 
     // Say "getting ready" rather than "listening" while preparation runs. On first
     // use of a language that can mean downloading an Apple speech model, and a pill
@@ -170,24 +184,23 @@ final class LivePreviewCoordinator {
     guard await ensurePrepared(for: locale),
       let recognizer = preparedRecognizer as? ApplePreviewRecognizer
     else {
+      guard isCurrent(generation) else { return }
       display = .unavailable(LivePreviewCopy.notReady)
       await Self.log("not ready for locale=\(locale.identifier(.bcp47))")
       return
     }
 
     if Task.isCancelled { return }
+    guard isCurrent(generation) else { return }
     display = .waiting
 
     // Diagnostics: transitions only, never per-update. The pill repaints several
     // times a second and logging each one would bury the log AND charge the main
     // actor for text nobody reads. `updates` is counted here and reported once.
     var updates = 0
-    // This recording's identity. Every asynchronous hand-off below is checked
-    // against it, because `isRunning` alone cannot tell the difference between
-    // "this recording" and "a recording" — and by the time a queued callback from
-    // the previous dictation runs, `isRunning` is true again for the NEW one.
-    sessionGeneration &+= 1
-    let generation = sessionGeneration
+    // `generation` is this recording's identity, allocated by `setRecording` before
+    // any of the awaits above. Every asynchronous hand-off is checked against it,
+    // because `isRunning` alone cannot tell "this recording" from "a recording".
 
     // The recognizer calls back from its own actor. Hop to the main actor and
     // publish so the 20 Hz pill read is a plain property read. The text arrives
@@ -203,6 +216,7 @@ final class LivePreviewCoordinator {
     do {
       token = try await recognizer.startSession(onText: publish)
     } catch {
+      guard isCurrent(generation) else { return }
       display = .unavailable(LivePreviewCopy.notReady)
       await Self.log("session refused to start: \(error)")
       return
@@ -219,6 +233,16 @@ final class LivePreviewCoordinator {
     let shown: Int
     if case .text(let t) = display { shown = t.count } else { shown = 0 }
     await Self.log("session ended, feeds=\(updates) shownChars=\(shown)")
+  }
+
+  /// Whether the recording that started this session is still the current one.
+  ///
+  /// Checked after every await that precedes a `display` write. Without it, a
+  /// session abandoned during locale resolution or model preparation resumes later
+  /// and writes its own outcome over the pill of a recording that is already
+  /// underway — "not ready" appearing over live words.
+  private func isCurrent(_ generation: UInt64) -> Bool {
+    sessionGeneration == generation
   }
 
   /// One log seam so every preview line carries the same category and the whole
