@@ -88,6 +88,49 @@ import Testing
       """)
   }
 
+  /// The gate that does not depend on getting the classification right.
+  ///
+  /// The two caps above split stored dependencies into bins, and the split is
+  /// **syntactically undecidable**. `RouterCeilingParser` reads one file with no
+  /// type resolution, so a closure behind a `typealias` is an
+  /// `IdentifierTypeSyntax` and lands in `collaboratorCount`. That is not exotic
+  /// here — it is the house style: `ProgressCallback`, `ShowOverlay`,
+  /// `EvictOllamaModel`, `HostedPullStarter` and six more are function aliases
+  /// in `Sources/`. A locally declared type shadowing `Optional` is undecidable
+  /// the same way, and in the other direction.
+  ///
+  /// That makes the two caps individually bypassable whenever either has
+  /// headroom. Measured when this landed: 6/7 collaborators and 10/10 closures,
+  /// so `let progress: ProgressCallback` — a genuine eleventh closure seam —
+  /// reads as the seventh collaborator, and BOTH caps pass. Found by cloud
+  /// review on PR #2070, against the very cap #2068 added to stop this.
+  ///
+  /// The sum cannot be bypassed by moving a property between bins, because it
+  /// does not care which bin the property is in. Resolving aliases would mean
+  /// re-implementing type resolution on top of the parser, which is the
+  /// approximation business this parser was rewritten to leave.
+  ///
+  /// 16 is a FREEZE at the measured 6 + 10, on the same terms as the caps above:
+  /// it stops silent growth and is not a judgement that sixteen is right.
+  /// Ratchet DOWN freely.
+  @Test func totalStoredDependencyCount() throws {
+    let body = try RouterCeilingParser.classBody(
+      named: "RecordingStarter", at: Self.sourcePath)
+    let collaborators = RouterCeilingParser.collaboratorCount(in: body)
+    let closures = RouterCeilingParser.closureInjectedCount(in: body)
+    let total = collaborators + closures
+    #expect(
+      total <= 16,
+      """
+      RecordingStarter total stored-dependency ceiling exceeded: \(total) > 16 \
+      (\(collaborators) collaborators + \(closures) closures). This is the cap \
+      that a `typealias` cannot walk around: whichever bin a new dependency \
+      lands in, it lands here. If the two caps above still pass, that is the \
+      bypass this exists to catch, not evidence the dependency is free. \
+      Raising it requires a Bible §30 entry.
+      """)
+  }
+
   @Test func nonPrivateMethodCount() throws {
     let body = try RouterCeilingParser.classBody(
       named: "RecordingStarter", at: Self.sourcePath)

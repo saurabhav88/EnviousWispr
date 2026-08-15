@@ -1257,6 +1257,31 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 0)
   }
 
+  @Test func collaboratorCount_countsAnAliasedClosureAsACollaborator_knownLimit() throws {
+    // A KNOWN LIMIT, pinned deliberately so it is not "fixed" as a bug.
+    //
+    // `ProgressCallback` is `@Sendable (Double, String, String) -> Void`, but
+    // this parser reads ONE file and has no type resolution, so the annotation
+    // is just an identifier and the property lands in the collaborator bin.
+    // Resolving it would mean re-implementing type resolution on top of the
+    // parser — the approximation business the SwiftSyntax rewrite left.
+    //
+    // The consequence is not academic: with one bin full and the other holding
+    // a spare slot, an aliased closure passes BOTH caps. That was demonstrated
+    // against the real `RecordingStarter` on PR #2070 and is why
+    // `RecordingStarterCeilingsTests.totalStoredDependencyCount` caps the SUM,
+    // which no re-typing can move.
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let aliased: ProgressCallback
+          let literal: () -> Void
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
   @Test func classBody_failsClosedWhenNestingExceedsTheParsersOwnLimit() {
     // The REAL bound on nesting is SwiftParser's, not ours:
     // `Parser.defaultMaximumNestingLevel` is 20 under `#if DEBUG` and 256
