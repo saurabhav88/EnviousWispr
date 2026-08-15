@@ -136,4 +136,29 @@ struct LLMNetworkSessionWarmupTests {
     #expect(rendered.count < 200, "an HTML error page must not flood the log")
     #expect(rendered.contains("truncated 4096 bytes"), "truncation must be visible, not silent")
   }
+
+  /// Cloud review, PR #2072. Truncating BYTES before decoding can cut a
+  /// multi-byte scalar in half, and `String(data:encoding:)` then returns nil for
+  /// a body that is perfectly valid UTF-8 — so the log line would read
+  /// `<non-utf8 N bytes>` and discard the provider's message, defeating the whole
+  /// reason the body is captured. A curly quote in an OpenAI message is enough to
+  /// trigger it.
+  @Test func failureBodySurvivesAMultiByteCharacterOnTheBoundary() {
+    // "é" is two bytes. With a 21-byte prefix the cut lands mid-scalar.
+    let body = Data("aaaaaaaaaaaaaaaaaaaaéquota exceeded".utf8)
+    let rendered = LLMNetworkSession.warmupFailureBodyForLog(body, limit: 20)
+
+    #expect(
+      rendered.contains("non-utf8") == false,
+      "a valid UTF-8 body must never be reported as undecodable")
+    #expect(rendered.hasPrefix("aaaaaaaaaaaaaaaaaaaa"), "the readable prefix must survive")
+    #expect(rendered.contains("truncated"))
+  }
+
+  /// The other side of that boundary fix: `<non-utf8>` must still mean what it
+  /// says, so the branch is not simply unreachable now.
+  @Test func failureBodyStillDetectsAGenuinelyUndecodableBody() {
+    let invalid = Data([0xFF, 0xFE, 0xFD] + Array(repeating: UInt8(0xC3), count: 40))
+    #expect(LLMNetworkSession.warmupFailureBodyForLog(invalid).hasPrefix("<non-utf8 "))
+  }
 }

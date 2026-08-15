@@ -79,18 +79,17 @@ public final class LLMNetworkSession: Sendable {
         // ("No transcript, prompt, provider error body, key, or endpoint URL").
         // `AppLogger` is entirely `#if DEBUG` and additionally gated on in-app
         // Debug Mode, so this reaches a release build's disk never.
+        //
+        // Cloud review (PR #1211): a non-2xx response does NOT throw (URLSession
+        // returns it), so it would otherwise log "completed" and never report the
+        // failure — mirror the A5 evict 2xx/non-2xx split. A missing status code
+        // (n/a) is NOT treated as a failure (that path already lacks a real signal).
         if let code = statusCode, !(200...299).contains(code) {
           await AppLogger.shared.log(
             "preWarm failure body provider=\(provider.rawValue) model=\(model) "
               + "status=\(code) body=\(Self.warmupFailureBodyForLog(data))",
             level: .info, category: "LLM"
           )
-        }
-        // Cloud review (PR #1211): a non-2xx response does NOT throw (URLSession
-        // returns it), so it would otherwise log "completed" and never report the
-        // failure — mirror the A5 evict 2xx/non-2xx split. A missing status code
-        // (n/a) is NOT treated as a failure (that path already lacks a real signal).
-        if let code = statusCode, !(200...299).contains(code) {
           sink.limbFailure(
             "llm_prewarm", "prewarm", "failed", "\(provider.rawValue)_http_\(code)", ms)
         }
@@ -136,12 +135,24 @@ public final class LLMNetworkSession: Sendable {
   /// was no body".
   static func warmupFailureBodyForLog(_ data: Data, limit: Int = 512) -> String {
     guard !data.isEmpty else { return "<empty>" }
-    guard let text = String(data: data.prefix(limit), encoding: .utf8) else {
+    // Decode the WHOLE body, then truncate the STRING — never `data.prefix()`
+    // before decoding (cloud review, PR #2072). A byte cutoff can land inside a
+    // multi-byte scalar, and `String(data:encoding:)` then returns nil for a body
+    // that is perfectly valid UTF-8, so the line would read `<non-utf8 N bytes>`
+    // and throw the provider's message away — defeating the entire reason this
+    // function exists. Any non-ASCII character near the boundary triggers it: a
+    // curly quote in an OpenAI message is enough.
+    //
+    // The body is already fully in memory (URLSession handed us `Data`), so
+    // decoding all of it costs nothing extra, and truncating by Character keeps
+    // the `<non-utf8>` branch meaning what it says: the body really is not UTF-8.
+    guard let text = String(data: data, encoding: .utf8) else {
       return "<non-utf8 \(data.count) bytes>"
     }
     let flattened = text.replacingOccurrences(of: "\n", with: " ")
       .trimmingCharacters(in: .whitespaces)
-    return data.count > limit ? flattened + "…<truncated \(data.count) bytes>" : flattened
+    guard flattened.count > limit else { return flattened }
+    return flattened.prefix(limit) + "…<truncated \(data.count) bytes>"
   }
 
   /// Output-token ceiling for the OpenAI warm-up ping (#2062).
