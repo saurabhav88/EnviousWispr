@@ -75,7 +75,9 @@ struct LivePreviewSettingsView: View {
       BrandedRow(showDivider: false) {
         HStack(spacing: 8) {
           ProgressView().controlSize(.small)
-          Text(LivePreviewSettingsCopy.packInstalling).settingsHelperCopy()
+          // `packsLoading`, NOT `packInstalling` — this spinner is a local inventory read.
+          // The per-row spinner below is the one that means a transfer.
+          Text(LivePreviewSettingsCopy.packsLoading).settingsHelperCopy()
         }
       }
     case .failed:

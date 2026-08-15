@@ -87,12 +87,29 @@ struct LivePreviewPackCopyTests {
       LivePreviewSettingsCopy.packRetry,
       LivePreviewSettingsCopy.packsUnavailable,
       LivePreviewSettingsCopy.packInstallFailed,
+      LivePreviewSettingsCopy.packsLoading,
       LivePreviewSettingsCopy.previewNeedsLanguagePack("French"),
     ]
     for s in strings {
       #expect(!s.contains("—"), "em-dash in user-facing copy: \(s)")
       #expect(!s.contains("–"), "en-dash in user-facing copy: \(s)")
     }
+  }
+
+  /// Review round 2: the page rendered "Downloading" while merely READING the language list, so
+  /// every supported Mac opened it announcing a transfer that was not happening, contradicting the
+  /// promise in its own description three lines above. The states are different facts and must not
+  /// share a string.
+  @Test("The list-loading state does not claim a download is happening")
+  func loadingCopyDoesNotClaimADownload() {
+    let loading = LivePreviewSettingsCopy.packsLoading
+    #expect(loading != LivePreviewSettingsCopy.packInstalling)
+    #expect(
+      !loading.localizedCaseInsensitiveContains("download"),
+      "reading the local language list is not a download: \(loading)")
+    // Control: the string that DOES mean a transfer still says so, or the check above would pass
+    // just as happily against copy that never mentions downloading anywhere.
+    #expect(LivePreviewSettingsCopy.packInstalling.localizedCaseInsensitiveContains("download"))
   }
 
   /// The pill sentence must keep matching the phrasing the app already uses for a missing model,

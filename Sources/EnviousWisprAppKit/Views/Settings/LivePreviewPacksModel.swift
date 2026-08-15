@@ -28,7 +28,9 @@ final class LivePreviewPacksModel {
   private(set) var failedTag: String?
 
   private let catalog: ApplePackCatalog
-  private var installTask: Task<Void, Never>?
+  /// Readable (not writable) outside so a test can JOIN the in-flight task instead of sleeping.
+  /// The alternative was a polling loop, which is the flaky-test shape this repo keeps out.
+  private(set) var installTask: Task<Void, Never>?
 
   /// Bumped whenever the in-flight install is superseded or cancelled. Every post-await write is
   /// checked against it, because an actor hop is a suspension point and the page may have moved
@@ -74,12 +76,19 @@ final class LivePreviewPacksModel {
         self.state = Self.state(for: refreshed)
         self.installingTag = nil
       } catch {
+        // Re-read rather than trusting the failure: Apple may have installed it and then thrown
+        // on something else, and the list must show what the system says, not what we inferred.
+        let refreshed = await catalog.snapshot()
+        // **Every write happens AFTER the last suspension, in one guarded step.** The earlier
+        // version cleared `installingTag` first and only then awaited the refresh, which unlocked
+        // the Download button while this task was still parked: a quick retry that SUCCEEDED
+        // would then be overwritten by this older task's stale rows, showing the language as
+        // missing after it had installed. Cancelling mid-refresh had the same shape. The window
+        // is closed rather than handled, so there is no ordering left to get wrong.
         guard let self, !Task.isCancelled, self.generation == mine else { return }
         self.installingTag = nil
         self.failedTag = tag
-        // Re-read rather than trusting the failure: Apple may have installed it and then thrown
-        // on something else, and the list must show what the system says, not what we inferred.
-        self.state = Self.state(for: await catalog.snapshot())
+        self.state = Self.state(for: refreshed)
       }
     }
   }

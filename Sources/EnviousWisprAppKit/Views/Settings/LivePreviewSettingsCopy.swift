@@ -71,6 +71,16 @@ enum LivePreviewSettingsCopy {
   static let packInstalling = "Downloading"
   static let packRetry = "Try again"
 
+  /// Shown while the list is being read, which is two local inventory reads and moves
+  /// no bytes over the network.
+  ///
+  /// **Deliberately NOT `packInstalling`.** Reusing "Downloading" here made every
+  /// supported Mac open this page announcing a download that was not happening, which
+  /// contradicts the promise three lines above it. A spinner is not a transfer, and a
+  /// page that cries download while idle teaches the user to disbelieve the word when
+  /// it is true.
+  static let packsLoading = "Checking which languages are on this Mac"
+
   /// Shown when the list itself could not be read. Distinct from an empty list on
   /// purpose: "we could not ask your Mac" and "your Mac supports none" are
   /// different facts, and showing an empty list for the first would be a lie.
