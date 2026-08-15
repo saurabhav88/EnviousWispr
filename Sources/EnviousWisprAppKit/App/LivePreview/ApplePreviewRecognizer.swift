@@ -154,13 +154,23 @@ actor ApplePreviewRecognizer {
     if already.count >= AssetInventory.maximumReservedLocales, let victim = already.first {
       _ = await AssetInventory.release(reservedLocale: victim)
     }
-    // The Bool matters. `reserve` returns false rather than throwing when the claim
-    // was not made — a reservation-limit race, or an eviction that did not take.
-    // Discarding it let `prepare()` report success for a locale that was never
-    // claimed, and the coordinator then CACHES that recognizer as ready, so every
-    // later recording reuses a broken one instead of retrying. The failure would
-    // have surfaced far away, as transcription complaining about a missing asset.
-    guard try await AssetInventory.reserve(locale: locale) else {
+    // The Bool matters, but it is NOT a success flag, and reading it as one was a
+    // defect of its own. Measured against the real API: reserving a locale that is
+    // already reserved returns FALSE, not true. So false means "did not newly
+    // reserve", which covers both a genuine refusal and the entirely healthy case
+    // where the claim was already held — including where the early-return check
+    // above missed it because Apple reports an equivalent identifier variant.
+    //
+    // Treating false as failure would disable the preview on a machine that has
+    // exactly the reservation it needs. Treating it as success would restore the
+    // original defect: `prepare()` reporting ready for a locale never claimed, then
+    // being CACHED, so every later recording reuses a broken recognizer and the
+    // failure surfaces far away as a missing-asset complaint.
+    //
+    // Ask the authority instead of inferring from the return value.
+    if try await AssetInventory.reserve(locale: locale) { return }
+    let nowReserved = await AssetInventory.reservedLocales
+    guard nowReserved.contains(where: { $0.identifier(.bcp47) == wanted }) else {
       throw LivePreviewError.localeUnavailable
     }
   }
