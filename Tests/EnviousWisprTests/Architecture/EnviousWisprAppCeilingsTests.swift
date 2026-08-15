@@ -438,14 +438,24 @@ import Testing
   /// together, not either alone, exhaust the budget. No domain logic moved here —
   /// same class of irreducible composition-root residue as every entry above.
   /// Cap by deterministic rule (actual 1331 + ~2, rounded up to nearest 5 = 1335).
+  /// #1988 (live preview): 1335 → 1340 for THREE lines — one comment and a
+  /// two-line `LivePreviewInstaller.install(...)` call. The feature's own wiring
+  /// (building the coordinator, handing the overlay its three seams) is fifteen
+  /// lines and deliberately does NOT live here: it was extracted to
+  /// `LivePreviewInstaller` the moment this ceiling caught it, which is exactly
+  /// the behaviour the thermostat exists to produce. What remains is the
+  /// irreducible part — only the composition root holds the overlay panel, the
+  /// concrete capture manager and the settings manager at the same time. No
+  /// domain logic moved here; the limb's entire behaviour lives on its own types.
+  /// Cap by deterministic rule (actual 1336 + ~2, rounded up to nearest 5 = 1340).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1335,
+      lineCount <= 1340,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1335. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1340. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

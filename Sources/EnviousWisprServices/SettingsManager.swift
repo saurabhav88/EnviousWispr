@@ -42,6 +42,7 @@ public final class SettingsManager {
     case selectedInputDeviceUID
     case preferredInputDeviceIDOverride
     case useStreamingASR
+    case livePreviewEnabled
     case warmEnginePolicy
     case appearance
     case overlayPillPosition
@@ -83,7 +84,8 @@ public final class SettingsManager {
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
-    "useStreamingASR", "warmEnginePolicy", "appearancePreference", "overlayPillPosition",
+    "useStreamingASR", "livePreviewEnabled", "warmEnginePolicy", "appearancePreference",
+    "overlayPillPosition",
     "showBluetoothTips", "playRecordingSounds", "recordingSoundPairing",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
@@ -428,6 +430,16 @@ public final class SettingsManager {
     didSet {
       defaults.set(useStreamingASR, forKey: "useStreamingASR")
       onChange?(.useStreamingASR)
+    }
+  }
+
+  /// #1988: live preview in the recording pill. Display only — the pasted text is
+  /// unaffected by this setting, which is why it carries no accuracy trade the way
+  /// `useStreamingASR` does.
+  public var livePreviewEnabled: Bool {
+    didSet {
+      defaults.set(livePreviewEnabled, forKey: "livePreviewEnabled")
+      onChange?(.livePreviewEnabled)
     }
   }
 
@@ -818,6 +830,9 @@ public final class SettingsManager {
     defaults.removeObject(forKey: "noiseSuppression")
     useStreamingASR =
       defaults.object(forKey: "useStreamingASR") as? Bool ?? SettingsDefaultValues.useStreamingASR
+    livePreviewEnabled =
+      defaults.object(forKey: "livePreviewEnabled") as? Bool
+      ?? SettingsDefaultValues.livePreviewEnabled
     warmEnginePolicy =
       WarmEnginePolicy(
         rawValue: defaults.string(forKey: "warmEnginePolicy") ?? ""

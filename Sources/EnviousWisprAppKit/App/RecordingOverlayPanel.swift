@@ -83,6 +83,11 @@ final class RecordingOverlayPanel {
   private var accessibilityToastShownThisSession: Bool = false
   private var grantHandler: (() -> Void)?
   private var accessibilityWarningDismissedProvider: () -> Bool = { false }
+  /// #1988: live preview. Defaults keep every existing caller (and every test that
+  /// constructs a panel directly) on today's behavior and today's pill size.
+  private var livePreviewEnabledProvider: () -> Bool = { false }
+  private var livePreviewDisplayProvider: () -> LivePreviewDisplay = { .off }
+  private var recordingIntentObserver: (Bool) -> Void = { _ in }
   /// #1063 PR2 — invoked when the user taps Discard on the "recovering" pill.
   /// Wired by the composition root to `RecoveryCoordinator.discardActiveRecovery`.
   private var discardRecoveryHandler: (() -> Void)?
@@ -292,6 +297,35 @@ final class RecordingOverlayPanel {
     accessibilityWarningDismissedProvider = provider
   }
 
+  /// #1988 — wire the live preview.
+  ///
+  /// Two closures rather than one, and the split is deliberate. `enabled` sizes
+  /// the panel and `display` fills it, because size is fixed for the life of a
+  /// panel: an `NSPanel` cannot grow mid-recording without a rebuild, and a
+  /// rebuild is the #930 flicker. Reading the SETTING for geometry means the
+  /// answer does not depend on whether the preview coordinator happened to be
+  /// started before this push, which deriving size from `display` would.
+  func setLivePreviewProviders(
+    enabled: @escaping () -> Bool,
+    display: @escaping () -> LivePreviewDisplay
+  ) {
+    livePreviewEnabledProvider = enabled
+    livePreviewDisplayProvider = display
+  }
+
+  /// #1988: told whether the overlay is currently showing a live recording, so the
+  /// preview can start and stop without the heart path knowing it exists.
+  ///
+  /// This seam rather than the kernel deliberately. `show(intent:)` is the single
+  /// funnel both the first push (`RecordingStarter`) and every state-driven push
+  /// (`DictationLifecycleCoordinator`) already pass through, so wiring here keeps
+  /// the recording path completely unaware of the preview — which is the whole
+  /// point of a limb. The receiver is idempotent because this fires on duplicate
+  /// pushes too.
+  func setRecordingIntentObserver(_ observer: @escaping (Bool) -> Void) {
+    recordingIntentObserver = observer
+  }
+
   /// Wire passive chip action handlers (Lock / Dismiss / auto-dismiss).
   /// Installed once by the former root state at construction time.
   func setPassiveChipHandlers(
@@ -324,6 +358,9 @@ final class RecordingOverlayPanel {
     isRecordingLocked: Bool = false
   ) {
     let isRecordingIntent: Bool = if case .recording = intent { true } else { false }
+    // #1988: reported BEFORE the dedup guard, so the preview learns about a
+    // recording even when this push is a duplicate the panel itself drops.
+    recordingIntentObserver(isRecordingIntent)
     guard
       intent != currentIntent || (isRecordingIntent && self.isRecordingLocked != isRecordingLocked)
     else { return }
@@ -618,9 +655,15 @@ final class RecordingOverlayPanel {
     guard panel == nil else { return }
 
     lockState.isLocked = isRecordingLocked
+    // #1988: the preview needs room for a sentence, which the 185pt capsule cannot
+    // give. Decided once, here, because the panel's frame is fixed for its life.
+    let showsPreview = livePreviewEnabledProvider()
+    let width: CGFloat = showsPreview ? Self.previewPillWidth : 185
+    let height: CGFloat = showsPreview ? Self.previewPillHeight : 92
     let overlayView = RecordingOverlayView(
       audioLevelProvider: audioLevelProvider,
       recordingElapsedProvider: recordingElapsedProvider,
+      livePreviewProvider: showsPreview ? livePreviewDisplayProvider : { .off },
       lockState: lockState,
       noticeState: noticeState
     )
@@ -636,11 +679,19 @@ final class RecordingOverlayPanel {
     // notice banner now grows upward from the stable bottom edge instead of
     // pushing the capsule down.
     .frame(
-      width: 185, height: 92,
+      width: width, height: height,
       alignment: positionProvider() == .bottom ? .bottom : .center
     )
-    showPanel(content: overlayView, width: 185, height: 92)
+    showPanel(content: overlayView, width: width, height: height)
   }
+
+  /// #1988 preview geometry. 400pt fits roughly 20 words across two lines at the
+  /// preview's type size, against a measured median dictation far longer than any
+  /// pill can hold — so the design shows the TAIL rather than trying to fit the
+  /// whole thing. The extra height carries those two lines plus the same #1060
+  /// notice-banner room the 92pt frame reserves.
+  private static let previewPillWidth: CGFloat = 400
+  private static let previewPillHeight: CGFloat = 132
 
   /// #1060: flash a transient banner over the LIVE recording pill (a second line
   /// inside the same capsule), then auto-clear. No-op unless a recording panel is
@@ -1337,6 +1388,10 @@ final class RecordingOverlayPanel {
 
   func hide() {
     currentIntent = .hidden
+    // #1988: a direct `hide()` (not every caller routes through `show(intent:)`)
+    // must still stop the preview. Idempotent, so the common path that already
+    // reported `false` costs nothing.
+    recordingIntentObserver(false)
     isRecordingLocked = false
     lockState.isLocked = false
     clearRecordingNotice()
@@ -1665,11 +1720,18 @@ struct RecordingOverlayView: View {
   /// source of truth instead of a per-view-instance stamp — a panel-recreate
   /// (e.g. `transitionToRecording`) must not reset the displayed timer.
   let recordingElapsedProvider: () -> TimeInterval?
+  /// #1988: what the live preview should show. Polled on the same 50 ms loop as
+  /// audio level and elapsed time rather than on a publisher, because that loop
+  /// already exists and coalesces naturally: Apple emits updates every ~210-290 ms,
+  /// so a push-based feed would redraw more often than the eye can read without
+  /// showing anything more.
+  let livePreviewProvider: () -> LivePreviewDisplay
   var lockState: OverlayLockState
   /// #1060: transient notice banner shown inside the recording capsule.
   var noticeState: OverlayNoticeState
   @State private var audioLevel: Float = 0
   @State private var elapsed: TimeInterval = 0
+  @State private var preview: LivePreviewDisplay = .off
 
   var body: some View {
     VStack(spacing: 6) {
@@ -1686,6 +1748,10 @@ struct RecordingOverlayView: View {
             .transition(.opacity)
         }
       }
+
+      // #1988: the live preview. Display only — the pasted text comes from the
+      // normal transcription path after the key is released.
+      livePreviewBody
 
       // #1060: approaching-cap warning banner. Appears inside the same capsule
       // (no panel rebuild), wraps within the pill width, auto-clears.
@@ -1711,11 +1777,58 @@ struct RecordingOverlayView: View {
       while !Task.isCancelled {
         audioLevel = audioLevelProvider()
         elapsed = recordingElapsedProvider() ?? 0
+        preview = livePreviewProvider()
         try? await Task.sleep(for: .milliseconds(50))
       }
     }
   }
 
+  /// The preview area.
+  ///
+  /// **The tail is produced by `.truncationMode(.head)`, not by counting characters
+  /// and not by clipping an oversized box.** A character budget is a guess about how
+  /// many glyphs fit, and that guess is wrong by a factor of two for CJK and wrong
+  /// again for any proportional font. Clipping was tried first and shipped two
+  /// visible defects that a screenshot caught immediately: `fixedSize` makes a Text
+  /// render at its ideal height regardless of the frame around it, so three lines of
+  /// text spilled out of the capsule background entirely and the top line was sliced
+  /// through the middle of its glyphs. Letting the text engine drop the head gives
+  /// the same "newest words win" result, correct in every script, with a leading
+  /// ellipsis that reads as continuation rather than as a rendering fault.
+  @ViewBuilder
+  private var livePreviewBody: some View {
+    switch preview {
+    case .off:
+      EmptyView()
+    case .waiting:
+      previewText(LivePreviewCopy.listening, dimmed: true)
+    case .unavailable(let reason):
+      // Say why rather than sitting blank. A blank preview reads as "it did not
+      // hear me", which is the exact anxiety this feature exists to remove.
+      previewText(reason, dimmed: true)
+    case .text(let text):
+      previewText(text, dimmed: false)
+    }
+  }
+
+  /// One builder for all three states, so the pill cannot change size or alignment
+  /// as it moves between "Listening...", real words, and a reason it cannot run.
+  private func previewText(_ message: String, dimmed: Bool) -> some View {
+    Text(message)
+      .font(.system(size: 12))
+      .foregroundStyle(.white.opacity(dimmed ? 0.5 : 0.92))
+      .lineLimit(Self.previewLineLimit)
+      .truncationMode(.head)
+      .multilineTextAlignment(.leading)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .frame(height: Self.previewTextHeight, alignment: .top)
+  }
+
+  /// Two lines at 12pt, reserved whether or not there is text, so the pill never
+  /// changes size while words arrive. `lineLimit` is what keeps the content inside
+  /// this height; the frame only reserves it.
+  private static let previewLineLimit = 2
+  private static let previewTextHeight: CGFloat = 34
 }
 
 // MARK: - PolishingOverlayView
