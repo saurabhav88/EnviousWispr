@@ -60,17 +60,22 @@ actor ApplePreviewRecognizer {
   private var converter: AVAudioConverter?
   private var sourceFormat: AVAudioFormat?
 
-  private var module: DictationTranscriber?
-  private var analyzer: SpeechAnalyzer?
-  private var continuation: AsyncStream<AnalyzerInput>.Continuation?
-  private var collector: Task<Void, Never>?
-  private var fedAnyAudio = false
-  /// Bumped by every `startSession`. `endSession` refuses to tear down anything but
-  /// the session it was given, so a late teardown from an abandoned recording can
-  /// never close the analyzer the user is currently talking to. Without this the
-  /// two calls are merely serialized by the actor, not ORDERED, and a fast
-  /// stop-then-start could run them in the wrong order.
-  private var sessionToken: UInt64 = 0
+  /// The only session state this actor keeps. Everything else a session owns lives
+  /// on the `Session` value the caller holds.
+  ///
+  /// **Three review rounds found races here, all the same shape, because the
+  /// analyzer, continuation and collector used to be actor FIELDS.** An actor
+  /// serializes calls but is reentrant at every `await`, so any operation that
+  /// suspended could come back to fields a newer session had replaced: a teardown
+  /// clearing the live session's analyzer, a superseded start leaking its own, a
+  /// stale feed pushing audio into the wrong stream. Each was patchable with one
+  /// more token check, and a third round proved that was the wrong fix.
+  ///
+  /// With per-session values there is nothing shared to overwrite. Every operation
+  /// acts on the resources it was handed, so it cannot touch another session's even
+  /// if it wanted to, and this counter exists only to answer "is this session still
+  /// the current one" for the caller's benefit.
+  private var currentToken: UInt64 = 0
 
   init(locale: Locale) {
     self.locale = locale
@@ -155,49 +160,71 @@ actor ApplePreviewRecognizer {
 
   // MARK: - Session
 
-  /// Open a session and return its token, which `endSession` requires.
+  /// One live preview session and everything it owns.
   ///
-  /// `onText` is called on every result with the text the user should now see; it
-  /// is invoked from this actor's context and must be cheap.
-  @discardableResult
-  func startSession(onText: @escaping @Sendable (String) -> Void) async throws -> UInt64 {
+  /// Held by the caller, never by the actor, so a session can only ever be torn
+  /// down by whoever started it. `fedAnyAudio` is a reference box because feeding
+  /// happens on the actor while the value lives with the caller.
+  struct Session: Sendable {
+    let token: UInt64
+    fileprivate let analyzer: SpeechAnalyzer
+    fileprivate let continuation: AsyncStream<AnalyzerInput>.Continuation
+    fileprivate let collector: Task<Void, Never>
+    fileprivate let converter: AVAudioConverter?
+    fileprivate let sourceFormat: AVAudioFormat
+    fileprivate let targetFormat: AVAudioFormat
+    fileprivate let fedAnyAudio: FedFlag
+  }
+
+  /// Mutable "did any audio reach the analyzer" flag, per session.
+  final class FedFlag: @unchecked Sendable {
+    private(set) var value = false
+    fileprivate func set() { value = true }
+  }
+
+  /// Open a session. `onText` is called on every result with the text the user
+  /// should now see; it is invoked from the collector task and must be cheap.
+  ///
+  /// If the returned session is already superseded by the time `start` completes,
+  /// it is torn down here rather than returned, so a start that lost a race leaks
+  /// nothing and the caller gets a clear failure.
+  func startSession(onText: @escaping @Sendable (String) -> Void) async throws -> Session {
     guard let target = targetFormat, let source = sourceFormat else {
       throw LivePreviewError.notPrepared
     }
-    sessionToken &+= 1
-    let token = sessionToken
-    fedAnyAudio = false
+    currentToken &+= 1
+    let token = currentToken
+
     // A fresh converter per session, so no resampler tail crosses a boundary and
     // leaks the previous dictation's audio into this one.
-    converter = source == target ? nil : AVAudioConverter(from: source, to: target)
+    let converter = source == target ? nil : AVAudioConverter(from: source, to: target)
+    let module = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+    let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+    let analyzer = SpeechAnalyzer(modules: [module])
+    let collector = Self.collect(from: module, onText: onText)
 
-    let fresh = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
-    module = fresh
-    let (stream, cont) = AsyncStream<AnalyzerInput>.makeStream()
-    continuation = cont
-    let analyzer = SpeechAnalyzer(modules: [fresh])
-    self.analyzer = analyzer
-    collector = Self.collect(from: fresh, onText: onText)
+    func discard() {
+      continuation.finish()
+      collector.cancel()
+    }
+
     do {
       try await analyzer.start(inputSequence: stream)
     } catch {
-      // The fields above are already stored, and the coordinator's catch does not
-      // call `endSession` — it has no token to call it with. Without this rollback
-      // a failed or superseded start leaks the collector task and the analyzer's
-      // speech resources for the life of the process. Guarded so a start that lost
-      // a race does not tear down the session that beat it.
-      if token == sessionToken {
-        cont.finish()
-        collector?.cancel()
-        collector = nil
-        continuation = nil
-        self.analyzer = nil
-        module = nil
-        converter = nil
-      }
+      discard()
       throw error
     }
-    return token
+    // Superseded while `start` was suspended: this session's resources are ours
+    // alone, so close them rather than handing back something whose every later
+    // call would be rejected.
+    guard token == currentToken else {
+      discard()
+      throw LivePreviewError.superseded
+    }
+    return Session(
+      token: token, analyzer: analyzer, continuation: continuation, collector: collector,
+      converter: converter, sourceFormat: source, targetFormat: target,
+      fedAnyAudio: FedFlag())
   }
 
   /// Accumulate results into the text a user would actually be looking at.
@@ -244,19 +271,18 @@ actor ApplePreviewRecognizer {
     }
   }
 
-  /// Feed newly captured 16 kHz mono samples for the session identified by `token`.
+  /// Feed newly captured 16 kHz mono samples into `session`.
   ///
   /// Never throws: a preview that cannot convert a buffer shows slightly less text,
-  /// which is not worth propagating. The token is the same guard `endSession` uses,
-  /// and for the same reason — the feed loop is cancelled asynchronously, so a call
-  /// already in flight when the next recording begins would otherwise push the
-  /// previous dictation's audio into the new session's analyzer.
-  func feed(_ samples: [Float], token: UInt64) {
-    guard token == sessionToken else { return }
-    guard let cont = continuation, let source = sourceFormat, !samples.isEmpty else { return }
+  /// which is not worth propagating. A superseded session is dropped rather than
+  /// fed, because the feed loop is cancelled asynchronously and a call already in
+  /// flight when the next recording begins would otherwise push the previous
+  /// dictation's audio into the new stream.
+  func feed(_ samples: [Float], session: Session) {
+    guard session.token == currentToken, !samples.isEmpty else { return }
     guard
       let buffer = AVAudioPCMBuffer(
-        pcmFormat: source, frameCapacity: AVAudioFrameCount(samples.count))
+        pcmFormat: session.sourceFormat, frameCapacity: AVAudioFrameCount(samples.count))
     else { return }
     buffer.frameLength = AVAudioFrameCount(samples.count)
     guard let channel = buffer.floatChannelData else { return }
@@ -266,54 +292,32 @@ actor ApplePreviewRecognizer {
     }
 
     let toSend: AVAudioPCMBuffer
-    if let converter, let target = targetFormat {
-      guard let converted = Self.convert(buffer, using: converter, to: target) else { return }
+    if let converter = session.converter {
+      guard let converted = Self.convert(buffer, using: converter, to: session.targetFormat)
+      else { return }
       toSend = converted
     } else {
       toSend = buffer
     }
-    fedAnyAudio = true
+    session.fedAnyAudio.set()
     nonisolated(unsafe) let unsafeBuffer = toSend
-    cont.yield(AnalyzerInput(buffer: unsafeBuffer))
+    session.continuation.yield(AnalyzerInput(buffer: unsafeBuffer))
   }
 
-  /// Close the session identified by `token` and release its analyzer.
+  /// Close `session` and release its analyzer. Safe to call twice.
   ///
-  /// A token that is not the current one is a teardown arriving from a recording
-  /// that has already been superseded, so it does nothing. Safe to call when no
-  /// session is open, and safe to call twice.
-  func endSession(token: UInt64) async {
-    guard token == sessionToken else { return }
-
-    // **Everything this teardown touches is captured BEFORE the await.** An actor
-    // is reentrant at a suspension point, so while `finalizeAndFinishThroughEndOfInput`
-    // is running the next recording can enter `startSession` and replace
-    // `analyzer`, `collector` and `continuation` with its own. Resuming here and
-    // clearing the FIELDS would then silence the session the user is currently
-    // talking to. Checking the token only on entry, as the first version did, does
-    // not help: it was still true when checked. Review caught this.
-    let endingAnalyzer = analyzer
-    let endingCollector = collector
-    let endingContinuation = continuation
-    let hadAudio = fedAnyAudio
-
-    endingContinuation?.finish()
+  /// Needs no token check at all, which is the point of the value-owned design: the
+  /// resources closed here belong to this session and to nothing else, so a late
+  /// teardown from an abandoned recording cannot reach the live one.
+  func endSession(_ session: Session) async {
+    session.continuation.finish()
     // Only finalize when the analyzer actually received input — see trap 2. A
     // finalize on an empty analyzer never returns, which would leak this task for
     // the life of the process.
-    if hadAudio, let endingAnalyzer {
-      try? await endingAnalyzer.finalizeAndFinishThroughEndOfInput()
+    if session.fedAnyAudio.value {
+      try? await session.analyzer.finalizeAndFinishThroughEndOfInput()
     }
-    endingCollector?.cancel()
-
-    // Only now touch shared state, and only if this is still the current session.
-    guard token == sessionToken else { return }
-    continuation = nil
-    fedAnyAudio = false
-    collector = nil
-    analyzer = nil
-    module = nil
-    converter = nil
+    session.collector.cancel()
   }
 
   // MARK: - Conversion
@@ -353,4 +357,6 @@ actor ApplePreviewRecognizer {
 enum LivePreviewError: Error {
   case audioFormatUnavailable
   case notPrepared
+  /// The session was replaced by a newer one before it finished opening.
+  case superseded
 }

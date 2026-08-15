@@ -212,9 +212,9 @@ final class LivePreviewCoordinator {
       }
     }
 
-    let token: UInt64
+    let session: ApplePreviewRecognizer.Session
     do {
-      token = try await recognizer.startSession(onText: publish)
+      session = try await recognizer.startSession(onText: publish)
     } catch {
       guard isCurrent(generation) else { return }
       display = .unavailable(LivePreviewCopy.notReady)
@@ -223,10 +223,9 @@ final class LivePreviewCoordinator {
     }
     await Self.log("session started, locale=\(locale.identifier(.bcp47))")
 
-    await feedLoop(into: recognizer, token: token) { updates += 1 }
-    // Tokened, so a teardown that loses a race against the next recording's
-    // `startSession` does nothing instead of closing the live analyzer.
-    await recognizer.endSession(token: token)
+    await feedLoop(into: recognizer, session: session) { updates += 1 }
+    // Closes the resources THIS session owns, so it cannot reach a newer one.
+    await recognizer.endSession(session)
     // Reports what the PILL received, so an empty preview is distinguishable from
     // a preview that ran and heard nothing. Those look identical on screen and
     // have completely different causes.
@@ -322,10 +321,17 @@ final class LivePreviewCoordinator {
   /// like from here.
   @available(macOS 26.0, *)
   private func feedLoop(
-    into recognizer: ApplePreviewRecognizer, token: UInt64, onFeed: @escaping () -> Void
+    into recognizer: ApplePreviewRecognizer,
+    session: ApplePreviewRecognizer.Session,
+    onFeed: @escaping () -> Void
   ) async {
-    let initial = await audioCapture.getSamplesSnapshot(fromIndex: 0)
-    var fed = initial.totalCount
+    // `Int.max`, not 0, and the difference is not cosmetic. `getSamplesSnapshot`
+    // clamps `fromIndex` to the total and returns an EMPTY slice when the clamped
+    // index reaches it, so this reads the count without copying anything. Asking
+    // from 0 would copy the entire captured buffer — on a long recording that is
+    // hundreds of megabytes allocated and copied ON THE MAIN ACTOR, by a limb, to
+    // obtain a number it then uses and discards the samples of.
+    var fed = await audioCapture.getSamplesSnapshot(fromIndex: Int.max).totalCount
 
     while !Task.isCancelled {
       try? await Task.sleep(for: .milliseconds(Self.feedIntervalMs))
@@ -341,7 +347,7 @@ final class LivePreviewCoordinator {
       guard !snapshot.samples.isEmpty else { continue }
       fed = snapshot.totalCount
       onFeed()
-      await recognizer.feed(snapshot.samples, token: token)
+      await recognizer.feed(snapshot.samples, session: session)
     }
   }
 
