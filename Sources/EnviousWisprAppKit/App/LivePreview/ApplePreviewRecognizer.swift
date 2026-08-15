@@ -207,20 +207,30 @@ actor ApplePreviewRecognizer {
         for try await result in transcriber.results {
           let piece = String(result.text.characters)
           if result.isFinal {
-            committed += piece
+            // Bounded HERE, where the text is built. Accumulating the whole
+            // transcript and trimming downstream would keep every word of a
+            // 60-minute dictation alive and copy all of it across an actor
+            // boundary several times a second.
+            committed = LivePreviewTextBound.apply(committed + piece)
             inFlight = ""
           } else {
             inFlight = piece
           }
-          onText(committed + inFlight)
+          onText(LivePreviewTextBound.apply(committed + inFlight))
         }
       } catch {}
     }
   }
 
-  /// Feed newly captured 16 kHz mono samples. Never throws: a preview that cannot
-  /// convert a buffer shows slightly less text, which is not worth propagating.
-  func feed(_ samples: [Float]) {
+  /// Feed newly captured 16 kHz mono samples for the session identified by `token`.
+  ///
+  /// Never throws: a preview that cannot convert a buffer shows slightly less text,
+  /// which is not worth propagating. The token is the same guard `endSession` uses,
+  /// and for the same reason — the feed loop is cancelled asynchronously, so a call
+  /// already in flight when the next recording begins would otherwise push the
+  /// previous dictation's audio into the new session's analyzer.
+  func feed(_ samples: [Float], token: UInt64) {
+    guard token == sessionToken else { return }
     guard let cont = continuation, let source = sourceFormat, !samples.isEmpty else { return }
     guard
       let buffer = AVAudioPCMBuffer(
@@ -252,16 +262,32 @@ actor ApplePreviewRecognizer {
   /// session is open, and safe to call twice.
   func endSession(token: UInt64) async {
     guard token == sessionToken else { return }
-    continuation?.finish()
-    continuation = nil
+
+    // **Everything this teardown touches is captured BEFORE the await.** An actor
+    // is reentrant at a suspension point, so while `finalizeAndFinishThroughEndOfInput`
+    // is running the next recording can enter `startSession` and replace
+    // `analyzer`, `collector` and `continuation` with its own. Resuming here and
+    // clearing the FIELDS would then silence the session the user is currently
+    // talking to. Checking the token only on entry, as the first version did, does
+    // not help: it was still true when checked. Review caught this.
+    let endingAnalyzer = analyzer
+    let endingCollector = collector
+    let endingContinuation = continuation
+    let hadAudio = fedAnyAudio
+
+    endingContinuation?.finish()
     // Only finalize when the analyzer actually received input — see trap 2. A
     // finalize on an empty analyzer never returns, which would leak this task for
     // the life of the process.
-    if fedAnyAudio, let analyzer {
-      try? await analyzer.finalizeAndFinishThroughEndOfInput()
+    if hadAudio, let endingAnalyzer {
+      try? await endingAnalyzer.finalizeAndFinishThroughEndOfInput()
     }
+    endingCollector?.cancel()
+
+    // Only now touch shared state, and only if this is still the current session.
+    guard token == sessionToken else { return }
+    continuation = nil
     fedAnyAudio = false
-    collector?.cancel()
     collector = nil
     analyzer = nil
     module = nil

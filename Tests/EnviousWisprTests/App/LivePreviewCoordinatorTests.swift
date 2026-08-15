@@ -112,16 +112,16 @@ struct LivePreviewCoordinatorTests {
   @Test("Short text is returned untouched")
   func shortTextUnbounded() {
     let text = "the quick brown fox"
-    #expect(LivePreviewCoordinator.bounded(text) == text)
+    #expect(LivePreviewTextBound.apply(text) == text)
   }
 
   @Test("Long text keeps the tail, drops the head, and does not cut a word in half")
   func longTextKeepsTail() {
     // The pill shows the newest words, so the END is the part that must survive.
     let long = String(repeating: "alpha ", count: 1000)  // 6000 characters
-    let bounded = LivePreviewCoordinator.bounded(long)
+    let bounded = LivePreviewTextBound.apply(long)
 
-    #expect(bounded.count <= LivePreviewCoordinator.maxRetainedCharacters)
+    #expect(bounded.count <= LivePreviewTextBound.maxCharacters)
     #expect(bounded.isEmpty == false)
     #expect(long.hasSuffix(bounded), "the retained text must be a suffix of the original")
     #expect(
@@ -134,9 +134,18 @@ struct LivePreviewCoordinatorTests {
     // A CJK sentence carries no spaces, and neither does a pathological URL. The
     // word-boundary step must not be able to turn the bound off.
     let long = String(repeating: "語", count: 5000)
-    let bounded = LivePreviewCoordinator.bounded(long)
-    #expect(bounded.count <= LivePreviewCoordinator.maxRetainedCharacters)
+    let bounded = LivePreviewTextBound.apply(long)
+    #expect(bounded.count <= LivePreviewTextBound.maxCharacters)
     #expect(long.hasSuffix(bounded))
+  }
+
+  /// The bound is idempotent, which is what lets the producer apply it on every
+  /// update without the text creeping.
+  @Test("Applying the bound twice changes nothing the second time")
+  func boundIsIdempotent() {
+    let long = String(repeating: "alpha ", count: 1000)
+    let once = LivePreviewTextBound.apply(long)
+    #expect(LivePreviewTextBound.apply(once) == once)
   }
 
   // MARK: - Shipped default
