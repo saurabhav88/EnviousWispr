@@ -499,12 +499,17 @@ enum RouterCeilingParser {
     // missing ones being `makeRecoveryDirective` and
     // `ensureSelectedReadyForPress`, both `async`.
     // `throws` may carry a typed-throws clause on this Swift 6 target
-    // (`() throws(MyError) -> Void`), so the error type is part of the specifier
-    // (cloud review, PR #2070).
+    // (`() throws(MyError) -> Void`), so the error type is part of the specifier.
+    // The error type may itself contain one level of parentheses —
+    // `throws(Failure<(Int, String)>)` — so the clause matches a balanced pair
+    // rather than stopping at the first `)` (cloud review, PR #2070). One level
+    // is where a regex's usefulness ends; deeper nesting needs a real parser, and
+    // failing to match simply counts the property as a collaborator, which is the
+    // conservative direction.
     return line.range(
       of:
         #":[[:space:]]*(@[A-Za-z]+[[:space:]]+)*\([^)]*\)"#
-        + #"([[:space:]]+(async|rethrows|throws([[:space:]]*\([^)]*\))?))*"#
+        + #"([[:space:]]+(async|rethrows|throws([[:space:]]*\(([^()]|\([^()]*\))*\))?))*"#
         + #"[[:space:]]*->[[:space:]]"#,
       options: .regularExpression) != nil
   }
