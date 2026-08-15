@@ -107,7 +107,7 @@ enum RouterCeilingParser {
 
   /// Non-private `func` declarations declared directly in the class body.
   static func nonPrivateMethodCount(in body: String) -> Int {
-    members(in: body).compactMap { $0.decl.as(FunctionDeclSyntax.self) }
+    members(in: body).compactMap { $0.as(FunctionDeclSyntax.self) }
       .filter { !isPrivate($0.modifiers) }
       .count
   }
@@ -192,9 +192,22 @@ enum RouterCeilingParser {
       }
     }
 
+    // The match must not begin INSIDE an identifier. The retired implementation
+    // spelled this as a `(?<![A-Za-z0-9_])` lookbehind, and dropping it made
+    // `preassertAttached()` satisfy a guard that requires `assertAttached()` —
+    // a false green in a safety check, which is worse than a missed match
+    // (cloud review, PR #2070). Restored explicitly rather than inherited.
+    func isIdentifierByte(_ byte: UInt8) -> Bool {
+      (byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9"))
+        || (byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z"))
+        || (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "z"))
+        || byte == UInt8(ascii: "_")
+    }
+
     let target = Array(needle.utf8)
     guard !target.isEmpty, bytes.count >= target.count else { return nil }
     for start in 0...(bytes.count - target.count) {
+      guard start == 0 || !isIdentifierByte(bytes[start - 1]) else { continue }
       if Array(bytes[start..<(start + target.count)]) == target { return start }
     }
     return nil
@@ -216,12 +229,35 @@ enum RouterCeilingParser {
   /// members as top-level code keeps them genuine MEMBERS, where modifiers such
   /// as `nonisolated` and `final` are legal and mean what they mean in the real
   /// class.
-  private static func members(in body: String) -> MemberBlockItemListSyntax {
+  private static func members(in body: String) -> [DeclSyntax] {
     let tree = Parser.parse(source: "final class __CeilingProbe {\n\(body)\n}")
-    guard let probe = ClassFinder.find(named: "__CeilingProbe", in: tree) else {
-      return MemberBlockItemListSyntax([])
+    guard let probe = ClassFinder.find(named: "__CeilingProbe", in: tree) else { return [] }
+
+    var collected: [DeclSyntax] = []
+    func collect(_ list: MemberBlockItemListSyntax) {
+      for item in list {
+        // A `#if` block arrives as ONE member of kind `IfConfigDeclSyntax`, so
+        // reading `item.decl` alone skips every declaration inside it. The text
+        // scanner counted those lines — `#if` does not change brace depth — so
+        // not descending here would be a silent UNDERCOUNT relative to it, and
+        // the differential could not catch it because no ceilinged class uses
+        // `#if` today (cloud review, PR #2070).
+        //
+        // `EngineProtocolSurfaceFreezeTests` in this directory already handles
+        // this, and I read that file for its API shape without carrying the
+        // handling across — the same twin-not-copied mistake this PR keeps
+        // finding.
+        if let ifConfig = item.decl.as(IfConfigDeclSyntax.self) {
+          for clause in ifConfig.clauses {
+            if case .decls(let nested) = clause.elements { collect(nested) }
+          }
+          continue
+        }
+        collected.append(item.decl)
+      }
     }
-    return probe.memberBlock.members
+    collect(probe.memberBlock.members)
+    return collected
   }
 
   private struct StoredLet {
@@ -243,7 +279,7 @@ enum RouterCeilingParser {
   private static func storedLetBindings(in body: String) -> [StoredLet] {
     var result: [StoredLet] = []
     for member in members(in: body) {
-      guard let variable = member.decl.as(VariableDeclSyntax.self) else { continue }
+      guard let variable = member.as(VariableDeclSyntax.self) else { continue }
       guard variable.bindingSpecifier.tokenKind == .keyword(.let) else { continue }
       guard !isTypeProperty(variable.modifiers) else { continue }
       for binding in variable.bindings {

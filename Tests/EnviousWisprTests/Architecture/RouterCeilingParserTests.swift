@@ -20,6 +20,32 @@ import Testing
     return try RouterCeilingParser.classBody(named: typeName, at: url.path)
   }
 
+  /// #2068 (cloud review, PR #2070, on the SwiftSyntax rewrite). The retired
+  /// implementation searched with a `(?<![A-Za-z0-9_])` lookbehind so a match
+  /// could not begin inside a longer identifier. The rewrite's plain substring
+  /// search dropped it, which let `preassertAttached()` satisfy a guard that
+  /// requires `assertAttached()` — a FALSE GREEN in a safety check, which is
+  /// strictly worse than a missed match.
+  ///
+  /// The three cases below are the whole contract: a real call is found, a
+  /// longer identifier ending in the needle is not, and an occurrence inside a
+  /// comment or string is not.
+  @Test func rangeOfStatement_requiresAnIdentifierBoundaryAndIgnoresNonCode() throws {
+    let genuine = "  assertAttached()\n"
+    #expect(RouterCeilingParser.rangeOfStatement("assertAttached()", in: genuine) != nil)
+
+    let suffixOnly = "  preassertAttached()\n"
+    #expect(
+      RouterCeilingParser.rangeOfStatement("assertAttached()", in: suffixOnly) == nil,
+      "a longer identifier ending in the needle must not satisfy the guard")
+
+    let commented = "  // assertAttached()\n"
+    #expect(RouterCeilingParser.rangeOfStatement("assertAttached()", in: commented) == nil)
+
+    let quoted = "  let note = \"assertAttached()\"\n"
+    #expect(RouterCeilingParser.rangeOfStatement("assertAttached()", in: quoted) == nil)
+  }
+
   @Test func classBody_returnsClassBody_notInnerMethodBody() throws {
     // The `init` body holds its own `{` and a local `let`. The pre-#808 bug
     // anchored on that inner brace and returned the init body, counting the
@@ -192,6 +218,46 @@ import Testing
         }
         """)
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// #2068 (cloud review, PR #2070, on the SwiftSyntax rewrite). A `#if` block
+  /// arrives as ONE member of kind `IfConfigDeclSyntax`, so reading `item.decl`
+  /// alone skips every declaration inside it. The retired text scanner counted
+  /// those lines — `#if` does not change brace depth — so not descending was a
+  /// silent UNDERCOUNT introduced BY the rewrite.
+  ///
+  /// The old-versus-new differential could not catch it: no ceilinged class uses
+  /// `#if` today, so the two parsers agreed on every real source while
+  /// disagreeing on a shape none of them contained. A differential proves
+  /// equality on the code that exists, not on the code someone writes next.
+  @Test func collaboratorCount_descendsIntoConditionalCompilationBlocks() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          #if DEBUG
+            let debugOnly: BetaDep
+            let debugHook: () -> Void
+          #endif
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+  }
+
+  /// The same descent for methods, which share the member walk.
+  @Test func nonPrivateMethodCount_descendsIntoConditionalCompilationBlocks() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          func always() {}
+          #if DEBUG
+            func debugOnly() {}
+            private func hidden() {}
+          #endif
+        }
+        """)
+    #expect(RouterCeilingParser.nonPrivateMethodCount(in: body) == 2)
   }
 
   @Test func collaboratorCount_excludesVarStoredProperty() throws {
