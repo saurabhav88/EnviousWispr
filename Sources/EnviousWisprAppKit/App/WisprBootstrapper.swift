@@ -461,7 +461,7 @@ public final class WisprBootstrapper {
     }
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
-    LivePreviewInstaller.install(
+    let livePreview = LivePreviewInstaller.install(
       overlay: recordingOverlay, capture: audioCapture, settings: settings)
 
     // Custom-words propagator wiring (seed → register consumers → install
@@ -473,6 +473,9 @@ public final class WisprBootstrapper {
       correctorConsumers: [
         kernelDriver.wordCorrection,
         whisperKitKernelDriver.wordCorrection,
+        // #1988: the preview corrects displayed text with the SAME lane, so a
+        // user's own names do not visibly mangle while the pasted text is fixed.
+        livePreview,
       ],
       polishConsumers: [
         kernelDriver.llmPolish,

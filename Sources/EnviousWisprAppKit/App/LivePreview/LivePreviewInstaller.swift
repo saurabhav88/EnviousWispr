@@ -25,11 +25,17 @@ enum LivePreviewInstaller {
   /// only consumer, so no separate retention is needed (same idiom as
   /// `wireCustomWords`, which anchors its propagator to the coordinator that uses
   /// it).
+  /// Returns the coordinator so the composition root can register it as a Custom
+  /// Words consumer. It is returned rather than registered here because
+  /// `wireCustomWords` seeds and registers every consumer in one non-reversible
+  /// order, and a second registration path would be a second source of truth for
+  /// when the preview learns a user's vocabulary.
+  @discardableResult
   static func install(
     overlay: RecordingOverlayPanel,
     capture: any AudioCaptureInterface,
     settings: SettingsManager
-  ) {
+  ) -> LivePreviewCoordinator {
     // **Effective, not merely persisted.** A value saved as true on macOS 26 and
     // then read on an older system used to enlarge the pill on every recording and
     // fill it with "needs macOS 26" — while the toggle that would turn it off was
@@ -53,5 +59,6 @@ enum LivePreviewInstaller {
     overlay.setRecordingIntentObserver { recording in
       coordinator.setRecording(recording)
     }
+    return coordinator
   }
 }

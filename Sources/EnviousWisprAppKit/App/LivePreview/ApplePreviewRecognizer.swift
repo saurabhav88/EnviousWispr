@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import EnviousWisprPostProcessing
 import Foundation
 import Speech
 
@@ -83,8 +84,23 @@ actor ApplePreviewRecognizer {
   /// the current one" for the caller's benefit.
   private var currentToken: UInt64 = 0
 
+  /// Custom Words, as pre-built lookups. Set by the coordinator whenever the
+  /// vocabulary changes and CAPTURED per session at `startSession`, so a
+  /// vocabulary edit mid-dictation cannot change what this session is applying
+  /// halfway through a sentence. The pasted text is corrected by the pipeline's
+  /// own step against the vocabulary live at THAT moment, so the two paths agree
+  /// on everything except an edit made during the few seconds of one dictation.
+  private var correctorLookups: WordCorrector.Lookups?
+
   init(locale: Locale) {
     self.locale = locale
+  }
+
+  /// Hand this recognizer a new Custom Words snapshot. Takes pre-built lookups
+  /// rather than terms so the build cost is paid once per vocabulary generation
+  /// on the coordinator, not once per recording here.
+  func setCorrectorLookups(_ lookups: WordCorrector.Lookups?) {
+    correctorLookups = lookups
   }
 
   // MARK: - Preparation
@@ -287,7 +303,8 @@ actor ApplePreviewRecognizer {
     let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream(
       bufferingPolicy: .bufferingNewest(Self.maxQueuedChunks))
     let analyzer = SpeechAnalyzer(modules: [module])
-    let collector = Self.collect(from: module, onText: onText)
+    // Captured, not read later: the session owns the vocabulary it started with.
+    let collector = Self.collect(from: module, lookups: correctorLookups, onText: onText)
 
     // Finishing the stream and cancelling the collector is not enough: the analyzer
     // holds its own analysis and model resources and needs an explicit end, or a
@@ -332,12 +349,20 @@ actor ApplePreviewRecognizer {
   ///
   /// What a user sees is finished segments plus the one in flight, so that is what
   /// is assembled.
+  ///
+  /// `lookups` is this session's Custom Words snapshot, applied HERE because this
+  /// is already off the main actor and already the place the retention bound runs.
+  /// `WordCorrector.correct(_:using:)` is a documented pure function, safe to call
+  /// off any actor, and `Lookups` is `Sendable`, so the snapshot crosses the
+  /// boundary as a value rather than as a reference the main actor keeps mutating.
   private static func collect(
-    from transcriber: DictationTranscriber, onText: @escaping @Sendable (String) -> Void
+    from transcriber: DictationTranscriber, lookups: WordCorrector.Lookups?,
+    onText: @escaping @Sendable (String) -> Void
   ) -> Task<Void, Never> {
     Task {
       var committed = ""
       var inFlight = ""
+      let corrector = WordCorrector()
       // A thrown error ends the stream. The text already on screen stays on
       // screen: a preview that freezes mid-sentence is a far better failure than
       // one that blanks, and the dictation itself is unaffected either way.
@@ -358,10 +383,37 @@ actor ApplePreviewRecognizer {
             // lasts even though every emitted string is trimmed.
             inFlight = LivePreviewTextBound.apply(piece)
           }
-          onText(LivePreviewTextBound.apply(committed + inFlight))
+          // Correct AFTER bounding, never before. The bound keeps the tail, so
+          // correcting first would scan the whole retained transcript several
+          // times a second to produce a string whose head is then thrown away —
+          // unbounded work for output nobody sees. Bounding first caps this at
+          // the visible window.
+          //
+          // Applied to the assembled string rather than to each incoming piece
+          // because a custom term can span the segment join: Apple closes a
+          // segment mid-name often enough that per-piece correction would miss
+          // exactly the proper nouns this exists for (#1988 — partial hypotheses
+          // are least stable on proper nouns, which is the whole reason the issue
+          // asks for the dictionary on the preview pass).
+          onText(
+            Self.corrected(
+              LivePreviewTextBound.apply(committed + inFlight),
+              corrector: corrector, lookups: lookups))
         }
       } catch {}
     }
+  }
+
+  /// Apply this session's Custom Words snapshot, or return `text` untouched.
+  ///
+  /// A limb inside a limb: correction failing must never cost the user the words
+  /// already on screen, so an empty vocabulary short-circuits and anything else
+  /// falls through to the uncorrected text rather than blanking the pill.
+  private static func corrected(
+    _ text: String, corrector: WordCorrector, lookups: WordCorrector.Lookups?
+  ) -> String {
+    guard let lookups, !text.isEmpty else { return text }
+    return corrector.correct(text, using: lookups).corrected
   }
 
   /// Feed newly captured 16 kHz mono samples into `session`.
@@ -415,7 +467,19 @@ actor ApplePreviewRecognizer {
     // that landed on only one of two symmetric sites would be the partial port this
     // codebase keeps relearning.
     if session.fedAnyAudio.value {
-      try? await session.analyzer.finalizeAndFinishThroughEndOfInput()
+      // `try?` here was the FIFTH member of the abandoned-analyzer class, and the
+      // one that survived a sweep I called complete — because that sweep
+      // enumerated CONSTRUCTION sites and their exits, and this is a different
+      // axis: an ENDING call that can itself fail. A throwing finalize leaves the
+      // analyzer exactly as un-ended as never calling one, and stopping a
+      // recording is the moment the parent task is being cancelled, which is when
+      // it is most likely to throw. Cancel is the fallback because it does not
+      // throw, so the class closes here rather than recursing.
+      do {
+        try await session.analyzer.finalizeAndFinishThroughEndOfInput()
+      } catch {
+        await session.analyzer.cancelAndFinishNow()
+      }
     } else {
       await session.analyzer.cancelAndFinishNow()
     }

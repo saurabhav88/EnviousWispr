@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
+import EnviousWisprPostProcessing
 import Foundation
 import Testing
 
@@ -156,6 +157,86 @@ struct LivePreviewCoordinatorTests {
     // attention some users explicitly asked to be able to decline, and it needs
     // macOS 26, so on by default would read as broken on every older Mac.
     #expect(SettingsDefaultValues.livePreviewEnabled == false)
+  }
+
+  // MARK: - Custom Words on preview text (#1988 acceptance)
+
+  private func makeCoordinator() -> LivePreviewCoordinator {
+    LivePreviewCoordinator(
+      audioCapture: CountingAudioCapture(),
+      isEnabled: { true },
+      languageMode: { .locked("en") }
+    )
+  }
+
+  private func word(_ canonical: String) -> CustomWord {
+    CustomWord(canonical: canonical)
+  }
+
+  /// **The seed arrives at generation 0, and so does the property's initial
+  /// `.empty`.** Comparing an incoming generation against the PREVIOUS VALUE's
+  /// would therefore treat a real vocabulary arriving at launch as an unchanged
+  /// one and silently drop it, so Custom Words would reach the preview only after
+  /// the user edited them — never, for anyone whose words were already saved.
+  /// This is the exact collision, written as the case most likely to regress.
+  @Test("A vocabulary seeded at generation 0 is picked up, not mistaken for empty")
+  func generationZeroSeedIsNotDropped() {
+    let coordinator = makeCoordinator()
+    #expect(coordinator.correctorLookupBuilds == 0)
+    #expect(coordinator.hasCorrectorLookupsForTesting == false)
+
+    coordinator.correctorVocabulary = CorrectorVocabulary(
+      terms: [word("Qualtrics")], generation: 0)
+
+    #expect(coordinator.correctorLookupBuilds == 1)
+    #expect(
+      coordinator.hasCorrectorLookupsForTesting,
+      "a generation-0 seed carrying real terms must build lookups")
+  }
+
+  @Test("A new generation rebuilds; the same generation does not")
+  func rebuildsOnlyOnGenerationChange() {
+    let coordinator = makeCoordinator()
+    coordinator.correctorVocabulary = CorrectorVocabulary(
+      terms: [word("Qualtrics")], generation: 1)
+    #expect(coordinator.correctorLookupBuilds == 1)
+
+    // Same generation, different terms: the generation IS the identity, so this
+    // must not rebuild. Building here would mean the cache key is not doing its
+    // job and every settings write pays a full lookup build.
+    coordinator.correctorVocabulary = CorrectorVocabulary(
+      terms: [word("Qualtrics"), word("EnviousWispr")], generation: 1)
+    #expect(coordinator.correctorLookupBuilds == 1)
+
+    coordinator.correctorVocabulary = CorrectorVocabulary(
+      terms: [word("Qualtrics"), word("EnviousWispr")], generation: 2)
+    #expect(coordinator.correctorLookupBuilds == 2)
+  }
+
+  /// An empty vocabulary stores `nil` rather than empty lookups, so the
+  /// recognizer's guard short-circuits instead of running a correction pass that
+  /// cannot match anything. Most users have no custom words, so this is the
+  /// common path, not an edge case.
+  @Test("Clearing the vocabulary drops the snapshot rather than keeping empty lookups")
+  func emptyVocabularyStoresNoLookups() {
+    let coordinator = makeCoordinator()
+    coordinator.correctorVocabulary = CorrectorVocabulary(
+      terms: [word("Qualtrics")], generation: 1)
+    #expect(coordinator.hasCorrectorLookupsForTesting)
+
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: [], generation: 2)
+    #expect(coordinator.correctorLookupBuilds == 2)
+    #expect(coordinator.hasCorrectorLookupsForTesting == false)
+  }
+
+  /// The correction the preview applies is the SAME function the pasted text goes
+  /// through, so this pins the behaviour the acceptance criterion is about: a
+  /// user's own name, misheard by Apple's recognizer, is repaired before display.
+  @Test("The corrector repairs a custom term the way the preview will")
+  func correctorRepairsACustomTerm() {
+    let lookups = WordCorrector.buildLookups(words: [word("Qualtrics")])
+    let corrected = WordCorrector().correct("i work at qualtrix today", using: lookups).corrected
+    #expect(corrected.contains("Qualtrics"), "got: \(corrected)")
   }
 }
 

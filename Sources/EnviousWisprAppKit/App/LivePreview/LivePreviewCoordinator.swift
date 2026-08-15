@@ -1,6 +1,7 @@
 import AVFoundation
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprPostProcessing
 import Foundation
 
 /// What the recording pill should render for the live preview (#1988).
@@ -50,8 +51,13 @@ enum LivePreviewDisplay: Equatable {
 /// within the run's own noise floor. The instrument was proven able to detect
 /// contention first — saturating every core moved slip 5.3 ms, well outside that
 /// floor — so the null result is evidence rather than an absence of evidence.
+/// Adopts `CorrectorVocabularyConsumer` so Custom Words reach the preview the same
+/// way they reach the pipeline's own correction step — one propagator, one lane,
+/// no second source of truth for what a user's vocabulary is (#1988 acceptance:
+/// "the custom dictionary applies to preview text, so a user's own names do not
+/// visibly mangle mid-dictation").
 @MainActor
-final class LivePreviewCoordinator {
+final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
   /// Poll cadence for handing new audio to the recognizer. Matches the 100 ms
   /// chunking the benchmark harness used, so the screening numbers describe this
@@ -79,6 +85,41 @@ final class LivePreviewCoordinator {
   /// The locale `preparedRecognizer` was prepared for, so a language change
   /// rebuilds it.
   private var preparedLocale: Locale?
+
+  /// Custom Words, written by `CustomWordsPropagator`. Building lookups is the
+  /// expensive half, so it happens HERE, once per vocabulary generation, rather
+  /// than once per recording inside the recognizer — the same reason
+  /// `WordCorrectionStep` caches on `generation`.
+  ///
+  /// An empty vocabulary stores `nil` lookups rather than empty ones, so the
+  /// recognizer's guard short-circuits instead of running a full correction pass
+  /// that cannot match anything. Most users have no custom words.
+  var correctorVocabulary: CorrectorVocabulary = .empty {
+    didSet { rebuildCorrectorLookupsIfNeeded() }
+  }
+
+  /// Lookups for `correctorVocabulary`, or `nil` when there is nothing to correct.
+  private var correctorLookups: WordCorrector.Lookups?
+
+  /// The generation `correctorLookups` was built for. **Optional, and that is
+  /// load-bearing:** the seed `wireCustomWords` sends carries generation 0, and so
+  /// does the `.empty` this property starts at, so comparing the incoming
+  /// generation against the PREVIOUS VALUE's would treat a real vocabulary
+  /// arriving at launch as a no-op change and drop it. Custom Words would then
+  /// reach the preview only after the user edited them — never, for anyone whose
+  /// vocabulary was already there. Comparing against what was actually BUILT
+  /// starts at `nil`, which cannot collide with a real generation.
+  private var builtLookupsGeneration: UInt64?
+
+  /// Test seam, mirroring `WordCorrectionStep.lookupCacheBuilds`: how many times
+  /// lookups have actually been built. Lets a test prove the seed vocabulary was
+  /// picked up AND that a repeated generation does not rebuild.
+  package private(set) var correctorLookupBuilds = 0
+
+  /// Test seam: whether a correcting snapshot currently exists. Distinguishes
+  /// "built, and there is something to correct" from "built nothing because the
+  /// vocabulary is empty", which are different states with the same build count.
+  package var hasCorrectorLookupsForTesting: Bool { correctorLookups != nil }
 
   private var sessionTask: Task<Void, Never>?
   /// In-flight preparation, shared by every session that arrives while it runs.
@@ -271,6 +312,32 @@ final class LivePreviewCoordinator {
   /// task and hand the next recording a German recognizer while every check said
   /// English was ready. The generation below is what makes the write conditional;
   /// review caught the original.
+  /// Rebuild the cached lookups and hand them to whatever recognizer exists.
+  ///
+  /// Not availability-gated: `CustomWordsPropagator` writes the vocabulary on
+  /// every Mac we support, and gating the STORE on macOS 26 would mean a machine
+  /// that later prepares a recognizer has nothing to seed it with.
+  private func rebuildCorrectorLookupsIfNeeded() {
+    guard builtLookupsGeneration != correctorVocabulary.generation else { return }
+    builtLookupsGeneration = correctorVocabulary.generation
+    correctorLookupBuilds += 1
+    correctorLookups =
+      correctorVocabulary.terms.isEmpty
+      ? nil : WordCorrector.buildLookups(words: correctorVocabulary.terms)
+    guard #available(macOS 26.0, *), let recognizer = preparedRecognizer as? ApplePreviewRecognizer
+    else { return }
+    pushCorrectorLookups(to: recognizer)
+  }
+
+  /// Hand the current snapshot to `recognizer`. Fire-and-forget: the recognizer is
+  /// an actor, this is the main actor, and a vocabulary update must never make a
+  /// settings write wait on it.
+  @available(macOS 26.0, *)
+  private func pushCorrectorLookups(to recognizer: ApplePreviewRecognizer) {
+    let lookups = correctorLookups
+    Task { await recognizer.setCorrectorLookups(lookups) }
+  }
+
   @available(macOS 26.0, *)
   private func ensurePrepared(for locale: Locale) async -> Bool {
     if preparedRecognizer is ApplePreviewRecognizer, preparedLocale == locale { return true }
@@ -300,6 +367,11 @@ final class LivePreviewCoordinator {
         guard self.preparationGeneration == generation else { return false }
         self.preparedRecognizer = fresh
         self.preparedLocale = locale
+        // Seed the vocabulary a newly built recognizer has never been told about.
+        // Without this, Custom Words reach the preview only if the user edits them
+        // AFTER the recognizer exists — which is never, for the common case of a
+        // vocabulary that was already there at launch.
+        self.pushCorrectorLookups(to: fresh)
         return true
       }
     }

@@ -23,15 +23,29 @@ enum LivePreviewSettingsCopy {
   static let sectionHeader = "On-screen Preview"
   static let toggleLabel = "Show words while I speak"
 
-  /// Says three things, in the order a user cares about them: what they will see,
-  /// that it is not what gets pasted, and that it costs them nothing in accuracy.
-  /// The third is the one that stops "is this making my transcription worse?",
-  /// which is the natural next question once they know two engines are running.
+  /// Says four things, in the order a user cares about them: what they will see,
+  /// where that text goes, that it is not what gets pasted, and that it costs them
+  /// nothing in accuracy. The last is the one that stops "is this making my
+  /// transcription worse?", the natural next question once they know two engines
+  /// are running.
+  ///
+  /// The privacy sentence is here because #1988 asks for it in writing ("It should
+  /// be trivially yes (nothing leaves the Mac), but state it"). Trivially true is
+  /// not the same as visible: a user deciding whether to switch on something that
+  /// watches them speak should not have to infer the answer from our reputation,
+  /// and this is the only surface they read before deciding. It is also the one
+  /// place the claim can be made narrowly and honestly, since this preview really
+  /// is on-device for every user, with no cloud variant to qualify.
+  /// Keeps "preview only" verbatim. The reviewer's proposed replacement dropped
+  /// that phrase, which a frozen test requires and which carries the disclaimer
+  /// this copy exists for, so the privacy sentence is added ALONGSIDE it rather
+  /// than in place of it.
   static let toggleDescription =
     "See your words appear in the recording pill as you talk, so you know "
-    + "EnviousWispr is hearing you. This is a preview only. The text that gets "
-    + "pasted is still produced by your chosen engine after you finish, so turning "
-    + "this on does not change a single character of your result."
+    + "EnviousWispr is hearing you. This is a preview only. It stays on your Mac "
+    + "and is discarded when the recording ends. The text that gets pasted is "
+    + "still produced by your chosen engine after you finish, so turning this on "
+    + "does not change a single character of your result."
 
   /// Shown under the disabled toggle on older systems. Names the requirement and
   /// stops there: a user on macOS 14 cannot act on this beyond upgrading, and a
