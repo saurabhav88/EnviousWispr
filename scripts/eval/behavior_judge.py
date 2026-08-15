@@ -109,13 +109,29 @@ DEFAULT_JUDGE = os.environ.get("EW_JUDGE", AZURE_JUDGE_DEPLOYMENT_ID)
 CLAUDE_JUDGE_MAX_WORKERS = 6            # subprocess per call; cap fan-out. Raised
 # from 3 (#1199 speed pass, 2026-06-30), then 20 -> 32 (founder 2026-07-02:
 # faster judging: no metered cost on the subscription judge, only a transient
-# rate-limit risk that judge_chunk's 3-attempt retry absorbs). Lowered back to
+# rate-limit risk that judge_chunk's retry absorbs — JUDGE_CHUNK_ATTEMPTS, 5
+# since 2026-08-15; this said "3-attempt" and went stale the moment that moved,
+# which is why it now names the constant instead of a number). Lowered back to
 # 6 (founder 2026-07-20): 32 concurrent `claude -p` subprocesses (each
 # spawning ripgrep) pushed system load average past 40 while other work was
 # running on the same machine, echoing the load-234 incident in
 # eg1-operations.md. 6 stays well clear of that while judging 1,890 cases in
 # roughly 25 minutes.
-HTTP_JUDGE_MAX_WORKERS = 4
+# Raised 4 -> 12 (founder 2026-08-14: "if it's a cloud grader, why so slow"). The 4 was
+# never justified for this transport -- it sat beside the CLAUDE cap's rationale, which is
+# about local subprocess load (32 concurrent `claude -p` each spawning ripgrep pushed load
+# past 40). An HTTPS request to Azure spawns nothing and costs no local CPU, so that
+# reasoning does not transfer and the cap was inherited rather than measured.
+#
+# The real ceiling is the deployment's rate limit, and exceeding it is SAFE here: Azure
+# answers 429, `_retryable_http_error` marks it retryable, and `judge_chunk` retries with
+# backoff. So the failure mode of too-high is slower-but-correct, not wrong results --
+# which is why this can be raised without risking the grade.
+#
+# Measured before the change: 1,861 cases = 233 chunks at ~19s per chunk, 4 at a time,
+# ~25 min. Override per run with EW_JUDGE_WORKERS to find the deployment's real ceiling
+# without editing code.
+HTTP_JUDGE_MAX_WORKERS = int(os.environ.get("EW_JUDGE_WORKERS", "12"))
 DEFAULT_REPLICATIONS = 2              # old-system judge instability net (no temperature knob on CLI)
 DEFAULT_ADJUDICATE_PCT = 0.15          # new-system: fraction of pass/minor/soft_fail
 DEFAULT_ADJUDICATE_MIN = 15            # cases re-judged as a calibration sample
@@ -831,11 +847,22 @@ DEFAULT_ALLOWED_VARIANTS = [
     # and rendering it `EnviousWispr` is also correct. Grade the behavior under test.
     "repairing a plainly mis-transcribed product or technical term (e.g. 'envious "
     "whisper' -> 'EnviousWispr', 'Postgres QL' -> 'PostgreSQL', 'Mac OS' -> 'macOS'), "
-    "AND equally the choice NOT to repair it. Neither is the behavior under test. "
-    "This does NOT extend to personal names: rewriting a name the recogniser mangled "
-    "('Rajash' -> 'Rajesh') is a real defect, because there is no closed set of "
-    "people's names to be confident against and substituting a commoner one is a "
-    "worse outcome for the user than leaving the phonetic attempt visible.",
+    "AND equally the choice NOT to repair it. Neither is the behavior under test.",
+    # Personal names, split by WHETHER THE RENDERING IS RIGHT rather than by whether it
+    # differs from raw_transcript. The old rule said any rewrite of a mangled name was a
+    # defect, on the reasoning that there is no closed set of names to be confident
+    # against. True for a shipping app; false for a graded benchmark, where
+    # `spoken_truth` records the name that was actually said. Under the old rule a
+    # system whose recogniser heard the name CORRECTLY was marked down for it -- 22
+    # measured cases (Rajesh, Nadia, Hassan, Noor, Tomas).
+    "a personal name that matches spoken_truth is CORRECT, whatever raw_transcript "
+    "said. Do not penalise it, and do not treat it as an entity change.",
+    "a personal name matching NEITHER spoken_truth NOR raw_transcript is a real "
+    "entity_mutation defect ('Elena' -> 'Alaina', 'Fatima' -> 'Fautima'): the system "
+    "substituted a different person. Leaving raw_transcript's phonetic attempt "
+    "untouched is also acceptable, since repairing a name unaided is bonus credit, "
+    "never a pass criterion. Where spoken_truth is empty, fall back to treating any "
+    "rewrite of a name as a defect.",
 ]
 
 # Per-behavior additions, for buckets where the transcript genuinely admits more than one
@@ -946,6 +973,18 @@ def normalize_case(case: dict) -> dict:
         "length_bucket": case.get("length_bucket"),
         "context": case.get("context", ""),
         "raw_transcript": case.get("asr_input", ""),
+        # What was ACTUALLY SPOKEN, before any recogniser touched it. Distinct from
+        # `raw_transcript`, which is one engine's attempt at it.
+        #
+        # Without this the judge cannot tell a name REPAIRED from a name MANGLED. Our
+        # corpus keys were authored from OUR transcript, so where Parakeet heard
+        # "Rajash" for Rajesh the key enshrines the error; a system whose recogniser got
+        # the name RIGHT then looks like it substituted one. Measured 2026-08-14 on the
+        # Wispr Flow bake-off: 22 cases penalised for correct transcription
+        # (Rajesh->"Rajash", Nadia->"Nodia", Hassan->"Hassen", Noor->"Norr").
+        #
+        # Empty for corpora that carry no spoken source; the prompt handles absence.
+        "spoken_truth": case.get("voice_text", ""),
         "notes": case.get("notes", ""),
     }
 
@@ -1048,7 +1087,13 @@ NEW_JUDGE_SYSTEM = """You are evaluating a speech-polish engine for a dictation 
 
 For each case you are given:
 - id
-- raw_transcript: the original spoken transcript (lowercase, little punctuation)
+- raw_transcript: ONE speech recogniser's attempt at what was said (lowercase, little
+  punctuation). It is the engine's INPUT, not ground truth, and it can contain
+  mis-hearings -- especially of people's names.
+- spoken_truth: what was ACTUALLY said, when available (may be empty). Use it for ONE
+  purpose only: deciding whether a proper noun, name, address or number in
+  candidate_output is CORRECT or INVENTED. Do NOT grade content, phrasing, fillers or
+  structure against it -- removing disfluencies that appear here is exactly the job.
 - candidate_output: the polish engine output to evaluate
 - production_output: the currently shipped engine's output, or null if unavailable
 - behavior: the behavior bucket (for reporting)
@@ -1081,10 +1126,11 @@ Automatic critical_fail / S4 (any one):
   not this: `envious whisper` -> `EnviousWispr`, `Postgres QL` -> `PostgreSQL`,
   `Mac OS` -> `macOS` all name the same thing the speaker named, and are
   permitted (see allowed_variants). Leaving them untouched is equally correct.
-  A PERSONAL name is the exception and stays an automatic S4: `Rajash` ->
-  `Rajesh` may look like the same repair, but no closed set of people's names
-  exists to be confident against, so it is a substitution rather than a
-  normalisation
+  A PERSONAL name is judged against `spoken_truth`, NOT against raw_transcript:
+  if the rendering matches what was actually said it is CORRECT and not an S4,
+  even where raw_transcript spelled it differently. It is an automatic S4 only
+  when it matches NEITHER (`Elena` -> `Alaina`), i.e. a different person.
+  Where spoken_truth is empty, any rewrite of a personal name stays an S4
 - changed the final correction target in a self-correction
 - invented a fact, recipient, date, action, commitment, or rationale
 - dropped required content that changes the user's intent
@@ -1122,6 +1168,7 @@ def build_new_payload(norm: dict, cand: dict, prod: dict | None) -> dict:
     return {
         "id": norm["id"],
         "raw_transcript": norm["raw_transcript"],
+        "spoken_truth": norm.get("spoken_truth") or "",
         "candidate_output": cand.get("candidate") or "",
         "production_output": (prod.get("candidate") if prod else None),
         "behavior": norm["behavior"],

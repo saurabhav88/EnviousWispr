@@ -2442,36 +2442,66 @@ def test_the_s4_entity_rule_and_the_variant_licence_do_not_contradict():
         "the S4 entity rule must fire on a DIFFERENT entity, not on any change"
     assert "normalising a mis-transcribed rendering of the same entity" in sysmsg, \
         "the S4 rule must exempt normalising the same entity, or it overrides the variant"
-    # And the exemption must not swallow personal names, which both halves refuse.
-    assert "personal name is the exception" in sysmsg, \
-        "the S4 carve-out must still treat a personal-name substitution as automatic S4"
-    assert "does not extend to personal names" in variants, \
-        "both halves must agree that personal names are excluded"
+    # Personal names: both halves must split on the SAME axis, which since 2026-08-14 is
+    # whether the rendering matches `spoken_truth` -- not whether it differs from
+    # raw_transcript. If one half judged against the truth and the other against the
+    # transcript, a correctly-heard name would be licensed by one and an automatic S4 by
+    # the other, and the stronger instruction would win. That is the original defect
+    # this test exists for, moved to a new axis.
+    assert "judged against `spoken_truth`" in sysmsg, \
+        "the S4 rule must judge a personal name against what was actually said"
+    assert "matches neither" in sysmsg, \
+        "the S4 rule must fire only when the name matches NEITHER source"
+    assert "matches spoken_truth is correct" in variants, \
+        "the variant must license a name that matches what was actually said"
+    assert "neither spoken_truth nor raw_transcript" in variants, \
+        "both halves must agree a name matching neither source is the defect"
+    # Two-way: the licence must NOT have widened into permitting any name rewrite.
+    assert "is a real \nentity_mutation defect" in variants.replace("  ", " ") \
+        or "real entity_mutation defect" in " ".join(variants.split()), \
+        "substituting a different person must still be named a defect"
 
 
 def test_vocabulary_repair_is_a_variant_but_name_repair_is_not():
-    # Founder ruling 2026-08-13: repairing a mis-transcribed TERM is bonus credit,
-    # so neither doing it nor skipping it may decide a verdict. Repairing a personal
-    # NAME is the opposite — a real defect, because no closed set of names exists to
-    # be confident against.
+    # Founder ruling 2026-08-13: repairing a mis-transcribed TERM is bonus credit, so
+    # neither doing it nor skipping it may decide a verdict.
     #
-    # Two-way on purpose. Asserting only the licence would pass a rubric that
-    # licensed everything, which is exactly the failure this ruling could decay
-    # into: the whole point is that the line falls between terms and names.
+    # Personal names were originally excluded outright, on the reasoning that no closed
+    # set of names exists to be confident against. True for a shipping app; false for a
+    # graded benchmark, where `spoken_truth` records the name actually said. Corrected
+    # 2026-08-14 after the Wispr Flow bake-off measured 22 cases where a system was
+    # marked down for hearing the name CORRECTLY (Rajesh, Nadia, Hassan, Noor, Tomas):
+    # our keys were authored from OUR transcript, so they enshrined our recogniser's
+    # mis-hearings and penalised anyone who got them right.
+    #
+    # The line now falls between a name that matches what was SAID and one that matches
+    # nothing, which is a property of the output rather than of whose transcript it
+    # resembles.
+    #
+    # Two-way on purpose. Asserting only the licence would pass a rubric that licensed
+    # every name rewrite, which is the failure this could decay into.
     text = " ".join(bj.allowed_variants_for("verbatim_preservation")).lower()
     assert "envious" in text and "postgres" in text, \
         "term repair must be licensed as a variant"
     assert "not the behavior under test" in text, \
         "the licence must say the repair is not what is being graded"
-    # Assert the EXCLUSION, not the words. A first version of this checked that
-    # "personal names" appeared anywhere in the rubric — which stays true if the
-    # clause is inverted to "this also covers personal names", so the mutation
-    # control passed a rubric saying the opposite. The phrase that carries the
-    # meaning is the negation itself.
-    assert "does not extend to personal names" in text, \
-        "name repair must be EXCLUDED from the licence, not merely mentioned"
-    assert "real defect" in text, "the exclusion must name name-rewriting as a defect"
-    assert "rajash" in text, "the exclusion needs its concrete example to stay legible"
+    # Assert the two halves of the SPLIT, not merely that names are mentioned. A first
+    # version of this checked that "personal names" appeared anywhere in the rubric —
+    # which stays true if the clause is inverted, so the mutation control passed a
+    # rubric saying the opposite. The phrases that carry the meaning are the two
+    # directions.
+    assert "matches spoken_truth is correct" in text, \
+        "a name matching what was actually said must be licensed, not penalised"
+    assert "neither spoken_truth nor raw_transcript" in text, \
+        "the defect must be defined as matching NEITHER source"
+    assert "real \nentity_mutation defect" in text or "real entity_mutation defect" in \
+        " ".join(text.split()), "substituting a different person must remain a defect"
+    assert "alaina" in text or "fatima" in text, \
+        "the defect side needs its concrete example to stay legible"
+    # The fallback matters: a corpus with no spoken source must not silently license
+    # every name rewrite just because the truth is unavailable.
+    assert "where spoken_truth is empty" in text, \
+        "absence of spoken_truth must fall back to treating a rewrite as a defect"
 
 
 # --------------------------------------------------------------------------- #

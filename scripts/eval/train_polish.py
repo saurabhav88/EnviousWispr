@@ -36,7 +36,27 @@ ap.add_argument("--alpha", type=int, default=32)
 ap.add_argument("--micro-bs", type=int, default=4)
 ap.add_argument("--grad-accum", type=int, default=4)
 ap.add_argument("--max-seq", type=int, default=512)
+ap.add_argument("--dataset-num-proc", type=int, default=None,
+                help="Worker processes for dataset tokenization. Unset = the "
+                     "library default (one per core). Set 1 to tokenize in-process.")
 args = ap.parse_args()
+
+# WHY --dataset-num-proc EXISTS: on the 4090 rig (2026-08-15) training died with a
+# hard SIGSEGV inside CPython partway through `Tokenizing ["text"] (num_proc=28)`.
+# It reproduced on the July corpus that had trained fine before, which is what
+# proved it was the environment and not the data.
+#
+# The MECHANISM IS NOT ESTABLISHED. The obvious story -- `datasets.map` forks after
+# FastLanguageModel has put a CUDA context in the process, and forking a live CUDA
+# context is undefined -- was tested and REFUTED: a staged probe on that rig loads
+# the 4-bit model, builds the PEFT wrapper, and then tokenizes with num_proc=8
+# without incident. TOKENIZERS_PARALLELISM=false did not help either, nor did
+# clearing unsloth_compiled_cache and ~/.triton. Do not repeat any of those three
+# as the cause.
+#
+# So this knob is a bisection tool, not a fix with a known reason. Tokenizing
+# 5,656 short rows in-process costs well under a minute against a ~16-minute
+# train, so pinning it is close to free while the real cause is unknown.
 
 # The SHIP prompt: short distilled instruction (council 2026-07-02). The tuned
 # model trains WITH it and the app will send exactly this string at inference.
@@ -121,6 +141,10 @@ trainer = _sft_trainer(
         output_dir=os.path.expanduser(f"~/tuning/out/{args.tag}/ckpt"),
         report_to="none",
         seed=1265,
+        # Omitted entirely when unset, so the recipe that produced EG-1 is
+        # byte-for-byte unchanged unless a run asks for this.
+        **({} if args.dataset_num_proc is None
+           else {"dataset_num_proc": args.dataset_num_proc}),
     ),
 )
 
