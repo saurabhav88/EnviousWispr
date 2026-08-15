@@ -191,7 +191,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// `maximumReservedLocales` is 5 on macOS 26.6 and exceeding it is a runtime
   /// refusal (`SFSpeechError` code 11), so a sixth claim evicts the oldest rather
   /// than throwing. The reservation is per-app and does not survive the process.
-  private static func reserveLocale(_ locale: Locale) async throws {
+  package static func reserveLocale(_ locale: Locale) async throws {
     let wanted = locale.identifier(.bcp47)
     let already = await AssetInventory.reservedLocales
     if already.contains(where: { $0.identifier(.bcp47) == wanted }) { return }

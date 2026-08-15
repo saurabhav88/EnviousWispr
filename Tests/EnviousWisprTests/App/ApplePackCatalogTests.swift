@@ -91,6 +91,58 @@ struct ApplePackCatalogTests {
     #expect(calls.contains("release:fr-FR"), "reservation leaked on the failure path: \(calls)")
   }
 
+  /// Review found this: the catalogue carried a SECOND, weaker copy of the reservation logic
+  /// that omitted the eviction step the recognizer already had. After previewing five different
+  /// languages the five slots are full, so the sixth Download would refuse and the button would
+  /// simply stop working for exactly the multilingual user this page exists for.
+  ///
+  /// Asserted at the seam rather than against Apple: the point is that a full inventory does not
+  /// make installation impossible.
+  @Test("Installing still works when the reservation slots are already full")
+  func installSucceedsWhenReservationsAreFull() async throws {
+    let journal = Journal()
+    let slots = FullSlots()
+    let deps = ApplePackCatalog.Dependencies(
+      supportedTags: { ["en-US", "fr-FR", "it-IT"] },
+      installedTags: { await slots.installed },
+      reserve: { tag in
+        await journal.note("reserve:\(tag)")
+        try await slots.reserve(tag)
+      },
+      release: { tag in
+        await journal.note("release:\(tag)")
+        await slots.release(tag)
+      },
+      install: { tag in
+        await journal.note("install:\(tag)")
+        await slots.markInstalled(tag)
+      }
+    )
+    let catalog = ApplePackCatalog(dependencies: deps)
+
+    let packs = try await catalog.install(tag: "it-IT")
+
+    #expect(
+      packs.first { $0.tag == "it-IT" }?.isInstalled == true,
+      "a full reservation table must not make installation impossible")
+  }
+
+  /// Models Apple's five-slot table: a sixth claim must evict rather than refuse.
+  private actor FullSlots {
+    private var reserved: [String] = ["a", "b", "c", "d", "e"]
+    private(set) var installed: [String] = ["en-US"]
+    private let maximum = 5
+
+    func reserve(_ tag: String) async throws {
+      if reserved.contains(tag) { return }
+      if reserved.count >= maximum { reserved.removeFirst() }
+      guard reserved.count < maximum else { throw LivePreviewError.localeUnavailable }
+      reserved.append(tag)
+    }
+    func release(_ tag: String) { reserved.removeAll { $0 == tag } }
+    func markInstalled(_ tag: String) { installed.append(tag) }
+  }
+
   /// Returning a fresh snapshot rather than reporting success is what keeps the UI honest when
   /// macOS disagrees with us — including the purge case, where a pack vanishes on its own.
   @Test("Installing returns freshly read state, not an assumed success")

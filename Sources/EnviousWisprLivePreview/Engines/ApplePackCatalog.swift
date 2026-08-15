@@ -149,13 +149,15 @@ package actor ApplePackCatalog {
         installedTags: {
           await DictationTranscriber.installedLocales.map { $0.identifier(.bcp47) }
         },
+        // ONE owner for the reservation dance, shared with the recognizer.
+        //
+        // This used to be a second, weaker copy that omitted the eviction step, and review
+        // caught what that costs: after previewing five different languages the recognizer
+        // holds all five slots, so the sixth Download would refuse and the button would
+        // simply stop working for a multilingual user. Porting a guard means porting it
+        // WHOLE — the partial copy is the defect.
         reserve: { tag in
-          let locale = Locale(identifier: tag)
-          if try await AssetInventory.reserve(locale: locale) { return }
-          let held = await AssetInventory.reservedLocales.contains {
-            $0.identifier(.bcp47) == tag
-          }
-          guard held else { throw LivePreviewError.localeUnavailable }
+          try await ApplePreviewRecognizer.reserveLocale(Locale(identifier: tag))
         },
         release: { tag in
           await AssetInventory.release(reservedLocale: Locale(identifier: tag))

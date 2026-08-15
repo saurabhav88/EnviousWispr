@@ -40,10 +40,18 @@ final class LivePreviewPacksModel {
   }
 
   func load() async {
-    let packs = await catalog.snapshot()
-    // An empty supported list is a real refusal, not an empty list: the runtime is the only
-    // authority for which languages exist, so nothing to report means we could not read it.
-    state = packs.isEmpty ? .failed : .loaded(packs)
+    state = Self.state(for: await catalog.snapshot())
+  }
+
+  /// The ONE place that decides what a snapshot means.
+  ///
+  /// An empty supported list is a read failure, not an empty list: the runtime is the only
+  /// authority for which languages exist, so nothing to report means we could not ask. Both the
+  /// initial load and the post-install refresh go through here — review found the refresh path
+  /// storing `.loaded([])`, which rendered a blank Languages card instead of the sentence
+  /// explaining what went wrong.
+  private static func state(for packs: [LivePreviewPack]) -> LoadState {
+    packs.isEmpty ? .failed : .loaded(packs)
   }
 
   /// Start installing one pack. Ignored while another is in flight.
@@ -63,7 +71,7 @@ final class LivePreviewPacksModel {
       do {
         let refreshed = try await catalog.install(tag: tag)
         guard let self, !Task.isCancelled, self.generation == mine else { return }
-        self.state = .loaded(refreshed)
+        self.state = Self.state(for: refreshed)
         self.installingTag = nil
       } catch {
         guard let self, !Task.isCancelled, self.generation == mine else { return }
@@ -71,7 +79,7 @@ final class LivePreviewPacksModel {
         self.failedTag = tag
         // Re-read rather than trusting the failure: Apple may have installed it and then thrown
         // on something else, and the list must show what the system says, not what we inferred.
-        self.state = .loaded(await catalog.snapshot())
+        self.state = Self.state(for: await catalog.snapshot())
       }
     }
   }
