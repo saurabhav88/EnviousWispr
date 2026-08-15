@@ -71,7 +71,11 @@ struct LivePreviewCoordinatorTests {
     )
     coordinator.setRecording(true)
     coordinator.setRecording(false)
-    #expect(coordinator.display == .waiting)
+    // Stopping DISCARDS. This assertion used to read `.waiting`, which was
+    // incidental to the old behaviour of keeping the last text until the next
+    // recording. The settings copy now tells the user the preview is discarded
+    // when the recording ends, so this is the contract that sentence depends on.
+    #expect(coordinator.display == .off, "stopping must release the preview text")
 
     coordinator.setRecording(true)
     #expect(
@@ -94,7 +98,32 @@ struct LivePreviewCoordinatorTests {
     coordinator.setRecording(true)
     coordinator.setRecording(false)
     coordinator.setRecording(false)
-    #expect(coordinator.display != .off)
+    // Settles OFF, and a redundant second stop does not disturb that. This read
+    // `!= .off` when a stop left the last text in place; the discard makes the
+    // stronger statement available, so assert the exact state rather than the
+    // absence of one.
+    #expect(coordinator.display == .off)
+  }
+
+  /// The claim in the settings description, asserted directly rather than as a
+  /// side effect of another test: a user reads "discarded when the recording
+  /// ends" before deciding to switch this on, so the discard is a contract, not
+  /// an implementation detail that may drift.
+  @Test("Stopping discards the preview text, matching what the setting promises")
+  func stopDiscardsPreviewText() {
+    let coordinator = LivePreviewCoordinator(
+      audioCapture: CountingAudioCapture(),
+      isEnabled: { true },
+      languageMode: { .locked("en") }
+    )
+    coordinator.setRecording(true)
+    #expect(coordinator.display != .off, "control: a live recording is not off")
+
+    coordinator.setRecording(false)
+    #expect(coordinator.display == .off)
+    #expect(
+      LivePreviewSettingsCopy.toggleDescription.contains("discarded"),
+      "if this sentence goes, the assertion above stops being the promise it pins")
   }
 
   // MARK: - Language policy

@@ -179,11 +179,17 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       let task = sessionTask
       sessionTask = nil
       task?.cancel()
-      // The last text is deliberately left in `display` rather than blanked. The
-      // polishing pill is a different view and never renders it, so nothing shows
-      // it; and the next `setRecording(true)` sets `.waiting` synchronously, before
-      // the new panel is created on the following run loop pass, so a new recording
-      // can never open showing the previous one's words.
+      // **Dropped, not merely hidden.** This used to keep the last text on the
+      // grounds that nothing renders it after a recording ends, which was true and
+      // is not the point: the settings copy now tells the user the preview "is
+      // discarded when the recording ends", and a claim a user reads before
+      // enabling a feature has to be true of the code, not just of what is on
+      // screen. Holding the transcript until the next recording made it false.
+      //
+      // Costs nothing it was buying: the old rationale only ever argued that
+      // keeping it was harmless, never that anything needed it, and the next
+      // `setRecording(true)` sets `.waiting` synchronously regardless.
+      display = .off
     }
   }
 
@@ -255,7 +261,9 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
     let session: ApplePreviewRecognizer.Session
     do {
-      session = try await recognizer.startSession(onText: publish)
+      // Read synchronously on the main actor at the moment the session opens, so
+      // the session cannot start before the vocabulary reaches it.
+      session = try await recognizer.startSession(lookups: correctorLookups, onText: publish)
     } catch {
       guard isCurrent(generation) else { return }
       display = .unavailable(LivePreviewCopy.notReady)
@@ -317,6 +325,13 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// Not availability-gated: `CustomWordsPropagator` writes the vocabulary on
   /// every Mac we support, and gating the STORE on macOS 26 would mean a machine
   /// that later prepares a recognizer has nothing to seed it with.
+  /// Rebuild the cached lookups. Nothing is PUSHED anywhere: the snapshot is read
+  /// synchronously at `startSession` and handed in as an argument, so there is no
+  /// installation step that a session can outrun.
+  ///
+  /// Not availability-gated: `CustomWordsPropagator` writes the vocabulary on
+  /// every Mac we support, and gating the STORE on macOS 26 would leave a machine
+  /// that later prepares a recognizer with nothing to hand it.
   private func rebuildCorrectorLookupsIfNeeded() {
     guard builtLookupsGeneration != correctorVocabulary.generation else { return }
     builtLookupsGeneration = correctorVocabulary.generation
@@ -324,18 +339,6 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     correctorLookups =
       correctorVocabulary.terms.isEmpty
       ? nil : WordCorrector.buildLookups(words: correctorVocabulary.terms)
-    guard #available(macOS 26.0, *), let recognizer = preparedRecognizer as? ApplePreviewRecognizer
-    else { return }
-    pushCorrectorLookups(to: recognizer)
-  }
-
-  /// Hand the current snapshot to `recognizer`. Fire-and-forget: the recognizer is
-  /// an actor, this is the main actor, and a vocabulary update must never make a
-  /// settings write wait on it.
-  @available(macOS 26.0, *)
-  private func pushCorrectorLookups(to recognizer: ApplePreviewRecognizer) {
-    let lookups = correctorLookups
-    Task { await recognizer.setCorrectorLookups(lookups) }
   }
 
   @available(macOS 26.0, *)
@@ -367,11 +370,6 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
         guard self.preparationGeneration == generation else { return false }
         self.preparedRecognizer = fresh
         self.preparedLocale = locale
-        // Seed the vocabulary a newly built recognizer has never been told about.
-        // Without this, Custom Words reach the preview only if the user edits them
-        // AFTER the recognizer exists — which is never, for the common case of a
-        // vocabulary that was already there at launch.
-        self.pushCorrectorLookups(to: fresh)
         return true
       }
     }

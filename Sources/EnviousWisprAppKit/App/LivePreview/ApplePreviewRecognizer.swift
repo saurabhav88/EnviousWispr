@@ -84,23 +84,8 @@ actor ApplePreviewRecognizer {
   /// the current one" for the caller's benefit.
   private var currentToken: UInt64 = 0
 
-  /// Custom Words, as pre-built lookups. Set by the coordinator whenever the
-  /// vocabulary changes and CAPTURED per session at `startSession`, so a
-  /// vocabulary edit mid-dictation cannot change what this session is applying
-  /// halfway through a sentence. The pasted text is corrected by the pipeline's
-  /// own step against the vocabulary live at THAT moment, so the two paths agree
-  /// on everything except an edit made during the few seconds of one dictation.
-  private var correctorLookups: WordCorrector.Lookups?
-
   init(locale: Locale) {
     self.locale = locale
-  }
-
-  /// Hand this recognizer a new Custom Words snapshot. Takes pre-built lookups
-  /// rather than terms so the build cost is paid once per vocabulary generation
-  /// on the coordinator, not once per recording here.
-  func setCorrectorLookups(_ lookups: WordCorrector.Lookups?) {
-    correctorLookups = lookups
   }
 
   // MARK: - Preparation
@@ -267,7 +252,16 @@ actor ApplePreviewRecognizer {
   /// If the returned session is already superseded by the time `start` completes,
   /// it is torn down here rather than returned, so a start that lost a race leaks
   /// nothing and the caller gets a clear failure.
-  func startSession(onText: @escaping @Sendable (String) -> Void) async throws -> Session {
+  /// `lookups` is this session's Custom Words snapshot, passed IN rather than read
+  /// from a stored property. Review found the stored-property version racy — the
+  /// coordinator installed it through an unstructured `Task`, so a session opened
+  /// straight after preparation could capture `nil` and show mangled names for the
+  /// first recording. Making it a parameter removes the race by construction
+  /// rather than ordering two awaits, which is the same lesson the `Session` value
+  /// above already encodes: shared mutable state on this actor is the bug.
+  func startSession(
+    lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+  ) async throws -> Session {
     guard let target = targetFormat, let source = sourceFormat else {
       throw LivePreviewError.notPrepared
     }
@@ -303,8 +297,8 @@ actor ApplePreviewRecognizer {
     let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream(
       bufferingPolicy: .bufferingNewest(Self.maxQueuedChunks))
     let analyzer = SpeechAnalyzer(modules: [module])
-    // Captured, not read later: the session owns the vocabulary it started with.
-    let collector = Self.collect(from: module, lookups: correctorLookups, onText: onText)
+    // The session owns the vocabulary it started with.
+    let collector = Self.collect(from: module, lookups: lookups, onText: onText)
 
     // Finishing the stream and cancelling the collector is not enough: the analyzer
     // holds its own analysis and model resources and needs an explicit end, or a
@@ -383,11 +377,17 @@ actor ApplePreviewRecognizer {
             // lasts even though every emitted string is trimmed.
             inFlight = LivePreviewTextBound.apply(piece)
           }
-          // Correct AFTER bounding, never before. The bound keeps the tail, so
-          // correcting first would scan the whole retained transcript several
-          // times a second to produce a string whose head is then thrown away —
-          // unbounded work for output nobody sees. Bounding first caps this at
-          // the visible window.
+          // Bounded on BOTH sides of correction, and neither is redundant.
+          //
+          // BEFORE caps the SCAN: the bound keeps the tail, so correcting first
+          // would scan the whole retained transcript several times a second to
+          // produce a string whose head is then thrown away.
+          //
+          // AFTER caps the RESULT: correction EXPANDS text. An alias is usually
+          // shorter than the canonical it maps to, so a passage full of them can
+          // cross the retention limit that the pre-bound appeared to guarantee.
+          // Review caught this, and the first bound is exactly what made the
+          // invariant look already held.
           //
           // Applied to the assembled string rather than to each incoming piece
           // because a custom term can span the segment join: Apple closes a
@@ -396,9 +396,10 @@ actor ApplePreviewRecognizer {
           // are least stable on proper nouns, which is the whole reason the issue
           // asks for the dictionary on the preview pass).
           onText(
-            Self.corrected(
-              LivePreviewTextBound.apply(committed + inFlight),
-              corrector: corrector, lookups: lookups))
+            LivePreviewTextBound.apply(
+              Self.corrected(
+                LivePreviewTextBound.apply(committed + inFlight),
+                corrector: corrector, lookups: lookups)))
         }
       } catch {}
     }
