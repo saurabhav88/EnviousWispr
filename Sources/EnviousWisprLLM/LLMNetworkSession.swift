@@ -161,8 +161,22 @@ public final class LLMNetworkSession: Sendable {
     }
     let flattened = text.replacingOccurrences(of: "\n", with: " ")
       .trimmingCharacters(in: .whitespaces)
-    guard flattened.count > limit else { return flattened }
-    return flattened.prefix(limit) + "…<truncated \(data.count) bytes>"
+    guard flattened.utf8.count > limit else { return flattened }
+    // Bound by BYTES, on a Character boundary (cloud review, PR #2072).
+    // `String.count` measures extended grapheme clusters, so a limit applied to
+    // it does not enforce the documented byte bound at all — ordinary non-ASCII
+    // text runs several times over it, and an emoji cluster can be far worse.
+    // Accumulating whole Characters keeps the cut off a scalar boundary, which
+    // is the trap the decode order already exists to avoid.
+    var truncated = ""
+    var bytes = 0
+    for character in flattened {
+      let width = String(character).utf8.count
+      if bytes + width > limit { break }
+      truncated.append(character)
+      bytes += width
+    }
+    return truncated + "…<truncated \(data.count) bytes>"
   }
 
   /// Output-token ceiling for the OpenAI warm-up ping (#2062).

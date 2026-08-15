@@ -155,6 +155,23 @@ struct LLMNetworkSessionWarmupTests {
     #expect(rendered.contains("truncated"))
   }
 
+  /// Cloud review, PR #2072. The bound is documented in BYTES, but `String.count`
+  /// measures extended grapheme clusters — so applying the limit to it does not
+  /// enforce the byte bound at all. Non-ASCII text runs several times over.
+  @Test func failureBodyBoundIsMeasuredInBytes() {
+    // 200 three-byte characters = 600 UTF-8 bytes but only 200 Characters, so a
+    // Character-counted bound of 512 would wave the whole thing through.
+    let wide = Data(String(repeating: "あ", count: 200).utf8)
+    let rendered = LLMNetworkSession.warmupFailureBodyForLog(wide, limit: 512)
+
+    let payload = rendered.replacingOccurrences(
+      of: "…<truncated \(wide.count) bytes>", with: "")
+    #expect(payload.utf8.count <= 512, "the documented bound is bytes, not characters")
+    #expect(rendered.contains("truncated 600 bytes"))
+    // Still cut on a Character boundary, so nothing is mangled.
+    #expect(payload.allSatisfy { $0 == "あ" })
+  }
+
   /// The other side of that boundary fix: `<non-utf8>` must still mean what it
   /// says, so the branch is not simply unreachable now.
   @Test func failureBodyStillDetectsAGenuinelyUndecodableBody() {
