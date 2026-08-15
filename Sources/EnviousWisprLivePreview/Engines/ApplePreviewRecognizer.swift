@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
 import Speech
@@ -47,7 +48,7 @@ import Speech
 /// 4. Installing a language is NOT the same as claiming it. See
 ///    `reserveLocale(_:)`.
 @available(macOS 26.0, *)
-actor ApplePreviewRecognizer {
+actor ApplePreviewRecognizer: LivePreviewEngine {
 
   /// 16 kHz mono float — the format `AudioCaptureManager` already converts every
   /// captured buffer to (`AudioCaptureManager.targetSampleRate`). Feeding the
@@ -244,6 +245,19 @@ actor ApplePreviewRecognizer {
   final class FedFlag: @unchecked Sendable {
     private(set) var value = false
     fileprivate func set() { value = true }
+  }
+
+  /// `LivePreviewEngine`'s session-opening entry point.
+  ///
+  /// Thin on purpose. `startSession` keeps returning the concrete `Session` value
+  /// so this file's own callers and tests are unaffected; this only boxes it in the
+  /// handle the coordinator can hold without naming Apple.
+  func openSession(
+    lookups: WordCorrector.Lookups?,
+    onText: @escaping @Sendable (String) -> Void
+  ) async throws -> any LivePreviewEngineSession {
+    let session = try await startSession(lookups: lookups, onText: onText)
+    return ApplePreviewSessionHandle(recognizer: self, session: session)
   }
 
   /// Open a session. `onText` is called on every result with the text the user
@@ -516,6 +530,122 @@ actor ApplePreviewRecognizer {
     }
     guard status != .error, out.frameLength > 0 else { return nil }
     return out
+  }
+}
+
+/// Carries one Apple session so the coordinator can feed and end it without naming
+/// `SpeechAnalyzer` or holding Apple's `Session` value itself.
+///
+/// A struct, not an actor, and that preserves the property the `Session` design
+/// exists for: it stores the session VALUE and the actor that owns the work, adding
+/// no state of its own. There is nothing here for a stale call to overwrite, which
+/// is the whole reason session resources stopped living on the actor.
+@available(macOS 26.0, *)
+struct ApplePreviewSessionHandle: LivePreviewEngineSession {
+  let recognizer: ApplePreviewRecognizer
+  let session: ApplePreviewRecognizer.Session
+
+  func feed(_ samples: [Float]) async {
+    await recognizer.feed(samples, session: session)
+  }
+
+  func end() async {
+    await recognizer.endSession(session)
+  }
+}
+
+/// Apple's answer to "can this language be previewed here".
+///
+/// Both refusals live together because they are the same question asked twice: this
+/// engine cannot run below macOS 26, and above it cannot run in a language Apple
+/// does not transcribe. Neither is a fact about the live preview FEATURE, which is
+/// exactly why they moved off the coordinator — a downloadable engine has no OS
+/// floor and its own language set, and a coordinator that assumed Apple's rules
+/// would silently disable it on macOS 14 through 25.
+package enum ApplePreviewEngineResolver {
+
+  /// Apple's engine as the app shell consumes it. One value carrying both halves,
+  /// so the pill's geometry check and the recording's resolution can never be wired
+  /// from different sources.
+  package static let route = LivePreviewEngineRoute(
+    isSupportedOnThisSystem: { isSupportedOnThisSystem },
+    resolve: { mode in await resolve(mode) }
+  )
+
+  /// Whether this Mac can run Apple's preview engine at all.
+  ///
+  /// Synchronous and separate from `resolve` because the overlay needs the answer
+  /// while deciding pill geometry, where there is nothing to await. Same OS check,
+  /// asked from the one place that knows why it applies.
+  static var isSupportedOnThisSystem: Bool {
+    if #available(macOS 26.0, *) { return true }
+    return false
+  }
+
+  /// Stable identity for this engine in a `LivePreviewEngineKey`.
+  static let engineID = "apple"
+
+  /// Resolve the user's language setting to an Apple engine, or to the sentence
+  /// explaining why not.
+  static func resolve(_ mode: LanguageMode) async -> LivePreviewEngineResolution {
+    guard #available(macOS 26.0, *) else {
+      return .blocked(.unsupportedSystem)
+    }
+    let code = languageCode(for: mode)
+    // Both the setting and the tag derived from it. "Why is there no preview in my
+    // language" is answerable from this one line: it separates a user on Auto,
+    // where we guess, from one who locked a language Apple cannot transcribe, and
+    // those have different answers.
+    await log("resolving language, mode=\(mode) code=\(code)")
+    guard let locale = await ApplePreviewRecognizer.resolveLocale(code: code) else {
+      await log("no recognizer locale for language=\(code)")
+      return .blocked(.unsupportedLanguage)
+    }
+    let tag = locale.identifier(.bcp47)
+    return .ready(
+      LivePreviewEngineCandidate(
+        key: LivePreviewEngineKey(engine: engineID, commitment: tag),
+        makeEngine: { ApplePreviewRecognizer(locale: locale) }
+      ))
+  }
+
+  /// The language tag to ask Apple for: a bare ISO 639-1 code when the user locked
+  /// one, the FULL system locale under Auto.
+  ///
+  /// **Apple's recognizer must commit to one language before it hears anything, so
+  /// Auto has no answer to give it.** The system language is the honest guess: it
+  /// is what the user's Mac is set to, and being wrong costs a preview rather than
+  /// a transcript. This lives with Apple's engine rather than with the feature
+  /// because it is a workaround for a limitation only this engine has — an engine
+  /// that detects language itself must not inherit the guess.
+  ///
+  /// **Auto passes region and script through, because reducing to the language code
+  /// silently picks the wrong regional model. MEASURED against the real resolver,
+  /// all three columns**: a `zh-TW` Mac resolved to `zh-CN`, Simplified characters
+  /// for a Traditional reader; `pt-BR` to `pt-PT`; `fr-CA` to `fr-CH`, Canadian
+  /// French landing on Swiss; and every `en-GB`/`en-IN`/`en-AU` to `en-US`. Passing
+  /// the full locale gives each of those its own model.
+  ///
+  /// The obvious risk of doing this — a full locale Apple cannot resolve returning
+  /// nil where the bare code would have worked, disabling the preview for whole
+  /// regions — was measured across 21 locales and does NOT occur: every case
+  /// resolved as well or better, and the three that returned nil (`nn-NO`,
+  /// `sr-Latn-RS`, `az-Cyrl-AZ`) return nil for the bare code too. `ca-ES-valencia`
+  /// degrades gracefully to `ca-ES`.
+  ///
+  /// Locked mode still passes a bare code because our language catalogue holds bare
+  /// ISO 639-1 codes, so a user who explicitly picks Chinese gets `zh-CN`. Giving
+  /// locked mode regional variants means adding them to that catalogue, which is a
+  /// product decision about a user-visible list, not this function.
+  package static func languageCode(for mode: LanguageMode) -> String {
+    switch mode {
+    case .locked(let code): return code
+    case .auto: return Locale.current.identifier(.bcp47)
+    }
+  }
+
+  private static func log(_ message: String) async {
+    await AppLogger.shared.log("LIVE_PREVIEW \(message)", category: "LivePreview")
   }
 }
 

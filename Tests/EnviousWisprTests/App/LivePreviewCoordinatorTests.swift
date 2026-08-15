@@ -6,6 +6,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
+@testable import EnviousWisprLivePreview
 @testable import EnviousWisprServices
 
 /// #1988 — the live preview's limb contract.
@@ -25,9 +26,10 @@ struct LivePreviewCoordinatorTests {
   func disabledNeverTouchesAudio() async {
     let capture = CountingAudioCapture()
     let coordinator = LivePreviewCoordinator(
-      audioCapture: capture,
+      readSamples: { await capture.getSamplesSnapshot(fromIndex: $0) },
       isEnabled: { false },
-      languageMode: { .locked("en") }
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in .blocked(.unsupportedSystem) }
     )
 
     coordinator.setRecording(true)
@@ -51,9 +53,10 @@ struct LivePreviewCoordinatorTests {
   @Test("Enabled: the start path runs and the pill leaves the off state")
   func enabledStartsAndLeavesOff() {
     let coordinator = LivePreviewCoordinator(
-      audioCapture: CountingAudioCapture(),
+      readSamples: { _ in ([], 0) },
       isEnabled: { true },
-      languageMode: { .locked("en") }
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in .blocked(.unsupportedSystem) }
     )
 
     coordinator.setRecording(true)
@@ -65,9 +68,10 @@ struct LivePreviewCoordinatorTests {
   @Test("A new recording never opens showing the previous one's words")
   func startClearsPreviousText() {
     let coordinator = LivePreviewCoordinator(
-      audioCapture: CountingAudioCapture(),
+      readSamples: { _ in ([], 0) },
       isEnabled: { true },
-      languageMode: { .locked("en") }
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in .blocked(.unsupportedSystem) }
     )
     coordinator.setRecording(true)
     coordinator.setRecording(false)
@@ -86,9 +90,10 @@ struct LivePreviewCoordinatorTests {
   @Test("Stop is safe before any start, and start is safe twice")
   func lifecycleIsIdempotent() {
     let coordinator = LivePreviewCoordinator(
-      audioCapture: CountingAudioCapture(),
+      readSamples: { _ in ([], 0) },
       isEnabled: { true },
-      languageMode: { .locked("en") }
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in .blocked(.unsupportedSystem) }
     )
     // Two call sites push recording intent (the first overlay push and every
     // state-driven one), and `hide()` reports a stop that may already have
@@ -112,9 +117,10 @@ struct LivePreviewCoordinatorTests {
   @Test("Stopping discards the preview text, matching what the setting promises")
   func stopDiscardsPreviewText() {
     let coordinator = LivePreviewCoordinator(
-      audioCapture: CountingAudioCapture(),
+      readSamples: { _ in ([], 0) },
       isEnabled: { true },
-      languageMode: { .locked("en") }
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in .blocked(.unsupportedSystem) }
     )
     coordinator.setRecording(true)
     #expect(coordinator.display != .off, "control: a live recording is not off")
@@ -127,11 +133,16 @@ struct LivePreviewCoordinatorTests {
   }
 
   // MARK: - Language policy
+  //
+  // This policy belongs to APPLE'S engine, not to the preview feature, which is why
+  // these assert against `ApplePreviewEngineResolver`. Apple cannot detect language,
+  // so it has to be told one before it hears anything and Auto has to become a
+  // guess. An engine that detects language itself must not inherit that guess.
 
   @Test("A locked language previews in that language; Auto follows the system")
   func languagePolicy() {
-    #expect(LivePreviewCoordinator.previewLanguageCode(.locked("de")) == "de")
-    let auto = LivePreviewCoordinator.previewLanguageCode(.auto)
+    #expect(ApplePreviewEngineResolver.languageCode(for: .locked("de")) == "de")
+    let auto = ApplePreviewEngineResolver.languageCode(for: .auto)
     #expect(auto == Locale.current.identifier(.bcp47))
     #expect(auto.isEmpty == false)
   }
@@ -145,8 +156,9 @@ struct LivePreviewCoordinatorTests {
   @Test("Auto preserves region and script, which is what picks the right model")
   func autoPreservesRegionAndScript() {
     // The reduction that caused it, applied to the cases it breaks. If
-    // `previewLanguageCode(.auto)` ever goes back to a bare language code, these
-    // are the users who silently get another region's model.
+    // `ApplePreviewEngineResolver.languageCode(for: .auto)` ever goes back to a
+    // bare language code, these are the users who silently get another region's
+    // model.
     for id in ["zh-TW", "pt-BR", "fr-CA", "en-GB"] {
       let full = Locale(identifier: id)
       let bare = full.language.languageCode?.identifier
@@ -154,6 +166,169 @@ struct LivePreviewCoordinatorTests {
         full.identifier(.bcp47) != bare,
         "\(id) must not survive as a bare language code")
     }
+  }
+
+  // MARK: - The engine seam (#2077)
+  //
+  // None of these could be written before the seam existed. Driving the coordinator
+  // meant driving Apple's recognizer, which needs macOS 26, a reserved locale and
+  // possibly a model download — so the parts below were covered only by hand.
+  //
+  // Every wait here is on a SIGNAL the coordinator produces, with a deadline as the
+  // fallback. A fixed sleep would encode this machine's speed into the assertion.
+
+  @Test("Preparation is paid once, not on every recording")
+  func preparationIsCachedAcrossRecordings() async {
+    let probe = PreviewEngineProbe()
+    let coordinator = makeCoordinator(probe: probe, key: key("apple", "en-US"))
+
+    coordinator.setRecording(true)
+    #expect(await reach { await probe.sessionsOpened == 1 }, "first session never opened")
+    coordinator.setRecording(false)
+
+    coordinator.setRecording(true)
+    #expect(await reach { await probe.sessionsOpened == 2 }, "second session never opened")
+    coordinator.setRecording(false)
+
+    #expect(
+      await probe.prepareCalls == 1,
+      "a second press must reuse the prepared engine, not prepare again")
+  }
+
+  /// The reason the cache key carries the ENGINE as well as the language. A user
+  /// switching engines must not keep talking to the previous one.
+  @Test("A different engine key prepares again rather than reusing the old engine")
+  func changingTheKeyRebuilds() async {
+    let probe = PreviewEngineProbe()
+    let keys = [key("apple", "en-US"), key("universal", "")]
+    let resolutions = CountingBox()
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { true },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        let nth = await resolutions.next()
+        return .ready(
+          LivePreviewEngineCandidate(
+            key: keys[min(nth, keys.count - 1)],
+            makeEngine: { FakePreviewEngine(probe: probe) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    #expect(await reach { await probe.sessionsOpened == 1 })
+    coordinator.setRecording(false)
+
+    coordinator.setRecording(true)
+    #expect(await reach { await probe.sessionsOpened == 2 })
+    coordinator.setRecording(false)
+
+    #expect(await probe.prepareCalls == 2, "a changed engine key must prepare the new engine")
+  }
+
+  @Test("Captured audio reaches the session, and stopping ends it exactly once")
+  func audioReachesTheSessionAndStopEndsIt() async {
+    let probe = PreviewEngineProbe()
+    let coordinator = makeCoordinator(
+      probe: probe,
+      key: key("apple", "en-US"),
+      // A growing buffer, as a real recording looks from the read side.
+      readSamples: { index in
+        index == Int.max ? ([], 0) : (Array(repeating: Float(0.05), count: 160), 160)
+      })
+
+    coordinator.setRecording(true)
+    #expect(await reach { await probe.samplesFed > 0 }, "the session received no audio")
+    coordinator.setRecording(false)
+
+    #expect(
+      await reach { await probe.sessionsEnded == 1 },
+      "every session must be ended, or the engine leaks its analyzer and model")
+    #expect(await probe.sessionsEnded == 1, "and ended exactly once")
+  }
+
+  /// A blocked engine must cost nothing. This is the limb rule applied to the
+  /// refusal path: if we cannot preview, we must not be reading audio anyway.
+  @Test("A blocked engine reports its reason and never reads audio")
+  func blockedEngineNeverReadsAudio() async {
+    let reads = CountingBox()
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in
+        await reads.bump()
+        return ([], 0)
+      },
+      isEnabled: { true },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in .blocked(.unsupportedLanguage) }
+    )
+
+    coordinator.setRecording(true)
+    // The reason landing IS the signal that resolution finished, so this waits on
+    // the outcome rather than on a duration.
+    #expect(
+      await reach { coordinator.display == .unavailable(LivePreviewCopy.languageUnsupported) },
+      "a blocked engine must say why")
+    #expect(await reads.value == 0, "a blocked preview must not read captured audio")
+  }
+
+  /// #1988's acceptance criterion, now assertable end to end: the user's own words
+  /// reach the engine that renders them, rather than being applied somewhere later.
+  @Test("Custom Words reach the session that will display the text")
+  func customWordsReachTheSession() async {
+    let probe = PreviewEngineProbe()
+    let coordinator = makeCoordinator(probe: probe, key: key("apple", "en-US"))
+    coordinator.correctorVocabulary = CorrectorVocabulary(
+      terms: [word("Qualtrics")], generation: 1)
+
+    coordinator.setRecording(true)
+    #expect(await reach { await probe.sessionsOpened == 1 })
+    coordinator.setRecording(false)
+
+    #expect(
+      await probe.sawNonNilLookups,
+      "the session must open with the vocabulary snapshot, not without it")
+  }
+
+  /// Poll a signal until it holds, bounded by a deadline.
+  ///
+  /// The deadline is a failure bound, never the thing being measured: a correct
+  /// implementation returns on the first poll that observes the signal, so a slow
+  /// runner costs a few more polls rather than a false failure.
+  /// `@MainActor` on the condition, deliberately: the coordinator's `display` is
+  /// main-actor state and the whole point is to read it, so a nonisolated closure
+  /// would force every caller to hop by hand.
+  private func reach(
+    within timeout: Duration = .seconds(5),
+    _ condition: @MainActor () async -> Bool
+  ) async -> Bool {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    while ContinuousClock.now < deadline {
+      if await condition() { return true }
+      // settle: poll interval inside a signal wait; the deadline above is the real bound
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    return await condition()
+  }
+
+  private func key(_ engine: String, _ commitment: String) -> LivePreviewEngineKey {
+    LivePreviewEngineKey(engine: engine, commitment: commitment)
+  }
+
+  private func makeCoordinator(
+    probe: PreviewEngineProbe,
+    key: LivePreviewEngineKey,
+    readSamples: @escaping LivePreviewSampleReader = { _ in ([], 0) }
+  ) -> LivePreviewCoordinator {
+    LivePreviewCoordinator(
+      readSamples: readSamples,
+      isEnabled: { true },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: key, makeEngine: { FakePreviewEngine(probe: probe) }))
+      }
+    )
   }
 
   // MARK: - Bounding
@@ -211,9 +386,10 @@ struct LivePreviewCoordinatorTests {
 
   private func makeCoordinator() -> LivePreviewCoordinator {
     LivePreviewCoordinator(
-      audioCapture: CountingAudioCapture(),
+      readSamples: { _ in ([], 0) },
       isEnabled: { true },
-      languageMode: { .locked("en") }
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in .blocked(.unsupportedSystem) }
     )
   }
 
@@ -285,6 +461,61 @@ struct LivePreviewCoordinatorTests {
     let lookups = WordCorrector.buildLookups(words: [word("Qualtrics")])
     let corrected = WordCorrector().correct("i work at qualtrix today", using: lookups).corrected
     #expect(corrected.contains("Qualtrics"), "got: \(corrected)")
+  }
+}
+
+/// #2077 — what the coordinator actually did to whatever engine it was given.
+///
+/// An actor rather than a locked class: these counters are written from the engine
+/// and the session, which run off the main actor, and read from `@MainActor` tests.
+private actor PreviewEngineProbe {
+  private(set) var prepareCalls = 0
+  private(set) var sessionsOpened = 0
+  private(set) var sessionsEnded = 0
+  private(set) var samplesFed = 0
+  private(set) var sawNonNilLookups = false
+
+  func notePrepare() { prepareCalls += 1 }
+  func noteOpen(lookups: WordCorrector.Lookups?) {
+    sessionsOpened += 1
+    if lookups != nil { sawNonNilLookups = true }
+  }
+  func noteEnd() { sessionsEnded += 1 }
+  func noteFeed(_ count: Int) { samplesFed += count }
+}
+
+/// A counter the tests can share with a `@Sendable` closure.
+private actor CountingBox {
+  private(set) var value = 0
+  func bump() { value += 1 }
+  /// Returns the pre-increment count, so callers can index a sequence by call order.
+  func next() -> Int {
+    defer { value += 1 }
+    return value
+  }
+}
+
+private struct FakePreviewSession: LivePreviewEngineSession {
+  let probe: PreviewEngineProbe
+  func feed(_ samples: [Float]) async { await probe.noteFeed(samples.count) }
+  func end() async { await probe.noteEnd() }
+}
+
+/// A preview engine with no vendor behind it, which is the whole point: before the
+/// #2077 seam the coordinator could only be driven on macOS 26 with a reserved
+/// locale and possibly a model download, so none of the behaviour below could be
+/// asserted anywhere except by hand.
+private struct FakePreviewEngine: LivePreviewEngine {
+  let probe: PreviewEngineProbe
+
+  func prepare() async throws { await probe.notePrepare() }
+
+  func openSession(
+    lookups: WordCorrector.Lookups?,
+    onText: @escaping @Sendable (String) -> Void
+  ) async throws -> any LivePreviewEngineSession {
+    await probe.noteOpen(lookups: lookups)
+    return FakePreviewSession(probe: probe)
   }
 }
 

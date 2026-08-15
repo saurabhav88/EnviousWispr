@@ -88,6 +88,29 @@ let package = Package(
       path: "Sources/EnviousWisprPostProcessing",
       resources: [.process("Resources")]
     ),
+    // The live preview limb (#1988, #2077): display-only recognizer engines, the
+    // contract they answer, and the cap on retained text.
+    //
+    // A module because the limb boundary should be structural, not a convention.
+    // Engine implementations here CANNOT import Audio, ASR, Pipeline, Services, or
+    // any UI — the dependency list below is the enforcement, so no preview engine
+    // can reach the recording path even by accident. That is what makes "the
+    // preview can never break a dictation" a property of the build rather than a
+    // promise in a comment.
+    //
+    // Deliberately does NOT depend on EnviousWisprAudio: engines are handed audio
+    // samples, they never touch capture. The coordinator that polls for those
+    // samples stays in the app shell, where recording and overlay coordination
+    // belong. `EnviousWisprModelDelivery` joins this list when the downloadable
+    // engine lands and not before.
+    .target(
+      name: "EnviousWisprLivePreview",
+      dependencies: [
+        "EnviousWisprCore",
+        "EnviousWisprPostProcessing",
+      ],
+      path: "Sources/EnviousWisprLivePreview"
+    ),
     // Leaf module (Core only) wrapping the Contacts framework behind a narrow
     // read-only protocol for the Import-from-Contacts feature (#636). Consumed
     // by EnviousWisprAppKit; no .library product (internal-only).
@@ -184,6 +207,7 @@ let package = Package(
         "EnviousWisprStorage",
         "EnviousWisprModelDelivery",
         "EnviousWisprPostProcessing",
+        "EnviousWisprLivePreview",
         "EnviousWisprAudio",
         "EnviousWisprServices",
         "EnviousWisprASR",
@@ -232,6 +256,7 @@ let package = Package(
         "EnviousWisprPipeline",
         "EnviousWisprStorage",
         "EnviousWisprAudio",
+        "EnviousWisprLivePreview",
         // #1525 PR I-B (Codex cloud review): ParakeetTranscriptionSentryErrorTests /
         // ParakeetModelLoadSentryErrorTests import this directly.
         "EnviousWisprFluidAudioBridge",

@@ -1,4 +1,5 @@
 import EnviousWisprAudio
+import EnviousWisprLivePreview
 import EnviousWisprServices
 import Foundation
 
@@ -43,14 +44,23 @@ enum LivePreviewInstaller {
     // check in here means an unsupported system behaves exactly like the setting
     // being off: normal pill, no message, nothing to escape from. One expression,
     // used for both the geometry and the coordinator, so the two cannot disagree.
+    //
+    // **This line is where engine selection will live.** One route, read for both
+    // halves below: the OS check is Apple's rule rather than the feature's, and it
+    // comes from the same value the recording resolves against, so a pill sized for
+    // a preview that then refuses to run is not expressible. When the user can
+    // choose an engine, only this line changes.
+    let route = ApplePreviewEngineResolver.route
     let effectivelyEnabled: () -> Bool = {
-      guard #available(macOS 26.0, *) else { return false }
-      return settings.livePreviewEnabled
+      route.isSupportedOnThisSystem() && settings.livePreviewEnabled
     }
     let coordinator = LivePreviewCoordinator(
-      audioCapture: capture,
+      // The limb gets ONE read of already-captured audio, never the capture
+      // interface itself: see `LivePreviewSampleReader`.
+      readSamples: { index in await capture.getSamplesSnapshot(fromIndex: index) },
       isEnabled: effectivelyEnabled,
-      languageMode: { settings.languageMode }
+      languageMode: { settings.languageMode },
+      resolveEngine: route.resolve
     )
     overlay.setLivePreviewProviders(
       enabled: effectivelyEnabled,
