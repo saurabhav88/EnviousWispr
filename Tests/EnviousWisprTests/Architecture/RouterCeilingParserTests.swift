@@ -148,6 +148,36 @@ import Testing
     #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
   }
 
+  /// #2068 (cloud review, PR #2070, round twenty). The report was `final let`,
+  /// which the modifier alternation omitted. Rather than add that one word and
+  /// wait for the next modifier, the set was ENUMERATED against the compiler:
+  /// every candidate was type-checked as `<modifier> let d: AnyObject`.
+  ///
+  /// Accepted and now handled: access modifiers, `final`, `dynamic`,
+  /// `nonisolated(unsafe)?`, `unowned((safe|unsafe))?`. Rejected by Swift
+  /// outright, so they cannot appear and need no handling: `override`, `lazy`,
+  /// `weak`, `mutating`, `convenience`, `required`.
+  ///
+  /// All three newly added modifiers measure zero in `Sources/`, so this is
+  /// unreachable today — taken because closing the whole set costs one
+  /// alternation, which is cheaper than three more review rounds.
+  @Test func collaboratorCount_countsEveryModifierSwiftAllowsOnAStoredLet() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          final let alpha: AlphaDep
+          dynamic let beta: BetaDep
+          unowned let gamma: GammaDep
+          unowned(unsafe) let delta: DeltaDep
+          final private let epsilon: EpsilonDep
+          private final let zeta: ZetaDep
+          final let onEvent: @Sendable (Int) -> Bool
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 6)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+  }
+
   /// The control for that widening: `static let` is a TYPE property, not an
   /// injected instance collaborator, and must stay excluded. Admitting
   /// `nonisolated` to the modifier alternation is exactly the edit that could

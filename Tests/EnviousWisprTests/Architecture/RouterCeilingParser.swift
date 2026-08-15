@@ -630,8 +630,26 @@ enum RouterCeilingParser {
     // `static` stays OUT deliberately: a type property is not an injected
     // instance collaborator, and admitting it would change what the ceiling
     // counts rather than fix what it reads.
+    // ENUMERATED against the compiler rather than extended one modifier per
+    // review round (round twenty). Each candidate was type-checked as
+    // `<modifier> let d: AnyObject` in a class:
+    //
+    //   accepted → access modifiers, `final`, `dynamic`,
+    //              `nonisolated` / `nonisolated(unsafe)`,
+    //              `unowned` / `unowned(safe)` / `unowned(unsafe)`
+    //   rejected → `override`, `lazy`, `weak`, `mutating`, `convenience`,
+    //              `required` (none can precede a stored `let` at all)
+    //
+    // Ordering is free — `final private let` and `private final let` both
+    // compile — which is why this is one repeating alternation rather than a
+    // fixed sequence of optional groups.
+    //
+    // `static` and `class` stay OUT deliberately: a TYPE property is not an
+    // injected instance collaborator. That is the one exclusion here which is a
+    // decision about what the ceiling means rather than a fact about Swift.
     let modifiers =
-      #"((public|internal|private|fileprivate|package|open|nonisolated(\(unsafe\))?)[[:space:]]+)*"#
+      #"((public|internal|private|fileprivate|package|open|final|dynamic"#
+      + #"|nonisolated(\(unsafe\))?|unowned(\((safe|unsafe)\))?)[[:space:]]+)*"#
     return "^[[:space:]]*\(attrs)\(modifiers)let[[:space:]]+[A-Za-z_]"
   }()
 
