@@ -92,6 +92,13 @@ enum SettingsDefaultValues {
   static let useStreamingASR = false
   static let warmEnginePolicy: WarmEnginePolicy = .seconds30
 
+  // #1988: show the words in the recording pill while the user is still speaking.
+  // OFF by default. It costs screen attention some users explicitly do not want
+  // (the Reddit request that prompted it asked for it to be toggleable for exactly
+  // that reason), and it needs macOS 26, so a default-on toggle would read as
+  // broken on every older Mac. Display only: the pasted text never comes from it.
+  static let livePreviewEnabled = false
+
   // #1480: show the once-per-launch Bluetooth cold-start education popover when
   // the configured input is a Bluetooth mic. Default ON — it is light, dismissable,
   // and only appears for Bluetooth users; the toggle is the annoyance escape hatch.

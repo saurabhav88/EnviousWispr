@@ -83,6 +83,11 @@ final class RecordingOverlayPanel {
   private var accessibilityToastShownThisSession: Bool = false
   private var grantHandler: (() -> Void)?
   private var accessibilityWarningDismissedProvider: () -> Bool = { false }
+  /// #1988: live preview. Defaults keep every existing caller (and every test that
+  /// constructs a panel directly) on today's behavior and today's pill size.
+  private var livePreviewEnabledProvider: () -> Bool = { false }
+  private var livePreviewDisplayProvider: () -> LivePreviewDisplay = { .off }
+  private var recordingIntentObserver: (Bool) -> Void = { _ in }
   /// #1063 PR2 — invoked when the user taps Discard on the "recovering" pill.
   /// Wired by the composition root to `RecoveryCoordinator.discardActiveRecovery`.
   private var discardRecoveryHandler: (() -> Void)?
@@ -120,11 +125,33 @@ final class RecordingOverlayPanel {
   /// fixed. `nil` when nothing is showing.
   private var activePanelPosition: OverlayPillPosition?
 
+  /// Whether the showing panel's frame hugs its content exactly (`fitToContent`)
+  /// rather than sitting inside a taller fixed frame. Maintained by `showPanel`,
+  /// read by the inherited-`y` Top transition, which has to preserve a DIFFERENT
+  /// edge for the two geometries — see the branch there for why.
+  private var activePanelIsContentSized = false
+
   /// The origin WE last set programmatically. Used only to DETECT a manual
   /// drag (`isMovableByWindowBackground = true`, an existing feature) by
   /// comparing against the panel's live origin — `wasManuallyDragged` below
   /// is the authoritative, sticky record of that fact once detected. `nil`
   /// when nothing is showing.
+  ///
+  /// **WRITING THIS ERASES THE ONLY EVIDENCE A DRAG HAPPENED, SO EVERY WRITE
+  /// MUST FIRST ASK WHETHER THE LIVE ORIGIN STILL MATCHES.** The drag signal is
+  /// a comparison, not an event: nothing observes the user dragging, so a write
+  /// that re-baselines to wherever the panel now sits makes the drag
+  /// undetectable forever after. This exact bug has been found three times, each
+  /// time at a NEW write site rather than a regression of an old one (Codex
+  /// grounded review r4 and r5, 2026-07-17; cloud review on #1988), which is why
+  /// it is written here as a property of the field instead of a comment at any
+  /// one of them. The three live write sites and how each discharges the
+  /// obligation:
+  /// - `repositionForActiveSpaceChange()` — compares, then returns early on a
+  ///   mismatch, so it only writes when no drag happened.
+  /// - `showPanel`'s inherited-`y` capture — latches `wasManuallyDragged` first.
+  /// - `resizeRecordingPanel(toContentHeight:)` — latches first, using the
+  ///   PRE-resize origin (the resize itself moves the origin in Top position).
   private var lastProgrammaticOrigin: NSPoint?
 
   /// True once the user has manually dragged the panel during the CURRENT
@@ -292,6 +319,35 @@ final class RecordingOverlayPanel {
     accessibilityWarningDismissedProvider = provider
   }
 
+  /// #1988 — wire the live preview.
+  ///
+  /// Two closures rather than one, and the split is deliberate. `enabled` sizes
+  /// the panel and `display` fills it, because size is fixed for the life of a
+  /// panel: an `NSPanel` cannot grow mid-recording without a rebuild, and a
+  /// rebuild is the #930 flicker. Reading the SETTING for geometry means the
+  /// answer does not depend on whether the preview coordinator happened to be
+  /// started before this push, which deriving size from `display` would.
+  func setLivePreviewProviders(
+    enabled: @escaping () -> Bool,
+    display: @escaping () -> LivePreviewDisplay
+  ) {
+    livePreviewEnabledProvider = enabled
+    livePreviewDisplayProvider = display
+  }
+
+  /// #1988: told whether the overlay is currently showing a live recording, so the
+  /// preview can start and stop without the heart path knowing it exists.
+  ///
+  /// This seam rather than the kernel deliberately. `show(intent:)` is the single
+  /// funnel both the first push (`RecordingStarter`) and every state-driven push
+  /// (`DictationLifecycleCoordinator`) already pass through, so wiring here keeps
+  /// the recording path completely unaware of the preview — which is the whole
+  /// point of a limb. The receiver is idempotent because this fires on duplicate
+  /// pushes too.
+  func setRecordingIntentObserver(_ observer: @escaping (Bool) -> Void) {
+    recordingIntentObserver = observer
+  }
+
   /// Wire passive chip action handlers (Lock / Dismiss / auto-dismiss).
   /// Installed once by the former root state at construction time.
   func setPassiveChipHandlers(
@@ -324,6 +380,9 @@ final class RecordingOverlayPanel {
     isRecordingLocked: Bool = false
   ) {
     let isRecordingIntent: Bool = if case .recording = intent { true } else { false }
+    // #1988: reported BEFORE the dedup guard, so the preview learns about a
+    // recording even when this push is a duplicate the panel itself drops.
+    recordingIntentObserver(isRecordingIntent)
     guard
       intent != currentIntent || (isRecordingIntent && self.isRecordingLocked != isRecordingLocked)
     else { return }
@@ -618,12 +677,31 @@ final class RecordingOverlayPanel {
     guard panel == nil else { return }
 
     lockState.isLocked = isRecordingLocked
+    // #1988: the preview needs room for a sentence, which the 185pt capsule cannot
+    // give. Width is fixed; HEIGHT is not — the pill earns its size, growing a line
+    // at a time as words wrap and settling once it reaches the cap. See
+    // `resizeRecordingPanel(toContentHeight:)`.
+    let showsPreview = livePreviewEnabledProvider()
+    let width: CGFloat = showsPreview ? Self.previewPillWidth : 185
     let overlayView = RecordingOverlayView(
       audioLevelProvider: audioLevelProvider,
       recordingElapsedProvider: recordingElapsedProvider,
+      livePreviewProvider: showsPreview ? livePreviewDisplayProvider : { .off },
+      onContentHeightChange: showsPreview
+        ? { [weak self] height in self?.resizeRecordingPanel(toContentHeight: height) }
+        : { _ in },
+      usesPreviewLayout: showsPreview,
       lockState: lockState,
       noticeState: noticeState
     )
+    if showsPreview {
+      // Content-sized from the start, so the first frame is already correct rather
+      // than a guess that visibly snaps once the real height is measured.
+      showPanel(
+        content: overlayView.frame(width: width),
+        width: width, fitToContent: true)
+      return
+    }
     // Fixed frame accommodating normal (185x44), locked (120x64), and the #1060
     // notice-banner expansion (a 2-line banner under the pill); showPanel clamps
     // the origin so the taller frame never clips under the menu bar (Codex P2).
@@ -635,11 +713,57 @@ final class RecordingOverlayPanel {
     // no such gap) visibly misaligned with the recording pill it replaces. A
     // notice banner now grows upward from the stable bottom edge instead of
     // pushing the capsule down.
-    .frame(
-      width: 185, height: 92,
+    let fixedFrameView = overlayView.frame(
+      width: width, height: 92,
       alignment: positionProvider() == .bottom ? .bottom : .center
     )
-    showPanel(content: overlayView, width: 185, height: 92)
+    showPanel(content: fixedFrameView, width: width, height: 92)
+  }
+
+  /// #1988 preview width. Height is content-driven — see `previewMaxLines`.
+  private static let previewPillWidth: CGFloat = 400
+
+  /// Grow or shrink the live recording pill as preview text wraps to more lines.
+  ///
+  /// **The panel really resizes; it is not oversized and padded.** Reserving the
+  /// five-line height up front would have been simpler, but the pill accepts mouse
+  /// events across its whole frame (it is drag-to-relocate), so a permanently tall
+  /// transparent panel would swallow clicks over a large invisible region of the
+  /// user's screen.
+  ///
+  /// Resizing an existing panel is NOT the #930 flicker: that came from tearing the
+  /// panel down and rebuilding it, which destroys the hosting view. `setFrame` keeps
+  /// the same window and the same SwiftUI content.
+  ///
+  /// The anchored edge is the one the user's chosen position pins. Bottom keeps its
+  /// bottom edge, so the pill grows UPWARD and its origin never moves — which also
+  /// means the Space-change reposition's drag detection cannot mistake growth for a
+  /// user drag. Top keeps its top edge and grows downward.
+  private func resizeRecordingPanel(toContentHeight contentHeight: CGFloat) {
+    guard let panel, case .recording = currentIntent else { return }
+    let target = contentHeight.rounded()
+    guard target > 0, abs(panel.frame.height - target) >= 1 else { return }
+
+    // Latch a drag BEFORE the frame moves, or the re-baseline at the end of this
+    // method silently erases it — see `lastProgrammaticOrigin`. The comparison
+    // has to happen here rather than after `setFrame` because in Top position
+    // the resize itself moves the origin, which would read as a drag.
+    if !wasManuallyDragged, let lastProgrammaticOrigin,
+      !panel.frame.origin.isApproximately(lastProgrammaticOrigin)
+    {
+      wasManuallyDragged = true
+    }
+
+    var frame = panel.frame
+    if activePanelPosition == .bottom {
+      frame.size.height = target
+    } else {
+      let topEdge = frame.maxY
+      frame.size.height = target
+      frame.origin.y = topEdge - target
+    }
+    panel.setFrame(frame, display: true)
+    if !wasManuallyDragged { lastProgrammaticOrigin = frame.origin }
   }
 
   /// #1060: flash a transient banner over the LIVE recording pill (a second line
@@ -1024,6 +1148,39 @@ final class RecordingOverlayPanel {
     DispatchQueue.main.async(execute: work)
   }
 
+  /// Where a Top-positioned panel goes when it CONTINUES an existing
+  /// presentation whose frame was a different height (recording -> polishing).
+  ///
+  /// Both branches preserve the same thing — where the VISIBLE pill sits — and
+  /// differ only because the frame relates to that pill differently in the two
+  /// geometries. They agree exactly whenever the heights match, so this can only
+  /// diverge on a transition that actually changes height.
+  ///
+  /// - `outgoingWasContentSized`: the frame hugged its content (`fitToContent`),
+  ///   so the frame IS the visible pill and its TOP edge is the anchor. The
+  ///   #1988 preview grows downward from a fixed top edge
+  ///   (`resizeRecordingPanel`) and can be far taller than what replaces it —
+  ///   five lines of text against a one-line "Polishing..." pill. Preserving the
+  ///   center here would drop that pill by half the height difference.
+  /// - Otherwise: #1650. Content in a FIXED frame is `.center`-aligned inside it
+  ///   (createPanel), so the visible pill's vertical CENTER equals the frame's
+  ///   center regardless of the frame's own height. Preserving that center — not
+  ///   the raw bottom origin — keeps the pill pixel-identical across the 92pt
+  ///   recording frame -> ~44pt polishing pill change, closing the ~24pt drop.
+  ///
+  /// Extracted as a pure function because it is the arithmetic that was wrong,
+  /// and the rest of `showPanel` needs a window server. Tests:
+  /// `RecordingOverlayPanelInheritedGeometryTests`.
+  /// `nonisolated` because it reads no panel state — the inputs are the whole
+  /// story, which is what makes it testable without a window server.
+  nonisolated static func inheritedTopOriginY(
+    inheritedFrame: NSRect, resolvedHeight: CGFloat, outgoingWasContentSized: Bool
+  ) -> CGFloat {
+    outgoingWasContentSized
+      ? inheritedFrame.maxY - resolvedHeight
+      : inheritedFrame.midY - resolvedHeight / 2
+  }
+
   /// Create and show a floating overlay panel with the given SwiftUI content.
   ///
   /// `fitToContent` (#1064): size the panel to the SwiftUI view's own
@@ -1042,6 +1199,10 @@ final class RecordingOverlayPanel {
         ?? NSScreen.main
         ?? NSScreen.screens.first
     else { return }
+
+    // Captured before anything below can overwrite it: this describes the panel
+    // being REPLACED, which is what the inherited-`y` transition reasons about.
+    let outgoingWasContentSized = activePanelIsContentSized
 
     let hostingView = NSHostingView(rootView: content)
     // Resolve the panel size: content-driven when `fitToContent`, else the
@@ -1090,20 +1251,15 @@ final class RecordingOverlayPanel {
       // from the edge the panel's SwiftUI content is actually aligned for,
       // and the next Space swipe would then jump the panel to the wrong edge.
       if activePanelPosition == .top {
-        // #1650: Top-positioned content is `.center`-aligned inside its
-        // frame (createPanel), so the visible pill's vertical CENTER always
-        // equals the frame's center regardless of the frame's own height.
-        // Preserving the outgoing panel's frame center — not its raw bottom
-        // origin — keeps the visible pill's on-screen position
-        // pixel-identical across a panel-height change (e.g. the 92pt
-        // recording frame -> the ~44pt fitToContent polishing pill), closing
-        // the ~24pt drop. clampedOriginY below remains authoritative when
-        // the incoming panel is too tall to fit below the menu bar at the
-        // preserved center. Bottom is unaffected: its content is
-        // `.bottom`-aligned (#1341), so the outgoing frame's bottom edge
-        // already IS the visible bottom with no gap, and preserving it
-        // unchanged (below) is already correct.
-        requestedY = inheritedFrame.midY - resolvedHeight / 2
+        // clampedOriginY below remains authoritative when the incoming panel is
+        // too tall to fit below the menu bar at the preserved position. Bottom
+        // is unaffected either way: its content is `.bottom`-aligned (#1341) and
+        // the preview grows upward from a fixed bottom edge, so the outgoing
+        // frame's bottom origin already IS the visible bottom in both
+        // geometries, and preserving it unchanged (below) is already correct.
+        requestedY = Self.inheritedTopOriginY(
+          inheritedFrame: inheritedFrame, resolvedHeight: resolvedHeight,
+          outgoingWasContentSized: outgoingWasContentSized)
       } else {
         requestedY = inheritedY
       }
@@ -1138,6 +1294,7 @@ final class RecordingOverlayPanel {
 
     p.orderFrontRegardless()
     self.panel = p
+    activePanelIsContentSized = fitToContent
   }
 
   /// #1341: is the CURRENT frontmost app genuinely in native macOS fullscreen
@@ -1337,6 +1494,10 @@ final class RecordingOverlayPanel {
 
   func hide() {
     currentIntent = .hidden
+    // #1988: a direct `hide()` (not every caller routes through `show(intent:)`)
+    // must still stop the preview. Idempotent, so the common path that already
+    // reported `false` costs nothing.
+    recordingIntentObserver(false)
     isRecordingLocked = false
     lockState.isLocked = false
     clearRecordingNotice()
@@ -1355,6 +1516,7 @@ final class RecordingOverlayPanel {
     guard let panelToClose = panel else { return }
     panel = nil
     activePanelPosition = nil
+    activePanelIsContentSized = false
     lastProgrammaticOrigin = nil
     wasManuallyDragged = false
 
@@ -1576,14 +1738,43 @@ struct RainbowLipsIcon: View {
 /// Shared capsule background with warmer dark fill, subtle border, and a
 /// rainbow gradient line pulsing along the bottom edge.
 private struct OverlayCapsuleBackground: View {
+  /// #1988: the live-preview pill is tall and full of text, and a capsule's
+  /// semicircular ends eat exactly the width the text needs while crowding the
+  /// first and last characters of every line. A rounded rectangle reads as a panel
+  /// rather than a lozenge at that size, which is what the shape should say.
+  /// Everything else keeps the capsule.
+  enum CornerStyle {
+    case capsule
+    case rounded
+  }
+
+  var cornerStyle: CornerStyle = .capsule
   @State private var glowOpacity: Double = 0.3
 
+  private var shape: AnyShape {
+    switch cornerStyle {
+    case .capsule: return AnyShape(Capsule())
+    case .rounded: return AnyShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+  }
+
   var body: some View {
-    Capsule()
+    shape
       .fill(Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82))
+      // `strokeBorder` needs an insettable shape, which the type-erased `AnyShape`
+      // is not, so the two concrete shapes are named here. Kept as `strokeBorder`
+      // rather than switching both to `stroke`: the capsule is shipped UI and its
+      // border should stay exactly where it already sits.
       .overlay(
-        Capsule()
-          .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
+        Group {
+          switch cornerStyle {
+          case .capsule:
+            Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
+          case .rounded:
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+              .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
+          }
+        }
       )
       .overlay(alignment: .bottom) {
         LinearGradient(
@@ -1665,11 +1856,25 @@ struct RecordingOverlayView: View {
   /// source of truth instead of a per-view-instance stamp — a panel-recreate
   /// (e.g. `transitionToRecording`) must not reset the displayed timer.
   let recordingElapsedProvider: () -> TimeInterval?
+  /// #1988: what the live preview should show. Polled on the same 50 ms loop as
+  /// audio level and elapsed time rather than on a publisher, because that loop
+  /// already exists and coalesces naturally: Apple emits updates every ~210-290 ms,
+  /// so a push-based feed would redraw more often than the eye can read without
+  /// showing anything more.
+  let livePreviewProvider: () -> LivePreviewDisplay
+  /// #1988: reports the capsule's measured height so the panel can follow it as the
+  /// preview grows. No-op when the preview is off.
+  var onContentHeightChange: (CGFloat) -> Void = { _ in }
+  /// #1988: whether this pill is the tall preview layout. Passed in rather than
+  /// derived from the display state, which starts `.off` for one 50 ms poll and
+  /// would flash the capsule shape before the first read.
+  var usesPreviewLayout: Bool = false
   var lockState: OverlayLockState
   /// #1060: transient notice banner shown inside the recording capsule.
   var noticeState: OverlayNoticeState
   @State private var audioLevel: Float = 0
   @State private var elapsed: TimeInterval = 0
+  @State private var preview: LivePreviewDisplay = .off
 
   var body: some View {
     VStack(spacing: 6) {
@@ -1686,6 +1891,10 @@ struct RecordingOverlayView: View {
             .transition(.opacity)
         }
       }
+
+      // #1988: the live preview. Display only — the pasted text comes from the
+      // normal transcription path after the key is released.
+      livePreviewBody
 
       // #1060: approaching-cap warning banner. Appears inside the same capsule
       // (no panel rebuild), wraps within the pill width, auto-clears.
@@ -1706,16 +1915,108 @@ struct RecordingOverlayView: View {
     .animation(.easeInOut(duration: 0.25), value: noticeState.message)
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
-    .background(OverlayCapsuleBackground())
+    .background(OverlayCapsuleBackground(cornerStyle: usesPreviewLayout ? .rounded : .capsule))
+    // #1988: report the capsule's real height so the panel can follow it. Measured
+    // on the capsule rather than computed from a line count, because only the text
+    // engine knows how many lines a sentence wraps to at this width in this script.
+    .background(
+      GeometryReader { geo in
+        Color.clear
+          .onAppear { onContentHeightChange(geo.size.height) }
+          .onChange(of: geo.size.height) { _, height in onContentHeightChange(height) }
+      }
+    )
     .task {
       while !Task.isCancelled {
         audioLevel = audioLevelProvider()
         elapsed = recordingElapsedProvider() ?? 0
+        preview = livePreviewProvider()
         try? await Task.sleep(for: .milliseconds(50))
       }
     }
   }
 
+  /// The preview area.
+  ///
+  /// **The tail is produced by `.truncationMode(.head)`, not by counting characters
+  /// and not by clipping an oversized box.** A character budget is a guess about how
+  /// many glyphs fit, and that guess is wrong by a factor of two for CJK and wrong
+  /// again for any proportional font. Clipping was tried first and shipped two
+  /// visible defects that a screenshot caught immediately: `fixedSize` makes a Text
+  /// render at its ideal height regardless of the frame around it, so three lines of
+  /// text spilled out of the capsule background entirely and the top line was sliced
+  /// through the middle of its glyphs. Letting the text engine drop the head gives
+  /// the same "newest words win" result, correct in every script, with a leading
+  /// ellipsis that reads as continuation rather than as a rendering fault.
+  @ViewBuilder
+  private var livePreviewBody: some View {
+    switch preview {
+    case .off:
+      EmptyView()
+    case .waiting:
+      // One line, so the pill starts compact and the growth the user sees is their
+      // own words arriving rather than space that was always reserved.
+      previewText(LivePreviewCopy.listening, dimmed: true, lines: 1)
+    case .unavailable(let reason):
+      // Say why rather than sitting blank. A blank preview reads as "it did not
+      // hear me", which is the exact anxiety this feature exists to remove. Two
+      // lines because some of these sentences wrap.
+      previewText(reason, dimmed: true, lines: 2)
+    case .text(let text):
+      previewText(text, dimmed: false, lines: Self.previewMaxLines)
+    }
+  }
+
+  /// One builder for all three states, so the pill cannot change alignment as it
+  /// moves between "Listening...", real words, and a reason it cannot run.
+  ///
+  /// **No fixed height.** The text takes exactly the lines it needs, the capsule
+  /// grows with it, and the panel follows via `onContentHeightChange`. At the cap
+  /// the text keeps laying out in full but the box stops growing and pins the text
+  /// to its BOTTOM, so the overflow leaves at the top and the newest words stay
+  /// where the eye already is.
+  ///
+  /// **`.lineLimit(n)` + `.truncationMode(.head)` does NOT do this, despite
+  /// reading as though it should.** Measured by rendering this exact modifier
+  /// stack over 60 numbered words: it keeps the OLDEST four lines and truncates
+  /// only the LAST one, so a long dictation showed `word1...word32`, then a jump
+  /// to `...word53 word60` — the middle silently gone and four fifths of the pill
+  /// frozen on the opening words. Review caught it; the screenshot that had
+  /// "verified" the behaviour showed a transcript at exactly five lines, which
+  /// never exercises overflow at all.
+  ///
+  /// Bottom-pinned clipping is the literal reading of "scrolls off the top", and
+  /// needs no ScrollView (which brings scrollers, elasticity and its own
+  /// scroll-to-bottom timing into a borderless overlay) and no manual text
+  /// measurement.
+  private func previewText(_ message: String, dimmed: Bool, lines: Int) -> some View {
+    Text(message)
+      .font(.system(size: 12))
+      .foregroundStyle(.white.opacity(dimmed ? 0.5 : 0.92))
+      .multilineTextAlignment(.leading)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      // `maxHeight` CAPS without fixing: below the cap the box is the text's own
+      // height, which is what lets the pill still grow a line at a time.
+      .frame(maxHeight: Self.previewHeight(lines: lines), alignment: .bottom)
+      .clipped()
+  }
+
+  /// Height of `lines` lines of the preview font.
+  ///
+  /// Derived from the font's own metrics rather than a literal, so the cap tracks
+  /// the type size instead of drifting silently if it changes. An exact multiple
+  /// of the line height matters: the clip lands on a line boundary, so no row is
+  /// ever cut through the middle of its glyphs. Verified against the render — five
+  /// lines measured 75pt, matching 5 x 15.
+  private static func previewHeight(lines: Int) -> CGFloat {
+    let font = NSFont.systemFont(ofSize: 12)
+    return ceil(font.ascender - font.descender + font.leading) * CGFloat(lines)
+  }
+
+  /// Five lines, matching the shape the founder tested against Spokenly: the pill
+  /// grows a line at a time up to this, then holds its size and scrolls.
+  private static let previewMaxLines = 5
 }
 
 // MARK: - PolishingOverlayView
