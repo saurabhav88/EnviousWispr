@@ -31,6 +31,19 @@ extension View {
       .foregroundStyle(.stTextBody)
       .fixedSize(horizontal: false, vertical: true)
   }
+
+  /// The design system's "helper" role: captions, hints and status, one step
+  /// quieter than reading copy at the same 14pt floor.
+  ///
+  /// The tokens existed (`Font.stHelper`, `Color.stTextTertiary`) with no modifier
+  /// to apply them, so status text was being styled inline. Added with #2080's
+  /// pack list, which is the first page with a status column.
+  func settingsHelperCopy() -> some View {
+    self
+      .font(.stHelper)
+      .foregroundStyle(.stTextTertiary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
 }
 
 // MARK: - Per-page header

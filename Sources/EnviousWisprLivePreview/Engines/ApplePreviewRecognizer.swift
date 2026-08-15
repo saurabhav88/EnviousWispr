@@ -91,8 +91,8 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
 
   // MARK: - Preparation
 
-  /// Claim the locale, install its assets if missing, and resolve the audio
-  /// format. Throws so the caller can degrade; it is never called from the heart.
+  /// Claim the locale and resolve the audio format. Throws so the caller can
+  /// degrade; it is never called from the heart.
   ///
   /// **No `SFSpeechRecognizer` authorization call, and no
   /// `com.apple.security.personal-information.speech-recognition` entitlement:
@@ -116,16 +116,26 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// future OS tightening this.
   /// Re-measure before contradicting: `scratchpad/speechprobe/` in the #1988
   /// session, or rebuild the probe from this doc comment.
+  ///
+  /// **This method MUST NOT download, install, remove or repair model bytes (#2080).** It opens
+  /// and warms what is already installed, nothing more.
+  ///
+  /// It used to call `downloadAndInstall()` right here, so pressing the record key could start an
+  /// unannounced ~140 MB download. The user asked to dictate; they did not ask for that. Founder
+  /// directive 2026-08-15: pack installation is the user's action, taken deliberately from the
+  /// Live Preview settings page.
+  ///
+  /// A missing pack is now reported by the RESOLVER as `.blocked(.installRequired)` before this
+  /// is ever reached, so the pill can say which language needs downloading instead of the user
+  /// waiting on a silent transfer. `ApplePackCatalog` is the only thing in this module that
+  /// installs, and only when asked.
   func prepare() async throws {
     try await Self.reserveLocale(locale)
 
+    // Built to negotiate the audio format, NOT to install anything. Constructing a
+    // `DictationTranscriber` is inert; only `assetInstallationRequest` + `downloadAndInstall`
+    // fetch bytes, and neither appears in this method any more.
     let probe = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
-    if let request = try await AssetInventory.assetInstallationRequest(supporting: [probe]) {
-      // The bytes come from Apple and are shared with the system's own dictation,
-      // so a user who already dictates in this language has paid for them already.
-      // We ship none of them.
-      try await request.downloadAndInstall()
-    }
 
     guard
       let source = AVAudioFormat(
@@ -577,7 +587,7 @@ package enum ApplePreviewEngineResolver {
   /// Synchronous and separate from `resolve` because the overlay needs the answer
   /// while deciding pill geometry, where there is nothing to await. Same OS check,
   /// asked from the one place that knows why it applies.
-  static var isSupportedOnThisSystem: Bool {
+  package static var isSupportedOnThisSystem: Bool {
     if #available(macOS 26.0, *) { return true }
     return false
   }
@@ -602,6 +612,19 @@ package enum ApplePreviewEngineResolver {
       return .blocked(.unsupportedLanguage)
     }
     let tag = locale.identifier(.bcp47)
+
+    // Refuse HERE rather than letting `prepare()` fetch it (#2080). Apple supports the language
+    // but this Mac does not have its model, and downloading ~140 MB is the user's decision, taken
+    // on the Live Preview settings page. Reported by name so the pill can say which language,
+    // rather than a generic sentence that leaves the user hunting.
+    let installed = await DictationTranscriber.installedLocales.contains {
+      $0.identifier(.bcp47) == tag
+    }
+    guard installed else {
+      await log("pack not installed for \(tag); user must install it")
+      return .blocked(.installRequired(languageName: ApplePackCatalog.localizedName(for: tag)))
+    }
+
     return .ready(
       LivePreviewEngineCandidate(
         key: LivePreviewEngineKey(engine: engineID, commitment: tag),

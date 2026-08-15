@@ -173,6 +173,8 @@ struct UnifiedWindowView: View {
       page(.appearance) { AppearanceSettingsView() }
     case .speechEngine:
       page(.speechEngine) { SpeechEngineSettingsView() }
+    case .livePreview:
+      page(.livePreview) { LivePreviewSettingsView() }
     case .audio:
       page(.audio) { AudioSettingsView() }
     case .recordingSounds:

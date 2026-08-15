@@ -52,4 +52,47 @@ enum LivePreviewSettingsCopy {
   /// longer explanation would read as an apology.
   static let needsNewerMacOS =
     "On-screen preview needs macOS 26 or later. Dictation itself works on macOS 14 and up."
+
+  // MARK: - Language packs (#2080)
+
+  static let packsHeader = "Languages"
+
+  /// Explains the thing a user is otherwise left to infer: their Mac has only some
+  /// of these, the missing ones are a download, and we will not take that decision
+  /// for them. No size promise beyond "about" — Apple reports none, and the figure
+  /// below is ours, measured, not theirs.
+  static let packsDescription =
+    "Apple provides the speech for the on-screen preview. Your Mac already has some "
+    + "languages; the rest are about 140 MB each and download only when you ask. "
+    + "Nothing downloads on its own."
+
+  static let packInstalled = "Ready"
+  static let packInstall = "Download"
+  static let packInstalling = "Downloading"
+  static let packRetry = "Try again"
+
+  /// Shown when the list itself could not be read. Distinct from an empty list on
+  /// purpose: "we could not ask your Mac" and "your Mac supports none" are
+  /// different facts, and showing an empty list for the first would be a lie.
+  static let packsUnavailable =
+    "Could not read the language list from macOS. Reopen this page to try again."
+
+  /// Shown when one download fails. Says what to do rather than what went wrong,
+  /// because the causes (offline, disk, Apple's servers) all have the same remedy.
+  static let packInstallFailed =
+    "That download did not finish. Check your connection and try again."
+
+  /// In the recording pill when the chosen language has no pack yet.
+  ///
+  /// Follows the precedent already shipping in `DictationNarrator.modelNotDownloaded`
+  /// ("... isn't downloaded yet. Open Settings to download it."), so the app says
+  /// this the same way twice rather than inventing a second phrasing. Names the
+  /// language, because "a language" sends the user hunting through 54 rows.
+  ///
+  /// Length is a MEASUREMENT, not a guess: the pill caps this state at two lines
+  /// (`RecordingOverlayPanel`), and every one of the 54 languages has to fit. See
+  /// the plan's §14.
+  static func previewNeedsLanguagePack(_ languageName: String) -> String {
+    "\(languageName) isn't downloaded yet. Open Settings to download it."
+  }
 }

@@ -20,6 +20,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case whatsNew
   case appearance
   case speechEngine
+  case livePreview
   case audio
   case recordingSounds
   case shortcuts
@@ -41,6 +42,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .whatsNew: return "What's New"
     case .appearance: return "Appearance"
     case .speechEngine: return "Transcription"
+    case .livePreview: return "Live Preview"
     case .audio: return "Microphone"
     case .recordingSounds: return "Sounds"
     case .shortcuts: return "Shortcuts"
@@ -62,6 +64,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .whatsNew: return "sparkle.magnifyingglass"
     case .appearance: return "circle.lefthalf.filled"
     case .speechEngine: return "waveform"
+    case .livePreview: return "text.viewfinder"
     case .audio: return "speaker.wave.2"
     case .recordingSounds: return "bell.and.waveform"
     case .shortcuts: return "keyboard"
@@ -84,6 +87,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .whatsNew: return "The latest improvements and fixes in this release."
     case .appearance: return "Choose how EnviousWispr looks in light and dark."
     case .speechEngine: return "The speech engine that turns your voice into text."
+    case .livePreview: return "See your words on screen while you are still speaking."
     case .audio: return "Choose your input source and readiness behavior."
     case .recordingSounds: return "Play a short sound when recording starts and stops."
     case .shortcuts: return "Set the hotkeys that start, stop, and cancel dictation."
@@ -104,7 +108,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   var group: SettingsGroup {
     switch self {
     case .history, .whatsNew, .appearance: return .app
-    case .speechEngine, .audio, .recordingSounds, .shortcuts: return .record
+    case .speechEngine, .livePreview, .audio, .recordingSounds, .shortcuts: return .record
     case .aiPolish, .wordCorrection: return .process
     case .clipboard: return .output
     case .permissions, .checkForUpdates, .openSourceLicenses: return .system
