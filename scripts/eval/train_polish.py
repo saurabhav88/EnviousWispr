@@ -54,6 +54,17 @@ args = ap.parse_args()
 # clearing unsloth_compiled_cache and ~/.triton. Do not repeat any of those three
 # as the cause.
 #
+# Nor is this knob established as the CURE. The run that finally trained had both
+# `--dataset-num-proc 1` and `python -u`, and an earlier run with the knob alone
+# still died -- so the crash is at least partly intermittent and the knob may have
+# had nothing to do with it. Treat a green run as luck until several in a row pass.
+#
+# What IS established, and is worth more than the knob: `python train.py > log`
+# BLOCK-buffers stdout, so a SIGSEGV loses the entire buffer and leaves an EMPTY
+# log. That made the crash look like it had moved earlier in the pipeline when it
+# had not, and cost two rounds of this investigation. Always run the trainer with
+# `python -u` so the last line before a crash is truthful.
+#
 # So this knob is a bisection tool, not a fix with a known reason. Tokenizing
 # 5,656 short rows in-process costs well under a minute against a ~16-minute
 # train, so pinning it is close to free while the real cause is unknown.
