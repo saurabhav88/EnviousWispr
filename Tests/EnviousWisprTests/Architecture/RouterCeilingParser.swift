@@ -112,14 +112,21 @@ enum RouterCeilingParser {
       .count
   }
 
+  /// Every module imported by `source`, including imports behind `#if`.
+  ///
+  /// Walked with a `SyntaxVisitor` rather than by iterating `tree.statements`,
+  /// because a `#if` block arrives as ONE statement of kind `IfConfigDeclSyntax`
+  /// and an import inside it is invisible to a hand-written loop. The generated
+  /// `visitChildren` descends into every child unconditionally, so conditional
+  /// compilation needs no case of its own here (cloud review, PR #2070 — the
+  /// THIRD site of this one mistake in this file).
+  ///
+  /// Depth does not matter for imports, which is what makes the visitor usable.
+  /// `members(in:)` cannot do this: it must count only members declared DIRECTLY
+  /// in the class body, and a visitor would happily descend into nested types.
+  /// That is the only hand-written list walk left in this file.
   static func imports(in source: String) -> Set<String> {
-    let tree = Parser.parse(source: source)
-    var found: Set<String> = []
-    for statement in tree.statements {
-      guard let importDecl = statement.item.as(ImportDeclSyntax.self) else { continue }
-      if let first = importDecl.path.first { found.insert(first.name.text) }
-    }
-    return found
+    ImportFinder.modules(in: Parser.parse(source: source))
   }
 
   /// Range of the first occurrence of `statement` in `body`, located over the
@@ -364,7 +371,14 @@ enum RouterCeilingParser {
     let arguments: GenericArgumentListSyntax?
     if let identifier = type.as(IdentifierTypeSyntax.self), identifier.name.text == "Optional" {
       arguments = identifier.genericArgumentClause?.arguments
-    } else if let member = type.as(MemberTypeSyntax.self), member.name.text == "Optional" {
+    } else if let member = type.as(MemberTypeSyntax.self), member.name.text == "Optional",
+      member.baseType.as(IdentifierTypeSyntax.self)?.name.text == "Swift"
+    {
+      // Qualified only as `Swift.Optional`. Any other base — a project or
+      // dependency type that happens to nest a generic named `Optional`, such
+      // as `Box.Optional<() -> Void>` — is a DIFFERENT type, and unwrapping it
+      // would reclassify a collaborator as a closure on the strength of a name
+      // match alone (cloud review, PR #2070).
       arguments = member.genericArgumentClause?.arguments
     } else {
       return nil
@@ -415,6 +429,21 @@ enum RouterCeilingParser {
         return .skipChildren
       }
       return .visitChildren
+    }
+  }
+
+  private final class ImportFinder: SyntaxVisitor {
+    var found: Set<String> = []
+
+    static func modules(in tree: SourceFileSyntax) -> Set<String> {
+      let finder = ImportFinder(viewMode: .sourceAccurate)
+      finder.walk(tree)
+      return finder.found
+    }
+
+    override func visit(_ node: ImportDeclSyntax) -> SyntaxVisitorContinueKind {
+      if let first = node.path.first { found.insert(first.name.text) }
+      return .skipChildren
     }
   }
 

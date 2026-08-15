@@ -1095,4 +1095,57 @@ import Testing
         """)
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
+
+  @Test func imports_descendIntoConditionalCompilationBlocks() {
+    // An import behind `#if` arrives as an `IfConfigDeclSyntax` statement, not
+    // an `ImportDeclSyntax`. A hand-written loop over `tree.statements` misses
+    // it, so an import-restriction guard would report a forbidden module as
+    // absent — a false green, and the third instance of this one mistake in
+    // this file (cloud review, PR #2070).
+    let source = """
+      import Foundation
+      #if DEBUG
+        import EnviousWisprServices
+      #else
+        import EnviousWisprCore
+      #endif
+      """
+    #expect(
+      RouterCeilingParser.imports(in: source)
+        == ["Foundation", "EnviousWisprServices", "EnviousWisprCore"])
+  }
+
+  @Test func closureInjectedCount_excludesAnInferredClosureThatCannotBeInjected() throws {
+    // `let seam = { ... }` has no type annotation, so it is NOT an injected
+    // seam and must not consume a closure slot: Swift REQUIRES a type
+    // annotation on a stored property with no initializer ("type annotation
+    // missing in pattern"), so an omitted annotation proves the property
+    // initializes itself. It still counts as a collaborator, so it cannot grow
+    // the class past a ceiling unobserved — the two counters together admit no
+    // gap (cloud review, PR #2070).
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let injected: () -> Void
+          let selfMade = { print("hi") }
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  @Test func collaboratorCount_doesNotUnwrapAnOptionalNestedInAnotherType() throws {
+    // `Box.Optional<T>` is not `Swift.Optional<T>`; it is whatever `Box` says
+    // it is. Unwrapping on the member name alone would reclassify a
+    // collaborator as a closure on a name match (cloud review, PR #2070).
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let real: Swift.Optional<() -> Void>
+          let impostor: Box.Optional<() -> Void>
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
 }
