@@ -39,9 +39,15 @@ permitted_imports_for() {
     EnviousWisprLLM)               echo "EnviousWisprCore EnviousWisprModelDelivery" ;;
     EnviousWisprModelDelivery)     echo "EnviousWisprCore" ;;
     EnviousWisprServices)          echo "EnviousWisprCore EnviousWisprObservabilityCore" ;;
+    # The live preview limb (#2077). Short ON PURPOSE: no Audio, no ASR, no
+    # Pipeline, no Services. A preview engine that could import any of those could
+    # reach the recording path, and this line is what makes that impossible rather
+    # than merely discouraged. Add EnviousWisprModelDelivery when the downloadable
+    # engine lands; do not add anything else without re-reading why the limb exists.
+    EnviousWisprLivePreview)       echo "EnviousWisprCore EnviousWisprPostProcessing" ;;
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
     EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprObservabilityCore" ;;
-    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts" ;;
+    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview" ;;
     EnviousWispr)                  echo "EnviousWisprAppKit" ;;
     *)                             return 1 ;;
   esac

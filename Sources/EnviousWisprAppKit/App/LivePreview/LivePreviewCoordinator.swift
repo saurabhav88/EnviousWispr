@@ -1,8 +1,37 @@
 import AVFoundation
-import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprLivePreview
 import EnviousWisprPostProcessing
 import Foundation
+
+/// Read-only access to the audio the capture manager has already stored.
+///
+/// **A closure, not `AudioCaptureInterface`, and that is the limb boundary in
+/// miniature.** That interface also exposes `startCapture`, `stopCapture`,
+/// `rebuildEngine`, `configureVAD` and the buffer callbacks — everything needed to
+/// disturb a live recording. A display-only feature holding a reference to all of
+/// that is one careless line away from being able to break a dictation, and no
+/// comment prevents that line. Handing it a single read narrows the limb's reach to
+/// exactly what it needs: the samples that already exist.
+typealias LivePreviewSampleReader =
+  @MainActor @Sendable (Int) async -> (samples: [Float], totalCount: Int)
+
+/// The most text this session ever handed the pill.
+///
+/// A reference box because the writer is the publish closure and the reader is the
+/// session task that outlives it. The PEAK rather than the last value: the preview
+/// is bounded and trims its front on long dictations, so the final string can be
+/// shorter than what was displayed earlier, and "how much did the user ever see"
+/// is the question this answers.
+///
+/// `@MainActor`-confined by use — every mutation happens inside the publish
+/// closure's main-actor hop, and the single read happens on the same actor — so it
+/// needs no lock and makes no cross-actor promise it cannot keep.
+@MainActor
+final class ShownCharsBox {
+  private(set) var peak = 0
+  func record(_ count: Int) { peak = max(peak, count) }
+}
 
 /// What the recording pill should render for the live preview (#1988).
 ///
@@ -75,16 +104,24 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// same way audio level and elapsed time already are.
   private(set) var display: LivePreviewDisplay = .off
 
-  private let audioCapture: any AudioCaptureInterface
+  private let readSamples: LivePreviewSampleReader
   private let isEnabled: () -> Bool
   private let languageMode: () -> LanguageMode
 
-  /// The prepared recognizer, kept across recordings so the second press does not
-  /// pay preparation again. `Any` because the type cannot be named below macOS 26.
-  private var preparedRecognizer: Any?
-  /// The locale `preparedRecognizer` was prepared for, so a language change
-  /// rebuilds it.
-  private var preparedLocale: Locale?
+  /// Which engine can serve a given language, and why not when it cannot.
+  ///
+  /// Injected rather than chosen here, so this type never names a vendor and never
+  /// encodes one engine's availability rules as the feature's (#2077). Today the
+  /// installer supplies Apple's; a second engine changes the closure, not this file.
+  private let resolveEngine: LivePreviewEngineResolver
+
+  /// The prepared engine, kept across recordings so the second press does not pay
+  /// preparation again.
+  private var preparedEngine: (any LivePreviewEngine)?
+  /// The candidate key `preparedEngine` was prepared for, so a change of language
+  /// OR of engine rebuilds it. Previously a `Locale`, which could not distinguish
+  /// two engines previewing the same language.
+  private var preparedKey: LivePreviewEngineKey?
 
   /// Custom Words, written by `CustomWordsPropagator`. Building lookups is the
   /// expensive half, so it happens HERE, once per vocabulary generation, rather
@@ -140,13 +177,15 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   private var isRunning = false
 
   init(
-    audioCapture: any AudioCaptureInterface,
+    readSamples: @escaping LivePreviewSampleReader,
     isEnabled: @escaping () -> Bool,
-    languageMode: @escaping () -> LanguageMode
+    languageMode: @escaping () -> LanguageMode,
+    resolveEngine: @escaping LivePreviewEngineResolver
   ) {
-    self.audioCapture = audioCapture
+    self.readSamples = readSamples
     self.isEnabled = isEnabled
     self.languageMode = languageMode
+    self.resolveEngine = resolveEngine
   }
 
   // MARK: - Lifecycle
@@ -196,44 +235,36 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   private func startSession(generation: UInt64) {
     sessionTask = Task { @MainActor [weak self] in
       guard let self else { return }
-      guard #available(macOS 26.0, *) else {
-        self.display = .unavailable(LivePreviewCopy.needsNewerMacOS)
-        return
-      }
       await self.runSession(generation: generation)
     }
   }
 
-  @available(macOS 26.0, *)
   private func runSession(generation: UInt64) async {
-    let mode = languageMode()
-    let code = Self.previewLanguageCode(mode)
-    // Both the setting and the code derived from it. "Why is there no preview in
-    // my language" is answerable from this one line: it distinguishes a user on
-    // Auto-detect (where we guess from the system) from one who locked a language
-    // Apple cannot transcribe, and those have different answers.
-    await Self.log("resolving language, mode=\(mode) code=\(code)")
-    guard let locale = await ApplePreviewRecognizer.resolveLocale(code: code) else {
-      guard isCurrent(generation) else { return }
-      display = .unavailable(LivePreviewCopy.languageUnsupported)
-      await Self.log("no recognizer locale for language=\(code)")
-      return
-    }
+    // The engine decides both halves of this: whether it can run on this Mac at
+    // all, and what to do with the user's language setting. Neither is a fact about
+    // the preview feature, and an earlier draft that assumed Apple's answers would
+    // have silently disabled a second engine on every Mac below macOS 26.
+    let resolution = await resolveEngine(languageMode())
     guard isCurrent(generation) else { return }
 
+    guard case .ready(let candidate) = resolution else {
+      if case .blocked(let reason) = resolution {
+        display = .unavailable(Self.sentence(for: reason))
+      }
+      return
+    }
+
     // Say "getting ready" rather than "listening" while preparation runs. On first
-    // use of a language that can mean downloading an Apple speech model, and a pill
+    // use of a language that can mean downloading a speech model, and a pill
     // promising to listen while nothing appears is the exact impression this
     // feature exists to prevent.
-    let alreadyPrepared = preparedRecognizer is ApplePreviewRecognizer && preparedLocale == locale
+    let alreadyPrepared = preparedEngine != nil && preparedKey == candidate.key
     if !alreadyPrepared { display = .unavailable(LivePreviewCopy.preparing) }
 
-    guard await ensurePrepared(for: locale),
-      let recognizer = preparedRecognizer as? ApplePreviewRecognizer
-    else {
+    guard await ensurePrepared(candidate), let engine = preparedEngine else {
       guard isCurrent(generation) else { return }
       display = .unavailable(LivePreviewCopy.notReady)
-      await Self.log("not ready for locale=\(locale.identifier(.bcp47))")
+      await Self.log("not ready for \(candidate.key.engine)/\(candidate.key.commitment)")
       return
     }
 
@@ -252,35 +283,43 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // The recognizer calls back from its own actor. Hop to the main actor and
     // publish so the 20 Hz pill read is a plain property read. The text arrives
     // already bounded (`LivePreviewTextBound`, applied at the producer).
+    // Counted as it is PUBLISHED, never read back off `display` afterwards.
+    // Reading `display` at the end of the session cannot work: stopping sets it to
+    // `.off` before this task resumes, so the figure was structurally pinned at 0
+    // and reported "heard nothing" for every recording including the ones that
+    // worked. It was the only signal separating "ran and heard nothing" from "never
+    // ran", so a permanently-zero counter made the two indistinguishable — the exact
+    // question it existed to answer.
+    let shownChars = ShownCharsBox()
     let publish: @Sendable (String) -> Void = { [weak self] text in
       Task { @MainActor in
         guard let self, self.isRunning, self.sessionGeneration == generation else { return }
+        shownChars.record(text.count)
         self.display = .text(text)
       }
     }
 
-    let session: ApplePreviewRecognizer.Session
+    let session: any LivePreviewEngineSession
     do {
       // Read synchronously on the main actor at the moment the session opens, so
       // the session cannot start before the vocabulary reaches it.
-      session = try await recognizer.startSession(lookups: correctorLookups, onText: publish)
+      session = try await engine.openSession(lookups: correctorLookups, onText: publish)
     } catch {
       guard isCurrent(generation) else { return }
       display = .unavailable(LivePreviewCopy.notReady)
       await Self.log("session refused to start: \(error)")
       return
     }
-    await Self.log("session started, locale=\(locale.identifier(.bcp47))")
+    await Self.log(
+      "session started, engine=\(candidate.key.engine) on=\(candidate.key.commitment)")
 
-    await feedLoop(into: recognizer, session: session) { updates += 1 }
+    await feedLoop(session: session) { updates += 1 }
     // Closes the resources THIS session owns, so it cannot reach a newer one.
-    await recognizer.endSession(session)
-    // Reports what the PILL received, so an empty preview is distinguishable from
-    // a preview that ran and heard nothing. Those look identical on screen and
-    // have completely different causes.
-    let shown: Int
-    if case .text(let t) = display { shown = t.count } else { shown = 0 }
-    await Self.log("session ended, feeds=\(updates) shownChars=\(shown)")
+    await session.end()
+    // Reports what the PILL was actually given, so an empty preview is
+    // distinguishable from a preview that ran and heard nothing. Those look
+    // identical on screen and have completely different causes.
+    await Self.log("session ended, feeds=\(updates) shownChars=\(shownChars.peak)")
   }
 
   /// Whether the recording that started this session is still the current one AND
@@ -302,6 +341,20 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// promises. Checking both means "this recording, and it is still happening".
   private func isCurrent(_ generation: UInt64) -> Bool {
     isRunning && sessionGeneration == generation
+  }
+
+  /// Turn an engine's structured refusal into the sentence the user reads.
+  ///
+  /// **The mapping lives here, in the app shell, on purpose.** Engines report a
+  /// reason; what the user is told is brand-governed copy with its own rules and its
+  /// own frozen tests, and an engine module has no business owning it. Exhaustive by
+  /// construction, so a new refusal reason cannot ship without someone deciding what
+  /// it says.
+  private static func sentence(for reason: LivePreviewUnavailability) -> String {
+    switch reason {
+    case .unsupportedSystem: return LivePreviewCopy.needsNewerMacOS
+    case .unsupportedLanguage: return LivePreviewCopy.languageUnsupported
+    }
   }
 
   /// One log seam so every preview line carries the same category and the whole
@@ -326,11 +379,11 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   ///
   /// **Dropping a reference to a task does not stop the task.** Switching language
   /// mid-preparation used to clear `preparationTask` and move on, leaving the old
-  /// language's task running with an unconditional write to `preparedRecognizer`
-  /// and `preparedLocale` at the end of it. It could land after the new language's
-  /// task and hand the next recording a German recognizer while every check said
-  /// English was ready. The generation below is what makes the write conditional;
-  /// review caught the original.
+  /// language's task running with an unconditional write to `preparedEngine` and
+  /// `preparedKey` at the end of it. It could land after the new language's task
+  /// and hand the next recording a German recognizer while every check said English
+  /// was ready. The generation below is what makes the write conditional; review
+  /// caught the original.
   /// Rebuild the cached lookups and hand them to whatever recognizer exists.
   ///
   /// Not availability-gated: `CustomWordsPropagator` writes the vocabulary on
@@ -352,24 +405,25 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       ? nil : WordCorrector.buildLookups(words: correctorVocabulary.terms)
   }
 
-  @available(macOS 26.0, *)
-  private func ensurePrepared(for locale: Locale) async -> Bool {
-    if preparedRecognizer is ApplePreviewRecognizer, preparedLocale == locale { return true }
+  private func ensurePrepared(_ candidate: LivePreviewEngineCandidate) async -> Bool {
+    let key = candidate.key
+    if preparedEngine != nil, preparedKey == key { return true }
 
-    // A language change invalidates the in-flight preparation for the old one. The
-    // generation bump is what actually invalidates it; clearing the reference only
-    // stops US waiting on it.
-    if preparedLocale != locale {
+    // A change of engine OR language invalidates the in-flight preparation for the
+    // old one. The generation bump is what actually invalidates it; clearing the
+    // reference only stops US waiting on it.
+    if preparedKey != key {
       preparationGeneration &+= 1
       preparationTask = nil
-      preparedRecognizer = nil
+      preparedEngine = nil
     }
 
     if let existing = preparationTask { return await existing.value }
 
     let generation = preparationGeneration
+    let make = candidate.makeEngine
     let task = Task<Bool, Never> { [weak self] in
-      let fresh = ApplePreviewRecognizer(locale: locale)
+      let fresh = make()
       do {
         try await fresh.prepare()
       } catch {
@@ -377,15 +431,15 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       }
       guard let self else { return false }
       return await MainActor.run {
-        // Publish only if the language has not moved on while this ran.
+        // Publish only if the engine or language has not moved on while this ran.
         guard self.preparationGeneration == generation else { return false }
-        self.preparedRecognizer = fresh
-        self.preparedLocale = locale
+        self.preparedEngine = fresh
+        self.preparedKey = key
         return true
       }
     }
     preparationTask = task
-    preparedLocale = locale
+    preparedKey = key
     let ok = await task.value
     // Let a later recording retry, but only if nothing newer has already claimed
     // the slot — clearing unconditionally would discard a live preparation.
@@ -400,10 +454,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// so a late start never replays the beginning at speed, and it re-syncs if the
   /// count goes backwards, which is what a buffer reset between recordings looks
   /// like from here.
-  @available(macOS 26.0, *)
   private func feedLoop(
-    into recognizer: ApplePreviewRecognizer,
-    session: ApplePreviewRecognizer.Session,
+    session: any LivePreviewEngineSession,
     onFeed: @escaping () -> Void
   ) async {
     // `Int.max`, not 0, and the difference is not cosmetic. `getSamplesSnapshot`
@@ -412,12 +464,12 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // from 0 would copy the entire captured buffer — on a long recording that is
     // hundreds of megabytes allocated and copied ON THE MAIN ACTOR, by a limb, to
     // obtain a number it then uses and discards the samples of.
-    var fed = await audioCapture.getSamplesSnapshot(fromIndex: Int.max).totalCount
+    var fed = await readSamples(Int.max).totalCount
 
     while !Task.isCancelled {
       try? await Task.sleep(for: .milliseconds(Self.feedIntervalMs))
       if Task.isCancelled { break }
-      let snapshot = await audioCapture.getSamplesSnapshot(fromIndex: fed)
+      let snapshot = await readSamples(fed)
       if snapshot.totalCount < fed {
         // The capture buffer was cleared under us (recording ended, or the next
         // one began). Re-sync rather than going permanently silent, which is what
@@ -428,45 +480,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       guard !snapshot.samples.isEmpty else { continue }
       fed = snapshot.totalCount
       onFeed()
-      await recognizer.feed(snapshot.samples, session: session)
-    }
-  }
-
-  // MARK: - Locale
-
-  /// The language tag to preview in: a bare ISO 639-1 code when the user locked
-  /// one, the FULL system locale under Auto.
-  ///
-  /// Apple's recognizer must commit to one language up front, so Auto-detect has
-  /// no answer to give it. The system language is the honest guess: it is what the
-  /// user's Mac is set to, and being wrong costs a preview rather than a transcript.
-  ///
-  /// **Auto passes region and script through, because reducing to the language
-  /// code silently picks the wrong regional model. MEASURED against the real
-  /// resolver, all three columns**: a `zh-TW` Mac resolved to `zh-CN`, Simplified
-  /// characters for a Traditional reader; `pt-BR` to `pt-PT`; `fr-CA` to `fr-CH`,
-  /// Canadian French landing on Swiss; and every `en-GB`/`en-IN`/`en-AU` to
-  /// `en-US`. Passing the full locale gives each of those its own model.
-  ///
-  /// The obvious risk of doing this — a full locale Apple cannot resolve returning
-  /// nil where the bare code would have worked, disabling the preview for whole
-  /// regions — was measured across 21 locales and does NOT occur: every case
-  /// resolved as well or better, and the three that returned nil (`nn-NO`,
-  /// `sr-Latn-RS`, `az-Cyrl-AZ`) return nil for the bare code too. `ca-ES-valencia`
-  /// degrades gracefully to `ca-ES`.
-  ///
-  /// Locked mode still passes a bare code because our language catalogue holds
-  /// bare ISO 639-1 codes, so a user who explicitly picks Chinese gets `zh-CN`.
-  /// Giving locked mode regional variants means adding them to that catalogue,
-  /// which is a product decision about a user-visible list, not this function.
-  ///
-  /// Only the POLICY lives here. Turning a tag into one of the recognizer's
-  /// locales is a vendor question, answered by the vendor in
-  /// `ApplePreviewRecognizer.resolveLocale(code:)`.
-  static func previewLanguageCode(_ mode: LanguageMode) -> String {
-    switch mode {
-    case .locked(let code): return code
-    case .auto: return Locale.current.identifier(.bcp47)
+      await session.feed(snapshot.samples)
     }
   }
 

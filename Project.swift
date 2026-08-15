@@ -304,6 +304,18 @@ let project = Project(
         .target(name: "EnviousWisprCore")
       ]),
 
+    // The live preview limb (#1988, #2077). Same rationale as the SPM target:
+    // the short dependency list IS the limb boundary, so no preview engine can
+    // reach capture, ASR, the kernel or the paste path. Added to AppKit and the
+    // test bundle explicitly, NOT to `firstPartyTargetDeps`, which would hand it
+    // to unrelated targets that have no business seeing it.
+    firstPartyLibrary(
+      "EnviousWisprLivePreview",
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprPostProcessing"),
+      ]),
+
     // #919: app-shell library (homes + views + composition root + the
     // WisprBootstrapper front door). The unit-test target links THIS, so
     // `xcodebuild test` never launches the app. WhisperKit/FluidAudio/Sparkle
@@ -312,6 +324,7 @@ let project = Project(
       "EnviousWisprAppKit",
       dependencies: firstPartyTargetDeps + [
         .target(name: "EnviousWisprContacts"),
+        .target(name: "EnviousWisprLivePreview"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
         .package(product: "Sparkle"),
@@ -437,6 +450,7 @@ let project = Project(
       dependencies: firstPartyTargetDeps + [
         .target(name: "EnviousWisprAppKit"),
         .target(name: "EnviousWisprContacts"),
+        .target(name: "EnviousWisprLivePreview"),
         // HelperObservabilityConfigTests imports the module directly; Xcode test
         // targets need every direct import as a declared edge (#1174).
         .target(name: "EnviousWisprObservabilityCore"),
