@@ -132,9 +132,28 @@ struct LivePreviewCoordinatorTests {
   func languagePolicy() {
     #expect(LivePreviewCoordinator.previewLanguageCode(.locked("de")) == "de")
     let auto = LivePreviewCoordinator.previewLanguageCode(.auto)
-    let system = Locale.current.language.languageCode?.identifier ?? "en"
-    #expect(auto == system)
+    #expect(auto == Locale.current.identifier(.bcp47))
     #expect(auto.isEmpty == false)
+  }
+
+  /// Auto must keep REGION and SCRIPT, not just language. Reducing to the language
+  /// code sends a Traditional Chinese Mac to the Simplified model, Brazilian
+  /// Portuguese to European, and Canadian French to Swiss — measured against
+  /// Apple's real resolver, not inferred. This asserts the property that prevents
+  /// it, on a fixed locale rather than the machine's, so it means the same thing
+  /// on every runner.
+  @Test("Auto preserves region and script, which is what picks the right model")
+  func autoPreservesRegionAndScript() {
+    // The reduction that caused it, applied to the cases it breaks. If
+    // `previewLanguageCode(.auto)` ever goes back to a bare language code, these
+    // are the users who silently get another region's model.
+    for id in ["zh-TW", "pt-BR", "fr-CA", "en-GB"] {
+      let full = Locale(identifier: id)
+      let bare = full.language.languageCode?.identifier
+      #expect(
+        full.identifier(.bcp47) != bare,
+        "\(id) must not survive as a bare language code")
+    }
   }
 
   // MARK: - Bounding

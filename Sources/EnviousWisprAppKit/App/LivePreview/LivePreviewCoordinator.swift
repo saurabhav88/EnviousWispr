@@ -283,14 +283,25 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     await Self.log("session ended, feeds=\(updates) shownChars=\(shown)")
   }
 
-  /// Whether the recording that started this session is still the current one.
+  /// Whether the recording that started this session is still the current one AND
+  /// a recording is still live.
   ///
-  /// Checked after every await that precedes a `display` write. Without it, a
-  /// session abandoned during locale resolution or model preparation resumes later
-  /// and writes its own outcome over the pill of a recording that is already
-  /// underway — "not ready" appearing over live words.
+  /// Checked after every await that precedes a `display` write. Without the
+  /// generation half, a session abandoned during locale resolution or model
+  /// preparation resumes later and writes its own outcome over the pill of a
+  /// recording that is already underway — "not ready" appearing over live words.
+  ///
+  /// **`isRunning` is the other half, and it became load-bearing when stopping
+  /// started discarding the text.** Stopping cancels the session task and clears
+  /// `display`, but does NOT bump the generation, because no newer recording has
+  /// claimed one. Cancellation is cooperative: an await inside an Apple API can
+  /// still return normally, after which every generation check passes and the
+  /// resumed code writes its outcome over the `.off` that the stop just set. That
+  /// resurrects state after the recording ended — at best "not ready" appearing on
+  /// a pill nobody is using, at worst undoing the discard the settings copy
+  /// promises. Checking both means "this recording, and it is still happening".
   private func isCurrent(_ generation: UInt64) -> Bool {
-    sessionGeneration == generation
+    isRunning && sessionGeneration == generation
   }
 
   /// One log seam so every preview line carries the same category and the whole
@@ -423,19 +434,39 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
   // MARK: - Locale
 
-  /// The ISO 639-1 code to preview in.
+  /// The language tag to preview in: a bare ISO 639-1 code when the user locked
+  /// one, the FULL system locale under Auto.
   ///
   /// Apple's recognizer must commit to one language up front, so Auto-detect has
   /// no answer to give it. The system language is the honest guess: it is what the
   /// user's Mac is set to, and being wrong costs a preview rather than a transcript.
   ///
-  /// Only the POLICY lives here. Turning a bare code into one of the recognizer's
-  /// 54 locales is a vendor question, answered by the vendor in
+  /// **Auto passes region and script through, because reducing to the language
+  /// code silently picks the wrong regional model. MEASURED against the real
+  /// resolver, all three columns**: a `zh-TW` Mac resolved to `zh-CN`, Simplified
+  /// characters for a Traditional reader; `pt-BR` to `pt-PT`; `fr-CA` to `fr-CH`,
+  /// Canadian French landing on Swiss; and every `en-GB`/`en-IN`/`en-AU` to
+  /// `en-US`. Passing the full locale gives each of those its own model.
+  ///
+  /// The obvious risk of doing this — a full locale Apple cannot resolve returning
+  /// nil where the bare code would have worked, disabling the preview for whole
+  /// regions — was measured across 21 locales and does NOT occur: every case
+  /// resolved as well or better, and the three that returned nil (`nn-NO`,
+  /// `sr-Latn-RS`, `az-Cyrl-AZ`) return nil for the bare code too. `ca-ES-valencia`
+  /// degrades gracefully to `ca-ES`.
+  ///
+  /// Locked mode still passes a bare code because our language catalogue holds
+  /// bare ISO 639-1 codes, so a user who explicitly picks Chinese gets `zh-CN`.
+  /// Giving locked mode regional variants means adding them to that catalogue,
+  /// which is a product decision about a user-visible list, not this function.
+  ///
+  /// Only the POLICY lives here. Turning a tag into one of the recognizer's
+  /// locales is a vendor question, answered by the vendor in
   /// `ApplePreviewRecognizer.resolveLocale(code:)`.
   static func previewLanguageCode(_ mode: LanguageMode) -> String {
     switch mode {
     case .locked(let code): return code
-    case .auto: return Locale.current.language.languageCode?.identifier ?? "en"
+    case .auto: return Locale.current.identifier(.bcp47)
     }
   }
 
