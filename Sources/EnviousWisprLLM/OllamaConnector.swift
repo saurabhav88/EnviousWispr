@@ -90,9 +90,22 @@ public enum OllamaReadiness: Sendable, Equatable {
   /// `LLMPolishStep` and adds the `OllamaReadinessGateTests` coverage that
   /// asserts the binding, because no compiler check can stand in for it.
   case ready(facts: OllamaModelFacts)
-  /// Transport error, timeout, non-2xx, or unparseable body — "Ollama is not
-  /// responding" class.
+  /// The daemon ANSWERED and the answer was unusable — non-2xx, unparseable
+  /// body, or the probe blew its deadline. Something is listening; we simply do
+  /// not know what it holds.
+  ///
+  /// #2061: deliberately NOT the same as `daemonUnreachable`, for the same
+  /// reason #1914 split `noModelSelected` out of `modelMissing` — a caller that
+  /// must decide whether weights can still be RESIDENT needs "nothing is
+  /// listening" (proof of no residency) separated from "something is listening
+  /// and did not answer usefully" (no proof either way). Collapsing them made an
+  /// eviction skip itself on a daemon that was merely slow, which is the #286
+  /// regression the eviction exists to prevent.
   case serverDown
+  /// Nothing is listening on the Ollama port at all — connection refused, or the
+  /// host could not be resolved. This is the ONLY answer that proves no weights
+  /// are resident on this machine, because there is no daemon to hold them.
+  case daemonUnreachable
   /// Server responded with a parsed tags list that has no canonical match for
   /// the model. The user HAS a selection; it is not installed.
   case modelMissing
@@ -306,10 +319,14 @@ public struct OllamaConnector: TranscriptPolisher {
   /// the three-state readiness question. Localhost-only by construction — the
   /// probe never touches any external host.
   ///
-  /// Never throws and performs no retries: every transport failure, timeout,
-  /// non-2xx, and unparseable body maps to `.serverDown`. The session timeouts
-  /// bound the request; `withDeadline` is the absolute wall-clock net on top so
-  /// a socket-accept wedge cannot hang the caller past ~1s either.
+  /// Never throws and performs no retries. A refused connection or unresolvable
+  /// host maps to `.daemonUnreachable` (nothing is listening); every OTHER
+  /// transport failure, timeout, non-2xx, and unparseable body maps to
+  /// `.serverDown` (something answered, unusably). The session timeouts bound the
+  /// request; `withDeadline` is the absolute wall-clock net on top so a
+  /// socket-accept wedge cannot hang the caller past ~1s either — and a blown
+  /// deadline is `.serverDown`, never `.daemonUnreachable`, because a wedged
+  /// daemon is still a daemon and may still hold weights (#2061).
   ///
   /// `executor`/`deadlineSeconds` are test seams (deterministic classification
   /// + deadline behavior without a live server); production callers use the
@@ -332,11 +349,37 @@ public struct OllamaConnector: TranscriptPolisher {
         let (data, response) = try await transport(request)
         return Self.classifyReadiness(data: data, response: response, model: model)
       } catch {
-        return .serverDown
+        return Self.classifyTransportFailure(error)
       }
     }
     // Deadline elapsed with no answer — the server is wedged, treat as down.
+    // NOT `.daemonUnreachable`: a wedge means something IS there.
     return outcome ?? .serverDown
+  }
+
+  /// #2061: does this transport failure prove nothing is listening?
+  ///
+  /// Only refusal and unresolvable-host do. Everything else — timeouts, dropped
+  /// connections mid-flight, TLS, anything unmapped — leaves open that a daemon
+  /// is up and holding weights, so it stays `.serverDown` and callers that care
+  /// about residency must act as if the model could still be loaded. Fails to
+  /// the CONSERVATIVE side by construction: an unrecognised error is never read
+  /// as proof of absence.
+  static func classifyTransportFailure(_ error: any Error) -> OllamaReadiness {
+    guard let urlError = error as? URLError else { return .serverDown }
+    switch urlError.code {
+    case .cannotConnectToHost:
+      // Actively refused: the TCP connect reached the host and nothing was
+      // listening on the port, so no process there can be holding weights.
+      return .daemonUnreachable
+    default:
+      // Everything else, INCLUDING `.cannotFindHost` (cloud review, PR #2071).
+      // A DNS failure proves DNS failed, not that no daemon is running — the
+      // request never reached the host to find out, and this type takes a public
+      // custom `baseURL`, so the name may be resolvable again a moment later
+      // while a model stays resident the whole time.
+      return .serverDown
+    }
   }
 
   /// Pure response → readiness classifier (#1305). Membership uses

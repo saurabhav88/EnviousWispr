@@ -359,12 +359,22 @@ struct LLMPolishStepTelemetryTests {
 
   // MARK: - `limbFailureObserved` — deterministic via the injectable eviction seam
 
+  /// #2061: `evictPreviousOllamaModel` now asks the daemon whether the model is
+  /// installed before attempting the unload, so every eviction test must state
+  /// which world it is in. Without this the default probe would reach real
+  /// localhost and the result would depend on whether Ollama happens to be
+  /// running on the machine executing the suite.
+  private static let daemonReady: @MainActor (String) async -> OllamaReadiness = { _ in
+    .ready(facts: OllamaModelFacts(isRemote: false, thinks: nil))
+  }
+
   @Test("limb-health metric fires on a failed eviction, with `.live`; silent with `.silent`")
   func limbFailureObservedIsDeterministic() async throws {
     let failedOutcome = OllamaEvictOutcome(result: "failed", durationMs: 42, reason: "http_500")
 
     let spy = Spy()
     let liveStep = makeStep(provider: .ollama, telemetry: spy.seams)
+    liveStep.ollamaReadinessProbe = Self.daemonReady
     liveStep.evictOllamaModel = { _ in failedOutcome }
     await liveStep.evictPreviousOllamaModel("some-model")
 
@@ -377,6 +387,7 @@ struct LLMPolishStepTelemetryTests {
 
     let silentSpy = Spy()
     let silentStep = makeStep(provider: .ollama, telemetry: .silent(wrapping: silentSpy.seams))
+    silentStep.ollamaReadinessProbe = Self.daemonReady
     silentStep.evictOllamaModel = { _ in failedOutcome }
     await silentStep.evictPreviousOllamaModel("some-model")
     #expect(silentSpy.limbFailureCalls.isEmpty)
@@ -387,11 +398,152 @@ struct LLMPolishStepTelemetryTests {
     let successOutcome = OllamaEvictOutcome(result: "unloaded", durationMs: 10, reason: "http_200")
     let spy = Spy()
     let step = makeStep(provider: .ollama, telemetry: spy.seams)
+    step.ollamaReadinessProbe = Self.daemonReady
     step.evictOllamaModel = { _ in successOutcome }
 
     await step.evictPreviousOllamaModel("some-model")
 
     #expect(spy.limbFailureCalls.isEmpty)
+  }
+
+  // MARK: - #2061: the eviction is gated on the daemon's own answer
+
+  /// The noise this removes: `-1004` (daemon unreachable), 202 events across 133
+  /// users in 90 days, against 27 users who have ever polished with Ollama at
+  /// all. Those are unloads aimed at a daemon that is not running, so no weights
+  /// can exist anywhere, and they sat above the genuine stuck-model case in any
+  /// "what is failing most" query.
+  ///
+  /// `http_404` (44 events / 39 users) is deliberately NOT removed — see
+  /// `skipPolicyIsProofOnly`. A model absent from `/api/tags` may still be
+  /// resident.
+  /// `nonisolated` because `@Test(arguments:)` is evaluated outside the suite's
+  /// `@MainActor` isolation (`swift-testing-patterns.md`
+  /// RULE: swift-testing-mainactor-arguments-needs-nonisolated).
+  nonisolated static let noWeightsResident: [OllamaReadiness] = [
+    .daemonUnreachable, .noModelSelected,
+  ]
+
+  @Test(
+    "an unreachable daemon or an uninstalled model sends no unload and reports nothing",
+    arguments: noWeightsResident)
+  func evictionIsSkippedWhenThereAreNoWeightsToUnload(readiness: OllamaReadiness) async {
+    let spy = Spy()
+    let step = makeStep(provider: .ollama, telemetry: spy.seams)
+    step.ollamaReadinessProbe = { _ in readiness }
+
+    // Counts REQUESTS, not just telemetry: suppressing the event while still
+    // spending the round trip would pass a telemetry-only assertion and leave
+    // the second half of the defect in place.
+    let requests = RequestCounter()
+    step.evictOllamaModel = { _ in
+      requests.bump()
+      return OllamaEvictOutcome(result: "failed", durationMs: 1, reason: "-1004")
+    }
+
+    await step.evictPreviousOllamaModel("qwen2.5:3b")
+
+    #expect(requests.count == 0, "no unload may be sent when nothing can be resident")
+    #expect(spy.limbFailureCalls.isEmpty, "and therefore nothing to report")
+  }
+
+  /// The two-way control, and the case #286 actually cares about: the daemon is
+  /// up, the model IS installed, and the unload is refused. That must still
+  /// report, or this fix would have traded the noise for the signal.
+  @Test("a refused unload on a live daemon still reports, unchanged")
+  func genuineEvictionFailureStillReports() async {
+    let spy = Spy()
+    let step = makeStep(provider: .ollama, telemetry: spy.seams)
+    step.ollamaReadinessProbe = Self.daemonReady
+
+    let requests = RequestCounter()
+    step.evictOllamaModel = { _ in
+      requests.bump()
+      return OllamaEvictOutcome(result: "failed", durationMs: 42, reason: "http_500")
+    }
+
+    await step.evictPreviousOllamaModel("qwen2.5:3b")
+
+    #expect(requests.count == 1, "a live daemon must still be asked to unload")
+    #expect(spy.limbFailureCalls.count == 1)
+    #expect(spy.limbFailureCalls.first?.cat == "http_500")
+  }
+
+  /// The conservative half, and the reason `.serverDown` is NOT in the list
+  /// above (cloud review, PR #2071). `.serverDown` means something IS listening
+  /// and answered unusably — a non-2xx, an unparseable body, or a blown 1s
+  /// deadline. None of those prove the model is unloaded, and a busy daemon is
+  /// exactly the state a large resident model produces, so treating it as "safe
+  /// to skip" would drop the unload precisely in the #286 case.
+  nonisolated static let notProofOfAbsence: [OllamaReadiness] = [.serverDown, .modelMissing]
+
+  @Test(
+    "an answer that is not proof still evicts",
+    arguments: notProofOfAbsence)
+  func ambiguousReadinessStillEvicts(readiness: OllamaReadiness) async {
+    let spy = Spy()
+    let step = makeStep(provider: .ollama, telemetry: spy.seams)
+    step.ollamaReadinessProbe = { _ in readiness }
+
+    let requests = RequestCounter()
+    step.evictOllamaModel = { _ in
+      requests.bump()
+      return OllamaEvictOutcome(result: "failed", durationMs: 7, reason: "http_500")
+    }
+
+    await step.evictPreviousOllamaModel("qwen2.5:3b")
+
+    #expect(requests.count == 1, "no proof of absence means the unload must still be attempted")
+    #expect(spy.limbFailureCalls.count == 1, "and a genuine failure must still report")
+  }
+
+  /// The decision function directly, exhaustively. The eviction tests above
+  /// cover the wiring; this pins the POLICY, so a new `OllamaReadiness` case
+  /// cannot quietly inherit "safe to skip" — the direction that costs a #286
+  /// regression rather than a redundant localhost request.
+  @Test("only proven-no-residency answers may skip the unload")
+  func skipPolicyIsProofOnly() {
+    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.daemonUnreachable))
+    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.noModelSelected))
+    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.serverDown) == false)
+    // `/api/tags` lists INSTALLED models, so a model deleted while loaded is
+    // absent from tags and still resident — "not installed" is not proof of
+    // "not loaded" (cloud review, PR #2071).
+    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.modelMissing) == false)
+    #expect(
+      LLMPolishStep.evictionIsProvablyUnnecessary(
+        .ready(facts: OllamaModelFacts(isRemote: false, thinks: nil))) == false)
+  }
+
+  /// A remote model reaches `.ready` too (the daemon lists it in `/api/tags`),
+  /// so the readiness gate deliberately does NOT subsume the #1914
+  /// proven-remote suppression in `PipelineSettingsSync`. Pinned so a later
+  /// reader does not delete one believing the other covers it.
+  @Test("readiness does not answer the remote question the settings gate answers")
+  func readinessDoesNotSubsumeTheRemoteSkip() async {
+    let spy = Spy()
+    let step = makeStep(provider: .ollama, telemetry: spy.seams)
+    step.ollamaReadinessProbe = { _ in
+      .ready(facts: OllamaModelFacts(isRemote: true, thinks: nil))
+    }
+    let requests = RequestCounter()
+    step.evictOllamaModel = { _ in
+      requests.bump()
+      return OllamaEvictOutcome(result: "unloaded", durationMs: 5, reason: "http_200")
+    }
+
+    await step.evictPreviousOllamaModel("deepseek-v4-flash:latest")
+
+    #expect(
+      requests.count == 1,
+      "a remote model passes THIS gate; suppressing it is PipelineSettingsSync's job")
+  }
+
+  final class RequestCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    func bump() { lock.withLock { value += 1 } }
+    var count: Int { lock.withLock { value } }
   }
 
   // MARK: - Successful polish

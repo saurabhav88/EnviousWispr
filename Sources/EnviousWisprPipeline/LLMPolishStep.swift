@@ -315,8 +315,54 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// Ollama model, so the previous model doesn't linger in VRAM and
   /// starve CoreAudio (#286 root cause, #295 mitigation). No-op if
   /// `modelName` is empty. Swallows all errors; only logs.
+  ///
+  /// #2061: gated on the daemon's own answer before the unload is attempted.
+  /// The eviction tracker is seeded from CONFIGURATION — `ollamaModel` defaults
+  /// to `qwen2.5:3b` for every install, so merely SELECTING Ollama in the
+  /// provider picker armed an eviction for a model the user never installed,
+  /// let alone loaded. Switching back out then fired an unload at a daemon that
+  /// was never running. Measured over 90 days: 133 users hit
+  /// `NSURLErrorCannotConnectToHost` and 39 hit `http_404`, against 27 users who
+  /// have ever polished with Ollama at all — and that noise sat at the top of
+  /// every "what is failing most" query, burying the genuine stuck-model case
+  /// this eviction exists to catch.
   public func evictPreviousOllamaModel(_ modelName: String) async {
     guard !modelName.isEmpty else { return }
+
+    // Reuses the #1305 readiness authority rather than adding a second one.
+    // Probed fresh, never cached: the user can quit or start Ollama at any
+    // moment.
+    //
+    // The gate SKIPS ONLY ON PROOF that nothing can be resident, and treats
+    // every ambiguous answer as "evict". That asymmetry is the whole safety
+    // argument, and it is the same default `PipelineSettingsSync` already
+    // applies to an unknown model: a needless unload costs one localhost
+    // request, while a skipped real one leaves a model in VRAM, which is the
+    // #286 Bluetooth-audio regression.
+    //
+    // - `.daemonUnreachable` — nothing is listening, so no process holds
+    //   weights. Proof. Skip.
+    // - `.noModelSelected` — nothing armed (already handled by the guard above).
+    // - `.modelMissing` — NOT proof, despite reading like it. `/api/tags` lists
+    //   INSTALLED models, and a model can be deleted while still loaded: the
+    //   Manage Models delete/refresh flow changes the selection and schedules an
+    //   eviction for the model just removed, which by then is absent from tags
+    //   and still resident. Skipping there would strand exactly the take that
+    //   loaded it (cloud review, PR #2071).
+    // - `.serverDown` — something IS listening and did not answer usefully: a
+    //   non-2xx, an unparseable body, or a blown 1s deadline. Not proof either,
+    //   and a busy daemon is the state a large resident model produces.
+    // - `.ready` — installed, so possibly resident. Evict.
+    //
+    // So the proof set is exactly one answer: no daemon, no weights.
+    let readiness = await ollamaReadinessProbe(modelName)
+    if Self.evictionIsProvablyUnnecessary(readiness) {
+      await AppLogger.shared.log(
+        "Ollama eviction skipped: model=\(modelName) reason=\(Self.evictionSkipReason(readiness))",
+        level: .info, category: "Ollama")
+      return
+    }
+
     let outcome = await evictOllamaModel(modelName)
     // #1177 (Telemetry Bible Phase 8): observe a quiet eviction FAILURE — a model that
     // won't unload lingers in VRAM and has disrupted CoreAudio BT audio (#286). The
@@ -327,6 +373,42 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     if outcome.result == "failed" {
       telemetry.limbFailureObserved(
         "ollama", "evict", "failed", outcome.reason, outcome.durationMs)
+    }
+  }
+
+  /// Log label for a skipped eviction (#2061). A closed set over the readiness
+  /// enum, exhaustive by construction so a future readiness case has to name
+  /// itself here rather than silently joining an existing bucket.
+  static func evictionSkipReason(_ readiness: OllamaReadiness) -> String {
+    switch readiness {
+    case .ready: return "ready"
+    case .daemonUnreachable: return "daemon_unreachable"
+    case .serverDown: return "daemon_answered_unusably"
+    case .modelMissing: return "model_not_installed"
+    case .noModelSelected: return "no_model_armed"
+    }
+  }
+
+  /// Is skipping the unload PROVABLY safe (#2061)?
+  ///
+  /// True only where no process can be holding weights. That is a narrower set
+  /// than it first appears, and both narrowings came from review:
+  ///
+  /// - `.serverDown` is not proof — it covers a non-2xx, an unparseable body,
+  ///   and a blown deadline, all of which mean a daemon IS there.
+  /// - `.modelMissing` is not proof either — tags lists INSTALLED models, and
+  ///   deleting a loaded model removes it from tags while it stays resident.
+  ///
+  /// Exhaustive with no `default`, so a new `OllamaReadiness` case has to state
+  /// which side it falls on rather than silently inheriting "safe to skip" —
+  /// the direction that costs a #286 regression rather than one localhost
+  /// request.
+  static func evictionIsProvablyUnnecessary(_ readiness: OllamaReadiness) -> Bool {
+    switch readiness {
+    case .daemonUnreachable, .noModelSelected:
+      return true
+    case .ready, .serverDown, .modelMissing:
+      return false
     }
   }
 
@@ -479,7 +561,13 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       case .ready(let facts):
         ollamaThinks = facts.thinks
         ollamaRemote = facts.isRemote
-      case .serverDown:
+      case .serverDown, .daemonUnreachable:
+        // #2061 split these for the EVICTION path, which must know whether
+        // weights can still be resident. Polish does not care why the daemon
+        // failed to answer — either way there is nothing to polish with — so
+        // both keep the single `providerUnreachable` sentence the user already
+        // sees. Listed explicitly rather than via `default` so a future case has
+        // to be decided here.
         throw LLMError.localPolishNotReady(.providerUnreachable)
       case .modelMissing:
         throw LLMError.localPolishNotReady(.modelUnavailable)
