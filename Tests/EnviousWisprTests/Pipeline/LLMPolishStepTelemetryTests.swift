@@ -408,16 +408,20 @@ struct LLMPolishStepTelemetryTests {
 
   // MARK: - #2061: the eviction is gated on the daemon's own answer
 
-  /// The noise this removes. `-1004` (daemon unreachable) was 202 events across
-  /// 133 users in 90 days and `http_404` (model not installed) another 44 across
-  /// 39, against 27 users who have ever polished with Ollama at all. Both are
-  /// unloads aimed at weights that cannot exist, and both sat above the genuine
-  /// stuck-model case in any "what is failing most" query.
+  /// The noise this removes: `-1004` (daemon unreachable), 202 events across 133
+  /// users in 90 days, against 27 users who have ever polished with Ollama at
+  /// all. Those are unloads aimed at a daemon that is not running, so no weights
+  /// can exist anywhere, and they sat above the genuine stuck-model case in any
+  /// "what is failing most" query.
+  ///
+  /// `http_404` (44 events / 39 users) is deliberately NOT removed — see
+  /// `skipPolicyIsProofOnly`. A model absent from `/api/tags` may still be
+  /// resident.
   /// `nonisolated` because `@Test(arguments:)` is evaluated outside the suite's
   /// `@MainActor` isolation (`swift-testing-patterns.md`
   /// RULE: swift-testing-mainactor-arguments-needs-nonisolated).
   nonisolated static let noWeightsResident: [OllamaReadiness] = [
-    .daemonUnreachable, .modelMissing, .noModelSelected,
+    .daemonUnreachable, .noModelSelected,
   ]
 
   @Test(
@@ -471,11 +475,15 @@ struct LLMPolishStepTelemetryTests {
   /// deadline. None of those prove the model is unloaded, and a busy daemon is
   /// exactly the state a large resident model produces, so treating it as "safe
   /// to skip" would drop the unload precisely in the #286 case.
-  @Test("an ambiguous daemon answer still evicts, because it is not proof")
-  func ambiguousReadinessStillEvicts() async {
+  nonisolated static let notProofOfAbsence: [OllamaReadiness] = [.serverDown, .modelMissing]
+
+  @Test(
+    "an answer that is not proof still evicts",
+    arguments: notProofOfAbsence)
+  func ambiguousReadinessStillEvicts(readiness: OllamaReadiness) async {
     let spy = Spy()
     let step = makeStep(provider: .ollama, telemetry: spy.seams)
-    step.ollamaReadinessProbe = { _ in .serverDown }
+    step.ollamaReadinessProbe = { _ in readiness }
 
     let requests = RequestCounter()
     step.evictOllamaModel = { _ in
@@ -496,9 +504,12 @@ struct LLMPolishStepTelemetryTests {
   @Test("only proven-no-residency answers may skip the unload")
   func skipPolicyIsProofOnly() {
     #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.daemonUnreachable))
-    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.modelMissing))
     #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.noModelSelected))
     #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.serverDown) == false)
+    // `/api/tags` lists INSTALLED models, so a model deleted while loaded is
+    // absent from tags and still resident — "not installed" is not proof of
+    // "not loaded" (cloud review, PR #2071).
+    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.modelMissing) == false)
     #expect(
       LLMPolishStep.evictionIsProvablyUnnecessary(
         .ready(facts: OllamaModelFacts(isRemote: false, thinks: nil))) == false)

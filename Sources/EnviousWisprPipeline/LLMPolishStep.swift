@@ -342,14 +342,19 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     //
     // - `.daemonUnreachable` — nothing is listening, so no process holds
     //   weights. Proof. Skip.
-    // - `.modelMissing` — the daemon answered and the model is not installed, so
-    //   it cannot be loaded. Proof. Skip.
     // - `.noModelSelected` — nothing armed (already handled by the guard above).
+    // - `.modelMissing` — NOT proof, despite reading like it. `/api/tags` lists
+    //   INSTALLED models, and a model can be deleted while still loaded: the
+    //   Manage Models delete/refresh flow changes the selection and schedules an
+    //   eviction for the model just removed, which by then is absent from tags
+    //   and still resident. Skipping there would strand exactly the take that
+    //   loaded it (cloud review, PR #2071).
     // - `.serverDown` — something IS listening and did not answer usefully: a
-    //   non-2xx, an unparseable body, or a blown 1s deadline. NOT proof, and a
-    //   busy daemon is exactly the state a large resident model produces, so
-    //   this must still evict (cloud review, PR #2071).
+    //   non-2xx, an unparseable body, or a blown 1s deadline. Not proof either,
+    //   and a busy daemon is the state a large resident model produces.
     // - `.ready` — installed, so possibly resident. Evict.
+    //
+    // So the proof set is exactly one answer: no daemon, no weights.
     let readiness = await ollamaReadinessProbe(modelName)
     if Self.evictionIsProvablyUnnecessary(readiness) {
       await AppLogger.shared.log(
@@ -386,15 +391,23 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
   /// Is skipping the unload PROVABLY safe (#2061)?
   ///
-  /// True only for the two answers that establish no weights can be resident.
+  /// True only where no process can be holding weights. That is a narrower set
+  /// than it first appears, and both narrowings came from review:
+  ///
+  /// - `.serverDown` is not proof — it covers a non-2xx, an unparseable body,
+  ///   and a blown deadline, all of which mean a daemon IS there.
+  /// - `.modelMissing` is not proof either — tags lists INSTALLED models, and
+  ///   deleting a loaded model removes it from tags while it stays resident.
+  ///
   /// Exhaustive with no `default`, so a new `OllamaReadiness` case has to state
   /// which side it falls on rather than silently inheriting "safe to skip" —
-  /// which is the direction that costs a #286 regression.
+  /// the direction that costs a #286 regression rather than one localhost
+  /// request.
   static func evictionIsProvablyUnnecessary(_ readiness: OllamaReadiness) -> Bool {
     switch readiness {
-    case .daemonUnreachable, .modelMissing, .noModelSelected:
+    case .daemonUnreachable, .noModelSelected:
       return true
-    case .ready, .serverDown:
+    case .ready, .serverDown, .modelMissing:
       return false
     }
   }
