@@ -261,6 +261,8 @@ enum RouterCeilingParser {
     if trimmed.hasPrefix("->") { return true }
     for keyword in ["async", "throws", "rethrows"] where trimmed == keyword
       || trimmed.hasPrefix(keyword + " ") || trimmed.hasPrefix(keyword + "-")
+      // `throws(MyError) -> ...` wrapping onto its own line.
+      || trimmed.hasPrefix(keyword + "(")
     {
       return true
     }
@@ -466,9 +468,14 @@ enum RouterCeilingParser {
     // `closureInjectedCount` read 8 against 10 closure-typed `let`s, the two
     // missing ones being `makeRecoveryDirective` and
     // `ensureSelectedReadyForPress`, both `async`.
+    // `throws` may carry a typed-throws clause on this Swift 6 target
+    // (`() throws(MyError) -> Void`), so the error type is part of the specifier
+    // (cloud review, PR #2070).
     line.range(
       of:
-        #":[[:space:]]*(@[A-Za-z]+[[:space:]]+)*\([^)]*\)([[:space:]]+(async|throws|rethrows))*[[:space:]]*->[[:space:]]"#,
+        #":[[:space:]]*(@[A-Za-z]+[[:space:]]+)*\([^)]*\)"#
+        + #"([[:space:]]+(async|rethrows|throws([[:space:]]*\([^)]*\))?))*"#
+        + #"[[:space:]]*->[[:space:]]"#,
       options: .regularExpression) != nil
   }
 

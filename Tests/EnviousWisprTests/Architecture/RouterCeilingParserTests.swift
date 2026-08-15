@@ -234,6 +234,26 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
 
+  /// Typed throws (cloud review, PR #2070). `() throws(MyError) -> Void` is a
+  /// valid stored closure on this Swift 6 target, and the error type sits
+  /// between `throws` and `->` — so a pattern expecting the arrow immediately
+  /// after the specifier counts it as a COLLABORATOR instead. Same silent
+  /// miscount as the plain `async` case, one syntax feature further out.
+  @Test func closureCount_countsTypedThrows() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let strict: @MainActor () throws(DomainError) -> Void
+          let both: @MainActor (Int) async throws(DomainError) -> Bool
+          let wrapped: (String)
+            throws(DomainError) -> Int
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 3)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
   /// The over-folding control. A complete parenthesized type must NOT swallow
   /// the declaration after it — that would UNDERCOUNT, which is the direction a
   /// ceiling must never fail in. This is why the fold looks ahead for an effect
