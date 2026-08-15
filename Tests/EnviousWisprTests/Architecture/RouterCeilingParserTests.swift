@@ -473,6 +473,64 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
   }
 
+  /// #2068 (cloud review, PR #2070, round nine). The round-seven recursion into
+  /// a parenthesised group matched a TUPLE whose first element is a closure —
+  /// `(() -> Void, AlphaDep)` — because the scan succeeded on that element and
+  /// never checked it spanned the whole group. The tuple is a collaborator, not
+  /// a closure, so this over-counted closures and under-counted collaborators:
+  /// a defect the recursion itself introduced.
+  ///
+  /// A top-level comma is the structural separator: a tuple has one; a wrapped
+  /// function type does not, since `((A, B) -> C)?`'s comma is one level down
+  /// inside the parameter list.
+  @Test func closureCount_aTupleContainingAClosureIsNotAClosure() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let bundle: (() -> Void, AlphaDep)
+          let reversed: (AlphaDep, () -> Void)
+          let real: (() -> Void)?
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
+  /// The control for that rule: a comma belonging to a GENERIC argument list or
+  /// to the wrapped function's own parameter list is not a tuple separator, and
+  /// must not block the recursion.
+  @Test func closureCount_commasInsideNestedTypesStillCountAsClosures() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let paired: ((Int, String) -> Void)?
+          let generic: ((Result<Int, DomainError>) -> Void)?
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 2)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
+  /// #2068 (cloud review, PR #2070, round nine). The recursion carried an
+  /// arbitrary depth cap of 8 that returned false past its limit — silently, and
+  /// in the UNDERCOUNT direction. The cap bought nothing: each recursive call is
+  /// handed the current group's closing index as its limit, so the window
+  /// strictly shrinks and termination is already guaranteed. Nine wrappers is
+  /// absurd in real code, which is exactly why a wrong answer there would never
+  /// be noticed.
+  @Test func closureCount_survivesDeeplyNestedWrappers() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let deep: (((((((((() -> Void)))))))))
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
+  }
+
   /// The over-fold control for that rule: a line ending in `)` that is a
   /// COMPLETED type, not an attribute, must still terminate the declaration.
   /// This is the exact failure the round-seven reasoning was guarding against

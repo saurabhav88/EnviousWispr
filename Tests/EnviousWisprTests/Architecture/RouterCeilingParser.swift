@@ -622,12 +622,16 @@ enum RouterCeilingParser {
   /// the previous pattern kept failing one shape at a time. Comments are already
   /// blanked to spaces by the caller's code view, so they are trivia here too.
   /// `limit` bounds the scan so a recursive call cannot read past the group it
-  /// was handed. `depth` bounds the recursion itself.
+  /// was handed. That bound is also what guarantees termination: each recursive
+  /// call is handed `close`, which is strictly inside the current window, so the
+  /// window shrinks on every step. An explicit depth cap was tried and removed —
+  /// it added no safety the shrinking window did not already give, and it
+  /// silently returned false past its limit, which is an UNDERCOUNT (cloud
+  /// review, PR #2070, round nine).
   private static func closureSignatureFollows(
-    _ chars: [Character], from start: Int, limit: Int? = nil, depth: Int = 0
+    _ chars: [Character], from start: Int, limit: Int? = nil
   ) -> Bool {
     let end = min(limit ?? chars.count, chars.count)
-    guard depth <= 8 else { return false }
     var i = skipTrivia(chars, from: start, limit: end)
     while i < end, chars[i] == "@" {
       i += 1
@@ -649,12 +653,19 @@ enum RouterCeilingParser {
     // Read as a parameter list, the outer group swallows the signature and the
     // `?` that follows is not an arrow, so the property fell to COLLABORATOR
     // (cloud review, PR #2070). When the arrow does not follow the group, scan
-    // INSIDE it as a type instead. `(AlphaDep)` and `(AlphaDep, BetaDep)` fail
-    // both paths and stay collaborators, which the controls pin.
+    // INSIDE it as a type instead.
+    //
+    // Only when the group WRAPS the whole type, though. A TUPLE whose first
+    // element happens to be a closure — `(() -> Void, AlphaDep)` — would
+    // otherwise match on that element alone and count the tuple as a closure
+    // (round nine). A top-level comma is exactly what separates the two: a
+    // tuple has one, and a wrapped function type does not, because
+    // `((A, B) -> C)?`'s comma sits inside the nested parameter list one level
+    // down. That makes this a structural test, not another special case.
     let arrowFollowsGroup =
       afterGroup + 1 < end && chars[afterGroup] == "-" && chars[afterGroup + 1] == ">"
-    if !arrowFollowsGroup,
-      closureSignatureFollows(chars, from: i + 1, limit: close, depth: depth + 1)
+    if !arrowFollowsGroup, !containsTopLevelComma(chars, from: i + 1, to: close),
+      closureSignatureFollows(chars, from: i + 1, limit: close)
     {
       return true
     }
@@ -676,6 +687,35 @@ enum RouterCeilingParser {
       }
     }
     return i + 1 < end && chars[i] == "-" && chars[i + 1] == ">"
+  }
+
+  /// A comma at nesting depth 0 between `from` and `to` — the marker of a TUPLE
+  /// rather than a parenthesised single type. Angle brackets are counted too, so
+  /// the comma in `Result<Int, Error>` is not mistaken for a tuple separator;
+  /// `<`/`>` are ambiguous with comparison in general Swift, but inside a type
+  /// annotation they are generic delimiters.
+  private static func containsTopLevelComma(_ chars: [Character], from: Int, to: Int) -> Bool {
+    var depth = 0
+    var i = from
+    let end = min(to, chars.count)
+    while i < end {
+      // `->` must be consumed as one token. Counting its `>` as a closing
+      // bracket drives depth to -1, and the tuple comma in
+      // `(() -> Void, AlphaDep)` then reads as nested rather than top-level —
+      // which would defeat the whole check.
+      if chars[i] == "-", i + 1 < end, chars[i + 1] == ">" {
+        i += 2
+        continue
+      }
+      switch chars[i] {
+      case "(", "[", "<": depth += 1
+      case ")", "]", ">": depth -= 1
+      case "," where depth == 0: return true
+      default: break
+      }
+      i += 1
+    }
+    return false
   }
 
   private static func skipTrivia(_ chars: [Character], from i: Int, limit: Int? = nil) -> Int {
