@@ -287,6 +287,109 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
 
+  /// #2068 (cloud review, PR #2070, the finding after the structural fix): the
+  /// trivia the fold looks past can be a `/* ... */` that SPANS lines. The
+  /// lookahead used to call `codeView` on each candidate line separately, and
+  /// block-comment depth is per-call state — so it reset at every line boundary
+  /// and the comment's INTERIOR lines came back as code. The lookahead stopped
+  /// on the first of them, found no effect specifier, and gave up.
+  ///
+  /// The fix blanks the whole body ONCE and splits after, which is why the
+  /// fixture's comment body is three lines rather than one: a single-line block
+  /// comment is blanked correctly either way and would prove nothing.
+  ///
+  /// `(Renderer)`, not `(Int)` — a primitive `let` is excluded from BOTH
+  /// counters, so a fixture using one holds every number still whether the fold
+  /// works or not. Here the miscount moves both: unfolded, `spanning` leaves the
+  /// closure count and lands in the collaborator count.
+  @Test func closureCount_foldsPastAMultiLineBlockComment() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let spanning: (Renderer)
+            /* the daemon can answer late,
+               so this dependency is
+               deliberately deferred */
+            async -> Void
+          let beta: BetaDep
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
+  /// The same class, one layer down and load-bearing: BRACE DEPTH. `braceCounts`
+  /// deliberately ran without block-comment blanking, and `codeView`'s own doc
+  /// recorded why — a per-LINE call resets the depth, so blanking there would
+  /// mis-track braces inside a multi-line comment. The cost of leaving it off was
+  /// never written down: a `}` inside a block comment is counted as real, drives
+  /// brace depth NEGATIVE, and every following declaration is then judged
+  /// non-top-level and skipped.
+  ///
+  /// That is an UNDERCOUNT of a ceiling — the one direction
+  /// `closureCount_doesNotFoldACompleteParenthesizedType` already says a ceiling
+  /// must never fail in. Blanking once over the whole body is what makes it safe
+  /// to close, which is why this arrives with the lookahead fix and not later.
+  ///
+  /// No ceiling was mis-read when this landed: `Sources/` held exactly one block
+  /// comment, inline and brace-free. The fixture below is therefore the only
+  /// place the bug can be observed, which is precisely why it is worth pinning —
+  /// the failure needs no unusual code to appear, just an ordinary `/* ... */`
+  /// that happens to contain a brace, and it would then read LOW and pass.
+  @Test func braceDepth_ignoresBracesInsideABlockComment() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          /* a note containing a stray } brace
+             and a second line with { too */
+          let beta: BetaDep
+          let gamma: GammaDep
+        }
+        """)
+    // Without blanking, the stray `}` drops depth to -1 and `beta`/`gamma` are
+    // never seen as top-level: the count reads 1 instead of 3.
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 3)
+  }
+
+  /// The control: real braces must still move depth, or the fix above could pass
+  /// by blanking too much. A nested type's members are NOT top-level properties
+  /// of the outer class and must stay excluded.
+  @Test func braceDepth_stillExcludesMembersOfANestedType() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          struct Inner {
+            let notCounted: BetaDep
+            let alsoNotCounted: GammaDep
+          }
+          let beta: BetaDep
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+  }
+
+  /// The two-way control for the fixture above. A multi-line block comment that
+  /// is NOT followed by an effect specifier must still leave the declaration
+  /// unfolded — otherwise the test above could pass because the fold became
+  /// greedy rather than because it learned to see past the comment.
+  @Test func closureCount_doesNotFoldPastACommentWhenNoSpecifierFollows() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          let wrapped: (Renderer)
+            /* a note that spans
+               more than one line */
+          let beta: BetaDep
+        }
+        """)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 0)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 3)
+  }
+
   /// The other half of matching on the code view: an arrow that only LOOKS like
   /// a closure type must not create one. Before this, `isClosureTyped` read raw
   /// text, so a comment or string containing `-> ` could fake a signature — the

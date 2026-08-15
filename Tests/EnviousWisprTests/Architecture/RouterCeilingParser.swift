@@ -33,7 +33,21 @@ enum RouterCeilingParser {
     // (`isStoredPropertyDeclaration`, `isClosureTyped`, ...) parse the real
     // declaration text (type names, attributes, default values) — only the
     // fold's continuation check masks comments/strings internally via `codeView`.
-    let code = codeView(source)
+    //
+    // `blankBlockComments: true` matches the sibling `functionBody` below, which
+    // has always passed it. This call did not, so a `}` inside a `/* ... */`
+    // closes the class body early and every declaration after the comment falls
+    // outside the returned body — a ceiling reading BELOW the truth, which is
+    // the direction that passes silently forever. One complete contiguous buffer
+    // in one pass is exactly the condition the flag requires.
+    //
+    // LATENT, not active: at the time of this fix `git grep -n '/\*' --
+    // 'Sources/**/*.swift'` returns exactly one hit (`EmojiFormatter.swift:410`,
+    // inline and brace-free), and no ceiling-tested class contains a block
+    // comment at all. No ceiling is mis-read TODAY. This closes the trap before
+    // the first brace-carrying block comment lands, because nothing about
+    // writing one would look dangerous.
+    let code = codeView(source, blankBlockComments: true)
     let sourceChars = Array(source)
     let codeChars = Array(code)  // same Character count as sourceChars
     let declarations = [
@@ -208,7 +222,22 @@ enum RouterCeilingParser {
   /// the summed `{`/`}` counts of all merged physical lines, so depth tracking
   /// downstream is unchanged.
   private static func foldContinuationLines(_ body: String) -> [String] {
-    let physical = body.split(separator: "\n", omittingEmptySubsequences: false)
+    // Blank comments ONCE over the WHOLE body, then split (cloud review, PR
+    // #2070). `blockCommentDepth` is per-CALL state, so calling `codeView` per
+    // line resets it at every line boundary: the interior lines of a multi-line
+    // `/* ... */` come back looking like code. That broke the effect-specifier
+    // lookahead (it stopped on the first interior line) and, one layer down, it
+    // is why `braceCounts` ran with blanking OFF entirely — leaving a `}` inside
+    // a comment free to drive brace depth negative and hide every declaration
+    // after it. Both are the same defect, and both close here rather than at the
+    // call sites, so a future per-line reader cannot reintroduce either.
+    //
+    // Only BLOCK-comment state spans lines. `//` comments and single-line string
+    // literals are terminated by the newline itself (see `codeView`), so per-line
+    // calls downstream remain correct on this already-blanked text, and blanking
+    // is idempotent where they repeat it.
+    let physical = codeView(body, blankBlockComments: true)
+      .split(separator: "\n", omittingEmptySubsequences: false)
       .map(String.init)
     var result: [String] = []
     var depth = 0
@@ -254,14 +283,12 @@ enum RouterCeilingParser {
   /// and comparison.
   /// First line at or after `i + 1` that carries actual code — blank lines and
   /// `//` comments are trivia and Swift permits them anywhere between tokens.
+  /// `lines` are ALREADY comment-blanked by the caller, so this only has to find
+  /// the next line with anything left on it.
   private static func nextSignificantIndex(_ lines: [String], after i: Int) -> Int? {
     var j = i + 1
     while j < lines.count {
-      if !codeView(lines[j], blankBlockComments: true)
-        .trimmingCharacters(in: .whitespaces).isEmpty
-      {
-        return j
-      }
+      if !lines[j].trimmingCharacters(in: .whitespaces).isEmpty { return j }
       j += 1
     }
     return nil
@@ -284,10 +311,11 @@ enum RouterCeilingParser {
   /// have. No Swift declaration begins with `async` / `throws` / `rethrows` /
   /// `->`, so this predicate cannot over-fold.
   private static func continuesWithEffectSpecifier(_ line: String) -> Bool {
-    let trimmed = codeView(line, blankBlockComments: true)
-      .trimmingCharacters(in: .whitespaces)
+    // `line` arrives comment-blanked from `foldContinuationLines`.
+    let trimmed = line.trimmingCharacters(in: .whitespaces)
     if trimmed.hasPrefix("->") { return true }
-    for keyword in ["async", "throws", "rethrows"] where trimmed == keyword
+    for keyword in ["async", "throws", "rethrows"]
+    where trimmed == keyword
       || trimmed.hasPrefix(keyword + " ") || trimmed.hasPrefix(keyword + "-")
       // `throws(MyError) -> ...` wrapping onto its own line.
       || trimmed.hasPrefix(keyword + "(")
@@ -330,16 +358,19 @@ enum RouterCeilingParser {
   /// are out of scope — no ceiling-tested class declaration uses them.
   ///
   /// `blankBlockComments`, when `true`, ALSO blanks `/* ... */` block comments
-  /// (nesting-aware). Defaulted `false` and left off for `braceCounts`'
-  /// per-LINE calls (PR #1634 cloud review r4, 2026-07-17): a multi-line
-  /// block comment spanning several lines would reset its depth to 0 at each
-  /// new per-line call, mis-tracking braces inside it for every OTHER
-  /// existing caller of `braceCounts` (`countTopLevelStoredProperties`,
-  /// `nonPrivateMethodCount`, `foldContinuationLines`). Safe to enable only
-  /// where a single call processes one COMPLETE contiguous buffer in one pass
-  /// (`functionBody`, `rangeOfStatement` below) — block comments are a real,
-  /// if rare, live pattern in this codebase (confirmed via
-  /// `grep -rn '/\*' Sources/EnviousWispr*/`, one hit outside test files).
+  /// (nesting-aware). `blockCommentDepth` is per-CALL state, so this flag is only
+  /// meaningful on a COMPLETE contiguous buffer processed in one pass; a per-LINE
+  /// call would reset the depth at every line boundary and mis-read the interior
+  /// of a multi-line comment as code.
+  ///
+  /// PR #1634 cloud review r4 (2026-07-17) met that constraint and resolved it by
+  /// leaving the flag OFF for `braceCounts`, which left a `}` inside a block
+  /// comment counted as a real brace. PR #2070 removed the constraint instead:
+  /// `foldContinuationLines` now blanks the whole body ONCE up front, so every
+  /// line reaching `braceCounts` and the per-line classifiers is already
+  /// comment-free and the default here no longer decides anything for them.
+  /// Block comments are a real, if rare, live pattern in this codebase
+  /// (`grep -rn '/\*' Sources/EnviousWispr*/`, one hit outside test files).
   private static func codeView(_ buffer: String, blankBlockComments: Bool = false) -> String {
     let chars = Array(buffer)
     var result: [Character] = []
