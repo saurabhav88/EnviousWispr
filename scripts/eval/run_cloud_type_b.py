@@ -58,6 +58,7 @@ the whole set rather than mixing:
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
@@ -338,6 +339,24 @@ def polish_case(
             retryable = e.code in RETRYABLE
         except urllib.error.URLError as e:
             last_err = f"URLError: {e.reason}"
+            retryable = True
+        except (OSError, http.client.HTTPException) as e:
+            # A reset arriving while the RESPONSE BODY is read is a bare
+            # ConnectionResetError, not a URLError, so before this clause it
+            # escaped the retry loop entirely and killed the whole case. Ordered
+            # after the two urllib clauses because HTTPError subclasses URLError
+            # subclasses OSError, and a 4xx must keep its non-retryable verdict.
+            #
+            # A BROAD OSError catch is safe HERE and is not elsewhere, so the
+            # check is recorded rather than left to the next reader: the only
+            # things in this `try` are `call_once` (urlopen) and
+            # `_strip_llm_preamble_python` (pure string work). `api_key` is read
+            # by `_key()` ONCE at module level, outside the loop, so no
+            # credential read can land in this scope. behavior_judge.py and
+            # acceptance_gate.py could not make that claim -- they retry a
+            # credential read and a subprocess spawn respectively -- which is why
+            # they convert at the socket with TransientTransportError instead.
+            last_err = f"{type(e).__name__}: {e}"
             retryable = True
         except (RuntimeError, KeyError, json.JSONDecodeError) as e:
             last_err = str(e)

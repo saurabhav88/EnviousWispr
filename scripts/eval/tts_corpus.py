@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import html
 import json
 import os
@@ -95,15 +96,14 @@ def synth(text: str, out: Path, engine: str, model: str, voice: str,
             _azure_request(text, voice, api_key, region) if engine == "azure"
             else _openai_request(text, model, voice, api_key)
         )
+        # ONLY the network call is inside the retry scope. The file writes used to
+        # sit here too, and a broad OSError catch then misclassified a full or
+        # read-only --wav-dir as a transient transport failure and re-billed the
+        # TTS request up to MAX_ATTEMPTS times per case. A retry handler's scope is
+        # whatever happens to be above it, so it has to be drawn deliberately.
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 data = resp.read()
-            if not data:
-                raise RuntimeError("empty audio body")
-            tmp = out.with_suffix(".part")
-            tmp.write_bytes(data)
-            tmp.replace(out)  # atomic: a killed run never leaves a half WAV
-            return
         except urllib.error.HTTPError as e:
             if e.code in RETRYABLE and attempt < MAX_ATTEMPTS:
                 time.sleep(min(2 ** attempt, 30))
@@ -114,6 +114,37 @@ def synth(text: str, out: Path, engine: str, model: str, voice: str,
                 time.sleep(min(2 ** attempt, 30))
                 continue
             raise
+        except (OSError, http.client.HTTPException):
+            # A reset during the RESPONSE BODY read is a bare ConnectionResetError,
+            # not a URLError, so before this clause it escaped the retry loop and
+            # aborted a whole TTS sweep. Ordered last of the three because
+            # HTTPError subclasses URLError subclasses OSError.
+            #
+            # Safe to catch broadly ONLY because the `try` above now contains
+            # nothing but `urlopen` + `resp.read()`. The file writes used to live
+            # here, and this same clause then answered a full disk with another
+            # paid TTS request (cloud review, PR #2058). If anything non-network
+            # is ever added back above, convert at the socket the way
+            # behavior_judge.py does instead of widening this.
+            if attempt < MAX_ATTEMPTS:
+                time.sleep(min(2 ** attempt, 30))
+                continue
+            raise
+
+        # An empty body IS worth another network attempt, so it stays in the loop
+        # — but as an explicit branch rather than an exception caught above.
+        if not data:
+            if attempt < MAX_ATTEMPTS:
+                time.sleep(min(2 ** attempt, 30))
+                continue
+            raise RuntimeError("empty audio body after all attempts")
+
+        # Local disk failures propagate immediately: retrying a full or read-only
+        # directory cannot succeed and each retry costs another paid request.
+        tmp = out.with_suffix(".part")
+        tmp.write_bytes(data)
+        tmp.replace(out)  # atomic: a killed run never leaves a half WAV
+        return
 
 
 def main() -> int:

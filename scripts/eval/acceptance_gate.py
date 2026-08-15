@@ -21,6 +21,7 @@ Design refs:
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import random
@@ -306,17 +307,62 @@ def _key(name: str) -> str:
     return p.read_text().strip()
 
 
+class TransientTransportError(Exception):
+    """A network failure raised BY the network operation itself.
+
+    Mirrors behavior_judge.TransientTransportError, deliberately as a separate
+    copy: this file is the CI gate and keeps its own transports for exactly that
+    reason. Both must agree, and the reason both exist is worth stating once
+    here. Cloud review found that `_http_call_with_retry(lambda: polish_one(...))`
+    wraps `_key()`, which does `Path.read_text()` on a credential file -- so a
+    predicate testing bare `OSError` turned an unreadable key into three retries
+    per case across a whole corpus. Auditing every retry scope for stray I/O is a
+    promise; converting at the one place the socket is touched is a property.
+    """
+
+    def __init__(self, cause: Exception):
+        super().__init__(f"{type(cause).__name__}: {cause}")
+        self.cause = cause
+
+
+def _http_json(req, timeout: float):
+    """Perform the request and decode it, converting ONLY transport failures.
+
+    HTTPError passes through so the caller can read its status code; a decode
+    failure passes through because a 200 with an unparsable body is the server's
+    answer, not a network fault.
+    """
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError:
+        raise
+    except (OSError, http.client.HTTPException) as e:
+        raise TransientTransportError(e) from None
+    return json.loads(raw)
+
+
 def _retryable_http_error(exc: Exception) -> bool:
     """Classify HTTPError responses as transient-retryable. Covers 5xx + 429.
     Returns False for auth/bad-request errors (4xx except 429) which will never
     succeed on retry.
+
+    Everything that is not an HTTPError is transport, and transport is transient.
+    This tests the BASE classes rather than naming `URLError`, because urllib
+    wraps only what `urlopen` itself raises: a reset arriving while the RESPONSE
+    BODY is read propagates as a bare `ConnectionResetError`, which is an OSError
+    and NOT a URLError, so the narrower form answered False for the commonest
+    real failure. Measured in `behavior_judge.py`'s copy of this predicate on
+    2026-08-14 — three chunk drops per run, 24 cases each, across two runs.
+    HTTPError stays first because it subclasses OSError and a 400 must not retry.
     """
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code >= 500 or exc.code == 429
-    if isinstance(exc, urllib.error.URLError):
-        # Network-level (timeouts, DNS hiccup) — retry.
-        return True
-    return False
+    # Only what the NETWORK CALL itself raised. A credential read, a file write or
+    # a subprocess spawn anywhere else in the retried scope keeps its own type and
+    # is never retried -- which is the whole point, since `_http_call_with_retry`
+    # wraps `polish_one`, and `polish_one` reads the key file.
+    return isinstance(exc, TransientTransportError)
 
 
 def _http_call_with_retry(do_call, attempts: int = 3, base_delay: float = 1.5):
@@ -357,8 +403,7 @@ def call_openai(model: str, system: str, user: str) -> str:
         headers={"Authorization": f"Bearer {_key('openai-api-key')}", "Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
+    data = _http_json(req, 300)
     return data["choices"][0]["message"]["content"].strip()
 
 
@@ -375,8 +420,7 @@ def call_gemini(model: str, system: str, user: str, json_mime: bool = False) -> 
         url, data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"}, method="POST",
     )
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
+    data = _http_json(req, 300)
     parts = data["candidates"][0]["content"]["parts"]
     return "".join(p.get("text", "") for p in parts).strip()
 

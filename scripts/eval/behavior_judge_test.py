@@ -40,6 +40,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
+import urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -2441,36 +2442,305 @@ def test_the_s4_entity_rule_and_the_variant_licence_do_not_contradict():
         "the S4 entity rule must fire on a DIFFERENT entity, not on any change"
     assert "normalising a mis-transcribed rendering of the same entity" in sysmsg, \
         "the S4 rule must exempt normalising the same entity, or it overrides the variant"
-    # And the exemption must not swallow personal names, which both halves refuse.
-    assert "personal name is the exception" in sysmsg, \
-        "the S4 carve-out must still treat a personal-name substitution as automatic S4"
-    assert "does not extend to personal names" in variants, \
-        "both halves must agree that personal names are excluded"
+    # Personal names: both halves must split on the SAME axis, which since 2026-08-14 is
+    # whether the rendering matches `spoken_truth` -- not whether it differs from
+    # raw_transcript. If one half judged against the truth and the other against the
+    # transcript, a correctly-heard name would be licensed by one and an automatic S4 by
+    # the other, and the stronger instruction would win. That is the original defect
+    # this test exists for, moved to a new axis.
+    assert "judged against `spoken_truth`" in sysmsg, \
+        "the S4 rule must judge a personal name against what was actually said"
+    assert "matches neither" in sysmsg, \
+        "the S4 rule must fire only when the name matches NEITHER source"
+    assert "matches spoken_truth is correct" in variants, \
+        "the variant must license a name that matches what was actually said"
+    assert "neither spoken_truth nor raw_transcript" in variants, \
+        "both halves must agree a name matching neither source is the defect"
+    # Two-way: the licence must NOT have widened into permitting any name rewrite.
+    assert "is a real \nentity_mutation defect" in variants.replace("  ", " ") \
+        or "real entity_mutation defect" in " ".join(variants.split()), \
+        "substituting a different person must still be named a defect"
 
 
 def test_vocabulary_repair_is_a_variant_but_name_repair_is_not():
-    # Founder ruling 2026-08-13: repairing a mis-transcribed TERM is bonus credit,
-    # so neither doing it nor skipping it may decide a verdict. Repairing a personal
-    # NAME is the opposite — a real defect, because no closed set of names exists to
-    # be confident against.
+    # Founder ruling 2026-08-13: repairing a mis-transcribed TERM is bonus credit, so
+    # neither doing it nor skipping it may decide a verdict.
     #
-    # Two-way on purpose. Asserting only the licence would pass a rubric that
-    # licensed everything, which is exactly the failure this ruling could decay
-    # into: the whole point is that the line falls between terms and names.
+    # Personal names were originally excluded outright, on the reasoning that no closed
+    # set of names exists to be confident against. True for a shipping app; false for a
+    # graded benchmark, where `spoken_truth` records the name actually said. Corrected
+    # 2026-08-14 after the Wispr Flow bake-off measured 22 cases where a system was
+    # marked down for hearing the name CORRECTLY (Rajesh, Nadia, Hassan, Noor, Tomas):
+    # our keys were authored from OUR transcript, so they enshrined our recogniser's
+    # mis-hearings and penalised anyone who got them right.
+    #
+    # The line now falls between a name that matches what was SAID and one that matches
+    # nothing, which is a property of the output rather than of whose transcript it
+    # resembles.
+    #
+    # Two-way on purpose. Asserting only the licence would pass a rubric that licensed
+    # every name rewrite, which is the failure this could decay into.
     text = " ".join(bj.allowed_variants_for("verbatim_preservation")).lower()
     assert "envious" in text and "postgres" in text, \
         "term repair must be licensed as a variant"
     assert "not the behavior under test" in text, \
         "the licence must say the repair is not what is being graded"
-    # Assert the EXCLUSION, not the words. A first version of this checked that
-    # "personal names" appeared anywhere in the rubric — which stays true if the
-    # clause is inverted to "this also covers personal names", so the mutation
-    # control passed a rubric saying the opposite. The phrase that carries the
-    # meaning is the negation itself.
-    assert "does not extend to personal names" in text, \
-        "name repair must be EXCLUDED from the licence, not merely mentioned"
-    assert "real defect" in text, "the exclusion must name name-rewriting as a defect"
-    assert "rajash" in text, "the exclusion needs its concrete example to stay legible"
+    # Assert the two halves of the SPLIT, not merely that names are mentioned. A first
+    # version of this checked that "personal names" appeared anywhere in the rubric —
+    # which stays true if the clause is inverted, so the mutation control passed a
+    # rubric saying the opposite. The phrases that carry the meaning are the two
+    # directions.
+    assert "matches spoken_truth is correct" in text, \
+        "a name matching what was actually said must be licensed, not penalised"
+    assert "neither spoken_truth nor raw_transcript" in text, \
+        "the defect must be defined as matching NEITHER source"
+    assert "real \nentity_mutation defect" in text or "real entity_mutation defect" in \
+        " ".join(text.split()), "substituting a different person must remain a defect"
+    assert "alaina" in text or "fatima" in text, \
+        "the defect side needs its concrete example to stay legible"
+    # The fallback matters: a corpus with no spoken source must not silently license
+    # every name rewrite just because the truth is unavailable.
+    assert "where spoken_truth is empty" in text, \
+        "absence of spoken_truth must fall back to treating a rewrite as a defect"
+
+
+# --------------------------------------------------------------------------- #
+# transport retry classification                                              #
+# --------------------------------------------------------------------------- #
+
+def test_only_the_network_call_produces_a_retryable_error():
+    """The retry predicate must key on WHERE the failure came from, not its class.
+
+    Every one of the bare exceptions below is an OSError, and an earlier version
+    of this predicate accepted all of them. Cloud review then found three places
+    where that was wrong -- a local WAV write, a subprocess spawn for a missing
+    CLI, and a credential file read -- each of which would have been answered
+    with another PAID request. So the bare forms must now be REFUSED, and only
+    `TransientTransportError`, which `_http_json` raises at the socket, accepted.
+
+    Both directions are asserted together because the failure mode is symmetric:
+    too narrow drops 8 cases per blip, too broad re-bills a permanent local fault.
+    """
+    import http.client
+    import socket
+    import ssl
+
+    transport = [
+        ("ConnectionResetError", ConnectionResetError(54, "Connection reset by peer")),
+        ("RemoteDisconnected", http.client.RemoteDisconnected("closed")),
+        ("IncompleteRead", http.client.IncompleteRead(b"", 10)),
+        ("BrokenPipeError", BrokenPipeError(32, "Broken pipe")),
+        ("SSLEOFError", ssl.SSLEOFError("eof")),
+        ("socket.gaierror", socket.gaierror(8, "nodename nor servname")),
+        ("URLError", urllib.error.URLError("unreachable")),
+        ("TimeoutError", TimeoutError("timed out")),
+    ]
+    for name, exc in transport:
+        wrapped = bj.TransientTransportError(exc)
+        assert bj._retryable_http_error(wrapped), \
+            f"{name} raised BY the network call must be retried"
+        assert not bj._retryable_http_error(exc), \
+            f"a BARE {name} must NOT be retried — it could be a file write, a " \
+            f"credential read, or a subprocess spawn in the same try block"
+
+    for name, exc in [("HTTP 429", urllib.error.HTTPError("u", 429, "rate", {}, None)),
+                      ("HTTP 500", urllib.error.HTTPError("u", 500, "ise", {}, None)),
+                      ("HTTP 503", urllib.error.HTTPError("u", 503, "un", {}, None))]:
+        assert bj._retryable_http_error(exc), f"{name} must be retried"
+    for name, exc in [("HTTP 400", urllib.error.HTTPError("u", 400, "bad", {}, None)),
+                      ("HTTP 401", urllib.error.HTTPError("u", 401, "auth", {}, None)),
+                      ("HTTP 404", urllib.error.HTTPError("u", 404, "nf", {}, None)),
+                      ("ValueError", ValueError("not transport")),
+                      ("PermissionError", PermissionError(13, "key file unreadable")),
+                      ("FileNotFoundError", FileNotFoundError(2, "no claude binary"))]:
+        assert not bj._retryable_http_error(exc), f"{name} must NOT be retried"
+
+
+def test_http_json_converts_transport_but_not_status_or_parse_errors():
+    """The conversion has to happen AT the socket, or the structural guarantee is
+    just a comment. Drives the real `_http_json` with a fake opener."""
+    class FakeResp:
+        def __init__(self, body): self.body = body
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return self.body
+
+    class Opener:
+        def __init__(self, behaviour): self.behaviour = behaviour
+        def open(self, req, timeout=None):
+            if isinstance(self.behaviour, Exception):
+                raise self.behaviour
+            return FakeResp(self.behaviour)
+
+    # transport failure -> converted
+    raised = None
+    try:
+        bj._http_json(Opener(ConnectionResetError(54, "reset")), object(), 1)
+    except BaseException as e:  # noqa: BLE001
+        raised = e
+    assert isinstance(raised, bj.TransientTransportError), \
+        f"a socket reset must become TransientTransportError, got {type(raised).__name__}"
+    assert isinstance(raised.cause, ConnectionResetError), "the cause must be preserved"
+
+    # HTTPError -> untouched, so the caller can read its status code
+    raised = None
+    try:
+        bj._http_json(Opener(urllib.error.HTTPError("u", 429, "rate", {}, None)), object(), 1)
+    except BaseException as e:  # noqa: BLE001
+        raised = e
+    assert isinstance(raised, urllib.error.HTTPError) and raised.code == 429, \
+        "HTTPError must pass through with its status intact"
+
+    # a 200 with an unparsable body -> JSONDecodeError, not a transport error
+    raised = None
+    try:
+        bj._http_json(Opener(b"not json"), object(), 1)
+    except BaseException as e:  # noqa: BLE001
+        raised = e
+    assert isinstance(raised, json.JSONDecodeError), \
+        f"a bad body is the server's answer, not transport (got {type(raised).__name__})"
+
+    # happy path
+    assert bj._http_json(Opener(b'{"ok": 1}'), object(), 1) == {"ok": 1}
+
+
+def test_judge_chunk_retries_a_reset_and_returns_the_full_chunk():
+    """Drive the REAL `judge_chunk` through a transport failure and assert it
+    recovers. The attempt COUNT is asserted too: without it, one successful call
+    satisfies the test exactly as well as a retry does."""
+    calls = {"n": 0}
+
+    def flaky_dispatch(model, system, user):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise bj.TransientTransportError(
+                ConnectionResetError(54, "Connection reset by peer"))
+        return json.dumps([{"id": "A1", "verdict": "pass"},
+                           {"id": "A2", "verdict": "pass"}])
+
+    real_dispatch, real_sleep = bj.dispatch_judge, bj.time.sleep
+    bj.dispatch_judge = flaky_dispatch
+    bj.time.sleep = lambda _s: None
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            out = bj.judge_chunk("azure/x", "sys", [{"id": "A1"}, {"id": "A2"}])
+    finally:
+        bj.dispatch_judge, bj.time.sleep = real_dispatch, real_sleep
+
+    assert calls["n"] == 3, \
+        f"expected 2 transport failures then a success = 3 attempts, saw {calls['n']}"
+    assert [r["id"] for r in out] == ["A1", "A2"], \
+        f"the chunk must come back whole after a transient reset, got {out!r}"
+
+
+def test_judge_chunk_gives_up_on_a_client_error_without_burning_retries():
+    """The other direction: a 400 is answered once and not retried.
+
+    Without this, widening the predicate to catch resets could silently turn every
+    malformed request into five paid attempts against the deployment.
+    """
+    calls = {"n": 0}
+
+    def always_400(model, system, user):
+        calls["n"] += 1
+        raise urllib.error.HTTPError("u", 400, "bad request", {}, None)
+
+    real_dispatch, real_sleep = bj.dispatch_judge, bj.time.sleep
+    bj.dispatch_judge = always_400
+    bj.time.sleep = lambda _s: None
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            out = bj.judge_chunk("azure/x", "sys", [{"id": "A1"}])
+    finally:
+        bj.dispatch_judge, bj.time.sleep = real_dispatch, real_sleep
+
+    assert calls["n"] == 1, f"a 400 must be attempted exactly once, saw {calls['n']}"
+    assert out == [], "a chunk that never scored must return empty so reconciliation counts it"
+
+
+def test_a_missing_judge_cli_is_not_retried():
+    """A spawn failure is permanent, so it must not consume the retry budget.
+
+    This is the trap the broadened predicate creates: `FileNotFoundError` from a
+    missing `claude` binary IS an OSError, and every OSError reaching an HTTP
+    call site means transport. Here it means the judge does not exist, and five
+    attempts with backoff per chunk across a whole corpus is pure wall clock.
+    Cloud review found the same shape in tts_corpus.py, where a full disk was
+    being answered with another paid TTS request.
+    """
+    calls = {"n": 0}
+
+    def missing_cli(model, system, user):
+        calls["n"] += 1
+        raise bj.JudgeUnavailableError("claude judge: cannot start the CLI")
+
+    real_dispatch, real_sleep = bj.dispatch_judge, bj.time.sleep
+    bj.dispatch_judge = missing_cli
+    bj.time.sleep = lambda _s: None
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            out = bj.judge_chunk("claude-sonnet-5", "sys", [{"id": "A1"}])
+    finally:
+        bj.dispatch_judge, bj.time.sleep = real_dispatch, real_sleep
+
+    assert calls["n"] == 1, \
+        f"a permanently unavailable judge must be attempted exactly once, " \
+        f"saw {calls['n']} — the retry budget is being spent on a missing binary"
+    assert out == [], "the chunk must return empty so reconciliation counts it"
+
+
+def test_call_claude_converts_a_spawn_failure_into_the_permanent_error():
+    """The conversion happens at the transport, not at the call site.
+
+    Asserting only judge_chunk's behaviour would pass even if `call_claude` let a
+    bare FileNotFoundError escape, because the test above injects the already-
+    converted type. This drives the real `call_claude`.
+    """
+    real_run = bj.subprocess.run
+
+    def no_binary(*a, **kw):
+        raise FileNotFoundError(2, "No such file or directory: 'claude'")
+
+    bj.subprocess.run = no_binary
+    try:
+        raised = None
+        try:
+            bj.call_claude("claude-sonnet-5", "sys", "user")
+        except BaseException as e:  # noqa: BLE001
+            raised = e
+    finally:
+        bj.subprocess.run = real_run
+
+    assert isinstance(raised, bj.JudgeUnavailableError), \
+        f"a missing CLI must surface as JudgeUnavailableError, got {type(raised).__name__}: {raised}"
+    assert not bj._retryable_http_error(raised), \
+        "JudgeUnavailableError must not satisfy the transport predicate"
+
+
+def test_spoken_truth_reads_both_corpus_schemas():
+    """The personal-name rule is only as good as the field it reads.
+
+    Two corpora carry "what was said" under different names, and reading only
+    Speechpath's `voice_text` made the rule INERT on the older parakeet corpus --
+    present, shipped, and silently doing nothing, which a receipt cannot show.
+    Real shapes from both files, plus the degenerate ones, because this runs on
+    a grading path and must never raise.
+    """
+    # Speechpath: top-level voice_text.
+    assert bj._spoken_truth({"voice_text": "Tell Aoife it is ready"}) == "Tell Aoife it is ready"
+    # type_b_parakeet: nested under input_source.
+    assert bj._spoken_truth(
+        {"input_source": {"original_input": "set aside four plates make that five"}}
+    ) == "set aside four plates make that five"
+    # voice_text wins when both are present.
+    assert bj._spoken_truth(
+        {"voice_text": "top", "input_source": {"original_input": "nested"}}) == "top"
+    # Degenerate shapes all fall back to the conservative empty-truth branch.
+    for case in ({}, {"voice_text": ""}, {"voice_text": "   "},
+                 {"input_source": None}, {"input_source": "a string, not a dict"},
+                 {"input_source": {}}, {"input_source": {"original_input": None}},
+                 {"input_source": {"original_input": "  "}}):
+        assert bj._spoken_truth(case) == "", f"{case!r} must yield empty, not raise"
 
 
 # --------------------------------------------------------------------------- #
@@ -2479,7 +2749,7 @@ def test_vocabulary_repair_is_a_variant_but_name_repair_is_not():
 
 # An exact count, because the borrowed runner in cleanup_metrics_test.py returns
 # 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 124
+EXPECTED_TESTS = 131
 
 
 def _run() -> int:

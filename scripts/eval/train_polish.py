@@ -36,7 +36,38 @@ ap.add_argument("--alpha", type=int, default=32)
 ap.add_argument("--micro-bs", type=int, default=4)
 ap.add_argument("--grad-accum", type=int, default=4)
 ap.add_argument("--max-seq", type=int, default=512)
+ap.add_argument("--dataset-num-proc", type=int, default=None,
+                help="Worker processes for dataset tokenization. Unset = the "
+                     "library default (one per core). Set 1 to tokenize in-process.")
 args = ap.parse_args()
+
+# WHY --dataset-num-proc EXISTS: on the 4090 rig (2026-08-15) training died with a
+# hard SIGSEGV inside CPython partway through `Tokenizing ["text"] (num_proc=28)`.
+# It reproduced on the July corpus that had trained fine before, which is what
+# proved it was the environment and not the data.
+#
+# The MECHANISM IS NOT ESTABLISHED. The obvious story -- `datasets.map` forks after
+# FastLanguageModel has put a CUDA context in the process, and forking a live CUDA
+# context is undefined -- was tested and REFUTED: a staged probe on that rig loads
+# the 4-bit model, builds the PEFT wrapper, and then tokenizes with num_proc=8
+# without incident. TOKENIZERS_PARALLELISM=false did not help either, nor did
+# clearing unsloth_compiled_cache and ~/.triton. Do not repeat any of those three
+# as the cause.
+#
+# Nor is this knob established as the CURE. The run that finally trained had both
+# `--dataset-num-proc 1` and `python -u`, and an earlier run with the knob alone
+# still died -- so the crash is at least partly intermittent and the knob may have
+# had nothing to do with it. Treat a green run as luck until several in a row pass.
+#
+# What IS established, and is worth more than the knob: `python train.py > log`
+# BLOCK-buffers stdout, so a SIGSEGV loses the entire buffer and leaves an EMPTY
+# log. That made the crash look like it had moved earlier in the pipeline when it
+# had not, and cost two rounds of this investigation. Always run the trainer with
+# `python -u` so the last line before a crash is truthful.
+#
+# So this knob is a bisection tool, not a fix with a known reason. Tokenizing
+# 5,656 short rows in-process costs well under a minute against a ~16-minute
+# train, so pinning it is close to free while the real cause is unknown.
 
 # The SHIP prompt: short distilled instruction (council 2026-07-02). The tuned
 # model trains WITH it and the app will send exactly this string at inference.
@@ -51,10 +82,28 @@ from datasets import Dataset
 from trl import SFTTrainer, SFTConfig
 import inspect
 
-def _sft_config(**kw):
+def _sft_config(_required=(), **kw):
+    """trl-version shim. Unknown keywords are DROPPED, which is what makes this
+    portable across trl releases -- and is exactly why `_required` exists.
+
+    Silently dropping a knob the OPERATOR explicitly asked for is worse than not
+    having the knob. `--dataset-num-proc` is a crash-bisection tool: if a future
+    trl removes `dataset_num_proc`, the run would fall back to the library's
+    multiprocess default while reporting nothing, and the next crash-or-success
+    would be read as evidence about a setting that never applied. Verified
+    present in trl 0.24.0 on the rig before shipping this, so today it lands;
+    the guard is for the version bump that has not happened yet.
+    """
     sig = set(inspect.signature(SFTConfig.__init__).parameters)
     if "max_seq_length" in kw and "max_seq_length" not in sig:
         kw["max_length"] = kw.pop("max_seq_length")
+    missing = [k for k in _required if k not in sig]
+    if missing:
+        raise SystemExit(
+            f"train_polish: this trl ({getattr(__import__('trl'), '__version__', '?')}) "
+            f"has no SFTConfig parameter(s) {missing}, so the value you passed would "
+            f"be silently ignored and the run would not test what you asked for. "
+            f"Re-run without that flag, or route it through this trl's own API.")
     return SFTConfig(**{k: v for k, v in kw.items() if k in sig})
 
 def _sft_trainer(**kw):
@@ -121,6 +170,13 @@ trainer = _sft_trainer(
         output_dir=os.path.expanduser(f"~/tuning/out/{args.tag}/ckpt"),
         report_to="none",
         seed=1265,
+        # Omitted entirely when unset, so the recipe that produced EG-1 is
+        # byte-for-byte unchanged unless a run asks for this. When it IS asked
+        # for, `_required` makes an unsupported trl fail loudly rather than
+        # discard it — see _sft_config.
+        **({} if args.dataset_num_proc is None
+           else {"dataset_num_proc": args.dataset_num_proc}),
+        _required=() if args.dataset_num_proc is None else ("dataset_num_proc",),
     ),
 )
 

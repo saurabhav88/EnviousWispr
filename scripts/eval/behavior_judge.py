@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import random
@@ -108,13 +109,29 @@ DEFAULT_JUDGE = os.environ.get("EW_JUDGE", AZURE_JUDGE_DEPLOYMENT_ID)
 CLAUDE_JUDGE_MAX_WORKERS = 6            # subprocess per call; cap fan-out. Raised
 # from 3 (#1199 speed pass, 2026-06-30), then 20 -> 32 (founder 2026-07-02:
 # faster judging: no metered cost on the subscription judge, only a transient
-# rate-limit risk that judge_chunk's 3-attempt retry absorbs). Lowered back to
+# rate-limit risk that judge_chunk's retry absorbs — JUDGE_CHUNK_ATTEMPTS, 5
+# since 2026-08-15; this said "3-attempt" and went stale the moment that moved,
+# which is why it now names the constant instead of a number). Lowered back to
 # 6 (founder 2026-07-20): 32 concurrent `claude -p` subprocesses (each
 # spawning ripgrep) pushed system load average past 40 while other work was
 # running on the same machine, echoing the load-234 incident in
 # eg1-operations.md. 6 stays well clear of that while judging 1,890 cases in
 # roughly 25 minutes.
-HTTP_JUDGE_MAX_WORKERS = 4
+# Raised 4 -> 12 (founder 2026-08-14: "if it's a cloud grader, why so slow"). The 4 was
+# never justified for this transport -- it sat beside the CLAUDE cap's rationale, which is
+# about local subprocess load (32 concurrent `claude -p` each spawning ripgrep pushed load
+# past 40). An HTTPS request to Azure spawns nothing and costs no local CPU, so that
+# reasoning does not transfer and the cap was inherited rather than measured.
+#
+# The real ceiling is the deployment's rate limit, and exceeding it is SAFE here: Azure
+# answers 429, `_retryable_http_error` marks it retryable, and `judge_chunk` retries with
+# backoff. So the failure mode of too-high is slower-but-correct, not wrong results --
+# which is why this can be raised without risking the grade.
+#
+# Measured before the change: 1,861 cases = 233 chunks at ~19s per chunk, 4 at a time,
+# ~25 min. Override per run with EW_JUDGE_WORKERS to find the deployment's real ceiling
+# without editing code.
+HTTP_JUDGE_MAX_WORKERS = int(os.environ.get("EW_JUDGE_WORKERS", "12"))
 DEFAULT_REPLICATIONS = 2              # old-system judge instability net (no temperature knob on CLI)
 DEFAULT_ADJUDICATE_PCT = 0.15          # new-system: fraction of pass/minor/soft_fail
 DEFAULT_ADJUDICATE_MIN = 15            # cases re-judged as a calibration sample
@@ -165,10 +182,91 @@ def _key(name: str) -> str:
     return p.read_text().strip()
 
 
+class TransientTransportError(Exception):
+    """A network failure raised BY the network operation itself.
+
+    Exists to make the retry predicate's scope structural instead of a promise.
+    The predicate used to test `OSError`, which is correct for a socket and wrong
+    for everything else that can appear in the same `try`: cloud review found
+    three separate instances in this change set -- a local WAV write, a
+    subprocess spawn for a missing CLI, and a credential file read -- where a
+    permanent local failure would have been answered with another paid request.
+
+    Auditing each retry scope for stray I/O is a promise that has to be re-made
+    every time someone adds a line. Converting at the ONE place the network is
+    touched is a property: anything else in the scope raises its own type and is
+    never retried, by construction.
+    """
+
+    def __init__(self, cause: Exception):
+        super().__init__(f"{type(cause).__name__}: {cause}")
+        self.cause = cause
+
+
+def _http_json(opener, req, timeout: float):
+    """Perform the request and decode it, converting ONLY transport failures.
+
+    `HTTPError` is deliberately re-raised untouched: it carries a status code and
+    the caller decides 429/5xx-retryable from that. A JSON decode failure is also
+    left alone -- a 200 with an unparsable body is the server's answer, and the
+    callers that want to retry it already test `json.JSONDecodeError` explicitly.
+    """
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError:
+        raise
+    except (OSError, http.client.HTTPException) as e:
+        raise TransientTransportError(e) from None
+    return json.loads(raw)
+
+
+class JudgeUnavailableError(Exception):
+    """The judge transport cannot work at all, and no number of attempts changes
+    that: a missing or unexecutable CLI, a route with no funded transport.
+
+    Exists because the retry predicate treats every OSError as transport, which
+    is right for an HTTP call and wrong for a subprocess spawn — `FileNotFoundError`
+    from a missing `claude` binary is an OSError and would otherwise be retried
+    once per attempt, per chunk, for the whole corpus.
+    """
+
+
 def _retryable_http_error(exc: Exception) -> bool:
+    """True when `exc` is a transient transport failure worth another attempt.
+
+    HTTPError is tested FIRST and is the only branch that can answer False for an
+    OSError, because `HTTPError` subclasses `URLError` subclasses `OSError`: a 400
+    or a 401 is the server's considered answer and retrying it just burns credits.
+
+    Everything below that is transport, and transport is transient. Catch the BASE
+    classes rather than a list of names. The list this replaces --
+    `(urllib.error.URLError, TimeoutError)` -- looked complete and missed six real
+    failure modes, because urllib wraps only what `urlopen` itself raises. A reset
+    arriving while the RESPONSE BODY is being read propagates as a bare
+    `ConnectionResetError`, which is an OSError but not a URLError, so it fell
+    through to FATAL.
+
+    Measured cost of that gap on 2026-08-14: two 1,861-case grading runs each logged
+    exactly three `FATAL on chunk (attempt 1): [Errno 54] Connection reset by peer`
+    and each dropped exactly 24 cases (3 chunks x chunk_size 8). The dropped IDs had
+    ZERO overlap between the two runs, which is what rules out a content trigger and
+    identifies it as transport. Both runs were correctly reported INCOMPLETE by
+    `reconcile_judge_batch`, so nothing wrong was ever published -- the accounting
+    layer did its job. This fixes the layer that manufactured the gap, and
+    deliberately does not touch the one that reports it.
+
+    Verified against constructed instances rather than reasoned about; the two-way
+    control lives in `behavior_judge_test.py::test_transport_resets_are_retryable_
+    but_client_errors_are_not`.
+    """
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code == 429 or 500 <= exc.code < 600
-    return isinstance(exc, (urllib.error.URLError, TimeoutError))
+    # Only what the NETWORK CALL itself raised. `_http_json` converts OSError and
+    # http.client.HTTPException at the socket, so a file read, a file write or a
+    # subprocess spawn elsewhere in the same `try` keeps its own type and is not
+    # retried. Testing bare OSError here is what made all three of those retryable.
+    return isinstance(exc, TransientTransportError)
 
 
 # `call_openai` and `call_gemini` are DELETED, not merely unrouted (founder 2026-08-11,
@@ -208,6 +306,17 @@ def call_claude(model: str, system: str, user: str) -> str:
         )
     except subprocess.TimeoutExpired:
         raise RuntimeError("claude judge: CLI timed out after 300s")
+    except OSError as e:
+        # A spawn failure (`claude` not on PATH, not executable) is an OSError.
+        # Since `_retryable_http_error` now only accepts TransientTransportError,
+        # a bare OSError is already non-retryable -- but it would surface as an
+        # opaque FileNotFoundError with no guidance. This converts it into a
+        # named, actionable error instead. RuntimeError is deliberately NOT used:
+        # judge_chunk retries that one.
+        raise JudgeUnavailableError(
+            f"claude judge: cannot start the CLI ({type(e).__name__}: {e}). "
+            f"This is permanent — install/authenticate the CLI or pick another "
+            f"--judge; retrying would just burn the wall clock.") from None
     if proc.returncode != 0:
         raise RuntimeError(
             f"claude judge: CLI exited {proc.returncode}: {(proc.stderr or '').strip()[:300]}")
@@ -316,8 +425,7 @@ def call_azure(deployment: str, system: str, user: str) -> str:
         headers={"api-key": _key("azure-openai-key"), "Content-Type": "application/json"},
         method="POST",
     )
-    with _no_redirect_opener().open(req, timeout=300) as resp:
-        data = json.loads(resp.read())
+    data = _http_json(_no_redirect_opener(), req, 300)
     choices = data.get("choices") or []
     if not choices:
         raise RuntimeError(f"azure judge: no choices in response: {str(data)[:200]}")
@@ -463,8 +571,7 @@ def _azure_served_model(deployment: str) -> str:
         headers={"api-key": _key("azure-openai-key"), "Content-Type": "application/json"},
         method="POST",
     )
-    with _no_redirect_opener().open(req, timeout=60) as resp:
-        data = json.loads(resp.read())
+    data = _http_json(_no_redirect_opener(), req, 60)
     served = data.get("model")
     if not isinstance(served, str) or not served.strip():
         # Fail rather than fall back to a version-blind identity: a blind identity silently
@@ -612,16 +719,49 @@ def parse_judge_array(raw: str) -> list[dict[str, Any]]:
     return parsed if isinstance(parsed, list) else []
 
 
+JUDGE_CHUNK_ATTEMPTS = 5
+
+
+def _judge_retry_delay(attempt: int) -> float:
+    """Capped exponential backoff with jitter.
+
+    Jitter is not decoration here: every worker shares one deployment, so a
+    rate-limit window knocks several chunks down at the same instant, and a
+    deterministic `2 * attempt` marches them all back in lockstep to collide
+    again. Capped at 30s so five attempts span roughly a minute rather than
+    stalling a run that is otherwise healthy.
+    """
+    return min(2.0 ** attempt, 30.0) + random.uniform(0.0, 1.5)
+
+
 def judge_chunk(model: str, system: str, payload_cases: list[dict], attempt: int = 1) -> list[dict]:
-    """One judge call over a chunk. Retries on transient/parse error (3 attempts)."""
+    """One judge call over a chunk. Retries on transient transport/parse error.
+
+    Returning `[]` here does not corrupt anything: `reconcile_judge_batch` counts
+    every requested id and the receipt's `run_complete` gate fails the run. The
+    cost of landing here is a whole re-run, which is why the retry budget is
+    generous rather than minimal.
+    """
     user = "Score these cases. Return ONLY the JSON array.\n" + json.dumps(payload_cases, ensure_ascii=False)
     try:
         return parse_judge_array(dispatch_judge(model, system, user))
     except Exception as e:
-        if attempt < 3 and (_retryable_http_error(e) or isinstance(e, (json.JSONDecodeError, RuntimeError))):
-            time.sleep(2 * attempt)
+        # JudgeUnavailableError needs no clause here: it derives from Exception
+        # directly, so it matches neither `_retryable_http_error` (OSError /
+        # HTTPException) nor the parse/RuntimeError arm, and falls through to
+        # FATAL on the first attempt. An explicit guard was written first and a
+        # mutation control proved it dead — the type relationship is the
+        # mechanism, and `test_a_missing_judge_cli_is_not_retried` locks it so a
+        # future re-parenting of that class cannot silently make it retryable.
+        if (attempt < JUDGE_CHUNK_ATTEMPTS
+                and (_retryable_http_error(e)
+                     or isinstance(e, (json.JSONDecodeError, RuntimeError)))):
+            print(f"[judge] transient on chunk (attempt {attempt}/"
+                  f"{JUDGE_CHUNK_ATTEMPTS}), retrying: {e}", file=sys.stderr)
+            time.sleep(_judge_retry_delay(attempt))
             return judge_chunk(model, system, payload_cases, attempt + 1)
-        print(f"[judge] FATAL on chunk (attempt {attempt}): {e}", file=sys.stderr)
+        print(f"[judge] FATAL on chunk (attempt {attempt}): {type(e).__name__}: {e}",
+              file=sys.stderr)
         return []
 
 
@@ -774,11 +914,22 @@ DEFAULT_ALLOWED_VARIANTS = [
     # and rendering it `EnviousWispr` is also correct. Grade the behavior under test.
     "repairing a plainly mis-transcribed product or technical term (e.g. 'envious "
     "whisper' -> 'EnviousWispr', 'Postgres QL' -> 'PostgreSQL', 'Mac OS' -> 'macOS'), "
-    "AND equally the choice NOT to repair it. Neither is the behavior under test. "
-    "This does NOT extend to personal names: rewriting a name the recogniser mangled "
-    "('Rajash' -> 'Rajesh') is a real defect, because there is no closed set of "
-    "people's names to be confident against and substituting a commoner one is a "
-    "worse outcome for the user than leaving the phonetic attempt visible.",
+    "AND equally the choice NOT to repair it. Neither is the behavior under test.",
+    # Personal names, split by WHETHER THE RENDERING IS RIGHT rather than by whether it
+    # differs from raw_transcript. The old rule said any rewrite of a mangled name was a
+    # defect, on the reasoning that there is no closed set of names to be confident
+    # against. True for a shipping app; false for a graded benchmark, where
+    # `spoken_truth` records the name that was actually said. Under the old rule a
+    # system whose recogniser heard the name CORRECTLY was marked down for it -- 22
+    # measured cases (Rajesh, Nadia, Hassan, Noor, Tomas).
+    "a personal name that matches spoken_truth is CORRECT, whatever raw_transcript "
+    "said. Do not penalise it, and do not treat it as an entity change.",
+    "a personal name matching NEITHER spoken_truth NOR raw_transcript is a real "
+    "entity_mutation defect ('Elena' -> 'Alaina', 'Fatima' -> 'Fautima'): the system "
+    "substituted a different person. Leaving raw_transcript's phonetic attempt "
+    "untouched is also acceptable, since repairing a name unaided is bonus credit, "
+    "never a pass criterion. Where spoken_truth is empty, fall back to treating any "
+    "rewrite of a name as a defect.",
 ]
 
 # Per-behavior additions, for buckets where the transcript genuinely admits more than one
@@ -863,6 +1014,36 @@ def case_type_of(case: dict, behavior: str) -> str:
     return "positive"
 
 
+def _spoken_truth(case: dict) -> str:
+    """What was ACTUALLY said, across the two corpus schemas that carry it.
+
+    Speechpath (`speechpath_1861.jsonl`, the live corpus) stores it as a top-level
+    `voice_text`. The older `type_b_parakeet.jsonl`, built by
+    `build_refreshed_corpus.py`, stores the pre-ASR text nested at
+    `input_source.original_input` instead. Reading only `voice_text` therefore
+    returned "" for every row of that corpus, and the personal-name rule silently
+    fell through to its empty-truth branch — the rubric change present but inert,
+    which is worse than absent because the receipt looks the same either way.
+
+    Measured on the 1,690-row `type_b_parakeet.jsonl`: `original_input` is
+    populated on 1,458 rows (86.3%); the remaining 13.7% carry an empty value and
+    correctly keep the conservative empty-truth behaviour.
+
+    `input_source` is a dict in that corpus but the type is not guaranteed across
+    older files, so a non-dict is treated as absent rather than raising — this is
+    a grading path, and it must degrade to the safe branch rather than kill a run.
+    """
+    v = case.get("voice_text")
+    if isinstance(v, str) and v.strip():
+        return v
+    src = case.get("input_source")
+    if isinstance(src, dict):
+        v = src.get("original_input")
+        if isinstance(v, str) and v.strip():
+            return v
+    return ""
+
+
 def normalize_case(case: dict) -> dict:
     """corpus case -> normalized judge-input record (behavior-aware system)."""
     behavior = behavior_key(case)
@@ -889,6 +1070,18 @@ def normalize_case(case: dict) -> dict:
         "length_bucket": case.get("length_bucket"),
         "context": case.get("context", ""),
         "raw_transcript": case.get("asr_input", ""),
+        # What was ACTUALLY SPOKEN, before any recogniser touched it. Distinct from
+        # `raw_transcript`, which is one engine's attempt at it.
+        #
+        # Without this the judge cannot tell a name REPAIRED from a name MANGLED. Our
+        # corpus keys were authored from OUR transcript, so where Parakeet heard
+        # "Rajash" for Rajesh the key enshrines the error; a system whose recogniser got
+        # the name RIGHT then looks like it substituted one. Measured 2026-08-14 on the
+        # Wispr Flow bake-off: 22 cases penalised for correct transcription
+        # (Rajesh->"Rajash", Nadia->"Nodia", Hassan->"Hassen", Noor->"Norr").
+        #
+        # Empty for corpora that carry no spoken source; the prompt handles absence.
+        "spoken_truth": _spoken_truth(case),
         "notes": case.get("notes", ""),
     }
 
@@ -991,7 +1184,13 @@ NEW_JUDGE_SYSTEM = """You are evaluating a speech-polish engine for a dictation 
 
 For each case you are given:
 - id
-- raw_transcript: the original spoken transcript (lowercase, little punctuation)
+- raw_transcript: ONE speech recogniser's attempt at what was said (lowercase, little
+  punctuation). It is the engine's INPUT, not ground truth, and it can contain
+  mis-hearings -- especially of people's names.
+- spoken_truth: what was ACTUALLY said, when available (may be empty). Use it for ONE
+  purpose only: deciding whether a proper noun, name, address or number in
+  candidate_output is CORRECT or INVENTED. Do NOT grade content, phrasing, fillers or
+  structure against it -- removing disfluencies that appear here is exactly the job.
 - candidate_output: the polish engine output to evaluate
 - production_output: the currently shipped engine's output, or null if unavailable
 - behavior: the behavior bucket (for reporting)
@@ -1024,10 +1223,11 @@ Automatic critical_fail / S4 (any one):
   not this: `envious whisper` -> `EnviousWispr`, `Postgres QL` -> `PostgreSQL`,
   `Mac OS` -> `macOS` all name the same thing the speaker named, and are
   permitted (see allowed_variants). Leaving them untouched is equally correct.
-  A PERSONAL name is the exception and stays an automatic S4: `Rajash` ->
-  `Rajesh` may look like the same repair, but no closed set of people's names
-  exists to be confident against, so it is a substitution rather than a
-  normalisation
+  A PERSONAL name is judged against `spoken_truth`, NOT against raw_transcript:
+  if the rendering matches what was actually said it is CORRECT and not an S4,
+  even where raw_transcript spelled it differently. It is an automatic S4 only
+  when it matches NEITHER (`Elena` -> `Alaina`), i.e. a different person.
+  Where spoken_truth is empty, any rewrite of a personal name stays an S4
 - changed the final correction target in a self-correction
 - invented a fact, recipient, date, action, commitment, or rationale
 - dropped required content that changes the user's intent
@@ -1065,6 +1265,7 @@ def build_new_payload(norm: dict, cand: dict, prod: dict | None) -> dict:
     return {
         "id": norm["id"],
         "raw_transcript": norm["raw_transcript"],
+        "spoken_truth": norm.get("spoken_truth") or "",
         "candidate_output": cand.get("candidate") or "",
         "production_output": (prod.get("candidate") if prod else None),
         "behavior": norm["behavior"],
