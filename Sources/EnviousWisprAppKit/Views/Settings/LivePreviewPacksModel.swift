@@ -77,6 +77,24 @@ final class LivePreviewPacksModel {
   /// have. Production passes the real route, so the page still reports what a recording would do.
   private let resolveActive: @Sendable (LanguageMode) async -> ActiveLanguage
 
+  /// **Read at publication time, never captured at press time.**
+  ///
+  /// `active` is derived from exactly two inputs: this mode and the installed set. Passing the
+  /// mode in as an argument meant a download captured the value from the moment its button was
+  /// pressed, and a user who changed the dictation language while the download ran got an answer
+  /// for the setting they had abandoned — with no reload to correct it, because `load` skips
+  /// while an install is in flight. Reading it through a closure removes the capture entirely, so
+  /// there is no stale copy for any path to publish.
+  private var currentMode: @MainActor () -> LanguageMode = { .auto }
+
+  /// Point the model at the live setting. Called from the page's `.task`, before the first load.
+  ///
+  /// A closure rather than a value because the window owns this model and outlives the page: any
+  /// value handed over here would be a snapshot, which is the defect this replaced.
+  func useMode(_ source: @escaping @MainActor () -> LanguageMode) {
+    currentMode = source
+  }
+
   init(
     catalog: ApplePackCatalog,
     resolveActive: @escaping @Sendable (LanguageMode) async -> ActiveLanguage =
@@ -91,7 +109,7 @@ final class LivePreviewPacksModel {
   /// Clears the last failure: the page is reappearing with a fresh read, and a "Try again" left
   /// over from a previous visit would sit next to a row the system now reports as Ready — the
   /// same contradiction the re-read is the authority against.
-  func load(mode: LanguageMode) async {
+  func load() async {
     // **Do not reload at all while a download is running.** Watching the generation was not
     // enough: a reload that STARTS during an install captures the install's own generation, so
     // the check still passes when its older snapshot lands after the install published, and an
@@ -106,11 +124,17 @@ final class LivePreviewPacksModel {
     let packs = await catalog.snapshot()
     // Ask the resolver the same question a recording asks, so the page reports what will really
     // happen rather than a second opinion assembled from the settings.
-    let resolved = await resolveActive(mode)
+    let resolved = await resolveCurrentActive()
     guard generation == mine else { return }
     failedTag = nil
     active = resolved
     state = Self.state(for: packs)
+  }
+
+  /// The one way any path asks "which language is live". Reads the mode itself, so no caller can
+  /// hand it a stale one.
+  private func resolveCurrentActive() async -> ActiveLanguage {
+    await resolveActive(currentMode())
   }
 
   /// The real resolution, through the same route the recording path uses.
@@ -142,10 +166,14 @@ final class LivePreviewPacksModel {
 
   /// Start installing one pack. Ignored while another is in flight.
   ///
-  /// Takes the mode rather than remembering the last one `load` saw: the active language has to be
-  /// re-resolved when this finishes, and resolving it against a stale mode would publish an answer
-  /// for a setting the user has since changed. The caller has the live value at the press.
-  func install(tag: String, mode: LanguageMode) {
+  /// **Every terminal path here republishes the active language**, rather than the paths someone
+  /// reasoned would need it. Review found two misses in two rounds — a stale mode, and the
+  /// installed-then-threw branch — which is the signature of case-by-case reasoning about a rule
+  /// that should hold everywhere. The rule: `active` derives from the mode and the installed set,
+  /// this method can change the installed set, so it republishes on the way out. Always, including
+  /// the genuine-failure path where the answer is usually unchanged; a republish that computes the
+  /// same value costs one resolve, while a missing one is a page asserting something false.
+  func install(tag: String) {
     guard installingTag == nil else { return }
     // Set synchronously, BEFORE the await, so the row shows a spinner on the same runloop turn as
     // the press and a second press cannot slip in behind the suspension.
@@ -157,16 +185,12 @@ final class LivePreviewPacksModel {
     // **`[weak self]` is load-bearing.** A task that strongly retains its owner while the owner
     // retains the task is a cycle: `deinit` would never run, so deinit-based cancellation would
     // be dead code and the model would leak for the life of the process.
-    installTask = Task { [weak self, catalog, resolveActive] in
+    installTask = Task { [weak self, catalog] in
       do {
         let refreshed = try await catalog.install(tag: tag)
-        // **Re-resolve the active language too.** Downloading the pack the page is asking for is
-        // the one action that CHANGES the answer, so publishing the new rows without it left the
-        // page saying "isn't downloaded yet" over a language that had just arrived, and showing
-        // "Ready" where it should say "In use", until the tab was reopened. Resolved before the
-        // guard so the generation check still covers every write.
-        let resolved = await resolveActive(mode)
         guard let self, !Task.isCancelled, self.generation == mine else { return }
+        let resolved = await self.resolveCurrentActive()
+        guard !Task.isCancelled, self.generation == mine else { return }
         self.state = Self.state(for: refreshed)
         self.active = resolved
         self.installingTag = nil
@@ -181,6 +205,11 @@ final class LivePreviewPacksModel {
         // missing after it had installed. Cancelling mid-refresh had the same shape. The window
         // is closed rather than handled, so there is no ordering left to get wrong.
         guard let self, !Task.isCancelled, self.generation == mine else { return }
+        // Republished here too: Apple can install the pack and THEN throw, so this branch reaches
+        // the same "the language just arrived" state the success branch does. Leaving it out kept
+        // the summary saying the language was missing over a row that had installed.
+        let resolved = await self.resolveCurrentActive()
+        guard !Task.isCancelled, self.generation == mine else { return }
         self.installingTag = nil
         // Only call it a failure if the pack is STILL missing. Apple can install successfully and
         // then throw on something afterwards, and the row would otherwise say "Ready" and "That
@@ -189,6 +218,7 @@ final class LivePreviewPacksModel {
         let landed = refreshed.contains { $0.tag == tag && $0.isInstalled }
         self.failedTag = landed ? nil : tag
         self.state = Self.state(for: refreshed)
+        self.active = resolved
       }
     }
   }

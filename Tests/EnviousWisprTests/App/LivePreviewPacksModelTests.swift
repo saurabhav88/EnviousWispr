@@ -149,12 +149,12 @@ struct LivePreviewPacksModelTests {
     let model = LivePreviewPacksModel(
       catalog: catalog, resolveActive: { _ in await script.next() })
 
-    await model.load(mode: .auto)
+    await model.load()
     #expect(
       model.active == .needsDownload(name: "Italian"),
       "control: the page starts by saying the language is missing")
 
-    model.install(tag: "it-IT", mode: .auto)
+    model.install(tag: "it-IT")
     await model.installTask?.value
 
     #expect(
@@ -163,6 +163,90 @@ struct LivePreviewPacksModelTests {
       after the download the page must say the language is live; leaving the old answer told the \
       user to download a pack they had just downloaded
       """)
+  }
+
+  /// Apple installs the pack and THEN throws. The rows already treat that as a success; the active
+  /// language has to as well, or the summary says the language is missing over a row that has it.
+  @Test("A download that lands and then throws still updates what the page says is live")
+  func installThatLandsThenThrowsRepublishesTheActiveLanguage() async throws {
+    let script = ResolveScript()
+    let catalog = ApplePackCatalog(
+      dependencies: .init(
+        supportedTags: { ["en-US", "it-IT"] },
+        installedTags: { await script.isInstalled ? ["en-US", "it-IT"] : ["en-US"] },
+        reserve: { _ in },
+        release: { _ in },
+        install: { _ in
+          await script.markInstalled()
+          throw LivePreviewError.localeUnavailable
+        }
+      ))
+    let model = LivePreviewPacksModel(
+      catalog: catalog, resolveActive: { _ in await script.next() })
+
+    await model.load()
+    #expect(model.active == .needsDownload(name: "Italian"), "control: it starts missing")
+
+    model.install(tag: "it-IT")
+    await model.installTask?.value
+
+    #expect(model.failedTag == nil, "control: a pack that landed is not a failure")
+    #expect(
+      model.active == .ready(tag: "it-IT", name: "Italian"),
+      "the pack landed, so the page must say the language is live even though install threw")
+  }
+
+  /// The mode must be read when the answer is published, not when Download was pressed.
+  ///
+  /// Reachable exactly as described in review: press Download, switch to Transcription, change the
+  /// language, come back. The page's own reload is skipped while an install is in flight, so a
+  /// mode captured at the press had nothing left to correct it.
+  @Test("A language changed mid-download is the one the finished download answers for")
+  func installResolvesAgainstTheModeAtCompletion() async throws {
+    let modeBox = ModeBox()
+    let seen = SeenModes()
+    let catalog = ApplePackCatalog(
+      dependencies: .init(
+        supportedTags: { ["en-US", "it-IT"] },
+        installedTags: { ["en-US", "it-IT"] },
+        reserve: { _ in },
+        release: { _ in },
+        install: { _ in }
+      ))
+    let model = LivePreviewPacksModel(
+      catalog: catalog,
+      resolveActive: { mode in
+        await seen.note(mode)
+        return .ready(tag: "it-IT", name: "Italian")
+      })
+    model.useMode { modeBox.value }
+
+    await model.load()
+
+    // The user changes the dictation language while the download runs.
+    modeBox.value = .locked("de-DE")
+    model.install(tag: "it-IT")
+    await model.installTask?.value
+
+    let observed = await seen.modes
+    #expect(
+      observed.last == .locked("de-DE"),
+      """
+      the finished download resolved against the language the user had ABANDONED; \
+      saw \(observed)
+      """)
+  }
+
+  /// A plain mutable holder so the test can change the "setting" mid-flight, exactly as a user
+  /// switching tabs would. `@MainActor` because that is where the model reads it.
+  @MainActor
+  private final class ModeBox {
+    var value: LanguageMode = .auto
+  }
+
+  private actor SeenModes {
+    private(set) var modes: [LanguageMode] = []
+    func note(_ mode: LanguageMode) { modes.append(mode) }
   }
 
   private func tags(_ state: LivePreviewPacksModel.LoadState) -> [String] {
@@ -200,8 +284,8 @@ struct LivePreviewPacksModelTests {
         calls: calls, enteredRefresh: entered, releaseRefresh: release, landedAnyway: true),
       resolveActive: Self.stubResolve)
 
-    await model.load(mode: .auto)
-    model.install(tag: "it-IT", mode: .auto)
+    await model.load()
+    model.install(tag: "it-IT")
     #expect(await entered.wait(), "the model never reached the post-failure refresh")
     await release.open()
     await model.installTask?.value
@@ -230,15 +314,15 @@ struct LivePreviewPacksModelTests {
       catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release),
       resolveActive: Self.stubResolve)
 
-    await model.load(mode: .auto)
-    model.install(tag: "it-IT", mode: .auto)
+    await model.load()
+    model.install(tag: "it-IT")
     #expect(await entered.wait(), "the model never reached the post-failure refresh")
     await release.open()
     await model.installTask?.value
     #expect(model.failedTag == "it-IT", "control: the failure really was recorded")
 
     // The page closes and reopens.
-    await model.load(mode: .auto)
+    await model.load()
 
     #expect(model.failedTag == nil, "a fresh read must not carry the previous visit's failure")
     #expect(
@@ -292,12 +376,12 @@ struct LivePreviewPacksModelTests {
       catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release),
       resolveActive: Self.stubResolve)
 
-    await model.load(mode: .auto)
-    let reload = Task { await model.load(mode: .auto) }
+    await model.load()
+    let reload = Task { await model.load() }
     #expect(await entered.wait(), "the reload never reached the catalogue")
 
     // The user presses Download while the reload is parked.
-    model.install(tag: "it-IT", mode: .auto)
+    model.install(tag: "it-IT")
     await release.open()
     await reload.value
     await model.installTask?.value
@@ -318,7 +402,7 @@ struct LivePreviewPacksModelTests {
     let source = LivePreviewNoAutoDownloadTests.codeOnly(
       try String(contentsOf: url, encoding: .utf8))
 
-    guard let start = source.range(of: "func load(mode:") else {
+    guard let start = source.range(of: "func load() async {") else {
       Issue.record("load() not found; it was renamed or moved")
       return
     }
@@ -364,12 +448,12 @@ struct LivePreviewPacksModelTests {
         calls: calls, enteredRefresh: entered, releaseRefresh: release, landedAnyway: true),
       resolveActive: Self.stubResolve)
 
-    await model.load(mode: .auto)
-    model.install(tag: "it-IT", mode: .auto)
+    await model.load()
+    model.install(tag: "it-IT")
     #expect(await entered.wait(), "the install never reached the catalogue")
 
     // The user returns to the page while the download is still running.
-    await model.load(mode: .auto)
+    await model.load()
 
     await release.open()
     await model.installTask?.value
@@ -448,20 +532,20 @@ struct LivePreviewPacksModelTests {
       catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release),
       resolveActive: Self.stubResolve)
 
-    await model.load(mode: .auto)
-    model.install(tag: "it-IT", mode: .auto)
+    await model.load()
+    model.install(tag: "it-IT")
     #expect(await entered.wait(), "the install never reached the catalogue")
 
     // The page disappears and comes back while the installer is still working. There is no
     // disappear hook any more; reappearing just re-reads.
-    await model.load(mode: .auto)
+    await model.load()
 
     #expect(
       model.installingTag == "it-IT",
       "a closed page must not make a running download look finished")
 
     // And a second press is refused while the first is unresolved.
-    model.install(tag: "de-DE", mode: .auto)
+    model.install(tag: "de-DE")
     await release.open()
     await model.installTask?.value
 
@@ -484,15 +568,15 @@ struct LivePreviewPacksModelTests {
       catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release),
       resolveActive: Self.stubResolve)
 
-    await model.load(mode: .auto)
-    model.install(tag: "it-IT", mode: .auto)
+    await model.load()
+    model.install(tag: "it-IT")
     #expect(await entered.wait(), "the model never reached the post-failure refresh")
 
     #expect(
       model.installingTag == "it-IT",
       "the row must stay busy until its outcome is published, or a retry can race it")
 
-    model.install(tag: "fr-FR", mode: .auto)  // must be refused while the first is unresolved
+    model.install(tag: "fr-FR")  // must be refused while the first is unresolved
     await release.open()
     await model.installTask?.value
 

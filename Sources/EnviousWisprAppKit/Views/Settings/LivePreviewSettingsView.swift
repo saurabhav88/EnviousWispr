@@ -105,7 +105,10 @@ struct LivePreviewSettingsView: View {
       // returning user would see the snapshot from whenever they last opened it — past a download
       // that finished meanwhile, past a macOS purge of a staged asset. The catalogue exists
       // precisely because this state is not ours to cache.
-      await packs.load(mode: settings.languageMode)
+      // Hand over the live setting, not its value: a download that finishes after the user
+      // changes the dictation language must answer for the language they have now.
+      packs.useMode { settings.languageMode }
+      await packs.load()
     }
   }
 
@@ -273,7 +276,7 @@ struct LivePreviewSettingsView: View {
             ? LivePreviewSettingsCopy.packRetry
             : LivePreviewSettingsCopy.packInstall
         ) {
-          packs.install(tag: pack.tag, mode: settings.languageMode)
+          packs.install(tag: pack.tag)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
