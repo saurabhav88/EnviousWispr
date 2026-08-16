@@ -596,10 +596,17 @@ jobs:
       # Checked out FIRST and into its own path: this job otherwise has no repo in its workspace,
       # and `actions/checkout` cleans what it checks out, which must never be able to race the
       # downloaded artifacts.
+      # `persist-credentials: false` because this job holds `contents: write` and this step is
+      # followed by EXECUTING a script out of the checkout. Without it, `actions/checkout` leaves
+      # a write-capable token in `repo/.git/config`, so any defect in that script would be running
+      # next to a credential that can rewrite the repository during a release. It needs files, not
+      # a remote. This is the policy this workflow already states for itself at the top.
+      # Depth 1 for the same reason: nothing here reads history.
       - name: Check out the repository (for the compatibility check)
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+          persist-credentials: false
           path: repo
 
       - name: Download release artifacts
