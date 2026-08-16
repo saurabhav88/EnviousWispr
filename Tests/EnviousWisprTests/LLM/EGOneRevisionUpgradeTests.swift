@@ -121,6 +121,137 @@ import Testing
     return subject
   }
 
+  // MARK: - Telemetry: the eligibility denominator
+
+  @MainActor
+  private func eligibleRoutings(_ probe: Probe) -> [EGOneUpgradeCoordinator.UpgradeRouting] {
+    probe.events.compactMap {
+      if case .upgradeEligible(let routing, _, _, _) = $0 { return routing }
+      return nil
+    }
+  }
+
+  /// The denominator must be emitted BEFORE every gate, including the gates that stop the upgrade
+  /// dead. #1386's ship criterion counted from `attempt_started`, which grades only the upgrades
+  /// that began — but an upgrade that never begins is the exact failure this path exists to
+  /// prevent, so that shape reports success while hiding it.
+  @MainActor
+  @Test func eligibleEventFiresBeforeEveryGate() async throws {
+    for (label, arrange, expected) in [
+      (
+        "disabled",
+        { (store: UserDefaults, _: URL) in
+          store.set(false, forKey: DeliveryFlags.key("enabled", family: .egOne))
+        },
+        EGOneUpgradeCoordinator.UpgradeRouting.disabled
+      ),
+      (
+        "declined",
+        { (_: UserDefaults, root: URL) in
+          try? Data().write(to: self.declineMarker(root))
+        },
+        .declined
+      ),
+      ("started", { (_: UserDefaults, _: URL) in }, .started),
+    ] {
+      let root = try makeRoot()
+      defer { try? FileManager.default.removeItem(at: root) }
+      let (store, suite) = try defaults()
+      defer { store.removePersistentDomain(forName: suite) }
+
+      try stagePriorAdmission(root: root)
+      arrange(store, root)
+
+      let probe = Probe()
+      let subject = coordinator(root: root, defaults: store, probe: probe)
+      await subject.runLaunch()
+
+      #expect(
+        eligibleRoutings(probe) == [expected],
+        "eligible install routed \(label) must still emit exactly one denominator event")
+    }
+  }
+
+  /// The onboarding routing, which needs its own case because the deferral gate sits between the
+  /// kill switch and the decline check.
+  @MainActor
+  @Test func eligibleEventReportsOnboardingDeferral() async throws {
+    let root = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (store, suite) = try defaults()
+    defer { store.removePersistentDomain(forName: suite) }
+
+    try stagePriorAdmission(root: root)
+    // A decline is ALSO recorded. Onboarding must still win, because that is the gate this launch
+    // actually meets first. Without this the case would pass under either ordering.
+    try Data().write(to: declineMarker(root))
+    let probe = Probe()
+    let subject = coordinator(
+      root: root, defaults: store, probe: probe, isOnboardingComplete: { false })
+
+    await subject.runLaunch()
+
+    #expect(
+      eligibleRoutings(probe) == [.deferredOnboarding],
+      "onboarding outranks decline, matching the order runLaunch takes the gates")
+  }
+
+  /// The control. An install that could never have upgraded is NOT in the denominator, or the
+  /// completion rate would be diluted by every user who was never a candidate.
+  @MainActor
+  @Test func ineligibleInstallIsNotCountedInTheDenominator() async throws {
+    let root = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (store, suite) = try defaults()
+    defer { store.removePersistentDomain(forName: suite) }
+
+    // No prior admission at all: a first-run user.
+    let probe = Probe()
+    let subject = coordinator(root: root, defaults: store, probe: probe)
+    await subject.runLaunch()
+    #expect(eligibleRoutings(probe).isEmpty, "a first-run user was never a candidate")
+
+    // And an already-admitted current revision, which has nothing left to take.
+    let root2 = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root2) }
+    try stagePriorAdmission(root: root2)
+    let probe2 = Probe()
+    probe2.admitted = true
+    let subject2 = coordinator(root: root2, defaults: store, probe: probe2)
+    await subject2.runLaunch()
+    #expect(eligibleRoutings(probe2).isEmpty, "already on the current revision")
+  }
+
+  /// `upgrade_declined` reports a DURABLE refusal. Emitting one for a decline that failed to
+  /// persist would report an outcome the very next launch contradicts.
+  @MainActor
+  @Test func declinedEventFiresOnlyWhenTheDeclinePersisted() async throws {
+    let root = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (store, suite) = try defaults()
+    defer { store.removePersistentDomain(forName: suite) }
+
+    try stagePriorAdmission(root: root)
+
+    let ok = Probe()
+    let succeeds = coordinator(root: root, defaults: store, probe: ok)
+    #expect(succeeds.recordUserDecline(source: .remove))
+    #expect(
+      ok.events.contains(.upgradeDeclined(targetRevision: Self.currentRevision)),
+      "a persisted decline is reported")
+
+    let root2 = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root2) }
+    try stagePriorAdmission(root: root2)
+    let failed = Probe()
+    let fails = coordinator(
+      root: root2, defaults: store, probe: failed, writeMarker: { _ in false })
+    #expect(fails.recordUserDecline(source: .remove) == false)
+    #expect(
+      !failed.events.contains(.upgradeDeclined(targetRevision: Self.currentRevision)),
+      "an unpersisted decline is NOT reported")
+  }
+
   // MARK: - Onboarding deferral
 
   /// EG-1 polish is a LIMB. During first-run setup the HEART's model is downloading and dictation

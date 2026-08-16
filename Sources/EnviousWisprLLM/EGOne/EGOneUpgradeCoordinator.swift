@@ -51,12 +51,27 @@ public final class EGOneUpgradeCoordinator {
     case containment
   }
 
+  /// Where an ELIGIBLE upgrade actually went. Emitted for every eligible install, including the
+  /// ones that go nowhere, because the denominator is the point: an upgrade that never begins is
+  /// the exact failure this whole path exists to prevent, and counting only started attempts
+  /// would grade the successes and hide it.
+  public enum UpgradeRouting: String, Sendable, Equatable {
+    case started
+    case declined
+    case disabled
+    case deferredOnboarding = "deferred_onboarding"
+  }
+
   public enum Event: Sendable, Equatable {
     case legacyDetected
     case legacyRetired
     case legacyRetirementFailed(reason: FailureReason)
     case replacementCompleted
     case replacementDeclined
+    case upgradeEligible(
+      routing: UpgradeRouting, targetRevision: String,
+      deliveryEnabled: Bool, onboardingComplete: Bool)
+    case upgradeDeclined(targetRevision: String)
   }
 
   public static let shippedLegacyArtifact = TrustedArtifact(
@@ -224,6 +239,37 @@ public final class EGOneUpgradeCoordinator {
   /// `remove()` deletes only the roots the CURRENT manifest claims
   /// (`ModelDeliveryController.remove`), so a previous revision's shards outlive it — testing
   /// for files would resurrect a model the user deliberately deleted.
+  /// D2 + D2b ALONE — a prior revision was admitted and its bytes survive. Deliberately separate
+  /// from the decline check so eligibility can be classified BEFORE any gate: a declined or
+  /// disabled install is still an install that could have upgraded, and it belongs in the
+  /// denominator.
+  private var hasSupersededInstall: Bool {
+    PriorRevisionAdmission.supersededInstallSurvives(
+      identity: identity,
+      metadataDirectory: metadataDirectory,
+      installDirectory: installDirectory)
+  }
+
+  /// Which gate an eligible upgrade will actually meet, evaluated in the order the gates are
+  /// taken so the reported reason is the OUTERMOST one that stops it. `.started` is a statement
+  /// about routing, not about success: the fetch can still fail, and that failure is reported by
+  /// the shared `model_delivery.*` funnel rather than duplicated here.
+  /// Evaluated in the order `runLaunch` ACTUALLY takes the gates — disabled, then onboarding,
+  /// then decline — so the reported reason is the one that really stopped this install. An
+  /// earlier draft checked decline before onboarding and would have reported `.declined` for an
+  /// install that was in fact waiting on first-run setup.
+  ///
+  /// Both facts are passed in rather than re-read, so the routing cannot disagree with the gates
+  /// the same launch then takes.
+  private func currentRouting(
+    deliveryEnabled: Bool, onboardingComplete: Bool
+  ) -> UpgradeRouting {
+    if !deliveryEnabled { return .disabled }
+    if !onboardingComplete { return .deferredOnboarding }
+    if isRevisionDeclined { return .declined }
+    return .started
+  }
+
   private var isRevisionUpgradeOwed: Bool {
     guard !isRevisionDeclined else { return false }
     return PriorRevisionAdmission.supersededInstallSurvives(
@@ -251,18 +297,36 @@ public final class EGOneUpgradeCoordinator {
   // C2 - Prepare before the admitted return so an exact reintroduced monolith
   // is still retired.
   public func runLaunch() async {
-    guard isEnabled else { return }
+    // C16 - Classify ELIGIBILITY before every gate, and emit it before taking any of them.
+    //
+    // This is the denominator, and it must count the installs that go nowhere. #1386's ship
+    // criterion counted from `attempt_started`, which grades only the upgrades that began — but an
+    // upgrade that never begins is the exact failure this path exists to prevent, so that shape
+    // would have reported success while hiding it. Reading admission while the kill switch is off
+    // is a read, never a mutation, and matches what `adoptIfPresent` already does when disabled.
+    let admitted = await currentModelIsAdmitted()
+    let deliveryEnabled = isEnabled
+    let onboardingComplete = isOnboardingComplete()
+    if !admitted, hasSupersededInstall {
+      emit(
+        .upgradeEligible(
+          routing: currentRouting(
+            deliveryEnabled: deliveryEnabled, onboardingComplete: onboardingComplete),
+          targetRevision: identity.revision,
+          deliveryEnabled: deliveryEnabled,
+          onboardingComplete: onboardingComplete))
+    }
+
+    guard deliveryEnabled else { return }
 
     // C15 - Defer the WHOLE launch while first-run setup is unfinished, before preparation and
     // before any obligation is classified. Preparation can hash a 2.9 GB monolith, so gating only
     // the fetch would still put a limb in the heart's way. Nothing is lost by waiting: this is
     // re-entered the moment onboarding completes, in the same session.
-    guard isOnboardingComplete() else {
+    guard onboardingComplete else {
       deferredForOnboarding = true
       return
     }
-
-    let admitted = await currentModelIsAdmitted()
 
     // C11 - Classify the REVISION obligation BEFORE preparation runs.
     //
@@ -541,6 +605,9 @@ public final class EGOneUpgradeCoordinator {
   func recordUserDecline(source: DeclineSource) -> Bool {
     let declinesRevision = source == .remove ? isRevisionUpgradeOwed : automaticUpgradeInFlight
     guard !declinesRevision || writeRevisionDecline() else { return false }
+    // Emitted only after the decline is DURABLE. An event for a refusal that failed to persist
+    // would report an outcome the next launch is about to contradict.
+    if declinesRevision { emit(.upgradeDeclined(targetRevision: identity.revision)) }
 
     let wasOwed = isReplacementOwed
     guard clearOwedMarker() else { return false }

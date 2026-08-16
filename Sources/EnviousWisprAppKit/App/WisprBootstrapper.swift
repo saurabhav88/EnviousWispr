@@ -295,7 +295,7 @@ public final class WisprBootstrapper {
         isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })
       // `selected_provider` attaches here (settings in scope); coordinator
       // stays provider-ignorant.
-      coordinator.onEvent = EGOneTelemetryBridge.legacyUpgradeHandler(
+      coordinator.onEvent = EGOneTelemetryBridge.upgradeHandler(
         selectedProvider: { [weak settings] in settings?.llmProvider == .egOne })
       egOneUpgrade = (registration, coordinator)
     }
