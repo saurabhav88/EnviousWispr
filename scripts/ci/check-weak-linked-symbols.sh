@@ -258,6 +258,34 @@ if [ -n "$EMBEDDED" ]; then
     extra_loads=$(otool -l "$extra" 2>/dev/null |
       awk '/^ *cmd LC_LOAD(_WEAK)?_DYLIB/{c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
     extra_syms=$(nm -m -u "$extra" 2>/dev/null)
+
+    # **Its own deployment target, which the main executable's says nothing about.** A dependency
+    # rebuilt for macOS 15 refuses to load on 14 and takes the app down with it. NOT required to
+    # EQUAL the floor the way the main binary is: an embedded framework may legitimately target
+    # something older. It may only not exceed it.
+    extra_minos=$(otool -l "$extra" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
+    if [ -n "$extra_minos" ] && [ "$extra_minos" != "$DECLARED" ]; then
+      if [ "$(printf '%s\n%s\n' "$extra_minos" "$DECLARED" | sort -V | tail -1)" = "$extra_minos" ]; then
+        echo "    $(basename "$extra"): targets macOS $extra_minos, above the declared floor $DECLARED — it will not load for supported users" >&2
+        status=1
+      fi
+    fi
+
+    # **The newer-symbol patterns apply here too.** Checking embedded files only against the
+    # absent-at-baseline frameworks left the other half unguarded: an embedded framework that
+    # strongly imports SpeechAnalyzer aborts dyld on macOS 14 while the main executable passes.
+    extra_readable=$(printf '%s\n' "$extra_syms" | xcrun swift-demangle 2>/dev/null)
+    [ -n "$extra_readable" ] || extra_readable="$extra_syms"
+    for pattern in $NEWER_SYMBOL_PATTERNS; do
+      extra_hits=$(printf '%s\n' "$extra_readable" | /usr/bin/grep -c "$pattern")
+      [ "$extra_hits" -eq 0 ] && continue
+      extra_pattern_strong=$(printf '%s\n' "$extra_readable" | /usr/bin/grep "$pattern" | /usr/bin/grep -vc 'weak external')
+      if [ "$extra_pattern_strong" -ne 0 ]; then
+        echo "    $(basename "$extra"): $extra_pattern_strong strong $pattern symbols" >&2
+        status=1
+      fi
+    done
+
     for fw in $ABSENT_AT_BASELINE_FRAMEWORKS; do
       extra_load=$(printf '%s\n' "$extra_loads" | awk -v f="/$fw.framework/" 'index($2, f) {print $1; exit}')
       [ -n "$extra_load" ] || continue
