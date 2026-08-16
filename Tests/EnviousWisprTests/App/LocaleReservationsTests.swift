@@ -159,4 +159,41 @@ struct LocaleReservationsTests {
       "control: the fallback still applies; the count did not go negative and cancel this out")
     #expect(await reservations.useCount("fr-FR") == 1)
   }
+
+  // MARK: - The registration must happen inside the locked section
+
+  /// The whole point of registering a use is defeated if it lands AFTER the lock is dropped: for
+  /// as long as that window is open the claim reads as unused, and the next caller through the
+  /// lock evicts it. Asserted at source because the window is a scheduling property with no seam.
+  @Test("Reserving registers the use before it unlocks the transaction")
+  func reservationRegistersUseUnderTheLock() throws {
+    let url = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprLivePreview/Engines/ApplePreviewRecognizer.swift")
+    let source = LivePreviewNoAutoDownloadTests.codeOnly(
+      try String(contentsOf: url, encoding: .utf8))
+
+    guard let start = source.range(of: "package static func reserveLocale(") else {
+      Issue.record("reserveLocale not found; it was renamed or moved")
+      return
+    }
+    let rest = source[start.upperBound...]
+    let end = rest.range(of: "\n  }\n")?.lowerBound ?? rest.endIndex
+    let body = String(rest[..<end])
+
+    #expect(body.contains("acquire()"), "control: the extracted body is the locked transaction")
+    #expect(
+      body.contains("beginUse"),
+      "reserving must also register the use, or the claim is evictable the moment it is taken")
+
+    guard
+      let registered = body.range(of: "beginUse")?.lowerBound,
+      let unlocked = body.range(of: "release()", options: .backwards)?.lowerBound
+    else {
+      Issue.record("could not locate both the registration and the unlock")
+      return
+    }
+    #expect(
+      registered < unlocked,
+      "registering after the unlock leaves a window where the claim reads as unused")
+  }
 }

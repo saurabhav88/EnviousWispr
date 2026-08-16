@@ -71,17 +71,30 @@ package actor LocaleReservations {
 
   // MARK: - Who needs a claim
 
+  /// **Call this while still HOLDING the transaction lock.** Registering after unlocking leaves a
+  /// window where the claim reads as unused, and the next caller through the lock can evict the
+  /// locale out from under whoever just took it — which is the same defect as having no
+  /// registration at all, only harder to see. `ApplePreviewRecognizer.reserveLocale` does both
+  /// inside one locked section so no caller has to remember this.
   package func beginUse(_ tag: String) {
     uses[tag, default: 0] += 1
   }
 
-  package func endUse(_ tag: String) {
-    guard let count = uses[tag] else { return }
+  /// Give up one consumer's interest and report how many remain.
+  ///
+  /// **The count is the return value because the caller has to know whether to release the SYSTEM
+  /// reservation.** Releasing it while another consumer is still registered would drop the shared
+  /// claim and break them — a download finishing must not cancel the recording that happens to
+  /// need the same language.
+  @discardableResult
+  package func endUse(_ tag: String) -> Int {
+    guard let count = uses[tag] else { return 0 }
     if count <= 1 {
       uses.removeValue(forKey: tag)
-    } else {
-      uses[tag] = count - 1
+      return 0
     }
+    uses[tag] = count - 1
+    return count - 1
   }
 
   /// Which of `reserved` may be evicted, in the caller's order.

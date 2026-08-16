@@ -202,15 +202,20 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// The lock is held ACROSS the suspensions. An actor would not do — see `LocaleReservations`
   /// for why reentrancy makes actor isolation the wrong tool for this specific job.
   ///
-  /// **Reserving is not enough on its own: register the USE too.** A claim taken and then evicted
-  /// before it is consumed is worth nothing, and that is reachable because the lock is released
-  /// as soon as the transaction ends rather than held across a 30-second download. Callers pair
-  /// this with `LocaleReservations.shared.beginUse`/`endUse` so eviction skips claims that are
-  /// still needed.
+  /// **Reserving and registering the USE are ONE step, both under the lock.** A claim taken and
+  /// then evicted before it is consumed is worth nothing, and the lock cannot stay held across a
+  /// 30-second download, so the registration is what protects it afterwards. Registering after
+  /// unlocking would leave the claim reading as unused for exactly as long as it takes the next
+  /// caller through the lock to evict it — the same defect as no registration at all, only
+  /// harder to see. Doing both here means no caller can forget the pairing.
+  ///
+  /// **Every caller must pair this with `LocaleReservations.shared.endUse`**, and release the
+  /// system reservation only when that returns zero.
   package static func reserveLocale(_ locale: Locale) async throws {
     await LocaleReservations.shared.acquire()
     do {
       try await performReservation(locale)
+      await LocaleReservations.shared.beginUse(locale.identifier(.bcp47))
     } catch {
       await LocaleReservations.shared.release()
       throw error
@@ -318,21 +323,32 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     //
     // Cheap: `reserveLocale` returns immediately when the claim is already held, so the
     // steady state is one inventory read per recording and no eviction.
+    // Reserving also REGISTERS this session's use, atomically, so the claim cannot be evicted
+    // between being taken and being used. Released in `ApplePreviewSessionHandle.end()`, which
+    // the coordinator always calls — and if some path ever fails to, `evictable(from:)` fails
+    // soft rather than refusing every future download.
     try await Self.reserveLocale(locale)
-
-    // Registered for as long as this session transcribes, so a download starting mid-recording
-    // cannot evict the language being spoken. Released in `ApplePreviewSessionHandle.end()`,
-    // which the coordinator always calls — and if some path ever fails to, `evictable(from:)`
-    // fails soft rather than refusing every future download.
     let tag = locale.identifier(.bcp47)
-    await LocaleReservations.shared.beginUse(tag)
     do {
       let session = try await startSession(lookups: lookups, onText: onText)
       return ApplePreviewSessionHandle(recognizer: self, session: session, reservedTag: tag)
     } catch {
-      await LocaleReservations.shared.endUse(tag)
+      await Self.endUse(tag)
       throw error
     }
+  }
+
+  /// Give up one consumer's claim, releasing the system reservation only when nobody is left.
+  ///
+  /// **The zero check is the point.** A recording ending must not drop a claim a download is
+  /// still using, and vice versa — they legitimately overlap on the same language.
+  static func endUse(_ tag: String) async {
+    await LocaleReservations.shared.acquire()
+    let remaining = await LocaleReservations.shared.endUse(tag)
+    if remaining == 0 {
+      _ = await AssetInventory.release(reservedLocale: Locale(identifier: tag))
+    }
+    await LocaleReservations.shared.release()
   }
 
   /// Open a session. `onText` is called on every result with the text the user
@@ -630,7 +646,7 @@ struct ApplePreviewSessionHandle: LivePreviewEngineSession {
     await recognizer.endSession(session)
     // After the analyzer is finished, never before: until then this locale's assets are still
     // being read and evicting the claim would break the recording in flight.
-    await LocaleReservations.shared.endUse(reservedTag)
+    await ApplePreviewRecognizer.endUse(reservedTag)
   }
 }
 

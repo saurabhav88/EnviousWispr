@@ -154,13 +154,17 @@ struct ApplePackCatalogTests {
     let duringInstall = Gate()
     let releaseInstall = Gate()
     let observed = ObservedCount()
+    let released = ReleaseCount()
 
     let catalog = ApplePackCatalog(
       dependencies: .init(
         supportedTags: { [tag] },
         installedTags: { [tag] },
-        reserve: { _ in },
-        release: { _ in },
+        // Production's `reserve` routes to `ApplePreviewRecognizer.reserveLocale`, which
+        // registers the use atomically under the lock. The fake models that, or the test would
+        // be measuring its own omission rather than the catalogue.
+        reserve: { t in await LocaleReservations.shared.beginUse(t) },
+        release: { _ in await released.record() },
         install: { _ in
           // Mid-transfer: this is exactly when a recording could start and try to evict.
           await observed.record(await LocaleReservations.shared.useCount(tag))
@@ -183,6 +187,44 @@ struct ApplePackCatalogTests {
     #expect(
       await LocaleReservations.shared.useCount(tag) == 0,
       "and released afterwards, or the slot is locked for the rest of the process")
+    #expect(await released.count == 1, "with nobody else holding it, the reservation goes back")
+  }
+
+  /// The other half, and the one that breaks a user: a recording can be transcribing the same
+  /// language this install reused, which is reachable whenever the row the user pressed was
+  /// stale. Releasing the shared system claim then takes the asset out from under an analyzer
+  /// that is still reading it.
+  @Test("Installing does not release a reservation another consumer is still using")
+  func installLeavesAReservationOthersStillNeed() async throws {
+    let tag = "qq-SHAREDTEST"
+    let released = ReleaseCount()
+
+    // A recording is already transcribing this language.
+    await LocaleReservations.shared.beginUse(tag)
+    defer { Task { await LocaleReservations.shared.endUse(tag) } }
+
+    let catalog = ApplePackCatalog(
+      dependencies: .init(
+        supportedTags: { [tag] },
+        installedTags: { [tag] },
+        reserve: { t in await LocaleReservations.shared.beginUse(t) },
+        release: { _ in await released.record() },
+        install: { _ in }
+      ))
+
+    _ = try await catalog.install(tag: tag)
+
+    #expect(
+      await released.count == 0,
+      "releasing here drops the claim the in-flight recording is still reading assets through")
+    #expect(
+      await LocaleReservations.shared.useCount(tag) == 1,
+      "control: the recording's own registration survives the install")
+  }
+
+  private actor ReleaseCount {
+    private(set) var count = 0
+    func record() { count += 1 }
   }
 
   private actor ObservedCount {

@@ -56,8 +56,13 @@ struct LivePreviewSettingsView: View {
       }
     }
     .task {
-      guard isSupported, packs == nil else { return }
-      let model = LivePreviewPacksModel(catalog: makeCatalog())
+      guard isSupported else { return }
+      // Re-read on EVERY appearance, not only the first. The settings window is retained when
+      // closed, so a page that loaded once would keep showing that snapshot for the life of the
+      // app — past a download that finished in the background, past a macOS purge of a staged
+      // asset, past anything changed in System Settings. The catalogue exists precisely because
+      // this state is not ours to cache.
+      let model = packs ?? LivePreviewPacksModel(catalog: makeCatalog())
       packs = model
       await model.load()
     }

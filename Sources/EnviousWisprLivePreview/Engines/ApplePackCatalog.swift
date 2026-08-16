@@ -114,18 +114,30 @@ package actor ApplePackCatalog {
   /// download for no visible reason, and a recording starting mid-transfer is exactly the thing
   /// that would take it — Apple's five slots are shared and it evicts to make room.
   package func install(tag: String) async throws -> [LivePreviewPack] {
+    // `reserve` also REGISTERS this transfer's use, atomically, so nothing can evict the claim
+    // between taking it and downloading into it.
     try await deps.reserve(tag)
-    await LocaleReservations.shared.beginUse(tag)
     do {
       try await deps.install(tag)
     } catch {
-      await LocaleReservations.shared.endUse(tag)
-      await deps.release(tag)
+      await releaseIfUnused(tag)
       throw error
     }
-    await LocaleReservations.shared.endUse(tag)
-    await deps.release(tag)
+    await releaseIfUnused(tag)
     return await snapshot()
+  }
+
+  /// Hand back this transfer's claim, releasing the SYSTEM reservation only if nobody else is
+  /// still using the locale.
+  ///
+  /// **An unconditional release here would break an in-flight recording.** A preview can be
+  /// transcribing the same language this install just reused — reachable whenever the row the
+  /// user pressed was stale — and dropping the shared claim takes the asset out from under an
+  /// analyzer that is still reading it.
+  private func releaseIfUnused(_ tag: String) async {
+    let remaining = await LocaleReservations.shared.endUse(tag)
+    guard remaining == 0 else { return }
+    await deps.release(tag)
   }
 
   static func nativeName(for tag: String) -> String {

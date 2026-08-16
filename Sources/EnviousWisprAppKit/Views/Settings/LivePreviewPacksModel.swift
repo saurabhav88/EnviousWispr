@@ -41,8 +41,15 @@ final class LivePreviewPacksModel {
     self.catalog = catalog
   }
 
+  /// Re-read the list. Called on every appearance, not only the first.
+  ///
+  /// Clears the last failure: the page is reappearing with a fresh read, and a "Try again" left
+  /// over from a previous visit would sit next to a row the system now reports as Ready — the
+  /// same contradiction the re-read is the authority against.
   func load() async {
-    state = Self.state(for: await catalog.snapshot())
+    let packs = await catalog.snapshot()
+    failedTag = nil
+    state = Self.state(for: packs)
   }
 
   /// The ONE place that decides what a snapshot means.

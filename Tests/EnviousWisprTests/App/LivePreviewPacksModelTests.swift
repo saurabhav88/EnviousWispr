@@ -155,6 +155,57 @@ struct LivePreviewPacksModelTests {
     #expect(packs.first { $0.tag == "it-IT" }?.isInstalled == true)
   }
 
+  /// The settings window is RETAINED when closed, so the page can reappear with a model that
+  /// already loaded. A stale "Try again" would then sit beside a row the system now reports as
+  /// Ready — the same contradiction the re-read exists to settle.
+  @Test("Reappearing re-reads the list and drops a stale failure")
+  func loadRefreshesAndClearsStaleFailure() async {
+    let calls = Calls()
+    let entered = Gate()
+    let release = Gate()
+    let model = LivePreviewPacksModel(
+      catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release))
+
+    await model.load()
+    model.install(tag: "it-IT")
+    #expect(await entered.wait(), "the model never reached the post-failure refresh")
+    await release.open()
+    await model.installTask?.value
+    #expect(model.failedTag == "it-IT", "control: the failure really was recorded")
+
+    // The page closes and reopens.
+    await model.load()
+
+    #expect(model.failedTag == nil, "a fresh read must not carry the previous visit's failure")
+    #expect(
+      tags(model.state) == ["de-DE", "en-US", "it-IT"], "and it must publish what it just read")
+  }
+
+  /// The reload above is worthless if the page never asks for it. Asserted at source because a
+  /// SwiftUI `.task` modifier has no seam to drive from a unit test.
+  @Test("The page reloads on every appearance, not only the first")
+  func pageDoesNotSkipReloadOnReappearance() throws {
+    let url = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprAppKit/Views/Settings/LivePreviewSettingsView.swift")
+    let source = LivePreviewNoAutoDownloadTests.codeOnly(try String(contentsOf: url, encoding: .utf8))
+
+    guard let start = source.range(of: ".task {") else {
+      Issue.record(".task not found; the page's load path moved")
+      return
+    }
+    let rest = source[start.upperBound...]
+    let end = rest.range(of: "\n    }")?.lowerBound ?? rest.endIndex
+    let body = String(rest[..<end])
+
+    #expect(body.contains("load()"), "control: the extracted body is the real load path")
+    #expect(
+      !body.contains("packs == nil"),
+      """
+      Skipping the load when a model already exists means a retained window keeps showing its \
+      first snapshot forever, past finished downloads and past macOS purging a staged asset.
+      """)
+  }
+
   @Test("Cancelling during the post-failure refresh publishes nothing into the closed page")
   func cancelDuringFailureRefreshPublishesNothing() async {
     let calls = Calls()
