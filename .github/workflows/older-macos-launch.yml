@@ -100,11 +100,25 @@ jobs:
           echo "app_path=$APP" >> "$GITHUB_OUTPUT"
           echo "built: $APP"
 
+      # **Tarred, not uploaded as a directory.** `upload-artifact` neither preserves symlinks nor
+      # keeps permissions, and a macOS framework IS a symlink structure (Versions/Current and the
+      # top-level links). Uploading the bundle raw delivered a Sparkle.framework whose format
+      # `codesign` could not even determine — so the probe was launching a structurally broken app
+      # and everything it certified was about a bundle no user receives. A tarball round-trips the
+      # symlinks and the execute bits together, which fixes that and the permission loss at source.
+      - name: Package the app for transfer
+        id: pack
+        run: |
+          set -euo pipefail
+          APP="${{ steps.app.outputs.app_path }}"
+          tar -czf "$RUNNER_TEMP/enviouswispr-app.tar.gz" -C "$(dirname "$APP")" "$(basename "$APP")"
+          ls -lh "$RUNNER_TEMP/enviouswispr-app.tar.gz"
+
       - name: Upload the app for the older-macOS launch
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: enviouswispr-release-app
-          path: ${{ steps.app.outputs.app_path }}
+          path: ${{ runner.temp }}/enviouswispr-app.tar.gz
           retention-days: 1
           if-no-files-found: error
 
@@ -124,7 +138,18 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: enviouswispr-release-app
-          path: downloaded/EnviousWispr.app
+          path: downloaded
+
+      - name: Unpack the bundle
+        run: |
+          set -euo pipefail
+          mkdir -p extracted
+          tar -xzf downloaded/enviouswispr-app.tar.gz -C extracted
+          # Symlinks must have survived, or the framework is malformed again and the launch would
+          # be testing a bundle users never receive.
+          links=$(find extracted -type l | wc -l | tr -d ' ')
+          echo "==> symlinks preserved: $links"
+          [ "$links" -gt 0 ] || { echo "FAIL: no symlinks in the unpacked bundle; the framework structure did not survive transfer" >&2; exit 1; }
 
       - name: Launch and assert it survives
-        run: ./scripts/ci/assert-app-launches.sh downloaded/EnviousWispr.app
+        run: ./scripts/ci/assert-app-launches.sh extracted/EnviousWispr.app
