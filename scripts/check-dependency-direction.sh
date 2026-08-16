@@ -45,9 +45,16 @@ permitted_imports_for() {
     # than merely discouraged. Add EnviousWisprModelDelivery when the downloadable
     # engine lands; do not add anything else without re-reading why the limb exists.
     EnviousWisprLivePreview)       echo "EnviousWisprCore EnviousWisprPostProcessing" ;;
+    # #2108. The Live Preview engine backed by the downloadable universal model.
+    # It needs ASR (the WhisperKit runtime) and ModelDelivery (the admitted
+    # artifact), which is exactly why it cannot live in EnviousWisprLivePreview
+    # above. What it must NEVER get is Audio, Pipeline, Services or AppKit: the
+    # limb must not be able to reach capture, the recording path or the app
+    # shell. That is this line's entire job — keep the list at five.
+    EnviousWisprWhisperPreviewAdapter) echo "EnviousWisprCore EnviousWisprPostProcessing EnviousWisprLivePreview EnviousWisprASR EnviousWisprModelDelivery" ;;
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
     EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprObservabilityCore" ;;
-    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview" ;;
+    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter" ;;
     EnviousWispr)                  echo "EnviousWisprAppKit" ;;
     *)                             return 1 ;;
   esac

@@ -111,6 +111,32 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprLivePreview"
     ),
+    // #2108 (epic #2077 chunk 4). The Live Preview engine backed by the
+    // downloadable universal model.
+    //
+    // A SEPARATE TARGET because the two obvious homes each fail, for opposite
+    // reasons. `EnviousWisprLivePreview` cannot import ASR, and that restriction
+    // is the mechanism making a preview engine unable to reach the recording
+    // path — this is the first change to test it, so widening it would spend the
+    // guarantee rather than honour it. `EnviousWisprAppKit` can import
+    // everything, so placing the adapter there breaks no stated rule but puts
+    // domain implementation in the app shell and leaves it able to reach Audio
+    // and Pipeline forever after.
+    //
+    // This list is the point: it gets exactly the imports the adapter needs and
+    // keeps out the ones it must not have. `scripts/check-dependency-direction.sh`
+    // enforces it. Do not add Audio, Pipeline, AppKit or Services here.
+    .target(
+      name: "EnviousWisprWhisperPreviewAdapter",
+      dependencies: [
+        "EnviousWisprCore",
+        "EnviousWisprPostProcessing",
+        "EnviousWisprLivePreview",
+        "EnviousWisprASR",
+        "EnviousWisprModelDelivery",
+      ],
+      path: "Sources/EnviousWisprWhisperPreviewAdapter"
+    ),
     // Leaf module (Core only) wrapping the Contacts framework behind a narrow
     // read-only protocol for the Import-from-Contacts feature (#636). Consumed
     // by EnviousWisprAppKit; no .library product (internal-only).
@@ -208,6 +234,9 @@ let package = Package(
         "EnviousWisprModelDelivery",
         "EnviousWisprPostProcessing",
         "EnviousWisprLivePreview",
+        // #2108: composition only — `WhisperPreviewDeliveryWiring` constructs the
+        // adapter from the preview registration. The edge is one-way.
+        "EnviousWisprWhisperPreviewAdapter",
         "EnviousWisprAudio",
         "EnviousWisprServices",
         "EnviousWisprASR",
@@ -257,6 +286,7 @@ let package = Package(
         "EnviousWisprStorage",
         "EnviousWisprAudio",
         "EnviousWisprLivePreview",
+        "EnviousWisprWhisperPreviewAdapter",
         // #1525 PR I-B (Codex cloud review): ParakeetTranscriptionSentryErrorTests /
         // ParakeetModelLoadSentryErrorTests import this directly.
         "EnviousWisprFluidAudioBridge",
