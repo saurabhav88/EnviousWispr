@@ -92,13 +92,13 @@ expect 0 "the shipped binary passes" "$SUT" "$BIN"
 # The assertion fires. AppKit is linked normally, so guarding it MUST report strong symbols
 # AND a strong LC_LOAD_DYLIB. This one variant covers both failure kinds, which is why the
 # next case exists: to prove the load-command check can fail on its own.
-variant "$TMP/strong.sh" 'ABSENT_AT_BASELINE_FRAMEWORKS="FoundationModels"' 'ABSENT_AT_BASELINE_FRAMEWORKS="AppKit"'
+variant "$TMP/strong.sh" 'ABSENT_AT_BASELINE_FRAMEWORKS=.*' 'ABSENT_AT_BASELINE_FRAMEWORKS="AppKit"'
 expect 1 "a strongly-bound framework is rejected" "$TMP/strong.sh" "$BIN"
 
 # The load-command check must be shown to FIRE, not merely to be present. Exit code alone
 # cannot show it: a strongly-loaded framework usually has strong symbols too, so the symbol
 # check would explain the failure by itself. Asserting the message attributes the failure.
-variant "$TMP/load.sh" 'ABSENT_AT_BASELINE_FRAMEWORKS="FoundationModels"' 'ABSENT_AT_BASELINE_FRAMEWORKS="AVFoundation"'
+variant "$TMP/load.sh" 'ABSENT_AT_BASELINE_FRAMEWORKS=.*' 'ABSENT_AT_BASELINE_FRAMEWORKS="AVFoundation"'
 expect_output "must be LC_LOAD_WEAK_DYLIB" "a strongly-LOADED framework is named as such" "$TMP/load.sh" "$BIN"
 
 # The instrument's own control. If it cannot tell weak from strong, it must refuse to answer
@@ -110,14 +110,18 @@ expect_output "must be LC_LOAD_WEAK_DYLIB" "a strongly-LOADED framework is named
 # this mutant would stop refusing, and the self-test would block a change the guard permits.
 # `FoundationModels` cannot drift that way, because the guard itself requires it to be fully
 # weak — if it ever were not, the real check would fail before this control could mislead.
-variant "$TMP/badctl.sh" 'CONTROL_FRAMEWORK="AppKit"' 'CONTROL_FRAMEWORK="FoundationModels"'
+variant "$TMP/badctl.sh" 'CONTROL_FRAMEWORK=.*' 'CONTROL_FRAMEWORK="FoundationModels"'
 expect 2 "a control that reports weak refuses to give a verdict" "$TMP/badctl.sh" "$BIN"
 
-variant "$TMP/noctl.sh" 'CONTROL_FRAMEWORK="AppKit"' 'CONTROL_FRAMEWORK="NoSuchFrameworkXYZ"'
+variant "$TMP/noctl.sh" 'CONTROL_FRAMEWORK=.*' 'CONTROL_FRAMEWORK="NoSuchFrameworkXYZ"'
 expect 2 "an absent control refuses to give a verdict" "$TMP/noctl.sh" "$BIN"
 
 # A guard list matching nothing is a guard checking nothing, and must not pass.
-variant "$TMP/nofw.sh" 'NEWER_SYMBOL_PATTERNS="SpeechAnalyzer DictationTranscriber AssetInventory"' 'NEWER_SYMBOL_PATTERNS="NoSuchTypeXYZ"'
+# Matched by PREFIX, not by the full literal list. Pinning the whole value meant that extending
+# the watched types silently turned this mutation into a no-op — `variant()` caught it, which is
+# why it refuses a substitution that changes nothing, but a prefix match makes the case survive
+# the next edit to that list instead of needing one of its own.
+variant "$TMP/nofw.sh" 'NEWER_SYMBOL_PATTERNS=.*' 'NEWER_SYMBOL_PATTERNS="NoSuchTypeXYZ"'
 expect 2 "a symbol-pattern list matching nothing refuses to pass" "$TMP/nofw.sh" "$BIN"
 
 # **The regression that made this whole check vacuous for one type.** Matching against RAW nm

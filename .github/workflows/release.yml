@@ -605,6 +605,19 @@ jobs:
       - name: Check out the repository (for the compatibility check)
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          # **Pinned to main, because this job then EXECUTES what it checks out.**
+          #
+          # A `workflow_dispatch` run started from a feature branch would otherwise check out that
+          # branch and run its compatibility script inside a job holding `contents: write`.
+          # `persist-credentials: false` is not sufficient on its own: it keeps the token out of
+          # `.git/config`, but the script still runs before the steps that legitimately use
+          # `GITHUB_TOKEN`, and could alter the artifacts or `$GITHUB_PATH` those steps depend on.
+          # Unreviewed branch code must not be able to influence a published release.
+          #
+          # `main` rather than the tag: `preflight` above already pins itself the same way, and a
+          # dispatch that creates a new tag has no tag to check out yet. The provenance caveat
+          # below is the trade this makes explicit.
+          ref: main
           fetch-depth: 1
           persist-credentials: false
           path: repo

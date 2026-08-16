@@ -36,7 +36,26 @@ ABSENT_AT_BASELINE_FRAMEWORKS="FoundationModels"
 # (2) Types that are newer than the deployment target inside a framework that IS present. Only
 #     these symbols must be weak; the framework's load command and its baseline-era symbols are
 #     none of this guard's business. Matched against the mangled name, which carries the type.
-NEWER_SYMBOL_PATTERNS="SpeechAnalyzer DictationTranscriber AssetInventory"
+#
+# **The list must cover every post-baseline type the app actually imports.** Three of these were
+# watched and four were not, so a strong binding on `AnalyzerInput`, `SpeechModule`,
+# `SpeechModuleResult` or `AssetInstallationRequest` would have aborted dyld on macOS 14 with
+# this gate green. Measured on the current binary (demangled undefined symbols, weak/strong):
+#
+#     SpeechAnalyzer 15/0 strong      AnalyzerInput             5/0 strong
+#     DictationTranscriber 18/0       SpeechModule              9/0 strong
+#     AssetInventory 10/0             SpeechModuleResult        2/0 strong
+#                                     AssetInstallationRequest  4/0 strong
+#
+# `SpeechDetector` and `SpeechTranscriber` are deliberately ABSENT: they match zero symbols here,
+# and a pattern matching nothing is fatal by design further down, so adding them on the guess that
+# we might use them later would break the build today.
+#
+# Maintenance hazard, stated rather than assumed away: this list is hand-maintained, so adopting a
+# further macOS 26 Speech type without adding it here reopens exactly the gap this line closes.
+# Nothing detects that automatically; the check is to re-run the measurement above when the Speech
+# usage changes.
+NEWER_SYMBOL_PATTERNS="SpeechAnalyzer DictationTranscriber AssetInventory AnalyzerInput SpeechModule SpeechModuleResult AssetInstallationRequest"
 
 # A framework we link normally. Its symbols MUST come back strong. This is the instrument's
 # own control: if it ever reports weak, `nm` output has changed shape and every "0 strong
