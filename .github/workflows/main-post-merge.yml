@@ -261,9 +261,12 @@ jobs:
     needs: classify
     if: needs.classify.outputs.needs_build == 'true'
     runs-on: macos-26
-    # Worst observed for these steps is ~17 min (setup ~5, debug build 2.6,
-    # debug suite 9.5). 30 is ~1.75x that, sized from the measured spread rather
-    # than a round number.
+    # Whole-job duration over the 20 most recent successful runs: 666-1008s
+    # (11.1-16.8 min), median ~850s. The CI-speed pass added coverage
+    # instrumentation to this job (see the coverage step below); pr-check.yml's
+    # build-debug ran the same suite WITH coverage at 697-1194s on the same
+    # runner class, so ~20 min is the realistic new worst case. 30 keeps ~1.5x
+    # against that, sized from the measured spread rather than a round number.
     timeout-minutes: 30
 
     steps:
@@ -317,6 +320,7 @@ jobs:
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -destination 'platform=macOS,arch=arm64' \
             -resultBundlePath "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
+            -enableCodeCoverage YES \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64 2>&1 | tee xcode-test-debug.log
@@ -329,6 +333,48 @@ jobs:
             exit 1
           fi
           echo "==> Xcode executed $TESTS_RUN tests (debug)"
+
+      # #1600, MOVED here from pr-check.yml's build-debug lane in the CI-speed
+      # pass. It was always informational — no percentage gate, because coverage
+      # measures execution rather than assertion quality and a threshold would
+      # invite padding tests to hit a number. Instrumenting every first-party
+      # module cost that on the PR critical path for a figure nothing gated, so
+      # it now runs once per merge instead of once per push, on the same Debug
+      # suite and the same runner.
+      #
+      # Never allowed to fail this job: continue-on-error at the step level, plus
+      # internal fail-open logic with no `set -e`.
+      - name: Coverage summary (debug, informational only)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          REPORT=$(xcrun xccov view --report --json "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" 2>/dev/null) || true
+          if [ -z "$REPORT" ]; then
+            echo "==> Coverage summary unavailable (xccov produced no output)"
+            exit 0
+          fi
+          # The report's root `.lineCoverage` aggregates EVERY instrumented
+          # target, including the .xctest bundles themselves and third-party
+          # static libraries (FluidAudio alone carries ~45k executable lines) —
+          # inflating/diluting the number away from actual Sources/ coverage.
+          # Every first-party module is named `EnviousWispr*` 1:1 with its
+          # Sources/ directory (frameworks + the thin app shell + the ASR XPC
+          # service); filter to those and exclude .xctest/.bundle to isolate real
+          # production-code coverage. (#1600)
+          FIRST_PARTY=$(echo "$REPORT" | jq '
+            [.targets[] | select(.name | startswith("EnviousWispr"))
+              | select((.name | endswith(".xctest")) or (.name | endswith(".bundle")) | not)]
+            | {covered: (map(.coveredLines) | add // 0), executable: (map(.executableLines) | add // 0)}
+          ' 2>/dev/null)
+          COVERED=$(echo "$FIRST_PARTY" | jq -r '.covered // empty' 2>/dev/null)
+          EXECUTABLE=$(echo "$FIRST_PARTY" | jq -r '.executable // empty' 2>/dev/null)
+          if [ -n "$COVERED" ] && [ -n "$EXECUTABLE" ] && [ "$EXECUTABLE" -gt 0 ]; then
+            PCT_DISPLAY=$(awk -v c="$COVERED" -v e="$EXECUTABLE" 'BEGIN{printf "%.1f", (c/e)*100}')
+            echo "==> Debug-lane first-party line coverage: ${PCT_DISPLAY}% (${COVERED}/${EXECUTABLE} lines)"
+            echo "Debug-lane first-party line coverage: **${PCT_DISPLAY}%** (${COVERED}/${EXECUTABLE} lines — Sources/ only, excludes test bundles and third-party deps; informational, no gate)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "==> Coverage summary unavailable (could not parse xccov JSON or no first-party targets found)"
+          fi
 
       # The release job had failure diagnostics and the debug job did not, which
       # meant a debug-only failure on main left nothing to read. Same treatment

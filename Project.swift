@@ -103,6 +103,68 @@ func targetSettings(
   )
 }
 
+// TEST targets only. Identical to `projectSettings` in Debug and Dev; the Release
+// configuration drops optimization for the two unit-test bundles and nothing else.
+//
+// Why: `EnviousWisprTests` is one 128,735-line module, and compiling it at
+// `-O`/`wholemodule` is the single most expensive thing in CI. Measured on PR run
+// 31969994752, step `Build for testing (release, Xcode)`: the line
+// `SwiftDriver Compilation EnviousWisprTests normal arm64` at 20:25:13 to the step
+// end at 20:37:35 is 742 seconds — 12m22s optimizing test code that this step then
+// throws away without executing. The whole PR wall clock was ~28 minutes.
+//
+// What the Release TEST build is for is a CONFIGURATION check, not an optimization
+// one: a test file referencing a `#if DEBUG`-only Sources symbol without gating
+// itself compiles in Debug and vanishes in Release (pr-check.yml's
+// `Build for testing (release, Xcode)`; recurred twice in three days, #1358/#1498
+// and #1536/#1538). `DEBUG` comes from SWIFT_ACTIVE_COMPILATION_CONDITIONS
+// (`debugConfigSettings` above), never from SWIFT_OPTIMIZATION_LEVEL, so that
+// entire failure class — plus type checking, Sendable, actor isolation, access
+// control, `@testable` resolution, and test-bundle linking — is untouched here.
+//
+// Deliberately NOT set on the xcodebuild command line: a command-line
+// `SETTING=value` has highest precedence and applies to EVERY target in the
+// invocation, which would de-optimize the PRODUCT modules too. Per-target is what
+// the intent actually is, and it keeps `main-post-merge.yml`'s release suite
+// running unoptimized tests against fully optimized product code — so the
+// Debug/Release behavioural divergences that job exists to catch (#2070/#2083,
+// `Parser.defaultMaximumNestingLevel` is 20 under `#if DEBUG` and 256 otherwise)
+// stay caught.
+//
+// The one thing this gives up: optimization-sensitive behavior inside TEST code,
+// the reachable case being a side effect inside `assert(...)`, which `-O` strips
+// and `-Onone` keeps. Verified empty at the time of writing — `grep -rnE
+// "(^|[^.A-Za-z])assert\(" Tests/` returns 0 hits and there is no
+// `_isDebugAssertConfiguration` anywhere in the repo. Do not put a side effect
+// inside an `assert` in a test; use `#expect` or `precondition`.
+//
+// DEBUGGING POINTER, and the honest cost of this setting. Debug and Release now
+// compile TEST code differently in one more way than before, so a lane-specific
+// failure has one more axis to hide along. #2070 is the cautionary case: a test
+// passed in one configuration and failed in the other because
+// `Parser.defaultMaximumNestingLevel` is 20 under `#if DEBUG` and 256 otherwise,
+// costing ~40 minutes of red main (#2083). Ladder for a suspicious failure, in
+// order, because "just re-run it" cannot tell these apart:
+//   fails under load, passes isolated ....... machine contention (or app.log
+//                                             corruption if it is an AppLogger
+//                                             test: those write a marker to the
+//                                             shared log and read it back, so a
+//                                             second concurrent appender breaks
+//                                             UTF-8 boundaries and the read
+//                                             returns empty — #2080)
+//   fails isolated in Debug, passes Release .. configuration divergence
+//   fails isolated in BOTH ................... now it is the diff
+// Measured when this landed, so a future reader has a reference point: Debug
+// executed 5,631 tests and Release 5,197, a 434 gap. That gap is structural, not
+// a regression — `#if DEBUG` tests do not exist in the Release binary at all.
+// Compare Release against a Release baseline, never against Debug.
+let testTargetSettings = targetSettings(
+  releaseExtra: [
+    "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+    "SWIFT_COMPILATION_MODE": "singlefile",
+  ]
+)
+
 // Per-config IDENTITY (bundle id + Sparkle feed) is set on every config. The
 // `.dev` identity lives on BOTH Debug (PR2, kept for CI's unsigned debug build)
 // AND Dev (the local signed bundle). Dev additionally carries self-signed manual
@@ -474,7 +536,7 @@ let project = Project(
         .package(product: "SwiftParser"),
         .package(product: "SwiftSyntax"),
       ],
-      settings: projectSettings
+      settings: testTargetSettings
     ),
     .target(
       name: "EnviousWisprASRTests",
@@ -496,7 +558,7 @@ let project = Project(
         // resolved here too (Xcode doesn't propagate transitive static-link).
         .package(product: "FluidAudio"),
       ],
-      settings: projectSettings
+      settings: testTargetSettings
     ),
   ],
   schemes: [
