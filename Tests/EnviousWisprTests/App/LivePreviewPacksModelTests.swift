@@ -71,22 +71,28 @@ struct LivePreviewPacksModelTests {
   ///
   /// The initial `load()` reads straight through; only the SECOND read (the refresh) gates, which
   /// is what puts the model in the exact state the race needed.
+  /// `landedAnyway` models Apple installing the pack and THEN throwing, which is a different
+  /// outcome from a download that genuinely did not arrive and must not be reported as failure.
   private func makeRig(
     calls: Calls,
     enteredRefresh: Gate,
-    releaseRefresh: Gate
+    releaseRefresh: Gate,
+    landedAnyway: Bool = false
   ) -> ApplePackCatalog {
     ApplePackCatalog(
       dependencies: .init(
-        supportedTags: { ["en-US", "it-IT"] },
+        supportedTags: { ["en-US", "it-IT", "de-DE"] },
         installedTags: {
           let n = await calls.bumpInstalled()
           guard n >= 2 else { return ["en-US"] }
           await enteredRefresh.open()
           await releaseRefresh.wait()
-          // The refresh reports it INSTALLED, so a stale write is visible as a wrong answer
-          // rather than as an indistinguishable repeat of the starting state.
-          return ["en-US", "it-IT"]
+          // The refresh reports a DIFFERENT set from the initial read, so a stale write shows up
+          // as a wrong answer rather than as an indistinguishable repeat of the starting state.
+          // it-IT stays missing unless the caller asked for the landed-anyway case: the refresh
+          // is the authority on whether the download arrived, so what it says here decides
+          // whether the row is allowed to call itself failed.
+          return landedAnyway ? ["en-US", "de-DE", "it-IT"] : ["en-US", "de-DE"]
         },
         reserve: { _ in },
         release: { _ in },
@@ -115,6 +121,40 @@ struct LivePreviewPacksModelTests {
     #expect(!opened, "a gate nobody opens must report the deadline, not wedge the run")
   }
 
+  /// Apple can install the pack and then throw on something afterwards. Before this, the row
+  /// rendered "Ready" and "That download did not finish" together — two contradictory answers to
+  /// one question, with the wrong one being the answer the user acts on.
+  ///
+  /// Found because the fake here was already modelling exactly this case without saying so: its
+  /// refresh reported the pack installed while its install threw, and the suite asserted a
+  /// failure. The test was pinning the contradiction rather than catching it.
+  @Test("A download that landed despite throwing is not reported as a failure")
+  func installThatLandedAnywayIsNotAFailure() async {
+    let calls = Calls()
+    let entered = Gate()
+    let release = Gate()
+    let model = LivePreviewPacksModel(
+      catalog: makeRig(
+        calls: calls, enteredRefresh: entered, releaseRefresh: release, landedAnyway: true))
+
+    await model.load()
+    model.install(tag: "it-IT")
+    #expect(await entered.wait(), "the model never reached the post-failure refresh")
+    await release.open()
+    await model.installTask?.value
+
+    #expect(
+      model.failedTag == nil,
+      "the re-read is the authority: the pack is installed, so the error was not the outcome")
+    #expect(model.installingTag == nil)
+    // Control: the pack really is reported installed, or the assertion above proves nothing.
+    guard case .loaded(let packs) = model.state else {
+      Issue.record("expected a loaded snapshot")
+      return
+    }
+    #expect(packs.first { $0.tag == "it-IT" }?.isInstalled == true)
+  }
+
   @Test("Cancelling during the post-failure refresh publishes nothing into the closed page")
   func cancelDuringFailureRefreshPublishesNothing() async {
     let calls = Calls()
@@ -124,7 +164,8 @@ struct LivePreviewPacksModelTests {
       catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release))
 
     await model.load()
-    #expect(tags(model.state) == ["en-US", "it-IT"], "control: the initial read must land")
+    #expect(
+      tags(model.state) == ["de-DE", "en-US", "it-IT"], "control: the initial read must land")
     let before = model.state
 
     model.install(tag: "it-IT")
@@ -170,6 +211,8 @@ struct LivePreviewPacksModelTests {
     #expect(attempted == ["it-IT"], "a second install slipped through the window: \(attempted)")
     #expect(model.failedTag == "it-IT")
     #expect(model.installingTag == nil)
-    #expect(tags(model.state) == ["en-US", "it-IT"], "the refresh must still publish once done")
+    #expect(
+      tags(model.state) == ["de-DE", "en-US", "it-IT"],
+      "the refresh must still publish once done")
   }
 }

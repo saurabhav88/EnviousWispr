@@ -87,7 +87,12 @@ final class LivePreviewPacksModel {
         // is closed rather than handled, so there is no ordering left to get wrong.
         guard let self, !Task.isCancelled, self.generation == mine else { return }
         self.installingTag = nil
-        self.failedTag = tag
+        // Only call it a failure if the pack is STILL missing. Apple can install successfully and
+        // then throw on something afterwards, and the row would otherwise say "Ready" and "That
+        // download did not finish" at the same time — two contradictory answers to one question.
+        // The re-read above is the authority precisely so the error is not.
+        let landed = refreshed.contains { $0.tag == tag && $0.isInstalled }
+        self.failedTag = landed ? nil : tag
         self.state = Self.state(for: refreshed)
       }
     }

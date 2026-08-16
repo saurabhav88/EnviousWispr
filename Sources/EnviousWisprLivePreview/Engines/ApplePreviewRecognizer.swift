@@ -199,26 +199,40 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// and take Apple's refusal while capacity was recoverable. Whoever loses fails silently: no
   /// preview, or a download that did not happen.
   ///
-  /// The lock is held ACROSS the suspensions. An actor would not do — see `LocaleReservationLock`
+  /// The lock is held ACROSS the suspensions. An actor would not do — see `LocaleReservations`
   /// for why reentrancy makes actor isolation the wrong tool for this specific job.
+  ///
+  /// **Reserving is not enough on its own: register the USE too.** A claim taken and then evicted
+  /// before it is consumed is worth nothing, and that is reachable because the lock is released
+  /// as soon as the transaction ends rather than held across a 30-second download. Callers pair
+  /// this with `LocaleReservations.shared.beginUse`/`endUse` so eviction skips claims that are
+  /// still needed.
   package static func reserveLocale(_ locale: Locale) async throws {
-    await LocaleReservationLock.shared.acquire()
+    await LocaleReservations.shared.acquire()
     do {
       try await performReservation(locale)
     } catch {
-      await LocaleReservationLock.shared.release()
+      await LocaleReservations.shared.release()
       throw error
     }
-    await LocaleReservationLock.shared.release()
+    await LocaleReservations.shared.release()
   }
 
-  /// The transaction itself. Runs only under `LocaleReservationLock`.
+  /// The transaction itself. Runs only under `LocaleReservations`' lock.
   private static func performReservation(_ locale: Locale) async throws {
     let wanted = locale.identifier(.bcp47)
     let already = await AssetInventory.reservedLocales
     if already.contains(where: { $0.identifier(.bcp47) == wanted }) { return }
-    if already.count >= AssetInventory.maximumReservedLocales, let victim = already.first {
-      _ = await AssetInventory.release(reservedLocale: victim)
+    if already.count >= AssetInventory.maximumReservedLocales {
+      // Never evict a claim someone is still using. Apple's inventory knows only "reserved or
+      // not", so this asks the one thing that knows "still needed" — otherwise the sixth
+      // download can take the language the current recording is transcribing, and the preview
+      // dies with a missing-asset error that reads as a missing download.
+      let candidates = await LocaleReservations.shared.evictable(
+        from: already.map { $0.identifier(.bcp47) })
+      if let victim = candidates.first {
+        _ = await AssetInventory.release(reservedLocale: Locale(identifier: victim))
+      }
     }
     // The Bool matters, but it is NOT a success flag, and reading it as one was a
     // defect of its own. Measured against the real API: reserving a locale that is
@@ -305,8 +319,20 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // Cheap: `reserveLocale` returns immediately when the claim is already held, so the
     // steady state is one inventory read per recording and no eviction.
     try await Self.reserveLocale(locale)
-    let session = try await startSession(lookups: lookups, onText: onText)
-    return ApplePreviewSessionHandle(recognizer: self, session: session)
+
+    // Registered for as long as this session transcribes, so a download starting mid-recording
+    // cannot evict the language being spoken. Released in `ApplePreviewSessionHandle.end()`,
+    // which the coordinator always calls — and if some path ever fails to, `evictable(from:)`
+    // fails soft rather than refusing every future download.
+    let tag = locale.identifier(.bcp47)
+    await LocaleReservations.shared.beginUse(tag)
+    do {
+      let session = try await startSession(lookups: lookups, onText: onText)
+      return ApplePreviewSessionHandle(recognizer: self, session: session, reservedTag: tag)
+    } catch {
+      await LocaleReservations.shared.endUse(tag)
+      throw error
+    }
   }
 
   /// Open a session. `onText` is called on every result with the text the user
@@ -593,6 +619,8 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
 struct ApplePreviewSessionHandle: LivePreviewEngineSession {
   let recognizer: ApplePreviewRecognizer
   let session: ApplePreviewRecognizer.Session
+  /// The claim this session depends on, released back to the eviction pool when it ends.
+  let reservedTag: String
 
   func feed(_ samples: [Float]) async {
     await recognizer.feed(samples, session: session)
@@ -600,6 +628,9 @@ struct ApplePreviewSessionHandle: LivePreviewEngineSession {
 
   func end() async {
     await recognizer.endSession(session)
+    // After the analyzer is finished, never before: until then this locale's assets are still
+    // being read and evicting the claim would break the recording in flight.
+    await LocaleReservations.shared.endUse(reservedTag)
   }
 }
 

@@ -143,6 +143,86 @@ struct ApplePackCatalogTests {
     func markInstalled(_ tag: String) { installed.append(tag) }
   }
 
+  /// The rule that eviction skips in-use claims is worth nothing unless the installer actually
+  /// REGISTERS its use, and that wiring is the half a unit test of the rule cannot see.
+  ///
+  /// Uses a tag no other suite touches, because the registry is process-wide and suites run in
+  /// parallel.
+  @Test("Installing registers its claim for the whole transfer, and gives it back afterwards")
+  func installRegistersItsClaimWhileDownloading() async throws {
+    let tag = "qq-CATALOGTEST"
+    let duringInstall = Gate()
+    let releaseInstall = Gate()
+    let observed = ObservedCount()
+
+    let catalog = ApplePackCatalog(
+      dependencies: .init(
+        supportedTags: { [tag] },
+        installedTags: { [tag] },
+        reserve: { _ in },
+        release: { _ in },
+        install: { _ in
+          // Mid-transfer: this is exactly when a recording could start and try to evict.
+          await observed.record(await LocaleReservations.shared.useCount(tag))
+          await duringInstall.open()
+          await releaseInstall.wait()
+        }
+      ))
+
+    #expect(
+      await LocaleReservations.shared.useCount(tag) == 0, "control: nothing holds it beforehand")
+
+    async let install: [LivePreviewPack] = catalog.install(tag: tag)
+    #expect(await duringInstall.wait(), "the fake installer never ran")
+    await releaseInstall.open()
+    _ = try await install
+
+    #expect(
+      await observed.value == 1,
+      "the claim must be registered DURING the transfer, or eviction can take it mid-download")
+    #expect(
+      await LocaleReservations.shared.useCount(tag) == 0,
+      "and released afterwards, or the slot is locked for the rest of the process")
+  }
+
+  private actor ObservedCount {
+    private(set) var value = -1
+    func record(_ count: Int) { value = count }
+  }
+
+  /// Bounded latch, same shape as the model suite's: an unbounded wait would hang the run on the
+  /// exact regression this test exists to catch.
+  private actor Gate {
+    private var waiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] = []
+    private var isOpen = false
+
+    func open() {
+      isOpen = true
+      let pending = waiters
+      waiters = []
+      pending.forEach { $0.continuation.resume(returning: true) }
+    }
+
+    @discardableResult
+    func wait(timeout: Duration = .seconds(5)) async -> Bool {
+      if isOpen { return true }
+      let id = UUID()
+      return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+        waiters.append((id, continuation))
+        Task { [weak self] in
+          // settle: fail-fast deadline around the signal wait, never asserted on
+          try? await Task.sleep(for: timeout)
+          await self?.expire(id)
+        }
+      }
+    }
+
+    private func expire(_ id: UUID) {
+      guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+      waiters.remove(at: index).continuation.resume(returning: false)
+    }
+  }
+
   /// Returning a fresh snapshot rather than reporting success is what keeps the UI honest when
   /// macOS disagrees with us — including the purge case, where a pack vanishes on its own.
   @Test("Installing returns freshly read state, not an assumed success")

@@ -109,14 +109,21 @@ package actor ApplePackCatalog {
   ///
   /// Returns a fresh snapshot rather than reporting success, so the caller renders what the
   /// system now says instead of what we assume it should say.
+  /// **The claim is registered as IN USE for the whole transfer, not just while it is taken.**
+  /// Reserving and then losing the claim before `downloadAndInstall` consumes it would fail the
+  /// download for no visible reason, and a recording starting mid-transfer is exactly the thing
+  /// that would take it — Apple's five slots are shared and it evicts to make room.
   package func install(tag: String) async throws -> [LivePreviewPack] {
     try await deps.reserve(tag)
+    await LocaleReservations.shared.beginUse(tag)
     do {
       try await deps.install(tag)
     } catch {
+      await LocaleReservations.shared.endUse(tag)
       await deps.release(tag)
       throw error
     }
+    await LocaleReservations.shared.endUse(tag)
     await deps.release(tag)
     return await snapshot()
   }
