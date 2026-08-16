@@ -113,21 +113,20 @@ final class LivePreviewPacksModel {
     }
   }
 
-  /// Called when the page disappears. **Explicit, not `deinit`** — see the weak capture above:
-  /// `deinit` is backup cleanup only and cannot be relied on to run promptly.
-  ///
-  /// Cancelling does NOT claim to stop Apple's installer, which runs outside this process. It
-  /// stops US publishing into a page that has gone; the next open re-reads the truth.
-  func cancelInstall() {
-    installTask?.cancel()
-    installTask = nil
-    generation &+= 1
-    installingTag = nil
-  }
-
-  // NO `deinit` cleanup: `installTask` is `@MainActor` state and a nonisolated `deinit` cannot
-  // touch it. That is not a gap — the weak capture above means an in-flight task never keeps this
-  // model alive, so there is nothing for a deinit to rescue, and `cancelInstall()` on disappear is
-  // the real path. Reaching for a Task inside deinit to work around isolation would only launch
-  // cleanup and return, which is worse than not having it.
+  // **NOTHING happens when the page disappears, deliberately.**
+  //
+  // There used to be a `cancelInstall()` here, called from `onDisappear`. Its own doc admitted it
+  // could not stop Apple's installer — and that is exactly what made it harmful: it cleared
+  // `installingTag` while the download kept running, so a user who closed the page and came back
+  // mid-download saw an idle Download button and could start a SECOND install of the same pack.
+  // The state said finished; the system was still working.
+  //
+  // The settings window is retained, so this model outlives the page being closed and the install
+  // keeps reporting into it. Reopening therefore shows the spinner still spinning and refuses a
+  // second press, which is the truth. A page that is genuinely gone is covered by the weak capture
+  // in `install(tag:)`: the task publishes nothing and simply ends.
+  //
+  // No `deinit` either: `installTask` is `@MainActor` state and a nonisolated `deinit` cannot
+  // touch it. Not a gap — the weak capture means an in-flight task never keeps this model alive,
+  // so there is nothing for a deinit to rescue.
 }

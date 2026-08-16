@@ -84,9 +84,14 @@ struct LivePreviewPacksModelTests {
         supportedTags: { ["en-US", "it-IT", "de-DE"] },
         installedTags: {
           let n = await calls.bumpInstalled()
-          guard n >= 2 else { return ["en-US"] }
-          await enteredRefresh.open()
-          await releaseRefresh.wait()
+          if n == 1 { return ["en-US"] }
+          // ONLY the install's own refresh parks. Gating every later read made a test that
+          // reopens the page park too, so it passed on the latch's 5s deadline instead of on the
+          // behaviour — visible as a suite that ran in 5.15s rather than 0.05s.
+          if n == 2 {
+            await enteredRefresh.open()
+            await releaseRefresh.wait()
+          }
           // The refresh reports a DIFFERENT set from the initial read, so a stale write shows up
           // as a wrong answer rather than as an indistinguishable repeat of the starting state.
           // it-IT stays missing unless the caller asked for the landed-anyway case: the refresh
@@ -260,8 +265,15 @@ struct LivePreviewPacksModelTests {
       """)
   }
 
-  @Test("Cancelling during the post-failure refresh publishes nothing into the closed page")
-  func cancelDuringFailureRefreshPublishesNothing() async {
+  /// Closing the page must NOT make a running download look finished.
+  ///
+  /// There used to be a `cancelInstall()` on disappear which cleared the busy state while Apple's
+  /// installer kept going — its own comment admitted it could not stop the download. A user who
+  /// closed the page mid-download and came back saw an idle Download button and could start a
+  /// second install of the same pack. The window is retained, so the honest behaviour is to keep
+  /// reporting the one that is still running.
+  @Test("A download in flight stays in flight when the page is closed and reopened")
+  func downloadSurvivesThePageClosing() async {
     let calls = Calls()
     let entered = Gate()
     let release = Gate()
@@ -269,24 +281,27 @@ struct LivePreviewPacksModelTests {
       catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release))
 
     await model.load()
-    #expect(
-      tags(model.state) == ["de-DE", "en-US", "it-IT"], "control: the initial read must land")
-    let before = model.state
-
     model.install(tag: "it-IT")
-    #expect(await entered.wait(), "the model never reached the post-failure refresh")
+    #expect(await entered.wait(), "the install never reached the catalogue")
 
-    // Grab the handle before cancelling, because `cancelInstall()` drops it. This is the join
-    // that makes the assertion below deterministic.
-    let stale = model.installTask
-    model.cancelInstall()
-    await release.open()
-    await stale?.value
+    // The page disappears and comes back while the installer is still working. There is no
+    // disappear hook any more; reappearing just re-reads.
+    await model.load()
 
     #expect(
-      model.state == before,
-      "a task that outlived the page must not write to it after the last await")
-    #expect(model.installingTag == nil)
+      model.installingTag == "it-IT",
+      "a closed page must not make a running download look finished")
+
+    // And a second press is refused while the first is unresolved.
+    model.install(tag: "de-DE")
+    await release.open()
+    await model.installTask?.value
+
+    let attempted = await calls.installs
+    #expect(
+      attempted == ["it-IT"],
+      "a second download started while the first was live: \(attempted)")
+    #expect(model.installingTag == nil, "and the row settles once it really finishes")
   }
 
   /// The window itself, asserted directly. Before the fix, `installingTag` was cleared BEFORE the

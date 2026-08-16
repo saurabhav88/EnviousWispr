@@ -75,11 +75,6 @@ struct LivePreviewSettingsView: View {
       packs = model
       await model.load()
     }
-    .onDisappear {
-      // Explicit, because `deinit` is backup only: the install task captures the model weakly
-      // precisely so it cannot keep the page alive.
-      packs?.cancelInstall()
-    }
   }
 
   /// Same shape as `LanguageLockSheet.searchField`, deliberately: the app already has a language
