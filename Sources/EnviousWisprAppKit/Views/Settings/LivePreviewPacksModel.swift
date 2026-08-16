@@ -150,6 +150,19 @@ final class LivePreviewPacksModel {
       return .unsupportedLanguage
     case .blocked(.unsupportedSystem):
       return .unsupportedSystem
+    // #2108. This page resolves through `ApplePreviewEngineResolver.route`
+    // specifically, and Apple's resolver cannot produce either of these — one is
+    // about the downloadable universal model, the other about the transcription
+    // engine's streaming mode. Total rather than reachable, so the compiler stays
+    // exhaustive here without inventing a pack-page state that no path can enter.
+    //
+    // Do NOT "simplify" this to a `default`: exhaustiveness is what forced this
+    // file to be looked at when the enum grew, which is the whole point of the
+    // switch being total. If the picker ever routes this page through the
+    // universal engine (#2077 chunk 5), these stop being unreachable and need
+    // real states rather than a fallthrough nobody re-reads.
+    case .blocked(.modelNotInstalled), .blocked(.heartIsStreaming):
+      return .unsupportedLanguage
     }
   }
 

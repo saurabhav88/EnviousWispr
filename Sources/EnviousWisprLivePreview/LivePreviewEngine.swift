@@ -148,6 +148,39 @@ package enum LivePreviewUnavailability: Sendable, Equatable {
   /// Added in #2080, not #2078, because until the settings page existed nothing could produce
   /// this case and nothing could act on it — a branch no test can reach is where bugs hide.
   case installRequired(languageName: String)
+
+  /// The universal engine's model has not been downloaded to this Mac.
+  ///
+  /// **A sibling of `installRequired`, not a reuse of it.** That case names a
+  /// LANGUAGE, because Apple ships one pack per language and the useful sentence
+  /// is "French is not installed". This engine has ONE artifact covering every
+  /// language it supports, so there is no language to name and a copy that tried
+  /// would have to invent one. Same shape of refusal, different subject.
+  ///
+  /// A Bypass, not a Failure: nothing is broken and nothing should be retried.
+  /// The engine never starts a download on its own — that is the user's decision,
+  /// and the door for it arrives with the engine picker (#2077 chunk 5).
+  ///
+  /// Added in #2108 because this is the chunk where something can finally
+  /// produce it, matching this enum's own rule that a case arrives with the code
+  /// that can report and act on it.
+  case modelNotInstalled
+
+  /// The transcription engine is itself decoding continuously right now, so a
+  /// second decoder would contend with the heart for the same silicon.
+  ///
+  /// **Measured, not precautionary (#2108 Gate C).** Two WhisperKit models
+  /// resident together cost the heart nothing (ratio 1.00), but both DECODING
+  /// together cost it 50% — 591 ms to 885 ms, far outside the 591-626 ms
+  /// repeat-to-repeat envelope. The heart streams throughout a recording when
+  /// live transcription is on with a locked language
+  /// (`WhisperKitEngineAdapter.startRecording`), which is a continuous overlap
+  /// rather than a brief one.
+  ///
+  /// So the preview REFUSES in that configuration rather than degrading or
+  /// racing. It deliberately does not fall back to a lock the heart would await:
+  /// a display-only limb must never be able to stall transcription.
+  case heartIsStreaming
 }
 
 /// Whether a preview can run, and if not, why.

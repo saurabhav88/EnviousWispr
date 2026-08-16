@@ -30,6 +30,23 @@ public final class ModelDeliveryHome {
   public private(set) var whisperKitHandle: WhisperKitDeliveryHandle?
   public private(set) var whisperKitRegistration: DeliveryRegistration?
 
+  /// #2108 (epic #2077 chunk 4). The SECOND artifact in the `whisperKit` family:
+  /// the small multilingual model Live Preview offers as the universal
+  /// alternative to Apple's engine, which needs macOS 26 and only recognises
+  /// languages Apple has already installed.
+  ///
+  /// **Its install directory MUST differ from the transcription model's, and
+  /// that directory — not the manifest's `installLocation` token — is what
+  /// protects the data.** `CacheAdmission` treats an install directory as
+  /// exhaustive truth and deletes every top-level entry the active manifest does
+  /// not list, so pointing both registrations at one directory would make each
+  /// admission delete the other model's files: a heart-path artifact destroyed
+  /// from a limb. The manifest's token is documentary (`DeliveryManifest`
+  /// decodes it as a free `String` and never resolves it to a path); this line
+  /// is the authority.
+  public private(set) var whisperPreviewHandle: WhisperKitDeliveryHandle?
+  public private(set) var whisperPreviewRegistration: DeliveryRegistration?
+
   /// Observable mirror of the Parakeet delivery state for SwiftUI renderers.
   public private(set) var parakeetState: DeliveryState = .notReady
   /// Monotonic apply guard (EG-1 `installStateSeqApplied` precedent, made
@@ -115,6 +132,45 @@ public final class ModelDeliveryHome {
         await AppLogger.shared.log(
           "Multilingual delivery manifest unavailable — the engine will report not-installed: "
             + "\(error)",
+          level: .info, category: "Delivery")
+      }
+    }
+
+    // #2108: the Live Preview universal model. Registered here, beside the two
+    // above, because this type is the single owner of "which models exist and
+    // where they install"; a second home would create two answers to one
+    // question. No telemetry observer for the same reason the block above needs
+    // none — the observers are Parakeet-mirror-specific and the event bridge
+    // below them is already generic across every identity.
+    //
+    // No first-run baseline is recorded: that call exists to notice a model a
+    // user already had before delivery managed it, and nothing has ever put this
+    // artifact on a user's disk.
+    do {
+      let manifest = try DeliveryManifest.loadBundled(
+        resource: "whisperkit-preview-delivery-manifest", bundle: manifestBundle)
+      let appSupport = FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      let registration = DeliveryRegistration(
+        manifest: manifest,
+        // `whisper-preview`, deliberately a SIBLING of `whisper` and never that
+        // directory. See the property's own doc for what sharing one would do.
+        installDirectory: appSupport.appendingPathComponent(
+          "EnviousWispr/Models/whisper-preview", isDirectory: true),
+        // The SHARED metadata directory is safe: staging paths and admission
+        // markers key on the full `ModelIdentity.cacheKey`, which includes the
+        // variant, and the two manifests differ by variant. Only the install
+        // directory is exhaustive.
+        metadataDirectory: appSupport.appendingPathComponent(
+          "EnviousWispr/ModelDelivery", isDirectory: true))
+      whisperPreviewRegistration = registration
+      whisperPreviewHandle = WhisperKitDeliveryHandle(
+        controller: controller, registration: registration)
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "Live Preview model manifest unavailable — the universal preview engine will report "
+            + "not-installed: \(error)",
           level: .info, category: "Delivery")
       }
     }

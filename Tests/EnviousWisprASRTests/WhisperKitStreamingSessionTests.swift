@@ -884,6 +884,112 @@ import Testing
   private func waitForDecode(_ n: Int, _ s: WhisperKitStreamingSession) async {
     while await s.currentDecodeCount < n { await Task.yield() }
   }
+
+  // MARK: - #2108: the optional hypothesis observer (Live Preview limb)
+
+  /// The seam exists and carries DISPLAY text, not the confirmed prefix.
+  ///
+  /// Gate A measured confirmed-only and it is not a preview: after 11 s of speech
+  /// it held two words, because `requiredSegmentsForConfirmation` always withholds
+  /// the last two segments. So the observer must see the held-back tail too.
+  @Test("the hypothesis observer receives confirmed prefix PLUS the held-back tail")
+  func hypothesisObserverCarriesDisplayTextNotJustConfirmed() async throws {
+    final class Box: @unchecked Sendable {
+      var seen: [String] = []
+    }
+    let box = Box()
+    // Three segments with N=2: one confirms, two stay retained. Confirmed-only
+    // would show "one " alone; the display text must carry all three.
+    let fake = FakeDecoder(scripted: [
+      [result("one two three", [seg(0, 1, "one "), seg(1, 2, "two "), seg(2, 3, "three")])]
+    ])
+    let s = WhisperKitStreamingSession(
+      whisperKit: fake, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1),
+      onHypothesis: { box.seen.append($0) })
+
+    await s.start(audioSamplesProvider: fixedProvider([Float](repeating: 0.5, count: 32_000)))
+    // Wait on the DECODER's own call count — a real signal from the unit under
+    // test — rather than on yields. `Task.yield()` alone cannot get here: the
+    // loop's first act is `Task.sleep(for: cadence)`, so no number of yields
+    // advances it, and an earlier draft of this test failed for exactly that
+    // reason rather than for anything wrong with the observer.
+    for _ in 0..<200 where await fake.callCount == 0 {
+      // deadline-fallback: bounded poll around the decoder's own counter; the
+      // loop's cadence is real time, so a yield-only wait cannot reach it.
+      try? await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(await fake.callCount > 0, "the decode loop never ran — the test proved nothing")
+    await s.cancel()
+
+    let published = try #require(box.seen.first)
+    #expect(published.contains("one"), "the confirmed prefix must be present")
+    #expect(
+      published.contains("two") && published.contains("three"),
+      "the held-back tail must be present too — confirmed-only is not a preview (Gate A)")
+
+    // Two-way control: the confirmed prefix alone is genuinely SHORTER, so the
+    // assertion above distinguishes display text from confirmed text rather than
+    // passing because they happen to coincide.
+    let confirmedOnly = await s.confirmedTextForTests
+    #expect(
+      confirmedOnly.count < published.count,
+      "if these were equal this test would prove nothing about which one is published")
+  }
+
+  /// The heart passes nil, so its path must be identical. Asserted by running the
+  /// SAME script through both constructions and comparing the terminal outcome —
+  /// not by reading the code and concluding it looks unchanged.
+  @Test("a nil observer leaves the transcript and acceptance identical")
+  func nilObserverLeavesTheHeartPathIdentical() async throws {
+    let script: [[TranscriptionResult]] = [
+      [result("hello world", [seg(0, 1, "hello "), seg(1, 2, "world")])]
+    ]
+    let pcm = [Float](repeating: 0.5, count: 48_000)
+
+    let (heart, _) = session(script)
+    await heart.start(audioSamplesProvider: fixedProvider(pcm))
+    let heartResult = await heart.finalize(finalSamples: [], speechSegments: [])
+
+    final class Box: @unchecked Sendable { var seen: [String] = [] }
+    let box = Box()
+    let observed = WhisperKitStreamingSession(
+      whisperKit: FakeDecoder(scripted: script), decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1),
+      onHypothesis: { box.seen.append($0) })
+    await observed.start(audioSamplesProvider: fixedProvider(pcm))
+    let observedResult = await observed.finalize(finalSamples: [], speechSegments: [])
+
+    #expect(heartResult.text == observedResult.text)
+    #expect(heartResult.accepted == observedResult.accepted)
+  }
+
+  /// A wordless cycle must leave the last usable hypothesis standing rather than
+  /// blanking the preview. The observer fires only when the decode was HEARD,
+  /// the same signal that gates `lastDecodeSampleCount`.
+  @Test("an empty decode publishes nothing rather than an empty string")
+  func anEmptyDecodeDoesNotPublish() async throws {
+    final class Box: @unchecked Sendable { var seen: [String] = [] }
+    let box = Box()
+    let fake = FakeDecoder(scripted: [[result("", [])]])
+    let s = WhisperKitStreamingSession(
+      whisperKit: fake, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1),
+      onHypothesis: { box.seen.append($0) })
+
+    await s.start(audioSamplesProvider: fixedProvider([Float](repeating: 0.5, count: 32_000)))
+    for _ in 0..<200 where await fake.callCount == 0 {
+      // deadline-fallback: same bounded poll as above, for the same reason.
+      try? await Task.sleep(for: .milliseconds(5))
+    }
+    // Without this the emptiness assertion below passes vacuously on a loop that
+    // never decoded — which is precisely how a "nothing happened" test lies.
+    #expect(await fake.callCount > 0, "the decode loop never ran — the test proved nothing")
+    await s.cancel()
+
+    #expect(box.seen.isEmpty, "a wordless decode must not blank the preview")
+  }
+
 }
 
 /// Test sugar: attach word timings to a segment without repeating the full init.

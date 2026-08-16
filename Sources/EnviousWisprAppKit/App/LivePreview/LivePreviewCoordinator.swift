@@ -356,6 +356,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     case .unsupportedLanguage: return LivePreviewCopy.languageUnsupported
     case .installRequired(let languageName):
       return LivePreviewSettingsCopy.previewNeedsLanguagePack(languageName)
+    case .modelNotInstalled: return LivePreviewCopy.previewModelNotInstalled
+    case .heartIsStreaming: return LivePreviewCopy.heartIsStreaming
     }
   }
 
@@ -502,4 +504,12 @@ enum LivePreviewCopy {
   static let preparing = "Getting the preview ready..."
   /// Shown in the pill while the preview is running but has not heard words yet.
   static let listening = "Listening..."
+  /// #2108. The universal preview model has not been downloaded. Names the
+  /// action rather than the fault: nothing is broken, the user has simply not
+  /// chosen to download it yet.
+  static let previewModelNotInstalled = "Download the preview model in Settings to see words appear."
+  /// #2108 Gate C. Live transcription already decodes continuously while you
+  /// speak, and a second decoder would slow it by half (measured). Says what is
+  /// happening rather than naming a setting the reader has to go and find.
+  static let heartIsStreaming = "On-screen preview pauses while live transcription is on."
 }

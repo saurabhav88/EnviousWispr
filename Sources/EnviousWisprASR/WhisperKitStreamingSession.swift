@@ -163,6 +163,30 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// finalize ignores it. Empty until the first decode.
   private var retainedUnconfirmedSegments: [BenchmarkSegment] = []
 
+  /// #2108. Optional observer of the DISPLAY text after each successful
+  /// confirmation, for the Live Preview limb. Nil on the heart path, which is
+  /// every production construction that existed before this — so the heart's
+  /// behaviour is not merely unchanged, it is unreachable from here.
+  ///
+  /// **Display text, not the confirmed prefix.** Gate A measured the
+  /// confirmed-prefix-only alternative and it is not a preview: after 11 seconds
+  /// of speech it held two words, because `requiredSegmentsForConfirmation`
+  /// always withholds the last two segments and a short dictation has two or
+  /// three in total. So this carries `confirmedText + retainedUnconfirmedSegments`
+  /// — the same composition `finalizeLocalAgreement` releases — and the preview
+  /// revises itself as the speaker continues.
+  ///
+  /// **The callback must only ENQUEUE.** It is invoked on this actor, inside the
+  /// decode loop, so any await inside it delays the next decode. Custom Words and
+  /// main-actor publication belong on the consumer's side of a latest-value hand
+  /// off, never here: a display limb that can slow transcription is the one thing
+  /// this seam must not become.
+  private let onHypothesis: (@Sendable (String) -> Void)?
+
+  /// Last string handed to `onHypothesis`, so an unchanged hypothesis is not
+  /// republished. Owned by the loop like every other confirmed-stream field.
+  private var lastPublishedHypothesis = ""
+
   /// True while a loop decode is inside `whisperKit.transcribe` — read by
   /// finalize (after awaiting the loop's exit) to stamp the #1309
   /// `stop_while_decode_in_flight` telemetry field.
@@ -258,7 +282,8 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     requiredSegmentsForConfirmation: Int = 2,
     cadence: Duration = .seconds(1),
     conditionOnPriorText: Bool = false,
-    localAgreement: Bool = false
+    localAgreement: Bool = false,
+    onHypothesis: (@Sendable (String) -> Void)? = nil
   ) {
     self.whisperKit = whisperKit
     self.baseDecodingOptions = decodingOptions
@@ -266,6 +291,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     self.cadence = cadence
     self.conditionOnPriorText = conditionOnPriorText
     self.localAgreement = localAgreement
+    self.onHypothesis = onHypothesis
   }
 
   // MARK: WhisperKitIncrementalSession
@@ -281,6 +307,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     decodeCount = 0
     totalDecodeTimeMs = 0
     retainedUnconfirmedSegments = []
+    lastPublishedHypothesis = ""
     stoppedMidDecode = false
     stopSnapshotTaken = false
     loopDecodeInFlight = false
@@ -633,6 +660,30 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
         // gate routes genuine silence to release, fresh speech to the bounded
         // buffer decode).
         if heard { lastDecodeSampleCount = count }
+        // #2108: hand the limb the display text. AFTER the terminal re-check and
+        // the confirmation above, so a finalize that won the race never publishes;
+        // synchronous and unawaited, so the next decode is never delayed. Fires
+        // only when the decode was HEARD — an empty or wordless cycle leaves the
+        // last usable hypothesis standing rather than blanking the preview.
+        if let onHypothesis {
+          // Publish only a NON-EMPTY, CHANGED hypothesis.
+          //
+          // `heard` alone is not enough: a decode can be "heard" and still compose
+          // to an empty display string, and publishing that blanks the preview
+          // mid-sentence — worse than showing slightly stale words, because the
+          // user reads it as the app losing what they just said. Caught by
+          // `anEmptyDecodeDoesNotPublish`, which failed against the first version
+          // of this line.
+          //
+          // The change check also makes this a genuine latest-value seam: an
+          // unchanged hypothesis is not news, and the consumer should not be woken
+          // to re-render identical text.
+          let hypothesis = confirmedText + retainedUnconfirmedSegments.map(\.text).joined()
+          if !hypothesis.isEmpty, hypothesis != lastPublishedHypothesis {
+            lastPublishedHypothesis = hypothesis
+            onHypothesis(hypothesis)
+          }
+        }
         decodeCount += 1
         let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - decodeStart) * 1000)
         totalDecodeTimeMs += elapsedMs

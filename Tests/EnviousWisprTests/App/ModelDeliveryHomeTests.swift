@@ -86,4 +86,96 @@ struct ModelDeliveryHomeTests {
     #expect(box.endCalls == 0, "a refused claim is never released")
     #expect(box.wakeCalls == 0, "a refused claim never owes a wake")
   }
+
+  // MARK: - #2108: the Live Preview universal model registration
+
+  /// The whole point of chunk 4a, and the one thing in it that can destroy data.
+  ///
+  /// `CacheAdmission` treats an install directory as exhaustive truth and deletes
+  /// every top-level entry the active manifest does not list. If both WhisperKit
+  /// registrations pointed at one directory, admitting either model would delete
+  /// the other's files — the 1.6 GB transcription model, a heart-path artifact,
+  /// wiped by a display-only limb.
+  ///
+  /// Asserted against the REAL `installDirectory` URLs rather than the manifests'
+  /// `installLocation` tokens, because those tokens are documentary:
+  /// `DeliveryManifest` decodes `installLocation` as a free `String` and never
+  /// resolves it to a path. The directory is the authority, so the directory is
+  /// what this test reads.
+  @Test("the preview model installs to its own directory, never the transcription model's")
+  func previewModelInstallsToItsOwnDirectory() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle())
+
+    let transcription = try #require(home.whisperKitRegistration)
+    let preview = try #require(home.whisperPreviewRegistration)
+
+    #expect(
+      preview.installDirectory != transcription.installDirectory,
+      "two registrations sharing an install directory delete each other's files")
+    #expect(preview.installDirectory.lastPathComponent == "whisper-preview")
+    #expect(transcription.installDirectory.lastPathComponent == "whisper")
+
+    // Neither may be an ANCESTOR of the other either: the exhaustive sweep runs
+    // over a directory's top-level entries, so a nested install would put one
+    // model's folder inside the other's swept space. Equality alone would not
+    // catch that.
+    let previewPath = preview.installDirectory.standardizedFileURL.path
+    let transcriptionPath = transcription.installDirectory.standardizedFileURL.path
+    #expect(!previewPath.hasPrefix(transcriptionPath + "/"))
+    #expect(!transcriptionPath.hasPrefix(previewPath + "/"))
+  }
+
+  /// Everything that makes a collision plausible is genuinely true — same family,
+  /// same source repo, same pinned revision — so the separation above is carrying
+  /// real weight rather than restating an accident.
+  @Test("the two WhisperKit registrations differ only by variant and install directory")
+  func previewAndTranscriptionShareFamilyAndRevision() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle())
+
+    let transcription = try #require(home.whisperKitRegistration).manifest.identity
+    let preview = try #require(home.whisperPreviewRegistration).manifest.identity
+
+    #expect(preview.family == transcription.family)
+    #expect(preview.revision == transcription.revision)
+    #expect(preview.variant != transcription.variant)
+    #expect(preview.variant == "openai_whisper-small_216MB")
+  }
+
+  /// The shared metadata directory is deliberate and safe. Staging paths and
+  /// admission markers key on the full `ModelIdentity.cacheKey`, which includes
+  /// the variant, so two artifacts cannot collide there. Only the INSTALL
+  /// directory is exhaustive — pinning that distinction stops a future reader
+  /// "fixing" the shared metadata dir and losing the marker separation.
+  @Test("the two registrations deliberately share one metadata directory")
+  func previewAndTranscriptionShareMetadataDirectory() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle())
+
+    let transcription = try #require(home.whisperKitRegistration)
+    let preview = try #require(home.whisperPreviewRegistration)
+    #expect(preview.metadataDirectory == transcription.metadataDirectory)
+    #expect(
+      preview.manifest.identity.cacheKey != transcription.manifest.identity.cacheKey,
+      "the cache key is what keeps markers and staging apart in that shared directory")
+  }
+
+  /// A handle exists, so the artifact is reachable for download once chunk 4b
+  /// asks. Nil would mean the bundled manifest failed to load, which is the
+  /// can't-happen-in-release condition the sibling registrations also guard.
+  @Test("the preview registration produces a usable delivery handle")
+  func previewRegistrationProducesAHandle() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle())
+    #expect(home.whisperPreviewHandle != nil)
+  }
 }
