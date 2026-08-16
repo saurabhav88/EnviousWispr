@@ -122,16 +122,22 @@ def _bedrock_client():
             # like the other three (which pass explicit urllib timeouts) instead
             # of by whatever botocore defaults to.
             #
-            # max_attempts=1 disables botocore's OWN retries so polish_case is
-            # the single retry authority. Left at the default, a throttled case
-            # would be retried ~3x inside each of our 4 attempts -- up to 12
-            # requests with two independent backoff schedules interleaved, which
-            # is both slower to fail and impossible to reason about from the
-            # logs. The lever for throttling is --workers (the 16-worker run
-            # lost 168/1462 cases to 429s; 6 workers is the fix), not a second
-            # hidden retry layer.
+            # total_max_attempts=1 disables botocore's OWN retries so polish_case
+            # is the single retry authority. Left at the default, a throttled
+            # case would be retried inside each of our 4 attempts, with two
+            # independent backoff schedules interleaved -- slower to fail and
+            # impossible to read off the logs. The lever for throttling is
+            # --workers (the 16-worker Haiku arm lost 168/1462 cases to 429s;
+            # 6 workers is the fix), not a second hidden retry layer.
+            #
+            # It must be total_max_attempts, NOT max_attempts. botocore resolves
+            # `max_attempts: N` to `total_max_attempts: N + 1` (args.py:620),
+            # counting retries AFTER the initial request -- so max_attempts=1,
+            # which reads like "one attempt", actually permits two. Verified on a
+            # live client: max_attempts=1 -> {'total_max_attempts': 2},
+            # total_max_attempts=1 -> {'total_max_attempts': 1}.
             config=Config(
-                retries={"max_attempts": 1},
+                retries={"total_max_attempts": 1},
                 connect_timeout=15,
                 read_timeout=120,
             ),
