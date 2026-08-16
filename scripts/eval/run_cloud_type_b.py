@@ -121,6 +121,14 @@ GEMINI_THINKING_FAST = {
     "gemini-3.1-flash-lite": ("thinkingLevel", "minimal"),
     "gemini-3.1-flash-lite-preview": ("thinkingLevel", "minimal"),
     "gemini-3-flash-preview": ("thinkingLevel", "minimal"),
+    # 3.7 Flash accepts low/medium/high and REJECTS minimal with a 400 -- verified
+    # live 2026-08-16 and confirmed against Google's per-model table at
+    # ai.google.dev. It is therefore the first Flash-tier id that cannot reach
+    # zero thinking; `low` is its floor, not its off-state. Omitting the row would
+    # be worse than wrong: an absent id sends NO thinking field, and the Gemini 3
+    # default is now medium, so the arm would silently benchmark a MORE expensive
+    # setting than either the floor or what any other Flash row uses.
+    "gemini-3.7-flash": ("thinkingLevel", "low"),
     "gemini-3.1-pro-preview": ("thinkingLevel", "low"),
     "gemini-3.1-pro-preview-customtools": ("thinkingLevel", "low"),
     "gemini-2.5-flash": ("thinkingBudget", 0),
@@ -304,7 +312,7 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
     return text, meta
 
 
-BARE_PROMPT = (ROOT / "scripts/eval/prompts/cloud-fixed-polish-prompt-v6.txt").read_text().strip()
+BARE_PROMPT = (ROOT / "scripts/eval/prompts/cloud-fixed-polish-prompt-v7.txt").read_text().strip()
 
 
 def polish_case(

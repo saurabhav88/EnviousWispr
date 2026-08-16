@@ -57,7 +57,7 @@ JUDGE_MODEL = "gemini-3-pro-preview"
 # chunking, that reasoning stops holding: render through `scripts/eval/prompt_render`, which
 # drives the shipped `DefaultPromptPlanner`.
 POLISH_SYSTEM = (
-    (ROOT / "scripts/eval/prompts/cloud-fixed-polish-prompt-v6.txt").read_text().rstrip("\n")
+    (ROOT / "scripts/eval/prompts/cloud-fixed-polish-prompt-v7.txt").read_text().rstrip("\n")
 )
 
 # Plain user message, no sandwich: the fixed cloud prompt carries its own anti-instruction

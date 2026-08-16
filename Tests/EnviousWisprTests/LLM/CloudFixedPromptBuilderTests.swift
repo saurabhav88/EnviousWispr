@@ -7,8 +7,26 @@ import Testing
 struct CloudFixedPromptBuilderTests {
   let builder = CloudFixedPromptBuilder()
 
-  // v6 signature line — a stable substring of the fixed prompt.
-  let v6Signature = "You are the writing assistant inside a dictation app"
+  // Opening line of the fixed prompt. Stable across v6 and v7, so it proves the
+  // builder emits SOME fixed prompt — it cannot tell which one.
+  let fixedPromptOpening = "You are the writing assistant inside a dictation app"
+
+  // Clauses that exist in v7 and NOT in v6, one per behaviour change v7 shipped.
+  // Without these the suite passes against a silent revert to v6: the opening
+  // line above is byte-identical in both, so every assertion in this file would
+  // still be green while users got the old prompt back.
+  let v7OnlyClauses = [
+    // corrections resolve without collateral loss
+    "only the thing being corrected changes",
+    // name repair is refused when uncertain
+    "A name you are not certain about stays exactly as it was transcribed",
+    // spoken lists get one item per line
+    "every item gets its own line starting with",
+    // unfinished thoughts stay unfinished
+    "the thought stays unfinished exactly where they left it",
+    // doing nothing is often correct
+    "Often the right answer is to change almost nothing at all",
+  ]
 
   func makeInput(
     transcript: String = "hey um I was thinking we should ship this feature behind a flag today",
@@ -36,13 +54,21 @@ struct CloudFixedPromptBuilderTests {
 
   // MARK: - Fixed prompt + plain user message
 
-  @Test("system carries the fixed v6 prompt; user is a plain 'Transcript to clean' message")
+  @Test("system carries the fixed prompt; user is a plain 'Transcript to clean' message")
   func fixedPromptAndPlainUser() {
     let input = makeInput()
-    #expect(system(input).contains(v6Signature))
+    #expect(system(input).contains(fixedPromptOpening))
     #expect(user(input) == "Transcript to clean:\n\n\(input.transcript)")
     #expect(!user(input).contains("<transcript>"))
     #expect(!system(input).contains("<transcript>"))
+  }
+
+  @Test("the fixed prompt is v7, not merely some fixed prompt")
+  func promptIsV7() {
+    let s = system(makeInput())
+    for clause in v7OnlyClauses {
+      #expect(s.contains(clause), "v7 clause missing from the shipped prompt: \(clause)")
+    }
   }
 
   // MARK: - Mode invariance (the whole premise: no per-transcript segregation)
@@ -110,7 +136,7 @@ struct CloudFixedPromptBuilderTests {
     let s = system(makeInput(language: "French", vocab: [CustomWord(canonical: "EnviousWispr")]))
     #expect(s.contains("This transcript is in French"))
     #expect(s.contains("EnviousWispr"))
-    #expect(s.contains(v6Signature))
+    #expect(s.contains(fixedPromptOpening))
   }
 
   @Test("very short + app hint both present")
@@ -118,7 +144,7 @@ struct CloudFixedPromptBuilderTests {
     let s = system(makeInput(transcript: "ship it now", appName: "Notes"))
     #expect(s.contains("Very short input"))
     #expect(s.contains("dictating in Notes"))
-    #expect(s.contains(v6Signature))
+    #expect(s.contains(fixedPromptOpening))
   }
 
   @Test("list-shaped input + custom spelling — vocab and fixed prompt coexist")
@@ -127,7 +153,7 @@ struct CloudFixedPromptBuilderTests {
       makeInput(
         transcript: "grab milk bread eggs and coffee on the way home from EnviousWispr",
         vocab: [CustomWord(canonical: "EnviousWispr")]))
-    #expect(s.contains(v6Signature))
+    #expect(s.contains(fixedPromptOpening))
     #expect(s.contains("preferred spellings"))
   }
 }
