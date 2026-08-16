@@ -107,6 +107,17 @@ echo "==> built with: SDK $(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION
 
 version_gt() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ] && [ "$1" != "$2" ]; }
 
+# The comparator is controlled before anything is decided with it. A comparison that cannot be
+# performed returns an empty substitution, which reads as "not greater" — so an app targeting a
+# NEWER macOS than this runner would fall through to "baseline ok" and the probe would launch it
+# expecting success. 14.9 vs 14.10 separates a real version sort from a lexical one, and all
+# three legs are asserted so a comparator stuck on true or on false is caught either way.
+# (`sort -V` does work here: the macOS 14.8.7 runner reaches its RESIDUAL GAP block, which is
+# only reachable when this returns true for 14.8.7 over 14.0.)
+if ! version_gt "14.10" "14.9" || version_gt "14.9" "14.10" || version_gt "14.0" "14.0"; then
+  die "the version comparator is not ordering macOS versions correctly on this machine, so this job cannot tell whether the runner is old enough to prove anything" 2
+fi
+
 RUNNER_MAJOR=${RUNNER_VERSION%%.*}
 MINOS_MAJOR=${MINOS%%.*}
 if [ "$RUNNER_MAJOR" -gt "$MINOS_MAJOR" ]; then

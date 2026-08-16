@@ -163,6 +163,14 @@ else
   fail=$((fail + 1))
 fi
 
+# **The version comparator's own control must fire.** Every deployment-target and
+# LSMinimumSystemVersion verdict is a version comparison, so a comparator that cannot compare
+# would report everything acceptable — the fail-open shape, sitting inside the guard itself.
+variant "$TMP/badver.sh" 'version_is_above() .*' 'version_is_above() { return 1; }'
+expect_output "not ordering macOS versions correctly" \
+  "a comparator that cannot compare versions refuses to give a verdict" \
+  "$TMP/badver.sh" "$BIN"
+
 # Fails closed on every input it cannot measure.
 expect 2 "missing file" "$SUT" "$TMP/does-not-exist"
 expect 2 "not a Mach-O binary" "$SUT" "$SUT"

@@ -154,6 +154,31 @@ MANIFEST="${EW_PROJECT_MANIFEST:-$REPO_ROOT/Project.swift}"
 DECLARED=$(/usr/bin/grep -oE 'DeploymentTargets = \.macOS\("[0-9]+\.[0-9]+"\)' "$MANIFEST" | /usr/bin/grep -oE '[0-9]+\.[0-9]+' | head -1)
 [ -n "$DECLARED" ] || die "could not parse the declared macOS floor from $MANIFEST; the pattern has drifted and this assertion would silently stop running" 2
 
+# **The version comparator is controlled, like every other instrument in this file.**
+#
+# NOT because `sort -V` is unavailable here. That claim has been raised by review three times and
+# is false: `/usr/bin/sort` is `2.3-Apple (199)` and supports it, and the macOS 14.8.7 runner
+# PROVED it by printing its `RESIDUAL GAP` block, which is reachable only when the comparison
+# reports 14.8.7 > 14.0. Recorded so the fourth reviewer does not have to re-derive it, and so a
+# future reader does not "fix" a working comparison. What WOULD reopen the question: a runner
+# image whose `sort` is not Apple's, or the control below failing.
+#
+# The reason the control exists is the failure MODE that claim describes, which is real whatever
+# its cause. If the comparison could not be performed, the substitution would be empty, the
+# condition would read false, and a version ABOVE the floor would be reported acceptable — a
+# comparison that cannot run answering "fine". That is the same fail-open shape as everything
+# else this script guards, sitting in the guard itself.
+# <candidate> <floor>: true when candidate is strictly newer. One line so the self-test can
+# substitute it wholesale and prove the control below actually fires.
+version_is_above() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ] && [ "$1" != "$2" ]; }
+# 14.9 vs 14.10 separates a real version sort from a lexical one: lexically "14.10" sorts first.
+# All three legs are asserted, so a comparator stuck on true or on false is caught either way.
+if ! version_is_above "14.10" "14.9" ||
+   version_is_above "14.9" "14.10" ||
+   version_is_above "14.0" "14.0"; then
+  die "the version comparator is not ordering macOS versions correctly on this machine, so every deployment-target and LSMinimumSystemVersion verdict below would be unreliable" 2
+fi
+
 if [ "$MINOS" != "$DECLARED" ]; then
   die "binary targets macOS $MINOS but $MANIFEST declares $DECLARED. A raised target ships an app that will not launch for supported users, and every weak-linkage check below is relative to the target so it would still pass. Reconcile the two deliberately." 1
 fi
@@ -326,7 +351,7 @@ assert_ls_min() { # <label> <value> <is-main:0|1>; returns 1 if the value is una
       return 1
     fi
   elif [ "$value" != "$DECLARED" ] &&
-       [ "$(printf '%s\n%s\n' "$value" "$DECLARED" | sort -V | tail -1)" = "$value" ]; then
+       version_is_above "$value" "$DECLARED"; then
     echo "    $label is $value, above the declared floor $DECLARED" >&2
     return 1
   fi
@@ -450,7 +475,7 @@ if [ -n "$EMBEDDED" ]; then
       echo "    $(basename "$extra"): records no deployment target (neither LC_BUILD_VERSION nor LC_VERSION_MIN_MACOSX), so it cannot be certified to load on macOS $DECLARED" >&2
       status=1
     elif [ "$extra_minos" != "$DECLARED" ]; then
-      if [ "$(printf '%s\n%s\n' "$extra_minos" "$DECLARED" | sort -V | tail -1)" = "$extra_minos" ]; then
+      if version_is_above "$extra_minos" "$DECLARED"; then
         echo "    $(basename "$extra"): targets macOS $extra_minos, above the declared floor $DECLARED — it will not load for supported users" >&2
         status=1
       fi
