@@ -12,6 +12,19 @@ public enum AppConstants {
   }()
   public static let appSupportDir = "EnviousWispr"
   public static let transcriptsDir = "transcripts"
+  /// Child of `transcriptsDir` holding Escape Recovery rows that are not yet
+  /// permanent (#2087). Deliberately a SUBDIRECTORY: `TranscriptStore.loadAll()`
+  /// is non-recursive and filters on a `.json` path extension, so a pending row
+  /// is invisible to it — and to any older build — without needing a flag those
+  /// readers would have to remember to check. Location is the class; the
+  /// `escapeRecoveredAt` field is only the value.
+  public static let pendingTranscriptsDir = "pending"
+  /// How long an un-kept Escape Recovery row remains restorable (#2087, founder
+  /// 2026-08-16). Read-time evaluation against this window is authoritative;
+  /// on-disk cleanup is hygiene that cannot run while the app is not running,
+  /// so user-facing copy must say "removed within 24 hours", never "destroyed
+  /// at the deadline".
+  public static let pendingTranscriptRetention: TimeInterval = 24 * 60 * 60
   public static let onboardingWindowTitle = "Setup"
 
   /// Application Support directory for EnviousWispr.
