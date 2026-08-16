@@ -186,7 +186,6 @@ jobs:
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -destination 'platform=macOS,arch=arm64' \
             -resultBundlePath "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
-            -enableCodeCoverage YES \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64 | tee xcode-test-debug.log
@@ -202,45 +201,17 @@ jobs:
           fi
           echo "==> Xcode executed $TESTS_RUN tests (debug)"
 
-      # #1600 (CI-test-audit finding): coverage was never measured anywhere in
-      # CI, so nobody could ask "which production branches actually execute"
-      # with a number. Informational only — no percentage gate; coverage
-      # measures execution, not assertion quality, so a threshold here would
-      # invite padding tests to hit a number rather than testing real behavior.
-      # Never allowed to fail the required build-debug lane: continue-on-error
-      # at the step level, plus internal fail-open logic with no `set -e`.
-      - name: Coverage summary (debug, informational only)
-        if: steps.changes.outputs.needs_build == 'true'
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          REPORT=$(xcrun xccov view --report --json "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" 2>/dev/null) || true
-          if [ -z "$REPORT" ]; then
-            echo "==> Coverage summary unavailable (xccov produced no output)"
-            exit 0
-          fi
-          # Codex review: the report's root `.lineCoverage` aggregates EVERY
-          # instrumented target, including the .xctest bundles themselves and
-          # third-party static libraries (FluidAudio alone carries ~45k
-          # executable lines) — inflating/diluting the number away from actual
-          # Sources/ coverage. Every first-party module is named
-          # `EnviousWispr*` 1:1 with its Sources/ directory (frameworks + the
-          # thin app shell + the ASR XPC service); filter to those and exclude
-          # .xctest/.bundle to isolate real production-code coverage.
-          FIRST_PARTY=$(echo "$REPORT" | jq '
-            [.targets[] | select(.name | startswith("EnviousWispr"))
-              | select((.name | endswith(".xctest")) or (.name | endswith(".bundle")) | not)]
-            | {covered: (map(.coveredLines) | add // 0), executable: (map(.executableLines) | add // 0)}
-          ' 2>/dev/null)
-          COVERED=$(echo "$FIRST_PARTY" | jq -r '.covered // empty' 2>/dev/null)
-          EXECUTABLE=$(echo "$FIRST_PARTY" | jq -r '.executable // empty' 2>/dev/null)
-          if [ -n "$COVERED" ] && [ -n "$EXECUTABLE" ] && [ "$EXECUTABLE" -gt 0 ]; then
-            PCT_DISPLAY=$(awk -v c="$COVERED" -v e="$EXECUTABLE" 'BEGIN{printf "%.1f", (c/e)*100}')
-            echo "==> Debug-lane first-party line coverage: ${PCT_DISPLAY}% (${COVERED}/${EXECUTABLE} lines)"
-            echo "Debug-lane first-party line coverage: **${PCT_DISPLAY}%** (${COVERED}/${EXECUTABLE} lines — Sources/ only, excludes test bundles and third-party deps; informational, no gate)" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "==> Coverage summary unavailable (could not parse xccov JSON or no first-party targets found)"
-          fi
+      # #1600's coverage measurement MOVED to main-post-merge.yml's
+      # debug-validation job in the CI-speed pass. It was informational by
+      # explicit design — no percentage gate, `continue-on-error`, fail-open
+      # internals — so it never decided a merge, but `-enableCodeCoverage YES`
+      # instruments every first-party module on the PR critical path. The number
+      # is just as useful measured once per merge as once per push, and
+      # debug-validation runs the same Debug suite on the same runner. #1600's
+      # intent (be able to ask "which production branches actually execute" with
+      # a number) is preserved there, including the first-party-only xccov
+      # filtering. Do not re-add it here without a reason the number has to be
+      # per-PR.
 
   # Release lane: Xcode release build + Release test-target compile +
   # FoundationModels compile probe. Runs in parallel with build-debug (issue
@@ -461,29 +432,81 @@ jobs:
 
           echo "==> FoundationModels compile probe PASSED"
 
-      # #1836: scripts/eval/{apple_runner,alias_runner,prompt_render} are STANDALONE
-      # SwiftPM packages that path-depend on EnviousWisprCore. Nothing compiled
-      # them — not scripts/xcode-test.sh, not any workflow — so a public Core
-      # signature change broke them with a fully green local suite AND a green
-      # PR. #1770 collapsed LLMProviderConfig's two thinking optionals into one
-      # and left apple_runner uncompilable; 4,374 local tests passed and only a
-      # human reading the call site caught it.
-      #
-      # Compile-only: no run, no corpus, no model download. It lives INSIDE this
-      # lane on purpose. build-check is the only required status context, so a
-      # separate advisory job would reproduce the exact invisibility this fixes,
-      # and a new required context would need a ruleset change.
-      #
-      # `swift build` is correct here and does NOT contravene
-      # conventions.md RULE: xcode-build-engine-cli. That rule governs the app,
-      # XPC, release and repo-test gates; these packages are invisible to
-      # Tuist/Xcode, so SwiftPM is the only thing that can build them. Debug
-      # `swift build` is explicitly allowed as an informal compile check.
-      #
-      # prompt_render joined this loop when it was first tracked: it renders the
-      # per-model polish prompts the Ollama benchmark measures, so a Core prompt
-      # -builder signature change breaking it would silently invalidate the next
-      # benchmark rather than fail anything.
+  # #1836: scripts/eval/{apple_runner,alias_runner,prompt_render} are STANDALONE
+  # SwiftPM packages that path-depend on EnviousWisprCore. Nothing compiled
+  # them — not scripts/xcode-test.sh, not any workflow — so a public Core
+  # signature change broke them with a fully green local suite AND a green
+  # PR. #1770 collapsed LLMProviderConfig's two thinking optionals into one
+  # and left apple_runner uncompilable; 4,374 local tests passed and only a
+  # human reading the call site caught it.
+  #
+  # Compile-only: no run, no corpus, no model download.
+  #
+  # THIS WAS A STEP INSIDE build-release until the CI-speed pass. It sat there
+  # because "build-check is the only required status context, so a separate
+  # advisory job would reproduce the exact invisibility this fixes." That premise
+  # is right and the conclusion no longer follows: this job is NOT advisory — it
+  # is listed in build-check's `needs:` and in its fail-closed check, exactly like
+  # worker-tests and website-check already are, so it gates merges without any
+  # ruleset change. What it stops doing is sitting on the critical path.
+  #
+  # Measured on PR run 31969994752: 301s (20:37:42 to 20:42:43) at the END of
+  # build-release, which was the whole PR's critical path at 1668s. These packages
+  # read no DerivedData and have no dependency on the Xcode build in that job
+  # (Package.swift path-depends on the repo root only), so the sequencing was
+  # incidental, not required. As its own job the 301s overlaps build-debug's ~930s
+  # and costs zero wall clock.
+  #
+  # No build cache here on purpose: `.build/` would be a PR-written cache, and the
+  # post-merge-only cache policy (#804) keeps PR jobs restore-only to protect the
+  # 10 GiB repository budget. Cold is affordable once it is parallel.
+  #
+  # The cost, stated rather than glossed: this is a THIRD macOS runner per PR
+  # against the 5-slot macOS limit #804 weighed. One PR plus a post-merge is now 5
+  # and sits exactly at it; two PRs plus a post-merge is 8 and queues. That is
+  # acceptable for the reason measured when main-post-merge.yml was split into
+  # parallel jobs (#2033): queue time does NOT count against
+  # `timeout-minutes`, so oversubscription degrades to slower feedback and never to
+  # a killed job. This job also holds its slot for ~300s, not the ~1600s the lane it
+  # left holds, so it frees up long before the build lanes do.
+  #
+  # `swift build` is correct here and does NOT contravene the project's
+  # Xcode-build-engine policy. That policy governs the app,
+  # XPC, release and repo-test gates; these packages are invisible to
+  # Tuist/Xcode, so SwiftPM is the only thing that can build them. Debug
+  # `swift build` is explicitly allowed as an informal compile check.
+  #
+  # prompt_render joined this loop when it was first tracked: it renders the
+  # per-model polish prompts the Ollama benchmark measures, so a Core prompt
+  # -builder signature change breaking it would silently invalidate the next
+  # benchmark rather than fail anything.
+  eval-packages:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Full history for the same reason as the build lanes (#825): "Detect
+          # code changes" diffs pull_request.base.sha, which can predate a shallow
+          # clone when main advances mid-PR.
+          fetch-depth: 0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Detect code changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
+
+      # STEP-level gating, matching build-debug and website-check: a job-level
+      # `if` reports `skipped`, which a needs-based aggregator treats as
+      # not-success. A content-only PR runs this job, skips the work, succeeds.
       - name: Compile standalone eval packages
         if: steps.changes.outputs.needs_build == 'true'
         run: |
@@ -520,16 +543,16 @@ jobs:
             # a break behind `#if DEBUG` — a real class here, since Core carries
             # DEBUG-only members.
             #
-            # This is NOT the case conventions.md RULE: xcode-build-engine-cli
-            # forbids. That rule governs the APP release/DoD gate, where Xcode
-            # owns bundle and resource assembly. These two packages have no
+            # This is NOT the case the Xcode-build-engine policy
+            # forbids. That policy governs the APP release/DoD gate, where Xcode
+            # owns bundle and resource assembly. These three packages have no
             # Xcode representation at all, so SwiftPM is the only thing that can
             # build them, and release is what they are actually run as. The
             # local `check-swift-build-gate.sh` nudge does not apply to CI.
             echo "==> swift build -c release --package-path $pkg (locked to root pins)"
             swift build -c release --package-path "$pkg" --only-use-versions-from-resolved-file
           done
-          echo "==> Both standalone eval packages compile against current Core"
+          echo "==> All three standalone eval packages compile against current Core"
 
   # Worker unit suites (#1589). Deliberately UNCONDITIONAL and deliberately
   # running BOTH workers every time: the point is to catch a change under
@@ -626,7 +649,7 @@ jobs:
   # fail closed), but is skipped when the whole run is cancelled (a superseded
   # push) so the obsolete SHA shows "cancelled", not a false "Failure".
   build-check:
-    needs: [build-debug, build-release, worker-tests, website-check]
+    needs: [build-debug, build-release, eval-packages, worker-tests, website-check]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -702,16 +725,17 @@ jobs:
           python3 scripts/eval/tests/test_alias_scorer.py
           python3 scripts/eval/tests/test_v4_adversarial_runner.py
 
-      - name: Require both build lanes
+      - name: Require every lane
         run: |
           if [ "${{ needs.build-debug.result }}" != "success" ] \
              || [ "${{ needs.build-release.result }}" != "success" ] \
+             || [ "${{ needs.eval-packages.result }}" != "success" ] \
              || [ "${{ needs.worker-tests.result }}" != "success" ] \
              || [ "${{ needs.website-check.result }}" != "success" ]; then
-            echo "::error::lane failed — build-debug=${{ needs.build-debug.result }} build-release=${{ needs.build-release.result }} worker-tests=${{ needs.worker-tests.result }} website-check=${{ needs.website-check.result }}"
+            echo "::error::lane failed — build-debug=${{ needs.build-debug.result }} build-release=${{ needs.build-release.result }} eval-packages=${{ needs.eval-packages.result }} worker-tests=${{ needs.worker-tests.result }} website-check=${{ needs.website-check.result }}"
             exit 1
           fi
-          echo "==> Both build lanes and the worker unit suites passed."
+          echo "==> Both build lanes, the eval-package compile, and the worker unit suites passed."
 
       - name: Report build status
         run: |
