@@ -89,7 +89,9 @@ package struct LivePreviewEngineCandidate: Sendable {
 
   package let makeEngine: @Sendable () -> any LivePreviewEngine
 
-  package init(key: LivePreviewEngineKey, makeEngine: @escaping @Sendable () -> any LivePreviewEngine) {
+  package init(
+    key: LivePreviewEngineKey, makeEngine: @escaping @Sendable () -> any LivePreviewEngine
+  ) {
     self.key = key
     self.makeEngine = makeEngine
   }
@@ -137,6 +139,15 @@ package enum LivePreviewUnavailability: Sendable, Equatable {
   case unsupportedSystem
   /// The engine runs here but cannot transcribe the language that was asked for.
   case unsupportedLanguage
+  /// The engine supports this language, but its model is not on this Mac yet.
+  ///
+  /// **A Bypass, not a Failure.** Nothing is broken and nothing should be retried: the user has
+  /// to choose to download it. The associated value is the language's own name, so the message
+  /// can say WHICH language rather than the generic sentence that sends people hunting.
+  ///
+  /// Added in #2080, not #2078, because until the settings page existed nothing could produce
+  /// this case and nothing could act on it — a branch no test can reach is where bugs hide.
+  case installRequired(languageName: String)
 }
 
 /// Whether a preview can run, and if not, why.

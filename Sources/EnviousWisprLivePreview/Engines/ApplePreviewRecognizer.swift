@@ -91,8 +91,8 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
 
   // MARK: - Preparation
 
-  /// Claim the locale, install its assets if missing, and resolve the audio
-  /// format. Throws so the caller can degrade; it is never called from the heart.
+  /// Claim the locale and resolve the audio format. Throws so the caller can
+  /// degrade; it is never called from the heart.
   ///
   /// **No `SFSpeechRecognizer` authorization call, and no
   /// `com.apple.security.personal-information.speech-recognition` entitlement:
@@ -116,16 +116,64 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// future OS tightening this.
   /// Re-measure before contradicting: `scratchpad/speechprobe/` in the #1988
   /// session, or rebuild the probe from this doc comment.
+  ///
+  /// **This method MUST NOT download, install, remove or repair model bytes (#2080).** It opens
+  /// and warms what is already installed, nothing more.
+  ///
+  /// It used to call `downloadAndInstall()` right here, so pressing the record key could start an
+  /// unannounced ~140 MB download. The user asked to dictate; they did not ask for that. Founder
+  /// directive 2026-08-15: pack installation is the user's action, taken deliberately from the
+  /// Live Preview settings page.
+  ///
+  /// A missing pack is now reported by the RESOLVER as `.blocked(.installRequired)` before this
+  /// is ever reached, so the pill can say which language needs downloading instead of the user
+  /// waiting on a silent transfer. `ApplePackCatalog` is the only thing in this module that
+  /// installs, and only when asked.
   func prepare() async throws {
-    try await Self.reserveLocale(locale)
-
-    let probe = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
-    if let request = try await AssetInventory.assetInstallationRequest(supporting: [probe]) {
-      // The bytes come from Apple and are shared with the system's own dictation,
-      // so a user who already dictates in this language has paid for them already.
-      // We ship none of them.
-      try await request.downloadAndInstall()
+    // **Registered for the whole warm-up, not merely reserved.** An unregistered claim is
+    // evictable, so with the five slots full a download starting now could release this locale
+    // while `prepareToAnalyze` is still suspended on it — preparation then fails for a pack that
+    // is present. Registering protects it; the single `do/catch` below is what keeps the balance
+    // honest, because `prepare()` has five exits and an earlier version that registered here
+    // leaked one per prepared language.
+    try await Self.acquireLocaleForSession(locale)
+    let claimedTag = locale.identifier(.bcp47)
+    do {
+      try await performPrepare()
+    } catch {
+      await Self.endUse(claimedTag)
+      throw error
     }
+    // **Give the claim BACK, system reservation included.**
+    //
+    // Keeping it was a warm-up optimisation, and it was the source of every eviction race in this
+    // file: each language you previewed left a claim behind, so a multilingual user reached
+    // Apple's five-slot cap through ordinary use, and from then on every new claim had to evict
+    // somebody else's. Recordings already return theirs when they end; warm-up was the one path
+    // that did not.
+    //
+    // What this establishes, exactly: held claims are now proportional to work IN FLIGHT rather
+    // than to the number of languages ever previewed. Before, previewing your sixth language was
+    // enough to reach the cap and stay there for the rest of the process; now nothing accumulates
+    // across recordings. Three code paths register a claim — warm-up (here), `openSession`, and
+    // the catalogue's download — each releasing on every exit.
+    //
+    // NOT established, and deliberately not claimed: that the cap of five is now unreachable. That
+    // would need a bound on concurrent work, and there is none at this layer — the one-download-
+    // at-a-time rule lives in the settings model, not here. Eviction therefore remains a real path
+    // and keeps its tests; this change removes the accumulation that made it routine.
+    //
+    // The cost is one inventory call at `openSession`, which already re-acquires anyway.
+    await Self.endUse(claimedTag)
+  }
+
+  /// The warm-up itself. Runs inside `prepare()`'s registration.
+  private func performPrepare() async throws {
+
+    // Built to negotiate the audio format, NOT to install anything. Constructing a
+    // `DictationTranscriber` is inert; only `assetInstallationRequest` + `downloadAndInstall`
+    // fetch bytes, and neither appears in this method any more.
+    let probe = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
 
     guard
       let source = AVAudioFormat(
@@ -181,12 +229,82 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// `maximumReservedLocales` is 5 on macOS 26.6 and exceeding it is a runtime
   /// refusal (`SFSpeechError` code 11), so a sixth claim evicts the oldest rather
   /// than throwing. The reservation is per-app and does not survive the process.
-  private static func reserveLocale(_ locale: Locale) async throws {
+  /// **Serialized as a whole, because read/evict/reserve is a TRANSACTION.** Two callers share
+  /// it now — a recording claiming the language it is about to transcribe, and the settings page
+  /// claiming one it is about to download — and pressing Download does not stop the record key
+  /// working. Both suspend three times inside here, so without the lock both can act on the same
+  /// five-slot reading, both decide to evict, or one reserve into a table the other just filled
+  /// and take Apple's refusal while capacity was recoverable. Whoever loses fails silently: no
+  /// preview, or a download that did not happen.
+  ///
+  /// The lock is held ACROSS the suspensions. An actor would not do — see `LocaleReservations`
+  /// for why reentrancy makes actor isolation the wrong tool for this specific job.
+  ///
+  /// **Reserving and registering the USE are ONE step, both under the lock.** A claim taken and
+  /// then evicted before it is consumed is worth nothing, and the lock cannot stay held across a
+  /// 30-second download, so the registration is what protects it afterwards. Registering after
+  /// unlocking would leave the claim reading as unused for exactly as long as it takes the next
+  /// caller through the lock to evict it — the same defect as no registration at all, only
+  /// harder to see. Doing both here means no caller can forget the pairing.
+  ///
+  /// **Every caller must pair this with `LocaleReservations.shared.endUse`**, and release the
+  /// system reservation only when that returns zero.
+  package static func reserveLocale(_ locale: Locale) async throws {
+    await LocaleReservations.shared.acquire()
+    do {
+      try await performReservation(locale)
+    } catch {
+      await LocaleReservations.shared.release()
+      throw error
+    }
+    await LocaleReservations.shared.release()
+  }
+
+  /// Reserve AND register a long-lived use, in ONE locked step. **Caller MUST pair this with
+  /// `endUse`.**
+  ///
+  /// **Two entry points, because one of them cannot be balanced safely.** `prepare()` leaves
+  /// through five exits (three guards, a catch, and the end), so making IT register a use meant
+  /// balancing all five — and the version that tried leaked one registration per prepared
+  /// language, monotonically, until the registry considered everything in use and the eviction
+  /// protection silently degraded to its fallback. Splitting the API makes that leak
+  /// unexpressible rather than handled: `reserveLocale` registers nothing and needs no pairing,
+  /// and only a caller with a clear end (a session, a download) takes the registering variant.
+  ///
+  /// Registration stays INSIDE the lock, which is the whole reason this is not two calls: between
+  /// an unlocked reserve and a later register, the claim reads as unused and the next caller
+  /// through the lock can evict it.
+  ///
+  /// A claim taken by `reserveLocale` may therefore be evicted before it is used. That is
+  /// acceptable: it is a warm-up optimisation, and every consumer that actually depends on it
+  /// takes it again here.
+  package static func acquireLocaleForSession(_ locale: Locale) async throws {
+    await LocaleReservations.shared.acquire()
+    do {
+      try await performReservation(locale)
+      await LocaleReservations.shared.beginUse(locale.identifier(.bcp47))
+    } catch {
+      await LocaleReservations.shared.release()
+      throw error
+    }
+    await LocaleReservations.shared.release()
+  }
+
+  /// The transaction itself. Runs only under `LocaleReservations`' lock.
+  private static func performReservation(_ locale: Locale) async throws {
     let wanted = locale.identifier(.bcp47)
     let already = await AssetInventory.reservedLocales
     if already.contains(where: { $0.identifier(.bcp47) == wanted }) { return }
-    if already.count >= AssetInventory.maximumReservedLocales, let victim = already.first {
-      _ = await AssetInventory.release(reservedLocale: victim)
+    if already.count >= AssetInventory.maximumReservedLocales {
+      // Never evict a claim someone is still using. Apple's inventory knows only "reserved or
+      // not", so this asks the one thing that knows "still needed" — otherwise the sixth
+      // download can take the language the current recording is transcribing, and the preview
+      // dies with a missing-asset error that reads as a missing download.
+      let candidates = await LocaleReservations.shared.evictable(
+        from: already.map { $0.identifier(.bcp47) })
+      if let victim = candidates.first {
+        _ = await AssetInventory.release(reservedLocale: Locale(identifier: victim))
+      }
     }
     // The Bool matters, but it is NOT a success flag, and reading it as one was a
     // defect of its own. Measured against the real API: reserving a locale that is
@@ -256,8 +374,48 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     lookups: WordCorrector.Lookups?,
     onText: @escaping @Sendable (String) -> Void
   ) async throws -> any LivePreviewEngineSession {
-    let session = try await startSession(lookups: lookups, onText: onText)
-    return ApplePreviewSessionHandle(recognizer: self, session: session)
+    // **Re-assert the reservation here, not only in `prepare()`.**
+    //
+    // A prepared engine is CACHED and reused for every later recording without preparing
+    // again (`LivePreviewCoordinator.ensurePrepared` returns early on a key match), so a claim
+    // taken once has to survive arbitrarily long. It does not: reserving evicts the
+    // oldest claim when Apple's five slots are full, and the language-pack installer takes a
+    // slot too, so downloading a language can evict the very locale this engine is previewing.
+    //
+    // Losing it is silent HERE and surfaces far away as "No GeneralASR asset for language
+    // <x>", which reads as a missing download and sends the investigation the wrong way — see
+    // the note on `reserveLocale`, where that cost three rounds on #1988. The engine now
+    // guarantees its own precondition instead of trusting that nothing disturbed it, which
+    // covers every way a claim can be lost rather than only the one we found.
+    //
+    // Cheap: `acquireLocaleForSession` returns immediately when the claim is already held, so the
+    // steady state is one inventory read per recording and no eviction.
+    // Reserving also REGISTERS this session's use, atomically, so the claim cannot be evicted
+    // between being taken and being used. Released in `ApplePreviewSessionHandle.end()`, which
+    // the coordinator always calls — and if some path ever fails to, `evictable(from:)` fails
+    // soft rather than refusing every future download.
+    try await Self.acquireLocaleForSession(locale)
+    let tag = locale.identifier(.bcp47)
+    do {
+      let session = try await startSession(lookups: lookups, onText: onText)
+      return ApplePreviewSessionHandle(recognizer: self, session: session, reservedTag: tag)
+    } catch {
+      await Self.endUse(tag)
+      throw error
+    }
+  }
+
+  /// Give up one consumer's claim, releasing the system reservation only when nobody is left.
+  ///
+  /// **The zero check is the point.** A recording ending must not drop a claim a download is
+  /// still using, and vice versa — they legitimately overlap on the same language.
+  static func endUse(_ tag: String) async {
+    await LocaleReservations.shared.acquire()
+    let remaining = await LocaleReservations.shared.endUse(tag)
+    if remaining == 0 {
+      _ = await AssetInventory.release(reservedLocale: Locale(identifier: tag))
+    }
+    await LocaleReservations.shared.release()
   }
 
   /// Open a session. `onText` is called on every result with the text the user
@@ -544,6 +702,8 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
 struct ApplePreviewSessionHandle: LivePreviewEngineSession {
   let recognizer: ApplePreviewRecognizer
   let session: ApplePreviewRecognizer.Session
+  /// The claim this session depends on, released back to the eviction pool when it ends.
+  let reservedTag: String
 
   func feed(_ samples: [Float]) async {
     await recognizer.feed(samples, session: session)
@@ -551,6 +711,9 @@ struct ApplePreviewSessionHandle: LivePreviewEngineSession {
 
   func end() async {
     await recognizer.endSession(session)
+    // After the analyzer is finished, never before: until then this locale's assets are still
+    // being read and evicting the claim would break the recording in flight.
+    await ApplePreviewRecognizer.endUse(reservedTag)
   }
 }
 
@@ -577,7 +740,7 @@ package enum ApplePreviewEngineResolver {
   /// Synchronous and separate from `resolve` because the overlay needs the answer
   /// while deciding pill geometry, where there is nothing to await. Same OS check,
   /// asked from the one place that knows why it applies.
-  static var isSupportedOnThisSystem: Bool {
+  package static var isSupportedOnThisSystem: Bool {
     if #available(macOS 26.0, *) { return true }
     return false
   }
@@ -602,11 +765,73 @@ package enum ApplePreviewEngineResolver {
       return .blocked(.unsupportedLanguage)
     }
     let tag = locale.identifier(.bcp47)
+
+    // Refuse HERE rather than letting `prepare()` fetch it (#2080). Apple supports the language
+    // but this Mac does not have its model, and downloading ~140 MB is the user's decision, taken
+    // on the Live Preview settings page. Reported by name so the pill can say which language,
+    // rather than a generic sentence that leaves the user hunting.
+    let installedTags = await DictationTranscriber.installedLocales.map {
+      $0.identifier(.bcp47)
+    }
+    guard
+      let readyTag = satisfyingTag(
+        requestedCode: code, resolvedTag: tag, installedTags: installedTags)
+    else {
+      // Name the LANGUAGE for a locked code and the exact REGION for a full one, matching what
+      // the user actually has to go and install.
+      let name = ApplePackCatalog.localizedName(
+        for: Locale(identifier: code).region == nil ? code : tag)
+      await log("pack not installed for \(tag); user must install it")
+      return .blocked(.installRequired(languageName: name))
+    }
+
+    let readyLocale = Locale(identifier: readyTag)
     return .ready(
       LivePreviewEngineCandidate(
-        key: LivePreviewEngineKey(engine: engineID, commitment: tag),
-        makeEngine: { ApplePreviewRecognizer(locale: locale) }
+        key: LivePreviewEngineKey(engine: engineID, commitment: readyTag),
+        makeEngine: { ApplePreviewRecognizer(locale: readyLocale) }
       ))
+  }
+
+  /// Which installed pack satisfies this request, if any — and therefore which locale the engine
+  /// commits to. Pure, so the regional behaviour below is testable without Apple's inventory.
+  ///
+  /// **A bare code draws a RANDOM REGION on every call.** Measured: `fr` resolved to fr-CH, then
+  /// fr-CA, then fr-BE across three runs (FACT: apple-api-semantics-measured). Locked language
+  /// mode sends a bare catalogue code, so it lotteries.
+  ///
+  /// That used to cost quality only, because `prepare()` downloaded whichever variant the draw
+  /// named. #2080 made pack installation the user's deliberate action, which turned the same
+  /// instability into a FUNCTIONAL BREAK: download the French the pill asked for, and the next
+  /// recording draws a different French and asks again. The user would have to install every
+  /// variant to make their own language work.
+  ///
+  /// So a bare code accepts ANY installed variant of that language and USES it. That also pins
+  /// `commitment`, so the cached engine stops being rebuilt with a different regional model on
+  /// random recordings. A code that carries a REGION (Auto sends the full system locale) still
+  /// requires that exact tag: the region is the whole point there — measured, a `zh-TW` Mac
+  /// reduced to a bare code gets Simplified characters for a Traditional reader.
+  ///
+  /// This does NOT fix the underlying product gap: a locked language still gets an arbitrary
+  /// region's model, and the real fix is regional rows in the 100-code catalogue, which changes
+  /// a user-visible list and the paste engines too (FACT: not-done). It restores the property
+  /// that installing the language once is enough.
+  package static func satisfyingTag(
+    requestedCode: String,
+    resolvedTag: String,
+    installedTags: [String]
+  ) -> String? {
+    guard Locale(identifier: requestedCode).region == nil else {
+      return installedTags.first { $0 == resolvedTag }
+    }
+    let language = Locale(identifier: resolvedTag).language.languageCode?.identifier
+    // Sorted so the same inputs always yield the same locale. An unstable choice here would
+    // reintroduce the churn this exists to remove, just one level further in.
+    return
+      installedTags
+      .filter { Locale(identifier: $0).language.languageCode?.identifier == language }
+      .sorted()
+      .first
   }
 
   /// The language tag to ask Apple for: a bare ISO 639-1 code when the user locked

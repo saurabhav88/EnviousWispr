@@ -354,6 +354,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     switch reason {
     case .unsupportedSystem: return LivePreviewCopy.needsNewerMacOS
     case .unsupportedLanguage: return LivePreviewCopy.languageUnsupported
+    case .installRequired(let languageName):
+      return LivePreviewSettingsCopy.previewNeedsLanguagePack(languageName)
     }
   }
 
