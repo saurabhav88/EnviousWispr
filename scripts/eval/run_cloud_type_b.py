@@ -89,14 +89,28 @@ _bedrock_local = threading.local()
 
 
 def _bedrock_client():
-    """One client per worker thread. botocore documents clients as thread-safe
-    for calls, but not the lazy per-client credential/endpoint resolution that
-    happens on first use, and this harness runs 16 workers."""
+    """One SESSION and one client per worker thread.
+
+    Caching the client per thread is not sufficient on its own: bare
+    `boto3.client()` builds it from Boto3's shared DEFAULT session, so N workers
+    reaching their first call together all mutate that one session concurrently.
+    Boto3 documents the constraint on the object, not on the call --
+    "Session objects, like Resource objects, are not thread-safe and should not
+    be shared across threads or processes ... create a new Session object for
+    each thread" (docs/source/guide/session.rst). So the session is what has to
+    be thread-local; the client merely follows it.
+
+    Sharing an already-built client across threads is fine -- Boto3's own
+    multithreading example hands one client to a ThreadPoolExecutor -- so this
+    is about construction, not use.
+    """
     client = getattr(_bedrock_local, "client", None)
     if client is None:
-        import boto3  # noqa: PLC0415 - optional dependency, see comment above
+        import boto3.session  # noqa: PLC0415 - optional dependency, see comment above
 
-        client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+        session = boto3.session.Session()
+        client = session.client("bedrock-runtime", region_name=BEDROCK_REGION)
+        _bedrock_local.session = session
         _bedrock_local.client = client
     return client
 
