@@ -18,6 +18,10 @@ struct LivePreviewSettingsView: View {
   /// View-local, matching `CustomWordsImportSheet`'s shape: the model's lifetime is the page's.
   @State private var packs: LivePreviewPacksModel?
 
+  /// View-local too: a search box is about what this page is SHOWING, not about the catalogue,
+  /// so the model has no reason to know it exists.
+  @State private var searchText: String = ""
+
   private var isSupported: Bool { ApplePreviewEngineResolver.isSupportedOnThisSystem }
 
   var body: some View {
@@ -49,7 +53,12 @@ struct LivePreviewSettingsView: View {
       if isSupported {
         BrandedSection(header: LivePreviewSettingsCopy.packsHeader) {
           BrandedRow(showDivider: false) {
-            Text(LivePreviewSettingsCopy.packsDescription).settingsReadingCopy()
+            VStack(alignment: .leading, spacing: 10) {
+              Text(LivePreviewSettingsCopy.packsDescription).settingsReadingCopy()
+              // Only once there is a list to search: offering a search box over a spinner or over
+              // the "could not read" message would be a control that does nothing.
+              if case .loaded = packs?.state { searchField }
+            }
           }
           packsContent
         }
@@ -73,6 +82,22 @@ struct LivePreviewSettingsView: View {
     }
   }
 
+  /// Same shape as `LanguageLockSheet.searchField`, deliberately: the app already has a language
+  /// search and a second visual idiom for the same job would read as a different feature.
+  private var searchField: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .foregroundStyle(.stTextSecondary)
+      TextField(LivePreviewSettingsCopy.packsSearchPlaceholder, text: $searchText)
+        .textFieldStyle(.plain)
+        .accessibilityLabel("Search languages")
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
+    .background(Color.stSectionBg)
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+  }
+
   @ViewBuilder
   private var packsContent: some View {
     switch packs?.state {
@@ -90,8 +115,34 @@ struct LivePreviewSettingsView: View {
         Text(LivePreviewSettingsCopy.packsUnavailable).settingsHelperCopy()
       }
     case .loaded(let rows):
-      ForEach(Array(rows.enumerated()), id: \.element.id) { index, pack in
-        BrandedRow(showDivider: index < rows.count - 1) {
+      // Search first, then group: filtering a grouped list would have to re-derive the split, and
+      // an empty group after filtering must not print a heading over nothing.
+      let groups = LivePreviewPackPresentation.groups(
+        from: LivePreviewPackPresentation.matching(rows, query: searchText))
+      if groups.isEmpty {
+        BrandedRow(showDivider: false) {
+          Text(LivePreviewSettingsCopy.packsNoSearchMatch).settingsHelperCopy()
+        }
+      } else {
+        packGroup(LivePreviewPackPresentation.installedGroupTitle, groups.installed)
+        packGroup(LivePreviewPackPresentation.availableGroupTitle, groups.available)
+      }
+    }
+  }
+
+  /// One heading plus its rows, or nothing at all when the group is empty — a heading over an
+  /// empty group reads as something having failed to load.
+  @ViewBuilder
+  private func packGroup(_ title: String, _ packs: [LivePreviewPack]) -> some View {
+    if !packs.isEmpty {
+      BrandedRow(showDivider: false) {
+        HStack {
+          Text(title).settingsRowLabel()
+          Spacer()
+        }
+      }
+      ForEach(Array(packs.enumerated()), id: \.element.id) { index, pack in
+        BrandedRow(showDivider: index < packs.count - 1) {
           packRow(pack)
         }
       }

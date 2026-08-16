@@ -71,6 +71,12 @@ enum LivePreviewSettingsCopy {
   static let packInstalling = "Downloading"
   static let packRetry = "Try again"
 
+  /// Placeholder and empty state for the language search. Wording matches `LanguageLockSheet`
+  /// verbatim: the app already has a language search and a second phrasing for the same job would
+  /// read as a different feature.
+  static let packsSearchPlaceholder = "Search by name or code"
+  static let packsNoSearchMatch = "No language matches your search."
+
   /// Shown while the list is being read, which is two local inventory reads and moves
   /// no bytes over the network.
   ///
