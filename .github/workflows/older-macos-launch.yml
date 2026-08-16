@@ -48,6 +48,18 @@ env:
   XCODE_PROJECT: EnviousWispr.xcodeproj
   XCODE_RELEASE_SCHEME: EnviousWispr-Release
 
+# **Least privilege, because this workflow executes branch-controlled code.**
+#
+# This repository's default workflow token is WRITE (verified via
+# `gh api repos/.../actions/permissions/workflow`), and both jobs below build and run scripts
+# from the pull request's own branch. Without this block those jobs would run with a
+# write-capable credential that a modified build phase or CI script could use against the
+# repository, which branch protection does not prevent. Nothing here needs to write anything:
+# artifacts move between the two jobs of the SAME run, which uses the Actions runtime token
+# rather than this one.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build the app to carry to the older runner
@@ -56,6 +68,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
@@ -130,6 +144,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Report the runner's OS
         run: sw_vers
