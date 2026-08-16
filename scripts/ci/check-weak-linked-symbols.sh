@@ -62,6 +62,9 @@ case "$TARGET" in
   *.app)
     IS_BUNDLE=1
     [ -d "$TARGET" ] || die "bundle not found: $TARGET" 2
+    # Existence asserted first: `PlistBuddy` reports a missing FILE on STDOUT, so the capture
+    # would otherwise hold "File Doesn't Exist, Will Create: ..." and read as a real value.
+    [ -f "$TARGET/Contents/Info.plist" ] || die "no Contents/Info.plist in $TARGET; this is not a bundle this check can read" 2
     MAIN_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$TARGET/Contents/Info.plist" 2>/dev/null)
     [ -n "$MAIN_NAME" ] || die "no CFBundleExecutable in $TARGET/Contents/Info.plist; cannot identify the main binary" 2
     BIN="$TARGET/Contents/MacOS/$MAIN_NAME"

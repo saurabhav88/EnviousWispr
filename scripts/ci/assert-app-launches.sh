@@ -26,6 +26,12 @@ die() { echo "FAIL: $1" >&2; exit "${2:-1}"; }
 # dev bundle is "EnviousWispr Local.app" but its executable is still "EnviousWispr", so a
 # basename guess fails on exactly the bundle a developer would reach for when testing this
 # script by hand.
+# **The plist's existence is asserted before it is read.** `PlistBuddy` prints
+# "File Doesn't Exist, Will Create: <path>" on STDOUT when the file is missing, so `2>/dev/null`
+# does not suppress it and the capture below would hold that sentence as if it were a value.
+# Every guard downstream then tests a non-empty string and passes. A missing KEY is fine — that
+# error does go to stderr — so this is specifically about the file.
+[ -f "$APP/Contents/Info.plist" ] || die "no Contents/Info.plist in $APP; this is not a bundle this probe can read" 2
 NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Contents/Info.plist" 2>/dev/null)
 if [ -z "$NAME" ]; then
   NAME=$(basename "$APP" .app)
@@ -198,17 +204,30 @@ probe_xpc_dyld() {
   return 1
 }
 
+# **Each .xpc bundle's DECLARED executable, not every Mach-O underneath it.**
+#
+# The refusal this probe reads as proof is emitted by libxpc for a SERVICE. An `.xpc` may also
+# embed an ordinary dylib or helper — none does today, but nothing stops one appearing — and
+# running that would produce neither a dyld error nor the refusal, so the probe would report it
+# inconclusive and redden the job over a bundle where every real service loads fine. Reading
+# `CFBundleExecutable` asks each bundle which binary IS the service instead of guessing.
+if ! XPC_BUNDLES=$(find "$XPC_DIR" -type d -name "*.xpc" 2>/dev/null); then
+  die "find could not enumerate the XPC service bundles under $XPC_DIR; a partial list cannot certify them" 2
+fi
 xpc_probed=0
-while IFS= read -r xpcexe; do
-  [ -n "$xpcexe" ] || continue
-  desc=$(file "$xpcexe" 2>/dev/null) || desc="Mach-O unclassifiable"
-  [ "${desc#*Mach-O}" != "$desc" ] || continue
+while IFS= read -r xpcbundle; do
+  [ -n "$xpcbundle" ] || continue
+  [ -f "$xpcbundle/Contents/Info.plist" ] || die "$xpcbundle has no Contents/Info.plist, so this probe cannot tell which binary is the service" 2
+  svc=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$xpcbundle/Contents/Info.plist" 2>/dev/null)
+  [ -n "$svc" ] || die "no CFBundleExecutable in $xpcbundle/Contents/Info.plist, so this probe cannot tell which binary is the service" 2
+  xpcexe="$xpcbundle/Contents/MacOS/$svc"
+  [ -f "$xpcexe" ] || die "$xpcbundle declares executable '$svc' but $xpcexe does not exist" 2
   xpc_probed=$((xpc_probed + 1))
   probe_xpc_dyld "$xpcexe" || die "the bundled XPC service failed its own dyld startup" 1
 done <<EOF
-$(find "$XPC_DIR" -type f 2>/dev/null)
+$XPC_BUNDLES
 EOF
-[ "$xpc_probed" -gt 0 ] || die "no Mach-O found under $XPC_DIR, so the transcription helper's startup was never exercised" 2
+[ "$xpc_probed" -gt 0 ] || die "no .xpc bundle found under $XPC_DIR, so the transcription helper's startup was never exercised" 2
 echo "==> bundled XPC services whose dyld startup was proven: $xpc_probed"
 
 LOG=$(mktemp)
