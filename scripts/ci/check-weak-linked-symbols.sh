@@ -47,6 +47,21 @@ count_strong_for() {
   printf '%s\n' "$SYMS" | /usr/bin/grep "(from $1)" | /usr/bin/grep -vc 'weak external'
 }
 
+# **The load command matters independently of the symbols.**
+#
+# A framework recorded as LC_LOAD_DYLIB is loaded STRONGLY: if it is absent on the running OS,
+# dyld aborts before it resolves a single symbol, so every symbol being weak buys nothing.
+# FoundationModels does not exist at all below macOS 26, which makes this the more severe of
+# the two failures — and it is invisible to `nm`, since symbol annotations and load commands
+# are set independently (manual linker flags, or a post-link edit, can move one without the
+# other). Review round 3 found this gap; the earlier version checked only symbols.
+LOADS=$(otool -l "$BIN" 2>/dev/null |
+  awk '/^ *cmd LC_LOAD(_WEAK)?_DYLIB/{c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
+
+load_command_for() {
+  printf '%s\n' "$LOADS" | awk -v fw="/$1.framework/" 'index($2, fw) {print $1; exit}'
+}
+
 # --- Instrument control, BEFORE any verdict -----------------------------------------------
 # Runs first so a broken detector can never produce a green run.
 CONTROL_TOTAL=$(count_for "$CONTROL_FRAMEWORK")
@@ -59,25 +74,53 @@ if [ "$CONTROL_STRONG" -eq 0 ]; then
 fi
 echo "==> control ok:        $CONTROL_FRAMEWORK has $CONTROL_STRONG strong of $CONTROL_TOTAL (detector distinguishes weak from strong)"
 
+# The load-command reader needs its own control, for the same reason: a parser that returns
+# nothing would make every "weakly loaded" verdict below vacuous.
+[ -n "$LOADS" ] || die "could not read any dylib load commands from $BIN; the load-command check below would be vacuous" 2
+CONTROL_LOAD=$(load_command_for "$CONTROL_FRAMEWORK")
+if [ "$CONTROL_LOAD" != "LC_LOAD_DYLIB" ]; then
+  die "control framework $CONTROL_FRAMEWORK reports load command '${CONTROL_LOAD:-none}', expected LC_LOAD_DYLIB. A normally-linked framework must load strongly, so this parser cannot tell a weak load from a strong one" 2
+fi
+echo "==> control ok:        $CONTROL_FRAMEWORK loads as LC_LOAD_DYLIB (parser distinguishes weak from strong loads)"
+
 # --- The actual assertion ------------------------------------------------------------------
 status=0
 checked=0
 for fw in $GUARDED_FRAMEWORKS; do
   total=$(count_for "$fw")
+  load=$(load_command_for "$fw")
+
+  # **The load command is checked FIRST, and for every guarded framework.** An earlier version
+  # skipped a framework contributing no symbols, which would have waved through the worst case
+  # available: a framework reached only through the ObjC runtime, strongly loaded, absent on the
+  # older OS. Zero symbols is the state in which the load command matters MOST, not least.
+  if [ -n "$load" ]; then
+    checked=$((checked + 1))
+    if [ "$load" != "LC_LOAD_WEAK_DYLIB" ]; then
+      echo "    $fw: loaded as $load, must be LC_LOAD_WEAK_DYLIB" >&2
+      status=1
+    fi
+  fi
+
   if [ "$total" -eq 0 ]; then
-    # Not an error on its own: a framework can legitimately go unused. Say so, so that a
+    # Not an error on its own: a framework can legitimately go unused. Said out loud, so a
     # silently-dropped dependency is visible rather than passing as "nothing strong found".
-    echo "    $fw: no symbols in this binary (framework unused here)"
+    if [ -n "$load" ]; then
+      echo "    $fw: no symbols in this binary, loaded as $load"
+    else
+      echo "    $fw: not linked into this binary at all"
+    fi
     continue
   fi
+
   checked=$((checked + 1))
   strong=$(count_strong_for "$fw")
   if [ "$strong" -ne 0 ]; then
     echo "    $fw: $strong of $total symbols are STRONGLY bound" >&2
     printf '%s\n' "$SYMS" | /usr/bin/grep "(from $fw)" | /usr/bin/grep -v 'weak external' | sed 's/^/      /' >&2
     status=1
-  else
-    echo "    $fw: all $total symbols weak ✓"
+  elif [ "$load" = "LC_LOAD_WEAK_DYLIB" ]; then
+    echo "    $fw: all $total symbols weak, loaded weakly ✓"
   fi
 done
 
@@ -87,10 +130,14 @@ fi
 
 if [ "$status" -ne 0 ]; then
   echo >&2
-  echo "A strongly-bound symbol from a framework we only use above the deployment target means" >&2
-  echo "dyld aborts at launch on older macOS. Annotate the offending code with @available and" >&2
-  echo "guard its uses with #available, which makes Swift emit a weak binding." >&2
+  echo "Either failure means dyld aborts at LAUNCH on older macOS, before any #available check" >&2
+  echo "of ours runs:" >&2
+  echo "  - a strongly BOUND symbol: annotate the offending code with @available and guard its" >&2
+  echo "    uses with #available, which makes Swift emit a weak binding." >&2
+  echo "  - a strongly LOADED framework: link it weakly (Xcode 'Optional' / -weak_framework)." >&2
+  echo "    A framework absent on the older OS aborts the process before symbols are consulted," >&2
+  echo "    so weak symbols do not save it." >&2
   exit 1
 fi
 
-echo "==> PASS: every guarded framework is fully weak-bound; the app can start below macOS 26."
+echo "==> PASS: every guarded framework is weakly loaded and fully weak-bound."

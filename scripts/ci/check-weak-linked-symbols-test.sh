@@ -38,6 +38,22 @@ expect() {
   fi
 }
 
+# Asserts on a MESSAGE rather than an exit code, for checks whose failure another check would
+# also produce. A non-zero exit is required too: a matching message on a passing run would mean
+# the text appeared somewhere harmless.
+expect_output() {
+  local want="$1" name="$2"; shift 2
+  local out; out=$("$@" 2>&1); local code=$?
+  if [ "$code" -ne 0 ] && printf '%s' "$out" | /usr/bin/grep -q "$want"; then
+    echo "  ok   [$code, matched] $name"
+    pass=$((pass + 1))
+  else
+    echo "  FAIL [exit $code; wanted nonzero AND '$want'] $name" >&2
+    printf '%s\n' "$out" | sed 's/^/       /' >&2
+    fail=$((fail + 1))
+  fi
+}
+
 # Variants are generated from the real script so they cannot drift away from it.
 variant() {
   local path="$1" from="$2" to="$3"
@@ -53,9 +69,17 @@ echo "==> self-test: $SUT"
 # The real binary must pass. Without this the suite could go green with everything broken.
 expect 0 "the shipped binary passes" "$SUT" "$BIN"
 
-# The assertion fires. AppKit is linked normally, so guarding it MUST report strong symbols.
+# The assertion fires. AppKit is linked normally, so guarding it MUST report strong symbols
+# AND a strong LC_LOAD_DYLIB. This one variant covers both failure kinds, which is why the
+# next case exists: to prove the load-command check can fail on its own.
 variant "$TMP/strong.sh" 'GUARDED_FRAMEWORKS="Speech FoundationModels"' 'GUARDED_FRAMEWORKS="AppKit"'
 expect 1 "a strongly-bound framework is rejected" "$TMP/strong.sh" "$BIN"
+
+# The load-command check must be shown to FIRE, not merely to be present. Exit code alone
+# cannot show it: a strongly-loaded framework usually has strong symbols too, so the symbol
+# check would explain the failure by itself. Asserting the message attributes the failure.
+variant "$TMP/load.sh" 'GUARDED_FRAMEWORKS="Speech FoundationModels"' 'GUARDED_FRAMEWORKS="AVFoundation"'
+expect_output "must be LC_LOAD_WEAK_DYLIB" "a strongly-LOADED framework is named as such" "$TMP/load.sh" "$BIN"
 
 # The instrument's own control. If it cannot tell weak from strong, it must refuse to answer
 # rather than report the pass it would otherwise print.
