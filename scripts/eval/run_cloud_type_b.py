@@ -332,6 +332,17 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
                 # temperature OMITTED to match claude_body / the shipped
                 # ClaudeConnector, which sends no temperature at all.
                 inferenceConfig={"maxTokens": CLAUDE_MAX_OUTPUT_TOKENS},
+                # State it rather than inherit it. claude_body sends
+                # thinking:{"type":"disabled"} explicitly and describe_shape()
+                # prints "thinking disabled" for this provider too, so omitting
+                # the field made that line a claim about the MODEL'S DEFAULT
+                # rather than about our request. Haiku 4.5 happens to default to
+                # no thinking (probed 2026-08-16: no reasoningContent block even
+                # on a prompt built to tempt one), so the arm generated before
+                # this line is still valid -- but a model that defaults the other
+                # way would have been benchmarked with thinking ON under a header
+                # saying OFF, and nothing would have caught it.
+                additionalModelRequestFields={"thinking": {"type": "disabled"}},
             )
         except ClientError as e:
             # Re-raise as HTTPError so the retry loop's existing RETRYABLE set
@@ -363,12 +374,22 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
         if stop == "content_filtered":
             raise RuntimeError("model refused (stopReason=content_filtered)")
         blocks = (data.get("output", {}).get("message", {}) or {}).get("content", []) or []
+        # Having asked for thinking to be off, verify it was. The run header
+        # prints "reasoning MUST be 0 for a thinking-off run" -- with a hardcoded
+        # 0 that line restated a constant written here and could never have
+        # reported the failure it screens for. Bedrock reports no separate
+        # reasoning token count, so the observable is the block itself.
+        if any("reasoningContent" in b for b in blocks):
+            raise RuntimeError(
+                "model returned reasoningContent despite thinking:disabled -- "
+                "this arm is not a thinking-off measurement"
+            )
         text = "".join(b.get("text", "") for b in blocks if "text" in b).strip()
         usage = data.get("usage", {}) or {}
         meta = {
             "inTok": usage.get("inputTokens"),
             "outTok": usage.get("outputTokens"),
-            "reasoningTok": 0,
+            "reasoningTok": 0,  # now an assertion above, not an assumption
         }
     else:
         data = _post(
