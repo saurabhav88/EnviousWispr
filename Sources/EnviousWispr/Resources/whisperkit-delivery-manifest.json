@@ -165,7 +165,7 @@
     }
   ],
   "license": {
-    "name": "MIT",
+    "name": "No declared license (Argmax CoreML packaging); underlying OpenAI Whisper weights are MIT",
     "url": "https://huggingface.co/argmaxinc/whisperkit-coreml"
   },
   "admission": {
@@ -174,5 +174,5 @@
     "diskHeadroomFactor": "2.2",
     "evictPreviousRevisions": false
   },
-  "manifestDigest": "3759d7401b2a0f4c4808a006e1edf04495ddfeed4dc9e9cab479bf3c5f1f140b"
+  "manifestDigest": "75996a983589ad730bff39bc650be022414f3d0fb2660907e83d6ead5541c3bb"
 }

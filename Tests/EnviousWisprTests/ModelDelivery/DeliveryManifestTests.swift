@@ -175,7 +175,7 @@ enum ManifestFixture {
   /// script — `DeliveryManifest.load` recomputes the digest and THROWS on a
   /// mismatch, so a manifest that loads at all has already had this value
   /// confirmed by the shipped Swift canonicalization, independently.
-  static let goldenDigest = "3759d7401b2a0f4c4808a006e1edf04495ddfeed4dc9e9cab479bf3c5f1f140b"
+  static let goldenDigest = "75996a983589ad730bff39bc650be022414f3d0fb2660907e83d6ead5541c3bb"
 
   @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.shippedManifestURL)
