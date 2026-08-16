@@ -400,6 +400,13 @@ let project = Project(
         // (contract 4a). Same Bundle.main route as eg1-manifest.json.
         "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/whisperkit-delivery-manifest.json",
+        // #2102 (epic #2077 chunk 3): the SECOND WhisperKit-family artifact —
+        // the small multilingual model Live Preview offers as the universal
+        // alternative to Apple's engine. Listed individually because this array
+        // is the only thing that bundles a manifest; nothing globs Resources/,
+        // so a file merely placed beside its siblings ships in no build.
+        // Nothing loads it until the preview recognizer arrives (chunk 4).
+        "Sources/EnviousWispr/Resources/whisperkit-preview-delivery-manifest.json",
         // #1348 Phase 3: EG-1 delivery manifest — the DELIVERY trust root for
         // EG-1's convergence onto the shared engine (the runtime trust root
         // stays eg1-manifest.json). Same Bundle.main route.
