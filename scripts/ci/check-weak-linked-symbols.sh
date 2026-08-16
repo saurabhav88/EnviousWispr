@@ -76,7 +76,9 @@ case "$TARGET" in
     # This bundle also carries a Mach-O under `Contents/Resources`, which a
     # Frameworks-plus-XPCServices list would have missed in turn. Enumerating every Mach-O under
     # Contents is exhaustive by construction, so no future directory can be forgotten.
-    EMBEDDED=$(find "$TARGET/Contents" -type f -perm +111 2>/dev/null | while read -r f; do
+    # Identified by CONTENT, never by the executable bit: a mode-0644 dylib is still loadable by
+    # dyld, so `-perm +111` would skip one silently. 136 files here, 0.08s to classify them all.
+    EMBEDDED=$(find "$TARGET/Contents" -type f 2>/dev/null | while read -r f; do
       [ "$f" = "$BIN" ] && continue
       file "$f" 2>/dev/null | /usr/bin/grep -q "Mach-O" && echo "$f"
     done)
@@ -266,15 +268,25 @@ if [ -n "$EMBEDDED" ]; then
   while IFS= read -r extra; do
     [ -n "$extra" ] || continue
     embedded_count=$((embedded_count + 1))
-    extra_loads=$(otool -l "$extra" 2>/dev/null |
+    # **The arm64 slice specifically.** Every Sparkle binary here is universal, and an
+    # unqualified otool/nm reports every slice at once: `awk ... exit` then takes whichever load
+    # command appears first, which may be the x86_64 one. We ship arm64 only, so an x86_64 slice
+    # targeting macOS 11 must never vouch for an arm64 slice targeting 15. Measured on this
+    # bundle: Sparkle's x86_64 slice carries no LC_BUILD_VERSION at all, so the unqualified read
+    # landed on arm64 by luck rather than by design.
+    if ! lipo -archs "$extra" 2>/dev/null | /usr/bin/grep -q arm64; then
+      echo "    $(basename "$extra"): no arm64 slice ($(lipo -archs "$extra" 2>/dev/null)); not checked"
+      continue
+    fi
+    extra_loads=$(otool -arch arm64 -l "$extra" 2>/dev/null |
       awk '/^ *cmd LC_LOAD(_WEAK)?_DYLIB/{c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
-    extra_syms=$(nm -m -u "$extra" 2>/dev/null)
+    extra_syms=$(nm -arch arm64 -m -u "$extra" 2>/dev/null)
 
     # **Its own deployment target, which the main executable's says nothing about.** A dependency
     # rebuilt for macOS 15 refuses to load on 14 and takes the app down with it. NOT required to
     # EQUAL the floor the way the main binary is: an embedded framework may legitimately target
     # something older. It may only not exceed it.
-    extra_minos=$(otool -l "$extra" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
+    extra_minos=$(otool -arch arm64 -l "$extra" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
     if [ -n "$extra_minos" ] && [ "$extra_minos" != "$DECLARED" ]; then
       if [ "$(printf '%s\n%s\n' "$extra_minos" "$DECLARED" | sort -V | tail -1)" = "$extra_minos" ]; then
         echo "    $(basename "$extra"): targets macOS $extra_minos, above the declared floor $DECLARED — it will not load for supported users" >&2
