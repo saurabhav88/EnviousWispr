@@ -441,6 +441,14 @@ jobs:
           echo "==> spctl Gatekeeper assessment of the shipped app ..."
           spctl --assess --type exec --verbose=2 "$MOUNT/EnviousWispr.app"
           echo "==> Gatekeeper accepts the notarized + stapled app."
+          # Older-macOS launch safety, against the artifact users actually download.
+          #
+          # The PR gate inspects a Release build; THIS inspects the notarized, stapled app inside
+          # the shipped DMG, so an archive-time deployment-target or linker override is covered
+          # too — it is the only place that configuration exists. Fails the release rather than
+          # shipping something that aborts at launch for every macOS 14 user.
+          echo "==> older-macOS linkage check on the shipped app ..."
+          "$GITHUB_WORKSPACE/scripts/ci/check-weak-linked-symbols.sh" "$MOUNT/EnviousWispr.app"
           hdiutil detach "$MOUNT"; rm -rf "$MOUNT"
           trap - EXIT
 
