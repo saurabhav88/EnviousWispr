@@ -80,7 +80,10 @@ case "$TARGET" in
     # dyld, so `-perm +111` would skip one silently. 136 files here, 0.08s to classify them all.
     EMBEDDED=$(find "$TARGET/Contents" -type f 2>/dev/null | while read -r f; do
       [ "$f" = "$BIN" ] && continue
-      file "$f" 2>/dev/null | /usr/bin/grep -q "Mach-O" && echo "$f"
+      # Substring test via parameter expansion: no `grep -q` (pipefail/EPIPE) and no `case`
+      # pattern, whose closing paren bash mis-parses inside a $( ) command substitution.
+      desc=$(file "$f" 2>/dev/null)
+      [ "${desc#*Mach-O}" != "$desc" ] && echo "$f"
     done)
     ;;
   *)
@@ -151,6 +154,16 @@ count_strong_for() {
 
 # **The load command matters independently of the symbols.**
 #
+# **Any dylib command except the library's own ID counts as a dependency, and only
+# LC_LOAD_WEAK_DYLIB counts as weak.** Matching just LC_LOAD_DYLIB and LC_LOAD_WEAK_DYLIB ignored
+# LC_REEXPORT_DYLIB entirely — a strong requirement dyld still enforces, so a framework built with
+# `-reexport_framework FoundationModels` would have passed with no direct symbols of its own.
+# Written as "everything except LC_ID_DYLIB" rather than a list of strong forms, so a command type
+# nobody here has seen is treated as strong instead of ignored. LC_ID_DYLIB is excluded because it
+# is the library's OWN install name, not something it depends on; matching it would fail every
+# framework against itself. Forms present in this bundle today: LC_ID_DYLIB, LC_LOAD_DYLIB,
+# LC_LOAD_WEAK_DYLIB.
+#
 # A framework recorded as LC_LOAD_DYLIB is loaded STRONGLY: if it is absent on the running OS,
 # dyld aborts before it resolves a single symbol, so every symbol being weak buys nothing.
 # FoundationModels does not exist at all below macOS 26, which makes this the more severe of
@@ -158,7 +171,7 @@ count_strong_for() {
 # are set independently (manual linker flags, or a post-link edit, can move one without the
 # other). Review round 3 found this gap; the earlier version checked only symbols.
 LOADS=$(otool -l "$BIN" 2>/dev/null |
-  awk '/^ *cmd LC_LOAD(_WEAK)?_DYLIB/{c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
+  awk '/^ *cmd LC_[A-Z_]*DYLIB/ && $2 != "LC_ID_DYLIB" {c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
 
 load_command_for() {
   printf '%s\n' "$LOADS" | awk -v fw="/$1.framework/" 'index($2, fw) {print $1; exit}'
@@ -274,12 +287,13 @@ if [ -n "$EMBEDDED" ]; then
     # targeting macOS 11 must never vouch for an arm64 slice targeting 15. Measured on this
     # bundle: Sparkle's x86_64 slice carries no LC_BUILD_VERSION at all, so the unqualified read
     # landed on arm64 by luck rather than by design.
-    if ! lipo -archs "$extra" 2>/dev/null | /usr/bin/grep -q arm64; then
-      echo "    $(basename "$extra"): no arm64 slice ($(lipo -archs "$extra" 2>/dev/null)); not checked"
-      continue
-    fi
+    extra_archs=$(lipo -archs "$extra" 2>/dev/null)
+    case " $extra_archs " in *" arm64 "*) ;; *)
+      echo "    $(basename "$extra"): no arm64 slice ($extra_archs); not checked"
+      continue ;;
+    esac
     extra_loads=$(otool -arch arm64 -l "$extra" 2>/dev/null |
-      awk '/^ *cmd LC_LOAD(_WEAK)?_DYLIB/{c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
+      awk '/^ *cmd LC_[A-Z_]*DYLIB/ && $2 != "LC_ID_DYLIB" {c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
     extra_syms=$(nm -arch arm64 -m -u "$extra" 2>/dev/null)
 
     # **Its own deployment target, which the main executable's says nothing about.** A dependency

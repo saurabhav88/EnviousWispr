@@ -44,7 +44,13 @@ expect() {
 expect_output() {
   local want="$1" name="$2"; shift 2
   local out; out=$("$@" 2>&1); local code=$?
-  if [ "$code" -ne 0 ] && printf '%s' "$out" | /usr/bin/grep -q "$want"; then
+  # **Counted, not `grep -q`** — the same pipefail trap this suite's subject already carries a
+  # comment about, sitting in the harness that verifies it. `grep -q` exits on its first match,
+  # `printf` takes SIGPIPE, and under `set -o pipefail` the condition reads false: a correctly
+  # rejected mutant would fail the self-test and block the required gate, and only once output
+  # grew past the pipe buffer. Latent today, hostile later.
+  local hits; hits=$(printf '%s' "$out" | /usr/bin/grep -c "$want")
+  if [ "$code" -ne 0 ] && [ "$hits" -gt 0 ]; then
     echo "  ok   [$code, matched] $name"
     pass=$((pass + 1))
   else
@@ -130,7 +136,8 @@ expect 2 "matching raw mangled symbols refuses to give a verdict" "$TMP/raw.sh" 
 # broke every OTHER case instead of testing this one.
 printf 'let deploymentTargets: DeploymentTargets = .macOS("99.0")\n' > "$TMP/Fake.swift"
 out=$(EW_PROJECT_MANIFEST="$TMP/Fake.swift" "$SUT" "$BIN" 2>&1); code=$?
-if [ "$code" -ne 0 ] && printf '%s' "$out" | /usr/bin/grep -q "Reconcile the two deliberately"; then
+floor_hits=$(printf '%s' "$out" | /usr/bin/grep -c "Reconcile the two deliberately")
+if [ "$code" -ne 0 ] && [ "$floor_hits" -gt 0 ]; then
   echo "  ok   [$code, matched] a binary whose target disagrees with the declared floor is rejected"
   pass=$((pass + 1))
 else
