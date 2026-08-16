@@ -265,6 +265,53 @@ struct LivePreviewPacksModelTests {
       """)
   }
 
+  /// The page must not OWN the download state.
+  ///
+  /// Round 11: selecting another sidebar section destroys this view, so `@State` on the page took
+  /// the in-flight download's bookkeeping with it and a returning user could start a second one.
+  /// Closing the window was only one route to that; navigation was the other, and fixing the first
+  /// left the second wide open. Ownership belongs to the retained window
+  /// (`swiftui-mv-first`: cross-view state is parent-owned; `swiftui-task-never-owns-workflows`:
+  /// a multi-second workflow must outlive view churn).
+  @Test("The page renders the download state but does not own it")
+  func pageDoesNotOwnTheDownloadState() throws {
+    let url = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprAppKit/Views/Settings/LivePreviewSettingsView.swift")
+    let source = LivePreviewNoAutoDownloadTests.codeOnly(
+      try String(contentsOf: url, encoding: .utf8))
+
+    #expect(
+      source.contains("let packs: LivePreviewPacksModel"),
+      "control: the page takes the model in as a plain let")
+    // Any `@State` on `packs`, not just the `private` spelling. Trying to mutate this found the
+    // gap: `@State private var packs` does not compile here (the memberwise init goes private and
+    // the window cannot call it), but `@State var packs` DOES — and it reproduces the bug exactly,
+    // because @State keeps the first value it is seeded with and ignores every later one. A guard
+    // that only knew the uncompilable spelling would have passed the compilable defect.
+    let stateOwnsPacks = source
+      .split(separator: "\n")
+      .contains { $0.contains("@State") && $0.contains("packs") }
+    #expect(
+      !stateOwnsPacks,
+      """
+      page-owned state does not survive sidebar navigation, so a download in flight loses its \
+      bookkeeping and the same pack can be downloaded twice
+      """)
+
+    // And the window actually supplies one, or the page is handed a fresh model per appearance
+    // and the fix is undone from the other side.
+    let owner = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprAppKit/Views/Settings/SettingsView.swift")
+    let ownerSource = LivePreviewNoAutoDownloadTests.codeOnly(
+      try String(contentsOf: owner, encoding: .utf8))
+    #expect(
+      ownerSource.contains("@State private var livePreviewPacks"),
+      "the retained window must own the model")
+    #expect(
+      ownerSource.contains("LivePreviewSettingsView(packs: livePreviewPacks)"),
+      "and pass that same instance in, not build a new one per appearance")
+  }
+
   /// Closing the page must NOT make a running download look finished.
   ///
   /// There used to be a `cancelInstall()` on disappear which cleared the busy state while Apple's

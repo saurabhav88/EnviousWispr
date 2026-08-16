@@ -37,6 +37,21 @@ final class LivePreviewPacksModel {
   /// on underneath it.
   private var generation: UInt64 = 0
 
+  /// The real catalogue. Lives here rather than in the page because the MODEL is now owned by the
+  /// window, and a factory the owner cannot reach is no use to it.
+  static func liveCatalog() -> ApplePackCatalog {
+    if #available(macOS 26.0, *) {
+      return ApplePackCatalog(dependencies: .live)
+    }
+    // Unreachable: the page gates on `isSupportedOnThisSystem`. Kept total rather than
+    // force-unwrapping a version check, and an empty catalogue renders the honest
+    // "could not read" state.
+    return ApplePackCatalog(
+      dependencies: .init(
+        supportedTags: { [] }, installedTags: { [] },
+        reserve: { _ in }, release: { _ in }, install: { _ in }))
+  }
+
   init(catalog: ApplePackCatalog) {
     self.catalog = catalog
   }

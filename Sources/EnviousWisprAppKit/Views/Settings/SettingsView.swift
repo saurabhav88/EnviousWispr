@@ -10,6 +10,12 @@ struct UnifiedWindowView: View {
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var selectedSection: SettingsSection = .history
 
+  /// Owned HERE so a language download survives the user navigating to another section: this view
+  /// is retained, the pages inside `detailContent` are not. See
+  /// `LivePreviewSettingsView.packs`.
+  @State private var livePreviewPacks = LivePreviewPacksModel(
+    catalog: LivePreviewPacksModel.liveCatalog())
+
   var body: some View {
     // Two-card frame: a self-contained sidebar card and content card, each
     // inset from the window edge and each other by the same amount, floating on
@@ -174,7 +180,7 @@ struct UnifiedWindowView: View {
     case .speechEngine:
       page(.speechEngine) { SpeechEngineSettingsView() }
     case .livePreview:
-      page(.livePreview) { LivePreviewSettingsView() }
+      page(.livePreview) { LivePreviewSettingsView(packs: livePreviewPacks) }
     case .audio:
       page(.audio) { AudioSettingsView() }
     case .recordingSounds:

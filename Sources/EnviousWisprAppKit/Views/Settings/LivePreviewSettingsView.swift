@@ -15,8 +15,12 @@ struct LivePreviewSettingsView: View {
   /// Narrow environment home, matching every sibling settings page.
   @Environment(SettingsManager.self) private var settings
 
-  /// View-local, matching `CustomWordsImportSheet`'s shape: the model's lifetime is the page's.
-  @State private var packs: LivePreviewPacksModel?
+  /// **Owned by the WINDOW, not by this page.** Selecting another sidebar section destroys this
+  /// view, and with it any `@State` it owned — so a download in flight lost its bookkeeping and a
+  /// returning user could start a second one. `swiftui-mv-first` puts cross-view state in the
+  /// retained parent, and `swiftui-task-never-owns-workflows` says a multi-second workflow like a
+  /// download must outlive view churn. This page only renders it.
+  let packs: LivePreviewPacksModel
 
   /// View-local too: a search box is about what this page is SHOWING, not about the catalogue,
   /// so the model has no reason to know it exists.
@@ -57,7 +61,7 @@ struct LivePreviewSettingsView: View {
               Text(LivePreviewSettingsCopy.packsDescription).settingsReadingCopy()
               // Only once there is a list to search: offering a search box over a spinner or over
               // the "could not read" message would be a control that does nothing.
-              if case .loaded = packs?.state { searchField }
+              if case .loaded = packs.state { searchField }
             }
           }
           packsContent
@@ -66,14 +70,11 @@ struct LivePreviewSettingsView: View {
     }
     .task {
       guard isSupported else { return }
-      // Re-read on EVERY appearance, not only the first. The settings window is retained when
-      // closed, so a page that loaded once would keep showing that snapshot for the life of the
-      // app — past a download that finished in the background, past a macOS purge of a staged
-      // asset, past anything changed in System Settings. The catalogue exists precisely because
-      // this state is not ours to cache.
-      let model = packs ?? LivePreviewPacksModel(catalog: makeCatalog())
-      packs = model
-      await model.load()
+      // Re-read on EVERY appearance. The model outlives this page now, so without this a
+      // returning user would see the snapshot from whenever they last opened it — past a download
+      // that finished meanwhile, past a macOS purge of a staged asset. The catalogue exists
+      // precisely because this state is not ours to cache.
+      await packs.load()
     }
   }
 
@@ -95,8 +96,8 @@ struct LivePreviewSettingsView: View {
 
   @ViewBuilder
   private var packsContent: some View {
-    switch packs?.state {
-    case .none, .loading:
+    switch packs.state {
+    case .loading:
       BrandedRow(showDivider: false) {
         HStack(spacing: 8) {
           ProgressView().controlSize(.small)
@@ -157,7 +158,7 @@ struct LivePreviewSettingsView: View {
         // the language is unavailable — and the remedy (check the connection) is the same for
         // every cause, so one sentence answers all of them. This string existed and was never
         // rendered anywhere; a copy test referencing it made it look wired when it was not.
-        if packs?.failedTag == pack.tag {
+        if packs.failedTag == pack.tag {
           Text(LivePreviewSettingsCopy.packInstallFailed).settingsHelperCopy()
         }
       }
@@ -166,7 +167,7 @@ struct LivePreviewSettingsView: View {
       if pack.isInstalled {
         Text(LivePreviewSettingsCopy.packInstalled)
           .settingsHelperCopy()
-      } else if packs?.installingTag == pack.tag {
+      } else if packs.installingTag == pack.tag {
         // A spinner, never a percentage. Apple's progress object yields two distinct values
         // across a whole install, so a bar would be a fabrication.
         HStack(spacing: 6) {
@@ -175,28 +176,17 @@ struct LivePreviewSettingsView: View {
         }
       } else {
         Button(
-          packs?.failedTag == pack.tag
+          packs.failedTag == pack.tag
             ? LivePreviewSettingsCopy.packRetry
             : LivePreviewSettingsCopy.packInstall
         ) {
-          packs?.install(tag: pack.tag)
+          packs.install(tag: pack.tag)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .disabled(packs?.installingTag != nil)
+        .disabled(packs.installingTag != nil)
       }
     }
   }
 
-  private func makeCatalog() -> ApplePackCatalog {
-    if #available(macOS 26.0, *) {
-      return ApplePackCatalog(dependencies: .live)
-    }
-    // Unreachable: the caller gates on `isSupported`. Kept total rather than force-unwrapping a
-    // version check, and an empty catalogue renders the honest "could not read" state.
-    return ApplePackCatalog(
-      dependencies: .init(
-        supportedTags: { [] }, installedTags: { [] },
-        reserve: { _ in }, release: { _ in }, install: { _ in }))
-  }
 }
