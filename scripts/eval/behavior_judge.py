@@ -62,6 +62,7 @@ import http.client
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 import tempfile
@@ -1003,6 +1004,36 @@ def behavior_key(case: dict) -> str:
     return raw
 
 
+# A list marker only counts when it OPENS A LINE. Anchoring to the line start is
+# what separates a real list from prose that merely contains the characters:
+# "the drop-off point" and "version 2. 0" both carry them and neither is a list.
+LIST_MARKER_RE = re.compile(r"(?:^|\n)[ \t]*(?:[-*•–]\s+|\d+[.)]\s+)")
+
+# Shapes whose cases are ABOUT producing a list. Sealed corpora carry `shape`;
+# older corpora do not, and for them this is always False, which is correct —
+# they were authored without a layout requirement and must not acquire one.
+LIST_REQUIRING_SHAPES = ("spoken_list",)
+
+
+def list_format_required(case: dict) -> bool:
+    """Does THIS case demand a real vertical list, one item per line?
+
+    Both conditions must hold, and the second is not redundant. The shape says
+    the case is about lists; the authored key says the correct answer for THIS
+    case actually is one. A `spoken_list` case deliberately authored to stay
+    prose (a trap) must not acquire a layout requirement from its shape alone.
+
+    Why this exists: the judge derives `behavior` from `subset`/`category`/
+    `gold_behavior` and never from `shape`, so every sealed case arrives as
+    `unknown` and layout is graded by nothing. Measured 2026-08-15: all 114
+    sealed `spoken_list` keys demand a list, EG-1 produced one on 1 of them,
+    and 103 of its inline answers were judged PASS.
+    """
+    if case.get("shape") not in LIST_REQUIRING_SHAPES:
+        return False
+    return bool(LIST_MARKER_RE.search(case.get("expected_output") or ""))
+
+
 def case_type_of(case: dict, behavior: str) -> str:
     subset = str(case.get("subset") or case.get("category") or "")
     if subset.endswith("_trap") or "trap_type" in case or "_trap" in str(case.get("id", "")).lower():
@@ -1083,6 +1114,7 @@ def normalize_case(case: dict) -> dict:
         # Empty for corpora that carry no spoken source; the prompt handles absence.
         "spoken_truth": _spoken_truth(case),
         "notes": case.get("notes", ""),
+        "list_format_required": list_format_required(case),
     }
 
 
@@ -1199,11 +1231,34 @@ For each case you are given:
 - risk_tier: critical | standard | cosmetic
 - reference_output: an ILLUSTRATIVE reference, NOT exact ground truth
 - allowed_variants: surface differences you must NOT penalize
+- list_format_required: true when this case must be rendered as a vertical list
 
 Grade by intent, semantic fidelity, target behavior, restraint, and cleanliness.
 Do NOT grade by string similarity to reference_output. Do NOT penalize the
 allowed_variants (punctuation, capitalization, bullet-vs-numbered list, digits-
 vs-words when number formatting is not the behavior under test).
+
+LIST-FORMAT REQUIREMENT
+
+Apply this rule ONLY when list_format_required is true.
+
+The candidate must keep the introductory framing and every spoken item, in the
+order spoken, AND render the items as a genuine vertical list: one item per
+line, each line opening with a consistent bullet or number.
+
+An inline sentence is major_fail / S3 with failure_type "wrong_format" even when
+every word and all meaning are preserved. Spoken ordinals left as prose
+("First, X. Second, Y.") are the specific failure this rule exists to catch.
+
+Markers alone do not satisfy it. It still fails if the candidate puts one marker
+in front of an inline run, merges several items onto one line, splits one item
+across several lines, drops the introduction, or drops, changes or invents an
+item. Bullet and numbered lists remain equivalent; the requirement is the line
+break, not the character.
+
+When list_format_required is false this rule is silent and must NEVER reward
+list formatting. Judge structure under the case's own behavior. Imposing list
+structure on connected prose or an inline enumeration is itself wrong_format.
 
 The deterministic layer handles number/date/URL/custom-vocabulary normalization
 BEFORE this AI step, so do NOT fail a case for unconverted numbers, lowercase
@@ -1274,6 +1329,10 @@ def build_new_payload(norm: dict, cand: dict, prod: dict | None) -> dict:
         "risk_tier": norm["risk_tier"],
         "reference_output": norm["reference_output"],
         "allowed_variants": allowed_variants_for(norm["behavior"]),
+        # Carries the layout requirement independently of reference_output, so it
+        # survives --blind. The flag states THAT a list is required; it never
+        # reveals what the list should say.
+        "list_format_required": norm.get("list_format_required", False),
     }
 
 

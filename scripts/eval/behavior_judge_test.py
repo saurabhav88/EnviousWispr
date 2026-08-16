@@ -2743,6 +2743,85 @@ def test_spoken_truth_reads_both_corpus_schemas():
         assert bj._spoken_truth(case) == "", f"{case!r} must yield empty, not raise"
 
 
+def test_list_format_requirement_fires_only_where_a_list_is_actually_wanted():
+    """The layout requirement must be armed by the case, not by the judge's mood.
+
+    This exists because the requirement was previously armed by NOTHING.
+    `behavior_key` reads subset/category/gold_behavior and never `shape`, so
+    every sealed case arrived as `unknown` and layout was graded by no rule at
+    all. Measured 2026-08-15: all 114 sealed `spoken_list` keys demand a list,
+    EG-1 produced one on 1 of them, and 103 of its inline answers were judged
+    PASS. A pass rate built that way carries no information about list building.
+
+    Both conditions are load-bearing and the second is not redundant. Shape says
+    the case is ABOUT lists; the authored key says the right answer for THIS
+    case IS one. A `spoken_list` case deliberately authored to stay prose is a
+    trap, and a trap must not inherit a requirement from its shape.
+    """
+    bulleted = "Do these:\n- alpha\n- beta"
+    numbered = "Do these:\n1. alpha\n2. beta"
+
+    # Armed: the shape is about lists and the key really is one.
+    assert bj.list_format_required({"shape": "spoken_list", "expected_output": bulleted})
+    assert bj.list_format_required({"shape": "spoken_list", "expected_output": numbered})
+
+    # Disarmed by the key: a list-shaped case whose correct answer stays prose.
+    assert not bj.list_format_required(
+        {"shape": "spoken_list", "expected_output": "Do these: alpha and beta."})
+
+    # Disarmed by the shape: every other shape, even when its key happens to be
+    # a list. Nothing may acquire a layout requirement it was not authored with.
+    for shape in ("clean", "inline_enumeration", "connected_prose", "self_correction",
+                  "fillers_only", "unfinished", "topic_shift", "voice_at_risk",
+                  "numbers_dates", "quoted_instruction"):
+        assert not bj.list_format_required({"shape": shape, "expected_output": bulleted}), shape
+
+    # Legacy corpora carry no `shape`. They were authored without a layout
+    # requirement and must not gain one retroactively.
+    assert not bj.list_format_required({"expected_output": bulleted})
+
+    # A marker only counts when it OPENS a line, or ordinary prose arms the rule.
+    assert not bj.list_format_required(
+        {"shape": "spoken_list", "expected_output": "meet at the drop-off point at 2. 0"})
+
+    # Degenerate shapes must return False, never raise: this runs on a grading path.
+    for case in ({}, {"shape": None}, {"shape": "spoken_list"},
+                 {"shape": "spoken_list", "expected_output": None},
+                 {"shape": "spoken_list", "expected_output": ""}):
+        assert bj.list_format_required(case) is False, f"{case!r} must be False, not raise"
+
+
+def test_list_requirement_reaches_the_judge_and_survives_blinding():
+    """A criterion the judge never receives is not a criterion.
+
+    The flag travels separately from `reference_output` on purpose. Blinding
+    strips the answer key, and the layout requirement must outlive that: the
+    flag says THAT a list is required and never what the list should say, so it
+    is safe to keep and useless as an anchor.
+    """
+    case = {"id": "L1", "shape": "spoken_list", "subset": "spoken_list",
+            "asr_input": "Here's the plan. First, alpha. Second, beta.",
+            "expected_output": "Here's the plan:\n- alpha\n- beta"}
+    payload = bj.build_new_payload(bj.normalize_case(case), {"candidate": "x"}, None)
+    assert payload["list_format_required"] is True
+
+    blinded = bj.blind_payload(payload)
+    assert "reference_output" not in blinded, "blinding must still drop the answer key"
+    assert blinded["list_format_required"] is True, "the requirement must survive blinding"
+
+    # And the rule itself has to be in BOTH prompts, or blind runs grade layout
+    # by nothing — which is the exact defect this change exists to fix.
+    assert "LIST-FORMAT REQUIREMENT" in bj.NEW_JUDGE_SYSTEM
+    assert "LIST-FORMAT REQUIREMENT" in bj.BLIND_JUDGE_SYSTEM
+
+    # A case with no layout requirement must carry the flag as False rather than
+    # omit it: the prompt branches on the field, and an absent field is unread.
+    prose = bj.build_new_payload(
+        bj.normalize_case({"id": "P1", "shape": "connected_prose", "asr_input": "a",
+                           "expected_output": "a"}), {"candidate": "x"}, None)
+    assert prose["list_format_required"] is False
+
+
 # --------------------------------------------------------------------------- #
 # runner                                                                      #
 # --------------------------------------------------------------------------- #
@@ -2752,7 +2831,7 @@ def test_spoken_truth_reads_both_corpus_schemas():
 # originally borrowed from cleanup_metrics_test.py, deleted 2026-08-15 with the
 # rest of the deterministic polish grading; the zero-test trap it guards is
 # unchanged.)
-EXPECTED_TESTS = 131
+EXPECTED_TESTS = 133
 
 
 def _run() -> int:
