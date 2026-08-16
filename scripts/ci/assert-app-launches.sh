@@ -1,0 +1,87 @@
+#!/bin/bash
+# Launch a built .app and assert the process is still alive a few seconds later.
+#
+# The failure this is aimed at: dyld aborting at launch because a symbol from a
+# newer-than-deployment-target framework was bound strongly. That kills the app before any
+# code of ours runs, so it cannot be caught by any in-app check, and it only reproduces on an
+# OS older than the SDK the app was built against.
+#
+# Usage: assert-app-launches.sh <path-to-.app> [seconds-to-survive]
+#
+# Exit: 0 the app was alive after the wait; 1 it died (the reason is classified in the
+# output); 2 the check could not be performed.
+
+set -uo pipefail
+
+APP="${1:-}"
+SURVIVE_FOR="${2:-15}"
+
+die() { echo "FAIL: $1" >&2; exit "${2:-1}"; }
+
+[ -n "$APP" ] || die "usage: $0 <path-to-.app> [seconds]" 2
+[ -d "$APP" ] || die "app bundle not found: $APP" 2
+
+NAME=$(basename "$APP" .app)
+BIN="$APP/Contents/MacOS/$NAME"
+[ -f "$BIN" ] || die "executable not found inside the bundle: $BIN" 2
+
+# **An artifact round-trip drops the executable bit and invalidates the signature.** Without
+# these two lines the app fails to start for reasons that have nothing to do with the macOS
+# version, which would look exactly like the defect this job exists to catch.
+chmod +x "$BIN" || die "could not restore the executable bit" 2
+find "$APP/Contents/MacOS" -type f -exec chmod +x {} \; 2>/dev/null
+xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
+codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || \
+  echo "note: ad-hoc re-sign failed; continuing, since an unsigned binary still exercises dyld"
+
+echo "==> runner OS:  $(sw_vers -productVersion)"
+echo "==> app:        $APP"
+echo "==> deployment: $(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')"
+echo "==> built with: SDK $(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/sdk /{print $2; exit}')"
+
+LOG=$(mktemp)
+"$BIN" >"$LOG" 2>&1 &
+PID=$!
+echo "==> launched pid $PID; waiting ${SURVIVE_FOR}s"
+
+# Poll rather than one long sleep, so a fast dyld abort is reported immediately.
+elapsed=0
+while [ "$elapsed" -lt "$SURVIVE_FOR" ]; do
+  if ! kill -0 "$PID" 2>/dev/null; then break; fi
+  sleep 1
+  elapsed=$((elapsed + 1))
+done
+
+if kill -0 "$PID" 2>/dev/null; then
+  echo "==> PASS: still running after ${elapsed}s on macOS $(sw_vers -productVersion)"
+  kill -TERM "$PID" 2>/dev/null
+  wait "$PID" 2>/dev/null
+  # Surface early output even on success: a dyld warning that did not kill the process is
+  # worth seeing before it becomes an abort on some other machine.
+  if [ -s "$LOG" ]; then echo "--- first 40 lines of output ---"; head -40 "$LOG"; fi
+  rm -f "$LOG"
+  exit 0
+fi
+
+wait "$PID" 2>/dev/null
+CODE=$?
+echo "==> process exited after ${elapsed}s with code $CODE" >&2
+echo "--- output ---" >&2
+cat "$LOG" >&2
+
+# Classify, so a reader can tell in one line whether this is the defect or the environment.
+if /usr/bin/grep -qE "Symbol not found|Library not loaded|dyld\[|dyld:" "$LOG"; then
+  echo >&2
+  echo "VERDICT: dyld could not resolve a symbol at launch. This is the defect this job exists" >&2
+  echo "to catch: a framework used above the deployment target is bound STRONGLY. Annotate the" >&2
+  echo "code with @available and guard its uses with #available." >&2
+  rm -f "$LOG"
+  exit 1
+fi
+
+echo >&2
+echo "VERDICT: the app did not survive, but no dyld symbol error was found. Read the output" >&2
+echo "above before assuming a compatibility break: a headless runner can also fail for" >&2
+echo "window-server or permission reasons that would not affect a real user." >&2
+rm -f "$LOG"
+exit 1
