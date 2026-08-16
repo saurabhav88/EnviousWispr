@@ -1457,7 +1457,10 @@ struct AIPolishSettingsView: View {
     switch egOne.installState {
     case .notInstalled:
       HStack {
-        Text("One-time download: 2.9 GB")
+        // NOT "one-time" (#2096): a new model revision downloads again, on its own, when an app
+        // update ships one. Promising a single download was true only while EG-1 could never be
+        // replaced, and that stopped being true the moment the automatic upgrade path existed.
+        Text("Download size: 2.9 GB")
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)
         Spacer()
