@@ -84,10 +84,15 @@ from acceptance_gate import (  # noqa: E402
 # Bedrock is reached through boto3 rather than urllib because the request must be
 # SigV4-signed. Imported lazily inside _bedrock_client() so the other three
 # providers keep working on a machine with no AWS SDK installed.
-# None means "let boto3 resolve it" (AWS_REGION, AWS_DEFAULT_REGION, the active
-# profile's config). A hardcoded default here would silently OVERRIDE a profile
-# pointing somewhere else, and Bedrock access is region-specific -- so the
-# override would look like a model-access problem in the wrong region. Set
+# None means "let boto3 resolve it" -- AWS_DEFAULT_REGION or the active profile's
+# config. NOT AWS_REGION: botocore's Session does not consult it. Measured, with
+# the config files neutralised so an ambient ~/.aws/config could not answer for
+# it: AWS_REGION alone -> None; AWS_DEFAULT_REGION alone -> resolves; both set ->
+# AWS_DEFAULT_REGION wins. The two names read as synonyms and are not.
+#
+# A hardcoded default here would silently OVERRIDE a profile pointing somewhere
+# else, and Bedrock access is region-specific -- so the override would surface as
+# a model-access problem rather than as a wrong-region problem. Set
 # EW_BEDROCK_REGION only to override deliberately.
 BEDROCK_REGION = os.environ.get("EW_BEDROCK_REGION") or None
 _bedrock_local = threading.local()
@@ -640,12 +645,18 @@ def main() -> int:
             # identical NoRegionError cases instead of one line at startup.
             if not (BEDROCK_REGION or probe.region_name):
                 raise RuntimeError(
-                    "no region resolved -- set AWS_REGION, or a profile with a "
-                    "configured region, or EW_BEDROCK_REGION to override"
+                    "no region resolved -- set EW_BEDROCK_REGION or "
+                    "AWS_DEFAULT_REGION, or use a profile with a configured "
+                    "region. NOT AWS_REGION: botocore's Session ignores it"
                 )
         except Exception as e:  # noqa: BLE001 - any resolution failure is fatal here
+            # The recovery command must actually recover. It carries the region
+            # because the credit-account credentials come from get-key and bring
+            # none with them, so advice that set only the keys would loop a stuck
+            # user straight back to this same message.
             print(f"bedrock cannot start: {type(e).__name__}: {e}\n"
                   "For the credit-funded account, use:\n"
+                  "  EW_BEDROCK_REGION=us-west-2 \\\n"
                   "  ~/.claude/bin/get-key launch aws-bedrock-access-key-id "
                   "AWS_ACCESS_KEY_ID -- \\\n"
                   "  ~/.claude/bin/get-key launch aws-bedrock-secret-access-key "
