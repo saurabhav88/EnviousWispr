@@ -15,21 +15,45 @@ import Testing
 struct LivePreviewPacksModelTests {
 
   /// A one-shot latch. Deterministic hand-off between the test and the model's task, so no test
-  /// here sleeps or polls.
+  /// here sleeps or polls on the happy path.
+  ///
+  /// **Bounded, and it reports rather than throws.** An unbounded signal wait passes instantly
+  /// when things work and HANGS on exactly the regression the test exists to catch, wedging the
+  /// run with no test name and no message (test-timing.md). The deadline is a fail-fast only:
+  /// nothing is asserted about how long anything took, and a working path never reaches it.
+  ///
+  /// It returns a Bool instead of throwing because half the waits happen inside the catalogue's
+  /// NON-throwing dependency closures, where an error has nowhere to go. Returning lets those
+  /// sites give up and let the test's own assertions fail loudly, so no path can hang.
   private actor Gate {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] = []
     private var isOpen = false
 
     func open() {
       isOpen = true
       let pending = waiters
       waiters = []
-      pending.forEach { $0.resume() }
+      pending.forEach { $0.continuation.resume(returning: true) }
     }
 
-    func wait() async {
-      if isOpen { return }
-      await withCheckedContinuation { waiters.append($0) }
+    /// True if the gate opened, false if the deadline won.
+    @discardableResult
+    func wait(timeout: Duration = .seconds(5)) async -> Bool {
+      if isOpen { return true }
+      let id = UUID()
+      return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+        waiters.append((id, continuation))
+        Task { [weak self] in
+          // settle: fail-fast deadline around the signal wait, never asserted on
+          try? await Task.sleep(for: timeout)
+          await self?.expire(id)
+        }
+      }
+    }
+
+    private func expire(_ id: UUID) {
+      guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+      waiters.remove(at: index).continuation.resume(returning: false)
     }
   }
 
@@ -78,6 +102,19 @@ struct LivePreviewPacksModelTests {
     return packs.map(\.tag).sorted()
   }
 
+  /// The deadline's own control.
+  ///
+  /// Without it, a latch that never times out looks identical to one that does — every run is
+  /// green either way — and "this cannot hang the suite" stays a comment rather than a fact. The
+  /// documented failure is precisely a doc comment claiming a deadline the code did not have.
+  @Test("The latch reports its deadline instead of parking forever")
+  func latchDeadlineFires() async {
+    let neverOpened = Gate()
+    // settle: the deadline IS the subject under test here, not a wait for something else
+    let opened = await neverOpened.wait(timeout: .milliseconds(50))
+    #expect(!opened, "a gate nobody opens must report the deadline, not wedge the run")
+  }
+
   @Test("Cancelling during the post-failure refresh publishes nothing into the closed page")
   func cancelDuringFailureRefreshPublishesNothing() async {
     let calls = Calls()
@@ -91,7 +128,7 @@ struct LivePreviewPacksModelTests {
     let before = model.state
 
     model.install(tag: "it-IT")
-    await entered.wait()
+    #expect(await entered.wait(), "the model never reached the post-failure refresh")
 
     // Grab the handle before cancelling, because `cancelInstall()` drops it. This is the join
     // that makes the assertion below deterministic.
@@ -119,7 +156,7 @@ struct LivePreviewPacksModelTests {
 
     await model.load()
     model.install(tag: "it-IT")
-    await entered.wait()
+    #expect(await entered.wait(), "the model never reached the post-failure refresh")
 
     #expect(
       model.installingTag == "it-IT",

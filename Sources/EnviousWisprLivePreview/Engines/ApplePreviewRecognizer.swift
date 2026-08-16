@@ -266,6 +266,23 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     lookups: WordCorrector.Lookups?,
     onText: @escaping @Sendable (String) -> Void
   ) async throws -> any LivePreviewEngineSession {
+    // **Re-assert the reservation here, not only in `prepare()`.**
+    //
+    // A prepared engine is CACHED and reused for every later recording without preparing
+    // again (`LivePreviewCoordinator.ensurePrepared` returns early on a key match), so a claim
+    // taken once has to survive arbitrarily long. It does not: `reserveLocale` evicts the
+    // oldest claim when Apple's five slots are full, and the language-pack installer takes a
+    // slot too, so downloading a language can evict the very locale this engine is previewing.
+    //
+    // Losing it is silent HERE and surfaces far away as "No GeneralASR asset for language
+    // <x>", which reads as a missing download and sends the investigation the wrong way — see
+    // the note on `reserveLocale`, where that cost three rounds on #1988. The engine now
+    // guarantees its own precondition instead of trusting that nothing disturbed it, which
+    // covers every way a claim can be lost rather than only the one we found.
+    //
+    // Cheap: `reserveLocale` returns immediately when the claim is already held, so the
+    // steady state is one inventory read per recording and no eviction.
+    try await Self.reserveLocale(locale)
     let session = try await startSession(lookups: lookups, onText: onText)
     return ApplePreviewSessionHandle(recognizer: self, session: session)
   }

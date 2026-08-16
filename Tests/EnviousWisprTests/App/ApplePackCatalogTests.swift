@@ -213,10 +213,47 @@ struct LivePreviewNoAutoDownloadTests {
       "control: the extracted body must be real code, not an empty string")
   }
 
+  /// #2080 round 3 — a prepared engine is CACHED and reused without preparing again, so the
+  /// reservation `prepare()` took has to survive arbitrarily long. It does not: the five-slot
+  /// table evicts its oldest entry, and installing a language pack takes a slot, so downloading
+  /// one language can evict the locale another is previewing.
+  ///
+  /// Losing it is silent at the seam and surfaces far away as "No GeneralASR asset for language
+  /// <x>" — the #1988 failure, which read as a missing download and cost three rounds. Asserted
+  /// at source because the recognizer talks to Apple's static inventory with no injection seam;
+  /// this is the honest limit of what can be proven without one.
+  @Test("Opening a session re-asserts the reservation, since a cached engine never prepares again")
+  func openSessionReAssertsTheReservation() throws {
+    let url = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprLivePreview/Engines/ApplePreviewRecognizer.swift")
+    let source = Self.codeOnly(try String(contentsOf: url, encoding: .utf8))
+
+    guard let start = source.range(of: "func openSession(") else {
+      Issue.record("openSession not found; it was renamed or moved")
+      return
+    }
+    let rest = source[start.upperBound...]
+    let end = rest.range(of: "\n  }\n")?.lowerBound ?? rest.endIndex
+    let body = String(rest[..<end])
+
+    // Control first: prove the extraction found real code, or the assertion below is vacuous.
+    #expect(
+      body.contains("startSession"),
+      "control: the extracted body must be real code, not an empty string")
+    #expect(
+      body.contains("reserveLocale"),
+      """
+      openSession must re-assert the reservation. A cached engine skips prepare() forever, so \
+      a claim evicted by another language's download is never retaken and preview fails with a \
+      missing-asset error that looks like a missing download.
+      """)
+  }
+
   @Test("The only installer in the module is the catalogue the user drives")
   func onlyTheCatalogueInstalls() throws {
     let dir = RepoRoot.url.appending(path: "Sources/EnviousWisprLivePreview")
-    let files = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)?
+    let files =
+      FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)?
       .compactMap { $0 as? URL }
       .filter { $0.pathExtension == "swift" } ?? []
     #expect(!files.isEmpty, "control: the module has Swift files to scan")
