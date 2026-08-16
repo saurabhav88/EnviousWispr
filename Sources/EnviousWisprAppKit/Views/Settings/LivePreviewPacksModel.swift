@@ -141,7 +141,11 @@ final class LivePreviewPacksModel {
   }
 
   /// Start installing one pack. Ignored while another is in flight.
-  func install(tag: String) {
+  ///
+  /// Takes the mode rather than remembering the last one `load` saw: the active language has to be
+  /// re-resolved when this finishes, and resolving it against a stale mode would publish an answer
+  /// for a setting the user has since changed. The caller has the live value at the press.
+  func install(tag: String, mode: LanguageMode) {
     guard installingTag == nil else { return }
     // Set synchronously, BEFORE the await, so the row shows a spinner on the same runloop turn as
     // the press and a second press cannot slip in behind the suspension.
@@ -153,11 +157,18 @@ final class LivePreviewPacksModel {
     // **`[weak self]` is load-bearing.** A task that strongly retains its owner while the owner
     // retains the task is a cycle: `deinit` would never run, so deinit-based cancellation would
     // be dead code and the model would leak for the life of the process.
-    installTask = Task { [weak self, catalog] in
+    installTask = Task { [weak self, catalog, resolveActive] in
       do {
         let refreshed = try await catalog.install(tag: tag)
+        // **Re-resolve the active language too.** Downloading the pack the page is asking for is
+        // the one action that CHANGES the answer, so publishing the new rows without it left the
+        // page saying "isn't downloaded yet" over a language that had just arrived, and showing
+        // "Ready" where it should say "In use", until the tab was reopened. Resolved before the
+        // guard so the generation check still covers every write.
+        let resolved = await resolveActive(mode)
         guard let self, !Task.isCancelled, self.generation == mine else { return }
         self.state = Self.state(for: refreshed)
+        self.active = resolved
         self.installingTag = nil
       } catch {
         // Re-read rather than trusting the failure: Apple may have installed it and then thrown

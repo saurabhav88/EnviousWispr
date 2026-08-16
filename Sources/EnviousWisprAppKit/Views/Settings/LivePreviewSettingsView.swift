@@ -28,6 +28,10 @@ struct LivePreviewSettingsView: View {
 
   private var isSupported: Bool { ApplePreviewEngineResolver.isSupportedOnThisSystem }
 
+  /// The toggle's own value, NOT whether a preview could run. Anything the page says about a live
+  /// preview is false while this is off, and it is off by default.
+  private var isPreviewOn: Bool { settings.livePreviewEnabled }
+
   var body: some View {
     @Bindable var settings = settings
     return SettingsContentView {
@@ -55,7 +59,14 @@ struct LivePreviewSettingsView: View {
       // The question the page exists to answer, before any inventory: which language will my
       // words appear in right now. A list of 54 rows never said, so nine installed languages told
       // the user nothing about which one was live.
-      if isSupported, let active = packs.active {
+      //
+      // **Only while the preview is actually on.** The toggle defaults to OFF, so without this
+      // gate the DEFAULT state of the page announced "Your words will appear in English" and
+      // marked a row "In use" for something that cannot run — a status that is not merely stale
+      // but false. Switching the toggle on reveals it, which also makes the section read as a
+      // consequence of the toggle above it. The list below stays visible either way, so a pack
+      // can still be downloaded before turning the feature on.
+      if isSupported, isPreviewOn, let active = packs.active {
         BrandedSection(header: LivePreviewSettingsCopy.activeHeader) {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 10) {
@@ -214,9 +225,12 @@ struct LivePreviewSettingsView: View {
     }
   }
 
+  /// Gated on the toggle for the same reason the section above is: "In use" is a claim about a
+  /// running preview, and nothing runs while the feature is off. The badge and the section read
+  /// the same `isPreviewOn`, so they cannot disagree about whether a language is live.
   private func isActive(_ pack: LivePreviewPack) -> Bool {
-    if case .ready(let tag, _) = packs.active { return tag == pack.tag }
-    return false
+    guard isPreviewOn, case .ready(let tag, _) = packs.active else { return false }
+    return tag == pack.tag
   }
 
   @ViewBuilder
@@ -259,7 +273,7 @@ struct LivePreviewSettingsView: View {
             ? LivePreviewSettingsCopy.packRetry
             : LivePreviewSettingsCopy.packInstall
         ) {
-          packs.install(tag: pack.tag)
+          packs.install(tag: pack.tag, mode: settings.languageMode)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)

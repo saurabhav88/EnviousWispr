@@ -89,10 +89,18 @@ enum LivePreviewSettingsCopy {
   }
 
   /// Where that came from, so the user knows which setting to change if it is wrong.
+  ///
+  /// **Auto is not symmetrical, and saying it was would have been a false claim.** Dictation on
+  /// Auto detects the language you actually speak (`RecordingSessionKernel` sends no language at
+  /// all). The preview cannot: Apple's transcriber is built for one locale chosen before the first
+  /// word, so it uses the Mac's language. A bilingual user on Auto therefore gets correct
+  /// dictation and a preview in the wrong language, which is exactly the "the preview is not the
+  /// pasted text" confusion this feature's copy exists to prevent. Naming the Mac as a guess is
+  /// what makes that legible instead of a bug report.
   static func activeSource(_ mode: LanguageMode) -> String {
     switch mode {
     case .auto:
-      return "Following your dictation language, which is set to follow your Mac."
+      return "Your dictation language is set to Auto, so the preview goes by your Mac's language."
     case .locked:
       return "Following the language you picked for dictation."
     }
@@ -112,11 +120,15 @@ enum LivePreviewSettingsCopy {
   /// Explains WHERE the preview language comes from, because the page shows which one is live but
   /// cannot change it — and a status you cannot act on is a dead end unless it says where to go.
   ///
-  /// States the rule rather than the mechanism: the preview has no language of its own, it is
-  /// always whatever you are dictating in. That is also why there is no picker here.
+  /// States the rule rather than the mechanism, and states the ONE case where the rule bends. An
+  /// earlier draft said the preview always uses your dictation language, full stop; that reads
+  /// cleanly and is untrue on Auto, where dictation detects what you speak and the preview has to
+  /// commit to a locale in advance. See `activeSource` for the measurement behind that.
   static let activeExplainer =
-    "The preview always uses your dictation language. Change it under Transcription: on Auto it "
-    + "follows your Mac, or pick one language and the preview matches it."
+    "The preview follows the language you pick for dictation, under Transcription. On Auto there "
+    + "is nothing to follow yet, so it goes by your Mac's language: dictation still understands "
+    + "whatever you speak, but the words on screen may appear in the wrong language until you "
+    + "pick one."
 
   /// The row that is genuinely in use, as opposed to merely present. With nine languages
   /// installed, "Ready" on all of them said nothing about which one you are previewing in.

@@ -116,6 +116,55 @@ struct LivePreviewPacksModelTests {
     .ready(tag: "en-US", name: "English (United States)")
   }
 
+  /// Answers `needsDownload` until the pack arrives, then `ready` — the real resolver's behaviour
+  /// across a download, reduced to the one transition that matters.
+  private actor ResolveScript {
+    private(set) var isInstalled = false
+    func markInstalled() { isInstalled = true }
+    func next() -> LivePreviewPacksModel.ActiveLanguage {
+      isInstalled ? .ready(tag: "it-IT", name: "Italian") : .needsDownload(name: "Italian")
+    }
+  }
+
+  /// A successful download changes the answer to "which language is live", and the page has to
+  /// publish the new one.
+  ///
+  /// Found by review, and it explains a runtime observation that had been filed as normal: during
+  /// UAT the freshly downloaded language only showed as in use after RELAUNCHING the app. That was
+  /// this defect, not a relaunch requirement. Until the tab was reopened the page kept saying the
+  /// language was not downloaded, directly over a row that had just finished downloading it.
+  @Test("Downloading the missing language updates what the page says is live")
+  func installRepublishesTheActiveLanguage() async throws {
+    let script = ResolveScript()
+    let catalog = ApplePackCatalog(
+      dependencies: .init(
+        supportedTags: { ["en-US", "it-IT"] },
+        installedTags: {
+          await script.isInstalled ? ["en-US", "it-IT"] : ["en-US"]
+        },
+        reserve: { _ in },
+        release: { _ in },
+        install: { _ in await script.markInstalled() }
+      ))
+    let model = LivePreviewPacksModel(
+      catalog: catalog, resolveActive: { _ in await script.next() })
+
+    await model.load(mode: .auto)
+    #expect(
+      model.active == .needsDownload(name: "Italian"),
+      "control: the page starts by saying the language is missing")
+
+    model.install(tag: "it-IT", mode: .auto)
+    await model.installTask?.value
+
+    #expect(
+      model.active == .ready(tag: "it-IT", name: "Italian"),
+      """
+      after the download the page must say the language is live; leaving the old answer told the \
+      user to download a pack they had just downloaded
+      """)
+  }
+
   private func tags(_ state: LivePreviewPacksModel.LoadState) -> [String] {
     guard case .loaded(let packs) = state else { return [] }
     return packs.map(\.tag).sorted()
@@ -152,7 +201,7 @@ struct LivePreviewPacksModelTests {
       resolveActive: Self.stubResolve)
 
     await model.load(mode: .auto)
-    model.install(tag: "it-IT")
+    model.install(tag: "it-IT", mode: .auto)
     #expect(await entered.wait(), "the model never reached the post-failure refresh")
     await release.open()
     await model.installTask?.value
@@ -182,7 +231,7 @@ struct LivePreviewPacksModelTests {
       resolveActive: Self.stubResolve)
 
     await model.load(mode: .auto)
-    model.install(tag: "it-IT")
+    model.install(tag: "it-IT", mode: .auto)
     #expect(await entered.wait(), "the model never reached the post-failure refresh")
     await release.open()
     await model.installTask?.value
@@ -202,7 +251,8 @@ struct LivePreviewPacksModelTests {
   func pageDoesNotSkipReloadOnReappearance() throws {
     let url = RepoRoot.url.appending(
       path: "Sources/EnviousWisprAppKit/Views/Settings/LivePreviewSettingsView.swift")
-    let source = LivePreviewNoAutoDownloadTests.codeOnly(try String(contentsOf: url, encoding: .utf8))
+    let source = LivePreviewNoAutoDownloadTests.codeOnly(
+      try String(contentsOf: url, encoding: .utf8))
 
     guard let start = source.range(of: ".task {") else {
       Issue.record(".task not found; the page's load path moved")
@@ -216,7 +266,8 @@ struct LivePreviewPacksModelTests {
     // The load must be reachable on EVERY appearance. Checking for one wrong spelling was too
     // narrow: a mutant guarding on a different condition entirely walked straight through it.
     // The only condition allowed here is the macOS-support gate.
-    let guards = body
+    let guards =
+      body
       .split(separator: "\n")
       .filter { $0.contains("guard ") }
       .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -246,7 +297,7 @@ struct LivePreviewPacksModelTests {
     #expect(await entered.wait(), "the reload never reached the catalogue")
 
     // The user presses Download while the reload is parked.
-    model.install(tag: "it-IT")
+    model.install(tag: "it-IT", mode: .auto)
     await release.open()
     await reload.value
     await model.installTask?.value
@@ -314,7 +365,7 @@ struct LivePreviewPacksModelTests {
       resolveActive: Self.stubResolve)
 
     await model.load(mode: .auto)
-    model.install(tag: "it-IT")
+    model.install(tag: "it-IT", mode: .auto)
     #expect(await entered.wait(), "the install never reached the catalogue")
 
     // The user returns to the page while the download is still running.
@@ -356,7 +407,8 @@ struct LivePreviewPacksModelTests {
     // the window cannot call it), but `@State var packs` DOES — and it reproduces the bug exactly,
     // because @State keeps the first value it is seeded with and ignores every later one. A guard
     // that only knew the uncompilable spelling would have passed the compilable defect.
-    let stateOwnsPacks = source
+    let stateOwnsPacks =
+      source
       .split(separator: "\n")
       .contains { $0.contains("@State") && $0.contains("packs") }
     #expect(
@@ -397,7 +449,7 @@ struct LivePreviewPacksModelTests {
       resolveActive: Self.stubResolve)
 
     await model.load(mode: .auto)
-    model.install(tag: "it-IT")
+    model.install(tag: "it-IT", mode: .auto)
     #expect(await entered.wait(), "the install never reached the catalogue")
 
     // The page disappears and comes back while the installer is still working. There is no
@@ -409,7 +461,7 @@ struct LivePreviewPacksModelTests {
       "a closed page must not make a running download look finished")
 
     // And a second press is refused while the first is unresolved.
-    model.install(tag: "de-DE")
+    model.install(tag: "de-DE", mode: .auto)
     await release.open()
     await model.installTask?.value
 
@@ -433,14 +485,14 @@ struct LivePreviewPacksModelTests {
       resolveActive: Self.stubResolve)
 
     await model.load(mode: .auto)
-    model.install(tag: "it-IT")
+    model.install(tag: "it-IT", mode: .auto)
     #expect(await entered.wait(), "the model never reached the post-failure refresh")
 
     #expect(
       model.installingTag == "it-IT",
       "the row must stay busy until its outcome is published, or a retry can race it")
 
-    model.install(tag: "fr-FR")  // must be refused while the first is unresolved
+    model.install(tag: "fr-FR", mode: .auto)  // must be refused while the first is unresolved
     await release.open()
     await model.installTask?.value
 
