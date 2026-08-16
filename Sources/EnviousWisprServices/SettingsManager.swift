@@ -27,6 +27,7 @@ public final class SettingsManager {
     case modelUnloadPolicy
     case restoreClipboardAfterPaste
     case smartInsertion
+    case escapeRecoveryEnabled
     case wordCorrectionEnabled
     case fillerRemovalEnabled
     case emojiFormatterEnabled
@@ -79,7 +80,8 @@ public final class SettingsManager {
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
-    "restoreClipboardAfterPaste", "smartInsertion", "wordCorrectionEnabled",
+    "restoreClipboardAfterPaste", "smartInsertion", "escapeRecoveryEnabled",
+    "wordCorrectionEnabled",
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
     "crashRecoveryEnabled", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
@@ -368,6 +370,27 @@ public final class SettingsManager {
     didSet {
       defaults.set(smartInsertion, forKey: "smartInsertion")
       onChange?(.smartInsertion)
+    }
+  }
+
+  /// Escape Recovery (#2087). Frozen into `DictationSessionConfig` at recording
+  /// start for the same reason `smartInsertion` is: a change made mid-dictation
+  /// governs the NEXT recording, never the one in flight.
+  ///
+  /// This setting decides whether pressing the cancel shortcut destroys the
+  /// dictation or keeps it, so which value a recording uses is more visible to
+  /// the user than a formatting toggle would be. The freeze buys predictability:
+  /// the shortcut behaves the way it did when they started speaking.
+  ///
+  /// It does NOT make the destructive outcome safer — freezing keeps the text
+  /// for a recording that started with the feature on, even if the user turns it
+  /// off before pressing cancel. That is the accepted cost of not rewriting a
+  /// recording's rules underneath it, and it is what "changes apply to your next
+  /// recording" tells the user.
+  public var escapeRecoveryEnabled: Bool {
+    didSet {
+      defaults.set(escapeRecoveryEnabled, forKey: "escapeRecoveryEnabled")
+      onChange?(.escapeRecoveryEnabled)
     }
   }
 
@@ -758,6 +781,9 @@ public final class SettingsManager {
     smartInsertion =
       defaults.object(forKey: "smartInsertion") as? Bool
       ?? SettingsDefaultValues.smartInsertion
+    escapeRecoveryEnabled =
+      defaults.object(forKey: "escapeRecoveryEnabled") as? Bool
+      ?? SettingsDefaultValues.escapeRecoveryEnabled
     wordCorrectionEnabled =
       defaults.object(forKey: "wordCorrectionEnabled") as? Bool
       ?? SettingsDefaultValues.wordCorrectionEnabled

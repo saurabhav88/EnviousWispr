@@ -55,6 +55,18 @@ enum SettingsDefaultValues {
   /// and an unrecognised word simply keeps today's behaviour.
   static let smartInsertion = true
 
+  /// Escape Recovery (#2087): keep a dictation the user cancelled with their
+  /// cancel shortcut, instead of discarding it. Default OFF, and that default is
+  /// the product decision, not a cautious rollout — persona review put every
+  /// persona at "off" and one at "on", so the feature is opt-in by consensus.
+  ///
+  /// It is off because ON changes what a cancel MEANS. Escape stops being
+  /// destructive, the transcription engine runs on text the user tried to throw
+  /// away, a new recording cannot start until that finishes, and a BYOK user
+  /// pays their provider for the polish. Every one of those is defensible when
+  /// chosen and indefensible when imposed.
+  static let escapeRecoveryEnabled = false
+
   static let wordCorrectionEnabled = true
   static let fillerRemovalEnabled = true
   // #636: opt-in launch re-scan of Contacts (add-only). Default OFF — the

@@ -72,7 +72,10 @@ enum DictationSessionConfigFactory {
       selectedInputDeviceUID: settings.selectedInputDeviceUID,
       preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride,
       recoverySessionID: recoverySessionID,
-      recoveryPayload: recoveryPayload
+      recoveryPayload: recoveryPayload,
+      // #2087: frozen here, so the rules a recording ends under are the rules it
+      // started under. Nothing reads this until chunk 12 activates.
+      escapeRecoveryEnabled: settings.escapeRecoveryEnabled
     )
   }
 }
