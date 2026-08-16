@@ -8,8 +8,9 @@
 #
 # Usage: assert-app-launches.sh <path-to-.app> [seconds-to-survive]
 #
-# Exit: 0 the app was alive after the wait; 1 it died (the reason is classified in the
-# output); 2 the check could not be performed.
+# Exit: 0 the host survived the wait AND the bundled transcription helper was observed
+# running; 1 the host died (the reason is classified in the output) or the helper never
+# appeared; 2 the check could not be performed.
 
 set -uo pipefail
 
@@ -41,9 +42,11 @@ chmod +x "$BIN" || die "could not restore the executable bit" 2
 # **Every Mach-O in the bundle, not just Contents/MacOS.** `upload-artifact` normalises uploads
 # to mode 0644, which strips the bit from the bundled XPC services too — including
 # `EnviousWisprASRService`, the transcription helper. Its failure to start is NONFATAL to the
-# host, so the app would survive the full wait and report PASS while the component this probe
-# most needs to exercise never ran. Restored by CONTENT so a future nested executable is covered
-# without naming its directory.
+# host, so the host would survive the full wait regardless: before the helper check below
+# became fatal that bought a false PASS, and now it would instead fail the run for a transport
+# artefact rather than anything about the app. Either way the bit has to be restored here, so
+# that a helper failure means the helper, not the upload. Restored by CONTENT so a future
+# nested executable is covered without naming its directory.
 restored=0
 while IFS= read -r macho; do
   [ -n "$macho" ] || continue
@@ -126,45 +129,78 @@ else
   echo "==> baseline ok: runner $RUNNER_VERSION is exactly at the deployment target $MINOS"
 fi
 
+# **The bundled services directory has to be there before the probe means anything.**
+# `EnviousWisprASRService` is the component this job most needs to exercise, and a bundle
+# without an `XPCServices` directory cannot start it. Asserted up front rather than skipped
+# quietly further down, because "the directory was not there" and "the helper did not start"
+# are different failures and only one of them is about the app.
+XPC_DIR="$APP/Contents/XPCServices"
+[ -d "$XPC_DIR" ] || die "no Contents/XPCServices in $APP; the transcription helper is not in this bundle, so a launch here cannot exercise it" 2
+
 LOG=$(mktemp)
 "$BIN" >"$LOG" 2>&1 &
 PID=$!
 echo "==> launched pid $PID; waiting ${SURVIVE_FOR}s"
 
 # Poll rather than one long sleep, so a fast dyld abort is reported immediately.
+#
+# **The helper is LATCHED across the whole window, not read once at the end.** It is started
+# as a startup warm-up, so it may well finish its work and exit before the wait is over. A
+# single observation after the wait would then report it absent having actually run — which
+# is the same "the instrument disagrees with reality" shape this job keeps tripping over,
+# pointed the other way. Latching means the check answers "did it ever run", which is the
+# question worth asking.
+#
+# Scoped to THIS bundle's XPCServices path, so a stray instance elsewhere on the machine
+# cannot vouch for it, and so the pattern cannot match this script's own argv.
 elapsed=0
+helper_seen=0
 while [ "$elapsed" -lt "$SURVIVE_FOR" ]; do
+  if [ "$helper_seen" -eq 0 ] && [ "$(pgrep -f "$XPC_DIR" 2>/dev/null | /usr/bin/grep -c .)" -gt 0 ]; then
+    helper_seen=1
+    echo "==> the bundled transcription helper appeared at ${elapsed}s"
+  fi
   if ! kill -0 "$PID" 2>/dev/null; then break; fi
   sleep 1
   elapsed=$((elapsed + 1))
 done
+# One more read after the loop, so a helper that appears in the final second is not missed.
+if [ "$helper_seen" -eq 0 ] && [ "$(pgrep -f "$XPC_DIR" 2>/dev/null | /usr/bin/grep -c .)" -gt 0 ]; then
+  helper_seen=1
+  echo "==> the bundled transcription helper appeared at ${elapsed}s"
+fi
 
 if kill -0 "$PID" 2>/dev/null; then
   echo "==> PASS: still running after ${elapsed}s on macOS $(sw_vers -productVersion)"
 
-  # **Did the transcription service actually start?**
+  # **Did the transcription service actually start? A no is a FAILURE, not a note.**
   #
-  # "The host survived" is a weak claim, and three review rounds in a row found ways this probe
-  # passed while `EnviousWisprASRService` never ran: first it was not scanned, then it arrived
-  # non-executable, then it could be rejected as unsigned. Each fix removed one precondition
-  # without ever asserting the outcome. This asserts the outcome: the service is started as a
-  # startup warm-up and appears as its own process, so its absence is evidence, not noise.
+  # "The host survived" is a weak claim, and four review rounds in a row found ways this probe
+  # passed while `EnviousWisprASRService` never ran: it was not scanned, then it arrived
+  # non-executable, then it could be rejected as unsigned, and then its absence was merely
+  # printed. Each of the first three fixes removed one precondition without asserting the
+  # outcome; the fourth observed the outcome and still exited 0, so a workflow could report
+  # success having never started the component that performs transcription.
   #
-  # Scoped to THIS bundle's path so a stray instance from elsewhere on the machine cannot vouch
-  # for it. Reported, not fatal, on a headless runner where a GUI-driven warm-up may legitimately
-  # not fire — but the count is printed either way, so "never exercised" can never again look
-  # identical to "exercised and fine".
-  XPC_DIR="$APP/Contents/XPCServices"
-  if [ -d "$XPC_DIR" ]; then
-    helper_running=$(pgrep -f "$XPC_DIR" 2>/dev/null | /usr/bin/grep -c .)
-    if [ "$helper_running" -gt 0 ]; then
-      echo "==> bundled XPC services running: $helper_running (the transcription helper started)"
-    else
-      echo "==> NOTE: no bundled XPC service process was observed."
-      echo "    The host survived, but this run did NOT exercise the transcription helper's own"
-      echo "    startup. Treat this PASS as covering the host process only."
-    fi
+  # The host process is NOT a proxy for the helper: the warm-up is started asynchronously and
+  # its failure is nonfatal to the host, which is exactly why the host outliving a dead helper
+  # is the expected shape of the bug rather than an unlikely one.
+  #
+  # **Basis for making it fatal, stated rather than assumed:** one measured run on this runner
+  # image (macOS 14.8.7, arm64, the tarball-transferred bundle) observed the helper running. One
+  # observation is enough to say the warm-up DOES fire in this environment, and therefore that
+  # its absence is a signal; it is not enough to characterise how reliably it fires. If this
+  # starts flapping red on runs where the app is fine, that reopens the question — the answer
+  # then is to make the helper start deterministically, not to go back to printing a note.
+  if [ "$helper_seen" -eq 0 ]; then
+    kill -TERM "$PID" 2>/dev/null
+    wait "$PID" 2>/dev/null
+    echo "--- first 40 lines of host output ---" >&2
+    head -40 "$LOG" >&2
+    rm -f "$LOG"
+    die "the host survived ${elapsed}s but the bundled transcription helper never appeared. The app cannot transcribe in this state, so this is a failure, not a caveat on a pass." 1
   fi
+  echo "==> the transcription helper ran: this probe covered the host AND the ASR service"
   kill -TERM "$PID" 2>/dev/null
   wait "$PID" 2>/dev/null
   # Surface early output even on success: a dyld warning that did not kill the process is
