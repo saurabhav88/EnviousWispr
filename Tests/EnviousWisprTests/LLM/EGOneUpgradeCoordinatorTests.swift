@@ -11,6 +11,13 @@ import Testing
 /// from disk truth alone. Every destructive path is proven against its
 /// negative twin: same-size wrong bytes, renamed files, symlinked stores.
 @Suite struct EGOneUpgradeCoordinatorTests {
+  /// The identity these legacy cases run under. Its revision is irrelevant to every assertion
+  /// in this suite: the temp metadata directory holds no admission marker for any OTHER
+  /// revision, so the #2096 revision trigger evaluates false throughout and the monolith
+  /// behaviour below is measured in isolation, exactly as it was before that trigger existed.
+  static let legacyOracleIdentity = ModelIdentity(
+    family: .egOne, name: "eg-1", revision: "v3-eg2", variant: "q5km", runtimeABI: "test")
+
   @MainActor
   private final class Probe {
     var admitted = false
@@ -80,6 +87,11 @@ import Testing
   ) -> EGOneUpgradeCoordinator {
     let subject = EGOneUpgradeCoordinator(
       appSupportDirectory: root,
+      // These 29 cases are the LEGACY oracle. The metadata directory they use holds no
+      // prior-revision admission marker, so the revision trigger is inert here by
+      // construction and every legacy assertion below still measures what it always did.
+      identity: Self.legacyOracleIdentity,
+      installDirectory: root.appendingPathComponent("EnviousWispr/Models/eg-1", isDirectory: true),
       defaults: defaults,
       trustedArtifact: .init(
         name: "eg-1-v1.gguf",
@@ -795,12 +807,12 @@ import Testing
     let subject = coordinator(
       root: root, defaults: store, bytes: Data("trusted".utf8), probe: probe)
 
-    #expect(subject.recordUserDecline())
+    #expect(subject.recordUserDecline(source: .cancel))
     #expect(!FileManager.default.fileExists(atPath: marker(root).path))
     #expect(probe.events == [.replacementDeclined])
 
     // Idempotent: a second decline with no marker succeeds and stays silent.
-    #expect(subject.recordUserDecline())
+    #expect(subject.recordUserDecline(source: .cancel))
     #expect(probe.events == [.replacementDeclined])
   }
 
@@ -820,7 +832,7 @@ import Testing
     let subject = coordinator(
       root: root, defaults: store, bytes: Data("trusted".utf8), probe: probe)
 
-    #expect(subject.recordUserDecline())
+    #expect(subject.recordUserDecline(source: .cancel))
     #expect(!FileManager.default.fileExists(atPath: marker(root).path))
     #expect(probe.events == [.replacementDeclined])
   }

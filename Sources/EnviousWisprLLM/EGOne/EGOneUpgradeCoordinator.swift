@@ -2,13 +2,36 @@ import CryptoKit
 import EnviousWisprModelDelivery
 import Foundation
 
-/// Retires exactly one unsupported, app-owned EG-1 artifact.
+/// Owns one concern: **EG-1's installed bytes are superseded and a replacement is owed.**
 ///
-/// It does not understand current shards, download them, verify them, or admit
-/// them. Those responsibilities stay in EGOneDeliveryAdapter and
-/// ModelDeliveryController.
+/// That obligation has exactly two sources, and one response path serves both (#2096 §3b):
+///
+/// 1. **An unsupported, app-owned monolith** — the original `eg-1-v1.gguf`. Detected by a pinned
+///    size+digest, marked owed, then unlinked. This source, and only this source, deletes bytes.
+/// 2. **A superseded revision** — a prior revision of the SAME model was admitted, its bytes are
+///    still on disk, and the manifest this app ships names a different revision. Deletes nothing;
+///    the shared promotion path orphan-cleans the old shards once the new set is admitted.
+///
+/// The response is identical either way: owe, fetch through the adapter, then admit or decline.
+/// The delete-first step stays gated behind the digest-pinned `TrustedArtifact` and is unreachable
+/// from the revision trigger.
+///
+/// It still does not understand current shards, download them, verify them, or admit them. Those
+/// responsibilities stay in EGOneDeliveryAdapter and ModelDeliveryController.
 @MainActor
 public final class EGOneUpgradeCoordinator {
+  /// Which user action produced a decline. Cancel and Remove reach one hook but do NOT mean the
+  /// same thing, and #2066's lesson is not to attach meaning to a state with several producers
+  /// without distinguishing them. Remove is a statement about the MODEL; Cancel is a statement
+  /// about THIS DOWNLOAD, and the settings row can start a download we did not.
+  /// Internal on purpose. Both producers (`EGOneDeliveryAdapter.cancel` and `.remove`) and the
+  /// hook that carries this live in this module, so widening it to `public` would enlarge the
+  /// shipped surface for no consumer.
+  enum DeclineSource: Sendable, Equatable {
+    case cancel
+    case remove
+  }
+
   public struct TrustedArtifact: Sendable, Equatable {
     public let name: String
     public let sizeBytes: Int64
@@ -53,6 +76,24 @@ public final class EGOneUpgradeCoordinator {
   private let defaults: UserDefaults
   private let trustedArtifact: TrustedArtifact
 
+  /// The identity and install location of the manifest THIS app ships. Needed to recognise a
+  /// marker belonging to a different revision of the same model, and to check whether that
+  /// revision's files survive. Injected from the composition root, which already holds the
+  /// registration, rather than widening the adapter's surface to expose it.
+  private let identity: ModelIdentity
+  private let installDirectory: URL
+
+  /// True only while THIS coordinator is driving a fetch it started itself. It distinguishes an
+  /// automatic upgrade from a download the user began in settings — the two reach the same
+  /// adapter hooks and must not mean the same thing on cancel.
+  ///
+  /// A COUNT, not a flag. `runLaunch()` runs once at bootstrap today, but it is re-entered within
+  /// the same session when onboarding completes, so two automatic attempts can overlap. With a
+  /// plain Boolean the first to finish would clear it while the second was still fetching, and a
+  /// Cancel belonging to that second attempt would be misread as the user's own.
+  private var automaticUpgradeInFlightCount = 0
+  private var automaticUpgradeInFlight: Bool { automaticUpgradeInFlightCount > 0 }
+
   private let ensureCurrentModel:
     @MainActor @Sendable () async -> ModelDeliveryController.DeliveryOutcome
   private let currentModelIsAdmitted: @MainActor @Sendable () async -> Bool
@@ -69,11 +110,15 @@ public final class EGOneUpgradeCoordinator {
   public convenience init(
     adapter: EGOneDeliveryAdapter,
     appSupportDirectory: URL,
+    identity: ModelIdentity,
+    installDirectory: URL,
     defaults: UserDefaults? = nil,
     trustedArtifact: TrustedArtifact = shippedLegacyArtifact
   ) {
     self.init(
       appSupportDirectory: appSupportDirectory,
+      identity: identity,
+      installDirectory: installDirectory,
       defaults: defaults
         ?? UserDefaults(suiteName: DeliveryFlags.suiteName)
         ?? .standard,
@@ -93,8 +138,8 @@ public final class EGOneUpgradeCoordinator {
     // The adapter retains these closures, and therefore this coordinator.
     // The coordinator's adapter closures above are weak: no cycle.
     adapter.installLegacyUpgradeHooks(
-      beforeEnsure: { [self] in await prepareForDownload() },
-      beforeDecline: { [self] in recordUserDecline() },
+      beforeEnsure: { [self] in await prepareForEnsure() },
+      beforeDecline: { [self] source in recordUserDecline(source: source) },
       onAdmitted: { [self] in handleAdmission() }
     )
   }
@@ -102,6 +147,8 @@ public final class EGOneUpgradeCoordinator {
   /// Internal test seam. It changes no production abstraction.
   init(
     appSupportDirectory: URL,
+    identity: ModelIdentity,
+    installDirectory: URL,
     defaults: UserDefaults,
     trustedArtifact: TrustedArtifact,
     ensureCurrentModel:
@@ -112,6 +159,8 @@ public final class EGOneUpgradeCoordinator {
     removeItem: (@MainActor @Sendable (URL) throws -> Void)? = nil
   ) {
     self.appSupportDirectory = appSupportDirectory
+    self.identity = identity
+    self.installDirectory = installDirectory
     self.defaults = defaults
     self.trustedArtifact = trustedArtifact
     self.ensureCurrentModel = ensureCurrentModel
@@ -143,6 +192,44 @@ public final class EGOneUpgradeCoordinator {
     FileManager.default.fileExists(atPath: owedMarkerURL.path)
   }
 
+  /// Revision-scoped, so declining THIS model never suppresses the NEXT one. Keyed by
+  /// `cacheKey`, which is documented filesystem-safe and already carries family, name,
+  /// revision and variant.
+  private var revisionDeclineMarkerURL: URL {
+    metadataDirectory.appendingPathComponent("eg1-revision-decline-\(identity.cacheKey)")
+  }
+
+  private var isRevisionDeclined: Bool {
+    FileManager.default.fileExists(atPath: revisionDeclineMarkerURL.path)
+  }
+
+  /// D2 + D2b + D3 of plan §3.2. **D1 (the current manifest is not admitted) is deliberately NOT
+  /// here** — `runLaunch` already computes it asynchronously, and keeping this property
+  /// synchronous is what lets the decline path consult it.
+  ///
+  /// D2 is "a prior revision was admitted", never "the install directory has files in it".
+  /// `remove()` deletes only the roots the CURRENT manifest claims
+  /// (`ModelDeliveryController.remove`), so a previous revision's shards outlive it — testing
+  /// for files would resurrect a model the user deliberately deleted.
+  private var isRevisionUpgradeOwed: Bool {
+    guard !isRevisionDeclined else { return false }
+    return PriorRevisionAdmission.supersededInstallSurvives(
+      identity: identity,
+      metadataDirectory: metadataDirectory,
+      installDirectory: installDirectory)
+  }
+
+  @discardableResult
+  private func writeRevisionDecline() -> Bool {
+    guard !isRevisionDeclined else { return true }
+    return writeMarker(revisionDeclineMarkerURL)
+  }
+
+  private func clearRevisionDecline() {
+    guard isRevisionDeclined else { return }
+    try? removeItem(revisionDeclineMarkerURL)
+  }
+
   // C1 - One real switch for adapter and coordinator.
   private var isEnabled: Bool {
     EGOneDeliveryAdapter.isDeliveryEnabled(defaults: defaults)
@@ -155,20 +242,58 @@ public final class EGOneUpgradeCoordinator {
 
     let admitted = await currentModelIsAdmitted()
 
-    guard await prepareForDownload(), !containmentRefused else { return }
+    // C11 - Classify the REVISION obligation BEFORE preparation runs.
+    //
+    // Preparation can latch `containmentRefused` on a legacy-store topology that a revision
+    // upgrade neither reads nor deletes. Deciding afterwards would let that refusal suppress
+    // every future model upgrade permanently and silently, on a machine layout the user cannot
+    // know is the cause. Fail-closed is correct for deleting bytes; it is not correct for
+    // declining to fetch them.
+    let revisionUpgradeOwed = !admitted && isRevisionUpgradeOwed
+
+    // C3 - Preparation still runs on EVERY enabled launch, unconditionally. It is not merely a
+    // check: it is where an unmarked monolith is discovered, fingerprinted, marked owed, and
+    // unlinked. Gating it on a known obligation would mean a first-encounter monolith is never
+    // retired at all.
+    let prepared = await prepareForDownload()
 
     if admitted {
       handleAdmission()
       return
     }
 
-    guard isReplacementOwed else { return }
+    // The LEGACY obligation keeps both of its original guards: preparation must have succeeded
+    // and containment must not have been refused. Only its scope narrowed.
+    let legacyOwed = prepared && !containmentRefused && isReplacementOwed
+
+    guard legacyOwed || revisionUpgradeOwed else { return }
 
     // C7 - The existing adapter/controller is the only download door.
+    //
+    // Marked in-flight across the fetch so a Cancel arriving through the adapter's shared
+    // decline hook is attributable to US rather than to the settings row.
+    automaticUpgradeInFlightCount += 1
     let outcome = await ensureCurrentModel()
+    automaticUpgradeInFlightCount -= 1
+
     if case .admitted = outcome {
       handleAdmission()
     }
+  }
+
+  /// The adapter's `beforeEnsure` door, and the ONLY caller that may clear a decline.
+  ///
+  /// Reached by both an automatic upgrade and a user pressing Download / Try Again. Only the
+  /// second clears: pressing Download is the clearest possible statement of intent, while our
+  /// own fetch must not erase the record of a refusal it is about to act against. `runLaunch`
+  /// calls `prepareForDownload()` directly rather than coming through here, so a launch can
+  /// never clear a decline on its way past.
+  ///
+  /// This lives on the coordinator rather than inside the composition root's closure so it is
+  /// reachable from the test seam; logic that only exists in a wiring closure cannot be tested.
+  func prepareForEnsure() async -> Bool {
+    if !automaticUpgradeInFlight { clearRevisionDecline() }
+    return await prepareForDownload()
   }
 
   // C3 - Launch and a simultaneous Download click share one fingerprint/delete.
@@ -342,7 +467,15 @@ public final class EGOneUpgradeCoordinator {
   // C8 - Admission clears the marker only while model delivery is enabled and
   // preparation did not refuse the old-store topology.
   private func handleAdmission() {
-    guard isEnabled, !containmentRefused else { return }
+    guard isEnabled else { return }
+
+    // C12 - A successful admission settles the REVISION decline regardless of legacy
+    // containment. Containment describes the old PolishModels store, which this obligation
+    // never touched; leaving a decline behind after the model demonstrably installed would
+    // suppress the NEXT revision for no reason the user could discover.
+    clearRevisionDecline()
+
+    guard !containmentRefused else { return }
     let wasOwed = isReplacementOwed
     guard clearOwedMarker() else { return }
     if wasOwed {
@@ -351,7 +484,23 @@ public final class EGOneUpgradeCoordinator {
   }
 
   // C9 - Explicit Cancel/Remove records decline even while delivery is off.
-  func recordUserDecline() -> Bool {
+  //
+  // C13 - The two producers are separated rather than inferred. **Remove** is a statement about
+  // the MODEL and always declines while an upgrade is owed — without it, `remove()` leaves the
+  // previous revision's marker and shards untouched, so the next launch would re-fetch 2.9 GB of
+  // the very thing the user just deleted. **Cancel** is a statement about THIS DOWNLOAD, so it
+  // declines only when the download was ours; the settings row's own Cancel must not poison the
+  // automatic path.
+  // C14 - A decline that could not be PERSISTED must block the action, exactly as the legacy
+  // marker write does. Ignoring a failed write would let Cancel/Remove succeed while the refusal
+  // existed only in memory, and the next launch would automatically re-fetch the model the user
+  // just declined — the failure being silent is precisely what makes it worth failing closed.
+  // Written before the owed marker is cleared, so a failure leaves BOTH markers in their
+  // pre-decline state rather than a half-applied one.
+  func recordUserDecline(source: DeclineSource) -> Bool {
+    let declinesRevision = source == .remove ? isRevisionUpgradeOwed : automaticUpgradeInFlight
+    guard !declinesRevision || writeRevisionDecline() else { return false }
+
     let wasOwed = isReplacementOwed
     guard clearOwedMarker() else { return false }
     if wasOwed {

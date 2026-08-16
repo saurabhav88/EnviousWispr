@@ -209,6 +209,8 @@ import Testing
     let coordinator = EGOneUpgradeCoordinator(
       adapter: h.adapter,
       appSupportDirectory: h.root,
+      identity: h.registration.manifest.identity,
+      installDirectory: h.registration.installDirectory,
       defaults: h.store,
       trustedArtifact: .init(
         name: "eg-1-v1.gguf",
@@ -239,6 +241,8 @@ import Testing
     let coordinator = EGOneUpgradeCoordinator(
       adapter: h.adapter,
       appSupportDirectory: h.root,
+      identity: h.registration.manifest.identity,
+      installDirectory: h.registration.installDirectory,
       defaults: h.store,
       trustedArtifact: .init(
         name: "eg-1-v1.gguf",

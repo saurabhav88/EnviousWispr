@@ -167,7 +167,10 @@ import Testing
       controller: controller, registration: registration, version: "v2-sharded",
       defaults: store)
     let coordinator = EGOneUpgradeCoordinator(
-      adapter: adapter, appSupportDirectory: root, defaults: store)
+      adapter: adapter, appSupportDirectory: root,
+      identity: registration.manifest.identity,
+      installDirectory: registration.installDirectory,
+      defaults: store)
     let events = EventBox()
     coordinator.onEvent = { [events] event in
       events.events.append(event)

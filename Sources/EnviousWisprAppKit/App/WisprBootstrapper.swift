@@ -273,8 +273,7 @@ public final class WisprBootstrapper {
     let egOneAppSupport = FileManager.default.urls(
       for: .applicationSupportDirectory, in: .userDomainMask)[0]
     var egOneAdapter: EGOneDeliveryAdapter?
-    var egOneUpgrade:
-      (registration: DeliveryRegistration, coordinator: EGOneUpgradeCoordinator)?
+    var egOneUpgrade: (registration: DeliveryRegistration, coordinator: EGOneUpgradeCoordinator)?
     if let deliveryManifest = try? DeliveryManifest.loadBundled(resource: "eg1-delivery-manifest") {
       let registration = DeliveryRegistration(
         manifest: deliveryManifest,
@@ -290,7 +289,9 @@ public final class WisprBootstrapper {
 
       let coordinator = EGOneUpgradeCoordinator(
         adapter: adapter,
-        appSupportDirectory: egOneAppSupport)
+        appSupportDirectory: egOneAppSupport,
+        identity: deliveryManifest.identity,
+        installDirectory: registration.installDirectory)
       // `selected_provider` attaches here (settings in scope); coordinator
       // stays provider-ignorant.
       coordinator.onEvent = EGOneTelemetryBridge.legacyUpgradeHandler(

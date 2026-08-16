@@ -41,13 +41,20 @@ public final class EGOneDeliveryAdapter {
   /// adapter stays the single delivery doorway; the coordinator's monolith
   /// retirement runs before any fetch door, and admission/decline outcomes are
   /// reported back so the owed marker never drifts from delivery reality.
+  ///
+  /// `beforeDecline` carries WHICH action fired it (#2096). `cancel()` and `remove()` both
+  /// reach it and they do not mean the same thing: Remove is about the model, Cancel is about
+  /// one download, and the settings row can start a download the coordinator did not. Passing
+  /// the producer keeps that distinction explicit here instead of leaving the coordinator to
+  /// infer it from in-flight state that a user-initiated download would also set.
   private var legacyPrepareBeforeEnsure: (@MainActor @Sendable () async -> Bool)?
-  private var legacyRecordDecline: (@MainActor @Sendable () -> Bool)?
+  private var legacyRecordDecline:
+    (@MainActor @Sendable (EGOneUpgradeCoordinator.DeclineSource) -> Bool)?
   private var legacyDidAdmit: (@MainActor @Sendable () -> Void)?
 
   func installLegacyUpgradeHooks(
     beforeEnsure: @escaping @MainActor @Sendable () async -> Bool,
-    beforeDecline: @escaping @MainActor @Sendable () -> Bool,
+    beforeDecline: @escaping @MainActor @Sendable (EGOneUpgradeCoordinator.DeclineSource) -> Bool,
     onAdmitted: @escaping @MainActor @Sendable () -> Void
   ) {
     legacyPrepareBeforeEnsure = beforeEnsure
@@ -163,7 +170,7 @@ public final class EGOneDeliveryAdapter {
   /// model bytes, never the user's recorded decision). If admission already
   /// won the race, the verified model simply stays installed.
   public func cancel() async {
-    if let legacyRecordDecline, !legacyRecordDecline() {
+    if let legacyRecordDecline, !legacyRecordDecline(.cancel) {
       return
     }
 
@@ -176,7 +183,7 @@ public final class EGOneDeliveryAdapter {
   /// A3 - Explicit decline is recorded before the switch is consulted. The
   /// switch still prevents current-model deletion.
   public func remove() async -> ModelDeliveryController.RemoveOutcome {
-    if let legacyRecordDecline, !legacyRecordDecline() {
+    if let legacyRecordDecline, !legacyRecordDecline(.remove) {
       return .failed(
         DeliveryFailure(reason: .permissionDenied, detail: "replacement_marker_clear"))
     }
