@@ -25,12 +25,7 @@ enum WhatsNewContent {
       icon: "sparkles",
       title: "EG-1 is better at changes of mind and spoken lists",
       description:
-        "The built-in AI cleanup model has been retrained. When you change your mind mid-sentence, "
-        + "saying something like \"send it to Marcus, sorry, to Priya\", it now keeps what you meant "
-        + "and drops what you took back. When you announce a list out loud, you get a list instead "
-        + "of one long line. You do not need to change how you dictate, and EG-1 still runs "
-        + "entirely on your Mac. If you already use it, the new version downloads on its own in "
-        + "the background the next time you open the app. Dictation keeps working while it downloads.",
+        "The built-in AI cleanup model has been retrained. When you change your mind mid-sentence, saying something like \"send it to Marcus, sorry, to Priya\", it now keeps what you meant and drops what you took back. When you announce a list out loud, you get a list instead of one long line. You do not need to change how you dictate, and EG-1 still runs entirely on your Mac. If you already use it, the new version downloads on its own in the background the next time you open the app. Dictation keeps working while it downloads.",
       version: "2.4.5"
     ),
 
