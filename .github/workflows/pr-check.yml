@@ -396,8 +396,13 @@ jobs:
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          APP=$(find "$DERIVED_DATA_PATH/Build/Products" -maxdepth 3 -name 'EnviousWispr.app' -type d | head -1)
-          [ -n "$APP" ] || { echo "FAIL: no built .app found for the linkage check" >&2; exit 1; }
+          # Named explicitly, never `find | head -1`. This job restores a DerivedData cache, so a
+          # stale Debug product can sit beside the Release one and an unordered match could
+          # inspect it — letting a Release-only linkage problem through the required gate.
+          APP="$DERIVED_DATA_PATH/Build/Products/Release/EnviousWispr.app"
+          # `-d`, not `-n`: the path is a literal now, so a non-empty test would always pass
+          # and the check would run against a bundle that does not exist.
+          [ -d "$APP" ] || { echo "FAIL: release app not at $APP" >&2; exit 1; }
           BIN="$APP/Contents/MacOS/EnviousWispr"
           ./scripts/ci/check-weak-linked-symbols-test.sh "$BIN"
           ./scripts/ci/check-weak-linked-symbols.sh "$BIN"

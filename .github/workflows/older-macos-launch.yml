@@ -91,8 +91,12 @@ jobs:
         id: app
         run: |
           set -euo pipefail
-          APP=$(find "$DERIVED_DATA_PATH/Build/Products" -maxdepth 3 -name 'EnviousWispr.app' -type d | head -1)
-          [ -n "$APP" ] || { echo "FAIL: no built .app found" >&2; exit 1; }
+          # Named explicitly for the same reason as the required gate: an unordered match over a
+          # restored DerivedData cache could carry a stale Debug app to the older runner, and the
+          # launch would then certify a binary we do not ship.
+          APP="$DERIVED_DATA_PATH/Build/Products/Release/EnviousWispr.app"
+          # `-d`, not `-n`: a literal path is always non-empty, so only existence is evidence.
+          [ -d "$APP" ] || { echo "FAIL: release app not at $APP" >&2; exit 1; }
           echo "app_path=$APP" >> "$GITHUB_OUTPUT"
           echo "built: $APP"
 
