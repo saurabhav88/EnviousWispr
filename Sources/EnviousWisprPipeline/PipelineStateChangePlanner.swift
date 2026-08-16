@@ -144,9 +144,8 @@ enum PipelineStateChangePlanner {
     // #2087: non-nil means this transition concludes an Escape Recovery, and it
     // takes over the completion path entirely (Step 2b). Sendable by
     // construction — the pill's paste target travels beside the plan, never in
-    // it. Chunk 7 is the first code that can supply one and chunk 12 is what
-    // makes that code reachable, so this is `nil` throughout chunk 6 and no
-    // existing caller's plan changes by a single effect.
+    // it. No caller supplies one yet, and chunk 12 is what will make any such
+    // caller reachable, so today no existing plan changes by a single effect.
     escapeRecoveryOutcome: EscapeRecoveryTerminalOutcome? = nil
   ) -> PipelineStateChangePlan {
     var effects: [PipelineStateSideEffect] = []

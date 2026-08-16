@@ -24,7 +24,7 @@ enum PipelineStateChangeDispatch {
   ///
   /// **The Escape Recovery completion is TAKEN here, and taking is destructive**
   /// (#2087). Today the take always answers nil — nothing produces a completion
-  /// until chunk 7. This is the window that chunk's freeze has to aim at: the
+  /// yet. This is the window such a producer has to aim at: the
   /// terminal cleanup nils the paste target before `onStateChange` fires, so a
   /// completion frozen after it would carry nothing, and one read later than
   /// here would find nothing. A second notification for the same session takes

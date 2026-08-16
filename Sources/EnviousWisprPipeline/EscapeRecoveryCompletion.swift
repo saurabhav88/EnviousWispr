@@ -122,9 +122,9 @@ public enum EscapeRecoveryCompletion {
 package final class EscapeRecoveryCompletionSlot {
   private var stored: EscapeRecoveryCompletion?
 
-  /// Populate the slot. Its production caller arrives in chunk 7 and must run
-  /// BEFORE the driver clears its session context, while the paste target
-  /// handles are still live; today only the driver's DEBUG test seam writes here.
+  /// Populate the slot. No production caller exists yet; the one that lands must
+  /// run BEFORE the driver clears its session context, while the paste target
+  /// handles are still live. Today only the driver's DEBUG test seam writes here.
   package func put(_ completion: EscapeRecoveryCompletion) { stored = completion }
 
   /// Take the completion, clearing it. A second call returns nil — that is the

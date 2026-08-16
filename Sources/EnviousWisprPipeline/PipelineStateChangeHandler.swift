@@ -107,10 +107,10 @@ public final class PipelineStateChangeHandler {
     // It splits here and only here: the sendable outcome goes into the plan, the
     // paste target stays behind. `PipelineStateChangePlan` is `Sendable` and
     // `AXUIElement` is a main-actor handle, so the plan can say THAT a pill is
-    // due and never what it points at. Chunk 7 is the first code that can build
-    // one; chunk 12 is what makes that code REACHABLE, by shipping the setting
-    // that lets a cancel take the recovery branch at all. So this is nil in
-    // every build until 7, and nil for every user until they opt in after 12.
+    // due and never what it points at. Nil in every build until a producer
+    // exists, and nil for every user until chunk 12 ships the setting that lets
+    // a cancel take the recovery branch at all — those are two separate gates,
+    // and conflating them is how "it is wired" gets mistaken for "it can fire".
     escapeRecoveryCompletion: EscapeRecoveryCompletion? = nil
   ) {
     let plan = PipelineStateChangePlanner.plan(

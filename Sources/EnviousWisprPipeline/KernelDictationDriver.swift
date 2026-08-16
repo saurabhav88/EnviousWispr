@@ -381,9 +381,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// clear and read synchronously on the other, and `onStateChange` keeps its
   /// signature.
   ///
-  /// **Nothing writes it in production yet.** The freeze is chunk 7's, and the
-  /// sentence above is the ordering that chunk must satisfy: capture before
-  /// `clearContextConfigIfTerminalOrIdle()`, not after.
+  /// **Nothing writes it in production yet**, and the sentence above is the
+  /// ordering whoever writes it must satisfy: capture before
+  /// `clearContextConfigIfTerminalOrIdle()`, not after. A `.saved` completion in
+  /// particular cannot be built until a durable row exists to point at, so its
+  /// producer lands with the storage path rather than with the cancel branch.
   ///
   /// Consumed with `take()`, never read: the callback can fire more than once
   /// per session, and a plain read would offer the user their text again on
@@ -1324,10 +1326,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
     /// Test-only writer for the Escape Recovery slot (#2087).
     ///
-    /// The production writer lands in chunk 7, with the exit arm that decides a
-    /// cancelled take is recoverable. Without this seam the slot's guarantees —
-    /// take-once, cleared on a new session — would ship with no way to fail,
-    /// and an unarmed guard is indistinguishable from a working one.
+    /// No production writer exists yet. Without this seam the slot's guarantees —
+    /// take-once, cleared on a new session — would ship with no way to fail, and
+    /// an unarmed guard is indistinguishable from a working one. Delete it once a
+    /// real producer can drive the same three tests.
     // periphery:ignore - test seam
     func putEscapeRecoveryCompletionForTesting(_ completion: EscapeRecoveryCompletion) {
       escapeRecoveryCompletion.put(completion)
@@ -1363,8 +1365,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         guard let self else { return }
         // #2087 — before anything else: a new session invalidates a completion
         // the consumer never took. The ordering is a REQUIREMENT on the capture
-        // site chunk 7 adds, not an observation about it: that site must run on
-        // this session's terminal, so that clearing first can never discard a
+        // site that lands later, not an observation about one: that site must run
+        // on this session's terminal, so that clearing first can never discard a
         // completion frozen moments earlier.
         self.clearEscapeRecoveryCompletionOnNewSession()
         // #1063 PR2 — FIRST, before `clearContextConfigIfTerminalOrIdle()` nulls
