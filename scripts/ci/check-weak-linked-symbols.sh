@@ -303,22 +303,46 @@ fi
 # dependency legitimately supports older systems than we ship to. Measured on the real bundle:
 # 14 Info.plist files, ours declaring 14.0 and Sparkle's and PostHog's declaring 10.13 and 10.15,
 # so an equality rule applied to all of them would fail on honest dependencies.
+#
+# **TWO keys govern this, not one.** `LSMinimumSystemVersionByArchitecture` carries a per-arch
+# override, so a plist can keep the generic key at the floor and raise the `arm64` entry, which
+# is the only architecture we ship. Checking one key and not the other is how a sweep of a SET
+# misses a member. Neither key's arm64 entry appears anywhere in this repo or in any of the 14
+# plists in the built bundle today, so this is a guard against a future edit rather than a live
+# defect — and whether Launch Services honours an arm64 entry is NOT established here, only that
+# covering it costs one more read.
+assert_ls_min() { # <label> <value> <is-main:0|1>; returns 1 if the value is unacceptable
+  local label="$1" value="$2" is_main="$3"
+  if [ "$is_main" -eq 1 ]; then
+    if [ "$value" != "$DECLARED" ]; then
+      echo "    $label is $value but the declared floor is $DECLARED. Launch Services would refuse to start the app for supported users, or advertise support this build does not provide" >&2
+      return 1
+    fi
+  elif [ "$value" != "$DECLARED" ] &&
+       [ "$(printf '%s\n%s\n' "$value" "$DECLARED" | sort -V | tail -1)" = "$value" ]; then
+    echo "    $label is $value, above the declared floor $DECLARED" >&2
+    return 1
+  fi
+  return 0
+}
+
 if [ "$IS_BUNDLE" -eq 1 ]; then
   main_plist_seen=0
   while IFS= read -r plist; do
     [ -n "$plist" ] || continue
+    rel="${plist#"$TARGET"/}"
+    is_main=0
+    [ "$plist" = "$TARGET/Contents/Info.plist" ] && is_main=1
+
     lsmin=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$plist" 2>/dev/null)
-    [ -n "$lsmin" ] || continue
-    if [ "$plist" = "$TARGET/Contents/Info.plist" ]; then
-      main_plist_seen=1
-      if [ "$lsmin" != "$DECLARED" ]; then
-        echo "    Contents/Info.plist: LSMinimumSystemVersion is $lsmin but the declared floor is $DECLARED. Launch Services would refuse to start the app for supported users, or advertise support this build does not provide" >&2
-        status=1
-      fi
-    elif [ "$lsmin" != "$DECLARED" ] &&
-         [ "$(printf '%s\n%s\n' "$lsmin" "$DECLARED" | sort -V | tail -1)" = "$lsmin" ]; then
-      echo "    ${plist#"$TARGET"/}: LSMinimumSystemVersion is $lsmin, above the declared floor $DECLARED" >&2
-      status=1
+    if [ -n "$lsmin" ]; then
+      [ "$is_main" -eq 1 ] && main_plist_seen=1
+      assert_ls_min "$rel: LSMinimumSystemVersion" "$lsmin" "$is_main" || status=1
+    fi
+
+    lsarm=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersionByArchitecture:arm64" "$plist" 2>/dev/null)
+    if [ -n "$lsarm" ]; then
+      assert_ls_min "$rel: LSMinimumSystemVersionByArchitecture:arm64" "$lsarm" "$is_main" || status=1
     fi
   done <<EOF
 $(find "$TARGET" -name "Info.plist" 2>/dev/null)
@@ -336,6 +360,7 @@ fi
 #     fail every honest dependency. The main executable above is what carries the
 #     something-was-inspected requirement.
 embedded_count=0
+embedded_arm64_count=0
 if [ -n "$EMBEDDED" ]; then
   while IFS= read -r extra; do
     [ -n "$extra" ] || continue
@@ -366,6 +391,11 @@ if [ -n "$EMBEDDED" ]; then
       echo "    $(basename "$extra"): no arm64 slice ($extra_archs); not checked"
       continue ;;
     esac
+    # Counted AFTER the architecture skip, because the file counted above may never be inspected.
+    # `embedded_count` alone was satisfied by a file this loop then skipped, so a bundle whose
+    # embedded binaries were all x86_64-only would satisfy the assertion below having inspected
+    # nothing for the architecture we actually ship.
+    embedded_arm64_count=$((embedded_arm64_count + 1))
 
     # Read the load commands ONCE and derive both answers from that single output, so the load
     # list and the deployment target can never come from two different reads of the same file.
@@ -462,7 +492,7 @@ if [ -n "$EMBEDDED" ]; then
   done <<EOF
 $EMBEDDED
 EOF
-  echo "    embedded Mach-O files scanned: $embedded_count (none may reference a baseline-absent framework strongly)"
+  echo "    embedded Mach-O files found: $embedded_count, of which arm64 and inspected: $embedded_arm64_count"
 fi
 
 # **A bundle that yielded no embedded Mach-O is a broken enumeration, not a clean bundle.**
@@ -472,8 +502,8 @@ fi
 # `Contents/Frameworks` and `Contents/XPCServices/EnviousWisprASRService.xpc`, both of which
 # contain Mach-O, so zero cannot be an honest answer for this product. Bundle mode only; a
 # plain file legitimately has nothing embedded, which is the self-test's contract.
-if [ "$IS_BUNDLE" -eq 1 ] && [ "$embedded_count" -eq 0 ]; then
-  die "no embedded Mach-O file was inspected in $TARGET. This app ships frameworks and an XPC service, so an empty enumeration means the scan broke, not that the bundle is clean" 2
+if [ "$IS_BUNDLE" -eq 1 ] && [ "$embedded_arm64_count" -eq 0 ]; then
+  die "no embedded arm64 Mach-O file was inspected in $TARGET (found $embedded_count Mach-O in total). This app ships arm64 frameworks and an arm64 XPC service, so nothing inspected means the scan broke or the bundle is built for the wrong architecture, not that it is clean" 2
 fi
 
 if [ "$status" -ne 0 ]; then

@@ -223,7 +223,7 @@ fi
 cp "$BIN" "$BUNDLE/Contents/Frameworks/Embedded.dylib"
 rm -f "$BUNDLE/Contents/Frameworks/Truncated.dylib"
 ctl_out=$("$SUT" "$BUNDLE" 2>&1); ctl_code=$?
-ctl_scanned=$(printf '%s' "$ctl_out" | /usr/bin/grep -c "embedded Mach-O files scanned: 1")
+ctl_scanned=$(printf '%s' "$ctl_out" | /usr/bin/grep -c "of which arm64 and inspected: 1")
 ctl_skipped=$(printf '%s' "$ctl_out" | /usr/bin/grep -c "no arm64 slice")
 if [ "$ctl_code" -eq 0 ] && [ "$ctl_scanned" -gt 0 ] && [ "$ctl_skipped" -eq 0 ]; then
   echo "  ok   [0] the same bundle with a readable arm64 embedded Mach-O passes, having actually inspected it"
@@ -285,11 +285,28 @@ rm -rf "$BUNDLE/Contents/Frameworks/Old.framework"
 expect 2 "an app plist with no minimum at all refuses to certify the bundle" "$SUT" "$BUNDLE"
 /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string $DECLARED_FLOOR" "$BUNDLE/Contents/Info.plist" >/dev/null 2>&1
 
-# A bundle that yields no embedded Mach-O means the enumeration broke. It used to print
-# "scanned: 0" and pass.
+# **A bundle whose embedded Mach-O files are all the wrong architecture inspected nothing.**
+#
+# The count used to increment BEFORE the architecture skip, so a file that was found and then
+# skipped still satisfied the "something was inspected" assertion. `/usr/lib/dyld` is the honest
+# fixture for this: it is `x86_64 arm64e`, with no plain arm64 slice, which is exactly why it
+# made an earlier version of the control case above pass without inspecting anything.
 rm -f "$BUNDLE/Contents/Frameworks/Embedded.dylib"
-expect_output "no embedded Mach-O file was inspected" \
-  "a bundle with nothing embedded is refused, not certified" \
+if [ -f /usr/lib/dyld ] && [ "$(lipo -archs /usr/lib/dyld 2>/dev/null | /usr/bin/grep -cE '(^| )arm64( |$)')" -eq 0 ]; then
+  cp /usr/lib/dyld "$BUNDLE/Contents/Frameworks/WrongArch.dylib"
+  expect_output "no embedded arm64 Mach-O file was inspected" \
+    "a bundle whose embedded binaries are all the wrong architecture is refused, not certified" \
+    "$SUT" "$BUNDLE"
+  rm -f "$BUNDLE/Contents/Frameworks/WrongArch.dylib"
+else
+  echo "  FAIL [fixture] /usr/lib/dyld now reports a plain arm64 slice, so it no longer tests the architecture skip" >&2
+  fail=$((fail + 1))
+fi
+
+# A bundle that yields no embedded Mach-O at all means the enumeration broke. It used to print
+# "scanned: 0" and pass.
+expect_output "found 0 Mach-O in total" \
+  "a bundle with nothing embedded at all is refused, not certified" \
   "$SUT" "$BUNDLE"
 
 echo "==> $pass passed, $fail failed"
