@@ -126,7 +126,7 @@ import Testing
     let store: UserDefaults
     let suite: String
     let adapter: EGOneDeliveryAdapter
-    let coordinator: EGOneLegacyUpgradeCoordinator
+    let coordinator: EGOneUpgradeCoordinator
     let controller: ModelDeliveryController
     let registration: DeliveryRegistration
     let events: EventBox
@@ -139,7 +139,7 @@ import Testing
 
   @MainActor
   final class EventBox {
-    var events: [EGOneLegacyUpgradeCoordinator.Event] = []
+    var events: [EGOneUpgradeCoordinator.Event] = []
   }
 
   private func markerURL(_ root: URL) -> URL {
@@ -166,8 +166,12 @@ import Testing
     let adapter = EGOneDeliveryAdapter(
       controller: controller, registration: registration, version: "v2-sharded",
       defaults: store)
-    let coordinator = EGOneLegacyUpgradeCoordinator(
-      adapter: adapter, appSupportDirectory: root, defaults: store)
+    let coordinator = EGOneUpgradeCoordinator(
+      adapter: adapter, appSupportDirectory: root,
+      identity: registration.manifest.identity,
+      installDirectory: registration.installDirectory,
+      isOnboardingComplete: { true },
+      defaults: store)
     let events = EventBox()
     coordinator.onEvent = { [events] event in
       events.events.append(event)

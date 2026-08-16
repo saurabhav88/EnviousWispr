@@ -348,7 +348,7 @@ import Testing
   /// all decision logic lives on the presenter, not here. Cap by deterministic
   /// rule (actual 1018 + 7, rounded up to nearest 5 = 1025).
   /// Ratcheted 1025→1045 in #1386 PR-1 (2026-07-11): the composition root
-  /// constructs `EGOneLegacyUpgradeCoordinator` over the existing adapter,
+  /// constructs `EGOneUpgradeCoordinator` over the existing adapter,
   /// wires its telemetry handler (attaching `selected_provider` here, where
   /// settings is in scope, so the coordinator stays provider-ignorant), and
   /// runs the one-time legacy launch table after the first-run baseline. All
@@ -448,14 +448,23 @@ import Testing
   /// concrete capture manager and the settings manager at the same time. No
   /// domain logic moved here; the limb's entire behaviour lives on its own types.
   /// Cap by deterministic rule (actual 1336 + ~2, rounded up to nearest 5 = 1340).
+  /// #2096 (automatic model-revision upgrade): 1340 → 1350 for TEN lines — one argument on the
+  /// coordinator's construction, one capture-list entry, and an eight-line resume block (three of
+  /// them comment) on the existing settings-change handler. The deferral behaviour lives on
+  /// `EGOneUpgradeCoordinator`: it owns the deferred flag, decides what a deferral means, and
+  /// exposes `onboardingDidComplete()` as the resumption. This root passes a FACT, forwards one
+  /// event, and follows a real resumption with the existing runtime activation call. Only the
+  /// composition root holds settings, the coordinator, and the runtime together. Extracting this
+  /// wiring into an installer would add lines here rather than remove them. No domain logic moved
+  /// here. Cap by deterministic rule (actual 1348 + ~2, rounded up to nearest 5 = 1350).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1340,
+      lineCount <= 1350,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1340. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1350. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

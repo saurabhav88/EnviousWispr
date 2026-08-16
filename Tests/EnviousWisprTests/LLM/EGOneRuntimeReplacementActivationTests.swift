@@ -206,9 +206,12 @@ import Testing
     try stageMonolith(h.root, bytes: bytes)
     try stageValidShards(h.registration)
 
-    let coordinator = EGOneLegacyUpgradeCoordinator(
+    let coordinator = EGOneUpgradeCoordinator(
       adapter: h.adapter,
       appSupportDirectory: h.root,
+      identity: h.registration.manifest.identity,
+      installDirectory: h.registration.installDirectory,
+      isOnboardingComplete: { true },
       defaults: h.store,
       trustedArtifact: .init(
         name: "eg-1-v1.gguf",
@@ -236,9 +239,12 @@ import Testing
     try stageMonolith(h.root, bytes: bytes)
     try stageValidShards(h.registration)
 
-    let coordinator = EGOneLegacyUpgradeCoordinator(
+    let coordinator = EGOneUpgradeCoordinator(
       adapter: h.adapter,
       appSupportDirectory: h.root,
+      identity: h.registration.manifest.identity,
+      installDirectory: h.registration.installDirectory,
+      isOnboardingComplete: { true },
       defaults: h.store,
       trustedArtifact: .init(
         name: "eg-1-v1.gguf",

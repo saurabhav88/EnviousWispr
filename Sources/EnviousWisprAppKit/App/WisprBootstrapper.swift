@@ -273,8 +273,7 @@ public final class WisprBootstrapper {
     let egOneAppSupport = FileManager.default.urls(
       for: .applicationSupportDirectory, in: .userDomainMask)[0]
     var egOneAdapter: EGOneDeliveryAdapter?
-    var egOneLegacyUpgrade:
-      (registration: DeliveryRegistration, coordinator: EGOneLegacyUpgradeCoordinator)?
+    var egOneUpgrade: (registration: DeliveryRegistration, coordinator: EGOneUpgradeCoordinator)?
     if let deliveryManifest = try? DeliveryManifest.loadBundled(resource: "eg1-delivery-manifest") {
       let registration = DeliveryRegistration(
         manifest: deliveryManifest,
@@ -288,26 +287,29 @@ public final class WisprBootstrapper {
         version: egOneManifest?.version ?? deliveryManifest.identity.revision)
       egOneAdapter = adapter
 
-      let coordinator = EGOneLegacyUpgradeCoordinator(
+      let coordinator = EGOneUpgradeCoordinator(
         adapter: adapter,
-        appSupportDirectory: egOneAppSupport)
+        appSupportDirectory: egOneAppSupport,
+        identity: deliveryManifest.identity,
+        installDirectory: registration.installDirectory,
+        isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })
       // `selected_provider` attaches here (settings in scope); coordinator
       // stays provider-ignorant.
-      coordinator.onEvent = EGOneTelemetryBridge.legacyUpgradeHandler(
+      coordinator.onEvent = EGOneTelemetryBridge.upgradeHandler(
         selectedProvider: { [weak settings] in settings?.llmProvider == .egOne })
-      egOneLegacyUpgrade = (registration, coordinator)
+      egOneUpgrade = (registration, coordinator)
     }
     let egOneRuntime = EGOneRuntime(
       manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler
-    if let egOneLegacyUpgrade {
+    if let egOneUpgrade {
       // First-run baseline (#1348 §16.2) → legacy launch table → the RUNTIME
       // decides if the completed replacement boots the server (PR #1500 P1).
       let delivery = modelDelivery
       Task {
-        await delivery.recordFirstRunBaseline(for: egOneLegacyUpgrade.registration)
-        await egOneLegacyUpgrade.coordinator.runLaunch()
+        await delivery.recordFirstRunBaseline(for: egOneUpgrade.registration)
+        await egOneUpgrade.coordinator.runLaunch()
         egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
       }
     }
@@ -513,7 +515,7 @@ public final class WisprBootstrapper {
     settings.onChange = {
       [
         weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder,
-        bluetoothAwarenessPresenterHolder
+        bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator
       ] key
       in
       guard let settingsSync, let settings else { return }
@@ -532,6 +534,15 @@ public final class WisprBootstrapper {
       if key == .llmProvider {
         WisprBootstrapper.prewarmOutputClassifierIfNeeded(
           holder: outputClassifierHolder, provider: settings.llmProvider)
+      }
+      // #2096: EG-1's automatic model upgrade stands aside while first-run setup runs, so the
+      // heart's model download owns the bandwidth. `runLaunch` fires once at bootstrap, so
+      // without this the deferral would mean "never until relaunch" rather than "later".
+      if key == .onboardingState, settings.onboardingState == .completed {
+        Task {
+          guard await egOneCoordinator?.onboardingDidComplete() == true else { return }
+          egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
+        }
       }
       // #1480: tips on/off, input-device change, and onboarding completion each
       // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or first

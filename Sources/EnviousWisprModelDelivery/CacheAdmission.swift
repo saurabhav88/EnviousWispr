@@ -285,6 +285,26 @@ struct CacheAdmission {
     let marker = AdmissionMarker(
       manifestDigest: manifest.manifestDigest, admittedAt: Date(), files: stamps)
     try JSONEncoder().encode(marker).write(to: markerURL, options: .atomic)
+
+    // (5) Superseded-marker cleanup (#2096). Step (3) already removed the previous revision's
+    // FILES, because they sit in this install dir and the current manifest does not list them.
+    // Its markers do not: they live in the metadata directory, which every family shares, so
+    // nothing here has ever swept them. That is the half `evictPreviousRevisions` named and never
+    // delivered — the flag has shipped decoded and unread, `true` for EG-1 and `false` for
+    // Parakeet and WhisperKit, so honouring it changes exactly the family that asked for it.
+    //
+    // AFTER the marker write, never before: running it earlier and then failing at (4) would
+    // leave the machine with no admitted revision AND no record that one was ever admitted.
+    // Best-effort for the same reason a failure here is not a correctness problem — the model is
+    // admitted, and a leftover marker only means the next launch sees an already-admitted current
+    // revision and stops. Blocking admission over hygiene would be the worse trade.
+    if manifest.admission.evictPreviousRevisions {
+      for superseded in PriorRevisionAdmission.markerURLs(
+        for: manifest.identity, metadataDirectory: metadataDirectory)
+      {
+        try? fm.removeItem(at: superseded)
+      }
+    }
   }
 
   /// Whether ANY manifest file of this component exists in the install dir

@@ -230,7 +230,22 @@ private enum InstallPathFixture {
   // DeliveryManifest.canonicalDigest algorithm against the authored manifest,
   // first cross-checked against the OLD single-file manifest's known-good
   // digest to prove the recompute technique was faithful before trusting it.
-  static let goldenDigest = "07550d07e242aa660393f5e62d36106ed7916ffa8852d9fb66f5420854a6b70d"
+  //
+  // EG-2 (2026-08-16, #2096): revision v3-eg2, same 8-shard componentSet
+  // layout, retrained weights. The digest was recomputed the same way and the
+  // technique was re-proved the same way — the authoring script reproduces
+  // v2-sharded's 07550d07e242aa66… before it is trusted on this one, with a
+  // negative control confirming the recipe is sensitive to a changed field.
+  //
+  // Two axes, deliberately distinct: the delivery REVISION is `v3-eg2` (third
+  // delivery generation) and the WEIGHTS generation is `eg-1-v2-*`. The
+  // campaign's own arm number (`v20`) is lab notation and must never reach
+  // `identity.revision`, the R2 path, or the user-visible install state.
+  //
+  // Per-shard sizes are byte-identical to v2-sharded's because the
+  // architecture and quantization did not change; only the sha256 values move.
+  // That coincidence was verified against the real files rather than assumed.
+  static let goldenDigest = "dd3cc5d3eb3c237f8e18fd85138da1cffcd4eb0f263ef0f6fc96a60d2e742f1b"
 
   @Test func shippedDeliveryManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.deliveryManifestURL)
@@ -238,7 +253,7 @@ private enum InstallPathFixture {
     #expect(manifest.manifestDigest == Self.goldenDigest)
     #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.goldenDigest)
     #expect(manifest.identity.family == .egOne)
-    #expect(manifest.identity.revision == "v2-sharded")
+    #expect(manifest.identity.revision == "v3-eg2")
     #expect(manifest.admission.layout == "componentSet")
     #expect(manifest.files.count == 8)
     #expect(manifest.totalBytes == manifest.files.reduce(0) { $0 + $1.sizeBytes })
@@ -247,11 +262,11 @@ private enum InstallPathFixture {
         file.sizeBytes <= 450_000_000, "\(file.path) exceeds the cache-eligible shard ceiling")
     }
     let entrypointPath = try #require(manifest.resolvedEntrypointPath)
-    #expect(entrypointPath == "eg-1-v1-00001-of-00008.gguf")
+    #expect(entrypointPath == "eg-1-v2-00001-of-00008.gguf")
     let entrypointFile = try #require(
       manifest.files.first { $0.resolvedInstallPath == entrypointPath })
-    #expect(entrypointFile.path == "v2-sharded/eg-1-v1-00001-of-00008.gguf")  // server object key
-    #expect(entrypointFile.component == "eg-1-v1-00001-of-00008.gguf")
+    #expect(entrypointFile.path == "v3-eg2/eg-1-v2-00001-of-00008.gguf")  // server object key
+    #expect(entrypointFile.component == "eg-1-v2-00001-of-00008.gguf")
     #expect(manifest.sources.map(\.id) == ["our_copy"])
   }
 
