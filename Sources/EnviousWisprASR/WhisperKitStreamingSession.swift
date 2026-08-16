@@ -183,6 +183,23 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// this seam must not become.
   private let onHypothesis: (@Sendable (String) -> Void)?
 
+  /// Retention cap for the published hypothesis, in characters. Nil on the heart
+  /// path, which publishes nothing.
+  ///
+  /// **The bound has to be applied HERE, not downstream.** An earlier version
+  /// trimmed in the adapter's publisher task, which left this actor building the
+  /// complete cumulative transcript every cycle and RETAINING it in
+  /// `lastPublishedHypothesis` — so the per-update copy cost and the preview's
+  /// own state grew with recording length under a contract promising they could
+  /// not. That is the same defect `LivePreviewTextBound`'s doc records from the
+  /// Apple producer, one layer further up, and cloud review caught it here.
+  ///
+  /// This is a RETENTION bound, deliberately a plain tail cut: the
+  /// presentation-quality trim (word boundaries, CJK fallback) stays in
+  /// `LivePreviewTextBound`, which this module cannot import. Two bounds with two
+  /// jobs, not two copies of one.
+  private let hypothesisRetentionLimit: Int?
+
   /// Last string handed to `onHypothesis`, so an unchanged hypothesis is not
   /// republished. Owned by the loop like every other confirmed-stream field.
   private var lastPublishedHypothesis = ""
@@ -283,7 +300,8 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     cadence: Duration = .seconds(1),
     conditionOnPriorText: Bool = false,
     localAgreement: Bool = false,
-    onHypothesis: (@Sendable (String) -> Void)? = nil
+    onHypothesis: (@Sendable (String) -> Void)? = nil,
+    hypothesisRetentionLimit: Int? = nil
   ) {
     self.whisperKit = whisperKit
     self.baseDecodingOptions = decodingOptions
@@ -292,6 +310,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     self.conditionOnPriorText = conditionOnPriorText
     self.localAgreement = localAgreement
     self.onHypothesis = onHypothesis
+    self.hypothesisRetentionLimit = hypothesisRetentionLimit
   }
 
   // MARK: WhisperKitIncrementalSession
@@ -678,7 +697,12 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
           // The change check also makes this a genuine latest-value seam: an
           // unchanged hypothesis is not news, and the consumer should not be woken
           // to re-render identical text.
-          let hypothesis = confirmedText + retainedUnconfirmedSegments.map(\.text).joined()
+          var hypothesis = confirmedText + retainedUnconfirmedSegments.map(\.text).joined()
+          // Bound BEFORE comparison, retention and delivery. Downstream trimming
+          // does not stop this actor retaining the full transcript.
+          if let limit = hypothesisRetentionLimit, hypothesis.count > limit {
+            hypothesis = String(hypothesis.suffix(limit))
+          }
           if !hypothesis.isEmpty, hypothesis != lastPublishedHypothesis {
             lastPublishedHypothesis = hypothesis
             onHypothesis(hypothesis)

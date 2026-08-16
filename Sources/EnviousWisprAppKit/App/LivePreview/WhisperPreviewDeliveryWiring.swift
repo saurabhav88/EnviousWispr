@@ -70,19 +70,35 @@ enum WhisperPreviewDeliveryWiring {
   /// cost the heart nothing; both DECODING together cost it 50% — 591ms to 885ms
   /// against a 591-626ms repeat-to-repeat envelope.
   ///
-  /// The condition mirrors `WhisperKitEngineAdapter`'s own streaming gate: the
-  /// authoritative streaming session starts when the toggle is on AND the
-  /// language is locked. With `.auto` that adapter falls back to batch, which
-  /// decodes after the recording ends rather than throughout it — no continuous
-  /// overlap, so no refusal.
+  /// **The condition is per-BACKEND, and an earlier version got that wrong.** It
+  /// mirrored `WhisperKitEngineAdapter`'s gate — toggle on AND language locked —
+  /// and applied it to both engines. But that language condition is
+  /// WhisperKit-adapter-specific: the KERNEL sets
+  /// `shouldStream = config.useStreamingASR && adapter.capabilities.supportsStreaming`
+  /// with no language term at all (`RecordingSessionKernel.swift:1397`), and
+  /// Parakeet advertises `supportsStreaming: true`
+  /// (`ParakeetEngineAdapter.swift:288`) and begins streaming regardless of
+  /// language mode. WhisperKit is the engine that degrades to batch on `.auto`.
+  ///
+  /// So on Parakeet + streaming + Auto the heart IS decoding continuously, and
+  /// the earlier predicate returned false — permitting exactly the contention
+  /// this gate exists to prevent. Cloud review caught it.
   ///
   /// Read live rather than snapshotted because this is asked at the START of each
   /// recording, which is exactly when the answer must be current.
   static func heartIsStreaming(settings: SettingsManager) -> Bool {
     guard settings.useStreamingASR else { return false }
-    switch settings.languageMode {
-    case .auto: return false
-    case .locked: return true
+    switch settings.selectedBackend {
+    case .parakeet:
+      // No language condition: the adapter streams whenever the toggle is on.
+      return true
+    case .whisperKit:
+      // Degrades to batch on `.auto`, which decodes AFTER the recording rather
+      // than throughout it — no continuous overlap, so no refusal.
+      switch settings.languageMode {
+      case .auto: return false
+      case .locked: return true
+      }
     }
   }
 }

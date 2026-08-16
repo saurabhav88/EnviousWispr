@@ -477,6 +477,105 @@ struct LivePreviewCoordinatorTests {
   /// a local. A weak-reference assertion cannot distinguish "the slot is still
   /// full" from "the observation was early", which makes it the wrong instrument
   /// for the property this fix changes.
+  /// The COMMON order, and the one the first fix missed: finish a recording, turn
+  /// the preview off, never record again. The release inside `setRecording(true)`
+  /// is never reached, so the model stayed resident indefinitely. Cloud review
+  /// caught it after the first fix passed a round.
+  @Test("turning the setting off releases the engine without needing another recording")
+  func disablingTheSettingReleasesWithoutAnotherRecording() async {
+    final class ReleasableEngine: LivePreviewEngine, @unchecked Sendable {
+      let onPrepared: @Sendable () -> Void
+      init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
+      func prepare() async throws { onPrepared() }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable {
+      var enabled = true
+      var prepared = false
+    }
+    let box = Box()
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { ReleasableEngine(onPrepared: { box.prepared = true }) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !box.prepared { await Task.yield() }
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    coordinator.setRecording(false)
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: the slot must be FULL, and must SURVIVE a normal stop")
+
+    // The user turns it off. No further recording happens — this is the whole
+    // point of the test.
+    box.enabled = false
+    coordinator.releaseForDisabledSetting()
+
+    #expect(
+      !coordinator.hasPreparedEngineForTests,
+      "the setting transition alone must release the engine")
+  }
+
+  /// The guard on that entry point matters: a spurious call while the preview is
+  /// still ENABLED must not throw away a prepared engine and make the next
+  /// recording pay preparation again.
+  @Test("the setting-change release is a no-op while the preview is still enabled")
+  func settingChangeReleaseIsANoOpWhileEnabled() async {
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      let onPrepared: @Sendable () -> Void
+      init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
+      func prepare() async throws { onPrepared() }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable { var prepared = false }
+    let box = Box()
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { true },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { ReadyEngine(onPrepared: { box.prepared = true }) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    coordinator.setRecording(false)
+    #expect(coordinator.hasPreparedEngineForTests, "control: the slot must be full")
+
+    coordinator.releaseForDisabledSetting()
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "an enabled preview must keep its engine — otherwise every settings change costs a reload")
+  }
+
   @Test("disabling the preview releases the prepared engine, not just the display")
   func disablingReleasesThePreparedEngine() async {
     final class ReleasableEngine: LivePreviewEngine, @unchecked Sendable {

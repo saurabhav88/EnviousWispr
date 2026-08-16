@@ -377,6 +377,23 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     }
   }
 
+  /// Release the cached engine because the SETTING changed, not because a
+  /// recording started.
+  ///
+  /// The release inside `setRecording(true)` only fires on the next recording. A
+  /// user who finishes a recording and then turns the preview off without
+  /// recording again never reaches it, so the model stayed resident indefinitely
+  /// — the exact leak the release was added to fix, in the commoner order of
+  /// events. Cloud review caught it after the first fix.
+  ///
+  /// Wired from `PipelineSettingsSync`'s `livePreviewEnabled` case, which is the
+  /// one place that learns a setting moved.
+  func releaseForDisabledSetting() {
+    guard !isEnabled() else { return }
+    releasePreparedEngine()
+    display = .off
+  }
+
   /// Drop the prepared engine and everything it holds.
   ///
   /// Separate from the key-change path because the two have different triggers

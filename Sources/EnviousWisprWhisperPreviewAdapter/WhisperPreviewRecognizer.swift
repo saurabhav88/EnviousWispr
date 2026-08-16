@@ -77,6 +77,10 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
     let handle = WhisperPreviewSessionHandle(lookups: lookups, onText: onText)
     let session = try await runtime.makeStreamingSession(
       language: language,
+      // The retention cap the session applies before it stores or publishes
+      // anything. The word-boundary-aware trim still runs downstream; this stops
+      // the ASR actor holding a full 60-minute transcript in the first place.
+      hypothesisRetentionLimit: LivePreviewTextBound.maxCharacters,
       onHypothesis: handle.enqueue)
     await handle.attach(session)
     previousSession = handle

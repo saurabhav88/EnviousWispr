@@ -127,6 +127,7 @@ package actor WhisperPreviewRuntime {
   /// required by the growing-buffer decode, not preferences.
   package func makeStreamingSession(
     language: String?,
+    hypothesisRetentionLimit: Int,
     onHypothesis: @escaping @Sendable (String) -> Void
   ) async throws -> WhisperKitStreamingSession {
     let kit = try await ensureLoaded()
@@ -154,7 +155,8 @@ package actor WhisperPreviewRuntime {
       whisperKit: kit,
       decodingOptions: options,
       localAgreement: true,
-      onHypothesis: onHypothesis)
+      onHypothesis: onHypothesis,
+      hypothesisRetentionLimit: hypothesisRetentionLimit)
   }
 
   /// Drop the model. Called when the engine is superseded — a revision bump, a

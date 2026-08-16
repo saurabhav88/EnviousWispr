@@ -35,7 +35,8 @@ enum LivePreviewInstaller {
   static func install(
     overlay: RecordingOverlayPanel,
     capture: any AudioCaptureInterface,
-    settings: SettingsManager
+    settings: SettingsManager,
+    settingsSync: PipelineSettingsSync
   ) -> LivePreviewCoordinator {
     // **Effective, not merely persisted.** A value saved as true on macOS 26 and
     // then read on an older system used to enlarge the pill on every recording and
@@ -68,6 +69,18 @@ enum LivePreviewInstaller {
     )
     overlay.setRecordingIntentObserver { recording in
       coordinator.setRecording(recording)
+    }
+    // #2108: switching Live Preview OFF releases its cached engine, and with it a
+    // loaded 217 MB model. Wired HERE rather than in `WisprBootstrapper` for the
+    // reason this installer exists at all: the composition root carries a line
+    // ceiling whose purpose is to stop feature wiring accumulating in it, and the
+    // first version of this hook pushed it over — 1344 against 1340. Raising that
+    // ceiling for six lines of preview wiring would be exactly the trade this
+    // file was extracted to avoid.
+    //
+    // Weak, because a settings hook must never be what keeps the limb alive.
+    settingsSync.onLivePreviewDisabled = { [weak coordinator] in
+      coordinator?.releaseForDisabledSetting()
     }
     return coordinator
   }
