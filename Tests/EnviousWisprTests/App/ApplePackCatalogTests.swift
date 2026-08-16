@@ -160,7 +160,7 @@ struct ApplePackCatalogTests {
       dependencies: .init(
         supportedTags: { [tag] },
         installedTags: { [tag] },
-        // Production's `reserve` routes to `ApplePreviewRecognizer.reserveLocale`, which
+        // Production's `reserve` routes to `ApplePreviewRecognizer.acquireLocaleForSession`, which
         // registers the use atomically under the lock. The fake models that, or the test would
         // be measuring its own omission rather than the catalogue.
         reserve: { t in await LocaleReservations.shared.beginUse(t) },
@@ -220,6 +220,49 @@ struct ApplePackCatalogTests {
     #expect(
       await LocaleReservations.shared.useCount(tag) == 1,
       "control: the recording's own registration survives the install")
+  }
+
+  /// Round 8: the release was NOT under the transaction lock, so a recording starting between the
+  /// count check and the release could have its claim dropped.
+  ///
+  /// **Asserted at SOURCE, deliberately.** The obvious behavioural test — have the fake's
+  /// `release` read the use count — passes identically with and without the lock, because nothing
+  /// in it competes for the interleaving; it would look like a regression test and prove nothing.
+  /// Driving a real interleaving would need a second task blocking on the very lock under test,
+  /// which pins a scheduling order rather than the property. What actually differs is that the
+  /// check and the release sit inside one locked section, so that is what is checked.
+  @Test("The download's release happens inside the reservation lock, not around it")
+  func releaseIsInsideTheTransactionLock() throws {
+    let url = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprLivePreview/Engines/ApplePackCatalog.swift")
+    let source = LivePreviewNoAutoDownloadTests.codeOnly(
+      try String(contentsOf: url, encoding: .utf8))
+
+    guard let start = source.range(of: "private func releaseIfUnused(") else {
+      Issue.record("releaseIfUnused not found; it was renamed or moved")
+      return
+    }
+    let rest = source[start.upperBound...]
+    let end = rest.range(of: "\n  }\n")?.lowerBound ?? rest.endIndex
+    let body = String(rest[..<end])
+
+    #expect(body.contains("endUse"), "control: the extracted body is the real release path")
+    #expect(
+      body.contains("acquire()"),
+      """
+      the use check and the system release must be ONE locked step: unlocked, a recording can \
+      reserve between them and then lose the claim it just took
+      """)
+    guard
+      let locked = body.range(of: "acquire()")?.lowerBound,
+      let checked = body.range(of: "endUse")?.lowerBound,
+      let unlocked = body.range(of: "release()", options: .backwards)?.lowerBound
+    else {
+      Issue.record("could not locate the lock boundaries")
+      return
+    }
+    #expect(locked < checked, "the lock must be taken BEFORE the use count is read")
+    #expect(checked < unlocked, "and held until after the release decision has been acted on")
   }
 
   private actor ReleaseCount {
@@ -363,11 +406,11 @@ struct LivePreviewNoAutoDownloadTests {
       body.contains("startSession"),
       "control: the extracted body must be real code, not an empty string")
     #expect(
-      body.contains("reserveLocale"),
+      body.contains("acquireLocaleForSession"),
       """
-      openSession must re-assert the reservation. A cached engine skips prepare() forever, so \
-      a claim evicted by another language's download is never retaken and preview fails with a \
-      missing-asset error that looks like a missing download.
+      openSession must re-assert the reservation AND register the session's use. A cached engine \
+      skips prepare() forever, so a claim evicted by another language's download is never retaken \
+      and preview fails with a missing-asset error that looks like a missing download.
       """)
   }
 

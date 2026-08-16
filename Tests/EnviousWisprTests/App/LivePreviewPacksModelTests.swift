@@ -206,6 +206,60 @@ struct LivePreviewPacksModelTests {
       """)
   }
 
+  /// A reopened page re-reads while its rows stay pressable, so the user can start a download
+  /// during the reload. The catalogue suspends at its dependency awaits, so the older reload can
+  /// land AFTER the install's fresh result and undo it.
+  @Test("A reload in flight does not overwrite a download started during it")
+  func reloadDoesNotClobberAConcurrentInstall() async {
+    let calls = Calls()
+    let entered = Gate()
+    let release = Gate()
+    let model = LivePreviewPacksModel(
+      catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release))
+
+    await model.load()
+    let reload = Task { await model.load() }
+    #expect(await entered.wait(), "the reload never reached the catalogue")
+
+    // The user presses Download while the reload is parked.
+    model.install(tag: "it-IT")
+    await release.open()
+    await reload.value
+    await model.installTask?.value
+
+    #expect(
+      model.failedTag == "it-IT",
+      "the reload published over the download's result and erased its outcome")
+    #expect(model.installingTag == nil)
+  }
+
+  /// The behavioural test above is deterministic only while the guard EXISTS — without it the
+  /// final value depends on which task resumes last. This pins the guard itself, so removing it
+  /// fails every time rather than most of the time.
+  @Test("The reload checks the install generation before publishing")
+  func reloadIsGuardedByTheInstallGeneration() throws {
+    let url = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprAppKit/Views/Settings/LivePreviewPacksModel.swift")
+    let source = LivePreviewNoAutoDownloadTests.codeOnly(
+      try String(contentsOf: url, encoding: .utf8))
+
+    guard let start = source.range(of: "func load() async {") else {
+      Issue.record("load() not found; it was renamed or moved")
+      return
+    }
+    let rest = source[start.upperBound...]
+    let end = rest.range(of: "\n  }\n")?.lowerBound ?? rest.endIndex
+    let body = String(rest[..<end])
+
+    #expect(body.contains("snapshot()"), "control: the extracted body is the real load path")
+    #expect(
+      body.contains("generation"),
+      """
+      load() must not publish over a newer install: a reopened page re-reads while its rows stay \
+      pressable, so a download started during the reload can be undone by it.
+      """)
+  }
+
   @Test("Cancelling during the post-failure refresh publishes nothing into the closed page")
   func cancelDuringFailureRefreshPublishesNothing() async {
     let calls = Calls()

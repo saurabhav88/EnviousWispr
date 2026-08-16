@@ -172,8 +172,8 @@ struct LocaleReservationsTests {
     let source = LivePreviewNoAutoDownloadTests.codeOnly(
       try String(contentsOf: url, encoding: .utf8))
 
-    guard let start = source.range(of: "package static func reserveLocale(") else {
-      Issue.record("reserveLocale not found; it was renamed or moved")
+    guard let start = source.range(of: "package static func acquireLocaleForSession(") else {
+      Issue.record("acquireLocaleForSession not found; it was renamed or moved")
       return
     }
     let rest = source[start.upperBound...]
@@ -183,7 +183,7 @@ struct LocaleReservationsTests {
     #expect(body.contains("acquire()"), "control: the extracted body is the locked transaction")
     #expect(
       body.contains("beginUse"),
-      "reserving must also register the use, or the claim is evictable the moment it is taken")
+      "the session variant must register the use, or the claim is evictable the moment it is taken")
 
     guard
       let registered = body.range(of: "beginUse")?.lowerBound,
@@ -195,5 +195,54 @@ struct LocaleReservationsTests {
     #expect(
       registered < unlocked,
       "registering after the unlock leaves a window where the claim reads as unused")
+  }
+
+  /// The leak this split exists to prevent.
+  ///
+  /// Making `reserveLocale` register a use meant `prepare()` registered one too — and `prepare()`
+  /// leaves through five exits, so every prepared or failed language leaked a registration,
+  /// monotonically, until the registry believed everything was in use and eviction fell back to
+  /// ignoring the protection entirely. The fix is that `prepare()` calls the variant that
+  /// registers NOTHING, so there is nothing to balance and nothing to leak.
+  @Test("prepare() takes a claim it never has to hand back")
+  func prepareUsesTheNonRegisteringVariant() throws {
+    let url = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprLivePreview/Engines/ApplePreviewRecognizer.swift")
+    let source = LivePreviewNoAutoDownloadTests.codeOnly(
+      try String(contentsOf: url, encoding: .utf8))
+
+    guard let start = source.range(of: "func prepare() async throws {") else {
+      Issue.record("prepare() not found; it was renamed or moved")
+      return
+    }
+    let rest = source[start.upperBound...]
+    let end = rest.range(of: "\n  }\n")?.lowerBound ?? rest.endIndex
+    let body = String(rest[..<end])
+
+    #expect(body.contains("reserveLocale"), "control: the extracted body is the real prepare path")
+    #expect(
+      !body.contains("acquireLocaleForSession"),
+      """
+      prepare() must not register a use: it has five exit points, and the version that registered \
+      one leaked it on every language change until eviction protection silently stopped applying.
+      """)
+  }
+
+  /// Registering without a matching release is the leak; this pins the pairing at the seam that
+  /// can actually be driven, so a future caller cannot quietly add a second unbalanced site.
+  @Test("Every registration has exactly one release")
+  func registrationsBalance() async {
+    let reservations = LocaleReservations()
+    await reservations.beginUse("fr-FR")
+    await reservations.beginUse("fr-FR")
+    #expect(await reservations.useCount("fr-FR") == 2)
+    await reservations.endUse("fr-FR")
+    await reservations.endUse("fr-FR")
+    #expect(
+      await reservations.useCount("fr-FR") == 0,
+      "an unbalanced registration is a slot locked for the life of the process")
+    #expect(
+      await reservations.evictable(from: ["fr-FR"]) == ["fr-FR"],
+      "and the locale is evictable again once nobody holds it")
   }
 }

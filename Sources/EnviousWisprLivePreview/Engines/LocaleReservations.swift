@@ -74,7 +74,7 @@ package actor LocaleReservations {
   /// **Call this while still HOLDING the transaction lock.** Registering after unlocking leaves a
   /// window where the claim reads as unused, and the next caller through the lock can evict the
   /// locale out from under whoever just took it — which is the same defect as having no
-  /// registration at all, only harder to see. `ApplePreviewRecognizer.reserveLocale` does both
+  /// registration at all, only harder to see. `ApplePreviewRecognizer.acquireLocaleForSession` does both
   /// inside one locked section so no caller has to remember this.
   package func beginUse(_ tag: String) {
     uses[tag, default: 0] += 1

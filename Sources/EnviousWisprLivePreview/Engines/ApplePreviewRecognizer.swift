@@ -215,6 +215,35 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     await LocaleReservations.shared.acquire()
     do {
       try await performReservation(locale)
+    } catch {
+      await LocaleReservations.shared.release()
+      throw error
+    }
+    await LocaleReservations.shared.release()
+  }
+
+  /// Reserve AND register a long-lived use, in ONE locked step. **Caller MUST pair this with
+  /// `endUse`.**
+  ///
+  /// **Two entry points, because one of them cannot be balanced safely.** `prepare()` leaves
+  /// through five exits (three guards, a catch, and the end), so making IT register a use meant
+  /// balancing all five — and the version that tried leaked one registration per prepared
+  /// language, monotonically, until the registry considered everything in use and the eviction
+  /// protection silently degraded to its fallback. Splitting the API makes that leak
+  /// unexpressible rather than handled: `reserveLocale` registers nothing and needs no pairing,
+  /// and only a caller with a clear end (a session, a download) takes the registering variant.
+  ///
+  /// Registration stays INSIDE the lock, which is the whole reason this is not two calls: between
+  /// an unlocked reserve and a later register, the claim reads as unused and the next caller
+  /// through the lock can evict it.
+  ///
+  /// A claim taken by `reserveLocale` may therefore be evicted before it is used. That is
+  /// acceptable: it is a warm-up optimisation, and every consumer that actually depends on it
+  /// takes it again here.
+  package static func acquireLocaleForSession(_ locale: Locale) async throws {
+    await LocaleReservations.shared.acquire()
+    do {
+      try await performReservation(locale)
       await LocaleReservations.shared.beginUse(locale.identifier(.bcp47))
     } catch {
       await LocaleReservations.shared.release()
@@ -311,7 +340,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     //
     // A prepared engine is CACHED and reused for every later recording without preparing
     // again (`LivePreviewCoordinator.ensurePrepared` returns early on a key match), so a claim
-    // taken once has to survive arbitrarily long. It does not: `reserveLocale` evicts the
+    // taken once has to survive arbitrarily long. It does not: reserving evicts the
     // oldest claim when Apple's five slots are full, and the language-pack installer takes a
     // slot too, so downloading a language can evict the very locale this engine is previewing.
     //
@@ -321,13 +350,13 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // guarantees its own precondition instead of trusting that nothing disturbed it, which
     // covers every way a claim can be lost rather than only the one we found.
     //
-    // Cheap: `reserveLocale` returns immediately when the claim is already held, so the
+    // Cheap: `acquireLocaleForSession` returns immediately when the claim is already held, so the
     // steady state is one inventory read per recording and no eviction.
     // Reserving also REGISTERS this session's use, atomically, so the claim cannot be evicted
     // between being taken and being used. Released in `ApplePreviewSessionHandle.end()`, which
     // the coordinator always calls — and if some path ever fails to, `evictable(from:)` fails
     // soft rather than refusing every future download.
-    try await Self.reserveLocale(locale)
+    try await Self.acquireLocaleForSession(locale)
     let tag = locale.identifier(.bcp47)
     do {
       let session = try await startSession(lookups: lookups, onText: onText)

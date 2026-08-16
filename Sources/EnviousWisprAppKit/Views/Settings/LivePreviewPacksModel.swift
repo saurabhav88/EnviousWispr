@@ -47,7 +47,15 @@ final class LivePreviewPacksModel {
   /// over from a previous visit would sit next to a row the system now reports as Ready — the
   /// same contradiction the re-read is the authority against.
   func load() async {
+    // **Do not publish over a NEWER install result.** The rows stay interactive while this
+    // awaits, so the user can press Download during the reload; the catalogue is reentrant at its
+    // dependency awaits, so this older snapshot can land AFTER the install's fresh one and undo a
+    // success or clear its failure. Watching the install generation is enough — this deliberately
+    // does NOT bump it, because superseding an in-flight install would strand its spinner: that
+    // task returns early on a generation mismatch without clearing `installingTag`.
+    let installAtStart = generation
     let packs = await catalog.snapshot()
+    guard generation == installAtStart else { return }
     failedTag = nil
     state = Self.state(for: packs)
   }

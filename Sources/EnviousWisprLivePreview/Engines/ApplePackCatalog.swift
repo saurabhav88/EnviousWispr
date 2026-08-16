@@ -135,9 +135,17 @@ package actor ApplePackCatalog {
   /// user pressed was stale — and dropping the shared claim takes the asset out from under an
   /// analyzer that is still reading it.
   private func releaseIfUnused(_ tag: String) async {
+    // **Under the transaction lock, because checking and releasing must be ONE step.** Otherwise
+    // a recording starting right now slips between them: this reads zero uses, the recording
+    // reserves and registers, and then this releases the system claim out from under it. The
+    // recognizer's end-of-session path already held the lock across the same pair; this one did
+    // not, and that asymmetry was the bug.
+    await LocaleReservations.shared.acquire()
     let remaining = await LocaleReservations.shared.endUse(tag)
-    guard remaining == 0 else { return }
-    await deps.release(tag)
+    if remaining == 0 {
+      await deps.release(tag)
+    }
+    await LocaleReservations.shared.release()
   }
 
   static func nativeName(for tag: String) -> String {
@@ -157,7 +165,7 @@ package actor ApplePackCatalog {
 #if canImport(Speech)
   @available(macOS 26.0, *)
   extension ApplePackCatalog.Dependencies {
-    /// The real Apple inventory. The reserve step mirrors `ApplePreviewRecognizer.reserveLocale`
+    /// The real Apple inventory. The reserve step routes to `ApplePreviewRecognizer.acquireLocaleForSession`
     /// deliberately: `reserve` returns FALSE when the locale is ALREADY reserved, so the return
     /// value is not a success flag and the authority has to be asked afterwards.
     package static var live: ApplePackCatalog.Dependencies {
@@ -176,7 +184,7 @@ package actor ApplePackCatalog {
         // simply stop working for a multilingual user. Porting a guard means porting it
         // WHOLE — the partial copy is the defect.
         reserve: { tag in
-          try await ApplePreviewRecognizer.reserveLocale(Locale(identifier: tag))
+          try await ApplePreviewRecognizer.acquireLocaleForSession(Locale(identifier: tag))
         },
         release: { tag in
           await AssetInventory.release(reservedLocale: Locale(identifier: tag))
