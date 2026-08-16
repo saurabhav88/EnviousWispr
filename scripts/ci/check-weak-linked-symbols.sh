@@ -332,8 +332,23 @@ if [ -n "$EMBEDDED" ]; then
     # rebuilt for macOS 15 refuses to load on 14 and takes the app down with it. NOT required to
     # EQUAL the floor the way the main binary is: an embedded framework may legitimately target
     # something older. It may only not exceed it.
+    #
+    # **An unreadable target is not a passing target.** `[ -n "$extra_minos" ] && ...` skipped the
+    # whole assertion whenever the version could not be read, so a binary requiring macOS 15 got
+    # certified for 14 by virtue of not saying what it required — the same fail-open shape as the
+    # reads above, one level in.
     extra_minos=$(printf '%s\n' "$extra_otool" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
-    if [ -n "$extra_minos" ] && [ "$extra_minos" != "$DECLARED" ]; then
+    if [ -z "$extra_minos" ]; then
+      # Binaries predating LC_BUILD_VERSION record the floor as LC_VERSION_MIN_MACOSX instead.
+      # Measured on the real bundle: all 9 arm64 embedded Mach-O files use LC_BUILD_VERSION and
+      # none uses the legacy command, so this is future-proofing rather than a live path — which
+      # is also why failing closed below costs nothing today.
+      extra_minos=$(printf '%s\n' "$extra_otool" | awk '/LC_VERSION_MIN_MACOSX/{f=1} f&&/^ *version /{print $2; exit}')
+    fi
+    if [ -z "$extra_minos" ]; then
+      echo "    $(basename "$extra"): records no deployment target (neither LC_BUILD_VERSION nor LC_VERSION_MIN_MACOSX), so it cannot be certified to load on macOS $DECLARED" >&2
+      status=1
+    elif [ "$extra_minos" != "$DECLARED" ]; then
       if [ "$(printf '%s\n%s\n' "$extra_minos" "$DECLARED" | sort -V | tail -1)" = "$extra_minos" ]; then
         echo "    $(basename "$extra"): targets macOS $extra_minos, above the declared floor $DECLARED — it will not load for supported users" >&2
         status=1

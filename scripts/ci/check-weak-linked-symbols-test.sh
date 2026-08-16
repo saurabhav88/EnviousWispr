@@ -197,14 +197,41 @@ fi
 
 # Control for the case above: the SAME bundle with a readable embedded Mach-O must pass. Without
 # this, "the bundle case fails" would be indistinguishable from "bundle mode is broken".
-cp /usr/lib/dyld "$BUNDLE/Contents/Frameworks/Truncated.dylib" 2>/dev/null ||
-  cp /bin/echo "$BUNDLE/Contents/Frameworks/Truncated.dylib"
-expect 0 "the same bundle with a readable embedded Mach-O passes" \
-  "$SUT" "$BUNDLE"
+#
+# **The control binary must carry an arm64 slice, or it proves nothing.** A first draft used
+# `/usr/lib/dyld`, which is `x86_64 arm64e` — no plain arm64 — so the script skipped it and the
+# case passed without inspecting anything, which is the very failure this section exists to
+# catch. The subject binary is arm64 by definition, so it is the honest control.
+cp "$BIN" "$BUNDLE/Contents/Frameworks/Embedded.dylib"
+rm -f "$BUNDLE/Contents/Frameworks/Truncated.dylib"
+ctl_out=$("$SUT" "$BUNDLE" 2>&1); ctl_code=$?
+ctl_scanned=$(printf '%s' "$ctl_out" | /usr/bin/grep -c "embedded Mach-O files scanned: 1")
+ctl_skipped=$(printf '%s' "$ctl_out" | /usr/bin/grep -c "no arm64 slice")
+if [ "$ctl_code" -eq 0 ] && [ "$ctl_scanned" -gt 0 ] && [ "$ctl_skipped" -eq 0 ]; then
+  echo "  ok   [0] the same bundle with a readable arm64 embedded Mach-O passes, having actually inspected it"
+  pass=$((pass + 1))
+else
+  echo "  FAIL [exit $ctl_code; scanned=$ctl_scanned skipped=$ctl_skipped] readable embedded control" >&2
+  printf '%s\n' "$ctl_out" | sed 's/^/       /' >&2
+  fail=$((fail + 1))
+fi
+
+# **An embedded binary whose deployment target cannot be read must not be certified.** The
+# assertion used to be written `[ -n "$extra_minos" ] && [ ... ]`, so a binary that did not say
+# what it required was waved through — a macOS 15 dependency certified for 14 by silence.
+#
+# Driven by a mutant rather than a fixture, because no supported linker will emit a Mach-O with
+# no version load command: `ld` rejects `-no_version_load_command`, and all 9 arm64 Mach-O files
+# in the real bundle carry LC_BUILD_VERSION. Blanking the primary parse leaves the legacy
+# LC_VERSION_MIN_MACOSX fallback to find nothing either, which is exactly the state under test.
+variant "$TMP/nominos.sh" '    extra_minos=.*' '    extra_minos=""'
+expect_output "records no deployment target" \
+  "an embedded binary with no readable deployment target is refused, not certified" \
+  "$TMP/nominos.sh" "$BUNDLE"
 
 # A bundle that yields no embedded Mach-O means the enumeration broke. It used to print
 # "scanned: 0" and pass.
-rm -f "$BUNDLE/Contents/Frameworks/Truncated.dylib"
+rm -f "$BUNDLE/Contents/Frameworks/Embedded.dylib"
 expect_output "no embedded Mach-O file was inspected" \
   "a bundle with nothing embedded is refused, not certified" \
   "$SUT" "$BUNDLE"
