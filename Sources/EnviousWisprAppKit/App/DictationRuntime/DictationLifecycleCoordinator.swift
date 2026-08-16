@@ -285,26 +285,9 @@ final class DictationLifecycleCoordinator {
       lastCapturingBackend = .parakeet
     }
     prevParakeetActive = nowActive
-    parakeetStateHandler.handle(
-      to: newState,
-      pipelineOverlayIntent: kernelDriver.overlayIntent,
-      lastPolishError: kernelDriver.lastPolishError,
-      currentTranscript: kernelDriver.currentTranscript,
-      historySaved: kernelDriver.lastHistorySaved,
-      historySaveReason: kernelDriver.lastHistorySaveReason,
-      salvagedLead: kernelDriver.lastSalvagedLeadTrimMs != nil,
-      // #1408 (A1): the full typed disclosure, not a Bool. nil = normal
-      // completion; `.deviceRemoved` = verified removal (may say "Microphone
-      // disconnected"); `.otherInterruption` = salvaged with the mic, as far as
-      // we know, still attached (neutral copy). The factory owns the sentences.
-      // #1317: a `becameZeroMidCapture` completion never stamps an
-      // `EngineInterruptionCause` (§3.4 — no synthesized cause), so it is
-      // read directly off the zero-signal side-channel instead of going
-      // through `CompletionInterruptionDisclosure.init(cause:)` (§3.5).
-      interruptionDisclosure: kernelDriver.lastZeroSignalFailureMode == .becameZeroMidCapture
-        ? .otherInterruption
-        : CompletionInterruptionDisclosure(cause: kernelDriver.lastAudioInterruptionCause)
-    )
+    // The argument assembly lives in `PipelineStateChangeDispatch` so this path
+    // and the WhisperKit one below cannot drift apart (#2087).
+    PipelineStateChangeDispatch.run(parakeetStateHandler, driver: kernelDriver, to: newState)
     // #1707 Phase 3 (GitHub cloud review, PR #1732 round 6): a `.complete`
     // whose History save failed retains its spool, but `onSessionEndedWithoutSave`
     // never fires for `.complete` — protect it from THIS SAME transition's own
@@ -362,21 +345,8 @@ final class DictationLifecycleCoordinator {
       lastCapturingBackend = .whisperKit
     }
     prevWhisperKitActive = nowActive
-    whisperKitStateHandler.handle(
-      to: newState,
-      pipelineOverlayIntent: whisperKitKernelDriver.overlayIntent,
-      lastPolishError: whisperKitKernelDriver.lastPolishError,
-      currentTranscript: whisperKitKernelDriver.currentTranscript,
-      historySaved: whisperKitKernelDriver.lastHistorySaved,
-      historySaveReason: whisperKitKernelDriver.lastHistorySaveReason,
-      salvagedLead: whisperKitKernelDriver.lastSalvagedLeadTrimMs != nil,
-      // #1317: see the Parakeet handler above for why this reads the
-      // zero-signal side-channel first.
-      interruptionDisclosure: whisperKitKernelDriver.lastZeroSignalFailureMode
-        == .becameZeroMidCapture
-        ? .otherInterruption
-        : CompletionInterruptionDisclosure(cause: whisperKitKernelDriver.lastAudioInterruptionCause)
-    )
+    PipelineStateChangeDispatch.run(
+      whisperKitStateHandler, driver: whisperKitKernelDriver, to: newState)
     // #1707 Phase 3 (GitHub cloud review, PR #1732 round 6) — see the Parakeet
     // handler above for why this must run before the kernel's own wake-up.
     if case .complete = newState, !whisperKitKernelDriver.lastHistorySaved,

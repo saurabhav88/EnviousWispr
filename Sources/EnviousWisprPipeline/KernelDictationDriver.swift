@@ -371,6 +371,38 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   private var lastEndedWithoutSaveSessionID: SessionID?
 
+  /// #2087 — the one-shot handoff for a concluded Escape Recovery.
+  ///
+  /// It exists because the route the pill has to travel is hostile to it.
+  /// `clearContextConfigIfTerminalOrIdle()` nils `context.config`,
+  /// `context.targetApp` and `context.targetElement` on its `.idle` arm, and it
+  /// runs BEFORE `onStateChange` fires; anything reading them during the
+  /// callback finds nothing. So the completion is frozen on this side of the
+  /// clear and read synchronously on the other, and `onStateChange` keeps its
+  /// signature.
+  ///
+  /// **Nothing writes it in production yet.** The freeze is chunk 7's, and the
+  /// sentence above is the ordering that chunk must satisfy: capture before
+  /// `clearContextConfigIfTerminalOrIdle()`, not after.
+  ///
+  /// Consumed with `take()`, never read: the callback can fire more than once
+  /// per session, and a plain read would offer the user their text again on
+  /// every later notification.
+  @ObservationIgnored
+  private let escapeRecoveryCompletion = EscapeRecoveryCompletionSlot()
+
+  /// The session the slot's contents belong to, so a completion nobody consumed
+  /// cannot surface against a later, unrelated dictation. Tracked here rather
+  /// than reusing `lastEndedWithoutSaveSessionID`: that one latches at a
+  /// CONCLUSION, and this must clear at a session's START.
+  ///
+  /// Seeded from the kernel at construction rather than left `nil`, so the guard
+  /// means exactly "the session changed" from the first observation onward. A
+  /// `nil` seed would count construction itself as a change and spend the first
+  /// clear on nothing.
+  @ObservationIgnored
+  private var escapeRecoveryCompletionSessionID: SessionID
+
   /// Fired by the finalizing-sub-status observer (`observeDisplayOnlyOverlay`)
   /// whenever the overlay's intent should refresh because of a `.transcribing`
   /// → `.polishing` flip that does NOT change the public `PipelineState` (both
@@ -428,6 +460,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     self.lastFiredState = Self.pipelineState(
       for: kernel.state, outcome: kernel.recordingOutcome, externalReason: nil)
     self.lastEndedWithoutSaveSessionID = nil
+    self.escapeRecoveryCompletionSessionID = kernel.currentSessionID
   }
 
   /// Cold-boot warm-up coordinator (#879). The SINGLE shared entry every warm-up
@@ -1288,6 +1321,25 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     /// otherwise observable from outside the driver.
     // periphery:ignore - test seam
     var contextForTesting: KernelSessionContext { context }
+
+    /// Test-only writer for the Escape Recovery slot (#2087).
+    ///
+    /// The production writer lands in chunk 7, with the exit arm that decides a
+    /// cancelled take is recoverable. Without this seam the slot's guarantees —
+    /// take-once, cleared on a new session — would ship with no way to fail,
+    /// and an unarmed guard is indistinguishable from a working one.
+    // periphery:ignore - test seam
+    func putEscapeRecoveryCompletionForTesting(_ completion: EscapeRecoveryCompletion) {
+      escapeRecoveryCompletion.put(completion)
+    }
+
+    /// Whether the slot is empty. Emptiness only, never the value: a test that
+    /// could read the completion without consuming it would be exercising a
+    /// capability production must not have.
+    // periphery:ignore - test seam
+    var escapeRecoveryCompletionIsEmptyForTesting: Bool {
+      escapeRecoveryCompletion.isEmptyForTesting
+    }
   #endif
 
   // MARK: Kernel-state observation
@@ -1309,6 +1361,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         guard let self else { return }
+        // #2087 — before anything else: a new session invalidates a completion
+        // the consumer never took. The ordering is a REQUIREMENT on the capture
+        // site chunk 7 adds, not an observation about it: that site must run on
+        // this session's terminal, so that clearing first can never discard a
+        // completion frozen moments earlier.
+        self.clearEscapeRecoveryCompletionOnNewSession()
         // #1063 PR2 — FIRST, before `clearContextConfigIfTerminalOrIdle()` nulls
         // `context.config`: capture this session's recovery id off the still-live
         // config and fire the ended-without-save signal on a fresh non-`.completed`
@@ -1368,6 +1426,31 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .arming:
       break  // still warming — keep the latch so the overlay stays morphed
     }
+  }
+
+  /// Take this session's Escape Recovery completion, if one was frozen (#2087).
+  ///
+  /// Called from `PipelineStateChangeDispatch.run(_:driver:to:)`, synchronously
+  /// inside `DictationLifecycleCoordinator`'s `onStateChange` handling — the only
+  /// window where the completion is both present and still meaningful.
+  /// Destructive: a second call returns nil, which is what stops one cancelled
+  /// dictation being offered back twice.
+  ///
+  /// `package` rather than `public`: the consumer is a first-party target in
+  /// this package, and `architecture-rules.md` RULE: minimize-visibility.
+  package func takeEscapeRecoveryCompletion() -> EscapeRecoveryCompletion? {
+    escapeRecoveryCompletion.take()
+  }
+
+  /// Drop an unconsumed completion when the kernel moves to a different session.
+  ///
+  /// Keyed by session identity rather than by state: a completion is stale
+  /// exactly when the take it describes is no longer the take in progress, and
+  /// no single state marks that boundary.
+  private func clearEscapeRecoveryCompletionOnNewSession() {
+    guard kernel.currentSessionID != escapeRecoveryCompletionSessionID else { return }
+    escapeRecoveryCompletionSessionID = kernel.currentSessionID
+    escapeRecoveryCompletion.clear()
   }
 
   private func fireStateChangeIfNeeded() {

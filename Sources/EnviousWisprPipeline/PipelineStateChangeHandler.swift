@@ -43,6 +43,16 @@ public final class PipelineStateChangeHandler {
   /// #1567: `DictationNarrator` owns all four sentences.
   private let scheduleInterruptionWarning:
     @MainActor (_ disclosure: CompletionInterruptionDisclosure, _ alsoTrimmedLead: Bool) -> Void
+  /// #2087: append the just-saved PENDING row. Distinct from the completed
+  /// append because the row is temporary and separately presented; chunks 9 and
+  /// 10 own its lifetime and its badge.
+  private let appendPendingTranscript: @MainActor (Transcript) -> Void
+  /// #2087: present the Escape Recovery pill for a durably saved row. Takes the
+  /// payload the plan cannot carry, so a pill can never be raised pointing at
+  /// nothing. Chunk 8 supplies the implementation and owns the dwell.
+  private let presentEscapeRecoveryPill: @MainActor (CancelUndoPayload) -> Void
+  /// #2087: emit `escape_recovery.completed` with its terminal outcome.
+  private let reportEscapeRecoveryCompleted: @MainActor (EscapeRecoveryTerminalOutcome) -> Void
 
   public init(
     showOverlay: @escaping ShowOverlay,
@@ -55,7 +65,14 @@ public final class PipelineStateChangeHandler {
     scheduleSalvagedLeadWarning: @escaping @MainActor () -> Void = {},
     scheduleInterruptionWarning: @escaping @MainActor (
       _ disclosure: CompletionInterruptionDisclosure, _ alsoTrimmedLead: Bool
-    ) -> Void = { _, _ in }
+    ) -> Void = { _, _ in },
+    // #2087: no-op defaults so this chunk is inert and every existing call site
+    // is untouched. Chunks 8-11 supply the real implementations.
+    appendPendingTranscript: @escaping @MainActor (Transcript) -> Void = { _ in },
+    presentEscapeRecoveryPill: @escaping @MainActor (CancelUndoPayload) -> Void = { _ in },
+    reportEscapeRecoveryCompleted: @escaping @MainActor (EscapeRecoveryTerminalOutcome) -> Void = {
+      _ in
+    }
   ) {
     self.showOverlay = showOverlay
     self.cancelPendingWarning = cancelPendingWarning
@@ -66,6 +83,9 @@ public final class PipelineStateChangeHandler {
     self.scheduleHistorySaveFailedWarning = scheduleHistorySaveFailedWarning
     self.scheduleSalvagedLeadWarning = scheduleSalvagedLeadWarning
     self.scheduleInterruptionWarning = scheduleInterruptionWarning
+    self.appendPendingTranscript = appendPendingTranscript
+    self.presentEscapeRecoveryPill = presentEscapeRecoveryPill
+    self.reportEscapeRecoveryCompleted = reportEscapeRecoveryCompleted
   }
 
   /// Drive the full state-change behavior contract for one pipeline.
@@ -82,7 +102,16 @@ public final class PipelineStateChangeHandler {
     historySaved: Bool,
     historySaveReason: String?,
     salvagedLead: Bool = false,
-    interruptionDisclosure: CompletionInterruptionDisclosure? = nil
+    interruptionDisclosure: CompletionInterruptionDisclosure? = nil,
+    // #2087: this session's completion, taken from the driver moments earlier.
+    // It splits here and only here: the sendable outcome goes into the plan, the
+    // paste target stays behind. `PipelineStateChangePlan` is `Sendable` and
+    // `AXUIElement` is a main-actor handle, so the plan can say THAT a pill is
+    // due and never what it points at. Chunk 7 is the first code that can build
+    // one; chunk 12 is what makes that code REACHABLE, by shipping the setting
+    // that lets a cancel take the recovery branch at all. So this is nil in
+    // every build until 7, and nil for every user until they opt in after 12.
+    escapeRecoveryCompletion: EscapeRecoveryCompletion? = nil
   ) {
     let plan = PipelineStateChangePlanner.plan(
       to: newState,
@@ -95,7 +124,8 @@ public final class PipelineStateChangeHandler {
       historySaved: historySaved,
       historySaveReason: historySaveReason,
       salvagedLead: salvagedLead,
-      interruptionDisclosure: interruptionDisclosure
+      interruptionDisclosure: interruptionDisclosure,
+      escapeRecoveryOutcome: escapeRecoveryCompletion?.outcome
     )
     for effect in plan.effects {
       switch effect {
@@ -121,6 +151,23 @@ public final class PipelineStateChangeHandler {
         scheduleSalvagedLeadWarning()
       case .scheduleInterruptionWarning(let disclosure, let alsoTrimmedLead):
         scheduleInterruptionWarning(disclosure, alsoTrimmedLead)
+      case .appendPendingTranscript:
+        if let t = currentTranscript {
+          appendPendingTranscript(t)
+        }
+      case .presentEscapeRecoveryPill:
+        // #2087: the unwrap is the ONLY thing standing between this marker and a
+        // pill, and it needs no runtime guarantee behind it — a nil payload here
+        // means `escapeRecoveryCompletion` was `.nothingToRestore` or absent, and
+        // `EscapeRecoveryCompletion` cannot express `.saved` without a target in
+        // any build configuration. Silence rather than a placeholder: a pill the
+        // user presses to no effect leaves them unable to tell whether the
+        // feature or their own text is broken.
+        if let payload = escapeRecoveryCompletion?.payload {
+          presentEscapeRecoveryPill(payload)
+        }
+      case .reportEscapeRecoveryCompleted(let outcome):
+        reportEscapeRecoveryCompleted(outcome)
       }
     }
   }

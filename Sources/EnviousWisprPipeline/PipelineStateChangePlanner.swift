@@ -32,6 +32,41 @@ enum PipelineStateSideEffect: Equatable, Sendable {
   /// the pipeline has a current transcript — matches the former root state's `if let t`.
   case reportDictationCompleted
 
+  // MARK: Escape Recovery (#2087)
+  //
+  // Value-only MARKERS. This plan is `Sendable`, and the pill's paste target is
+  // not — `AXUIElement` and `NSRunningApplication` are main-actor handles. The
+  // handler retains the real payload and requires it non-nil before presenting;
+  // the plan only ever says THAT a pill is due, never what it points at.
+
+  /// Append the just-saved PENDING row to the in-memory history cache.
+  ///
+  /// Distinct from `appendCompletedTranscript`, and a saved Escape completion
+  /// emits this one INSTEAD. They differ in what the row is: an ordinary
+  /// completion is permanent History, while a pending row is temporary and
+  /// separately presented (chunks 9 and 10 own its lifetime and its badge).
+  /// Emitting both would put one dictation in History twice under two different
+  /// identities — which is the reason the two are exclusive rather than ordered.
+  case appendPendingTranscript
+
+  /// Present the Escape Recovery pill (chunk 8 owns its dwell).
+  ///
+  /// Emitted only for `.saved`, because the pill is an offer to restore something
+  /// that exists. Whoever produces the completion must therefore not report
+  /// `.saved` until the write has actually landed — #1897 is what happens when a
+  /// recovery path promises a save it did not make. The handler additionally
+  /// unwraps a payload, so this marker alone cannot raise a pill pointing at
+  /// nothing.
+  case presentEscapeRecoveryPill
+
+  /// Emit `escape_recovery.completed` with its terminal outcome.
+  ///
+  /// Carries the outcome because `saved` / `empty` / `transcription_failed` /
+  /// `save_failed` / `abandoned` are the question the feature exists to answer:
+  /// whether people who opt in actually get their text back. A boolean would
+  /// collapse a user's deliberate abandon into a failure of ours.
+  case reportEscapeRecoveryCompleted(outcome: EscapeRecoveryTerminalOutcome)
+
   /// Call `TelemetryService.shared.pipelineFailed(...)` with the captured error
   /// code. The caller supplies the fixed `stage` / `errorCategory` / `backend`
   /// literals that today live in the former root state's closures.
@@ -105,7 +140,14 @@ enum PipelineStateChangePlanner {
     historySaved: Bool,
     historySaveReason: String?,
     salvagedLead: Bool = false,
-    interruptionDisclosure: CompletionInterruptionDisclosure? = nil
+    interruptionDisclosure: CompletionInterruptionDisclosure? = nil,
+    // #2087: non-nil means this transition concludes an Escape Recovery, and it
+    // takes over the completion path entirely (Step 2b). Sendable by
+    // construction — the pill's paste target travels beside the plan, never in
+    // it. Chunk 7 is the first code that can supply one and chunk 12 is what
+    // makes that code reachable, so this is `nil` throughout chunk 6 and no
+    // existing caller's plan changes by a single effect.
+    escapeRecoveryOutcome: EscapeRecoveryTerminalOutcome? = nil
   ) -> PipelineStateChangePlan {
     var effects: [PipelineStateSideEffect] = []
     let interrupted = interruptionDisclosure != nil
@@ -176,7 +218,13 @@ enum PipelineStateChangePlanner {
     // already on disk, and the failure branch below deliberately skips the
     // append rather than showing a phantom row. The in-memory append keeps the
     // history cache visibly fresh without an O(n) disk scan.
-    if case .complete = newState.activity {
+    //
+    // #2087: an Escape Recovery takes this path over completely (Step 2b). The
+    // two are mutually exclusive rather than additive — the row is written to
+    // `pending/`, not to History, so emitting the ordinary append as well would
+    // put one dictation in the list twice under two identities, and
+    // `reportDictationCompleted` would count a cancelled take as a delivered one.
+    if case .complete = newState.activity, escapeRecoveryOutcome == nil {
       if hasCurrentTranscript {
         // #1167: skip the in-memory history append on a save failure — the row
         // was never persisted, so the append would show a phantom entry that
@@ -191,6 +239,24 @@ enum PipelineStateChangePlanner {
         }
         effects.append(.reportDictationCompleted)
       }
+    }
+
+    // Step 2b — Escape Recovery (#2087). Deliberately NOT gated on
+    // `newState.activity`: the outcomes conclude on different terminals — a
+    // saved recovery on `.complete`, an abandoned one on the `.idle` callback —
+    // and the caller has already decided that this transition is the one that
+    // ends the recovery. Re-deriving that from the state here would be a second
+    // authority disagreeing with the first.
+    //
+    // Only `.saved` produces a row and an offer. `empty`, `transcriptionFailed`
+    // and `saveFailed` have nothing to give back, and `abandoned` is a user who
+    // asked for nothing to be given back — all four report and stop.
+    if let outcome = escapeRecoveryOutcome {
+      if outcome == .saved {
+        effects.append(.appendPendingTranscript)
+        effects.append(.presentEscapeRecoveryPill)
+      }
+      effects.append(.reportEscapeRecoveryCompleted(outcome: outcome))
     }
 
     // Step 3 — error-path telemetry. #1558: the payload is now a typed
