@@ -207,6 +207,101 @@ import Testing
     #expect(gate.isAdmitted())
   }
 
+  // MARK: Superseded-marker cleanup (#2096 §3.3)
+
+  /// A manifest whose files live in this install dir gets its previous revision's FILES swept by
+  /// orphan cleanup, but its previous revision's MARKER lives in the metadata directory, which
+  /// every family shares. Nothing swept those until now, which is the half `evictPreviousRevisions`
+  /// named and never delivered.
+  private func manifest(
+    files: [(path: String, content: Data, component: String)],
+    revision: String,
+    evictPreviousRevisions: Bool
+  ) throws -> DeliveryManifest {
+    try DeliveryManifest.load(
+      from: ManifestFixture.manifestJSON(files: files) { object in
+        var identity = object["identity"] as! [String: Any]
+        identity["revision"] = revision
+        object["identity"] = identity
+        var admission = object["admission"] as! [String: Any]
+        admission["evictPreviousRevisions"] = evictPreviousRevisions
+        object["admission"] = admission
+      })
+  }
+
+  private func stageForeignMarker(metadata: URL, cacheKey: String) throws -> URL {
+    let url = metadata.appendingPathComponent("\(cacheKey).admission.json")
+    try Data("{}".utf8).write(to: url)
+    return url
+  }
+
+  @Test func supersededMarkersAreRemovedOnAdmission() async throws {
+    let (install, metadata, staging) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+
+    // A marker left behind by the revision this app supersedes, and one belonging to an entirely
+    // different model. Only the first may be swept.
+    let priorRevision = try stageForeignMarker(
+      metadata: metadata, cacheKey: "parakeet-fixture-model-rev0-int8")
+    let otherFamily = try stageForeignMarker(
+      metadata: metadata, cacheKey: "eg_one-eg-1-v3-eg2-q5km")
+
+    let gate = CacheAdmission(
+      manifest: try manifest(files: files, revision: "rev1", evictPreviousRevisions: true),
+      installDirectory: install, metadataDirectory: metadata)
+    try gate.promoteAndAdmit(
+      stagedComponents: [], stagingDirectory: staging, untouchedComponents: [])
+
+    #expect(gate.isAdmitted(), "the current revision is admitted")
+    #expect(
+      !FileManager.default.fileExists(atPath: priorRevision.path),
+      "the superseded revision's marker is swept")
+    #expect(
+      FileManager.default.fileExists(atPath: otherFamily.path),
+      "a different model's marker in the shared metadata dir is untouched")
+  }
+
+  /// The control that ARMS the flag. `evictPreviousRevisions` shipped decoded and unread for
+  /// months; without this case the cleanup could ignore it entirely and still pass the test above,
+  /// and Parakeet and WhisperKit — which both set it `false` — would silently change behaviour.
+  @Test func supersededCleanupRespectsTheManifestFlag() async throws {
+    let (install, metadata, staging) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+
+    let priorRevision = try stageForeignMarker(
+      metadata: metadata, cacheKey: "parakeet-fixture-model-rev0-int8")
+
+    let gate = CacheAdmission(
+      manifest: try manifest(files: files, revision: "rev1", evictPreviousRevisions: false),
+      installDirectory: install, metadataDirectory: metadata)
+    try gate.promoteAndAdmit(
+      stagedComponents: [], stagingDirectory: staging, untouchedComponents: [])
+
+    #expect(gate.isAdmitted())
+    #expect(
+      FileManager.default.fileExists(atPath: priorRevision.path),
+      "a family that did not opt in keeps its previous markers")
+  }
+
+  /// Cleanup must never take the marker it just wrote. The current revision's own marker matches
+  /// the same family and name, and differs only by revision.
+  @Test func supersededCleanupNeverRemovesTheCurrentMarker() async throws {
+    let (install, metadata, staging) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: install, path: f.path) }
+
+    let gate = CacheAdmission(
+      manifest: try manifest(files: files, revision: "rev1", evictPreviousRevisions: true),
+      installDirectory: install, metadataDirectory: metadata)
+    try gate.promoteAndAdmit(
+      stagedComponents: [], stagingDirectory: staging, untouchedComponents: [])
+
+    #expect(FileManager.default.fileExists(atPath: gate.markerURL.path))
+    #expect(gate.isAdmitted())
+  }
+
   @Test func markerFastPathRejectsSizeDrift() async throws {
     let (install, metadata, staging) = try makeDirs()
     let files = ManifestFixture.smallFiles
