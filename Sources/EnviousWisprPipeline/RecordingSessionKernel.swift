@@ -1076,6 +1076,40 @@ final class RecordingSessionKernel {
   private(set) var lastCancelOrigin: RecordingCancelOrigin = .systemOrFault
   private var cancelOriginLatched = false
 
+  /// What the session that is finishing IS (#2087). See `FinalizationDisposition`
+  /// for why this is kernel-owned rather than read at delivery.
+  ///
+  /// Session-scoped and reset in `resetSessionState()`. Still `.ordinary` for
+  /// every take today: the arm that would set `.escapeRecovery` is gated on the
+  /// setting chunk 12 ships. `.abandonedEscapeRecovery` is therefore reachable
+  /// only from `.escapeRecovery`, which is why abandonment cannot fire on an
+  /// ordinary cancel by mistake.
+  private(set) var finalizationDisposition: FinalizationDisposition = .ordinary
+
+  /// Conclude an abandoned Escape Recovery, if this session is one (#2087).
+  ///
+  /// Called at EVERY point where a decode can return, not only before
+  /// `runFinalizing`. A single pre-finalizing check would cover the
+  /// successful-transcript path and miss three others — the empty, no-speech and
+  /// failed routes — each of which could otherwise run further ASR work after the
+  /// user asked for none, or conclude under an outcome that misreports a
+  /// deliberate abandonment as `asr_empty_despite_audio`, `no_speech` or `failed`.
+  ///
+  /// Every call site sits AFTER the existing `isCurrent(sid) && recordingOutcome
+  /// == nil` currency guard and BEFORE the decode result is inspected or
+  /// recorded, so an abandoned session never stamps telemetry for work its user
+  /// disowned.
+  ///
+  /// Returns whether it concluded, so callers can `guard` and return.
+  @discardableResult
+  private func finishAbandonedEscapeRecoveryIfNeeded(_ sid: SessionID) -> Bool {
+    guard case .abandonedEscapeRecovery = finalizationDisposition else { return false }
+    // `.cancelled` and not a failure: the user chose this. Reporting it as a
+    // fault would make a working feature look broken in the data.
+    finishTerminal(.cancelled, sid: sid)
+    return true
+  }
+
   /// Record the origin of an ACCEPTED cancel, once. Called from each accepting
   /// arm of `cancel(origin:)` rather than at its top, so acceptance is decided
   /// in exactly one place and cannot drift from a second copy of the rules.
@@ -1090,9 +1124,10 @@ final class RecordingSessionKernel {
   /// (PR-1 §B.1.4 invariant 5); elsewhere ignored (#1548 D1).
   func cancel(origin: RecordingCancelOrigin = .systemOrFault) {
     // #2087 chunk 2: provenance is latched INERTLY inside each accepting arm.
-    // Nothing branches on it yet — chunk 7 is the single activation point, and
-    // it needs the trigger available here rather than only on the driver, so
-    // the plumbing lands now and activation stays a pure branch addition.
+    // Nothing branches on it yet. Chunk 7 adds the branch and chunk 12 is what
+    // makes the branch reachable — two gates, not one. The trigger is latched
+    // here rather than only on the driver so that adding the branch is a pure
+    // addition and needs no new plumbing.
     switch state {
     case .live:
       latchCancelOrigin(origin)
@@ -1120,9 +1155,31 @@ final class RecordingSessionKernel {
     case .delivering:
       switch deliveringPhase {
       case .transcribing:
-        // Before the transcript is in hand — cancel honored (§5.2).
         latchCancelOrigin(origin)
-        finishTerminal(.cancelled, sid: currentSessionID)
+        // #2087: what a cancel MEANS here depends on what this session is.
+        switch finalizationDisposition {
+        case .ordinary:
+          // Before the transcript is in hand — cancel honored (§5.2). Unchanged.
+          finishTerminal(.cancelled, sid: currentSessionID)
+        case .escapeRecovery(let triggeredAt):
+          // A second cancel during a recovery abandons the OUTPUT, and cannot
+          // abandon the WAIT. Adapter cancellation invalidates the generation so
+          // a late result cannot mutate the next session, but the decode itself
+          // keeps running (`ASREngineAdapter` recoverFromASRInterruption /
+          // cancel contract). Concluding here would free the FSM while that
+          // decode still owns the single ASR engine, so a new recording could
+          // start on top of it — the two-decodes-one-engine hazard, reached by a
+          // path the user never consented to. So: mark, stay busy, and let the
+          // decode's own return points conclude the session.
+          finalizationDisposition = .abandonedEscapeRecovery(triggeredAt: triggeredAt)
+          log("escape recovery abandoned by user — staying busy until the decode returns")
+          bump()
+        case .abandonedEscapeRecovery:
+          // Idempotent. A user pressing Escape a third time is asking for
+          // something already granted, and re-marking would be a no-op that
+          // reads like a second event in the logs.
+          log("cancel ignored — escape recovery already abandoned")
+        }
       case .finalizing:
         log("cancel ignored — safe point (transcript in hand)")
       }
@@ -2277,6 +2334,10 @@ final class RecordingSessionKernel {
     }
     let outcome = await finalize(sid, batchSamples: asrSamples)
     guard isCurrent(sid), recordingOutcome == nil else { return }
+    // #2087: before ASR timing and before the outcome switch, so an abandoned
+    // recovery neither stamps latency for a decode its user disowned nor takes
+    // any of the branches below.
+    guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else { return }
     let asrEnd = CFAbsoluteTimeGetCurrent()
     markASRTimingEnd()
 
@@ -2456,6 +2517,9 @@ final class RecordingSessionKernel {
         // copy lived only inside `if let salvaged`, leaving the `nil` arm — a
         // ladder that found nothing — entirely unguarded.
         guard isCurrent(sid), recordingOutcome == nil else { return }
+        // #2087: the abandonment check sits between the guard and the stamp, so
+        // a take the user disowned records no salvage latency either.
+        guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else { return }
         // #1434 cloud review: the ladder's retry decode(s) run AFTER the primary
         // decode's own `markASRTimingEnd()`, so a salvaged completion needs its
         // own, later stamp — otherwise `pipeline.completed`'s `asr_s` and the
@@ -2598,6 +2662,11 @@ final class RecordingSessionKernel {
       // only once currency is confirmed loses nothing for the live case
       // and eliminates the cross-session write for the stale one.
       guard isCurrent(sid), recordingOutcome == nil else { return }
+      // #2087: before `markASRTimingEnd()`, for the same reason the primary
+      // decode's check is — the retry's latency belongs to work the user asked
+      // to discard, and the `.failed(.asrFailed)` branch just below would
+      // otherwise report a deliberate abandonment as a retry failure.
+      guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else { return }
       markASRTimingEnd()
       // A TIMEOUT (`nil`) is not a confirmed second failure — `.attempted`
       // remains the honest diagnostic that no decode conclusion was accepted
@@ -2817,6 +2886,12 @@ final class RecordingSessionKernel {
   /// `.delivering`; the sub-phase advances to `.finalizing(_)`, which is what
   /// `isLegalConclusion` reads to enforce the safe point (#1548 D1).
   private func runFinalizing(_ sid: SessionID, asrText: String, transcriptID: UUID) async {
+    // #2087: the FIRST statement, before `deliveringPhase` becomes `.finalizing`.
+    // One line later the safe point is in force and cancel is ignored, so this is
+    // the last instant an abandonment can still be honoured — and honouring it
+    // here means no partial row and no orphaned payload can exist, because the
+    // session concludes while still legally `.delivering(.transcribing)`.
+    guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else { return }
     deliveringPhase = .finalizing(.transcribing)
     bump()
 
@@ -4041,6 +4116,10 @@ final class RecordingSessionKernel {
     // forever and every later take would read as that one's cancel.
     lastCancelOrigin = .systemOrFault
     cancelOriginLatched = false
+    // #2087: the disposition describes THIS take. Leaking it forward would make
+    // the next session inherit an abandonment the user never requested, and the
+    // abandonment checks would then conclude it `.cancelled` mid-decode.
+    finalizationDisposition = .ordinary
     recordingExitContinuation = nil
     pendingRecordingExit = nil
     recordingExitLatched = false
@@ -4250,6 +4329,15 @@ final class RecordingSessionKernel {
       let retry = await finalize(sid, batchSamples: Array(samples[trim...]))
       guard isCurrent(sid), recordingOutcome == nil else {
         telemetryState.asrEmptyDiagnostics?.salvageAbortedReason = "superseded"
+        return nil
+      }
+      // #2087: returns `nil` rather than concluding, because this helper's
+      // caller owns the terminal — concluding here would conclude twice. A
+      // distinct reason so an abandoned ladder is separable from a superseded
+      // one: the two look identical in the outcome and mean opposite things
+      // about whether anything went wrong.
+      if case .abandonedEscapeRecovery = finalizationDisposition {
+        telemetryState.asrEmptyDiagnostics?.salvageAbortedReason = "user_abandoned"
         return nil
       }
       switch retry {
@@ -4504,6 +4592,19 @@ final class RecordingSessionKernel {
     /// #1548 D1 test seam — set the FSM state directly to one of the 5 cases
     /// (no legality check), for consumer-mapping tests that need a specific
     /// in-flight state without driving the forward path.
+    /// #2087 test seam — enter a disposition the production path cannot reach yet.
+    ///
+    /// The arm that would set `.escapeRecovery` also has to change where a cancel
+    /// ROUTES (into the stop tail instead of straight to `.cancelled`), and that
+    /// routing change is the activation chunk 12 owns. Setting the disposition
+    /// without it would leave the session concluding immediately, so abandonment
+    /// would still be unreachable and every check site would ship unexercised.
+    /// This seam is what lets the five decode-return checks be shown to work.
+    func testSetFinalizationDisposition(_ disposition: FinalizationDisposition) {
+      finalizationDisposition = disposition
+      bump()
+    }
+
     func testForceState(_ next: RecordingSessionState) {
       state = next
       bump()

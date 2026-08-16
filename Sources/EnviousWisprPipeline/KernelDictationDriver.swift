@@ -711,11 +711,21 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// Publishing the disposition itself would widen the public surface for no
   /// consumer, and would invite policy code to branch on a literal.
   ///
-  /// **Hard-coded `false` in chunk 3, by design.** The vocabulary lands before
-  /// anything can produce it, so every consumer written against this reads the
-  /// same answer today's app already gives. Chunk 12 is the single point where
-  /// this starts telling the truth.
-  public var isEscapeRecoveryTranscribing: Bool { false }
+  /// **`.abandonedEscapeRecovery` answers `false`, and that is the whole point of
+  /// asking a capability rather than an identity.** A decode is still running
+  /// then, so the identity question "is this an escape recovery" would say yes —
+  /// but there is no longer anything to recover, and the affordance this gates
+  /// must be gone. A caller branching on the disposition itself would have to
+  /// remember that; a caller asking this cannot get it wrong.
+  ///
+  /// Still `false` for every real take: the disposition only leaves `.ordinary`
+  /// when a cancel takes the recovery branch, and chunk 12 ships the setting that
+  /// makes that branch reachable. It was a hard-coded literal in chunk 3, before
+  /// there was a disposition to read.
+  public var isEscapeRecoveryTranscribing: Bool {
+    guard case .escapeRecovery = kernel.finalizationDisposition else { return false }
+    return kernel.deliveringPhase == .transcribing
+  }
 
   /// The kernel's `RecordingSessionState` mapped to the legacy `PipelineState`.
   public var state: PipelineState {
