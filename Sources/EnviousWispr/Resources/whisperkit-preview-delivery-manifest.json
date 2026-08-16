@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "family": "whisper_kit",
+    "name": "whisperkit-coreml",
+    "revision": "97a5bf9bbc74c7d9c12c755d04dea59e672e3808",
+    "variant": "openai_whisper-small_216MB",
+    "runtimeABI": "whisperkit-1.0.0"
+  },
+  "runtimeCompatibility": {
+    "minAppVersion": "2.5.0"
+  },
+  "files": [
+    {
+      "path": "AudioEncoder.mlmodelc/analytics/coremldata.bin",
+      "sizeBytes": 243,
+      "sha256": "0c33d98d0f2046b711d75041260eb53fd0ca1c3226930a779fe9082bc4763449",
+      "component": "AudioEncoder.mlmodelc"
+    },
+    {
+      "path": "AudioEncoder.mlmodelc/coremldata.bin",
+      "sizeBytes": 347,
+      "sha256": "bb991927256c8b71c8f5df3eb652bd0d67d933d7c36da4e53a5eb15a0a635ca1",
+      "component": "AudioEncoder.mlmodelc"
+    },
+    {
+      "path": "AudioEncoder.mlmodelc/metadata.json",
+      "sizeBytes": 1942,
+      "sha256": "cc5b8143fddf32493a28fbd9cdda8222a862912162a665f40290f94dcbf5b4b5",
+      "component": "AudioEncoder.mlmodelc"
+    },
+    {
+      "path": "AudioEncoder.mlmodelc/model.mil",
+      "sizeBytes": 353690,
+      "sha256": "885cd28872db8a8e471ee49c1438aa0f55bb43bec1fbeb82e89096bac61d52b4",
+      "component": "AudioEncoder.mlmodelc"
+    },
+    {
+      "path": "AudioEncoder.mlmodelc/model.mlmodel",
+      "sizeBytes": 293185,
+      "sha256": "21680c8556cfc807eb68ae78cf498b15d805b6e655350909bd6a7a0b54b2daeb",
+      "component": "AudioEncoder.mlmodelc"
+    },
+    {
+      "path": "AudioEncoder.mlmodelc/weights/weight.bin",
+      "sizeBytes": 62057344,
+      "sha256": "dfbda1e30a5cea269ea93e2ec69d78a6c5070c0b27982690f02d23e71fecb2d6",
+      "component": "AudioEncoder.mlmodelc"
+    },
+    {
+      "path": "MelSpectrogram.mlmodelc/analytics/coremldata.bin",
+      "sizeBytes": 243,
+      "sha256": "c4f367993f0198e9858a4d89fb054318982c91a9bb5946e29231421c2f1100b9",
+      "component": "MelSpectrogram.mlmodelc"
+    },
+    {
+      "path": "MelSpectrogram.mlmodelc/coremldata.bin",
+      "sizeBytes": 328,
+      "sha256": "806321f1034184a10b04dc50816219dec8ae9789698712050c81edecb9bb5aa7",
+      "component": "MelSpectrogram.mlmodelc"
+    },
+    {
+      "path": "MelSpectrogram.mlmodelc/metadata.json",
+      "sizeBytes": 1878,
+      "sha256": "6a95b18553edd73f018fe954d203d9c3cfa70dfa596d140c20f519ca471fe6be",
+      "component": "MelSpectrogram.mlmodelc"
+    },
+    {
+      "path": "MelSpectrogram.mlmodelc/model.mil",
+      "sizeBytes": 10134,
+      "sha256": "7877c0f519a97a7c0dc1e0e9f8ae316bd864afcb2cffa89c770184b07e7767c9",
+      "component": "MelSpectrogram.mlmodelc"
+    },
+    {
+      "path": "MelSpectrogram.mlmodelc/weights/weight.bin",
+      "sizeBytes": 354080,
+      "sha256": "801024dbc7a89c677be1f8b285de3409e35f7d1786c9c8d9d0d6842ac57a1c83",
+      "component": "MelSpectrogram.mlmodelc"
+    },
+    {
+      "path": "TextDecoder.mlmodelc/analytics/coremldata.bin",
+      "sizeBytes": 243,
+      "sha256": "7883317b9bd8a263bd395091bfd1ebbd098826dc7c75569dcaa870691ab46554",
+      "component": "TextDecoder.mlmodelc"
+    },
+    {
+      "path": "TextDecoder.mlmodelc/coremldata.bin",
+      "sizeBytes": 633,
+      "sha256": "ab598c8f928071a2eee05cdc2163acea3b8d6c7d69b66b31a93dac6681c26a79",
+      "component": "TextDecoder.mlmodelc"
+    },
+    {
+      "path": "TextDecoder.mlmodelc/metadata.json",
+      "sizeBytes": 4935,
+      "sha256": "8bea59efa6a97b0fd5c9237a1ecb5d1c2d00b1c19970c04b2f3cef0d411cad70",
+      "component": "TextDecoder.mlmodelc"
+    },
+    {
+      "path": "TextDecoder.mlmodelc/model.mil",
+      "sizeBytes": 618369,
+      "sha256": "62f97fc5ba7a452d5394d48657b8c245137115a749c16680fc3b159a106d1bd2",
+      "component": "TextDecoder.mlmodelc"
+    },
+    {
+      "path": "TextDecoder.mlmodelc/model.mlmodel",
+      "sizeBytes": 518452,
+      "sha256": "2dac33b92f19491a71d67460384b95d56489b226f46c6074c17f3e81479bcca6",
+      "component": "TextDecoder.mlmodelc"
+    },
+    {
+      "path": "TextDecoder.mlmodelc/weights/weight.bin",
+      "sizeBytes": 153130482,
+      "sha256": "2be2985330071f8188e1c2ab029e1b69d6e8c42865c8d58b20b8d41856da9ed3",
+      "component": "TextDecoder.mlmodelc"
+    },
+    {
+      "path": "config.json",
+      "sizeBytes": 1456,
+      "sha256": "12f8d45c3e5da28148d88d257684e77296e4d922009e1bc5289b05b756859422",
+      "component": "config.json"
+    },
+    {
+      "path": "generation_config.json",
+      "sizeBytes": 2779,
+      "sha256": "169e76633bb28ac383cdfaad2527e662d0d532a15f8437ce94c02c10bc713b71",
+      "component": "generation_config.json"
+    }
+  ],
+  "optionalFiles": [],
+  "totalBytes": 217350763,
+  "sources": [
+    {
+      "id": "hf_pinned",
+      "baseURL": "https://huggingface.co/argmaxinc/whisperkit-coreml/resolve/97a5bf9bbc74c7d9c12c755d04dea59e672e3808/openai_whisper-small_216MB/"
+    }
+  ],
+  "license": {
+    "name": "No declared license (Argmax CoreML packaging); underlying OpenAI Whisper weights are MIT",
+    "url": "https://huggingface.co/argmaxinc/whisperkit-coreml"
+  },
+  "admission": {
+    "layout": "componentSet",
+    "installLocation": "whisperPreviewModelsCache",
+    "diskHeadroomFactor": "2.2",
+    "evictPreviousRevisions": false
+  },
+  "manifestDigest": "235dd98cedfa0ac999fbe18ca24c91d46970c299c1177a0030f5faf2d14aef16"
+}
