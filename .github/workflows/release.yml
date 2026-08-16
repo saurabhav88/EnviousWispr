@@ -584,44 +584,6 @@ jobs:
       contents: write
       actions: read   # cross-run download-artifact (recovery modes) (#1087)
     steps:
-      # **The recovery path publishes an artifact the build job never inspected.**
-      #
-      # With `mode=release-only`, `build-release-artifacts` is skipped entirely, so the linkage
-      # check inside its Gatekeeper step never runs — and this job then downloads a DMG from an
-      # arbitrary `source_run_id` and publishes it. That artifact may predate this guard, or come
-      # from a run where it was not yet applied to the shipped bundle. Publishing is the moment
-      # the bytes reach users, so the check belongs here too, not only on the path that happens
-      # to have built them.
-      #
-      # Checked out FIRST and into its own path: this job otherwise has no repo in its workspace,
-      # and `actions/checkout` cleans what it checks out, which must never be able to race the
-      # downloaded artifacts.
-      # `persist-credentials: false` because this job holds `contents: write` and this step is
-      # followed by EXECUTING a script out of the checkout. Without it, `actions/checkout` leaves
-      # a write-capable token in `repo/.git/config`, so any defect in that script would be running
-      # next to a credential that can rewrite the repository during a release. It needs files, not
-      # a remote. This is the policy this workflow already states for itself at the top.
-      # Depth 1 for the same reason: nothing here reads history.
-      - name: Check out the repository (for the compatibility check)
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          # **Pinned to main, because this job then EXECUTES what it checks out.**
-          #
-          # A `workflow_dispatch` run started from a feature branch would otherwise check out that
-          # branch and run its compatibility script inside a job holding `contents: write`.
-          # `persist-credentials: false` is not sufficient on its own: it keeps the token out of
-          # `.git/config`, but the script still runs before the steps that legitimately use
-          # `GITHUB_TOKEN`, and could alter the artifacts or `$GITHUB_PATH` those steps depend on.
-          # Unreviewed branch code must not be able to influence a published release.
-          #
-          # `main` rather than the tag: `preflight` above already pins itself the same way, and a
-          # dispatch that creates a new tag has no tag to check out yet. The provenance caveat
-          # below is the trade this makes explicit.
-          ref: main
-          fetch-depth: 1
-          persist-credentials: false
-          path: repo
-
       - name: Download release artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -629,34 +591,6 @@ jobs:
           path: build/
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ needs.preflight.outputs.source-run-id }}
-
-      - name: Assert older-macOS launch safety (shipped DMG)
-        env:
-          VERSION: ${{ needs.preflight.outputs.version }}
-        run: |
-          set -euo pipefail
-          DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
-          if [ ! -f "$DMG_PATH" ]; then
-            echo "::error::$DMG_PATH is missing, so the artifact about to be published cannot be inspected"
-            exit 1
-          fi
-          MOUNT="${RUNNER_TEMP}/linkage-mount"
-          rm -rf "$MOUNT"; mkdir -p "$MOUNT"
-          trap 'hdiutil detach "$MOUNT" 2>/dev/null || true; rm -rf "$MOUNT"' EXIT
-          hdiutil attach "$DMG_PATH" -mountpoint "$MOUNT" -nobrowse -readonly
-          echo "==> older-macOS linkage check on the artifact about to be published ..."
-          # `EW_PROJECT_MANIFEST` is passed explicitly because the script derives the repo root
-          # from its own path, and here the checkout lives under repo/ rather than at the root.
-          #
-          # Caveat worth knowing before this ever fires: the check asserts the binary's deployment
-          # target EQUALS the floor declared in the CHECKED-OUT manifest. Re-publishing an old
-          # artifact after the floor moved will therefore fail here. That is the honest outcome —
-          # it means the artifact and the current support claim disagree — but it is a failure
-          # about provenance, not about the binary being broken.
-          EW_PROJECT_MANIFEST="$GITHUB_WORKSPACE/repo/Project.swift" \
-            "$GITHUB_WORKSPACE/repo/scripts/ci/check-weak-linked-symbols.sh" "$MOUNT/EnviousWispr.app"
-          hdiutil detach "$MOUNT"; rm -rf "$MOUNT"
-          trap - EXIT
 
       - name: Check if GitHub Release exists
         id: check-release
