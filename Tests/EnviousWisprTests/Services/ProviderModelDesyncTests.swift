@@ -61,7 +61,7 @@ struct ProviderModelDesyncTests {
     #expect(
       settings.effectiveLLMModel != "llama3.2",
       "a Gemini request must never be sent with an Ollama model name")
-    #expect(settings.effectiveLLMModel == "gemini-3.5-flash")
+    #expect(settings.effectiveLLMModel == "gemini-3.7-flash")
     // The remembered Ollama preference is untouched — #1305 relies on it for the
     // Download-suggestion copy, and sweeping it here would fix one bug with
     // another.
@@ -81,14 +81,14 @@ struct ProviderModelDesyncTests {
     settings.llmModel = "llama3.2"
     settings.llmProvider = .gemini
 
-    #expect(settings.effectiveLLMModel == "gemini-3.5-flash")
+    #expect(settings.effectiveLLMModel == "gemini-3.7-flash")
   }
 
   /// Every cloud destination, not just the one that showed up in telemetry.
   /// `openAI` appeared once and `claude` never, which is sample size rather than
   /// immunity — they share the single guard.
   nonisolated static let cloudDestinations: [(LLMProvider, String)] = [
-    (.gemini, "gemini-3.5-flash"),
+    (.gemini, "gemini-3.7-flash"),
     (.openAI, "gpt-4o-mini"),
     (.claude, "claude-haiku-4-5"),
   ]
@@ -122,7 +122,7 @@ struct ProviderModelDesyncTests {
     let settings = SettingsManager(defaults: suite)
 
     #expect(
-      settings.effectiveLLMModel == "gemini-3.5-flash",
+      settings.effectiveLLMModel == "gemini-3.7-flash",
       "launch-time canonicalization must repair a stuck install")
     #expect(settings.llmProvider == .gemini, "the user's provider choice is not overridden")
   }

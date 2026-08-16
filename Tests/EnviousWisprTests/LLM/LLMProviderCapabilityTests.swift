@@ -90,6 +90,14 @@ struct LLMProviderCapabilityTests {
     #expect(
       LLMProvider.gemini.modelCapabilities(model: "gemini-3.1-pro-preview").thinkingControl
         == .level(fast: "low", deep: "high"))
+    // 3.7 Flash carries the PRO tier's shape under a Flash name: Google rejects
+    // `minimal` on it (400, verified live 2026-08-16), so `low` is its floor and
+    // it must not join the Flash-tier grouping above. It was the "untested
+    // future id" in the fallback list below until it became the shipped default;
+    // this assertion replaces that coverage rather than dropping it.
+    #expect(
+      LLMProvider.gemini.modelCapabilities(model: "gemini-3.7-flash").thinkingControl
+        == .level(fast: "low", deep: "high"))
     // Gemini 2.5 Flash tier: integer budget, 0 is legal.
     #expect(
       LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-flash").thinkingControl
@@ -102,7 +110,11 @@ struct LLMProviderCapabilityTests {
     // Unknown / untested / retired ids reach the fallback and send NOTHING —
     // the shape that succeeded on all eleven working Gemini models measured
     // 2026-07-28/29, not a guarantee about models that do not exist yet.
-    for unknown in ["gemini-3-flash", "gemini-3.7-flash", "gemini-2.0-flash", "nonsense"] {
+    // `gemini-3.7-flash` was here as the untested-future-id case and moved to a
+    // positive assertion above when it shipped as the default. `gemini-4.0-flash`
+    // replaces it so this list keeps covering a plausible-looking id that does
+    // not exist yet — the exact shape a prefix match would wrongly capture.
+    for unknown in ["gemini-3-flash", "gemini-4.0-flash", "gemini-2.0-flash", "nonsense"] {
       #expect(
         LLMProvider.gemini.modelCapabilities(model: unknown).thinkingControl == .unsupported,
         "\(unknown) must fall through to .unsupported, not inherit an untested value")
@@ -113,7 +125,6 @@ struct LLMProviderCapabilityTests {
     #expect(
       LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-pro").temperaturePolicy == .include)
   }
-
 
   @Test func localProvidersNeverReasonAndKeepTemperature() {
     for provider in [LLMProvider.ollama, .appleIntelligence, .egOne, .none] {

@@ -174,6 +174,22 @@ extension LLMModelCapabilities {
       "gemini-3-flash-preview":
       return .level(fast: "minimal", deep: "high")
 
+    // 3.7 Flash sits in the Pro tier's shape despite the Flash name: `minimal`
+    // -> 400 "Thinking level MINIMAL is not supported for this model", verified
+    // live 2026-08-16 and confirmed against Google's per-model table (3.7 Flash
+    // accepts low/medium/high; 3.6 Flash still accepts minimal). It is the first
+    // Flash-tier id that cannot reach zero thinking, so it must NOT join the
+    // Flash `case` above — that would send `minimal` and 400 every request.
+    //
+    // This row is load-bearing for cost, not just correctness. An unlisted id
+    // falls through to `.unsupported`, which sends no thinking field, and the
+    // Gemini 3 default is now `medium`. Measured on sealed_v1 at `low`: 147
+    // thinking tokens per dictation, billed at the OUTPUT rate. Defaulting to
+    // medium would silently spend more than that on every polish, and the 93.5%
+    // score this model was chosen on was measured at `low`, not at medium.
+    case "gemini-3.7-flash":
+      return .level(fast: "low", deep: "high")
+
     // Gemini 3 Pro tier: `minimal` -> 400 "Thinking level MINIMAL is not
     // supported for this model", so `low` is the floor Google permits.
     case "gemini-3.1-pro-preview", "gemini-3.1-pro-preview-customtools":
