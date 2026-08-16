@@ -308,6 +308,36 @@ public struct RecoverySpoolStore: Sendable {
     return .valid(marker)
   }
 
+  /// Commit a spool to Escape Recovery, or fail closed (#2087).
+  ///
+  /// One call, because the kernel must not be handed a two-step protocol it can
+  /// half-perform. Either the marker is durably on disk and this returns `true`,
+  /// or nothing survives and it returns `false`.
+  ///
+  /// **On failure it destroys the spool and its sidecars.** That looks harsh and
+  /// is the only honest option: a spool left behind with no readable marker is
+  /// replayed at the next launch as an ordinary crash rescue, producing a
+  /// PERMANENT History row for a dictation the user cancelled. Given the choice
+  /// between losing a take the user asked to discard and keeping one they never
+  /// agreed to keep, this loses the take — which is also exactly what today's
+  /// destructive cancel does, so the caller's fallback is unchanged behaviour.
+  ///
+  /// Best-effort cleanup: if the destroy also fails there is nothing further to
+  /// try, and the caller has already been told to treat this as a plain cancel.
+  public func prepareEscapeRecovery(
+    recoverySessionID: String, triggeredAt: Date, takeID: String?
+  ) -> Bool {
+    do {
+      try writeEscapeMarker(
+        EscapeRecoveryMarker(
+          recoverySessionID: recoverySessionID, triggeredAt: triggeredAt, takeID: takeID))
+      return true
+    } catch {
+      try? delete(recoverySessionID: recoverySessionID)
+      return false
+    }
+  }
+
   /// Delete a spool's Escape marker. Idempotent — a missing marker is success.
   public func deleteEscapeMarker(for recoverySessionID: String) throws {
     let url = escapeMarkerURL(for: recoverySessionID)

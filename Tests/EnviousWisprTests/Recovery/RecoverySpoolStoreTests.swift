@@ -405,6 +405,63 @@ struct RecoverySpoolStoreTests {
       "the escape marker was still attempted after the attempt marker failed")
   }
 
+  // MARK: - prepareEscapeRecovery, the kernel's one-call connector (#2087)
+
+  @Test("prepare succeeds: the marker is readable afterwards")
+  func prepareEscapeRecoverySucceeds() async throws {
+    let store = makeStore()
+    let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key())
+    await writeSpool(
+      store: store, sessionID: "prep", cipher: cipher, chunks: [[0.2]], reason: .cleanFinalized)
+    let at = Date(timeIntervalSince1970: 1_755_300_000)
+
+    #expect(store.prepareEscapeRecovery(recoverySessionID: "prep", triggeredAt: at, takeID: "t-9"))
+
+    guard case .valid(let marker) = store.readEscapeMarker(for: "prep") else {
+      Issue.record("expected the marker to be committed")
+      return
+    }
+    #expect(marker.triggeredAt == at)
+    #expect(marker.takeID == "t-9")
+    #expect(try store.listSpoolSessionIDs() == ["prep"], "the audio is untouched on success")
+  }
+
+  /// FAIL CLOSED, and this is the assertion that makes the word mean something.
+  ///
+  /// Returning `false` alone would not be enough: a spool left on disk with no
+  /// readable marker is replayed at the next launch as an ordinary crash rescue,
+  /// producing a PERMANENT History row for a dictation the user cancelled. So the
+  /// failure path must also DESTROY the spool — which costs the user exactly what
+  /// pressing cancel already costs them, and is what the caller falls back to.
+  @Test("prepare fails: returns false AND destroys the spool, leaving nothing to replay")
+  func prepareEscapeRecoveryFailsClosed() async throws {
+    let store = makeStore()
+    let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key())
+    await writeSpool(
+      store: store, sessionID: "doomed", cipher: cipher, chunks: [[0.3]], reason: .cleanFinalized)
+
+    // Block the marker write at its FIRST step: the temp path is already a
+    // directory, so `open(…, O_CREAT | O_WRONLY)` fails with EISDIR.
+    //
+    // An earlier version of this test blocked the DESTINATION instead and proved
+    // nothing — macOS `replaceItemAt` happily replaces a non-empty directory with
+    // a file, so the write succeeded and the assertion caught my wrong assumption
+    // about the filesystem rather than a defect. The spool directory itself stays
+    // writable on purpose: sealing it would break the cleanup too, and then the
+    // test could not observe the destruction it exists to check.
+    let tmpBlocker = store.directoryURL.appendingPathComponent(
+      ".doomed.\(RecoveryConstants.escapeMarkerFileExtension).tmp")
+    try FileManager.default.createDirectory(at: tmpBlocker, withIntermediateDirectories: true)
+
+    let ok = store.prepareEscapeRecovery(
+      recoverySessionID: "doomed", triggeredAt: Date(), takeID: nil)
+
+    #expect(ok == false, "the caller must be told to perform an ordinary cancel")
+    #expect(
+      try store.listSpoolSessionIDs() == [],
+      "the spool is destroyed — a survivor with no marker replays as permanent History")
+  }
+
   @Test("escape marker: written 0600 and never listed as a spool")
   func escapeMarkerPermissionsAndScan() throws {
     let store = makeStore()

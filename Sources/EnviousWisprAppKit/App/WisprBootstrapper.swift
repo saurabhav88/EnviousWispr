@@ -342,6 +342,7 @@ public final class WisprBootstrapper {
     // builds the kernel + Parakeet engine adapter + lifecycle telemetry sink
     // + heart-path telemetry observer internally and wires kernel-state
     // observation post-construction (PR-4b.2).
+    let makeRecoverySpoolStore = EscapeRecoveryWiring.makeSpoolStore
     let kernelDriver = KernelDictationDriverFactory.makeForParakeet(
       inputs: KernelDictationDriverFactory.ParakeetInputs(
         audioCapture: audioCapture,
@@ -356,7 +357,8 @@ public final class WisprBootstrapper {
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         egOneRuntime: egOneRuntime,
         parakeetDelivery: modelDelivery.parakeetHandle,
-        batchDecodeFaultController: batchDecodeFaultController
+        batchDecodeFaultController: batchDecodeFaultController,
+        prepareEscapeRecovery: EscapeRecoveryWiring.writer()
       ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
@@ -406,7 +408,8 @@ public final class WisprBootstrapper {
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         egOneRuntime: egOneRuntime,
-        batchDecodeFaultController: batchDecodeFaultController
+        batchDecodeFaultController: batchDecodeFaultController,
+        prepareEscapeRecovery: EscapeRecoveryWiring.writer()
       ))
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
@@ -656,7 +659,6 @@ public final class WisprBootstrapper {
     // key store + spool-store factory are shared so arm/recover/cleanup agree on
     // backend + paths.
     let recoveryKeyStore = RecoveryKeyStore()
-    let makeRecoverySpoolStore: @Sendable () -> RecoverySpoolStore = { RecoverySpoolStore() }
     let recoverySpoolReplayer = RecoverySpoolReplayer(
       activeEngine: activeEngine,
       keyStore: recoveryKeyStore,

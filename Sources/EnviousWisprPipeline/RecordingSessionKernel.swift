@@ -287,6 +287,13 @@ final class RecordingSessionKernel {
       async throws -> String
   private let store: @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void
   private let deliver: @MainActor (_ text: String) async -> KernelDeliveryOutcome
+  /// #2087: commit this session's spool to Escape Recovery, or fail closed.
+  ///
+  /// Injected like `store` and `deliver` — the kernel owns WHEN a session's
+  /// provenance is committed, never HOW it is written. Inert until chunk 7 calls
+  /// it from the `.cancel` arm; chunk 12 makes that arm reachable.
+  // periphery:ignore - wired in chunk 5b, first called in chunk 7 (#2087)
+  private let prepareEscapeRecovery: PrepareEscapeRecovery
 
   // MARK: Wedge-detection tuning
 
@@ -884,6 +891,7 @@ final class RecordingSessionKernel {
     ) async throws -> String,
     store: @escaping @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void,
     deliver: @escaping @MainActor (_ text: String) async -> KernelDeliveryOutcome,
+    prepareEscapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
     engineMutationScope: EngineMutationScope,
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
@@ -927,6 +935,7 @@ final class RecordingSessionKernel {
     self.processText = processText
     self.store = store
     self.deliver = deliver
+    self.prepareEscapeRecovery = prepareEscapeRecovery
     self.engineMutationScope = engineMutationScope
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks

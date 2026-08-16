@@ -174,6 +174,26 @@ public enum OverlayIntent: Equatable, Sendable {
   case escapeRecovery(transcriptID: UUID)
 }
 
+/// Commit this session's spool to Escape Recovery, returning whether it worked
+/// (#2087).
+///
+/// Dependency injection for STORAGE, not a second completion route. The kernel
+/// already receives closures for processing, storage and delivery; this is the
+/// same shape, and it exists because kernel construction had no way to write a
+/// crash-provenance marker at all.
+///
+/// **`false` means fail closed**, and the caller's fallback is today's ordinary
+/// destructive cancel — so a failure here costs the user exactly what pressing
+/// cancel already costs them, and never leaves a spool that a later launch would
+/// replay into permanent History.
+///
+/// Called BEFORE the disposition changes and before the stop tail is entered: the
+/// marker must be durable before anything downstream can start behaving as though
+/// the take is being kept.
+public typealias PrepareEscapeRecovery = @MainActor (
+  _ recoverySessionID: String, _ triggeredAt: Date, _ takeID: String?
+) -> Bool
+
 /// What a finalizing session IS, for the run that is finishing (#2087).
 ///
 /// **Kernel-owned and session-scoped.** Set once when the exit arm decides, read
