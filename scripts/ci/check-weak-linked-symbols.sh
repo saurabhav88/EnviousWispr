@@ -64,11 +64,22 @@ case "$TARGET" in
     [ -n "$MAIN_NAME" ] || die "no CFBundleExecutable in $TARGET/Contents/Info.plist; cannot identify the main binary" 2
     BIN="$TARGET/Contents/MacOS/$MAIN_NAME"
     [ -f "$BIN" ] || die "main executable not found: $BIN" 2
-    if [ -d "$TARGET/Contents/Frameworks" ]; then
-      EMBEDDED=$(find "$TARGET/Contents/Frameworks" -type f -perm +111 2>/dev/null | while read -r f; do
-        file "$f" 2>/dev/null | /usr/bin/grep -q "Mach-O" && echo "$f"
-      done)
-    fi
+    # **The WHOLE bundle, not a list of directories someone remembered.**
+    #
+    # Scanning `Contents/Frameworks` alone missed `Contents/XPCServices` — which holds
+    # `EnviousWisprASRService.xpc`, the service that performs transcription. That one is the worst
+    # possible miss: the launch probe would still pass, because the main process survives, and the
+    # app would open on macOS 14 and simply fail to transcribe. CLAUDE.md's core promise is that
+    # dictation works across the whole supported range, so a gate that certifies a bundle whose
+    # ASR service cannot load is certifying the wrong thing.
+    #
+    # This bundle also carries a Mach-O under `Contents/Resources`, which a
+    # Frameworks-plus-XPCServices list would have missed in turn. Enumerating every Mach-O under
+    # Contents is exhaustive by construction, so no future directory can be forgotten.
+    EMBEDDED=$(find "$TARGET/Contents" -type f -perm +111 2>/dev/null | while read -r f; do
+      [ "$f" = "$BIN" ] && continue
+      file "$f" 2>/dev/null | /usr/bin/grep -q "Mach-O" && echo "$f"
+    done)
     ;;
   *)
     BIN="$TARGET"
