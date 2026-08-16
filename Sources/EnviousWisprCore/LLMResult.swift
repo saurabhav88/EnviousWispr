@@ -43,11 +43,31 @@ extension LLMProvider {
   {
     switch provider {
     case .openAI: return "gpt-4o-mini"
-    // #1770: was `gemini-2.0-flash`, which Google shut down 2026-06-01 (live
-    // 404 "no longer available"). `gemini-3.5-flash` is the only replacement
-    // candidate with a measured polish score on our own corpus (92.6% Type B).
-    // #1832 may swap it once 3.6 Flash and the cheap tier are benchmarked.
-    case .gemini: return "gemini-3.5-flash"
+    // 2026-08-16: was `gemini-3.5-flash` (itself the #1770 replacement for
+    // `gemini-2.0-flash`, which Google shut down 2026-06-01). Swapped on the
+    // #1832 bar — "once benchmarked" — not on the price table. Four arms on
+    // sealed_v1 (1,462 cases), all graded in ONE judging window with the cloud
+    // polish v7 prompt:
+    //
+    //   3.5-flash  minimal   91.2%  S4 52   $3.71/run   p90  965ms
+    //   3.6-flash  minimal   89.9%  S4 61   $1.82/run   p90  893ms
+    //   3.7-flash  low       93.5%  S4 26   $2.63/run   p90 1710ms
+    //
+    // 3.7 wins quality decisively (half the critical failures of 3.5) and still
+    // costs 29% less, at the price of roughly double the p90 latency because it
+    // cannot disable thinking — `low` is its floor. 3.6 is cheapest and fastest
+    // and is the WORST of the three on quality, below what we already shipped;
+    // a price-led choice would have picked it and made polish worse.
+    //
+    // Two caveats kept deliberately. 3.7's judge-stability check FAILED at
+    // 5.2pp against a 5.0 limit, so its 93.5% carries more uncertainty than the
+    // other two, which passed. And the judge is azure/gpt-5-6-luna, an OpenAI
+    // model grading Gemini output. Founder chose 3.7 on this evidence.
+    //
+    // This is the fallback for new users and provider switches. An existing
+    // Gemini user with `gemini-3.5-flash` saved keeps it — `canonicalize`
+    // only replaces a model id that looks like ANOTHER provider's.
+    case .gemini: return "gemini-3.7-flash"
     case .claude: return "claude-haiku-4-5"
     case .ollama: return ollamaModel
     case .appleIntelligence: return "apple-intelligence"

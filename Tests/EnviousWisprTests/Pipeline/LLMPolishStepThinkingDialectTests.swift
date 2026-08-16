@@ -83,6 +83,25 @@ struct LLMPolishStepThinkingDialectTests {
     }
   }
 
+  /// 3.7 Flash is the first Flash-tier id whose off-state is NOT `minimal`:
+  /// Google rejects minimal on it with HTTP 400, so `low` is its floor. It is
+  /// also the shipped Gemini default as of 2026-08-16, which makes this the
+  /// dialect most users receive.
+  ///
+  /// Deliberately a separate test rather than another entry in the loop above.
+  /// Adding it there would have required weakening that assertion to accept
+  /// either level, which would stop it catching a 3.6 that regressed to `low`
+  /// — one test covering two contracts checks neither.
+  @Test("Gemini 3.7 Flash, Deep reasoning OFF → thinkingLevel low, never minimal")
+  func geminiThreeSevenToggleOffSendsLow() async throws {
+    let (thinking, sawCall) = try await capturedThinking(
+      model: "gemini-3.7-flash", extendedThinking: false)
+    #expect(sawCall, "the polisher was never reached, so this proves nothing")
+    #expect(
+      thinking == .level("low"),
+      "gemini-3.7-flash must receive .level(\"low\"); minimal is HTTP 400 on it")
+  }
+
   /// The opposite direction: an unrecognised model must reach the provider with
   /// NO thinking field at all. Asserted positively — a fallback that silently
   /// sent something would pass a mere "did not crash" check.

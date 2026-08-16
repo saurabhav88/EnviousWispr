@@ -506,6 +506,7 @@ import Testing
       }
       for id in [
         "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite",
+        "gemini-3.7-flash",
         "gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview",
         "gemini-3.1-pro-preview", "gemini-3.1-pro-preview-customtools",
         "gemini-3-flash-preview",
@@ -684,7 +685,10 @@ import Testing
       // "rotting" — which made it `x == x`, a tautology that can never fail and
       // silently gave up the ability to catch a wrong shipped default. Breaking
       // when a shipped default moves is the POINT: it forces a human to look.
-      #expect(settings.llmModel == "gemini-3.5-flash")
+      // Moved 3.5 -> 3.7 on 2026-08-16. This assertion did exactly what the
+      // note above says it is for: it broke when the default moved, and a human
+      // checked. Evidence for the swap is on `LLMResult.defaultModel`.
+      #expect(settings.llmModel == "gemini-3.7-flash")
     }
 
     @Test("Language lock projects to mode only, never the code")

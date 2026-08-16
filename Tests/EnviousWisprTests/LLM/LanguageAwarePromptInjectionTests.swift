@@ -300,9 +300,16 @@ struct LanguageAwarePromptInjectionTests {
 
   @Test("planner locked + non-Latin detected lang strips Latin perLanguage terms")
   func plannerScriptGuardrailIntegrates() {
+    // The Latin sentinel must be a token that CANNOT occur in the system prompt's
+    // own prose, because the assertion below is a substring search over the whole
+    // prompt. It was "stray" until 2026-08-16, when cloud polish v7 added the
+    // sentence "trailed off with a stray \"yeah\" or \"okay\"" — the guardrail
+    // still worked, but the test failed, blaming vocabulary leakage for a word
+    // the prompt itself contributed. A real English word can always be adopted by
+    // prompt copy later; a nonsense token cannot.
     let vocab = PromptVocabulary(
       global: ["EnviousWispr"],
-      perLanguage: ["ja": ["ビデオ", "stray"]]
+      perLanguage: ["ja": ["ビデオ", "Zqxjvbrn"]]
     )
     let built = input(
       customWords: [],
@@ -313,7 +320,8 @@ struct LanguageAwarePromptInjectionTests {
     let system = plan.envelope.messages.first(where: { $0.role == .system })?.content ?? ""
     #expect(system.contains("EnviousWispr"))
     #expect(system.contains("ビデオ"))
-    #expect(!system.contains("stray"), "Latin-only ja term should be stripped by script guardrail")
+    #expect(
+      !system.contains("Zqxjvbrn"), "Latin-only ja term should be stripped by script guardrail")
   }
 
   // MARK: - Explicit ASR backend dispatch (W3 follow-up)
