@@ -103,7 +103,14 @@ expect_output "must be LC_LOAD_WEAK_DYLIB" "a strongly-LOADED framework is named
 
 # The instrument's own control. If it cannot tell weak from strong, it must refuse to answer
 # rather than report the pass it would otherwise print.
-variant "$TMP/badctl.sh" 'CONTROL_FRAMEWORK="AppKit"' 'CONTROL_FRAMEWORK="Speech"'
+#
+# **The stand-in must be a framework that is guaranteed to stay fully weak.** `Speech` was the
+# obvious pick and was wrong: the production guard deliberately ALLOWS baseline-era Speech APIs,
+# so adding something like `SFSpeechRecognizer` would legitimately give Speech strong symbols,
+# this mutant would stop refusing, and the self-test would block a change the guard permits.
+# `FoundationModels` cannot drift that way, because the guard itself requires it to be fully
+# weak — if it ever were not, the real check would fail before this control could mislead.
+variant "$TMP/badctl.sh" 'CONTROL_FRAMEWORK="AppKit"' 'CONTROL_FRAMEWORK="FoundationModels"'
 expect 2 "a control that reports weak refuses to give a verdict" "$TMP/badctl.sh" "$BIN"
 
 variant "$TMP/noctl.sh" 'CONTROL_FRAMEWORK="AppKit"' 'CONTROL_FRAMEWORK="NoSuchFrameworkXYZ"'
@@ -179,8 +186,19 @@ cat > "$BUNDLE/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>Probe</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
 </dict></plist>
 PLIST
+
+# Read the declared floor the same way the subject does, so these cases assert against the real
+# value rather than a second hardcoded copy of it that could drift away from Project.swift.
+DECLARED_FLOOR=$(/usr/bin/grep -oE 'DeploymentTargets = \.macOS\("[0-9]+\.[0-9]+"\)' "$EW_PROJECT_MANIFEST" | /usr/bin/grep -oE '[0-9]+\.[0-9]+' | head -1)
+if [ -z "$DECLARED_FLOOR" ]; then
+  echo "  FAIL [fixture] could not read the declared floor from $EW_PROJECT_MANIFEST" >&2
+  fail=$((fail + 1))
+  DECLARED_FLOOR="14.0"
+fi
+/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $DECLARED_FLOOR" "$BUNDLE/Contents/Info.plist" >/dev/null 2>&1
 
 # A truncated Mach-O: `file` still classifies it, so the enumeration picks it up, while `lipo`
 # and `nm` refuse it. Before the exit statuses were checked this printed "no arm64 slice ()" —
@@ -236,6 +254,36 @@ variant "$TMP/noloads.sh" '    extra_loads=.*' '    extra_loads=""'
 expect_output "no dynamic library load commands were parsed" \
   "an embedded binary whose load commands cannot be parsed is refused, not certified" \
   "$TMP/noloads.sh" "$BUNDLE"
+
+# **Launch Services minimum.** This value is a hardcoded literal in checked-in plists, derived
+# from nothing, and Launch Services reads it instead of the Mach-O load command — so raising it
+# locks macOS 14 users out of an app whose binary checks are all green. The launch probe cannot
+# see it either, because invoking the executable directly bypasses Launch Services.
+/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 99.0" "$BUNDLE/Contents/Info.plist" >/dev/null 2>&1
+expect_output "Launch Services would refuse to start the app" \
+  "an app plist demanding a newer macOS than the declared floor is rejected" \
+  "$SUT" "$BUNDLE"
+
+# A BUNDLED plist may legitimately declare an OLDER minimum — Sparkle says 10.13, PostHog 10.15 —
+# so the rule for those is "may not exceed", not "must equal". Without this case the check could
+# be tightened to equality and fail on honest dependencies.
+/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $DECLARED_FLOOR" "$BUNDLE/Contents/Info.plist" >/dev/null 2>&1
+mkdir -p "$BUNDLE/Contents/Frameworks/Old.framework"
+printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>LSMinimumSystemVersion</key><string>10.13</string></dict></plist>\n' \
+  > "$BUNDLE/Contents/Frameworks/Old.framework/Info.plist"
+expect 0 "a bundled plist declaring an OLDER minimum is accepted" "$SUT" "$BUNDLE"
+
+# ...but one declaring a NEWER minimum is not.
+/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 99.0" "$BUNDLE/Contents/Frameworks/Old.framework/Info.plist" >/dev/null 2>&1
+expect_output "above the declared floor" \
+  "a bundled plist demanding a newer macOS than the declared floor is rejected" \
+  "$SUT" "$BUNDLE"
+rm -rf "$BUNDLE/Contents/Frameworks/Old.framework"
+
+# An app plist that declares no minimum at all has asserted nothing about whether it can start.
+/usr/libexec/PlistBuddy -c "Delete :LSMinimumSystemVersion" "$BUNDLE/Contents/Info.plist" >/dev/null 2>&1
+expect 2 "an app plist with no minimum at all refuses to certify the bundle" "$SUT" "$BUNDLE"
+/usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string $DECLARED_FLOOR" "$BUNDLE/Contents/Info.plist" >/dev/null 2>&1
 
 # A bundle that yields no embedded Mach-O means the enumeration broke. It used to print
 # "scanned: 0" and pass.

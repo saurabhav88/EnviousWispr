@@ -288,6 +288,49 @@ if [ "$checked" -eq 0 ]; then
   die "nothing was inspected: neither the absent-at-baseline frameworks ($ABSENT_AT_BASELINE_FRAMEWORKS) nor the newer-symbol patterns appear in this binary" 2
 fi
 
+# (2b) `LSMinimumSystemVersion`, which decides whether the app launches AT ALL.
+#
+# This value is a hardcoded literal in checked-in Info.plist files and is derived from nothing:
+# raising it to 15.0 while the deployment target stays at 14.0 leaves the Mach-O checks above
+# entirely green, because the binary is unchanged. Launch Services reads the plist, not the load
+# command, so Finder and `open` would refuse to start the app for every macOS 14 user while both
+# compatibility checks report success. The launch probe cannot catch it either: it invokes the
+# executable directly, which bypasses Launch Services by construction.
+#
+# The rule mirrors the binary rule exactly, and for the same reasons. The app's OWN plist must
+# EQUAL the declared floor: above it locks out supported users, below it advertises support the
+# build does not provide. Every other plist may only not EXCEED the floor, because a bundled
+# dependency legitimately supports older systems than we ship to. Measured on the real bundle:
+# 14 Info.plist files, ours declaring 14.0 and Sparkle's and PostHog's declaring 10.13 and 10.15,
+# so an equality rule applied to all of them would fail on honest dependencies.
+if [ "$IS_BUNDLE" -eq 1 ]; then
+  main_plist_seen=0
+  while IFS= read -r plist; do
+    [ -n "$plist" ] || continue
+    lsmin=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$plist" 2>/dev/null)
+    [ -n "$lsmin" ] || continue
+    if [ "$plist" = "$TARGET/Contents/Info.plist" ]; then
+      main_plist_seen=1
+      if [ "$lsmin" != "$DECLARED" ]; then
+        echo "    Contents/Info.plist: LSMinimumSystemVersion is $lsmin but the declared floor is $DECLARED. Launch Services would refuse to start the app for supported users, or advertise support this build does not provide" >&2
+        status=1
+      fi
+    elif [ "$lsmin" != "$DECLARED" ] &&
+         [ "$(printf '%s\n%s\n' "$lsmin" "$DECLARED" | sort -V | tail -1)" = "$lsmin" ]; then
+      echo "    ${plist#"$TARGET"/}: LSMinimumSystemVersion is $lsmin, above the declared floor $DECLARED" >&2
+      status=1
+    fi
+  done <<EOF
+$(find "$TARGET" -name "Info.plist" 2>/dev/null)
+EOF
+  # The app's own plist declaring nothing is not a pass: it is the one Launch Services consults,
+  # and a check that never found it has asserted nothing about whether the app can start.
+  if [ "$main_plist_seen" -eq 0 ]; then
+    die "no LSMinimumSystemVersion in $TARGET/Contents/Info.plist. That is the value Launch Services uses to decide whether this app runs, and an absent one cannot be reconciled with the declared floor $DECLARED" 2
+  fi
+  echo "==> LSMinimumSystemVersion: app declares $DECLARED, no bundled plist exceeds it"
+fi
+
 # (3) Embedded Mach-O files. Only the baseline-absent frameworks are checked here, and only IF
 #     referenced: an embedded framework has no obligation to use them, so requiring a match would
 #     fail every honest dependency. The main executable above is what carries the
