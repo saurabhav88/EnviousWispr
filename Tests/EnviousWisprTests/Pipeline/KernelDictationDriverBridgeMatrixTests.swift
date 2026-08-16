@@ -297,6 +297,56 @@ import Testing
       // kernel state — crucially NOT .error(.modelWedged).
       #expect(fx.driver.state != .error(.modelWedged))
     }
+
+    // MARK: 6. Cancel provenance reaches the recovery ending (#2087)
+
+    /// Lives in this suite because the driver fixture and the bounded `drain()`
+    /// already exist here; the subject is the same driver-bridges-kernel
+    /// contract the matrix above covers.
+    ///
+    /// #2087 removed the driver's own `pendingCancelOrigin` and made the fire
+    /// site read `kernel.lastCancelOrigin`. Kernel-level tests cannot see that
+    /// line: they would still pass if it hard-coded `.systemOrFault`, projected
+    /// the wrong value, or stopped firing the callback entirely. This asserts
+    /// the emitted `RecordingRecoveryEnding`, which is the actual contract the
+    /// crash-recovery coordinator consumes.
+    ///
+    /// `.stopping` is chosen deliberately: it is the accepting state where
+    /// `cancel` concludes SYNCHRONOUSLY, so `cancelRecording`'s terminal await
+    /// resolves without a forward path running. Driving this from `.live`
+    /// instead is what hung a run for five hours
+    /// (`swift-patterns.md` RULE: tests-no-unconditional-continuation-await).
+    @Test("the driver projects the kernel's accepted cancel origin into the ending")
+    func cancelProvenanceReachesTheRecoveryEnding() async {
+      for trigger in [UserCancelTrigger.shortcut, .cancelButton] {
+        let fx = makeFixture()
+        await place(fx.kernel, in: .stopping)
+        let box = EndingBox()
+        fx.driver.onSessionEndedWithoutSave = { _, ending in box.value = ending }
+
+        await fx.driver.cancelRecording(disposition: .user(trigger))
+        await drain()
+
+        #expect(
+          box.value == .cancelled(.user(trigger)),
+          "the ending must carry the trigger the user actually used, not a default")
+
+        // First-wins, end to end: a fault cancel arriving behind the accepted
+        // user cancel must not rewrite what was emitted.
+        await fx.driver.cancelRecording()
+        await drain()
+        #expect(
+          box.value == .cancelled(.user(trigger)),
+          "a later system cancel must not alter the already-emitted ending")
+      }
+    }
+  }
+
+  /// Captures the ending emitted by the driver's `@MainActor` callback. The
+  /// suite is `@MainActor`, so plain mutation is safe.
+  @MainActor
+  private final class EndingBox {
+    var value: RecordingRecoveryEnding?
   }
 
 #endif  // DEBUG

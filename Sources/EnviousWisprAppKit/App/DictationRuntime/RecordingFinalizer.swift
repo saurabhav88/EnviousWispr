@@ -44,12 +44,14 @@ final class RecordingFinalizer {
   var requestStopDispatch: @MainActor (KernelDictationDriver) async throws -> Void = {
     try await $0.handle(event: .requestStop)
   }
-  var cancelRecordingDispatch: @MainActor (KernelDictationDriver) async -> Void = {
-    // #1063 PR2 / #1464 / #1755: the genuine USER cancel path (the cancel
-    // button → `RecordingFinalizer.cancel()`) — attributed `.user` for
-    // provenance; every cancel origin deletes under the discard doctrine.
-    await $0.cancelRecording(disposition: .user)
-  }
+  var cancelRecordingDispatch: @MainActor (KernelDictationDriver, UserCancelTrigger) async ->
+    Void = {
+      // #1063 PR2 / #1464 / #1755: the genuine USER cancel path — attributed
+      // `.user` for provenance; every cancel origin deletes under the discard
+      // doctrine. #2087 carries WHICH control was used, because only the
+      // shortcut is ambiguous enough to be worth recovering from.
+      await $0.cancelRecording(disposition: .user($1))
+    }
 
   /// Read accessor exposed to `RecordingStarter` so the start path's
   /// post-condition wedge guard can detect "user stopped during start"
@@ -93,7 +95,7 @@ final class RecordingFinalizer {
     }
   }
 
-  func cancel() async {
+  func cancel(trigger: UserCancelTrigger) async {
     TelemetryService.shared.dictationCanceled(
       stage: "recording", reason: "user_cancel", durationSeconds: nil)
     languageSuggestionPresenter?.clearCurrentChip()
@@ -108,7 +110,7 @@ final class RecordingFinalizer {
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
     guard active.state == .recording || active.state == .loadingModel else { return }
-    await cancelRecordingDispatch(active)
+    await cancelRecordingDispatch(active, trigger)
   }
 
   func markLocked() {

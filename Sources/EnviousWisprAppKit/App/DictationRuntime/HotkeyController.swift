@@ -81,7 +81,7 @@ final class HotkeyController {
         Self.reportNilCollaborator(callback: "onCancelRecording")
         return
       }
-      await finalizer.cancel()
+      await finalizer.cancel(trigger: .shortcut)
     }
     hotkeyService.onIsProcessing = { [weak starter] in
       starter?.isProcessing ?? false

@@ -205,7 +205,7 @@ final class DictationRuntime {
     await starter.toggle(source: source)
   }
 
-  func cancelRecording() async { await finalizer.cancel() }
+  func cancelRecording(trigger: UserCancelTrigger) async { await finalizer.cancel(trigger: trigger) }
 
   func resetActivePipeline() { finalizer.resetActive() }
 

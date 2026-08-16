@@ -371,20 +371,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   private var lastEndedWithoutSaveSessionID: SessionID?
 
-  /// #1063 PR2 / #1464 — the origin attributed to the CURRENT session's
-  /// `.cancelled` terminal. `.cancelled` is reached by BOTH a genuine user cancel
-  /// (`RecordingFinalizer.cancel()` → `cancelRecording(disposition: .user)`) AND
-  /// fault/system cancels that route through `kernel.cancel()` (active
-  /// `reset()`, `setTerminalReason()`). PROVENANCE only (#1755): both origins
-  /// delete at the coordinator; the distinction feeds diagnostics and copy.
-  /// Defaults to `.systemOrFault` so a cancel NOT explicitly attributed as a
-  /// user discard never masquerades as one. Set at the `cancelRecording` call
-  /// site, consumed + reset at the `.cancelled` signal fire, and reset on
-  /// each new session start. Projected into
-  /// `RecordingRecoveryEnding.cancelled(_)` for the coordinator's predicate.
-  @ObservationIgnored
-  private var pendingCancelOrigin: RecordingCancelOrigin = .systemOrFault
-
   /// Fired by the finalizing-sub-status observer (`observeDisplayOnlyOverlay`)
   /// whenever the overlay's intent should refresh because of a `.transcribing`
   /// → `.polishing` flip that does NOT change the public `PipelineState` (both
@@ -756,13 +742,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// `cancelRequested`, but the actual transition to `.cancelled` /
   /// `.discarded` happens on the forward path's next yield.
   /// `disposition` (#1063 PR2 / #1464 / #1755) attributes a `.cancelled`
-  /// terminal's PROVENANCE for crash recovery: `.user` (genuine USER cancel)
-  /// vs the default `.systemOrFault` (a system/fault cancel). Both delete
-  /// under the #1755 discard doctrine — the origin is diagnostics/copy, not a
-  /// retain/delete fork. The user-cancel path passes `.user` explicitly.
+  /// terminal's PROVENANCE for crash recovery: `.user(_)` (genuine USER cancel,
+  /// carrying WHICH control per #2087) vs the default `.systemOrFault`. Both
+  /// delete under the #1755 discard doctrine — the origin is diagnostics/copy,
+  /// not a retain/delete fork. The user path passes `.user(trigger)` explicitly.
   public func cancelRecording(disposition: RecordingCancelOrigin = .systemOrFault) async {
-    pendingCancelOrigin = disposition
-    kernel.cancel()
+    kernel.cancel(origin: disposition)
     await awaitKernelTerminal()
   }
 
@@ -1112,11 +1097,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // closures to read at finalize time (the wiring's optional-chained
         // reads were always-nil in production until this PR — finding #6).
         lastTerminalReason = nil
-        // #1063 PR2 / #1755: a fresh session starts at the `.systemOrFault`
-        // provenance default — only a genuine user cancel during this session
-        // flips it to `.user`, so a stale user attribution from a prior
-        // session can never leak onto this session's fault-cancel.
-        pendingCancelOrigin = .systemOrFault
         outcome.transcript = nil
         outcome.polishError = nil
         outcome.rawText = nil
@@ -1405,14 +1385,21 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     lastEndedWithoutSaveSessionID = kernel.currentSessionID
     let ending: RecordingRecoveryEnding?
     if case .cancelled = outcome {
-      // `.cancelled` carries per-cancel PROVENANCE (user vs system/fault),
-      // attributed at the `kernel.cancel()` call site; consume + reset to the
-      // default so a stale user attribution can't leak to a later fault
-      // cancel. Both origins delete under #1755 — the disposition decision
-      // lives solely in the coordinator's predicate; the driver only
-      // projects the origin.
-      ending = .cancelled(pendingCancelOrigin)
-      pendingCancelOrigin = .systemOrFault
+      // `.cancelled` carries per-cancel PROVENANCE (user vs system/fault). The
+      // KERNEL is the single authority: it latches the origin of the cancel it
+      // actually ACCEPTED, first-wins, and clears it per session.
+      //
+      // #2087 removed a second copy that lived here. The driver used to record
+      // the origin on every `cancelRecording(disposition:)` call, last-write-
+      // wins, which could disagree with the kernel — a cancel the kernel
+      // IGNORED (idle, the safe point, a latched exit) still overwrote the
+      // driver's copy, and a fault cancel arriving behind a genuine user cancel
+      // replaced it. Reading the kernel makes the two impossible to diverge,
+      // rather than keeping them in step by matching latch rules in two places.
+      //
+      // Both origins delete under #1755 — the disposition decision lives solely
+      // in the coordinator's predicate; the driver only projects the origin.
+      ending = .cancelled(kernel.lastCancelOrigin)
     } else {
       ending = Self.recoveryEnding(for: outcome, retryOutcome: kernel.asrRetryOutcome)
     }
@@ -1430,7 +1417,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// here already as `.audioInterrupted`. Payloads are dropped — the coordinator's
   /// predicate keys only on the terminal FAMILY, never `DiscardReason`/
   /// `NoSpeechSource`, keeping the internal enum inside Pipeline. `.cancelled` is
-  /// EXCLUDED (returns nil) — resolved at the fire site via `pendingCancelOrigin`.
+  /// EXCLUDED (returns nil) — resolved at the fire site from the kernel's latched
+  /// `lastCancelOrigin`.
   /// Also nil for `.completed` (durable save ran). Exhaustive so a new
   /// `RecordingOutcome` forces a routing decision. Internal (not private) so the
   /// split is unit-tested directly (`matcher-set-adversarial-tests`).

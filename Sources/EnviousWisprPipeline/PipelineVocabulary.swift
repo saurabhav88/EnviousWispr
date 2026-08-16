@@ -159,8 +159,30 @@ public enum OverlayIntent: Equatable, Sendable {
 /// origins delete the recovery spool; the distinction survives for
 /// diagnostics and copy, not as a retain/delete fork.
 public enum RecordingCancelOrigin: Equatable, Sendable {
-  case user
+  case user(UserCancelTrigger)
   case systemOrFault
+}
+
+/// WHICH control the user reached for (#2087).
+///
+/// The distinction exists because the two are not equally unambiguous. A click
+/// on a button labelled Cancel says exactly one thing. A press of the cancel
+/// shortcut — Escape by default — is also how people dismiss popovers, leave
+/// fields and back out of menus, so it collides with dictation by accident.
+/// Escape Recovery is therefore offered for `.shortcut` only; `.cancelButton`
+/// keeps discarding immediately.
+///
+/// Carried as an associated value on `.user` rather than as a sibling enum so
+/// that `.systemOrFault` cannot be paired with a user trigger — the invalid
+/// combination is unrepresentable instead of merely undocumented. Consumers
+/// that do not care may match `.user(_)`; today exactly one behavioural site
+/// switches on the origin at all (`RecoveryCoordinator.shouldDeleteOnLiveEnding`).
+public enum UserCancelTrigger: Equatable, Sendable {
+  /// The configured cancel shortcut. Escape by default, and user-rebindable —
+  /// which is why copy says "your cancel shortcut", never a hard-coded key.
+  case shortcut
+  /// The explicit Cancel button in the main window.
+  case cancelButton
 }
 
 /// The narrow PUBLIC projection of a recording's terminal `RecordingOutcome` that

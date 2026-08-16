@@ -436,7 +436,7 @@ struct ExhaustedRetrySpoolDeletionTests {
     /// The one sanctioned third outcome. A user who sees the disconnect notice
     /// and cancels has asked us to stop; flooring `.cancelled` would override
     /// that explicit instruction with an interruption notice. Its provenance
-    /// belongs to the driver's `pendingCancelOrigin` (#1755: both origins
+    /// belongs to the kernel's latched `lastCancelOrigin` (#1755: both origins
     /// delete), not to the floor.
     @Test("an explicit cancel during a salvage is honored, never floored")
     func explicitCancelDuringSalvageIsNotFloored() async {
@@ -462,7 +462,7 @@ struct ExhaustedRetrySpoolDeletionTests {
       #expect(context.paste.pasteCount == 0)
       #expect(
         KernelDictationDriver.recoveryEnding(for: .cancelled) == nil,
-        "`.cancelled` is resolved dynamically by pendingCancelOrigin, not the static projection")
+        "`.cancelled` is resolved dynamically from lastCancelOrigin, not the static projection")
     }
 
     /// Every ending outcome the FSM can conclude with (#1548 D1: the ending

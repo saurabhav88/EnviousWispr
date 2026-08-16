@@ -79,7 +79,7 @@ import Testing
     let fx = Self.makeFixture()
     fx.asr.activeBackendType = .parakeet
     fx.lockBox.isLocked = true  // prove cancel still clears the lock before bailing
-    await fx.finalizer.cancel()
+    await fx.finalizer.cancel(trigger: .shortcut)
     // Lock cleared (cancel's prologue runs regardless of state-guard outcome).
     #expect(fx.lockBox.isLocked == false)
   }
@@ -88,7 +88,7 @@ import Testing
     let fx = Self.makeFixture()
     fx.asr.activeBackendType = .whisperKit
     fx.lockBox.isLocked = true
-    await fx.finalizer.cancel()
+    await fx.finalizer.cancel(trigger: .shortcut)
     #expect(fx.lockBox.isLocked == false)
   }
 
@@ -124,9 +124,11 @@ import Testing
   /// `.recording` to reach the dispatch. The cancel closure observes only (no
   /// forward) because real `cancelRecording()` awaits terminal convergence.
   // `kernelForTesting` + `testForceTransition` are DEBUG-only seams
-  // (`KernelDictationDriver.swift` `#if DEBUG`), so this test wraps itself in
-  // `#if DEBUG` — same pattern as ASREventRouterTests. Otherwise the release-config
-  // test lane (post-merge) fails to compile and reports an empty bundle.
+  // (`KernelDictationDriver.swift` `#if DEBUG`), so EVERY test needing them lives
+  // in this one block — same pattern as ASREventRouterTests. Otherwise the
+  // release-config test lane (post-merge) fails to compile and reports an empty
+  // bundle, which a Debug-only local run cannot see by construction. Add new
+  // seam-using tests HERE rather than starting a second guarded region.
   #if DEBUG
     @Test(
       "cancel sets the stop timestamp before entering the dispatch await",
@@ -144,14 +146,104 @@ import Testing
       _ = fx.kernelDriver.kernelForTesting.testForceTransition(to: .live)
       let finalizer = fx.finalizer
       let obs = DispatchObservation()
-      finalizer.cancelRecordingDispatch = { _ in
+      finalizer.cancelRecordingDispatch = { _, _ in
         obs.dispatchRan = true
         obs.stampAtEntry = finalizer.lastUserStopAccess.read()
       }
-      await finalizer.cancel()
+      await finalizer.cancel(trigger: .shortcut)
       #expect(obs.dispatchRan)  // the state guard passed and the dispatch was reached
       #expect(obs.stampAtEntry != nil)  // the timestamp was already set at dispatch entry
     }
+    /// #2087: the trigger must survive the whole chain, not merely be accepted.
+    ///
+    /// The earlier version of the dispatch-seam test ignored both closure
+    /// arguments (`{ _, _ in }`), so replacing the forwarded trigger with a
+    /// hard-coded constant would have left the suite green. These capture the
+    /// value and assert BOTH cases, so a constant fails one of them.
+    @Test("the trigger reaches the dispatch seam unchanged, for both controls")
+    func triggerSurvivesToTheDispatchSeam() async {
+      for expected in [UserCancelTrigger.shortcut, .cancelButton] {
+        let fx = Self.makeFixture()
+        fx.asr.activeBackendType = .parakeet
+        _ = fx.kernelDriver.kernelForTesting.testForceTransition(to: .arming)
+        _ = fx.kernelDriver.kernelForTesting.testForceTransition(to: .live)
+        let seen = TriggerBox()
+        fx.finalizer.cancelRecordingDispatch = { _, trigger in seen.value = trigger }
+        await fx.finalizer.cancel(trigger: expected)
+        #expect(seen.value == expected, "the seam must receive the trigger it was given")
+      }
+    }
+
+    /// The provenance must reach the KERNEL, not stop at the driver. Chunk 7
+    /// branches inside the kernel, so a value that only ever lands on the driver
+    /// would look correct here and be unavailable where it is actually needed.
+    ///
+    /// SYNCHRONOUS on purpose. The first version of this test drove the real
+    /// `cancelRecording` path, which ends in `await awaitKernelTerminal()`. With
+    /// the kernel force-transitioned to `.live` and no forward path running, that
+    /// terminal never arrives and the test hangs forever — precisely the shape
+    /// `swift-patterns.md` RULE: tests-no-unconditional-continuation-await
+    /// exists to forbid. `cancel(origin:)` sets the value synchronously, so read
+    /// the accessor instead of awaiting a future that may never resume.
+    @Test("the kernel records the origin it was cancelled with, for both controls")
+    func kernelRecordsTheOrigin() {
+      for trigger in [UserCancelTrigger.shortcut, .cancelButton] {
+        let fx = Self.makeFixture()
+        let kernel = fx.kernelDriver.kernelForTesting
+        _ = kernel.testForceTransition(to: .arming)
+        _ = kernel.testForceTransition(to: .live)
+        kernel.cancel(origin: .user(trigger))
+        #expect(kernel.lastCancelOrigin == .user(trigger))
+      }
+    }
+
+    /// The default dispatch seam forwards the trigger into the driver as
+    /// `.user(trigger)`. Asserted by invoking the production closure against a
+    /// kernel parked in `.stopping`, where `cancel` concludes SYNCHRONOUSLY, so
+    /// the driver's terminal await resolves immediately instead of hanging.
+    @Test("the production dispatch seam forwards the trigger to the driver")
+    func defaultDispatchForwardsTheTrigger() async {
+      let fx = Self.makeFixture()
+      let kernel = fx.kernelDriver.kernelForTesting
+      _ = kernel.testForceTransition(to: .arming)
+      _ = kernel.testForceTransition(to: .live)
+      _ = kernel.testForceTransition(to: .stopping)
+      await fx.finalizer.cancelRecordingDispatch(fx.kernelDriver, .cancelButton)
+      #expect(kernel.lastCancelOrigin == .user(.cancelButton))
+    }
+
+    /// A cancel the kernel IGNORES must not claim provenance. `.idle` is the
+    /// unambiguous ignore case: nothing is in flight, so recording the request
+    /// would attribute a session that never ended this way.
+    @Test("an ignored cancel records no provenance")
+    func ignoredCancelRecordsNothing() {
+      let fx = Self.makeFixture()
+      let kernel = fx.kernelDriver.kernelForTesting
+      kernel.cancel(origin: .user(.shortcut))
+      #expect(
+        kernel.lastCancelOrigin == .systemOrFault,
+        "an ignored cancel must leave the default in place, not record .user")
+    }
+
+    /// First-wins. The hazard is specific: internal teardown paths call
+    /// `cancel()` with the `.systemOrFault` default, and in `.live` that lands
+    /// in an ACCEPTING arm. Without the latch it would overwrite the user's real
+    /// shortcut cancel, and chunk 7 would decline to offer recovery for a take
+    /// the user genuinely escaped out of.
+    @Test("a later system cancel cannot overwrite the accepted user cancel")
+    func firstAcceptedCancelWins() {
+      let fx = Self.makeFixture()
+      let kernel = fx.kernelDriver.kernelForTesting
+      _ = kernel.testForceTransition(to: .arming)
+      _ = kernel.testForceTransition(to: .live)
+      kernel.cancel(origin: .user(.shortcut))
+      #expect(kernel.lastCancelOrigin == .user(.shortcut))
+      kernel.cancel()  // the fault-path default, arriving behind the real one
+      #expect(
+        kernel.lastCancelOrigin == .user(.shortcut),
+        "the first accepted cancel owns the provenance for the rest of the session")
+    }
+
   #endif
 
   @Test func markLockedFlipsTheLockAndUpdatesOverlay() {
@@ -210,4 +302,9 @@ import Testing
 private final class DispatchObservation {
   var dispatchRan = false
   var stampAtEntry: ContinuousClock.Instant?
+}
+
+/// Minimal reference cell for capturing a value out of a `@MainActor` closure.
+@MainActor private final class TriggerBox {
+  var value: UserCancelTrigger?
 }

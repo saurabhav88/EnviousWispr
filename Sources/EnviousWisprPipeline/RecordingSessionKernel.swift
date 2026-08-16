@@ -1034,18 +1034,53 @@ final class RecordingSessionKernel {
     }
   }
 
+  /// Provenance of the cancel that ACTUALLY ended this session (#2087). Inert
+  /// in chunk 2: latched here and read by nothing.
+  ///
+  /// Two properties, both load-bearing for chunk 7, which branches on this to
+  /// decide whether a cancelled take is recoverable:
+  ///
+  /// - **Accepted-only.** A cancel the kernel ignores (`.idle`, the safe point,
+  ///   `.arming` behind a latched exit) leaves it untouched. Recording every
+  ///   REQUEST would let an ignored late cancel rewrite the provenance of the
+  ///   real one.
+  /// - **First-wins.** More than one cancel can be accepted across an exit
+  ///   (`.live` then `.stopping`), and internal fault paths call `cancel()` with
+  ///   the `.systemOrFault` default during teardown. Without the latch a user's
+  ///   genuine shortcut cancel could be overwritten by a system cancel arriving
+  ///   behind it, and chunk 7 would silently decline to offer recovery.
+  ///
+  /// Both are cleared per session in `resetSessionState()`.
+  private(set) var lastCancelOrigin: RecordingCancelOrigin = .systemOrFault
+  private var cancelOriginLatched = false
+
+  /// Record the origin of an ACCEPTED cancel, once. Called from each accepting
+  /// arm of `cancel(origin:)` rather than at its top, so acceptance is decided
+  /// in exactly one place and cannot drift from a second copy of the rules.
+  private func latchCancelOrigin(_ origin: RecordingCancelOrigin) {
+    guard !cancelOriginLatched else { return }
+    cancelOriginLatched = true
+    lastCancelOrigin = origin
+  }
+
   /// Cancel. Before the safe point it routes to `cancelled`; inside
   /// `delivering(.finalizing(_))` it is ignored — the safe point is inviolable
   /// (PR-1 §B.1.4 invariant 5); elsewhere ignored (#1548 D1).
-  func cancel() {
+  func cancel(origin: RecordingCancelOrigin = .systemOrFault) {
+    // #2087 chunk 2: provenance is latched INERTLY inside each accepting arm.
+    // Nothing branches on it yet — chunk 7 is the single activation point, and
+    // it needs the trigger available here rather than only on the driver, so
+    // the plumbing lands now and activation stays a pure branch addition.
     switch state {
     case .live:
+      latchCancelOrigin(origin)
       deliverRecordingExit(.cancel)
     case .arming:
       // First-wins (Codex code-diff P2): a latched capture failure wins; a cancel
       // arriving afterward is fully inert, including `detachedAdapterCancel()` (see
       // `requestStop`).
       guard !recordingExitLatched else { return }
+      latchCancelOrigin(origin)
       cancelRequested = true
       detachedAdapterCancel()
       // The forward path's checkpoint consumes `cancelRequested` and concludes
@@ -1058,11 +1093,13 @@ final class RecordingSessionKernel {
       // path drops its in-flight `stopCapture()` / `finalize()` result when it
       // returns (`recordingOutcome != nil`). `stopping` is included so a cancel
       // during a slow capture-stop is not lost (Codex P2).
+      latchCancelOrigin(origin)
       finishTerminal(.cancelled, sid: currentSessionID)
     case .delivering:
       switch deliveringPhase {
       case .transcribing:
         // Before the transcript is in hand — cancel honored (§5.2).
+        latchCancelOrigin(origin)
         finishTerminal(.cancelled, sid: currentSessionID)
       case .finalizing:
         log("cancel ignored — safe point (transcript in hand)")
@@ -3557,7 +3594,7 @@ final class RecordingSessionKernel {
   /// up. (Since #1755 neither question decides retention.)
   ///
   /// `.cancelled` is NEVER floored: an explicit user cancel is honored, and
-  /// its provenance belongs to the driver's `pendingCancelOrigin` (both
+  /// its provenance belongs to this kernel's latched `lastCancelOrigin` (both
   /// origins delete under #1755). Every other `.failed(reason)` (`.asrEmpty`,
   /// `.asrFailed`, `.captureStartFailed`, `.modelLoadFailed`) keeps its own
   /// honest reason.
@@ -3959,6 +3996,11 @@ final class RecordingSessionKernel {
   private func resetSessionState() {
     stopLatched = false
     cancelRequested = false
+    // #2087: a stale origin must not leak into the next take, and the latch
+    // must clear with it — otherwise the first session's provenance would win
+    // forever and every later take would read as that one's cancel.
+    lastCancelOrigin = .systemOrFault
+    cancelOriginLatched = false
     recordingExitContinuation = nil
     pendingRecordingExit = nil
     recordingExitLatched = false

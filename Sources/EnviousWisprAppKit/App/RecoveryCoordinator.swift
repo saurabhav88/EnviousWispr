@@ -423,7 +423,10 @@ final class RecoveryCoordinator {
       // user's one rescue; a surprise replay at a later launch is a bug in
       // the user's eyes, not a favor.
       return true
-    case .cancelled(.user):
+    // #2087: the trigger is deliberately ignored here. Both a shortcut and a
+    // button cancel remain ordinary destructive cancels for spool purposes;
+    // Escape Recovery changes what happens to the TEXT, never to the audio.
+    case .cancelled(.user(_)):
       return true
     case .cancelled(.systemOrFault):
       // #1755: flipped — every producer is app-alive by construction (an
