@@ -462,6 +462,79 @@ struct LivePreviewCoordinatorTests {
     let corrected = WordCorrector().correct("i work at qualtrix today", using: lookups).corrected
     #expect(corrected.contains("Qualtrics"), "got: \(corrected)")
   }
+
+  // MARK: - #2108: the prepared engine is released when preview is disabled
+
+  /// The universal engine holds a loaded WhisperKit model, so the cached-engine
+  /// slot now pins roughly 50-60 MB. It is otherwise cleared only when the
+  /// candidate KEY changes, and turning the preview off changes no key — so an
+  /// engine prepared before the user disabled it stayed cached for the life of
+  /// the process. Cloud review caught it on #2113.
+  ///
+  /// Asserts the SLOT, not a weak reference to the engine. An earlier version did
+  /// the latter and failed three times for three different reasons — the
+  /// preparation task, then the draining session task, each holding the engine as
+  /// a local. A weak-reference assertion cannot distinguish "the slot is still
+  /// full" from "the observation was early", which makes it the wrong instrument
+  /// for the property this fix changes.
+  @Test("disabling the preview releases the prepared engine, not just the display")
+  func disablingReleasesThePreparedEngine() async {
+    final class ReleasableEngine: LivePreviewEngine, @unchecked Sendable {
+      let onPrepared: @Sendable () -> Void
+      init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
+      func prepare() async throws { onPrepared() }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    // Boxed because Swift 6 forbids mutating a captured var from a concurrently
+    // executing closure.
+    final class Box: @unchecked Sendable {
+      var enabled = true
+      var prepared = false
+    }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { ReleasableEngine(onPrepared: { box.prepared = true }) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    // Signal, not a clock: wait for preparation to COMPLETE. The slot is only
+    // filled after that, so asserting earlier would test nothing.
+    for _ in 0..<2000 where !box.prepared { await Task.yield() }
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    #expect(box.prepared, "control: preparation must have completed")
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: the slot must be FULL before a release can mean anything")
+    coordinator.setRecording(false)
+
+    // The user turns the preview off and presses record again.
+    box.enabled = false
+    coordinator.setRecording(true)
+
+    #expect(coordinator.display == .off)
+    #expect(
+      !coordinator.hasPreparedEngineForTests,
+      "a disabled preview must not keep an engine — and with it a loaded model — cached")
+  }
+
 }
 
 /// #2077 — what the coordinator actually did to whatever engine it was given.

@@ -110,11 +110,25 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
       let corrector = WordCorrector()
       for await text in stream {
         if Task.isCancelled { return }
-        guard let lookups, !text.isEmpty else {
-          onText(text)
+        // BOUND FIRST, before Custom Words and before anything crosses to the
+        // coordinator.
+        //
+        // The hypothesis is cumulative, so a long dictation grows it without
+        // limit. `LivePreviewTextBound` is the ONE implementation of this cap and
+        // its doc records that the first version of the Apple producer trimmed at
+        // the CONSUMER, leaving a 60-minute dictation growing unboundedly under a
+        // comment promising it could not. This engine reintroduced exactly that
+        // until cloud review caught it.
+        //
+        // Bounding before `correct` also keeps the corrector off the full
+        // transcript on every update: the pill shows a two-line tail, so running
+        // word correction over 9,000 words to display 20 is work nobody sees.
+        let bounded = LivePreviewTextBound.apply(text)
+        guard let lookups, !bounded.isEmpty else {
+          onText(bounded)
           continue
         }
-        onText(corrector.correct(text, using: lookups).corrected)
+        onText(corrector.correct(bounded, using: lookups).corrected)
       }
     }
   }

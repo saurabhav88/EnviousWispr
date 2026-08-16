@@ -201,6 +201,22 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       guard !isRunning else { return }
       guard isEnabled() else {
         display = .off
+        // **Release the prepared engine too, not just the display (#2108).**
+        //
+        // This slot is deliberately kept across recordings so a second press does
+        // not pay preparation again, and it is otherwise cleared only when the
+        // candidate KEY changes. Turning the preview off changes no key, so an
+        // engine prepared before the user disabled it stayed resident for the
+        // life of the process. That cost nothing while Apple's engine was the
+        // only one — it holds a locale — but the universal engine holds a loaded
+        // WhisperKit model, so the same slot now pins roughly 50-60 MB for a
+        // feature the user has switched off. Cloud review caught it.
+        //
+        // Dropping the reference is the whole release: the engine owns its
+        // runtime, which owns the model, so ARC unloads the chain. Clearing the
+        // key with it means the next enable rebuilds rather than resurrecting a
+        // half-released engine.
+        releasePreparedEngine()
         return
       }
       isRunning = true
@@ -359,6 +375,29 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     case .modelNotInstalled: return LivePreviewCopy.previewModelNotInstalled
     case .heartIsStreaming: return LivePreviewCopy.heartIsStreaming
     }
+  }
+
+  /// Drop the prepared engine and everything it holds.
+  ///
+  /// Separate from the key-change path because the two have different triggers
+  /// and the same remedy: a key change means "prepare a different engine", this
+  /// means "prepare none". Both must clear the key, or a later enable would find
+  /// a matching key with no engine behind it.
+  /// Whether an engine is currently cached in the slot above.
+  ///
+  /// A test seam, `package` rather than `internal` so the test module reaches it
+  /// on a plain import. It exists because the alternative — observing a weak
+  /// reference to the engine — measures the whole retention graph: an in-flight
+  /// preparation task and a draining session task each hold the engine as a
+  /// local, so a weak-reference assertion fails identically whether the slot is
+  /// still full or the observation was simply early. This asserts the property
+  /// the fix actually changes.
+  package var hasPreparedEngineForTests: Bool { preparedEngine != nil }
+
+  private func releasePreparedEngine() {
+    preparationTask = nil
+    preparedEngine = nil
+    preparedKey = nil
   }
 
   /// One log seam so every preview line carries the same category and the whole

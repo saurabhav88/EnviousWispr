@@ -143,9 +143,16 @@ public final class ModelDeliveryHome {
     // none — the observers are Parakeet-mirror-specific and the event bridge
     // below them is already generic across every identity.
     //
-    // No first-run baseline is recorded: that call exists to notice a model a
-    // user already had before delivery managed it, and nothing has ever put this
-    // artifact on a user's disk.
+    // The first-run baseline IS recorded, like its siblings.
+    //
+    // An earlier version skipped it, reasoning that the call exists to notice a
+    // model a user already had before delivery managed it — and nothing has ever
+    // put this artifact on a user's disk. That reasoning was about the wrong
+    // question. The field answers "was there NO admitted cache at launch", which
+    // on a fresh install is TRUE and worth recording; and the read side treats a
+    // MISSING key as `false`, so skipping does not leave the answer unknown, it
+    // leaves it silently wrong. Every event from a user's first install would
+    // have been stamped not-first-run. Cloud review caught it.
     do {
       let manifest = try DeliveryManifest.loadBundled(
         resource: "whisperkit-preview-delivery-manifest", bundle: manifestBundle)
@@ -166,6 +173,8 @@ public final class ModelDeliveryHome {
       whisperPreviewRegistration = registration
       whisperPreviewHandle = WhisperKitDeliveryHandle(
         controller: controller, registration: registration)
+      let previewHome = self
+      Task { await previewHome.recordFirstRunBaseline(for: registration) }
     } catch {
       Task {
         await AppLogger.shared.log(
