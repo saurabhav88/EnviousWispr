@@ -156,6 +156,13 @@ final class StoreLog {
   var storedTexts: [String] = []
 }
 
+/// Reference-type holder so the injected `markASRTimingEnd` closure can count
+/// without capturing the session wrapper before it is fully initialized.
+@MainActor
+final class ASRTimingEndLog {
+  var count = 0
+}
+
 /// #1317: reference-type holder so `stopTimeZeroSignalTelemetry`'s closure
 /// (constructed before `self` fully exists, same constraint `LimbInjectionBox`
 /// works around) can append fired contexts without capturing `self`.
@@ -190,6 +197,16 @@ final class KernelRecordingSession: RecordingSessionDriving {
   private let storeLog = StoreLog()
   /// #1755 chunk 2: every text the kernel handed the `store` seam, in order.
   var storedTexts: [String] { storeLog.storedTexts }
+
+  /// How many times the kernel stamped the end of ASR timing.
+  ///
+  /// A COUNT, not a timestamp. `markASRTimingEnd` is an injected closure whose
+  /// production body writes into the single shared `KernelFinalizationOutcome`,
+  /// so counting calls answers the question a test actually has — did this
+  /// session stamp latency it had no right to stamp — without reaching into a
+  /// type the kernel owns privately.
+  private let asrTimingLog = ASRTimingEndLog()
+  var asrTimingEndCount: Int { asrTimingLog.count }
 
   private let stopTimeTelemetryLog = StopTimeZeroSignalTelemetryLog()
   /// #1317: `CaptureStallContext`s the kernel's STOP-time classification
@@ -299,6 +316,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
       },
       zeroSignalDecisionSnapshot: zeroSignalDecisionSnapshot,
       zeroSignalRefusalSink: zeroSignalRefusalSink,
+      markASRTimingEnd: { [asrTimingLog] in asrTimingLog.count += 1 },
       telemetryState: telemetryState)
   }
 

@@ -2436,16 +2436,35 @@ final class RecordingSessionKernel {
         adapter.capabilities.decodesConditionedBatchSamples, !asrSamples.isEmpty
       {
         let salvageAttemptResult = await attemptDegradedLeadSalvage(sid, samples: asrSamples)
-        // #1434 cloud review: the ladder's retry decode(s) run AFTER the
-        // line-1376 markASRTimingEnd() call for the (empty) primary decode,
-        // so a salvaged completion needs its own, later stamp — otherwise
-        // pipeline.completed's asr_s and the timing logs record only the
-        // primary decode's time, making the retry work invisible in
-        // latency telemetry for exactly the recoveries this path exists
-        // for. Idempotent: outcome.asrEndedAtSeconds is a plain overwrite.
+        // The ladder AWAITED, so this session may no longer be the live one —
+        // and the guard has to come before the stamp, not inside the success
+        // arm below.
+        //
+        // This is the same defect #1725's cloud review fixed on the Phase-2
+        // retry path, in the one place that fix did not reach.
+        // `markASRTimingEnd()` writes into the kernel's single shared
+        // `KernelFinalizationOutcome`, not a per-session value, so a stale
+        // session's ladder resolving after a NEW session has started and
+        // stamped its own `asrStartedAtSeconds` overwrites the LIVE session's
+        // `asrEndedAtSeconds` with a stale timestamp — corrupting the next
+        // dictation's ASR latency even though its own terminal stays correct.
+        // Only the current session's telemetry ever reads the field, so
+        // stamping once currency is confirmed loses nothing for the live case
+        // and closes the cross-session write for the stale one.
+        //
+        // Unconditional, covering BOTH arms of the split below. The previous
+        // copy lived only inside `if let salvaged`, leaving the `nil` arm — a
+        // ladder that found nothing — entirely unguarded.
+        guard isCurrent(sid), recordingOutcome == nil else { return }
+        // #1434 cloud review: the ladder's retry decode(s) run AFTER the primary
+        // decode's own `markASRTimingEnd()`, so a salvaged completion needs its
+        // own, later stamp — otherwise `pipeline.completed`'s `asr_s` and the
+        // timing logs record only the primary decode's time, making the retry
+        // work invisible in latency telemetry for exactly the recoveries this
+        // path exists for. Idempotent: `outcome.asrEndedAtSeconds` is a plain
+        // overwrite.
         markASRTimingEnd()
         if let salvaged = salvageAttemptResult {
-          guard isCurrent(sid), recordingOutcome == nil else { return }
           let trimMs = salvaged.trimSamples * 1000 / Int(AudioConstants.sampleRate)
           lastSalvagedLeadTrimMs = trimMs
           var completed = KernelASRCompletedTelemetry(
@@ -2470,10 +2489,9 @@ final class RecordingSessionKernel {
           #endif
           await runFinalizing(sid, asrText: salvaged.result.text, transcriptID: transcriptID)
           salvageDelivered = true
-        } else {
-          // The ladder awaited — a supersede/cancel during it owns the session.
-          guard isCurrent(sid), recordingOutcome == nil else { return }
         }
+        // (The `else` arm's own currency guard is gone: the unconditional one
+        // above covers both arms, and having it in only one arm was the bug.)
       }
       if !salvageDelivered {
         if !effectiveSpeechEvidence {
