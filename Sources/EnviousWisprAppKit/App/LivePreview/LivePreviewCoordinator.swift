@@ -395,6 +395,14 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   package var hasPreparedEngineForTests: Bool { preparedEngine != nil }
 
   private func releasePreparedEngine() {
+    // **Bump the generation FIRST.** Clearing the task reference does not cancel
+    // the task: a `prepare()` still suspended when the user disables the preview
+    // resumes, sees an unchanged `preparationGeneration`, and writes its engine
+    // back into `preparedEngine` — so the model becomes resident again AFTER this
+    // method returns, which is the exact bug this method exists to fix. The
+    // generation is the publish guard those completions check, so raising it is
+    // what actually invalidates them. Cloud review caught this in the first fix.
+    preparationGeneration &+= 1
     preparationTask = nil
     preparedEngine = nil
     preparedKey = nil

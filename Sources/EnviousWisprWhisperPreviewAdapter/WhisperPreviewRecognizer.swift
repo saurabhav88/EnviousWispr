@@ -31,6 +31,20 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
   private let runtime: WhisperPreviewRuntime
   private let language: String?
 
+  /// The session most recently opened, so the NEXT `openSession` can wait for it
+  /// to finish tearing down before starting another decode loop over the SAME
+  /// cached WhisperKit instance.
+  ///
+  /// This is not belt-and-braces. `WhisperKitStreamingSession.cancel()` documents
+  /// why it awaits the loop's exit: WhisperKit's `transcribe` is not
+  /// cooperatively cancellable, so returning early "would let a quick next
+  /// recording start a SECOND concurrent transcribe on the same model and corrupt
+  /// decoder state". The coordinator cancels its session task WITHOUT awaiting
+  /// `end()`, so on a rapid stop/start the old session can still be inside that
+  /// wait when a new one opens. Apple's engine has no equivalent hazard because
+  /// each of its sessions owns its own analyzer; ours share one kit.
+  private var previousSession: WhisperPreviewSessionHandle?
+
   /// `language` is the already-resolved decode language, or nil for auto —
   /// resolved by the resolver, which owns what `.auto` means for THIS engine.
   package init(runtime: WhisperPreviewRuntime, language: String?) {
@@ -55,11 +69,17 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
     lookups: WordCorrector.Lookups?,
     onText: @escaping @Sendable (String) -> Void
   ) async throws -> any LivePreviewEngineSession {
+    // Serialize turnover BEFORE building anything. This actor already serializes
+    // calls to `openSession`, but the previous session is torn down by the
+    // COORDINATOR on a different path, so the wait has to happen here.
+    await previousSession?.end()
+
     let handle = WhisperPreviewSessionHandle(lookups: lookups, onText: onText)
     let session = try await runtime.makeStreamingSession(
       language: language,
       onHypothesis: handle.enqueue)
     await handle.attach(session)
+    previousSession = handle
     return handle
   }
 }
@@ -88,6 +108,9 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
     var samples: [Float] = []
     var ended = false
     var session: WhisperKitStreamingSession?
+    /// Created once by the first `end()`; every later caller awaits this same
+    /// task rather than returning early.
+    var teardown: Task<Void, Never>?
   }
   private let state = OSAllocatedUnfairLock(initialState: State())
 
@@ -128,7 +151,13 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
           onText(bounded)
           continue
         }
-        onText(corrector.correct(bounded, using: lookups).corrected)
+        // Bound AGAIN after correction. A custom word whose canonical is longer
+        // than the alias it replaces expands the text, so an already-2,000-char
+        // tail can exceed the limit on the way out. The Apple producer applies
+        // the bound on both sides for this reason; the first version of this fix
+        // ported only the inner half, which is how a proven pattern becomes a
+        // half-proven one.
+        onText(LivePreviewTextBound.apply(corrector.correct(bounded, using: lookups).corrected))
       }
     }
   }
@@ -138,6 +167,19 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
   /// superseded value, which is exactly the latest-value semantics a display
   /// wants — and it is why no decode cycle can be delayed by the consumer.
   nonisolated func enqueue(_ text: String) {
+    // Drop empties HERE, at the last point before the display.
+    //
+    // The streaming session already suppresses empty hypotheses, so in production
+    // one should never arrive — but "an upstream guarantee" is not the same as a
+    // guarantee, and the HARM is local: a blank pill mid-sentence reads to a user
+    // as the app losing what they just said. The guard belongs where the damage
+    // would happen.
+    //
+    // Found by the full suite, not by the isolated run: with a one-slot buffer,
+    // an empty followed quickly by real text is usually overwritten before the
+    // consumer wakes, so the defect only appears when contention lets the
+    // consumer run in between. The isolated test passed; the loaded one did not.
+    guard !text.isEmpty else { return }
     continuation.yield(text)
   }
 
@@ -172,18 +214,26 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
   /// the caller has moved on, then cancels the decode loop. Every session must
   /// reach this: #1988 found four abandonment sites, three of them only by review.
   package func end() async {
-    let (alreadyEnded, live) = state.withLock { s -> (Bool, WhisperKitStreamingSession?) in
-      let was = s.ended
+    // **Idempotent AND awaitable.** A second caller must WAIT for the same
+    // teardown, not return immediately: the recognizer's turnover wait and the
+    // coordinator's own `end()` race, and an early return would let a new decode
+    // loop start while the old `cancel()` is still awaiting a non-cancellable
+    // transcribe — the corruption this serialization exists to prevent. So the
+    // first caller creates the teardown task and everyone awaits it.
+    let teardown: Task<Void, Never> = state.withLock { s in
+      if let existing = s.teardown { return existing }
       s.ended = true
       s.samples = []
-      let session = s.session
+      let live = s.session
       s.session = nil
-      return (was, session)
+      let task = Task { [continuation, publisher] in
+        continuation.finish()
+        publisher.cancel()
+        await live?.cancel()
+      }
+      s.teardown = task
+      return task
     }
-    guard !alreadyEnded else { return }
-
-    continuation.finish()
-    publisher.cancel()
-    await live?.cancel()
+    await teardown.value
   }
 }
