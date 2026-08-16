@@ -1277,6 +1277,47 @@ def build_new_payload(norm: dict, cand: dict, prod: dict | None) -> dict:
     }
 
 
+# --- blinded judging -------------------------------------------------------
+# The prompt ALREADY tells the judge that reference_output is illustrative and
+# must not be string-matched (see NEW_JUDGE_SYSTEM). That instruction was
+# measured and it does not work: showing the judge the key moved 122 of 472
+# verdicts (McNemar chi2=79.9), and adding the "not ground truth" wording
+# changed nothing (polish-eval.md, Judge protocol).
+#
+# So the anchor has to be REMOVED, not disclaimed. Blinding drops the field from
+# the payload entirely, leaving the judge to grade adherence to
+# expected_behavior against raw_transcript.
+#
+# This matters more than usual here because the sampler cannot be pinned: this
+# Azure deployment REJECTS temperature=0 with HTTP 400 and permits only its
+# default of 1, and the Claude CLI route exposes no temperature control. Neither
+# transport can make the judge deterministic, so removing an input that is known
+# to move verdicts is one of the few levers that remain.
+BLIND_DROP_FIELDS = ("reference_output",)
+
+
+def blind_payload(payload: dict) -> dict:
+    """Strip the answer key from a judge payload.
+
+    Returns a NEW dict; never mutates the caller's, because the same normalised
+    case feeds both the primary and adjudication passes and an in-place strip
+    would silently blind a pass that was meant to be sighted.
+    """
+    return {k: v for k, v in payload.items() if k not in BLIND_DROP_FIELDS}
+
+
+BLIND_JUDGE_SYSTEM = (
+    NEW_JUDGE_SYSTEM
+    .replace("- reference_output: an ILLUSTRATIVE reference, NOT exact ground truth\n", "")
+    .replace(
+        "Do NOT grade by string similarity to reference_output. Do NOT penalize the",
+        "You are NOT given a reference answer. Grade whether candidate_output "
+        "performs expected_behavior on raw_transcript, and whether it preserves "
+        "meaning, entities and voice. There is usually more than one correct "
+        "output; accept any that satisfies expected_behavior. Do NOT penalize the")
+)
+
+
 def coerce_new_score(raw: dict, has_production: bool) -> dict:
     """Validate/repair one new-system score object into a known shape."""
     verdict = raw.get("verdict")
@@ -1366,7 +1407,8 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
               external_verdicts: dict | None,
               adjudicate_pct: float = DEFAULT_ADJUDICATE_PCT,
               adjudicate_min: int = DEFAULT_ADJUDICATE_MIN,
-              adjudicate: bool = True) -> dict:
+              adjudicate: bool = True,
+              blind: bool = False) -> dict:
     """Run (or ingest) the behavior-aware judge and aggregate. Returns the full
     report dict. Cases with no candidate or an engine error are recorded as
     infra-skips (NOT scored as fails — an engine error is not a grading signal).
@@ -1397,8 +1439,17 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
         payloads = [build_new_payload(norm_cases[cid], cands[cid],
                                       prod.get(cid) if prod else None)
                     for cid in judged_ids]
-        print(f"[new] primary pass over {len(payloads)} cases", file=sys.stderr)
-        primary_batch = run_judge(judge, NEW_JUDGE_SYSTEM, payloads, chunk_size)
+        # Blinding is applied to BOTH passes or neither. A sighted primary with
+        # a blind adjudication would merge verdicts formed against different
+        # evidence, and `_worse_new_score` would then resolve that mismatch by
+        # always taking the harsher one.
+        judge_system = BLIND_JUDGE_SYSTEM if blind else NEW_JUDGE_SYSTEM
+        if blind:
+            payloads = [blind_payload(p) for p in payloads]
+        print(f"[new] primary pass over {len(payloads)} cases"
+              f"{' (BLIND: no answer key shown)' if blind else ''}",
+              file=sys.stderr)
+        primary_batch = run_judge(judge, judge_system, payloads, chunk_size)
         primary = {cid: coerce_new_score(s, has_production)
                   for cid, s in primary_batch.accepted.items()}
 
@@ -1422,7 +1473,7 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                       f"({len(adjudicated_ids)*100//max(len(primary),1)}% of primary)",
                       file=sys.stderr)
                 adj_payloads = [p for p in payloads if p["id"] in set(adjudicated_ids)]
-                adjudication_batch = run_judge(judge, NEW_JUDGE_SYSTEM, adj_payloads, chunk_size)
+                adjudication_batch = run_judge(judge, judge_system, adj_payloads, chunk_size)
                 adjudication = {cid: coerce_new_score(s, has_production)
                                 for cid, s in adjudication_batch.accepted.items()}
                 for cid, adj_score in adjudication.items():
@@ -1441,18 +1492,42 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
 
     missing = primary_batch.missing
 
+    # Persist BOTH looks, not just the merged one. Without this the receipt can
+    # report "disagreements=124" while making it impossible to ask WHICH cases
+    # moved or in WHICH direction — the harness discarding the evidence needed to
+    # audit its own noise. Cost is a few fields per row.
+    #
+    # Read these knowing the merge is ONE-DIRECTIONAL: `_worse_new_score` keeps
+    # the more severe look, so `adjudication_changed_outcome` can only ever mean
+    # the case got worse. A re-judge that would have IMPROVED a case is recorded
+    # here as a disagreement but never changes the score.
+    _premerge = locals().get("primary_premerge") or {}
+    _adjud = locals().get("adjudication") or {}
     per_case = []
     for cid in judged_ids:
         if cid not in primary:
             continue
         s = primary[cid]
-        per_case.append({**norm_cases[cid], **s,
+        pre = _premerge.get(cid)
+        adj = _adjud.get(cid)
+        audit = {
+            "adjudicated": cid in _adjud,
+            "primary_verdict": (pre or s).get("verdict"),
+            "primary_severity": (pre or s).get("severity"),
+            "adjudication_verdict": adj.get("verdict") if adj else None,
+            "adjudication_severity": adj.get("severity") if adj else None,
+            "adjudication_changed_outcome": bool(
+                pre and adj and (pre.get("verdict") != s.get("verdict")
+                                 or pre.get("severity") != s.get("severity"))),
+        }
+        per_case.append({**norm_cases[cid], **s, **audit,
                          "candidate_output": cands[cid].get("candidate"),
                          "latencyMs": cands[cid].get("latencyMs")})
 
     report = aggregate_new(per_case, rep_scores, judged_ids, has_production,
                            missing_count=len(missing), skipped_count=len(skipped),
-                           adjudication_missing_count=len(adjudication_batch.missing))
+                           adjudication_missing_count=len(adjudication_batch.missing),
+                           blind=blind)
     report["skipped"] = skipped
     report["missing_scores"] = missing
     report["per_case"] = per_case
@@ -1489,7 +1564,7 @@ def _is_pass(verdict: str) -> bool:
 
 def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list[str],
                   has_production: bool, missing_count: int = 0, skipped_count: int = 0,
-                  adjudication_missing_count: int = 0) -> dict:
+                  adjudication_missing_count: int = 0, blind: bool = False) -> dict:
     total = len(per_case)
 
     def rate(items, pred):
@@ -1612,6 +1687,11 @@ def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list
 
     return {
         "system": "new",
+        # Whether the judge saw expected_output. Recorded because a blind and a
+        # sighted run are NOT comparable: showing the key moved 122 of 472
+        # verdicts. Two receipts differing on this flag must never be diffed as
+        # if they measured the same thing.
+        "judge_blind": blind,
         # Completeness on its own, independent of the verdict. `BLOCK` takes
         # precedence over `INCOMPLETE`, so the verdict alone cannot express
         # "failed AND partial" — which is why keying a cache on it is wrong.
@@ -2044,6 +2124,12 @@ def main() -> int:
                     help=f"(new system) floor on the calibration sample size (default {DEFAULT_ADJUDICATE_MIN})")
     ap.add_argument("--no-adjudicate", action="store_true",
                     help="(new system) single primary pass only, skip the S3/S4 + sample re-judge")
+    ap.add_argument("--blind", action="store_true",
+                    help="do not show the judge expected_output. The sighted "
+                         "prompt already calls the key illustrative and that was "
+                         "measured to change nothing (122/472 verdicts moved by "
+                         "showing the key); this REMOVES the anchor instead of "
+                         "disclaiming it. Recorded in the receipt as judge_blind.")
     ap.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
     ap.add_argument("--out", required=True, help="output directory")
     args = ap.parse_args()
@@ -2115,7 +2201,7 @@ def main() -> int:
     if args.system == "new":
         report = score_new(norm_cases, cands, prod, args.judge, args.chunk_size,
                            external_verdicts, args.adjudicate_pct, args.adjudicate_min,
-                           adjudicate=not args.no_adjudicate)
+                           adjudicate=not args.no_adjudicate, blind=args.blind)
     else:
         report = score_old(norm_cases, cands, args.judge, args.reps, args.chunk_size)
 

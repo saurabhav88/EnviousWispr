@@ -2747,8 +2747,11 @@ def test_spoken_truth_reads_both_corpus_schemas():
 # runner                                                                      #
 # --------------------------------------------------------------------------- #
 
-# An exact count, because the borrowed runner in cleanup_metrics_test.py returns
-# 0 when it discovers ZERO tests — so "green" would carry no information at all.
+# An exact count, because this file's runner returns 0 when it discovers ZERO
+# tests — so "green" would carry no information at all. (The runner was
+# originally borrowed from cleanup_metrics_test.py, deleted 2026-08-15 with the
+# rest of the deterministic polish grading; the zero-test trap it guards is
+# unchanged.)
 EXPECTED_TESTS = 131
 
 
