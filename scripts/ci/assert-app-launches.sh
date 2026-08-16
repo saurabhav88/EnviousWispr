@@ -57,8 +57,14 @@ EOF
 echo "==> restored the executable bit on $restored Mach-O files"
 [ "$restored" -gt 0 ] || die "found no Mach-O files to make executable in $APP; the bundle is not what this probe expects" 2
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
-codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || \
-  echo "note: ad-hoc re-sign failed; continuing, since an unsigned binary still exercises dyld"
+# **Signed RECURSIVELY, and a failure is fatal.** The carried bundle is built with
+# `CODE_SIGNING_ALLOWED=NO`, so its nested XPC services are unsigned; signing only the outer
+# bundle leaves macOS free to reject the helper before its own dyld startup is exercised. The
+# host survives regardless, so ignoring a signing failure bought a PASS that proved less. This
+# artifact is disposable, so `--deep` is the right tool rather than an inside-out walk.
+if ! codesign --force --deep --sign - --timestamp=none "$APP" 2>&1; then
+  die "ad-hoc re-sign failed; the nested services would be rejected by macOS and this probe would pass without exercising them" 2
+fi
 
 # **The architecture has to match what we ship, or the launch proves nothing about users.**
 #
@@ -135,6 +141,30 @@ done
 
 if kill -0 "$PID" 2>/dev/null; then
   echo "==> PASS: still running after ${elapsed}s on macOS $(sw_vers -productVersion)"
+
+  # **Did the transcription service actually start?**
+  #
+  # "The host survived" is a weak claim, and three review rounds in a row found ways this probe
+  # passed while `EnviousWisprASRService` never ran: first it was not scanned, then it arrived
+  # non-executable, then it could be rejected as unsigned. Each fix removed one precondition
+  # without ever asserting the outcome. This asserts the outcome: the service is started as a
+  # startup warm-up and appears as its own process, so its absence is evidence, not noise.
+  #
+  # Scoped to THIS bundle's path so a stray instance from elsewhere on the machine cannot vouch
+  # for it. Reported, not fatal, on a headless runner where a GUI-driven warm-up may legitimately
+  # not fire — but the count is printed either way, so "never exercised" can never again look
+  # identical to "exercised and fine".
+  XPC_DIR="$APP/Contents/XPCServices"
+  if [ -d "$XPC_DIR" ]; then
+    helper_running=$(pgrep -f "$XPC_DIR" 2>/dev/null | /usr/bin/grep -c .)
+    if [ "$helper_running" -gt 0 ]; then
+      echo "==> bundled XPC services running: $helper_running (the transcription helper started)"
+    else
+      echo "==> NOTE: no bundled XPC service process was observed."
+      echo "    The host survived, but this run did NOT exercise the transcription helper's own"
+      echo "    startup. Treat this PASS as covering the host process only."
+    fi
+  fi
   kill -TERM "$PID" 2>/dev/null
   wait "$PID" 2>/dev/null
   # Surface early output even on success: a dyld warning that did not kill the process is
