@@ -37,7 +37,25 @@ BIN="$APP/Contents/MacOS/$NAME"
 # these two lines the app fails to start for reasons that have nothing to do with the macOS
 # version, which would look exactly like the defect this job exists to catch.
 chmod +x "$BIN" || die "could not restore the executable bit" 2
-find "$APP/Contents/MacOS" -type f -exec chmod +x {} \; 2>/dev/null
+
+# **Every Mach-O in the bundle, not just Contents/MacOS.** `upload-artifact` normalises uploads
+# to mode 0644, which strips the bit from the bundled XPC services too — including
+# `EnviousWisprASRService`, the transcription helper. Its failure to start is NONFATAL to the
+# host, so the app would survive the full wait and report PASS while the component this probe
+# most needs to exercise never ran. Restored by CONTENT so a future nested executable is covered
+# without naming its directory.
+restored=0
+while IFS= read -r macho; do
+  [ -n "$macho" ] || continue
+  chmod +x "$macho" 2>/dev/null && restored=$((restored + 1))
+done <<EOF
+$(find "$APP" -type f 2>/dev/null | while read -r f; do
+  desc=$(file "$f" 2>/dev/null)
+  [ "${desc#*Mach-O}" != "$desc" ] && echo "$f"
+done)
+EOF
+echo "==> restored the executable bit on $restored Mach-O files"
+[ "$restored" -gt 0 ] || die "found no Mach-O files to make executable in $APP; the bundle is not what this probe expects" 2
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || \
   echo "note: ad-hoc re-sign failed; continuing, since an unsigned binary still exercises dyld"
