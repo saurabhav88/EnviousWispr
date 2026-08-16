@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -108,6 +109,13 @@ struct LivePreviewPacksModelTests {
       ))
   }
 
+  /// These tests are about the pack LIST, not about which language resolves. A stub keeps them
+  /// off Apple's inventory, so they assert the same thing on any Mac.
+  @Sendable
+  static func stubResolve(_ mode: LanguageMode) async -> LivePreviewPacksModel.ActiveLanguage {
+    .ready(tag: "en-US", name: "English (United States)")
+  }
+
   private func tags(_ state: LivePreviewPacksModel.LoadState) -> [String] {
     guard case .loaded(let packs) = state else { return [] }
     return packs.map(\.tag).sorted()
@@ -140,9 +148,10 @@ struct LivePreviewPacksModelTests {
     let release = Gate()
     let model = LivePreviewPacksModel(
       catalog: makeRig(
-        calls: calls, enteredRefresh: entered, releaseRefresh: release, landedAnyway: true))
+        calls: calls, enteredRefresh: entered, releaseRefresh: release, landedAnyway: true),
+      resolveActive: Self.stubResolve)
 
-    await model.load()
+    await model.load(mode: .auto)
     model.install(tag: "it-IT")
     #expect(await entered.wait(), "the model never reached the post-failure refresh")
     await release.open()
@@ -169,9 +178,10 @@ struct LivePreviewPacksModelTests {
     let entered = Gate()
     let release = Gate()
     let model = LivePreviewPacksModel(
-      catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release))
+      catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release),
+      resolveActive: Self.stubResolve)
 
-    await model.load()
+    await model.load(mode: .auto)
     model.install(tag: "it-IT")
     #expect(await entered.wait(), "the model never reached the post-failure refresh")
     await release.open()
@@ -179,7 +189,7 @@ struct LivePreviewPacksModelTests {
     #expect(model.failedTag == "it-IT", "control: the failure really was recorded")
 
     // The page closes and reopens.
-    await model.load()
+    await model.load(mode: .auto)
 
     #expect(model.failedTag == nil, "a fresh read must not carry the previous visit's failure")
     #expect(
@@ -202,12 +212,20 @@ struct LivePreviewPacksModelTests {
     let end = rest.range(of: "\n    }")?.lowerBound ?? rest.endIndex
     let body = String(rest[..<end])
 
-    #expect(body.contains("load()"), "control: the extracted body is the real load path")
+    #expect(body.contains("packs.load("), "control: the extracted body is the real load path")
+    // The load must be reachable on EVERY appearance. Checking for one wrong spelling was too
+    // narrow: a mutant guarding on a different condition entirely walked straight through it.
+    // The only condition allowed here is the macOS-support gate.
+    let guards = body
+      .split(separator: "\n")
+      .filter { $0.contains("guard ") }
+      .map { $0.trimmingCharacters(in: .whitespaces) }
     #expect(
-      !body.contains("packs == nil"),
+      guards == ["guard isSupported else { return }"],
       """
-      Skipping the load when a model already exists means a retained window keeps showing its \
-      first snapshot forever, past finished downloads and past macOS purging a staged asset.
+      the page must re-read on every appearance; any extra condition here means a retained window \
+      can keep showing its first snapshot, past finished downloads and past a macOS purge. \
+      Found: \(guards)
       """)
   }
 
@@ -220,10 +238,11 @@ struct LivePreviewPacksModelTests {
     let entered = Gate()
     let release = Gate()
     let model = LivePreviewPacksModel(
-      catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release))
+      catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release),
+      resolveActive: Self.stubResolve)
 
-    await model.load()
-    let reload = Task { await model.load() }
+    await model.load(mode: .auto)
+    let reload = Task { await model.load(mode: .auto) }
     #expect(await entered.wait(), "the reload never reached the catalogue")
 
     // The user presses Download while the reload is parked.
@@ -248,7 +267,7 @@ struct LivePreviewPacksModelTests {
     let source = LivePreviewNoAutoDownloadTests.codeOnly(
       try String(contentsOf: url, encoding: .utf8))
 
-    guard let start = source.range(of: "func load() async {") else {
+    guard let start = source.range(of: "func load(mode:") else {
       Issue.record("load() not found; it was renamed or moved")
       return
     }
@@ -257,12 +276,61 @@ struct LivePreviewPacksModelTests {
     let body = String(rest[..<end])
 
     #expect(body.contains("snapshot()"), "control: the extracted body is the real load path")
+    // The specific comparison, not merely the WORD "generation". A mutant that deleted this exact
+    // line while leaving `generation &+= 1` and `let mine = generation` in place survived the
+    // looser check — the guard was reading a word, not the protection.
     #expect(
-      body.contains("generation"),
+      body.contains("guard generation == mine"),
       """
       load() must not publish over a newer install: a reopened page re-reads while its rows stay \
       pressable, so a download started during the reload can be undone by it.
       """)
+    // And it must be checked AFTER the awaits, or it is comparing a value nothing could change.
+    if let compare = body.range(of: "guard generation == mine")?.lowerBound,
+      let lastAwait = body.range(of: "await ", options: .backwards)?.lowerBound
+    {
+      #expect(
+        lastAwait < compare,
+        "the check has to come after the last suspension, or it cannot catch anything")
+    } else {
+      Issue.record("could not locate the comparison and the awaits it must follow")
+    }
+  }
+
+  /// Round 12: the generation check alone was not enough.
+  ///
+  /// A reload that STARTS during a download captures the install's own generation, so the check
+  /// still passed when its older snapshot landed after the install published — and an installed
+  /// pack reappeared as downloadable. Refusing to reload while a download runs closes it; the
+  /// install refreshes the list itself when it finishes.
+  @Test("A reload that starts DURING a download cannot undo its result")
+  func reloadStartedDuringInstallDoesNotClobber() async {
+    let calls = Calls()
+    let entered = Gate()
+    let release = Gate()
+    let model = LivePreviewPacksModel(
+      catalog: makeRig(
+        calls: calls, enteredRefresh: entered, releaseRefresh: release, landedAnyway: true),
+      resolveActive: Self.stubResolve)
+
+    await model.load(mode: .auto)
+    model.install(tag: "it-IT")
+    #expect(await entered.wait(), "the install never reached the catalogue")
+
+    // The user returns to the page while the download is still running.
+    await model.load(mode: .auto)
+
+    await release.open()
+    await model.installTask?.value
+
+    guard case .loaded(let packs) = model.state else {
+      Issue.record("expected a loaded snapshot")
+      return
+    }
+    #expect(
+      packs.first { $0.tag == "it-IT" }?.isInstalled == true,
+      "the reload published its pre-install snapshot over the finished download")
+    #expect(model.failedTag == nil)
   }
 
   /// The page must not OWN the download state.
@@ -325,15 +393,16 @@ struct LivePreviewPacksModelTests {
     let entered = Gate()
     let release = Gate()
     let model = LivePreviewPacksModel(
-      catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release))
+      catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release),
+      resolveActive: Self.stubResolve)
 
-    await model.load()
+    await model.load(mode: .auto)
     model.install(tag: "it-IT")
     #expect(await entered.wait(), "the install never reached the catalogue")
 
     // The page disappears and comes back while the installer is still working. There is no
     // disappear hook any more; reappearing just re-reads.
-    await model.load()
+    await model.load(mode: .auto)
 
     #expect(
       model.installingTag == "it-IT",
@@ -360,9 +429,10 @@ struct LivePreviewPacksModelTests {
     let entered = Gate()
     let release = Gate()
     let model = LivePreviewPacksModel(
-      catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release))
+      catalog: makeRig(calls: calls, enteredRefresh: entered, releaseRefresh: release),
+      resolveActive: Self.stubResolve)
 
-    await model.load()
+    await model.load(mode: .auto)
     model.install(tag: "it-IT")
     #expect(await entered.wait(), "the model never reached the post-failure refresh")
 

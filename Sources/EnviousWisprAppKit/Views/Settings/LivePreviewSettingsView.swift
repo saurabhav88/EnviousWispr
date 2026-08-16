@@ -52,6 +52,24 @@ struct LivePreviewSettingsView: View {
         }
       }
 
+      // The question the page exists to answer, before any inventory: which language will my
+      // words appear in right now. A list of 54 rows never said, so nine installed languages told
+      // the user nothing about which one was live.
+      if isSupported, let active = packs.active {
+        BrandedSection(header: LivePreviewSettingsCopy.activeHeader) {
+          BrandedRow(showDivider: false) {
+            VStack(alignment: .leading, spacing: 10) {
+              activeSummary(active)
+              // `InsetNotice` is the app's existing idiom for a quiet explanation inside a card.
+              // Always visible rather than behind a disclosure: the whole problem was not knowing
+              // where the language comes from, and an explanation you must first discover does
+              // not solve that.
+              InsetNotice(text: LivePreviewSettingsCopy.activeExplainer)
+            }
+          }
+        }
+      }
+
       // Hidden entirely below macOS 26: there are no Apple packs to manage, and an empty list
       // under a disabled toggle would read as something being broken.
       if isSupported {
@@ -64,8 +82,10 @@ struct LivePreviewSettingsView: View {
               if case .loaded = packs.state { searchField }
             }
           }
-          packsContent
+          // The non-list states stay inside this card; the two groups become cards of their own.
+          nonListState
         }
+        packSections
       }
     }
     .task {
@@ -74,7 +94,33 @@ struct LivePreviewSettingsView: View {
       // returning user would see the snapshot from whenever they last opened it — past a download
       // that finished meanwhile, past a macOS purge of a staged asset. The catalogue exists
       // precisely because this state is not ours to cache.
-      await packs.load()
+      await packs.load(mode: settings.languageMode)
+    }
+  }
+
+  /// States the resolved language plainly, and where it came from, so "what is active" is
+  /// readable without inferring it from the list.
+  @ViewBuilder
+  private func activeSummary(_ active: LivePreviewPacksModel.ActiveLanguage) -> some View {
+    HStack(alignment: .top, spacing: 11) {
+      SettingsRowIcon(systemName: "waveform")
+      VStack(alignment: .leading, spacing: 4) {
+        switch active {
+        case .ready(_, let name):
+          Text(LivePreviewSettingsCopy.activeReady(name)).settingsRowLabel()
+          Text(LivePreviewSettingsCopy.activeSource(settings.languageMode))
+            .settingsHelperCopy()
+        case .needsDownload(let name):
+          Text(LivePreviewSettingsCopy.activeNeedsDownload(name)).settingsRowLabel()
+          Text(LivePreviewSettingsCopy.activeNeedsDownloadHelp).settingsHelperCopy()
+        case .unsupportedLanguage:
+          Text(LivePreviewSettingsCopy.activeUnsupportedLanguage).settingsRowLabel()
+          Text(LivePreviewSettingsCopy.activeUnsupportedLanguageHelp).settingsHelperCopy()
+        case .unsupportedSystem:
+          Text(LivePreviewSettingsCopy.needsNewerMacOS).settingsReadingCopy()
+        }
+      }
+      Spacer(minLength: 8)
     }
   }
 
@@ -90,12 +136,23 @@ struct LivePreviewSettingsView: View {
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
-    .background(Color.stSectionBg)
-    .clipShape(RoundedRectangle(cornerRadius: 8))
+    // Recessed surface WITH a border, matching `InsetNotice` on this same page.
+    //
+    // The sheet this was ported from underlines its field instead, which works there because it
+    // spans the sheet's full width at the top. Inside a card that underline reads as no container
+    // at all — the field looked like loose text floating on the card (founder, 2026-08-16). The
+    // port took the background and left the edge treatment behind, which is the same partial-copy
+    // mistake that produced the reservation defect earlier in this branch.
+    .background(Color.stPageBg, in: RoundedRectangle(cornerRadius: 9))
+    .overlay(
+      RoundedRectangle(cornerRadius: 9).strokeBorder(Color.stDivider, lineWidth: 1)
+    )
   }
 
+  /// Loading, unreadable, or nothing matching the search — states that belong with the intro
+  /// rather than under a group heading.
   @ViewBuilder
-  private var packsContent: some View {
+  private var nonListState: some View {
     switch packs.state {
     case .loading:
       BrandedRow(showDivider: false) {
@@ -110,39 +167,56 @@ struct LivePreviewSettingsView: View {
       BrandedRow(showDivider: false) {
         Text(LivePreviewSettingsCopy.packsUnavailable).settingsHelperCopy()
       }
-    case .loaded(let rows):
-      // Search first, then group: filtering a grouped list would have to re-derive the split, and
-      // an empty group after filtering must not print a heading over nothing.
-      let groups = LivePreviewPackPresentation.groups(
-        from: LivePreviewPackPresentation.matching(rows, query: searchText))
-      if groups.isEmpty {
+    case .loaded:
+      if visibleGroups.isEmpty {
         BrandedRow(showDivider: false) {
           Text(LivePreviewSettingsCopy.packsNoSearchMatch).settingsHelperCopy()
         }
-      } else {
-        packGroup(LivePreviewPackPresentation.installedGroupTitle, groups.installed)
-        packGroup(LivePreviewPackPresentation.availableGroupTitle, groups.available)
       }
     }
   }
 
-  /// One heading plus its rows, or nothing at all when the group is empty — a heading over an
-  /// empty group reads as something having failed to load.
+  /// **Each group is its own card.** As rows inside one card the headings carried the same weight
+  /// as a language name and vanished between them, so after ten rows there was no visible boundary
+  /// between what is installed and what is a download away (founder, 2026-08-16). A section header
+  /// is the app's existing way to separate groups, and two cards make the split unmissable.
   @ViewBuilder
-  private func packGroup(_ title: String, _ packs: [LivePreviewPack]) -> some View {
-    if !packs.isEmpty {
-      BrandedRow(showDivider: false) {
-        HStack {
-          Text(title).settingsRowLabel()
-          Spacer()
-        }
-      }
-      ForEach(Array(packs.enumerated()), id: \.element.id) { index, pack in
-        BrandedRow(showDivider: index < packs.count - 1) {
-          packRow(pack)
-        }
+  private var packSections: some View {
+    let groups = visibleGroups
+    if !groups.installed.isEmpty {
+      BrandedSection(header: LivePreviewPackPresentation.installedGroupTitle) {
+        packRows(groups.installed)
       }
     }
+    if !groups.available.isEmpty {
+      BrandedSection(header: LivePreviewPackPresentation.availableGroupTitle) {
+        packRows(groups.available)
+      }
+    }
+  }
+
+  /// Search first, then group: filtering a grouped list would have to re-derive the split, and a
+  /// group emptied by the filter must not render an empty card.
+  private var visibleGroups: LivePreviewPackPresentation.Groups {
+    guard case .loaded(let rows) = packs.state else {
+      return LivePreviewPackPresentation.groups(from: [])
+    }
+    return LivePreviewPackPresentation.groups(
+      from: LivePreviewPackPresentation.matching(rows, query: searchText))
+  }
+
+  @ViewBuilder
+  private func packRows(_ packsToShow: [LivePreviewPack]) -> some View {
+    ForEach(Array(packsToShow.enumerated()), id: \.element.id) { index, pack in
+      BrandedRow(showDivider: index < packsToShow.count - 1) {
+        packRow(pack)
+      }
+    }
+  }
+
+  private func isActive(_ pack: LivePreviewPack) -> Bool {
+    if case .ready(let tag, _) = packs.active { return tag == pack.tag }
+    return false
   }
 
   @ViewBuilder
@@ -164,7 +238,12 @@ struct LivePreviewSettingsView: View {
       }
       Spacer(minLength: 8)
 
-      if pack.isInstalled {
+      if isActive(pack) {
+        // "Ready" says the bytes are here; it never said WHICH language you are actually
+        // previewing in. With nine installed, that was the whole confusion.
+        Text(LivePreviewSettingsCopy.packInUse)
+          .settingsRowLabel()
+      } else if pack.isInstalled {
         Text(LivePreviewSettingsCopy.packInstalled)
           .settingsHelperCopy()
       } else if packs.installingTag == pack.tag {

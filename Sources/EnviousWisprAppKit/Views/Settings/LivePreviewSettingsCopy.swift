@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// #1988: canonical copy for the "Live preview" setting.
@@ -36,16 +37,21 @@ enum LivePreviewSettingsCopy {
   /// and this is the only surface they read before deciding. It is also the one
   /// place the claim can be made narrowly and honestly, since this preview really
   /// is on-device for every user, with no cloud variant to qualify.
-  /// Keeps "preview only" verbatim. The reviewer's proposed replacement dropped
-  /// that phrase, which a frozen test requires and which carries the disclaimer
-  /// this copy exists for, so the privacy sentence is added ALONGSIDE it rather
-  /// than in place of it.
+  /// Trimmed once the Preview Language section existed: between them the page opened with six
+  /// lines of prose before anything actionable. Keeps the three claims that matter — what it does,
+  /// that it stays local, and that it cannot alter the result — and drops the restatement of
+  /// "preview", which the heading above it already says.
+  ///
+  /// The third claim is the load-bearing one and may not be dropped by any future rewording: a
+  /// user who concludes the preview IS the pasted text will file a bug that is not one, because
+  /// the preview is measurably less accurate than the engine that produces the paste. An earlier
+  /// draft carried it as the phrase "preview only"; this one carries it as "never changes a
+  /// character of what gets pasted". `LivePreviewSettingsCopyTests` accepts either wording and
+  /// fails if a rewrite drops the claim entirely.
   static let toggleDescription =
-    "See your words appear in the recording pill as you talk, so you know "
-    + "EnviousWispr is hearing you. This is a preview only. It stays on your Mac "
-    + "and is discarded when the recording ends. The text that gets pasted is "
-    + "still produced by your chosen engine after you finish, so turning this on "
-    + "does not change a single character of your result."
+    "See your words in the recording pill as you talk, so you know EnviousWispr is hearing you. "
+    + "It stays on your Mac, is discarded when the recording ends, and never changes a character "
+    + "of what gets pasted."
 
   /// Shown under the disabled toggle on older systems. Names the requirement and
   /// stops there: a user on macOS 14 cannot act on this beyond upgrading, and a
@@ -70,6 +76,51 @@ enum LivePreviewSettingsCopy {
   static let packInstall = "Download"
   static let packInstalling = "Downloading"
   static let packRetry = "Try again"
+
+  // MARK: - Which language is live (#2080)
+
+  /// Names what the section CONTAINS, like "On-Screen Preview" and "Languages" either side of it.
+  /// "Right Now" named a moment instead, which told the reader nothing about what they would find.
+  static let activeHeader = "Preview Language"
+
+  /// States the language, not the mechanism. "Resolved locale" is our word, not the user's.
+  static func activeReady(_ name: String) -> String {
+    "Your words will appear in \(name)."
+  }
+
+  /// Where that came from, so the user knows which setting to change if it is wrong.
+  static func activeSource(_ mode: LanguageMode) -> String {
+    switch mode {
+    case .auto:
+      return "Following your dictation language, which is set to follow your Mac."
+    case .locked:
+      return "Following the language you picked for dictation."
+    }
+  }
+
+  static func activeNeedsDownload(_ name: String) -> String {
+    "\(name) isn't downloaded yet, so you won't see words while you speak."
+  }
+
+  static let activeNeedsDownloadHelp = "Download it below and the preview starts working."
+
+  static let activeUnsupportedLanguage =
+    "Apple can't preview the language you picked for dictation."
+  static let activeUnsupportedLanguageHelp =
+    "Dictation still works normally. Only the on-screen preview is unavailable."
+
+  /// Explains WHERE the preview language comes from, because the page shows which one is live but
+  /// cannot change it — and a status you cannot act on is a dead end unless it says where to go.
+  ///
+  /// States the rule rather than the mechanism: the preview has no language of its own, it is
+  /// always whatever you are dictating in. That is also why there is no picker here.
+  static let activeExplainer =
+    "The preview always uses your dictation language. Change it under Transcription: on Auto it "
+    + "follows your Mac, or pick one language and the preview matches it."
+
+  /// The row that is genuinely in use, as opposed to merely present. With nine languages
+  /// installed, "Ready" on all of them said nothing about which one you are previewing in.
+  static let packInUse = "In use"
 
   /// Placeholder and empty state for the language search. Wording matches `LanguageLockSheet`
   /// verbatim: the app already has a language search and a second phrasing for the same job would

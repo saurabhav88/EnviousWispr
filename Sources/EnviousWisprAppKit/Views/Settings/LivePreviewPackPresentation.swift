@@ -30,6 +30,10 @@ enum LivePreviewPackPresentation {
 
   /// Headings. Statements of where the language IS, not instructions — the row's own button
   /// already says what pressing it does, and repeating that in a heading reads as nagging.
+  ///
+  /// Rendered as SECTION headers rather than rows: styled as a row label they carried the same
+  /// visual weight as a language name and disappeared into the list, so the boundary between
+  /// "installed" and "downloadable" was invisible after ten rows (founder, 2026-08-16).
   static let installedGroupTitle = "On this Mac"
   static let availableGroupTitle = "Available to download"
 

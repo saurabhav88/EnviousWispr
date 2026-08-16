@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import EnviousWisprLivePreview
 import Foundation
 import Observation
@@ -17,6 +18,25 @@ final class LivePreviewPacksModel {
     case failed
     case loaded([LivePreviewPack])
   }
+
+  /// What the preview will actually do for the user's CURRENT language setting.
+  ///
+  /// The page listed inventory and never answered the only question a user has — "what language
+  /// will my words appear in?" — so nine installed languages told you nothing about which one is
+  /// live. Resolved through the SAME path a recording takes, so the page cannot disagree with what
+  /// happens when you press record.
+  enum ActiveLanguage: Equatable {
+    /// Resolved and installed. `tag` marks the row that is genuinely in use.
+    case ready(tag: String, name: String)
+    /// Resolved, but this Mac does not have it. The one language whose Download matters.
+    case needsDownload(name: String)
+    /// Apple cannot transcribe the chosen language at all.
+    case unsupportedLanguage
+    /// Below macOS 26; the preview cannot run here.
+    case unsupportedSystem
+  }
+
+  private(set) var active: ActiveLanguage?
 
   private(set) var state: LoadState = .loading
 
@@ -52,8 +72,18 @@ final class LivePreviewPacksModel {
         reserve: { _ in }, release: { _ in }, install: { _ in }))
   }
 
-  init(catalog: ApplePackCatalog) {
+  /// Injected for the same reason the catalogue is: without it, `load` reaches a static Apple
+  /// resolver and a test of this model becomes a test of whatever languages this Mac happens to
+  /// have. Production passes the real route, so the page still reports what a recording would do.
+  private let resolveActive: @Sendable (LanguageMode) async -> ActiveLanguage
+
+  init(
+    catalog: ApplePackCatalog,
+    resolveActive: @escaping @Sendable (LanguageMode) async -> ActiveLanguage =
+      LivePreviewPacksModel.liveResolve
+  ) {
     self.catalog = catalog
+    self.resolveActive = resolveActive
   }
 
   /// Re-read the list. Called on every appearance, not only the first.
@@ -61,18 +91,42 @@ final class LivePreviewPacksModel {
   /// Clears the last failure: the page is reappearing with a fresh read, and a "Try again" left
   /// over from a previous visit would sit next to a row the system now reports as Ready — the
   /// same contradiction the re-read is the authority against.
-  func load() async {
-    // **Do not publish over a NEWER install result.** The rows stay interactive while this
-    // awaits, so the user can press Download during the reload; the catalogue is reentrant at its
-    // dependency awaits, so this older snapshot can land AFTER the install's fresh one and undo a
-    // success or clear its failure. Watching the install generation is enough — this deliberately
-    // does NOT bump it, because superseding an in-flight install would strand its spinner: that
-    // task returns early on a generation mismatch without clearing `installingTag`.
-    let installAtStart = generation
+  func load(mode: LanguageMode) async {
+    // **Do not reload at all while a download is running.** Watching the generation was not
+    // enough: a reload that STARTS during an install captures the install's own generation, so
+    // the check still passes when its older snapshot lands after the install published, and an
+    // installed pack reappears as downloadable. The install refreshes the list itself when it
+    // finishes, so there is nothing to lose by waiting.
+    guard installingTag == nil else { return }
+    // Bumping is safe here precisely because of the guard above — it can never supersede an
+    // in-flight install and strand its spinner. It orders overlapping RELOADS, so an older one
+    // cannot win.
+    generation &+= 1
+    let mine = generation
     let packs = await catalog.snapshot()
-    guard generation == installAtStart else { return }
+    // Ask the resolver the same question a recording asks, so the page reports what will really
+    // happen rather than a second opinion assembled from the settings.
+    let resolved = await resolveActive(mode)
+    guard generation == mine else { return }
     failedTag = nil
+    active = resolved
     state = Self.state(for: packs)
+  }
+
+  /// The real resolution, through the same route the recording path uses.
+  @Sendable
+  static func liveResolve(_ mode: LanguageMode) async -> ActiveLanguage {
+    switch await ApplePreviewEngineResolver.route.resolve(mode) {
+    case .ready(let candidate):
+      let tag = candidate.key.commitment
+      return .ready(tag: tag, name: ApplePackCatalog.localizedName(for: tag))
+    case .blocked(.installRequired(let languageName)):
+      return .needsDownload(name: languageName)
+    case .blocked(.unsupportedLanguage):
+      return .unsupportedLanguage
+    case .blocked(.unsupportedSystem):
+      return .unsupportedSystem
+    }
   }
 
   /// The ONE place that decides what a snapshot means.

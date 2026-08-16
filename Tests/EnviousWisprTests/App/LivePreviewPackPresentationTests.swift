@@ -93,7 +93,8 @@ struct LivePreviewPackPresentationTests {
 
   @Test("Search ignores case and surrounding whitespace")
   func searchIsForgiving() {
-    #expect(LivePreviewPackPresentation.matching(sample, query: "  italian  ").map(\.tag) == ["it-IT"])
+    #expect(
+      LivePreviewPackPresentation.matching(sample, query: "  italian  ").map(\.tag) == ["it-IT"])
     #expect(LivePreviewPackPresentation.matching(sample, query: "ITALIAN").map(\.tag) == ["it-IT"])
   }
 
@@ -115,7 +116,9 @@ struct LivePreviewPackPresentationTests {
     let groups = LivePreviewPackPresentation.groups(
       from: LivePreviewPackPresentation.matching(sample, query: "Italian"))
 
-    #expect(groups.installed.isEmpty, "no installed language matches, so that heading is skipped")
+    // Checks the DATA the view branches on, not the branch: whether an empty group renders no
+    // card is `packSections`' decision and is verified on the running app, not here.
+    #expect(groups.installed.isEmpty, "no installed language matches this query")
     #expect(groups.available.map(\.tag) == ["it-IT"])
     #expect(!groups.isEmpty)
   }
