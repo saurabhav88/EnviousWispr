@@ -59,9 +59,12 @@ from __future__ import annotations
 
 import argparse
 import http.client
+import hashlib
+import io
 import json
 import os
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -77,6 +80,77 @@ from acceptance_gate import (  # noqa: E402
     _strip_llm_preamble_python,
     build_cloud_fixed_system,
 )
+
+# Bedrock is reached through boto3 rather than urllib because the request must be
+# SigV4-signed. Imported lazily inside _bedrock_client() so the other three
+# providers keep working on a machine with no AWS SDK installed.
+# None means "let boto3 resolve it" -- AWS_DEFAULT_REGION or the active profile's
+# config. NOT AWS_REGION: botocore's Session does not consult it. Measured, with
+# the config files neutralised so an ambient ~/.aws/config could not answer for
+# it: AWS_REGION alone -> None; AWS_DEFAULT_REGION alone -> resolves; both set ->
+# AWS_DEFAULT_REGION wins. The two names read as synonyms and are not.
+#
+# A hardcoded default here would silently OVERRIDE a profile pointing somewhere
+# else, and Bedrock access is region-specific -- so the override would surface as
+# a model-access problem rather than as a wrong-region problem. Set
+# EW_BEDROCK_REGION only to override deliberately.
+BEDROCK_REGION = os.environ.get("EW_BEDROCK_REGION") or None
+_bedrock_local = threading.local()
+
+
+def _bedrock_client():
+    """One SESSION and one client per worker thread.
+
+    Caching the client per thread is not sufficient on its own: bare
+    `boto3.client()` builds it from Boto3's shared DEFAULT session, so N workers
+    reaching their first call together all mutate that one session concurrently.
+    Boto3 documents the constraint on the object, not on the call --
+    "Session objects, like Resource objects, are not thread-safe and should not
+    be shared across threads or processes ... create a new Session object for
+    each thread" (docs/source/guide/session.rst). So the session is what has to
+    be thread-local; the client merely follows it.
+
+    Sharing an already-built client across threads is fine -- Boto3's own
+    multithreading example hands one client to a ThreadPoolExecutor -- so this
+    is about construction, not use.
+    """
+    client = getattr(_bedrock_local, "client", None)
+    if client is None:
+        import boto3.session  # noqa: PLC0415 - optional dependency, see comment above
+        from botocore.config import Config  # noqa: PLC0415
+
+        session = boto3.session.Session()
+        client = session.client(
+            "bedrock-runtime",
+            region_name=BEDROCK_REGION,
+            # Timeouts stated rather than inherited, so this provider is bounded
+            # like the other three (which pass explicit urllib timeouts) instead
+            # of by whatever botocore defaults to.
+            #
+            # total_max_attempts=1 disables botocore's OWN retries so polish_case
+            # is the single retry authority. Left at the default, a throttled
+            # case would be retried inside each of our 4 attempts, with two
+            # independent backoff schedules interleaved -- slower to fail and
+            # impossible to read off the logs. The lever for throttling is
+            # --workers (the 16-worker Haiku arm lost 168/1462 cases to 429s;
+            # 6 workers is the fix), not a second hidden retry layer.
+            #
+            # It must be total_max_attempts, NOT max_attempts. botocore resolves
+            # `max_attempts: N` to `total_max_attempts: N + 1` (args.py:620),
+            # counting retries AFTER the initial request -- so max_attempts=1,
+            # which reads like "one attempt", actually permits two. Verified on a
+            # live client: max_attempts=1 -> {'total_max_attempts': 2},
+            # total_max_attempts=1 -> {'total_max_attempts': 1}.
+            config=Config(
+                retries={"total_max_attempts": 1},
+                connect_timeout=15,
+                read_timeout=120,
+            ),
+        )
+        _bedrock_local.session = session
+        _bedrock_local.client = client
+    return client
+
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
@@ -180,6 +254,15 @@ def claude_body(model: str, system: str, user: str) -> dict:
 
 
 def describe_shape(provider: str, model: str) -> str:
+    if provider == "bedrock":
+        # Report the region actually in force, not the override variable -- which
+        # is normally unset, and printing "region=None" would hide the value that
+        # decides whether a model is even reachable.
+        region = BEDROCK_REGION or _bedrock_client().meta.region_name
+        return (
+            f"converse | maxTokens={CLAUDE_MAX_OUTPUT_TOKENS} | temperature OMITTED "
+            f"| thinking disabled | region={region}"
+        )
     if provider == "claude":
         return (
             f"messages | max_tokens={CLAUDE_MAX_OUTPUT_TOKENS} | temperature OMITTED "
@@ -273,6 +356,101 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
             "outTok": usage.get("output_tokens"),
             "reasoningTok": 0,
         }
+    elif provider == "bedrock":
+        # Same Claude models, reached through AWS credits rather than a paid
+        # Anthropic key. Fidelity caveat, mirroring the Azure one above: our
+        # users call api.anthropic.com directly, so a Bedrock-hosted model is a
+        # different service instance of the same model. Converse is Bedrock's
+        # provider-neutral shape, so `system` and `content` are lists of typed
+        # blocks rather than Anthropic's bare strings.
+        from botocore.exceptions import (  # noqa: PLC0415
+            BotoCoreError,
+            ClientError,
+            ConnectionError as BotoConnectionError,
+            HTTPClientError,
+        )
+
+        try:
+            data = _bedrock_client().converse(
+                modelId=model,
+                system=[{"text": system}],
+                messages=[{"role": "user", "content": [{"text": user}]}],
+                # temperature OMITTED to match claude_body / the shipped
+                # ClaudeConnector, which sends no temperature at all.
+                inferenceConfig={"maxTokens": CLAUDE_MAX_OUTPUT_TOKENS},
+                # State it rather than inherit it. claude_body sends
+                # thinking:{"type":"disabled"} explicitly and describe_shape()
+                # prints "thinking disabled" for this provider too, so omitting
+                # the field made that line a claim about the MODEL'S DEFAULT
+                # rather than about our request. Haiku 4.5 happens to default to
+                # no thinking (probed 2026-08-16: no reasoningContent block even
+                # on a prompt built to tempt one), so the arm generated before
+                # this line is still valid -- but a model that defaults the other
+                # way would have been benchmarked with thinking ON under a header
+                # saying OFF, and nothing would have caught it.
+                additionalModelRequestFields={"thinking": {"type": "disabled"}},
+            )
+        except ClientError as e:
+            # Re-raise as HTTPError so the retry loop's existing RETRYABLE set
+            # classifies throttling and 5xx exactly as it does for every other
+            # provider. The status code is Bedrock's own, not a guess at one.
+            status = (e.response.get("ResponseMetadata") or {}).get("HTTPStatusCode", 400)
+            body = json.dumps(e.response.get("Error") or {}).encode()
+            raise urllib.error.HTTPError(
+                f"bedrock://{model}", status,
+                (e.response.get("Error") or {}).get("Code", "ClientError"),
+                {}, io.BytesIO(body),
+            ) from e
+        except (BotoConnectionError, HTTPClientError) as e:
+            # RETRYABLE half. botocore's transport failures are BotoCoreError
+            # subclasses of bare Exception -- NOT ClientError, NOT OSError, NOT
+            # urllib -- so uncaught, one blip escapes polish_case entirely and
+            # kills the whole 1,462-case run at fut.result() instead of costing
+            # one case. URLError is the loop's existing retryable-transport
+            # channel, so this reuses that policy rather than adding a second.
+            #
+            # These two base classes ARE the transport subtree: enumerated from
+            # botocore, they cover ConnectTimeoutError, ConnectionClosedError,
+            # EndpointConnectionError, ProxyConnectionError, ReadTimeoutError,
+            # ResponseStreamingError and SSLError, and nothing else.
+            raise urllib.error.URLError(f"{type(e).__name__}: {e}") from e
+        except BotoCoreError as e:
+            # NON-RETRYABLE half, and it must still be caught. The other ~80
+            # BotoCoreError subclasses are deterministic -- ParamValidationError,
+            # InvalidRegionError, NoRegionError, NoCredentialsError,
+            # UnknownServiceError. Retrying those burns four attempts with
+            # backoff to reach the identical failure. Catching the BASE class as
+            # retryable (the previous shape here) was the mirror image of not
+            # catching it at all: the first mistake killed the run, the second
+            # made every config error look like a flaky network.
+            # RuntimeError is the loop's non-retryable channel, so the case fails
+            # once, records why, and the run continues.
+            raise RuntimeError(f"non-retryable botocore error: {type(e).__name__}: {e}") from e
+
+        stop = data.get("stopReason")
+        if stop == "max_tokens":
+            # Truncation classifies BEFORE emptiness, mirroring the connector.
+            raise RuntimeError("truncated response rejected (stopReason=max_tokens)")
+        if stop == "content_filtered":
+            raise RuntimeError("model refused (stopReason=content_filtered)")
+        blocks = (data.get("output", {}).get("message", {}) or {}).get("content", []) or []
+        # Having asked for thinking to be off, verify it was. The run header
+        # prints "reasoning MUST be 0 for a thinking-off run" -- with a hardcoded
+        # 0 that line restated a constant written here and could never have
+        # reported the failure it screens for. Bedrock reports no separate
+        # reasoning token count, so the observable is the block itself.
+        if any("reasoningContent" in b for b in blocks):
+            raise RuntimeError(
+                "model returned reasoningContent despite thinking:disabled -- "
+                "this arm is not a thinking-off measurement"
+            )
+        text = "".join(b.get("text", "") for b in blocks if "text" in b).strip()
+        usage = data.get("usage", {}) or {}
+        meta = {
+            "inTok": usage.get("inputTokens"),
+            "outTok": usage.get("outputTokens"),
+            "reasoningTok": 0,  # now an assertion above, not an assumption
+        }
     else:
         data = _post(
             GEMINI_URL.format(model=model, key=api_key),
@@ -309,13 +487,15 @@ BARE_PROMPT = (ROOT / "scripts/eval/prompts/cloud-fixed-polish-prompt-v6.txt").r
 
 def polish_case(
     provider: str, model: str, api_key: str, case: dict,
-    prompt_mode: str = "production", azure_endpoint: str = ""
+    prompt_mode: str = "production", azure_endpoint: str = "",
+    prompt_body: str | None = None,
 ) -> dict:
     transcript = case["text"]
     word_count = len(transcript.split())
-    system = (
-        BARE_PROMPT if prompt_mode == "bare" else build_cloud_fixed_system(word_count)
-    )
+    if prompt_mode == "bare":
+        system = BARE_PROMPT
+    else:
+        system = build_cloud_fixed_system(word_count, body=prompt_body)
     user = f"Transcript to clean:\n\n{transcript}"
 
     start = time.monotonic()
@@ -393,7 +573,8 @@ def load_corpus(path: Path) -> list[dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--provider", required=True, choices=["openai", "gemini", "claude"])
+    ap.add_argument("--provider", required=True,
+                    choices=["openai", "gemini", "claude", "bedrock"])
     ap.add_argument("--model", required=True)
     ap.add_argument("--corpus", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
@@ -408,6 +589,14 @@ def main() -> int:
              "never report a bare-prompt score as the shipped product's quality.",
     )
     ap.add_argument(
+        "--system-prompt-file", type=Path, default=None,
+        help="bakeoff arm: substitute THIS file for the shipped v6 body inside the "
+             "otherwise byte-identical production composition, so the arm differs from "
+             "the shipped arm in exactly one thing. Incompatible with "
+             "--system-prompt bare. A score produced this way is an unshipped prompt's "
+             "score and must be reported as such.",
+    )
+    ap.add_argument(
         "--azure", action="store_true",
         help="route --provider openai through the Azure deployment on Founders Hub "
              "credits instead of the direct key. --model then takes the DEPLOYMENT "
@@ -418,12 +607,63 @@ def main() -> int:
     # Fail fast on prompt drift BEFORE spending anything.
     _selftest_mirrors()
 
+    prompt_body = None
+    if args.system_prompt_file is not None:
+        if args.system_prompt == "bare":
+            print("--system-prompt-file is incompatible with --system-prompt bare",
+                  file=sys.stderr)
+            return 2
+        prompt_body = args.system_prompt_file.read_text()
+        if not prompt_body.strip():
+            print(f"{args.system_prompt_file} is empty", file=sys.stderr)
+            return 2
+
     if args.provider == "openai" and not openai_capabilities(args.model)["supports_chat_completions"]:
         print(f"{args.model} is Responses-API-only; the shipped connector cannot call it", file=sys.stderr)
         return 2
 
     azure_endpoint = ""
-    if args.azure:
+    if args.provider == "bedrock":
+        if args.azure:
+            print("--azure applies to --provider openai only", file=sys.stderr)
+            return 2
+        # boto3 reads the credential chain itself; there is no key to pass down.
+        # Checked here so a 1,462-case run fails in a second rather than as 1,462
+        # identical AccessDenied retries. Ask boto3 whether it can resolve
+        # credentials rather than testing for two env vars: the env pair is only
+        # one entry in the chain, and a guard that names it refuses AWS_PROFILE,
+        # IAM Identity Center, and instance roles -- all of which would have
+        # worked. Check the capability, never a proxy for it.
+        try:
+            import boto3  # noqa: PLC0415
+
+            probe = boto3.Session()
+            if probe.get_credentials() is None:
+                raise RuntimeError("no credentials in the boto3 provider chain")
+            # Region resolves the same way and fails the same way, so check it in
+            # the same breath. Without this, an unset region surfaces as 1,462
+            # identical NoRegionError cases instead of one line at startup.
+            if not (BEDROCK_REGION or probe.region_name):
+                raise RuntimeError(
+                    "no region resolved -- set EW_BEDROCK_REGION or "
+                    "AWS_DEFAULT_REGION, or use a profile with a configured "
+                    "region. NOT AWS_REGION: botocore's Session ignores it"
+                )
+        except Exception as e:  # noqa: BLE001 - any resolution failure is fatal here
+            # The recovery command must actually recover. It carries the region
+            # because the credit-account credentials come from get-key and bring
+            # none with them, so advice that set only the keys would loop a stuck
+            # user straight back to this same message.
+            print(f"bedrock cannot start: {type(e).__name__}: {e}\n"
+                  "For the credit-funded account, use:\n"
+                  "  EW_BEDROCK_REGION=us-west-2 \\\n"
+                  "  ~/.claude/bin/get-key launch aws-bedrock-access-key-id "
+                  "AWS_ACCESS_KEY_ID -- \\\n"
+                  "  ~/.claude/bin/get-key launch aws-bedrock-secret-access-key "
+                  "AWS_SECRET_ACCESS_KEY -- <cmd>", file=sys.stderr)
+            return 2
+        api_key = ""
+    elif args.azure:
         if args.provider != "openai":
             print("--azure applies to --provider openai only", file=sys.stderr)
             return 2
@@ -446,7 +686,15 @@ def main() -> int:
 
     print(f"model    : {args.model} ({args.provider})", file=sys.stderr)
     print(f"shape    : {describe_shape(args.provider, args.model)}", file=sys.stderr)
-    print(f"prompt   : {args.system_prompt}", file=sys.stderr)
+    if prompt_body is None:
+        print(f"prompt   : {args.system_prompt}", file=sys.stderr)
+    else:
+        # Name AND hash the arm: two variants of one prompt have the same filename
+        # in every log line that matters, and the hash is what distinguishes them.
+        digest = hashlib.sha256(prompt_body.strip().encode()).hexdigest()[:12]
+        print(f"prompt   : {args.system_prompt} body<-{args.system_prompt_file} "
+              f"sha256={digest} ({len(prompt_body.strip())} chars) UNSHIPPED",
+              file=sys.stderr)
     print(f"corpus   : {args.corpus.name} ({len(cases)} cases, {args.workers} workers)", file=sys.stderr)
 
     results: dict[str, dict] = {}
@@ -456,7 +704,7 @@ def main() -> int:
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = [
             pool.submit(polish_case, args.provider, args.model, api_key, c,
-                        args.system_prompt, azure_endpoint)
+                        args.system_prompt, azure_endpoint, prompt_body)
             for c in cases
         ]
         for fut in as_completed(futures):
