@@ -130,7 +130,45 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// waiting on a silent transfer. `ApplePackCatalog` is the only thing in this module that
   /// installs, and only when asked.
   func prepare() async throws {
-    try await Self.reserveLocale(locale)
+    // **Registered for the whole warm-up, not merely reserved.** An unregistered claim is
+    // evictable, so with the five slots full a download starting now could release this locale
+    // while `prepareToAnalyze` is still suspended on it — preparation then fails for a pack that
+    // is present. Registering protects it; the single `do/catch` below is what keeps the balance
+    // honest, because `prepare()` has five exits and an earlier version that registered here
+    // leaked one per prepared language.
+    try await Self.acquireLocaleForSession(locale)
+    let claimedTag = locale.identifier(.bcp47)
+    do {
+      try await performPrepare()
+    } catch {
+      await Self.endUse(claimedTag)
+      throw error
+    }
+    // **Give the claim BACK, system reservation included.**
+    //
+    // Keeping it was a warm-up optimisation, and it was the source of every eviction race in this
+    // file: each language you previewed left a claim behind, so a multilingual user reached
+    // Apple's five-slot cap through ordinary use, and from then on every new claim had to evict
+    // somebody else's. Recordings already return theirs when they end; warm-up was the one path
+    // that did not.
+    //
+    // What this establishes, exactly: held claims are now proportional to work IN FLIGHT rather
+    // than to the number of languages ever previewed. Before, previewing your sixth language was
+    // enough to reach the cap and stay there for the rest of the process; now nothing accumulates
+    // across recordings. Three code paths register a claim — warm-up (here), `openSession`, and
+    // the catalogue's download — each releasing on every exit.
+    //
+    // NOT established, and deliberately not claimed: that the cap of five is now unreachable. That
+    // would need a bound on concurrent work, and there is none at this layer — the one-download-
+    // at-a-time rule lives in the settings model, not here. Eviction therefore remains a real path
+    // and keeps its tests; this change removes the accumulation that made it routine.
+    //
+    // The cost is one inventory call at `openSession`, which already re-acquires anyway.
+    await Self.endUse(claimedTag)
+  }
+
+  /// The warm-up itself. Runs inside `prepare()`'s registration.
+  private func performPrepare() async throws {
 
     // Built to negotiate the audio format, NOT to install anything. Constructing a
     // `DictationTranscriber` is inert; only `assetInstallationRequest` + `downloadAndInstall`

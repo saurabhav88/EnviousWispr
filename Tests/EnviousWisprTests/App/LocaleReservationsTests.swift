@@ -197,15 +197,18 @@ struct LocaleReservationsTests {
       "registering after the unlock leaves a window where the claim reads as unused")
   }
 
-  /// The leak this split exists to prevent.
+  /// Warm-up must PROTECT its claim, and must balance it on every exit.
   ///
-  /// Making `reserveLocale` register a use meant `prepare()` registered one too — and `prepare()`
-  /// leaves through five exits, so every prepared or failed language leaked a registration,
-  /// monotonically, until the registry believed everything was in use and eviction fell back to
-  /// ignoring the protection entirely. The fix is that `prepare()` calls the variant that
-  /// registers NOTHING, so there is nothing to balance and nothing to leak.
-  @Test("prepare() takes a claim it never has to hand back")
-  func prepareUsesTheNonRegisteringVariant() throws {
+  /// This test previously asserted the opposite — that `prepare()` used the non-registering
+  /// variant — because registering had leaked one claim per prepared language when the balance
+  /// was spread across five exit points. Review then found the cost of not registering: with the
+  /// table full, a download could evict the locale while warm-up was still suspended on it, and
+  /// preparation failed for a pack that is present.
+  ///
+  /// So both are required: register it, AND balance it through a single wrapper so the five exits
+  /// funnel into two paths. That is what makes the leak unexpressible rather than merely avoided.
+  @Test("Warm-up protects its claim and hands it back on every path")
+  func prepareRegistersAndBalancesItsClaim() throws {
     let url = RepoRoot.url.appending(
       path: "Sources/EnviousWisprLivePreview/Engines/ApplePreviewRecognizer.swift")
     let source = LivePreviewNoAutoDownloadTests.codeOnly(
@@ -219,13 +222,24 @@ struct LocaleReservationsTests {
     let end = rest.range(of: "\n  }\n")?.lowerBound ?? rest.endIndex
     let body = String(rest[..<end])
 
-    #expect(body.contains("reserveLocale"), "control: the extracted body is the real prepare path")
     #expect(
-      !body.contains("acquireLocaleForSession"),
+      body.contains("acquireLocaleForSession"),
       """
-      prepare() must not register a use: it has five exit points, and the version that registered \
-      one leaked it on every language change until eviction protection silently stopped applying.
+      warm-up must REGISTER its claim, or a download can evict the locale while preparation is \
+      still suspended on it and the preview fails for a pack that is present
       """)
+    // Balanced on BOTH paths, which is what stops the registration leaking. Counting them is the
+    // point: one `endUse` would mean only the success path gives the claim back.
+    let handBacks = body.components(separatedBy: "endUse(claimedTag)").count - 1
+    #expect(
+      handBacks == 2,
+      """
+      the claim must be handed back on the throwing path AND the succeeding one, or every failed \
+      warm-up leaks one; found \(handBacks)
+      """)
+    #expect(
+      body.contains("catch"),
+      "the balance has to come from one wrapper, not from repeating cleanup at five exits")
   }
 
   /// Registering without a matching release is the leak; this pins the pairing at the seam that

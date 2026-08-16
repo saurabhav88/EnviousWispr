@@ -155,7 +155,9 @@ package actor ApplePackCatalog {
       ?? tag
   }
 
-  static func localizedName(for tag: String) -> String {
+  /// Package-visible so the settings page names the active language through the SAME helper the
+  /// rows use. Formatting it twice invites the header and the list to disagree about one language.
+  package static func localizedName(for tag: String) -> String {
     Locale.current.localizedString(forIdentifier: tag)
       ?? Locale.current.localizedString(forLanguageCode: tag)
       ?? tag

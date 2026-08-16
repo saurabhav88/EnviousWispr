@@ -356,26 +356,41 @@ struct LivePreviewNoAutoDownloadTests {
       path: "Sources/EnviousWisprLivePreview/Engines/ApplePreviewRecognizer.swift")
     let source = Self.codeOnly(try String(contentsOf: url, encoding: .utf8))
 
-    // Locate `prepare()`'s body: from its declaration to the next method at the same indent.
-    guard let start = source.range(of: "func prepare() async throws {") else {
-      Issue.record("prepare() not found; it was renamed or moved")
-      return
+    // **Both halves of preparation.** `prepare()` was split into a wrapper plus `performPrepare()`
+    // when warm-up gained its claim protection, and this guard kept extracting only the wrapper —
+    // so the warm-up code it exists to police silently fell outside it. The founder's directive is
+    // that pressing record never downloads; a guard covering a ten-line wrapper does not enforce
+    // that. Extract EVERY method the record path runs through, and fail if one is missing rather
+    // than checking whatever remains.
+    let preparationMethods = ["func prepare() async throws {", "func performPrepare() async throws {"]
+    var bodies: [String: String] = [:]
+    for signature in preparationMethods {
+      guard let start = source.range(of: signature) else {
+        Issue.record("\(signature) not found; preparation was renamed or restructured")
+        return
+      }
+      let rest = source[start.upperBound...]
+      let end = rest.range(of: "\n  }\n")?.lowerBound ?? rest.endIndex
+      bodies[signature] = String(rest[..<end])
     }
-    let rest = source[start.upperBound...]
-    let end = rest.range(of: "\n  }\n")?.lowerBound ?? rest.endIndex
-    let body = String(rest[..<end])
 
+    for (signature, body) in bodies {
+      #expect(
+        !body.contains("downloadAndInstall"),
+        "\(signature) must never download: a record-key press is not consent for ~140 MB")
+      #expect(
+        !body.contains("assetInstallationRequest"),
+        "\(signature) must not even build an installation request")
+    }
+
+    // Two-way controls, one per body: prove each extraction found real code rather than an empty
+    // string, which would make the assertions above pass vacuously.
     #expect(
-      !body.contains("downloadAndInstall"),
-      "prepare() must never download: a record-key press is not consent for ~140 MB")
+      bodies["func prepare() async throws {"]?.contains("acquireLocaleForSession") == true,
+      "control: the wrapper body must be real code")
     #expect(
-      !body.contains("assetInstallationRequest"),
-      "prepare() must not even build an installation request")
-    // Two-way control: prove the extraction found a real body rather than an empty string, which
-    // would make both assertions above pass vacuously.
-    #expect(
-      body.contains("reserveLocale"),
-      "control: the extracted body must be real code, not an empty string")
+      bodies["func performPrepare() async throws {"]?.contains("DictationTranscriber") == true,
+      "control: the warm-up body must be real code — this is the half that was slipping out")
   }
 
   /// #2080 round 3 — a prepared engine is CACHED and reused without preparing again, so the
