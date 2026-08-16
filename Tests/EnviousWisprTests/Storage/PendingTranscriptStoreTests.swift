@@ -321,4 +321,84 @@ import Testing
         .posixPermissions] as? NSNumber
     #expect(filePerms?.intValue == 0o600)
   }
+
+  // MARK: - Crash-recovery de-duplication (#2087)
+
+  /// A pending row proves its spool was ALREADY recovered, so launch recovery
+  /// must not replay that spool again.
+  ///
+  /// The gap this closes: a live Escape Recovery saves into `pending/`, then the
+  /// app dies before the spool is deleted. That spool carries no attempt marker
+  /// — the live save never writes one — so without this the next launch
+  /// transcribes it a second time and the user finds the same dictation twice.
+  @Test("pending rows contribute their recovery ids to the de-dup set")
+  func pendingRowsAreCountedForDeduplication() async throws {
+    let (store, _) = makeStore()
+    var row = pendingRow(at: Date())
+    row = Transcript(
+      id: row.id, text: row.text, createdAt: row.createdAt,
+      recoverySessionID: "spool-abc",
+      escapeRecoveredAt: row.escapeRecoveredAt,
+      escapeRecoveryTakeID: row.escapeRecoveryTakeID)
+    try store.savePending(row)
+
+    #expect(try await store.pendingRecoverySessionIDs() == ["spool-abc"])
+  }
+
+  /// The UNION is what launch recovery actually consumes, so it is asserted
+  /// directly rather than inferred from its two halves.
+  ///
+  /// Both halves passing does not prove the union: a caller that read only
+  /// `loadAll` — the bug this fixes — leaves every other test in this file green
+  /// while replaying escape-recovered spools a second time.
+  @Test("allRecoveredSessionIDs unions permanent and pending")
+  func recoveredIDsUnionBothNamespaces() async throws {
+    let (store, _) = makeStore()
+
+    let permanent = Transcript(
+      text: "ordinary crash rescue", recoverySessionID: "spool-permanent", isRecovered: true)
+    try store.save(permanent)
+
+    let stamped = Date()
+    var pending = pendingRow(at: stamped)
+    pending = Transcript(
+      id: pending.id, text: pending.text, createdAt: stamped,
+      recoverySessionID: "spool-pending",
+      escapeRecoveredAt: stamped,
+      escapeRecoveryTakeID: pending.escapeRecoveryTakeID)
+    try store.savePending(pending)
+
+    #expect(
+      try await store.allRecoveredSessionIDs() == ["spool-permanent", "spool-pending"],
+      "dropping either namespace re-opens a duplicate replay")
+  }
+
+  /// EXPIRY IS DELIBERATELY IGNORED here, and this is the assertion that keeps it
+  /// that way.
+  ///
+  /// "This spool was already recovered" stays true forever; the 24-hour window
+  /// governs whether the user may still SEE the row, not whether the audio was
+  /// already turned into text. Filtering by expiry would let the spool be
+  /// replayed again the moment the row aged out — a duplicate appearing exactly
+  /// 24 hours later. A bug that is correct for a day and then not is the worst
+  /// kind, because nothing in a normal test run reaches it.
+  @Test("an EXPIRED pending row still counts for de-duplication")
+  func expiredPendingRowsStillDeduplicate() async throws {
+    let (store, _) = makeStore()
+    let longAgo = Date(timeIntervalSince1970: 1_000_000)
+    var row = pendingRow(at: longAgo)
+    row = Transcript(
+      id: row.id, text: row.text, createdAt: longAgo,
+      recoverySessionID: "spool-stale",
+      escapeRecoveredAt: longAgo,
+      escapeRecoveryTakeID: row.escapeRecoveryTakeID)
+    try store.savePending(row)
+
+    // Invisible to the user...
+    #expect(try await store.loadPending(now: Date()).isEmpty, "expired: never offered")
+    // ...but still proof its spool was recovered.
+    #expect(
+      try await store.pendingRecoverySessionIDs() == ["spool-stale"],
+      "an expired row must still block a second replay of its spool")
+  }
 }

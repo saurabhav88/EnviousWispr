@@ -25,6 +25,9 @@ public enum AppConstants {
   /// so user-facing copy must say "removed within 24 hours", never "destroyed
   /// at the deadline".
   public static let pendingTranscriptRetention: TimeInterval = 24 * 60 * 60
+  /// Tolerated forward clock skew before a pending stamp is treated as corrupt
+  /// rather than fresh (#2087).
+  public static let pendingClockSkewTolerance: TimeInterval = 60
   public static let onboardingWindowTitle = "Setup"
 
   /// Application Support directory for EnviousWispr.
@@ -285,6 +288,17 @@ public enum RecoveryConstants {
   /// for that spool, so it is abandoned rather than retried (the one-attempt
   /// guard). Named `<recoverySessionID>.attempt`.
   public static let attemptFileExtension = "attempt"
+  /// File extension for a per-spool ESCAPE RECOVERY marker (#2087). Metadata
+  /// only — no audio, no text. Its presence on the next launch tells replay that
+  /// this spool belongs to a cancelled-but-kept dictation, so the recovered
+  /// output becomes a 24-hour pending row rather than permanent History with the
+  /// crash-Recovered badge. Named `<recoverySessionID>.escape`.
+  ///
+  /// A SEPARATE sidecar rather than a field on the spool header, because the
+  /// header is written once at capture start and the Escape decision happens at
+  /// the end. Rewriting a sealed header mid-session to record a later fact would
+  /// put the audio at risk to store metadata.
+  public static let escapeMarkerFileExtension = "escape"
   /// On-disk format version recorded in the header.
   public static let formatVersion = 1
 

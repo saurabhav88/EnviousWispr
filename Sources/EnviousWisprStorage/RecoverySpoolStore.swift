@@ -147,7 +147,23 @@ public struct RecoverySpoolStore: Sendable {
     } catch let error as CocoaError where error.code == .fileNoSuchFile {
       // Spool already gone — still clear any marker below.
     }
-    try deleteAttemptMarker(for: recoverySessionID)
+    // #2087: BOTH sidecars are attempted even if the first throws, then the
+    // first failure is surfaced. Chaining them with `try` looks equivalent and
+    // is not: the spool is already gone by this point, so nothing will ever scan
+    // this id again, and a sidecar skipped because its predecessor threw is
+    // orphaned permanently. An Escape marker left behind that way outlives the
+    // audio it describes with no path back to it.
+    //
+    // The spool still goes FIRST. It is the only file that carries recoverable
+    // audio, so if a partial failure must leave something behind, it should
+    // leave metadata a later delete is idempotent about — never audio whose
+    // provenance sidecar has already been destroyed.
+    var firstFailure: (any Error)?
+    do { try deleteAttemptMarker(for: recoverySessionID) } catch { firstFailure = error }
+    do { try deleteEscapeMarker(for: recoverySessionID) } catch {
+      firstFailure = firstFailure ?? error
+    }
+    if let firstFailure { throw firstFailure }
   }
 
   // MARK: - One-attempt marker (#1063 PR2)
@@ -204,6 +220,97 @@ public struct RecoverySpoolStore: Sendable {
   /// Delete a spool's attempt marker. Idempotent — a missing marker is success.
   public func deleteAttemptMarker(for recoverySessionID: String) throws {
     let url = attemptMarkerURL(for: recoverySessionID)
+    do {
+      try FileManager.default.removeItem(at: url)
+    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+      return
+    }
+  }
+
+  // MARK: - Escape Recovery marker (#2087)
+
+  /// Sidecar path for a spool's Escape Recovery marker (`<id>.escape`).
+  private func escapeMarkerURL(for recoverySessionID: String) -> URL {
+    directory.appendingPathComponent(
+      "\(recoverySessionID).\(RecoveryConstants.escapeMarkerFileExtension)")
+  }
+
+  /// Durably write the Escape Recovery marker, using the same
+  /// temp → `F_FULLFSYNC` → atomic-rename shape as the attempt marker, at 0600.
+  ///
+  /// Durability is the whole point: this marker is written at the moment the user
+  /// presses cancel, and the crash it guards against can happen immediately
+  /// after. A marker that is merely *scheduled* to hit disk describes a session
+  /// whose audio may already be spooled, and losing that race produces the exact
+  /// permanent-History outcome #2087 exists to prevent.
+  public func writeEscapeMarker(_ marker: EscapeRecoveryMarker) throws {
+    let url = escapeMarkerURL(for: marker.recoverySessionID)
+    let tmpURL = directory.appendingPathComponent(
+      ".\(marker.recoverySessionID).\(RecoveryConstants.escapeMarkerFileExtension).tmp")
+    let fm = FileManager.default
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    do {
+      let payload = try encoder.encode(marker)
+      let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
+      guard fd >= 0 else { throw RecoverySpoolStoreError.escapeMarkerWriteFailed(errno) }
+      let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+      try handle.write(contentsOf: payload)
+      if fcntl(fd, F_FULLFSYNC) == -1 {
+        try? handle.close()
+        try? fm.removeItem(at: tmpURL)
+        throw RecoverySpoolStoreError.escapeMarkerWriteFailed(errno)
+      }
+      try handle.close()
+      if fm.fileExists(atPath: url.path) {
+        _ = try fm.replaceItemAt(url, withItemAt: tmpURL)
+      } else {
+        try fm.moveItem(at: tmpURL, to: url)
+      }
+    } catch let error as RecoverySpoolStoreError {
+      try? fm.removeItem(at: tmpURL)
+      throw error
+    } catch {
+      try? fm.removeItem(at: tmpURL)
+      throw RecoverySpoolStoreError.escapeMarkerWriteFailed(errno)
+    }
+  }
+
+  /// Read a spool's Escape Recovery marker.
+  ///
+  /// Three outcomes, and the middle one is the reason this does not return a
+  /// plain optional at the call site's peril:
+  /// - `.absent` — no marker. Ordinary crash recovery, exactly as today.
+  /// - `.valid(marker)` — a pending row with the user's original clock.
+  /// - `.malformed` — a marker exists but cannot be trusted (unreadable,
+  ///   undecodable, unknown version, or an id that does not match its filename).
+  ///
+  /// **`.malformed` must never collapse into `.absent`.** Absent means "ordinary
+  /// dictation", which produces a PERMANENT History row. A corrupt marker is
+  /// evidence that this spool probably WAS an escape recovery, so treating it as
+  /// absent converts a cancelled dictation into a permanent one — the specific
+  /// failure this whole mechanism exists to prevent. The caller fails closed by
+  /// discarding the output instead.
+  public func readEscapeMarker(for recoverySessionID: String) -> EscapeMarkerRead {
+    let url = escapeMarkerURL(for: recoverySessionID)
+    guard FileManager.default.fileExists(atPath: url.path) else { return .absent }
+    guard let data = try? Data(contentsOf: url) else { return .malformed }
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    guard let marker = try? decoder.decode(EscapeRecoveryMarker.self, from: data) else {
+      return .malformed
+    }
+    guard marker.version == EscapeRecoveryMarker.currentVersion else { return .malformed }
+    // The filename is the authority for which spool this belongs to. A mismatch
+    // means the file was moved, hand-edited, or written for another session, and
+    // honouring its contents would apply one session's clock to another's audio.
+    guard marker.recoverySessionID == recoverySessionID else { return .malformed }
+    return .valid(marker)
+  }
+
+  /// Delete a spool's Escape marker. Idempotent — a missing marker is success.
+  public func deleteEscapeMarker(for recoverySessionID: String) throws {
+    let url = escapeMarkerURL(for: recoverySessionID)
     do {
       try FileManager.default.removeItem(at: url)
     } catch let error as CocoaError where error.code == .fileNoSuchFile {
@@ -272,4 +379,24 @@ public enum RecoverySpoolStoreError: Error, Equatable {
   /// `errno`). The caller treats this as fail-closed: skip recovering this spool
   /// this launch rather than risk an un-guarded retry.
   case attemptMarkerWriteFailed(Int32)
+  /// The Escape Recovery marker could not be written durably (carries `errno`).
+  ///
+  /// Fail closed at the call site by performing today's ordinary destructive
+  /// cancel. Proceeding without a marker would leave a spool that a later launch
+  /// replays as an ordinary crash rescue — a permanent History row for a
+  /// dictation the user cancelled, which is worse than the discard they asked
+  /// for and were expecting (#2087).
+  case escapeMarkerWriteFailed(Int32)
+}
+
+/// The three outcomes of reading a spool's Escape Recovery marker (#2087).
+///
+/// A three-way result rather than `EscapeRecoveryMarker?` so that "corrupt"
+/// cannot be silently spelled the same way as "not an escape recovery". The two
+/// mean opposite things for the user's data, and an optional invites the caller
+/// to write `if let` and lose the distinction.
+public enum EscapeMarkerRead: Equatable, Sendable {
+  case absent
+  case valid(EscapeRecoveryMarker)
+  case malformed
 }

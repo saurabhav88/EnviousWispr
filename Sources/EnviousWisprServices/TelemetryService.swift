@@ -54,7 +54,11 @@ public enum ApiKeyValidationSource: String, Sendable {
 /// diagnosis of the crash-only replay population.) Privacy:
 /// a category only — the underlying `NSError` domain/code/description is classifier
 /// INPUT and is NEVER emitted (`sentry-operations.md` telemetry-privacy boundary).
-public enum RecoveryTelemetryReason: String, Sendable {
+/// `CaseIterable` so the channel-inventory tests can assert completeness against
+/// the ENUM rather than against a hand-maintained count (#2087). A literal total
+/// goes stale silently: adding a case leaves the old number matching the old
+/// list, so the guard meant to catch the addition passes through it.
+public enum RecoveryTelemetryReason: String, Sendable, CaseIterable {
   case keyMissing = "key_missing"
   case keyReadFailed = "key_read_failed"
   /// A spool file/header read THREW before a `RecoveredSpool` existed.
@@ -68,6 +72,19 @@ public enum RecoveryTelemetryReason: String, Sendable {
   case markerWriteFailed = "marker_write_failed"
   case markerClearFailed = "marker_clear_failed"
   case attemptAlreadySpent = "attempt_already_spent"
+  /// #2087 — an Escape Recovery marker was present but unreadable, undecodable,
+  /// of an unknown version, or named for a different session. The spool is
+  /// discarded rather than recovered as an ordinary crash rescue, because doing
+  /// the latter would create a permanent History row for a dictation the user
+  /// cancelled. Expected to be ~0; a non-zero rate means marker writes or the
+  /// format are broken, not that users are hitting a normal path.
+  case malformedEscapeMarker = "malformed_escape_marker"
+  /// #2087 — an escape recovery whose 24-hour window had already elapsed before
+  /// the app got a chance to replay it (a Mac left off over a weekend). Discarded
+  /// without decrypting or transcribing: read-time expiry would refuse to show
+  /// the row anyway, so producing it would waste the engine and, on a BYOK
+  /// provider, the user's own money. Expected and benign — NOT a defect.
+  case escapeRecoveryExpired = "escape_recovery_expired"
   /// #1707 Phase 3 — a Keychain read returned a transient OSStatus (device
   /// locked / keychain daemon not yet unlocked); the spool is retained and
   /// retried, not deleted. Bypass, not Failure.

@@ -121,7 +121,16 @@ import Testing
       .markerClearFailed: .recoveryDecryptFailed,
       .attemptAlreadySpent: .recoveryDecryptFailed,
       .keychainTransient: .recoveryDecryptFailed,
+      // #2087: its OWN category, not the decrypt catch-all. Nothing is decrypted
+      // on this path — the spool is refused at the entry guard — and folding it
+      // into the decrypt bucket would inflate a count meaning "the audio would
+      // not come back", the conflation that made #1813 read as a 76-user P0.
+      .malformedEscapeMarker: .recoveryMalformedEscapeMarker,
+      .escapeRecoveryExpired: .recoveryEscapeRecoveryExpired,
     ]
+    #expect(
+      expected.count == RecoveryTelemetryReason.allCases.count,
+      "every reason must appear above — a missing one inherits its bucket unseen")
     for (reason, category) in expected {
       #expect(
         RecoverySpoolReplayer.category(for: reason) == category,
@@ -137,6 +146,8 @@ import Testing
     // 13 events / 5 people on 2.4.3, matching the Sentry fingerprint exactly),
     // so removing its alert loses no visibility.
     #expect(RecoverySpoolReplayer.isCountedNotAlerted(.emptyText))
+    // #2087: a Mac left off past the 24-hour window is the world being ordinary.
+    #expect(RecoverySpoolReplayer.isCountedNotAlerted(.escapeRecoveryExpired))
 
     // THE TWO-WAY CONTROL, and the whole safety of this change: every reason
     // that IS ours must still alert. A blanket downgrade would pass the
@@ -145,6 +156,9 @@ import Testing
       .keyMissing, .keyReadFailed, .reconstructionFailed, .emptyOrUnreadableSamples,
       .modelLoadFailed, .transcribeError, .saveFailed, .markerWriteFailed,
       .markerClearFailed, .attemptAlreadySpent, .keychainTransient,
+      // #2087: a marker WE wrote durably that will not read back is our defect,
+      // never a user's environment.
+      .malformedEscapeMarker,
     ]
     for reason in mustAlert {
       #expect(
@@ -157,6 +171,19 @@ import Testing
     // `isCountedNotAlerted` switches exhaustively with no `default`, so a new
     // case is already a compile error there; this asserts the TEST stays
     // exhaustive too, which the compiler cannot do for an array literal.
-    #expect(mustAlert.count + 1 == 12, "a reason was added — give it a channel here")
+    // #2087 fixed this guard, which had gone stale WITHOUT failing. It read
+    // `mustAlert.count + 1 == 12` — a literal compared against the list it was
+    // meant to police. Adding a 13th reason and forgetting to list it left the
+    // list at 11, so `11 + 1 == 12` still passed and the new reason inherited a
+    // channel silently. The guard's one job was to catch exactly that.
+    //
+    // Now compared against the ENUM, so the number cannot drift from reality: a
+    // new case changes `allCases.count` and this fails until someone assigns it
+    // a channel on purpose. Ask of any count guard which direction it does NOT
+    // check; this one checked none.
+    // `+ 2` = the two counted-not-alerted reasons asserted above.
+    #expect(
+      mustAlert.count + 2 == RecoveryTelemetryReason.allCases.count,
+      "a reason was added — give it a channel here")
   }
 }

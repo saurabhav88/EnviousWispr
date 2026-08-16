@@ -464,6 +464,25 @@ public enum SentryBreadcrumb {
     /// prior recovery attempt already STARTED for that spool — so it is abandoned
     /// (deleted, never retried) by the one-attempt guard rather than risking a loop.
     case recoveryAbandonedAfterAttempt = "recovery_abandoned_after_attempt"
+    /// #2087: a spool carried an Escape Recovery marker that could not be
+    /// trusted — unreadable, undecodable, an unknown version, or an id that does
+    /// not match its filename — so the spool is discarded rather than recovered
+    /// under a guess about what the user asked for.
+    ///
+    /// Its OWN category rather than joining `recoveryAbandonedAfterAttempt` or
+    /// `recoveryDecryptFailed`. Both would be a conflation of exactly the kind
+    /// `RecoverySpoolReplayer.category(for:)` exists to prevent: the abandon
+    /// bucket means "a prior attempt already ran", and nothing was decrypted here
+    /// at all. Should sit at zero — a non-zero rate means our marker write path
+    /// or format is broken, and the cost is silently discarding dictations users
+    /// chose to keep.
+    case recoveryMalformedEscapeMarker = "recovery_malformed_escape_marker"
+    /// #2087: an escape recovery whose 24-hour window elapsed before the app
+    /// could replay it — a Mac left off over a weekend. Discarded without
+    /// decrypting or transcribing, because read-time expiry would refuse to show
+    /// the row anyway. Expected and benign, so it is COUNTED, never alerted; the
+    /// category exists to keep the breadcrumb honest rather than to page anyone.
+    case recoveryEscapeRecoveryExpired = "recovery_escape_recovery_expired"
     /// #761: the deterministic post-polish emoji-restore guard re-inserted fewer
     /// glyphs than AFM dropped (`restored < dropped`). Impossible by construction
     /// — every dropped glyph is re-inserted — so this fires only on a regression.

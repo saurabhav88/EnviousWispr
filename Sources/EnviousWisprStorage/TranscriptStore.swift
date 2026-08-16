@@ -92,6 +92,40 @@ public final class TranscriptStore {
     }.value
   }
 
+  /// Every decodable pending row's recovery session id, expiry IGNORED (#2087).
+  ///
+  /// Exists for exactly one caller: crash-recovery de-duplication. A saved row
+  /// proves its spool was already recovered, and that stays true forever — so
+  /// filtering by expiry here would let a spool whose row aged out get replayed
+  /// a second time, handing the user a duplicate dictation exactly 24 hours
+  /// later. A bug that is correct for a day and then not is worse than one that
+  /// is always wrong, because nothing in testing will catch it.
+  ///
+  /// Deliberately returns ONLY the ids, not the rows: this is a de-dup key
+  /// source, and returning transcripts would invite a caller to render an
+  /// expired row that `loadPending` exists to hide.
+  public func pendingRecoverySessionIDs() async throws -> Set<String> {
+    let dir = pendingDirectory
+    guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+    return try await Task.detached(priority: .userInitiated) {
+      Self.decodeAnyPendingIdentities(in: dir)
+    }.value
+  }
+
+  /// Every recovery session id this store has already turned into text, across
+  /// BOTH namespaces (#2087).
+  ///
+  /// The de-dup authority for launch recovery, and it lives here rather than as
+  /// a union assembled at the call site so that "already recovered" has one
+  /// definition. A caller that remembered `loadAll` and forgot `pending/` would
+  /// replay an escape-recovered spool a second time and hand the user the same
+  /// dictation twice — and that omission is invisible in review, because the
+  /// half-answer looks complete.
+  public func allRecoveredSessionIDs() async throws -> Set<String> {
+    let permanent = Set((try await loadAll()).compactMap(\.recoverySessionID))
+    return try await permanent.union(pendingRecoverySessionIDs())
+  }
+
   /// Make a pending row permanent.
   ///
   /// **Revalidates before writing.** A Keep press can arrive after the row has
@@ -197,9 +231,41 @@ public final class TranscriptStore {
       let files = try? FileManager.default.contentsOfDirectory(
         at: directory, includingPropertiesForKeys: nil)
     else { return [] }
-    return files
+    return
+      files
       .filter { $0.pathExtension == "json" }
       .map { decodeCandidate(at: $0, now: now, retention: retention) }
+  }
+
+  /// Recovery session ids of every pending file that DECODES, regardless of
+  /// expiry, stamp validity or filename agreement (#2087).
+  ///
+  /// Deliberately more permissive than `decodeCandidate`. That function decides
+  /// what may be OFFERED to the user and is fail-closed for good reason. This one
+  /// answers a different question — "was this spool already recovered?" — where
+  /// fail-closed points the OTHER way: a row we refuse to count here becomes a
+  /// spool we replay again, which is a duplicate dictation. A row that decodes at
+  /// all is proof enough that its audio was already turned into text.
+  private nonisolated static func decodeAnyPendingIdentities(in directory: URL) -> Set<String> {
+    guard
+      let files = try? FileManager.default.contentsOfDirectory(
+        at: directory, includingPropertiesForKeys: nil)
+    else { return [] }
+    // A BARE decoder, matching `write(_:into:)`'s bare `JSONEncoder()`. Setting
+    // `.iso8601` here (copied from the marker code, where this type owns both
+    // sides) made every row fail to decode and returned an empty set — which
+    // reads exactly like "no pending rows" and would have silently restored the
+    // duplicate-replay bug this function exists to fix.
+    let decoder = JSONDecoder()
+    var ids: Set<String> = []
+    for url in files where url.pathExtension == "json" {
+      guard let data = try? Data(contentsOf: url),
+        let transcript = try? decoder.decode(Transcript.self, from: data),
+        let recoveryID = transcript.recoverySessionID
+      else { continue }
+      ids.insert(recoveryID)
+    }
+    return ids
   }
 
   private nonisolated static func decodeCandidate(
@@ -219,18 +285,15 @@ public final class TranscriptStore {
       return .invalid(url: url)
     }
     guard let stamped = transcript.escapeRecoveredAt else { return .invalid(url: url) }
-    // A timestamp in the future is a corrupt or clock-skewed row, not a fresh
-    // one. Refuse it rather than letting it outlive the window.
-    guard stamped <= now.addingTimeInterval(pendingClockSkewTolerance) else {
-      return .invalid(url: url)
+    // #2087: the admission RULE lives in `PendingAdmission` so this and the
+    // replayer's pre-ASR gate cannot drift. They did drift once — the replayer
+    // checked elapsed time and forgot future skew.
+    switch PendingAdmission.verdict(stampedAt: stamped, now: now, retention: retention) {
+    case .corrupt: return .invalid(url: url)
+    case .live: return .live(url: url, transcript: transcript)
+    case .expired: return .expired(url: url, transcript: transcript)
     }
-    return now < stamped.addingTimeInterval(retention)
-      ? .live(url: url, transcript: transcript)
-      : .expired(url: url, transcript: transcript)
   }
-
-  /// Tolerated forward clock skew before a pending row is treated as corrupt.
-  private nonisolated static let pendingClockSkewTolerance: TimeInterval = 60
 
   /// Shared 0600 temp-then-rename write used by `save` and `savePending`.
   private nonisolated static func write(_ transcript: Transcript, into directory: URL) throws {

@@ -695,9 +695,9 @@ public final class WisprBootstrapper {
       keyStore: recoveryKeyStore,
       makeSpoolStore: makeRecoverySpoolStore,
       replayer: recoverySpoolReplayer,
+      // #2087: BOTH namespaces — the store owns the definition.
       existingRecoveryIDs: { [transcriptStore] in
-        let all = (try? await transcriptStore.loadAll()) ?? []
-        return Set(all.compactMap(\.recoverySessionID))
+        (try? await transcriptStore.allRecoveredSessionIDs()) ?? []
       },
       isDictationActive: { [liveRecordingState] in
         liveRecordingState.isDictationActive
