@@ -2743,13 +2743,195 @@ def test_spoken_truth_reads_both_corpus_schemas():
         assert bj._spoken_truth(case) == "", f"{case!r} must yield empty, not raise"
 
 
+def test_a_blind_arm_and_a_sighted_arm_are_refused_like_a_mixed_judge():
+    """Blinding changes what a score MEANS, so it belongs in the identity.
+
+    Showing the judge the answer key moved 122 of 472 verdicts. That is larger
+    than any arm difference this report exists to rank, so ranking a blind arm
+    against a sighted one is not a comparison. `judge_blind` sits at the TOP
+    LEVEL of the receipt rather than under `meta`, which is exactly why the
+    original identity tuple — built only from `meta` fields — could not see it.
+
+    THREE-WAY, because `judge_blind` has three legal states. `None` means the
+    verdicts were imported and this scorer did no judging, which is an UNKNOWN
+    rather than a "no": folding it into "sighted" would assert something nobody
+    observed, the same absent-vs-false collapse that shipped wrong twice on
+    `cacheable`.
+    """
+    def tree_with_two(blind_a, blind_b):
+        meta = {"judge": "azure/j", "judge_identity": "azure/j@aaa",
+                "judge_model_version": "v1", "rubric_identity": "RUBRIC_ONE"}
+        t = report_tree(healthy_receipt(meta=meta, judge_blind=blind_a))
+        b = t / "judged" / "modelB"
+        b.mkdir(parents=True)
+        (b / "summary.json").write_text(
+            json.dumps(healthy_receipt(meta=meta, judge_blind=blind_b)))
+        (b / "per_case.jsonl").write_text(
+            (t / "judged" / "modelA" / "per_case.jsonl").read_text())
+        run = json.loads((t / "run-summary.json").read_text())
+        m = dict(run["models"][0]); m["model"] = "modelB"
+        m["candidates"] = str(t / "cand" / "modelB.jsonl")
+        run["models"].append(m)
+        (t / "run-summary.json").write_text(json.dumps(run))
+        return t
+
+    # Refuses: one arm saw the key, the other did not.
+    rc, log = run_report(tree_with_two(True, False))
+    assert "mixes judges or rubrics" in log, f"blind and sighted were ranked together:\n{log}"
+    assert rc != 0, log
+    # And the refusal must SAY it was the blinding, or it reads as a bug in the
+    # guard: every other identity field is identical between these two arms.
+    assert "no answer key shown" in log and "answer key shown" in log, log
+
+    # Refuses: a known mode against an imported-verdict receipt of unknown mode.
+    rc, log = run_report(tree_with_two(False, None))
+    assert "mixes judges or rubrics" in log, f"unknown blinding ranked as sighted:\n{log}"
+    assert "blinding unknown" in log, log
+
+    # Accepts: both blind, and both sighted. Without this half a guard that
+    # refused every run would pass the refusal cases while making the report
+    # permanently unusable.
+    for same in (True, False, None):
+        rc, log = run_report(tree_with_two(same, same))
+        assert "mixes judges or rubrics" not in log, f"one blinding mode was refused:\n{log}"
+
+
+def test_imported_verdicts_cannot_claim_a_blinding_mode():
+    """--verdicts sends no payload and no system prompt, so this process did not
+    decide whether the judge saw the answer key and must not record that it did.
+
+    The local --blind flag describes THIS run. Stamping it onto imported verdicts
+    asserts a fact about someone else's judging that was never observed, and the
+    external verdict format carries no such field to check it against.
+    """
+    norm = {"c1": bj.normalize_case(
+        {"id": "c1", "asr_input": "um hello there", "expected_output": "Hello there."})}
+    cands = {"c1": {"candidate": "Hello there."}}
+    verdicts = {"c1": {"id": "c1", "verdict": "pass", "severity": "S0",
+                       "behavior_correct": True, "meaning_preserved": True,
+                       "restraint_correct": True, "clean_output": True,
+                       "failure_types": [], "changed_or_missing_content": [],
+                       "rationale": ""}}
+
+    # Both local flags must land on "unknown", not on their own value.
+    for local_flag in (True, False):
+        rep = bj.score_new(norm, cands, None, "unused-judge", 8,
+                           external_verdicts=verdicts, adjudicate=False,
+                           blind=local_flag)
+        assert rep["judge_blind"] is None, (
+            f"--blind={local_flag} was stamped onto imported verdicts as "
+            f"{rep['judge_blind']!r}; nobody observed how they were graded")
+
+    # Control: when this process DOES judge, the flag is recorded faithfully.
+    # Without this half the fix could be "always None", which loses the field.
+    captured = {}
+
+    def fake_run_judge(judge, system, payloads, chunk):
+        captured["saw_key"] = "reference_output" in (payloads[0] if payloads else {})
+        return bj.reconcile_judge_batch(verdicts, [p["id"] for p in payloads])
+
+    real = bj.run_judge
+    bj.run_judge = fake_run_judge
+    try:
+        for flag in (True, False):
+            rep = bj.score_new(norm, cands, None, "unused-judge", 8,
+                               external_verdicts=None, adjudicate=False, blind=flag)
+            assert rep["judge_blind"] is flag, rep["judge_blind"]
+            assert captured["saw_key"] is (not flag), (
+                "the recorded flag must match what the judge was actually sent")
+    finally:
+        bj.run_judge = real
+
+
+def test_list_format_requirement_fires_only_where_a_list_is_actually_wanted():
+    """The layout requirement must be armed by the case, not by the judge's mood.
+
+    This exists because the requirement was previously armed by NOTHING.
+    `behavior_key` reads subset/category/gold_behavior and never `shape`, so
+    every sealed case arrived as `unknown` and layout was graded by no rule at
+    all. Measured 2026-08-15: all 114 sealed `spoken_list` keys demand a list,
+    EG-1 produced one on 1 of them, and 103 of its inline answers were judged
+    PASS. A pass rate built that way carries no information about list building.
+
+    Both conditions are load-bearing and the second is not redundant. Shape says
+    the case is ABOUT lists; the authored key says the right answer for THIS
+    case IS one. A `spoken_list` case deliberately authored to stay prose is a
+    trap, and a trap must not inherit a requirement from its shape.
+    """
+    bulleted = "Do these:\n- alpha\n- beta"
+    numbered = "Do these:\n1. alpha\n2. beta"
+
+    # Armed: the shape is about lists and the key really is one.
+    assert bj.list_format_required({"shape": "spoken_list", "expected_output": bulleted})
+    assert bj.list_format_required({"shape": "spoken_list", "expected_output": numbered})
+
+    # Disarmed by the key: a list-shaped case whose correct answer stays prose.
+    assert not bj.list_format_required(
+        {"shape": "spoken_list", "expected_output": "Do these: alpha and beta."})
+
+    # Disarmed by the shape: every other shape, even when its key happens to be
+    # a list. Nothing may acquire a layout requirement it was not authored with.
+    for shape in ("clean", "inline_enumeration", "connected_prose", "self_correction",
+                  "fillers_only", "unfinished", "topic_shift", "voice_at_risk",
+                  "numbers_dates", "quoted_instruction"):
+        assert not bj.list_format_required({"shape": shape, "expected_output": bulleted}), shape
+
+    # Legacy corpora carry no `shape`. They were authored without a layout
+    # requirement and must not gain one retroactively.
+    assert not bj.list_format_required({"expected_output": bulleted})
+
+    # A marker only counts when it OPENS a line, or ordinary prose arms the rule.
+    assert not bj.list_format_required(
+        {"shape": "spoken_list", "expected_output": "meet at the drop-off point at 2. 0"})
+
+    # Degenerate shapes must return False, never raise: this runs on a grading path.
+    for case in ({}, {"shape": None}, {"shape": "spoken_list"},
+                 {"shape": "spoken_list", "expected_output": None},
+                 {"shape": "spoken_list", "expected_output": ""}):
+        assert bj.list_format_required(case) is False, f"{case!r} must be False, not raise"
+
+
+def test_list_requirement_reaches_the_judge_and_survives_blinding():
+    """A criterion the judge never receives is not a criterion.
+
+    The flag travels separately from `reference_output` on purpose. Blinding
+    strips the answer key, and the layout requirement must outlive that: the
+    flag says THAT a list is required and never what the list should say, so it
+    is safe to keep and useless as an anchor.
+    """
+    case = {"id": "L1", "shape": "spoken_list", "subset": "spoken_list",
+            "asr_input": "Here's the plan. First, alpha. Second, beta.",
+            "expected_output": "Here's the plan:\n- alpha\n- beta"}
+    payload = bj.build_new_payload(bj.normalize_case(case), {"candidate": "x"}, None)
+    assert payload["list_format_required"] is True
+
+    blinded = bj.blind_payload(payload)
+    assert "reference_output" not in blinded, "blinding must still drop the answer key"
+    assert blinded["list_format_required"] is True, "the requirement must survive blinding"
+
+    # And the rule itself has to be in BOTH prompts, or blind runs grade layout
+    # by nothing — which is the exact defect this change exists to fix.
+    assert "LIST-FORMAT REQUIREMENT" in bj.NEW_JUDGE_SYSTEM
+    assert "LIST-FORMAT REQUIREMENT" in bj.BLIND_JUDGE_SYSTEM
+
+    # A case with no layout requirement must carry the flag as False rather than
+    # omit it: the prompt branches on the field, and an absent field is unread.
+    prose = bj.build_new_payload(
+        bj.normalize_case({"id": "P1", "shape": "connected_prose", "asr_input": "a",
+                           "expected_output": "a"}), {"candidate": "x"}, None)
+    assert prose["list_format_required"] is False
+
+
 # --------------------------------------------------------------------------- #
 # runner                                                                      #
 # --------------------------------------------------------------------------- #
 
-# An exact count, because the borrowed runner in cleanup_metrics_test.py returns
-# 0 when it discovers ZERO tests — so "green" would carry no information at all.
-EXPECTED_TESTS = 131
+# An exact count, because this file's runner returns 0 when it discovers ZERO
+# tests — so "green" would carry no information at all. (The runner was
+# originally borrowed from cleanup_metrics_test.py, deleted 2026-08-15 with the
+# rest of the deterministic polish grading; the zero-test trap it guards is
+# unchanged.)
+EXPECTED_TESTS = 135
 
 
 def _run() -> int:

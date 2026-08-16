@@ -385,6 +385,12 @@ def main() -> int:
             # below reads a field nobody sets and can never fire.
             "rubric_identity": receipt_meta.get("rubric_identity"),
             "judge_model_version": receipt_meta.get("judge_model_version"),
+            # WHETHER THE JUDGE SAW THE ANSWER KEY. Top-level on the receipt, not
+            # under `meta`. Without it on the row, a blind arm and a sighted arm
+            # rank together as though they were measured the same way, and they
+            # were not: showing the key moved 122 of 472 verdicts. That is a
+            # larger effect than any arm difference this report exists to rank.
+            "judge_blind": summary.get("judge_blind"),
             "isRemote": sp["isRemote"],
             "thinks": sp["thinks"],
             "thinkSent": sp["thinkSent"],
@@ -442,12 +448,36 @@ def main() -> int:
                     f"{type(value).__name__}, not a string, so its judge cannot be identified")
                 value = None
             key.append(value)
+        # Blinding is validated separately because it is the one identity field
+        # that is a BOOL on the receipt, so the str-or-None coercion above would
+        # reject every well-formed value. Three legal states, and `None` is a
+        # real one (verdicts imported, this scorer did no judging and cannot say)
+        # rather than a missing answer — so it groups with other unknowns instead
+        # of being quietly folded into "sighted".
+        blind_value = row.get("judge_blind")
+        if blind_value is None:
+            key.append(None)
+        elif isinstance(blind_value, bool):
+            key.append("blind" if blind_value else "sighted")
+        else:
+            problems.append(
+                f"{row.get('model')} ({row.get('arm')}): receipt `judge_blind` is "
+                f"{type(blind_value).__name__}, not a boolean, so it cannot be shown "
+                f"whether that arm was graded against the answer key")
+            key.append(None)
         judges.setdefault(tuple(key), []).append(row.get("model"))
     if len(judges) > 1:
         detail = "; ".join(
             f"{j[1] or j[0]}"
             + (f" serving {j[2]}" if j[2] else "")
             + (f" under rubric {j[3]}" if len(j) > 3 and j[3] else "")
+            # Named explicitly, because blinding can be the ONLY differing field.
+            # Without this the refusal prints two groups that look identical and
+            # gives no reason, which reads as a bug in the guard rather than as
+            # the real incompatibility it is.
+            + (f" ({'no answer key shown' if j[4] == 'blind' else 'answer key shown'})"
+               if len(j) > 4 and j[4] else
+               (" (blinding unknown: verdicts were imported)" if len(j) > 4 else ""))
             + f": {', '.join(sorted(m for m in models if m))}"
             for j, models in sorted(judges.items(), key=lambda kv: str(kv)))
         problems.append(

@@ -62,6 +62,7 @@ import http.client
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 import tempfile
@@ -1003,6 +1004,36 @@ def behavior_key(case: dict) -> str:
     return raw
 
 
+# A list marker only counts when it OPENS A LINE. Anchoring to the line start is
+# what separates a real list from prose that merely contains the characters:
+# "the drop-off point" and "version 2. 0" both carry them and neither is a list.
+LIST_MARKER_RE = re.compile(r"(?:^|\n)[ \t]*(?:[-*•–]\s+|\d+[.)]\s+)")
+
+# Shapes whose cases are ABOUT producing a list. Sealed corpora carry `shape`;
+# older corpora do not, and for them this is always False, which is correct —
+# they were authored without a layout requirement and must not acquire one.
+LIST_REQUIRING_SHAPES = ("spoken_list",)
+
+
+def list_format_required(case: dict) -> bool:
+    """Does THIS case demand a real vertical list, one item per line?
+
+    Both conditions must hold, and the second is not redundant. The shape says
+    the case is about lists; the authored key says the correct answer for THIS
+    case actually is one. A `spoken_list` case deliberately authored to stay
+    prose (a trap) must not acquire a layout requirement from its shape alone.
+
+    Why this exists: the judge derives `behavior` from `subset`/`category`/
+    `gold_behavior` and never from `shape`, so every sealed case arrives as
+    `unknown` and layout is graded by nothing. Measured 2026-08-15: all 114
+    sealed `spoken_list` keys demand a list, EG-1 produced one on 1 of them,
+    and 103 of its inline answers were judged PASS.
+    """
+    if case.get("shape") not in LIST_REQUIRING_SHAPES:
+        return False
+    return bool(LIST_MARKER_RE.search(case.get("expected_output") or ""))
+
+
 def case_type_of(case: dict, behavior: str) -> str:
     subset = str(case.get("subset") or case.get("category") or "")
     if subset.endswith("_trap") or "trap_type" in case or "_trap" in str(case.get("id", "")).lower():
@@ -1083,6 +1114,7 @@ def normalize_case(case: dict) -> dict:
         # Empty for corpora that carry no spoken source; the prompt handles absence.
         "spoken_truth": _spoken_truth(case),
         "notes": case.get("notes", ""),
+        "list_format_required": list_format_required(case),
     }
 
 
@@ -1199,11 +1231,34 @@ For each case you are given:
 - risk_tier: critical | standard | cosmetic
 - reference_output: an ILLUSTRATIVE reference, NOT exact ground truth
 - allowed_variants: surface differences you must NOT penalize
+- list_format_required: true when this case must be rendered as a vertical list
 
 Grade by intent, semantic fidelity, target behavior, restraint, and cleanliness.
 Do NOT grade by string similarity to reference_output. Do NOT penalize the
 allowed_variants (punctuation, capitalization, bullet-vs-numbered list, digits-
 vs-words when number formatting is not the behavior under test).
+
+LIST-FORMAT REQUIREMENT
+
+Apply this rule ONLY when list_format_required is true.
+
+The candidate must keep the introductory framing and every spoken item, in the
+order spoken, AND render the items as a genuine vertical list: one item per
+line, each line opening with a consistent bullet or number.
+
+An inline sentence is major_fail / S3 with failure_type "wrong_format" even when
+every word and all meaning are preserved. Spoken ordinals left as prose
+("First, X. Second, Y.") are the specific failure this rule exists to catch.
+
+Markers alone do not satisfy it. It still fails if the candidate puts one marker
+in front of an inline run, merges several items onto one line, splits one item
+across several lines, drops the introduction, or drops, changes or invents an
+item. Bullet and numbered lists remain equivalent; the requirement is the line
+break, not the character.
+
+When list_format_required is false this rule is silent and must NEVER reward
+list formatting. Judge structure under the case's own behavior. Imposing list
+structure on connected prose or an inline enumeration is itself wrong_format.
 
 The deterministic layer handles number/date/URL/custom-vocabulary normalization
 BEFORE this AI step, so do NOT fail a case for unconverted numbers, lowercase
@@ -1274,7 +1329,52 @@ def build_new_payload(norm: dict, cand: dict, prod: dict | None) -> dict:
         "risk_tier": norm["risk_tier"],
         "reference_output": norm["reference_output"],
         "allowed_variants": allowed_variants_for(norm["behavior"]),
+        # Carries the layout requirement independently of reference_output, so it
+        # survives --blind. The flag states THAT a list is required; it never
+        # reveals what the list should say.
+        "list_format_required": norm.get("list_format_required", False),
     }
+
+
+# --- blinded judging -------------------------------------------------------
+# The prompt ALREADY tells the judge that reference_output is illustrative and
+# must not be string-matched (see NEW_JUDGE_SYSTEM). That instruction was
+# measured and it does not work: showing the judge the key moved 122 of 472
+# verdicts (McNemar chi2=79.9), and adding the "not ground truth" wording
+# changed nothing (polish-eval.md, Judge protocol).
+#
+# So the anchor has to be REMOVED, not disclaimed. Blinding drops the field from
+# the payload entirely, leaving the judge to grade adherence to
+# expected_behavior against raw_transcript.
+#
+# This matters more than usual here because the sampler cannot be pinned: this
+# Azure deployment REJECTS temperature=0 with HTTP 400 and permits only its
+# default of 1, and the Claude CLI route exposes no temperature control. Neither
+# transport can make the judge deterministic, so removing an input that is known
+# to move verdicts is one of the few levers that remain.
+BLIND_DROP_FIELDS = ("reference_output",)
+
+
+def blind_payload(payload: dict) -> dict:
+    """Strip the answer key from a judge payload.
+
+    Returns a NEW dict; never mutates the caller's, because the same normalised
+    case feeds both the primary and adjudication passes and an in-place strip
+    would silently blind a pass that was meant to be sighted.
+    """
+    return {k: v for k, v in payload.items() if k not in BLIND_DROP_FIELDS}
+
+
+BLIND_JUDGE_SYSTEM = (
+    NEW_JUDGE_SYSTEM
+    .replace("- reference_output: an ILLUSTRATIVE reference, NOT exact ground truth\n", "")
+    .replace(
+        "Do NOT grade by string similarity to reference_output. Do NOT penalize the",
+        "You are NOT given a reference answer. Grade whether candidate_output "
+        "performs expected_behavior on raw_transcript, and whether it preserves "
+        "meaning, entities and voice. There is usually more than one correct "
+        "output; accept any that satisfies expected_behavior. Do NOT penalize the")
+)
 
 
 def coerce_new_score(raw: dict, has_production: bool) -> dict:
@@ -1366,7 +1466,8 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
               external_verdicts: dict | None,
               adjudicate_pct: float = DEFAULT_ADJUDICATE_PCT,
               adjudicate_min: int = DEFAULT_ADJUDICATE_MIN,
-              adjudicate: bool = True) -> dict:
+              adjudicate: bool = True,
+              blind: bool = False) -> dict:
     """Run (or ingest) the behavior-aware judge and aggregate. Returns the full
     report dict. Cases with no candidate or an engine error are recorded as
     infra-skips (NOT scored as fails — an engine error is not a grading signal).
@@ -1397,8 +1498,17 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
         payloads = [build_new_payload(norm_cases[cid], cands[cid],
                                       prod.get(cid) if prod else None)
                     for cid in judged_ids]
-        print(f"[new] primary pass over {len(payloads)} cases", file=sys.stderr)
-        primary_batch = run_judge(judge, NEW_JUDGE_SYSTEM, payloads, chunk_size)
+        # Blinding is applied to BOTH passes or neither. A sighted primary with
+        # a blind adjudication would merge verdicts formed against different
+        # evidence, and `_worse_new_score` would then resolve that mismatch by
+        # always taking the harsher one.
+        judge_system = BLIND_JUDGE_SYSTEM if blind else NEW_JUDGE_SYSTEM
+        if blind:
+            payloads = [blind_payload(p) for p in payloads]
+        print(f"[new] primary pass over {len(payloads)} cases"
+              f"{' (BLIND: no answer key shown)' if blind else ''}",
+              file=sys.stderr)
+        primary_batch = run_judge(judge, judge_system, payloads, chunk_size)
         primary = {cid: coerce_new_score(s, has_production)
                   for cid, s in primary_batch.accepted.items()}
 
@@ -1422,7 +1532,7 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                       f"({len(adjudicated_ids)*100//max(len(primary),1)}% of primary)",
                       file=sys.stderr)
                 adj_payloads = [p for p in payloads if p["id"] in set(adjudicated_ids)]
-                adjudication_batch = run_judge(judge, NEW_JUDGE_SYSTEM, adj_payloads, chunk_size)
+                adjudication_batch = run_judge(judge, judge_system, adj_payloads, chunk_size)
                 adjudication = {cid: coerce_new_score(s, has_production)
                                 for cid, s in adjudication_batch.accepted.items()}
                 for cid, adj_score in adjudication.items():
@@ -1441,18 +1551,52 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
 
     missing = primary_batch.missing
 
+    # Persist BOTH looks, not just the merged one. Without this the receipt can
+    # report "disagreements=124" while making it impossible to ask WHICH cases
+    # moved or in WHICH direction — the harness discarding the evidence needed to
+    # audit its own noise. Cost is a few fields per row.
+    #
+    # Read these knowing the merge is ONE-DIRECTIONAL: `_worse_new_score` keeps
+    # the more severe look, so `adjudication_changed_outcome` can only ever mean
+    # the case got worse. A re-judge that would have IMPROVED a case is recorded
+    # here as a disagreement but never changes the score.
+    _premerge = locals().get("primary_premerge") or {}
+    _adjud = locals().get("adjudication") or {}
     per_case = []
     for cid in judged_ids:
         if cid not in primary:
             continue
         s = primary[cid]
-        per_case.append({**norm_cases[cid], **s,
+        pre = _premerge.get(cid)
+        adj = _adjud.get(cid)
+        audit = {
+            "adjudicated": cid in _adjud,
+            "primary_verdict": (pre or s).get("verdict"),
+            "primary_severity": (pre or s).get("severity"),
+            "adjudication_verdict": adj.get("verdict") if adj else None,
+            "adjudication_severity": adj.get("severity") if adj else None,
+            "adjudication_changed_outcome": bool(
+                pre and adj and (pre.get("verdict") != s.get("verdict")
+                                 or pre.get("severity") != s.get("severity"))),
+        }
+        per_case.append({**norm_cases[cid], **s, **audit,
                          "candidate_output": cands[cid].get("candidate"),
                          "latencyMs": cands[cid].get("latencyMs")})
 
     report = aggregate_new(per_case, rep_scores, judged_ids, has_production,
                            missing_count=len(missing), skipped_count=len(skipped),
-                           adjudication_missing_count=len(adjudication_batch.missing))
+                           adjudication_missing_count=len(adjudication_batch.missing),
+                           # With --verdicts this scorer sends no payload and no
+                           # system prompt, so the local --blind flag describes
+                           # THIS process and not the judging that produced those
+                           # verdicts. Recording it there would assert something
+                           # nobody observed. The external format carries no such
+                           # field, so the honest value is "unknown".
+                           #
+                           # Same distinction `cacheable` already draws: an ABSENT
+                           # answer and a FALSE answer are different situations,
+                           # and collapsing them shipped a wrong claim twice.
+                           blind=None if external_verdicts is not None else blind)
     report["skipped"] = skipped
     report["missing_scores"] = missing
     report["per_case"] = per_case
@@ -1489,7 +1633,8 @@ def _is_pass(verdict: str) -> bool:
 
 def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list[str],
                   has_production: bool, missing_count: int = 0, skipped_count: int = 0,
-                  adjudication_missing_count: int = 0) -> dict:
+                  adjudication_missing_count: int = 0,
+                  blind: bool | None = False) -> dict:
     total = len(per_case)
 
     def rate(items, pred):
@@ -1612,6 +1757,17 @@ def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list
 
     return {
         "system": "new",
+        # Whether the judge saw expected_output. THREE states, not two, because
+        # an unknown answer and a "no" are different situations:
+        #   True  — judged blind by this run
+        #   False — judged sighted by this run
+        #   None  — verdicts were IMPORTED; this process did no judging and
+        #           cannot speak for how they were produced
+        # Recorded because a blind and a sighted run are NOT comparable (showing
+        # the key moved 122 of 472 verdicts), and `report_ollama_bench.py` folds
+        # this into the comparison identity so two receipts differing on it
+        # refuse to rank together rather than being silently diffed.
+        "judge_blind": blind,
         # Completeness on its own, independent of the verdict. `BLOCK` takes
         # precedence over `INCOMPLETE`, so the verdict alone cannot express
         # "failed AND partial" — which is why keying a cache on it is wrong.
@@ -2044,6 +2200,12 @@ def main() -> int:
                     help=f"(new system) floor on the calibration sample size (default {DEFAULT_ADJUDICATE_MIN})")
     ap.add_argument("--no-adjudicate", action="store_true",
                     help="(new system) single primary pass only, skip the S3/S4 + sample re-judge")
+    ap.add_argument("--blind", action="store_true",
+                    help="do not show the judge expected_output. The sighted "
+                         "prompt already calls the key illustrative and that was "
+                         "measured to change nothing (122/472 verdicts moved by "
+                         "showing the key); this REMOVES the anchor instead of "
+                         "disclaiming it. Recorded in the receipt as judge_blind.")
     ap.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
     ap.add_argument("--out", required=True, help="output directory")
     args = ap.parse_args()
@@ -2115,7 +2277,7 @@ def main() -> int:
     if args.system == "new":
         report = score_new(norm_cases, cands, prod, args.judge, args.chunk_size,
                            external_verdicts, args.adjudicate_pct, args.adjudicate_min,
-                           adjudicate=not args.no_adjudicate)
+                           adjudicate=not args.no_adjudicate, blind=args.blind)
     else:
         report = score_old(norm_cases, cands, args.judge, args.reps, args.chunk_size)
 
