@@ -156,6 +156,29 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
 /// session's buffer.
 package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unchecked Sendable {
 
+  /// Hard cap on retained preview audio, in samples: 10 minutes at 16 kHz mono.
+  ///
+  /// **Why a cap and not a rolling window.** The session decodes with
+  /// `clipTimestamps = [bufferStartSec]` and is handed the WHOLE buffer, so it
+  /// addresses audio by absolute time from index 0. Front-trimming this array
+  /// would silently shift every timestamp the decoder relies on — a change to
+  /// heart-path decode semantics, made from a display limb, which is not a trade
+  /// worth taking inside a review round. The rolling-window design that fixes it
+  /// properly needs an origin offset in the session itself and is routed to its
+  /// own issue.
+  ///
+  /// What this buys: retained preview audio stops at ~38 MB instead of growing to
+  /// ~230 MB across the 60-minute dictation ceiling, and the copy-on-write the
+  /// decoder triggers each cycle stops growing with it. Past the cap the preview
+  /// stops updating and keeps its last text. **Dictation is completely
+  /// unaffected** — this is the limb's own copy and the heart's audio path never
+  /// sees it.
+  ///
+  /// Ten minutes covers essentially all real dictation: the product is built for
+  /// dictation rather than long-form, and a preview that quietly stops after ten
+  /// minutes is a far better failure than one that costs a quarter of a gigabyte.
+  static let maxRetainedSamples = 10 * 60 * 16_000
+
   /// All mutable session state behind ONE scoped lock.
   ///
   /// A lock rather than an actor because the provider is called from inside the
@@ -170,6 +193,7 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
   private struct State {
     var samples: [Float] = []
     var ended = false
+    var capped = false
     var session: WhisperKitStreamingSession?
     /// Created once by the first `end()`; every later caller awaits this same
     /// task rather than returning early.
@@ -265,10 +289,29 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
   }
 
   package func feed(_ newSamples: [Float]) async {
-    state.withLock { s in
-      guard !s.ended else { return }
+    let justCapped: Bool = state.withLock { s in
+      guard !s.ended, !s.capped else { return false }
+      guard s.samples.count + newSamples.count <= Self.maxRetainedSamples else {
+        s.capped = true
+        return true
+      }
       s.samples.append(contentsOf: newSamples)
+      return false
     }
+    // Stop the decode loop rather than letting it re-decode a frozen buffer
+    // forever. The display keeps its last text; the recording continues normally.
+    if justCapped { await endDecoding() }
+  }
+
+  /// Stop decoding but keep the handle alive, so `end()` stays the single
+  /// teardown path and cannot run twice.
+  private func endDecoding() async {
+    let live = state.withLock { s -> WhisperKitStreamingSession? in
+      let session = s.session
+      s.session = nil
+      return session
+    }
+    await live?.cancel()
   }
 
   /// Finish exactly once and release everything.

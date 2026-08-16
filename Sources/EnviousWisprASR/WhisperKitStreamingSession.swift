@@ -697,11 +697,27 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
           // The change check also makes this a genuine latest-value seam: an
           // unchanged hypothesis is not news, and the consumer should not be woken
           // to re-render identical text.
-          var hypothesis = confirmedText + retainedUnconfirmedSegments.map(\.text).joined()
-          // Bound BEFORE comparison, retention and delivery. Downstream trimming
-          // does not stop this actor retaining the full transcript.
-          if let limit = hypothesisRetentionLimit, hypothesis.count > limit {
-            hypothesis = String(hypothesis.suffix(limit))
+          // Compose the tail WITHOUT materializing the full transcript.
+          //
+          // `confirmedText` grows for the whole session and is heart state — the
+          // finalize path releases it entire, so it must NOT be trimmed. But the
+          // preview only ever shows a tail, and the previous version built
+          // `confirmedText + tail` and then took a suffix of THAT: a full-length
+          // concatenation every decode cycle, which is quadratic copying over a
+          // long recording. Cloud review caught it after the retention cap was
+          // added one layer too far downstream.
+          //
+          // Building from the END takes only what is displayed.
+          let hypothesis: String
+          if let limit = hypothesisRetentionLimit {
+            let tail = retainedUnconfirmedSegments.map(\.text).joined()
+            if tail.count >= limit {
+              hypothesis = String(tail.suffix(limit))
+            } else {
+              hypothesis = String(confirmedText.suffix(limit - tail.count)) + tail
+            }
+          } else {
+            hypothesis = confirmedText + retainedUnconfirmedSegments.map(\.text).joined()
           }
           if !hypothesis.isEmpty, hypothesis != lastPublishedHypothesis {
             lastPublishedHypothesis = hypothesis
