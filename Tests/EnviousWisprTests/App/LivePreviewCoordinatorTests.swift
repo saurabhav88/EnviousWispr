@@ -477,6 +477,126 @@ struct LivePreviewCoordinatorTests {
   /// a local. A weak-reference assertion cannot distinguish "the slot is still
   /// full" from "the observation was early", which makes it the wrong instrument
   /// for the property this fix changes.
+  /// **The axis my own enumeration missed.**
+  ///
+  /// I swept WHICH entry points release the engine and closed all of them, but
+  /// not WHEN — specifically, releasing while a recording is still running.
+  /// Switching the preview off mid-dictation cleared the cache and left the
+  /// session alive: still holding the model, still decoding, and still able to
+  /// repaint over `.off` through a later `onText`. The worst version of the leak,
+  /// because it is the visible one. Cloud review found the axis.
+  @Test("disabling MID-RECORDING tears down the live session, not just the cache")
+  func disablingMidRecordingTearsDownTheSession() async {
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable { var enabled = true }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { ReadyEngine() }))
+      }
+    )
+
+    // Start and leave the recording RUNNING — this is the whole point.
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: an engine must be cached while the recording runs")
+    #expect(coordinator.display != .off, "control: a live recording is not off")
+
+    // The user turns the preview off WITHOUT stopping the recording.
+    box.enabled = false
+    coordinator.releaseForDisabledSetting()
+
+    #expect(!coordinator.hasPreparedEngineForTests, "the cached engine must go")
+    #expect(coordinator.display == .off, "and the pill must be off")
+
+    // And it must STAY off: a session left running could repaint after the
+    // disable. Stopping afterwards must also be safe rather than double-tearing.
+    for _ in 0..<200 { await Task.yield() }
+    #expect(coordinator.display == .off, "a torn-down session cannot repaint over off")
+    coordinator.setRecording(false)
+    #expect(coordinator.display == .off)
+  }
+
+  /// **Found by enumerating the class, not by review.** Five of this PR's findings
+  /// were "the bound is downstream of the growth" and three were "the release
+  /// misses a path", so the remaining release paths were swept exhaustively
+  /// rather than waiting for the next round.
+  ///
+  /// This is the path nobody had reached: use the preview once, then turn live
+  /// transcription on. Every later recording resolves to `.blocked`, correctly —
+  /// and the prepared engine, holding a loaded 217 MB model it can no longer use,
+  /// stayed cached for the rest of the session. Invisible on Apple's engine,
+  /// which holds a locale.
+  @Test("a blocked resolution releases the engine instead of caching a model it cannot use")
+  func blockedResolutionReleasesTheEngine() async {
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable { var blocked = false }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { true },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        if box.blocked { return .blocked(.heartIsStreaming) }
+        return .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { ReadyEngine() }))
+      }
+    )
+
+    // Use it once so an engine is genuinely cached.
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    coordinator.setRecording(false)
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: the slot must be FULL before a blocked resolution can release anything")
+
+    // The user turns live transcription on. The preview is still ENABLED — this
+    // is not the disabled path — it simply cannot run.
+    box.blocked = true
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where coordinator.hasPreparedEngineForTests { await Task.yield() }
+    coordinator.setRecording(false)
+
+    #expect(
+      !coordinator.hasPreparedEngineForTests,
+      "a preview that cannot run must not keep a loaded model cached")
+  }
+
   /// The COMMON order, and the one the first fix missed: finish a recording, turn
   /// the preview off, never record again. The release inside `setRecording(true)`
   /// is never reached, so the model stayed resident indefinitely. Cloud review

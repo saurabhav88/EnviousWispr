@@ -266,6 +266,23 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     guard case .ready(let candidate) = resolution else {
       if case .blocked(let reason) = resolution {
         display = .unavailable(Self.sentence(for: reason))
+        // **A blocked engine must not stay cached (#2108).**
+        //
+        // Found by enumerating the class rather than by review: five of this
+        // PR's findings were "the bound is downstream of the growth" and three
+        // were "the release misses a path", so the remaining paths were swept
+        // exhaustively instead of waiting for the next round to surface one.
+        //
+        // Every refusal reason can persist for the rest of a session — the user
+        // turns live transcription on, or locks a language the model does not
+        // cover, or removes the model. The prepared engine holds a loaded 217 MB
+        // model that cannot serve ANY recording while the reason holds, so
+        // keeping it is a pure cost. Re-preparing when the block clears costs one
+        // model load, which is what the first preparation cost anyway.
+        //
+        // Apple's engine made this invisible: a blocked Apple engine holds a
+        // locale.
+        releasePreparedEngine()
       }
       return
     }
@@ -390,6 +407,24 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// one place that learns a setting moved.
   func releaseForDisabledSetting() {
     guard !isEnabled() else { return }
+    // **Tear down the ACTIVE session first, not just the cached slot.**
+    //
+    // Switching the preview off mid-recording used to clear only the cache:
+    // `runSession` still held the engine and session as locals, `sessionTask`
+    // kept feeding audio, and a later `onText` could repaint over `.off`. So the
+    // model stayed loaded AND DECODING until the recording ended, for a feature
+    // the user had just turned off — the worst version of this leak, because it
+    // is also the visible one.
+    //
+    // Mirrors the stop path exactly rather than approximating it: same order,
+    // same fields. Half-porting a teardown is what produced three separate
+    // release findings on this PR already.
+    if isRunning {
+      isRunning = false
+      let task = sessionTask
+      sessionTask = nil
+      task?.cancel()
+    }
     releasePreparedEngine()
     display = .off
   }
