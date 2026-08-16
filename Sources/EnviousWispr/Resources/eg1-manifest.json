@@ -1,9 +1,9 @@
 {
   "modelName": "eg-1",
-  "version": "v2-sharded",
+  "version": "v3-eg2",
   "contextTokens": 16384,
   "promptTemplateID": "eg1-v1",
   "minAppVersion": "2.3.0",
-  "downloadURL": "https://models.enviouslabs.co/eg1/v2-sharded/eg-1-v1-00001-of-00008.gguf",
+  "downloadURL": "https://models.enviouslabs.co/eg1/v3-eg2/eg-1-v2-00001-of-00008.gguf",
   "licenseURL": "https://models.enviouslabs.co/eg1/EG-1-MODEL-LICENSE.txt"
 }
