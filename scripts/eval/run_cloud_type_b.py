@@ -59,9 +59,12 @@ from __future__ import annotations
 
 import argparse
 import http.client
+import hashlib
+import io
 import json
 import os
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -77,6 +80,26 @@ from acceptance_gate import (  # noqa: E402
     _strip_llm_preamble_python,
     build_cloud_fixed_system,
 )
+
+# Bedrock is reached through boto3 rather than urllib because the request must be
+# SigV4-signed. Imported lazily inside _bedrock_client() so the other three
+# providers keep working on a machine with no AWS SDK installed.
+BEDROCK_REGION = os.environ.get("EW_BEDROCK_REGION", "us-east-1")
+_bedrock_local = threading.local()
+
+
+def _bedrock_client():
+    """One client per worker thread. botocore documents clients as thread-safe
+    for calls, but not the lazy per-client credential/endpoint resolution that
+    happens on first use, and this harness runs 16 workers."""
+    client = getattr(_bedrock_local, "client", None)
+    if client is None:
+        import boto3  # noqa: PLC0415 - optional dependency, see comment above
+
+        client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+        _bedrock_local.client = client
+    return client
+
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
@@ -180,6 +203,11 @@ def claude_body(model: str, system: str, user: str) -> dict:
 
 
 def describe_shape(provider: str, model: str) -> str:
+    if provider == "bedrock":
+        return (
+            f"converse | maxTokens={CLAUDE_MAX_OUTPUT_TOKENS} | temperature OMITTED "
+            f"| thinking disabled | region={BEDROCK_REGION}"
+        )
     if provider == "claude":
         return (
             f"messages | max_tokens={CLAUDE_MAX_OUTPUT_TOKENS} | temperature OMITTED "
@@ -273,6 +301,50 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
             "outTok": usage.get("output_tokens"),
             "reasoningTok": 0,
         }
+    elif provider == "bedrock":
+        # Same Claude models, reached through AWS credits rather than a paid
+        # Anthropic key. Fidelity caveat, mirroring the Azure one above: our
+        # users call api.anthropic.com directly, so a Bedrock-hosted model is a
+        # different service instance of the same model. Converse is Bedrock's
+        # provider-neutral shape, so `system` and `content` are lists of typed
+        # blocks rather than Anthropic's bare strings.
+        from botocore.exceptions import ClientError  # noqa: PLC0415
+
+        try:
+            data = _bedrock_client().converse(
+                modelId=model,
+                system=[{"text": system}],
+                messages=[{"role": "user", "content": [{"text": user}]}],
+                # temperature OMITTED to match claude_body / the shipped
+                # ClaudeConnector, which sends no temperature at all.
+                inferenceConfig={"maxTokens": CLAUDE_MAX_OUTPUT_TOKENS},
+            )
+        except ClientError as e:
+            # Re-raise as HTTPError so the retry loop's existing RETRYABLE set
+            # classifies throttling and 5xx exactly as it does for every other
+            # provider. The status code is Bedrock's own, not a guess at one.
+            status = (e.response.get("ResponseMetadata") or {}).get("HTTPStatusCode", 400)
+            body = json.dumps(e.response.get("Error") or {}).encode()
+            raise urllib.error.HTTPError(
+                f"bedrock://{model}", status,
+                (e.response.get("Error") or {}).get("Code", "ClientError"),
+                {}, io.BytesIO(body),
+            ) from e
+
+        stop = data.get("stopReason")
+        if stop == "max_tokens":
+            # Truncation classifies BEFORE emptiness, mirroring the connector.
+            raise RuntimeError("truncated response rejected (stopReason=max_tokens)")
+        if stop == "content_filtered":
+            raise RuntimeError("model refused (stopReason=content_filtered)")
+        blocks = (data.get("output", {}).get("message", {}) or {}).get("content", []) or []
+        text = "".join(b.get("text", "") for b in blocks if "text" in b).strip()
+        usage = data.get("usage", {}) or {}
+        meta = {
+            "inTok": usage.get("inputTokens"),
+            "outTok": usage.get("outputTokens"),
+            "reasoningTok": 0,
+        }
     else:
         data = _post(
             GEMINI_URL.format(model=model, key=api_key),
@@ -309,13 +381,15 @@ BARE_PROMPT = (ROOT / "scripts/eval/prompts/cloud-fixed-polish-prompt-v6.txt").r
 
 def polish_case(
     provider: str, model: str, api_key: str, case: dict,
-    prompt_mode: str = "production", azure_endpoint: str = ""
+    prompt_mode: str = "production", azure_endpoint: str = "",
+    prompt_body: str | None = None,
 ) -> dict:
     transcript = case["text"]
     word_count = len(transcript.split())
-    system = (
-        BARE_PROMPT if prompt_mode == "bare" else build_cloud_fixed_system(word_count)
-    )
+    if prompt_mode == "bare":
+        system = BARE_PROMPT
+    else:
+        system = build_cloud_fixed_system(word_count, body=prompt_body)
     user = f"Transcript to clean:\n\n{transcript}"
 
     start = time.monotonic()
@@ -393,7 +467,8 @@ def load_corpus(path: Path) -> list[dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--provider", required=True, choices=["openai", "gemini", "claude"])
+    ap.add_argument("--provider", required=True,
+                    choices=["openai", "gemini", "claude", "bedrock"])
     ap.add_argument("--model", required=True)
     ap.add_argument("--corpus", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
@@ -408,6 +483,14 @@ def main() -> int:
              "never report a bare-prompt score as the shipped product's quality.",
     )
     ap.add_argument(
+        "--system-prompt-file", type=Path, default=None,
+        help="bakeoff arm: substitute THIS file for the shipped v6 body inside the "
+             "otherwise byte-identical production composition, so the arm differs from "
+             "the shipped arm in exactly one thing. Incompatible with "
+             "--system-prompt bare. A score produced this way is an unshipped prompt's "
+             "score and must be reported as such.",
+    )
+    ap.add_argument(
         "--azure", action="store_true",
         help="route --provider openai through the Azure deployment on Founders Hub "
              "credits instead of the direct key. --model then takes the DEPLOYMENT "
@@ -418,12 +501,40 @@ def main() -> int:
     # Fail fast on prompt drift BEFORE spending anything.
     _selftest_mirrors()
 
+    prompt_body = None
+    if args.system_prompt_file is not None:
+        if args.system_prompt == "bare":
+            print("--system-prompt-file is incompatible with --system-prompt bare",
+                  file=sys.stderr)
+            return 2
+        prompt_body = args.system_prompt_file.read_text()
+        if not prompt_body.strip():
+            print(f"{args.system_prompt_file} is empty", file=sys.stderr)
+            return 2
+
     if args.provider == "openai" and not openai_capabilities(args.model)["supports_chat_completions"]:
         print(f"{args.model} is Responses-API-only; the shipped connector cannot call it", file=sys.stderr)
         return 2
 
     azure_endpoint = ""
-    if args.azure:
+    if args.provider == "bedrock":
+        if args.azure:
+            print("--azure applies to --provider openai only", file=sys.stderr)
+            return 2
+        # boto3 reads the credential chain itself; there is no key to pass down.
+        # Checked here so a 1,462-case run fails in a second rather than 1,462
+        # identical AccessDenied retries.
+        missing = [v for v in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
+                   if not os.environ.get(v)]
+        if missing:
+            print(f"bedrock needs {' and '.join(missing)} in the environment. Use:\n"
+                  "  ~/.claude/bin/get-key launch aws-bedrock-access-key-id "
+                  "AWS_ACCESS_KEY_ID -- \\\n"
+                  "  ~/.claude/bin/get-key launch aws-bedrock-secret-access-key "
+                  "AWS_SECRET_ACCESS_KEY -- <cmd>", file=sys.stderr)
+            return 2
+        api_key = ""
+    elif args.azure:
         if args.provider != "openai":
             print("--azure applies to --provider openai only", file=sys.stderr)
             return 2
@@ -446,7 +557,15 @@ def main() -> int:
 
     print(f"model    : {args.model} ({args.provider})", file=sys.stderr)
     print(f"shape    : {describe_shape(args.provider, args.model)}", file=sys.stderr)
-    print(f"prompt   : {args.system_prompt}", file=sys.stderr)
+    if prompt_body is None:
+        print(f"prompt   : {args.system_prompt}", file=sys.stderr)
+    else:
+        # Name AND hash the arm: two variants of one prompt have the same filename
+        # in every log line that matters, and the hash is what distinguishes them.
+        digest = hashlib.sha256(prompt_body.strip().encode()).hexdigest()[:12]
+        print(f"prompt   : {args.system_prompt} body<-{args.system_prompt_file} "
+              f"sha256={digest} ({len(prompt_body.strip())} chars) UNSHIPPED",
+              file=sys.stderr)
     print(f"corpus   : {args.corpus.name} ({len(cases)} cases, {args.workers} workers)", file=sys.stderr)
 
     results: dict[str, dict] = {}
@@ -456,7 +575,7 @@ def main() -> int:
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = [
             pool.submit(polish_case, args.provider, args.model, api_key, c,
-                        args.system_prompt, azure_endpoint)
+                        args.system_prompt, azure_endpoint, prompt_body)
             for c in cases
         ]
         for fut in as_completed(futures):
