@@ -71,6 +71,10 @@ variant() {
   chmod +x "$path"
 }
 
+# Variants live in $TMP, where `$0/../..` is not the repo. Give them the real manifest so the
+# deployment-target assertion resolves for every case that is not about the manifest itself.
+export EW_PROJECT_MANIFEST="$HERE/../../Project.swift"
+
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
@@ -115,6 +119,35 @@ expect 2 "a symbol-pattern list matching nothing refuses to pass" "$TMP/nofw.sh"
 # shellcheck disable=SC2016  # deliberate: these are sed patterns, the $ must stay literal
 variant "$TMP/raw.sh" 'SYMS_READABLE=\$(printf .%s\\n. "\$SYMS" | xcrun swift-demangle 2>\/dev\/null)' 'SYMS_READABLE="$SYMS"'
 expect 2 "matching raw mangled symbols refuses to give a verdict" "$TMP/raw.sh" "$BIN"
+
+# **A raised deployment target must be rejected, not merely printed.** This is the failure that
+# would leave every check below immaculate and the product unlaunchable for supported users:
+# every weak-linkage verdict is RELATIVE to the target, so raising it keeps them all green.
+#
+# Driven by pointing the real script at a manifest declaring a different floor, rather than by
+# editing the script. Editing it was the first approach and it was wrong twice over: the sed
+# pattern contained slashes, and a copy in a temp dir resolves its repo root elsewhere, which
+# broke every OTHER case instead of testing this one.
+printf 'let deploymentTargets: DeploymentTargets = .macOS("99.0")\n' > "$TMP/Fake.swift"
+out=$(EW_PROJECT_MANIFEST="$TMP/Fake.swift" "$SUT" "$BIN" 2>&1); code=$?
+if [ "$code" -ne 0 ] && printf '%s' "$out" | /usr/bin/grep -q "Reconcile the two deliberately"; then
+  echo "  ok   [$code, matched] a binary whose target disagrees with the declared floor is rejected"
+  pass=$((pass + 1))
+else
+  echo "  FAIL [exit $code; wanted nonzero AND the reconcile message] declared-floor mismatch" >&2
+  printf '%s\n' "$out" | sed 's/^/       /' >&2
+  fail=$((fail + 1))
+fi
+
+# An unreadable manifest must refuse, not fall back to trusting the binary.
+out=$(EW_PROJECT_MANIFEST="$TMP/does-not-exist.swift" "$SUT" "$BIN" 2>&1); code=$?
+if [ "$code" -eq 2 ]; then
+  echo "  ok   [2] an unreadable manifest refuses to certify the deployment target"
+  pass=$((pass + 1))
+else
+  echo "  FAIL [got $code, want 2] unreadable manifest" >&2
+  fail=$((fail + 1))
+fi
 
 # Fails closed on every input it cannot measure.
 expect 2 "missing file" "$SUT" "$TMP/does-not-exist"

@@ -76,10 +76,34 @@ if [ "$READABLE_SIGNATURES" -eq 0 ]; then
   die "swift-demangle output contains no recognisably demangled Swift signature; every type-name verdict below would be vacuous" 2
 fi
 
-# Report the deployment target so a reader can see WHY this check matters for this build.
 MINOS=$(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
 echo "==> binary:            $BIN"
 echo "==> deployment target: ${MINOS:-unknown}"
+
+# **The deployment target is ASSERTED against the declared support floor, not merely printed.**
+#
+# Everything below is relative: raise the target to 15.0 and macOS 26 symbols are still weak
+# relative to it, so every check here still passes — while the app has become unlaunchable for
+# every macOS 14 user we claim to support. The linkage would be immaculate and the product
+# broken for a whole population, which is a worse outcome than the defect this script was
+# written for. Read from `Project.swift` so there is one source of truth; a mismatch means
+# either an accidental bump or a deliberate one that has not updated the floor here.
+[ -n "$MINOS" ] || die "could not read the deployment target from $BIN; every relative check below would be meaningless" 2
+
+REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# Overridable so the self-test can point at a manifest declaring a DIFFERENT floor and prove this
+# assertion rejects it. Without the override the test would have to edit this script, and a copy
+# placed elsewhere resolves `$0/../..` to the wrong root — which is how the first draft of that
+# test broke every other case rather than testing this one.
+MANIFEST="${EW_PROJECT_MANIFEST:-$REPO_ROOT/Project.swift}"
+[ -f "$MANIFEST" ] || die "cannot find $MANIFEST to read the declared support floor; refusing to certify a deployment target against nothing" 2
+DECLARED=$(/usr/bin/grep -oE 'DeploymentTargets = \.macOS\("[0-9]+\.[0-9]+"\)' "$MANIFEST" | /usr/bin/grep -oE '[0-9]+\.[0-9]+' | head -1)
+[ -n "$DECLARED" ] || die "could not parse the declared macOS floor from $MANIFEST; the pattern has drifted and this assertion would silently stop running" 2
+
+if [ "$MINOS" != "$DECLARED" ]; then
+  die "binary targets macOS $MINOS but $MANIFEST declares $DECLARED. A raised target ships an app that will not launch for supported users, and every weak-linkage check below is relative to the target so it would still pass. Reconcile the two deliberately." 1
+fi
+echo "==> floor asserted:    binary $MINOS matches Project.swift $DECLARED"
 
 count_for() { printf '%s\n' "$SYMS" | /usr/bin/grep -c "(from $1)"; }
 count_strong_for() {

@@ -92,6 +92,12 @@ if version_gt "$RUNNER_VERSION" "$MINOS"; then
   echo "    No macOS $MINOS runner image exists, so that range is covered by the compiler's"
   echo "    availability checking (a build error), not by this launch. Do not read this PASS as"
   echo "    proof that a $MINOS machine starts the app."
+elif version_gt "$MINOS" "$RUNNER_VERSION"; then
+  # The app requires MORE than this runner offers. Previously this fell into the "exactly at the
+  # deployment target" branch and said so, which is false in the one case that matters: a target
+  # accidentally raised above the baseline makes the app unlaunchable for supported users, and
+  # this job would have blamed the launch failure on the environment instead of naming the cause.
+  die "the app targets macOS $MINOS but this runner is $RUNNER_VERSION. It cannot launch here by construction, and a target above the support floor means it cannot launch for supported users either." 1
 else
   echo "==> baseline ok: runner $RUNNER_VERSION is exactly at the deployment target $MINOS"
 fi
