@@ -634,19 +634,68 @@ package enum ApplePreviewEngineResolver {
     // but this Mac does not have its model, and downloading ~140 MB is the user's decision, taken
     // on the Live Preview settings page. Reported by name so the pill can say which language,
     // rather than a generic sentence that leaves the user hunting.
-    let installed = await DictationTranscriber.installedLocales.contains {
-      $0.identifier(.bcp47) == tag
+    let installedTags = await DictationTranscriber.installedLocales.map {
+      $0.identifier(.bcp47)
     }
-    guard installed else {
+    guard
+      let readyTag = satisfyingTag(
+        requestedCode: code, resolvedTag: tag, installedTags: installedTags)
+    else {
+      // Name the LANGUAGE for a locked code and the exact REGION for a full one, matching what
+      // the user actually has to go and install.
+      let name = ApplePackCatalog.localizedName(
+        for: Locale(identifier: code).region == nil ? code : tag)
       await log("pack not installed for \(tag); user must install it")
-      return .blocked(.installRequired(languageName: ApplePackCatalog.localizedName(for: tag)))
+      return .blocked(.installRequired(languageName: name))
     }
 
+    let readyLocale = Locale(identifier: readyTag)
     return .ready(
       LivePreviewEngineCandidate(
-        key: LivePreviewEngineKey(engine: engineID, commitment: tag),
-        makeEngine: { ApplePreviewRecognizer(locale: locale) }
+        key: LivePreviewEngineKey(engine: engineID, commitment: readyTag),
+        makeEngine: { ApplePreviewRecognizer(locale: readyLocale) }
       ))
+  }
+
+  /// Which installed pack satisfies this request, if any — and therefore which locale the engine
+  /// commits to. Pure, so the regional behaviour below is testable without Apple's inventory.
+  ///
+  /// **A bare code draws a RANDOM REGION on every call.** Measured: `fr` resolved to fr-CH, then
+  /// fr-CA, then fr-BE across three runs (FACT: apple-api-semantics-measured). Locked language
+  /// mode sends a bare catalogue code, so it lotteries.
+  ///
+  /// That used to cost quality only, because `prepare()` downloaded whichever variant the draw
+  /// named. #2080 made pack installation the user's deliberate action, which turned the same
+  /// instability into a FUNCTIONAL BREAK: download the French the pill asked for, and the next
+  /// recording draws a different French and asks again. The user would have to install every
+  /// variant to make their own language work.
+  ///
+  /// So a bare code accepts ANY installed variant of that language and USES it. That also pins
+  /// `commitment`, so the cached engine stops being rebuilt with a different regional model on
+  /// random recordings. A code that carries a REGION (Auto sends the full system locale) still
+  /// requires that exact tag: the region is the whole point there — measured, a `zh-TW` Mac
+  /// reduced to a bare code gets Simplified characters for a Traditional reader.
+  ///
+  /// This does NOT fix the underlying product gap: a locked language still gets an arbitrary
+  /// region's model, and the real fix is regional rows in the 100-code catalogue, which changes
+  /// a user-visible list and the paste engines too (FACT: not-done). It restores the property
+  /// that installing the language once is enough.
+  package static func satisfyingTag(
+    requestedCode: String,
+    resolvedTag: String,
+    installedTags: [String]
+  ) -> String? {
+    guard Locale(identifier: requestedCode).region == nil else {
+      return installedTags.first { $0 == resolvedTag }
+    }
+    let language = Locale(identifier: resolvedTag).language.languageCode?.identifier
+    // Sorted so the same inputs always yield the same locale. An unstable choice here would
+    // reintroduce the churn this exists to remove, just one level further in.
+    return
+      installedTags
+      .filter { Locale(identifier: $0).language.languageCode?.identifier == language }
+      .sorted()
+      .first
   }
 
   /// The language tag to ask Apple for: a bare ISO 639-1 code when the user locked

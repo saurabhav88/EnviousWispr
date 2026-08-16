@@ -101,6 +101,14 @@ struct LivePreviewSettingsView: View {
         if pack.nativeName != pack.localizedName {
           Text(pack.nativeName).settingsHelperCopy()
         }
+        // The failure needs WORDS, not just a relabelled button. "Try again" alone leaves the
+        // user guessing whether the download broke, whether they did something wrong, or whether
+        // the language is unavailable — and the remedy (check the connection) is the same for
+        // every cause, so one sentence answers all of them. This string existed and was never
+        // rendered anywhere; a copy test referencing it made it look wired when it was not.
+        if packs?.failedTag == pack.tag {
+          Text(LivePreviewSettingsCopy.packInstallFailed).settingsHelperCopy()
+        }
       }
       Spacer(minLength: 8)
 

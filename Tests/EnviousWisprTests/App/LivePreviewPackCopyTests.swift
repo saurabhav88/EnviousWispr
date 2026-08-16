@@ -112,6 +112,57 @@ struct LivePreviewPackCopyTests {
     #expect(LivePreviewSettingsCopy.packInstalling.localizedCaseInsensitiveContains("download"))
   }
 
+  /// Every string this page declares must actually reach a screen.
+  ///
+  /// **Written because one did not.** `packInstallFailed` was declared, referenced by the dash
+  /// test above, and rendered nowhere — so a failed download relabelled its button to "Try again"
+  /// and never explained what happened or what to do. The copy test referencing it is precisely
+  /// what made it LOOK wired: existence is not function, and a test that touches a string proves
+  /// only that it compiles.
+  ///
+  /// So this checks the whole surface rather than that one string, by reading the declarations
+  /// out of the copy file and requiring each to be used from some OTHER source file.
+  @Test("Every declared piece of page copy is rendered somewhere in the app")
+  func everyStringIsActuallyUsed() throws {
+    let settings = RepoRoot.url.appending(path: "Sources/EnviousWisprAppKit/Views/Settings")
+    let copyFile = settings.appending(path: "LivePreviewSettingsCopy.swift")
+    let declarations = try String(contentsOf: copyFile, encoding: .utf8)
+      .split(separator: "\n")
+      .compactMap { line -> String? in
+        guard let range = line.range(of: #"static (let|func) "#, options: .regularExpression)
+        else { return nil }
+        return String(line[range.upperBound...].prefix { $0.isLetter || $0.isNumber })
+      }
+    #expect(declarations.count > 10, "control: the copy surface was found and parsed")
+
+    // Every source file that could render it — the page itself plus the coordinator that puts
+    // the missing-pack sentence in the pill.
+    let roots = ["Sources/EnviousWisprAppKit/Views/Settings", "Sources/EnviousWisprAppKit/App"]
+    var corpus = ""
+    for root in roots {
+      let dir = RepoRoot.url.appending(path: root)
+      let files =
+        FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)?
+        .compactMap { $0 as? URL }
+        .filter {
+          $0.pathExtension == "swift" && $0.lastPathComponent != "LivePreviewSettingsCopy.swift"
+        }
+        ?? []
+      for file in files { corpus += (try? String(contentsOf: file, encoding: .utf8)) ?? "" }
+    }
+    #expect(
+      corpus.contains("LivePreviewSettingsCopy."), "control: the corpus reached real call sites")
+
+    let unused = declarations.filter { !corpus.contains("LivePreviewSettingsCopy.\($0)") }
+    #expect(
+      unused.isEmpty,
+      """
+      Declared but never rendered, so the user never sees it: \(unused.joined(separator: ", ")). \
+      Either wire it into the page or delete it — a string that exists and is never shown reads \
+      as done in review and is missing in the product.
+      """)
+  }
+
   /// The pill sentence must keep matching the phrasing the app already uses for a missing model,
   /// so the same situation is not described two different ways in two places.
   @Test("The missing-pack sentence follows the existing missing-model phrasing")
