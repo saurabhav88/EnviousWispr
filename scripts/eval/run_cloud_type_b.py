@@ -308,7 +308,7 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
         # different service instance of the same model. Converse is Bedrock's
         # provider-neutral shape, so `system` and `content` are lists of typed
         # blocks rather than Anthropic's bare strings.
-        from botocore.exceptions import ClientError  # noqa: PLC0415
+        from botocore.exceptions import BotoCoreError, ClientError  # noqa: PLC0415
 
         try:
             data = _bedrock_client().converse(
@@ -330,6 +330,17 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
                 (e.response.get("Error") or {}).get("Code", "ClientError"),
                 {}, io.BytesIO(body),
             ) from e
+        except BotoCoreError as e:
+            # Transport failures (EndpointConnectionError, ReadTimeoutError,
+            # ConnectionClosedError) are BotoCoreError subclasses of bare
+            # Exception -- NOT ClientError, NOT OSError, NOT urllib. Uncaught,
+            # one blip escapes polish_case entirely and kills the whole 1,462-case
+            # run at fut.result(), rather than costing a single case. URLError is
+            # the loop's existing retryable-transport channel, so this reuses that
+            # policy instead of adding a second one. Same defect the ConnectionReset
+            # comment above records for urllib; a new transport needed the same
+            # treatment and did not automatically inherit it.
+            raise urllib.error.URLError(f"{type(e).__name__}: {e}") from e
 
         stop = data.get("stopReason")
         if stop == "max_tokens":
@@ -522,12 +533,20 @@ def main() -> int:
             print("--azure applies to --provider openai only", file=sys.stderr)
             return 2
         # boto3 reads the credential chain itself; there is no key to pass down.
-        # Checked here so a 1,462-case run fails in a second rather than 1,462
-        # identical AccessDenied retries.
-        missing = [v for v in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
-                   if not os.environ.get(v)]
-        if missing:
-            print(f"bedrock needs {' and '.join(missing)} in the environment. Use:\n"
+        # Checked here so a 1,462-case run fails in a second rather than as 1,462
+        # identical AccessDenied retries. Ask boto3 whether it can resolve
+        # credentials rather than testing for two env vars: the env pair is only
+        # one entry in the chain, and a guard that names it refuses AWS_PROFILE,
+        # IAM Identity Center, and instance roles -- all of which would have
+        # worked. Check the capability, never a proxy for it.
+        try:
+            import boto3  # noqa: PLC0415
+
+            if boto3.Session().get_credentials() is None:
+                raise RuntimeError("no credentials in the boto3 provider chain")
+        except Exception as e:  # noqa: BLE001 - any resolution failure is fatal here
+            print(f"bedrock cannot authenticate: {type(e).__name__}: {e}\n"
+                  "For the credit-funded account, use:\n"
                   "  ~/.claude/bin/get-key launch aws-bedrock-access-key-id "
                   "AWS_ACCESS_KEY_ID -- \\\n"
                   "  ~/.claude/bin/get-key launch aws-bedrock-secret-access-key "
