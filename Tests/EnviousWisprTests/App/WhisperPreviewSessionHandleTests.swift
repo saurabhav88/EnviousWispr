@@ -98,7 +98,7 @@ import Testing
   /// `end()` is idempotent AND awaitable: a second caller waits for the same
   /// teardown rather than returning early. An early return would let the
   /// recognizer open a new decode loop over the shared WhisperKit instance while
-  /// the old session's non-cancellable transcribe was still running — the
+  /// the old session's still-returning transcribe was still running — the
   /// decoder-state corruption `WhisperKitStreamingSession.cancel()` documents.
   @Test("end is safe and complete when called twice, from two callers")
   func endIsIdempotentAndAwaitable() async {
@@ -122,7 +122,7 @@ import Testing
   // MARK: - #2108: the ten-minute cap must not orphan a running decode
 
   /// A session whose `cancel()` blocks until the test lets it finish, standing in
-  /// for the real one sitting inside a non-cancellable WhisperKit transcribe.
+  /// for the real one still inside a WhisperKit transcribe.
   ///
   /// Held through `WhisperKitIncrementalSession` rather than the concrete type,
   /// which is the only reason a teardown that must WAIT can be observed at all.

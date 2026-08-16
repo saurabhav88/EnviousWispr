@@ -640,7 +640,7 @@ import Testing
         MemberSignature(
           condition: nil,
           signature:
-            "func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws\n    -> [TranscriptionResult]"
+            "func transcribe(\n    audioArray: [Float], decodeOptions: DecodingOptions?,\n    shouldContinueDecoding: (@Sendable () -> Bool)?\n  ) async throws -> [TranscriptionResult]"
         ),
         MemberSignature(condition: nil, signature: "func encodeText(_ text: String) -> [Int]"),
       ]),

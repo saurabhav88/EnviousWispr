@@ -259,7 +259,8 @@ public enum TailBenchmarkHarness {
     opts.clipTimestamps = [snap.lastConfirmedSec]
     opts.windowClipTime = 0
     do {
-      let results = try await model.kit.transcribe(audioArray: decodeInput, decodeOptions: opts)
+      let results = try await model.kit.transcribe(
+        audioArray: decodeInput, decodeOptions: opts, shouldContinueDecoding: nil)
       let tailText = joinedText(results)
       let emitted = tailText.isEmpty ? snap.confirmedText : appendText(snap.confirmedText, tailText)
       let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
@@ -308,7 +309,8 @@ public enum TailBenchmarkHarness {
     opts.chunkingStrategy = snap.sampleCount > thirtySec ? .vad : ChunkingStrategy.none
     let padded = WhisperKitBackend.padAudioWithSilence(snap.samples)
     do {
-      let results = try await model.kit.transcribe(audioArray: padded, decodeOptions: opts)
+      let results = try await model.kit.transcribe(
+        audioArray: padded, decodeOptions: opts, shouldContinueDecoding: nil)
       let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
       return TailArmOutput(
         id: id, arm: "S4", emitted: joinedText(results),
@@ -343,7 +345,8 @@ public enum TailBenchmarkHarness {
     // Same trailing-silence pad the shipped flush applies for last-word context.
     let padded = WhisperKitBackend.padAudioWithSilence(snap.samples)
     do {
-      let results = try await model.kit.transcribe(audioArray: padded, decodeOptions: opts)
+      let results = try await model.kit.transcribe(
+        audioArray: padded, decodeOptions: opts, shouldContinueDecoding: nil)
       let bufferText = joinedText(results)
       // Fallback on an empty decode: plain release (confirmedText already
       // CONTAINS the scrolled-out prefix — never re-prepend it).

@@ -83,8 +83,8 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
   /// cached WhisperKit instance.
   ///
   /// This is not belt-and-braces. `WhisperKitStreamingSession.cancel()` documents
-  /// why it awaits the loop's exit: WhisperKit's `transcribe` is not
-  /// cooperatively cancellable, so returning early "would let a quick next
+  /// why it awaits the loop's exit: an aborted `transcribe` still returns on its
+  /// own schedule, so returning early "would let a quick next
   /// recording start a SECOND concurrent transcribe on the same model and corrupt
   /// decoder state". The coordinator cancels its session task WITHOUT awaiting
   /// `end()`, so on a rapid stop/start the old session can still be inside that
@@ -207,7 +207,7 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
     /// The cap path's cancel, kept JOINABLE.
     ///
     /// `endDecoding` takes the session out of shared state and then awaits a
-    /// `cancel()` that can sit inside a non-cancellable transcribe. Without this
+    /// `cancel()` that can sit inside a still-returning transcribe. Without this
     /// slot a concurrent `end()` sees `session == nil`, finishes instantly, and
     /// the recognizer's turnover releases — so a new decode loop can start on
     /// the same cached WhisperKit instance while the capped one is still
@@ -349,7 +349,7 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
     // **Idempotent AND awaitable.** A second caller must WAIT for the same
     // teardown, not return immediately: the recognizer's turnover wait and the
     // coordinator's own `end()` race, and an early return would let a new decode
-    // loop start while the old `cancel()` is still awaiting a non-cancellable
+    // loop start while the old `cancel()` is still awaiting an in-flight
     // transcribe — the corruption this serialization exists to prevent. So the
     // first caller creates the teardown task and everyone awaits it.
     let teardown: Task<Void, Never> = state.withLock { s in

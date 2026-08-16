@@ -41,9 +41,10 @@ import Testing
       self.throwOnCall = throwOnCall
     }
 
-    func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
-      -> [TranscriptionResult]
-    {
+    func transcribe(
+      audioArray: [Float], decodeOptions: DecodingOptions?,
+      shouldContinueDecoding: (@Sendable () -> Bool)?
+    ) async throws -> [TranscriptionResult] {
       let index = callCount
       callCount += 1
       if index == throwOnCall { throw FakeDecodeError() }
@@ -278,9 +279,10 @@ import Testing
       self.tailResult = tailResult
     }
 
-    func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
-      -> [TranscriptionResult]
-    {
+    func transcribe(
+      audioArray: [Float], decodeOptions: DecodingOptions?,
+      shouldContinueDecoding: (@Sendable () -> Bool)?
+    ) async throws -> [TranscriptionResult] {
       if audioArray.count > liveCount {
         paddedCalls += 1
         return tailResult
@@ -445,9 +447,10 @@ import Testing
 
     func release() { released = true }
 
-    func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
-      -> [TranscriptionResult]
-    {
+    func transcribe(
+      audioArray: [Float], decodeOptions: DecodingOptions?,
+      shouldContinueDecoding: (@Sendable () -> Bool)?
+    ) async throws -> [TranscriptionResult] {
       let idx = callCount
       callCount += 1
       active += 1
@@ -488,6 +491,72 @@ import Testing
     #expect(r.text?.contains("before I send it") == true, "flush tail appended after serialization")
   }
 
+  // MARK: - #2108: a stop ABORTS the in-flight loop decode
+
+  /// A decoder whose loop decode keeps going until it is told to stop, so a test
+  /// can prove the stop signal reaches the vendor's per-token callback rather
+  /// than merely being recorded on the session.
+  ///
+  /// Bounded on purpose: if the abort is not wired, this returns at `limit`
+  /// instead of hanging, so the test FAILS rather than wedging the suite.
+  private actor AbortDecoder: WhisperKitTranscribing {
+    nonisolated func encodeText(_ text: String) -> [Int] { [] }
+    static let limit = 2_000
+    private(set) var entered = false
+    private(set) var wasHandedASignal = false
+    private(set) var polls = 0
+    private(set) var ranToLimit = false
+    private let loopResult: [TranscriptionResult]
+
+    init(loopResult: [TranscriptionResult]) { self.loopResult = loopResult }
+
+    func transcribe(
+      audioArray: [Float], decodeOptions: DecodingOptions?,
+      shouldContinueDecoding: (@Sendable () -> Bool)?
+    ) async throws -> [TranscriptionResult] {
+      entered = true
+      wasHandedASignal = shouldContinueDecoding != nil
+      guard let keepGoing = shouldContinueDecoding else { return loopResult }
+      while polls < Self.limit {
+        polls += 1
+        if !keepGoing() { return loopResult }
+        await Task.yield()
+      }
+      ranToLimit = true
+      return loopResult
+    }
+  }
+
+  /// The loop decode's result is dropped once a terminal lands, so continuing to
+  /// decode after a stop buys nothing — and it is not free: it runs against the
+  /// authoritative decode that starts at that same stop, measured at 1.50x on the
+  /// heart's own decode time (#2108 Gate C).
+  ///
+  /// Mutation control: removing `shouldContinueDecoding` from the loop call site
+  /// makes this red on `ranToLimit`, and removing the `loopDecodeAborted` write
+  /// in `cancel()` makes it red the same way.
+  @Test("cancel aborts the in-flight loop decode rather than waiting it out")
+  func cancelAbortsInFlightLoopDecode() async throws {
+    let dec = AbortDecoder(loopResult: [result("one two", [seg(0, 1, "one"), seg(1, 2, "two")])])
+    let s = WhisperKitStreamingSession(
+      whisperKit: dec, decodingOptions: DecodingOptions(),
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1))
+    await s.start(audioSamplesProvider: fixedProvider([Float](repeating: 0.3, count: 48_000)))
+
+    while !(await dec.entered) { await Task.yield() }
+    // CONTROLS, both before the act: the decode really started, and it really was
+    // handed a stop signal. Without these, `ranToLimit == false` could mean the
+    // decode never ran at all.
+    #expect(await dec.wasHandedASignal, "control: the loop decode must receive an abort signal")
+
+    await s.cancel()
+
+    #expect(await dec.polls > 0, "control: the decode must have polled before stopping")
+    #expect(
+      !(await dec.ranToLimit),
+      "the decode ran to its own limit — the stop never reached the decoder")
+  }
+
   // MARK: Cleanup-once
 
   @Test("cancel stops the loop and a subsequent finalize does not decode")
@@ -507,7 +576,8 @@ import Testing
   @Test("cancel returns only after an in-flight loop decode exits (Codex r2 P1)")
   func cancelAwaitsInFlightDecode() async throws {
     // WhisperKit transcribes are not safely concurrent: cancel must block
-    // until the (non-cancellable) in-flight decode returns, so a quick next
+    // until the in-flight decode returns (aborted early, but still on its own
+    // schedule), so a quick next
     // recording can never start a second transcribe on the same model.
     actor Flag {
       var isSet = false

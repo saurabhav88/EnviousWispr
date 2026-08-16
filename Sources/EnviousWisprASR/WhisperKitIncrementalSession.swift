@@ -66,8 +66,24 @@ package struct IncrementalResult: Sendable {
 /// `WhisperKitBackendDriving`. Lets the streaming session be
 /// characterization-tested with a fake decoder instead of a loaded model.
 package protocol WhisperKitTranscribing: Sendable {
-  func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
-    -> [TranscriptionResult]
+  /// `shouldContinueDecoding` is polled by the decoder once per token; returning
+  /// `false` stops that decode early and returns what it has.
+  ///
+  /// **This exists because a decode whose result is already discarded still
+  /// costs the machine.** When a stop arrives mid-cycle the streaming loop drops
+  /// its result (`finished`), but the transcribe itself ran to completion and
+  /// contended with the authoritative decode that starts at that same moment —
+  /// measured at 1.50x on the heart's own decode (#2108 Gate C). Aborting
+  /// changes no output, only the compute.
+  ///
+  /// No defaulted parameter and no convenience overload: `noteStopRequested`
+  /// (below) records what a defaulted async overload did to a concrete-typed
+  /// call in #1309, and every call site here is better off stating whether its
+  /// result is wanted.
+  func transcribe(
+    audioArray: [Float], decodeOptions: DecodingOptions?,
+    shouldContinueDecoding: (@Sendable () -> Bool)?
+  ) async throws -> [TranscriptionResult]
   /// Tokenize text into decoder token IDs for `DecodingOptions.promptTokens`
   /// (prior-text conditioning / `condition_on_previous_text`). Returns `[]` if the
   /// tokenizer is not loaded. Lets the streaming session feed the confirmed prefix
@@ -88,11 +104,24 @@ extension WhisperKit: WhisperKitTranscribing {
   // Explicit wrapper: WhisperKit's real `transcribe(audioArray:decodeOptions:callback:segmentCallback:)`
   // has two additional defaulted parameters, which structural witness matching
   // does not bridge automatically. Forward to it explicitly.
-  package func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
-    -> [TranscriptionResult]
-  {
-    try await self.transcribe(
-      audioArray: audioArray, decodeOptions: decodeOptions, callback: nil, segmentCallback: nil)
+  package func transcribe(
+    audioArray: [Float], decodeOptions: DecodingOptions?,
+    shouldContinueDecoding: (@Sendable () -> Bool)?
+  ) async throws -> [TranscriptionResult] {
+    // WhisperKit's `TranscriptionCallback` is `(TranscriptionProgress) -> Bool?`,
+    // polled per token in `TextDecoder.swift:735`; `false` breaks the token loop.
+    // The progress payload is of no interest here — only whether to keep going —
+    // so it is dropped rather than surfaced through the seam.
+    // Written out rather than mapped: the closure's `Bool` -> `Bool?` widening
+    // inside a `.map` defeats the type checker outright ("failed to produce
+    // diagnostic for expression").
+    var callback: TranscriptionCallback?
+    if let keepGoing = shouldContinueDecoding {
+      callback = { (_: TranscriptionProgress) -> Bool? in keepGoing() }
+    }
+    return try await self.transcribe(
+      audioArray: audioArray, decodeOptions: decodeOptions, callback: callback,
+      segmentCallback: nil)
   }
 
   package func encodeText(_ text: String) -> [Int] {
