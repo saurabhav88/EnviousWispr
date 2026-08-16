@@ -21,7 +21,15 @@ die() { echo "FAIL: $1" >&2; exit "${2:-1}"; }
 [ -n "$APP" ] || die "usage: $0 <path-to-.app> [seconds]" 2
 [ -d "$APP" ] || die "app bundle not found: $APP" 2
 
-NAME=$(basename "$APP" .app)
+# Read the executable name from Info.plist rather than inferring it from the bundle name. The
+# dev bundle is "EnviousWispr Local.app" but its executable is still "EnviousWispr", so a
+# basename guess fails on exactly the bundle a developer would reach for when testing this
+# script by hand.
+NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Contents/Info.plist" 2>/dev/null)
+if [ -z "$NAME" ]; then
+  NAME=$(basename "$APP" .app)
+  echo "note: no CFBundleExecutable in Info.plist; falling back to the bundle name '$NAME'"
+fi
 BIN="$APP/Contents/MacOS/$NAME"
 [ -f "$BIN" ] || die "executable not found inside the bundle: $BIN" 2
 
@@ -34,10 +42,28 @@ xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || \
   echo "note: ad-hoc re-sign failed; continuing, since an unsigned binary still exercises dyld"
 
-echo "==> runner OS:  $(sw_vers -productVersion)"
+RUNNER_VERSION=$(sw_vers -productVersion)
+MINOS=$(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
+echo "==> runner OS:  $RUNNER_VERSION"
 echo "==> app:        $APP"
-echo "==> deployment: $(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')"
+echo "==> deployment: ${MINOS:-unknown}"
 echo "==> built with: SDK $(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/sdk /{print $2; exit}')"
+
+# **The runner must not be newer than the app's own deployment target.**
+#
+# Symbol availability is monotonic: everything present on the baseline OS is present on later
+# ones. So a launch that passes ABOVE the baseline says nothing about users AT it. Running this
+# on macOS 15 while shipping a macOS 14 target would resolve any macOS-15-only symbol happily
+# and report success, while a Sonoma user's app died at launch — a green check for the exact
+# population it was built to protect. Read from the binary rather than hardcoded, so raising
+# the deployment target cannot leave this comparing against a stale number.
+[ -n "$MINOS" ] || die "could not read the deployment target from $BIN; without it this job cannot know whether the runner is old enough to prove anything" 2
+RUNNER_MAJOR=${RUNNER_VERSION%%.*}
+MINOS_MAJOR=${MINOS%%.*}
+if [ "$RUNNER_MAJOR" -gt "$MINOS_MAJOR" ]; then
+  die "runner is macOS $RUNNER_VERSION but the app targets $MINOS. A launch above the baseline cannot prove the baseline works. Either run this job on a macOS $MINOS_MAJOR image, or raise the deployment target to match the oldest image still available." 2
+fi
+echo "==> baseline ok: runner ($RUNNER_MAJOR) is at or below the deployment target ($MINOS_MAJOR)"
 
 LOG=$(mktemp)
 "$BIN" >"$LOG" 2>&1 &

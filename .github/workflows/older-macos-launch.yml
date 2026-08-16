@@ -10,9 +10,13 @@ name: Older macOS Launch
 #
 # Two checks, deliberately different in kind:
 #   1. linkage  — static, fast, deterministic, on the machine that builds. Catches the
-#                 regression at the moment it is introduced.
-#   2. launch   — empirical, on a real older macOS. Catches what static analysis cannot,
-#                 including a wrongly-guarded call that only fails when it runs.
+#                 regression at the moment it is introduced, but ONLY for the frameworks it
+#                 names (Speech, FoundationModels). A newer-than-baseline symbol from any other
+#                 framework is outside it by construction.
+#   2. launch   — empirical, on the OLDEST macOS we support. Covers the general case the static
+#                 check cannot, including a wrongly-guarded call that only fails when it runs.
+#                 Runs at the deployment target, not above it: symbol availability is monotonic,
+#                 so a pass above the baseline proves nothing about users at it.
 #
 # The app cannot be BUILT on an older runner (it needs the macOS 26 SDK), so the build happens
 # on macos-26 and the product is carried to macos-15 as an artifact.
@@ -25,9 +29,11 @@ on:
       - 'Package.swift'
       - 'Package.resolved'
       - 'Project.swift'
+      - 'Tuist.swift'
       - 'Tuist/**'
-      - 'scripts/ci/check-weak-linked-symbols.sh'
-      - 'scripts/ci/check-weak-linked-symbols-test.sh'
+      # Every guard script, not just the two named ones: a PR touching only the launch probe
+      # would otherwise merge a broken probe without ever running it.
+      - 'scripts/ci/**'
       - '.github/workflows/older-macos-launch.yml'
   workflow_dispatch:
 
@@ -109,24 +115,16 @@ jobs:
           if-no-files-found: error
 
   launch:
-    name: Launch on macOS 15 (Sequoia)
+    name: Launch on macOS 14 (the deployment target)
     needs: linkage
-    runs-on: macos-15
+    runs-on: macos-14
     timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Report the runner's OS
-        run: |
-          sw_vers
-          # Fails loudly if this label ever starts resolving to macOS 26, which would make the
-          # whole job a second copy of the build machine and prove nothing.
-          MAJOR=$(sw_vers -productVersion | cut -d. -f1)
-          if [ "$MAJOR" -ge 26 ]; then
-            echo "FAIL: expected an older macOS here, got $(sw_vers -productVersion). This job only has meaning on a runner BELOW the SDK version the app is built with." >&2
-            exit 1
-          fi
+        run: sw_vers
 
       - name: Download the app
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
