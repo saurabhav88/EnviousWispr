@@ -152,6 +152,62 @@ public enum OverlayIntent: Equatable, Sendable {
   /// settings", the input changes away from Bluetooth, or the tips setting is
   /// turned off. Its decision + lifecycle are owned by `BluetoothAwarenessPresenter`.
   case bluetoothAwareness
+  /// The Escape Recovery pill (#2087) — the sixteenth case. Offers to paste a
+  /// dictation the user cancelled with the cancel shortcut while the feature is
+  /// on. One sentence, one action, 3 seconds, and it NEVER blocks: no focus
+  /// steal, no modal, no required dismissal. A user who did not mean to cancel
+  /// is by definition not watching, so a prompt demanding an answer is the
+  /// wrong shape; History is the unhurried second door for 24 hours.
+  ///
+  /// Carries the transcript's **id, never its text**. The pill re-reads by id
+  /// when Paste is pressed, so a row deleted or expired inside the 3-second
+  /// dwell resolves to nothing and no-ops, instead of pasting from a stale
+  /// in-memory copy the store no longer agrees with.
+  ///
+  /// Shown only AFTER the row is durably saved (#1897): an offer to restore
+  /// something that failed to save is a lie the user cannot detect.
+  ///
+  /// Sits beside the five existing post-dictation intents rather than reusing
+  /// `flashRecordingNotice`, whose `gotchas-audio.md`
+  /// RULE: in-panel-notice-not-new-overlay-intent scopes to *during* recording.
+  /// This fires after the session concluded.
+  case escapeRecovery(transcriptID: UUID)
+}
+
+/// What a finalizing session IS, for the run that is finishing (#2087).
+///
+/// **Kernel-owned and session-scoped.** Set once when the exit arm decides, read
+/// by storage, delivery, terminal routing and telemetry, and reset to `.ordinary`
+/// in `resetSessionState()`.
+///
+/// This is one authority rather than a boolean inspected at delivery, because
+/// `runFinalizing` orders the work **process → store → deliver → conclude**.
+/// Storage runs BEFORE delivery, so a flag consulted at delivery arrives after
+/// the row has already been written into ordinary History instead of `pending/`.
+/// A delivery-only signal cannot express this fact early enough to be correct.
+///
+/// `triggeredAt` is the moment the user pressed the cancel shortcut, captured at
+/// the exit and carried forward, NOT the moment finalization happened. The 24-hour
+/// clock the user was promised starts when they hit Escape; a long transcription
+/// must not silently spend part of their recovery window.
+///
+/// Deliberately INTERNAL to Pipeline. AppKit never needs the disposition, only
+/// the narrow capability "is an escape recovery transcribing right now", exposed
+/// as `KernelDictationDriver.isEscapeRecoveryTranscribing`. Publishing the enum
+/// would widen the public surface for no consumer.
+enum FinalizationDisposition: Equatable, Sendable {
+  /// Every dictation that is not an escape recovery. The default.
+  case ordinary
+  /// The user cancelled with the shortcut while Escape Recovery was on: run the
+  /// ordinary pipeline, but hold the text instead of pasting it.
+  case escapeRecovery(triggeredAt: Date)
+  /// The user pressed the shortcut a SECOND time during the recovery, asking to
+  /// discard the result. The session stays busy until the decode returns, because
+  /// adapter cancellation invalidates the generation without interrupting the
+  /// decode — starting a new recording on top of one that is still running would
+  /// recreate the two-decodes-one-engine hazard the toggle never disclosed.
+  /// Abandonment discards the OUTPUT; it cannot shorten the WAIT.
+  case abandonedEscapeRecovery(triggeredAt: Date)
 }
 
 /// Typed cancellation PROVENANCE for a `.cancelled` terminal: who asked —

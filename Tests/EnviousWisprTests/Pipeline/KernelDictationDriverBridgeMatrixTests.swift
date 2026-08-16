@@ -298,7 +298,37 @@ import Testing
       #expect(fx.driver.state != .error(.modelWedged))
     }
 
-    // MARK: 6. Cancel provenance reaches the recovery ending (#2087)
+    // MARK: 6. Escape Recovery stays inert until its single activation point (#2087)
+
+    /// The whole 13-chunk order rests on one invariant: chunks 1-11 add
+    /// capability that nothing can reach, and chunk 12 is the ONLY place the
+    /// feature turns on. `isEscapeRecoveryTranscribing` is the capability every
+    /// later chunk's policy code reads, so it is where premature activation
+    /// would first become observable.
+    ///
+    /// This is an activation canary, not a tautology. The second assertion is
+    /// the load-bearing one: even parked in `.delivering(.transcribing)` — the
+    /// exact state where a real escape recovery WOULD report true — it reports
+    /// false today. If a later chunk wires the kernel's disposition through
+    /// before chunk 12, this fails, and it fails in the file that already owns
+    /// the driver-bridges-kernel contract.
+    @Test("the escape-recovery capability stays inert before chunk 12 activates it")
+    func escapeRecoveryCapabilityIsInertBeforeActivation() async {
+      let fx = makeFixture()
+      #expect(fx.driver.isEscapeRecoveryTranscribing == false, "idle reports not-transcribing")
+
+      await place(fx.kernel, in: .deliveringTranscribing)
+      #expect(
+        fx.driver.isEscapeRecoveryTranscribing == false,
+        """
+        The capability reported TRUE before chunk 12. Either the feature was \
+        activated early — which breaks the inert-chunks invariant and can append \
+        a pending row to ordinary History — or activation has landed and this \
+        canary should be replaced by a real behavioural assertion.
+        """)
+    }
+
+    // MARK: 7. Cancel provenance reaches the recovery ending (#2087)
 
     /// Lives in this suite because the driver fixture and the bounded `drain()`
     /// already exist here; the subject is the same driver-bridges-kernel

@@ -203,6 +203,13 @@ enum DictationNarrator {
     case .recoverySucceeded: return recoverySucceededText
     case .bluetoothAwareness:
       return "Bluetooth microphone detected. Wait a moment before speaking on a cold start."
+    // #2087: no "Warning: " or "Error: " prefix — nothing went wrong. The
+    // sentence names what happened and the one action, matching the pill's
+    // founder-locked copy (`Recording kept` · Paste). History is named because
+    // a VoiceOver user who misses a 3-second dwell needs the unhurried door,
+    // and the pill must never be the only way back to the text.
+    case .escapeRecovery:
+      return "Recording kept. Press Paste to insert it, or find it in History."
     }
   }
 

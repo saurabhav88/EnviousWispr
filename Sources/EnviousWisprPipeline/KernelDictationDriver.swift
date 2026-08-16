@@ -668,6 +668,20 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   // MARK: Caller-visible signals
 
+  /// Is an Escape Recovery transcription running right now (#2087)?
+  ///
+  /// The ONLY thing AppKit learns about the kernel's `FinalizationDisposition`.
+  /// A capability, not an identity: callers ask "may the cancel affordance stay
+  /// live", never "which disposition is this" or "which backend is running".
+  /// Publishing the disposition itself would widen the public surface for no
+  /// consumer, and would invite policy code to branch on a literal.
+  ///
+  /// **Hard-coded `false` in chunk 3, by design.** The vocabulary lands before
+  /// anything can produce it, so every consumer written against this reads the
+  /// same answer today's app already gives. Chunk 12 is the single point where
+  /// this starts telling the truth.
+  public var isEscapeRecoveryTranscribing: Bool { false }
+
   /// The kernel's `RecordingSessionState` mapped to the legacy `PipelineState`.
   public var state: PipelineState {
     Self.pipelineState(

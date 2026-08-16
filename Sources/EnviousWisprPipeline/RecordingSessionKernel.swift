@@ -168,6 +168,19 @@ enum FinalizingSubStatus: Equatable, Sendable {
 enum KernelDeliveryOutcome: Equatable, Sendable {
   case pasted
   case clipboardOnly
+  /// Delivery ran its epilogue but deliberately wrote nowhere (#2087 Escape
+  /// Recovery). Zero paste count, nil paste result, zero paste duration, and it
+  /// must NEVER map to clipboard fallback.
+  ///
+  /// A third case rather than reusing `.clipboardOnly`, because `.clipboardOnly`
+  /// is a true statement about the clipboard that would be false here, and it
+  /// can raise the clipboard-fallback overlay — telling the user their text is
+  /// on the clipboard when nothing was written to it.
+  ///
+  /// The epilogue still runs. Skipping the delivery closure wholesale is unsafe:
+  /// it owns pipeline-end timing, paste metrics and final metric attachment.
+  /// `.suppressed` means "delivered nothing on purpose", not "did not run".
+  case suppressed
 }
 
 /// The user-visible error surface a terminal state renders (PR-1 §B.1.3).

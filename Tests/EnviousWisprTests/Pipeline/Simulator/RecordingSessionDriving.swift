@@ -270,6 +270,15 @@ final class KernelRecordingSession: RecordingSessionDriving {
         switch paste.attemptPaste(text) {
         case .pasted: return .pasted
         case .clipboardOnly, .none: return .clipboardOnly
+        // #2087: unreachable — `FakePasteTarget` returns only `.pasted` or
+        // `.clipboardOnly`. Deliberately NOT folded in with `.clipboardOnly`
+        // above: suppression means nothing was written anywhere, and quietly
+        // reporting a clipboard write is the exact lie `.suppressed` exists to
+        // prevent. Fail loudly and propagate the truth, so a future fixture that
+        // produces this is caught rather than believed.
+        case .suppressed:
+          Issue.record("FakePasteTarget returned .suppressed; a paste attempt cannot suppress")
+          return .suppressed
         }
       },
       // PR-4.5 #4 (Codex r3): the simulator's 37-scenario inventory does not
@@ -303,6 +312,10 @@ final class KernelRecordingSession: RecordingSessionDriving {
     switch kernel.deliveryOutcome {
     case .pasted: result.pasteOutcome = .pasted
     case .clipboardOnly: result.pasteOutcome = .clipboardOnly
+    // #2087: mapped to its own case, never folded into `.none`. Suppressed
+    // means the user still HAS their text (held for recovery); `.none` means
+    // no delivery outcome exists at all.
+    case .suppressed: result.pasteOutcome = .suppressed
     case nil: result.pasteOutcome = .none
     }
     result.transcript = kernel.deliveredTranscript

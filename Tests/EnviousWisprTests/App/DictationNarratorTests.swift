@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -236,10 +237,36 @@ import Testing
         .bluetoothAwareness,
         "Bluetooth microphone detected. Wait a moment before speaking on a cold start."
       ),
+      (
+        .escapeRecovery(transcriptID: UUID()),
+        "Recording kept. Press Paste to insert it, or find it in History."
+      ),
     ]
     for (intent, want) in cases {
       #expect(DictationNarrator.announcement(for: intent) == want)
     }
+  }
+
+  /// #2087: the Escape Recovery announcement must not be spoken as a failure.
+  ///
+  /// This is #1891's lesson applied to a new intent: a screen-reader user who
+  /// hears "Error:" or "Warning:" in front of a sentence saying their recording
+  /// was KEPT is told the exact opposite of what happened, and the words after
+  /// the prefix cannot undo it. Nothing went wrong on this path — the app did
+  /// what the user asked, and is offering the result back.
+  ///
+  /// Also asserts the announcement names History. The pill dwells for 3 seconds
+  /// and the whole feature exists for people who were not watching, so the
+  /// spoken form must carry the unhurried door, not only the fast one.
+  @Test("the escape-recovery announcement is not spoken as a failure")
+  func escapeRecoveryAnnouncementIsNotAFailure() {
+    let spoken = DictationNarrator.announcement(for: .escapeRecovery(transcriptID: UUID()))
+
+    #expect(!spoken.hasPrefix("Error:"), "nothing failed on this path")
+    #expect(!spoken.hasPrefix("Warning:"), "nothing failed on this path")
+    #expect(!spoken.lowercased().contains("cancel"), "the take was kept, not cancelled")
+    #expect(spoken.contains("Paste"), "the one action must be named")
+    #expect(spoken.contains("History"), "the 24-hour door must be named, not only the pill")
   }
 
   /// The fixed status-pill / window / badge / sidebar copy is byte-identical to

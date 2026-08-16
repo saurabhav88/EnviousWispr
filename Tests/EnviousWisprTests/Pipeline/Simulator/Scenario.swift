@@ -127,7 +127,17 @@ enum ScenarioStep: Sendable {
 enum PasteOutcome: Equatable, Sendable {
   case pasted
   case clipboardOnly
+  /// Delivery never ran, or ran with no outcome recorded.
   case none
+  /// Delivery ran its epilogue and wrote nowhere ON PURPOSE (#2087 Escape
+  /// Recovery). Distinct from `.none`, which means no delivery outcome exists.
+  ///
+  /// Kept separate for the same reason the real `KernelDeliveryOutcome` keeps
+  /// `.suppressed` separate from `.clipboardOnly`: folding it into `.none` would
+  /// let a simulator scenario assert "nothing was delivered" and pass whether the
+  /// kernel suppressed on purpose or failed to deliver at all — two outcomes with
+  /// opposite meanings for the user, who in one case still has their text.
+  case suppressed
 }
 
 /// What text a scenario expects delivered (PR-2 plan §3.8). Carries the
