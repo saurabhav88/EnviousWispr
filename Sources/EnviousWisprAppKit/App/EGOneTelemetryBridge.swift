@@ -37,7 +37,7 @@ enum EGOneTelemetryBridge {
   /// path never duplicates it.
   static func legacyUpgradeHandler(
     selectedProvider: @escaping @MainActor @Sendable () -> Bool
-  ) -> @MainActor @Sendable (EGOneLegacyUpgradeCoordinator.Event) -> Void {
+  ) -> @MainActor @Sendable (EGOneUpgradeCoordinator.Event) -> Void {
     { event in
       let name: String
       let properties: [String: String]

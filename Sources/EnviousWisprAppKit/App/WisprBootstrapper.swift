@@ -273,8 +273,8 @@ public final class WisprBootstrapper {
     let egOneAppSupport = FileManager.default.urls(
       for: .applicationSupportDirectory, in: .userDomainMask)[0]
     var egOneAdapter: EGOneDeliveryAdapter?
-    var egOneLegacyUpgrade:
-      (registration: DeliveryRegistration, coordinator: EGOneLegacyUpgradeCoordinator)?
+    var egOneUpgrade:
+      (registration: DeliveryRegistration, coordinator: EGOneUpgradeCoordinator)?
     if let deliveryManifest = try? DeliveryManifest.loadBundled(resource: "eg1-delivery-manifest") {
       let registration = DeliveryRegistration(
         manifest: deliveryManifest,
@@ -288,26 +288,26 @@ public final class WisprBootstrapper {
         version: egOneManifest?.version ?? deliveryManifest.identity.revision)
       egOneAdapter = adapter
 
-      let coordinator = EGOneLegacyUpgradeCoordinator(
+      let coordinator = EGOneUpgradeCoordinator(
         adapter: adapter,
         appSupportDirectory: egOneAppSupport)
       // `selected_provider` attaches here (settings in scope); coordinator
       // stays provider-ignorant.
       coordinator.onEvent = EGOneTelemetryBridge.legacyUpgradeHandler(
         selectedProvider: { [weak settings] in settings?.llmProvider == .egOne })
-      egOneLegacyUpgrade = (registration, coordinator)
+      egOneUpgrade = (registration, coordinator)
     }
     let egOneRuntime = EGOneRuntime(
       manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler
-    if let egOneLegacyUpgrade {
+    if let egOneUpgrade {
       // First-run baseline (#1348 §16.2) → legacy launch table → the RUNTIME
       // decides if the completed replacement boots the server (PR #1500 P1).
       let delivery = modelDelivery
       Task {
-        await delivery.recordFirstRunBaseline(for: egOneLegacyUpgrade.registration)
-        await egOneLegacyUpgrade.coordinator.runLaunch()
+        await delivery.recordFirstRunBaseline(for: egOneUpgrade.registration)
+        await egOneUpgrade.coordinator.runLaunch()
         egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
       }
     }

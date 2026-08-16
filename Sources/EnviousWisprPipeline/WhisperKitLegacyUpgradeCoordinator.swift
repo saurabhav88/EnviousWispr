@@ -9,7 +9,7 @@ import Foundation
 /// epic #1348 exists to delete. This runs on **every launch, forever**: ~700 downloads to date
 /// must still work whenever those users upgrade, so the common path has to stay free.
 ///
-/// Mirrors `EGOneLegacyUpgradeCoordinator`'s shape and shares its mechanism via
+/// Mirrors `EGOneUpgradeCoordinator`'s shape and shares its mechanism via
 /// `LegacyRetirement` (#1386 PR-2a). What differs is policy, and only policy: EG-1 retires one
 /// flat app-owned file; this retires 24 nested files from a foreign cache another app may also
 /// be writing.

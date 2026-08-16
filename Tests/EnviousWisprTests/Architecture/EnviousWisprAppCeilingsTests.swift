@@ -348,7 +348,7 @@ import Testing
   /// all decision logic lives on the presenter, not here. Cap by deterministic
   /// rule (actual 1018 + 7, rounded up to nearest 5 = 1025).
   /// Ratcheted 1025→1045 in #1386 PR-1 (2026-07-11): the composition root
-  /// constructs `EGOneLegacyUpgradeCoordinator` over the existing adapter,
+  /// constructs `EGOneUpgradeCoordinator` over the existing adapter,
   /// wires its telemetry handler (attaching `selected_provider` here, where
   /// settings is in scope, so the coordinator stays provider-ignorant), and
   /// runs the one-time legacy launch table after the first-run baseline. All

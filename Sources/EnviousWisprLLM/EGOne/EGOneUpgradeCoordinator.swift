@@ -8,7 +8,7 @@ import Foundation
 /// them. Those responsibilities stay in EGOneDeliveryAdapter and
 /// ModelDeliveryController.
 @MainActor
-public final class EGOneLegacyUpgradeCoordinator {
+public final class EGOneUpgradeCoordinator {
   public struct TrustedArtifact: Sendable, Equatable {
     public let name: String
     public let sizeBytes: Int64

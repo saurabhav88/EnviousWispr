@@ -206,7 +206,7 @@ import Testing
     try stageMonolith(h.root, bytes: bytes)
     try stageValidShards(h.registration)
 
-    let coordinator = EGOneLegacyUpgradeCoordinator(
+    let coordinator = EGOneUpgradeCoordinator(
       adapter: h.adapter,
       appSupportDirectory: h.root,
       defaults: h.store,
@@ -236,7 +236,7 @@ import Testing
     try stageMonolith(h.root, bytes: bytes)
     try stageValidShards(h.registration)
 
-    let coordinator = EGOneLegacyUpgradeCoordinator(
+    let coordinator = EGOneUpgradeCoordinator(
       adapter: h.adapter,
       appSupportDirectory: h.root,
       defaults: h.store,

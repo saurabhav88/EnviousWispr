@@ -8,9 +8,10 @@ import Foundation
 /// business in a type that also serves a foreign Hugging Face cache, and WhisperKit's
 /// Documents/TCC concerns must never leak into EG-1.
 ///
-/// Extracted from `EGOneLegacyUpgradeCoordinator` (#1386 PR-2a), which keeps 100% of its
-/// policy and calls this for the mechanism. That coordinator's 29 tests are this
-/// extraction's oracle and must pass unmodified.
+/// Extracted from `EGOneUpgradeCoordinator` (#1386 PR-2a, when it was named
+/// `EGOneLegacyUpgradeCoordinator`), which keeps 100% of its policy and calls this for the
+/// mechanism. The 29 tests that coordinator had at extraction time are this extraction's
+/// oracle and must keep passing unmodified; later chunks may ADD cases beside them.
 public enum LegacyRetirement {
 
   // MARK: - Inputs

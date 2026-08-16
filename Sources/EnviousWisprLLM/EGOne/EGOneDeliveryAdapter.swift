@@ -37,7 +37,7 @@ public final class EGOneDeliveryAdapter {
 
   // MARK: - Legacy-upgrade hooks (#1386 PR-1)
 
-  /// Installed by `EGOneLegacyUpgradeCoordinator` at the composition root. The
+  /// Installed by `EGOneUpgradeCoordinator` at the composition root. The
   /// adapter stays the single delivery doorway; the coordinator's monolith
   /// retirement runs before any fetch door, and admission/decline outcomes are
   /// reported back so the owed marker never drifts from delivery reality.

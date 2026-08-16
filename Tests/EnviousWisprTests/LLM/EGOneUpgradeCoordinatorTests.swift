@@ -10,7 +10,7 @@ import Testing
 /// admission or explicit decline), the containment gate, and crash recovery
 /// from disk truth alone. Every destructive path is proven against its
 /// negative twin: same-size wrong bytes, renamed files, symlinked stores.
-@Suite struct EGOneLegacyUpgradeCoordinatorTests {
+@Suite struct EGOneUpgradeCoordinatorTests {
   @MainActor
   private final class Probe {
     var admitted = false
@@ -19,7 +19,7 @@ import Testing
       .failed(DeliveryFailure(reason: .sourceUnreachable))
     var markerExistedAtDelete = false
     var hashCount = 0
-    var events: [EGOneLegacyUpgradeCoordinator.Event] = []
+    var events: [EGOneUpgradeCoordinator.Event] = []
   }
 
   private func digest(_ data: Data) -> String {
@@ -77,8 +77,8 @@ import Testing
     writeMarker: (@MainActor @Sendable (URL) -> Bool)? = nil,
     removeItem: (@MainActor @Sendable (URL) throws -> Void)? = nil,
     hashError: Bool = false
-  ) -> EGOneLegacyUpgradeCoordinator {
-    let subject = EGOneLegacyUpgradeCoordinator(
+  ) -> EGOneUpgradeCoordinator {
+    let subject = EGOneUpgradeCoordinator(
       appSupportDirectory: root,
       defaults: defaults,
       trustedArtifact: .init(
