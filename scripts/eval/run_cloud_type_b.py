@@ -84,7 +84,12 @@ from acceptance_gate import (  # noqa: E402
 # Bedrock is reached through boto3 rather than urllib because the request must be
 # SigV4-signed. Imported lazily inside _bedrock_client() so the other three
 # providers keep working on a machine with no AWS SDK installed.
-BEDROCK_REGION = os.environ.get("EW_BEDROCK_REGION", "us-east-1")
+# None means "let boto3 resolve it" (AWS_REGION, AWS_DEFAULT_REGION, the active
+# profile's config). A hardcoded default here would silently OVERRIDE a profile
+# pointing somewhere else, and Bedrock access is region-specific -- so the
+# override would look like a model-access problem in the wrong region. Set
+# EW_BEDROCK_REGION only to override deliberately.
+BEDROCK_REGION = os.environ.get("EW_BEDROCK_REGION") or None
 _bedrock_local = threading.local()
 
 
@@ -107,9 +112,30 @@ def _bedrock_client():
     client = getattr(_bedrock_local, "client", None)
     if client is None:
         import boto3.session  # noqa: PLC0415 - optional dependency, see comment above
+        from botocore.config import Config  # noqa: PLC0415
 
         session = boto3.session.Session()
-        client = session.client("bedrock-runtime", region_name=BEDROCK_REGION)
+        client = session.client(
+            "bedrock-runtime",
+            region_name=BEDROCK_REGION,
+            # Timeouts stated rather than inherited, so this provider is bounded
+            # like the other three (which pass explicit urllib timeouts) instead
+            # of by whatever botocore defaults to.
+            #
+            # max_attempts=1 disables botocore's OWN retries so polish_case is
+            # the single retry authority. Left at the default, a throttled case
+            # would be retried ~3x inside each of our 4 attempts -- up to 12
+            # requests with two independent backoff schedules interleaved, which
+            # is both slower to fail and impossible to reason about from the
+            # logs. The lever for throttling is --workers (the 16-worker run
+            # lost 168/1462 cases to 429s; 6 workers is the fix), not a second
+            # hidden retry layer.
+            config=Config(
+                retries={"max_attempts": 1},
+                connect_timeout=15,
+                read_timeout=120,
+            ),
+        )
         _bedrock_local.session = session
         _bedrock_local.client = client
     return client
@@ -218,9 +244,13 @@ def claude_body(model: str, system: str, user: str) -> dict:
 
 def describe_shape(provider: str, model: str) -> str:
     if provider == "bedrock":
+        # Report the region actually in force, not the override variable -- which
+        # is normally unset, and printing "region=None" would hide the value that
+        # decides whether a model is even reachable.
+        region = BEDROCK_REGION or _bedrock_client().meta.region_name
         return (
             f"converse | maxTokens={CLAUDE_MAX_OUTPUT_TOKENS} | temperature OMITTED "
-            f"| thinking disabled | region={BEDROCK_REGION}"
+            f"| thinking disabled | region={region}"
         )
     if provider == "claude":
         return (
@@ -322,7 +352,12 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
         # different service instance of the same model. Converse is Bedrock's
         # provider-neutral shape, so `system` and `content` are lists of typed
         # blocks rather than Anthropic's bare strings.
-        from botocore.exceptions import BotoCoreError, ClientError  # noqa: PLC0415
+        from botocore.exceptions import (  # noqa: PLC0415
+            BotoCoreError,
+            ClientError,
+            ConnectionError as BotoConnectionError,
+            HTTPClientError,
+        )
 
         try:
             data = _bedrock_client().converse(
@@ -355,17 +390,31 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
                 (e.response.get("Error") or {}).get("Code", "ClientError"),
                 {}, io.BytesIO(body),
             ) from e
-        except BotoCoreError as e:
-            # Transport failures (EndpointConnectionError, ReadTimeoutError,
-            # ConnectionClosedError) are BotoCoreError subclasses of bare
-            # Exception -- NOT ClientError, NOT OSError, NOT urllib. Uncaught,
-            # one blip escapes polish_case entirely and kills the whole 1,462-case
-            # run at fut.result(), rather than costing a single case. URLError is
-            # the loop's existing retryable-transport channel, so this reuses that
-            # policy instead of adding a second one. Same defect the ConnectionReset
-            # comment above records for urllib; a new transport needed the same
-            # treatment and did not automatically inherit it.
+        except (BotoConnectionError, HTTPClientError) as e:
+            # RETRYABLE half. botocore's transport failures are BotoCoreError
+            # subclasses of bare Exception -- NOT ClientError, NOT OSError, NOT
+            # urllib -- so uncaught, one blip escapes polish_case entirely and
+            # kills the whole 1,462-case run at fut.result() instead of costing
+            # one case. URLError is the loop's existing retryable-transport
+            # channel, so this reuses that policy rather than adding a second.
+            #
+            # These two base classes ARE the transport subtree: enumerated from
+            # botocore, they cover ConnectTimeoutError, ConnectionClosedError,
+            # EndpointConnectionError, ProxyConnectionError, ReadTimeoutError,
+            # ResponseStreamingError and SSLError, and nothing else.
             raise urllib.error.URLError(f"{type(e).__name__}: {e}") from e
+        except BotoCoreError as e:
+            # NON-RETRYABLE half, and it must still be caught. The other ~80
+            # BotoCoreError subclasses are deterministic -- ParamValidationError,
+            # InvalidRegionError, NoRegionError, NoCredentialsError,
+            # UnknownServiceError. Retrying those burns four attempts with
+            # backoff to reach the identical failure. Catching the BASE class as
+            # retryable (the previous shape here) was the mirror image of not
+            # catching it at all: the first mistake killed the run, the second
+            # made every config error look like a flaky network.
+            # RuntimeError is the loop's non-retryable channel, so the case fails
+            # once, records why, and the run continues.
+            raise RuntimeError(f"non-retryable botocore error: {type(e).__name__}: {e}") from e
 
         stop = data.get("stopReason")
         if stop == "max_tokens":
@@ -577,10 +626,19 @@ def main() -> int:
         try:
             import boto3  # noqa: PLC0415
 
-            if boto3.Session().get_credentials() is None:
+            probe = boto3.Session()
+            if probe.get_credentials() is None:
                 raise RuntimeError("no credentials in the boto3 provider chain")
+            # Region resolves the same way and fails the same way, so check it in
+            # the same breath. Without this, an unset region surfaces as 1,462
+            # identical NoRegionError cases instead of one line at startup.
+            if not (BEDROCK_REGION or probe.region_name):
+                raise RuntimeError(
+                    "no region resolved -- set AWS_REGION, or a profile with a "
+                    "configured region, or EW_BEDROCK_REGION to override"
+                )
         except Exception as e:  # noqa: BLE001 - any resolution failure is fatal here
-            print(f"bedrock cannot authenticate: {type(e).__name__}: {e}\n"
+            print(f"bedrock cannot start: {type(e).__name__}: {e}\n"
                   "For the credit-funded account, use:\n"
                   "  ~/.claude/bin/get-key launch aws-bedrock-access-key-id "
                   "AWS_ACCESS_KEY_ID -- \\\n"
