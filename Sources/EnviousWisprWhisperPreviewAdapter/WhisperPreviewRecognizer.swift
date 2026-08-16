@@ -194,10 +194,26 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
     var samples: [Float] = []
     var ended = false
     var capped = false
-    var session: WhisperKitStreamingSession?
+    /// Held as the protocol rather than the concrete session so a test can
+    /// attach a conformer whose `cancel()` blocks on command. The seam already
+    /// exists in ASR for exactly this reason (`WhisperKitTranscribing` is its
+    /// sibling); the calls here are one `start` and one `cancel` per recording,
+    /// so existential dispatch costs nothing measurable and buys the only way to
+    /// test a teardown that must WAIT.
+    var session: (any WhisperKitIncrementalSession)?
     /// Created once by the first `end()`; every later caller awaits this same
     /// task rather than returning early.
     var teardown: Task<Void, Never>?
+    /// The cap path's cancel, kept JOINABLE.
+    ///
+    /// `endDecoding` takes the session out of shared state and then awaits a
+    /// `cancel()` that can sit inside a non-cancellable transcribe. Without this
+    /// slot a concurrent `end()` sees `session == nil`, finishes instantly, and
+    /// the recognizer's turnover releases — so a new decode loop can start on
+    /// the same cached WhisperKit instance while the capped one is still
+    /// decoding. Set in the SAME lock acquisition that clears `session`, so
+    /// there is no window where neither is visible.
+    var decodeStop: Task<Void, Never>?
   }
   private let state = OSAllocatedUnfairLock(initialState: State())
 
@@ -273,7 +289,7 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
   /// Start the decode loop against this handle's own growing buffer. Separate
   /// from `init` because `start` is actor-isolated and an initializer cannot
   /// await.
-  func attach(_ session: WhisperKitStreamingSession) async {
+  func attach(_ session: any WhisperKitIncrementalSession) async {
     let alreadyEnded = state.withLock { s -> Bool in
       s.session = session
       return s.ended
@@ -305,13 +321,23 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
 
   /// Stop decoding but keep the handle alive, so `end()` stays the single
   /// teardown path and cannot run twice.
+  ///
+  /// The cancel runs as a STORED task rather than inline, because this method
+  /// removes the session from shared state before awaiting it. An inline await
+  /// leaves a window where the decode is still running and nothing can be joined
+  /// to it: a stop-and-restart landing in that window would open a second decode
+  /// loop over the same cached model, which is the corruption the whole turnover
+  /// design exists to prevent. The task is created and recorded under the same
+  /// lock that clears `session`, and `end()` awaits it.
   private func endDecoding() async {
-    let live = state.withLock { s -> WhisperKitStreamingSession? in
-      let session = s.session
+    let stop: Task<Void, Never>? = state.withLock { s in
+      guard let live = s.session else { return s.decodeStop }
       s.session = nil
-      return session
+      let task = Task { await live.cancel() }
+      s.decodeStop = task
+      return task
     }
-    await live?.cancel()
+    await stop?.value
   }
 
   /// Finish exactly once and release everything.
@@ -332,10 +358,15 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
       s.samples = []
       let live = s.session
       s.session = nil
+      // Exactly one of these is ever non-nil — the cap path takes the session or
+      // this does — but awaiting both is what makes that an observation rather
+      // than an assumption, and costs one nil check.
+      let capStop = s.decodeStop
       let task = Task { [continuation, publisher] in
         continuation.finish()
         publisher.cancel()
         await live?.cancel()
+        await capStop?.value
       }
       s.teardown = task
       return task

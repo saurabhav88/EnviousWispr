@@ -1,3 +1,4 @@
+import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
@@ -8,7 +9,6 @@ import Testing
 
 /// #2108 — what the preview session handle delivers, and how big it can get.
 @Suite struct WhisperPreviewSessionHandleTests {
-
 
   /// Wait for the publisher task to deliver, on a bounded real-time poll.
   ///
@@ -117,6 +117,97 @@ import Testing
     // before asserting it did not.
     try? await Task.sleep(for: .milliseconds(50))
     #expect(!box.delivered.contains("after the end"))
+  }
+
+  // MARK: - #2108: the ten-minute cap must not orphan a running decode
+
+  /// A session whose `cancel()` blocks until the test lets it finish, standing in
+  /// for the real one sitting inside a non-cancellable WhisperKit transcribe.
+  ///
+  /// Held through `WhisperKitIncrementalSession` rather than the concrete type,
+  /// which is the only reason a teardown that must WAIT can be observed at all.
+  private final class BlockingSession: WhisperKitIncrementalSession, @unchecked Sendable {
+    private let mutex = NSLock()
+    private var enteredCancel = false
+    private var releasedCancel = false
+
+    var cancelEntered: Bool { mutex.withLock { enteredCancel } }
+    func releaseCancel() { mutex.withLock { releasedCancel = true } }
+
+    func start(
+      audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
+    ) async {}
+    func noteStopRequested() async {}
+    func finalize(finalSamples: [Float], speechSegments: [SpeechSegment]) async
+      -> IncrementalResult
+    {
+      fatalError("the preview never finalizes — it cancels")
+    }
+
+    func cancel() async {
+      mutex.withLock { enteredCancel = true }
+      while !mutex.withLock({ releasedCancel }) {
+        try? await Task.sleep(for: .milliseconds(2))  // deadline-fallback: released by the test
+      }
+    }
+  }
+
+  private final class Flag: @unchecked Sendable {
+    private let mutex = NSLock()
+    private var value = false
+    var isSet: Bool { mutex.withLock { value } }
+    func set() { mutex.withLock { value = true } }
+  }
+
+  /// Crossing the ten-minute cap stops the decode loop OUTSIDE `end()`, so the
+  /// stop must be joinable or the recognizer's turnover releases over a decode
+  /// that is still running.
+  ///
+  /// The failure it prevents: cap fires, the user stops and immediately starts
+  /// another recording, `end()` sees no session and returns instantly, and a new
+  /// decode loop begins on the same cached WhisperKit instance while the old
+  /// transcribe is still in it. That is the decoder-state corruption the whole
+  /// turnover design exists to prevent, reached through a path that bypasses it.
+  ///
+  /// Mutation control: awaiting the cancel inline in `endDecoding` — the shape
+  /// this replaced — makes the mid-test assertion red, because `end()` then
+  /// returns while the cancel is still blocked.
+  @Test("end() waits for a cap-triggered cancel that is still running")
+  func cappedDecodeStopIsJoinable() async {
+    let box = Box()
+    let handle = WhisperPreviewSessionHandle(
+      lookups: nil, onText: { box.delivered.append($0) })
+    let session = BlockingSession()
+    await handle.attach(session)
+
+    // One feed over the cap. The samples are never retained — the guard caps
+    // before the append — so this array is transient.
+    let overCap = [Float](
+      repeating: 0, count: WhisperPreviewSessionHandle.maxRetainedSamples + 1)
+    async let fed: Void = handle.feed(overCap)
+
+    // CONTROL: the cap really fired and the cancel really started. Without this
+    // the wait below would pass on a run where nothing was ever cancelled.
+    for _ in 0..<500 where !session.cancelEntered {
+      try? await Task.sleep(for: .milliseconds(2))  // deadline-fallback: bounded poll
+    }
+    #expect(session.cancelEntered, "control: the cap must have started a cancel")
+
+    let ended = Flag()
+    async let endReturned: Void = {
+      await handle.end()
+      ended.set()
+    }()
+
+    // deadline-fallback: give an incorrect early return a real chance to land.
+    try? await Task.sleep(for: .milliseconds(100))
+    #expect(
+      !ended.isSet,
+      "end() returned while the capped session's decode was still stopping")
+
+    session.releaseCancel()
+    _ = await (fed, endReturned)
+    #expect(ended.isSet, "end() must complete once the cancel finishes")
   }
 
   // MARK: - #2108: the turnover lock actually serializes
