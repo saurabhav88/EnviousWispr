@@ -211,6 +211,7 @@ import Testing
       appSupportDirectory: h.root,
       identity: h.registration.manifest.identity,
       installDirectory: h.registration.installDirectory,
+      isOnboardingComplete: { true },
       defaults: h.store,
       trustedArtifact: .init(
         name: "eg-1-v1.gguf",
@@ -243,6 +244,7 @@ import Testing
       appSupportDirectory: h.root,
       identity: h.registration.manifest.identity,
       installDirectory: h.registration.installDirectory,
+      isOnboardingComplete: { true },
       defaults: h.store,
       trustedArtifact: .init(
         name: "eg-1-v1.gguf",

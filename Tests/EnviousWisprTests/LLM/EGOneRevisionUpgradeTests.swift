@@ -96,7 +96,8 @@ import Testing
     defaults: UserDefaults,
     probe: Probe,
     identity: ModelIdentity? = nil,
-    writeMarker: (@MainActor @Sendable (URL) -> Bool)? = nil
+    writeMarker: (@MainActor @Sendable (URL) -> Bool)? = nil,
+    isOnboardingComplete: @escaping @MainActor @Sendable () -> Bool = { true }
   ) -> EGOneUpgradeCoordinator {
     let subject = EGOneUpgradeCoordinator(
       appSupportDirectory: root,
@@ -104,6 +105,7 @@ import Testing
       installDirectory: installDirectory(root),
       defaults: defaults,
       trustedArtifact: .init(name: "eg-1-v1.gguf", sizeBytes: 11, sha256: "unused-here"),
+      isOnboardingComplete: isOnboardingComplete,
       ensureCurrentModel: {
         probe.ensureCount += 1
         return probe.ensureOutcome
@@ -117,6 +119,82 @@ import Testing
     )
     subject.onEvent = { event in probe.events.append(event) }
     return subject
+  }
+
+  // MARK: - Onboarding deferral
+
+  /// EG-1 polish is a LIMB. During first-run setup the HEART's model is downloading and dictation
+  /// does not work at all until it lands, so a limb must never compete with it.
+  @MainActor
+  @Test func upgradeDefersWhileOnboardingIncomplete() async throws {
+    let root = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (store, suite) = try defaults()
+    defer { store.removePersistentDomain(forName: suite) }
+
+    try stagePriorAdmission(root: root)
+    let probe = Probe()
+    let subject = coordinator(
+      root: root, defaults: store, probe: probe, isOnboardingComplete: { false })
+
+    await subject.runLaunch()
+
+    #expect(probe.ensureCount == 0, "the limb stands aside while the heart's model downloads")
+  }
+
+  /// The deferral must RE-ARM in the same session. `runLaunch` fires once at bootstrap, so without
+  /// this the deferral would silently mean "never, until the app is restarted" and the user would
+  /// sit on a superseded model with nothing to tell them why.
+  @MainActor
+  @Test func upgradeStartsWhenOnboardingCompletesWithoutRelaunch() async throws {
+    let root = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (store, suite) = try defaults()
+    defer { store.removePersistentDomain(forName: suite) }
+
+    try stagePriorAdmission(root: root)
+    let probe = Probe()
+    let onboarded = OnboardingGate()
+    let subject = coordinator(
+      root: root, defaults: store, probe: probe,
+      isOnboardingComplete: { [onboarded] in onboarded.complete })
+
+    await subject.runLaunch()
+    #expect(probe.ensureCount == 0, "precondition: it really did defer")
+
+    onboarded.complete = true
+    #expect(await subject.onboardingDidComplete(), "it reports a REAL resumption to its caller")
+
+    #expect(probe.ensureCount == 1, "the upgrade resumes without waiting for a relaunch")
+  }
+
+  /// The control that keeps the resume from becoming a second, unconditional launch trigger. An
+  /// app whose onboarding was already finished at launch has nothing deferred, so completing
+  /// onboarding again must do nothing at all.
+  @MainActor
+  @Test func onboardingCompletionDoesNothingWhenNothingWasDeferred() async throws {
+    let root = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (store, suite) = try defaults()
+    defer { store.removePersistentDomain(forName: suite) }
+
+    try stagePriorAdmission(root: root)
+    let probe = Probe()
+    let subject = coordinator(root: root, defaults: store, probe: probe)
+
+    await subject.runLaunch()
+    #expect(probe.ensureCount == 1)
+
+    #expect(
+      !(await subject.onboardingDidComplete()),
+      "nothing was deferred, so the caller must NOT be told to run post-upgrade activation")
+
+    #expect(probe.ensureCount == 1, "no second fetch: nothing had been deferred")
+  }
+
+  @MainActor
+  private final class OnboardingGate {
+    var complete = false
   }
 
   // MARK: - D2: a prior revision was admitted

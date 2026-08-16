@@ -94,6 +94,15 @@ public final class EGOneUpgradeCoordinator {
   private var automaticUpgradeInFlightCount = 0
   private var automaticUpgradeInFlight: Bool { automaticUpgradeInFlightCount > 0 }
 
+  /// Whether first-run setup has finished. EG-1 polish is a LIMB; during onboarding the HEART's
+  /// model (Parakeet or WhisperKit) is downloading, and dictation does not work at all until it
+  /// lands. A limb must never compete with it for bandwidth or disk.
+  private let isOnboardingComplete: @MainActor @Sendable () -> Bool
+
+  /// Set when a launch was turned away by onboarding, and the only thing `onboardingDidComplete`
+  /// acts on. Without it that entry point would be a second, unconditional launch trigger.
+  private var deferredForOnboarding = false
+
   private let ensureCurrentModel:
     @MainActor @Sendable () async -> ModelDeliveryController.DeliveryOutcome
   private let currentModelIsAdmitted: @MainActor @Sendable () async -> Bool
@@ -112,6 +121,7 @@ public final class EGOneUpgradeCoordinator {
     appSupportDirectory: URL,
     identity: ModelIdentity,
     installDirectory: URL,
+    isOnboardingComplete: @escaping @MainActor @Sendable () -> Bool,
     defaults: UserDefaults? = nil,
     trustedArtifact: TrustedArtifact = shippedLegacyArtifact
   ) {
@@ -123,6 +133,7 @@ public final class EGOneUpgradeCoordinator {
         ?? UserDefaults(suiteName: DeliveryFlags.suiteName)
         ?? .standard,
       trustedArtifact: trustedArtifact,
+      isOnboardingComplete: isOnboardingComplete,
       ensureCurrentModel: { [weak adapter] in
         guard let adapter else {
           return .failed(DeliveryFailure(reason: .unknown, detail: "adapter_released"))
@@ -151,6 +162,7 @@ public final class EGOneUpgradeCoordinator {
     installDirectory: URL,
     defaults: UserDefaults,
     trustedArtifact: TrustedArtifact,
+    isOnboardingComplete: @escaping @MainActor @Sendable () -> Bool = { true },
     ensureCurrentModel:
       @escaping @MainActor @Sendable () async -> ModelDeliveryController.DeliveryOutcome,
     currentModelIsAdmitted: @escaping @MainActor @Sendable () async -> Bool,
@@ -161,6 +173,7 @@ public final class EGOneUpgradeCoordinator {
     self.appSupportDirectory = appSupportDirectory
     self.identity = identity
     self.installDirectory = installDirectory
+    self.isOnboardingComplete = isOnboardingComplete
     self.defaults = defaults
     self.trustedArtifact = trustedArtifact
     self.ensureCurrentModel = ensureCurrentModel
@@ -240,6 +253,15 @@ public final class EGOneUpgradeCoordinator {
   public func runLaunch() async {
     guard isEnabled else { return }
 
+    // C15 - Defer the WHOLE launch while first-run setup is unfinished, before preparation and
+    // before any obligation is classified. Preparation can hash a 2.9 GB monolith, so gating only
+    // the fetch would still put a limb in the heart's way. Nothing is lost by waiting: this is
+    // re-entered the moment onboarding completes, in the same session.
+    guard isOnboardingComplete() else {
+      deferredForOnboarding = true
+      return
+    }
+
     let admitted = await currentModelIsAdmitted()
 
     // C11 - Classify the REVISION obligation BEFORE preparation runs.
@@ -279,6 +301,25 @@ public final class EGOneUpgradeCoordinator {
     if case .admitted = outcome {
       handleAdmission()
     }
+  }
+
+  /// Re-entry when first-run setup finishes, WITHOUT waiting for a relaunch.
+  ///
+  /// `runLaunch()` runs once at bootstrap, so a deferral with no re-arm would not mean "later" —
+  /// it would mean "never, until the app is restarted", and the user would sit on a superseded
+  /// model with nothing to tell them why. Guarded on `deferredForOnboarding` so this is a
+  /// RESUMPTION of a turned-away launch rather than a second unconditional trigger: an app whose
+  /// onboarding was already complete at launch does nothing here.
+  /// Returns whether a deferred launch was actually resumed. The caller needs that answer: the
+  /// bootstrap launch path is `runLaunch()` FOLLOWED BY `activateAfterAutomaticReplacementIfNeeded()`,
+  /// and a resumption that ran only the first half would admit the model and never boot the server,
+  /// leaving polish silently unavailable until some other activation path happened to run.
+  @discardableResult
+  public func onboardingDidComplete() async -> Bool {
+    guard deferredForOnboarding else { return false }
+    deferredForOnboarding = false
+    await runLaunch()
+    return true
   }
 
   /// The adapter's `beforeEnsure` door, and the ONLY caller that may clear a decline.

@@ -291,7 +291,8 @@ public final class WisprBootstrapper {
         adapter: adapter,
         appSupportDirectory: egOneAppSupport,
         identity: deliveryManifest.identity,
-        installDirectory: registration.installDirectory)
+        installDirectory: registration.installDirectory,
+        isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })
       // `selected_provider` attaches here (settings in scope); coordinator
       // stays provider-ignorant.
       coordinator.onEvent = EGOneTelemetryBridge.legacyUpgradeHandler(
@@ -514,7 +515,7 @@ public final class WisprBootstrapper {
     settings.onChange = {
       [
         weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder,
-        bluetoothAwarenessPresenterHolder
+        bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator
       ] key
       in
       guard let settingsSync, let settings else { return }
@@ -533,6 +534,15 @@ public final class WisprBootstrapper {
       if key == .llmProvider {
         WisprBootstrapper.prewarmOutputClassifierIfNeeded(
           holder: outputClassifierHolder, provider: settings.llmProvider)
+      }
+      // #2096: EG-1's automatic model upgrade stands aside while first-run setup runs, so the
+      // heart's model download owns the bandwidth. `runLaunch` fires once at bootstrap, so
+      // without this the deferral would mean "never until relaunch" rather than "later".
+      if key == .onboardingState, settings.onboardingState == .completed {
+        Task {
+          guard await egOneCoordinator?.onboardingDidComplete() == true else { return }
+          egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
+        }
       }
       // #1480: tips on/off, input-device change, and onboarding completion each
       // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or first

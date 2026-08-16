@@ -170,6 +170,7 @@ import Testing
       adapter: adapter, appSupportDirectory: root,
       identity: registration.manifest.identity,
       installDirectory: registration.installDirectory,
+      isOnboardingComplete: { true },
       defaults: store)
     let events = EventBox()
     coordinator.onEvent = { [events] event in
