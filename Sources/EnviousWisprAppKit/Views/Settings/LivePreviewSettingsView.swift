@@ -99,7 +99,18 @@ struct LivePreviewSettingsView: View {
         packSections
       }
     }
-    .task {
+    // **Keyed on the language, not merely on appearance.**
+    //
+    // A plain `.task` runs once per appearance, and the dictation language can change while this
+    // page stays open: the passive suggestion chip locks a language straight into settings
+    // (`WisprBootstrapper`), and so does the language sheet. The summary would then describe the
+    // new mode while the resolved language and the "In use" badge still named the old one — the
+    // page contradicting itself in two places at once.
+    //
+    // Keyed on the VALUE rather than wired to those two call sites, so a third writer added later
+    // is covered without knowing this page exists. `swiftui-view-patterns.md`
+    // RULE: swiftui-task-id-cancellation is the house rule for exactly this.
+    .task(id: settings.languageMode) {
       guard isSupported else { return }
       // Re-read on EVERY appearance. The model outlives this page now, so without this a
       // returning user would see the snapshot from whenever they last opened it — past a download

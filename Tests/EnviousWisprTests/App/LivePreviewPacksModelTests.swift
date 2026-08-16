@@ -331,14 +331,27 @@ struct LivePreviewPacksModelTests {
 
   /// The reload above is worthless if the page never asks for it. Asserted at source because a
   /// SwiftUI `.task` modifier has no seam to drive from a unit test.
-  @Test("The page reloads on every appearance, not only the first")
+  ///
+  /// Also pins the KEY. The dictation language can change while this page stays open — the passive
+  /// suggestion chip and the language sheet both write it straight into settings — and an
+  /// appearance-only `.task` left the summary describing one language while the badge named
+  /// another. Keying on the value covers any writer, including ones added later.
+  @Test("The page reloads on every appearance, and whenever the language changes")
   func pageDoesNotSkipReloadOnReappearance() throws {
     let url = RepoRoot.url.appending(
       path: "Sources/EnviousWisprAppKit/Views/Settings/LivePreviewSettingsView.swift")
     let source = LivePreviewNoAutoDownloadTests.codeOnly(
       try String(contentsOf: url, encoding: .utf8))
 
-    guard let start = source.range(of: ".task {") else {
+    #expect(
+      source.contains(".task(id: settings.languageMode)"),
+      """
+      the load must be keyed on the language: a plain .task runs once per appearance, so a chip \
+      or sheet that locks a language while this page is open leaves the summary and the "In use" \
+      badge naming different languages
+      """)
+
+    guard let start = source.range(of: ".task(id: settings.languageMode) {") else {
       Issue.record(".task not found; the page's load path moved")
       return
     }
