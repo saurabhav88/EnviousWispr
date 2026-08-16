@@ -161,5 +161,53 @@ expect 2 "missing file" "$SUT" "$TMP/does-not-exist"
 expect 2 "not a Mach-O binary" "$SUT" "$SUT"
 expect 2 "no argument" "$SUT"
 
+# ---------------------------------------------------------------------------------------------
+# BUNDLE MODE.
+#
+# Everything above drives a plain Mach-O, which exercises the main-executable path only. The
+# EMBEDDED path had no coverage at all, and that is where the reads used to fail open: `lipo`,
+# `otool` and `nm` had their exit statuses discarded, so a binary the script could not read
+# produced empty output, and empty output is spelled the same as "inspected and clean".
+#
+# The bundle is assembled from the real subject binary so the main-executable checks pass and
+# the embedded behaviour is what is under test.
+BUNDLE="$TMP/Probe.app"
+mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Frameworks"
+cp "$BIN" "$BUNDLE/Contents/MacOS/Probe"
+cat > "$BUNDLE/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>Probe</string>
+</dict></plist>
+PLIST
+
+# A truncated Mach-O: `file` still classifies it, so the enumeration picks it up, while `lipo`
+# and `nm` refuse it. Before the exit statuses were checked this printed "no arm64 slice ()" —
+# the same sentence as a legitimate skip, differing only by an empty parenthesis — and passed.
+head -c 512 "$BIN" > "$BUNDLE/Contents/Frameworks/Truncated.dylib"
+if [ "$(file "$BUNDLE/Contents/Frameworks/Truncated.dylib" | grep -c 'Mach-O')" -eq 0 ]; then
+  echo "  FAIL [fixture] the truncated file is not classified as Mach-O, so the enumeration would skip it and this case would test nothing" >&2
+  fail=$((fail + 1))
+else
+  expect_output "refusing to certify a binary this script cannot inspect" \
+    "an embedded Mach-O the tools cannot read fails the gate instead of passing quietly" \
+    "$SUT" "$BUNDLE"
+fi
+
+# Control for the case above: the SAME bundle with a readable embedded Mach-O must pass. Without
+# this, "the bundle case fails" would be indistinguishable from "bundle mode is broken".
+cp /usr/lib/dyld "$BUNDLE/Contents/Frameworks/Truncated.dylib" 2>/dev/null ||
+  cp /bin/echo "$BUNDLE/Contents/Frameworks/Truncated.dylib"
+expect 0 "the same bundle with a readable embedded Mach-O passes" \
+  "$SUT" "$BUNDLE"
+
+# A bundle that yields no embedded Mach-O means the enumeration broke. It used to print
+# "scanned: 0" and pass.
+rm -f "$BUNDLE/Contents/Frameworks/Truncated.dylib"
+expect_output "no embedded Mach-O file was inspected" \
+  "a bundle with nothing embedded is refused, not certified" \
+  "$SUT" "$BUNDLE"
+
 echo "==> $pass passed, $fail failed"
 [ "$fail" -eq 0 ] || exit 1

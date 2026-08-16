@@ -57,8 +57,10 @@ command -v otool >/dev/null 2>&1 || die "otool not available" 2
 # introduce exactly that without the required gate noticing. Given a .app, every startup-loaded
 # Mach-O is inspected; given a plain file, only that file, which keeps the self-test's contract.
 EMBEDDED=""
+IS_BUNDLE=0
 case "$TARGET" in
   *.app)
+    IS_BUNDLE=1
     [ -d "$TARGET" ] || die "bundle not found: $TARGET" 2
     MAIN_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$TARGET/Contents/Info.plist" 2>/dev/null)
     [ -n "$MAIN_NAME" ] || die "no CFBundleExecutable in $TARGET/Contents/Info.plist; cannot identify the main binary" 2
@@ -82,7 +84,10 @@ case "$TARGET" in
       [ "$f" = "$BIN" ] && continue
       # Substring test via parameter expansion: no `grep -q` (pipefail/EPIPE) and no `case`
       # pattern, whose closing paren bash mis-parses inside a $( ) command substitution.
-      desc=$(file "$f" 2>/dev/null)
+      # A `file` that FAILS means this path could not be classified, which is not the same as
+      # "not a Mach-O". Included rather than dropped, so an unreadable file surfaces downstream
+      # as a binary the tools cannot inspect instead of vanishing from the enumeration.
+      desc=$(file "$f" 2>/dev/null) || desc="Mach-O unclassifiable"
       [ "${desc#*Mach-O}" != "$desc" ] && echo "$f"
     done)
     ;;
@@ -276,8 +281,8 @@ fi
 #     referenced: an embedded framework has no obligation to use them, so requiring a match would
 #     fail every honest dependency. The main executable above is what carries the
 #     something-was-inspected requirement.
+embedded_count=0
 if [ -n "$EMBEDDED" ]; then
-  embedded_count=0
   while IFS= read -r extra; do
     [ -n "$extra" ] || continue
     embedded_count=$((embedded_count + 1))
@@ -287,20 +292,47 @@ if [ -n "$EMBEDDED" ]; then
     # targeting macOS 11 must never vouch for an arm64 slice targeting 15. Measured on this
     # bundle: Sparkle's x86_64 slice carries no LC_BUILD_VERSION at all, so the unqualified read
     # landed on arm64 by luck rather than by design.
-    extra_archs=$(lipo -archs "$extra" 2>/dev/null)
+    # **Every read here FAILS CLOSED, the way the main binary's reads already do.**
+    #
+    # This loop used to swallow the exit status of `lipo`, `otool` and `nm` and keep whatever
+    # they left behind, which was the empty string. Empty output then passes every test below:
+    # no architectures reads as "no arm64 slice, skip", no load commands reads as "does not
+    # reference the framework, skip", and no symbols makes every `grep -c` return zero, which
+    # is spelled exactly like "inspected and clean". So a binary this script could not read at
+    # all contributed a silent PASS to a REQUIRED gate.
+    #
+    # The main-executable path above already dies on each of these. The asymmetry was the bug:
+    # the same failure was fatal for one file and invisible for the next one along.
+    if ! extra_archs=$(lipo -archs "$extra" 2>&1); then
+      echo "    $(basename "$extra"): lipo could not read its architectures ($extra_archs); refusing to certify a binary this script cannot inspect" >&2
+      status=1
+      continue
+    fi
     case " $extra_archs " in *" arm64 "*) ;; *)
       echo "    $(basename "$extra"): no arm64 slice ($extra_archs); not checked"
       continue ;;
     esac
-    extra_loads=$(otool -arch arm64 -l "$extra" 2>/dev/null |
+
+    # Read the load commands ONCE and derive both answers from that single output, so the load
+    # list and the deployment target can never come from two different reads of the same file.
+    if ! extra_otool=$(otool -arch arm64 -l "$extra" 2>&1); then
+      echo "    $(basename "$extra"): otool could not read its load commands ($extra_otool); refusing to certify a binary this script cannot inspect" >&2
+      status=1
+      continue
+    fi
+    extra_loads=$(printf '%s\n' "$extra_otool" |
       awk '/^ *cmd LC_[A-Z_]*DYLIB/ && $2 != "LC_ID_DYLIB" {c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
-    extra_syms=$(nm -arch arm64 -m -u "$extra" 2>/dev/null)
+    if ! extra_syms=$(nm -arch arm64 -m -u "$extra" 2>&1); then
+      echo "    $(basename "$extra"): nm could not read its undefined symbols ($extra_syms); every symbol verdict below would be vacuously clean" >&2
+      status=1
+      continue
+    fi
 
     # **Its own deployment target, which the main executable's says nothing about.** A dependency
     # rebuilt for macOS 15 refuses to load on 14 and takes the app down with it. NOT required to
     # EQUAL the floor the way the main binary is: an embedded framework may legitimately target
     # something older. It may only not exceed it.
-    extra_minos=$(otool -arch arm64 -l "$extra" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
+    extra_minos=$(printf '%s\n' "$extra_otool" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
     if [ -n "$extra_minos" ] && [ "$extra_minos" != "$DECLARED" ]; then
       if [ "$(printf '%s\n%s\n' "$extra_minos" "$DECLARED" | sort -V | tail -1)" = "$extra_minos" ]; then
         echo "    $(basename "$extra"): targets macOS $extra_minos, above the declared floor $DECLARED — it will not load for supported users" >&2
@@ -311,8 +343,24 @@ if [ -n "$EMBEDDED" ]; then
     # **The newer-symbol patterns apply here too.** Checking embedded files only against the
     # absent-at-baseline frameworks left the other half unguarded: an embedded framework that
     # strongly imports SpeechAnalyzer aborts dyld on macOS 14 while the main executable passes.
-    extra_readable=$(printf '%s\n' "$extra_syms" | xcrun swift-demangle 2>/dev/null)
-    [ -n "$extra_readable" ] || extra_readable="$extra_syms"
+    # Demangled, for the reason the main binary is: `Speech.SpeechAnalyzer` is spelled
+    # `_$s6Speech0A8AnalyzerC…`, so a literal pattern matches nothing against raw symbols.
+    # The old silent fallback to raw output here reproduced, for embedded files, exactly the
+    # false pass the main path now dies on.
+    if [ -n "$extra_syms" ]; then
+      extra_readable=$(printf '%s\n' "$extra_syms" | xcrun swift-demangle 2>/dev/null)
+      if [ -z "$extra_readable" ]; then
+        echo "    $(basename "$extra"): swift-demangle produced nothing from its symbols; type-name patterns would silently miss every match" >&2
+        status=1
+        continue
+      fi
+    else
+      # nm succeeded and reported nothing. Legitimate for a binary that imports nothing, but it
+      # makes every symbol verdict below vacuous, so it is stated rather than left to look like
+      # a clean inspection.
+      echo "    $(basename "$extra"): no undefined symbols; the symbol checks below inspect nothing for this file"
+      extra_readable=""
+    fi
     for pattern in $NEWER_SYMBOL_PATTERNS; do
       extra_hits=$(printf '%s\n' "$extra_readable" | /usr/bin/grep -c "$pattern")
       [ "$extra_hits" -eq 0 ] && continue
@@ -340,6 +388,17 @@ if [ -n "$EMBEDDED" ]; then
 $EMBEDDED
 EOF
   echo "    embedded Mach-O files scanned: $embedded_count (none may reference a baseline-absent framework strongly)"
+fi
+
+# **A bundle that yielded no embedded Mach-O is a broken enumeration, not a clean bundle.**
+#
+# The count above was printed and never asserted, so `find` or `file` failing — or the layout
+# moving under a future Xcode — would report "scanned: 0" and pass. This bundle ships
+# `Contents/Frameworks` and `Contents/XPCServices/EnviousWisprASRService.xpc`, both of which
+# contain Mach-O, so zero cannot be an honest answer for this product. Bundle mode only; a
+# plain file legitimately has nothing embedded, which is the self-test's contract.
+if [ "$IS_BUNDLE" -eq 1 ] && [ "$embedded_count" -eq 0 ]; then
+  die "no embedded Mach-O file was inspected in $TARGET. This app ships frameworks and an XPC service, so an empty enumeration means the scan broke, not that the bundle is clean" 2
 fi
 
 if [ "$status" -ne 0 ]; then
