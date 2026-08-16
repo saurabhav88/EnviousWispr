@@ -49,21 +49,41 @@ echo "==> app:        $APP"
 echo "==> deployment: ${MINOS:-unknown}"
 echo "==> built with: SDK $(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/sdk /{print $2; exit}')"
 
-# **The runner must not be newer than the app's own deployment target.**
+# **How far below the baseline this runner actually reaches, stated rather than implied.**
 #
-# Symbol availability is monotonic: everything present on the baseline OS is present on later
-# ones. So a launch that passes ABOVE the baseline says nothing about users AT it. Running this
-# on macOS 15 while shipping a macOS 14 target would resolve any macOS-15-only symbol happily
-# and report success, while a Sonoma user's app died at launch — a green check for the exact
-# population it was built to protect. Read from the binary rather than hardcoded, so raising
-# the deployment target cannot leave this comparing against a stale number.
+# Symbol availability is monotonic, so a launch ABOVE the deployment target cannot prove the
+# target itself. A major-version match is NOT enough: the `macos-14` image is 14.8.x while the
+# app targets 14.0, so an API introduced in 14.1 through 14.8 resolves here and would still
+# abort at launch for a user on 14.0. GitHub publishes no 14.0 image, so this residual range is
+# not closable by choosing a different runner and must not be papered over.
+#
+# What covers it instead is the SWIFT COMPILER, which is the exhaustive defence and is already
+# run on every build: using an API newer than the deployment target without an `@available`
+# annotation is a compile ERROR, at minor-version precision, for every framework. Measured
+# 2026-08-16: `swiftc -target arm64-apple-macos14.0` rejects both a macOS 26 API and a
+# hand-annotated `@available(macOS 14.1, *)` call from an unannotated caller.
+#
+# So the ordering of defences is: compiler (all frameworks, exact versions) > weak-link check
+# (the frameworks we knowingly use above baseline, catching the linkage consequence of paths
+# that bypass Swift availability) > this launch (corroboration on the oldest image that exists).
 [ -n "$MINOS" ] || die "could not read the deployment target from $BIN; without it this job cannot know whether the runner is old enough to prove anything" 2
+
+version_gt() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ] && [ "$1" != "$2" ]; }
+
 RUNNER_MAJOR=${RUNNER_VERSION%%.*}
 MINOS_MAJOR=${MINOS%%.*}
 if [ "$RUNNER_MAJOR" -gt "$MINOS_MAJOR" ]; then
-  die "runner is macOS $RUNNER_VERSION but the app targets $MINOS. A launch above the baseline cannot prove the baseline works. Either run this job on a macOS $MINOS_MAJOR image, or raise the deployment target to match the oldest image still available." 2
+  die "runner is macOS $RUNNER_VERSION but the app targets $MINOS. A whole major version above the baseline proves nothing about supported users. Run this job on a macOS $MINOS_MAJOR image, or raise the deployment target to match the oldest image still available." 2
 fi
-echo "==> baseline ok: runner ($RUNNER_MAJOR) is at or below the deployment target ($MINOS_MAJOR)"
+if version_gt "$RUNNER_VERSION" "$MINOS"; then
+  echo "==> baseline: runner $RUNNER_VERSION, target $MINOS"
+  echo "==> RESIDUAL GAP: this run does NOT cover macOS $MINOS through $RUNNER_VERSION."
+  echo "    No macOS $MINOS runner image exists, so that range is covered by the compiler's"
+  echo "    availability checking (a build error), not by this launch. Do not read this PASS as"
+  echo "    proof that a $MINOS machine starts the app."
+else
+  echo "==> baseline ok: runner $RUNNER_VERSION is exactly at the deployment target $MINOS"
+fi
 
 LOG=$(mktemp)
 "$BIN" >"$LOG" 2>&1 &
