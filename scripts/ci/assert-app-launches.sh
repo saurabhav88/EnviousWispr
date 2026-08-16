@@ -42,9 +42,20 @@ xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || \
   echo "note: ad-hoc re-sign failed; continuing, since an unsigned binary still exercises dyld"
 
+# **The architecture has to match what we ship, or the launch proves nothing about users.**
+#
+# EnviousWispr is Apple Silicon only. A launch on an x86_64 runner would either fail for a
+# reason unrelated to macOS compatibility, or succeed under Rosetta and certify a configuration
+# no user runs. The `macos-14` label resolves to `macos-14-arm64` today; asserted rather than
+# trusted, because a label remap would silently turn this job into theatre.
+RUNNER_ARCH=$(uname -m)
+if [ "$RUNNER_ARCH" != "arm64" ]; then
+  die "runner architecture is $RUNNER_ARCH, but the app ships arm64 only. A launch here would say nothing about the machines users have." 2
+fi
+
 RUNNER_VERSION=$(sw_vers -productVersion)
 MINOS=$(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
-echo "==> runner OS:  $RUNNER_VERSION"
+echo "==> runner:     macOS $RUNNER_VERSION on $RUNNER_ARCH"
 echo "==> app:        $APP"
 echo "==> deployment: ${MINOS:-unknown}"
 echo "==> built with: SDK $(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/sdk /{print $2; exit}')"

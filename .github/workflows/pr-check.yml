@@ -378,6 +378,30 @@ jobs:
       # rationale (Release doesn't enable testability by default); it is NOT
       # set on the plain `build` step above, so the shippable release artifact
       # stays non-testable and fully optimized.
+      # Older-macOS launch safety, on the REQUIRED gate rather than beside it.
+      #
+      # The app is built against the macOS 26 SDK with a macOS 14 deployment target. A framework
+      # or symbol from above the baseline that is bound STRONGLY makes dyld abort at launch on an
+      # older Mac, before any `#available` check of ours runs, so the app never opens and the
+      # in-app "needs a newer macOS" message is never reached.
+      #
+      # It lives here, on the job that already produced a release binary, because `build-check` is
+      # the only check the branch ruleset requires: a standalone workflow can go red without
+      # blocking the merge it exists to block. The empirical macOS 14 LAUNCH stays in
+      # `older-macos-launch.yml` and stays advisory — it depends on a hosted image with a
+      # retirement date and on a headless app start, neither of which belongs on the required path.
+      # Static, deterministic, seconds; the self-test runs first so a guard that has stopped
+      # inspecting anything fails here rather than passing quietly.
+      - name: Assert older-macOS launch safety (linkage)
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          APP=$(find "$DERIVED_DATA_PATH/Build/Products" -maxdepth 3 -name 'EnviousWispr.app' -type d | head -1)
+          [ -n "$APP" ] || { echo "FAIL: no built .app found for the linkage check" >&2; exit 1; }
+          BIN="$APP/Contents/MacOS/EnviousWispr"
+          ./scripts/ci/check-weak-linked-symbols-test.sh "$BIN"
+          ./scripts/ci/check-weak-linked-symbols.sh "$BIN"
+
       - name: Build for testing (release, Xcode)
         id: release-test-build
         if: steps.changes.outputs.needs_build == 'true'

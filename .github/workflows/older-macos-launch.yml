@@ -9,14 +9,16 @@ name: Older macOS Launch
 # never sees the in-app "needs a newer macOS" message, because the app never opens.
 #
 # Two checks, deliberately different in kind:
-#   1. linkage  — static, fast, deterministic, on the machine that builds. Catches the
-#                 regression at the moment it is introduced, but ONLY for the frameworks it
-#                 names (Speech, FoundationModels). A newer-than-baseline symbol from any other
-#                 framework is outside it by construction.
-#   2. launch   — empirical, on the OLDEST macOS we support. Covers the general case the static
-#                 check cannot, including a wrongly-guarded call that only fails when it runs.
-#                 Runs at the deployment target, not above it: symbol availability is monotonic,
-#                 so a pass above the baseline proves nothing about users at it.
+# The STATIC linkage check does not live here. It runs in `pr-check.yml`'s build-release job,
+# because `build-check` is the only check the branch ruleset requires and a standalone workflow
+# can go red without blocking the merge it exists to block.
+#
+# What lives here is the EMPIRICAL launch, deliberately advisory: it depends on a hosted image
+# with a published retirement date and on starting a GUI app headlessly, and neither belongs on
+# the path that blocks every merge. It covers the general case the static check cannot —
+# including a wrongly-guarded call that only fails when it runs — and it runs AT the deployment
+# target rather than above it, because symbol availability is monotonic and a pass above the
+# baseline proves nothing about users at it.
 #
 # The app cannot be BUILT on an older runner (it needs the macOS 26 SDK), so the build happens
 # on macos-26 and the product is carried to macos-15 as an artifact.
@@ -47,8 +49,8 @@ env:
   XCODE_RELEASE_SCHEME: EnviousWispr-Release
 
 jobs:
-  linkage:
-    name: Weak-linkage check (build on macos-26)
+  build:
+    name: Build the app to carry to the older runner
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -94,18 +96,6 @@ jobs:
           echo "app_path=$APP" >> "$GITHUB_OUTPUT"
           echo "built: $APP"
 
-      # The guard's own arming, checked before the guard's verdict is trusted. This repo has
-      # repeatedly found guards that had silently stopped inspecting anything.
-      - name: Self-test the linkage guard
-        run: |
-          set -euo pipefail
-          BIN="${{ steps.app.outputs.app_path }}/Contents/MacOS/EnviousWispr"
-          ls -l "$BIN"
-          ./scripts/ci/check-weak-linked-symbols-test.sh "$BIN"
-
-      - name: Assert macOS 26 frameworks are weak-linked
-        run: ./scripts/ci/check-weak-linked-symbols.sh "${{ steps.app.outputs.app_path }}/Contents/MacOS/EnviousWispr"
-
       - name: Upload the app for the older-macOS launch
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -116,7 +106,7 @@ jobs:
 
   launch:
     name: Launch on macOS 14 (the deployment target)
-    needs: linkage
+    needs: build
     runs-on: macos-14
     timeout-minutes: 20
     steps:
