@@ -103,6 +103,19 @@ expect 2 "an absent control refuses to give a verdict" "$TMP/noctl.sh" "$BIN"
 variant "$TMP/nofw.sh" 'NEWER_SYMBOL_PATTERNS="SpeechAnalyzer DictationTranscriber AssetInventory"' 'NEWER_SYMBOL_PATTERNS="NoSuchTypeXYZ"'
 expect 2 "a symbol-pattern list matching nothing refuses to pass" "$TMP/nofw.sh" "$BIN"
 
+# **The regression that made this whole check vacuous for one type.** Matching against RAW nm
+# output finds nothing for `SpeechAnalyzer`, because Swift mangles it as `0A8Analyzer` — the
+# module prefix is substituted away. The guard read that as "type unused" and passed. Every
+# pattern is now required to match, so reverting to raw symbols must fail, not shrug.
+# Caught by the demangler control, which fires BEFORE the pattern loop: raw mangled output
+# contains no readable Swift signature, so the guard refuses to give a verdict at all rather
+# than reaching the patterns and reporting a type as unused. Asserting the refusal (exit 2) is
+# asserting the real behaviour; an earlier draft of this case expected the later message and
+# failed, which is the defence-in-depth working, not a bug.
+# shellcheck disable=SC2016  # deliberate: these are sed patterns, the $ must stay literal
+variant "$TMP/raw.sh" 'SYMS_READABLE=\$(printf .%s\\n. "\$SYMS" | xcrun swift-demangle 2>\/dev\/null)' 'SYMS_READABLE="$SYMS"'
+expect 2 "matching raw mangled symbols refuses to give a verdict" "$TMP/raw.sh" "$BIN"
+
 # Fails closed on every input it cannot measure.
 expect 2 "missing file" "$SUT" "$TMP/does-not-exist"
 expect 2 "not a Mach-O binary" "$SUT" "$SUT"

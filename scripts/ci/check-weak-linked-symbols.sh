@@ -53,6 +53,29 @@ command -v otool >/dev/null 2>&1 || die "otool not available" 2
 SYMS=$(nm -m -u "$BIN" 2>/dev/null)
 [ -n "$SYMS" ] || die "nm produced no undefined symbols for $BIN — wrong file type, or a stripped or thin binary" 2
 
+# **Match type names against DEMANGLED symbols, never the raw mangled ones.**
+#
+# Swift mangling substitutes a repeated module prefix, so `Speech.SpeechAnalyzer` is spelled
+# `_$s6Speech0A8AnalyzerC…` in the binary and the literal string "SpeechAnalyzer" appears
+# nowhere. The previous version matched raw output, found zero, and printed "type unused here,
+# or renamed" over 15 real imports — evidence printed and misread, which is worse than no check.
+# Demangling removes the guesswork: the readable name is what the pattern list already names.
+SYMS_READABLE=$(printf '%s\n' "$SYMS" | xcrun swift-demangle 2>/dev/null)
+if [ -z "$SYMS_READABLE" ]; then
+  # No silent fallback to raw symbols: that is precisely the state that produced a false pass.
+  die "swift-demangle produced nothing; type-name patterns cannot be matched against mangled symbols without silently missing them" 2
+fi
+# Control for the demangler itself: a readable Swift name must appear, or it did not demangle.
+#
+# Counted, NOT `grep -q`. Under `set -o pipefail`, `grep -q` exits on its first match, `printf`
+# then dies of EPIPE, and the pipeline reports failure — so this control fired against 1502
+# genuine matches and killed a correct run. A guard whose success path looks like its failure
+# path is worse than no guard, and this is the second pipefail trap in this file's history.
+READABLE_SIGNATURES=$(printf '%s\n' "$SYMS_READABLE" | /usr/bin/grep -cE '\.getter|\.setter| -> |\.init\(')
+if [ "$READABLE_SIGNATURES" -eq 0 ]; then
+  die "swift-demangle output contains no recognisably demangled Swift signature; every type-name verdict below would be vacuous" 2
+fi
+
 # Report the deployment target so a reader can see WHY this check matters for this build.
 MINOS=$(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
 echo "==> binary:            $BIN"
@@ -142,33 +165,31 @@ done
 # (2) Newer types inside frameworks that DO exist at the baseline. Only these symbols are
 #     constrained; the framework's load command and its baseline-era symbols are left alone, so
 #     adding an API that macOS 14 already has does not trip this guard.
-matched_patterns=0
+# **Every configured pattern must match.** Tolerating a zero-match pattern is what let a
+# mangling mismatch read as "unused": the other two patterns still matched, the run passed, and
+# a strong SpeechAnalyzer import would have sailed through. A type that genuinely stops being
+# used should be REMOVED from the list by a person, which is a deliberate act that gets reviewed.
+unmatched=""
 for pattern in $NEWER_SYMBOL_PATTERNS; do
-  hits=$(printf '%s\n' "$SYMS" | /usr/bin/grep -c "$pattern")
+  hits=$(printf '%s\n' "$SYMS_READABLE" | /usr/bin/grep -c "$pattern")
   if [ "$hits" -eq 0 ]; then
-    # Said out loud rather than skipped in silence. A pattern matching nothing is either a type
-    # the app no longer uses or one that has been renamed, and the second case is a guard that
-    # has quietly stopped watching something. Not fatal on its own — the list as a whole still
-    # has to match something — but never invisible.
-    echo "    $pattern: no symbols (type unused here, or renamed)"
+    echo "    $pattern: NO SYMBOLS — renamed, or no longer used" >&2
+    unmatched="$unmatched $pattern"
     continue
   fi
-  matched_patterns=$((matched_patterns + 1))
   checked=$((checked + 1))
-  strong=$(printf '%s\n' "$SYMS" | /usr/bin/grep "$pattern" | /usr/bin/grep -vc 'weak external')
+  strong=$(printf '%s\n' "$SYMS_READABLE" | /usr/bin/grep "$pattern" | /usr/bin/grep -vc 'weak external')
   if [ "$strong" -ne 0 ]; then
     echo "    $pattern: $strong of $hits symbols are STRONGLY bound" >&2
-    printf '%s\n' "$SYMS" | /usr/bin/grep "$pattern" | /usr/bin/grep -v 'weak external' | sed 's/^/      /' >&2
+    printf '%s\n' "$SYMS_READABLE" | /usr/bin/grep "$pattern" | /usr/bin/grep -v 'weak external' | sed 's/^/      /' >&2
     status=1
   else
     echo "    $pattern: all $hits symbols weak ✓"
   fi
 done
 
-# A pattern list that matches nothing has gone stale — the types were renamed, or the app
-# stopped using them — and would report a confident pass having inspected nothing.
-if [ "$matched_patterns" -eq 0 ]; then
-  die "none of the newer-symbol patterns ($NEWER_SYMBOL_PATTERNS) matched anything in this binary. Either the wrong binary was passed, or these types were renamed and this half of the guard is now checking nothing" 2
+if [ -n "$unmatched" ]; then
+  die "these newer-symbol patterns matched nothing:$unmatched. Either the type was renamed (the guard has stopped watching it) or the app no longer uses it (remove it from NEWER_SYMBOL_PATTERNS deliberately). A pattern that inspects nothing must not contribute to a pass" 2
 fi
 
 if [ "$checked" -eq 0 ]; then
