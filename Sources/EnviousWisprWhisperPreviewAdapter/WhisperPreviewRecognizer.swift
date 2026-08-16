@@ -5,6 +5,53 @@ import EnviousWisprPostProcessing
 import Foundation
 import os
 
+/// Serializes the OPEN-A-SESSION transaction, which suspends at every step.
+///
+/// **An actor is not enough for this, and the first attempt proved it.**
+/// `WhisperPreviewRecognizer` is an actor, so `openSession` calls are serialized
+/// — but an actor is reentrant at every `await`, and that method awaits three
+/// times before it records the new session. A second call arriving during any of
+/// those suspensions also read `previousSession == nil`, so both proceeded and
+/// both started decode loops over the same cached WhisperKit instance: exactly
+/// the concurrent-transcribe corruption `WhisperKitStreamingSession.cancel()`
+/// documents. Cloud review caught it after the serialization was added.
+///
+/// The lock is held ACROSS the suspensions instead. This is the repo's own
+/// pattern, not a new invention: `LocaleReservations` exists for the identical
+/// reason on a different subject, and its doc records that four rounds of
+/// one-defect-per-round were the signal that patching was the problem.
+///
+/// FIFO hand-off ported WHOLE from that primitive — `release()` keeps `held`
+/// true and passes ownership straight to the next waiter, so there is no gap for
+/// a third caller and no starvation. That doc also records that porting it
+/// PARTIALLY is what caused its own first defect, so this is a complete copy
+/// rather than a simplification.
+package actor PreviewSessionTurnover {
+  private var held = false
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+
+  package init() {}
+
+  package func acquire() async {
+    if !held {
+      held = true
+      return
+    }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      waiters.append(continuation)
+    }
+  }
+
+  package func release() {
+    if waiters.isEmpty {
+      held = false
+    } else {
+      // Stays `held`; ownership passes straight to the next waiter.
+      waiters.removeFirst().resume()
+    }
+  }
+}
+
 /// The Live Preview engine backed by the downloadable universal model
 /// (#2108, epic #2077 chunk 4).
 ///
@@ -45,6 +92,9 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
   /// each of its sessions owns its own analyzer; ours share one kit.
   private var previousSession: WhisperPreviewSessionHandle?
 
+  /// Held across the whole open transaction. See `PreviewSessionTurnover`.
+  private let turnover = PreviewSessionTurnover()
+
   /// `language` is the already-resolved decode language, or nil for auto —
   /// resolved by the resolver, which owns what `.auto` means for THIS engine.
   package init(runtime: WhisperPreviewRuntime, language: String?) {
@@ -69,22 +119,31 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
     lookups: WordCorrector.Lookups?,
     onText: @escaping @Sendable (String) -> Void
   ) async throws -> any LivePreviewEngineSession {
-    // Serialize turnover BEFORE building anything. This actor already serializes
-    // calls to `openSession`, but the previous session is torn down by the
-    // COORDINATOR on a different path, so the wait has to happen here.
-    await previousSession?.end()
+    // Hold the lock across the ENTIRE transaction — end the old session, build
+    // the new one, attach it, record it. Every one of those steps suspends, and
+    // actor isolation alone lets a second caller in at any of them.
+    await turnover.acquire()
+    do {
+      await previousSession?.end()
 
-    let handle = WhisperPreviewSessionHandle(lookups: lookups, onText: onText)
-    let session = try await runtime.makeStreamingSession(
-      language: language,
-      // The retention cap the session applies before it stores or publishes
-      // anything. The word-boundary-aware trim still runs downstream; this stops
-      // the ASR actor holding a full 60-minute transcript in the first place.
-      hypothesisRetentionLimit: LivePreviewTextBound.maxCharacters,
-      onHypothesis: handle.enqueue)
-    await handle.attach(session)
-    previousSession = handle
-    return handle
+      let handle = WhisperPreviewSessionHandle(lookups: lookups, onText: onText)
+      let session = try await runtime.makeStreamingSession(
+        language: language,
+        // The retention cap the session applies before it stores or publishes
+        // anything. The word-boundary-aware trim still runs downstream; this
+        // stops the ASR actor holding a full 60-minute transcript at all.
+        hypothesisRetentionLimit: LivePreviewTextBound.maxCharacters,
+        onHypothesis: handle.enqueue)
+      await handle.attach(session)
+      previousSession = handle
+      await turnover.release()
+      return handle
+    } catch {
+      // Release on the throwing path too: a lock that leaks on failure wedges
+      // every later recording, which is worse than the failure that caused it.
+      await turnover.release()
+      throw error
+    }
   }
 }
 

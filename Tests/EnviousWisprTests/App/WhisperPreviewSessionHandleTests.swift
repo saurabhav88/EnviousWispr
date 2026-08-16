@@ -118,4 +118,91 @@ import Testing
     try? await Task.sleep(for: .milliseconds(50))
     #expect(!box.delivered.contains("after the end"))
   }
+
+  // MARK: - #2108: the turnover lock actually serializes
+
+  /// Tests the PRIMITIVE, not the vendor.
+  ///
+  /// N tasks acquire, suspend inside the critical section, and release. Peak
+  /// occupancy must be 1. A completion count runs alongside so the assertion
+  /// cannot pass vacuously on a run where nothing entered — which is how a
+  /// serialization test lies.
+  ///
+  /// The mutation that matters is the one this replaced: with actor isolation
+  /// alone and no lock, peak occupancy is N.
+  @Test("the turnover lock admits exactly one holder at a time")
+  func turnoverLockAdmitsOneHolderAtATime() async {
+    let lock = PreviewSessionTurnover()
+
+    final class Occupancy: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var current = 0
+      private(set) var peak = 0
+      private(set) var completed = 0
+      func enter() {
+        mutex.lock()
+        current += 1
+        peak = max(peak, current)
+        mutex.unlock()
+      }
+      func leave() {
+        mutex.lock()
+        current -= 1
+        completed += 1
+        mutex.unlock()
+      }
+    }
+    let occupancy = Occupancy()
+
+    await withTaskGroup(of: Void.self) { group in
+      for _ in 0..<12 {
+        group.addTask {
+          await lock.acquire()
+          occupancy.enter()
+          // Suspend INSIDE the critical section. Without this the sections may
+          // not overlap even when unprotected, and the test would pass against
+          // a broken lock.
+          await Task.yield()
+          await Task.yield()
+          occupancy.leave()
+          await lock.release()
+        }
+      }
+    }
+
+    #expect(occupancy.completed == 12, "control: every task must have entered and left")
+    #expect(occupancy.peak == 1, "peak occupancy \(occupancy.peak) — the lock did not serialize")
+  }
+
+  /// FIFO hand-off: `release()` must pass ownership straight to the next waiter
+  /// rather than clearing `held` and letting anyone race for it. Asserted by the
+  /// absence of starvation — every waiter completes — since the internal state is
+  /// private and a test that reached into it would be testing the implementation
+  /// rather than the contract.
+  @Test("no waiter is starved by the hand-off")
+  func noWaiterIsStarved() async {
+    let lock = PreviewSessionTurnover()
+    final class Counter: @unchecked Sendable {
+      private let mutex = NSLock()
+      private(set) var done = 0
+      func tick() {
+        mutex.lock()
+        done += 1
+        mutex.unlock()
+      }
+    }
+    let counter = Counter()
+
+    await withTaskGroup(of: Void.self) { group in
+      for _ in 0..<25 {
+        group.addTask {
+          await lock.acquire()
+          await Task.yield()
+          counter.tick()
+          await lock.release()
+        }
+      }
+    }
+    #expect(counter.done == 25)
+  }
 }
