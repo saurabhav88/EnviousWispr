@@ -37,6 +37,10 @@ on:
       # would otherwise merge a broken probe without ever running it.
       - 'scripts/ci/**'
       - '.github/workflows/older-macos-launch.yml'
+      # `classify-changes.sh` treats .github/** as content-only except pr-check and
+      # main-post-merge, so a release.yml change (an archive-time linker or deployment-target
+      # override, say) would otherwise reach production without either check running.
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 concurrency:

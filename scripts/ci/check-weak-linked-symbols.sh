@@ -16,7 +16,7 @@
 
 set -uo pipefail
 
-BIN="${1:-}"
+TARGET="${1:-}"
 
 # **Two different rules, because two different things can be missing.** Collapsing them into one
 # list produced a false positive that would have failed honest work: review round 4 pointed out
@@ -45,10 +45,36 @@ CONTROL_FRAMEWORK="AppKit"
 
 die() { echo "FAIL: $1" >&2; exit "${2:-1}"; }
 
-[ -n "$BIN" ] || die "usage: $0 <path-to-macho-binary>" 2
-[ -f "$BIN" ] || die "binary not found: $BIN" 2
+[ -n "$TARGET" ] || die "usage: $0 <path-to-.app-or-macho-binary>" 2
 command -v nm >/dev/null 2>&1 || die "nm not available" 2
 command -v otool >/dev/null 2>&1 || die "otool not available" 2
+
+# **A bundle is more than its main executable.**
+#
+# dyld loads embedded frameworks at startup, so a strong post-baseline import inside one of them
+# aborts the process just as surely — and none of it appears in the main executable's own
+# symbols. This bundle embeds Sparkle (five Mach-O files today), so a dependency bump could
+# introduce exactly that without the required gate noticing. Given a .app, every startup-loaded
+# Mach-O is inspected; given a plain file, only that file, which keeps the self-test's contract.
+EMBEDDED=""
+case "$TARGET" in
+  *.app)
+    [ -d "$TARGET" ] || die "bundle not found: $TARGET" 2
+    MAIN_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$TARGET/Contents/Info.plist" 2>/dev/null)
+    [ -n "$MAIN_NAME" ] || die "no CFBundleExecutable in $TARGET/Contents/Info.plist; cannot identify the main binary" 2
+    BIN="$TARGET/Contents/MacOS/$MAIN_NAME"
+    [ -f "$BIN" ] || die "main executable not found: $BIN" 2
+    if [ -d "$TARGET/Contents/Frameworks" ]; then
+      EMBEDDED=$(find "$TARGET/Contents/Frameworks" -type f -perm +111 2>/dev/null | while read -r f; do
+        file "$f" 2>/dev/null | /usr/bin/grep -q "Mach-O" && echo "$f"
+      done)
+    fi
+    ;;
+  *)
+    BIN="$TARGET"
+    [ -f "$BIN" ] || die "binary not found: $BIN" 2
+    ;;
+esac
 
 SYMS=$(nm -m -u "$BIN" 2>/dev/null)
 [ -n "$SYMS" ] || die "nm produced no undefined symbols for $BIN — wrong file type, or a stripped or thin binary" 2
@@ -73,7 +99,7 @@ fi
 # path is worse than no guard, and this is the second pipefail trap in this file's history.
 READABLE_SIGNATURES=$(printf '%s\n' "$SYMS_READABLE" | /usr/bin/grep -cE '\.getter|\.setter| -> |\.init\(')
 if [ "$READABLE_SIGNATURES" -eq 0 ]; then
-  die "swift-demangle output contains no recognisably demangled Swift signature; every type-name verdict below would be vacuous" 2
+  die "swift-demangle output contains no recognisably demangled Swift signature; every type-name verdict below would be vacuous. If this is a DEBUG bundle, its Contents/MacOS/<name> is a thin launcher and the code lives in <name>.debug.dylib — pass that file directly. CI passes the Release .app, whose main executable carries the code." 2
 fi
 
 MINOS=$(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
@@ -218,6 +244,37 @@ fi
 
 if [ "$checked" -eq 0 ]; then
   die "nothing was inspected: neither the absent-at-baseline frameworks ($ABSENT_AT_BASELINE_FRAMEWORKS) nor the newer-symbol patterns appear in this binary" 2
+fi
+
+# (3) Embedded Mach-O files. Only the baseline-absent frameworks are checked here, and only IF
+#     referenced: an embedded framework has no obligation to use them, so requiring a match would
+#     fail every honest dependency. The main executable above is what carries the
+#     something-was-inspected requirement.
+if [ -n "$EMBEDDED" ]; then
+  embedded_count=0
+  while IFS= read -r extra; do
+    [ -n "$extra" ] || continue
+    embedded_count=$((embedded_count + 1))
+    extra_loads=$(otool -l "$extra" 2>/dev/null |
+      awk '/^ *cmd LC_LOAD(_WEAK)?_DYLIB/{c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
+    extra_syms=$(nm -m -u "$extra" 2>/dev/null)
+    for fw in $ABSENT_AT_BASELINE_FRAMEWORKS; do
+      extra_load=$(printf '%s\n' "$extra_loads" | awk -v f="/$fw.framework/" 'index($2, f) {print $1; exit}')
+      [ -n "$extra_load" ] || continue
+      if [ "$extra_load" != "LC_LOAD_WEAK_DYLIB" ]; then
+        echo "    $(basename "$extra"): loads $fw as $extra_load, must be LC_LOAD_WEAK_DYLIB" >&2
+        status=1
+      fi
+      extra_strong=$(printf '%s\n' "$extra_syms" | /usr/bin/grep "(from $fw)" | /usr/bin/grep -vc 'weak external')
+      if [ "$extra_strong" -ne 0 ]; then
+        echo "    $(basename "$extra"): $extra_strong strong $fw symbols" >&2
+        status=1
+      fi
+    done
+  done <<EOF
+$EMBEDDED
+EOF
+  echo "    embedded Mach-O files scanned: $embedded_count (none may reference a baseline-absent framework strongly)"
 fi
 
 if [ "$status" -ne 0 ]; then

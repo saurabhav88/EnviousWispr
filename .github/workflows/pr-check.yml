@@ -403,9 +403,11 @@ jobs:
           # `-d`, not `-n`: the path is a literal now, so a non-empty test would always pass
           # and the check would run against a bundle that does not exist.
           [ -d "$APP" ] || { echo "FAIL: release app not at $APP" >&2; exit 1; }
-          BIN="$APP/Contents/MacOS/EnviousWispr"
-          ./scripts/ci/check-weak-linked-symbols-test.sh "$BIN"
-          ./scripts/ci/check-weak-linked-symbols.sh "$BIN"
+          # The self-test drives a single binary (its contract); the real check gets the whole
+          # bundle so embedded frameworks are scanned too — dyld loads those at startup, and a
+          # strong post-baseline import inside one aborts the process just as surely.
+          ./scripts/ci/check-weak-linked-symbols-test.sh "$APP/Contents/MacOS/EnviousWispr"
+          ./scripts/ci/check-weak-linked-symbols.sh "$APP"
 
       - name: Build for testing (release, Xcode)
         id: release-test-build
