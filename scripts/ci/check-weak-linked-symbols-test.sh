@@ -55,9 +55,19 @@ expect_output() {
 }
 
 # Variants are generated from the real script so they cannot drift away from it.
+#
+# **A substitution that changes nothing is refused.** Renaming a variable in the subject used to
+# leave these variants byte-identical to it, so the cases that must FAIL quietly passed and the
+# suite still reported green on the ones that could not drift. A mutation that does not mutate is
+# a test of nothing.
 variant() {
   local path="$1" from="$2" to="$3"
   sed "s/^$from/$to/" "$SUT" > "$path" || return 1
+  if cmp -s "$SUT" "$path"; then
+    echo "  FAIL [variant is identical to the subject] pattern never matched: $from" >&2
+    fail=$((fail + 1))
+    return 1
+  fi
   chmod +x "$path"
 }
 
@@ -72,13 +82,13 @@ expect 0 "the shipped binary passes" "$SUT" "$BIN"
 # The assertion fires. AppKit is linked normally, so guarding it MUST report strong symbols
 # AND a strong LC_LOAD_DYLIB. This one variant covers both failure kinds, which is why the
 # next case exists: to prove the load-command check can fail on its own.
-variant "$TMP/strong.sh" 'GUARDED_FRAMEWORKS="Speech FoundationModels"' 'GUARDED_FRAMEWORKS="AppKit"'
+variant "$TMP/strong.sh" 'ABSENT_AT_BASELINE_FRAMEWORKS="FoundationModels"' 'ABSENT_AT_BASELINE_FRAMEWORKS="AppKit"'
 expect 1 "a strongly-bound framework is rejected" "$TMP/strong.sh" "$BIN"
 
 # The load-command check must be shown to FIRE, not merely to be present. Exit code alone
 # cannot show it: a strongly-loaded framework usually has strong symbols too, so the symbol
 # check would explain the failure by itself. Asserting the message attributes the failure.
-variant "$TMP/load.sh" 'GUARDED_FRAMEWORKS="Speech FoundationModels"' 'GUARDED_FRAMEWORKS="AVFoundation"'
+variant "$TMP/load.sh" 'ABSENT_AT_BASELINE_FRAMEWORKS="FoundationModels"' 'ABSENT_AT_BASELINE_FRAMEWORKS="AVFoundation"'
 expect_output "must be LC_LOAD_WEAK_DYLIB" "a strongly-LOADED framework is named as such" "$TMP/load.sh" "$BIN"
 
 # The instrument's own control. If it cannot tell weak from strong, it must refuse to answer
@@ -90,8 +100,8 @@ variant "$TMP/noctl.sh" 'CONTROL_FRAMEWORK="AppKit"' 'CONTROL_FRAMEWORK="NoSuchF
 expect 2 "an absent control refuses to give a verdict" "$TMP/noctl.sh" "$BIN"
 
 # A guard list matching nothing is a guard checking nothing, and must not pass.
-variant "$TMP/nofw.sh" 'GUARDED_FRAMEWORKS="Speech FoundationModels"' 'GUARDED_FRAMEWORKS="NoSuchFrameworkXYZ"'
-expect 2 "a guard list matching nothing refuses to pass" "$TMP/nofw.sh" "$BIN"
+variant "$TMP/nofw.sh" 'NEWER_SYMBOL_PATTERNS="SpeechAnalyzer DictationTranscriber AssetInventory"' 'NEWER_SYMBOL_PATTERNS="NoSuchTypeXYZ"'
+expect 2 "a symbol-pattern list matching nothing refuses to pass" "$TMP/nofw.sh" "$BIN"
 
 # Fails closed on every input it cannot measure.
 expect 2 "missing file" "$SUT" "$TMP/does-not-exist"

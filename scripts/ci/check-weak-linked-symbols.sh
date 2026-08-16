@@ -18,9 +18,25 @@ set -uo pipefail
 
 BIN="${1:-}"
 
-# Frameworks whose APIs we use above the deployment target. Adding an API from a new framework
-# means adding it here; the self-test below fails loudly if this list stops matching reality.
-GUARDED_FRAMEWORKS="Speech FoundationModels"
+# **Two different rules, because two different things can be missing.** Collapsing them into one
+# list produced a false positive that would have failed honest work: review round 4 pointed out
+# that `SFSpeechRecognizer` has existed since macOS 10.15, so adding it would legitimately emit a
+# strong symbol and flip Speech to LC_LOAD_DYLIB — and the guard would have called that a
+# compatibility defect. A guard that fires on safe code is how guards get bypassed.
+#
+# Verified with `swiftc -target arm64-apple-macos14.0 -typecheck` on 2026-08-16:
+#   SFSpeechRecognizer     compiles clean       -> Speech itself is present at the baseline
+#   SystemLanguageModel    "only available in macOS 26.0 or newer"
+
+# (1) Frameworks that do not EXIST at the deployment target. A strong load of one of these kills
+#     the process before any symbol is resolved, so both the load command and every symbol must
+#     be weak. Add a framework here only if the framework itself is absent on macOS 14.
+ABSENT_AT_BASELINE_FRAMEWORKS="FoundationModels"
+
+# (2) Types that are newer than the deployment target inside a framework that IS present. Only
+#     these symbols must be weak; the framework's load command and its baseline-era symbols are
+#     none of this guard's business. Matched against the mangled name, which carries the type.
+NEWER_SYMBOL_PATTERNS="SpeechAnalyzer DictationTranscriber AssetInventory"
 
 # A framework we link normally. Its symbols MUST come back strong. This is the instrument's
 # own control: if it ever reports weak, `nm` output has changed shape and every "0 strong
@@ -86,25 +102,24 @@ echo "==> control ok:        $CONTROL_FRAMEWORK loads as LC_LOAD_DYLIB (parser d
 # --- The actual assertion ------------------------------------------------------------------
 status=0
 checked=0
-for fw in $GUARDED_FRAMEWORKS; do
+# (1) Frameworks absent at the baseline: both the load command and every symbol must be weak.
+for fw in $ABSENT_AT_BASELINE_FRAMEWORKS; do
   total=$(count_for "$fw")
   load=$(load_command_for "$fw")
 
-  # **The load command is checked FIRST, and for every guarded framework.** An earlier version
-  # skipped a framework contributing no symbols, which would have waved through the worst case
-  # available: a framework reached only through the ObjC runtime, strongly loaded, absent on the
-  # older OS. Zero symbols is the state in which the load command matters MOST, not least.
+  # **The load command is checked FIRST, and whether or not the framework contributed symbols.**
+  # An earlier version skipped a framework with no symbols, which would have waved through the
+  # worst case available: one reached only through the ObjC runtime, strongly loaded, absent on
+  # the older OS. Zero symbols is when the load command matters MOST, not least.
   if [ -n "$load" ]; then
     checked=$((checked + 1))
     if [ "$load" != "LC_LOAD_WEAK_DYLIB" ]; then
-      echo "    $fw: loaded as $load, must be LC_LOAD_WEAK_DYLIB" >&2
+      echo "    $fw: loaded as $load, must be LC_LOAD_WEAK_DYLIB (framework absent below the baseline)" >&2
       status=1
     fi
   fi
 
   if [ "$total" -eq 0 ]; then
-    # Not an error on its own: a framework can legitimately go unused. Said out loud, so a
-    # silently-dropped dependency is visible rather than passing as "nothing strong found".
     if [ -n "$load" ]; then
       echo "    $fw: no symbols in this binary, loaded as $load"
     else
@@ -124,8 +139,40 @@ for fw in $GUARDED_FRAMEWORKS; do
   fi
 done
 
+# (2) Newer types inside frameworks that DO exist at the baseline. Only these symbols are
+#     constrained; the framework's load command and its baseline-era symbols are left alone, so
+#     adding an API that macOS 14 already has does not trip this guard.
+matched_patterns=0
+for pattern in $NEWER_SYMBOL_PATTERNS; do
+  hits=$(printf '%s\n' "$SYMS" | /usr/bin/grep -c "$pattern")
+  if [ "$hits" -eq 0 ]; then
+    # Said out loud rather than skipped in silence. A pattern matching nothing is either a type
+    # the app no longer uses or one that has been renamed, and the second case is a guard that
+    # has quietly stopped watching something. Not fatal on its own — the list as a whole still
+    # has to match something — but never invisible.
+    echo "    $pattern: no symbols (type unused here, or renamed)"
+    continue
+  fi
+  matched_patterns=$((matched_patterns + 1))
+  checked=$((checked + 1))
+  strong=$(printf '%s\n' "$SYMS" | /usr/bin/grep "$pattern" | /usr/bin/grep -vc 'weak external')
+  if [ "$strong" -ne 0 ]; then
+    echo "    $pattern: $strong of $hits symbols are STRONGLY bound" >&2
+    printf '%s\n' "$SYMS" | /usr/bin/grep "$pattern" | /usr/bin/grep -v 'weak external' | sed 's/^/      /' >&2
+    status=1
+  else
+    echo "    $pattern: all $hits symbols weak ✓"
+  fi
+done
+
+# A pattern list that matches nothing has gone stale — the types were renamed, or the app
+# stopped using them — and would report a confident pass having inspected nothing.
+if [ "$matched_patterns" -eq 0 ]; then
+  die "none of the newer-symbol patterns ($NEWER_SYMBOL_PATTERNS) matched anything in this binary. Either the wrong binary was passed, or these types were renamed and this half of the guard is now checking nothing" 2
+fi
+
 if [ "$checked" -eq 0 ]; then
-  die "none of the guarded frameworks ($GUARDED_FRAMEWORKS) appear in this binary. Either the wrong binary was passed, or the app stopped using them and this guard is now checking nothing" 2
+  die "nothing was inspected: neither the absent-at-baseline frameworks ($ABSENT_AT_BASELINE_FRAMEWORKS) nor the newer-symbol patterns appear in this binary" 2
 fi
 
 if [ "$status" -ne 0 ]; then
@@ -140,4 +187,4 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
-echo "==> PASS: every guarded framework is weakly loaded and fully weak-bound."
+echo "==> PASS: baseline-absent frameworks load weakly, and every newer-than-baseline symbol is weak."
