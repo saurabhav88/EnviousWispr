@@ -80,7 +80,14 @@ case "$TARGET" in
     # Contents is exhaustive by construction, so no future directory can be forgotten.
     # Identified by CONTENT, never by the executable bit: a mode-0644 dylib is still loadable by
     # dyld, so `-perm +111` would skip one silently. 136 files here, 0.08s to classify them all.
-    EMBEDDED=$(find "$TARGET/Contents" -type f 2>/dev/null | while read -r f; do
+    # **`find`'s exit status is checked.** A permission or I/O error partway through leaves it
+    # printing the files it did reach and exiting non-zero, so a PARTIAL scan would certify the
+    # bundle on the strength of whatever happened to be listed before the error. The count
+    # assertions further down prove something was inspected; only this proves the list was whole.
+    if ! MACHO_CANDIDATES=$(find "$TARGET/Contents" -type f 2>/dev/null); then
+      die "find could not enumerate $TARGET/Contents completely; a partial list cannot certify the bundle" 2
+    fi
+    EMBEDDED=$(printf '%s\n' "$MACHO_CANDIDATES" | while read -r f; do
       [ "$f" = "$BIN" ] && continue
       # Substring test via parameter expansion: no `grep -q` (pipefail/EPIPE) and no `case`
       # pattern, whose closing paren bash mis-parses inside a $( ) command substitution.
@@ -327,6 +334,10 @@ assert_ls_min() { # <label> <value> <is-main:0|1>; returns 1 if the value is una
 }
 
 if [ "$IS_BUNDLE" -eq 1 ]; then
+  # Same reasoning as the Mach-O enumeration: a partial plist list must not certify the bundle.
+  if ! PLIST_LIST=$(find "$TARGET" -name "Info.plist" 2>/dev/null); then
+    die "find could not enumerate the Info.plist files in $TARGET completely; a partial list cannot certify the bundle" 2
+  fi
   main_plist_seen=0
   while IFS= read -r plist; do
     [ -n "$plist" ] || continue
@@ -345,7 +356,7 @@ if [ "$IS_BUNDLE" -eq 1 ]; then
       assert_ls_min "$rel: LSMinimumSystemVersionByArchitecture:arm64" "$lsarm" "$is_main" || status=1
     fi
   done <<EOF
-$(find "$TARGET" -name "Info.plist" 2>/dev/null)
+$PLIST_LIST
 EOF
   # The app's own plist declaring nothing is not a pass: it is the one Launch Services consults,
   # and a check that never found it has asserted nothing about whether the app can start.

@@ -8,9 +8,9 @@
 #
 # Usage: assert-app-launches.sh <path-to-.app> [seconds-to-survive]
 #
-# Exit: 0 the host survived the wait AND the bundled transcription helper was observed
-# running; 1 the host died (the reason is classified in the output) or the helper never
-# appeared; 2 the check could not be performed.
+# Exit: 0 every bundled XPC service resolved its image under dyld AND the host survived the
+# wait; 1 a bundled service failed its dyld startup, or the host died (the reason is classified
+# in the output); 2 the check could not be performed.
 
 set -uo pipefail
 
@@ -41,12 +41,11 @@ chmod +x "$BIN" || die "could not restore the executable bit" 2
 
 # **Every Mach-O in the bundle, not just Contents/MacOS.** `upload-artifact` normalises uploads
 # to mode 0644, which strips the bit from the bundled XPC services too — including
-# `EnviousWisprASRService`, the transcription helper. Its failure to start is NONFATAL to the
-# host, so the host would survive the full wait regardless: before the helper check below
-# became fatal that bought a false PASS, and now it would instead fail the run for a transport
-# artefact rather than anything about the app. Either way the bit has to be restored here, so
-# that a helper failure means the helper, not the upload. Restored by CONTENT so a future
-# nested executable is covered without naming its directory.
+# `EnviousWisprASRService`, the transcription helper. The direct dyld probe below runs that
+# binary, so without this the probe would fail on a transport artefact rather than on anything
+# about the app — and the host, whose own failure would be nonfatal here, would survive the wait
+# either way. Restoring the bit is what makes a helper failure mean the helper, not the upload.
+# Restored by CONTENT so a future nested executable is covered without naming its directory.
 restored=0
 while IFS= read -r macho; do
   [ -n "$macho" ] || continue
@@ -137,6 +136,70 @@ fi
 XPC_DIR="$APP/Contents/XPCServices"
 [ -d "$XPC_DIR" ] || die "no Contents/XPCServices in $APP; the transcription helper is not in this bundle, so a launch here cannot exercise it" 2
 
+# **The helper's own dyld startup, proven DIRECTLY rather than inferred from the process table.**
+#
+# Watching for `EnviousWisprASRService` to appear while the host ran was the wrong instrument in
+# both directions, and one review round found each:
+#
+#   - Absence does not mean broken. The warm-up that contacts the service runs after
+#     `delivery.ensureAvailable()`, so on a clean runner with no model cache the helper can
+#     legitimately never appear inside the window. Failing on that would redden the job for
+#     first-launch behaviour, which is how a check earns a bypass.
+#   - Presence does not mean working. A process that appears and then dies inside dyld
+#     initialisation still shows up, and its death is nonfatal to the host, so the run passes.
+#
+# Running the service binary directly settles both. libxpc refuses to host a service started this
+# way — but the refusal is issued by the runtime, which means dyld has already loaded and bound
+# the entire image by the time it is printed. So "an XPC Service cannot be run directly" is
+# positive evidence that this helper's linkage resolves on THIS OS, which is exactly the claim
+# this job exists to make, and it needs no model, no network and no XPC connection. A dyld
+# failure prints its own error instead and never reaches the refusal.
+#
+# Measured locally on the real service binary: exit 134 (SIGABRT) with that refusal on stderr.
+probe_xpc_dyld() {
+  local exe="$1" name plog pid waited code out dyld_hits xpc_hits
+  name=$(basename "$exe")
+  plog=$(mktemp)
+  "$exe" >"$plog" 2>&1 &
+  pid=$!
+  waited=0
+  while [ "$waited" -lt 10 ] && kill -0 "$pid" 2>/dev/null; do sleep 1; waited=$((waited + 1)); done
+  kill -TERM "$pid" 2>/dev/null
+  wait "$pid" 2>/dev/null; code=$?
+  out=$(cat "$plog"); rm -f "$plog"
+
+  # Counted, never `grep -q`: under `set -o pipefail` a quiet grep exiting early kills `printf`
+  # with EPIPE and the condition reads false, which this repo has been bitten by twice.
+  dyld_hits=$(printf '%s' "$out" | /usr/bin/grep -cE "Symbol not found|Library not loaded|dyld\[|dyld:")
+  xpc_hits=$(printf '%s' "$out" | /usr/bin/grep -c "cannot be run directly")
+
+  if [ "$dyld_hits" -gt 0 ]; then
+    echo "FAIL: $name: dyld could not start it on macOS $(sw_vers -productVersion). This is the defect this job exists to catch, in the component that performs transcription." >&2
+    printf '%s\n' "$out" | sed 's/^/      /' >&2
+    return 1
+  fi
+  if [ "$xpc_hits" -gt 0 ]; then
+    echo "==> $name: dyld resolved its image (libxpc refused a direct start, exit $code) ✓"
+    return 0
+  fi
+  echo "FAIL: $name: neither a dyld error nor libxpc's refusal appeared, so this probe cannot say whether its image resolved. Exit $code, output below." >&2
+  printf '%s\n' "$out" | sed 's/^/      /' >&2
+  return 1
+}
+
+xpc_probed=0
+while IFS= read -r xpcexe; do
+  [ -n "$xpcexe" ] || continue
+  desc=$(file "$xpcexe" 2>/dev/null) || desc="Mach-O unclassifiable"
+  [ "${desc#*Mach-O}" != "$desc" ] || continue
+  xpc_probed=$((xpc_probed + 1))
+  probe_xpc_dyld "$xpcexe" || die "the bundled XPC service failed its own dyld startup" 1
+done <<EOF
+$(find "$XPC_DIR" -type f 2>/dev/null)
+EOF
+[ "$xpc_probed" -gt 0 ] || die "no Mach-O found under $XPC_DIR, so the transcription helper's startup was never exercised" 2
+echo "==> bundled XPC services whose dyld startup was proven: $xpc_probed"
+
 LOG=$(mktemp)
 "$BIN" >"$LOG" 2>&1 &
 PID=$!
@@ -144,31 +207,19 @@ echo "==> launched pid $PID; waiting ${SURVIVE_FOR}s"
 
 # Poll rather than one long sleep, so a fast dyld abort is reported immediately.
 #
-# **The helper is LATCHED across the whole window, not read once at the end.** It is started
-# as a startup warm-up, so it may well finish its work and exit before the wait is over. A
-# single observation after the wait would then report it absent having actually run — which
-# is the same "the instrument disagrees with reality" shape this job keeps tripping over,
-# pointed the other way. Latching means the check answers "did it ever run", which is the
-# question worth asking.
-#
-# Scoped to THIS bundle's XPCServices path, so a stray instance elsewhere on the machine
-# cannot vouch for it, and so the pattern cannot match this script's own argv.
+# **No process-table watching for the helper here.** An earlier version latched on the helper
+# appearing in `pgrep` during this window, and it was unsound in three separate ways: absence
+# only means model delivery had not finished, presence does not survive dyld initialisation,
+# and `pgrep -f <path>` matches ANY process whose command line merely mentions that path —
+# including the shell that copied a file into it, which is how it reported the helper "at 0s"
+# in a local run where the helper was never contacted at all. The helper's compatibility is
+# proven deterministically above instead, which is a stronger claim obtained more cheaply.
 elapsed=0
-helper_seen=0
 while [ "$elapsed" -lt "$SURVIVE_FOR" ]; do
-  if [ "$helper_seen" -eq 0 ] && [ "$(pgrep -f "$XPC_DIR" 2>/dev/null | /usr/bin/grep -c .)" -gt 0 ]; then
-    helper_seen=1
-    echo "==> the bundled transcription helper appeared at ${elapsed}s"
-  fi
   if ! kill -0 "$PID" 2>/dev/null; then break; fi
   sleep 1
   elapsed=$((elapsed + 1))
 done
-# One more read after the loop, so a helper that appears in the final second is not missed.
-if [ "$helper_seen" -eq 0 ] && [ "$(pgrep -f "$XPC_DIR" 2>/dev/null | /usr/bin/grep -c .)" -gt 0 ]; then
-  helper_seen=1
-  echo "==> the bundled transcription helper appeared at ${elapsed}s"
-fi
 
 if kill -0 "$PID" 2>/dev/null; then
   echo "==> PASS: still running after ${elapsed}s on macOS $(sw_vers -productVersion)"
@@ -192,15 +243,6 @@ if kill -0 "$PID" 2>/dev/null; then
   # its absence is a signal; it is not enough to characterise how reliably it fires. If this
   # starts flapping red on runs where the app is fine, that reopens the question — the answer
   # then is to make the helper start deterministically, not to go back to printing a note.
-  if [ "$helper_seen" -eq 0 ]; then
-    kill -TERM "$PID" 2>/dev/null
-    wait "$PID" 2>/dev/null
-    echo "--- first 40 lines of host output ---" >&2
-    head -40 "$LOG" >&2
-    rm -f "$LOG"
-    die "the host survived ${elapsed}s but the bundled transcription helper never appeared. The app cannot transcribe in this state, so this is a failure, not a caveat on a pass." 1
-  fi
-  echo "==> the transcription helper ran: this probe covered the host AND the ASR service"
   kill -TERM "$PID" 2>/dev/null
   wait "$PID" 2>/dev/null
   # Surface early output even on success: a dyld warning that did not kill the process is
