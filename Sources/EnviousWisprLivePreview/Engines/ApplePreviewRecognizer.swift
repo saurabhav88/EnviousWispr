@@ -191,7 +191,29 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// `maximumReservedLocales` is 5 on macOS 26.6 and exceeding it is a runtime
   /// refusal (`SFSpeechError` code 11), so a sixth claim evicts the oldest rather
   /// than throwing. The reservation is per-app and does not survive the process.
+  /// **Serialized as a whole, because read/evict/reserve is a TRANSACTION.** Two callers share
+  /// it now — a recording claiming the language it is about to transcribe, and the settings page
+  /// claiming one it is about to download — and pressing Download does not stop the record key
+  /// working. Both suspend three times inside here, so without the lock both can act on the same
+  /// five-slot reading, both decide to evict, or one reserve into a table the other just filled
+  /// and take Apple's refusal while capacity was recoverable. Whoever loses fails silently: no
+  /// preview, or a download that did not happen.
+  ///
+  /// The lock is held ACROSS the suspensions. An actor would not do — see `LocaleReservationLock`
+  /// for why reentrancy makes actor isolation the wrong tool for this specific job.
   package static func reserveLocale(_ locale: Locale) async throws {
+    await LocaleReservationLock.shared.acquire()
+    do {
+      try await performReservation(locale)
+    } catch {
+      await LocaleReservationLock.shared.release()
+      throw error
+    }
+    await LocaleReservationLock.shared.release()
+  }
+
+  /// The transaction itself. Runs only under `LocaleReservationLock`.
+  private static func performReservation(_ locale: Locale) async throws {
     let wanted = locale.identifier(.bcp47)
     let already = await AssetInventory.reservedLocales
     if already.contains(where: { $0.identifier(.bcp47) == wanted }) { return }
