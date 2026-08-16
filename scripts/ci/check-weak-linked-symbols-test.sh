@@ -229,6 +229,14 @@ expect_output "records no deployment target" \
   "an embedded binary with no readable deployment target is refused, not certified" \
   "$TMP/nominos.sh" "$BUNDLE"
 
+# Same shape for the load-command list: an empty parse used to make every framework check below
+# skip without a word. Measured on the real bundle, its embedded binaries report 1 to 63 load
+# commands, so empty means the parser broke.
+variant "$TMP/noloads.sh" '    extra_loads=.*' '    extra_loads=""'
+expect_output "no dynamic library load commands were parsed" \
+  "an embedded binary whose load commands cannot be parsed is refused, not certified" \
+  "$TMP/noloads.sh" "$BUNDLE"
+
 # A bundle that yields no embedded Mach-O means the enumeration broke. It used to print
 # "scanned: 0" and pass.
 rm -f "$BUNDLE/Contents/Frameworks/Embedded.dylib"

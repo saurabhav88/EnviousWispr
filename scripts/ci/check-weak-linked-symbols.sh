@@ -175,8 +175,19 @@ count_strong_for() {
 # the two failures — and it is invisible to `nm`, since symbol annotations and load commands
 # are set independently (manual linker flags, or a post-link edit, can move one without the
 # other). Review round 3 found this gap; the earlier version checked only symbols.
-LOADS=$(otool -l "$BIN" 2>/dev/null |
-  awk '/^ *cmd LC_[A-Z_]*DYLIB/ && $2 != "LC_ID_DYLIB" {c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
+# One parser, used for the main binary and for every embedded one. It was duplicated verbatim,
+# which is how the two halves of this script drifted apart in the first place: a rule tightened
+# in one copy and not the other reads as a rule that applies everywhere.
+#
+# Emits "<load-command> <path>" per linked dylib. LC_ID_DYLIB is excluded because it is the
+# library's own install name, not a dependency; LC_REEXPORT_DYLIB is deliberately included,
+# since re-exporting is as strong a load as any.
+dylib_loads_from() {
+  printf '%s\n' "$1" |
+    awk '/^ *cmd LC_[A-Z_]*DYLIB/ && $2 != "LC_ID_DYLIB" {c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}'
+}
+
+LOADS=$(dylib_loads_from "$(otool -l "$BIN" 2>/dev/null)")
 
 load_command_for() {
   printf '%s\n' "$LOADS" | awk -v fw="/$1.framework/" 'index($2, fw) {print $1; exit}'
@@ -320,8 +331,14 @@ if [ -n "$EMBEDDED" ]; then
       status=1
       continue
     fi
-    extra_loads=$(printf '%s\n' "$extra_otool" |
-      awk '/^ *cmd LC_[A-Z_]*DYLIB/ && $2 != "LC_ID_DYLIB" {c=$2} /^ *name /{if(c!=""){print c, $2; c=""}}')
+    extra_loads=$(dylib_loads_from "$extra_otool")
+    # A Mach-O that links nothing would make every framework check below skip silently. Measured:
+    # all 9 arm64 embedded Mach-O files in the real bundle report between 1 and 63 load commands,
+    # so an empty list means the parse stopped working, not that the binary is self-contained.
+    if [ -z "$extra_loads" ]; then
+      echo "    $(basename "$extra"): no dynamic library load commands were parsed, so the framework checks below would inspect nothing" >&2
+      status=1
+    fi
     if ! extra_syms=$(nm -arch arm64 -m -u "$extra" 2>&1); then
       echo "    $(basename "$extra"): nm could not read its undefined symbols ($extra_syms); every symbol verdict below would be vacuously clean" >&2
       status=1
