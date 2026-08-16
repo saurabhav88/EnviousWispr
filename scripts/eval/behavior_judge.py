@@ -1586,7 +1586,17 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
     report = aggregate_new(per_case, rep_scores, judged_ids, has_production,
                            missing_count=len(missing), skipped_count=len(skipped),
                            adjudication_missing_count=len(adjudication_batch.missing),
-                           blind=blind)
+                           # With --verdicts this scorer sends no payload and no
+                           # system prompt, so the local --blind flag describes
+                           # THIS process and not the judging that produced those
+                           # verdicts. Recording it there would assert something
+                           # nobody observed. The external format carries no such
+                           # field, so the honest value is "unknown".
+                           #
+                           # Same distinction `cacheable` already draws: an ABSENT
+                           # answer and a FALSE answer are different situations,
+                           # and collapsing them shipped a wrong claim twice.
+                           blind=None if external_verdicts is not None else blind)
     report["skipped"] = skipped
     report["missing_scores"] = missing
     report["per_case"] = per_case
@@ -1623,7 +1633,8 @@ def _is_pass(verdict: str) -> bool:
 
 def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list[str],
                   has_production: bool, missing_count: int = 0, skipped_count: int = 0,
-                  adjudication_missing_count: int = 0, blind: bool = False) -> dict:
+                  adjudication_missing_count: int = 0,
+                  blind: bool | None = False) -> dict:
     total = len(per_case)
 
     def rate(items, pred):
@@ -1746,10 +1757,16 @@ def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list
 
     return {
         "system": "new",
-        # Whether the judge saw expected_output. Recorded because a blind and a
-        # sighted run are NOT comparable: showing the key moved 122 of 472
-        # verdicts. Two receipts differing on this flag must never be diffed as
-        # if they measured the same thing.
+        # Whether the judge saw expected_output. THREE states, not two, because
+        # an unknown answer and a "no" are different situations:
+        #   True  — judged blind by this run
+        #   False — judged sighted by this run
+        #   None  — verdicts were IMPORTED; this process did no judging and
+        #           cannot speak for how they were produced
+        # Recorded because a blind and a sighted run are NOT comparable (showing
+        # the key moved 122 of 472 verdicts), and `report_ollama_bench.py` folds
+        # this into the comparison identity so two receipts differing on it
+        # refuse to rank together rather than being silently diffed.
         "judge_blind": blind,
         # Completeness on its own, independent of the verdict. `BLOCK` takes
         # precedence over `INCOMPLETE`, so the verdict alone cannot express

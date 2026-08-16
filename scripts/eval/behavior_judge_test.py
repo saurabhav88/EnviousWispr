@@ -2743,6 +2743,106 @@ def test_spoken_truth_reads_both_corpus_schemas():
         assert bj._spoken_truth(case) == "", f"{case!r} must yield empty, not raise"
 
 
+def test_a_blind_arm_and_a_sighted_arm_are_refused_like_a_mixed_judge():
+    """Blinding changes what a score MEANS, so it belongs in the identity.
+
+    Showing the judge the answer key moved 122 of 472 verdicts. That is larger
+    than any arm difference this report exists to rank, so ranking a blind arm
+    against a sighted one is not a comparison. `judge_blind` sits at the TOP
+    LEVEL of the receipt rather than under `meta`, which is exactly why the
+    original identity tuple — built only from `meta` fields — could not see it.
+
+    THREE-WAY, because `judge_blind` has three legal states. `None` means the
+    verdicts were imported and this scorer did no judging, which is an UNKNOWN
+    rather than a "no": folding it into "sighted" would assert something nobody
+    observed, the same absent-vs-false collapse that shipped wrong twice on
+    `cacheable`.
+    """
+    def tree_with_two(blind_a, blind_b):
+        meta = {"judge": "azure/j", "judge_identity": "azure/j@aaa",
+                "judge_model_version": "v1", "rubric_identity": "RUBRIC_ONE"}
+        t = report_tree(healthy_receipt(meta=meta, judge_blind=blind_a))
+        b = t / "judged" / "modelB"
+        b.mkdir(parents=True)
+        (b / "summary.json").write_text(
+            json.dumps(healthy_receipt(meta=meta, judge_blind=blind_b)))
+        (b / "per_case.jsonl").write_text(
+            (t / "judged" / "modelA" / "per_case.jsonl").read_text())
+        run = json.loads((t / "run-summary.json").read_text())
+        m = dict(run["models"][0]); m["model"] = "modelB"
+        m["candidates"] = str(t / "cand" / "modelB.jsonl")
+        run["models"].append(m)
+        (t / "run-summary.json").write_text(json.dumps(run))
+        return t
+
+    # Refuses: one arm saw the key, the other did not.
+    rc, log = run_report(tree_with_two(True, False))
+    assert "mixes judges or rubrics" in log, f"blind and sighted were ranked together:\n{log}"
+    assert rc != 0, log
+    # And the refusal must SAY it was the blinding, or it reads as a bug in the
+    # guard: every other identity field is identical between these two arms.
+    assert "no answer key shown" in log and "answer key shown" in log, log
+
+    # Refuses: a known mode against an imported-verdict receipt of unknown mode.
+    rc, log = run_report(tree_with_two(False, None))
+    assert "mixes judges or rubrics" in log, f"unknown blinding ranked as sighted:\n{log}"
+    assert "blinding unknown" in log, log
+
+    # Accepts: both blind, and both sighted. Without this half a guard that
+    # refused every run would pass the refusal cases while making the report
+    # permanently unusable.
+    for same in (True, False, None):
+        rc, log = run_report(tree_with_two(same, same))
+        assert "mixes judges or rubrics" not in log, f"one blinding mode was refused:\n{log}"
+
+
+def test_imported_verdicts_cannot_claim_a_blinding_mode():
+    """--verdicts sends no payload and no system prompt, so this process did not
+    decide whether the judge saw the answer key and must not record that it did.
+
+    The local --blind flag describes THIS run. Stamping it onto imported verdicts
+    asserts a fact about someone else's judging that was never observed, and the
+    external verdict format carries no such field to check it against.
+    """
+    norm = {"c1": bj.normalize_case(
+        {"id": "c1", "asr_input": "um hello there", "expected_output": "Hello there."})}
+    cands = {"c1": {"candidate": "Hello there."}}
+    verdicts = {"c1": {"id": "c1", "verdict": "pass", "severity": "S0",
+                       "behavior_correct": True, "meaning_preserved": True,
+                       "restraint_correct": True, "clean_output": True,
+                       "failure_types": [], "changed_or_missing_content": [],
+                       "rationale": ""}}
+
+    # Both local flags must land on "unknown", not on their own value.
+    for local_flag in (True, False):
+        rep = bj.score_new(norm, cands, None, "unused-judge", 8,
+                           external_verdicts=verdicts, adjudicate=False,
+                           blind=local_flag)
+        assert rep["judge_blind"] is None, (
+            f"--blind={local_flag} was stamped onto imported verdicts as "
+            f"{rep['judge_blind']!r}; nobody observed how they were graded")
+
+    # Control: when this process DOES judge, the flag is recorded faithfully.
+    # Without this half the fix could be "always None", which loses the field.
+    captured = {}
+
+    def fake_run_judge(judge, system, payloads, chunk):
+        captured["saw_key"] = "reference_output" in (payloads[0] if payloads else {})
+        return bj.reconcile_judge_batch(verdicts, [p["id"] for p in payloads])
+
+    real = bj.run_judge
+    bj.run_judge = fake_run_judge
+    try:
+        for flag in (True, False):
+            rep = bj.score_new(norm, cands, None, "unused-judge", 8,
+                               external_verdicts=None, adjudicate=False, blind=flag)
+            assert rep["judge_blind"] is flag, rep["judge_blind"]
+            assert captured["saw_key"] is (not flag), (
+                "the recorded flag must match what the judge was actually sent")
+    finally:
+        bj.run_judge = real
+
+
 def test_list_format_requirement_fires_only_where_a_list_is_actually_wanted():
     """The layout requirement must be armed by the case, not by the judge's mood.
 
@@ -2831,7 +2931,7 @@ def test_list_requirement_reaches_the_judge_and_survives_blinding():
 # originally borrowed from cleanup_metrics_test.py, deleted 2026-08-15 with the
 # rest of the deterministic polish grading; the zero-test trap it guards is
 # unchanged.)
-EXPECTED_TESTS = 133
+EXPECTED_TESTS = 135
 
 
 def _run() -> int:
