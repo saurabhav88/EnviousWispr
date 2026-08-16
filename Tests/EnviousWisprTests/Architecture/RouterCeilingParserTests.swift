@@ -1206,17 +1206,22 @@ import Testing
     // 15 nested `Optional<...>` layers — the peel carries no limit of its own.
     //
     // NOT set past the 64-iteration cap this replaced, because that cap is
-    // unreachable and no passing test could exercise it. Generic angle brackets
-    // DO raise SwiftParser's nesting level, which is 20 under `#if DEBUG`
-    // (`Parser.defaultMaximumNestingLevel`, Parser.swift:134 in the pinned
-    // swift-syntax 603.0.2). Measured on this suite: depth 30 sets `hasError`
-    // so the parser throws, and depth 80 overflows the stack and takes the test
-    // process down with it.
+    // unreachable in a DEBUG build and no passing test could exercise it.
+    // Generic angle brackets DO raise SwiftParser's nesting level, which is 20
+    // under `#if DEBUG` and 256 otherwise (`Parser.defaultMaximumNestingLevel`,
+    // Parser.swift:134 in the pinned swift-syntax 603.0.2). Measured on this
+    // suite in Debug: depth 30 sets `hasError` so the parser throws, and depth
+    // 80 overflows the stack and takes the test process down with it.
     //
-    // So no input can reach a 64th unwrap in a DEBUG test build, and neither
-    // bound yields a wrong COUNT — one throws, the other dies loudly. The cap
-    // was removed as dead code carrying a false justifying comment, NOT because
-    // a ceiling could be evaded through it.
+    // 15 is chosen to sit under the DEBUG limit, which is the LOWER of the two,
+    // so this test means the same thing in both configurations. A depth that
+    // parses in Release and throws in Debug asserts a property of the BUILD, not
+    // of the parser — that mistake red the release lane on main once already
+    // (see `classBody_failsClosedOnSourceThatDoesNotParse`).
+    //
+    // Neither bound yields a wrong COUNT — one throws, the other dies loudly.
+    // The 64-cap was removed as dead code carrying a false justifying comment,
+    // NOT because a ceiling could be evaded through it.
     let depth = 15
     let type =
       String(repeating: "Optional<", count: depth) + "() -> Void"
@@ -1232,9 +1237,9 @@ import Testing
   }
 
   @Test func closureInjectedCount_expandsTuplePatternsWithNoFixedDepthOfItsOwn() throws {
-    // 12 levels, comfortably inside SwiftParser's DEBUG nesting budget (see the
-    // fail-closed test below) and past nothing in particular — the point is that
-    // the walk carries no depth limit of its own, so the only bound is the
+    // 12 levels, comfortably inside SwiftParser's DEBUG nesting budget of 20 —
+    // the lower of the two configurations, so this parses in both. The point is
+    // that the walk carries no depth limit of its own; the only bound is the
     // parser's.
     let depth = 12
     // Names must be UNIQUE — two properties cannot share one, and a fixture
@@ -1282,33 +1287,28 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
 
-  @Test func classBody_failsClosedWhenNestingExceedsTheParsersOwnLimit() {
-    // The REAL bound on nesting is SwiftParser's, not ours:
-    // `Parser.defaultMaximumNestingLevel` is 20 under `#if DEBUG` and 256
-    // otherwise (Parser.swift:134 in the pinned swift-syntax 603.0.2), raised by
-    // every bracket. Tests run DEBUG, so a 30-deep tuple pattern — which
-    // `swiftc` itself accepts — exceeds it.
+  @Test func classBody_failsClosedOnSourceThatDoesNotParse() {
+    // The property the ceilings depend on: source the parser cannot read must
+    // THROW, never return a small confident number, because every ceiling is a
+    // `<=` bound and a count that reads LOW passes forever without complaining.
     //
-    // This is the test that matters for the ceilings: past that limit the parser
-    // must THROW, never return a small confident number. A cloud-review finding
-    // argued a deeply nested seam could be miscounted as a collaborator and slip
-    // under a `<=` ceiling; it cannot, because the source never reaches the
-    // counters at all (PR #2070).
-    let depth = 30
-    let pattern =
-      (0..<depth).map { "(leaf\($0), " }.joined() + "last"
-      + String(repeating: ")", count: depth)
-    let type =
-      String(repeating: "(() -> Void, ", count: depth) + "() -> Void"
-      + String(repeating: ")", count: depth)
-    // `withKnownIssue` rather than `#expect(throws:)`: the fail-closed path
-    // ALSO calls `Issue.record` on its way out, so the recorded issue would fail
-    // this test even though throwing is the behaviour being asserted.
+    // Asserted with a plain SYNTAX error, which is an error in every build
+    // configuration. The first version of this test used a 30-level nesting
+    // depth instead and passed locally while FAILING the release lane on main:
+    // `Parser.defaultMaximumNestingLevel` is 20 under `#if DEBUG` but 256
+    // otherwise (Parser.swift:134, pinned swift-syntax 603.0.2), so depth 30
+    // throws in Debug and parses cleanly in Release. The nesting limit is a
+    // property of the BUILD, so it cannot carry an assertion; the parse failure
+    // itself is a property of the SOURCE, so it can.
+    //
+    // `withKnownIssue` rather than `#expect(throws:)`: the fail-closed path also
+    // calls `Issue.record` on its way out, so the recorded issue would fail this
+    // test even though throwing is the behaviour being asserted.
     withKnownIssue("parsed(_:context:) records an issue as well as throwing") {
       _ = try classBody(
         of: """
           final class Probe {
-            let \(pattern): \(type)
+            let broken:
           }
           """)
     }
