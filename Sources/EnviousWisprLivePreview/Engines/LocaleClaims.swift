@@ -73,12 +73,21 @@ package enum ClaimResult: String, Sendable {
 /// took, and nothing else is ever released or evicted. That hazard was inert only because the release
 /// call itself was broken; repairing the release arms it, so the two land together.
 ///
-/// **Ownership is best-effort and says so.** `owned` records tags whose reserve call THIS process
-/// completed successfully; release and eviction are attempted only for those. That is a conservative
-/// local gate, not proof of current ownership — another process can release and replace a tag
-/// afterwards, and no local ledger can observe that ABA substitution. The ledger is therefore only
-/// ever used to WITHHOLD an action, never to authorise a forceful one, so the worst case is a claim
-/// we decline to free rather than one we take from somebody.
+/// **Ownership is best-effort, and the residual window is real — cloud review corrected an earlier
+/// version of this comment that claimed otherwise.** `owned` records tags whose reserve call THIS
+/// process completed successfully, and release and eviction are attempted only for those. It is a
+/// conservative local gate, not proof of current ownership: no OS API answers "is this claim still
+/// mine", so if another process releases OUR claim and re-takes the same tag before `finish` runs,
+/// this ledger still says the tag is ours and the release will take THEIR claim.
+///
+/// That window is accepted, not overlooked. Closing it needs an ownership token macOS does not
+/// expose; the only alternative is never releasing at all, which is precisely the bug this file
+/// exists to fix and which leaks a machine-wide slot on every recording. So the gate removes the
+/// large, routine failure (releasing a claim we never took, on every piggybacked recording) and
+/// leaves a narrow one that requires another Speech client to release our claim and immediately
+/// re-take the same locale.
+///
+/// Do NOT describe this as "only ever used to withhold an action". In `finish` it authorises one.
 ///
 /// The transaction moved here from `ApplePreviewRecognizer`'s static methods in the same change.
 /// Splitting reservation, use-counting and release across three owners is what let them make

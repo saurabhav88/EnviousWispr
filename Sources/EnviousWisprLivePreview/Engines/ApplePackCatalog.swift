@@ -67,9 +67,14 @@ package actor ApplePackCatalog {
 
   /// The one owner of every locale claim. Injected so a test drives the real transaction rather
   /// than a stand-in for it — the reason #2145 was invisible to this suite for two releases.
+  ///
+  /// **No default, deliberately (cloud review, PR #2153).** A `= .shared` default meant a caller who
+  /// injected `dependencies` and forgot `claims` reached the process-wide live `AssetInventory`
+  /// anyway — so a catalogue that looked fully faked would take a REAL claim on the machine running
+  /// the tests. Requiring the argument makes that unwriteable rather than merely unlikely.
   private let claims: LocaleClaims
 
-  package init(dependencies: Dependencies, claims: LocaleClaims = .shared) {
+  package init(dependencies: Dependencies, claims: LocaleClaims) {
     self.deps = dependencies
     self.claims = claims
   }
