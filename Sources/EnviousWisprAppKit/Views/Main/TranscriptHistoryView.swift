@@ -87,6 +87,15 @@ struct TranscriptRowView: View {
     transcriptCoordinator.selectedTranscriptID == transcript.id
   }
 
+  /// Reading `expiryPulse` is what re-renders the countdown (#2087). Observation
+  /// invalidates on a property READ by this body; `Date()` alone is invisible to
+  /// it, so without this touch the row would show the remaining time it had when
+  /// something else last changed state.
+  private var escapeRecoveryClock: Date {
+    _ = transcriptCoordinator.expiryPulse
+    return Date()
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 5) {
@@ -107,6 +116,44 @@ struct TranscriptRowView: View {
         .foregroundStyle(.stTextPrimary)
 
       HStack(spacing: 6) {
+        // #2087. Deliberately NOT the "Recovered" capsule below: that one means
+        // crash rescue, and a held recovery is an ordinary cancel the user can
+        // still change their mind about. The decision and the wording both come
+        // from `EscapeRecoveryRowPresentation`, because a rule written inline
+        // here would not be unit-drivable.
+        switch EscapeRecoveryRowPresentation.badge(
+          for: transcript, now: escapeRecoveryClock)
+        {
+        case .held(let countdown):
+          HStack(spacing: 2) {
+            Image(systemName: "clock.arrow.circlepath")
+            Text(countdown)
+          }
+          .font(.caption2)
+          .padding(.horizontal, 5)
+          .padding(.vertical, 2)
+          .background(Color.stWarning.opacity(0.15), in: Capsule())
+          .foregroundStyle(.stWarning)
+          .accessibilityLabel(
+            EscapeRecoveryRowPresentation.accessibilityLabel(
+              remaining: EscapeRecoveryRowPresentation.remaining(
+                from: transcript.escapeRecoveredAt ?? escapeRecoveryClock,
+                now: escapeRecoveryClock)))
+        case .kept:
+          HStack(spacing: 2) {
+            Image(systemName: "checkmark.seal")
+            Text(EscapeRecoveryRowPresentation.keptLabel)
+          }
+          .font(.caption2)
+          .padding(.horizontal, 5)
+          .padding(.vertical, 2)
+          .background(Color.stSuccess.opacity(0.15), in: Capsule())
+          .foregroundStyle(.stSuccess)
+          .accessibilityLabel("Kept recovered recording")
+        case nil:
+          EmptyView()
+        }
+
         if transcript.isRecovered == true {
           // #1063 PR2 — marks a transcript reconstructed from a recovered recording
           // after an abnormal exit. Icon + text (never color-only).

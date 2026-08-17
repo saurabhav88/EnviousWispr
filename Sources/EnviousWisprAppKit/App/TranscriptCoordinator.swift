@@ -226,6 +226,27 @@ final class TranscriptCoordinator {
     }
   }
 
+  /// Text for a Copy or Paste started from History, or `nil` if the row is no
+  /// longer being offered (#2087).
+  ///
+  /// A view holds the row it was RENDERED with, which is a snapshot. For an
+  /// ordinary dictation that is harmless. For a held recovery it is not: the
+  /// offer can lapse between the row appearing and the button being pressed, and
+  /// pasting from the snapshot would hand back text the user was told had gone —
+  /// the one thing the 24-hour promise says will not happen.
+  ///
+  /// Re-reads by id rather than trusting the caller's copy, so a row deleted in
+  /// another pane is also refused. Inert, not merely harmless.
+  func textForDelivery(_ transcript: Transcript) -> String? {
+    guard transcript.escapeRecoveredAt != nil else { return transcript.displayText }
+    let now = Date()
+    guard
+      let current = transcripts.first(where: { $0.id == transcript.id }),
+      Self.isVisible(current, at: now)
+    else { return nil }
+    return current.displayText
+  }
+
   /// Make a held recovery permanent (#2087).
   ///
   /// Inert, not merely harmless, when the row is no longer offerable: the store

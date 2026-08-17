@@ -11,6 +11,32 @@ struct TranscriptDetailView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
+  @Environment(LiveRecordingState.self) private var liveRecordingState
+
+  /// #2087: the two actions this feature adds stand down while a dictation is
+  /// in flight — Paste on a HELD recovery, and Keep.
+  ///
+  /// The decision lives in `EscapeRecoveryRowPresentation` rather than here, so
+  /// its polarity is asserted behaviourally instead of by counting modifiers in
+  /// this file. Both are checked for availability AND at press time, because a
+  /// recording can start after the button is drawn and a disabled button is a
+  /// hint, not a guarantee.
+  ///
+  /// Copy and an ordinary row's Paste are deliberately untouched: restricting
+  /// them would change shipped behaviour for every user with this feature off.
+  private var isDictationInFlight: Bool {
+    liveRecordingState.pipelineState.isActive
+  }
+
+  private var pasteAllowed: Bool {
+    EscapeRecoveryRowPresentation.allowsPaste(
+      for: transcript, now: Date(), dictationInFlight: isDictationInFlight)
+  }
+
+  private var keepAllowed: Bool {
+    EscapeRecoveryRowPresentation.allowsKeep(
+      for: transcript, now: Date(), dictationInFlight: isDictationInFlight)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -57,7 +83,12 @@ struct TranscriptDetailView: View {
   private var actionBar: some View {
     HStack(spacing: 8) {
       Button {
-        PasteService.copyToClipboard(transcript.displayText)
+        // #2087: asked for by id rather than taken from the rendered row. A held
+        // recovery can lapse between this row appearing and the press, and
+        // copying the snapshot would hand back text the user was told had gone.
+        // Returns the text unchanged for an ordinary dictation.
+        guard let text = transcriptCoordinator.textForDelivery(transcript) else { return }
+        PasteService.copyToClipboard(text)
       } label: {
         Label("Copy", systemImage: "doc.on.doc")
       }
@@ -65,7 +96,10 @@ struct TranscriptDetailView: View {
 
       Button {
         if permissions.accessibilityGranted {
-          PasteService.copyToClipboard(transcript.displayText)
+          guard pasteAllowed,
+            let text = transcriptCoordinator.textForDelivery(transcript)
+          else { return }
+          PasteService.copyToClipboard(text)
           NSApp.hide(nil)
           Task {
             try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
@@ -75,13 +109,28 @@ struct TranscriptDetailView: View {
           navigationCoordinator.request(.permissions)
         }
       } label: {
-        Label("Paste", systemImage: "arrow.right.doc.on.clipboard")
+        Label(EscapeRecoveryRowPresentation.pasteLabel, systemImage: "arrow.right.doc.on.clipboard")
       }
-      .disabled(!permissions.accessibilityGranted)
+      .disabled(!permissions.accessibilityGranted || !pasteAllowed)
       .help(
         permissions.accessibilityGranted
           ? "Paste into active app"
           : "Accessibility permission required for paste")
+
+      // #2087: only while the offer stands. `keep` revalidates through the
+      // store, so a press arriving after the row lapsed writes nothing — but
+      // showing the button for a row that can no longer be kept would promise
+      // an action that silently does nothing.
+      if case .held = EscapeRecoveryRowPresentation.badge(for: transcript, now: Date()) {
+        Button {
+          guard keepAllowed else { return }
+          transcriptCoordinator.keep(transcript)
+        } label: {
+          Label(EscapeRecoveryRowPresentation.keepLabel, systemImage: "tray.and.arrow.down")
+        }
+        .disabled(!keepAllowed)
+        .help("Keep this recording permanently instead of letting it be deleted")
+      }
 
       Spacer()
 
