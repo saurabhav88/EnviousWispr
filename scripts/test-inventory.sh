@@ -84,19 +84,52 @@ parse_suites() {
                 gsub(/\t/, "  ", line)
                 match(line, /^ */); ind = RLENGTH
                 body = substr(line, ind + 1)
+                q = gsub(/"""/, "\"\"\"", line)   # count, and leave `line` unchanged
+                isAttrLine = 0
             }
-            body ~ /^@/ { attrs = attrs " " body }
+            # Lines INSIDE a multiline string are fixture text, not code. A ceiling-test fixture holding
+            # Swift source with an indented `@Test` would otherwise be counted as a real test — and the
+            # independent control below shares the line-based match, so it would CONFIRM the false count
+            # rather than catch it. Zero instances today; guarded because the failure would be silent and
+            # source-in-a-fixture is what several suites here do for a living.
+            inStr {
+                for (i = 0; i < q; i++) inStr = !inStr
+                if (body ~ /^@Test/) skipped++
+                next
+            }
+            q % 2 == 1 { inStr = 1 }
+            # Keep accumulating while the attribute has unbalanced parens: swift-format wraps a long
+            # `@Suite(...)` across lines, and its continuation lines do not start with `@`. Resetting on
+            # them dropped `.tags(...)` and made the gate REJECT a correctly tagged suite — a false
+            # positive on valid work, the failure direction this repo has logged 17 times.
+            # Four suites already use the multiline form.
+            body ~ /^@Test/ && attrDepth <= 0 {
+                for (k = top; k >= 0; k--) if (dep[k] < ind) { cnt[k]++; break }
+                attrs = attrs " " body
+                next
+            }
+            body ~ /^@/ || attrDepth > 0 {
+                attrs = attrs " " body
+                # Count parens on the line with STRING LITERALS REMOVED. A suite title such as
+                # `@Suite("Engine (cold start) identity")` carries unbalanced parens inside the string;
+                # counting those left the accumulator permanently open and swallowed 1,246 later @Test
+                # lines into it.
+                bare = body
+                gsub(/"[^"]*"/, "", bare)
+                attrDepth += gsub(/\(/, "(", bare) - gsub(/\)/, ")", bare)
+                if (attrDepth < 0) attrDepth = 0
+                # NO `next`: the one-line form `@Suite(.tags(.driftGuard)) struct Foo {` must still reach
+                # the declaration rule below. An earlier `next` here silently dropped 1,246 tests by
+                # never registering their suite.
+                isAttrLine = 1
+            }
             # @Test is matched BEFORE the declaration rule, and declarations are matched against the line
             # with STRING LITERALS STRIPPED. Both are needed: a test description reading
             # `@Test("rawValue strings are the telemetry-stable, privacy-safe class names")` contains
             # "class names", which the declaration regex happily read as a type declaration — matching
             # prose instead of structure, the same defect this repo has logged 17 times against
             # command-text matchers (validation-discipline.md RULE: false-positives-not-gates-train-evasion).
-            body ~ /^@Test/ {
-                for (k = top; k >= 0; k--) if (dep[k] < ind) { cnt[k]++; break }
-                attrs = attrs " " body
-                next
-            }
+
             {
                 code = body
                 gsub(/"[^"]*"/, "\"\"", code)
@@ -119,8 +152,9 @@ parse_suites() {
                     next
                 }
             }
-            body !~ /^@/ { attrs = "" }
-            END { popTo(0); while (top >= 0) { emit(top); top-- } }
+            !isAttrLine { attrs = "" }
+            END { popTo(0); while (top >= 0) { emit(top); top-- }
+                  if (skipped > 0) printf "STRING_SKIPPED\t%s\t%d\n", path, skipped }
         ' "$f"
     done
 }
@@ -145,7 +179,10 @@ if [ "$(names_of "$TAGS_MAIN" | grep -c '')" -lt 5 ]; then
     exit 1
 fi
 
-SUITES=$(parse_suites) || { printf 'FAIL: suite parse failed\n' >&2; exit 1; }
+RAW=$(parse_suites) || { printf 'FAIL: suite parse failed\n' >&2; exit 1; }
+SKIPPED_ROWS=$(printf '%s\n' "$RAW" | grep '^STRING_SKIPPED' || true)
+SUITES=$(printf '%s\n' "$RAW" | grep -v '^STRING_SKIPPED' || true)
+skipped_total=$(printf '%s\n' "$SKIPPED_ROWS" | awk -F'\t' '{s+=$3} END{print s+0}')
 
 if printf '%s\n' "$SUITES" | grep -q '^PARSE_ERROR'; then
     printf 'FAIL: unreadable test file(s):\n' >&2
@@ -161,11 +198,20 @@ fi
 # Any test the parser fails to attribute to a suite makes these disagree, and the script refuses to print
 # a number it cannot corroborate. This is the guard that caught both first-draft undercounts.
 total_tests=$(printf '%s\n' "$SUITES" | awk -F'\t' '{s+=$4} END{print s+0}')
-control=$(test_files | tr '\n' '\0' | xargs -0 /usr/bin/grep -c -E '^[[:space:]]*@Test' 2>/dev/null \
+# `-H` is load-bearing: `grep -c` omits the filename when given exactly ONE file, and xargs can split
+# the last batch down to one, so that batch would parse as 0 under `awk -F:` and undercount silently.
+control=$(test_files | tr '\n' '\0' | xargs -0 /usr/bin/grep -c -H -E '^[[:space:]]*@Test' 2>/dev/null \
           | awk -F: '{s+=$2} END{print s+0}')
-if [ "$total_tests" -ne "$control" ]; then
-    printf 'FAIL: parser attributed %d @Test declarations to suites; independent count says %d.\n' \
-        "$total_tests" "$control" >&2
+# The control stays deliberately LINE-BASED and string-unaware, so it does not share the parser's
+# string-skipping logic — a shared bug would make both agree on a wrong number (the uniformity tell).
+# It therefore counts fixture `@Test` lines the parser skipped, and those are added back explicitly.
+if [ "$skipped_total" -gt 0 ]; then
+    printf 'note: %d @Test line(s) ignored inside multiline string fixtures:\n' "$skipped_total"
+    printf '%s\n' "$SKIPPED_ROWS" | awk -F'\t' '{printf "      %s (%s)\n", $2, $3}'
+fi
+if [ "$(( total_tests + skipped_total ))" -ne "$control" ]; then
+    printf 'FAIL: parser attributed %d @Test declarations (+%d fixture lines ignored); independent count says %d.\n' \
+        "$total_tests" "$skipped_total" "$control" >&2
     printf '      Some tests are not being attributed. Refusing to report a number that does not add up.\n' >&2
     printf '      Diff the two with: scripts/test-inventory.sh --baseline && git diff %s\n' "$BASELINE" >&2
     exit 1
@@ -217,7 +263,7 @@ non_product=$(( tag_drift + tag_obs + tag_harness + leg_drift + leg_obs + leg_ha
 # one. `\b` is a LITERAL `b` to `git grep -E`, which would pin this at 0 forever — a false zero in the
 # direction that hides progress.
 boundary=$(test_files | tr '\n' '\0' \
-           | xargs -0 /usr/bin/grep -c -E '\.tags\([^)]*\.realBoundary([^A-Za-z0-9_]|$)' 2>/dev/null \
+           | xargs -0 /usr/bin/grep -c -H -E '\.tags\([^)]*\.realBoundary([^A-Za-z0-9_]|$)' 2>/dev/null \
            | awk -F: '{s+=$2} END{print s+0}')
 
 printf '\nTEST INVENTORY  %s  (%d test files, %d suites, %d @Test declarations)\n' \
