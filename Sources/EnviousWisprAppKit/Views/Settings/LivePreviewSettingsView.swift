@@ -209,7 +209,16 @@ struct LivePreviewSettingsView: View {
       // badge below describe Apple's packs. With the universal engine chosen they
       // would state, confidently and wrongly, which Apple pack is producing the
       // words on screen.
-      if isAppleSupported, isUsingApple, isPreviewOn, let active = packs.active {
+      //
+      // Same helper as the packs list below, deliberately: "are Apple's packs this
+      // page's business" is ONE question, and it was two inline conditions in two
+      // places until one of them silently lost a term. The extra `isPreviewOn` and
+      // `packs.active` stay here because they are about THIS section — whether
+      // there is a resolved pack to describe — not about whose engine it is.
+      if LivePreviewEnginePresentation.showsApplePacks(
+        isAppleSupported: isAppleSupported, isUsingApple: isUsingApple),
+        isPreviewOn, let active = packs.active
+      {
         BrandedSection(header: LivePreviewSettingsCopy.activeHeader) {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 10) {
@@ -225,9 +234,22 @@ struct LivePreviewSettingsView: View {
       }
 
       // Hidden entirely below macOS 26: there are no Apple packs to manage, and an empty list
-      // under a disabled toggle would read as something being broken. Still APPLE's
-      // question — the universal engine carries its own languages and has no packs.
-      if isAppleSupported {
+      // under a disabled toggle would read as something being broken.
+      //
+      // ALSO hidden on the universal engine (founder, 2026-08-17). These packs are Apple's
+      // languages; the universal model carries its own and has no packs to manage, so offering
+      // a language manager beside it asks the user to configure something that cannot affect
+      // what they are about to see. The comment here already SAID this was "still Apple's
+      // question" while the gate read `isAppleSupported` alone — the reasoning was written down
+      // and never implemented, which is worse than not having written it, because it stops the
+      // next reader checking.
+      //
+      // The catalogue LOAD below is deliberately NOT gated the same way: its `.task` is keyed on
+      // the dictation language, so adding the engine to the condition without adding it to the
+      // key would leave a user who switches back to Apple looking at a snapshot from before.
+      if LivePreviewEnginePresentation.showsApplePacks(
+        isAppleSupported: isAppleSupported, isUsingApple: isUsingApple)
+      {
         BrandedSection(header: LivePreviewSettingsCopy.packsHeader) {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 10) {

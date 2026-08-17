@@ -157,6 +157,26 @@ enum LivePreviewEnginePresentation {
     guard fraction.isFinite else { return nil }
     return min(max(fraction, 0), 1)
   }
+
+  /// Should the page offer Apple's downloadable language packs?
+  ///
+  /// Both conditions, and the second one was missing (founder, 2026-08-17). The
+  /// packs are APPLE's languages: the universal engine carries its own and has
+  /// none to manage, so showing the manager beside it asks the user to configure
+  /// something that cannot affect what they are about to see.
+  ///
+  /// Pulled out of the view body deliberately. It lived there as a two-term `if`
+  /// whose own comment already said "still Apple's question" while the condition
+  /// checked only the OS — the reasoning was written down and never implemented,
+  /// and nothing but a human eye would have caught it. A comment cannot fail; a
+  /// function can.
+  ///
+  /// `isAppleSupported` alone still governs whether the packs EXIST to manage —
+  /// below macOS 26 there are none — so it stays as the first term rather than
+  /// being folded into the engine check.
+  static func showsApplePacks(isAppleSupported: Bool, isUsingApple: Bool) -> Bool {
+    isAppleSupported && isUsingApple
+  }
 }
 
 /// Copy for the engine picker, kept beside the presentation that uses it.

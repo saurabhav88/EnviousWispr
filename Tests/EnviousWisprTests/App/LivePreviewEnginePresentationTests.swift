@@ -14,6 +14,33 @@ import Testing
 /// elsewhere — and names the single deliberate exception.
 @Suite struct LivePreviewEnginePresentationTests {
 
+  /// Apple's language packs must not be offered beside the UNIVERSAL engine
+  /// (founder, 2026-08-17 — found by eye during Live UAT).
+  ///
+  /// All FOUR combinations, not just the broken one. The bug was a condition
+  /// missing its second term, and a test that only pinned the broken case would
+  /// pass equally against a helper hard-coded to `false` — which would hide the
+  /// packs from Apple users too, the same feature broken the other way.
+  ///
+  /// The two terms mean different things and that is why both are kept:
+  /// `isAppleSupported` is whether the packs EXIST to manage (there are none
+  /// below macOS 26), `isUsingApple` is whether they are RELEVANT to what the
+  /// user is about to see.
+  @Test(
+    "Apple's language packs appear only when Apple is both supported and selected",
+    arguments: [
+      (supported: true, usingApple: true, shows: true),
+      (supported: true, usingApple: false, shows: false),
+      (supported: false, usingApple: true, shows: false),
+      (supported: false, usingApple: false, shows: false),
+    ])
+  func applePacksNeedBothConditions(c: (supported: Bool, usingApple: Bool, shows: Bool)) {
+    #expect(
+      LivePreviewEnginePresentation.showsApplePacks(
+        isAppleSupported: c.supported, isUsingApple: c.usingApple) == c.shows,
+      "supported=\(c.supported) usingApple=\(c.usingApple) should show packs: \(c.shows)")
+  }
+
   private func universal(
     selected: Bool = false, routeExists: Bool = true, _ state: DeliveryState
   ) -> LivePreviewEnginePresentation.Card {
