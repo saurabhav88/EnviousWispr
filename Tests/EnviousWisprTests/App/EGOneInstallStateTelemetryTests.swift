@@ -306,4 +306,37 @@ import Testing
       runtime.installState == .downloading(fractionCompleted: 0.1, upgrade: nil),
       "the upgrade label outlived the upgrade that set it")
   }
+
+  /// The SAME journey with a manifest that carries no display version.
+  ///
+  /// Added because writing the mutation control for the other P2 exposed that
+  /// nothing covered this path THROUGH THE RUNTIME. The unnamed case was
+  /// asserted on `EGOneRowPresentation` directly, but the defect being fixed
+  /// lived in the runtime's storage — where a `String?` marker turned "upgrade,
+  /// version unknown" into "not an upgrade". A presentation-only test passes
+  /// against that bug.
+  @MainActor
+  @Test func anUpgradeWithNoDisplayVersionSurvivesTheRuntimeJourney() throws {
+    let suite = "eg1-unnamed-\(UUID().uuidString)"
+    let store = try #require(UserDefaults(suiteName: suite))
+    defer { store.removePersistentDomain(forName: suite) }
+
+    let runtime = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
+
+    // A manifest with no `displayVersion` — optional by contract, so this is a
+    // config we can ship, not a hostile value.
+    runtime.applyInstallStateForTesting(.updatePaused(resumable: false, targetVersion: nil))
+    runtime.applyInstallStateForTesting(.downloading(fractionCompleted: 0.2, upgrade: nil))
+    #expect(
+      runtime.installState == .downloading(fractionCompleted: 0.2, upgrade: .unnamed),
+      "an upgrade with no version was recorded as a first install")
+
+    // And it survives a failure + retry too, same as the named case.
+    runtime.applyInstallStateForTesting(.failed(.network))
+    runtime.applyInstallStateForTesting(.downloading(fractionCompleted: 0.05, upgrade: nil))
+    #expect(
+      runtime.installState == .downloading(fractionCompleted: 0.05, upgrade: .unnamed),
+      "an unnamed upgrade lost its identity across a retry")
+  }
 }
