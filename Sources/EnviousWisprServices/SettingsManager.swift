@@ -449,6 +449,18 @@ public final class SettingsManager {
   /// establishes the value so later chunks have one source of truth to read.
   public var livePreviewEngine: LivePreviewEngineChoice {
     didSet {
+      // The ONLY no-op guard among this type's 47 `didSet`s, and deliberately so
+      // (#2123 whole-diff review). The picker's card is a Button, so tapping the
+      // ALREADY-selected engine still assigns, and Swift runs `didSet` on a
+      // same-value assignment. Every other setting's handler is idempotent, so
+      // the redundant notification costs nothing; this one's is not. It reaches
+      // `releaseForEngineChange()`, which tears the preview down unconditionally
+      // — correctly, since a real engine change means the preview is still ON and
+      // only the engine beneath it moved, so a toggle guard would be wrong there.
+      // That reasoning cannot tell a real change from a re-tap, so the guard has
+      // to be here: without it, tapping the selected card mid-recording stops the
+      // preview for the rest of that recording.
+      guard livePreviewEngine != oldValue else { return }
       defaults.set(livePreviewEngine.rawValue, forKey: "livePreviewEngine")
       onChange?(.livePreviewEngine)
     }

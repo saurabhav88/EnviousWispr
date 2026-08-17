@@ -105,8 +105,22 @@ public final class ModelDeliveryHome {
   /// so tests pass a bundle pointed at the SAME committed manifest files
   /// instead of a divergent fixture. Internal, not public — no other
   /// consumer needs it.
-  init(engineMutationScope: EngineMutationScope, manifestBundle: Bundle) {
+  /// - Parameter appSupportOverride: roots the metadata and WhisperKit install
+  ///   directories somewhere other than the user's real Application Support.
+  ///   Production never passes it. Tests do, because construction now runs a
+  ///   no-fetch launch probe against those directories, and a suite that reads
+  ///   the real ones has a fixture that changes depending on whether the machine
+  ///   running it has ever used the feature. Parakeet's ASR cache is deliberately
+  ///   NOT rerouted: it comes from `AsrModels.defaultCacheDirectory` and is not
+  ///   part of what the probe touches.
+  init(
+    engineMutationScope: EngineMutationScope, manifestBundle: Bundle,
+    appSupportOverride: URL? = nil
+  ) {
     self.engineMutationScope = engineMutationScope
+    let appSupportRoot =
+      appSupportOverride
+      ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
     do {
       let manifest = try DeliveryManifest.loadBundled(
         resource: "parakeet-delivery-manifest", bundle: manifestBundle)
@@ -114,8 +128,8 @@ public final class ModelDeliveryHome {
       let registration = DeliveryRegistration(
         manifest: manifest,
         installDirectory: AsrModels.defaultCacheDirectory(for: .v3),
-        metadataDirectory: FileManager.default.urls(
-          for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        metadataDirectory:
+          appSupportRoot
           .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true))
       parakeetIdentity = identity
       parakeetRegistration = registration
@@ -138,8 +152,7 @@ public final class ModelDeliveryHome {
     do {
       let manifest = try DeliveryManifest.loadBundled(
         resource: "whisperkit-delivery-manifest", bundle: manifestBundle)
-      let appSupport = FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      let appSupport = appSupportRoot
       let registration = DeliveryRegistration(
         manifest: manifest,
         installDirectory: appSupport.appendingPathComponent(
@@ -181,8 +194,7 @@ public final class ModelDeliveryHome {
     do {
       let manifest = try DeliveryManifest.loadBundled(
         resource: "whisperkit-preview-delivery-manifest", bundle: manifestBundle)
-      let appSupport = FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      let appSupport = appSupportRoot
       let registration = DeliveryRegistration(
         manifest: manifest,
         // `whisper-preview`, deliberately a SIBLING of `whisper` and never that
@@ -199,9 +211,34 @@ public final class ModelDeliveryHome {
       Task { await controller.sweepSupersededStaging(registration) }
       whisperPreviewHandle = WhisperKitDeliveryHandle(
         controller: controller, registration: registration)
-      wirePreviewObserver(identity: manifest.identity)
       let previewHome = self
-      Task { await previewHome.recordFirstRunBaseline(for: registration) }
+      let previewIdentity = manifest.identity
+      // The launch PROBE (#2123 whole-diff review).
+      //
+      // A model admitted in a PREVIOUS app session leaves this controller with no
+      // in-memory entry, so there is nothing for a fresh observer to be told
+      // about and the card reports "Not downloaded yet" — hiding Remove — for a
+      // model that is on disk. `recordFirstRunBaseline` cannot fix that: it
+      // records whether this is a first run, it does not publish a state. So the
+      // launch path has to probe, and `admitIfComplete` is the safe one: it
+      // reaches `startAttempt` with `fetchIfMissing: false`, so it can adopt what
+      // is already complete and can never start a download.
+      //
+      // ONE ordered task because ONE ordering is load-bearing: the baseline must
+      // be taken BEFORE the probe, since it records `!admitted` and the probe is
+      // what changes `admitted`.
+      //
+      // Attach-before-probe is NOT load-bearing, and the first version of this
+      // comment claimed it was. `ModelDeliveryController.addStateObserver`
+      // replays the current state of every existing entry to a newly attached
+      // observer, so a probe that publishes first is still delivered. Verified by
+      // mutation: reversing these two lines leaves the suite green. Sequencing
+      // them anyway costs nothing and reads in the order it happens.
+      Task {
+        await previewHome.attachPreviewObserver(identity: previewIdentity)
+        await previewHome.recordFirstRunBaseline(for: registration)
+        _ = await previewHome.controller.admitIfComplete(registration)
+      }
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -221,22 +258,25 @@ public final class ModelDeliveryHome {
   /// and the preview succeeded would leave this mirror permanently unwired, and
   /// the picker would show a download that never appears to start. Two
   /// registrations, two independent wirings.
-  private func wirePreviewObserver(identity: ModelIdentity) {
+  ///
+  /// `async` rather than spawning its own detached task, so the registration
+  /// block reads as the sequence it is. NOT because a late attach would lose a
+  /// publish — `addStateObserver` replays each existing entry's current state to
+  /// a new observer, which is what makes attach order safe either way.
+  private func attachPreviewObserver(identity: ModelIdentity) async {
     let home = self
     let sequencer = DeliveryStateSequencer()
-    Task {
-      await controller.addStateObserver { observedIdentity, state in
-        guard observedIdentity == identity else { return }
-        // Minted on the controller actor in publish order, applied on the main
-        // actor only if newer — the same discipline as the Parakeet mirror, with
-        // its OWN counter. See `lastAppliedPreviewStateSeq`.
-        let seq = sequencer.next()
-        Task { @MainActor in
-          guard seq > home.lastAppliedPreviewStateSeq else { return }
-          home.lastAppliedPreviewStateSeq = seq
-          home.whisperPreviewState = state
-          home.previewStateUpdatesForTests += 1
-        }
+    await controller.addStateObserver { observedIdentity, state in
+      guard observedIdentity == identity else { return }
+      // Minted on the controller actor in publish order, applied on the main
+      // actor only if newer — the same discipline as the Parakeet mirror, with
+      // its OWN counter. See `lastAppliedPreviewStateSeq`.
+      let seq = sequencer.next()
+      Task { @MainActor in
+        guard seq > home.lastAppliedPreviewStateSeq else { return }
+        home.lastAppliedPreviewStateSeq = seq
+        home.whisperPreviewState = state
+        home.previewStateUpdatesForTests += 1
       }
     }
   }

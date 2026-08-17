@@ -85,6 +85,41 @@ import Testing
       "changing the ENGINE must not report the on/off setting as changed")
   }
 
+  /// Re-picking the engine you are already on must be inert (#2123 whole-diff
+  /// review).
+  ///
+  /// The picker's card is a Button, so tapping the SELECTED one still assigns,
+  /// and Swift runs `didSet` on a same-value assignment. The notification is not
+  /// harmless here: it reaches `releaseForEngineChange()`, which tears the
+  /// preview down unconditionally, so a re-tap during a recording killed the
+  /// preview for the rest of that recording.
+  ///
+  /// Asserted two-way in ONE test on purpose. A test that only proved silence
+  /// would also pass against a `didSet` that never fires at all, which is the
+  /// same feature broken the other way.
+  @Test("re-picking the current engine is silent; picking a different one is not")
+  func noOpSelectionDoesNotNotify() throws {
+    let defaults = try store("noop-select")
+    let settings = SettingsManager(defaults: defaults)
+    final class Seen: @unchecked Sendable {
+      var keys: [SettingsManager.SettingKey] = []
+    }
+    let seen = Seen()
+    settings.livePreviewEngine = .universal
+    settings.onChange = { key in seen.keys.append(key) }
+
+    settings.livePreviewEngine = .universal
+    #expect(
+      seen.keys.isEmpty,
+      "re-picking the engine already selected must not notify, got \(seen.keys)")
+
+    settings.livePreviewEngine = .apple
+    #expect(
+      seen.keys.filter { $0 == .livePreviewEngine }.count == 1,
+      "a REAL change must still notify exactly once, got \(seen.keys)")
+    #expect(settings.livePreviewEngine == .apple)
+  }
+
   /// Registered ONCE, and registration is what carries it into the dev/release
   /// defaults migration too — `SettingsDefaultsMigration.unifiedKeys` reads this
   /// same list rather than keeping its own, so there is no second place to add it.

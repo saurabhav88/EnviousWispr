@@ -27,6 +27,25 @@ struct ModelDeliveryHomeTests {
     return try #require(Bundle(url: resourcesDir))
   }
 
+  /// A throwaway Application Support root, one per call.
+  ///
+  /// Construction runs a no-fetch delivery PROBE (#2123 whole-diff review), and a
+  /// probe that finds a complete cache WRITES an admission marker. Pointed at the
+  /// real Application Support, that makes this suite mutate the developer's own
+  /// machine as a side effect of running — and on a machine where another process
+  /// is measuring those markers, it plants a false row in their data rather than
+  /// merely being untidy. Every construction site here takes its own root.
+  ///
+  /// Not deleted afterwards: these live under the system temp directory, which
+  /// the OS reaps, and a `defer` per site would fire while the async work the
+  /// constructor kicked off is still running.
+  private static func tempAppSupport() throws -> URL {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("ew-2123-mdh-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+  }
+
   @Test("a gate-refused cancel reports the site and never releases or wakes")
   func aGateRefusedCancelReportsTheSiteAndNeverReleasesOrWakes() async throws {
     final class Box: @unchecked Sendable {
@@ -44,7 +63,8 @@ struct ModelDeliveryHomeTests {
         },
         wake: { box.wakeCalls += 1 },
         onRefused: { box.refusedSites.append($0) }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     home.cancelParakeetDownload()
     // Signal, not clock: wait for the gate's own refusal telemetry, proving
@@ -74,7 +94,8 @@ struct ModelDeliveryHomeTests {
         },
         wake: { box.wakeCalls += 1 },
         onRefused: { box.refusedSites.append($0) }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     home.resumeParakeetDownload()
     // Signal, not clock: wait for the gate's own refusal telemetry, proving
@@ -107,7 +128,8 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     let transcription = try #require(home.whisperKitRegistration)
     let preview = try #require(home.whisperPreviewRegistration)
@@ -136,7 +158,8 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     let transcription = try #require(home.whisperKitRegistration).manifest.identity
     let preview = try #require(home.whisperPreviewRegistration).manifest.identity
@@ -157,7 +180,8 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     let transcription = try #require(home.whisperKitRegistration)
     let preview = try #require(home.whisperPreviewRegistration)
@@ -175,7 +199,8 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
     #expect(home.whisperPreviewHandle != nil)
   }
 
@@ -201,7 +226,8 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     final class Gate: @unchecked Sendable {
       private let mutex = NSLock()
@@ -278,7 +304,8 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     final class Gate: @unchecked Sendable {
       private let mutex = NSLock()
@@ -337,6 +364,48 @@ struct ModelDeliveryHomeTests {
     func record() { mutex.withLock { value += 1 } }
   }
 
+  // MARK: - #2123 whole-diff review: the launch probe
+
+  /// Launching must PROBE delivery state, not merely wire an observer to it.
+  ///
+  /// The bug this pins: a model admitted in a previous app session leaves a fresh
+  /// controller with no in-memory entry, so there is nothing for a new observer
+  /// to be told about, and the card reports "Not downloaded yet" — hiding Remove
+  /// — for a model sitting on disk. `recordFirstRunBaseline` cannot cover it; it
+  /// records whether this is a first run and publishes no state.
+  ///
+  /// **What this does and does not pin, established by mutation rather than by
+  /// argument.** Deleting the `admitIfComplete` probe from `init` fails it, which
+  /// is the regression that matters. Reversing the observer-attach and the probe
+  /// does NOT fail it — `addStateObserver` replays every existing entry's state
+  /// to a newly attached observer, so attach order is genuinely not load-bearing.
+  /// An earlier version of this test claimed to guard that ordering and did not;
+  /// the claim is recorded here so nobody re-derives it from the test's shape.
+  ///
+  /// Rooted at a temp directory rather than the real Application Support, so the
+  /// verdict does not depend on whether this machine has ever used the feature.
+  @Test("construction probes delivery state rather than only observing it")
+  func launchProbePublishesToAnAttachedObserver() async throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("ew-2123-launch-probe-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: root)
+
+    #expect(home.whisperPreviewRegistration?.metadataDirectory.path.hasPrefix(root.path) == true)
+
+    for _ in 0..<4000 where home.previewStateUpdatesForTests == 0 { await Task.yield() }
+    #expect(
+      home.previewStateUpdatesForTests > 0,
+      "launch published nothing to the preview mirror, so the no-fetch probe did not run"
+    )
+  }
+
   // MARK: - #2123: the preview model's download state is observable
 
   /// The state starts where a not-yet-downloaded model should start.
@@ -350,13 +419,19 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
-    #expect(home.whisperPreviewState == .notReady)
     #expect(home.parakeetState == .notReady)
+    // Safe to assert absolutely ONLY because this suite is rooted at a throwaway
+    // Application Support (see `tempAppSupport`). Construction now runs a
+    // no-fetch launch probe, so against the real directory this value would
+    // depend on whether the machine running the tests happens to have the preview
+    // model on disk — green in CI, green on a clean machine, red on a developer's
+    // machine that had used the feature. A fixture that varies by machine is not
+    // a fixture; the temp root is what makes this line a constant.
+    #expect(home.whisperPreviewState == .notReady)
 
-    // The mirrors track DIFFERENT artifacts, which is what makes separate apply
-    // guards necessary rather than tidy.
     let preview = try #require(home.whisperPreviewRegistration)
     let transcription = try #require(home.whisperKitRegistration).manifest.identity
     #expect(
@@ -371,14 +446,22 @@ struct ModelDeliveryHomeTests {
     // already on disk and never downloads, and never deletes. `remove` would
     // have published a state too, and would have deleted a real model from the
     // machine running the tests.
+    // Measured against a BASELINE, not against zero. The launch probe may already
+    // have applied an update by now, and `> 0` would then pass without this
+    // explicit trigger proving anything — the assertion would be satisfied by
+    // construction alone and would survive deleting the observer's reaction to
+    // this publish entirely.
+    let baseline = home.previewStateUpdatesForTests
+    let parakeetBaseline = home.parakeetStateUpdatesForTests
+
     _ = await home.controller.admitIfComplete(preview)
 
-    for _ in 0..<2000 where home.previewStateUpdatesForTests == 0 { await Task.yield() }
+    for _ in 0..<2000 where home.previewStateUpdatesForTests == baseline { await Task.yield() }
     #expect(
-      home.previewStateUpdatesForTests > 0,
+      home.previewStateUpdatesForTests > baseline,
       "the preview mirror never applied an update — observer missing or filtered wrongly")
     #expect(
-      home.parakeetStateUpdatesForTests == 0,
+      home.parakeetStateUpdatesForTests == parakeetBaseline,
       "a preview state reached Parakeet's mirror, so the identity filter is wrong")
   }
 }
