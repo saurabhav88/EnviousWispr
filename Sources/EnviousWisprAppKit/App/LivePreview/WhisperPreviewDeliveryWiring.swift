@@ -24,8 +24,14 @@ enum WhisperPreviewDeliveryWiring {
 
   /// Build the preview engine's route, or nil when the bundled manifest failed to
   /// load — the same can't-happen-in-release condition the sibling registrations
-  /// guard, and the same honest answer: no route means the engine reports
-  /// not-installed rather than guessing.
+  /// guard.
+  ///
+  /// **Nil means UNAVAILABLE IN THIS BUILD, not not-installed** (#2123). The
+  /// caller renders `engineUnavailableInThisBuild`, which offers no user remedy,
+  /// because there is none: nothing shipped for this engine and no download can
+  /// supply it. Reporting not-installed would send someone to a button that
+  /// cannot help, and falling back to Apple would make the chosen card and the
+  /// running engine disagree.
   static func makeRoute(
     modelDelivery: ModelDeliveryHome,
     settings: SettingsManager

@@ -1,4 +1,5 @@
 import EnviousWisprAudio
+import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprServices
 import Foundation
@@ -36,7 +37,8 @@ enum LivePreviewInstaller {
     overlay: RecordingOverlayPanel,
     capture: any AudioCaptureInterface,
     settings: SettingsManager,
-    settingsSync: PipelineSettingsSync
+    settingsSync: PipelineSettingsSync,
+    modelDelivery: ModelDeliveryHome
   ) -> LivePreviewCoordinator {
     // **Effective, not merely persisted** — the requirement this wiring exists
     // for, unchanged since #1988. A value saved as true on macOS 26 and then read
@@ -59,7 +61,14 @@ enum LivePreviewInstaller {
     // so geometry and resolution cannot disagree — which is the same guarantee
     // the old single expression gave, moved to the layer that can actually hold
     // it across the overlay's deferred panel creation.
-    let selectedRoute: () -> LivePreviewEngineRoute = { ApplePreviewEngineResolver.route }
+    // Both routes are composed ONCE; which one answers is read per recording.
+    let appleRoute = ApplePreviewEngineResolver.route
+    let universalRoute = WhisperPreviewDeliveryWiring.makeRoute(
+      modelDelivery: modelDelivery, settings: settings)
+
+    let selectedRoute: () -> LivePreviewEngineRoute = {
+      route(for: settings.livePreviewEngine, apple: appleRoute, universal: universalRoute)
+    }
     let coordinator = LivePreviewCoordinator(
       // The limb gets ONE read of already-captured audio, never the capture
       // interface itself: see `LivePreviewSampleReader`.
@@ -99,4 +108,40 @@ enum LivePreviewInstaller {
     }
     return coordinator
   }
+
+  /// Which route serves a choice — pure, so the one decision that must never
+  /// silently substitute one engine for another can be tested without a window,
+  /// an audio capture or a delivery home.
+  ///
+  /// **A missing universal route is NOT an Apple fallback.** `makeRoute` returns
+  /// nil only for a build defect — no delivery registration, or no bundled
+  /// tokenizer — and running Apple under a universal selection would make the
+  /// chosen card and the engine actually transcribing disagree, which is the
+  /// confusion this chunk exists to remove. For a user below macOS 26 it would
+  /// also silently restore the dead end this engine was added to fix: Apple's
+  /// route refuses there, so they would see "needs a newer macOS" after choosing
+  /// the engine that has no such requirement.
+  static func route(
+    for choice: LivePreviewEngineChoice,
+    apple: LivePreviewEngineRoute,
+    universal: LivePreviewEngineRoute?
+  ) -> LivePreviewEngineRoute {
+    switch choice {
+    case .apple: return apple
+    case .universal: return universal ?? unavailableInThisBuild
+    }
+  }
+
+  /// The honest stand-in when an engine cannot be composed at all.
+  ///
+  /// Supported on this system, so the pill is still SIZED and can carry the
+  /// sentence: reporting `false` here would make the preview silently do nothing,
+  /// which reads as the feature being broken rather than as this build being
+  /// wrong. Resolution refuses with the reason that offers no user remedy,
+  /// because there is none — the fix is a release-build resource check, not a
+  /// button.
+  private static let unavailableInThisBuild = LivePreviewEngineRoute(
+    isSupportedOnThisSystem: { true },
+    resolve: { _ in .blocked(.engineUnavailableInThisBuild) }
+  )
 }

@@ -35,6 +35,65 @@ struct LivePreviewCoordinatorTests {
 
   // MARK: - #2123: one engine decision per recording
 
+  /// The selection itself: which route serves which choice, and what happens when
+  /// the universal one could not be composed at all.
+  ///
+  /// A pure function on purpose — this is the one decision that must never
+  /// silently substitute one engine for another, and burying it in the
+  /// installer's closure would make it reachable only through a window, an audio
+  /// capture and a delivery home.
+  @Test("the chosen engine is the one that answers, and a missing one never becomes Apple")
+  func routeSelectionNeverSubstitutesApple() async {
+    let apple = LivePreviewEngineRoute(
+      isSupportedOnThisSystem: { true },
+      resolve: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
+            makeEngine: { fatalError("not built in this test") }))
+      })
+    let universal = LivePreviewEngineRoute(
+      isSupportedOnThisSystem: { true },
+      resolve: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "universal", commitment: ""),
+            makeEngine: { fatalError("not built in this test") }))
+      })
+
+    func engineID(_ route: LivePreviewEngineRoute) async -> String? {
+      if case .ready(let candidate) = await route.resolve(.locked("en")) {
+        return candidate.key.engine
+      }
+      return nil
+    }
+    func refusal(_ route: LivePreviewEngineRoute) async -> LivePreviewUnavailability? {
+      if case .blocked(let reason) = await route.resolve(.locked("en")) { return reason }
+      return nil
+    }
+
+    // Each choice reaches its OWN engine. The second half is the control: without
+    // it, a selector hardwired to Apple passes the first assertion.
+    let appleChoice = LivePreviewInstaller.route(for: .apple, apple: apple, universal: universal)
+    let universalChoice = LivePreviewInstaller.route(
+      for: .universal, apple: apple, universal: universal)
+    #expect(await engineID(appleChoice) == "apple")
+    #expect(await engineID(universalChoice) == "universal")
+
+    // The build defect: universal chosen, universal not composable.
+    let broken = LivePreviewInstaller.route(for: .universal, apple: apple, universal: nil)
+    #expect(
+      await engineID(broken) != "apple",
+      "a missing universal engine silently ran Apple under a universal selection")
+    #expect(
+      await refusal(broken) == .engineUnavailableInThisBuild,
+      "the build defect must say so rather than borrowing another engine's refusal")
+    #expect(
+      broken.isSupportedOnThisSystem(),
+      "reporting unsupported would make the pill go quietly blank instead of saying why")
+  }
+
+
   /// Switching engines releases the one being switched away from — while the
   /// preview is still ON, which is what makes this a separate entry point from
   /// the disabled path rather than a second caller of it.

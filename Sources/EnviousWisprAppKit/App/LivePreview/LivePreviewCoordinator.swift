@@ -526,6 +526,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       return LivePreviewSettingsCopy.previewNeedsLanguagePack(languageName)
     case .modelNotInstalled: return LivePreviewCopy.previewModelNotInstalled
     case .heartIsStreaming: return LivePreviewCopy.heartIsStreaming
+    case .engineUnavailableInThisBuild:
+      return LivePreviewCopy.engineUnavailableInThisBuild
     }
   }
 
@@ -779,4 +781,8 @@ enum LivePreviewCopy {
   /// speak, and a second decoder would slow it by half (measured). Says what is
   /// happening rather than naming a setting the reader has to go and find.
   static let heartIsStreaming = "On-screen preview pauses while live transcription is on."
+  /// No remedy offered ON PURPOSE. A build shipped without the engine's files is
+  /// ours to fix, and a "Download" button here would point at nothing.
+  static let engineUnavailableInThisBuild =
+    "This version of EnviousWispr cannot run that preview engine."
 }

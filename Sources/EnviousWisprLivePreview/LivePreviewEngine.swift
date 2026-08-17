@@ -181,6 +181,21 @@ package enum LivePreviewUnavailability: Sendable, Equatable {
   /// racing. It deliberately does not fall back to a lock the heart would await:
   /// a display-only limb must never be able to stall transcription.
   case heartIsStreaming
+
+  /// The engine cannot run because THIS BUILD is missing something it needs —
+  /// a delivery registration or a bundled tokenizer that should have shipped.
+  ///
+  /// **Not a Bypass and not a user-fixable Failure**, which is why it is neither
+  /// `modelNotInstalled` nor a reuse of it. Telling someone to download a model
+  /// when the app was packaged wrong sends them to a button that cannot help,
+  /// and the honest sentence — this build cannot do it — is the one that does not
+  /// waste their time. The remedy is ours: a release-build resource check
+  /// (#2123), not a control on screen.
+  ///
+  /// Added in #2123 because this is the chunk where a route can finally be nil
+  /// and something has to say so, matching this enum's rule that a case arrives
+  /// with the code that can report and act on it.
+  case engineUnavailableInThisBuild
 }
 
 /// Whether a preview can run, and if not, why.

@@ -183,7 +183,8 @@ public final class ModelDeliveryHome {
       Task {
         await AppLogger.shared.log(
           "Live Preview model manifest unavailable — the universal preview engine will report "
-            + "not-installed: \(error)",
+            + "unavailable-in-this-build (#2123: NOT not-installed, since no download can "
+            + "supply what this build never shipped): \(error)",
           level: .info, category: "Delivery")
       }
     }
