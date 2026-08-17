@@ -435,6 +435,10 @@ import Testing
     // `AsyncStream` park deliberately: it asserts BEFORE it cancels, so the
     // cancellation never closes a window it still needs.
     let gate = CancellationInsensitiveGate()
+    // UNCONDITIONAL. Any `#require` between here and the explicit open would
+    // otherwise leave the attempt parked on a park cancellation cannot wake,
+    // so the test would HANG instead of reporting the failed requirement.
+    defer { gate.open() }
     await controller.setBeforeExistingCacheValidationForTesting {
       entered.continuation.yield()
       entered.continuation.finish()
@@ -493,7 +497,7 @@ import Testing
 
     // Open the gate only now — after the sweep has run against a window this
     // test held open deliberately.
-    await gate.open()
+    gate.open()
     _ = await cancelled
     _ = await attempt
 
@@ -638,20 +642,42 @@ import Testing
 /// assertion runs. `withCheckedContinuation` (non-throwing) has no
 /// cancellation path, so the only way out is `open()`.
 ///
-/// Not a clock wait and not a poll: the waiter suspends until explicitly
-/// resumed. Use it when the test must OWN when the subject proceeds.
-actor CancellationInsensitiveGate {
+/// A LOCK, NOT AN ACTOR, forced by the FAILURE path rather than by taste.
+/// Being cancellation-proof means a `#require` that throws before the gate
+/// opens would leave the subject parked forever: scope exit cancels the
+/// structured child, cancellation cannot wake this park, and the test HANGS
+/// instead of reporting the requirement it failed — a loud failure converted
+/// into a silent one (cloud-review P1 on the actor version). `defer` cannot
+/// `await`, so `open()` must be synchronous to be callable from unconditional
+/// cleanup. Every caller pairs `let gate = …` with `defer { gate.open() }` on
+/// the next line.
+final class CancellationInsensitiveGate: @unchecked Sendable {
+  private let lock = NSLock()
   private var continuation: CheckedContinuation<Void, Never>?
   private var isOpen = false
 
   func wait() async {
-    if isOpen { return }
-    await withCheckedContinuation { continuation = $0 }
+    await withCheckedContinuation { c in
+      lock.lock()
+      // Opened before anyone waited: resume rather than park forever. Tested
+      // inside the lock so `open()` cannot land between the check and the store.
+      if isOpen {
+        lock.unlock()
+        c.resume()
+        return
+      }
+      continuation = c
+      lock.unlock()
+    }
   }
 
   func open() {
+    lock.lock()
     isOpen = true
-    continuation?.resume()
+    let waiter = continuation
     continuation = nil
+    lock.unlock()
+    // Resumed OUTSIDE the lock: a continuation resume can run arbitrary code.
+    waiter?.resume()
   }
 }
