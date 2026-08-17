@@ -85,6 +85,13 @@ parse_suites() {
                 printf "%s\t%s\t%s\t%d\t%d\n", path, name[i], t, cnt[i], bnd[i]
             }
             function popTo(ind) { while (top >= 0 && dep[top] >= ind) { emit(top); top-- } }
+            function finishTest(   k) {
+                for (k = top; k >= 0; k--) if (dep[k] < testInd) {
+                    cnt[k]++
+                    if (testBlob ~ /\.realBoundary([^A-Za-z0-9_]|$)/) bnd[k]++
+                    return
+                }
+            }
             function classify(blob,   n) {
                 n = 0
                 lastTag = ""
@@ -118,8 +125,18 @@ parse_suites() {
             # text. The opener is read from `code`, so a doc comment naming a glob does not open one.
             inBlock {
                 if (raw ~ /(^|[[:space:]])@Test([^A-Za-z0-9_]|$)/) commented++
-                if (code ~ /\*\//) inBlock = 0
-                next
+                if (code ~ /\*\//) { inBlock = 0; sub(/^.*\*\//, "", code) } else next
+            }
+            # INLINE block comments are removed from `code`, not merely tracked as multi-line state.
+            # `@Suite("reason" /* not .productOutcome */)` otherwise classified as TAGGED and walked
+            # through the ratchet; the same hole let a comment inflate the real-boundary headline.
+            {
+                while ((bo = index(code, "/*")) > 0) {
+                    brest = substr(code, bo + 2)
+                    bc = index(brest, "*/")
+                    if (bc == 0) break              # unterminated: a genuine multi-line opener
+                    code = substr(code, 1, bo - 1) " " substr(brest, bc + 2)
+                }
             }
             # Strip the line comment, and DECLARE any @Test it removed. The control is a raw grep with no
             # comment awareness, so an excluded mention would otherwise read as a missing test.
@@ -133,11 +150,20 @@ parse_suites() {
 
             # A test: `@Test` anywhere in the attribute list, so `@MainActor @Test func x()` counts.
             code ~ /(^|[[:space:]])@Test([^A-Za-z0-9_]|$)/ && attrDepth <= 0 {
-                for (k = top; k >= 0; k--) if (dep[k] < ind) {
-                    cnt[k]++
-                    if (code ~ /\.realBoundary([^A-Za-z0-9_]|$)/) bnd[k]++
-                    break
-                }
+                testBlob = code; testInd = ind
+                pc = code
+                testDepth = gsub(/\(/, "(", pc) - gsub(/\)/, ")", pc)
+                if (testDepth > 0) { inTest = 1 } else { finishTest() }
+                next
+            }
+            # A `@Test(` wrapped by swift-format puts `.realBoundary` on a CONTINUATION line. Counting the
+            # test from its opening line and skipping the rest made the boundary count permanently zero —
+            # silently defeating the one metric this whole change exists to move.
+            inTest {
+                testBlob = testBlob " " code
+                pc = code
+                testDepth += gsub(/\(/, "(", pc) - gsub(/\)/, ")", pc)
+                if (testDepth <= 0) { inTest = 0; finishTest() }
                 next
             }
             # Attribute lines accumulate until their declaration. Stay open while parens are unbalanced:
