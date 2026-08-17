@@ -160,7 +160,7 @@ import Testing
         promptTemplateID: "eg1-v1", minAppVersion: "0",
         downloadURL: URL(string: "https://example.invalid/eg1.gguf")!,
         displayVersion: "1.1"),
-      serverBinaryURL: nil, delivery: adapter)
+      serverBinaryURL: nil, delivery: adapter, defaults: store)
     defer { store.removePersistentDomain(forName: suite) }
 
     let reachedPaused = await withDeadline(seconds: 5) {
@@ -209,7 +209,7 @@ import Testing
       controller: ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!),
       registration: registration, version: "1.1", defaults: store)
     let runtime = EGOneRuntime(
-      manifest: runtimeManifest(), serverBinaryURL: nil, delivery: adapter)
+      manifest: runtimeManifest(), serverBinaryURL: nil, delivery: adapter, defaults: store)
 
     let expected = EGOneInstallState.updatePaused(resumable: resumable, targetVersion: "1.1")
     let reached = await withDeadline(seconds: 5) {

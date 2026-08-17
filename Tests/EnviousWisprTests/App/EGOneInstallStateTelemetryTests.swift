@@ -115,7 +115,7 @@ import Testing
         modelName: LLMProvider.egOneModelName, version: "v2-sharded", contextTokens: 4096,
         promptTemplateID: "eg1-v1", minAppVersion: "0",
         downloadURL: URL(string: "https://example.invalid/eg1.gguf")!, displayVersion: "1.1"),
-      serverBinaryURL: nil, delivery: adapter)
+      serverBinaryURL: nil, delivery: adapter, defaults: store)
     runtime.onEvent = { event in
       if case .pausedInstallStateChanged(let projection) = event {
         recorded.append(projection?.rawValue ?? "none")
@@ -184,5 +184,71 @@ import Testing
       defer { lock.unlock() }
       return names
     }
+  }
+
+  // MARK: - Residency across launches (whole-diff review)
+
+  /// A pause OUTLIVES the process, and the tracker has to as well.
+  ///
+  /// Without persistence a user who leaves an upgrade paused and quits emits a
+  /// fresh ENTRY on every launch with no matching exit. After a week that is
+  /// seven entries and eventually one exit, and no query can say which entry
+  /// the exit belongs to — so the duration this event exists to measure is
+  /// uncomputable from data that looks perfectly healthy.
+  @MainActor
+  @Test func aPauseCarriedAcrossLaunchesDoesNotReEmitEntry() async throws {
+    let suite = "eg1-tel-\(UUID().uuidString)"
+    let store = try #require(UserDefaults(suiteName: suite))
+    defer { store.removePersistentDomain(forName: suite) }
+
+    // First launch: enters the paused state and records one entry.
+    let first = Recorded()
+    let runtimeA = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
+    runtimeA.onEvent = { event in
+      if case .pausedInstallStateChanged(let p) = event { first.append(p?.rawValue ?? "none") }
+    }
+    runtimeA.applyInstallStateForTesting(.updatePaused(resumable: false, targetVersion: "1.1"))
+    #expect(first.all == ["update_paused"])
+
+    // SECOND LAUNCH: a brand-new runtime over the same storage, seeing the same
+    // paused state. It must stay silent — the user never left the pause.
+    let second = Recorded()
+    let runtimeB = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
+    runtimeB.onEvent = { event in
+      if case .pausedInstallStateChanged(let p) = event { second.append(p?.rawValue ?? "none") }
+    }
+    runtimeB.applyInstallStateForTesting(.updatePaused(resumable: false, targetVersion: "1.1"))
+    #expect(
+      second.all.isEmpty,
+      "a relaunch into the SAME pause re-emitted an entry, so the exit cannot be paired: \(second.all)")
+  }
+
+  /// The other half: a pause resolved while the app was CLOSED must still
+  /// close. At launch `installState` starts `.notInstalled` and the seed
+  /// publishes `.notInstalled` too — the same value — so a reconciliation
+  /// placed after the UI dedupe would early-return and leave the entry open
+  /// forever.
+  @MainActor
+  @Test func aPauseResolvedWhileClosedEmitsItsExitOnNextLaunch() async throws {
+    let suite = "eg1-tel-\(UUID().uuidString)"
+    let store = try #require(UserDefaults(suiteName: suite))
+    defer { store.removePersistentDomain(forName: suite) }
+
+    let first = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
+    first.applyInstallStateForTesting(.updatePaused(resumable: true, targetVersion: "1.1"))
+
+    // Relaunch into `.notInstalled`, which equals the runtime's initial value.
+    let recorded = Recorded()
+    let second = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
+    second.onEvent = { event in
+      if case .pausedInstallStateChanged(let p) = event { recorded.append(p?.rawValue ?? "none") }
+    }
+    second.applyInstallStateForTesting(.notInstalled)
+
+    #expect(
+      recorded.all == ["none"],
+      "a pause resolved while the app was closed never emitted its exit: \(recorded.all)")
   }
 }
