@@ -284,14 +284,8 @@ public final class WisprBootstrapper {
       let adapter = EGOneDeliveryAdapter(
         controller: modelDelivery.controller,
         registration: registration,
-        // #2109: the USER-FACING label, not the internal revision. nil when the
-        // manifest carries none — the row then shows no version rather than
-        // printing `v3-eg2` at someone.
-        version: egOneManifest?.resolvedDisplayVersion)
+        version: egOneManifest?.resolvedDisplayVersion)  // #2109: label, not revision
       egOneAdapter = adapter
-      // #2119: EG-1's own bootstrap sweep. All FOUR registrations call this —
-      // a missed one is a family whose dead staging is never reclaimed.
-      Task { await modelDelivery.controller.sweepSupersededStaging(registration) }
 
       let coordinator = EGOneUpgradeCoordinator(
         adapter: adapter,
@@ -314,6 +308,7 @@ public final class WisprBootstrapper {
       // decides if the completed replacement boots the server (PR #1500 P1).
       let delivery = modelDelivery
       Task {
+        await delivery.controller.sweepSupersededStaging(egOneUpgrade.registration)  // #2119
         await delivery.recordFirstRunBaseline(for: egOneUpgrade.registration)
         await egOneUpgrade.coordinator.runLaunch()
         egOneRuntime.activateAfterAutomaticReplacementIfNeeded()

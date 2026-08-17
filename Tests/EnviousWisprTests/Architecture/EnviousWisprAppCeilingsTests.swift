@@ -457,14 +457,23 @@ import Testing
   /// composition root holds settings, the coordinator, and the runtime together. Extracting this
   /// wiring into an installer would add lines here rather than remove them. No domain logic moved
   /// here. Cap by deterministic rule (actual 1348 + ~2, rounded up to nearest 5 = 1350).
+  ///
+  /// RAISED 1350 → 1355 for #2119 (2026-08-17). One line: the superseded-staging
+  /// sweep for EG-1's registration, folded into the existing launch Task so it is
+  /// ORDERED before the launch table rather than racing it. It has to live here
+  /// because this is the only place EG-1's `DeliveryRegistration` exists — the
+  /// other three registrations sweep from `ModelDeliveryHome`, which builds
+  /// their own. Comments on both #2109 additions were folded to their code lines
+  /// first, so the growth is one line of wiring and no prose. Same deterministic
+  /// rule: actual 1351 + ~2, rounded up to nearest 5.
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1350,
+      lineCount <= 1355,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1350. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1355. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
