@@ -68,7 +68,7 @@ struct KernelFrozenBindGuardTests {
     ctx.vad.evidence = .confirmedNoSpeech
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
   }
 
   /// A bind built from a device this machine reports as genuinely alive AND unmuted,

@@ -56,7 +56,7 @@ struct KernelSalvageRetryTests {
     // otherwise the stop aborts a still-Arming session as released-before-recording.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
   }
 
   @Test("empty primary decode + non-empty retry → salvaged completion delivers the retry text")
@@ -106,7 +106,7 @@ struct KernelSalvageRetryTests {
     // false and this retry never fired.
     ctx.engine.behavior = .emptyThenScripted(text: "salvaged streaming take", emptyCalls: 1)
     kernel.externalASRInterrupted()
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(
       kernel.recordingOutcome == .completed,
@@ -146,7 +146,7 @@ struct KernelSalvageRetryTests {
     // salvage-ladder fix already covered above.
     ctx.engine.behavior = .batchSuccess(text: "recovered take")
     kernel.externalASRInterrupted()
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(kernel.recordingOutcome == .completed)
     #expect(kernel.deliveredTranscript == "recovered take")
@@ -197,7 +197,7 @@ struct KernelSalvageRetryTests {
     // #1548 D1: commit the first buffer (Arming -> Live) before stopping.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
     let kernel = ctx.wrapper.testKernel
 
     #expect(kernel.recordingOutcome == .asrEmptyDespiteAudio)
@@ -233,7 +233,7 @@ struct KernelSalvageRetryTests {
     // #1548 D1: commit the first buffer (Arming -> Live) before stopping.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
     let kernel = ctx.wrapper.testKernel
 
     #expect(kernel.recordingOutcome.kind == .noSpeech)
@@ -259,7 +259,7 @@ struct KernelSalvageRetryTests {
     // #1548 D1: commit the first buffer (Arming -> Live) before stopping.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
     let kernel = ctx.wrapper.testKernel
 
     #expect(kernel.recordingOutcome == .completed)

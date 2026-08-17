@@ -44,9 +44,24 @@ import Testing
     }
 
     /// Drive one trigger and settle the kernel.
-    private func apply(_ trigger: SessionTrigger, to wrapper: KernelRecordingSession) async {
+    ///
+    /// #1857: pass `concluding: true` for a trigger this caller then asserts a
+    /// TERMINAL after. Epoch quiescence is a heuristic — a continuation resumed
+    /// synchronously inside the trigger is absorbed into the drain's initial
+    /// `workEpoch`, so under MainActor contention the plain drain can return
+    /// while the session is still in flight and the terminal assertion reads a
+    /// bare `nil`. `.start` and mid-session triggers keep the plain drain,
+    /// because no terminal is coming and the conclusion wait would spin to its
+    /// livelock cap.
+    private func apply(
+      _ trigger: SessionTrigger, to wrapper: KernelRecordingSession, concluding: Bool = false
+    ) async {
       await wrapper.apply(trigger)
-      await wrapper.drainReadyWork()
+      if concluding {
+        await wrapper.drainUntilConcluded()
+      } else {
+        await wrapper.drainReadyWork()
+      }
     }
 
     /// Start a session and drive it to `.live`. #1548 D1: reaching `.live` now
@@ -69,11 +84,11 @@ import Testing
 
       await apply(.start, to: wrapper)
       let first = kernel.currentSessionID
-      await apply(.cancel, to: wrapper)  // recording → cancelled
+      await apply(.cancel, to: wrapper, concluding: true)  // recording → cancelled
 
       await apply(.start, to: wrapper)
       let second = kernel.currentSessionID
-      await apply(.cancel, to: wrapper)
+      await apply(.cancel, to: wrapper, concluding: true)
 
       await apply(.start, to: wrapper)
       let third = kernel.currentSessionID
@@ -90,7 +105,7 @@ import Testing
       let kernel = wrapper.testKernel
 
       await apply(.start, to: wrapper)
-      await apply(.cancel, to: wrapper)  // → cancelled (terminal)
+      await apply(.cancel, to: wrapper, concluding: true)  // → cancelled (terminal)
       let terminalSID = kernel.currentSessionID
 
       await apply(.reset, to: wrapper)  // cancelled → idle
@@ -121,7 +136,7 @@ import Testing
       let kernel = wrapper.testKernel
 
       await apply(.start, to: wrapper)
-      await apply(.cancel, to: wrapper)  // concludes .cancelled; the FSM returns to .idle
+      await apply(.cancel, to: wrapper, concluding: true)  // concludes .cancelled; the FSM returns to .idle
       #expect(kernel.recordingOutcome == .cancelled)
 
       // From the concluded `.idle`, only `idle → arming` is legal (#1548 D1); a
@@ -141,12 +156,12 @@ import Testing
       let kernel = wrapper.testKernel
 
       await apply(.start, to: wrapper)
-      await apply(.cancel, to: wrapper)
+      await apply(.cancel, to: wrapper, concluding: true)
       #expect(kernel.recordingOutcome == .cancelled)
 
       // Every further trigger except start / reset is ignored.
-      await apply(.cancel, to: wrapper)
-      await apply(.stop, to: wrapper)
+      await apply(.cancel, to: wrapper, concluding: true)
+      await apply(.stop, to: wrapper, concluding: true)
       #expect(kernel.recordingOutcome == .cancelled)
     }
 
@@ -180,7 +195,7 @@ import Testing
       let kernel = wrapper.testKernel
 
       await apply(.start, to: wrapper)
-      await apply(.cancel, to: wrapper)
+      await apply(.cancel, to: wrapper, concluding: true)
       #expect(kernel.recordingOutcome == .cancelled)
       #expect(kernel.testActiveTaskCount == 0)
     }
@@ -194,7 +209,7 @@ import Testing
       // The load wedges and parks; advance logical time so the wedge watcher
       // fires and the kernel reaches its terminal state.
       context.clock.advance(by: 4)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(kernel.recordingOutcome == .failed(.modelWedged))
       // The wedged warm-up task ignored cooperative cancellation, yet the kernel
@@ -254,7 +269,7 @@ import Testing
     func ordinaryTerminalUsesCheapCancel() async {
       let (context, wrapper) = makeWrapper()
       await apply(.start, to: wrapper)
-      await apply(.cancel, to: wrapper)  // recording → cancelled (an ordinary discard)
+      await apply(.cancel, to: wrapper, concluding: true)  // recording → cancelled (an ordinary discard)
 
       #expect(wrapper.testKernel.recordingOutcome == .cancelled)
       #expect(context.engine.cancelCallCount >= 1, "ordinary discard must call cheap cancel()")
@@ -268,7 +283,7 @@ import Testing
       let (context, wrapper) = makeWrapper(behavior: .wedgeOnLoad)
       await apply(.start, to: wrapper)
       context.clock.advance(by: 4)  // let the wedge watcher fire
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(wrapper.testKernel.recordingOutcome == .failed(.modelWedged))
       #expect(
@@ -292,7 +307,7 @@ import Testing
       await apply(.start, to: wrapper)
       context.capture.deliverBuffer()
       await wrapper.drainReadyWork()
-      await apply(.stop, to: wrapper)
+      await apply(.stop, to: wrapper, concluding: true)
 
       #expect(kernel.recordingOutcome == .completed)
       #expect(kernel.deliveredTranscript == "raw asr text")
@@ -370,7 +385,7 @@ import Testing
       // still needs it), but the PUBLIC `recordingElapsedSeconds` value now
       // correctly goes nil the moment state leaves `.recording`, closing the
       // exact stale-value window the overlay's first pill push could hit.
-      await apply(.cancel, to: wrapper)  // recording → cancelled (terminal)
+      await apply(.cancel, to: wrapper, concluding: true)  // recording → cancelled (terminal)
       #expect(kernel.recordingElapsedSeconds == nil, "gated on .recording, not on the raw tick")
 
       await apply(.reset, to: wrapper)  // cancelled → idle
@@ -403,7 +418,7 @@ import Testing
       let first = kernel.currentSessionID
       #expect(wrapper.telemetryState.takeID == first.raw.uuidString)
 
-      await apply(.cancel, to: wrapper)  // recording → cancelled (terminal)
+      await apply(.cancel, to: wrapper, concluding: true)  // recording → cancelled (terminal)
       await apply(.reset, to: wrapper)  // cancelled → idle
 
       await startToLive(context, wrapper)
@@ -439,7 +454,7 @@ import Testing
         kernel.lastTakeID == nil,
         "in flight is not concluded — this names the CONCLUDED take, like lastStopReason")
 
-      await apply(.cancel, to: wrapper)  // recording → cancelled (a terminal)
+      await apply(.cancel, to: wrapper, concluding: true)  // recording → cancelled (a terminal)
       #expect(
         kernel.lastTakeID == firstSessionID.raw.uuidString,
         "the accepted terminal must stamp the take that concluded")

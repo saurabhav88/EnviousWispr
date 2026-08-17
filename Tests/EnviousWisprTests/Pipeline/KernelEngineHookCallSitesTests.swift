@@ -94,7 +94,7 @@ struct KernelEngineHookCallSitesTests {
     fx.capture.deliverBuffer()
     await fx.wrapper.drainReadyWork()
     fx.kernel.requestStop()
-    await fx.wrapper.drainReadyWork()
+    await fx.wrapper.drainUntilConcluded()
   }
 
   // MARK: 1. preWarm fires warmUpFromCache once and NOT cancelPendingUnload
