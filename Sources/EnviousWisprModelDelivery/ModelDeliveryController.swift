@@ -808,6 +808,15 @@ public actor ModelDeliveryController {
   /// three of four shipped manifests carry that flag's value copied from a
   /// sibling, so for most artefacts it encodes nobody's decision.
   ///
+  /// SAME VARIANT is part of the match, not a detail. WhisperKit transcription
+  /// and Live Preview deliberately SHARE this one metadata directory while
+  /// keeping separate install directories, on the stated grounds that
+  /// `cacheKey` includes the variant so their staging and markers cannot
+  /// collide. If this match ever loosened to family+name it would delete
+  /// across two models designed to coexist here, and the symptom would be a
+  /// preview download losing its staging for no visible reason (framing from
+  /// the session building #2123, who owns that pair).
+  ///
   /// LIVENESS IS BUILT FORWARD. Identity → URL is total; URL → identity is
   /// not, because `cacheKey` flattens name and revision. So the protected set
   /// is derived from entries that actually have work in flight, mapped to
