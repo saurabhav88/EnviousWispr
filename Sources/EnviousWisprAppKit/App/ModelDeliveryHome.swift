@@ -327,6 +327,104 @@ public final class ModelDeliveryHome {
     Task { _ = await handle.ensureAvailable() }
   }
 
+  /// Called BEFORE the preview model's files are deleted, so whoever holds the
+  /// loaded model can let go of it first.
+  ///
+  /// **Unlinking an open file does not reclaim its blocks.** macOS lets the
+  /// delete succeed while a mapping is alive, and the space only returns when the
+  /// last handle closes — so deleting under a loaded engine frees nothing until
+  /// something drops it, and nothing would, if the user never records again.
+  /// Reclaiming the disk is the entire point of this control, so the release is
+  /// part of removal rather than a consequence of it.
+  /// Awaited before the files are deleted, and its completion is the promise that
+  /// nothing still holds the model. Async on purpose: a synchronous hook can only
+  /// REQUEST a release, and a live session owns the engine until its own
+  /// asynchronous teardown finishes.
+  public var drainPreviewHoldersBeforeRemoval: (() async -> Void)?
+
+  /// Called once the files are gone, so previews can run again.
+  public var previewRemovalDidFinish: (() -> Void)?
+
+  /// Delete the preview model and reclaim its ~217 MB.
+  ///
+  /// The controller's `remove` is already thorough and ordered correctly: it
+  /// cancels anything in flight, deletes the admission MARKER FIRST so
+  /// `isAdmitted()` goes false immediately, then the component roots, then
+  /// staging. Nothing here re-implements that.
+  ///
+  /// **Two earlier versions of this comment were wrong, and the second was worse
+  /// than the first, so the reasoning is recorded rather than the conclusion.**
+  ///
+  /// First it claimed the next recording would release the cached engine via
+  /// `modelNotInstalled`. The bound is real — every recording resolves before it
+  /// can reuse a cached engine, and the blocked path releases on ANY refusal —
+  /// but naming one reason was wrong: the resolver checks heart contention FIRST,
+  /// so a recording starting while the transcription engine streams refuses with
+  /// `heartIsStreaming` instead.
+  ///
+  /// Then it claimed the disk space returns immediately. It does not. Unlinking
+  /// a file that is open or memory-mapped succeeds, but its BLOCKS are not
+  /// reclaimed until the last handle closes — and "the next recording" may never
+  /// come, so a user who removes the model and stops using the app would free
+  /// nothing at all. Reclaiming space is the whole point of this control, so it
+  /// cannot depend on a later event.
+  ///
+  /// Hence `drainPreviewHoldersBeforeRemoval`, AWAITED before the delete: every
+  /// holder lets go, then the files go. Awaited rather than merely called,
+  /// because a synchronous hook can only request a release — a live session owns
+  /// its engine until its own asynchronous teardown completes.
+  /// The order removal actually executed in, for tests.
+  ///
+  /// A seam because the ORDER is the contract and nothing else can observe it.
+  /// Asserting that removal "finished after the drain" stays green with the
+  /// delete moved first, since the finish callback trails both either way —
+  /// cloud review demonstrated exactly that against an earlier test of mine.
+  package private(set) var removalStepsForTests: [String] = []
+
+  /// The removal in flight, so a second press joins nothing rather than starting
+  /// a competing delete.
+  private var removalTask: Task<Void, Never>?
+
+  /// The actual deletion, replaceable by tests.
+  ///
+  /// **Because the registration points at the REAL Application Support
+  /// directory.** `manifestBundle` redirects only where manifests are READ from;
+  /// the install root and the shared admission metadata are the user's own. A
+  /// test that calls the real removal therefore deletes a developer's installed
+  /// preview model when the suite runs — which is why the observer test above
+  /// deliberately uses a non-destructive trigger, and why the removal tests must
+  /// substitute this. Cloud review caught the regression.
+  package var deletePreviewModelOverrideForTests: (() async -> Void)?
+
+  public func removePreviewModel() {
+    guard let handle = whisperPreviewHandle else { return }
+    // **Single-flight the WHOLE operation, not just the drain.** Guarding only
+    // the coordinator's drain let two presses share it and then run two deletes
+    // and two finish callbacks — and one finish lifts the suppression while the
+    // other removal is still going, reopening the window it exists to close.
+    // The button stays on screen throughout, so a second press is ordinary.
+    guard removalTask == nil else { return }
+    removalStepsForTests = []
+    let task = Task { [weak self] in
+      // AWAIT the drain, do not merely request it. Every holder must be gone
+      // before the unlink, or the blocks stay allocated behind an open mapping.
+      await self?.drainPreviewHoldersBeforeRemoval?()
+      self?.removalStepsForTests.append("drain")
+      if let substitute = self?.deletePreviewModelOverrideForTests {
+        await substitute()
+      } else {
+        _ = await handle.remove()
+      }
+      self?.removalStepsForTests.append("delete")
+      // Only now may a preview run again: until the marker is deleted, a
+      // resolution would still read the model as admitted.
+      self?.previewRemovalDidFinish?()
+      self?.removalStepsForTests.append("finish")
+      self?.removalTask = nil
+    }
+    removalTask = task
+  }
+
   /// Stop a download in flight. Safe when nothing is running: the controller
   /// reports `nothingToCancel` and no state moves.
   public func cancelPreviewDownload() {

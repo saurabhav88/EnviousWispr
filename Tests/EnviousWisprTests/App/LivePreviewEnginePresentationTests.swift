@@ -137,6 +137,27 @@ import Testing
     }
   }
 
+  // MARK: - #2123 F3: removal keeps the picker honest
+
+  /// Removing the model must not strand the user on a selection they cannot use.
+  ///
+  /// The selection is DELIBERATELY kept. Reverting to Apple would be wrong for
+  /// exactly the people this engine exists for: below macOS 26 Apple cannot run,
+  /// so a silent revert would move them from "download this" to "needs a newer
+  /// macOS" as a consequence of reclaiming disk space. The card instead returns
+  /// to offering a download, which is both true and actionable.
+  @Test("after removal the card offers a download again, still selected")
+  func removalReturnsToDownloadWithoutLosingSelection() {
+    let installed = universal(selected: true, .admitted)
+    #expect(installed.action == .remove, "control: an installed model offers removal")
+
+    // What the state becomes once the marker and files are gone.
+    let afterRemoval = universal(selected: true, .notReady)
+    #expect(afterRemoval.action == .download, "removal must leave a way back")
+    #expect(afterRemoval.isSelected, "the user's choice survives reclaiming the disk space")
+    #expect(afterRemoval.unavailability == LivePreviewEngineCopy.notDownloadedYet)
+  }
+
   // MARK: - The action a button performs
 
   /// Download, Resume and Try Again are three WORDS for one operation, and the

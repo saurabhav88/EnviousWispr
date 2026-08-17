@@ -108,9 +108,7 @@ struct LivePreviewSettingsView: View {
     case .cancelDownload:
       modelDelivery.cancelPreviewDownload()
     case .remove:
-      // Wired in the next chunk; the card cannot produce this yet unless the
-      // model is admitted, and removal has its own confirmation question.
-      break
+      modelDelivery.removePreviewModel()
     }
   }
 

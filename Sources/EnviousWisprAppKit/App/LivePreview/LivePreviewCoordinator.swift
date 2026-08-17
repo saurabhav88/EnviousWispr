@@ -230,6 +230,19 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   }
   private var recordingSnapshot: RecordingSnapshot?
 
+  /// True from the moment removal starts until its files are gone.
+  ///
+  /// **Closes the reacquisition window.** Removal releases the engine first and
+  /// deletes second, and the admission marker is still present in between — so a
+  /// recording starting in that gap would resolve as admitted and load the model
+  /// again, straight back onto the files about to be unlinked. While this is set,
+  /// no recording opens a preview at all.
+  private var isRemovingModel = false
+
+  /// The removal drain in flight, so a second Remove press joins it rather than
+  /// starting a competing one.
+  private var removalDrain: Task<Void, Never>?
+
   /// `selectedRoute` answers "which engine is chosen right now" and is read once
   /// per recording. `isPreviewOn` is the user's toggle ALONE — support is the
   /// route's own answer (`isSupportedOnThisSystem`), so combining them here is
@@ -271,6 +284,13 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       // enabling the preview mid-recording would have the next duplicate push
       // start it, in a recording that began with it off.
       guard recordingSnapshot == nil else { return }
+
+      // Nothing starts mid-removal: the files are about to go, and resolving now
+      // would reload the model from a marker that has not been deleted yet.
+      guard !isRemovingModel else {
+        display = .off
+        return
+      }
 
       // Read the choice ONCE, here, and keep both halves. Everything downstream
       // reads this and never the live setting.
@@ -560,6 +580,70 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// Wired from `PipelineSettingsSync`'s `livePreviewEngine` case.
   func releaseForEngineChange() {
     stopPreviewAndRelease()
+  }
+
+  /// Release EVERYTHING that could be holding the model, and do not return until
+  /// it is actually let go (#2123).
+  ///
+  /// **Clearing the cache slot is not releasing the model, and that was the
+  /// defect.** FOUR things can hold it: the cached engine; a live session that
+  /// still owns it until its asynchronous `end()` completes; an in-flight
+  /// preparation task holding a fresh engine that invalidation does not stop; and
+  /// the session task itself between opening a session and registering its
+  /// teardown, when nothing else references it. The count went from three to four
+  /// mid-review, which is the whole argument for capturing holders rather than
+  /// listing them from memory.
+  /// Dropping only the first leaves an unlinked file whose blocks stay allocated,
+  /// so the disk space the user asked for never comes back.
+  ///
+  /// So this awaits the teardown rather than requesting it, and holds
+  /// `isRemovingModel` across the whole operation so nothing reacquires while the
+  /// admission marker is still on disk.
+  func releaseAndDrainForRemoval() async {
+    // **Single-flight.** The Remove button stays on screen during the drain, so a
+    // second press could otherwise enter a second removal, find the first one's
+    // holders already taken, delete while the first drain was still running, and
+    // lift the suppression early. Everyone awaits the first operation instead.
+    if let inFlight = removalDrain {
+      await inFlight.value
+      return
+    }
+
+    isRemovingModel = true
+
+    // **CAPTURE EVERY HOLDER BEFORE RELEASING ANYTHING.** The shared teardown
+    // clears `preparationTask` on its way through, so reading it afterwards
+    // always saw nil and the await did nothing — a barrier with a hole exactly
+    // where it claimed to be closed. Cloud review caught it.
+    //
+    // `sessionTask` matters for the same reason and is the holder I missed a
+    // second time: between opening a session and registering `liveTeardown`,
+    // nothing else references it, so cancelling without awaiting leaves an engine
+    // alive past the delete.
+    let preparation = preparationTask
+    let session = sessionTask
+    let alreadyDraining = drainingTeardown
+
+    let drain = Task { @MainActor [weak self] in
+      guard let self else { return }
+      self.stopPreviewAndRelease()
+
+      await alreadyDraining?.value
+      await session?.value
+      _ = await preparation?.value
+
+      // Anything a completion wrote back while we waited.
+      self.releasePreparedEngine()
+      self.drainingTeardown = nil
+      self.removalDrain = nil
+    }
+    removalDrain = drain
+    await drain.value
+  }
+
+  /// Removal is over: previews may run again.
+  func endRemovalSuppression() {
+    isRemovingModel = false
   }
 
   /// The shared teardown: stop the live session, then drop the cached engine.

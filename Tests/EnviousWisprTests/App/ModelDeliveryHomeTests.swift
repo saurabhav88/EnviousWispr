@@ -179,6 +179,164 @@ struct ModelDeliveryHomeTests {
     #expect(home.whisperPreviewHandle != nil)
   }
 
+  // MARK: - #2123: removal frees the disk, which means releasing first
+
+  /// **The drain must COMPLETE before the delete, not merely be requested.**
+  ///
+  /// Unlinking a file that is still open or mapped succeeds while its blocks stay
+  /// allocated, so the space only returns once every holder has let go. FOUR can
+  /// hold the model — the cached engine, a live session until its asynchronous
+  /// teardown finishes, an in-flight preparation, and the session task itself
+  /// between opening a session and registering its teardown — so a synchronous
+  /// "please release" hook is not enough. The count was three when this comment
+  /// was written and four by the next review pass, which is the argument for
+  /// capturing holders rather than listing them from memory. The first version of this test asserted only
+  /// that a hook had fired by the time `removePreviewModel()` returned, which
+  /// stayed green with the delete moved BEFORE it. Cloud review caught that.
+  ///
+  /// This blocks inside the drain and asserts the removal has not finished while
+  /// it is blocked — the property a request-shaped hook cannot have.
+  @Test("removal waits for every holder to let go before deleting")
+  func removalAwaitsTheDrain() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle())
+
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      private var entered = false
+      private var finished = false
+      var drainEntered: Bool { mutex.withLock { entered } }
+      var removalFinished: Bool { mutex.withLock { finished } }
+      func noteFinished() { mutex.withLock { finished = true } }
+      func wait() async {
+        mutex.withLock { entered = true }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let alreadyOpen: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if alreadyOpen { c.resume() }
+        }
+      }
+      func open() {
+        let waiting: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        waiting?.resume()
+      }
+    }
+    let gate = Gate()
+    home.drainPreviewHoldersBeforeRemoval = { await gate.wait() }
+    home.previewRemovalDidFinish = { gate.noteFinished() }
+    // **Never the real delete.** `manifestBundle` redirects only where manifests
+    // are READ from; the install root and admission metadata are the developer's
+    // own `~/Library/Application Support`, so a real removal here deletes their
+    // installed preview model when the suite runs.
+    home.deletePreviewModelOverrideForTests = {}
+
+    home.removePreviewModel()
+    for _ in 0..<2000 where !gate.drainEntered { await Task.yield() }
+    #expect(gate.drainEntered, "control: removal must actually ask the holders to drain")
+
+    // THE ASSERTION: while the drain is blocked, removal has not completed.
+    for _ in 0..<200 { await Task.yield() }
+    #expect(
+      !gate.removalFinished,
+      "removal completed while a holder was still draining, so the unlink could hit a mapped file")
+
+    gate.open()
+    for _ in 0..<2000 where !gate.removalFinished { await Task.yield() }
+    #expect(gate.removalFinished, "removal must finish once the holders have let go")
+
+    // **THE ORDER ITSELF**, which "finished after the drain" cannot see: the
+    // finish callback trails both steps whichever way round they are, so an
+    // earlier version of this test stayed green with the delete moved first.
+    #expect(
+      home.removalStepsForTests == ["drain", "delete", "finish"],
+      "removal ran in the wrong order: \(home.removalStepsForTests)")
+  }
+
+  /// Two presses must produce ONE removal.
+  ///
+  /// The button stays on screen during the drain, so a second press is ordinary
+  /// rather than exotic. Single-flighting only the coordinator's drain was not
+  /// enough: both presses shared that and then ran two deletes and two finish
+  /// callbacks, and one finish lifts the suppression while the other removal is
+  /// still going — reopening the window suppression exists to close.
+  ///
+  /// Mutation control: drop the `removalTask == nil` guard and the counts double.
+  @Test("pressing Remove twice removes once")
+  func removalIsSingleFlight() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle())
+
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      private(set) var entries = 0
+      var entered: Int { mutex.withLock { entries } }
+      func wait() async {
+        mutex.withLock { entries += 1 }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let open: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if open { c.resume() }
+        }
+      }
+      func open() {
+        let w: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        w?.resume()
+      }
+    }
+    let gate = Gate()
+    home.drainPreviewHoldersBeforeRemoval = { await gate.wait() }
+    // Counted, not performed: see the note above about Application Support.
+    let deletes = Deletes()
+    home.deletePreviewModelOverrideForTests = { deletes.record() }
+
+    home.removePreviewModel()
+    for _ in 0..<2000 where gate.entered < 1 { await Task.yield() }
+    #expect(gate.entered == 1, "control: the first removal is under way")
+
+    // The user presses it again while the first is draining.
+    home.removePreviewModel()
+    for _ in 0..<200 { await Task.yield() }
+    #expect(gate.entered == 1, "a second press started a competing removal")
+
+    gate.open()
+    for _ in 0..<2000 where !home.removalStepsForTests.contains("finish") { await Task.yield() }
+    #expect(
+      home.removalStepsForTests == ["drain", "delete", "finish"],
+      "exactly one of each step, got \(home.removalStepsForTests)")
+    #expect(deletes.count == 1, "two presses performed \(deletes.count) deletes")
+  }
+
+  private final class Deletes: @unchecked Sendable {
+    private let mutex = NSLock()
+    private var value = 0
+    var count: Int { mutex.withLock { value } }
+    func record() { mutex.withLock { value += 1 } }
+  }
+
   // MARK: - #2123: the preview model's download state is observable
 
   /// The state starts where a not-yet-downloaded model should start.

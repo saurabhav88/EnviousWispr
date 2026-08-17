@@ -106,6 +106,17 @@ enum LivePreviewInstaller {
     settingsSync.onLivePreviewEngineChanged = { [weak coordinator] in
       coordinator?.releaseForEngineChange()
     }
+
+    // #2123: removing the model must free the DISK, and an unlinked file that is
+    // still mapped frees nothing. So the limb drops its loaded engine before the
+    // files are deleted, not after. Same teardown as an engine switch — the
+    // engine is going away either way — and weak for the same reason.
+    modelDelivery.drainPreviewHoldersBeforeRemoval = { [weak coordinator] in
+      await coordinator?.releaseAndDrainForRemoval()
+    }
+    modelDelivery.previewRemovalDidFinish = { [weak coordinator] in
+      coordinator?.endRemovalSuppression()
+    }
     return coordinator
   }
 

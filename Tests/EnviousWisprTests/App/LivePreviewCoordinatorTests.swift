@@ -33,6 +33,252 @@ private func previewRoute(
 @MainActor
 struct LivePreviewCoordinatorTests {
 
+  // MARK: - #2123 F3: the removal barrier, tested at the coordinator
+
+  /// **Tested HERE, not through a stand-in for the delivery home.** The previous
+  /// tests drove a fake callback, so none of them could see a coordinator holder
+  /// left un-awaited — which is exactly where the barrier had holes.
+  ///
+  /// A preview stuck in preparation still holds a fresh engine. Removal must not
+  /// return while that is true, or the files are deleted under a live mapping.
+  @Test("removal does not return while a preparation still holds an engine")
+  func removalAwaitsPreparation() async {
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      private(set) var entered = false
+      func wait() async {
+        mutex.withLock { entered = true }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let open: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if open { c.resume() }
+        }
+      }
+      func open() {
+        let w: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        w?.resume()
+      }
+      var hasEntered: Bool { mutex.withLock { entered } }
+    }
+    final class Flag: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = false
+      var isSet: Bool { mutex.withLock { value } }
+      func set() { mutex.withLock { value = true } }
+    }
+
+    let stuck = Gate()
+    final class StuckEngine: LivePreviewEngine, @unchecked Sendable {
+      let stuck: Gate
+      init(stuck: Gate) { self.stuck = stuck }
+      func prepare() async throws { await stuck.wait() }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "universal", commitment: ""),
+            makeEngine: { StuckEngine(stuck: stuck) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !stuck.hasEntered { await Task.yield() }
+    #expect(stuck.hasEntered, "control: preparation must be in flight")
+
+    let drained = Flag()
+    async let removal: Void = {
+      await coordinator.releaseAndDrainForRemoval()
+      drained.set()
+    }()
+
+    for _ in 0..<200 { await Task.yield() }
+    #expect(
+      !drained.isSet,
+      "removal returned while a preparation still held an engine, so the delete would race it")
+
+    stuck.open()
+    await removal
+    #expect(drained.isSet)
+    #expect(!coordinator.hasPreparedEngineForTests, "and the slot is empty afterwards")
+  }
+
+  /// The FOURTH holder, and the one I missed twice: a session between opening and
+  /// registering its teardown is referenced only by `sessionTask`. Cancelling
+  /// that task without awaiting it leaves an engine alive past the delete.
+  ///
+  /// Mutation control: drop `await session?.value` from the drain and this goes
+  /// green while the holder is still alive — which is how it survived two passes.
+  @Test("removal waits for a session still being opened")
+  func removalAwaitsASessionBeingOpened() async {
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      private var entered = false
+      var hasEntered: Bool { mutex.withLock { entered } }
+      func wait() async {
+        mutex.withLock { entered = true }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let open: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if open { c.resume() }
+        }
+      }
+      func open() {
+        let w: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        w?.resume()
+      }
+    }
+    final class Flag: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = false
+      var isSet: Bool { mutex.withLock { value } }
+      func set() { mutex.withLock { value = true } }
+    }
+
+    let openingGate = Gate()
+    final class SlowOpenEngine: LivePreviewEngine, @unchecked Sendable {
+      let gate: Gate
+      init(gate: Gate) { self.gate = gate }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        // Held INSIDE the open: past preparation, before the coordinator can
+        // register a teardown for it.
+        await gate.wait()
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "universal", commitment: ""),
+            makeEngine: { SlowOpenEngine(gate: openingGate) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !openingGate.hasEntered { await Task.yield() }
+    #expect(openingGate.hasEntered, "control: the session must be mid-open")
+    #expect(
+      !coordinator.hasLiveSessionForTests,
+      "control: no teardown is registered yet — that is what makes this holder invisible")
+
+    let drained = Flag()
+    async let removal: Void = {
+      await coordinator.releaseAndDrainForRemoval()
+      drained.set()
+    }()
+
+    for _ in 0..<200 { await Task.yield() }
+    #expect(!drained.isSet, "removal returned while a session was still being opened")
+
+    openingGate.open()
+    await removal
+    #expect(drained.isSet)
+  }
+
+  /// Nothing may start a preview while removal is in flight: the admission marker
+  /// still exists until the files are gone, so a recording would resolve as
+  /// installed and load the model straight back onto the files being deleted.
+  @Test("no preview starts while removal is in flight")
+  func removalSuppressesNewPreviews() async {
+    final class Opens: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = 0
+      var count: Int { mutex.withLock { value } }
+      func record() { mutex.withLock { value += 1 } }
+    }
+    let opens = Opens()
+    final class CountingEngine: LivePreviewEngine, @unchecked Sendable {
+      let opens: Opens
+      init(opens: Opens) { self.opens = opens }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        opens.record()
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "universal", commitment: ""),
+            makeEngine: { CountingEngine(opens: opens) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where opens.count < 1 { await Task.yield() }
+    #expect(opens.count == 1, "control: a preview runs before removal")
+    coordinator.setRecording(false)
+
+    await coordinator.releaseAndDrainForRemoval()
+
+    coordinator.setRecording(true)
+    for _ in 0..<300 { await Task.yield() }
+    #expect(opens.count == 1, "a preview started while the files were being removed")
+
+    // And once removal ends, previews work again — otherwise this passes against
+    // a feature that is simply broken from then on.
+    coordinator.setRecording(false)
+    coordinator.endRemovalSuppression()
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where opens.count < 2 { await Task.yield() }
+    #expect(opens.count == 2, "previews must resume once removal has finished")
+  }
+
   // MARK: - #2123: one engine decision per recording
 
   /// The selection itself: which route serves which choice, and what happens when
