@@ -204,7 +204,7 @@ struct RecoverySpoolReplayerTests {
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
     #expect(outcome == .recovered)
     #expect(h.asr.transcribeCallCount == 1)
-    let saved = h.transcriptCoordinator.transcripts
+    let saved = h.transcriptCoordinator.visibleTranscripts
     #expect(saved.count == 1)
     #expect(saved.first?.isRecovered == true)
     #expect(saved.first?.recoverySessionID == id)
@@ -226,7 +226,7 @@ struct RecoverySpoolReplayerTests {
     #expect(outcome == .abandoned)
     #expect(
       h.asr.transcribeCallCount == 0, "never re-transcribe a spool whose attempt already began")
-    #expect(h.transcriptCoordinator.transcripts.isEmpty)
+    #expect(h.transcriptCoordinator.visibleTranscripts.isEmpty)
     // The coordinator deletes on `.abandoned`; the replayer leaves the spool.
     #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
   }
@@ -394,7 +394,7 @@ struct RecoverySpoolReplayerTests {
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
     #expect(outcome == .failed(.unrecoverable))
     #expect(h.asr.transcribeCallCount == 0)
-    #expect(h.transcriptCoordinator.transcripts.isEmpty)
+    #expect(h.transcriptCoordinator.visibleTranscripts.isEmpty)
     #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
   }
 
@@ -413,7 +413,7 @@ struct RecoverySpoolReplayerTests {
       let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
       #expect(outcome == .deferred)
       #expect(h.asr.transcribeCallCount == 0, "never reaches transcribe on a deferred key read")
-      #expect(h.transcriptCoordinator.transcripts.isEmpty)
+      #expect(h.transcriptCoordinator.visibleTranscripts.isEmpty)
       // Bypass, not failure: no ASR ran, so the attempt is UNSPENT. The spool +
       // key are retained and the marker is cleared so a later attempt remains
       // eligible instead of being abandoned as already spent.
@@ -495,7 +495,7 @@ struct RecoverySpoolReplayerTests {
     h.asr.onTranscribe = { discarded = true }
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { discarded })
     #expect(outcome == .aborted)
-    #expect(h.transcriptCoordinator.transcripts.isEmpty, "a discarded result never saves")
+    #expect(h.transcriptCoordinator.visibleTranscripts.isEmpty, "a discarded result never saves")
   }
 
   @Test("Discard during loadModel skips the expensive transcribe (P2)")
@@ -509,7 +509,7 @@ struct RecoverySpoolReplayerTests {
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { discarded })
     #expect(outcome == .aborted)
     #expect(h.asr.transcribeCallCount == 0, "no transcribe runs after Discard during load")
-    #expect(h.transcriptCoordinator.transcripts.isEmpty)
+    #expect(h.transcriptCoordinator.visibleTranscripts.isEmpty)
   }
 
   @Test("a recovered transcript with NO polish output carries no provider/model stamp (#1305)")
@@ -519,7 +519,7 @@ struct RecoverySpoolReplayerTests {
     try await Self.seedSpool(h, id: id, samples: [0.3, 0.2])
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
     #expect(outcome == .recovered)
-    let saved = try #require(h.transcriptCoordinator.transcripts.first)
+    let saved = try #require(h.transcriptCoordinator.visibleTranscripts.first)
     #expect(saved.polishedText == nil)
     #expect(saved.llmProvider == nil)
     #expect(saved.llmModel == nil)

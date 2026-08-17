@@ -138,7 +138,14 @@ public final class TranscriptStore {
   /// Ordering: the promoted copy is written to the root namespace FIRST, then
   /// the pending file is removed, so a crash between the two leaves the
   /// permanent row present rather than losing the text. Idempotent.
-  public func promotePending(id: UUID, now: Date = Date()) throws {
+  ///
+  /// - Returns: whether a row was actually promoted. The caller needs this: a
+  ///   `Void` return makes "ignored because it expired" indistinguishable from
+  ///   "promoted", and a UI that cleared its held marker on the strength of a
+  ///   silent no-op would show an expired row as permanent — resurrecting on
+  ///   screen exactly the text this method refused to write.
+  @discardableResult
+  public func promotePending(id: UUID, now: Date = Date()) throws -> Bool {
     let pendingURL = pendingDirectory.appendingPathComponent("\(id.uuidString).json")
     guard
       let transcript = Self.decodeCandidate(
@@ -146,11 +153,13 @@ public final class TranscriptStore {
       ).liveTranscript
     else {
       // Already promoted, never existed, expired, or invalid. All are no-ops
-      // for an idempotent operation.
-      return
+      // for an idempotent operation — but the caller is TOLD, so it can leave
+      // its own state alone rather than assuming a promotion happened.
+      return false
     }
     try save(transcript.promotedFromPending())
     try? FileManager.default.removeItem(at: pendingURL)
+    return true
   }
 
   /// Sweep pending rows that are no longer live, and RETURN ONLY THE GENUINELY
@@ -395,14 +404,41 @@ public final class TranscriptStore {
     return transcripts
   }
 
-  /// Delete a transcript by ID.
+  /// Delete a transcript by ID, from BOTH namespaces (#2087).
+  ///
+  /// Deleting only the root copy would leave a held Escape Recovery row's file
+  /// on disk, and the next launch would load it straight back — a recording the
+  /// user explicitly deleted reappearing after a restart, with its countdown
+  /// resumed. The id is unique across both namespaces (Keep moves a row from
+  /// one to the other under the same id), so removing from each is the whole
+  /// operation rather than a choice between them.
+  ///
+  /// **Not best-effort on the pending side, unlike the expiry sweep.** A swept
+  /// row that survives deletion is still invisible, because expiry is decided
+  /// at read time. A DELETED row is not: it is unexpired by definition, so a
+  /// pending file left behind is loaded again at next launch and the recording
+  /// the user deleted comes back with its countdown running. Both removals are
+  /// attempted, then both paths are checked, and a file that is still there
+  /// throws rather than reporting a delete that did not happen.
+  ///
+  /// `deleteAll` needs no equivalent — `pending/` is a child of the directory
+  /// it removes wholesale.
   public func delete(id: UUID) throws {
     let url = directory.appendingPathComponent("\(id.uuidString).json")
-    do {
-      try FileManager.default.removeItem(at: url)
-    } catch let error as CocoaError where error.code == .fileNoSuchFile {
-      return
+    let pendingURL = pendingDirectory.appendingPathComponent("\(id.uuidString).json")
+    // Attempt BOTH before inspecting either, so one failure cannot leave the
+    // other copy in place.
+    let failures = [url, pendingURL].compactMap { target -> Error? in
+      do {
+        try FileManager.default.removeItem(at: target)
+        return nil
+      } catch let error as CocoaError where error.code == .fileNoSuchFile {
+        return nil
+      } catch {
+        return FileManager.default.fileExists(atPath: target.path) ? error : nil
+      }
     }
+    if let failure = failures.first { throw failure }
   }
 
   /// Delete all transcripts from disk atomically.

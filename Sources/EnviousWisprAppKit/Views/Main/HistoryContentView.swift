@@ -26,8 +26,12 @@ struct HistoryContentView: View {
   /// same priority the pre-PR7 root-state getter delivered.
   private var displayedTranscript: Transcript? {
     let tc = transcriptCoordinator
+    // #2087: `visibleTranscripts`, not `transcripts`. A row selected before it
+    // expired would otherwise stay open in the detail pane after it stopped
+    // being offered — still readable, still restorable — which is the one thing
+    // the 24-hour promise says will not happen.
     if let selected = tc.selectedTranscriptID,
-      let match = tc.transcripts.first(where: { $0.id == selected })
+      let match = tc.visibleTranscripts.first(where: { $0.id == selected })
     {
       return match
     }

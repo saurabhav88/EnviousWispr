@@ -39,7 +39,7 @@ struct TranscriptHistoryView: View {
       .opacity(isRecording ? 0.4 : 1.0)
       .animation(.easeInOut(duration: 0.3), value: isRecording)
       .overlay {
-        if transcriptCoordinator.transcripts.isEmpty {
+        if transcriptCoordinator.visibleTranscripts.isEmpty {
           ContentUnavailableView(
             "No Transcripts Yet",
             systemImage: "doc.text",
@@ -48,7 +48,7 @@ struct TranscriptHistoryView: View {
         }
       }
 
-      if !transcriptCoordinator.transcripts.isEmpty {
+      if !transcriptCoordinator.visibleTranscripts.isEmpty {
         Divider()
         Button(role: .destructive) {
           showDeleteAllConfirmation = true
@@ -68,9 +68,10 @@ struct TranscriptHistoryView: View {
         transcriptCoordinator.deleteAll()
       }
     } message: {
-      Text(
-        "This will permanently delete all \(transcriptCoordinator.transcriptCount) transcripts. This action cannot be undone."
-      )
+      // The coordinator owns this sentence (#2087). Interpolating a count here
+      // meant the right one and the dictation statistic were both in scope and
+      // equally easy to type, with nothing testable observing the choice.
+      Text(transcriptCoordinator.deleteAllConfirmationMessage)
     }
   }
 }

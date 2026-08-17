@@ -66,7 +66,7 @@ struct TranscriptCoordinatorTests {
     coordinator.append(first)
     coordinator.append(second)
 
-    #expect(coordinator.transcripts.map(\.id) == [second.id, first.id])
+    #expect(coordinator.visibleTranscripts.map(\.id) == [second.id, first.id])
   }
 
   @Test("append does not mutate disk")
@@ -101,8 +101,8 @@ struct TranscriptCoordinatorTests {
     coordinator.load()
     await coordinator.waitForLoadForTesting()
 
-    #expect(coordinator.transcripts.count == 3)
-    let loadedIDs = Set(coordinator.transcripts.map(\.id))
+    #expect(coordinator.visibleTranscripts.count == 3)
+    let loadedIDs = Set(coordinator.visibleTranscripts.map(\.id))
     let seededIDs = Set(seeded.map(\.id))
     #expect(loadedIDs == seededIDs)
   }
@@ -124,7 +124,7 @@ struct TranscriptCoordinatorTests {
     coordinator.load()
     await coordinator.waitForLoadForTesting()
 
-    let ids = coordinator.transcripts.map(\.id)
+    let ids = coordinator.visibleTranscripts.map(\.id)
     #expect(ids.count == 2)
     #expect(ids.contains(newRow.id))
     #expect(ids.contains(diskOnly.id))
@@ -154,7 +154,7 @@ struct TranscriptCoordinatorTests {
 
     // Pre-merge in-memory order was [r3, r2, r1] (each append inserts at 0).
     // After merge: in-memory rows first (order preserved), then disk row.
-    let ids = coordinator.transcripts.map(\.id)
+    let ids = coordinator.visibleTranscripts.map(\.id)
     #expect(ids == [r3.id, r2.id, r1.id, diskRow.id])
   }
 
@@ -172,7 +172,7 @@ struct TranscriptCoordinatorTests {
     await coordinator.waitForLoadForTesting()
 
     coordinator.delete(row)
-    #expect(coordinator.transcripts.isEmpty)
+    #expect(coordinator.visibleTranscripts.isEmpty)
     let onDisk = try FileManager.default.contentsOfDirectory(atPath: dir.path)
       .filter { $0.hasSuffix(".json") }
     #expect(onDisk.isEmpty)
