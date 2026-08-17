@@ -25,6 +25,16 @@
 # of the grandfathered files. Same review, second finding. The baseline is therefore keyed by
 # (path, suite name).
 #
+# ACCEPTED LIMIT — DO NOT "FIX" THIS BY DELETING THE PARSER. Swift Testing exposes no public API to
+# enumerate suites (verified against the SDK .swiftinterface with a positive control), so a static text
+# parser is the only mechanism available for a ratchet. Four review rounds found 11 defects here, all one
+# class: a lexical form the parser did not model. Accepted under the four-round rule's
+# accept-with-rationale branch because BOTH failure directions are mild and loud — a false positive asks
+# for a tag the author was adding anyway and names the file; a false negative leaves one suite unlabelled
+# and the printed number slightly low. Neither breaks a build or reaches a user.
+# The sweep is GENERATED over the axis cross-product, not hand-picked; see the parser matrix test.
+# Do NOT extend this parser to any check where being wrong would be QUIET. That belongs in a Swift test.
+#
 # PROJECT_ROOT derives from $0, not cwd, so a worktree copy measures ITS OWN tree
 # (tools-and-apps.md RULE: claude-scripts-absolute-path-from-worktrees).
 
