@@ -49,6 +49,28 @@ public final class ModelDeliveryHome {
 
   /// Observable mirror of the Parakeet delivery state for SwiftUI renderers.
   public private(set) var parakeetState: DeliveryState = .notReady
+
+  /// Observable mirror of the PREVIEW model's delivery state (#2123).
+  ///
+  /// Lives here rather than on the settings page because the page is destroyed
+  /// during navigation — the Apple-pack model is window-owned for exactly that
+  /// reason — and a 217 MB download must not lose its progress because someone
+  /// looked at another tab.
+  public private(set) var whisperPreviewState: DeliveryState = .notReady
+
+  /// **A SEPARATE apply guard, not a share of the Parakeet one.** Each mirror
+  /// has its own sequencer, each starting at zero, so one shared "last applied"
+  /// counter would let whichever model published first suppress the other's
+  /// updates — a download that silently stopped reporting progress, which looks
+  /// exactly like a stalled download.
+  private var lastAppliedPreviewStateSeq: UInt64 = 0
+
+  /// How many updates each mirror has APPLIED. Test seams, because "the mirror
+  /// is wired to the right identity" is otherwise unobservable: both mirrors
+  /// start `.notReady`, so comparing values cannot tell a working observer from
+  /// a deleted one or one filtered on the wrong identity.
+  package private(set) var previewStateUpdatesForTests = 0
+  package private(set) var parakeetStateUpdatesForTests = 0
   /// Monotonic apply guard (EG-1 `installStateSeqApplied` precedent, made
   /// REAL per exhaustive r7 finding 7): the sequence is minted at observer-
   /// receive time (controller actor, in publish order) and a MainActor hop
@@ -177,6 +199,7 @@ public final class ModelDeliveryHome {
       Task { await controller.sweepSupersededStaging(registration) }
       whisperPreviewHandle = WhisperKitDeliveryHandle(
         controller: controller, registration: registration)
+      wirePreviewObserver(identity: manifest.identity)
       let previewHome = self
       Task { await previewHome.recordFirstRunBaseline(for: registration) }
     } catch {
@@ -186,6 +209,34 @@ public final class ModelDeliveryHome {
             + "unavailable-in-this-build (#2123: NOT not-installed, since no download can "
             + "supply what this build never shipped): \(error)",
           level: .info, category: "Delivery")
+      }
+    }
+  }
+
+  /// Mirror the PREVIEW model's delivery state (#2123).
+  ///
+  /// **Called from the preview's own registration block, never from Parakeet's.**
+  /// The first version nested this inside `wireObservers`, which only runs when
+  /// the PARAKEET manifest loads — so a build where Parakeet failed to register
+  /// and the preview succeeded would leave this mirror permanently unwired, and
+  /// the picker would show a download that never appears to start. Two
+  /// registrations, two independent wirings.
+  private func wirePreviewObserver(identity: ModelIdentity) {
+    let home = self
+    let sequencer = DeliveryStateSequencer()
+    Task {
+      await controller.addStateObserver { observedIdentity, state in
+        guard observedIdentity == identity else { return }
+        // Minted on the controller actor in publish order, applied on the main
+        // actor only if newer — the same discipline as the Parakeet mirror, with
+        // its OWN counter. See `lastAppliedPreviewStateSeq`.
+        let seq = sequencer.next()
+        Task { @MainActor in
+          guard seq > home.lastAppliedPreviewStateSeq else { return }
+          home.lastAppliedPreviewStateSeq = seq
+          home.whisperPreviewState = state
+          home.previewStateUpdatesForTests += 1
+        }
       }
     }
   }
@@ -208,6 +259,7 @@ public final class ModelDeliveryHome {
           guard seq > home.lastAppliedStateSeq else { return }
           home.lastAppliedStateSeq = seq
           home.parakeetState = state
+          home.parakeetStateUpdatesForTests += 1
           if case .admitted = state { home.firstRunByIdentity[observedIdentity] = false }
         }
       }

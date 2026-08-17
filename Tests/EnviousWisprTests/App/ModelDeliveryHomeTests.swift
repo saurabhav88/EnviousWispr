@@ -178,4 +178,49 @@ struct ModelDeliveryHomeTests {
       manifestBundle: try Self.manifestBundle())
     #expect(home.whisperPreviewHandle != nil)
   }
+
+  // MARK: - #2123: the preview model's download state is observable
+
+  /// The state starts where a not-yet-downloaded model should start.
+  ///
+  /// Deliberately a separate mirror from Parakeet's rather than a shared one:
+  /// they are different models with different lifecycles, and a settings page
+  /// rendering one from the other's state would show a download that is not
+  /// happening.
+  @Test("the preview model has its own delivery state, separate from Parakeet's")
+  func previewStateIsItsOwnMirror() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle())
+
+    #expect(home.whisperPreviewState == .notReady)
+    #expect(home.parakeetState == .notReady)
+
+    // The mirrors track DIFFERENT artifacts, which is what makes separate apply
+    // guards necessary rather than tidy.
+    let preview = try #require(home.whisperPreviewRegistration)
+    let transcription = try #require(home.whisperKitRegistration).manifest.identity
+    #expect(
+      preview.manifest.identity.cacheKey != transcription.cacheKey,
+      "two mirrors over one identity would make each model report the other's progress")
+
+    // **The observer must actually OBSERVE.** Checking the initial value cannot
+    // tell a wired mirror from a deleted one — both read `.notReady`. So publish
+    // a real state for the preview identity and watch which mirror moves.
+    //
+    // `admitIfComplete` with no fetch is the safe trigger: it validates what is
+    // already on disk and never downloads, and never deletes. `remove` would
+    // have published a state too, and would have deleted a real model from the
+    // machine running the tests.
+    _ = await home.controller.admitIfComplete(preview)
+
+    for _ in 0..<2000 where home.previewStateUpdatesForTests == 0 { await Task.yield() }
+    #expect(
+      home.previewStateUpdatesForTests > 0,
+      "the preview mirror never applied an update — observer missing or filtered wrongly")
+    #expect(
+      home.parakeetStateUpdatesForTests == 0,
+      "a preview state reached Parakeet's mirror, so the identity filter is wrong")
+  }
 }
