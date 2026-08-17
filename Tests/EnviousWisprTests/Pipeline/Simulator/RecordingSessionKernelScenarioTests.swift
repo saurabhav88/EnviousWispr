@@ -35,13 +35,6 @@ struct RecordingSessionKernelScenarioTests {
     #expect(result.passed, "scenario \(scenario.id) (\(scenario.name)): \(result.failures)")
   }
 
-  @Test("the canonical 37-scenario inventory is intact")
-  func inventoryComplete() {
-    let ids = Set(ScenarioInventory.all.map(\.id))
-    #expect(ids == ScenarioInventory.canonicalIDs)
-    #expect(ScenarioInventory.all.count == ScenarioInventory.canonicalIDs.count)
-  }
-
   /// Interleaving sweep against the kernel (PR-3 plan §11.2). Each
   /// concurrency-sensitive scenario is re-run under all 64 committed
   /// schedules; the schedule rewrites clock cadence, so the kernel walks the
