@@ -29,6 +29,10 @@ final class PipelineSettingsSync {
   /// cached engine. Same shape as `onSelectedBackendChanged` above: a closure the
   /// composition root wires, so this type still learns nothing about the preview.
   var onLivePreviewDisabled: () -> Void = {}
+  /// #2123: the chosen preview engine changed. Separate from the disabled hook
+  /// because the two mean different things — "stop previewing" versus "preview
+  /// with something else" — and a single hook would have to re-derive which.
+  var onLivePreviewEngineChanged: () -> Void = {}
 
   /// Tracks the last evictable Ollama model for #295. Independent of the
   /// kernel's polish step because SettingsManager's cascading didSet can
@@ -245,6 +249,12 @@ final class PipelineSettingsSync {
       // recording start, which a user who simply stops using the feature never
       // reaches.
       onLivePreviewDisabled()
+    case .livePreviewEngine:
+      // #2123: the preview is still ON — the engine underneath it changed. The
+      // limb releases what it prepared for the old one; the PIPELINE still never
+      // learns the preview exists, which is why this is a notification and not a
+      // dependency.
+      onLivePreviewEngineChanged()
     case .appearance:
       break  // UI-only; applied to NSApp.appearance by the app shell (#1047).
     case .overlayPillPosition:

@@ -1,4 +1,5 @@
 import EnviousWisprAudio
+import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprServices
 import Foundation
@@ -36,35 +37,52 @@ enum LivePreviewInstaller {
     overlay: RecordingOverlayPanel,
     capture: any AudioCaptureInterface,
     settings: SettingsManager,
-    settingsSync: PipelineSettingsSync
+    settingsSync: PipelineSettingsSync,
+    modelDelivery: ModelDeliveryHome
   ) -> LivePreviewCoordinator {
-    // **Effective, not merely persisted.** A value saved as true on macOS 26 and
-    // then read on an older system used to enlarge the pill on every recording and
-    // fill it with "needs macOS 26" — while the toggle that would turn it off was
-    // disabled for the same reason, so the user could not stop it. Folding the OS
-    // check in here means an unsupported system behaves exactly like the setting
-    // being off: normal pill, no message, nothing to escape from. One expression,
-    // used for both the geometry and the coordinator, so the two cannot disagree.
+    // **Effective, not merely persisted** — the requirement this wiring exists
+    // for, unchanged since #1988. A value saved as true on macOS 26 and then read
+    // on an older system used to enlarge the pill on every recording and fill it
+    // with "needs macOS 26", while the toggle that would turn it off was disabled
+    // for the same reason, so the user could not stop it. An unsupported system
+    // must behave exactly like the setting being off: normal pill, no message,
+    // nothing to escape from.
     //
-    // **This line is where engine selection will live.** One route, read for both
-    // halves below: the OS check is Apple's rule rather than the feature's, and it
-    // comes from the same value the recording resolves against, so a pill sized for
-    // a preview that then refuses to run is not expressible. When the user can
-    // choose an engine, only this line changes.
-    let route = ApplePreviewEngineResolver.route
-    let effectivelyEnabled: () -> Bool = {
-      route.isSupportedOnThisSystem() && settings.livePreviewEnabled
+    // **WHERE that expression lives has moved (#2123), and the old comment here
+    // claimed three things that are now false**: that the OS check is folded in
+    // at this line, that one expression feeds both consumers from here, and that
+    // choosing an engine would change only this line. The plan's own grounding
+    // disproved the third — the installer also takes the delivery home, builds
+    // both routes, and gains a second settings hook.
+    //
+    // What is true now: the installer COMPOSES the provider, and
+    // `LivePreviewCoordinator` owns the answer. It reads this provider once per
+    // recording and freezes the route together with the effective-enabled value,
+    // so geometry and resolution cannot disagree — which is the same guarantee
+    // the old single expression gave, moved to the layer that can actually hold
+    // it across the overlay's deferred panel creation.
+    // Both routes are composed ONCE; which one answers is read per recording.
+    let appleRoute = ApplePreviewEngineResolver.route
+    let universalRoute = WhisperPreviewDeliveryWiring.makeRoute(
+      modelDelivery: modelDelivery, settings: settings)
+
+    let selectedRoute: () -> LivePreviewEngineRoute = {
+      route(for: settings.livePreviewEngine, apple: appleRoute, universal: universalRoute)
     }
     let coordinator = LivePreviewCoordinator(
       // The limb gets ONE read of already-captured audio, never the capture
       // interface itself: see `LivePreviewSampleReader`.
       readSamples: { index in await capture.getSamplesSnapshot(fromIndex: index) },
-      isEnabled: effectivelyEnabled,
+      isPreviewOn: { settings.livePreviewEnabled },
       languageMode: { settings.languageMode },
-      resolveEngine: route.resolve
+      selectedRoute: selectedRoute
     )
+    // Geometry reads the COORDINATOR's frozen answer, not a second live
+    // computation. The overlay creates its panel on the next run-loop cycle and
+    // reads this inside that deferred work, so a live read here could size a pill
+    // for one engine while the recording resolves another.
     overlay.setLivePreviewProviders(
-      enabled: effectivelyEnabled,
+      enabled: { coordinator.isEnabledForGeometry },
       display: { coordinator.display }
     )
     overlay.setRecordingIntentObserver { recording in
@@ -82,6 +100,63 @@ enum LivePreviewInstaller {
     settingsSync.onLivePreviewDisabled = { [weak coordinator] in
       coordinator?.releaseForDisabledSetting()
     }
+    // #2123: same shape, different meaning — the preview stays on and the engine
+    // beneath it changed, so the old engine's model is released. Weak for the
+    // same reason: a settings hook must never be what keeps the limb alive.
+    settingsSync.onLivePreviewEngineChanged = { [weak coordinator] in
+      coordinator?.releaseForEngineChange()
+    }
+
+    // #2123: removing the model must free the DISK, and an unlinked file that is
+    // still mapped frees nothing. So the limb drops its loaded engine before the
+    // files are deleted, not after. Same teardown as an engine switch — the
+    // engine is going away either way — and weak for the same reason.
+    modelDelivery.drainPreviewHoldersBeforeRemoval = { [weak coordinator] in
+      await coordinator?.releaseAndDrainForRemoval()
+    }
+    modelDelivery.previewRemovalDidFinish = { [weak coordinator] in
+      coordinator?.endRemovalSuppression()
+    }
     return coordinator
   }
+
+  /// Which route serves a choice — pure, so the one decision that must never
+  /// silently substitute one engine for another can be tested without a window,
+  /// an audio capture or a delivery home.
+  ///
+  /// **A missing universal route is NOT an Apple fallback.** `makeRoute` returns
+  /// nil only for a build defect — no delivery registration, or no bundled
+  /// tokenizer — and running Apple under a universal selection would make the
+  /// chosen card and the engine actually transcribing disagree, which is the
+  /// confusion this chunk exists to remove. For a user below macOS 26 it would
+  /// also silently restore the dead end this engine was added to fix: Apple's
+  /// route refuses there, so they would see "needs a newer macOS" after choosing
+  /// the engine that has no such requirement.
+  static func route(
+    for choice: LivePreviewEngineChoice,
+    apple: LivePreviewEngineRoute,
+    universal: LivePreviewEngineRoute?
+  ) -> LivePreviewEngineRoute {
+    switch choice {
+    case .apple: return apple
+    case .universal: return universal ?? unavailableInThisBuild
+    }
+  }
+
+  /// The honest stand-in when an engine cannot be composed at all.
+  ///
+  /// Supported on this system, so the pill is still SIZED and can carry the
+  /// sentence: reporting `false` here would make the preview silently do nothing,
+  /// which reads as the feature being broken rather than as this build being
+  /// wrong. Resolution refuses with the reason that offers no user remedy,
+  /// because there is none — the fix is a release-build resource check, not a
+  /// button.
+  private static let unavailableInThisBuild = LivePreviewEngineRoute(
+    // The card the user selected is the universal one, so that is what a refusal
+    // here must report — the stand-in exists precisely because that engine could
+    // not be composed.
+    telemetryEngineID: "universal",
+    isSupportedOnThisSystem: { true },
+    resolve: { _ in .blocked(.engineUnavailableInThisBuild) }
+  )
 }

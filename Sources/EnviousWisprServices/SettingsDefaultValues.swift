@@ -98,6 +98,8 @@ enum SettingsDefaultValues {
   // that reason), and it needs macOS 26, so a default-on toggle would read as
   // broken on every older Mac. Display only: the pasted text never comes from it.
   static let livePreviewEnabled = false
+  /// #2123: Apple first. The universal engine is opt-in, never a default toll.
+  static let livePreviewEngine: LivePreviewEngineChoice = .apple
 
   // #1480: show the once-per-launch Bluetooth cold-start education popover when
   // the configured input is a Bluetooth mic. Default ON — it is light, dismissable,

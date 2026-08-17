@@ -27,6 +27,25 @@ struct ModelDeliveryHomeTests {
     return try #require(Bundle(url: resourcesDir))
   }
 
+  /// A throwaway Application Support root, one per call.
+  ///
+  /// Construction runs a no-fetch delivery PROBE (#2123 whole-diff review), and a
+  /// probe that finds a complete cache WRITES an admission marker. Pointed at the
+  /// real Application Support, that makes this suite mutate the developer's own
+  /// machine as a side effect of running — and on a machine where another process
+  /// is measuring those markers, it plants a false row in their data rather than
+  /// merely being untidy. Every construction site here takes its own root.
+  ///
+  /// Not deleted afterwards: these live under the system temp directory, which
+  /// the OS reaps, and a `defer` per site would fire while the async work the
+  /// constructor kicked off is still running.
+  private static func tempAppSupport() throws -> URL {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("ew-2123-mdh-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+  }
+
   @Test("a gate-refused cancel reports the site and never releases or wakes")
   func aGateRefusedCancelReportsTheSiteAndNeverReleasesOrWakes() async throws {
     final class Box: @unchecked Sendable {
@@ -44,7 +63,8 @@ struct ModelDeliveryHomeTests {
         },
         wake: { box.wakeCalls += 1 },
         onRefused: { box.refusedSites.append($0) }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     home.cancelParakeetDownload()
     // Signal, not clock: wait for the gate's own refusal telemetry, proving
@@ -74,7 +94,8 @@ struct ModelDeliveryHomeTests {
         },
         wake: { box.wakeCalls += 1 },
         onRefused: { box.refusedSites.append($0) }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     home.resumeParakeetDownload()
     // Signal, not clock: wait for the gate's own refusal telemetry, proving
@@ -107,7 +128,8 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     let transcription = try #require(home.whisperKitRegistration)
     let preview = try #require(home.whisperPreviewRegistration)
@@ -136,7 +158,8 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     let transcription = try #require(home.whisperKitRegistration).manifest.identity
     let preview = try #require(home.whisperPreviewRegistration).manifest.identity
@@ -157,7 +180,8 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
 
     let transcription = try #require(home.whisperKitRegistration)
     let preview = try #require(home.whisperPreviewRegistration)
@@ -175,7 +199,399 @@ struct ModelDeliveryHomeTests {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle())
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
     #expect(home.whisperPreviewHandle != nil)
+  }
+
+  // MARK: - #2123: removal frees the disk, which means releasing first
+
+  /// **The drain must COMPLETE before the delete, not merely be requested.**
+  ///
+  /// Unlinking a file that is still open or mapped succeeds while its blocks stay
+  /// allocated, so the space only returns once every holder has let go. FOUR can
+  /// hold the model — the cached engine, a live session until its asynchronous
+  /// teardown finishes, an in-flight preparation, and the session task itself
+  /// between opening a session and registering its teardown — so a synchronous
+  /// "please release" hook is not enough. The count was three when this comment
+  /// was written and four by the next review pass, which is the argument for
+  /// capturing holders rather than listing them from memory. The first version of this test asserted only
+  /// that a hook had fired by the time `removePreviewModel()` returned, which
+  /// stayed green with the delete moved BEFORE it. Cloud review caught that.
+  ///
+  /// This blocks inside the drain and asserts the removal has not finished while
+  /// it is blocked — the property a request-shaped hook cannot have.
+  @Test("removal waits for every holder to let go before deleting")
+  func removalAwaitsTheDrain() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
+
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      private var entered = false
+      private var finished = false
+      var drainEntered: Bool { mutex.withLock { entered } }
+      var removalFinished: Bool { mutex.withLock { finished } }
+      func noteFinished() { mutex.withLock { finished = true } }
+      func wait() async {
+        mutex.withLock { entered = true }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let alreadyOpen: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if alreadyOpen { c.resume() }
+        }
+      }
+      func open() {
+        let waiting: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        waiting?.resume()
+      }
+    }
+    let gate = Gate()
+    home.drainPreviewHoldersBeforeRemoval = { await gate.wait() }
+    home.previewRemovalDidFinish = { gate.noteFinished() }
+    // **Never the real delete.** `manifestBundle` redirects only where manifests
+    // are READ from; the install root and admission metadata are the developer's
+    // own `~/Library/Application Support`, so a real removal here deletes their
+    // installed preview model when the suite runs.
+    home.deletePreviewModelOverrideForTests = {}
+
+    home.removePreviewModel()
+    for _ in 0..<2000 where !gate.drainEntered { await Task.yield() }
+    #expect(gate.drainEntered, "control: removal must actually ask the holders to drain")
+
+    // THE ASSERTION: while the drain is blocked, removal has not completed.
+    for _ in 0..<200 { await Task.yield() }
+    #expect(
+      !gate.removalFinished,
+      "removal completed while a holder was still draining, so the unlink could hit a mapped file")
+
+    gate.open()
+    for _ in 0..<2000 where !gate.removalFinished { await Task.yield() }
+    #expect(gate.removalFinished, "removal must finish once the holders have let go")
+
+    // **THE ORDER ITSELF**, which "finished after the drain" cannot see: the
+    // finish callback trails both steps whichever way round they are, so an
+    // earlier version of this test stayed green with the delete moved first.
+    #expect(
+      home.removalStepsForTests == ["drain", "delete", "finish"],
+      "removal ran in the wrong order: \(home.removalStepsForTests)")
+  }
+
+  /// Two presses must produce ONE removal.
+  ///
+  /// The button stays on screen during the drain, so a second press is ordinary
+  /// rather than exotic. Single-flighting only the coordinator's drain was not
+  /// enough: both presses shared that and then ran two deletes and two finish
+  /// callbacks, and one finish lifts the suppression while the other removal is
+  /// still going — reopening the window suppression exists to close.
+  ///
+  /// Mutation control: drop the `removalTask == nil` guard and the counts double.
+  @Test("pressing Remove twice removes once")
+  func removalIsSingleFlight() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
+
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      private(set) var entries = 0
+      var entered: Int { mutex.withLock { entries } }
+      func wait() async {
+        mutex.withLock { entries += 1 }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let open: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if open { c.resume() }
+        }
+      }
+      func open() {
+        let w: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        w?.resume()
+      }
+    }
+    let gate = Gate()
+    home.drainPreviewHoldersBeforeRemoval = { await gate.wait() }
+    // Counted, not performed: see the note above about Application Support.
+    let deletes = Deletes()
+    home.deletePreviewModelOverrideForTests = { deletes.record() }
+
+    home.removePreviewModel()
+    for _ in 0..<2000 where gate.entered < 1 { await Task.yield() }
+    #expect(gate.entered == 1, "control: the first removal is under way")
+
+    // The user presses it again while the first is draining.
+    home.removePreviewModel()
+    for _ in 0..<200 { await Task.yield() }
+    #expect(gate.entered == 1, "a second press started a competing removal")
+
+    gate.open()
+    for _ in 0..<2000 where !home.removalStepsForTests.contains("finish") { await Task.yield() }
+    #expect(
+      home.removalStepsForTests == ["drain", "delete", "finish"],
+      "exactly one of each step, got \(home.removalStepsForTests)")
+    #expect(deletes.count == 1, "two presses performed \(deletes.count) deletes")
+  }
+
+  private final class Deletes: @unchecked Sendable {
+    private let mutex = NSLock()
+    private var value = 0
+    var count: Int { mutex.withLock { value } }
+    func record() { mutex.withLock { value += 1 } }
+  }
+
+  // MARK: - #2137 cloud review: the delivery kill switch
+
+  /// The Download door must honour `modelDelivery.whisper_kit.enabled`.
+  ///
+  /// `ensureAvailable()` does NOT enforce the flag itself — the primary WhisperKit
+  /// door guards `handle.isEnabled()` immediately before calling it
+  /// (`WhisperKitDeliveryWiring.swift:74,125`). This door did not, so an operator
+  /// who had disabled the whole family could still have a 217 MB preview fetch
+  /// start, bypassing the relaunch-free rollback the flag exists to provide.
+  ///
+  /// Asserted BOTH ways in one test, because either half alone is satisfiable by
+  /// the opposite bug: flag-off must publish nothing, and flag-on must still
+  /// reach the controller. A one-way test would pass against a door welded shut,
+  /// which breaks the feature for every user to protect against a flag almost
+  /// nobody sets.
+  ///
+  /// The flag store is injected. Writing a real kill switch into the shared suite
+  /// to test it would leave an operational flag set on a developer's machine.
+  @Test("the preview Download door honours the whisper_kit kill switch, both ways")
+  func previewDownloadHonoursTheKillSwitch() async throws {
+    func home(enabled: Bool) throws -> ModelDeliveryHome {
+      let suite = try #require(UserDefaults(suiteName: "ew-2137-killswitch-\(UUID().uuidString)"))
+      suite.set(enabled, forKey: "modelDelivery.whisper_kit.enabled")
+      return ModelDeliveryHome(
+        engineMutationScope: .live(
+          tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+        manifestBundle: try Self.manifestBundle(),
+        appSupportOverride: try Self.tempAppSupport(),
+        deliveryFlagDefaults: suite)
+    }
+
+    let off = try home(enabled: false)
+    for _ in 0..<400 { await Task.yield() }
+    let offBaseline = off.previewStateUpdatesForTests
+    off.startPreviewDownload()
+    for _ in 0..<2000 { await Task.yield() }
+    #expect(
+      off.previewStateUpdatesForTests == offBaseline,
+      "the kill switch is off but the download door still reached delivery")
+
+    let on = try home(enabled: true)
+    for _ in 0..<400 { await Task.yield() }
+    let onBaseline = on.previewStateUpdatesForTests
+    on.startPreviewDownload()
+    for _ in 0..<4000 where on.previewStateUpdatesForTests == onBaseline { await Task.yield() }
+    #expect(
+      on.previewStateUpdatesForTests > onBaseline,
+      "with the flag ON the door must still reach delivery; a welded-shut door would pass the assertion above"
+    )
+  }
+
+  /// A refused removal must still END the removal, or Live Preview dies for the
+  /// rest of the launch.
+  ///
+  /// `remove()` returns `false` without touching the controller when the family
+  /// kill switch is off (`WhisperKitModelDelivery.swift:124`) — deliberate, and
+  /// owned there: the flag stands down the whole delivery layer, deletions
+  /// included. So the model legitimately stays on disk. What is NOT legitimate
+  /// is what that does to the finish callback.
+  ///
+  /// `previewRemovalDidFinish` means "no longer removing", never "removal
+  /// succeeded" — it clears `isRemovingModel` in the coordinator. Making it
+  /// conditional on success is the obvious-looking reading of a discarded result,
+  /// and it latches removal suppression forever: the model will not delete AND
+  /// the feature will not run. This pins the sequence so that reading cannot land
+  /// silently.
+  ///
+  /// Both directions, because "the steps completed" alone is satisfiable by a
+  /// build that never consults the flag at all: flag-off must record `refused`,
+  /// flag-on must NOT, and both must reach `finish`.
+  ///
+  /// **The real `remove()` runs here, unlike the ordering tests above, which
+  /// substitute it.** That is safe only because `appSupportOverride` roots BOTH
+  /// the preview model's `installDirectory` and its `metadataDirectory`
+  /// (`ModelDeliveryHome.swift:196-210`), so the flag-on half deletes inside a
+  /// temp directory rather than the developer's installed 217 MB model.
+  @Test("a kill-switch-refused preview removal still finishes, both ways")
+  func refusedPreviewRemovalStillFinishes() async throws {
+    func home(enabled: Bool) throws -> ModelDeliveryHome {
+      let suite = try #require(UserDefaults(suiteName: "ew-2137-rmswitch-\(UUID().uuidString)"))
+      suite.set(enabled, forKey: "modelDelivery.whisper_kit.enabled")
+      return ModelDeliveryHome(
+        engineMutationScope: .live(
+          tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+        manifestBundle: try Self.manifestBundle(),
+        appSupportOverride: try Self.tempAppSupport(),
+        deliveryFlagDefaults: suite)
+    }
+
+    // **Observes the CALLBACK, never the `finish` step marker**, and that
+    // distinction is the whole test. `removalStepsForTests.append("finish")` is
+    // a separate statement AFTER the callback, so it records that control
+    // reached that line — not that the callback ran. Asserting the step array
+    // passed against the exact mutation this test exists to catch (suppressing
+    // the callback on a refusal), because the marker still landed. A proxy one
+    // statement away from the subject is not an observation of it.
+    @MainActor final class Finishes {
+      private(set) var count = 0
+      func record() { count += 1 }
+    }
+
+    let off = try home(enabled: false)
+    let offFinishes = Finishes()
+    off.previewRemovalDidFinish = { offFinishes.record() }
+    for _ in 0..<400 { await Task.yield() }
+    off.removePreviewModel()
+    for _ in 0..<4000 where offFinishes.count == 0 { await Task.yield() }
+    #expect(
+      offFinishes.count == 1,
+      "a refused removal must still fire the finish callback; latching suppression kills Live Preview for the launch"
+    )
+    #expect(
+      off.removalStepsForTests.contains("refused"),
+      "control: with the flag OFF the removal must actually have been refused")
+
+    let on = try home(enabled: true)
+    let onFinishes = Finishes()
+    on.previewRemovalDidFinish = { onFinishes.record() }
+    for _ in 0..<400 { await Task.yield() }
+    on.removePreviewModel()
+    for _ in 0..<4000 where onFinishes.count == 0 { await Task.yield() }
+    #expect(
+      onFinishes.count == 1,
+      "with the flag ON removal must still finish exactly once")
+    #expect(
+      !on.removalStepsForTests.contains("refused"),
+      "with the flag ON removal must NOT be refused; a build ignoring the flag would pass the OFF half above"
+    )
+  }
+
+  // MARK: - #2123 whole-diff review: the launch probe
+
+  /// Launching must PROBE delivery state, not merely wire an observer to it.
+  ///
+  /// The bug this pins: a model admitted in a previous app session leaves a fresh
+  /// controller with no in-memory entry, so there is nothing for a new observer
+  /// to be told about, and the card reports "Not downloaded yet" — hiding Remove
+  /// — for a model sitting on disk. `recordFirstRunBaseline` cannot cover it; it
+  /// records whether this is a first run and publishes no state.
+  ///
+  /// **What this does and does not pin, established by mutation rather than by
+  /// argument.** Deleting the `admitIfComplete` probe from `init` fails it, which
+  /// is the regression that matters. Reversing the observer-attach and the probe
+  /// does NOT fail it — `addStateObserver` replays every existing entry's state
+  /// to a newly attached observer, so attach order is genuinely not load-bearing.
+  /// An earlier version of this test claimed to guard that ordering and did not;
+  /// the claim is recorded here so nobody re-derives it from the test's shape.
+  ///
+  /// Rooted at a temp directory rather than the real Application Support, so the
+  /// verdict does not depend on whether this machine has ever used the feature.
+  @Test("construction probes delivery state rather than only observing it")
+  func launchProbePublishesToAnAttachedObserver() async throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("ew-2123-launch-probe-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: root)
+
+    #expect(home.whisperPreviewRegistration?.metadataDirectory.path.hasPrefix(root.path) == true)
+
+    for _ in 0..<4000 where home.previewStateUpdatesForTests == 0 { await Task.yield() }
+    #expect(
+      home.previewStateUpdatesForTests > 0,
+      "launch published nothing to the preview mirror, so the no-fetch probe did not run"
+    )
+  }
+
+  // MARK: - #2123: the preview model's download state is observable
+
+  /// The state starts where a not-yet-downloaded model should start.
+  ///
+  /// Deliberately a separate mirror from Parakeet's rather than a shared one:
+  /// they are different models with different lifecycles, and a settings page
+  /// rendering one from the other's state would show a download that is not
+  /// happening.
+  @Test("the preview model has its own delivery state, separate from Parakeet's")
+  func previewStateIsItsOwnMirror() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
+
+    #expect(home.parakeetState == .notReady)
+    // Safe to assert absolutely ONLY because this suite is rooted at a throwaway
+    // Application Support (see `tempAppSupport`). Construction now runs a
+    // no-fetch launch probe, so against the real directory this value would
+    // depend on whether the machine running the tests happens to have the preview
+    // model on disk — green in CI, green on a clean machine, red on a developer's
+    // machine that had used the feature. A fixture that varies by machine is not
+    // a fixture; the temp root is what makes this line a constant.
+    #expect(home.whisperPreviewState == .notReady)
+
+    let preview = try #require(home.whisperPreviewRegistration)
+    let transcription = try #require(home.whisperKitRegistration).manifest.identity
+    #expect(
+      preview.manifest.identity.cacheKey != transcription.cacheKey,
+      "two mirrors over one identity would make each model report the other's progress")
+
+    // **The observer must actually OBSERVE.** Checking the initial value cannot
+    // tell a wired mirror from a deleted one — both read `.notReady`. So publish
+    // a real state for the preview identity and watch which mirror moves.
+    //
+    // `admitIfComplete` with no fetch is the safe trigger: it validates what is
+    // already on disk and never downloads, and never deletes. `remove` would
+    // have published a state too, and would have deleted a real model from the
+    // machine running the tests.
+    // Measured against a BASELINE, not against zero. The launch probe may already
+    // have applied an update by now, and `> 0` would then pass without this
+    // explicit trigger proving anything — the assertion would be satisfied by
+    // construction alone and would survive deleting the observer's reaction to
+    // this publish entirely.
+    let baseline = home.previewStateUpdatesForTests
+    let parakeetBaseline = home.parakeetStateUpdatesForTests
+
+    _ = await home.controller.admitIfComplete(preview)
+
+    for _ in 0..<2000 where home.previewStateUpdatesForTests == baseline { await Task.yield() }
+    #expect(
+      home.previewStateUpdatesForTests > baseline,
+      "the preview mirror never applied an update — observer missing or filtered wrongly")
+    #expect(
+      home.parakeetStateUpdatesForTests == parakeetBaseline,
+      "a preview state reached Parakeet's mirror, so the identity filter is wrong")
   }
 }

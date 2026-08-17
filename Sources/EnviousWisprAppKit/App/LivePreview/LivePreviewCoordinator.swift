@@ -2,6 +2,7 @@ import AVFoundation
 import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprPostProcessing
+import EnviousWisprServices
 import Foundation
 
 /// Read-only access to the audio the capture manager has already stored.
@@ -105,7 +106,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   private(set) var display: LivePreviewDisplay = .off
 
   private let readSamples: LivePreviewSampleReader
-  private let isEnabled: () -> Bool
+  private let isPreviewOn: () -> Bool
   private let languageMode: () -> LanguageMode
 
   /// Which engine can serve a given language, and why not when it cannot.
@@ -113,7 +114,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// Injected rather than chosen here, so this type never names a vendor and never
   /// encodes one engine's availability rules as the feature's (#2077). Today the
   /// installer supplies Apple's; a second engine changes the closure, not this file.
-  private let resolveEngine: LivePreviewEngineResolver
+  private let selectedRoute: () -> LivePreviewEngineRoute
 
   /// The prepared engine, kept across recordings so the second press does not pay
   /// preparation again.
@@ -206,16 +207,65 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   private var sessionGeneration: UInt64 = 0
   private var isRunning = false
 
+  /// What this recording decided, read ONCE at its start.
+  ///
+  /// **Both halves, and that is the point.** The pill's geometry and the words
+  /// inside it must never disagree about which engine is running, and freezing
+  /// only the route would still allow it: the overlay reports recording intent
+  /// synchronously but creates its panel on the NEXT run-loop cycle, and geometry
+  /// reads its provider only inside that deferred work
+  /// (`RecordingOverlayPanel.swift:382-385`, `:640-656`). A setting change landing
+  /// in that gap would size a pill for one answer and resolve the other.
+  ///
+  /// Stored EVEN WHEN DISABLED, so a recording that began with the preview off
+  /// stays off for its whole length: without it, enabling mid-recording plus one
+  /// of the overlay's duplicate intent pushes would start a preview the recording
+  /// never began with.
+  ///
+  /// Lifetime is the recording, not the session: teardown must NOT clear it (the
+  /// deferred geometry read may not have happened yet), and `setRecording(false)`
+  /// is the only thing that does.
+  private struct RecordingSnapshot {
+    let route: LivePreviewEngineRoute
+    let enabled: Bool
+  }
+  private var recordingSnapshot: RecordingSnapshot?
+
+  /// True from the moment removal starts until its files are gone.
+  ///
+  /// **Closes the reacquisition window.** Removal releases the engine first and
+  /// deletes second, and the admission marker is still present in between — so a
+  /// recording starting in that gap would resolve as admitted and load the model
+  /// again, straight back onto the files about to be unlinked. While this is set,
+  /// no recording opens a preview at all.
+  private var isRemovingModel = false
+
+  /// The removal drain in flight, so a second Remove press joins it rather than
+  /// starting a competing one.
+  private var removalDrain: Task<Void, Never>?
+
+  /// `selectedRoute` answers "which engine is chosen right now" and is read once
+  /// per recording. `isPreviewOn` is the user's toggle ALONE — support is the
+  /// route's own answer (`isSupportedOnThisSystem`), so combining them here is
+  /// what makes one frozen effective-enabled value possible.
   init(
     readSamples: @escaping LivePreviewSampleReader,
-    isEnabled: @escaping () -> Bool,
+    isPreviewOn: @escaping () -> Bool,
     languageMode: @escaping () -> LanguageMode,
-    resolveEngine: @escaping LivePreviewEngineResolver
+    selectedRoute: @escaping () -> LivePreviewEngineRoute
   ) {
     self.readSamples = readSamples
-    self.isEnabled = isEnabled
+    self.isPreviewOn = isPreviewOn
     self.languageMode = languageMode
-    self.resolveEngine = resolveEngine
+    self.selectedRoute = selectedRoute
+  }
+
+  /// Whether the pill should be SIZED for preview text, for the overlay's
+  /// deferred geometry pass. Reads the frozen answer during a recording; outside
+  /// one there is nothing frozen, so it answers live.
+  var isEnabledForGeometry: Bool {
+    if let snapshot = recordingSnapshot { return snapshot.enabled }
+    return selectedRoute().isSupportedOnThisSystem() && isPreviewOn()
   }
 
   // MARK: - Lifecycle
@@ -229,7 +279,42 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   func setRecording(_ recording: Bool) {
     if recording {
       guard !isRunning else { return }
-      guard isEnabled() else {
+      // **This recording has already decided.** The overlay deliberately forwards
+      // DUPLICATE intent pushes (`RecordingOverlayPanel.swift:375-388`), and
+      // `isRunning` is false on the disabled path — so without this guard, a user
+      // enabling the preview mid-recording would have the next duplicate push
+      // start it, in a recording that began with it off.
+      guard recordingSnapshot == nil else { return }
+
+      // Nothing starts mid-removal: the files are about to go, and resolving now
+      // would reload the model from a marker that has not been deleted yet.
+      //
+      // **Freeze the recording as DISABLED rather than returning bare** (#2137
+      // cloud review). Returning without a snapshot left this the one suppressed
+      // path whose decision was not sticky: the overlay forwards duplicate
+      // `.recording` pushes, so if removal finished mid-recording,
+      // `endRemovalSuppression()` cleared the guard and the next duplicate push
+      // sailed past BOTH guards — `recordingSnapshot` still nil, `isRemovingModel`
+      // now false — and started a preview partway through a recording that began
+      // with it suppressed. That is the exact behaviour the snapshot guard above
+      // exists to prevent for every other disabled path.
+      //
+      // Cleared on the matching `setRecording(false)` like any other snapshot, so
+      // the NEXT recording decides afresh and a user who removes a model mid-take
+      // is not suppressed beyond that take.
+      guard !isRemovingModel else {
+        recordingSnapshot = RecordingSnapshot(route: selectedRoute(), enabled: false)
+        display = .off
+        return
+      }
+
+      // Read the choice ONCE, here, and keep both halves. Everything downstream
+      // reads this and never the live setting.
+      let route = selectedRoute()
+      recordingSnapshot = RecordingSnapshot(
+        route: route, enabled: route.isSupportedOnThisSystem() && isPreviewOn())
+
+      guard recordingSnapshot?.enabled == true else {
         display = .off
         // **Release the prepared engine too, not just the display (#2108).**
         //
@@ -259,6 +344,10 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       display = .waiting
       startSession(generation: sessionGeneration)
     } else {
+      // Cleared FIRST and unconditionally: a recording that began with the
+      // preview disabled still owns a snapshot and still has to give it back,
+      // and that path returns before the `isRunning` guard below.
+      recordingSnapshot = nil
       guard isRunning else { return }
       isRunning = false
       cancelSessionTask()
@@ -315,11 +404,22 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // all, and what to do with the user's language setting. Neither is a fact about
     // the preview feature, and an earlier draft that assumed Apple's answers would
     // have silently disabled a second engine on every Mac below macOS 26.
-    let resolution = await resolveEngine(languageMode())
+    // Through THIS recording's frozen route, never a live read: the engine the
+    // pill was sized for is the engine that must answer. A nil snapshot means the
+    // recording ended while this task was being scheduled — resolving anything
+    // then would be work for a recording nobody is having.
+    guard let route = recordingSnapshot?.route else { return }
+    let resolution = await route.resolve(languageMode())
     guard isCurrent(generation) else { return }
 
     guard case .ready(let candidate) = resolution else {
       if case .blocked(let reason) = resolution {
+        // The engine that REFUSED, from the route that answered — there is no
+        // candidate here, so the persisted choice is the only identity available.
+        // Always the ROUTE's closed id. The candidate key carries artifact
+        // identity, so reporting that would make this field high-cardinality —
+        // a new value on every model revision.
+        reportOutcome("blocked", engine: route.telemetryEngineID)
         display = .unavailable(Self.sentence(for: reason))
         // **A blocked engine must not stay cached (#2108).**
         //
@@ -351,6 +451,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
     guard await ensurePrepared(candidate), let engine = preparedEngine else {
       guard isCurrent(generation) else { return }
+      reportOutcome("prepare_failed", engine: route.telemetryEngineID)
       display = .unavailable(LivePreviewCopy.notReady)
       await Self.log("not ready for \(candidate.key.engine)/\(candidate.key.commitment)")
       return
@@ -393,6 +494,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       session = try await engine.openSession(lookups: correctorLookups, onText: publish)
     } catch {
       guard isCurrent(generation) else { return }
+      reportOutcome("open_failed", engine: route.telemetryEngineID)
       display = .unavailable(LivePreviewCopy.notReady)
       await Self.log("session refused to start: \(error)")
       return
@@ -425,6 +527,13 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // below. The task above still ends its session on this path.
     if isCurrent(generation) { liveTeardown = live }
 
+    // **Only for a recording that is still current.** `openSession` suspends, and
+    // a recording that ended — or a removal that started — while it was open
+    // leaves a session that is immediately torn down. Counting that as "started"
+    // would inflate the metric with previews the user never saw.
+    if isCurrent(generation) {
+      reportOutcome("started", engine: route.telemetryEngineID)
+    }
     await Self.log(
       "session started, engine=\(candidate.key.engine) on=\(candidate.key.commitment)")
     await live.value
@@ -468,6 +577,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       return LivePreviewSettingsCopy.previewNeedsLanguagePack(languageName)
     case .modelNotInstalled: return LivePreviewCopy.previewModelNotInstalled
     case .heartIsStreaming: return LivePreviewCopy.heartIsStreaming
+    case .engineUnavailableInThisBuild:
+      return LivePreviewCopy.engineUnavailableInThisBuild
     }
   }
 
@@ -483,19 +594,107 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// Wired from `PipelineSettingsSync`'s `livePreviewEnabled` case, which is the
   /// one place that learns a setting moved.
   func releaseForDisabledSetting() {
-    guard !isEnabled() else { return }
-    // **Tear down the ACTIVE session first, not just the cached slot.**
+    // The toggle alone, which is what "the user disabled it" means. Support is
+    // the route's business: on a Mac that cannot run the chosen engine nothing is
+    // ever prepared, so there is nothing here to release either way.
+    guard !isPreviewOn() else { return }
+    stopPreviewAndRelease()
+  }
+
+  /// Release because the user picked a DIFFERENT engine (#2123).
+  ///
+  /// Same remedy as the disabled path, different trigger — and deliberately NO
+  /// toggle guard: the preview is still on, it is the engine underneath that
+  /// changed. Sharing one body rather than porting it is the whole point;
+  /// half-porting a teardown produced three separate release findings on #2113.
+  ///
+  /// Wired from `PipelineSettingsSync`'s `livePreviewEngine` case.
+  func releaseForEngineChange() {
+    stopPreviewAndRelease()
+  }
+
+  /// Release EVERYTHING that could be holding the model, and do not return until
+  /// it is actually let go (#2123).
+  ///
+  /// **Clearing the cache slot is not releasing the model, and that was the
+  /// defect.** FOUR things can hold it: the cached engine; a live session that
+  /// still owns it until its asynchronous `end()` completes; an in-flight
+  /// preparation task holding a fresh engine that invalidation does not stop; and
+  /// the session task itself between opening a session and registering its
+  /// teardown, when nothing else references it. The count went from three to four
+  /// mid-review, which is the whole argument for capturing holders rather than
+  /// listing them from memory.
+  /// Dropping only the first leaves an unlinked file whose blocks stay allocated,
+  /// so the disk space the user asked for never comes back.
+  ///
+  /// So this awaits the teardown rather than requesting it, and holds
+  /// `isRemovingModel` across the whole operation so nothing reacquires while the
+  /// admission marker is still on disk.
+  func releaseAndDrainForRemoval() async {
+    // **Single-flight.** The Remove button stays on screen during the drain, so a
+    // second press could otherwise enter a second removal, find the first one's
+    // holders already taken, delete while the first drain was still running, and
+    // lift the suppression early. Everyone awaits the first operation instead.
+    if let inFlight = removalDrain {
+      await inFlight.value
+      return
+    }
+
+    isRemovingModel = true
+
+    // **CAPTURE EVERY HOLDER BEFORE RELEASING ANYTHING.** The shared teardown
+    // clears `preparationTask` on its way through, so reading it afterwards
+    // always saw nil and the await did nothing — a barrier with a hole exactly
+    // where it claimed to be closed. Cloud review caught it.
     //
-    // Switching the preview off mid-recording used to clear only the cache:
-    // `runSession` still held the engine and session as locals, `sessionTask`
-    // kept feeding audio, and a later `onText` could repaint over `.off`. So the
-    // model stayed loaded AND DECODING until the recording ended, for a feature
-    // the user had just turned off — the worst version of this leak, because it
-    // is also the visible one.
-    //
-    // Mirrors the stop path exactly rather than approximating it: same order,
-    // same fields. Half-porting a teardown is what produced three separate
-    // release findings on this PR already.
+    // `sessionTask` matters for the same reason and is the holder I missed a
+    // second time: between opening a session and registering `liveTeardown`,
+    // nothing else references it, so cancelling without awaiting leaves an engine
+    // alive past the delete.
+    let preparation = preparationTask
+    let session = sessionTask
+    let alreadyDraining = drainingTeardown
+
+    let drain = Task { @MainActor [weak self] in
+      guard let self else { return }
+      self.stopPreviewAndRelease()
+
+      await alreadyDraining?.value
+      await session?.value
+      _ = await preparation?.value
+
+      // Anything a completion wrote back while we waited.
+      self.releasePreparedEngine()
+      self.drainingTeardown = nil
+      self.removalDrain = nil
+    }
+    removalDrain = drain
+    await drain.value
+  }
+
+  /// Removal is over: previews may run again.
+  func endRemovalSuppression() {
+    isRemovingModel = false
+  }
+
+  /// The shared teardown: stop the live session, then drop the cached engine.
+  ///
+  /// **Tear down the ACTIVE session first, not just the cached slot.** Switching
+  /// the preview off mid-recording used to clear only the cache: `runSession`
+  /// still held the engine and session as locals, the feed loop kept running, and
+  /// a later `onText` could repaint over `.off`. So the model stayed loaded AND
+  /// DECODING for a feature the user had just changed — the worst version of the
+  /// leak, because it is also the visible one.
+  ///
+  /// **It does NOT clear `recordingSnapshot`, and that is load-bearing.** The
+  /// snapshot belongs to the RECORDING, not to the session: the overlay may not
+  /// have run its deferred geometry read yet, and clearing it here would let that
+  /// read answer live — the drift #2123 exists to remove. It is also what
+  /// suppresses restart, since `setRecording(true)` returns immediately while a
+  /// snapshot exists, so a duplicate intent push cannot start the newly chosen
+  /// engine inside the recording that was already under way. Only
+  /// `setRecording(false)` clears it.
+  private func stopPreviewAndRelease() {
     if isRunning {
       isRunning = false
       cancelSessionTask()
@@ -543,6 +742,20 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     preparationTask = nil
     preparedEngine = nil
     preparedKey = nil
+  }
+
+  /// Report what this recording's preview did, exactly once (#2123).
+  ///
+  /// The engine name comes from the ROUTE's closed telemetry id — `apple` or
+  /// `universal` — and NOT from the resolved candidate's key.
+  ///
+  /// An earlier version of this comment said the opposite, and so did three of
+  /// the four call sites: the candidate key carries artifact identity, so the
+  /// universal engine reported `whisper_preview#<digest>` and the field gained a
+  /// new value on every model revision. A closed vocabulary is a dimension
+  /// someone can group by; the key is not.
+  private func reportOutcome(_ outcome: String, engine: String) {
+    TelemetryService.shared.livePreviewOutcome(engine: engine, outcome: outcome)
   }
 
   /// One log seam so every preview line carries the same category and the whole
@@ -697,4 +910,8 @@ enum LivePreviewCopy {
   /// speak, and a second decoder would slow it by half (measured). Says what is
   /// happening rather than naming a setting the reader has to go and find.
   static let heartIsStreaming = "On-screen preview pauses while live transcription is on."
+  /// No remedy offered ON PURPOSE. A build shipped without the engine's files is
+  /// ours to fix, and a "Download" button here would point at nothing.
+  static let engineUnavailableInThisBuild =
+    "This version of EnviousWispr cannot run that preview engine."
 }

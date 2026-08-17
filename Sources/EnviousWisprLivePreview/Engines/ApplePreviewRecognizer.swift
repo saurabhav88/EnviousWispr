@@ -731,6 +731,7 @@ package enum ApplePreviewEngineResolver {
   /// so the pill's geometry check and the recording's resolution can never be wired
   /// from different sources.
   package static let route = LivePreviewEngineRoute(
+    telemetryEngineID: "apple",
     isSupportedOnThisSystem: { isSupportedOnThisSystem },
     resolve: { mode in await resolve(mode) }
   )

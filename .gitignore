@@ -145,6 +145,11 @@ scripts/*
 # button. Tracked deliberately — a gitignored validator can only be run by
 # someone who remembers it exists, which is how the false green happens.
 !scripts/check-ollama-catalog-sizes.sh
+# #2123: the release build CALLS this pre-sign, so an untracked copy would make
+# a fresh clone fail at the gate — and the same reasoning as the catalog check
+# above applies twice over: a gitignored packaging gate can only run for someone
+# who already knows it exists, which is precisely the person who does not need it.
+!scripts/check-preview-engine-resources.sh
 !scripts/xcode-test.sh
 !scripts/indexnow-submit.py
 # UAT scripts — required by workflow tooling (workflow-process.md §1 step 9 + §11)

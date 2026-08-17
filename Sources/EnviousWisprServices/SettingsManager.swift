@@ -43,6 +43,7 @@ public final class SettingsManager {
     case preferredInputDeviceIDOverride
     case useStreamingASR
     case livePreviewEnabled
+    case livePreviewEngine
     case warmEnginePolicy
     case appearance
     case overlayPillPosition
@@ -84,7 +85,8 @@ public final class SettingsManager {
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
-    "useStreamingASR", "livePreviewEnabled", "warmEnginePolicy", "appearancePreference",
+    "useStreamingASR", "livePreviewEnabled", "livePreviewEngine",
+    "warmEnginePolicy", "appearancePreference",
     "overlayPillPosition",
     "showBluetoothTips", "playRecordingSounds", "recordingSoundPairing",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
@@ -440,6 +442,27 @@ public final class SettingsManager {
     didSet {
       defaults.set(livePreviewEnabled, forKey: "livePreviewEnabled")
       onChange?(.livePreviewEnabled)
+    }
+  }
+
+  /// #2123: which engine draws the preview. Read by nothing yet — chunk A
+  /// establishes the value so later chunks have one source of truth to read.
+  public var livePreviewEngine: LivePreviewEngineChoice {
+    didSet {
+      // The ONLY no-op guard among this type's 47 `didSet`s, and deliberately so
+      // (#2123 whole-diff review). The picker's card is a Button, so tapping the
+      // ALREADY-selected engine still assigns, and Swift runs `didSet` on a
+      // same-value assignment. Every other setting's handler is idempotent, so
+      // the redundant notification costs nothing; this one's is not. It reaches
+      // `releaseForEngineChange()`, which tears the preview down unconditionally
+      // — correctly, since a real engine change means the preview is still ON and
+      // only the engine beneath it moved, so a toggle guard would be wrong there.
+      // That reasoning cannot tell a real change from a re-tap, so the guard has
+      // to be here: without it, tapping the selected card mid-recording stops the
+      // preview for the rest of that recording.
+      guard livePreviewEngine != oldValue else { return }
+      defaults.set(livePreviewEngine.rawValue, forKey: "livePreviewEngine")
+      onChange?(.livePreviewEngine)
     }
   }
 
@@ -833,6 +856,12 @@ public final class SettingsManager {
     livePreviewEnabled =
       defaults.object(forKey: "livePreviewEnabled") as? Bool
       ?? SettingsDefaultValues.livePreviewEnabled
+    // Unknown raw value resolves to Apple rather than trapping: a defaults file
+    // written by a newer build (or by hand) must not disable the preview.
+    livePreviewEngine =
+      LivePreviewEngineChoice(
+        rawValue: defaults.string(forKey: "livePreviewEngine") ?? ""
+      ) ?? SettingsDefaultValues.livePreviewEngine
     warmEnginePolicy =
       WarmEnginePolicy(
         rawValue: defaults.string(forKey: "warmEnginePolicy") ?? ""

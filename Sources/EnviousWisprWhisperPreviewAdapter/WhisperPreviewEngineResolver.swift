@@ -52,6 +52,7 @@ package enum WhisperPreviewEngineResolver {
   /// from different sources.
   package static func route(_ environment: Environment) -> LivePreviewEngineRoute {
     LivePreviewEngineRoute(
+      telemetryEngineID: "universal",
       isSupportedOnThisSystem: { true },
       resolve: { mode in await resolve(mode, environment: environment) }
     )

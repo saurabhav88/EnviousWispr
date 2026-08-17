@@ -17,8 +17,917 @@ import Testing
 /// has. What IS unit-testable is the part that protects the heart: the gate that
 /// decides whether any of that happens at all, and the bound on what the feature
 /// retains. Live behaviour is covered by UAT.
+/// Wraps a resolver in a route for the coordinator's `selectedRoute` provider.
+///
+/// These suites test the coordinator's POLICY, not an engine's OS capability, so
+/// support defaults to true; suites that care pass `supported: false` explicitly.
+/// Returning the PROVIDER rather than a route keeps every call site honest about
+/// the fact that the coordinator reads it once per recording.
+private func previewRoute(
+  supported: Bool = true,
+  _ resolve: @escaping LivePreviewEngineResolver
+) -> () -> LivePreviewEngineRoute {
+  {
+    LivePreviewEngineRoute(
+      telemetryEngineID: "universal", isSupportedOnThisSystem: { supported }, resolve: resolve)
+  }
+}
+
 @MainActor
 struct LivePreviewCoordinatorTests {
+
+  // MARK: - #2123 F3: the removal barrier, tested at the coordinator
+
+  /// **Tested HERE, not through a stand-in for the delivery home.** The previous
+  /// tests drove a fake callback, so none of them could see a coordinator holder
+  /// left un-awaited — which is exactly where the barrier had holes.
+  ///
+  /// A preview stuck in preparation still holds a fresh engine. Removal must not
+  /// return while that is true, or the files are deleted under a live mapping.
+  @Test("removal does not return while a preparation still holds an engine")
+  func removalAwaitsPreparation() async {
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      private(set) var entered = false
+      func wait() async {
+        mutex.withLock { entered = true }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let open: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if open { c.resume() }
+        }
+      }
+      func open() {
+        let w: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        w?.resume()
+      }
+      var hasEntered: Bool { mutex.withLock { entered } }
+    }
+    final class Flag: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = false
+      var isSet: Bool { mutex.withLock { value } }
+      func set() { mutex.withLock { value = true } }
+    }
+
+    let stuck = Gate()
+    final class StuckEngine: LivePreviewEngine, @unchecked Sendable {
+      let stuck: Gate
+      init(stuck: Gate) { self.stuck = stuck }
+      func prepare() async throws { await stuck.wait() }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "universal", commitment: ""),
+            makeEngine: { StuckEngine(stuck: stuck) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !stuck.hasEntered { await Task.yield() }
+    #expect(stuck.hasEntered, "control: preparation must be in flight")
+
+    let drained = Flag()
+    async let removal: Void = {
+      await coordinator.releaseAndDrainForRemoval()
+      drained.set()
+    }()
+
+    for _ in 0..<200 { await Task.yield() }
+    #expect(
+      !drained.isSet,
+      "removal returned while a preparation still held an engine, so the delete would race it")
+
+    stuck.open()
+    await removal
+    #expect(drained.isSet)
+    #expect(!coordinator.hasPreparedEngineForTests, "and the slot is empty afterwards")
+  }
+
+  /// The FOURTH holder, and the one I missed twice: a session between opening and
+  /// registering its teardown is referenced only by `sessionTask`. Cancelling
+  /// that task without awaiting it leaves an engine alive past the delete.
+  ///
+  /// Mutation control: drop `await session?.value` from the drain and this goes
+  /// green while the holder is still alive — which is how it survived two passes.
+  @Test("removal waits for a session still being opened")
+  func removalAwaitsASessionBeingOpened() async {
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      private var entered = false
+      var hasEntered: Bool { mutex.withLock { entered } }
+      func wait() async {
+        mutex.withLock { entered = true }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let open: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if open { c.resume() }
+        }
+      }
+      func open() {
+        let w: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        w?.resume()
+      }
+    }
+    final class Flag: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = false
+      var isSet: Bool { mutex.withLock { value } }
+      func set() { mutex.withLock { value = true } }
+    }
+
+    let openingGate = Gate()
+    final class SlowOpenEngine: LivePreviewEngine, @unchecked Sendable {
+      let gate: Gate
+      init(gate: Gate) { self.gate = gate }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        // Held INSIDE the open: past preparation, before the coordinator can
+        // register a teardown for it.
+        await gate.wait()
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "universal", commitment: ""),
+            makeEngine: { SlowOpenEngine(gate: openingGate) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !openingGate.hasEntered { await Task.yield() }
+    #expect(openingGate.hasEntered, "control: the session must be mid-open")
+    #expect(
+      !coordinator.hasLiveSessionForTests,
+      "control: no teardown is registered yet — that is what makes this holder invisible")
+
+    let drained = Flag()
+    async let removal: Void = {
+      await coordinator.releaseAndDrainForRemoval()
+      drained.set()
+    }()
+
+    for _ in 0..<200 { await Task.yield() }
+    #expect(!drained.isSet, "removal returned while a session was still being opened")
+
+    openingGate.open()
+    await removal
+    #expect(drained.isSet)
+  }
+
+  /// Nothing may start a preview while removal is in flight: the admission marker
+  /// still exists until the files are gone, so a recording would resolve as
+  /// installed and load the model straight back onto the files being deleted.
+  @Test("no preview starts while removal is in flight")
+  func removalSuppressesNewPreviews() async {
+    final class Opens: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = 0
+      var count: Int { mutex.withLock { value } }
+      func record() { mutex.withLock { value += 1 } }
+    }
+    let opens = Opens()
+    final class CountingEngine: LivePreviewEngine, @unchecked Sendable {
+      let opens: Opens
+      init(opens: Opens) { self.opens = opens }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        opens.record()
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "universal", commitment: ""),
+            makeEngine: { CountingEngine(opens: opens) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where opens.count < 1 { await Task.yield() }
+    #expect(opens.count == 1, "control: a preview runs before removal")
+    coordinator.setRecording(false)
+
+    await coordinator.releaseAndDrainForRemoval()
+
+    coordinator.setRecording(true)
+    for _ in 0..<300 { await Task.yield() }
+    #expect(opens.count == 1, "a preview started while the files were being removed")
+
+    // And once removal ends, previews work again — otherwise this passes against
+    // a feature that is simply broken from then on.
+    // **Removal finishing MID-RECORDING must not start a preview in the take that
+    // began suppressed** (#2137 cloud review). The overlay forwards duplicate
+    // `.recording` pushes, so a second `setRecording(true)` with no intervening
+    // `false` is the real shape here, not a contrivance. Before the fix this path
+    // stored no snapshot, so once `endRemovalSuppression()` cleared the guard the
+    // duplicate push sailed past both checks and started a preview partway
+    // through the recording.
+    coordinator.endRemovalSuppression()
+    coordinator.setRecording(true)
+    for _ in 0..<300 { await Task.yield() }
+    #expect(
+      opens.count == 1,
+      "removal ending mid-recording started a preview in a take that began suppressed")
+
+    // And the NEXT recording decides afresh — otherwise the fix above would be a
+    // permanent suppression rather than a per-take one, which is the same feature
+    // broken in the opposite direction.
+    coordinator.setRecording(false)
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where opens.count < 2 { await Task.yield() }
+    #expect(opens.count == 2, "previews must resume on the recording after removal finished")
+  }
+
+  // MARK: - #2123 G1: the outcome metric
+
+  // `testEventHook` is a DEBUG-only seam, so these cannot be compiled into a
+  // release build (tools-and-apps.md RULE: xcode-test-entrypoint).
+  #if DEBUG
+    /// The event has to name the engine that ACTUALLY ran, and carry nothing else.
+    ///
+    /// A refusal produces no candidate, so the engine name comes from the route —
+    /// which is why routes carry an id at all. And "blocked" is the outcome that
+    /// matters most for the downloadable engine, since not-installed is its
+    /// commonest refusal: an event that could not name the engine there would fail
+    /// to answer the one question it exists for.
+    ///
+    /// The property COUNT is asserted, not just the values. An event that starts
+    /// carrying a refusal reason, a language, or anything else about what the user
+    /// was doing must fail this.
+    @Test("a refused preview reports which engine refused, and nothing more")
+    func blockedOutcomeNamesTheEngine() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      let coordinator = LivePreviewCoordinator(
+        readSamples: { _ in ([], 0) },
+        isPreviewOn: { true },
+        languageMode: { .locked("en") },
+        selectedRoute: {
+          LivePreviewEngineRoute(
+            telemetryEngineID: "universal",
+            isSupportedOnThisSystem: { true },
+            resolve: { _ in .blocked(.modelNotInstalled) })
+        }
+      )
+
+      coordinator.setRecording(true)
+      let event = try await waiter.waitForEvent(named: "live_preview.outcome")
+
+      // The CLOSED value, not the candidate key's `whisper_preview#<digest>`: a
+      // per-revision engine string would be a high-cardinality property rather
+      // than a dimension anyone can group by.
+      #expect(event.stringProps["engine"] == "universal")
+      #expect(event.stringProps["outcome"] == "blocked")
+      #expect(
+        event.stringProps.count == 2,
+        "the event grew a property: \(event.stringProps.keys.sorted())")
+    }
+
+    /// A preview that RUNS reports started, exactly once, with the closed engine
+    /// value. Testing only the refusal left three of four call sites unprotected —
+    /// a mutation at any of them stayed green.
+    @Test("a running preview reports started exactly once")
+    func startedOutcomeIsReportedOnce() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+        func prepare() async throws {}
+        func openSession(
+          lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        ) async throws -> any LivePreviewEngineSession {
+          struct Idle: LivePreviewEngineSession {
+            func feed(_ samples: [Float]) async {}
+            func end() async {}
+          }
+          return Idle()
+        }
+      }
+      let coordinator = LivePreviewCoordinator(
+        readSamples: { _ in ([], 0) },
+        isPreviewOn: { true },
+        languageMode: { .locked("en") },
+        selectedRoute: previewRoute { _ in
+          .ready(
+            LivePreviewEngineCandidate(
+              key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
+              makeEngine: { ReadyEngine() }))
+        }
+      )
+
+      coordinator.setRecording(true)
+      let event = try await waiter.waitForEvent(named: "live_preview.outcome")
+      #expect(event.stringProps["outcome"] == "started")
+      // The candidate key here deliberately CARRIES a digest. The event must not.
+      #expect(
+        event.stringProps["engine"] == "universal",
+        "the artifact identity leaked into the engine field")
+
+      // **"Once" has to be ASSERTED.** Waiting for the first event proves one
+      // arrived, not that a second did not — the name claimed a property the test
+      // did not check, which is the shape of a test that reads as stronger than it is.
+      for _ in 0..<300 { await Task.yield() }
+      let outcomes = waiter.events.filter { $0.name == "live_preview.outcome" }
+      #expect(outcomes.count == 1, "expected exactly one outcome, got \(outcomes.count)")
+    }
+
+    /// A session abandoned WHILE OPENING must report nothing at all.
+    ///
+    /// `openSession` suspends. If the recording ends in that window the session is
+    /// torn down immediately and the user never saw a preview, so counting it as
+    /// `started` would inflate the metric with previews that did not happen.
+    ///
+    /// Mutation control: remove the `isCurrent` guard around the `started` report
+    /// and this fails on a non-zero count.
+    @Test("a preview abandoned while opening reports nothing")
+    func staleOpenReportsNothing() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      final class Gate: @unchecked Sendable {
+        private let mutex = NSLock()
+        private var waiterC: CheckedContinuation<Void, Never>?
+        private var isOpen = false
+        private var entered = false
+        var hasEntered: Bool { mutex.withLock { entered } }
+        func wait() async {
+          mutex.withLock { entered = true }
+          await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            let open: Bool = mutex.withLock {
+              if isOpen { return true }
+              waiterC = c
+              return false
+            }
+            if open { c.resume() }
+          }
+        }
+        func open() {
+          let w: CheckedContinuation<Void, Never>? = mutex.withLock {
+            isOpen = true
+            let w = waiterC
+            waiterC = nil
+            return w
+          }
+          w?.resume()
+        }
+      }
+      let opening = Gate()
+
+      final class SlowOpenEngine: LivePreviewEngine, @unchecked Sendable {
+        let gate: Gate
+        init(gate: Gate) { self.gate = gate }
+        func prepare() async throws {}
+        func openSession(
+          lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        ) async throws -> any LivePreviewEngineSession {
+          await gate.wait()
+          struct Idle: LivePreviewEngineSession {
+            func feed(_ samples: [Float]) async {}
+            func end() async {}
+          }
+          return Idle()
+        }
+      }
+
+      let coordinator = LivePreviewCoordinator(
+        readSamples: { _ in ([], 0) },
+        isPreviewOn: { true },
+        languageMode: { .locked("en") },
+        selectedRoute: previewRoute { _ in
+          .ready(
+            LivePreviewEngineCandidate(
+              key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
+              makeEngine: { SlowOpenEngine(gate: opening) }))
+        }
+      )
+
+      coordinator.setRecording(true)
+      for _ in 0..<2000 where !opening.hasEntered { await Task.yield() }
+      #expect(opening.hasEntered, "control: the open must be in flight")
+
+      // The recording ends while the open is still suspended.
+      coordinator.setRecording(false)
+      opening.open()
+      for _ in 0..<500 { await Task.yield() }
+
+      let outcomes = waiter.events.filter { $0.name == "live_preview.outcome" }
+      #expect(
+        outcomes.isEmpty,
+        "a preview the user never saw was counted: \(outcomes.map { $0.stringProps })")
+    }
+
+    /// An engine that cannot prepare reports `prepare_failed` rather than nothing.
+    @Test("a preview that cannot prepare reports prepare_failed")
+    func prepareFailureIsReported() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      struct Boom: Error {}
+      final class FailingEngine: LivePreviewEngine, @unchecked Sendable {
+        func prepare() async throws { throw Boom() }
+        func openSession(
+          lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        ) async throws -> any LivePreviewEngineSession {
+          throw Boom()
+        }
+      }
+      let coordinator = LivePreviewCoordinator(
+        readSamples: { _ in ([], 0) },
+        isPreviewOn: { true },
+        languageMode: { .locked("en") },
+        selectedRoute: previewRoute { _ in
+          .ready(
+            LivePreviewEngineCandidate(
+              key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
+              makeEngine: { FailingEngine() }))
+        }
+      )
+
+      coordinator.setRecording(true)
+      let event = try await waiter.waitForEvent(named: "live_preview.outcome")
+      #expect(event.stringProps["outcome"] == "prepare_failed")
+      #expect(event.stringProps["engine"] == "universal")
+    }
+
+    /// An engine that prepares but cannot open a session reports `open_failed` —
+    /// a different outcome from failing to prepare, because they send you to
+    /// different places when the graph moves.
+    @Test("a preview that cannot open a session reports open_failed")
+    func openFailureIsReported() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      struct Boom: Error {}
+      final class OpenFailsEngine: LivePreviewEngine, @unchecked Sendable {
+        func prepare() async throws {}
+        func openSession(
+          lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        ) async throws -> any LivePreviewEngineSession {
+          throw Boom()
+        }
+      }
+      let coordinator = LivePreviewCoordinator(
+        readSamples: { _ in ([], 0) },
+        isPreviewOn: { true },
+        languageMode: { .locked("en") },
+        selectedRoute: previewRoute { _ in
+          .ready(
+            LivePreviewEngineCandidate(
+              key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
+              makeEngine: { OpenFailsEngine() }))
+        }
+      )
+
+      coordinator.setRecording(true)
+      let event = try await waiter.waitForEvent(named: "live_preview.outcome")
+      #expect(event.stringProps["outcome"] == "open_failed")
+      #expect(event.stringProps["engine"] == "universal")
+    }
+  #endif
+
+  // MARK: - #2123: one engine decision per recording
+
+  /// The selection itself: which route serves which choice, and what happens when
+  /// the universal one could not be composed at all.
+  ///
+  /// A pure function on purpose — this is the one decision that must never
+  /// silently substitute one engine for another, and burying it in the
+  /// installer's closure would make it reachable only through a window, an audio
+  /// capture and a delivery home.
+  @Test("the chosen engine is the one that answers, and a missing one never becomes Apple")
+  func routeSelectionNeverSubstitutesApple() async {
+    let apple = LivePreviewEngineRoute(
+      telemetryEngineID: "apple",
+      isSupportedOnThisSystem: { true },
+      resolve: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
+            makeEngine: { fatalError("not built in this test") }))
+      })
+    let universal = LivePreviewEngineRoute(
+      telemetryEngineID: "universal",
+      isSupportedOnThisSystem: { true },
+      resolve: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "universal", commitment: ""),
+            makeEngine: { fatalError("not built in this test") }))
+      })
+
+    func engineID(_ route: LivePreviewEngineRoute) async -> String? {
+      if case .ready(let candidate) = await route.resolve(.locked("en")) {
+        return candidate.key.engine
+      }
+      return nil
+    }
+    func refusal(_ route: LivePreviewEngineRoute) async -> LivePreviewUnavailability? {
+      if case .blocked(let reason) = await route.resolve(.locked("en")) { return reason }
+      return nil
+    }
+
+    // Each choice reaches its OWN engine. The second half is the control: without
+    // it, a selector hardwired to Apple passes the first assertion.
+    let appleChoice = LivePreviewInstaller.route(for: .apple, apple: apple, universal: universal)
+    let universalChoice = LivePreviewInstaller.route(
+      for: .universal, apple: apple, universal: universal)
+    #expect(await engineID(appleChoice) == "apple")
+    #expect(await engineID(universalChoice) == "universal")
+
+    // The build defect: universal chosen, universal not composable.
+    let broken = LivePreviewInstaller.route(for: .universal, apple: apple, universal: nil)
+    #expect(
+      await engineID(broken) != "apple",
+      "a missing universal engine silently ran Apple under a universal selection")
+    #expect(
+      await refusal(broken) == .engineUnavailableInThisBuild,
+      "the build defect must say so rather than borrowing another engine's refusal")
+    #expect(
+      broken.isSupportedOnThisSystem(),
+      "reporting unsupported would make the pill go quietly blank instead of saying why")
+  }
+
+  /// Switching engines releases the one being switched away from — while the
+  /// preview is still ON, which is what makes this a separate entry point from
+  /// the disabled path rather than a second caller of it.
+  @Test("switching engines releases the engine switched away from")
+  func switchingEnginesReleases() async {
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
+            makeEngine: { ReadyEngine() }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    #expect(coordinator.hasPreparedEngineForTests, "control: an engine must be cached first")
+
+    // The user picks the other engine. The preview stays ON throughout.
+    coordinator.releaseForEngineChange()
+    #expect(!coordinator.hasPreparedEngineForTests, "the old engine's model must be released")
+    #expect(coordinator.display == .off)
+  }
+
+  /// The engine-change release must NOT inherit the disabled path's guard.
+  ///
+  /// `releaseForDisabledSetting` returns early while the preview is on — correct
+  /// for its own trigger, and fatal here: switching engines happens with the
+  /// preview on by definition, so a shared guard would make this a no-op and the
+  /// old model would stay resident for the rest of the session.
+  @Test("the engine-change release fires even though the preview is still on")
+  func engineChangeIsNotGuardedByTheToggle() async {
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
+            makeEngine: { ReadyEngine() }))
+      }
+    )
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    #expect(coordinator.hasPreparedEngineForTests, "control: cached before the switch")
+
+    // CONTROL: the disabled path is a no-op here, precisely because the preview
+    // is on. If both behaved the same, the test below would prove nothing.
+    coordinator.releaseForDisabledSetting()
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: the disabled path must NOT release while the preview is on")
+
+    coordinator.releaseForEngineChange()
+    #expect(!coordinator.hasPreparedEngineForTests, "the engine-change path must release")
+  }
+
+  /// An IDLE switch — the commonest one, since a user changes engines in Settings
+  /// between recordings, not during one. The mid-recording tests above say
+  /// nothing about it: `isRunning` is false, so they exercise a different branch.
+  @Test("switching engines while idle releases an engine cached by an earlier recording")
+  func idleSwitchReleasesTheCachedEngine() async {
+    let probe = PreviewEngineProbe()
+    let coordinator = makeCoordinator(probe: probe, key: key("apple", "en-US"))
+
+    coordinator.setRecording(true)
+    #expect(await reach { await probe.sessionsOpened == 1 }, "control: a session must have opened")
+    coordinator.setRecording(false)
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: the engine stays cached across recordings — that is why it needs releasing")
+
+    coordinator.releaseForEngineChange()
+    #expect(
+      !coordinator.hasPreparedEngineForTests,
+      "an idle engine switch left the previous engine's model cached")
+  }
+
+  /// **Teardown must COMPLETE, not merely be requested.**
+  ///
+  /// Clearing the cached slot and the display is what the eye sees; it is not
+  /// what frees the model. A version of `releaseForEngineChange` that did only
+  /// that — leaving the live session feeding and decoding — passes every other
+  /// switch test here, which is exactly why this one counts ended sessions
+  /// through the probe rather than reading `display`.
+  @Test("switching engines mid-recording ends the live session, not just the cache")
+  func switchingEndsTheLiveSession() async {
+    let probe = PreviewEngineProbe()
+    let coordinator = makeCoordinator(
+      probe: probe,
+      key: key("apple", "en-US"),
+      readSamples: { index in
+        index == Int.max ? ([], 0) : (Array(repeating: Float(0.05), count: 160), 160)
+      })
+
+    coordinator.setRecording(true)
+    #expect(await reach { await probe.samplesFed > 0 }, "control: the session must be live")
+    #expect(await probe.sessionsEnded == 0, "control: nothing has ended yet")
+
+    coordinator.releaseForEngineChange()
+
+    #expect(
+      await reach { await probe.sessionsEnded == 1 },
+      "the switch cleared the cache but left the session running")
+    #expect(await probe.sessionsEnded == 1, "and ended it exactly once")
+  }
+
+  /// Switching mid-recording must not start the NEW engine inside the recording
+  /// that was already under way — the snapshot is what suppresses it, so this
+  /// asserts the two behaviours are wired to one rule and not two.
+  @Test("switching mid-recording does not start the new engine until the next recording")
+  func switchingMidRecordingDoesNotRestart() async {
+    final class Opens: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = 0
+      var count: Int { mutex.withLock { value } }
+      func record() { mutex.withLock { value += 1 } }
+    }
+    let opens = Opens()
+    final class CountingEngine: LivePreviewEngine, @unchecked Sendable {
+      let opens: Opens
+      init(opens: Opens) { self.opens = opens }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        opens.record()
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
+            makeEngine: { CountingEngine(opens: opens) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where opens.count < 1 { await Task.yield() }
+    #expect(opens.count == 1, "control: the first session opened")
+
+    coordinator.releaseForEngineChange()
+    coordinator.setRecording(true)  // the overlay's duplicate intent push
+    for _ in 0..<300 { await Task.yield() }
+    #expect(opens.count == 1, "the new engine started inside the old recording")
+
+    // Next recording: it does start, so this is suppression and not breakage.
+    coordinator.setRecording(false)
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where opens.count < 2 { await Task.yield() }
+    #expect(opens.count == 2, "the next recording must use the newly chosen engine")
+  }
+
+  /// The pill's SIZE and the words in it must never disagree about the engine.
+  ///
+  /// Freezing only at the moment intent arrives is not enough on its own: the
+  /// overlay reports intent synchronously but creates its panel on the next
+  /// run-loop cycle and reads geometry inside that deferred work. So a switch
+  /// landing in that gap must change neither half.
+  ///
+  /// Mutation control: read `selectedRoute()` live in `runSession` instead of the
+  /// snapshot and this goes red on the engine identity.
+  @Test("the engine chosen at the start of a recording is the one it uses throughout")
+  func engineIsFrozenForTheRecording() async {
+    final class Choice: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = "first"
+      var current: String { mutex.withLock { value } }
+      func switchIt() { mutex.withLock { value = "second" } }
+    }
+    final class Seen: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var ids: [String] = []
+      var all: [String] { mutex.withLock { ids } }
+      func record(_ id: String) { mutex.withLock { ids.append(id) } }
+    }
+    let choice = Choice()
+    let seen = Seen()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: {
+        // A DIFFERENT route object each read, exactly as the real provider will
+        // behave once it switches on a setting.
+        let id = choice.current
+        return LivePreviewEngineRoute(
+          telemetryEngineID: "universal",
+          isSupportedOnThisSystem: { true },
+          resolve: { _ in
+            seen.record(id)
+            return .blocked(.unsupportedLanguage)
+          })
+      }
+    )
+
+    coordinator.setRecording(true)
+    // Switch the choice immediately — before the session task has resolved.
+    choice.switchIt()
+    for _ in 0..<2000 where seen.all.isEmpty { await Task.yield() }
+
+    #expect(seen.all.first == "first", "control: the recording must have resolved something")
+    #expect(
+      !seen.all.contains("second"),
+      "the recording resolved the engine chosen after it started: \(seen.all)")
+
+    // The NEXT recording gets the new choice — the freeze is per recording, not
+    // permanent.
+    coordinator.setRecording(false)
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !seen.all.contains("second") { await Task.yield() }
+    #expect(seen.all.contains("second"), "a new recording must pick up the new choice")
+  }
+
+  /// A recording that began with the preview OFF stays off for its whole length.
+  ///
+  /// The overlay deliberately forwards duplicate intent pushes, and the disabled
+  /// path never sets `isRunning` — so without the snapshot guard, enabling the
+  /// preview mid-recording plus one duplicate push would start a preview in a
+  /// recording that never began with one.
+  @Test("enabling mid-recording cannot start a preview the recording began without")
+  func enablingMidRecordingDoesNotStartIt() async {
+    final class Toggle: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = false
+      var isOn: Bool { mutex.withLock { value } }
+      func turnOn() { mutex.withLock { value = true } }
+    }
+    final class Resolved: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var count = 0
+      var value: Int { mutex.withLock { count } }
+      func bump() { mutex.withLock { count += 1 } }
+    }
+    let toggle = Toggle()
+    let resolved = Resolved()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { toggle.isOn },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        resolved.bump()
+        return .blocked(.unsupportedLanguage)
+      }
+    )
+
+    coordinator.setRecording(true)  // begins OFF
+    #expect(coordinator.display == .off, "control: it must start off")
+    #expect(!coordinator.isEnabledForGeometry, "control: geometry must agree it is off")
+
+    toggle.turnOn()
+    coordinator.setRecording(true)  // the overlay's duplicate push
+    for _ in 0..<300 { await Task.yield() }
+
+    #expect(resolved.value == 0, "a preview started inside a recording that began without one")
+    #expect(!coordinator.isEnabledForGeometry, "geometry must stay off for this recording")
+
+    // And the next recording, begun with it on, DOES run — otherwise this test
+    // would pass against a preview that never starts at all.
+    coordinator.setRecording(false)
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where resolved.value == 0 { await Task.yield() }
+    #expect(resolved.value == 1, "the next recording must honour the new setting")
+  }
 
   // MARK: - The gate
 
@@ -27,9 +936,9 @@ struct LivePreviewCoordinatorTests {
     let capture = CountingAudioCapture()
     let coordinator = LivePreviewCoordinator(
       readSamples: { await capture.getSamplesSnapshot(fromIndex: $0) },
-      isEnabled: { false },
+      isPreviewOn: { false },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
 
     coordinator.setRecording(true)
@@ -54,9 +963,9 @@ struct LivePreviewCoordinatorTests {
   func enabledStartsAndLeavesOff() {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
 
     coordinator.setRecording(true)
@@ -69,9 +978,9 @@ struct LivePreviewCoordinatorTests {
   func startClearsPreviousText() {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
     coordinator.setRecording(true)
     coordinator.setRecording(false)
@@ -91,9 +1000,9 @@ struct LivePreviewCoordinatorTests {
   func lifecycleIsIdempotent() {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
     // Two call sites push recording intent (the first overlay push and every
     // state-driven one), and `hide()` reports a stop that may already have
@@ -118,9 +1027,9 @@ struct LivePreviewCoordinatorTests {
   func stopDiscardsPreviewText() {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
     coordinator.setRecording(true)
     #expect(coordinator.display != .off, "control: a live recording is not off")
@@ -204,9 +1113,9 @@ struct LivePreviewCoordinatorTests {
     let resolutions = CountingBox()
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         let nth = await resolutions.next()
         return .ready(
           LivePreviewEngineCandidate(
@@ -257,9 +1166,9 @@ struct LivePreviewCoordinatorTests {
         await reads.bump()
         return ([], 0)
       },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedLanguage) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedLanguage) }
     )
 
     coordinator.setRecording(true)
@@ -321,9 +1230,9 @@ struct LivePreviewCoordinatorTests {
   ) -> LivePreviewCoordinator {
     LivePreviewCoordinator(
       readSamples: readSamples,
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: key, makeEngine: { FakePreviewEngine(probe: probe) }))
@@ -387,9 +1296,9 @@ struct LivePreviewCoordinatorTests {
   private func makeCoordinator() -> LivePreviewCoordinator {
     LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
   }
 
@@ -504,9 +1413,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -612,9 +1521,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -640,7 +1549,10 @@ struct LivePreviewCoordinatorTests {
     box.enabled = false
     coordinator.releaseForDisabledSetting()
 
-    // Turn it back on and start another recording immediately.
+    // Turn it back on and start another RECORDING immediately. #2123: the
+    // recording has to end first, because a decision is frozen per recording and
+    // a second preview belongs to a second recording.
+    coordinator.setRecording(false)
     box.enabled = true
     coordinator.setRecording(true)
     for _ in 0..<200 { await Task.yield() }
@@ -700,7 +1612,12 @@ struct LivePreviewCoordinatorTests {
       private var opened = 0
       var enginesMade: Int { mutex.withLock { made } }
       var sessionsOpened: Int { mutex.withLock { opened } }
-      func recordEngine() -> Int { mutex.withLock { made += 1; return made } }
+      func recordEngine() -> Int {
+        mutex.withLock {
+          made += 1
+          return made
+        }
+      }
       func recordOpen() { mutex.withLock { opened += 1 } }
     }
 
@@ -736,9 +1653,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -758,7 +1675,10 @@ struct LivePreviewCoordinatorTests {
     box.enabled = false
     coordinator.releaseForDisabledSetting()
 
-    // The next preview must run, with the first warm-up still hung.
+    // The next preview must run, with the first warm-up still hung. #2123: the
+    // next preview means the next RECORDING — a recording now freezes its
+    // decision at its start, so ending this one is what makes the next one new.
+    coordinator.setRecording(false)
     box.enabled = true
     coordinator.setRecording(true)
     for _ in 0..<2000 where counts.sessionsOpened < 1 { await Task.yield() }
@@ -814,7 +1734,12 @@ struct LivePreviewCoordinatorTests {
       private var entered = 0
       var enginesMade: Int { mutex.withLock { made } }
       var opensEntered: Int { mutex.withLock { entered } }
-      func recordEngine() -> Int { mutex.withLock { made += 1; return made } }
+      func recordEngine() -> Int {
+        mutex.withLock {
+          made += 1
+          return made
+        }
+      }
       func enterOpen() { mutex.withLock { entered += 1 } }
     }
 
@@ -849,9 +1774,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -872,6 +1797,9 @@ struct LivePreviewCoordinatorTests {
     // Abandon it mid-open, then run a second preview to completion of its open.
     box.enabled = false
     coordinator.releaseForDisabledSetting()
+    // #2123: end the recording before starting the next one — a decision is
+    // frozen per recording, so a second preview belongs to a second recording.
+    coordinator.setRecording(false)
     box.enabled = true
     coordinator.setRecording(true)
     for _ in 0..<2000 where !coordinator.hasLiveSessionForTests { await Task.yield() }
@@ -917,9 +1845,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         if box.blocked { return .blocked(.heartIsStreaming) }
         return .ready(
           LivePreviewEngineCandidate(
@@ -975,9 +1903,9 @@ struct LivePreviewCoordinatorTests {
     let box = Box()
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -1026,9 +1954,9 @@ struct LivePreviewCoordinatorTests {
     let box = Box()
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -1074,9 +2002,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),

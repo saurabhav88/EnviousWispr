@@ -181,6 +181,21 @@ package enum LivePreviewUnavailability: Sendable, Equatable {
   /// racing. It deliberately does not fall back to a lock the heart would await:
   /// a display-only limb must never be able to stall transcription.
   case heartIsStreaming
+
+  /// The engine cannot run because THIS BUILD is missing something it needs —
+  /// a delivery registration or a bundled tokenizer that should have shipped.
+  ///
+  /// **Not a Bypass and not a user-fixable Failure**, which is why it is neither
+  /// `modelNotInstalled` nor a reuse of it. Telling someone to download a model
+  /// when the app was packaged wrong sends them to a button that cannot help,
+  /// and the honest sentence — this build cannot do it — is the one that does not
+  /// waste their time. The remedy is ours: a release-build resource check
+  /// (#2123), not a control on screen.
+  ///
+  /// Added in #2123 because this is the chunk where a route can finally be nil
+  /// and something has to say so, matching this enum's rule that a case arrives
+  /// with the code that can report and act on it.
+  case engineUnavailableInThisBuild
 }
 
 /// Whether a preview can run, and if not, why.
@@ -200,6 +215,20 @@ package enum LivePreviewEngineResolution: Sendable {
 /// feature exists to remove.
 package struct LivePreviewEngineRoute: Sendable {
 
+  /// Which engine this route speaks for, as a CLOSED telemetry vocabulary:
+  /// exactly `apple` or `universal`.
+  ///
+  /// **Deliberately NOT the candidate key's engine string.** That key carries
+  /// artifact identity — the universal engine's is `whisper_preview#<digest>` —
+  /// so reporting it would put a new value in the field on every model revision,
+  /// which is a high-cardinality property rather than a dimension anyone can
+  /// group by. The signed plan says `engine = apple|universal`; this is that.
+  ///
+  /// It also answers the one caller with no candidate to read: a REFUSED
+  /// resolution never produces a `LivePreviewEngineCandidate`, and "refused" is
+  /// the most interesting outcome the downloadable engine has.
+  package let telemetryEngineID: String
+
   /// Static capability only: does this Mac have what the engine fundamentally
   /// requires. NOT "is it ready right now" — anything that can change while the app
   /// runs, such as whether a model has been downloaded, belongs in `resolve`.
@@ -208,9 +237,11 @@ package struct LivePreviewEngineRoute: Sendable {
   package let resolve: LivePreviewEngineResolver
 
   package init(
+    telemetryEngineID: String,
     isSupportedOnThisSystem: @escaping @Sendable () -> Bool,
     resolve: @escaping LivePreviewEngineResolver
   ) {
+    self.telemetryEngineID = telemetryEngineID
     self.isSupportedOnThisSystem = isSupportedOnThisSystem
     self.resolve = resolve
   }

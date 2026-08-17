@@ -297,6 +297,21 @@ else
     echo "::error::Output-safety classifier model missing from app bundle: neither OutputClassifier.mlmodelc nor OutputClassifier.mlpackage in Contents/Resources (#1226)"; exit 1
 fi
 
+# #2123: the universal preview engine's two bundled resources, same gate shape
+# and same reasoning as the VAD model above. Packaged ONLY by Project.swift —
+# Package.swift ships the manifest never (the app target excludes Resources) and
+# the tokenizer never (its ASR target declares no resources at all) — so a
+# dropped entry there still compiles, still passes every test, and produces an
+# app where choosing the Universal engine reports "unavailable in this build"
+# with nothing the user can do. Pre-sign, so a missing asset fails before any
+# signature is applied.
+#
+# Delegated to a script rather than inlined because it is also the only way to
+# check this at all: a unit test's `Bundle.main` is the test runner, so a test
+# here would inspect committed source files and pass while the shipped app was
+# broken.
+"$PROJ_ROOT/scripts/check-preview-engine-resources.sh" "$BUNDLE"
+
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
     echo "==> CODESIGN_IDENTITY not set — skipping signing (unsigned assembly only)"
 else

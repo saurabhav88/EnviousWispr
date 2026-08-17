@@ -161,7 +161,13 @@ final class LivePreviewPacksModel {
     // switch being total. If the picker ever routes this page through the
     // universal engine (#2077 chunk 5), these stop being unreachable and need
     // real states rather than a fallthrough nobody re-reads.
-    case .blocked(.modelNotInstalled), .blocked(.heartIsStreaming):
+    //
+    // #2123 adds a third: a build with no universal registration or tokenizer.
+    // Also unreachable here for the same reason — this page asks APPLE'S route,
+    // which is composed from the OS and cannot fail that way. It joins the group
+    // rather than getting a pack-page state no path can enter.
+    case .blocked(.modelNotInstalled), .blocked(.heartIsStreaming),
+      .blocked(.engineUnavailableInThisBuild):
       return .unsupportedLanguage
     }
   }
