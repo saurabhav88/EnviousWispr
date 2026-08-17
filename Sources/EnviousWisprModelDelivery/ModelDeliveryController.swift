@@ -286,6 +286,11 @@ public actor ModelDeliveryController {
     entry.drainingTask = task
     entry.activeTask = nil
     entries[identity] = entry
+    // The move to draining has LANDED here, so this is the only honest place to
+    // announce it. Fired before `task.cancel()` because a test that wants to
+    // observe the live draining window must be released while the window is
+    // open, not after the drain has been asked to end (#2119 test support).
+    afterMovedToDrainingForTesting?()
     task.cancel()
     // Drain barrier: the attempt task finishes only after its URLSession
     // delegate delivered terminal completion and file handles closed —
@@ -917,6 +922,27 @@ public actor ModelDeliveryController {
   /// cannot be assigned from outside its isolation.
   func setBeforeExistingCacheValidationForTesting(_ hook: (@Sendable () async -> Void)?) {
     beforeExistingCacheValidationForTesting = hook
+  }
+
+  /// Fired the instant `cancel` moves an attempt from `activeTask` to
+  /// `drainingTask` (#2119 test support). Never set in production.
+  ///
+  /// Exists because the alternative is POLLING, and polling this particular
+  /// transition starves it: every probe is a hop onto this actor, so a tight
+  /// `Task.yield()` loop keeps the controller answering "are you draining yet"
+  /// instead of draining. That test passed locally and timed out on post-merge
+  /// main, where the runner has fewer cores — a signal removes the race rather
+  /// than betting against it (test-timing.md: wait on a signal, use a deadline
+  /// only as the fallback AROUND it).
+  ///
+  /// Synchronous and non-async on purpose: it runs inside the actor-isolated
+  /// window between the move landing and `task.cancel()`, so it must not
+  /// suspend and let that window close before the waiter is released.
+  var afterMovedToDrainingForTesting: (@Sendable () -> Void)?
+
+  /// Cross-actor setter; see `setBeforeExistingCacheValidationForTesting`.
+  func setAfterMovedToDrainingForTesting(_ hook: (@Sendable () -> Void)?) {
+    afterMovedToDrainingForTesting = hook
   }
 
   private func admission(for registration: DeliveryRegistration) -> CacheAdmission {

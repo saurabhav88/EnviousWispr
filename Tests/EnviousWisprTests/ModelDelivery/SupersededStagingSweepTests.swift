@@ -435,17 +435,38 @@ import Testing
     // draining branch never exercised — the test would pass while covering the
     // wrong field. Park until the controller reports no active task for the
     // identity, which is only true once the move has landed.
+    // WAIT ON THE SIGNAL, NOT ON A POLL.
+    //
+    // This used to spin on `isDrainingForTesting` with `Task.yield()`, which
+    // STARVES the transition it waits for: every probe is a hop onto the
+    // controller actor, so the loop keeps the controller answering "are you
+    // draining yet" instead of draining. It passed locally and timed out on
+    // post-merge main (fewer cores, more contention) — `movedToDraining` came
+    // back nil and the test correctly reported the draining branch as untested.
+    // The controller now announces the move at the instant it lands.
+    let moved = AsyncStream<Void>.makeStream()
+    await controller.setAfterMovedToDrainingForTesting {
+      moved.continuation.yield()
+      moved.continuation.finish()
+    }
     async let cancelled = controller.cancel(draining.manifest.identity)
     let movedToDraining = await withDeadline(seconds: 5) {
-      while true {
-        if Task.isCancelled { return false }
-        if await controller.isDrainingForTesting(draining.manifest.identity) { return true }
-        await Task.yield()
-      }
+      var iterator = moved.stream.makeAsyncIterator()
+      return await iterator.next() != nil
     }
     try #require(
       movedToDraining == true,
       "never observed the LIVE draining window, so the draining branch is untested")
+
+    // THE SIGNAL AND THE STATE ARE TWO CONDITIONS. The signal proves the move
+    // HAPPENED; it does not prove the window is still OPEN when the sweep runs.
+    // They coincide here only because the attempt is parked on `release` and so
+    // cannot finish draining — assert it rather than rely on that reasoning,
+    // because a future change to the park would silently turn this into a test
+    // of the already-drained path while still passing.
+    try #require(
+      await controller.isDrainingForTesting(draining.manifest.identity),
+      "the draining window closed before the sweep, so the protection is untested")
 
     await controller.sweepSupersededStaging(current)
     #expect(
