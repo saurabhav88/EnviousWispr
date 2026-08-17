@@ -40,6 +40,53 @@ public enum PriorRevisionAdmission {
     }
   }
 
+  /// Staging directories in `metadataDirectory/staging` belonging to the same
+  /// `family`, `name` AND `variant` as `identity`, at a DIFFERENT revision
+  /// (#2109, #2119).
+  ///
+  /// Same prefix/suffix stripping as `markerURLs`, and for the same reason:
+  /// `cacheKey` flattens name and revision with no injective boundary, so the
+  /// revision cannot be recovered by splitting on `-`. Its soundness rests on
+  /// no model name within a family being a prefix of another, which
+  /// `ShippedModelNames` freezes over every name ever shipped.
+  ///
+  /// VARIANT IS PART OF THE MATCH, not an afterthought. WhisperKit ships
+  /// stable and Preview with the same family, name and revision, separated
+  /// only by variant; if two registrations ever differed only by REVISION,
+  /// one would be read as a superseded copy of the other and a live download
+  /// would be deleted. `ShippedModelNamesTests` freezes that too.
+  ///
+  /// Empty when the directory cannot be read — the caller then deletes
+  /// nothing, which is the only safe answer to "I could not look".
+  static func supersededStagingURLs(for identity: ModelIdentity, metadataDirectory: URL) -> [URL] {
+    let staging = metadataDirectory.appendingPathComponent("staging", isDirectory: true)
+    let prefix = "\(identity.family.rawValue)-\(identity.name)-"
+    let suffix = identity.variant.isEmpty ? "" : "-\(identity.variant)"
+    let current = identity.cacheKey
+
+    guard
+      let entries = try? FileManager.default.contentsOfDirectory(
+        at: staging, includingPropertiesForKeys: [.isDirectoryKey])
+    else { return [] }
+
+    return entries.filter { url in
+      let name = url.lastPathComponent
+      guard name != current, name.hasPrefix(prefix), name.hasSuffix(suffix) else { return false }
+      // Require a non-empty revision segment between prefix and suffix, so a
+      // degenerate identity whose two ends overlap cannot admit an entry that
+      // is neither. Mirrors the same guard in `markerURLs`.
+      guard name.count > prefix.count + suffix.count else { return false }
+      // DIRECTORIES ONLY. Staging is always a directory; a regular file whose
+      // name happens to match would otherwise be deleted as if it were one.
+      // The caller removes whatever this returns, so a name match alone is not
+      // enough to authorise deletion.
+      guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey]),
+        values.isDirectory == true
+      else { return false }
+      return true
+    }
+  }
+
   /// True when a prior revision was admitted AND at least one file it recorded is STILL on disk.
   ///
   /// The marker alone proves an install once completed, never that its bytes survive: a user who

@@ -294,6 +294,22 @@ public actor ModelDeliveryController {
     // The generation bump above orphaned the attempt's own clearTask, so
     // release the ledger here — a cancelled download must not keep blocking
     // other identities' disk preflight (code-diff r5 P2).
+    //
+    // Clear `drainingTask` for the same reason, and it matters more since
+    // #2119 (found by review of that chunk). It used to be cleared ONLY by the
+    // next `startAttempt`, so an identity cancelled and never resumed kept a
+    // non-nil `drainingTask` for the process lifetime. The staging sweep reads
+    // that field as "work in flight", so it would have protected exactly the
+    // abandoned downloads it exists to reclaim — a no-op for the feature's
+    // primary population.
+    //
+    // Safe here and not earlier: the `await task.value` above IS the drain
+    // barrier, so by this line there is nothing left for a later
+    // `startAttempt` to wait on. Generation-guarded so a NEW attempt that
+    // started during the await keeps its own draining task.
+    if entries[identity]?.generation == entry.generation {
+      entries[identity]?.drainingTask = nil
+    }
     entries[identity]?.reservedBytes = 0
     if case .admitted = outcome {
       // Completion won the race (its terminal slice ran before our bump was
@@ -637,6 +653,10 @@ public actor ModelDeliveryController {
           repairedComponentsCount: repairedCount))
       setState(identity, .admitted)
       try? FileManager.default.removeItem(at: staging)
+      // Post-admission reclamation (#2119). The bootstrap call catches staging
+      // abandoned before this launch; this one catches anything superseded by
+      // the admission that just happened.
+      sweepSupersededStaging(registration)
       await AppLogger.shared.log(
         "Model delivery admitted \(identity.cacheKey)", level: .info, category: "Delivery")
       return .admitted
@@ -769,6 +789,78 @@ public actor ModelDeliveryController {
   }
 
   // MARK: - Paths + disk
+
+  /// Reclaim staging directories for superseded revisions of this
+  /// registration's model (#2109, #2119).
+  ///
+  /// A partially-downloaded revision that is later superseded is otherwise
+  /// never deleted: staging is keyed by `cacheKey`, a successful admission
+  /// removes only its OWN directory, and nothing enumerates the rest. Up to a
+  /// full model's worth of bytes per abandoned revision, permanently.
+  ///
+  /// NOT gated on `admission.evictPreviousRevisions`, deliberately, and the
+  /// divergence from the superseded-MARKER cleanup is the point. That flag
+  /// protects a legitimate choice: keeping a previous revision installed and
+  /// usable. Staging is not an install — it is resume CACHE, and the marker is
+  /// what makes an install real. The worst case of deleting it is refetched
+  /// bytes if a later build re-pins that revision, never a broken or unusable
+  /// model. Gating it would inherit the defect #2109's own comments name:
+  /// three of four shipped manifests carry that flag's value copied from a
+  /// sibling, so for most artefacts it encodes nobody's decision.
+  ///
+  /// LIVENESS IS BUILT FORWARD. Identity → URL is total; URL → identity is
+  /// not, because `cacheKey` flattens name and revision. So the protected set
+  /// is derived from entries that actually have work in flight, mapped to
+  /// their URLs through the pure path helper, and candidates are compared
+  /// against it. Nothing parses a directory name back into an identity.
+  ///
+  /// A retained entry is NOT liveness: entries survive `clearTask`, so keying
+  /// on their presence would protect long-dead revisions forever and quietly
+  /// defeat the sweep. Only a non-nil `activeTask` or `drainingTask` counts.
+  ///
+  /// Best-effort per entry, and the whole method is suspension-free between
+  /// building the protected set and deleting, so no attempt can start in the
+  /// gap.
+  public func sweepSupersededStaging(_ registration: DeliveryRegistration) {
+    let identity = registration.manifest.identity
+    let candidates = PriorRevisionAdmission.supersededStagingURLs(
+      for: identity, metadataDirectory: registration.metadataDirectory)
+    guard !candidates.isEmpty else { return }
+
+    // Compare RESOLVED PATHS, never URL objects. A URL from
+    // `contentsOfDirectory` and one built with `appendingPathComponent` can
+    // denote the same directory and still differ as values: macOS temp roots
+    // resolve `/var/...` to `/private/var/...`, and directory URLs may or may
+    // not carry a trailing slash. Set membership on the raw URLs therefore
+    // silently never matched, and the protection failed OPEN — the sweep
+    // deleted staging for a download that was actively running. Caught by
+    // `sweepNeverDeletesStagingForAnAttemptInFlight`.
+    func key(_ url: URL) -> String {
+      url.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    var protectedKeys: Set<String> = []
+    for (liveIdentity, entry) in entries where entry.activeTask != nil || entry.drainingTask != nil {
+      guard let liveRegistration = registrationsByIdentity[liveIdentity] else { continue }
+      protectedKeys.insert(key(Self.stagingDirectoryURL(for: liveRegistration)))
+    }
+
+    let fm = FileManager.default
+    for candidate in candidates where !protectedKeys.contains(key(candidate)) {
+      try? fm.removeItem(at: candidate)
+    }
+  }
+
+  /// Whether the identity is in the LIVE DRAINING window (#2119 test support).
+  ///
+  /// Both halves are required. "No active task" alone is also true AFTER the
+  /// drain finishes, so a test parking on it could sweep once draining had
+  /// already completed and miss the very window it claims to cover — the
+  /// draining branch would go unexercised while the test read green.
+  func isDrainingForTesting(_ identity: ModelIdentity) -> Bool {
+    guard let entry = entries[identity] else { return false }
+    return entry.activeTask == nil && entry.drainingTask != nil
+  }
 
   /// Test-only barrier awaited after `.preparing` publishes and BEFORE the
   /// existing-cache validation suspends (#2109). Never set in production.

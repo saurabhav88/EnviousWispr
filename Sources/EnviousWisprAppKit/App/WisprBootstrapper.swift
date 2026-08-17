@@ -289,6 +289,9 @@ public final class WisprBootstrapper {
         // printing `v3-eg2` at someone.
         version: egOneManifest?.resolvedDisplayVersion)
       egOneAdapter = adapter
+      // #2119: EG-1's own bootstrap sweep. All FOUR registrations call this —
+      // a missed one is a family whose dead staging is never reclaimed.
+      Task { await modelDelivery.controller.sweepSupersededStaging(registration) }
 
       let coordinator = EGOneUpgradeCoordinator(
         adapter: adapter,
