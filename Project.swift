@@ -318,7 +318,7 @@ let project = Project(
 
     // #2108 (epic #2077 chunk 4). The Live Preview engine backed by the
     // downloadable universal model. Its dependency list is the point: it needs
-    // ASR and ModelDelivery, which is exactly why it cannot live in
+    // ASR, which is exactly why it cannot live in
     // EnviousWisprLivePreview above — and it must NOT gain Audio, Pipeline,
     // Services or AppKit. Added explicitly to AppKit and the test bundle rather
     // than to `firstPartyTargetDeps`, for the same reason LivePreview is.
@@ -329,7 +329,10 @@ let project = Project(
         .target(name: "EnviousWisprPostProcessing"),
         .target(name: "EnviousWisprLivePreview"),
         .target(name: "EnviousWisprASR"),
-        .target(name: "EnviousWisprModelDelivery"),
+        // NO `.target(name: "EnviousWisprModelDelivery")`. The limb receives
+        // resolved paths and an admission ANSWER as values; giving it the
+        // delivery module would let a future edit import a fetch-capable API
+        // here with no check failing (cloud review r8).
         // FluidAudio, declared even though this module never references it.
         // Xcode does not propagate package products transitively (same reason
         // AppKit declares WhisperKit/FluidAudio/Sparkle directly), and linking

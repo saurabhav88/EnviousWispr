@@ -537,6 +537,115 @@ struct LivePreviewCoordinatorTests {
     #expect(coordinator.display == .off)
   }
 
+  /// **The fourth axis, found by Codex validating my own enumeration rather than
+  /// by another review round.** Three rounds swept WHICH entry point releases and
+  /// WHEN it fires. All of them CANCELLED the session task and moved on — and a
+  /// cancelled task still owns its engine and its session until it reaches
+  /// `session.end()`. So the next recording could open a second session over the
+  /// same cached WhisperKit instance while the previous one was still inside its
+  /// final decode: the exact corruption the turnover lock and the joinable
+  /// `end()` exist to prevent, reached from a layer above both.
+  ///
+  /// Mutation control: drop `drainingSessionTask` and the second session opens
+  /// immediately, so the mid-test assertion goes red.
+  @Test("a new preview waits for the previous one to finish tearing down")
+  func newSessionWaitsForThePreviousTeardown() async {
+    /// Blocks `end()` until the test opens it. A continuation rather than a
+    /// polled flag: `end()` runs inside a CANCELLED task, where `Task.sleep` and
+    /// `Task.yield` both return immediately, so a poll would spin the main actor
+    /// instead of waiting on it.
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      func wait() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let alreadyOpen: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if alreadyOpen { c.resume() }
+        }
+      }
+      func open() {
+        let waiting: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        waiting?.resume()
+      }
+    }
+    final class Opens: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = 0
+      var count: Int { mutex.withLock { value } }
+      func record() { mutex.withLock { value += 1 } }
+    }
+
+    let gate = Gate()
+    let opens = Opens()
+    final class GatedEngine: LivePreviewEngine, @unchecked Sendable {
+      let gate: Gate
+      let opens: Opens
+      init(gate: Gate, opens: Opens) {
+        self.gate = gate
+        self.opens = opens
+      }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        opens.record()
+        struct Gated: LivePreviewEngineSession {
+          let gate: Gate
+          func feed(_ samples: [Float]) async {}
+          func end() async { await gate.wait() }
+        }
+        return Gated(gate: gate)
+      }
+    }
+    final class Box: @unchecked Sendable { var enabled = true }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { GatedEngine(gate: gate, opens: opens) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where opens.count < 1 { await Task.yield() }
+    #expect(opens.count == 1, "control: the first session must have opened")
+
+    // Turn the preview off mid-recording. The session task is cancelled and is
+    // now sitting inside `end()`, still holding the engine.
+    box.enabled = false
+    coordinator.releaseForDisabledSetting()
+
+    // Turn it back on and start another recording immediately.
+    box.enabled = true
+    coordinator.setRecording(true)
+    for _ in 0..<200 { await Task.yield() }
+    #expect(
+      opens.count == 1,
+      "a second session opened while the first was still tearing down")
+
+    // Once teardown completes, the new session must actually open — otherwise
+    // this test would pass just as well against a preview that never runs again.
+    gate.open()
+    for _ in 0..<2000 where opens.count < 2 { await Task.yield() }
+    #expect(opens.count == 2, "the new session must open once the old one has drained")
+  }
+
   /// **Found by enumerating the class, not by review.** Five of this PR's findings
   /// were "the bound is downstream of the growth" and three were "the release
   /// misses a path", so the remaining release paths were swept exhaustively

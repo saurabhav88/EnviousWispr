@@ -159,6 +159,22 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   package var hasCorrectorLookupsForTesting: Bool { correctorLookups != nil }
 
   private var sessionTask: Task<Void, Never>?
+
+  /// The session task most recently CANCELLED, kept until it has actually
+  /// finished tearing down.
+  ///
+  /// **Cancellation is a request, not a completion, and that is the fourth axis
+  /// of this PR's release findings.** Four rounds swept WHICH entry point
+  /// releases and WHEN it fires; all four cancelled `sessionTask` and moved on.
+  /// A cancelled task still holds its engine and its session as locals until it
+  /// reaches `session.end()`, so the next recording could open a second session
+  /// over the same cached WhisperKit instance while the previous one was still
+  /// inside its final decode — the very thing `PreviewSessionTurnover` and the
+  /// joinable `end()` exist to prevent, reached from above them.
+  ///
+  /// `startSession` awaits this before running. The heart still never waits: it
+  /// is the NEW preview that waits for the OLD preview, entirely inside the limb.
+  private var drainingSessionTask: Task<Void, Never>?
   /// In-flight preparation, shared by every session that arrives while it runs.
   ///
   /// Preparation is deliberately NOT owned by a session. First use of a language
@@ -231,9 +247,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     } else {
       guard isRunning else { return }
       isRunning = false
-      let task = sessionTask
-      sessionTask = nil
-      task?.cancel()
+      cancelSessionTask()
       // **Dropped, not merely hidden.** This used to keep the last text on the
       // grounds that nothing renders it after a recording ends, which was true and
       // is not the point: the settings copy now tells the user the preview "is
@@ -249,10 +263,31 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   }
 
   private func startSession(generation: UInt64) {
+    // Wait for the PREVIOUS session's teardown to finish before this one opens.
+    // See `drainingSessionTask`: a cancelled task still owns its engine and its
+    // session until it reaches `session.end()`.
+    let predecessor = drainingSessionTask
+    drainingSessionTask = nil
     sessionTask = Task { @MainActor [weak self] in
-      guard let self else { return }
+      await predecessor?.value
+      // Re-check AFTER the wait: the recording this task was started for may
+      // already be over, and opening a session for it then would be the stale
+      // repaint `generation` exists to stop.
+      guard let self, self.isCurrent(generation) else { return }
       await self.runSession(generation: generation)
     }
+  }
+
+  /// Cancel the live session task and REMEMBER it until it has drained.
+  ///
+  /// The `guard` is what keeps a single slot sufficient: a second cancel needs a
+  /// `sessionTask`, and only `startSession` creates one — and that consumes the
+  /// pending drain first. So two cancels can never race for this slot.
+  private func cancelSessionTask() {
+    guard let task = sessionTask else { return }
+    sessionTask = nil
+    task.cancel()
+    drainingSessionTask = task
   }
 
   private func runSession(generation: UInt64) async {
@@ -421,9 +456,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // release findings on this PR already.
     if isRunning {
       isRunning = false
-      let task = sessionTask
-      sessionTask = nil
-      task?.cancel()
+      cancelSessionTask()
     }
     releasePreparedEngine()
     display = .off
@@ -606,7 +639,8 @@ enum LivePreviewCopy {
   /// #2108. The universal preview model has not been downloaded. Names the
   /// action rather than the fault: nothing is broken, the user has simply not
   /// chosen to download it yet.
-  static let previewModelNotInstalled = "Download the preview model in Settings to see words appear."
+  static let previewModelNotInstalled =
+    "Download the preview model in Settings to see words appear."
   /// #2108 Gate C. Live transcription already decodes continuously while you
   /// speak, and a second decoder would slow it by half (measured). Says what is
   /// happening rather than naming a setting the reader has to go and find.

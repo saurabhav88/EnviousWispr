@@ -133,7 +133,6 @@ let package = Package(
         "EnviousWisprPostProcessing",
         "EnviousWisprLivePreview",
         "EnviousWisprASR",
-        "EnviousWisprModelDelivery",
       ],
       path: "Sources/EnviousWisprWhisperPreviewAdapter"
     ),
