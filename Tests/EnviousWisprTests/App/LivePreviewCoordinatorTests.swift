@@ -546,7 +546,7 @@ struct LivePreviewCoordinatorTests {
   /// final decode: the exact corruption the turnover lock and the joinable
   /// `end()` exist to prevent, reached from a layer above both.
   ///
-  /// Mutation control: drop `drainingSessionTask` and the second session opens
+  /// Mutation control: drop `drainingTeardown` and the second session opens
   /// immediately, so the mid-test assertion goes red.
   @Test("a new preview waits for the previous one to finish tearing down")
   func newSessionWaitsForThePreviousTeardown() async {
@@ -623,8 +623,17 @@ struct LivePreviewCoordinatorTests {
     )
 
     coordinator.setRecording(true)
-    for _ in 0..<2000 where opens.count < 1 { await Task.yield() }
+    // Wait for the session to be REGISTERED, not merely opened. The full suite
+    // caught the difference: waiting on `opens` alone can act inside the window
+    // between `openSession` returning and the coordinator registering its
+    // teardown, and this layer makes no promise there — the adapter's turnover
+    // lock is what covers that window, because it records its handle before it
+    // releases. Isolated runs passed; the loaded run did not.
+    for _ in 0..<2000 where !coordinator.hasLiveSessionForTests { await Task.yield() }
     #expect(opens.count == 1, "control: the first session must have opened")
+    #expect(
+      coordinator.hasLiveSessionForTests,
+      "control: the coordinator must have registered that session's teardown")
 
     // Turn the preview off mid-recording. The session task is cancelled and is
     // now sitting inside `end()`, still holding the engine.
@@ -644,6 +653,121 @@ struct LivePreviewCoordinatorTests {
     gate.open()
     for _ in 0..<2000 where opens.count < 2 { await Task.yield() }
     #expect(opens.count == 2, "the new session must open once the old one has drained")
+  }
+
+  /// The confirming round's own finding: a drain that waits for the WRONG unit
+  /// wedges the feature it was added to protect.
+  ///
+  /// Model warm-up is an unstructured task on purpose, so a later recording can
+  /// adopt it — which means cancelling the session task does NOT interrupt a
+  /// preview suspended inside preparation. Draining the whole session task made
+  /// every later preview wait on a warm-up that `releasePreparedEngine` had
+  /// already invalidated by generation, so one disable/enable over a slow or hung
+  /// load would stop previews for the rest of the process.
+  ///
+  /// Nothing needs draining before a session exists: no session, no decode to
+  /// collide with. Mutation control: drain the whole session task instead of the
+  /// post-open work and this test hangs at the second wait, then fails.
+  @Test("a preview abandoned during preparation does not block the next one")
+  func abandonedPreparationDoesNotBlockTheNextPreview() async {
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      func wait() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let alreadyOpen: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if alreadyOpen { c.resume() }
+        }
+      }
+      func open() {
+        let waiting: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        waiting?.resume()
+      }
+    }
+    final class Counts: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var made = 0
+      private var opened = 0
+      var enginesMade: Int { mutex.withLock { made } }
+      var sessionsOpened: Int { mutex.withLock { opened } }
+      func recordEngine() -> Int { mutex.withLock { made += 1; return made } }
+      func recordOpen() { mutex.withLock { opened += 1 } }
+    }
+
+    let stuck = Gate()
+    let counts = Counts()
+
+    /// First engine hangs in `prepare()`; every later one prepares instantly.
+    final class MaybeStuckEngine: LivePreviewEngine, @unchecked Sendable {
+      let hangs: Bool
+      let counts: Counts
+      let stuck: Gate
+      init(hangs: Bool, counts: Counts, stuck: Gate) {
+        self.hangs = hangs
+        self.counts = counts
+        self.stuck = stuck
+      }
+      func prepare() async throws {
+        if hangs { await stuck.wait() }
+      }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        counts.recordOpen()
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable { var enabled = true }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: {
+              let ordinal = counts.recordEngine()
+              return MaybeStuckEngine(hangs: ordinal == 1, counts: counts, stuck: stuck)
+            }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where counts.enginesMade < 1 { await Task.yield() }
+    #expect(counts.enginesMade == 1, "control: preparation must have started")
+    #expect(counts.sessionsOpened == 0, "control: it must still be stuck in prepare()")
+
+    // Abandon it: the warm-up keeps running because nothing can interrupt it.
+    box.enabled = false
+    coordinator.releaseForDisabledSetting()
+
+    // The next preview must run, with the first warm-up still hung.
+    box.enabled = true
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where counts.sessionsOpened < 1 { await Task.yield() }
+    #expect(
+      counts.sessionsOpened == 1,
+      "the next preview waited on an abandoned warm-up that can never finish")
+
+    // Release the hung warm-up so the test leaves nothing suspended behind it.
+    stuck.open()
   }
 
   /// **Found by enumerating the class, not by review.** Five of this PR's findings

@@ -160,8 +160,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
   private var sessionTask: Task<Void, Never>?
 
-  /// The session task most recently CANCELLED, kept until it has actually
-  /// finished tearing down.
+  /// The POST-OPEN work of the session most recently cancelled, kept until it has
+  /// actually finished tearing down.
   ///
   /// **Cancellation is a request, not a completion, and that is the fourth axis
   /// of this PR's release findings.** Four rounds swept WHICH entry point
@@ -174,7 +174,21 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   ///
   /// `startSession` awaits this before running. The heart still never waits: it
   /// is the NEW preview that waits for the OLD preview, entirely inside the limb.
-  private var drainingSessionTask: Task<Void, Never>?
+  ///
+  /// **Only the post-open work, never the whole session task**, and the
+  /// difference is a wedge. A task cancelled during preparation is suspended on
+  /// `preparationTask.value`, which cancelling does not interrupt — model warm-up
+  /// is an unstructured task by design, so that a later recording can adopt it.
+  /// Draining the whole task would make every future preview wait on a warm-up
+  /// that `releasePreparedEngine` has already invalidated by generation, so a
+  /// slow or hung load would wedge the preview permanently after one
+  /// disable/enable. There is nothing to drain before a session exists: no
+  /// session means no decode to collide with.
+  private var drainingTeardown: Task<Void, Never>?
+
+  /// The live session's own feed-and-teardown task, registered the instant the
+  /// session opens so a cancel always has something precise to drain.
+  private var liveTeardown: Task<Void, Never>?
   /// In-flight preparation, shared by every session that arrives while it runs.
   ///
   /// Preparation is deliberately NOT owned by a session. First use of a language
@@ -264,10 +278,10 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
   private func startSession(generation: UInt64) {
     // Wait for the PREVIOUS session's teardown to finish before this one opens.
-    // See `drainingSessionTask`: a cancelled task still owns its engine and its
+    // See `drainingTeardown`: a cancelled task still owns its engine and its
     // session until it reaches `session.end()`.
-    let predecessor = drainingSessionTask
-    drainingSessionTask = nil
+    let predecessor = drainingTeardown
+    drainingTeardown = nil
     sessionTask = Task { @MainActor [weak self] in
       await predecessor?.value
       // Re-check AFTER the wait: the recording this task was started for may
@@ -287,7 +301,13 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     guard let task = sessionTask else { return }
     sessionTask = nil
     task.cancel()
-    drainingSessionTask = task
+    // The inner task is unstructured, so the outer cancel does not reach it.
+    // Cancel it explicitly and drain THAT — see `drainingTeardown` for why the
+    // whole session task is the wrong unit.
+    guard let live = liveTeardown else { return }
+    liveTeardown = nil
+    live.cancel()
+    drainingTeardown = live
   }
 
   private func runSession(generation: UInt64) async {
@@ -343,7 +363,6 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // Diagnostics: transitions only, never per-update. The pill repaints several
     // times a second and logging each one would bury the log AND charge the main
     // actor for text nobody reads. `updates` is counted here and reported once.
-    var updates = 0
     // `generation` is this recording's identity, allocated by `setRecording` before
     // any of the awaits above. Every asynchronous hand-off is checked against it,
     // because `isRunning` alone cannot tell "this recording" from "a recording".
@@ -378,16 +397,31 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       await Self.log("session refused to start: \(error)")
       return
     }
+    // **Registered with NO await between this and the open.** A cancel landing in
+    // such a gap would leave a live session undrained, and worse, this inner task
+    // does not inherit the outer task's cancellation — so it would happily feed a
+    // session the user had already stopped. The currency check inside is what
+    // makes a late arrival end the session instead of running it.
+    let live = Task { @MainActor [weak self] in
+      var updates = 0
+      if let self, self.isCurrent(generation) {
+        await self.feedLoop(session: session) { updates += 1 }
+      }
+      // Closes the resources THIS session owns, so it cannot reach a newer one.
+      // Runs on every path, including the abandoned one.
+      await session.end()
+      // Reports what the PILL was actually given, so an empty preview is
+      // distinguishable from a preview that ran and heard nothing. Those look
+      // identical on screen and have completely different causes.
+      await Self.log("session ended, feeds=\(updates) shownChars=\(shownChars.peak)")
+    }
+    liveTeardown = live
+
     await Self.log(
       "session started, engine=\(candidate.key.engine) on=\(candidate.key.commitment)")
-
-    await feedLoop(session: session) { updates += 1 }
-    // Closes the resources THIS session owns, so it cannot reach a newer one.
-    await session.end()
-    // Reports what the PILL was actually given, so an empty preview is
-    // distinguishable from a preview that ran and heard nothing. Those look
-    // identical on screen and have completely different causes.
-    await Self.log("session ended, feeds=\(updates) shownChars=\(shownChars.peak)")
+    await live.value
+    // Only clear the slot if it is still ours: a newer session may already own it.
+    if liveTeardown == live { liveTeardown = nil }
   }
 
   /// Whether the recording that started this session is still the current one AND
@@ -478,6 +512,16 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// still full or the observation was simply early. This asserts the property
   /// the fix actually changes.
   package var hasPreparedEngineForTests: Bool { preparedEngine != nil }
+
+  /// Whether a session is open AND its teardown is registered — the precondition
+  /// for the coordinator's drain.
+  ///
+  /// A test seam for the same reason as the one above: a test that waits only for
+  /// "the engine opened a session" can act during the window between
+  /// `openSession` returning and this registration, and would then be asserting a
+  /// guarantee this layer does not make. The adapter's own turnover lock covers
+  /// that window, because it records the handle before releasing.
+  package var hasLiveSessionForTests: Bool { liveTeardown != nil }
 
   private func releasePreparedEngine() {
     // **Bump the generation FIRST.** Clearing the task reference does not cancel
