@@ -462,6 +462,649 @@ struct LivePreviewCoordinatorTests {
     let corrected = WordCorrector().correct("i work at qualtrix today", using: lookups).corrected
     #expect(corrected.contains("Qualtrics"), "got: \(corrected)")
   }
+
+  // MARK: - #2108: the prepared engine is released when preview is disabled
+
+  /// The universal engine holds a loaded WhisperKit model, so the cached-engine
+  /// slot now pins roughly 50-60 MB. It is otherwise cleared only when the
+  /// candidate KEY changes, and turning the preview off changes no key — so an
+  /// engine prepared before the user disabled it stayed cached for the life of
+  /// the process. Cloud review caught it on #2113.
+  ///
+  /// Asserts the SLOT, not a weak reference to the engine. An earlier version did
+  /// the latter and failed three times for three different reasons — the
+  /// preparation task, then the draining session task, each holding the engine as
+  /// a local. A weak-reference assertion cannot distinguish "the slot is still
+  /// full" from "the observation was early", which makes it the wrong instrument
+  /// for the property this fix changes.
+  /// **The axis my own enumeration missed.**
+  ///
+  /// I swept WHICH entry points release the engine and closed all of them, but
+  /// not WHEN — specifically, releasing while a recording is still running.
+  /// Switching the preview off mid-dictation cleared the cache and left the
+  /// session alive: still holding the model, still decoding, and still able to
+  /// repaint over `.off` through a later `onText`. The worst version of the leak,
+  /// because it is the visible one. Cloud review found the axis.
+  @Test("disabling MID-RECORDING tears down the live session, not just the cache")
+  func disablingMidRecordingTearsDownTheSession() async {
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable { var enabled = true }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { ReadyEngine() }))
+      }
+    )
+
+    // Start and leave the recording RUNNING — this is the whole point.
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: an engine must be cached while the recording runs")
+    #expect(coordinator.display != .off, "control: a live recording is not off")
+
+    // The user turns the preview off WITHOUT stopping the recording.
+    box.enabled = false
+    coordinator.releaseForDisabledSetting()
+
+    #expect(!coordinator.hasPreparedEngineForTests, "the cached engine must go")
+    #expect(coordinator.display == .off, "and the pill must be off")
+
+    // And it must STAY off: a session left running could repaint after the
+    // disable. Stopping afterwards must also be safe rather than double-tearing.
+    for _ in 0..<200 { await Task.yield() }
+    #expect(coordinator.display == .off, "a torn-down session cannot repaint over off")
+    coordinator.setRecording(false)
+    #expect(coordinator.display == .off)
+  }
+
+  /// **The fourth axis, found by Codex validating my own enumeration rather than
+  /// by another review round.** Three rounds swept WHICH entry point releases and
+  /// WHEN it fires. All of them CANCELLED the session task and moved on — and a
+  /// cancelled task still owns its engine and its session until it reaches
+  /// `session.end()`. So the next recording could open a second session over the
+  /// same cached WhisperKit instance while the previous one was still inside its
+  /// final decode: the exact corruption the turnover lock and the joinable
+  /// `end()` exist to prevent, reached from a layer above both.
+  ///
+  /// Mutation control: drop `drainingTeardown` and the second session opens
+  /// immediately, so the mid-test assertion goes red.
+  @Test("a new preview waits for the previous one to finish tearing down")
+  func newSessionWaitsForThePreviousTeardown() async {
+    /// Blocks `end()` until the test opens it. A continuation rather than a
+    /// polled flag: `end()` runs inside a CANCELLED task, where `Task.sleep` and
+    /// `Task.yield` both return immediately, so a poll would spin the main actor
+    /// instead of waiting on it.
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      func wait() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let alreadyOpen: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if alreadyOpen { c.resume() }
+        }
+      }
+      func open() {
+        let waiting: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        waiting?.resume()
+      }
+    }
+    final class Opens: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = 0
+      var count: Int { mutex.withLock { value } }
+      func record() { mutex.withLock { value += 1 } }
+    }
+
+    let gate = Gate()
+    let opens = Opens()
+    final class GatedEngine: LivePreviewEngine, @unchecked Sendable {
+      let gate: Gate
+      let opens: Opens
+      init(gate: Gate, opens: Opens) {
+        self.gate = gate
+        self.opens = opens
+      }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        opens.record()
+        struct Gated: LivePreviewEngineSession {
+          let gate: Gate
+          func feed(_ samples: [Float]) async {}
+          func end() async { await gate.wait() }
+        }
+        return Gated(gate: gate)
+      }
+    }
+    final class Box: @unchecked Sendable { var enabled = true }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { GatedEngine(gate: gate, opens: opens) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    // Wait for the session to be REGISTERED, not merely opened. The full suite
+    // caught the difference: waiting on `opens` alone can act inside the window
+    // between `openSession` returning and the coordinator registering its
+    // teardown, and this layer makes no promise there — the adapter's turnover
+    // lock is what covers that window, because it records its handle before it
+    // releases. Isolated runs passed; the loaded run did not.
+    for _ in 0..<2000 where !coordinator.hasLiveSessionForTests { await Task.yield() }
+    #expect(opens.count == 1, "control: the first session must have opened")
+    #expect(
+      coordinator.hasLiveSessionForTests,
+      "control: the coordinator must have registered that session's teardown")
+
+    // Turn the preview off mid-recording. The session task is cancelled and is
+    // now sitting inside `end()`, still holding the engine.
+    box.enabled = false
+    coordinator.releaseForDisabledSetting()
+
+    // Turn it back on and start another recording immediately.
+    box.enabled = true
+    coordinator.setRecording(true)
+    for _ in 0..<200 { await Task.yield() }
+    #expect(
+      opens.count == 1,
+      "a second session opened while the first was still tearing down")
+
+    // Once teardown completes, the new session must actually open — otherwise
+    // this test would pass just as well against a preview that never runs again.
+    gate.open()
+    for _ in 0..<2000 where opens.count < 2 { await Task.yield() }
+    #expect(opens.count == 2, "the new session must open once the old one has drained")
+  }
+
+  /// The confirming round's own finding: a drain that waits for the WRONG unit
+  /// wedges the feature it was added to protect.
+  ///
+  /// Model warm-up is an unstructured task on purpose, so a later recording can
+  /// adopt it — which means cancelling the session task does NOT interrupt a
+  /// preview suspended inside preparation. Draining the whole session task made
+  /// every later preview wait on a warm-up that `releasePreparedEngine` had
+  /// already invalidated by generation, so one disable/enable over a slow or hung
+  /// load would stop previews for the rest of the process.
+  ///
+  /// Nothing needs draining before a session exists: no session, no decode to
+  /// collide with. Mutation control: drain the whole session task instead of the
+  /// post-open work and this test hangs at the second wait, then fails.
+  @Test("a preview abandoned during preparation does not block the next one")
+  func abandonedPreparationDoesNotBlockTheNextPreview() async {
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      func wait() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let alreadyOpen: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if alreadyOpen { c.resume() }
+        }
+      }
+      func open() {
+        let waiting: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        waiting?.resume()
+      }
+    }
+    final class Counts: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var made = 0
+      private var opened = 0
+      var enginesMade: Int { mutex.withLock { made } }
+      var sessionsOpened: Int { mutex.withLock { opened } }
+      func recordEngine() -> Int { mutex.withLock { made += 1; return made } }
+      func recordOpen() { mutex.withLock { opened += 1 } }
+    }
+
+    let stuck = Gate()
+    let counts = Counts()
+
+    /// First engine hangs in `prepare()`; every later one prepares instantly.
+    final class MaybeStuckEngine: LivePreviewEngine, @unchecked Sendable {
+      let hangs: Bool
+      let counts: Counts
+      let stuck: Gate
+      init(hangs: Bool, counts: Counts, stuck: Gate) {
+        self.hangs = hangs
+        self.counts = counts
+        self.stuck = stuck
+      }
+      func prepare() async throws {
+        if hangs { await stuck.wait() }
+      }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        counts.recordOpen()
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable { var enabled = true }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: {
+              let ordinal = counts.recordEngine()
+              return MaybeStuckEngine(hangs: ordinal == 1, counts: counts, stuck: stuck)
+            }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where counts.enginesMade < 1 { await Task.yield() }
+    #expect(counts.enginesMade == 1, "control: preparation must have started")
+    #expect(counts.sessionsOpened == 0, "control: it must still be stuck in prepare()")
+
+    // Abandon it: the warm-up keeps running because nothing can interrupt it.
+    box.enabled = false
+    coordinator.releaseForDisabledSetting()
+
+    // The next preview must run, with the first warm-up still hung.
+    box.enabled = true
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where counts.sessionsOpened < 1 { await Task.yield() }
+    #expect(
+      counts.sessionsOpened == 1,
+      "the next preview waited on an abandoned warm-up that can never finish")
+
+    // Release the hung warm-up so the test leaves nothing suspended behind it.
+    stuck.open()
+  }
+
+  /// A session opened for a recording that is already over must not take the
+  /// live registration away from the one that IS current.
+  ///
+  /// The window: disabling the preview while `openSession` is suspended releases
+  /// the prepared engine, so the replacement preview builds a DIFFERENT
+  /// recognizer with its own turnover lock — the adapter cannot close this from
+  /// below. If the stale session registered anyway, finishing would clear the
+  /// slot, leaving the current preview unregistered: a later stop could not
+  /// cancel its feed loop, and it would keep decoding across later recordings.
+  ///
+  /// Mutation control: drop the `isCurrent` guard on the registration and the
+  /// final assertion goes red, because the stale completion clears the slot.
+  @Test("a session opened for an abandoned recording does not steal the registration")
+  func staleSessionDoesNotStealTheRegistration() async {
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      func wait() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let alreadyOpen: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if alreadyOpen { c.resume() }
+        }
+      }
+      func open() {
+        let waiting: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        waiting?.resume()
+      }
+    }
+    final class Counts: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var made = 0
+      private var entered = 0
+      var enginesMade: Int { mutex.withLock { made } }
+      var opensEntered: Int { mutex.withLock { entered } }
+      func recordEngine() -> Int { mutex.withLock { made += 1; return made } }
+      func enterOpen() { mutex.withLock { entered += 1 } }
+    }
+
+    let slowOpen = Gate()
+    let counts = Counts()
+
+    /// The first engine hangs INSIDE `openSession`; later ones open instantly.
+    final class MaybeSlowEngine: LivePreviewEngine, @unchecked Sendable {
+      let hangs: Bool
+      let counts: Counts
+      let slowOpen: Gate
+      init(hangs: Bool, counts: Counts, slowOpen: Gate) {
+        self.hangs = hangs
+        self.counts = counts
+        self.slowOpen = slowOpen
+      }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        counts.enterOpen()
+        if hangs { await slowOpen.wait() }
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable { var enabled = true }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: {
+              let ordinal = counts.recordEngine()
+              return MaybeSlowEngine(hangs: ordinal == 1, counts: counts, slowOpen: slowOpen)
+            }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where counts.opensEntered < 1 { await Task.yield() }
+    #expect(counts.opensEntered == 1, "control: the first open must be in flight")
+    #expect(
+      !coordinator.hasLiveSessionForTests,
+      "control: nothing can be registered while the open is still suspended")
+
+    // Abandon it mid-open, then run a second preview to completion of its open.
+    box.enabled = false
+    coordinator.releaseForDisabledSetting()
+    box.enabled = true
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasLiveSessionForTests { await Task.yield() }
+    #expect(
+      coordinator.hasLiveSessionForTests,
+      "control: the current preview must be registered before the stale one lands")
+
+    // Now let the abandoned open finish. It must end its own session and leave
+    // the current registration alone.
+    slowOpen.open()
+    for _ in 0..<2000 { await Task.yield() }
+    #expect(
+      coordinator.hasLiveSessionForTests,
+      "a stale session replaced the live registration, leaving the current preview uncancellable")
+  }
+
+  /// **Found by enumerating the class, not by review.** Five of this PR's findings
+  /// were "the bound is downstream of the growth" and three were "the release
+  /// misses a path", so the remaining release paths were swept exhaustively
+  /// rather than waiting for the next round.
+  ///
+  /// This is the path nobody had reached: use the preview once, then turn live
+  /// transcription on. Every later recording resolves to `.blocked`, correctly —
+  /// and the prepared engine, holding a loaded 217 MB model it can no longer use,
+  /// stayed cached for the rest of the session. Invisible on Apple's engine,
+  /// which holds a locale.
+  @Test("a blocked resolution releases the engine instead of caching a model it cannot use")
+  func blockedResolutionReleasesTheEngine() async {
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable { var blocked = false }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { true },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        if box.blocked { return .blocked(.heartIsStreaming) }
+        return .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { ReadyEngine() }))
+      }
+    )
+
+    // Use it once so an engine is genuinely cached.
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    coordinator.setRecording(false)
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: the slot must be FULL before a blocked resolution can release anything")
+
+    // The user turns live transcription on. The preview is still ENABLED — this
+    // is not the disabled path — it simply cannot run.
+    box.blocked = true
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where coordinator.hasPreparedEngineForTests { await Task.yield() }
+    coordinator.setRecording(false)
+
+    #expect(
+      !coordinator.hasPreparedEngineForTests,
+      "a preview that cannot run must not keep a loaded model cached")
+  }
+
+  /// The COMMON order, and the one the first fix missed: finish a recording, turn
+  /// the preview off, never record again. The release inside `setRecording(true)`
+  /// is never reached, so the model stayed resident indefinitely. Cloud review
+  /// caught it after the first fix passed a round.
+  @Test("turning the setting off releases the engine without needing another recording")
+  func disablingTheSettingReleasesWithoutAnotherRecording() async {
+    final class ReleasableEngine: LivePreviewEngine, @unchecked Sendable {
+      let onPrepared: @Sendable () -> Void
+      init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
+      func prepare() async throws { onPrepared() }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable {
+      var enabled = true
+      var prepared = false
+    }
+    let box = Box()
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { ReleasableEngine(onPrepared: { box.prepared = true }) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !box.prepared { await Task.yield() }
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    coordinator.setRecording(false)
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: the slot must be FULL, and must SURVIVE a normal stop")
+
+    // The user turns it off. No further recording happens — this is the whole
+    // point of the test.
+    box.enabled = false
+    coordinator.releaseForDisabledSetting()
+
+    #expect(
+      !coordinator.hasPreparedEngineForTests,
+      "the setting transition alone must release the engine")
+  }
+
+  /// The guard on that entry point matters: a spurious call while the preview is
+  /// still ENABLED must not throw away a prepared engine and make the next
+  /// recording pay preparation again.
+  @Test("the setting-change release is a no-op while the preview is still enabled")
+  func settingChangeReleaseIsANoOpWhileEnabled() async {
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      let onPrepared: @Sendable () -> Void
+      init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
+      func prepare() async throws { onPrepared() }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable { var prepared = false }
+    let box = Box()
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { true },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { ReadyEngine(onPrepared: { box.prepared = true }) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    coordinator.setRecording(false)
+    #expect(coordinator.hasPreparedEngineForTests, "control: the slot must be full")
+
+    coordinator.releaseForDisabledSetting()
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "an enabled preview must keep its engine — otherwise every settings change costs a reload")
+  }
+
+  @Test("disabling the preview releases the prepared engine, not just the display")
+  func disablingReleasesThePreparedEngine() async {
+    final class ReleasableEngine: LivePreviewEngine, @unchecked Sendable {
+      let onPrepared: @Sendable () -> Void
+      init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
+      func prepare() async throws { onPrepared() }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    // Boxed because Swift 6 forbids mutating a captured var from a concurrently
+    // executing closure.
+    final class Box: @unchecked Sendable {
+      var enabled = true
+      var prepared = false
+    }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: { ReleasableEngine(onPrepared: { box.prepared = true }) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    // Signal, not a clock: wait for preparation to COMPLETE. The slot is only
+    // filled after that, so asserting earlier would test nothing.
+    for _ in 0..<2000 where !box.prepared { await Task.yield() }
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    #expect(box.prepared, "control: preparation must have completed")
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: the slot must be FULL before a release can mean anything")
+    coordinator.setRecording(false)
+
+    // The user turns the preview off and presses record again.
+    box.enabled = false
+    coordinator.setRecording(true)
+
+    #expect(coordinator.display == .off)
+    #expect(
+      !coordinator.hasPreparedEngineForTests,
+      "a disabled preview must not keep an engine — and with it a loaded model — cached")
+  }
+
 }
 
 /// #2077 — what the coordinator actually did to whatever engine it was given.

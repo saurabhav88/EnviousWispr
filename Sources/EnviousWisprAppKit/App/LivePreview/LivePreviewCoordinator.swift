@@ -159,6 +159,36 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   package var hasCorrectorLookupsForTesting: Bool { correctorLookups != nil }
 
   private var sessionTask: Task<Void, Never>?
+
+  /// The POST-OPEN work of the session most recently cancelled, kept until it has
+  /// actually finished tearing down.
+  ///
+  /// **Cancellation is a request, not a completion, and that is the fourth axis
+  /// of this PR's release findings.** Four rounds swept WHICH entry point
+  /// releases and WHEN it fires; all four cancelled `sessionTask` and moved on.
+  /// A cancelled task still holds its engine and its session as locals until it
+  /// reaches `session.end()`, so the next recording could open a second session
+  /// over the same cached WhisperKit instance while the previous one was still
+  /// inside its final decode — the very thing `PreviewSessionTurnover` and the
+  /// joinable `end()` exist to prevent, reached from above them.
+  ///
+  /// `startSession` awaits this before running. The heart still never waits: it
+  /// is the NEW preview that waits for the OLD preview, entirely inside the limb.
+  ///
+  /// **Only the post-open work, never the whole session task**, and the
+  /// difference is a wedge. A task cancelled during preparation is suspended on
+  /// `preparationTask.value`, which cancelling does not interrupt — model warm-up
+  /// is an unstructured task by design, so that a later recording can adopt it.
+  /// Draining the whole task would make every future preview wait on a warm-up
+  /// that `releasePreparedEngine` has already invalidated by generation, so a
+  /// slow or hung load would wedge the preview permanently after one
+  /// disable/enable. There is nothing to drain before a session exists: no
+  /// session means no decode to collide with.
+  private var drainingTeardown: Task<Void, Never>?
+
+  /// The live session's own feed-and-teardown task, registered the instant the
+  /// session opens so a cancel always has something precise to drain.
+  private var liveTeardown: Task<Void, Never>?
   /// In-flight preparation, shared by every session that arrives while it runs.
   ///
   /// Preparation is deliberately NOT owned by a session. First use of a language
@@ -201,6 +231,22 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       guard !isRunning else { return }
       guard isEnabled() else {
         display = .off
+        // **Release the prepared engine too, not just the display (#2108).**
+        //
+        // This slot is deliberately kept across recordings so a second press does
+        // not pay preparation again, and it is otherwise cleared only when the
+        // candidate KEY changes. Turning the preview off changes no key, so an
+        // engine prepared before the user disabled it stayed resident for the
+        // life of the process. That cost nothing while Apple's engine was the
+        // only one — it holds a locale — but the universal engine holds a loaded
+        // WhisperKit model, so the same slot now pins roughly 50-60 MB for a
+        // feature the user has switched off. Cloud review caught it.
+        //
+        // Dropping the reference is the whole release: the engine owns its
+        // runtime, which owns the model, so ARC unloads the chain. Clearing the
+        // key with it means the next enable rebuilds rather than resurrecting a
+        // half-released engine.
+        releasePreparedEngine()
         return
       }
       isRunning = true
@@ -215,9 +261,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     } else {
       guard isRunning else { return }
       isRunning = false
-      let task = sessionTask
-      sessionTask = nil
-      task?.cancel()
+      cancelSessionTask()
       // **Dropped, not merely hidden.** This used to keep the last text on the
       // grounds that nothing renders it after a recording ends, which was true and
       // is not the point: the settings copy now tells the user the preview "is
@@ -233,10 +277,37 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   }
 
   private func startSession(generation: UInt64) {
+    // Wait for the PREVIOUS session's teardown to finish before this one opens.
+    // See `drainingTeardown`: a cancelled task still owns its engine and its
+    // session until it reaches `session.end()`.
+    let predecessor = drainingTeardown
+    drainingTeardown = nil
     sessionTask = Task { @MainActor [weak self] in
-      guard let self else { return }
+      await predecessor?.value
+      // Re-check AFTER the wait: the recording this task was started for may
+      // already be over, and opening a session for it then would be the stale
+      // repaint `generation` exists to stop.
+      guard let self, self.isCurrent(generation) else { return }
       await self.runSession(generation: generation)
     }
+  }
+
+  /// Cancel the live session task and REMEMBER it until it has drained.
+  ///
+  /// The `guard` is what keeps a single slot sufficient: a second cancel needs a
+  /// `sessionTask`, and only `startSession` creates one — and that consumes the
+  /// pending drain first. So two cancels can never race for this slot.
+  private func cancelSessionTask() {
+    guard let task = sessionTask else { return }
+    sessionTask = nil
+    task.cancel()
+    // The inner task is unstructured, so the outer cancel does not reach it.
+    // Cancel it explicitly and drain THAT — see `drainingTeardown` for why the
+    // whole session task is the wrong unit.
+    guard let live = liveTeardown else { return }
+    liveTeardown = nil
+    live.cancel()
+    drainingTeardown = live
   }
 
   private func runSession(generation: UInt64) async {
@@ -250,6 +321,23 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     guard case .ready(let candidate) = resolution else {
       if case .blocked(let reason) = resolution {
         display = .unavailable(Self.sentence(for: reason))
+        // **A blocked engine must not stay cached (#2108).**
+        //
+        // Found by enumerating the class rather than by review: five of this
+        // PR's findings were "the bound is downstream of the growth" and three
+        // were "the release misses a path", so the remaining paths were swept
+        // exhaustively instead of waiting for the next round to surface one.
+        //
+        // Every refusal reason can persist for the rest of a session — the user
+        // turns live transcription on, or locks a language the model does not
+        // cover, or removes the model. The prepared engine holds a loaded 217 MB
+        // model that cannot serve ANY recording while the reason holds, so
+        // keeping it is a pure cost. Re-preparing when the block clears costs one
+        // model load, which is what the first preparation cost anyway.
+        //
+        // Apple's engine made this invisible: a blocked Apple engine holds a
+        // locale.
+        releasePreparedEngine()
       }
       return
     }
@@ -275,7 +363,6 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // Diagnostics: transitions only, never per-update. The pill repaints several
     // times a second and logging each one would bury the log AND charge the main
     // actor for text nobody reads. `updates` is counted here and reported once.
-    var updates = 0
     // `generation` is this recording's identity, allocated by `setRecording` before
     // any of the awaits above. Every asynchronous hand-off is checked against it,
     // because `isRunning` alone cannot tell "this recording" from "a recording".
@@ -310,16 +397,39 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       await Self.log("session refused to start: \(error)")
       return
     }
+    // **Registered with NO await between this and the open.** A cancel landing in
+    // such a gap would leave a live session undrained, and worse, this inner task
+    // does not inherit the outer task's cancellation — so it would happily feed a
+    // session the user had already stopped. The currency check inside is what
+    // makes a late arrival end the session instead of running it.
+    let live = Task { @MainActor [weak self] in
+      var updates = 0
+      if let self, self.isCurrent(generation) {
+        await self.feedLoop(session: session) { updates += 1 }
+      }
+      // Closes the resources THIS session owns, so it cannot reach a newer one.
+      // Runs on every path, including the abandoned one.
+      await session.end()
+      // Reports what the PILL was actually given, so an empty preview is
+      // distinguishable from a preview that ran and heard nothing. Those look
+      // identical on screen and have completely different causes.
+      await Self.log("session ended, feeds=\(updates) shownChars=\(shownChars.peak)")
+    }
+    // **Register ONLY while this recording is still the current one.** A session
+    // opened for an ABANDONED recording must never replace the live
+    // registration: on completion it clears the slot, and the CURRENT preview is
+    // then unregistered — so a later stop cannot cancel its feed loop and it
+    // decodes on across recordings. The window is real because disabling the
+    // preview releases the prepared engine, so the replacement gets a different
+    // recognizer with its own turnover lock; the adapter cannot close it from
+    // below. The task above still ends its session on this path.
+    if isCurrent(generation) { liveTeardown = live }
+
     await Self.log(
       "session started, engine=\(candidate.key.engine) on=\(candidate.key.commitment)")
-
-    await feedLoop(session: session) { updates += 1 }
-    // Closes the resources THIS session owns, so it cannot reach a newer one.
-    await session.end()
-    // Reports what the PILL was actually given, so an empty preview is
-    // distinguishable from a preview that ran and heard nothing. Those look
-    // identical on screen and have completely different causes.
-    await Self.log("session ended, feeds=\(updates) shownChars=\(shownChars.peak)")
+    await live.value
+    // Only clear the slot if it is still ours: a newer session may already own it.
+    if liveTeardown == live { liveTeardown = nil }
   }
 
   /// Whether the recording that started this session is still the current one AND
@@ -356,7 +466,83 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     case .unsupportedLanguage: return LivePreviewCopy.languageUnsupported
     case .installRequired(let languageName):
       return LivePreviewSettingsCopy.previewNeedsLanguagePack(languageName)
+    case .modelNotInstalled: return LivePreviewCopy.previewModelNotInstalled
+    case .heartIsStreaming: return LivePreviewCopy.heartIsStreaming
     }
+  }
+
+  /// Release the cached engine because the SETTING changed, not because a
+  /// recording started.
+  ///
+  /// The release inside `setRecording(true)` only fires on the next recording. A
+  /// user who finishes a recording and then turns the preview off without
+  /// recording again never reaches it, so the model stayed resident indefinitely
+  /// — the exact leak the release was added to fix, in the commoner order of
+  /// events. Cloud review caught it after the first fix.
+  ///
+  /// Wired from `PipelineSettingsSync`'s `livePreviewEnabled` case, which is the
+  /// one place that learns a setting moved.
+  func releaseForDisabledSetting() {
+    guard !isEnabled() else { return }
+    // **Tear down the ACTIVE session first, not just the cached slot.**
+    //
+    // Switching the preview off mid-recording used to clear only the cache:
+    // `runSession` still held the engine and session as locals, `sessionTask`
+    // kept feeding audio, and a later `onText` could repaint over `.off`. So the
+    // model stayed loaded AND DECODING until the recording ended, for a feature
+    // the user had just turned off — the worst version of this leak, because it
+    // is also the visible one.
+    //
+    // Mirrors the stop path exactly rather than approximating it: same order,
+    // same fields. Half-porting a teardown is what produced three separate
+    // release findings on this PR already.
+    if isRunning {
+      isRunning = false
+      cancelSessionTask()
+    }
+    releasePreparedEngine()
+    display = .off
+  }
+
+  /// Drop the prepared engine and everything it holds.
+  ///
+  /// Separate from the key-change path because the two have different triggers
+  /// and the same remedy: a key change means "prepare a different engine", this
+  /// means "prepare none". Both must clear the key, or a later enable would find
+  /// a matching key with no engine behind it.
+  /// Whether an engine is currently cached in the slot above.
+  ///
+  /// A test seam, `package` rather than `internal` so the test module reaches it
+  /// on a plain import. It exists because the alternative — observing a weak
+  /// reference to the engine — measures the whole retention graph: an in-flight
+  /// preparation task and a draining session task each hold the engine as a
+  /// local, so a weak-reference assertion fails identically whether the slot is
+  /// still full or the observation was simply early. This asserts the property
+  /// the fix actually changes.
+  package var hasPreparedEngineForTests: Bool { preparedEngine != nil }
+
+  /// Whether a session is open AND its teardown is registered — the precondition
+  /// for the coordinator's drain.
+  ///
+  /// A test seam for the same reason as the one above: a test that waits only for
+  /// "the engine opened a session" can act during the window between
+  /// `openSession` returning and this registration, and would then be asserting a
+  /// guarantee this layer does not make. The adapter's own turnover lock covers
+  /// that window, because it records the handle before releasing.
+  package var hasLiveSessionForTests: Bool { liveTeardown != nil }
+
+  private func releasePreparedEngine() {
+    // **Bump the generation FIRST.** Clearing the task reference does not cancel
+    // the task: a `prepare()` still suspended when the user disables the preview
+    // resumes, sees an unchanged `preparationGeneration`, and writes its engine
+    // back into `preparedEngine` — so the model becomes resident again AFTER this
+    // method returns, which is the exact bug this method exists to fix. The
+    // generation is the publish guard those completions check, so raising it is
+    // what actually invalidates them. Cloud review caught this in the first fix.
+    preparationGeneration &+= 1
+    preparationTask = nil
+    preparedEngine = nil
+    preparedKey = nil
   }
 
   /// One log seam so every preview line carries the same category and the whole
@@ -502,4 +688,13 @@ enum LivePreviewCopy {
   static let preparing = "Getting the preview ready..."
   /// Shown in the pill while the preview is running but has not heard words yet.
   static let listening = "Listening..."
+  /// #2108. The universal preview model has not been downloaded. Names the
+  /// action rather than the fault: nothing is broken, the user has simply not
+  /// chosen to download it yet.
+  static let previewModelNotInstalled =
+    "Download the preview model in Settings to see words appear."
+  /// #2108 Gate C. Live transcription already decodes continuously while you
+  /// speak, and a second decoder would slow it by half (measured). Says what is
+  /// happening rather than naming a setting the reader has to go and find.
+  static let heartIsStreaming = "On-screen preview pauses while live transcription is on."
 }

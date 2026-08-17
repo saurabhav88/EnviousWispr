@@ -995,7 +995,7 @@ import Testing
     // `ASRProtocol.swift`'s existing `prepare()` forward.
     CallSite(
       file: "Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift", matcher: "transcribe",
-      text: "try await self.transcribe(", classification: .transitivelyCoveredByCaller),
+      text: "return try await self.transcribe(", classification: .transitivelyCoveredByCaller),
 
     // MARK: WhisperKitStreamingSession — the concrete incremental-decode
     // session vended by `WhisperKitBackend.makeStreamingSession()`. All three
@@ -1012,8 +1012,7 @@ import Testing
       )),
     CallSite(
       file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
-      text:
-        "let results = try await whisperKit.transcribe(audioArray: paddedSamples, decodeOptions: opts)",
+      text: "let results = try await whisperKit.transcribe(",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -1021,8 +1020,7 @@ import Testing
       )),
     CallSite(
       file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
-      text:
-        "let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: opts)",
+      text: "let results = try await whisperKit.transcribe(",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -1129,16 +1127,15 @@ import Testing
     // `WhisperKitBackend`'s existing test-seam entry.
     CallSite(
       file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
-      text:
-        "let results = try await model.kit.transcribe(audioArray: decodeInput, decodeOptions: opts)",
+      text: "let results = try await model.kit.transcribe(",
       classification: .dormant),
     CallSite(
       file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
-      text: "let results = try await model.kit.transcribe(audioArray: padded, decodeOptions: opts)",
+      text: "let results = try await model.kit.transcribe(",
       classification: .dormant),
     CallSite(
       file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
-      text: "let results = try await model.kit.transcribe(audioArray: padded, decodeOptions: opts)",
+      text: "let results = try await model.kit.transcribe(",
       classification: .dormant),
     CallSite(
       file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "finalize",
@@ -1986,10 +1983,11 @@ import Testing
   func knownGapAppliesOnlyToTheConfirmedUnsafeSites() {
     // Ground truth extracted directly from a failing run of this test with an
     // empty expectation (measure-with-the-real-tool, not hand-transcription) —
-    // 17 distinct sites; 18 total `knownGap` entries above because
-    // `ParakeetEngineAdapter.swift`'s two identical-text `transcribe(` sites
-    // collapse to one `SiteKey`, preserving multiplicity only in Test 1's own
-    // multiset check, not in this Set-based one.
+    // 15 distinct sites; 18 total `knownGap` entries above, because identical
+    // TEXT collapses to one `SiteKey`: `ParakeetEngineAdapter.swift`'s two
+    // `transcribe(` sites, and `WhisperKitStreamingSession.swift`'s three, which
+    // all wrapped onto their own line when #2108 added the abort argument.
+    // Multiplicity survives only in Test 1's own multiset check, not here.
     let expectedGapKeys: Set<SiteKey> = [
       // #1745
       SiteKey(
@@ -2030,16 +2028,6 @@ import Testing
       SiteKey(
         file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
         text: "let results = try await whisperKit.transcribe("),
-      SiteKey(
-        file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
-        text:
-          "let results = try await whisperKit.transcribe(audioArray: paddedSamples, decodeOptions: opts)"
-      ),
-      SiteKey(
-        file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
-        text:
-          "let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: opts)"
-      ),
       SiteKey(
         file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
         text: "let result = try await backend.transcribe("),

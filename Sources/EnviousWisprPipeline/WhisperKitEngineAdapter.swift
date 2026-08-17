@@ -468,7 +468,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // Cancel + drop any orphan streaming session from a prior session that was
     // superseded before finalize/cancel cleared the handle (mirrors PR-1's old
     // orphan-worker cancel). AWAITED, not detached (Codex r2 P1): the orphan's
-    // in-flight decode is not cooperatively cancellable, and vending a new
+    // in-flight decode stops early but still returns on its own schedule
+    // (#2108: WhisperKit polls a per-token callback, not task cancellation),
+    // and vending a new
     // streaming session before it fully exits would put two concurrent
     // transcribes on the same WhisperKit instance. `cancel()` returns only
     // after the orphan's loop has exited, bounded by that single decode.

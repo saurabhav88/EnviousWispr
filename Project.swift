@@ -378,6 +378,36 @@ let project = Project(
         .target(name: "EnviousWisprPostProcessing"),
       ]),
 
+    // #2108 (epic #2077 chunk 4). The Live Preview engine backed by the
+    // downloadable universal model. Its dependency list is the point: it needs
+    // ASR, which is exactly why it cannot live in
+    // EnviousWisprLivePreview above — and it must NOT gain Audio, Pipeline,
+    // Services or AppKit. Added explicitly to AppKit and the test bundle rather
+    // than to `firstPartyTargetDeps`, for the same reason LivePreview is.
+    firstPartyLibrary(
+      "EnviousWisprWhisperPreviewAdapter",
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprPostProcessing"),
+        .target(name: "EnviousWisprLivePreview"),
+        .target(name: "EnviousWisprASR"),
+        // NO `.target(name: "EnviousWisprModelDelivery")`. The limb receives
+        // resolved paths and an admission ANSWER as values; giving it the
+        // delivery module would let a future edit import a fetch-capable API
+        // here with no check failing (cloud review r8).
+        // FluidAudio, declared even though this module never references it.
+        // Xcode does not propagate package products transitively (same reason
+        // AppKit declares WhisperKit/FluidAudio/Sparkle directly), and linking
+        // EnviousWisprASR pulls FluidAudio's C wrapper targets —
+        // `FastClusterWrapper` and `MachTaskSelfWrapper` — which fail to resolve
+        // without this. SwiftPM needs no such edge; only the Xcode graph does.
+        .package(product: "FluidAudio"),
+        // NO `.package(product: "WhisperKit")`. Every WhisperKit type stays
+        // behind `WhisperPreviewRuntime` in ASR, and removing this edge was
+        // verified not to be the cause of the wrapper-module failure above.
+        // Matches Package.swift, which does not list it either.
+      ]),
+
     // #919: app-shell library (homes + views + composition root + the
     // WisprBootstrapper front door). The unit-test target links THIS, so
     // `xcodebuild test` never launches the app. WhisperKit/FluidAudio/Sparkle
@@ -387,6 +417,7 @@ let project = Project(
       dependencies: firstPartyTargetDeps + [
         .target(name: "EnviousWisprContacts"),
         .target(name: "EnviousWisprLivePreview"),
+        .target(name: "EnviousWisprWhisperPreviewAdapter"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
         .package(product: "Sparkle"),
@@ -452,6 +483,15 @@ let project = Project(
         // downstream module resolves via an injected resourceURL, not
         // Bundle.module). EnviousWisprASR stays hasResources:false.
         .folderReference(path: "Sources/EnviousWisprASR/Resources/WhisperTokenizer"),
+        // #2108: the Live Preview model's OWN tokenizer, at a hub-structured
+        // path so WhisperKit resolves it by variant. It cannot share the folder
+        // above: that one has a top-level tokenizer.json, which WhisperKit
+        // matches variant-agnostically, so passing it for the small model loads
+        // the LARGE-V3 vocabulary silently (measured: noSpeechToken 50363
+        // instead of 50257, no error, fluent wrong output). ASR resources are
+        // not otherwise embedded, so without this line the artifact ships in no
+        // build and every on-disk test still passes.
+        .folderReference(path: "Sources/EnviousWisprASR/Resources/WhisperPreviewTokenizer"),
         // #1271: EG-1 native polish — the model manifest and the bundled
         // llama-server inference binary ride the APP target (Bundle.main,
         // Contents/Resources), same route as the classifier above. The
@@ -520,6 +560,9 @@ let project = Project(
         .target(name: "EnviousWisprAppKit"),
         .target(name: "EnviousWisprContacts"),
         .target(name: "EnviousWisprLivePreview"),
+        // #2108: the preview-engine tests import the adapter directly. Xcode
+        // test targets need every direct import as a declared edge (#1174).
+        .target(name: "EnviousWisprWhisperPreviewAdapter"),
         // HelperObservabilityConfigTests imports the module directly; Xcode test
         // targets need every direct import as a declared edge (#1174).
         .target(name: "EnviousWisprObservabilityCore"),

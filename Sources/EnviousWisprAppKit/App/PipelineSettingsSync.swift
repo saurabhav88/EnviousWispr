@@ -25,6 +25,11 @@ final class PipelineSettingsSync {
   /// home; default no-op keeps legacy/test construction unchanged.
   var onSelectedBackendChanged: () -> Void = {}
 
+  /// #2108: fired when Live Preview is switched OFF, so the limb can release a
+  /// cached engine. Same shape as `onSelectedBackendChanged` above: a closure the
+  /// composition root wires, so this type still learns nothing about the preview.
+  var onLivePreviewDisabled: () -> Void = {}
+
   /// Tracks the last evictable Ollama model for #295. Independent of the
   /// kernel's polish step because SettingsManager's cascading didSet can
   /// corrupt a pre-snapshot read from the polish step.
@@ -231,8 +236,15 @@ final class PipelineSettingsSync {
     case .isDictationAudioArchiveEnabled:
       break  // #1247: kernel pulls this live via `dictationAudioArchiveOptInProvider` — no push needed here.
     case .livePreviewEnabled:
-      break  // #1988: display-only limb, read live by `LivePreviewCoordinator` off the
-    // overlay seam. The pipeline never learns it exists, which is the point.
+      // #1988: display-only limb, read live by `LivePreviewCoordinator` off the
+      // overlay seam. The PIPELINE still never learns it exists, which is the
+      // point — this notifies the limb, not the pipeline.
+      //
+      // #2108: the limb now caches a loaded model, so switching the preview OFF
+      // has to release it. Without this the release only ran at the next
+      // recording start, which a user who simply stops using the feature never
+      // reaches.
+      onLivePreviewDisabled()
     case .appearance:
       break  // UI-only; applied to NSApp.appearance by the app shell (#1047).
     case .overlayPillPosition:

@@ -11,9 +11,10 @@ struct TailBenchmarkHarnessTests {
 
     nonisolated func encodeText(_ text: String) -> [Int] { [101, 202] }
 
-    func transcribe(audioArray: [Float], decodeOptions: DecodingOptions?) async throws
-      -> [TranscriptionResult]
-    {
+    func transcribe(
+      audioArray: [Float], decodeOptions: DecodingOptions?,
+      shouldContinueDecoding: (@Sendable () -> Bool)?
+    ) async throws -> [TranscriptionResult] {
       seenPromptTokens.append(decodeOptions?.promptTokens)
       return []
     }

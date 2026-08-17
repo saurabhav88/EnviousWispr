@@ -1,6 +1,7 @@
 import EnviousWisprCore
 import Foundation
 @preconcurrency import WhisperKit
+import os
 
 // MARK: - WhisperKitStreamingSession (#1276 Step 2, PR-2)
 //
@@ -108,6 +109,20 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   private let baseDecodingOptions: DecodingOptions
   private let cadence: Duration
 
+  /// Set the moment a terminal arrives, and read from INSIDE the decoder's
+  /// per-token callback — which is why it is a lock rather than actor state.
+  ///
+  /// The loop decode already drops its result once `finished` is set, so the
+  /// remainder of an in-flight cycle is pure waste. It was not free waste: it
+  /// runs concurrently with the authoritative decode that begins at that same
+  /// stop, which #2108 Gate C measured at 1.50x on the heart's own decode time.
+  /// This flag turns "the result is discarded" into "the work stops".
+  ///
+  /// Only the LOOP decode is abortable. The finalize tail decode and the
+  /// local-agreement flush produce the text the user gets, so they are never
+  /// handed this.
+  private let loopDecodeAborted = OSAllocatedUnfairLock(initialState: false)
+
   /// Segments held back from confirmation each cycle (the "lag"). WhisperKit's
   /// trailing segments are the least stable; keeping the last N unconfirmed and
   /// re-decoding them next cycle is what makes the confirmed prefix stable.
@@ -162,6 +177,47 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// arm S1's "release-only" material (rulebook §5.0). The segment-lag
   /// finalize ignores it. Empty until the first decode.
   private var retainedUnconfirmedSegments: [BenchmarkSegment] = []
+
+  /// #2108. Optional observer of the DISPLAY text after each successful
+  /// confirmation, for the Live Preview limb. Nil on the heart path, which is
+  /// every production construction that existed before this — so the heart's
+  /// behaviour is not merely unchanged, it is unreachable from here.
+  ///
+  /// **Display text, not the confirmed prefix.** Gate A measured the
+  /// confirmed-prefix-only alternative and it is not a preview: after 11 seconds
+  /// of speech it held two words, because `requiredSegmentsForConfirmation`
+  /// always withholds the last two segments and a short dictation has two or
+  /// three in total. So this carries `confirmedText + retainedUnconfirmedSegments`
+  /// — the same composition `finalizeLocalAgreement` releases — and the preview
+  /// revises itself as the speaker continues.
+  ///
+  /// **The callback must only ENQUEUE.** It is invoked on this actor, inside the
+  /// decode loop, so any await inside it delays the next decode. Custom Words and
+  /// main-actor publication belong on the consumer's side of a latest-value hand
+  /// off, never here: a display limb that can slow transcription is the one thing
+  /// this seam must not become.
+  private let onHypothesis: (@Sendable (String) -> Void)?
+
+  /// Retention cap for the published hypothesis, in characters. Nil on the heart
+  /// path, which publishes nothing.
+  ///
+  /// **The bound has to be applied HERE, not downstream.** An earlier version
+  /// trimmed in the adapter's publisher task, which left this actor building the
+  /// complete cumulative transcript every cycle and RETAINING it in
+  /// `lastPublishedHypothesis` — so the per-update copy cost and the preview's
+  /// own state grew with recording length under a contract promising they could
+  /// not. That is the same defect `LivePreviewTextBound`'s doc records from the
+  /// Apple producer, one layer further up, and cloud review caught it here.
+  ///
+  /// This is a RETENTION bound, deliberately a plain tail cut: the
+  /// presentation-quality trim (word boundaries, CJK fallback) stays in
+  /// `LivePreviewTextBound`, which this module cannot import. Two bounds with two
+  /// jobs, not two copies of one.
+  private let hypothesisRetentionLimit: Int?
+
+  /// Last string handed to `onHypothesis`, so an unchanged hypothesis is not
+  /// republished. Owned by the loop like every other confirmed-stream field.
+  private var lastPublishedHypothesis = ""
 
   /// True while a loop decode is inside `whisperKit.transcribe` — read by
   /// finalize (after awaiting the loop's exit) to stamp the #1309
@@ -258,7 +314,9 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     requiredSegmentsForConfirmation: Int = 2,
     cadence: Duration = .seconds(1),
     conditionOnPriorText: Bool = false,
-    localAgreement: Bool = false
+    localAgreement: Bool = false,
+    onHypothesis: (@Sendable (String) -> Void)? = nil,
+    hypothesisRetentionLimit: Int? = nil
   ) {
     self.whisperKit = whisperKit
     self.baseDecodingOptions = decodingOptions
@@ -266,6 +324,8 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     self.cadence = cadence
     self.conditionOnPriorText = conditionOnPriorText
     self.localAgreement = localAgreement
+    self.onHypothesis = onHypothesis
+    self.hypothesisRetentionLimit = hypothesisRetentionLimit
   }
 
   // MARK: WhisperKitIncrementalSession
@@ -275,12 +335,16 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   ) {
     running = true
     finished = false
+    // Cleared with the rest of per-run state: a session reused after a terminal
+    // would otherwise abort its first decode instantly.
+    loopDecodeAborted.withLock { $0 = false }
     confirmedText = ""
     lastConfirmedSec = 0
     lastDecodeSampleCount = 0
     decodeCount = 0
     totalDecodeTimeMs = 0
     retainedUnconfirmedSegments = []
+    lastPublishedHypothesis = ""
     stoppedMidDecode = false
     stopSnapshotTaken = false
     loopDecodeInFlight = false
@@ -300,10 +364,12 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   /// retained provider now returns the COMPLETE `streamingPCM`. Stops the loop,
   /// runs one bounded tail decode over `[lastConfirmedSec .. end]`, and appends it
   /// to the confirmed prefix. `finalSamples` is intentionally IGNORED (§3.2
-  /// single-coordinate design). The in-flight loop decode (if any) is NOT awaited —
-  /// WhisperKit's decode is not cooperatively cancellable mid-run, and the
-  /// `finished` flag drops its result — so stop-to-text never wedges on a stuck
-  /// cycle.
+  /// single-coordinate design). The in-flight loop decode (if any) is NOT awaited
+  /// — the `finished` flag drops its result — so stop-to-text never wedges on a
+  /// stuck cycle. It is also told to STOP: WhisperKit ignores Swift task
+  /// cancellation inside a decode window but polls a per-token callback
+  /// (`TextDecoder.swift:735`), so `loopDecodeAborted` ends that cycle within a
+  /// token step instead of leaving it to run against this flush (#2108).
   // periphery:ignore:parameters finalSamples,speechSegments - single-coordinate design ignores both (§3.2)
   package func finalize(
     finalSamples: [Float],
@@ -316,6 +382,9 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     if !stopSnapshotTaken { stoppedMidDecode = loopDecodeInFlight }
     running = false
     finished = true
+    // Abort the in-flight loop decode rather than merely discarding it. Set
+    // BEFORE the wait below, since that wait is what it shortens.
+    loopDecodeAborted.withLock { $0 = true }
     let loop = loopTask
     loopTask?.cancel()
     loopTask = nil
@@ -384,8 +453,9 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     // UNPADDED audio so the silence never affects the energy/duration decision.
     let paddedSamples = WhisperKitBackend.padAudioWithSilence(samples)
     do {
+      // NOT abortable: this decode produces the words the user reads.
       let results = try await whisperKit.transcribe(
-        audioArray: paddedSamples, decodeOptions: opts)
+        audioArray: paddedSamples, decodeOptions: opts, shouldContinueDecoding: nil)
       let tailText = joinedSegmentText(results)
       let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
       guard !tailText.isEmpty else {
@@ -462,7 +532,9 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     // Same trailing-silence pad as the segment-path flush (last-word context).
     let paddedSamples = WhisperKitBackend.padAudioWithSilence(samples)
     do {
-      let results = try await whisperKit.transcribe(audioArray: paddedSamples, decodeOptions: opts)
+      // NOT abortable: the local-agreement flush is authoritative output too.
+      let results = try await whisperKit.transcribe(
+        audioArray: paddedSamples, decodeOptions: opts, shouldContinueDecoding: nil)
       // RAW segment concatenation (self-spacing; CJK-safe — cloud review P2):
       // WhisperKit segment texts carry their own leading space in whitespace
       // scripts and none in unsegmented scripts; a hardcoded " " join would
@@ -520,16 +592,25 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   package func cancel() async {
     running = false
     finished = true
+    // The whole point of cancel: stop the decode, not just its result. Without
+    // this the preview's last cycle keeps running against the authoritative
+    // decode the user is waiting on.
+    loopDecodeAborted.withLock { $0 = true }
     let loop = loopTask
     loopTask?.cancel()
     loopTask = nil
     audioSamplesProvider = nil
     // Await the loop's full exit, exactly like `finalize` (Codex r2 P1):
-    // WhisperKit's `transcribe` is not cooperatively cancellable mid-run, so
     // returning while a loop decode is still in flight would let a quick next
     // recording start a SECOND concurrent transcribe on the same model and
     // corrupt decoder state. The loop sees `finished` on resume and drops its
-    // result; this wait is bounded by that single decode.
+    // result.
+    //
+    // The abort above SHORTENS this wait; it does not remove the need for it.
+    // WhisperKit does not observe Swift task cancellation inside a decode
+    // window, so the only stop signal is the per-token callback and the decode
+    // still returns on its own schedule — one token step later rather than one
+    // full cycle later (#2108).
     await loop?.value
   }
 
@@ -549,6 +630,10 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   package func benchmarkCaptureAndStop() async -> BenchmarkSnapshot? {
     running = false
     finished = true
+    // Kept in step with `finalize` so this really does mirror it: the in-flight
+    // decode's result is dropped either way, so aborting changes the snapshot's
+    // timing and never its content.
+    loopDecodeAborted.withLock { $0 = true }
     let loop = loopTask
     loopTask?.cancel()
     loopTask = nil
@@ -619,7 +704,15 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       let decodeStart = CFAbsoluteTimeGetCurrent()
       do {
         loopDecodeInFlight = true
-        let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: opts)
+        // THE abortable one. Its result is dropped by the terminal re-check
+        // below whenever a stop lands mid-decode, so continuing to decode after
+        // that stop buys nothing and costs the authoritative decode that starts
+        // at the same instant.
+        let results = try await whisperKit.transcribe(
+          audioArray: samples, decodeOptions: opts,
+          shouldContinueDecoding: { [loopDecodeAborted] in
+            !loopDecodeAborted.withLock { $0 }
+          })
         loopDecodeInFlight = false
         // Re-check terminal state AFTER the decode await before mutating confirmed
         // state — a finalize/cancel during the decode must win.
@@ -633,6 +726,51 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
         // gate routes genuine silence to release, fresh speech to the bounded
         // buffer decode).
         if heard { lastDecodeSampleCount = count }
+        // #2108: hand the limb the display text. AFTER the terminal re-check and
+        // the confirmation above, so a finalize that won the race never publishes;
+        // synchronous and unawaited, so the next decode is never delayed. Fires
+        // only when the decode was HEARD — an empty or wordless cycle leaves the
+        // last usable hypothesis standing rather than blanking the preview.
+        if let onHypothesis {
+          // Publish only a NON-EMPTY, CHANGED hypothesis.
+          //
+          // `heard` alone is not enough: a decode can be "heard" and still compose
+          // to an empty display string, and publishing that blanks the preview
+          // mid-sentence — worse than showing slightly stale words, because the
+          // user reads it as the app losing what they just said. Caught by
+          // `anEmptyDecodeDoesNotPublish`, which failed against the first version
+          // of this line.
+          //
+          // The change check also makes this a genuine latest-value seam: an
+          // unchanged hypothesis is not news, and the consumer should not be woken
+          // to re-render identical text.
+          // Compose the tail WITHOUT materializing the full transcript.
+          //
+          // `confirmedText` grows for the whole session and is heart state — the
+          // finalize path releases it entire, so it must NOT be trimmed. But the
+          // preview only ever shows a tail, and the previous version built
+          // `confirmedText + tail` and then took a suffix of THAT: a full-length
+          // concatenation every decode cycle, which is quadratic copying over a
+          // long recording. Cloud review caught it after the retention cap was
+          // added one layer too far downstream.
+          //
+          // Building from the END takes only what is displayed.
+          let hypothesis: String
+          if let limit = hypothesisRetentionLimit {
+            let tail = retainedUnconfirmedSegments.map(\.text).joined()
+            if tail.count >= limit {
+              hypothesis = String(tail.suffix(limit))
+            } else {
+              hypothesis = String(confirmedText.suffix(limit - tail.count)) + tail
+            }
+          } else {
+            hypothesis = confirmedText + retainedUnconfirmedSegments.map(\.text).joined()
+          }
+          if !hypothesis.isEmpty, hypothesis != lastPublishedHypothesis {
+            lastPublishedHypothesis = hypothesis
+            onHypothesis(hypothesis)
+          }
+        }
         decodeCount += 1
         let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - decodeStart) * 1000)
         totalDecodeTimeMs += elapsedMs

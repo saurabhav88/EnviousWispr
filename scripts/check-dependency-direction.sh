@@ -42,12 +42,24 @@ permitted_imports_for() {
     # The live preview limb (#2077). Short ON PURPOSE: no Audio, no ASR, no
     # Pipeline, no Services. A preview engine that could import any of those could
     # reach the recording path, and this line is what makes that impossible rather
-    # than merely discouraged. Add EnviousWisprModelDelivery when the downloadable
-    # engine lands; do not add anything else without re-reading why the limb exists.
+    # than merely discouraged. Do NOT add EnviousWisprModelDelivery: the downloadable
+    # engine landed (#2108) and takes resolved paths plus an admission ANSWER as
+    # values, so no preview limb needs the delivery module. Add nothing else without
+    # re-reading why the limb exists.
     EnviousWisprLivePreview)       echo "EnviousWisprCore EnviousWisprPostProcessing" ;;
+    # #2108. The Live Preview engine backed by the downloadable universal model.
+    # It needs ASR (the WhisperKit runtime), which is exactly why it cannot live in
+    # EnviousWisprLivePreview above. It does NOT need ModelDelivery: AppKit resolves
+    # the artifact and hands this limb paths and an admission answer as values, so
+    # the delivery edge only ever bought the ability to import a fetch-capable API
+    # here with no check failing (cloud review r8). What it must NEVER get is Audio,
+    # Pipeline, Services or AppKit: the limb must not be able to reach capture, the
+    # recording path or the app shell. That is this line's entire job — keep the
+    # list at four.
+    EnviousWisprWhisperPreviewAdapter) echo "EnviousWisprCore EnviousWisprPostProcessing EnviousWisprLivePreview EnviousWisprASR" ;;
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
     EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprObservabilityCore" ;;
-    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview" ;;
+    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter" ;;
     EnviousWispr)                  echo "EnviousWisprAppKit" ;;
     *)                             return 1 ;;
   esac
