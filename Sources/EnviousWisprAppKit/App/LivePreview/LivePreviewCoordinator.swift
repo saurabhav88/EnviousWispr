@@ -545,18 +545,39 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // the route's business: on a Mac that cannot run the chosen engine nothing is
     // ever prepared, so there is nothing here to release either way.
     guard !isPreviewOn() else { return }
-    // **Tear down the ACTIVE session first, not just the cached slot.**
-    //
-    // Switching the preview off mid-recording used to clear only the cache:
-    // `runSession` still held the engine and session as locals, `sessionTask`
-    // kept feeding audio, and a later `onText` could repaint over `.off`. So the
-    // model stayed loaded AND DECODING until the recording ended, for a feature
-    // the user had just turned off — the worst version of this leak, because it
-    // is also the visible one.
-    //
-    // Mirrors the stop path exactly rather than approximating it: same order,
-    // same fields. Half-porting a teardown is what produced three separate
-    // release findings on this PR already.
+    stopPreviewAndRelease()
+  }
+
+  /// Release because the user picked a DIFFERENT engine (#2123).
+  ///
+  /// Same remedy as the disabled path, different trigger — and deliberately NO
+  /// toggle guard: the preview is still on, it is the engine underneath that
+  /// changed. Sharing one body rather than porting it is the whole point;
+  /// half-porting a teardown produced three separate release findings on #2113.
+  ///
+  /// Wired from `PipelineSettingsSync`'s `livePreviewEngine` case.
+  func releaseForEngineChange() {
+    stopPreviewAndRelease()
+  }
+
+  /// The shared teardown: stop the live session, then drop the cached engine.
+  ///
+  /// **Tear down the ACTIVE session first, not just the cached slot.** Switching
+  /// the preview off mid-recording used to clear only the cache: `runSession`
+  /// still held the engine and session as locals, the feed loop kept running, and
+  /// a later `onText` could repaint over `.off`. So the model stayed loaded AND
+  /// DECODING for a feature the user had just changed — the worst version of the
+  /// leak, because it is also the visible one.
+  ///
+  /// **It does NOT clear `recordingSnapshot`, and that is load-bearing.** The
+  /// snapshot belongs to the RECORDING, not to the session: the overlay may not
+  /// have run its deferred geometry read yet, and clearing it here would let that
+  /// read answer live — the drift #2123 exists to remove. It is also what
+  /// suppresses restart, since `setRecording(true)` returns immediately while a
+  /// snapshot exists, so a duplicate intent push cannot start the newly chosen
+  /// engine inside the recording that was already under way. Only
+  /// `setRecording(false)` clears it.
+  private func stopPreviewAndRelease() {
     if isRunning {
       isRunning = false
       cancelSessionTask()

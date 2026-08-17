@@ -35,6 +35,199 @@ struct LivePreviewCoordinatorTests {
 
   // MARK: - #2123: one engine decision per recording
 
+  /// Switching engines releases the one being switched away from — while the
+  /// preview is still ON, which is what makes this a separate entry point from
+  /// the disabled path rather than a second caller of it.
+  @Test("switching engines releases the engine switched away from")
+  func switchingEnginesReleases() async {
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
+            makeEngine: { ReadyEngine() }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    #expect(coordinator.hasPreparedEngineForTests, "control: an engine must be cached first")
+
+    // The user picks the other engine. The preview stays ON throughout.
+    coordinator.releaseForEngineChange()
+    #expect(!coordinator.hasPreparedEngineForTests, "the old engine's model must be released")
+    #expect(coordinator.display == .off)
+  }
+
+  /// The engine-change release must NOT inherit the disabled path's guard.
+  ///
+  /// `releaseForDisabledSetting` returns early while the preview is on — correct
+  /// for its own trigger, and fatal here: switching engines happens with the
+  /// preview on by definition, so a shared guard would make this a no-op and the
+  /// old model would stay resident for the rest of the session.
+  @Test("the engine-change release fires even though the preview is still on")
+  func engineChangeIsNotGuardedByTheToggle() async {
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
+            makeEngine: { ReadyEngine() }))
+      }
+    )
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasPreparedEngineForTests { await Task.yield() }
+    #expect(coordinator.hasPreparedEngineForTests, "control: cached before the switch")
+
+    // CONTROL: the disabled path is a no-op here, precisely because the preview
+    // is on. If both behaved the same, the test below would prove nothing.
+    coordinator.releaseForDisabledSetting()
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: the disabled path must NOT release while the preview is on")
+
+    coordinator.releaseForEngineChange()
+    #expect(!coordinator.hasPreparedEngineForTests, "the engine-change path must release")
+  }
+
+  /// An IDLE switch — the commonest one, since a user changes engines in Settings
+  /// between recordings, not during one. The mid-recording tests above say
+  /// nothing about it: `isRunning` is false, so they exercise a different branch.
+  @Test("switching engines while idle releases an engine cached by an earlier recording")
+  func idleSwitchReleasesTheCachedEngine() async {
+    let probe = PreviewEngineProbe()
+    let coordinator = makeCoordinator(probe: probe, key: key("apple", "en-US"))
+
+    coordinator.setRecording(true)
+    #expect(await reach { await probe.sessionsOpened == 1 }, "control: a session must have opened")
+    coordinator.setRecording(false)
+    #expect(
+      coordinator.hasPreparedEngineForTests,
+      "control: the engine stays cached across recordings — that is why it needs releasing")
+
+    coordinator.releaseForEngineChange()
+    #expect(
+      !coordinator.hasPreparedEngineForTests,
+      "an idle engine switch left the previous engine's model cached")
+  }
+
+  /// **Teardown must COMPLETE, not merely be requested.**
+  ///
+  /// Clearing the cached slot and the display is what the eye sees; it is not
+  /// what frees the model. A version of `releaseForEngineChange` that did only
+  /// that — leaving the live session feeding and decoding — passes every other
+  /// switch test here, which is exactly why this one counts ended sessions
+  /// through the probe rather than reading `display`.
+  @Test("switching engines mid-recording ends the live session, not just the cache")
+  func switchingEndsTheLiveSession() async {
+    let probe = PreviewEngineProbe()
+    let coordinator = makeCoordinator(
+      probe: probe,
+      key: key("apple", "en-US"),
+      readSamples: { index in
+        index == Int.max ? ([], 0) : (Array(repeating: Float(0.05), count: 160), 160)
+      })
+
+    coordinator.setRecording(true)
+    #expect(await reach { await probe.samplesFed > 0 }, "control: the session must be live")
+    #expect(await probe.sessionsEnded == 0, "control: nothing has ended yet")
+
+    coordinator.releaseForEngineChange()
+
+    #expect(
+      await reach { await probe.sessionsEnded == 1 },
+      "the switch cleared the cache but left the session running")
+    #expect(await probe.sessionsEnded == 1, "and ended it exactly once")
+  }
+
+  /// Switching mid-recording must not start the NEW engine inside the recording
+  /// that was already under way — the snapshot is what suppresses it, so this
+  /// asserts the two behaviours are wired to one rule and not two.
+  @Test("switching mid-recording does not start the new engine until the next recording")
+  func switchingMidRecordingDoesNotRestart() async {
+    final class Opens: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = 0
+      var count: Int { mutex.withLock { value } }
+      func record() { mutex.withLock { value += 1 } }
+    }
+    let opens = Opens()
+    final class CountingEngine: LivePreviewEngine, @unchecked Sendable {
+      let opens: Opens
+      init(opens: Opens) { self.opens = opens }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        opens.record()
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
+            makeEngine: { CountingEngine(opens: opens) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where opens.count < 1 { await Task.yield() }
+    #expect(opens.count == 1, "control: the first session opened")
+
+    coordinator.releaseForEngineChange()
+    coordinator.setRecording(true)  // the overlay's duplicate intent push
+    for _ in 0..<300 { await Task.yield() }
+    #expect(opens.count == 1, "the new engine started inside the old recording")
+
+    // Next recording: it does start, so this is suppression and not breakage.
+    coordinator.setRecording(false)
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where opens.count < 2 { await Task.yield() }
+    #expect(opens.count == 2, "the next recording must use the newly chosen engine")
+  }
+
+
   /// The pill's SIZE and the words in it must never disagree about the engine.
   ///
   /// Freezing only at the moment intent arrives is not enough on its own: the

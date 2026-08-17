@@ -91,6 +91,12 @@ enum LivePreviewInstaller {
     settingsSync.onLivePreviewDisabled = { [weak coordinator] in
       coordinator?.releaseForDisabledSetting()
     }
+    // #2123: same shape, different meaning — the preview stays on and the engine
+    // beneath it changed, so the old engine's model is released. Weak for the
+    // same reason: a settings hook must never be what keeps the limb alive.
+    settingsSync.onLivePreviewEngineChanged = { [weak coordinator] in
+      coordinator?.releaseForEngineChange()
+    }
     return coordinator
   }
 }
