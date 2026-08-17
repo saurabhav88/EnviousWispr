@@ -179,7 +179,9 @@ struct Issue1358EmptyRecoveryTests {
       },
       pasteCompletionRegistry: nil,
       currentTime: { ProcessInfo.processInfo.systemUptime },
-      telemetryState: KernelTelemetryState())
+      telemetryState: KernelTelemetryState(),
+      // #2146: absorbed, never the real clipboard.
+      copyToClipboard: { _ in })
   }
 }
 

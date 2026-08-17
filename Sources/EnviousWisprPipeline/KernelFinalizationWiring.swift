@@ -294,18 +294,22 @@ struct KernelFinalizationWiring {
     // Defaulted (fresh, tail fields nil) so other construction sites stay
     // source-compatible; the factory passes the shared instance.
     telemetryState: KernelTelemetryState = KernelTelemetryState(),
-    // #2146 clipboard seam. Defaults to the real write, so production is
-    // unchanged and no existing construction site needs editing. Trailing and
-    // defaulted for the same source-compatibility reason as `telemetryState`.
+    // #2146 clipboard seam. REQUIRED — deliberately not defaulted, and this is
+    // the whole point of the parameter.
     //
-    // The TEST helper defaults this to a recorded FAILURE rather than to the
-    // real write: a wiring test that copies without deliberately opting in
-    // should fail loudly, not silently overwrite the developer's clipboard.
-    // Safe-by-forgetting is the property, since the tests that were destroying
-    // the clipboard never mentioned it and never meant to touch it.
-    copyToClipboard: @escaping @MainActor (String) -> Void = {
-      PasteService.copyToClipboard($0)
-    }
+    // A default here would read as harmless (production wants exactly that
+    // value) while quietly re-opening the defect: any test constructing this
+    // wiring directly with auto-copy on would inherit the real write and
+    // overwrite the developer's clipboard, with no argument at the call site for
+    // any reviewer or scanner to notice. That is the defaulted-argument blind
+    // spot in grounding-discipline.md RULE: absence-claims-need-a-capability-grep
+    // — the reaching site is a MISSING argument, so there is no token to find.
+    //
+    // The cost of requiring it is six call sites, one of them production. The
+    // cost of defaulting it is a silent regression nobody can grep for. Two
+    // tests already reached the real clipboard exactly this way and neither
+    // mentions a clipboard anywhere.
+    copyToClipboard: @escaping @MainActor (String) -> Void
   ) {
     self.copyToClipboard = copyToClipboard
     // processText — run the limb chain, write the polish side-channel, return

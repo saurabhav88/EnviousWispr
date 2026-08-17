@@ -13,11 +13,17 @@
 #
 # READ THIS BEFORE TRUSTING THIS SCRIPT:
 #
-#   This is the BELT, NOT THE BRACES. The load-bearing protection is the
-#   fail-closed default on `KernelFinalizationWiringTests.makeWiring`, which
-#   records an Issue if a wiring test copies without deliberately opting in.
-#   That default makes the mistake unwriteable. This script only catches a NEW
-#   file that bypasses the helper entirely.
+#   This is the BELT, NOT THE BRACES. Two stronger protections sit in the code:
+#
+#     1. `KernelFinalizationWiring.init`'s `copyToClipboard` is REQUIRED, not
+#        defaulted, so no test can inherit the real write by omission. That is
+#        compile-enforced and cannot be forgotten.
+#     2. `KernelFinalizationWiringTests.makeWiring` defaults it to
+#        `Issue.record`, so a wiring test that copies without opting in FAILS.
+#
+#   Those two make the mistake unwriteable. What this script adds is the case
+#   they cannot see: a test that deliberately writes `PasteService.copyToClipboard`
+#   — explicit, compiling, and wrong.
 #
 #   Do not "strengthen" this into the primary guard. A text scanner proves it
 #   fires on the evasions its author imagined, never that it is binding —
@@ -80,11 +86,22 @@ fi
 # cannot desynchronise the depth tracker.
 strip_comments() {
   /usr/bin/awk '
+    # A quote preceded by an ODD number of backslashes is escaped and does not
+    # open or close a string. Without this, `let s = "\""` is read as
+    # open-content-close and everything after it on the SAME line is treated as
+    # string content — so `let s = "\""; PasteService.copyToClipboard("leak")`
+    # blanked the live call and the scanner passed it (found by Codex diff review
+    # r1; reproduced before fixing, and pinned by a fixture below).
+    function escaped(s, i,   n) {
+      n = 0
+      for (i--; i > 0 && substr(s, i, 1) == "\\"; i--) n++
+      return n % 2
+    }
     function blank_strings(s,   out, i, c, instr) {
       out = ""; instr = 0
       for (i = 1; i <= length(s); i++) {
         c = substr(s, i, 1)
-        if (c == "\"") { instr = !instr; out = out " "; continue }
+        if (c == "\"" && !escaped(s, i)) { instr = !instr; out = out " "; continue }
         out = out (instr ? " " : c)
       }
       return out
@@ -281,6 +298,17 @@ func f() {
 EOF
   set +e; scan_tree "$tmp/Tests" >/dev/null 2>&1; rc=$?; set -e
   expect "a paren inside a string literal does not break joining" 0 "$rc"
+
+  # ESCAPED QUOTE. Verified failing before the `escaped()` helper existed: the
+  # `\"` closed the string early, everything after it on the line was blanked as
+  # string content, and this live unboarded call passed the scanner (rc=0).
+  # Both statements must stay on ONE line — blanking resets per line, so the
+  # split-across-lines version self-corrects and proves nothing.
+  cat >"$tmp/Tests/$ALLOWLISTED_BASENAME" <<'EOF'
+func f() { let s = "\""; PasteService.copyToClipboard("leak") }
+EOF
+  set +e; scan_tree "$tmp/Tests" >/dev/null 2>&1; rc=$?; set -e
+  expect "an escaped quote cannot hide a live call later on the same line" 1 "$rc"
   rm "$tmp/Tests/$ALLOWLISTED_BASENAME"
 
   # Instrument control: an empty tree must fail closed, not report a pass.
