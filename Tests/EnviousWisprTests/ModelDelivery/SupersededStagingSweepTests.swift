@@ -415,12 +415,34 @@ import Testing
       availableDiskBytes: { _ in .max })
 
     let entered = AsyncStream<Void>.makeStream()
-    let release = AsyncStream<Void>.makeStream()
+    // THE PARK MUST SURVIVE CANCELLATION, and an `AsyncStream` iterator does
+    // not (cloud-review P1 on the first version of this fix).
+    //
+    // `cancel` fires the draining signal and then IMMEDIATELY calls
+    // `task.cancel()`. An attempt parked in `AsyncStream.Iterator.next()`
+    // returns `nil` on cancellation, so it finishes, `await task.value`
+    // returns, and `drainingTask` is cleared — possibly before this test's
+    // waiter has reacquired the actor. That reintroduces the very
+    // intermittency this change exists to remove, one mechanism over: version
+    // one failed by STARVATION, this would fail by the window CLOSING early.
+    //
+    // `withCheckedContinuation` (non-throwing) is not cancellation-aware, so
+    // the attempt stays parked until the test opens the gate explicitly. The
+    // drain window is then held open BY CONSTRUCTION rather than by winning a
+    // race.
+    //
+    // `sweepNeverDeletesStagingForAnAttemptInFlight` keeps the plain
+    // `AsyncStream` park deliberately: it asserts BEFORE it cancels, so the
+    // cancellation never closes a window it still needs.
+    let gate = CancellationInsensitiveGate()
+    // UNCONDITIONAL. Any `#require` between here and the explicit open would
+    // otherwise leave the attempt parked on a park cancellation cannot wake,
+    // so the test would HANG instead of reporting the failed requirement.
+    defer { gate.open() }
     await controller.setBeforeExistingCacheValidationForTesting {
       entered.continuation.yield()
       entered.continuation.finish()
-      var iterator = release.stream.makeAsyncIterator()
-      _ = await iterator.next()
+      await gate.wait()
     }
     async let attempt = controller.ensureModelAvailable(draining)
     let didEnter = await withDeadline(seconds: 5) {
@@ -435,25 +457,47 @@ import Testing
     // draining branch never exercised — the test would pass while covering the
     // wrong field. Park until the controller reports no active task for the
     // identity, which is only true once the move has landed.
+    // WAIT ON THE SIGNAL, NOT ON A POLL.
+    //
+    // This used to spin on `isDrainingForTesting` with `Task.yield()`, which
+    // STARVES the transition it waits for: every probe is a hop onto the
+    // controller actor, so the loop keeps the controller answering "are you
+    // draining yet" instead of draining. It passed locally and timed out on
+    // post-merge main (fewer cores, more contention) — `movedToDraining` came
+    // back nil and the test correctly reported the draining branch as untested.
+    // The controller now announces the move at the instant it lands.
+    let moved = AsyncStream<Void>.makeStream()
+    await controller.setAfterMovedToDrainingForTesting {
+      moved.continuation.yield()
+      moved.continuation.finish()
+    }
     async let cancelled = controller.cancel(draining.manifest.identity)
     let movedToDraining = await withDeadline(seconds: 5) {
-      while true {
-        if Task.isCancelled { return false }
-        if await controller.isDrainingForTesting(draining.manifest.identity) { return true }
-        await Task.yield()
-      }
+      var iterator = moved.stream.makeAsyncIterator()
+      return await iterator.next() != nil
     }
     try #require(
       movedToDraining == true,
       "never observed the LIVE draining window, so the draining branch is untested")
+
+    // THE SIGNAL AND THE STATE ARE TWO CONDITIONS. The signal proves the move
+    // HAPPENED; it does not prove the window is still OPEN when the sweep runs.
+    // They coincide here only because the attempt is parked on `release` and so
+    // cannot finish draining — assert it rather than rely on that reasoning,
+    // because a future change to the park would silently turn this into a test
+    // of the already-drained path while still passing.
+    try #require(
+      await controller.isDrainingForTesting(draining.manifest.identity),
+      "the draining window closed before the sweep, so the protection is untested")
 
     await controller.sweepSupersededStaging(current)
     #expect(
       exists(drainingStaging),
       "the sweep deleted staging for an attempt that is still draining")
 
-    release.continuation.yield()
-    release.continuation.finish()
+    // Open the gate only now — after the sweep has run against a window this
+    // test held open deliberately.
+    gate.open()
     _ = await cancelled
     _ = await attempt
 
@@ -587,5 +631,53 @@ import Testing
       exists(superseded) == false,
       "an unset kill switch froze the sweep, so no ordinary user would ever reclaim abandoned downloads"
     )
+  }
+}
+
+/// A park that CANCELLATION CANNOT OPEN.
+///
+/// `AsyncStream.Iterator.next()` returns `nil` when its task is cancelled, so a
+/// test parking on one cannot hold a window open across a `cancel()` — the
+/// subject finishes early and the state under test is gone before the
+/// assertion runs. `withCheckedContinuation` (non-throwing) has no
+/// cancellation path, so the only way out is `open()`.
+///
+/// A LOCK, NOT AN ACTOR, forced by the FAILURE path rather than by taste.
+/// Being cancellation-proof means a `#require` that throws before the gate
+/// opens would leave the subject parked forever: scope exit cancels the
+/// structured child, cancellation cannot wake this park, and the test HANGS
+/// instead of reporting the requirement it failed — a loud failure converted
+/// into a silent one (cloud-review P1 on the actor version). `defer` cannot
+/// `await`, so `open()` must be synchronous to be callable from unconditional
+/// cleanup. Every caller pairs `let gate = …` with `defer { gate.open() }` on
+/// the next line.
+final class CancellationInsensitiveGate: @unchecked Sendable {
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<Void, Never>?
+  private var isOpen = false
+
+  func wait() async {
+    await withCheckedContinuation { c in
+      lock.lock()
+      // Opened before anyone waited: resume rather than park forever. Tested
+      // inside the lock so `open()` cannot land between the check and the store.
+      if isOpen {
+        lock.unlock()
+        c.resume()
+        return
+      }
+      continuation = c
+      lock.unlock()
+    }
+  }
+
+  func open() {
+    lock.lock()
+    isOpen = true
+    let waiter = continuation
+    continuation = nil
+    lock.unlock()
+    // Resumed OUTSIDE the lock: a continuation resume can run arbitrary code.
+    waiter?.resume()
   }
 }
