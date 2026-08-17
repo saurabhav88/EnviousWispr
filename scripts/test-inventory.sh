@@ -86,6 +86,11 @@ parse_suites() {
                 body = substr(line, ind + 1)
                 q = gsub(/"""/, "\"\"\"", line)   # count, and leave `line` unchanged
                 isAttrLine = 0
+                # Escaped quotes are removed BEFORE any string stripping. `@Suite("a \" quote and a (paren")`
+                # otherwise leaves a stray `(`, the attribute accumulator never closes, and the entire
+                # suite disappears from the inventory — a silent total loss, not a mis-tag.
+                nq = body
+                gsub(/\\"/, "", nq)
             }
             # Lines INSIDE a multiline string are fixture text, not code. A ceiling-test fixture holding
             # Swift source with an indented `@Test` would otherwise be counted as a real test — and the
@@ -98,6 +103,23 @@ parse_suites() {
                 next
             }
             q % 2 == 1 { inStr = 1 }
+            # Block comments are state, like multiline strings, and must be tested AFTER them: a `/*`
+            # inside a fixture string is TEXT, not a comment opener, and checking it first swallowed 47
+            # real tests. `/* struct Foo { @Test ... } */` otherwise registers a phantom suite.
+            inBlock {
+                if (body ~ /\*\//) { inBlock = 0 }
+                next
+            }
+            {
+                # Opener detection runs on the line with STRING LITERALS and any trailing `//` comment
+                # removed. A doc comment reading "Recursive scan over every `Sources/**/*.swift` file"
+                # contains `/*` inside a glob, which opened a phantom block comment and swallowed the
+                # rest of the file — 28 tests across two Architecture suites.
+                cc = nq
+                gsub(/"[^"]*"/, "", cc)
+                sub(/\/\/.*$/, "", cc)
+            }
+            cc ~ /\/\*/ && cc !~ /\*\// { inBlock = 1; next }
             # Keep accumulating while the attribute has unbalanced parens: swift-format wraps a long
             # `@Suite(...)` across lines, and its continuation lines do not start with `@`. Resetting on
             # them dropped `.tags(...)` and made the gate REJECT a correctly tagged suite — a false
@@ -114,7 +136,7 @@ parse_suites() {
                 # `@Suite("Engine (cold start) identity")` carries unbalanced parens inside the string;
                 # counting those left the accumulator permanently open and swallowed 1,246 later @Test
                 # lines into it.
-                bare = body
+                bare = nq
                 gsub(/"[^"]*"/, "", bare)
                 attrDepth += gsub(/\(/, "(", bare) - gsub(/\)/, ")", bare)
                 if (attrDepth < 0) attrDepth = 0
@@ -131,7 +153,7 @@ parse_suites() {
             # command-text matchers (validation-discipline.md RULE: false-positives-not-gates-train-evasion).
 
             {
-                code = body
+                code = nq
                 gsub(/"[^"]*"/, "\"\"", code)
             }
             code ~ /(^|[^A-Za-z0-9_])(struct|class|enum|actor|extension)[[:space:]]+[A-Za-z_]/ {
@@ -152,7 +174,10 @@ parse_suites() {
                     next
                 }
             }
-            !isAttrLine { attrs = "" }
+            # A doc comment between the attribute and its declaration must not clear the accumulator:
+            # `@Suite(..., .tags(.x))` / `/// why` / `struct Foo` is ordinary swift-format output, and
+            # clearing here dropped the tag and REJECTED a correctly tagged suite.
+            !isAttrLine && body !~ /^(\/\/|\*)/ { attrs = "" }
             END { popTo(0); while (top >= 0) { emit(top); top-- }
                   if (skipped > 0) printf "STRING_SKIPPED\t%s\t%d\n", path, skipped }
         ' "$f"
