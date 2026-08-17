@@ -16,12 +16,61 @@ public protocol EGOneEndpointProviding: AnyObject {
 ///
 /// #1348 Phase 3: EG-1's DOWNLOAD lifecycle telemetry now flows through the
 /// shared delivery engine (`model_delivery.*` with `family=eg1`), so the old
-/// `downloadStarted/Completed/Failed` cases are gone. Only server HEALTH
-/// remains here — it is a runtime probe result with no delivery equivalent.
-/// Transition-only (debounced by construction — fired from a state didSet,
-/// identical states never re-fire).
+/// `downloadStarted/Completed/Failed` cases are gone. What remains here is
+/// server HEALTH — a runtime probe result with no delivery equivalent — and,
+/// since #2109, PAUSED RESIDENCY, which likewise has no delivery equivalent:
+/// the delivery funnel reports moments (a cancel happened), never how long a
+/// user then sat unable to polish.
+/// Transition-only, by two different mechanisms: health is guarded in its
+/// `didSet`, paused residency by its projection tracker in
+/// `applyInstallState`. Naming both matters — a reader who assumes the didSet
+/// guard covers everything would conclude paused telemetry is debounced by
+/// construction, when it is debounced by a tracker that deliberately skips
+/// `.verifying`.
 public enum EGOneRuntimeEvent: Sendable, Equatable {
   case healthChanged(from: String, to: String, reason: String?)
+  /// The user ENTERED or LEFT a paused install state (#2109). `nil` means
+  /// they left one.
+  ///
+  /// Deliberately narrower than "the install state changed", and the narrowing
+  /// is the whole design. A general state-changed event double-counts: the
+  /// settings-open activation path runs `adoptIfPresent`, which CYCLES the
+  /// state (`updatePaused → verifying → updatePaused`), so every visit to the
+  /// AI settings panel would have emitted twice. The metric would have read as
+  /// a growing population of affected users while actually counting panel
+  /// visits — plausible, actionable, and wrong. Measured, not theorised: the
+  /// observed sequence across three probes was update_paused, verifying,
+  /// update_paused, verifying, update_paused, verifying, update_paused.
+  ///
+  /// `.verifying` is therefore IGNORED rather than mapped: it is an adoption
+  /// probe artefact, not a state a user rests in. Every other non-paused state
+  /// maps to `nil`, so entry and exit are both observable and nothing in
+  /// between generates traffic.
+  ///
+  /// Named for the STATE, never a cause. An event called `upgrade_stalled` or
+  /// `polish_silently_off` would be a causal claim about a state with more
+  /// than one producer, and would count a deliberate decline as a malfunction
+  /// — the #2066 defect, avoided at design time.
+  case pausedInstallStateChanged(EGOnePausedInstallState?)
+}
+
+/// The closed vocabulary for paused-residency telemetry (#2109). A raw String
+/// so the analytics value is declared HERE and cannot drift when a Swift case
+/// is renamed — a silently changed value splits every historical query in two.
+public enum EGOnePausedInstallState: String, Sendable, Equatable {
+  case paused
+  case updatePaused = "update_paused"
+  case updatePausedResumable = "update_paused_resumable"
+
+  /// The paused projection of an install state, or nil when the user is not in
+  /// one. `.verifying` has no projection at all — see the event's own doc.
+  static func projection(of state: EGOneInstallState) -> EGOnePausedInstallState? {
+    switch state {
+    case .paused: return .paused
+    case .updatePaused(let resumable): return resumable ? .updatePausedResumable : .updatePaused
+    case .notInstalled, .downloading, .verifying, .installed, .failed: return nil
+    }
+  }
 }
 
 /// Single owner of the EG-1 inference server and its delivery adapter (#1271,
@@ -140,16 +189,48 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // stream. Reactively re-activating here would loop: an in-flight
     // activation's own `ensureAvailable()` republishes `.admitted` → `.installed`
     // while the server is still `.stopped` (grounded r2 P1).
-    // #2109: the single transition owner. The adapter has TWO publication
-    // paths — the seed and the observer — so neither of them is the
-    // authority; both converge here. Comparing before storing makes a
-    // republish of the SAME state a no-op, which is what lets the telemetry
-    // emit added in a later chunk fire once per real transition rather than
-    // once per settings-window open.
+    // #2109: the single UI-state owner. The adapter has TWO publication sites
+    // — the launch seed and the observer replay — so neither is the authority;
+    // both converge here. This guard makes a republish of the SAME state a
+    // no-op for the UI, and that is ALL it does. It does NOT keep telemetry
+    // honest: the settings-open probe cycles updatePaused → verifying →
+    // updatePaused, so every leg is a genuine change and passes straight
+    // through. Paused telemetry has its own projection guard below, which
+    // skips `.verifying` precisely because this one cannot.
     guard installState != state else { return }
     installState = state
+
+    // Paused-residency telemetry, emitted HERE and nowhere else. The adapter
+    // has TWO publication sites — the launch seed (which covers both the
+    // admitted and not-admitted cases) and the observer replay — so neither is
+    // the authority; both converge on this method. Counted, not remembered:
+    // `grep -n "onState(" EGOneDeliveryAdapter.swift` returns exactly two.
+    //
+    // `.verifying` is skipped BEFORE the comparison, not mapped to nil: the
+    // settings-open probe cycles updatePaused → verifying → updatePaused, and
+    // treating the middle leg as a real value would emit an exit and a
+    // re-entry on every visit to the panel. Skipping it leaves the tracked
+    // value untouched, so a cycle that returns to the same paused state is
+    // silent. Measured behaviour, not a guess.
+    if case .verifying = state {
+      recomputeHealth()
+      return
+    }
+    let projection = EGOnePausedInstallState.projection(of: state)
+    if projection != lastPausedProjection {
+      // Only when a paused state is involved on one side or the other. Two
+      // non-paused states in succession are none of this event's business.
+      if projection != nil || lastPausedProjection != nil {
+        onEvent?(.pausedInstallStateChanged(projection))
+      }
+      lastPausedProjection = projection
+    }
     recomputeHealth()
   }
+
+  /// Last paused projection reported to telemetry (#2109). Tracked separately
+  /// from `installState` because `.verifying` deliberately does not update it.
+  private var lastPausedProjection: EGOnePausedInstallState?
 
   private var serverState: EGOneServerManager.ServerState = .stopped
   private func applyServerState(_ state: EGOneServerManager.ServerState) {

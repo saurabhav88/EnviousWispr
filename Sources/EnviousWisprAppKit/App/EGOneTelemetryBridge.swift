@@ -19,6 +19,13 @@ enum EGOneTelemetryBridge {
           TelemetryService.shared.egOneDownloadEvent(
             name: "health_changed",
             properties: ["from": from, "to": to, "reason": reason ?? "none"])
+        case .pausedInstallStateChanged(let projection):
+          // One property from a closed set of four (three paused states plus
+          // "none" for leaving one). No transcript, no path, no version string
+          // beyond what this app already ships — shape, never content.
+          TelemetryService.shared.egOneDownloadEvent(
+            name: "paused_install_state_changed",
+            properties: ["state": projection?.rawValue ?? "none"])
         }
       }
     }
