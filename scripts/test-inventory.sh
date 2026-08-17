@@ -70,116 +70,103 @@ parse_suites() {
     test_files | while IFS= read -r f; do
         [ -r "$f" ] || { printf 'PARSE_ERROR\t%s\n' "$f"; continue; }
         awk -v path="$f" '
-            # Scope by INDENTATION, not by column 1. 43 suites in this repo are indented because they sit
-            # inside `#if DEBUG`, and a column-1 rule silently skipped every one of them — 250 tests.
-            # A `@Test` belongs to the innermost open declaration STRICTLY LESS indented than itself, so a
-            # nested helper type (a spy or a box declared beside the tests) never steals them.
-            function emit(i) {
-                if (cnt[i] > 0) printf "%s\t%s\t%s\t%d\n", path, name[i], (tg[i] == "" ? "-" : tg[i]), cnt[i]
+            # ONE CANONICAL CODE VIEW PER LINE, used by EVERY decision.
+            #
+            # The previous version carried FIVE partial views (body, nq, cc, bare, code), each stripping a
+            # different subset, and each decision picked one arbitrarily. That inconsistency WAS the
+            # defect, not any individual lexical form: review round 3 returned four findings and three were
+            # the same axis (code-versus-text) applied to a decision site the sweep never covered — tag
+            # extraction, @Test detection, and the real-boundary count. Enumerating input forms against ONE
+            # decision site is half an enumeration. Now: strip once, decide from `code` everywhere.
+            function emit(i,   t) {
+                if (cnt[i] <= 0) return
+                t = (tg[i] == "" ? "-" : tg[i])
+                if (tgn[i] > 1) t = "AMBIGUOUS"
+                printf "%s\t%s\t%s\t%d\t%d\n", path, name[i], t, cnt[i], bnd[i]
             }
-            function popTo(ind,   j) { while (top >= 0 && dep[top] >= ind) { emit(top); top-- } }
+            function popTo(ind) { while (top >= 0 && dep[top] >= ind) { emit(top); top-- } }
+            function classify(blob,   n) {
+                n = 0
+                lastTag = ""
+                if (blob ~ /\.productOutcome([^A-Za-z0-9_]|$)/)        { n++; lastTag = "productOutcome" }
+                if (blob ~ /\.driftGuard([^A-Za-z0-9_]|$)/)            { n++; lastTag = "driftGuard" }
+                if (blob ~ /\.observabilityContract([^A-Za-z0-9_]|$)/) { n++; lastTag = "observabilityContract" }
+                if (blob ~ /\.harnessContract([^A-Za-z0-9_]|$)/)       { n++; lastTag = "harnessContract" }
+                return n
+            }
             BEGIN { top = -1 }
             {
                 line = $0
                 gsub(/\t/, "  ", line)
                 match(line, /^ */); ind = RLENGTH
-                body = substr(line, ind + 1)
-                q = gsub(/"""/, "\"\"\"", line)   # count, and leave `line` unchanged
+                raw = substr(line, ind + 1)
+
+                code = raw
+                gsub(/\\"/, "", code)          # escaped quotes first, or the next gsub mis-pairs
+                q = gsub(/"""/, "\x01", code)  # mark triple quotes before single ones are blanked
+                gsub(/"[^"]*"/, "\"\"", code)  # string CONTENT is text, never code
                 isAttrLine = 0
-                # Escaped quotes are removed BEFORE any string stripping. `@Suite("a \" quote and a (paren")`
-                # otherwise leaves a stray `(`, the attribute accumulator never closes, and the entire
-                # suite disappears from the inventory — a silent total loss, not a mis-tag.
-                nq = body
-                gsub(/\\"/, "", nq)
             }
-            # Lines INSIDE a multiline string are fixture text, not code. A ceiling-test fixture holding
-            # Swift source with an indented `@Test` would otherwise be counted as a real test — and the
-            # independent control below shares the line-based match, so it would CONFIRM the false count
-            # rather than catch it. Zero instances today; guarded because the failure would be silent and
-            # source-in-a-fixture is what several suites here do for a living.
+            # Multiline string fixtures are text. Their @Test lines are reported, never counted.
             inStr {
                 for (i = 0; i < q; i++) inStr = !inStr
-                if (body ~ /^@Test/) skipped++
+                if (raw ~ /(^|[[:space:]])@Test([^A-Za-z0-9_]|$)/) skipped++
                 next
             }
-            q % 2 == 1 { inStr = 1 }
-            # Block comments are state, like multiline strings, and must be tested AFTER them: a `/*`
-            # inside a fixture string is TEXT, not a comment opener, and checking it first swallowed 47
-            # real tests. `/* struct Foo { @Test ... } */` otherwise registers a phantom suite.
+            q % 2 == 1 { inStr = 1; next }
+            # Block comments are state, and must be tested AFTER string state: a `/*` inside a fixture is
+            # text. The opener is read from `code`, so a doc comment naming a glob does not open one.
             inBlock {
-                if (body ~ /\*\//) { inBlock = 0 }
+                if (raw ~ /(^|[[:space:]])@Test([^A-Za-z0-9_]|$)/) commented++
+                if (code ~ /\*\//) inBlock = 0
                 next
             }
+            # Strip the line comment, and DECLARE any @Test it removed. The control is a raw grep with no
+            # comment awareness, so an excluded mention would otherwise read as a missing test.
             {
-                # Opener detection runs on the line with STRING LITERALS and any trailing `//` comment
-                # removed. A doc comment reading "Recursive scan over every `Sources/**/*.swift` file"
-                # contains `/*` inside a glob, which opened a phantom block comment and swallowed the
-                # rest of the file — 28 tests across two Architecture suites.
-                cc = nq
-                gsub(/"[^"]*"/, "", cc)
-                sub(/\/\/.*$/, "", cc)
+                before = code
+                sub(/\/\/.*$/, "", code)
+                if (before ~ /(^|[[:space:]])@Test([^A-Za-z0-9_]|$)/ \
+                    && code !~ /(^|[[:space:]])@Test([^A-Za-z0-9_]|$)/) commented++
             }
-            cc ~ /\/\*/ && cc !~ /\*\// { inBlock = 1; next }
-            # Keep accumulating while the attribute has unbalanced parens: swift-format wraps a long
-            # `@Suite(...)` across lines, and its continuation lines do not start with `@`. Resetting on
-            # them dropped `.tags(...)` and made the gate REJECT a correctly tagged suite — a false
-            # positive on valid work, the failure direction this repo has logged 17 times.
-            # Four suites already use the multiline form.
-            body ~ /^@Test/ && attrDepth <= 0 {
-                for (k = top; k >= 0; k--) if (dep[k] < ind) { cnt[k]++; break }
-                attrs = attrs " " body
-                next
-            }
-            body ~ /^@/ || attrDepth > 0 {
-                attrs = attrs " " body
-                # Count parens on the line with STRING LITERALS REMOVED. A suite title such as
-                # `@Suite("Engine (cold start) identity")` carries unbalanced parens inside the string;
-                # counting those left the accumulator permanently open and swallowed 1,246 later @Test
-                # lines into it.
-                bare = nq
-                gsub(/"[^"]*"/, "", bare)
-                attrDepth += gsub(/\(/, "(", bare) - gsub(/\)/, ")", bare)
-                if (attrDepth < 0) attrDepth = 0
-                # NO `next`: the one-line form `@Suite(.tags(.driftGuard)) struct Foo {` must still reach
-                # the declaration rule below. An earlier `next` here silently dropped 1,246 tests by
-                # never registering their suite.
-                isAttrLine = 1
-            }
-            # @Test is matched BEFORE the declaration rule, and declarations are matched against the line
-            # with STRING LITERALS STRIPPED. Both are needed: a test description reading
-            # `@Test("rawValue strings are the telemetry-stable, privacy-safe class names")` contains
-            # "class names", which the declaration regex happily read as a type declaration — matching
-            # prose instead of structure, the same defect this repo has logged 17 times against
-            # command-text matchers (validation-discipline.md RULE: false-positives-not-gates-train-evasion).
+            code ~ /\/\*/ && code !~ /\*\// { inBlock = 1; next }
 
-            {
-                code = nq
-                gsub(/"[^"]*"/, "\"\"", code)
+            # A test: `@Test` anywhere in the attribute list, so `@MainActor @Test func x()` counts.
+            code ~ /(^|[[:space:]])@Test([^A-Za-z0-9_]|$)/ && attrDepth <= 0 {
+                for (k = top; k >= 0; k--) if (dep[k] < ind) {
+                    cnt[k]++
+                    if (code ~ /\.realBoundary([^A-Za-z0-9_]|$)/) bnd[k]++
+                    break
+                }
+                next
+            }
+            # Attribute lines accumulate until their declaration. Stay open while parens are unbalanced:
+            # swift-format wraps long attributes and the continuation lines do not start with `@`.
+            code ~ /^@/ || attrDepth > 0 {
+                attrs = attrs " " code
+                attrDepth += gsub(/\(/, "(", code) - gsub(/\)/, ")", code)
+                if (attrDepth < 0) attrDepth = 0
+                isAttrLine = 1
+                # NO `next`: the one-line form `@Suite(.tags(.x)) struct Foo {` must reach the rule below.
             }
             code ~ /(^|[^A-Za-z0-9_])(struct|class|enum|actor|extension)[[:space:]]+[A-Za-z_]/ {
-                # Skip a type NAME appearing in a comment.
-                if (code !~ /^(\/\/|\*)/) {
-                    popTo(ind)
-                    nm = code
-                    sub(/.*(^|[^A-Za-z0-9_])(struct|class|enum|actor|extension)[[:space:]]+/, "", nm)
-                    sub(/[^A-Za-z0-9_].*$/, "", nm)
-                    blob = attrs " " body
-                    t = ""
-                    if (blob ~ /\.tags\([^)]*\.productOutcome([^A-Za-z0-9_]|$)/)             t = "productOutcome"
-                    else if (blob ~ /\.tags\([^)]*\.driftGuard([^A-Za-z0-9_]|$)/)            t = "driftGuard"
-                    else if (blob ~ /\.tags\([^)]*\.observabilityContract([^A-Za-z0-9_]|$)/) t = "observabilityContract"
-                    else if (blob ~ /\.tags\([^)]*\.harnessContract([^A-Za-z0-9_]|$)/)       t = "harnessContract"
-                    top++; dep[top] = ind; name[top] = nm; tg[top] = t; cnt[top] = 0
-                    attrs = ""
-                    next
-                }
+                popTo(ind)
+                nm = code
+                sub(/.*(^|[^A-Za-z0-9_])(struct|class|enum|actor|extension)[[:space:]]+/, "", nm)
+                sub(/[^A-Za-z0-9_].*$/, "", nm)
+                blob = attrs " " code
+                top++; dep[top] = ind; name[top] = nm; cnt[top] = 0; bnd[top] = 0
+                tgn[top] = classify(blob)
+                tg[top] = lastTag
+                if (blob ~ /\.realBoundary([^A-Za-z0-9_]|$)/) suiteBoundary[top] = 1
+                attrs = ""
+                next
             }
-            # A doc comment between the attribute and its declaration must not clear the accumulator:
-            # `@Suite(..., .tags(.x))` / `/// why` / `struct Foo` is ordinary swift-format output, and
-            # clearing here dropped the tag and REJECTED a correctly tagged suite.
-            !isAttrLine && body !~ /^(\/\/|\*)/ { attrs = "" }
+            # A doc comment between an attribute and its declaration must not clear the accumulator.
+            !isAttrLine && code !~ /^[[:space:]]*$/ { attrs = "" }
             END { popTo(0); while (top >= 0) { emit(top); top-- }
-                  if (skipped > 0) printf "STRING_SKIPPED\t%s\t%d\n", path, skipped }
+                  if (skipped > 0) printf "STRING_SKIPPED\t%s\t%d\n", path, skipped
+                  if (commented > 0) printf "COMMENT_SKIPPED\t%s\t%d\n", path, commented }
         ' "$f"
     done
 }
@@ -205,8 +192,8 @@ if [ "$(names_of "$TAGS_MAIN" | grep -c '')" -lt 5 ]; then
 fi
 
 RAW=$(parse_suites) || { printf 'FAIL: suite parse failed\n' >&2; exit 1; }
-SKIPPED_ROWS=$(printf '%s\n' "$RAW" | grep '^STRING_SKIPPED' || true)
-SUITES=$(printf '%s\n' "$RAW" | grep -v '^STRING_SKIPPED' || true)
+SKIPPED_ROWS=$(printf '%s\n' "$RAW" | grep -E '^(STRING|COMMENT)_SKIPPED' || true)
+SUITES=$(printf '%s\n' "$RAW" | grep -vE '^(STRING|COMMENT)_SKIPPED' || true)
 skipped_total=$(printf '%s\n' "$SKIPPED_ROWS" | awk -F'\t' '{s+=$3} END{print s+0}')
 
 if printf '%s\n' "$SUITES" | grep -q '^PARSE_ERROR'; then
@@ -225,14 +212,19 @@ fi
 total_tests=$(printf '%s\n' "$SUITES" | awk -F'\t' '{s+=$4} END{print s+0}')
 # `-H` is load-bearing: `grep -c` omits the filename when given exactly ONE file, and xargs can split
 # the last batch down to one, so that batch would parse as 0 under `awk -F:` and undercount silently.
-control=$(test_files | tr '\n' '\0' | xargs -0 /usr/bin/grep -c -H -E '^[[:space:]]*@Test' 2>/dev/null \
+# The control is an independent SWEEP (raw grep over files) against the parser's state machine, so it
+# catches attribution and scoping bugs. Stated limit rather than implied: it shares the @Test RECOGNITION
+# rule, so it cannot catch a mis-recognition — only the axis matrix
+# (.claude/tests/test-inventory-parser.test.sh) covers that.
+control=$(test_files | tr '\n' '\0' \
+          | xargs -0 /usr/bin/grep -c -H -E '(^|[[:space:]])@Test([^A-Za-z0-9_]|$)' 2>/dev/null \
           | awk -F: '{s+=$2} END{print s+0}')
 # The control stays deliberately LINE-BASED and string-unaware, so it does not share the parser's
 # string-skipping logic — a shared bug would make both agree on a wrong number (the uniformity tell).
 # It therefore counts fixture `@Test` lines the parser skipped, and those are added back explicitly.
 if [ "$skipped_total" -gt 0 ]; then
-    printf 'note: %d @Test line(s) ignored inside multiline string fixtures:\n' "$skipped_total"
-    printf '%s\n' "$SKIPPED_ROWS" | awk -F'\t' '{printf "      %s (%s)\n", $2, $3}'
+    printf 'note: %d @Test mention(s) ignored as fixture text or comments:\n' "$skipped_total"
+    printf '%s\n' "$SKIPPED_ROWS" | awk -F'\t' '{printf "      %s (%s, %s)\n", $2, $3, tolower($1)}'
 fi
 if [ "$(( total_tests + skipped_total ))" -ne "$control" ]; then
     printf 'FAIL: parser attributed %d @Test declarations (+%d fixture lines ignored); independent count says %d.\n' \
@@ -287,9 +279,9 @@ non_product=$(( tag_drift + tag_obs + tag_harness + leg_drift + leg_obs + leg_ha
 # Real-boundary receipts, counted by tag on the suite, never by a filename, so a rename cannot manufacture
 # one. `\b` is a LITERAL `b` to `git grep -E`, which would pin this at 0 forever — a false zero in the
 # direction that hides progress.
-boundary=$(test_files | tr '\n' '\0' \
-           | xargs -0 /usr/bin/grep -c -H -E '\.tags\([^)]*\.realBoundary([^A-Za-z0-9_]|$)' 2>/dev/null \
-           | awk -F: '{s+=$2} END{print s+0}')
+# From the PARSER, never a raw grep: a comment or fixture string containing `.tags(.realBoundary)` would
+# otherwise increment the headline metric and suppress the zero-boundary warning without a real test.
+boundary=$(printf '%s\n' "$SUITES" | awk -F'\t' '{s+=$5} END{print s+0}')
 
 printf '\nTEST INVENTORY  %s  (%d test files, %d suites, %d @Test declarations)\n' \
     "$(git rev-parse --short HEAD)" "$file_count" "$suite_count" "$total_tests"
@@ -329,10 +321,19 @@ if [ "$baseline_count" -eq 0 ]; then
     exit 1
 fi
 
+# AMBIGUOUS is never grandfathered: two class tags on one suite contradicts the one-of-four contract, and
+# picking one by precedence would silently report every test in it under the wrong class.
+ambiguous=$(printf '%s\n' "$SUITES" | awk -F'\t' '$3 == "AMBIGUOUS" { print "  " $1 "  ::  " $2 }')
 offenders=$(printf '%s\n' "$SUITES" | awk -F'\t' -v bl="$BASELINE" '
     BEGIN { while ((getline line < bl) > 0) if (line !~ /^[[:space:]]*(#|$)/) known[line] = 1 }
     $3 == "-" { key = $1 "\t" $2; if (!(key in known)) print "  " $1 "  ::  " $2 }
 ')
+if [ -n "$ambiguous" ]; then
+    printf 'FAIL: suite(s) declare more than one class tag. A suite protects ONE of the four.\n\n' >&2
+    printf '%s\n' "$ambiguous" >&2
+    printf '\nOwner: .claude/rules/testing-philosophy.md\n' >&2
+    exit 1
+fi
 
 if [ -n "$offenders" ]; then
     n=$(printf '%s\n' "$offenders" | grep -c '')
