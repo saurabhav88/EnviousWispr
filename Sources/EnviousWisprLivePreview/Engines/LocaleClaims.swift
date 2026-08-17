@@ -168,16 +168,29 @@ package actor LocaleClaims {
     let tag = locale.identifier(.bcp47)
     await lock()
     let remaining = decrementUse(tag)
-    if remaining == 0, owned.contains(tag) {
-      if await releaseSystemClaim(tag) {
+    var outcome = "still_in_use"
+    if remaining == 0 {
+      if !owned.contains(tag) {
+        outcome = "not_ours"
+      } else if await releaseSystemClaim(tag) {
         owned.remove(tag)
+        outcome = "released"
       } else {
         // Keep ownership: the claim is still ours and still there, so a later `finish` or an eviction
-        // can try again. Logged because a refusal here is the shape #2145 shipped silently.
-        await log("claim release_refused tag=\(tag)")
+        // can try again.
+        outcome = "release_refused"
       }
     }
     unlock()
+    // **Logged on EVERY path, including the successful one.** #2145 was invisible for two releases
+    // partly because a release that did nothing looked exactly like a release that worked: silence.
+    // A silent failure needs a feedback path, not just a fix, so the closed vocabulary here is what
+    // makes "did the claim actually go back" answerable from one grep instead of an SDK probe.
+    // It is also the only receipt available: `AssetInventory.reservedLocales` read from a separate
+    // process does NOT show this app's claims (measured — 18 samples across a live recording, all
+    // empty, while the app was mid-session), so an external prober cannot verify this and the app
+    // has to say so itself.
+    await log("claim finish tag=\(tag) outcome=\(outcome) remaining=\(remaining)")
   }
 
   /// Test-only view of the registrations.
