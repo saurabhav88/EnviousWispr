@@ -330,7 +330,27 @@ public actor ModelDeliveryController {
   /// requires an actual REGULAR FILE with positive size — a directory or an
   /// empty file proves nothing was downloaded.
   public func hasStagedPartials(_ registration: DeliveryRegistration) -> Bool {
-    let staging = stagingDirectory(for: registration)
+    Self.hasStagedPartialsOnDisk(registration)
+  }
+
+  /// The same disk truth, callable WITHOUT the actor (#2109).
+  ///
+  /// EG-1's install-state mapper is a synchronous `nonisolated static func`
+  /// running inside a state-observer callback, so it cannot `await` an actor
+  /// method — and making it await would put a suspension inside the window the
+  /// install-state sequencer exists to protect. The read was always pure; only
+  /// the incidental registration-cache write in the old `stagingDirectory`
+  /// made it isolated, and that write now lives in `startAttempt`.
+  ///
+  /// A `.resume.json` sidecar proves nothing was downloaded, and neither does
+  /// a directory or an empty file: this requires a REGULAR FILE of positive
+  /// size (PR #1637, two cloud-review rounds — a nested model layout walked
+  /// via `subpathsOfDirectory` yields directory names that pass a suffix
+  /// filter while holding zero real bytes).
+  nonisolated package static func hasStagedPartialsOnDisk(_ registration: DeliveryRegistration)
+    -> Bool
+  {
+    let staging = stagingDirectoryURL(for: registration)
     guard
       let enumerator = FileManager.default.enumerator(
         at: staging, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey])
@@ -384,6 +404,15 @@ public actor ModelDeliveryController {
     fetchIfMissing: Bool = true
   ) async -> DeliveryOutcome {
     let identity = registration.manifest.identity
+    // Cache the registration HERE, before the attempt task exists and before
+    // any suspension (#2109). It used to be written as a side effect of
+    // `stagingDirectory(for:)`, which is only reached AFTER the suspending
+    // existing-cache validation — so a cancel arriving in that window found no
+    // registration and `hasStagedPartials(identity:)` returned false, reporting
+    // a resumable download as non-resumable on all three cancel/terminal paths.
+    // Every door lands here: `ensureModelAvailable` and `repair` route through
+    // `joinOrStartFetch`, and `admitIfComplete` calls `startAttempt` directly.
+    registrationsByIdentity[identity] = registration
     var entry = entries[identity, default: Entry()]
     entry.generation += 1
     entry.cancelLatched = false
@@ -451,6 +480,15 @@ public actor ModelDeliveryController {
 
     // Existing-cache validation (D2 §4): one full hash pass, component grain.
     setState(identity, .preparing(validatingExistingCache: true), ifGeneration: generation)
+    // Test-only barrier (#2109). Production is nil and this is a no-op.
+    //
+    // It exists because the ordering guarantee below it cannot be tested any
+    // other way: in production this hash pass runs for SECONDS over gigabytes,
+    // and a cancel landing inside it is the real defect. With unit fixtures the
+    // same window is microseconds wide, so a polled test cannot land in it —
+    // mutation-proved, a timing-based attempt passed against the pre-fix code
+    // and would have shipped as coverage that detects nothing.
+    await beforeExistingCacheValidationForTesting?()
     // Per-file liveness ticks: each validated file republishes the state so
     // the app-layer bridge advances the progress channel's mtime — the
     // sessionless wedge guard reads silence as a wedge, and a multi-second
@@ -732,6 +770,24 @@ public actor ModelDeliveryController {
 
   // MARK: - Paths + disk
 
+  /// Test-only barrier awaited after `.preparing` publishes and BEFORE the
+  /// existing-cache validation suspends (#2109). Never set in production.
+  ///
+  /// Deliberately `internal`, not `package` or `public`: the test target uses
+  /// `@testable import`, so internal is reachable, and widening it would put a
+  /// test hook on the delivery API that other modules could call. Matches the
+  /// module's existing seam precedent (`ChunkAppendDelegate.protocolClassesForTesting`),
+  /// which is likewise internal and not `#if DEBUG` — keeping it out of a DEBUG
+  /// guard means the covering test compiles and runs in the Release lane too,
+  /// rather than silently vanishing from it.
+  var beforeExistingCacheValidationForTesting: (@Sendable () async -> Void)?
+
+  /// Cross-actor setter for the barrier above; an actor's stored property
+  /// cannot be assigned from outside its isolation.
+  func setBeforeExistingCacheValidationForTesting(_ hook: (@Sendable () async -> Void)?) {
+    beforeExistingCacheValidationForTesting = hook
+  }
+
   private func admission(for registration: DeliveryRegistration) -> CacheAdmission {
     CacheAdmission(
       manifest: registration.manifest, installDirectory: registration.installDirectory,
@@ -740,11 +796,27 @@ public actor ModelDeliveryController {
 
   private var registrationsByIdentity: [ModelIdentity: DeliveryRegistration] = [:]
 
-  private func stagingDirectory(for registration: DeliveryRegistration) -> URL {
-    registrationsByIdentity[registration.manifest.identity] = registration
-    return registration.metadataDirectory
+  /// The staging path authority. `nonisolated` and `static` deliberately: it
+  /// is a pure function of the registration and touches no actor state, which
+  /// is what lets a SYNCHRONOUS caller off the actor derive the same path
+  /// (#2109 — the EG-1 install-state mapper cannot await).
+  ///
+  /// Identity → URL is total. The reverse is NOT: `cacheKey` flattens name and
+  /// revision without an injective boundary, so a URL cannot be parsed back
+  /// into a `ModelIdentity`. Anything needing to know which identity owns a
+  /// directory must map forward from a known identity and compare, never parse.
+  nonisolated package static func stagingDirectoryURL(for registration: DeliveryRegistration) -> URL
+  {
+    registration.metadataDirectory
       .appendingPathComponent("staging", isDirectory: true)
       .appendingPathComponent(registration.manifest.identity.cacheKey, isDirectory: true)
+  }
+
+  private func stagingDirectory(for registration: DeliveryRegistration) -> URL {
+    // No longer caches the registration: that write moved to `startAttempt`,
+    // where it cannot be outrun by a cancel. Deriving a path is not a lifetime
+    // concern and should never have owned one.
+    Self.stagingDirectoryURL(for: registration)
   }
 
   private func hasStagedPartials(identity: ModelIdentity) -> Bool {

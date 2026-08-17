@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -393,6 +394,145 @@ import Testing
     } else {
       Issue.record("unexpected outcome for B: \(b)")
     }
+  }
+
+  // MARK: - Nonisolated staging authority (#2109)
+
+  /// The extraction is only safe if it is FAITHFUL. `stagingDirectoryURL` is
+  /// now the single path authority and is called off the actor by EG-1's
+  /// synchronous install-state mapper; if it disagreed with the path the actor
+  /// itself uses, the mapper would answer questions about a directory nothing
+  /// writes to — and would answer them plausibly, always "no partials".
+  @Test func nonisolatedStagingPathMatchesWhatTheActorUses() throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+
+    let expected = registration.metadataDirectory
+      .appendingPathComponent("staging", isDirectory: true)
+      .appendingPathComponent(registration.manifest.identity.cacheKey, isDirectory: true)
+
+    #expect(
+      ModelDeliveryController.stagingDirectoryURL(for: registration) == expected,
+      "the nonisolated path authority must produce the actor's own staging path")
+  }
+
+  /// Same faithfulness requirement for the disk read, and the two-way control
+  /// matters: assert it agrees with the actor method in BOTH directions, or a
+  /// stub that always returns false would pass the empty case.
+  @Test func nonisolatedStagedPartialsAgreesWithTheActor() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+
+    let staging = ModelDeliveryController.stagingDirectoryURL(for: registration)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+
+    // Direction 1: nothing staged. Both must say false.
+    #expect(ModelDeliveryController.hasStagedPartialsOnDisk(registration) == false)
+    #expect(await controller.hasStagedPartials(registration) == false)
+
+    // Direction 2: real bytes. Both must say true — this is the direction an
+    // always-false stub would fail.
+    try Data([0x01, 0x02, 0x03]).write(to: staging.appendingPathComponent("chunk.bin"))
+    #expect(ModelDeliveryController.hasStagedPartialsOnDisk(registration) == true)
+    #expect(await controller.hasStagedPartials(registration) == true)
+  }
+
+  /// The nonisolated read must honour the same exclusions as the actor one,
+  /// not a simplified copy: a resume sidecar alone is not resumable content.
+  /// A drifted duplicate would report a metadata-only shell as resumable and
+  /// offer "Resume upgrade" for a download that never stored a byte.
+  @Test func nonisolatedStagedPartialsIgnoresResumeSidecarsAndEmptyFiles() throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    let staging = ModelDeliveryController.stagingDirectoryURL(for: registration)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+
+    try Data().write(to: staging.appendingPathComponent("state.resume.json"))
+    #expect(ModelDeliveryController.hasStagedPartialsOnDisk(registration) == false)
+
+    try Data().write(to: staging.appendingPathComponent("empty.bin"))
+    #expect(
+      ModelDeliveryController.hasStagedPartialsOnDisk(registration) == false,
+      "a zero-byte file proves nothing was downloaded")
+
+    try FileManager.default.createDirectory(
+      at: staging.appendingPathComponent("Encoder.mlmodelc", isDirectory: true),
+      withIntermediateDirectories: true)
+    #expect(
+      ModelDeliveryController.hasStagedPartialsOnDisk(registration) == false,
+      "a directory entry is not staged content")
+
+    try Data([0xFF]).write(to: staging.appendingPathComponent("real.bin"))
+    #expect(ModelDeliveryController.hasStagedPartialsOnDisk(registration) == true)
+  }
+
+  /// THE regression this chunk exists for (#2109), covered deterministically.
+  ///
+  /// Before the fix the registration was cached as a side effect of deriving a
+  /// staging path, which happens only AFTER the existing-cache validation
+  /// suspends. A cancel landing in that window found no cached registration,
+  /// so the user was told a resumable download was not resumable and would
+  /// have re-fetched gigabytes they already had.
+  ///
+  /// WHY A SEAM AND NOT A TIMED WAIT. In production that window is seconds
+  /// wide (a hash pass over gigabytes); with unit fixtures it is microseconds,
+  /// so no poll can land in it. A polled version of this test was written,
+  /// mutation-controlled, and **passed against the pre-fix code** — it would
+  /// have shipped as coverage that detects nothing. The barrier parks the
+  /// attempt inside the window instead of racing it, so the test is
+  /// deterministic rather than lucky.
+  @Test func earlyCancelStillSeesStagedPartialsAsResumable() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    let identity = registration.manifest.identity
+
+    // Real staged bytes: what the user would lose if we mis-reported this.
+    let staging = ModelDeliveryController.stagingDirectoryURL(for: registration)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+    try Data([0x01, 0x02, 0x03]).write(to: staging.appendingPathComponent("partial.bin"))
+
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+
+    // Park the attempt inside the window, hand control back, and hold until
+    // the cancel has been observed.
+    let entered = AsyncStream<Void>.makeStream()
+    let release = AsyncStream<Void>.makeStream()
+    await controller.setBeforeExistingCacheValidationForTesting {
+      entered.continuation.yield()
+      entered.continuation.finish()
+      var iterator = release.stream.makeAsyncIterator()
+      _ = await iterator.next()
+    }
+
+    async let attempt = controller.ensureModelAvailable(registration)
+
+    // Wait for the attempt to actually be parked in the window under test.
+    // BOUNDED: an unbounded wait on a signal that never arrives hangs CI
+    // instead of reporting this test, which is the one failure mode a
+    // regression test must not have. The deadline decides nothing — it only
+    // converts a broken signal path into a loud failure.
+    let didEnter = await withDeadline(seconds: 5) {
+      var iterator = entered.stream.makeAsyncIterator()
+      return await iterator.next() != nil
+    }
+    try #require(didEnter == true, "the attempt never parked in the validation window")
+
+    // Same reasoning for the release: if cancel itself regresses and never
+    // returns, this frees the parked attempt so the suite fails rather than
+    // wedging. Cancelled immediately on the happy path.
+    let deadlineRelease = Task {
+      try? await Task.sleep(for: .seconds(5))  // deadline-fallback: frees a wedged cancel path
+      release.continuation.yield()
+      release.continuation.finish()
+    }
+    let outcome = await controller.cancel(identity)
+    deadlineRelease.cancel()
+    release.continuation.yield()
+    release.continuation.finish()
+    _ = await attempt
+
+    #expect(
+      outcome == .cancelled(resumable: true),
+      "a cancel inside the existing-cache validation window must still see the staged partials")
   }
 
   @Test func cancelWithNothingInFlight() async throws {
