@@ -38,33 +38,42 @@ enum LivePreviewInstaller {
     settings: SettingsManager,
     settingsSync: PipelineSettingsSync
   ) -> LivePreviewCoordinator {
-    // **Effective, not merely persisted.** A value saved as true on macOS 26 and
-    // then read on an older system used to enlarge the pill on every recording and
-    // fill it with "needs macOS 26" — while the toggle that would turn it off was
-    // disabled for the same reason, so the user could not stop it. Folding the OS
-    // check in here means an unsupported system behaves exactly like the setting
-    // being off: normal pill, no message, nothing to escape from. One expression,
-    // used for both the geometry and the coordinator, so the two cannot disagree.
+    // **Effective, not merely persisted** — the requirement this wiring exists
+    // for, unchanged since #1988. A value saved as true on macOS 26 and then read
+    // on an older system used to enlarge the pill on every recording and fill it
+    // with "needs macOS 26", while the toggle that would turn it off was disabled
+    // for the same reason, so the user could not stop it. An unsupported system
+    // must behave exactly like the setting being off: normal pill, no message,
+    // nothing to escape from.
     //
-    // **This line is where engine selection will live.** One route, read for both
-    // halves below: the OS check is Apple's rule rather than the feature's, and it
-    // comes from the same value the recording resolves against, so a pill sized for
-    // a preview that then refuses to run is not expressible. When the user can
-    // choose an engine, only this line changes.
-    let route = ApplePreviewEngineResolver.route
-    let effectivelyEnabled: () -> Bool = {
-      route.isSupportedOnThisSystem() && settings.livePreviewEnabled
-    }
+    // **WHERE that expression lives has moved (#2123), and the old comment here
+    // claimed three things that are now false**: that the OS check is folded in
+    // at this line, that one expression feeds both consumers from here, and that
+    // choosing an engine would change only this line. The plan's own grounding
+    // disproved the third — the installer also takes the delivery home, builds
+    // both routes, and gains a second settings hook.
+    //
+    // What is true now: the installer COMPOSES the provider, and
+    // `LivePreviewCoordinator` owns the answer. It reads this provider once per
+    // recording and freezes the route together with the effective-enabled value,
+    // so geometry and resolution cannot disagree — which is the same guarantee
+    // the old single expression gave, moved to the layer that can actually hold
+    // it across the overlay's deferred panel creation.
+    let selectedRoute: () -> LivePreviewEngineRoute = { ApplePreviewEngineResolver.route }
     let coordinator = LivePreviewCoordinator(
       // The limb gets ONE read of already-captured audio, never the capture
       // interface itself: see `LivePreviewSampleReader`.
       readSamples: { index in await capture.getSamplesSnapshot(fromIndex: index) },
-      isEnabled: effectivelyEnabled,
+      isPreviewOn: { settings.livePreviewEnabled },
       languageMode: { settings.languageMode },
-      resolveEngine: route.resolve
+      selectedRoute: selectedRoute
     )
+    // Geometry reads the COORDINATOR's frozen answer, not a second live
+    // computation. The overlay creates its panel on the next run-loop cycle and
+    // reads this inside that deferred work, so a live read here could size a pill
+    // for one engine while the recording resolves another.
     overlay.setLivePreviewProviders(
-      enabled: effectivelyEnabled,
+      enabled: { coordinator.isEnabledForGeometry },
       display: { coordinator.display }
     )
     overlay.setRecordingIntentObserver { recording in

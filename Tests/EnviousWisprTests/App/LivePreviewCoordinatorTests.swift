@@ -17,8 +17,136 @@ import Testing
 /// has. What IS unit-testable is the part that protects the heart: the gate that
 /// decides whether any of that happens at all, and the bound on what the feature
 /// retains. Live behaviour is covered by UAT.
+/// Wraps a resolver in a route for the coordinator's `selectedRoute` provider.
+///
+/// These suites test the coordinator's POLICY, not an engine's OS capability, so
+/// support defaults to true; suites that care pass `supported: false` explicitly.
+/// Returning the PROVIDER rather than a route keeps every call site honest about
+/// the fact that the coordinator reads it once per recording.
+private func previewRoute(
+  supported: Bool = true,
+  _ resolve: @escaping LivePreviewEngineResolver
+) -> () -> LivePreviewEngineRoute {
+  { LivePreviewEngineRoute(isSupportedOnThisSystem: { supported }, resolve: resolve) }
+}
+
 @MainActor
 struct LivePreviewCoordinatorTests {
+
+  // MARK: - #2123: one engine decision per recording
+
+  /// The pill's SIZE and the words in it must never disagree about the engine.
+  ///
+  /// Freezing only at the moment intent arrives is not enough on its own: the
+  /// overlay reports intent synchronously but creates its panel on the next
+  /// run-loop cycle and reads geometry inside that deferred work. So a switch
+  /// landing in that gap must change neither half.
+  ///
+  /// Mutation control: read `selectedRoute()` live in `runSession` instead of the
+  /// snapshot and this goes red on the engine identity.
+  @Test("the engine chosen at the start of a recording is the one it uses throughout")
+  func engineIsFrozenForTheRecording() async {
+    final class Choice: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = "first"
+      var current: String { mutex.withLock { value } }
+      func switchIt() { mutex.withLock { value = "second" } }
+    }
+    final class Seen: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var ids: [String] = []
+      var all: [String] { mutex.withLock { ids } }
+      func record(_ id: String) { mutex.withLock { ids.append(id) } }
+    }
+    let choice = Choice()
+    let seen = Seen()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: {
+        // A DIFFERENT route object each read, exactly as the real provider will
+        // behave once it switches on a setting.
+        let id = choice.current
+        return LivePreviewEngineRoute(
+          isSupportedOnThisSystem: { true },
+          resolve: { _ in
+            seen.record(id)
+            return .blocked(.unsupportedLanguage)
+          })
+      }
+    )
+
+    coordinator.setRecording(true)
+    // Switch the choice immediately — before the session task has resolved.
+    choice.switchIt()
+    for _ in 0..<2000 where seen.all.isEmpty { await Task.yield() }
+
+    #expect(seen.all.first == "first", "control: the recording must have resolved something")
+    #expect(
+      !seen.all.contains("second"),
+      "the recording resolved the engine chosen after it started: \(seen.all)")
+
+    // The NEXT recording gets the new choice — the freeze is per recording, not
+    // permanent.
+    coordinator.setRecording(false)
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !seen.all.contains("second") { await Task.yield() }
+    #expect(seen.all.contains("second"), "a new recording must pick up the new choice")
+  }
+
+  /// A recording that began with the preview OFF stays off for its whole length.
+  ///
+  /// The overlay deliberately forwards duplicate intent pushes, and the disabled
+  /// path never sets `isRunning` — so without the snapshot guard, enabling the
+  /// preview mid-recording plus one duplicate push would start a preview in a
+  /// recording that never began with one.
+  @Test("enabling mid-recording cannot start a preview the recording began without")
+  func enablingMidRecordingDoesNotStartIt() async {
+    final class Toggle: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var value = false
+      var isOn: Bool { mutex.withLock { value } }
+      func turnOn() { mutex.withLock { value = true } }
+    }
+    final class Resolved: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var count = 0
+      var value: Int { mutex.withLock { count } }
+      func bump() { mutex.withLock { count += 1 } }
+    }
+    let toggle = Toggle()
+    let resolved = Resolved()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { toggle.isOn },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        resolved.bump()
+        return .blocked(.unsupportedLanguage)
+      }
+    )
+
+    coordinator.setRecording(true)  // begins OFF
+    #expect(coordinator.display == .off, "control: it must start off")
+    #expect(!coordinator.isEnabledForGeometry, "control: geometry must agree it is off")
+
+    toggle.turnOn()
+    coordinator.setRecording(true)  // the overlay's duplicate push
+    for _ in 0..<300 { await Task.yield() }
+
+    #expect(resolved.value == 0, "a preview started inside a recording that began without one")
+    #expect(!coordinator.isEnabledForGeometry, "geometry must stay off for this recording")
+
+    // And the next recording, begun with it on, DOES run — otherwise this test
+    // would pass against a preview that never starts at all.
+    coordinator.setRecording(false)
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where resolved.value == 0 { await Task.yield() }
+    #expect(resolved.value == 1, "the next recording must honour the new setting")
+  }
 
   // MARK: - The gate
 
@@ -27,9 +155,9 @@ struct LivePreviewCoordinatorTests {
     let capture = CountingAudioCapture()
     let coordinator = LivePreviewCoordinator(
       readSamples: { await capture.getSamplesSnapshot(fromIndex: $0) },
-      isEnabled: { false },
+      isPreviewOn: { false },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
 
     coordinator.setRecording(true)
@@ -54,9 +182,9 @@ struct LivePreviewCoordinatorTests {
   func enabledStartsAndLeavesOff() {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
 
     coordinator.setRecording(true)
@@ -69,9 +197,9 @@ struct LivePreviewCoordinatorTests {
   func startClearsPreviousText() {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
     coordinator.setRecording(true)
     coordinator.setRecording(false)
@@ -91,9 +219,9 @@ struct LivePreviewCoordinatorTests {
   func lifecycleIsIdempotent() {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
     // Two call sites push recording intent (the first overlay push and every
     // state-driven one), and `hide()` reports a stop that may already have
@@ -118,9 +246,9 @@ struct LivePreviewCoordinatorTests {
   func stopDiscardsPreviewText() {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
     coordinator.setRecording(true)
     #expect(coordinator.display != .off, "control: a live recording is not off")
@@ -204,9 +332,9 @@ struct LivePreviewCoordinatorTests {
     let resolutions = CountingBox()
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         let nth = await resolutions.next()
         return .ready(
           LivePreviewEngineCandidate(
@@ -257,9 +385,9 @@ struct LivePreviewCoordinatorTests {
         await reads.bump()
         return ([], 0)
       },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedLanguage) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedLanguage) }
     )
 
     coordinator.setRecording(true)
@@ -321,9 +449,9 @@ struct LivePreviewCoordinatorTests {
   ) -> LivePreviewCoordinator {
     LivePreviewCoordinator(
       readSamples: readSamples,
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: key, makeEngine: { FakePreviewEngine(probe: probe) }))
@@ -387,9 +515,9 @@ struct LivePreviewCoordinatorTests {
   private func makeCoordinator() -> LivePreviewCoordinator {
     LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in .blocked(.unsupportedSystem) }
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
   }
 
@@ -504,9 +632,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -612,9 +740,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -640,7 +768,10 @@ struct LivePreviewCoordinatorTests {
     box.enabled = false
     coordinator.releaseForDisabledSetting()
 
-    // Turn it back on and start another recording immediately.
+    // Turn it back on and start another RECORDING immediately. #2123: the
+    // recording has to end first, because a decision is frozen per recording and
+    // a second preview belongs to a second recording.
+    coordinator.setRecording(false)
     box.enabled = true
     coordinator.setRecording(true)
     for _ in 0..<200 { await Task.yield() }
@@ -736,9 +867,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -758,7 +889,10 @@ struct LivePreviewCoordinatorTests {
     box.enabled = false
     coordinator.releaseForDisabledSetting()
 
-    // The next preview must run, with the first warm-up still hung.
+    // The next preview must run, with the first warm-up still hung. #2123: the
+    // next preview means the next RECORDING — a recording now freezes its
+    // decision at its start, so ending this one is what makes the next one new.
+    coordinator.setRecording(false)
     box.enabled = true
     coordinator.setRecording(true)
     for _ in 0..<2000 where counts.sessionsOpened < 1 { await Task.yield() }
@@ -849,9 +983,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -872,6 +1006,9 @@ struct LivePreviewCoordinatorTests {
     // Abandon it mid-open, then run a second preview to completion of its open.
     box.enabled = false
     coordinator.releaseForDisabledSetting()
+    // #2123: end the recording before starting the next one — a decision is
+    // frozen per recording, so a second preview belongs to a second recording.
+    coordinator.setRecording(false)
     box.enabled = true
     coordinator.setRecording(true)
     for _ in 0..<2000 where !coordinator.hasLiveSessionForTests { await Task.yield() }
@@ -917,9 +1054,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         if box.blocked { return .blocked(.heartIsStreaming) }
         return .ready(
           LivePreviewEngineCandidate(
@@ -975,9 +1112,9 @@ struct LivePreviewCoordinatorTests {
     let box = Box()
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -1026,9 +1163,9 @@ struct LivePreviewCoordinatorTests {
     let box = Box()
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { true },
+      isPreviewOn: { true },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
@@ -1074,9 +1211,9 @@ struct LivePreviewCoordinatorTests {
 
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
-      isEnabled: { box.enabled },
+      isPreviewOn: { box.enabled },
       languageMode: { .locked("en") },
-      resolveEngine: { _ in
+      selectedRoute: previewRoute { _ in
         .ready(
           LivePreviewEngineCandidate(
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),

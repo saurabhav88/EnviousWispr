@@ -105,7 +105,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   private(set) var display: LivePreviewDisplay = .off
 
   private let readSamples: LivePreviewSampleReader
-  private let isEnabled: () -> Bool
+  private let isPreviewOn: () -> Bool
   private let languageMode: () -> LanguageMode
 
   /// Which engine can serve a given language, and why not when it cannot.
@@ -113,7 +113,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// Injected rather than chosen here, so this type never names a vendor and never
   /// encodes one engine's availability rules as the feature's (#2077). Today the
   /// installer supplies Apple's; a second engine changes the closure, not this file.
-  private let resolveEngine: LivePreviewEngineResolver
+  private let selectedRoute: () -> LivePreviewEngineRoute
 
   /// The prepared engine, kept across recordings so the second press does not pay
   /// preparation again.
@@ -206,16 +206,52 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   private var sessionGeneration: UInt64 = 0
   private var isRunning = false
 
+  /// What this recording decided, read ONCE at its start.
+  ///
+  /// **Both halves, and that is the point.** The pill's geometry and the words
+  /// inside it must never disagree about which engine is running, and freezing
+  /// only the route would still allow it: the overlay reports recording intent
+  /// synchronously but creates its panel on the NEXT run-loop cycle, and geometry
+  /// reads its provider only inside that deferred work
+  /// (`RecordingOverlayPanel.swift:382-385`, `:640-656`). A setting change landing
+  /// in that gap would size a pill for one answer and resolve the other.
+  ///
+  /// Stored EVEN WHEN DISABLED, so a recording that began with the preview off
+  /// stays off for its whole length: without it, enabling mid-recording plus one
+  /// of the overlay's duplicate intent pushes would start a preview the recording
+  /// never began with.
+  ///
+  /// Lifetime is the recording, not the session: teardown must NOT clear it (the
+  /// deferred geometry read may not have happened yet), and `setRecording(false)`
+  /// is the only thing that does.
+  private struct RecordingSnapshot {
+    let route: LivePreviewEngineRoute
+    let enabled: Bool
+  }
+  private var recordingSnapshot: RecordingSnapshot?
+
+  /// `selectedRoute` answers "which engine is chosen right now" and is read once
+  /// per recording. `isPreviewOn` is the user's toggle ALONE — support is the
+  /// route's own answer (`isSupportedOnThisSystem`), so combining them here is
+  /// what makes one frozen effective-enabled value possible.
   init(
     readSamples: @escaping LivePreviewSampleReader,
-    isEnabled: @escaping () -> Bool,
+    isPreviewOn: @escaping () -> Bool,
     languageMode: @escaping () -> LanguageMode,
-    resolveEngine: @escaping LivePreviewEngineResolver
+    selectedRoute: @escaping () -> LivePreviewEngineRoute
   ) {
     self.readSamples = readSamples
-    self.isEnabled = isEnabled
+    self.isPreviewOn = isPreviewOn
     self.languageMode = languageMode
-    self.resolveEngine = resolveEngine
+    self.selectedRoute = selectedRoute
+  }
+
+  /// Whether the pill should be SIZED for preview text, for the overlay's
+  /// deferred geometry pass. Reads the frozen answer during a recording; outside
+  /// one there is nothing frozen, so it answers live.
+  var isEnabledForGeometry: Bool {
+    if let snapshot = recordingSnapshot { return snapshot.enabled }
+    return selectedRoute().isSupportedOnThisSystem() && isPreviewOn()
   }
 
   // MARK: - Lifecycle
@@ -229,7 +265,20 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   func setRecording(_ recording: Bool) {
     if recording {
       guard !isRunning else { return }
-      guard isEnabled() else {
+      // **This recording has already decided.** The overlay deliberately forwards
+      // DUPLICATE intent pushes (`RecordingOverlayPanel.swift:375-388`), and
+      // `isRunning` is false on the disabled path — so without this guard, a user
+      // enabling the preview mid-recording would have the next duplicate push
+      // start it, in a recording that began with it off.
+      guard recordingSnapshot == nil else { return }
+
+      // Read the choice ONCE, here, and keep both halves. Everything downstream
+      // reads this and never the live setting.
+      let route = selectedRoute()
+      recordingSnapshot = RecordingSnapshot(
+        route: route, enabled: route.isSupportedOnThisSystem() && isPreviewOn())
+
+      guard recordingSnapshot?.enabled == true else {
         display = .off
         // **Release the prepared engine too, not just the display (#2108).**
         //
@@ -259,6 +308,10 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       display = .waiting
       startSession(generation: sessionGeneration)
     } else {
+      // Cleared FIRST and unconditionally: a recording that began with the
+      // preview disabled still owns a snapshot and still has to give it back,
+      // and that path returns before the `isRunning` guard below.
+      recordingSnapshot = nil
       guard isRunning else { return }
       isRunning = false
       cancelSessionTask()
@@ -315,7 +368,12 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // all, and what to do with the user's language setting. Neither is a fact about
     // the preview feature, and an earlier draft that assumed Apple's answers would
     // have silently disabled a second engine on every Mac below macOS 26.
-    let resolution = await resolveEngine(languageMode())
+    // Through THIS recording's frozen route, never a live read: the engine the
+    // pill was sized for is the engine that must answer. A nil snapshot means the
+    // recording ended while this task was being scheduled — resolving anything
+    // then would be work for a recording nobody is having.
+    guard let route = recordingSnapshot?.route else { return }
+    let resolution = await route.resolve(languageMode())
     guard isCurrent(generation) else { return }
 
     guard case .ready(let candidate) = resolution else {
@@ -483,7 +541,10 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// Wired from `PipelineSettingsSync`'s `livePreviewEnabled` case, which is the
   /// one place that learns a setting moved.
   func releaseForDisabledSetting() {
-    guard !isEnabled() else { return }
+    // The toggle alone, which is what "the user disabled it" means. Support is
+    // the route's business: on a Mac that cannot run the chosen engine nothing is
+    // ever prepared, so there is nothing here to release either way.
+    guard !isPreviewOn() else { return }
     // **Tear down the ACTIVE session first, not just the cached slot.**
     //
     // Switching the preview off mid-recording used to clear only the cache:
