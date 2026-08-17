@@ -75,7 +75,10 @@ public final class HotkeyService {
   /// Carbon registration to hold a ref, so a nil ref means "unarmed" for a chord
   /// and says nothing at all for a modifier. Tracking arming explicitly is what
   /// lets the modifier dispatch path know whether a recording is in flight.
-  private var isCancelArmed = false
+  /// Whether the cancel role is armed. `package private(set)` so #2087's
+  /// disarm-on-abandonment can be OBSERVED by a test — the alternative was
+  /// asserting on a spy for a call the production code might simply not make.
+  package private(set) var isCancelArmed = false
 
   /// Cancel's armed state at the moment `suspend()` ran, so `resume()` can put a
   /// still-running recording back where it was.
@@ -359,6 +362,24 @@ public final class HotkeyService {
     if let ref = cancelHotkeyRef {
       UnregisterEventHotKey(ref)
       cancelHotkeyRef = nil
+    }
+  }
+
+  /// Arm or disarm the cancel hotkey from a single decision (#2087).
+  ///
+  /// The lifecycle used to call `registerCancelHotkey()` / `unregisterCancelHotkey()`
+  /// from six places across two per-backend switches, so "when is cancel armed"
+  /// was spread over six sites and could disagree with itself. `CancelAffordancePolicy`
+  /// now answers that once and this applies the answer.
+  ///
+  /// Both underlying calls are already idempotent — `registerCancelHotkey`
+  /// returns early when a ref exists, and `unregisterCancelHotkey` no-ops with
+  /// none — so repeating the same answer on every transition costs nothing.
+  public func setCancelHotkeyEnabled(_ enabled: Bool) {
+    if enabled {
+      registerCancelHotkey()
+    } else {
+      unregisterCancelHotkey()
     }
   }
 

@@ -810,6 +810,39 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     await awaitKernelTerminal()
   }
 
+  /// Abandon an in-flight Escape Recovery, returning immediately (#2087).
+  ///
+  /// Not waiting is the whole point: an abandonment has no terminal until its
+  /// decode returns, and the caller must disarm the cancel shortcut NOW —
+  /// because an abandonment publishes no state change, so no LIFECYCLE
+  /// transition will disarm it. (The bare-modifier dispatch in `HotkeyService`
+  /// already disarms synchronously before invoking the callback, for its own
+  /// two-key reason; the caller's disarm is what covers the Carbon chord path,
+  /// and is a shared backstop for both.) The ordinary cancel path must never
+  /// behave this way; returning early there would let a new recording start
+  /// before the old one released the engine.
+  ///
+  /// **Two narrowings, and only the second is enforcement.** Taking no argument
+  /// means an unsafe ORIGIN cannot be supplied — abandonment is shortcut-only,
+  /// so it is fixed here. That narrows what a caller can express, not what the
+  /// method does: an earlier draft stopped there, and a package caller could
+  /// still invoke it during an ordinary recording. The `guard` is what makes
+  /// MISUSE INERT, and it is the reason the contract is a property rather than a
+  /// warning label. `abandonmentRequestIsInertOutsideARecovery` writes the
+  /// misuse deliberately and proves nothing happens — not even a latched cancel
+  /// origin.
+  ///
+  /// Redundant with `RecordingFinalizer`'s own check, deliberately. That one
+  /// decides whether the user asked for an abandonment; this one decides whether
+  /// this driver can honour it, and a boundary that trusts its callers is a
+  /// boundary in name only.
+  ///
+  /// `package`: the sole caller is `RecordingFinalizer` in this package.
+  package func requestEscapeRecoveryAbandonment() {
+    guard isEscapeRecoveryTranscribing else { return }
+    kernel.cancel(origin: .user(.shortcut))
+  }
+
   /// Sync reset. Wraps `kernel.reset()` + driver-side cleanup. Mirrors the
   /// existing `handle(.reset)` body for `RecordingFinalizer.swift:117`'s
   /// sync call site.

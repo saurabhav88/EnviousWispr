@@ -254,20 +254,26 @@ final class DictationLifecycleCoordinator {
     recordingSoundCue.handle(
       newState, backend: .parakeet,
       enabled: settings.playRecordingSounds, selectedPairing: settings.recordingSoundPairing)
+    // #2087: the cancel affordance is ONE decision, applied identically for both
+    // backends, instead of six register/unregister calls spread across two
+    // switches that could drift apart. The switch keeps its lock, polish and
+    // deferred-setting work — those are genuinely per-state and are not an
+    // affordance question.
+    hotkeyService.setCancelHotkeyEnabled(
+      CancelAffordancePolicy.isShortcutEnabled(
+        state: newState,
+        isEscapeRecoveryTranscribing: kernelDriver.isEscapeRecoveryTranscribing))
     switch newState {
     case .recording:
-      hotkeyService.registerCancelHotkey()
       // PR7 of #763 — clear the prior recording's polish error on every new
       // recording start. Reset matrix locked in PR7 plan: cancel does NOT
       // clear (prior error stays cleared by next start). Sunset PR11.
       lastRecordingResult.polishError = nil
     case .loadingModel, .transcribing, .polishing:
       recordingLockedAccess.set(false)
-      hotkeyService.unregisterCancelHotkey()
     // #1891: an advisory is a concluded terminal — same teardown as any ending.
     case .error, .idle, .complete, .advisory:
       recordingLockedAccess.set(false)
-      hotkeyService.unregisterCancelHotkey()
       // Session ended — retry any Ollama eviction deferred because the
       // frozen session pinned the old model.
       settingsSync.retryDeferredOllamaEviction(settings: settings)
@@ -321,17 +327,19 @@ final class DictationLifecycleCoordinator {
     recordingSoundCue.handle(
       newState, backend: .whisperKit,
       enabled: settings.playRecordingSounds, selectedPairing: settings.recordingSoundPairing)
+    // #2087: see `handleParakeet` — one affordance decision, both backends.
+    hotkeyService.setCancelHotkeyEnabled(
+      CancelAffordancePolicy.isShortcutEnabled(
+        state: newState,
+        isEscapeRecoveryTranscribing: whisperKitKernelDriver.isEscapeRecoveryTranscribing))
     switch newState {
     case .recording:
-      hotkeyService.registerCancelHotkey()
       lastRecordingResult.polishError = nil
     case .loadingModel, .transcribing, .polishing:
       recordingLockedAccess.set(false)
-      hotkeyService.unregisterCancelHotkey()
     // #1891: an advisory is a concluded terminal — same teardown as any ending.
     case .error, .idle, .complete, .advisory:
       recordingLockedAccess.set(false)
-      hotkeyService.unregisterCancelHotkey()
       settingsSync.retryDeferredOllamaEviction(settings: settings)
       settingsSync.retryDeferredEGOneDeactivation(settings: settings)
     // #1171 — a deferred switch is applied by the EngineCoordinator via

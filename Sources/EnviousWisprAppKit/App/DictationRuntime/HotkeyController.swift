@@ -76,12 +76,14 @@ final class HotkeyController {
       }
       await finalizer.userStop()
     }
-    hotkeyService.onCancelRecording = { [weak finalizer] in
+    // #2087 weak `hotkeyService`: this closure is stored on it. Disarm-on-
+    // abandonment rationale: `CancelAffordancePolicy.isAbandonment`.
+    hotkeyService.onCancelRecording = { [weak finalizer, weak hotkeyService] in
       guard let finalizer else {
         Self.reportNilCollaborator(callback: "onCancelRecording")
         return
       }
-      await finalizer.cancel(trigger: .shortcut)
+      if await finalizer.cancel(trigger: .shortcut) { hotkeyService?.setCancelHotkeyEnabled(false) }
     }
     hotkeyService.onIsProcessing = { [weak starter] in
       starter?.isProcessing ?? false

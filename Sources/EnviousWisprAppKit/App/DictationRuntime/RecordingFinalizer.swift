@@ -95,22 +95,34 @@ final class RecordingFinalizer {
     }
   }
 
-  func cancel(trigger: UserCancelTrigger) async {
+  /// Cancel, returning whether it was an ABANDONMENT (#2087) — the caller must
+  /// disarm on that, and `CancelAffordancePolicy.isAbandonment` owns why.
+  @discardableResult
+  func cancel(trigger: UserCancelTrigger) async -> Bool {
     TelemetryService.shared.dictationCanceled(
       stage: "recording", reason: "user_cancel", durationSeconds: nil)
-    languageSuggestionPresenter?.clearCurrentChip()
-    languageSuggestionPresenter?.clearBuffer()
+    // Prologue: an ignored cancel still unlocks (RecordingFinalizerCancelPathTests).
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now
-    recordingOverlay.hide()
     // PR-5 Rung 5 (#827): both backends are kernel drivers now; collapse the
     // WhisperKit-specific cancel branch (which used `handle(.cancelRecording)`
     // and gated on the now-extinct `.startingUp` state) onto the same
     // `cancelRecording()` shape Parakeet uses.
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
-    guard active.state == .recording || active.state == .loadingModel else { return }
+    // #2087: abandonment returns at once — no teardown, no terminal await; see policy.
+    if CancelAffordancePolicy.isAbandonment(
+      trigger: trigger, isEscapeRecoveryTranscribing: active.isEscapeRecoveryTranscribing)
+    {
+      active.requestEscapeRecoveryAbandonment()
+      return true
+    }
+    guard active.state == .recording || active.state == .loadingModel else { return false }
+    languageSuggestionPresenter?.clearCurrentChip()
+    languageSuggestionPresenter?.clearBuffer()
+    recordingOverlay.hide()
     await cancelRecordingDispatch(active, trigger)
+    return false
   }
 
   func markLocked() {
