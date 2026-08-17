@@ -44,11 +44,25 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
   public let downloadURL: URL
   /// HTTPS URL of the EG-1 model license that governs the artifact.
   public let licenseURL: URL?
+  /// User-facing version label for the settings row, e.g. "1.1" rendered as
+  /// "EG-1 V1.1" (#2109). PURELY COSMETIC and deliberately separate from
+  /// `version` above, which is load-bearing on disk via `artifactFileName`
+  /// and so cannot be made presentable.
+  ///
+  /// MUST NOT be used to build any path, URL, cache key, or comparison. The
+  /// display sequence and the internal revision sequence do not correspond
+  /// and are not meant to: the founder's numbering is a product decision, not
+  /// a function of `version` (plan §14 Q3).
+  ///
+  /// Optional so an older or malformed bundle decodes rather than throwing.
+  /// A nil or blank value renders NO label — never a fallback to `version`,
+  /// which would put `v3-eg2` in front of a user.
+  public let displayVersion: String?
 
   public init(
     modelName: String, version: String,
     contextTokens: Int, promptTemplateID: String, minAppVersion: String,
-    downloadURL: URL, licenseURL: URL? = nil
+    downloadURL: URL, licenseURL: URL? = nil, displayVersion: String? = nil
   ) {
     self.modelName = modelName
     self.version = version
@@ -57,6 +71,18 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
     self.minAppVersion = minAppVersion
     self.downloadURL = downloadURL
     self.licenseURL = licenseURL
+    self.displayVersion = displayVersion
+  }
+
+  /// The label to render, or nil when there is nothing honest to show.
+  /// Blank-after-trimming is treated as absent: a manifest carrying `""`
+  /// would otherwise paint an empty string beside "EG-1" and read as a
+  /// rendering bug (plan §9 acceptance predicate).
+  public var resolvedDisplayVersion: String? {
+    guard let raw = displayVersion?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !raw.isEmpty
+    else { return nil }
+    return raw
   }
 
   /// Prompt-template registry: manifest `promptTemplateID` → prompt family.
