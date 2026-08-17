@@ -67,6 +67,18 @@ jobs:
       # that did live here was a hand-rolled Swift lexer and took eleven review findings before it was
       # replaced; see that suite's header.
 
+      # #2146. Self-test FIRST: a scanner that has silently stopped scanning
+      # reports the same clean exit as one with nothing to find, so the two-way
+      # fixtures run before the verdict is trusted. Both steps read only committed
+      # files, so they cost seconds and run unconditionally rather than behind the
+      # needs_build filter, which could otherwise skip them on a Tests-only diff —
+      # exactly the diff most likely to reintroduce the defect.
+      - name: Test clipboard isolation self-test
+        run: scripts/check-test-pasteboard-isolation.sh --self-test
+
+      - name: Test clipboard isolation
+        run: scripts/check-test-pasteboard-isolation.sh "$GITHUB_WORKSPACE"
+
       - name: Verify environment
         if: steps.changes.outputs.needs_build == 'true'
         run: |

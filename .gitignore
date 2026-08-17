@@ -150,6 +150,11 @@ scripts/*
 # above applies twice over: a gitignored packaging gate can only run for someone
 # who already knows it exists, which is precisely the person who does not need it.
 !scripts/check-preview-engine-resources.sh
+# #2146: CI runs this in build-debug, so an untracked copy would fail a fresh
+# clone at the gate. It also carries its own --self-test, which is the half that
+# must ship: a scanner whose fixtures live only on one machine is a scanner
+# nobody can prove still scans.
+!scripts/check-test-pasteboard-isolation.sh
 !scripts/xcode-test.sh
 # #2141: the grandfather list the test-inventory gate checks against. Tracked for the same reason as
 # the two checks above — a gitignored baseline can only be read by someone who already knows the split

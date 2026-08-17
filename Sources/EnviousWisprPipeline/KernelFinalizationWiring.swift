@@ -192,6 +192,14 @@ struct KernelFinalizationWiring {
   let currentTick: @MainActor () -> UInt64
   let sleepTicks: @MainActor (Int) async -> Void
 
+  /// Clipboard-copy seam for the copy-only delivery branch (#2146).
+  ///
+  /// Production defaults to `PasteService.copyToClipboard`, so behaviour is
+  /// unchanged. It exists so a TEST never reaches the process-global board —
+  /// the developer's own — which the copy-only branch used to overwrite on every
+  /// run of every suite that constructed this wiring.
+  let copyToClipboard: @MainActor (String) -> Void
+
   /// `save` and `deliverPaste` are closure seams over `TranscriptStore.save`
   /// and `PasteCascadeExecutor.deliver` — the same test-seam shape
   /// this wiring exposes. The App wraps the concrete types; tests
@@ -285,8 +293,21 @@ struct KernelFinalizationWiring {
     // tail-trim diagnostic from it for the PostHog `asr.completed` event.
     // Defaulted (fresh, tail fields nil) so other construction sites stay
     // source-compatible; the factory passes the shared instance.
-    telemetryState: KernelTelemetryState = KernelTelemetryState()
+    telemetryState: KernelTelemetryState = KernelTelemetryState(),
+    // #2146 clipboard seam. Defaults to the real write, so production is
+    // unchanged and no existing construction site needs editing. Trailing and
+    // defaulted for the same source-compatibility reason as `telemetryState`.
+    //
+    // The TEST helper defaults this to a recorded FAILURE rather than to the
+    // real write: a wiring test that copies without deliberately opting in
+    // should fail loudly, not silently overwrite the developer's clipboard.
+    // Safe-by-forgetting is the property, since the tests that were destroying
+    // the clipboard never mentioned it and never meant to touch it.
+    copyToClipboard: @escaping @MainActor (String) -> Void = {
+      PasteService.copyToClipboard($0)
+    }
   ) {
+    self.copyToClipboard = copyToClipboard
     // processText — run the limb chain, write the polish side-channel, return
     // the final display text. `onPolishStarted` is wired into
     // `LLMPolishStep.onWillProcess` so the limb emits and the kernel observes
@@ -923,7 +944,7 @@ struct KernelFinalizationWiring {
           deliveryOutcome = .clipboardOnly
         }
       } else if config?.autoCopyToClipboard == true {
-        PasteService.copyToClipboard(text)
+        copyToClipboard(text)
         deliveryOutcome = .clipboardOnly
       } else {
         deliveryOutcome = .clipboardOnly
