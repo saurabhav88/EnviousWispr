@@ -770,6 +770,124 @@ struct LivePreviewCoordinatorTests {
     stuck.open()
   }
 
+  /// A session opened for a recording that is already over must not take the
+  /// live registration away from the one that IS current.
+  ///
+  /// The window: disabling the preview while `openSession` is suspended releases
+  /// the prepared engine, so the replacement preview builds a DIFFERENT
+  /// recognizer with its own turnover lock — the adapter cannot close this from
+  /// below. If the stale session registered anyway, finishing would clear the
+  /// slot, leaving the current preview unregistered: a later stop could not
+  /// cancel its feed loop, and it would keep decoding across later recordings.
+  ///
+  /// Mutation control: drop the `isCurrent` guard on the registration and the
+  /// final assertion goes red, because the stale completion clears the slot.
+  @Test("a session opened for an abandoned recording does not steal the registration")
+  func staleSessionDoesNotStealTheRegistration() async {
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiter: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      func wait() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let alreadyOpen: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiter = c
+            return false
+          }
+          if alreadyOpen { c.resume() }
+        }
+      }
+      func open() {
+        let waiting: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiter
+          waiter = nil
+          return w
+        }
+        waiting?.resume()
+      }
+    }
+    final class Counts: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var made = 0
+      private var entered = 0
+      var enginesMade: Int { mutex.withLock { made } }
+      var opensEntered: Int { mutex.withLock { entered } }
+      func recordEngine() -> Int { mutex.withLock { made += 1; return made } }
+      func enterOpen() { mutex.withLock { entered += 1 } }
+    }
+
+    let slowOpen = Gate()
+    let counts = Counts()
+
+    /// The first engine hangs INSIDE `openSession`; later ones open instantly.
+    final class MaybeSlowEngine: LivePreviewEngine, @unchecked Sendable {
+      let hangs: Bool
+      let counts: Counts
+      let slowOpen: Gate
+      init(hangs: Bool, counts: Counts, slowOpen: Gate) {
+        self.hangs = hangs
+        self.counts = counts
+        self.slowOpen = slowOpen
+      }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        counts.enterOpen()
+        if hangs { await slowOpen.wait() }
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    final class Box: @unchecked Sendable { var enabled = true }
+    let box = Box()
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isEnabled: { box.enabled },
+      languageMode: { .locked("en") },
+      resolveEngine: { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+            makeEngine: {
+              let ordinal = counts.recordEngine()
+              return MaybeSlowEngine(hangs: ordinal == 1, counts: counts, slowOpen: slowOpen)
+            }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where counts.opensEntered < 1 { await Task.yield() }
+    #expect(counts.opensEntered == 1, "control: the first open must be in flight")
+    #expect(
+      !coordinator.hasLiveSessionForTests,
+      "control: nothing can be registered while the open is still suspended")
+
+    // Abandon it mid-open, then run a second preview to completion of its open.
+    box.enabled = false
+    coordinator.releaseForDisabledSetting()
+    box.enabled = true
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !coordinator.hasLiveSessionForTests { await Task.yield() }
+    #expect(
+      coordinator.hasLiveSessionForTests,
+      "control: the current preview must be registered before the stale one lands")
+
+    // Now let the abandoned open finish. It must end its own session and leave
+    // the current registration alone.
+    slowOpen.open()
+    for _ in 0..<2000 { await Task.yield() }
+    #expect(
+      coordinator.hasLiveSessionForTests,
+      "a stale session replaced the live registration, leaving the current preview uncancellable")
+  }
+
   /// **Found by enumerating the class, not by review.** Five of this PR's findings
   /// were "the bound is downstream of the growth" and three were "the release
   /// misses a path", so the remaining release paths were swept exhaustively

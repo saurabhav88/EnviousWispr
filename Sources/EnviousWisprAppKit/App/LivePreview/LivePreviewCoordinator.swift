@@ -415,7 +415,15 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       // identical on screen and have completely different causes.
       await Self.log("session ended, feeds=\(updates) shownChars=\(shownChars.peak)")
     }
-    liveTeardown = live
+    // **Register ONLY while this recording is still the current one.** A session
+    // opened for an ABANDONED recording must never replace the live
+    // registration: on completion it clears the slot, and the CURRENT preview is
+    // then unregistered — so a later stop cannot cancel its feed loop and it
+    // decodes on across recordings. The window is real because disabling the
+    // preview releases the prepared engine, so the replacement gets a different
+    // recognizer with its own turnover lock; the adapter cannot close it from
+    // below. The task above still ends its session on this path.
+    if isCurrent(generation) { liveTeardown = live }
 
     await Self.log(
       "session started, engine=\(candidate.key.engine) on=\(candidate.key.commitment)")
