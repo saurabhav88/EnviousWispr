@@ -63,7 +63,8 @@ struct ProviderStatusMappingTests {
   /// the silently-off state #2109 exists to surface.
   @Test(arguments: [true, false])
   func egOneUpdatePausedReadsAsNeedingAttention(_ resumable: Bool) {
-    let s = status(for: .egOne, egOneInstall: .updatePaused(resumable: resumable, targetVersion: "1.1"))
+    let s = status(
+      for: .egOne, egOneInstall: .updatePaused(resumable: resumable, targetVersion: "1.1"))
     #expect(s.label == "Update paused")
     #expect(s.tone == .error)
   }
@@ -75,7 +76,8 @@ struct ProviderStatusMappingTests {
   @Test("the two paused states are distinguishable at the chip")
   func pausedAndUpdatePausedDoNotCollapse() {
     let paused = status(for: .egOne, egOneInstall: .paused)
-    let updatePaused = status(for: .egOne, egOneInstall: .updatePaused(resumable: true, targetVersion: "1.1"))
+    let updatePaused = status(
+      for: .egOne, egOneInstall: .updatePaused(resumable: true, targetVersion: "1.1"))
     #expect(paused.label != updatePaused.label)
     #expect(paused.tone != updatePaused.tone)
   }
@@ -169,15 +171,18 @@ struct ProviderStatusMappingTests {
   func pausedActionsUseTheDecidedWording() {
     #expect(EGOneRowPresentation.forState(.paused).primaryAction == "Resume")
     #expect(
-      EGOneRowPresentation.forState(.updatePaused(resumable: true, targetVersion: "1.1")).primaryAction
+      EGOneRowPresentation.forState(.updatePaused(resumable: true, targetVersion: "1.1"))
+        .primaryAction
         == "Resume upgrade")
     #expect(
-      EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "1.1")).primaryAction
+      EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "1.1"))
+        .primaryAction
         == "Finish upgrade")
     // Never "Install": the user already has a working model, and Install reads
     // as a new product to acquire — Frank's stated failure mode.
     #expect(
-      EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "1.1")).primaryAction?
+      EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "1.1"))
+        .primaryAction?
         .contains("Install") == false)
   }
 
@@ -187,7 +192,9 @@ struct ProviderStatusMappingTests {
   @Test("the update messages state that cleanup is paused")
   func updateMessagesSayCleanupIsPaused() {
     for resumable in [true, false] {
-      let message = EGOneRowPresentation.forState(.updatePaused(resumable: resumable, targetVersion: "1.1")).message
+      let message = EGOneRowPresentation.forState(
+        .updatePaused(resumable: resumable, targetVersion: "1.1")
+      ).message
       #expect(message.contains("AI cleanup is paused"), "\(resumable): message must not reassure")
       // The download size is deliberately absent: leading with 2.9 GB to
       // someone who already has a working model reads as a cost, not a fix.
@@ -422,7 +429,7 @@ struct ProviderStatusMappingTests {
   /// upgrade arm while mislabelling every first install as an upgrade — a
   /// worse bug than the one being fixed, and invisible to a one-armed test.
   @MainActor
-  @Test func onlyAnUpgradeDownloadCarriesAVersionLabel() {
+  @Test func onlyAnUpgradeDownloadCarriesAVersionLabel() throws {
     let upgrading = EGOneRowPresentation.forState(
       .downloading(fractionCompleted: 0.4, upgrade: .named("1.1")))
     #expect(
@@ -435,18 +442,27 @@ struct ProviderStatusMappingTests {
       firstInstall.versionLabel == nil,
       "a first install was labelled as an upgrade, which is a worse lie than the missing label")
 
-    // A manifest carrying a blank display version must render NOTHING, never
-    // "EG-1 V" with an empty tail. Same rule already enforced for `installed`.
+    // A blank display version must never produce a DANGLING "EG-1 V" — that is
+    // what this assertion has always been about. It used to demand `nil`, which
+    // conflated "do not print a half-written version" with "do not say this is
+    // an upgrade"; the second was wrong and is what the cloud-review P2 named.
+    // A blank version now reads as an UNNAMED upgrade, so assert the property
+    // rather than the old value.
     let blank = EGOneRowPresentation.forState(
       .downloading(fractionCompleted: 0.4, upgrade: EGOneUpgradeContext(displayVersion: "")))
-    #expect(blank.versionLabel == nil, "a blank display version rendered a dangling label")
+    let blankLabel = try #require(blank.versionLabel)
+    #expect(
+      !blankLabel.hasPrefix("EG-1 V"),
+      "a blank display version rendered a dangling version label: \(blankLabel)")
+    #expect(
+      blankLabel == "the new EG-1",
+      "a blank display version stopped reading as an upgrade")
 
     // Cancel stays reachable throughout: an upgrade the user cannot stop is
     // how a resumable download becomes an unresumable one.
     #expect(upgrading.primaryAction == "Cancel")
     #expect(firstInstall.primaryAction == "Cancel")
   }
-
 
   /// A manifest with NO display version still describes an UPGRADE.
   ///
