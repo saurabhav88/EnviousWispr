@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 import Observation
@@ -36,6 +37,15 @@ final class TranscriptCoordinator {
   private let store: TranscriptStore
   private let pendingPulseInterval: Duration
   private let pendingPulseSleep: @Sendable (Duration) async -> Void
+
+  /// Escape Recovery telemetry emitters, injected (#2087).
+  ///
+  /// Seams rather than direct `TelemetryService.shared` calls, so a test can
+  /// assert an event fired with the right take id and age WITHOUT reaching the
+  /// network client — and so the events are observable at all, since the funnel
+  /// is the instrument that decides whether this feature earns its keep.
+  private let emitEscapeRecoveryKept: (_ ageMs: Int, _ takeID: String) -> Void
+  private let emitEscapeRecoveryExpired: (_ ageMs: Int, _ takeID: String) -> Void
   private var loadTask: Task<Void, Never>?
   private var pulseTask: Task<Void, Never>?
 
@@ -106,10 +116,72 @@ final class TranscriptCoordinator {
     return "This will permanently delete \(subject). This action cannot be undone."
   }
 
-  /// Live pending rows, for the pulse's own start/stop decision.
+  /// Held rows IN MEMORY whose window has elapsed.
+  ///
+  /// The pulse's sweep trigger: a direct statement of "there is something to
+  /// clean up", which cannot race the way a before/after comparison does.
+  ///
+  /// Says "in memory" precisely because that is what it reads. An earlier
+  /// version of this comment claimed it represented files still on disk, which
+  /// was wrong in a way that mattered: swept rows stayed in the array, so it
+  /// never returned to zero and the pulse re-swept every minute.
+  private var lapsedPendingCount: Int {
+    let now = Date()
+    return transcripts.filter { $0.escapeRecoveredAt != nil && !Self.isVisible($0, at: now) }.count
+  }
+
+  /// Live pending rows — a countdown still worth redrawing.
   private var livePendingCount: Int {
     let now = Date()
     return transcripts.filter { $0.escapeRecoveredAt != nil && Self.isVisible($0, at: now) }.count
+  }
+
+  /// How many files the LAST sweep meant to remove and could not — disk truth,
+  /// straight from `PendingSweepResult.unremovable`.
+  ///
+  /// The store promises a failed removal is retried on the next sweep, and this
+  /// is what keeps that promise: without it the pulse stopped as soon as nothing
+  /// was counting down, so the retry never came and the file plus its expiry
+  /// event waited for History to reload.
+  ///
+  /// Deliberately NOT `lapsedPendingCount`. That reads this object's own list,
+  /// which can outlive the file it describes — `load()` preserves in-memory rows
+  /// absent from both namespaces — so retrying on it means retrying forever, a
+  /// directory walk every minute for the life of the app. Only the sweep can say
+  /// whether a file is still there.
+  private var unremovablePendingCount = 0
+
+  /// Whether the last sweep failed to READ the directory, or threw.
+  ///
+  /// Separate from the count because it means the opposite of what the count
+  /// would say on its own: a walk that never happened reports zero unremovable
+  /// files, which is the same number a completely successful walk reports. Held
+  /// so the pulse keeps retrying rather than concluding it is finished on the
+  /// strength of a measurement that was never taken.
+  private var lastSweepIncomplete = false
+
+  /// Something may still need clearing: a lapsed row this object can see, a file
+  /// the last sweep could not remove, or a sweep that could not look.
+  ///
+  /// The lapsed half is what makes the FIRST walk happen after a row ages out.
+  /// It settles because a sweep that removes everything it can also drops any
+  /// lapsed row it did not find, so this returns to zero after one pass.
+  private var pendingSweepIsDue: Bool {
+    lapsedPendingCount > 0 || unremovablePendingCount > 0 || lastSweepIncomplete
+  }
+
+  /// Whether the pulse has any reason to keep running.
+  ///
+  /// ONE authority for arming, for the in-loop stop and for `stopPulseIfIdle`,
+  /// because three copies of this predicate drifting apart is exactly how the
+  /// retry got stranded.
+  ///
+  /// A lapsed row in memory is deliberately NOT part of this, and the loop's
+  /// order is what makes that safe: it sweeps first, then asks this. So a stale
+  /// row costs exactly one walk — the sweep drops it — rather than keeping the
+  /// pulse alive over a file that is already gone.
+  private var pendingPulseHasWork: Bool {
+    livePendingCount > 0 || unremovablePendingCount > 0 || lastSweepIncomplete
   }
 
   /// A held row is visible only while `PendingAdmission` calls it live.
@@ -140,11 +212,112 @@ final class TranscriptCoordinator {
   init(
     store: TranscriptStore,
     pendingPulseInterval: Duration = .seconds(60),
-    pendingPulseSleep: (@Sendable (Duration) async -> Void)? = nil
+    pendingPulseSleep: (@Sendable (Duration) async -> Void)? = nil,
+    emitEscapeRecoveryKept: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
+    emitEscapeRecoveryExpired: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil
   ) {
     self.store = store
     self.pendingPulseInterval = pendingPulseInterval
     self.pendingPulseSleep = pendingPulseSleep ?? { try? await Task.sleep(for: $0) }
+    self.emitEscapeRecoveryKept =
+      emitEscapeRecoveryKept
+      ?? { ageMs, takeID in
+        TelemetryService.shared.escapeRecoveryKept(ageMs: ageMs, takeID: takeID)
+      }
+    self.emitEscapeRecoveryExpired =
+      emitEscapeRecoveryExpired
+      ?? { ageMs, takeID in
+        TelemetryService.shared.escapeRecoveryExpired(ageMs: ageMs, takeID: takeID)
+      }
+  }
+
+  /// Sweep pending rows that aged out un-restored, reporting each (#2087).
+  ///
+  /// Read-time expiry already hides them, so this reclaims disk and produces the
+  /// `expired` half of the ratio that judges the feature. The store returns ONLY
+  /// rows that genuinely expired AND were actually deleted — a corrupt file is
+  /// swept without a receipt, and a failed removal is not reported until it is
+  /// confirmed gone, so a stuck file cannot re-emit the same expiry forever.
+  ///
+  /// Inert until activation: no pending rows exist to sweep.
+  /// ASYNC, and off the main actor for the walk itself.
+  ///
+  /// `deleteExpiredPending` enumerates a directory and decodes one JSON file per
+  /// pending row. Running that synchronously on `@MainActor` put a filesystem
+  /// walk in front of History opening — the two loads beside it already hop off
+  /// for exactly this reason, and the sweep had no business being the one thing
+  /// that blocks the window.
+  func sweepExpiredPending(now: Date = Date()) async {
+    // No guard here: the STORE coalesces, so a second caller awaits the sweep
+    // in flight and then runs its own pass with its own clock. A flag at this
+    // layer would defeat both halves — `await` resuming before the work was
+    // done, and a row that lapsed DURING the in-flight sweep never being
+    // re-examined by the later clock that can see it.
+    do {
+      let swept = try await store.deleteExpiredPending(now: now)
+      // Replaced, never accumulated: this is the state of the directory after
+      // the pass that just ran, so a file that finally went must stop counting.
+      unremovablePendingCount = swept.unremovable
+      lastSweepIncomplete = !swept.walkComplete
+      // Evict on EVERY deletion, not only the telemetry-eligible ones. A
+      // future-skewed or corrupt row is deleted without a receipt, and leaving
+      // it in memory kept `lapsedPendingCount` above zero — so the pulse
+      // re-walked the directory every minute for a file that was already gone.
+      if !swept.deletedIDs.isEmpty {
+        transcripts.removeAll { swept.deletedIDs.contains($0.id) }
+      }
+      // `walkComplete` FIRST, and it is not a formality: `unremovable == 0` has
+      // two causes — the sweep saw everything and cleared it, or it could not
+      // read the directory at all. The second masks work instead of proving
+      // there is none, so acting on it would evict the only remaining record of
+      // rows whose files are still there.
+      //
+      // Nothing resisted removal, so every not-live file this pass could see is
+      // gone — which means a row still lapsed at this SAME `now` has no file at
+      // all, and memory is simply stale. Dropping it is what makes the sweep
+      // trigger return to zero.
+      //
+      // Without this the trigger never settles whenever an unrelated LIVE row
+      // keeps the pulse running: the stale row is lapsed forever, so the
+      // directory is walked every minute for the life of the app. `load()`
+      // preserves rows absent from both namespaces, so this state is reachable
+      // rather than theoretical.
+      //
+      // The same `now` the sweep used, never a fresh `Date()`. A row exactly on
+      // its boundary would otherwise be live to the sweep and lapsed to this
+      // line, and it would be evicted on the strength of a disagreement between
+      // two clocks rather than a fact about the disk.
+      if swept.walkComplete, swept.unremovable == 0 {
+        transcripts.removeAll { $0.escapeRecoveredAt != nil && !Self.isVisible($0, at: now) }
+      }
+      for row in swept.expired {
+        guard let takeID = row.takeID else { continue }
+        // The row's REAL age, not the retention constant. A Mac left off for
+        // three days sweeps rows that are 72 hours old, and the gap between
+        // deadline and sweep is the part worth seeing.
+        emitEscapeRecoveryExpired(Int(now.timeIntervalSince(row.stampedAt) * 1000), takeID)
+      }
+      // The sweep is where outstanding work is DISCOVERED, so it is what must
+      // make sure the retry is running. Relying on the caller left this to
+      // ordering luck: `load()` happens to arm afterwards, so a sweep reached
+      // any other way could learn that a file resisted removal — or that it
+      // could not look at all — and then have nothing scheduled to try again.
+      // Idempotent: from inside the pulse's own loop the task already exists.
+      startPulseIfNeeded()
+    } catch {
+      // A sweep that THREW measured nothing, so it must not read as a finished
+      // one — same reasoning as an unreadable directory, one layer out.
+      lastSweepIncomplete = true
+      startPulseIfNeeded()
+      // History is a limb, not the heart. A failed sweep leaves rows the
+      // read-time filter already hides.
+      Task {
+        await AppLogger.shared.log(
+          "Failed to sweep expired pending transcripts: \(error)",
+          level: .info, category: "TranscriptCoordinator"
+        )
+      }
+    }
   }
 
   // No `deinit` teardown: `deinit` is nonisolated and cannot touch main-actor
@@ -155,6 +328,16 @@ final class TranscriptCoordinator {
   func load() {
     loadTask?.cancel()
     loadTask = Task {
+      // #2087: sweep BEFORE reading, so the load cannot pick up a row this pass
+      // is about to delete. Reclaims disk and produces the `expired` half of the
+      // ratio that judges the feature.
+      //
+      // Placed here rather than at process launch deliberately: this is the
+      // path that already does History disk I/O, and read-time expiry means an
+      // unswept row is invisible regardless — so the sweep governs disk and
+      // telemetry, never what the user can see. That is also why a missed sweep
+      // is not a user-facing bug.
+      await sweepExpiredPending()
       do {
         let diskRows = try await store.loadAll()
         // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
@@ -265,6 +448,12 @@ final class TranscriptCoordinator {
       // put an expired recovery on screen as permanent History — resurrecting
       // in the UI precisely the text the store just refused to write.
       guard try store.promotePending(id: transcript.id) else { return }
+      // #2087: only on a CONFIRMED promotion, and only with the persisted take
+      // id. A `kept` event for a row that was not promoted would overstate the
+      // one ratio this funnel exists to measure.
+      if let takeID = transcript.escapeRecoveryTakeID, let stamped = transcript.escapeRecoveredAt {
+        emitEscapeRecoveryKept(Int(Date().timeIntervalSince(stamped) * 1000), takeID)
+      }
       guard let index = transcripts.firstIndex(where: { $0.id == transcript.id }) else { return }
       transcripts[index] = transcripts[index].promotedFromPending()
       stopPulseIfIdle()
@@ -337,7 +526,7 @@ final class TranscriptCoordinator {
   }
 
   private func startPulseIfNeeded() {
-    guard pulseTask == nil, livePendingCount > 0 else { return }
+    guard pulseTask == nil, pendingPulseHasWork else { return }
     pulseTask = Task { [weak self, pendingPulseInterval, pendingPulseSleep] in
       while !Task.isCancelled {
         await pendingPulseSleep(pendingPulseInterval)
@@ -347,7 +536,24 @@ final class TranscriptCoordinator {
         // would stop the timer and never redraw, leaving the expired row on
         // screen until something unrelated moved.
         self.expiryPulse &+= 1
-        if self.livePendingCount == 0 {
+        // #2087: the pulse is where an expiry is DETECTED, so it is where the
+        // file must go and the event must fire. Sweeping only on `load()` left
+        // cleanup and telemetry waiting for the user to reopen History — which
+        // for a row that aged out while they watched could be days, or never.
+        //
+        // Asks "can I see a lapsed row" rather than comparing the live count
+        // before and after. The comparison version could never fire: both reads
+        // happen after the wait, so they are always equal, and it only appeared
+        // to work because the row sometimes expired BETWEEN them. A test that
+        // removed the wall clock is what exposed it.
+        if self.pendingSweepIsDue {
+          await self.sweepExpiredPending()
+        }
+        // AFTER the sweep above, never before: this asks whether a countdown is
+        // running or a file resisted removal, and the sweep is what settles the
+        // second half. Stopping on the live count alone is what stranded a
+        // failed removal, because the retry it was promised never came.
+        if !self.pendingPulseHasWork {
           self.pulseTask = nil
           return
         }
@@ -356,7 +562,7 @@ final class TranscriptCoordinator {
   }
 
   private func stopPulseIfIdle() {
-    guard livePendingCount == 0 else { return }
+    guard !pendingPulseHasWork else { return }
     pulseTask?.cancel()
     pulseTask = nil
   }
@@ -378,6 +584,11 @@ final class TranscriptCoordinator {
     /// `visibleTranscripts`, which is what production reads.
     // periphery:ignore - test seam
     var rawTranscriptsForTesting: [Transcript] { transcripts }
+
+    /// The pulse's sweep trigger, so a test can assert it returns to zero
+    /// after a sweep rather than keeping the directory walk alive.
+    // periphery:ignore - test seam
+    var lapsedPendingCountForTesting: Int { lapsedPendingCount }
 
     /// Awaits the pulse loop's own completion — a real signal, so a test never
     /// guesses how long the loop needs. Captured before awaiting because the

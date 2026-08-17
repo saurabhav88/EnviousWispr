@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import Foundation
 
 /// What the Escape Recovery pill will need in order to paste, frozen before the
@@ -74,10 +75,17 @@ public enum EscapeRecoveryCompletion {
   /// failure flag: `abandoned` is a choice the user made and must never read as
   /// a fault of ours, and `empty` is a recording with no speech in it rather
   /// than something breaking.
+  /// Raw values spelled explicitly, and identical to
+  /// `EscapeRecoveryTerminalOutcome`'s. The two vocabularies are a PAIR — the
+  /// mapping below is one-to-one and a transport test asserts their label sets
+  /// are equal — so changing one side alone splits them. That is precisely what
+  /// happened when the outcome labels moved to the approved snake_case schema
+  /// and this twin was left on Swift's name-derived defaults; the existing test
+  /// caught it, which is why it exists.
   public enum NothingToRestore: String, Equatable, Sendable, CaseIterable {
     case empty
-    case transcriptionFailed
-    case saveFailed
+    case transcriptionFailed = "transcription_failed"
+    case saveFailed = "save_failed"
     case abandoned
   }
 

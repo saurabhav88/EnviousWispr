@@ -106,11 +106,86 @@ import Testing
     // Invisibility alone is not enough: a mutation classifying this as
     // `.expired` would still pass an invisibility-only test while emitting a
     // false expiry event about a recovery the user never let lapse.
-    let expired = try store.deleteExpiredPending(now: now)
+    let expired = try await store.deleteExpiredPending(now: now).expired
     #expect(expired.isEmpty, "future-stamped is INVALID, not expired")
     let file = dir.appendingPathComponent(AppConstants.pendingTranscriptsDir)
       .appendingPathComponent("\(row.id.uuidString).json")
     #expect(!FileManager.default.fileExists(atPath: file.path), "and it must be swept")
+  }
+
+  /// An unremovable file must be reported EVEN WITH NO IDENTITY.
+  ///
+  /// `unremovable` is a count rather than a set of ids for exactly this file. A
+  /// corrupt entry whose name is not a UUID cannot be named, so an identity-keyed
+  /// signal reported nothing about it — and the caller, told the directory was
+  /// clean, stopped retrying and stranded the one file the sweep exists to clear.
+  ///
+  /// The failure is real: removing a file needs write permission on the
+  /// CONTAINING directory, so `0500` makes `removeItem` fail while leaving the
+  /// walk able to list.
+  @Test("a file that cannot be removed is reported even when its name is not a UUID")
+  func unremovableCorruptFileIsStillReported() async throws {
+    let (store, dir) = makeStore()
+    // Save a real row first, so the pending directory exists with its hardened
+    // permissions rather than being created by this test.
+    try store.savePending(pendingRow(at: Date().addingTimeInterval(-3600)))
+    let pending = dir.appendingPathComponent(AppConstants.pendingTranscriptsDir)
+    let garbage = pending.appendingPathComponent("garbage.json")
+    try Data("not a transcript".utf8).write(to: garbage)
+
+    let sealed: [FileAttributeKey: Any] = [.posixPermissions: 0o500]
+    let unsealed: [FileAttributeKey: Any] = [.posixPermissions: 0o700]
+    try FileManager.default.setAttributes(sealed, ofItemAtPath: pending.path)
+    defer { try? FileManager.default.setAttributes(unsealed, ofItemAtPath: pending.path) }
+
+    let swept = try await store.deleteExpiredPending()
+
+    #expect(
+      swept.unremovable >= 1,
+      "a file it meant to remove and could not must be counted, name or no name")
+    #expect(
+      FileManager.default.fileExists(atPath: garbage.path),
+      "control: the removal genuinely failed, so there is something to report")
+    #expect(swept.deletedIDs.isEmpty, "nothing was actually removed")
+  }
+
+  /// An UNREADABLE directory must not report itself as a clean one.
+  ///
+  /// `unremovable == 0` has two causes: the sweep saw everything and cleared it,
+  /// or it could not look. Those are opposite facts, and the second one masks
+  /// work. Swallowed into an empty list they are the same number, and the caller
+  /// then evicts its own records and stops retrying while the files remain.
+  ///
+  /// `0300` is write-plus-execute with no READ, so `contentsOfDirectory` fails
+  /// while the directory itself is otherwise intact — enumeration failure
+  /// specifically, not removal failure.
+  @Test("a directory that cannot be enumerated reports an incomplete walk")
+  func unreadableDirectoryReportsIncompleteWalk() async throws {
+    let (store, dir) = makeStore()
+    try store.savePending(
+      pendingRow(at: Date().addingTimeInterval(-(AppConstants.pendingTranscriptRetention + 1))))
+    let pending = dir.appendingPathComponent(AppConstants.pendingTranscriptsDir)
+
+    // Control FIRST: the same call on a readable directory completes and sweeps,
+    // so a false `walkComplete` cannot be what makes this test pass.
+    let readable = try await store.deleteExpiredPending()
+    #expect(readable.walkComplete, "control: a readable directory completes its walk")
+    #expect(readable.expired.count == 1, "control: and actually sweeps the lapsed row")
+
+    try store.savePending(
+      pendingRow(at: Date().addingTimeInterval(-(AppConstants.pendingTranscriptRetention + 1))))
+    let sealed: [FileAttributeKey: Any] = [.posixPermissions: 0o300]
+    let unsealed: [FileAttributeKey: Any] = [.posixPermissions: 0o700]
+    try FileManager.default.setAttributes(sealed, ofItemAtPath: pending.path)
+    defer { try? FileManager.default.setAttributes(unsealed, ofItemAtPath: pending.path) }
+
+    let blind = try await store.deleteExpiredPending()
+
+    #expect(blind.walkComplete == false, "it could not look, and must say so")
+    #expect(blind.expired.isEmpty, "it saw nothing, so it can report nothing")
+    #expect(
+      blind.unremovable == 0,
+      "and zero here means NOT MEASURED — which is exactly why walkComplete has to exist")
   }
 
   @Test("a row with no escapeRecoveredAt is refused, swept, and produces no receipt")
@@ -123,7 +198,7 @@ import Testing
 
     #expect(try await store.loadPending().isEmpty)
 
-    let expired = try store.deleteExpiredPending()
+    let expired = try await store.deleteExpiredPending().expired
     #expect(expired.isEmpty, "unstamped is INVALID, not expired")
     let file = dir.appendingPathComponent(AppConstants.pendingTranscriptsDir)
       .appendingPathComponent("\(row.id.uuidString).json")
@@ -145,7 +220,7 @@ import Testing
 
     #expect(try await store.loadPending().count == 1, "the live row is unaffected")
 
-    let expired = try store.deleteExpiredPending()
+    let expired = try await store.deleteExpiredPending().expired
     #expect(expired.isEmpty, "unreadable is INVALID, not expired")
     #expect(
       !FileManager.default.fileExists(atPath: unreadable.path),
@@ -163,7 +238,7 @@ import Testing
     let live = try await store.loadPending()
     #expect(live.count == 1, "the corrupt file must not be offered")
 
-    let expired = try store.deleteExpiredPending()
+    let expired = try await store.deleteExpiredPending().expired
     #expect(!FileManager.default.fileExists(atPath: corrupt.path), "it must be swept")
     #expect(
       expired.isEmpty,
@@ -187,7 +262,7 @@ import Testing
     let live = try await store.loadPending()
     #expect(live.isEmpty)
 
-    let expired = try store.deleteExpiredPending()
+    let expired = try await store.deleteExpiredPending().expired
     #expect(expired.isEmpty, "invalid, so no expiry receipt")
     #expect(!FileManager.default.fileExists(atPath: misnamed.path))
   }
@@ -221,7 +296,7 @@ import Testing
     try store.savePending(stale)
     try store.savePending(fresh)
 
-    let expired = try store.deleteExpiredPending(now: now)
+    let expired = try await store.deleteExpiredPending(now: now).expired
     #expect(expired.count == 1)
     #expect(expired.first?.id == stale.id)
     #expect(expired.first?.takeID == "TAKE-STALE")

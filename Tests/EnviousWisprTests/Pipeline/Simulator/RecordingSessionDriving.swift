@@ -248,7 +248,14 @@ final class KernelRecordingSession: RecordingSessionDriving {
       ZeroSignalDecisionSnapshot(eligibility: .eligible, currentRunWasClassifiedReactively: false)
     },
     /// #1578: collects refusals the kernel drains or classifies at STOP.
-    zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in }
+    zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in },
+    /// #2087: the terminal telemetry snapshot, as the KERNEL built it.
+    ///
+    /// Added because a mutation that hardcoded `deliveryDisposition: .ordinary`
+    /// at the kernel's construction site survived every test — the sink and the
+    /// event were covered, and the step that FILLS the field was not. Defaulted
+    /// so every existing scenario is unchanged.
+    onTerminalSnapshot: @escaping @MainActor (KernelTerminalTelemetrySnapshot) -> Void = { _ in }
   ) {
     self.vad = vad
     let limb = self.limb
@@ -316,6 +323,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
       },
       zeroSignalDecisionSnapshot: zeroSignalDecisionSnapshot,
       zeroSignalRefusalSink: zeroSignalRefusalSink,
+      sessionTerminalTelemetry: onTerminalSnapshot,
       markASRTimingEnd: { [asrTimingLog] in asrTimingLog.count += 1 },
       telemetryState: telemetryState)
   }

@@ -87,6 +87,16 @@ TAKE_PROPERTY = "take_id"
 # is not measured, and a name here that the app never emits reads `not observed`.
 TAKE_KEYED_EVENTS = (
     "asr.completed",
+    # #2087. Registered only now that the durable-id contract exists: `take_id`
+    # is ephemeral, and `restored`/`kept`/`expired` can fire hours later or after
+    # a relaunch, so the originating id is persisted on the pending row
+    # (`Transcript.escapeRecoveryTakeID`) and read back. Registering these before
+    # that would have declared a join key that is not reliably present.
+    "escape_recovery.completed",
+    "escape_recovery.expired",
+    "escape_recovery.kept",
+    "escape_recovery.restored",
+    "escape_recovery.started",
     "audio.capture_interrupted",
     "audio.dead_mic_retire_attempted",
     "audio.vad_gate_no_speech",

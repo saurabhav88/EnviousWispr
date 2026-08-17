@@ -176,23 +176,160 @@ public final class TranscriptStore {
   ///   reported only once its file is confirmed gone. Otherwise a failing
   ///   delete would re-emit the same expiry event on every future sweep,
   ///   forever.
+  /// ASYNC and detached, matching `loadPending` directly above.
+  ///
+  /// This enumerates a directory and decodes one JSON file per pending row. On
+  /// a `@MainActor` type that work runs on the main thread unless it is
+  /// explicitly moved off, and a caller doing it while opening History puts a
+  /// filesystem walk in front of the window appearing.
   @discardableResult
-  public func deleteExpiredPending(now: Date = Date()) throws -> [ExpiredPendingRow] {
+  public func deleteExpiredPending(now: Date = Date()) async throws -> PendingSweepResult {
+    // COALESCED, not skipped.
+    //
+    // `load()` and the expiry pulse can both reach this, and two overlapping
+    // walks double-reported an expiry — one row counted twice in the funnel the
+    // feature is judged by.
+    //
+    // Two attempts to elect a single winner at the DELETION both failed, and
+    // the measurements are why this coalesces instead. Reporting on "the file
+    // is now absent" cannot tell "I removed it" from "the other sweep did":
+    // 5 rows produced 6 receipts. Reporting only on `removeItem` success was no
+    // better — `FileManager` treats an already-absent file as the goal
+    // achieved, so both callers succeed: still 6, a different row each run.
+    // Switching to `unlink(2)` made it WORSE (7), and also broke sweeping of a
+    // corrupt entry that is a DIRECTORY, which `unlink` cannot remove.
+    //
+    // A LATECOMER AWAITS THE WINNER AND THEN RUNS ITS OWN PASS.
+    //
+    // Returning immediately made `await deleteExpiredPending()` a lie: the
+    // caller resumed while the sweep was still running, so `load()` could read
+    // rows that were about to be deleted.
+    //
+    // Returning the winner's EMPTINESS was a second, quieter defect. The
+    // latecomer carries its own, LATER clock. A row that crosses its deadline
+    // while the winner is walking is classified live by that walk, so
+    // discarding the latecomer's pass strands the file and its expiry receipt
+    // — and `lapsedPendingCount` then reaches zero, stopping the pulse that
+    // would have retried. The second pass is duplicate-safe: the winner's
+    // deletions are already gone from disk, so it can only pick up rows that
+    // lapsed since.
+    while let existing = inFlightSweep {
+      _ = await existing.value
+    }
     let dir = pendingDirectory
-    guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+    guard FileManager.default.fileExists(atPath: dir.path) else {
+      return PendingSweepResult(deletedIDs: [], expired: [])
+    }
+    let retention = AppConstants.pendingTranscriptRetention
+    #if DEBUG
+      let gate = Self.sweepGateForTesting
+    #endif
+    let walk = Task.detached(priority: .utility) {
+      #if DEBUG
+        // Held open by a test so the coalescing contract is observable: without
+        // it, awaiting both callers cannot distinguish "the latecomer waited"
+        // from "the winner finished first anyway".
+        await gate?()
+      #endif
+      return Self.sweepExpired(in: dir, now: now, retention: retention)
+    }
+    sweepGeneration &+= 1
+    let generation = sweepGeneration
+    // The claim is released INSIDE this task, before it completes, so a waiter
+    // resuming from `existing.value` can never see a stale one. Releasing it in
+    // the caller's `defer` instead leaves a window between the walk finishing
+    // and the caller resuming, and in that window the loop above reads a
+    // COMPLETED task: awaiting it returns without suspending, so the loop spins
+    // on the main actor and never yields to the caller that would clear it.
+    let sweep = Task { @MainActor [weak self] in
+      let result = await walk.value
+      self?.releaseSweep(generation: generation)
+      return result
+    }
+    inFlightSweep = sweep
+    return await sweep.value
+  }
+
+  /// Releases the in-flight claim only if it is still ours.
+  ///
+  /// A generation check rather than an identity one, because a sweep cannot
+  /// name its own task from inside its own closure. Clearing unconditionally
+  /// would un-flag a NEWER sweep and let a third caller start an overlapping
+  /// walk — the exact double-reporting this coalescing exists to prevent.
+  private func releaseSweep(generation: UInt64) {
+    guard sweepGeneration == generation else { return }
+    inFlightSweep = nil
+  }
+
+  /// The sweep a latecomer coalesces onto.
+  private var inFlightSweep: Task<PendingSweepResult, Never>?
+
+  /// Names each claim so `releaseSweep` can tell its own from a successor's.
+  private var sweepGeneration: UInt64 = 0
+
+  #if DEBUG
+    /// Blocks the detached walk so a test can observe sweep ordering.
+    // periphery:ignore - test seam
+    nonisolated(unsafe) static var sweepGateForTesting: (@Sendable () async -> Void)?
+  #endif
+
+  /// `nonisolated` so the walk genuinely leaves the main actor. A detached task
+  /// calling back into an isolated method would hop straight back and block
+  /// exactly what it was meant to protect.
+  private nonisolated static func sweepExpired(
+    in dir: URL, now: Date, retention: TimeInterval
+  ) -> PendingSweepResult {
     let fm = FileManager.default
     var reported: [ExpiredPendingRow] = []
-    for candidate in Self.decodePending(
-      in: dir, now: now, retention: AppConstants.pendingTranscriptRetention)
-    where !candidate.isLive {
+    var deleted: Set<UUID> = []
+    var unremovable = 0
+    // An unreadable directory is reported as an INCOMPLETE walk, never as an
+    // empty one. Swallowing it into `[]` produced `unremovable == 0`, which the
+    // caller reads as proof the directory is clean — so it would drop the rows
+    // that were its only other record and stop retrying, while the files it
+    // could not even see remained.
+    guard let candidates = pendingCandidates(in: dir, now: now, retention: retention) else {
+      return PendingSweepResult(
+        deletedIDs: [], expired: [], unremovable: 0, walkComplete: false)
+    }
+    for candidate in candidates where !candidate.isLive {
+      // `removeItem`, NOT `unlink`. A corrupt entry can be a DIRECTORY named
+      // `<uuid>.json` — `decodePending` classifies it `.invalid` and the sweep
+      // must clear it or it accumulates forever. `unlink(2)` fails on a
+      // directory, so switching to it silently stopped sweeping exactly the
+      // case that motivated this branch; a chunk-1 test caught it.
+      //
+      // Reporting is safe on the existence check because sweeps cannot overlap
+      // (see the flag in `deleteExpiredPending`). Without that guarantee this is
+      // NOT a winner election: "the file is now absent" cannot distinguish "I
+      // removed it" from "the other sweep did", and two sweeps both report.
       try? fm.removeItem(at: candidate.url)
+      let id = UUID(uuidString: candidate.url.deletingPathExtension().lastPathComponent)
       // Report only once the file is confirmed gone, so a failed removal is
       // retried on the next sweep instead of re-emitting the same expiry event
       // on every sweep forever.
-      guard !fm.fileExists(atPath: candidate.url.path) else { continue }
+      //
+      // A survivor is announced rather than passed over in silence. The caller
+      // cannot see this from its own list — an in-memory row can outlive its
+      // file — so silence here is what forced it to guess, and the guess it had
+      // to make was "retry while memory still holds the row", which never ends.
+      //
+      // Counted WITHOUT consulting `id`: a corrupt entry whose name is not a
+      // UUID has no identity to report, and keying this on identity stranded
+      // exactly those files while reporting that the directory was clean.
+      guard !fm.fileExists(atPath: candidate.url.path) else {
+        unremovable += 1
+        continue
+      }
+      // EVERY deletion, including the invalid rows that earn no receipt.
+      // The caller evicts from memory on this set: reporting only the
+      // telemetry-eligible rows left a future-skewed or corrupt row sitting
+      // in memory after its file was gone, so the sweep trigger never
+      // returned to zero and the directory was re-walked every minute.
+      if let id { deleted.insert(id) }
       if let receipt = candidate.expiredReceipt { reported.append(receipt) }
     }
-    return reported
+    return PendingSweepResult(deletedIDs: deleted, expired: reported, unremovable: unremovable)
   }
 
   /// Why a pending file is or is not still offered.
@@ -226,24 +363,41 @@ public final class TranscriptStore {
     /// Non-nil only for a genuinely expired row, which is what makes a false
     /// `escape_recovery.expired` event structurally impossible.
     var expiredReceipt: ExpiredPendingRow? {
-      guard case .expired(_, let transcript) = self else { return nil }
-      return ExpiredPendingRow(id: transcript.id, takeID: transcript.escapeRecoveryTakeID)
+      guard case .expired(_, let transcript) = self,
+        let stamped = transcript.escapeRecoveredAt
+      else { return nil }
+      return ExpiredPendingRow(
+        id: transcript.id, takeID: transcript.escapeRecoveryTakeID, stampedAt: stamped)
     }
 
     var isLive: Bool { liveTranscript != nil }
   }
 
-  private nonisolated static func decodePending(
+  /// `nil` means the directory could NOT be read, which is not the same fact as
+  /// "the directory is empty" and must not be flattened into it.
+  ///
+  /// A caller deciding whether cleanup is finished reads an unreadable directory
+  /// as a clean one, stops retrying, and drops the rows that were its only other
+  /// record — so the distinction has to survive as far as that decision.
+  private nonisolated static func pendingCandidates(
     in directory: URL, now: Date, retention: TimeInterval
-  ) -> [PendingCandidate] {
+  ) -> [PendingCandidate]? {
     guard
       let files = try? FileManager.default.contentsOfDirectory(
         at: directory, includingPropertiesForKeys: nil)
-    else { return [] }
+    else { return nil }
     return
       files
       .filter { $0.pathExtension == "json" }
       .map { decodeCandidate(at: $0, now: now, retention: retention) }
+  }
+
+  /// Visibility callers, for whom an unreadable directory and an empty one mean
+  /// the same thing: show nothing. Only the sweep needs them distinguished.
+  private nonisolated static func decodePending(
+    in directory: URL, now: Date, retention: TimeInterval
+  ) -> [PendingCandidate] {
+    pendingCandidates(in: directory, now: now, retention: retention) ?? []
   }
 
   /// Recovery session ids of every pending file that DECODES, regardless of
@@ -451,6 +605,48 @@ public final class TranscriptStore {
   }
 }
 
+/// What one sweep did (#2087).
+///
+/// Four fields because they answer four different questions. `deletedIDs` is
+/// every file the sweep removed — expired AND invalid — and is what a caller
+/// evicts from memory on. `expired` is only the rows a user genuinely let lapse,
+/// and is what telemetry reports: a corrupt file is not a user letting a
+/// recovery go, so it is a strict subset.
+/// `unremovable` is the third: how many files this sweep decided must go and
+/// could not remove. It is DISK truth, and it exists because the caller's only
+/// other signal is its own in-memory list, which can outlive the file it
+/// describes — so a caller that keeps retrying on memory alone retries forever.
+///
+/// A COUNT, deliberately not a set of ids. The caller needs to know whether work
+/// remains, never which row it belongs to, and an identity-keyed version silently
+/// dropped the cases that have no identity: a corrupt `garbage.json` whose name
+/// is not a UUID cannot be named, so it reported nothing and was stranded — the
+/// exact file the sweep exists to clear. Zero is the honest "this pass finished
+/// its work", and is what lets the caller drop stale rows and stop.
+/// `walkComplete` is the fourth, and it exists because `unremovable == 0` has
+/// TWO causes: the sweep saw everything and cleared it, or the sweep could not
+/// read the directory at all. Those are opposite facts and the second one masks
+/// work rather than proving there is none. A caller that flattens them evicts
+/// its own records and stops retrying precisely when it should not.
+public struct PendingSweepResult: Sendable {
+  public let deletedIDs: Set<UUID>
+  public let expired: [ExpiredPendingRow]
+  public let unremovable: Int
+  /// False when the directory could not be enumerated. Nothing else about this
+  /// result can be trusted as a statement about the directory's contents.
+  public let walkComplete: Bool
+
+  public init(
+    deletedIDs: Set<UUID>, expired: [ExpiredPendingRow], unremovable: Int = 0,
+    walkComplete: Bool = true
+  ) {
+    self.deletedIDs = deletedIDs
+    self.expired = expired
+    self.unremovable = unremovable
+    self.walkComplete = walkComplete
+  }
+}
+
 /// A pending Escape Recovery row that aged out un-restored (#2087).
 ///
 /// Returned by `TranscriptStore.deleteExpiredPending` because expiry telemetry
@@ -461,9 +657,18 @@ public struct ExpiredPendingRow: Sendable, Equatable {
   public let id: UUID
   /// Nil when the row predates take-id persistence or could not be decoded.
   public let takeID: String?
+  /// When the offer began (#2087).
+  ///
+  /// Carried so the expiry event reports the row's REAL age. Deriving it from
+  /// the retention constant instead would emit a fixed 24h for every row and
+  /// call it a measurement — and it would be wrong exactly when it matters: a
+  /// Mac left off for three days sweeps rows that are 72 hours old, and that
+  /// gap between deadline and sweep is the thing worth seeing.
+  public let stampedAt: Date
 
-  public init(id: UUID, takeID: String?) {
+  public init(id: UUID, takeID: String?, stampedAt: Date) {
     self.id = id
     self.takeID = takeID
+    self.stampedAt = stampedAt
   }
 }

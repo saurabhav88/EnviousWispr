@@ -3951,7 +3951,11 @@ final class RecordingSessionKernel {
       outcome: outcome,
       // COPIED, never measured here. Populated at its producer (§G5); nil for
       // every take that is not signal-free.
-      signalAttribution: telemetryState.signalAttribution
+      signalAttribution: telemetryState.signalAttribution,
+      // #2087: read from the kernel's own disposition, the same field that
+      // decided whether to hold the text. Deriving it here from the outcome
+      // would be a second opinion that can disagree with the first.
+      deliveryDisposition: finalizationDisposition.isEscapeRecovery ? .escapeRecovery : .ordinary
     )
     defer { sessionTerminalTelemetry(terminalSnapshot) }
 

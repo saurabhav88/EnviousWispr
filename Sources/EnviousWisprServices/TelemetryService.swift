@@ -91,6 +91,34 @@ public enum RecoveryTelemetryReason: String, Sendable, CaseIterable {
   case keychainTransient = "keychain_transient"
 }
 
+/// Where the user got a held recovery back from (#2087).
+///
+/// A closed set because the funnel's whole question is which door people use:
+/// the three-second pill, or History hours later. A free-form string would let
+/// a future call site invent a third value and silently split the series.
+public enum EscapeRecoveryRestoreSource: String, Sendable, CaseIterable {
+  case pill
+  case history
+}
+
+/// How a restored recovery actually reached the user (#2087).
+///
+/// Closed for the same reason as the source above: `paste_result` is a funnel
+/// dimension, and an invented label splits the series silently.
+public enum EscapeRecoveryPasteResult: String, Sendable, CaseIterable {
+  /// Inserted into the target application.
+  case pasted
+  /// The target was gone or accessibility was refused, so the text went to the
+  /// clipboard instead. Still a restore — the user has their words back.
+  case clipboardOnly = "clipboard_only"
+}
+
+// No `failed` case, deliberately. `escape_recovery.restored` MEANS the user got
+// the text back; a restore that reached neither the target nor the clipboard did
+// not happen, and emitting it here would inflate the numerator of the one ratio
+// this funnel exists to compute. A failure to deliver belongs on its own event,
+// not as a value of a success.
+
 /// #1464 — the narrow failure CLASS behind a transcription-stage recovery failure,
 /// the prime Camp B (good audio, transient hiccup) suspects. Starts deliberately
 /// narrow (D-030 / plan §3.2): widen only when Phase 2 producer tests prove a new
@@ -269,6 +297,137 @@ public final class TelemetryService {
   }
 
   // MARK: - App Lifecycle
+
+  // MARK: - Escape Recovery (#2087)
+  //
+  // Five take-keyed, content-free events. They exist because
+  // `dictation.canceled` deliberately keeps its current meaning and emission
+  // point: redefining a long-running production series from "requested" to
+  // "actually discarded" would silently rewrite externally saved PostHog
+  // insights and subscriptions, which no repo-side audit can clear. So this
+  // feature is observed by its own events instead.
+  //
+  // NOTHING BUT LABELS, IDS AND DURATIONS. Never transcript text, clipboard
+  // contents, target application name or bundle id, window title, accessibility
+  // label, or anything derived from an `AXUIElement`. The privacy boundary is
+  // the network: what reaches Envious Labs describes shape, never content.
+  //
+  // `take_id` is an ephemeral per-take correlation id, not the transcript row
+  // id. `restored`, `kept` and `expired` can fire hours later and after a
+  // relaunch, so the originating take id is persisted on the pending row and
+  // read back — without that the funnel breaks at exactly the point it measures.
+
+  /// An eligible cancel selected Escape Recovery.
+  public func escapeRecoveryStarted(
+    asrBackend: String, polishProvider: String, recordingDurationMs: Int, takeID: String
+  ) {
+    let props: [String: Any] = [
+      "asr_backend": asrBackend,
+      "polish_provider": polishProvider,
+      "recording_duration_ms": recordingDurationMs,
+      "take_id": takeID,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "escape_recovery.started",
+          stringProps: [
+            "asr_backend": asrBackend, "polish_provider": polishProvider, "take_id": takeID,
+          ],
+          intProps: ["recording_duration_ms": recordingDurationMs]))
+    #endif
+    PostHogSDK.shared.capture("escape_recovery.started", properties: props)
+  }
+
+  /// The attempt reached a terminal outcome.
+  ///
+  /// Takes the ENUM, not its raw value: an invalid label must be unrepresentable
+  /// rather than merely discouraged. The set includes `abandoned` and
+  /// `transcriptionFailed`, the two the abandonment contract creates.
+  public func escapeRecoveryCompleted(
+    outcome: EscapeRecoveryTerminalOutcome, asrDurationMs: Int?, polishDurationMs: Int?, durationMs: Int,
+    asrBackend: String, takeID: String
+  ) {
+    var props: [String: Any] = [
+      "outcome": outcome.rawValue,
+      "duration_ms": durationMs,
+      // Seconds in the reserved aggregation slot, raw milliseconds under their
+      // own name (#2060). `$value` is a mirror, never the only copy.
+      "$value": Double(durationMs) / 1000.0,
+      "asr_backend": asrBackend,
+      "take_id": takeID,
+    ]
+    if let asrDurationMs { props["asr_duration_ms"] = asrDurationMs }
+    if let polishDurationMs { props["polish_duration_ms"] = polishDurationMs }
+    #if DEBUG
+      var intProps: [String: Int] = ["duration_ms": durationMs]
+      if let asrDurationMs { intProps["asr_duration_ms"] = asrDurationMs }
+      if let polishDurationMs { intProps["polish_duration_ms"] = polishDurationMs }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "escape_recovery.completed",
+          stringProps: [
+            "outcome": outcome.rawValue, "asr_backend": asrBackend, "take_id": takeID,
+          ],
+          intProps: intProps,
+          doubleProps: ["$value": Double(durationMs) / 1000.0]))
+    #endif
+    PostHogSDK.shared.capture("escape_recovery.completed", properties: props)
+  }
+
+  /// The user got the text back.
+  public func escapeRecoveryRestored(
+    source: EscapeRecoveryRestoreSource, ageMs: Int,
+    pasteResult: EscapeRecoveryPasteResult, takeID: String
+  ) {
+    let props: [String: Any] = [
+      "source": source.rawValue,
+      "age_ms": ageMs,
+      "paste_result": pasteResult.rawValue,
+      "take_id": takeID,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "escape_recovery.restored",
+          stringProps: [
+            "source": source.rawValue, "paste_result": pasteResult.rawValue,
+            "take_id": takeID,
+          ],
+          intProps: ["age_ms": ageMs]))
+    #endif
+    PostHogSDK.shared.capture("escape_recovery.restored", properties: props)
+  }
+
+  /// Keep was pressed in History.
+  public func escapeRecoveryKept(ageMs: Int, takeID: String) {
+    let props: [String: Any] = ["age_ms": ageMs, "take_id": takeID]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "escape_recovery.kept",
+          stringProps: ["take_id": takeID],
+          intProps: ["age_ms": ageMs]))
+    #endif
+    PostHogSDK.shared.capture("escape_recovery.kept", properties: props)
+  }
+
+  /// A pending row aged out un-restored.
+  ///
+  /// The ratio of this to `restored` is the honest verdict on whether the
+  /// feature earns its blast radius: output that is almost always ignored is a
+  /// reason to remove it, and this is the instrument that would say so.
+  public func escapeRecoveryExpired(ageMs: Int, takeID: String) {
+    let props: [String: Any] = ["age_ms": ageMs, "take_id": takeID]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "escape_recovery.expired",
+          stringProps: ["take_id": takeID],
+          intProps: ["age_ms": ageMs]))
+    #endif
+    PostHogSDK.shared.capture("escape_recovery.expired", properties: props)
+  }
 
   public func appLaunched(
     version: String, build: String, osVersion: String, hardware: String,
@@ -857,7 +1016,13 @@ public final class TelemetryService {
     peakAudioLevel: Float? = nil,
     durationMs: Int? = nil,
     captureNativeRateHz: Double? = nil,
-    captureNativeChannelCount: Int? = nil
+    captureNativeChannelCount: Int? = nil,
+    // #2087: ADDITIVE and defaulted, so every existing call site and every
+    // existing query keeps working. An Escape Recovery session concludes
+    // `.completed`, so without this the ordinary terminal row would report it as
+    // a normal dictation; minting a ninth `result` label would instead break the
+    // eight-label vocabulary every existing chart reads.
+    deliveryDisposition: String? = nil
   ) {
     let event = "dictation.terminal"
     var props: [String: Any] = [
@@ -866,6 +1031,7 @@ public final class TelemetryService {
       "result": result,
     ]
     if let reason { props["reason"] = reason }
+    if let deliveryDisposition { props["delivery_disposition"] = deliveryDisposition }
     if let inputDeviceKind { props["input_device_kind"] = inputDeviceKind }
     if let effectiveTransport { props["effective_transport"] = effectiveTransport }
     if let selectedTransport { props["selected_transport"] = selectedTransport }
@@ -886,6 +1052,7 @@ public final class TelemetryService {
       if let reason { stringProps["reason"] = reason }
       for key in [
         "input_device_kind", "effective_transport", "selected_transport", "input_selection_mode",
+        "delivery_disposition",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
