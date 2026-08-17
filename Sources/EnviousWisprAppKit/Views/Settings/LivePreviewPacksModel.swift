@@ -68,8 +68,7 @@ final class LivePreviewPacksModel {
     // "could not read" state.
     return ApplePackCatalog(
       dependencies: .init(
-        supportedTags: { [] }, installedTags: { [] },
-        reserve: { _ in }, release: { _ in }, install: { _ in }))
+        supportedTags: { [] }, installedTags: { [] }, install: { _ in }))
   }
 
   /// Injected for the same reason the catalogue is: without it, `load` reaches a static Apple

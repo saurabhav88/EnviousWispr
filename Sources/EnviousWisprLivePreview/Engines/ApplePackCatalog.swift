@@ -50,29 +50,28 @@ package actor ApplePackCatalog {
   package struct Dependencies: Sendable {
     package var supportedTags: @Sendable () async -> [String]
     package var installedTags: @Sendable () async -> [String]
-    package var reserve: @Sendable (String) async throws -> Void
-    package var release: @Sendable (String) async -> Void
     package var install: @Sendable (String) async throws -> Void
 
     package init(
       supportedTags: @escaping @Sendable () async -> [String],
       installedTags: @escaping @Sendable () async -> [String],
-      reserve: @escaping @Sendable (String) async throws -> Void,
-      release: @escaping @Sendable (String) async -> Void,
       install: @escaping @Sendable (String) async throws -> Void
     ) {
       self.supportedTags = supportedTags
       self.installedTags = installedTags
-      self.reserve = reserve
-      self.release = release
       self.install = install
     }
   }
 
   private let deps: Dependencies
 
-  package init(dependencies: Dependencies) {
+  /// The one owner of every locale claim. Injected so a test drives the real transaction rather
+  /// than a stand-in for it — the reason #2145 was invisible to this suite for two releases.
+  private let claims: LocaleClaims
+
+  package init(dependencies: Dependencies, claims: LocaleClaims = .shared) {
     self.deps = dependencies
+    self.claims = claims
   }
 
   /// Every supported language with its current installed state.
@@ -101,51 +100,35 @@ package actor ApplePackCatalog {
 
   /// Install one pack, claiming the locale only for as long as the install needs it.
   ///
-  /// **Reserve, install, release — and release on EVERY exit path**, including the throwing one
-  /// and cancellation. Releasing does not uninstall (measured: 8 installed before and after), and
-  /// reservations do not survive the process, so holding one afterwards would buy nothing while
-  /// consuming one of the five slots. That is also why the five-slot cap never reaches the UI:
-  /// it is not a limit on how many languages a user may keep.
+  /// **Claim, install, finish — on EVERY exit path**, including the throwing one and cancellation.
+  /// Releasing does not uninstall (measured: 8 installed before and after), so holding the claim
+  /// afterwards would buy nothing while consuming one of five MACHINE-WIDE slots. That is why the
+  /// cap never reaches the UI — it is not a limit on how many languages a user may keep — but it is
+  /// also why a table filled by OTHER processes can still make this fail at capacity, which the
+  /// model surfaces rather than swallowing.
   ///
   /// Returns a fresh snapshot rather than reporting success, so the caller renders what the
   /// system now says instead of what we assume it should say.
+  ///
   /// **The claim is registered as IN USE for the whole transfer, not just while it is taken.**
-  /// Reserving and then losing the claim before `downloadAndInstall` consumes it would fail the
-  /// download for no visible reason, and a recording starting mid-transfer is exactly the thing
-  /// that would take it — Apple's five slots are shared and it evicts to make room.
+  /// Claiming and then losing it before `downloadAndInstall` consumes it would fail the download
+  /// for no visible reason, and a recording starting mid-transfer is exactly the thing that would
+  /// take it — Apple's five slots are shared machine-wide.
+  ///
+  /// **Both halves go through `LocaleClaims` and nothing else.** This type used to carry its own
+  /// reserve and release seams; #2145 found them making decisions the recognizer's copy made
+  /// differently, on a claim neither of them owned. One transaction, one owner.
   package func install(tag: String) async throws -> [LivePreviewPack] {
-    // `reserve` also REGISTERS this transfer's use, atomically, so nothing can evict the claim
-    // between taking it and downloading into it.
-    try await deps.reserve(tag)
+    let locale = Locale(identifier: tag)
+    try await claims.claim(locale, purpose: "download")
     do {
       try await deps.install(tag)
     } catch {
-      await releaseIfUnused(tag)
+      await claims.finish(locale)
       throw error
     }
-    await releaseIfUnused(tag)
+    await claims.finish(locale)
     return await snapshot()
-  }
-
-  /// Hand back this transfer's claim, releasing the SYSTEM reservation only if nobody else is
-  /// still using the locale.
-  ///
-  /// **An unconditional release here would break an in-flight recording.** A preview can be
-  /// transcribing the same language this install just reused — reachable whenever the row the
-  /// user pressed was stale — and dropping the shared claim takes the asset out from under an
-  /// analyzer that is still reading it.
-  private func releaseIfUnused(_ tag: String) async {
-    // **Under the transaction lock, because checking and releasing must be ONE step.** Otherwise
-    // a recording starting right now slips between them: this reads zero uses, the recording
-    // reserves and registers, and then this releases the system claim out from under it. The
-    // recognizer's end-of-session path already held the lock across the same pair; this one did
-    // not, and that asymmetry was the bug.
-    await LocaleReservations.shared.acquire()
-    let remaining = await LocaleReservations.shared.endUse(tag)
-    if remaining == 0 {
-      await deps.release(tag)
-    }
-    await LocaleReservations.shared.release()
   }
 
   static func nativeName(for tag: String) -> String {
@@ -167,9 +150,9 @@ package actor ApplePackCatalog {
 #if canImport(Speech)
   @available(macOS 26.0, *)
   extension ApplePackCatalog.Dependencies {
-    /// The real Apple inventory. The reserve step routes to `ApplePreviewRecognizer.acquireLocaleForSession`
-    /// deliberately: `reserve` returns FALSE when the locale is ALREADY reserved, so the return
-    /// value is not a success flag and the authority has to be asked afterwards.
+    /// The real Apple asset catalogue. Enumeration and installation only — claiming the locale is
+    /// `LocaleClaims`' job, reached from `install(tag:)`, so this seam carries no claim policy at
+    /// all and cannot drift from the recognizer's copy the way the deleted one did.
     package static var live: ApplePackCatalog.Dependencies {
       .init(
         supportedTags: {
@@ -177,19 +160,6 @@ package actor ApplePackCatalog {
         },
         installedTags: {
           await DictationTranscriber.installedLocales.map { $0.identifier(.bcp47) }
-        },
-        // ONE owner for the reservation dance, shared with the recognizer.
-        //
-        // This used to be a second, weaker copy that omitted the eviction step, and review
-        // caught what that costs: after previewing five different languages the recognizer
-        // holds all five slots, so the sixth Download would refuse and the button would
-        // simply stop working for a multilingual user. Porting a guard means porting it
-        // WHOLE — the partial copy is the defect.
-        reserve: { tag in
-          try await ApplePreviewRecognizer.acquireLocaleForSession(Locale(identifier: tag))
-        },
-        release: { tag in
-          await AssetInventory.release(reservedLocale: Locale(identifier: tag))
         },
         install: { tag in
           let locale = Locale(identifier: tag)

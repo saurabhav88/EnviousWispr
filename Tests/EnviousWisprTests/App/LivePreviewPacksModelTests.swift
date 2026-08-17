@@ -100,8 +100,6 @@ struct LivePreviewPacksModelTests {
           // whether the row is allowed to call itself failed.
           return landedAnyway ? ["en-US", "de-DE", "it-IT"] : ["en-US", "de-DE"]
         },
-        reserve: { _ in },
-        release: { _ in },
         install: { tag in
           await calls.noteInstall(tag)
           throw LivePreviewError.localeUnavailable
@@ -142,8 +140,6 @@ struct LivePreviewPacksModelTests {
         installedTags: {
           await script.isInstalled ? ["en-US", "it-IT"] : ["en-US"]
         },
-        reserve: { _ in },
-        release: { _ in },
         install: { _ in await script.markInstalled() }
       ))
     let model = LivePreviewPacksModel(
@@ -174,8 +170,6 @@ struct LivePreviewPacksModelTests {
       dependencies: .init(
         supportedTags: { ["en-US", "it-IT"] },
         installedTags: { await script.isInstalled ? ["en-US", "it-IT"] : ["en-US"] },
-        reserve: { _ in },
-        release: { _ in },
         install: { _ in
           await script.markInstalled()
           throw LivePreviewError.localeUnavailable
@@ -209,8 +203,6 @@ struct LivePreviewPacksModelTests {
       dependencies: .init(
         supportedTags: { ["en-US", "it-IT"] },
         installedTags: { ["en-US", "it-IT"] },
-        reserve: { _ in },
-        release: { _ in },
         install: { _ in }
       ))
     let model = LivePreviewPacksModel(
