@@ -34,9 +34,18 @@ struct KernelInputResolutionFreezeTests {
     return (capture, wrapper)
   }
 
-  private func startAndSettle(_ wrapper: KernelRecordingSession) async {
+  /// #1857: `concluding: true` for the fault-injected starts whose caller then
+  /// asserts the kernel reached its FAILED terminal. Epoch quiescence can settle
+  /// while the failure path is still a ready task, so `state` would read the
+  /// in-flight value. A healthy start has no terminal coming and keeps the plain
+  /// drain — the conclusion wait would spin to its livelock cap there.
+  private func startAndSettle(_ wrapper: KernelRecordingSession, concluding: Bool = false) async {
     await wrapper.apply(.start)
-    await wrapper.drainReadyWork()
+    if concluding {
+      await wrapper.drainUntilConcluded()
+    } else {
+      await wrapper.drainReadyWork()
+    }
   }
 
   // MARK: 1 — the ordinary success path
@@ -61,7 +70,7 @@ struct KernelInputResolutionFreezeTests {
     capture.inputResolutionSourcePerAttempt = ["list_fallback"]
     capture.failEngineStart = true
 
-    await startAndSettle(wrapper)
+    await startAndSettle(wrapper, concluding: true)
 
     // Asserted AFTER the kernel reached its failed terminal, not before the
     // throw: a pre-throw assertion would prove the fake, not the freeze.
@@ -93,7 +102,7 @@ struct KernelInputResolutionFreezeTests {
     // Attempt 1 succeeds; the rebuild attempt throws.
     capture.failEngineStartOnAttempt = 2
 
-    await startAndSettle(wrapper)
+    await startAndSettle(wrapper, concluding: true)
 
     #expect(capture.startEnginePhaseCallCount == 2)
     #expect(wrapper.testKernel.state == .idle)
@@ -136,7 +145,7 @@ struct KernelInputResolutionFreezeTests {
     // asserted a "cleared" value that was really just session 1's, never
     // overwritten because session 2 never ran.
     await wrapper.apply(.stop)
-    await wrapper.drainReadyWork()
+    await wrapper.drainUntilConcluded()
     #expect(wrapper.testKernel.state == .idle, "session 1 must have finished")
 
     // Park session 2 AFTER engine start publishes its new source but BEFORE the

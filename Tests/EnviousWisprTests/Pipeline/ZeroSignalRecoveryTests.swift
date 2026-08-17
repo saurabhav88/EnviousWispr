@@ -90,7 +90,7 @@ struct ZeroSignalRecoveryTests {
 
     ctx.wrapper.testKernel.externalCaptureStalled(
       stallContext(ctx, failureMode: .allZeroFromStart))
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
@@ -115,7 +115,7 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.state == .live)
 
     ctx.wrapper.testKernel.externalCaptureStalled(stallContext(ctx, failureMode: .noBuffers))
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .noTransport)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
@@ -138,7 +138,7 @@ struct ZeroSignalRecoveryTests {
     await startToRecording(a)
     a.wrapper.testKernel.externalCaptureStalled(stallContext(a, failureMode: .noBuffers))
     await a.wrapper.apply(.stop)
-    await a.wrapper.drainReadyWork()
+    await a.wrapper.drainUntilConcluded()
     #expect(a.wrapper.testKernel.recordingOutcome == .noTransport)
 
     // Ordering B — stop first: the stop latches the recording exit; the later
@@ -148,7 +148,7 @@ struct ZeroSignalRecoveryTests {
     await startToRecording(b)
     await b.wrapper.apply(.stop)
     b.wrapper.testKernel.externalCaptureStalled(stallContext(b, failureMode: .noBuffers))
-    await b.wrapper.drainReadyWork()
+    await b.wrapper.drainUntilConcluded()
     if case .discarded = b.wrapper.testKernel.recordingOutcome {
       // stop won — correct
     } else {
@@ -181,7 +181,7 @@ struct ZeroSignalRecoveryTests {
       stallContext(ctx, failureMode: .becameZeroMidCapture))
     await ctx.wrapper.apply(.stop)
     ctx.capture.releaseStabilizationGate()
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     // The zero-signal exit was consumed and processed (its failure mode is
     // stamped), NOT overwritten by the later stop's discard or a cancelled adapter.
@@ -229,7 +229,7 @@ struct ZeroSignalRecoveryTests {
 
     ctx.wrapper.testKernel.externalCaptureStalled(
       stallContext(ctx, failureMode: .becameZeroMidCapture))
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
@@ -252,7 +252,7 @@ struct ZeroSignalRecoveryTests {
     // otherwise the stop aborts a still-Arming session.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
@@ -277,7 +277,7 @@ struct ZeroSignalRecoveryTests {
     // otherwise the stop aborts a still-Arming session.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
@@ -311,7 +311,7 @@ struct ZeroSignalRecoveryTests {
     // otherwise the stop aborts a still-Arming session.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
@@ -330,7 +330,7 @@ struct ZeroSignalRecoveryTests {
 
     ctx.wrapper.testKernel.externalCaptureStalled(
       stallContext(ctx, failureMode: .becameZeroMidCapture))
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
@@ -357,7 +357,7 @@ struct ZeroSignalRecoveryTests {
     // otherwise the stop aborts a still-Arming session.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
@@ -383,7 +383,7 @@ struct ZeroSignalRecoveryTests {
     // otherwise the stop aborts a still-Arming session.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .noSpeech)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
@@ -412,7 +412,7 @@ struct ZeroSignalRecoveryTests {
     // otherwise the stop aborts a still-Arming session.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .noSpeech)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
@@ -439,7 +439,7 @@ struct ZeroSignalRecoveryTests {
 
     ctx.wrapper.testKernel.externalCaptureStalled(
       stallContext(ctx, failureMode: .allZeroFromStart))
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     // STOP-time telemetry never fires for a reactive win — the reactive
@@ -472,7 +472,7 @@ struct ZeroSignalRecoveryTests {
     // otherwise the stop aborts a still-Arming session.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .discarded)
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
@@ -504,7 +504,7 @@ struct ZeroSignalRecoveryTests {
     // otherwise the stop aborts a still-Arming session.
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(ctx.capture.rebuildEngineCallCount == 1)  // format-stabilization only
@@ -526,7 +526,7 @@ struct ZeroSignalRecoveryTests {
       // otherwise the stop aborts a still-Arming session.
       await ctx.wrapper.drainReadyWork()
       await ctx.wrapper.apply(.stop)
-      await ctx.wrapper.drainReadyWork()
+      await ctx.wrapper.drainUntilConcluded()
 
       #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
       // Best-effort convergence (§3.3): the retire is fire-and-forget, so a

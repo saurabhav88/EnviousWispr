@@ -97,7 +97,7 @@ struct KernelFormatStabilizationRebuildTests {
 
     wrapper.testKernel.cancel()  // cancelRequested latched pre-recording
     capture.releaseStabilizationGate()
-    await wrapper.drainReadyWork()
+    await wrapper.drainUntilConcluded()
 
     #expect(wrapper.testKernel.recordingOutcome == .cancelled)
     #expect(capture.rebuildEngineCallCount == 1)  // rebuild had already happened

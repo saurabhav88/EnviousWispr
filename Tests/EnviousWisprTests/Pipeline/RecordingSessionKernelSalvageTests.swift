@@ -142,7 +142,7 @@ struct ExhaustedRetrySpoolDeletionTests {
       await startRecording(context)
 
       wrapper.testKernel.externalEngineInterrupted(cause)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(wrapper.testKernel.recordingOutcome == .completed)
       #expect(context.paste.pasteCount == 1)
@@ -172,7 +172,7 @@ struct ExhaustedRetrySpoolDeletionTests {
 
       await startRecording(context)
       await context.sut.apply(.stop)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(
         wrapper.telemetryState.transcriptionFailureError as? KernelLimbError
@@ -202,7 +202,7 @@ struct ExhaustedRetrySpoolDeletionTests {
 
       await startRecording(context)
       await context.sut.apply(.stop)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(
         wrapper.telemetryState.transcriptionFailureError as? KernelLimbError
@@ -288,7 +288,7 @@ struct ExhaustedRetrySpoolDeletionTests {
       await startRecording(context, buffers: 1)
 
       await context.sut.apply(.stop)
-      await context.sut.drainReadyWork()
+      await context.sut.drainUntilConcluded()
 
       #expect(wrapper.testKernel.recordingOutcome == .discarded(.tooShort))
       #expect(
@@ -304,7 +304,7 @@ struct ExhaustedRetrySpoolDeletionTests {
       // The clock never advances, so the elapsed window is below the minimum —
       // the same sub-minimum gate the user-stop pair lands on, but interrupted.
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(wrapper.testKernel.recordingOutcome == .audioInterrupted(.engineLost))
       // #1755: the floor now preserves honest TERMINAL/notice semantics only —
@@ -322,7 +322,7 @@ struct ExhaustedRetrySpoolDeletionTests {
       await startRecording(context, buffers: 2)
 
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(wrapper.testKernel.recordingOutcome.kind == .audioInterrupted)
     }
@@ -340,7 +340,7 @@ struct ExhaustedRetrySpoolDeletionTests {
       await startRecording(context, amplitude: 0.001)
 
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(wrapper.testKernel.recordingOutcome.kind == .audioInterrupted)
       #expect(context.paste.pasteCount == 0)
@@ -364,7 +364,7 @@ struct ExhaustedRetrySpoolDeletionTests {
       await startRecording(context, amplitude: 0.1)
 
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(
         wrapper.testKernel.recordingOutcome.kind == .audioInterrupted,
@@ -396,7 +396,7 @@ struct ExhaustedRetrySpoolDeletionTests {
       await startRecording(context, buffers: site.buffers, amplitude: site.amplitude)
 
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(
         wrapper.testKernel.recordingOutcome.kind == .audioInterrupted,
@@ -421,7 +421,7 @@ struct ExhaustedRetrySpoolDeletionTests {
       await startRecording(context, buffers: bufferCount)
 
       wrapper.testKernel.externalEngineInterrupted(cause)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       let terminal = wrapper.testKernel.recordingOutcome
       #expect(
@@ -456,7 +456,7 @@ struct ExhaustedRetrySpoolDeletionTests {
       )
 
       await wrapper.apply(.cancel)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(wrapper.testKernel.recordingOutcome == .cancelled)
       #expect(context.paste.pasteCount == 0)
@@ -601,7 +601,7 @@ struct ExhaustedRetrySpoolDeletionTests {
 
       await startRecording(context)
       kernel.externalASRInterrupted()
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(
         kernel.recordingOutcome == .asrInterrupted(wasRecording: true),
@@ -628,7 +628,7 @@ struct ExhaustedRetrySpoolDeletionTests {
 
       await startRecording(context)
       kernel.externalASRInterrupted()
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(kernel.recordingOutcome == .asrInterrupted(wasRecording: true))
       #expect(context.paste.pasteCount == 0)
@@ -696,7 +696,7 @@ struct ExhaustedRetrySpoolDeletionTests {
 
       // And the floor is genuinely inert again: an ordinary stop discards.
       await wrapper.apply(.stop)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
       #expect(wrapper.testKernel.recordingOutcome.kind == .discarded)
     }
 

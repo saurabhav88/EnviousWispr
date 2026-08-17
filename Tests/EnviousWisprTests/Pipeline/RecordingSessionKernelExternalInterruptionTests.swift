@@ -74,7 +74,7 @@ import Testing
       #expect(kernel.state == .live)
 
       kernel.externalEngineInterrupted(.engineLost)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(kernel.recordingOutcome == .audioInterrupted(.engineLost))
     }
@@ -94,7 +94,7 @@ import Testing
       #expect(kernel.state == .live)
 
       kernel.externalASRInterrupted()
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       // From `.live` the outcome carries `wasRecording: true` — pin the payload,
       // not just the category, so the kernel can't silently drop/invert it
@@ -119,7 +119,7 @@ import Testing
       #expect(kernel.state == .live)
 
       kernel.externalASRInterrupted()
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(kernel.recordingOutcome == .completed)
       #expect(context.paste.pasteCount == 1)
@@ -199,7 +199,7 @@ import Testing
       #expect(kernel.state == .live)
 
       kernel.externalCaptureStalled(context.capture.makeStallContext())
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(kernel.recordingOutcome == .failed(.captureStalled))
     }
@@ -213,7 +213,7 @@ import Testing
 
       await startToRecording(context)
       kernel.externalEngineInterrupted(.engineLost)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
       let firstOutcome = kernel.recordingOutcome
       #expect(firstOutcome == .audioInterrupted(.engineLost))
 
@@ -233,7 +233,7 @@ import Testing
 
       await startToRecording(context)
       kernel.externalASRInterrupted()
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
       let firstOutcome = kernel.recordingOutcome
       #expect(firstOutcome.kind == .asrInterrupted)
 
@@ -249,7 +249,7 @@ import Testing
 
       await startToRecording(context)
       kernel.externalCaptureStalled(context.capture.makeStallContext())
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
       let firstOutcome = kernel.recordingOutcome
       #expect(firstOutcome == .failed(.captureStalled))
 
@@ -283,13 +283,13 @@ import Testing
 
       await startToRecording(context)
       await wrapper.apply(.cancel)  // → cancelled
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
       #expect(kernel.recordingOutcome == .cancelled)
 
       kernel.externalEngineInterrupted(.engineLost)
       kernel.externalASRInterrupted()
       kernel.externalCaptureStalled(context.capture.makeStallContext())
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(kernel.recordingOutcome == .cancelled)
     }
@@ -308,7 +308,7 @@ import Testing
       // `.audioInterrupted(.engineLost)` — the FIRST exit, deterministically.
       kernel.externalEngineInterrupted(.engineLost)
       kernel.externalASRInterrupted()
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(kernel.recordingOutcome == .audioInterrupted(.engineLost))
     }
@@ -331,7 +331,7 @@ import Testing
       // Second, in the post-latch / pre-transition window: a generic engine loss.
       // Its exit is ignored; it must NOT overwrite the stamped cause.
       kernel.externalEngineInterrupted(.engineLost)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(kernel.recordingOutcome == .audioInterrupted(.deviceRemoved))
       #expect(
@@ -365,7 +365,7 @@ import Testing
         inputDeviceUIDSystemDefault: nil,
         failureMode: .noBuffers)
       kernel.externalCaptureStalled(crossDomain)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntilConcluded()
 
       #expect(kernel.recordingOutcome == .failed(.captureStalled))
     }

@@ -154,6 +154,21 @@ struct ScenarioRunner {
       context.sut.inject(directive)
 
     case .expectState(let expected):
+      // #1857: a MID-scenario terminal expectation is the same assertion the
+      // teardown check makes, so it needs the same wait. The preceding step's
+      // per-step `drainReadyWork()` is epoch quiescence — a continuation resumed
+      // synchronously inside that step is absorbed into the drain's initial
+      // `workEpoch`, so under contention this check can read the in-flight state
+      // and report a stuck session on a healthy kernel. That is the historical
+      // `step N: expected <terminal>, got recording` signature.
+      //
+      // Gated on `isTerminal` for the same reason the teardown is: `.idle` and
+      // the in-flight states publish no conclusion, and waiting for one would
+      // burn the livelock cap. `drainUntilConcluded` ends in `drainReadyWork`,
+      // so the terminal branch is a superset of what ran before.
+      if expected.isTerminal {
+        await context.sut.drainUntilConcluded()
+      }
       if context.sut.state != expected {
         failures.append(
           "step \(stepIndex): expected state \(expected), got \(context.sut.state)")

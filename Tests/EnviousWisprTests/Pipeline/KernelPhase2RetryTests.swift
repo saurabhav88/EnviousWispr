@@ -115,7 +115,7 @@ struct KernelPhase2RetryTests {
 
     // Chunk 1's drained continuation: the suspended decode now fails.
     ctx.engine.resolveHeldFinalizeAsHelperDeath()
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.engine.finalizeCallCount == 1, "the initial decode ran exactly once")
     #expect(
@@ -150,7 +150,7 @@ struct KernelPhase2RetryTests {
     #expect(ctx.engine.retryDecodeCallCount == 0)
 
     ctx.engine.resolveHeldFinalizeAsHelperDeath()
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(ctx.engine.finalizeCallCount == 1)
     #expect(ctx.engine.recoverFromASRInterruptionCallCount == 0)
@@ -391,7 +391,7 @@ struct KernelPhase2RetryTests {
   func preCaptureFailureNeverConsultsRetry() async {
     let ctx = makeContext(behavior: .failLoad(ASREngineError.loadFailed))
     await ctx.wrapper.apply(.start)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
     let kernel = ctx.wrapper.testKernel
 
     #expect(kernel.recordingOutcome == .failed(.modelLoadFailed))
@@ -424,7 +424,7 @@ struct KernelPhase2RetryTests {
         text: "rescued after recovery", language: nil, duration: 0, processingTime: 0,
         backendType: .parakeet))
     kernel.externalASRInterrupted()
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(kernel.recordingOutcome == .completed)
     #expect(kernel.deliveredTranscript == "rescued after recovery")
@@ -463,7 +463,7 @@ struct KernelPhase2RetryTests {
     // still parked — mirrors the kernel's own documented "Concurrent" class
     // (§5): a cancel landing while the retry awaits.
     kernel.cancel()
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
     #expect(kernel.recordingOutcome == .cancelled)
 
     // Session B starts and completes normally before A's abandoned retry
@@ -474,7 +474,7 @@ struct KernelPhase2RetryTests {
     deliverVoicedCapture(ctx)
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
     #expect(kernel.recordingOutcome == .completed)
     #expect(kernel.deliveredTranscript == "session B text")
 
