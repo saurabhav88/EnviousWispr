@@ -832,6 +832,35 @@ public actor ModelDeliveryController {
   /// gap.
   public func sweepSupersededStaging(_ registration: DeliveryRegistration) {
     let identity = registration.manifest.identity
+
+    // THE KILL SWITCH REFUSES THE WHOLE SWEEP, before any read or unlink.
+    //
+    // Every other byte-mutating path into this controller is gated by the
+    // ADAPTER, which returns early while delivery is disabled
+    // (`EGOneDeliveryAdapter` line ~93: "delivery is disabled (§16.6): no
+    // mutation"). That is why the flag snapshot in `startAttempt` does not
+    // check `familyEnabled` and its comment can say the snapshot "only runs
+    // when delivery is on" — nothing reaches it otherwise.
+    //
+    // This method is a PUBLIC door the adapter does not stand in front of:
+    // four bootstrap sites call it directly. Without this guard, launching
+    // during an incident freeze deletes superseded staging — resumable
+    // multi-GB partials — at the exact moment nothing is permitted to
+    // re-fetch them. `WhisperKitLegacyUpgradeCoordinator` step 0 gates its
+    // own deletion run for this reason and names the harm: deleting while
+    // disabled strands a user with neither the old copy nor a fetchable
+    // replacement.
+    //
+    // Gated HERE rather than at the four call sites, so a fifth caller
+    // cannot reintroduce it by omission.
+    //
+    // This does not weaken #2109's cleanup guarantee: the key defaults to
+    // TRUE, so every ordinary user still sweeps. Only an operator who has
+    // deliberately frozen delivery defers cleanup, and it resumes on the
+    // next launch after the switch returns.
+    guard DeliveryFlags.snapshot(family: identity.family, defaults: defaults).familyEnabled
+    else { return }
+
     let candidates = PriorRevisionAdmission.supersededStagingURLs(
       for: identity, metadataDirectory: registration.metadataDirectory)
     guard !candidates.isEmpty else { return }
@@ -849,7 +878,8 @@ public actor ModelDeliveryController {
     }
 
     var protectedKeys: Set<String> = []
-    for (liveIdentity, entry) in entries where entry.activeTask != nil || entry.drainingTask != nil {
+    for (liveIdentity, entry) in entries where entry.activeTask != nil || entry.drainingTask != nil
+    {
       guard let liveRegistration = registrationsByIdentity[liveIdentity] else { continue }
       protectedKeys.insert(key(Self.stagingDirectoryURL(for: liveRegistration)))
     }

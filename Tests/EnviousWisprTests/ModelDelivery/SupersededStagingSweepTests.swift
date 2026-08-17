@@ -19,7 +19,6 @@ import Testing
     ChunkAppendDelegate.protocolClassesForTesting = [DeliveryStubProtocol.self]
   }
 
-
   private func makeDirs() throws -> (install: URL, metadata: URL, cleanup: () -> Void) {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("sweep-\(UUID().uuidString)", isDirectory: true)
@@ -33,7 +32,8 @@ import Testing
   /// A staging directory with real bytes in it, named by an explicit cache key.
   @discardableResult
   private func seedStaging(_ metadata: URL, key: String) throws -> URL {
-    let dir = metadata
+    let dir =
+      metadata
       .appendingPathComponent("staging", isDirectory: true)
       .appendingPathComponent(key, isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -106,7 +106,8 @@ import Testing
     let found = PriorRevisionAdmission.supersededStagingURLs(
       for: stable, metadataDirectory: dirs.metadata)
 
-    #expect(found.isEmpty, "Preview differs only by variant and is a LIVE model, not a superseded one")
+    #expect(
+      found.isEmpty, "Preview differs only by variant and is a LIVE model, not a superseded one")
   }
 
   /// The hyphen-ambiguous real key, which is why the revision cannot be
@@ -119,7 +120,8 @@ import Testing
     let found = PriorRevisionAdmission.supersededStagingURLs(
       for: identity(revision: "v3-eg2"), metadataDirectory: dirs.metadata)
 
-    #expect(found.count == 1, "both name and revision contain hyphens; prefix/suffix must still work")
+    #expect(
+      found.count == 1, "both name and revision contain hyphens; prefix/suffix must still work")
   }
 
   /// An unreadable or absent staging root yields nothing, so the caller
@@ -161,7 +163,8 @@ import Testing
   @Test func sweepRemovesSupersededStagingAndKeepsTheCurrent() async throws {
     let dirs = try makeDirs()
     defer { dirs.cleanup() }
-    let registration = try makeRegistration(dirs.metadata, install: dirs.install, revision: "v3-eg2")
+    let registration = try makeRegistration(
+      dirs.metadata, install: dirs.install, revision: "v3-eg2")
 
     let superseded = try seedStaging(dirs.metadata, key: "eg_one-eg-1-v2-sharded-q5km")
     let current = try seedStaging(dirs.metadata, key: registration.manifest.identity.cacheKey)
@@ -173,7 +176,8 @@ import Testing
     await controller.sweepSupersededStaging(registration)
 
     #expect(exists(superseded) == false, "the superseded revision's bytes were not reclaimed")
-    #expect(exists(current) == true, "the current revision's partials were destroyed, breaking Resume")
+    #expect(
+      exists(current) == true, "the current revision's partials were destroyed, breaking Resume")
   }
 
   /// Another family's staging in the SHARED root must survive an EG-1 sweep.
@@ -182,7 +186,8 @@ import Testing
   @Test func sweepLeavesOtherFamiliesAlone() async throws {
     let dirs = try makeDirs()
     defer { dirs.cleanup() }
-    let registration = try makeRegistration(dirs.metadata, install: dirs.install, revision: "v3-eg2")
+    let registration = try makeRegistration(
+      dirs.metadata, install: dirs.install, revision: "v3-eg2")
 
     let parakeet = try seedStaging(
       dirs.metadata, key: "parakeet-parakeet-tdt-0.6b-v3-coreml-abc-int8")
@@ -205,7 +210,8 @@ import Testing
   @Test func sweepWithNothingSupersededIsANoOp() async throws {
     let dirs = try makeDirs()
     defer { dirs.cleanup() }
-    let registration = try makeRegistration(dirs.metadata, install: dirs.install, revision: "v3-eg2")
+    let registration = try makeRegistration(
+      dirs.metadata, install: dirs.install, revision: "v3-eg2")
     let current = try seedStaging(dirs.metadata, key: registration.manifest.identity.cacheKey)
 
     let controller = ModelDeliveryController(
@@ -232,7 +238,8 @@ import Testing
     let dirs = try makeDirs()
     defer { dirs.cleanup() }
 
-    let inFlight = try makeRegistration(dirs.metadata, install: dirs.install, revision: "v2-sharded")
+    let inFlight = try makeRegistration(
+      dirs.metadata, install: dirs.install, revision: "v2-sharded")
     let current = try makeRegistration(dirs.metadata, install: dirs.install, revision: "v3-eg2")
 
     let inFlightStaging = try seedStaging(
@@ -398,7 +405,8 @@ import Testing
     let dirs = try makeDirs()
     defer { dirs.cleanup() }
 
-    let draining = try makeRegistration(dirs.metadata, install: dirs.install, revision: "v2-sharded")
+    let draining = try makeRegistration(
+      dirs.metadata, install: dirs.install, revision: "v2-sharded")
     let current = try makeRegistration(dirs.metadata, install: dirs.install, revision: "v3-eg2")
     let drainingStaging = try seedStaging(dirs.metadata, key: draining.manifest.identity.cacheKey)
 
@@ -435,7 +443,9 @@ import Testing
         await Task.yield()
       }
     }
-    try #require(movedToDraining == true, "never observed the LIVE draining window, so the draining branch is untested")
+    try #require(
+      movedToDraining == true,
+      "never observed the LIVE draining window, so the draining branch is untested")
 
     await controller.sweepSupersededStaging(current)
     #expect(
@@ -472,7 +482,8 @@ import Testing
       defaults: UserDefaults(suiteName: "sweep-\(UUID().uuidString)")!,
       availableDiskBytes: { _ in .max })
     await controller.sweepSupersededStaging(current)
-    try #require(exists(oldStaging) == false, "the sweep did not reclaim it, so this proves nothing")
+    try #require(
+      exists(oldStaging) == false, "the sweep did not reclaim it, so this proves nothing")
 
     // Prove it ADMITS, not merely that it fails in a tolerable way. Accepting
     // a failure here would pass even if the swept revision were permanently
@@ -494,6 +505,87 @@ import Testing
     let outcome = await controller.ensureModelAvailable(old)
     #expect(
       outcome == .admitted,
-      "a swept revision must still install by refetching; reclaiming cache may cost bytes and must never cost installability")
+      "a swept revision must still install by refetching; reclaiming cache may cost bytes and must never cost installability"
+    )
+  }
+
+  // MARK: - The operational kill switch
+
+  /// Deleting while delivery is FROZEN is the one deletion nothing can undo.
+  ///
+  /// Every other byte-mutating path into the controller sits behind the
+  /// adapter, which returns early while the switch is off. This sweep is a
+  /// public door the adapter does not stand in front of, so it carries its own
+  /// gate. During an incident freeze the partials it would reclaim are exactly
+  /// the ones nothing is permitted to re-fetch.
+  ///
+  /// BOTH HALVES RUN AGAINST THE SAME FIXTURE. A gate that refused
+  /// unconditionally would satisfy the disabled half while silently disabling
+  /// reclamation for every user, and that is indistinguishable from deleting
+  /// the sweep — which is why the enabled half is not a separate test.
+  @Test func theKillSwitchFreezesTheSweepWithoutDisablingIt() async throws {
+    let dirs = try makeDirs()
+    defer { dirs.cleanup() }
+    let registration = try makeRegistration(
+      dirs.metadata, install: dirs.install, revision: "v3-eg2")
+    let flagKey = DeliveryFlags.key("enabled", family: .egOne)
+
+    // FROZEN: the superseded partials must survive untouched.
+    let suiteOff = "sweep-off-\(UUID().uuidString)"
+    let defaultsOff = try #require(UserDefaults(suiteName: suiteOff))
+    defer { UserDefaults().removePersistentDomain(forName: suiteOff) }
+    defaultsOff.set(false, forKey: flagKey)
+    try #require(
+      DeliveryFlags.snapshot(family: .egOne, defaults: defaultsOff).familyEnabled == false,
+      "fixture did not actually disable delivery, so the frozen half proves nothing")
+
+    let supersededFrozen = try seedStaging(dirs.metadata, key: "eg_one-eg-1-v2-sharded-q5km")
+    await ModelDeliveryController(defaults: defaultsOff, availableDiskBytes: { _ in .max })
+      .sweepSupersededStaging(registration)
+    #expect(
+      exists(supersededFrozen) == true,
+      "the sweep deleted resumable partials while delivery was frozen, at the one moment nothing may re-fetch them"
+    )
+
+    // THAWED: the identical fixture must be reclaimed. Without this half a
+    // permanently-refusing gate reads green.
+    let suiteOn = "sweep-on-\(UUID().uuidString)"
+    let defaultsOn = try #require(UserDefaults(suiteName: suiteOn))
+    defer { UserDefaults().removePersistentDomain(forName: suiteOn) }
+
+    await ModelDeliveryController(defaults: defaultsOn, availableDiskBytes: { _ in .max })
+      .sweepSupersededStaging(registration)
+    #expect(
+      exists(supersededFrozen) == false,
+      "with delivery enabled the same fixture was not reclaimed, so the gate is refusing unconditionally"
+    )
+  }
+
+  /// The key is ABSENT for every ordinary user, and absent must mean ENABLED.
+  /// `familyEnabled` reads through `object(forKey:) as? Bool ?? true`; a
+  /// `defaults.bool(forKey:)` reading would return false for a missing key and
+  /// turn the gate above into a permanent freeze for everyone — cleanup that
+  /// never runs, with no error anywhere.
+  @Test func anUnsetKillSwitchSweepsNormally() async throws {
+    let dirs = try makeDirs()
+    defer { dirs.cleanup() }
+    let registration = try makeRegistration(
+      dirs.metadata, install: dirs.install, revision: "v3-eg2")
+
+    let suite = "sweep-unset-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    try #require(
+      defaults.object(forKey: DeliveryFlags.key("enabled", family: .egOne)) == nil,
+      "fixture suite was not clean, so this says nothing about the unset case")
+
+    let superseded = try seedStaging(dirs.metadata, key: "eg_one-eg-1-v2-sharded-q5km")
+    await ModelDeliveryController(defaults: defaults, availableDiskBytes: { _ in .max })
+      .sweepSupersededStaging(registration)
+
+    #expect(
+      exists(superseded) == false,
+      "an unset kill switch froze the sweep, so no ordinary user would ever reclaim abandoned downloads"
+    )
   }
 }
