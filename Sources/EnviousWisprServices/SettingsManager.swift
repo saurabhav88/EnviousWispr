@@ -43,6 +43,7 @@ public final class SettingsManager {
     case preferredInputDeviceIDOverride
     case useStreamingASR
     case livePreviewEnabled
+    case livePreviewEngine
     case warmEnginePolicy
     case appearance
     case overlayPillPosition
@@ -84,7 +85,8 @@ public final class SettingsManager {
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "useExtendedThinking", "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
-    "useStreamingASR", "livePreviewEnabled", "warmEnginePolicy", "appearancePreference",
+    "useStreamingASR", "livePreviewEnabled", "livePreviewEngine",
+    "warmEnginePolicy", "appearancePreference",
     "overlayPillPosition",
     "showBluetoothTips", "playRecordingSounds", "recordingSoundPairing",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
@@ -440,6 +442,15 @@ public final class SettingsManager {
     didSet {
       defaults.set(livePreviewEnabled, forKey: "livePreviewEnabled")
       onChange?(.livePreviewEnabled)
+    }
+  }
+
+  /// #2123: which engine draws the preview. Read by nothing yet — chunk A
+  /// establishes the value so later chunks have one source of truth to read.
+  public var livePreviewEngine: LivePreviewEngineChoice {
+    didSet {
+      defaults.set(livePreviewEngine.rawValue, forKey: "livePreviewEngine")
+      onChange?(.livePreviewEngine)
     }
   }
 
@@ -833,6 +844,12 @@ public final class SettingsManager {
     livePreviewEnabled =
       defaults.object(forKey: "livePreviewEnabled") as? Bool
       ?? SettingsDefaultValues.livePreviewEnabled
+    // Unknown raw value resolves to Apple rather than trapping: a defaults file
+    // written by a newer build (or by hand) must not disable the preview.
+    livePreviewEngine =
+      LivePreviewEngineChoice(
+        rawValue: defaults.string(forKey: "livePreviewEngine") ?? ""
+      ) ?? SettingsDefaultValues.livePreviewEngine
     warmEnginePolicy =
       WarmEnginePolicy(
         rawValue: defaults.string(forKey: "warmEnginePolicy") ?? ""

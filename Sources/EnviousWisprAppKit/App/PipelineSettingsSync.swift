@@ -245,6 +245,12 @@ final class PipelineSettingsSync {
       // recording start, which a user who simply stops using the feature never
       // reaches.
       onLivePreviewDisabled()
+    case .livePreviewEngine:
+      // #2123 chunk A: the value exists and nothing reads it yet. An explicit
+      // `break` rather than folding it into a group, so chunk C has one obvious
+      // place to wire `onLivePreviewEngineChanged` — and so the compiler keeps
+      // pointing here until it does.
+      break
     case .appearance:
       break  // UI-only; applied to NSApp.appearance by the app shell (#1047).
     case .overlayPillPosition:

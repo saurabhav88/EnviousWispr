@@ -18,6 +18,23 @@ public enum AppearancePreference: String, CaseIterable, Sendable {
   case dark
 }
 
+/// Which engine draws the on-screen preview (#2123, chunk 5 of #2077).
+///
+/// Persisted by rawValue; unknown or missing values resolve to `.apple`, which
+/// is the founder's Gate 1 decision: Apple's engine wherever it genuinely works,
+/// and the 217 MB universal model offered rather than imposed.
+///
+/// An enum rather than a Bool so a third engine costs a case, not a migration —
+/// this feature already replaced "the only engine" with "two engines" once.
+public enum LivePreviewEngineChoice: String, CaseIterable, Sendable {
+  /// macOS speech recognition. No separate download, needs macOS 26, and only
+  /// covers the languages macOS has already installed.
+  case apple
+  /// The downloadable universal model. No OS floor beyond the app's own, carries
+  /// its own languages, costs one optional 217 MB download.
+  case universal
+}
+
 /// Where the recording pill (and every transient overlay sharing its window —
 /// polishing, warnings, cold-start notices, the Bluetooth card) appears on
 /// screen. Persisted by rawValue; unknown/missing values resolve to `.top`.

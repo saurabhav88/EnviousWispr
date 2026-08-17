@@ -41,6 +41,11 @@ enum SettingsProjection {
     // covering with a second engine for older Macs. A boolean setting value,
     // never any dictated content.
     case livePreview = "live_preview"
+    /// #2123: WHICH engine, not whether the preview is on. The two answer
+    /// different questions — adoption vs which engine that adoption runs on —
+    /// and the second is what decides whether the download was worth shipping.
+    /// A closed enum value, never a language, a model path or any dictated text.
+    case livePreviewEngine = "live_preview_engine"
     case warmEnginePolicy = "warm_engine_policy"
     case appearance = "appearance"
     case overlayPillPosition = "overlay_pill_position"
@@ -98,6 +103,7 @@ enum SettingsProjection {
     case .languageMode: return [.languageMode]
     case .useStreamingASR: return [.streamingASR]
     case .livePreviewEnabled: return [.livePreview]
+    case .livePreviewEngine: return [.livePreviewEngine]
     case .warmEnginePolicy: return [.warmEnginePolicy]
     case .appearance: return [.appearance]
     case .overlayPillPosition: return [.overlayPillPosition]
@@ -144,6 +150,7 @@ enum SettingsProjection {
     case .languageMode: return languageModeLabel(settings.languageMode)
     case .streamingASR: return onOff(settings.useStreamingASR)
     case .livePreview: return onOff(settings.livePreviewEnabled)
+    case .livePreviewEngine: return settings.livePreviewEngine.rawValue
     case .warmEnginePolicy: return settings.warmEnginePolicy.rawValue
     case .appearance: return settings.appearancePreference.rawValue
     case .overlayPillPosition: return settings.overlayPillPosition.rawValue
