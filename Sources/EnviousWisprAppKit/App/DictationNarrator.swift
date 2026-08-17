@@ -215,6 +215,12 @@ enum DictationNarrator {
 
   // MARK: - Fixed status-pill + window/badge/sidebar copy (E4, #1569). Byte-identical.
 
+  /// #2087, founder-locked. "kept" and not "saved": saved invites the question
+  /// of where, and the answer differs for 24 hours. Kept says the thing the user
+  /// needs in the second they have — it did not vanish.
+  static let escapeRecoveryPillTitle = "Recording kept"
+  static let escapeRecoveryPillAction = "Paste"
+
   static let coldStartTitle = "Getting dictation ready…"
   static func coldStartSubtitle(engineLabel: String) -> String {
     "\(engineLabel) is warming up after a restart"

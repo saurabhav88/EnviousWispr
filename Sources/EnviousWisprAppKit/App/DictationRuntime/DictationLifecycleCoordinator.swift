@@ -472,6 +472,11 @@ final class DictationLifecycleCoordinator {
         appendTranscript: { [weak self] t in self?.transcriptCoordinator.append(t) },
         onDurableSave: { [weak self] sid in self?.onDurableSave(sid) },
         inputMode: { [weak self] in self?.settings.recordingMode.rawValue },
-        driver: driver))
+        driver: driver,
+        // #2087: straight to the panel, because the payload carries AX handles
+        // the `Sendable` overlay intent cannot.
+        presentEscapeRecoveryPill: { [weak self] payload in
+          self?.recordingOverlay.presentEscapeRecoveryPill(payload)
+        }))
   }
 }

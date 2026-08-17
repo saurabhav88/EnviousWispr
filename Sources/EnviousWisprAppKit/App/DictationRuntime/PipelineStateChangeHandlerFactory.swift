@@ -33,6 +33,10 @@ enum PipelineStateChangeHandlerFactory {
     /// This handler's driver — completion telemetry reads its length, stop
     /// reason, route, capture health, and salvage markers (#1060, #1376, #1434).
     let driver: KernelDictationDriver
+    /// #2087: raise the Escape Recovery pill. Separate from `showOverlay`
+    /// because the payload carries main-actor AX handles the `Sendable` intent
+    /// cannot. No-op default keeps every existing construction site unchanged.
+    var presentEscapeRecoveryPill: @MainActor (CancelUndoPayload) -> Void = { _ in }
   }
 
   static func make(backendLabel: String, deps: Deps) -> PipelineStateChangeHandler {
@@ -81,7 +85,17 @@ enum PipelineStateChangeHandlerFactory {
       scheduleInterruptionWarning: { disclosure, alsoTrimmedLead in
         deps.schedulePostCompletionWarning(
           .interruptedTail(disclosure: disclosure, alsoTrimmedLead: alsoTrimmedLead))
-      }
+      },
+      // #2087: the WHOLE payload goes to the panel, not just the row id. The
+      // payload's reason for existing is the paste TARGET — the app and field
+      // the dictation was aimed at — and dropping it here would have made the
+      // feature's own promise unreachable while everything still compiled.
+      //
+      // A dedicated seam rather than `showOverlay`, because `OverlayIntent` is
+      // `Sendable` and cannot carry main-actor AX handles. `appendPendingTranscript`
+      // and `reportEscapeRecoveryCompleted` keep their no-op defaults; chunks 9
+      // and 11 own the pending row and the telemetry.
+      presentEscapeRecoveryPill: { payload in deps.presentEscapeRecoveryPill(payload) }
     )
   }
 }
