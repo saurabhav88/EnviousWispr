@@ -199,6 +199,6 @@ struct EscapeRecoveryPlanRoutingTests {
       scheduleHistorySaveFailedWarning: { _ in },
       appendPendingTranscript: { r.pendingAppends.append($0) },
       presentEscapeRecoveryPill: { r.pillPayloads.append($0) },
-      reportEscapeRecoveryCompleted: { r.outcomes.append($0) })
+      reportEscapeRecoveryCompleted: { outcome, _ in r.outcomes.append(outcome) })
   }
 }

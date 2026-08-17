@@ -147,6 +147,11 @@ enum DictationNarrator {
       return "Polish failed. Using raw text."
     case .historySaveFailed(let reason):
       return "Couldn't save to history: \(reason)"
+    // #2087. States the OUTCOME the user has to act on — the words are gone —
+    // rather than the mechanism, which is a crash-recovery file they never
+    // heard of. No dash characters, per the content rules.
+    case .escapeRecoveryUnavailable:
+      return "Couldn't keep this recording. It was discarded."
     case .salvagedBeginning:
       return "Beginning of dictation was unclear and was skipped"
     case .interruptedTail(let disclosure, let alsoTrimmedLead):

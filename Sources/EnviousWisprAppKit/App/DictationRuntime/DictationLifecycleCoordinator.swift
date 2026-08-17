@@ -477,6 +477,18 @@ final class DictationLifecycleCoordinator {
         // the `Sendable` overlay intent cannot.
         presentEscapeRecoveryPill: { [weak self] payload in
           self?.recordingOverlay.presentEscapeRecoveryPill(payload)
+        },
+        // The SAME `append` an ordinary completion uses. A held row differs by
+        // carrying an expiry stamp, not by needing a second insertion path, and
+        // History's read-time filter is what decides whether it is shown.
+        appendPendingTranscript: { [weak self] transcript in
+          self?.transcriptCoordinator.append(transcript)
+        },
+        // `lastTakeID` is the driver's CONCLUDED key — what a failed recovery
+        // still has when there is no row to read one from.
+        reportEscapeRecoveryCompleted: {
+          EscapeRecoveryCompletionReport.report(
+            outcome: $0, transcript: $1, fallbackTakeID: driver.lastTakeID)
         }))
   }
 }

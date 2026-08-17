@@ -392,6 +392,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// every later notification.
   @ObservationIgnored
   private let escapeRecoveryCompletion = EscapeRecoveryCompletionSlot()
+  /// Dedupes the production capture, which the state observation re-runs on
+  /// every transition. Separate from the CLEAR latch: they answer different
+  /// questions and sharing one would make the first capture clear itself.
+  private var escapeRecoveryCaptureSessionID: SessionID?
 
   /// The session the slot's contents belong to, so a completion nobody consumed
   /// cannot surface against a later, unrelated dictation. Tracked here rather
@@ -1412,6 +1416,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // on this session's terminal, so that clearing first can never discard a
         // completion frozen moments earlier.
         self.clearEscapeRecoveryCompletionOnNewSession()
+        // #2087 chunk 12: freeze THIS session's completion while the target
+        // handles are still live. Must sit after the new-session clear and
+        // before the config clear below — the first would discard what this
+        // writes, the second nils what it reads.
+        self.captureEscapeRecoveryCompletionIfNeeded()
         // #1063 PR2 — FIRST, before `clearContextConfigIfTerminalOrIdle()` nulls
         // `context.config`: capture this session's recovery id off the still-live
         // config and fire the ended-without-save signal on a fresh non-`.completed`
@@ -1485,6 +1494,73 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// this package, and `architecture-rules.md` RULE: minimize-visibility.
   package func takeEscapeRecoveryCompletion() -> EscapeRecoveryCompletion? {
     escapeRecoveryCompletion.take()
+  }
+
+  /// Freeze this session's Escape Recovery completion (#2087, chunk 12).
+  ///
+  /// **The production writer the slot waited five chunks for.** Until this
+  /// existed the slot was written only by a DEBUG seam, so a saved recovery
+  /// never appended a row, never raised a pill and never reported a completion —
+  /// every consumer was wired to a producer that did not exist, and the whole
+  /// chain compiled and passed its own tests regardless.
+  ///
+  /// Runs BEFORE `clearContextConfigIfTerminalOrIdle()` and after the
+  /// new-session clear, which is the ordering the slot's contract demands: the
+  /// target app and element are nil moments later, and freezing after the clear
+  /// would capture the very emptiness the payload exists to prevent.
+  ///
+  /// Deduped by session id for the same reason `fireSessionEndedWithoutSaveIfNeeded`
+  /// is: the observation re-runs on every transition, and a completion written
+  /// twice for one take is a second pill for a dictation the user already
+  /// answered.
+  private func captureEscapeRecoveryCompletionIfNeeded() {
+    guard kernel.finalizationDisposition.isEscapeRecovery else { return }
+    guard let recordingOutcome = kernel.recordingOutcome else { return }
+    guard kernel.currentSessionID != escapeRecoveryCaptureSessionID else { return }
+    escapeRecoveryCaptureSessionID = kernel.currentSessionID
+
+    // `.saved` requires a durably written row to point at. Everything else is a
+    // recovery that produced nothing restorable, and must NOT be able to raise
+    // a pill — which the enum enforces, since only `.saved` carries a target.
+    guard case .completed = recordingOutcome, let transcript = outcome.transcript else {
+      escapeRecoveryCompletion.put(
+        .nothingToRestore(Self.nothingToRestoreReason(for: recordingOutcome)))
+      return
+    }
+    escapeRecoveryCompletion.put(
+      .saved(
+        CancelUndoPayload(
+          transcriptID: transcript.id,
+          targetApp: context.targetApp,
+          targetElement: context.targetElement)))
+  }
+
+  /// Why a recovery ended with nothing to restore.
+  ///
+  /// Exhaustive on the kernel's terminal so a new one is a compile error here
+  /// rather than a silent `.empty` — the reason travels into the completion
+  /// event, and a wrong label is a funnel that lies about which failure the
+  /// feature has.
+  private static func nothingToRestoreReason(
+    for outcome: RecordingOutcome
+  ) -> EscapeRecoveryCompletion.NothingToRestore {
+    switch outcome {
+    // `.completed` reaching here means the pipeline finished but no row was
+    // written — the save failed. That is the only way a completed take arrives
+    // with nothing to restore.
+    case .completed: return .saveFailed
+    // A recovery concludes `.cancelled` only via the abandonment path: the user
+    // pressed the shortcut a second time and asked for the output to go.
+    case .cancelled: return .abandoned
+    // Both mean "we heard nothing usable", which is `.empty` from the user's
+    // side. `.asrEmptyDespiteAudio` is a distinct DIAGNOSTIC — there was audio
+    // and the engine still returned nothing — but the recovery outcome the user
+    // experiences is the same, and the diagnostic detail already travels on the
+    // ordinary terminal telemetry rather than needing a second label here.
+    case .noSpeech, .asrEmptyDespiteAudio: return .empty
+    case .failed, .audioInterrupted, .asrInterrupted, .discarded, .noTransport:
+      return .transcriptionFailed
+    }
   }
 
   /// Drop an unconsumed completion when the kernel moves to a different session.

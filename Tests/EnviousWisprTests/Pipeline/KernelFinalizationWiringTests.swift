@@ -152,13 +152,14 @@ import os
     let saved = SavedTranscriptBox()
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)
-    let wiring = makeWiring(outcome: outcome, context: context, save: { saved.transcript = $0 })
+    let wiring = makeWiring(
+      outcome: outcome, context: context, save: { transcript, _ in saved.transcript = transcript })
 
     let floored = try await wiring.processText(
       "call me at two zero three nine five four eight eight seven nine"
     ) {}
-    try await wiring.store(floored, UUID())
-    _ = await wiring.deliver(floored)
+    try await wiring.store(floored, UUID(), .ordinary)
+    _ = await wiring.deliver(floored, .ordinary)
 
     let metrics = try #require(outcome.transcript?.metrics)
     #expect(metrics.itnRan == true)
@@ -174,11 +175,12 @@ import os
     let saved = SavedTranscriptBox()
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)
-    let wiring = makeWiring(outcome: outcome, context: context, save: { saved.transcript = $0 })
+    let wiring = makeWiring(
+      outcome: outcome, context: context, save: { transcript, _ in saved.transcript = transcript })
 
     let result = try await wiring.processText("hello there friend") {}
-    try await wiring.store(result, UUID())
-    _ = await wiring.deliver(result)
+    try await wiring.store(result, UUID(), .ordinary)
+    _ = await wiring.deliver(result, .ordinary)
 
     #expect(result == "hello there friend")
     let metrics = try #require(outcome.transcript?.metrics)
@@ -252,10 +254,11 @@ import os
     steps.llmPolish.llmProvider = .openAI
     steps.llmPolish.llmModel = "gpt-4o-mini"
     steps.llmPolish.makePolisher = { _, _, _ in CannedPolisher() }
-    let wiring = makeWiring(outcome: outcome, steps: steps, save: { saved.transcript = $0 })
+    let wiring = makeWiring(
+      outcome: outcome, steps: steps, save: { transcript, _ in saved.transcript = transcript })
 
     let result = try await wiring.processText("Other apps") {}
-    try await wiring.store(result, UUID())
+    try await wiring.store(result, UUID(), .ordinary)
 
     // The unit-level proxy for "history row shows no AI badge" (#1022).
     let transcript = try #require(saved.transcript)
@@ -273,9 +276,10 @@ import os
     outcome.llmProvider = "openai"
     outcome.llmModel = "gpt-4o-mini"
     let saved = SavedTranscriptBox()
-    let wiring = makeWiring(outcome: outcome, save: { saved.transcript = $0 })
+    let wiring = makeWiring(
+      outcome: outcome, save: { transcript, _ in saved.transcript = transcript })
 
-    try await wiring.store("polished text", UUID())
+    try await wiring.store("polished text", UUID(), .ordinary)
 
     #expect(saved.transcript?.text == "raw asr text")
     #expect(saved.transcript?.polishedText == "polished text")
@@ -300,11 +304,11 @@ import os
     let telemetryState = KernelTelemetryState()
     let wiring = makeWiring(
       outcome: outcome,
-      save: { _ in throw WiringTestError.storage },
+      save: { _, _ in throw WiringTestError.storage },
       telemetryState: telemetryState)
     // Best-effort: the save throw is absorbed — `store` does NOT propagate it,
     // so the kernel proceeds to deliver instead of routing a terminal failure.
-    try await wiring.store("the delivered words", UUID())
+    try await wiring.store("the delivered words", UUID(), .ordinary)
     #expect(outcome.historySaved == false)
     #expect(outcome.historySaveError != nil)
     // The transcript is set BEFORE the save attempt, so completion telemetry +
@@ -346,7 +350,7 @@ import os
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)
     let wiring = makeWiring(context: context, deliverPaste: { _ in Self.deliveredResult })
-    let outcome = await wiring.deliver("hello")
+    let outcome = await wiring.deliver("hello", .ordinary)
     #expect(outcome == .pasted)
   }
 
@@ -355,7 +359,7 @@ import os
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)
     let wiring = makeWiring(context: context, deliverPaste: { _ in Self.clipboardResult })
-    let outcome = await wiring.deliver("hello")
+    let outcome = await wiring.deliver("hello", .ordinary)
     #expect(outcome == .clipboardOnly)
   }
 
@@ -364,7 +368,7 @@ import os
     let context = KernelSessionContext()
     context.config = .testDefault(autoCopyToClipboard: true, autoPasteToActiveApp: false)
     let wiring = makeWiring(context: context, deliverPaste: { _ in Self.deliveredResult })
-    let outcome = await wiring.deliver("hello")
+    let outcome = await wiring.deliver("hello", .ordinary)
     #expect(outcome == .clipboardOnly, "no auto-paste => never .pasted")
   }
 
@@ -388,7 +392,7 @@ import os
     let wiring = makeWiring(
       outcome: outcome, context: context, deliverPaste: { _ in Self.deliveredResult })
 
-    _ = await wiring.deliver("hello")
+    _ = await wiring.deliver("hello", .ordinary)
 
     #expect(
       outcome.languageResolutionSource == nil,
@@ -417,16 +421,16 @@ import os
     let wiring = makeWiring(
       outcome: outcome,
       steps: makeSteps(polish: polish),
-      save: {
+      save: { transcript, _ in
         saves.count += 1
-        saves.last = $0
+        saves.last = transcript
       })
 
     // 4+ words: production's `LLMPolishStep` skips polish at 3 words or fewer
     // (`minWordsForPolish`), so a shorter input would never reach the polisher
     // and the limb could not fail at all.
     let text = try await wiring.processText("hello world this is a test") {}
-    try await wiring.store(text, UUID())
+    try await wiring.store(text, UUID(), .ordinary)
 
     #expect(text == "hello world this is a test", "raw ASR text survives a limb failure")
     #expect(outcome.polishedText == nil)
@@ -457,8 +461,8 @@ import os
       outcome: outcome, context: context, steps: makeSteps(polish: polish))
 
     let text = try await wiring.processText("hello world this is a test") {}
-    try await wiring.store(text, UUID())
-    _ = await wiring.deliver(text)
+    try await wiring.store(text, UUID(), .ordinary)
+    _ = await wiring.deliver(text, .ordinary)
   }
 
   @Test(
@@ -490,8 +494,8 @@ import os
       outcome: outcome, context: context, steps: makeSteps(polish: polish))
 
     let text = try await wiring.processText("hello world this is a test") {}
-    try await wiring.store(text, UUID())
-    _ = await wiring.deliver(text)
+    try await wiring.store(text, UUID(), .ordinary)
+    _ = await wiring.deliver(text, .ordinary)
 
     #expect(outcome.polishedText != nil, "the polish really did complete")
     #expect(outcome.polishRanRemote == nil)
@@ -522,8 +526,8 @@ import os
       outcome: outcome, context: context, steps: makeSteps(polish: polish))
 
     let text = try await wiring.processText("hello world this is a test") {}
-    try await wiring.store(text, UUID())
-    _ = await wiring.deliver(text)
+    try await wiring.store(text, UUID(), .ordinary)
+    _ = await wiring.deliver(text, .ordinary)
 
     #expect(outcome.polishError != nil, "the polish really did fail")
     #expect(outcome.polishRanRemote == nil)
@@ -552,8 +556,8 @@ import os
 
     let input = "please clean up this sentence now"
     let text = try await wiring.processText(input) {}
-    try await wiring.store(text, UUID())
-    _ = await wiring.deliver(text)
+    try await wiring.store(text, UUID(), .ordinary)
+    _ = await wiring.deliver(text, .ordinary)
 
     #expect(text == input)
     #expect(outcome.llmProvider == LLMProvider.ollama.rawValue)
@@ -574,7 +578,7 @@ import os
     // without inventing an error type. The terminal mapping itself is covered by
     // KernelLifecycleTelemetrySinkTests and TerminalNoticeReasonMappingTests.
     let saves = SaveCountBox()
-    let wiring = makeWiring(save: { _ in saves.count += 1 })
+    let wiring = makeWiring(save: { _, _ in saves.count += 1 })
 
     let text = try await wiring.processText("   \n\t  ") {}
 
@@ -601,7 +605,7 @@ import os
     let wiring = makeWiring(
       outcome: outcome,
       context: context,
-      save: { _ in
+      save: { _, _ in
         saveAttempts.count += 1
         throw WiringTestError.storage
       },
@@ -611,8 +615,8 @@ import os
       },
       telemetryState: telemetryState)
 
-    try await wiring.store("hello world", UUID())
-    let deliveryOutcome = await wiring.deliver("hello world")
+    try await wiring.store("hello world", UUID(), .ordinary)
+    let deliveryOutcome = await wiring.deliver("hello world", .ordinary)
 
     #expect(saveAttempts.count == 1, "the save was attempted exactly once")
     #expect(outcome.historySaved == false)
@@ -634,7 +638,7 @@ import os
       outcome: outcome, context: context,
       deliverPaste: { _ in Self.clipboardResult })
 
-    let deliveryOutcome = await wiring.deliver("paste me")
+    let deliveryOutcome = await wiring.deliver("paste me", .ordinary)
 
     #expect(deliveryOutcome == .clipboardOnly)
     #expect(outcome.pasteResult?.tier == .clipboardOnly)
@@ -660,9 +664,9 @@ import os
       outcome: outcome,
       context: context,
       steps: makeSteps(polish: polish),
-      save: {
+      save: { transcript, _ in
         saves.count += 1
-        saves.last = $0
+        saves.last = transcript
       },
       deliverPaste: { request in
         delivered.payloads.append(request.legacyText)
@@ -671,8 +675,8 @@ import os
 
     let raw = "hello world this is a test"
     let processed = try await wiring.processText(raw) {}
-    try await wiring.store(processed, UUID())
-    let delivery = await wiring.deliver(processed)
+    try await wiring.store(processed, UUID(), .ordinary)
+    let delivery = await wiring.deliver(processed, .ordinary)
 
     #expect(processed == raw)
     #expect(
@@ -701,7 +705,7 @@ import os
     let wiring = makeWiring(
       context: context, deliverPaste: { _ in Self.deliveredResult }, registry: registry)
 
-    _ = await wiring.deliver("hello")
+    _ = await wiring.deliver("hello", .ordinary)
 
     #expect(observer.events.count == 1)
     #expect(observer.events.first?.pastedText == "hello ")
@@ -732,7 +736,7 @@ import os
       seamCasingOracle: { _ in Self.testOracle })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
-    _ = await wiring.deliver(processed)
+    _ = await wiring.deliver(processed, .ordinary)
 
     let event = try #require(observer.events.first)
     #expect(
@@ -761,7 +765,7 @@ import os
       seamCasingOracle: { _ in Self.testOracle })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
-    _ = await wiring.deliver(processed)
+    _ = await wiring.deliver(processed, .ordinary)
 
     let event = try #require(observer.events.first)
     #expect(event.pastedText == "Review this before the meeting ")
@@ -778,7 +782,7 @@ import os
     let wiring = makeWiring(
       context: context, deliverPaste: { _ in Self.clipboardResult }, registry: registry)
 
-    _ = await wiring.deliver("hello")
+    _ = await wiring.deliver("hello", .ordinary)
 
     #expect(observer.events.isEmpty)
   }
@@ -802,7 +806,7 @@ import os
       },
       registry: registry)
 
-    _ = await wiring.deliver("hello")
+    _ = await wiring.deliver("hello", .ordinary)
     endChangeCount = NSPasteboard.general.changeCount
 
     #expect(observer.events.isEmpty)
@@ -825,7 +829,7 @@ import os
         return Self.deliveredResult
       })
 
-    _ = await wiring.deliver("hello")
+    _ = await wiring.deliver("hello", .ordinary)
 
     #expect(captured.value == restore)
   }
@@ -850,7 +854,7 @@ import os
         return Self.deliveredResult
       })
 
-    _ = await wiring.deliver(polished)
+    _ = await wiring.deliver(polished, .ordinary)
     endChangeCount = pasteboard.changeCount
 
     let after = pasteboard.string(forType: .string)
@@ -877,7 +881,7 @@ import os
         return Self.deliveredResult
       })
 
-    _ = await wiring.deliver("hello")
+    _ = await wiring.deliver("hello", .ordinary)
     endChangeCount = pasteboard.changeCount
 
     #expect(pasteboard.string(forType: .string) == sentinel)
@@ -974,7 +978,7 @@ import os
     context.targetElement = Self.stubCaretElement()
     let wiring = makeWiring(
       context: context,
-      save: { saved.transcript = $0 },
+      save: { transcript, _ in saved.transcript = transcript },
       deliverPaste: { request in
         captured.requests.append(request)
         return Self.deliveredResult
@@ -983,8 +987,8 @@ import os
       seamCasingOracle: { _ in Self.testOracle })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
-    try await wiring.store(processed, UUID())
-    _ = await wiring.deliver(processed)
+    try await wiring.store(processed, UUID(), .ordinary)
+    _ = await wiring.deliver(processed, .ordinary)
 
     #expect(captured.requests.count == 1, "delivery still runs exactly once")
     let request = try #require(captured.requests.first)
@@ -1033,7 +1037,7 @@ import os
     let processed = try await wiring.processText(
       "Start ist heute Abend und danach gehen wir in die Stadt"
     ) {}
-    _ = await wiring.deliver(processed)
+    _ = await wiring.deliver(processed, .ordinary)
 
     let request = try #require(captured.requests.first)
     let delivered = request.repairedText ?? request.legacyText
@@ -1071,7 +1075,7 @@ import os
     let processed = try await wiring.processText(
       "The store is closed today and I will go tomorrow instead"
     ) {}
-    _ = await wiring.deliver(processed)
+    _ = await wiring.deliver(processed, .ordinary)
 
     let request = try #require(captured.requests.first)
     let repaired = try #require(request.repairedText)
@@ -1105,7 +1109,7 @@ import os
       adapter: Self.transcribedEngine(language: "ja"))
 
     let processed = try await wiring.processText("\u{4ECA}\u{65E5} \u{6674}\u{308C}") {}
-    _ = await wiring.deliver(processed)
+    _ = await wiring.deliver(processed, .ordinary)
 
     let request = try #require(captured.requests.first)
     let delivered = request.repairedText ?? request.legacyText
@@ -1131,7 +1135,7 @@ import os
     let processed = try await wiring.processText(
       "The store is closed today and I will go tomorrow instead"
     ) {}
-    _ = await wiring.deliver(processed)
+    _ = await wiring.deliver(processed, .ordinary)
 
     let request = try #require(captured.requests.first)
     #expect(request.repairedText == nil)
@@ -1157,7 +1161,7 @@ import os
     let processed = try await wiring.processText(
       "Review this before the meeting and then send it along"
     ) {}
-    _ = await wiring.deliver(processed)
+    _ = await wiring.deliver(processed, .ordinary)
 
     let request = try #require(captured.requests.first)
     #expect(request.repairedText?.hasPrefix("review") == true)
@@ -1196,7 +1200,7 @@ import os
         return Self.midSentenceCaret
       })
 
-    _ = await wiring.deliver("Review this before the meeting")
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
 
     #expect(
       reads.count == cell.expectedReads,
@@ -1256,7 +1260,7 @@ import os
         return recovered
       })
 
-    _ = await wiring.deliver("Review this before the meeting")
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
 
     #expect(retrySeam.callCount == 1, "the retry fires exactly once")
     #expect(retrySeam.lastPID == context.targetApp?.processIdentifier)
@@ -1301,7 +1305,7 @@ import os
         return nil
       })
 
-    _ = await wiring.deliver("Review this before the meeting")
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
 
     #expect(retrySeam.callCount == 1, "the retry still fires exactly once, even though it fails")
     #expect(retrySeam.lastPID == context.targetApp?.processIdentifier)
@@ -1362,7 +1366,7 @@ import os
         return false
       })
 
-    _ = await wiring.deliver("Review this before the meeting")
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
 
     #expect(retrySeam.callCount == 1, "the retry still fires and recovers SOMETHING")
     #expect(reads.count == 0, "an unusable element must never reach the caret read")
@@ -1405,7 +1409,7 @@ import os
         return nil
       })
 
-    _ = await wiring.deliver("Review this before the meeting")
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
 
     #expect(retrySeam.callCount == 0, "no pid to query with — the retry seam must never be called")
     #expect(reads.count == 0, "no element to read against without a target app")
@@ -1447,7 +1451,7 @@ import os
         return Self.stubCaretElement()
       })
 
-    _ = await wiring.deliver("Review this before the meeting")
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
 
     #expect(retrySeam.callCount == 0, "the record-start capture already succeeded — no retry")
     #expect(reads.count == 1)
@@ -1479,7 +1483,7 @@ import os
       },
       readCaretContext: { _, _, _ in nil })
 
-    let outcome = await wiring.deliver("Review this before the meeting")
+    let outcome = await wiring.deliver("Review this before the meeting", .ordinary)
 
     #expect(outcome == .pasted, "an unreadable field must never cost the user their delivery")
     #expect(captured.requests.first?.repairedText == nil)
@@ -1510,14 +1514,14 @@ import os
       seamCasingOracle: { _ in Self.testOracle })
 
     let first = try await wiring.processText("Review this before the meeting") {}
-    _ = await wiring.deliver(first)
+    _ = await wiring.deliver(first, .ordinary)
 
     steps.wordCorrection.correctorVocabulary = CorrectorVocabulary(
       terms: [CustomWord(canonical: "Other", aliases: ["Review"])],
       generation: 2)
 
     let second = try await wiring.processText("Review this before the meeting") {}
-    _ = await wiring.deliver(second)
+    _ = await wiring.deliver(second, .ordinary)
 
     try #require(captured.requests.count == 2)
     #expect(captured.requests[0].repairedText == "Review this before the meeting ")
@@ -1546,7 +1550,7 @@ import os
       },
       readCaretContext: { _, _, _ in midWord })
 
-    _ = await wiring.deliver("Store today")
+    _ = await wiring.deliver("Store today", .ordinary)
 
     let request = try #require(captured.requests.first)
     // The evidence still travels, so a route can tell a deliberate refusal apart
@@ -1572,7 +1576,7 @@ import os
       readCaretContext: { _, _, _ in Self.midSentenceCaret },
       seamCasingOracle: { _ in Self.testOracle })
 
-    _ = await wiring.deliver("Review this before the meeting ")
+    _ = await wiring.deliver("Review this before the meeting ", .ordinary)
 
     let request = try #require(captured.requests.first)
     #expect(request.legacyText == "Review this before the meeting ")
@@ -1608,7 +1612,7 @@ import os
     steps.wordCorrection.correctorVocabulary = CorrectorVocabulary(
       terms: [CustomWord(canonical: "Review")], generation: 1)
 
-    _ = await wiring.deliver(processed)
+    _ = await wiring.deliver(processed, .ordinary)
 
     let request = try #require(captured.requests.first)
     #expect(
@@ -1636,7 +1640,7 @@ import os
       seamCasingOracle: { _ in Self.testOracle })
 
     let secondProcessed = try await secondWiring.processText("Review this before the meeting") {}
-    _ = await secondWiring.deliver(secondProcessed)
+    _ = await secondWiring.deliver(secondProcessed, .ordinary)
 
     let secondRequest = try #require(secondCaptured.requests.first)
     #expect(
@@ -1660,7 +1664,7 @@ import os
     outcome: KernelFinalizationOutcome = KernelFinalizationOutcome(),
     context: KernelSessionContext = KernelSessionContext(),
     steps: LimbSteps? = nil,
-    save: @escaping @MainActor (Transcript) throws -> Void = { _ in },
+    save: @escaping @MainActor (Transcript, FinalizationDisposition) throws -> Void = { _, _ in },
     deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult = {
       _ in Self.deliveredResult
     },
@@ -1762,8 +1766,8 @@ import os
     outcome.polishFallbackReason = "validator_discard"
 
     let wiring = makeWiring(outcome: outcome)
-    try await wiring.store("original transcript text", UUID())
-    _ = await wiring.deliver("original transcript text")
+    try await wiring.store("original transcript text", UUID(), .ordinary)
+    _ = await wiring.deliver("original transcript text", .ordinary)
 
     let metrics = try #require(outcome.transcript?.metrics)
     #expect(metrics.polishFellBackToRaw == nil)
@@ -1786,8 +1790,8 @@ import os
     outcome.polishFallbackReason = "validator_discard"
 
     let wiring = makeWiring(outcome: outcome)
-    try await wiring.store("original transcript text", UUID())
-    _ = await wiring.deliver("original transcript text")
+    try await wiring.store("original transcript text", UUID(), .ordinary)
+    _ = await wiring.deliver("original transcript text", .ordinary)
 
     let metrics = try #require(outcome.transcript?.metrics)
     #expect(metrics.polishFellBackToRaw == true)
@@ -1810,8 +1814,8 @@ import os
     outcome.polishFallbackReason = nil
 
     let wiring = makeWiring(outcome: outcome)
-    try await wiring.store("Polished transcript text.", UUID())
-    _ = await wiring.deliver("Polished transcript text.")
+    try await wiring.store("Polished transcript text.", UUID(), .ordinary)
+    _ = await wiring.deliver("Polished transcript text.", .ordinary)
 
     let metrics = try #require(outcome.transcript?.metrics)
     #expect(metrics.polishFilterTripped == nil)
@@ -1967,8 +1971,8 @@ import os
       })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
-    try await wiring.store(processed, UUID())
-    let delivery = await wiring.deliver(processed)
+    try await wiring.store(processed, UUID(), .ordinary)
+    let delivery = await wiring.deliver(processed, .ordinary)
 
     #expect(delivery == .pasted, "the normal non-timeout route must still deliver")
     #expect(outcome.languageResolutionSource == "document")
@@ -2028,7 +2032,7 @@ import os
             language: "en", source: .dictation, confidenceBucket: .ge90)
         })
 
-      let delivery = Task { await wiring.deliver("Warmer and summer starts.") }
+      let delivery = Task { await wiring.deliver("Warmer and summer starts.", .ordinary) }
 
       // Prove the ordering this test is NAMED for. Without it the case passes
       // even if the resolver is never reached at all.
@@ -2110,7 +2114,7 @@ import os
             language: "en", source: .dictation, confidenceBucket: .ge90)
         })
 
-      let delivery = Task { await wiring.deliver("Review this before the meeting") }
+      let delivery = Task { await wiring.deliver("Review this before the meeting", .ordinary) }
 
       #expect(
         await awaitSignal(entered),

@@ -32,8 +32,8 @@ import Testing
       currentTick: { 0 },
       sleepTicks: { _ in },
       processText: { raw, _ in raw },
-      store: { _, _ in },
-      deliver: { _ in .pasted },
+      store: { _, _, _ in },
+      deliver: { _, _ in .pasted },
       engineMutationScope: .alwaysAllowedForTesting,
       minimumRecordingTicks: 0,
       telemetryState: telemetryState)
@@ -62,8 +62,8 @@ import Testing
       currentTick: { 0 },
       sleepTicks: { _ in },
       processText: { raw, _ in raw },
-      store: { _, _ in },
-      deliver: { _ in .pasted },
+      store: { _, _, _ in },
+      deliver: { _, _ in .pasted },
       engineMutationScope: .alwaysAllowedForTesting,
       minimumRecordingTicks: 0,
       telemetryState: telemetryState)

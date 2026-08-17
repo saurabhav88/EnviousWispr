@@ -103,12 +103,12 @@ struct Issue1358EmptyRecoveryTests {
     steps.llmPolish.llmProvider = .openAI
     steps.llmPolish.llmModel = "gpt-4o-mini"
     steps.llmPolish.makePolisher = { _, _, _ in EmptyPolisher() }
-    let wiring = makeWiring(outcome: outcome, steps: steps, save: { saved.transcript = $0 })
+    let wiring = makeWiring(outcome: outcome, steps: steps, save: { transcript, _ in saved.transcript = transcript })
 
     let input = "please clean up this sentence now"
     let result = try await wiring.processText(input) {}
-    try await wiring.store(result, UUID())
-    _ = await wiring.deliver(result)
+    try await wiring.store(result, UUID(), .ordinary)
+    _ = await wiring.deliver(result, .ordinary)
 
     // Delivered the post-ITN floor, not the empty polish.
     #expect(result == input)
@@ -160,7 +160,7 @@ struct Issue1358EmptyRecoveryTests {
   private func makeWiring(
     outcome: KernelFinalizationOutcome = KernelFinalizationOutcome(),
     steps: LimbSteps? = nil,
-    save: @escaping @MainActor (Transcript) throws -> Void = { _ in }
+    save: @escaping @MainActor (Transcript, FinalizationDisposition) throws -> Void = { _, _ in }
   ) -> KernelFinalizationWiring {
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)

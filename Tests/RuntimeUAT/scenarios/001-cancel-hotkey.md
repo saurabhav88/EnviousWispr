@@ -2,7 +2,25 @@
 
 ## Feature Summary
 
-ESC key (configurable) cancels an active recording immediately, discarding audio and returning to idle without pasting.
+The cancel shortcut (Escape by default, configurable) ends an active recording.
+**What it then does depends on the Escape Recovery setting (#2087), so every
+scenario below states which state it assumes.**
+
+- **Escape Recovery OFF (the default, and what every scenario below assumes
+  unless it says otherwise):** the recording is discarded immediately — audio
+  dropped, nothing transcribed, nothing pasted, nothing saved.
+- **Escape Recovery ON:** the recording is KEPT. It finishes transcribing and
+  polishing, the text is held for 24 hours in History, and a pill offers to
+  paste it. Nothing is pasted unless the user asks.
+
+**The Cancel BUTTON in the main window discards immediately in BOTH states.**
+Only the shortcut recovers. A scenario that presses the button is testing the
+destructive path whatever the setting says.
+
+**This file was rewritten rather than replaced when Escape Recovery shipped.**
+The off-path scenarios below are the regression suite for the promise that
+carries almost every user: with the setting off, cancel behaves exactly as it
+did before the feature existed.
 
 ## Test Scenarios
 
@@ -169,3 +187,103 @@ THEN recording is cancelled
 - [x] Rapid cancel-restart sequence (clean state)
 - [ ] ESC with accessibility permission revoked (graceful failure)
 - [ ] ESC while microphone permission dialog is showing
+
+
+---
+
+## Escape Recovery ON (#2087)
+
+Every scenario in this section requires **Settings → Shortcuts → Escape
+Recovery** switched ON. Turn it back OFF afterwards: it is off by default and a
+left-on toggle silently changes the meaning of every scenario above.
+
+### P0: Critical
+
+#### test_shortcut_keeps_recording_when_escape_recovery_on
+**Suite**: escape_recovery
+**Layers**: CGEvent, AX value, AX structure, clipboard
+```
+GIVEN the app is in .idle state
+  AND Escape Recovery is ON
+  AND recording mode is set to "toggle"
+WHEN the user presses the recording hotkey
+  AND dictates a sentence
+  AND presses the cancel shortcut
+THEN the recording is NOT discarded
+  AND transcription and polish run to completion
+  AND NOTHING is pasted into the active app
+  AND the clipboard is unchanged
+  AND a pill appears offering to paste the kept text
+  AND the text appears in History with a Kept badge and a countdown
+```
+**Why the clipboard assertion matters**: delivery reports `.suppressed`, which
+must never be confused with the clipboard-only fallback. A clipboard write here
+would mean the user was told to press paste for text that was never put there.
+
+#### test_cancel_button_still_discards_when_escape_recovery_on
+**Suite**: escape_recovery
+**Layers**: CGEvent, AX value, AX structure
+```
+GIVEN the app is in .idle state
+  AND Escape Recovery is ON
+WHEN the user starts a recording
+  AND dictates a sentence
+  AND clicks the Cancel BUTTON in the main window
+THEN the recording is discarded immediately
+  AND no transcript is saved to history
+  AND no pill appears
+```
+**Why**: a click on a button labelled Cancel is unambiguous intent to destroy. A
+press of a key people also use to dismiss popovers is not. This distinction is
+the feature's core safety property.
+
+#### test_second_shortcut_press_abandons_the_output
+**Suite**: escape_recovery
+**Layers**: CGEvent, AX structure
+```
+GIVEN a recovery is transcribing (the scenario above, mid-flight)
+WHEN the user presses the cancel shortcut a SECOND time
+THEN the kept text is abandoned — no pill, no History row
+  AND the app stays busy until the transcription actually returns
+  AND a new recording cannot start until it does
+```
+**Why the wait cannot be shortened**: cancelling the decode does not stop it, and
+starting a second recording on top of a running one is the hazard the toggle
+never disclosed. Abandonment discards the OUTPUT, never the WAIT.
+
+### P1: High
+
+#### test_kept_text_pastes_from_the_pill
+**Suite**: escape_recovery
+**Layers**: CGEvent, AX value, clipboard
+```
+GIVEN a pill is offering kept text
+WHEN the user presses Paste on the pill
+THEN the text lands in the app the dictation was originally aimed at
+  AND the History row stops showing a countdown
+```
+
+#### test_kept_text_survives_relaunch
+**Suite**: escape_recovery
+**Layers**: AX structure
+```
+GIVEN kept text is in History with a countdown
+WHEN the app is quit and relaunched
+THEN the row is still there with a countdown
+  AND Keep makes it permanent
+```
+**Why**: the 24-hour window starts when the user pressed cancel, not when the
+app last started. A row whose countdown restarts on relaunch is a bug.
+
+#### test_off_by_default_for_a_fresh_install
+**Suite**: escape_recovery
+**Layers**: AX structure
+```
+GIVEN a fresh install with no prior settings
+WHEN the user opens Settings and finds Shortcuts
+THEN Escape Recovery is OFF
+  AND the cancel hotkey description says the recording is discarded
+```
+**Why**: opt-in is a founder decision, not a default worth drifting. The
+description assertion catches the case where the toggle ships off but the copy
+already describes the on behaviour.

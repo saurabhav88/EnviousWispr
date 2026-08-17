@@ -285,8 +285,12 @@ final class RecordingSessionKernel {
   private let processText:
     @MainActor (_ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void)
       async throws -> String
-  private let store: @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void
-  private let deliver: @MainActor (_ text: String) async -> KernelDeliveryOutcome
+  private let store:
+    @MainActor (_ text: String, _ transcriptID: UUID, _ disposition: FinalizationDisposition)
+      async throws -> Void
+  private let deliver:
+    @MainActor (_ text: String, _ disposition: FinalizationDisposition) async ->
+      KernelDeliveryOutcome
   /// #2087: commit this session's spool to Escape Recovery, or fail closed.
   ///
   /// Injected like `store` and `deliver` — the kernel owns WHEN a session's
@@ -294,6 +298,22 @@ final class RecordingSessionKernel {
   /// it from the `.cancel` arm; chunk 12 makes that arm reachable.
   // periphery:ignore - wired in chunk 5b, first called in chunk 7 (#2087)
   private let prepareEscapeRecovery: PrepareEscapeRecovery
+  /// #2087: fired the instant the recovery branch commits, with the ASR
+  /// backend, the polish provider and how long the user had been speaking.
+  ///
+  /// Emitted HERE rather than at the terminal because it is the START of the
+  /// funnel: a recovery that never finishes — the app quits, the decode dies —
+  /// must still be counted as having been attempted, or the completion rate is
+  /// measured against a denominator that quietly excludes its own failures.
+  /// #2087 Q4: shows the user that a recovery they had switched ON did not
+  /// happen. A seam rather than a direct overlay call because the kernel owns
+  /// no UI and `DictationNarrator` in AppKit authors every sentence.
+  private let escapeRecoveryUnavailableNotice: @MainActor () -> Void
+  private let escapeRecoveryStartedTelemetry:
+    @MainActor (
+      _ asrBackend: String, _ polishProvider: String, _ recordingDurationMs: Int,
+      _ takeID: String
+    ) -> Void
 
   // MARK: Wedge-detection tuning
 
@@ -889,9 +909,17 @@ final class RecordingSessionKernel {
     processText: @escaping @MainActor (
       _ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void
     ) async throws -> String,
-    store: @escaping @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void,
-    deliver: @escaping @MainActor (_ text: String) async -> KernelDeliveryOutcome,
+    store: @escaping @MainActor (
+      _ text: String, _ transcriptID: UUID, _ disposition: FinalizationDisposition
+    ) async throws -> Void,
+    deliver: @escaping @MainActor (
+      _ text: String, _ disposition: FinalizationDisposition
+    ) async -> KernelDeliveryOutcome,
     prepareEscapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
+    escapeRecoveryStartedTelemetry: @escaping @MainActor (String, String, Int, String) -> Void = {
+      _, _, _, _ in
+    },
+    escapeRecoveryUnavailableNotice: @escaping @MainActor () -> Void = {},
     engineMutationScope: EngineMutationScope,
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
@@ -936,6 +964,8 @@ final class RecordingSessionKernel {
     self.store = store
     self.deliver = deliver
     self.prepareEscapeRecovery = prepareEscapeRecovery
+    self.escapeRecoveryStartedTelemetry = escapeRecoveryStartedTelemetry
+    self.escapeRecoveryUnavailableNotice = escapeRecoveryUnavailableNotice
     self.engineMutationScope = engineMutationScope
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
@@ -1110,14 +1140,49 @@ final class RecordingSessionKernel {
     return true
   }
 
+  /// Make this take survive a crash as a PENDING row, if it can (#2087).
+  ///
+  /// Without a marker, a crash after the keypress but before finalization lets
+  /// launch replay save a permanent `isRecovered` transcript with no expiry —
+  /// outside anything the toggle disclosed.
+  ///
+  /// **A missing `recoverySessionID` is NOT a failure.** With crash recovery
+  /// disabled there is no spool to mark, so there is nothing to write and
+  /// nothing to fail; the take proceeds and simply carries the documented lack
+  /// of crash survival, exactly as an ordinary dictation does. Treating nil as
+  /// failure would silently disable Escape Recovery for every user who turned
+  /// crash recovery off — a whole population losing a feature they enabled,
+  /// with no message and no telemetry to explain it.
+  ///
+  /// A FAILED WRITE for a spool that does exist fails closed: the closure has
+  /// already removed the spool and its sidecars, and the caller performs today's
+  /// ordinary destructive cancel. That costs the user exactly what pressing
+  /// cancel already costs them, and never leaves a spool a later launch would
+  /// replay into permanent History.
+  ///
+  /// - Returns: whether Escape Recovery may proceed.
+  private func prepareEscapeRecoveryIfNeeded(triggeredAt: Date) -> Bool {
+    guard let recoverySessionID = sessionConfig?.recoverySessionID else { return true }
+    return prepareEscapeRecovery(recoverySessionID, triggeredAt, telemetryState.takeID)
+  }
+
   /// Record the origin of an ACCEPTED cancel, once. Called from each accepting
   /// arm of `cancel(origin:)` rather than at its top, so acceptance is decided
   /// in exactly one place and cannot drift from a second copy of the rules.
-  private func latchCancelOrigin(_ origin: RecordingCancelOrigin) {
+  private func latchCancelOrigin(_ origin: RecordingCancelOrigin, at now: Date = Date()) {
     guard !cancelOriginLatched else { return }
     cancelOriginLatched = true
     lastCancelOrigin = origin
+    // #2087: the KEYPRESS instant, latched here rather than read at the exit.
+    // The exit is drained asynchronously, so a `Date()` taken there would start
+    // the user's 24-hour window late by however long the drain took — and the
+    // whole promise is that the window starts when they pressed cancel.
+    lastCancelAt = now
   }
+
+  /// When the accepted cancel was requested. Session-scoped, reset with the
+  /// origin latch it accompanies.
+  private var lastCancelAt = Date()
 
   /// Cancel. Before the safe point it routes to `cancelled`; inside
   /// `delivering(.finalizing(_))` it is ignored — the safe point is inviolable
@@ -1605,6 +1670,52 @@ final class RecordingSessionKernel {
     // and stops capture — no per-exit `adapter.cancel()` needed here.
     switch exit {
     case .cancel:
+      // #2087 ACTIVATION. Everything chunks 1-11 built is inert until this
+      // branch chooses it.
+      //
+      // TWO conditions, and both are deliberate. The setting is read from the
+      // FROZEN session config, never live `SettingsManager` state, so toggling
+      // mid-recording affects the next recording and not this one. The trigger
+      // must be the SHORTCUT: a click on a button labelled Cancel is
+      // unambiguous intent to destroy, while a press of a key people also use
+      // to dismiss popovers is not.
+      if sessionConfig?.escapeRecoveryEnabled == true,
+        lastCancelOrigin == .user(.shortcut)
+      {
+        guard prepareEscapeRecoveryIfNeeded(triggeredAt: lastCancelAt) else {
+          // Q4, adjudicated: SURFACED, not silent. With the toggle on the user
+          // is expecting a recovery, so saying nothing lets them believe one
+          // happened. Still fails closed to the ordinary destructive cancel
+          // below — the notice explains the outcome, it does not change it.
+          escapeRecoveryUnavailableNotice()
+          finishTerminal(.cancelled, sid: sid)
+          return
+        }
+        finalizationDisposition = .escapeRecovery(triggeredAt: lastCancelAt)
+        log("escape recovery: keeping this take, running the ordinary pipeline")
+        // The funnel's first event, fired at the DECISION rather than at the
+        // terminal. A recovery that never finishes still has to appear in the
+        // denominator, or the completion rate is measured against a population
+        // that silently excludes the failures worth knowing about.
+        if let takeID = telemetryState.takeID {
+          // Computed from the start tick directly, NOT via
+          // `recordingElapsedSeconds`, which is gated on `state == .live` — and
+          // by the time this exit is drained the state has already moved on, so
+          // that accessor returns nil here and every recovery would report a
+          // length of zero.
+          let elapsedTicks = recordingStartedAtTick.map { currentTick() &- $0 } ?? 0
+          escapeRecoveryStartedTelemetry(
+            adapter.engineIdentity.backendType.rawValue,
+            sessionConfig?.llmProvider.rawValue ?? "none",
+            Int(
+              TimeInterval(elapsedTicks) * KernelFinalizationWiring.tickDurationSeconds * 1000),
+            takeID)
+        }
+        // FALL THROUGH to the stop tail, exactly as `.audioInterruption` does
+        // below. The take is transcribed and polished normally; only storage
+        // and delivery differ, and both read the disposition just set.
+        break
+      }
       finishTerminal(.cancelled, sid: sid)
       return
     case .audioInterruption:
@@ -2940,7 +3051,10 @@ final class RecordingSessionKernel {
     transcriptReadyForDelivery = true
 
     do {
-      try await store(processed, transcriptID)
+      // The disposition is read HERE, at the storage step, because storage
+      // runs before delivery and a flag consulted at delivery would arrive
+      // after the row was already written to permanent History.
+      try await store(processed, transcriptID, finalizationDisposition)
     } catch {
       // #1167: the history save is best-effort — `store` absorbs storage
       // failures internally (records them on the finalization outcome +
@@ -2951,7 +3065,7 @@ final class RecordingSessionKernel {
     }
     guard isCurrent(sid) else { return }
 
-    let result = await deliver(processed)
+    let result = await deliver(processed, finalizationDisposition)
     guard isCurrent(sid) else { return }
     deliveredTranscript = processed
     deliveryOutcome = result

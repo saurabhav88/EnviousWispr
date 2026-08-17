@@ -52,7 +52,15 @@ public final class PipelineStateChangeHandler {
   /// nothing. Chunk 8 supplies the implementation and owns the dwell.
   private let presentEscapeRecoveryPill: @MainActor (CancelUndoPayload) -> Void
   /// #2087: emit `escape_recovery.completed` with its terminal outcome.
-  private let reportEscapeRecoveryCompleted: @MainActor (EscapeRecoveryTerminalOutcome) -> Void
+  /// #2087: takes the TRANSCRIPT alongside the outcome, because every number
+  /// the completion event needs — ASR and polish latency, total processing
+  /// time, backend, and the persisted take id — already lives on the row that
+  /// was just written. Reaching back into the driver for them instead would
+  /// read whatever it holds NOW, which after a fast follow-up recording is a
+  /// different take. Nil for `.nothingToRestore`, which has no row by
+  /// definition.
+  private let reportEscapeRecoveryCompleted:
+    @MainActor (EscapeRecoveryTerminalOutcome, Transcript?) -> Void
 
   public init(
     showOverlay: @escaping ShowOverlay,
@@ -70,9 +78,9 @@ public final class PipelineStateChangeHandler {
     // is untouched. Chunks 8-11 supply the real implementations.
     appendPendingTranscript: @escaping @MainActor (Transcript) -> Void = { _ in },
     presentEscapeRecoveryPill: @escaping @MainActor (CancelUndoPayload) -> Void = { _ in },
-    reportEscapeRecoveryCompleted: @escaping @MainActor (EscapeRecoveryTerminalOutcome) -> Void = {
-      _ in
-    }
+    reportEscapeRecoveryCompleted: @escaping @MainActor (
+      EscapeRecoveryTerminalOutcome, Transcript?
+    ) -> Void = { _, _ in }
   ) {
     self.showOverlay = showOverlay
     self.cancelPendingWarning = cancelPendingWarning
@@ -167,7 +175,7 @@ public final class PipelineStateChangeHandler {
           presentEscapeRecoveryPill(payload)
         }
       case .reportEscapeRecoveryCompleted(let outcome):
-        reportEscapeRecoveryCompleted(outcome)
+        reportEscapeRecoveryCompleted(outcome, currentTranscript)
       }
     }
   }

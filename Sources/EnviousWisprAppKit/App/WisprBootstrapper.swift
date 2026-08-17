@@ -358,7 +358,7 @@ public final class WisprBootstrapper {
         egOneRuntime: egOneRuntime,
         parakeetDelivery: modelDelivery.parakeetHandle,
         batchDecodeFaultController: batchDecodeFaultController,
-        prepareEscapeRecovery: EscapeRecoveryWiring.writer()
+        escapeRecovery: EscapeRecoveryWiring.wire(recordingOverlay, transcriptCoordinator)
       ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
@@ -409,7 +409,7 @@ public final class WisprBootstrapper {
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         egOneRuntime: egOneRuntime,
         batchDecodeFaultController: batchDecodeFaultController,
-        prepareEscapeRecovery: EscapeRecoveryWiring.writer()
+        escapeRecovery: EscapeRecoveryWiring.wire(recordingOverlay, transcriptCoordinator)
       ))
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit

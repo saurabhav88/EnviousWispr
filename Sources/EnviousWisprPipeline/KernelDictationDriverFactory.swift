@@ -116,7 +116,9 @@ public enum KernelDictationDriverFactory {
     /// spool was a cancelled-but-kept dictation. Defaults to "cannot prepare", so
     /// a call site that never wires it gets today's destructive cancel rather
     /// than a spool with no provenance.
-    package let prepareEscapeRecovery: PrepareEscapeRecovery
+    /// #2087: the marker writer AND the failure notice, as one value so a
+    /// call site cannot wire one and forget the other.
+    package let escapeRecovery: EscapeRecoveryConnectors
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
@@ -139,7 +141,8 @@ public enum KernelDictationDriverFactory {
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       parakeetDelivery: ParakeetDeliveryHandle? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
-      prepareEscapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
+      escapeRecovery: EscapeRecoveryConnectors = EscapeRecoveryConnectors(
+        writeMarker: { _, _, _ in false }, unavailableNotice: {})
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -155,7 +158,7 @@ public enum KernelDictationDriverFactory {
       self.egOneRuntime = egOneRuntime
       self.parakeetDelivery = parakeetDelivery
       self.batchDecodeFaultController = batchDecodeFaultController
-      self.prepareEscapeRecovery = prepareEscapeRecovery
+      self.escapeRecovery = escapeRecovery
     }
   }
 
@@ -194,7 +197,9 @@ public enum KernelDictationDriverFactory {
     /// spool was a cancelled-but-kept dictation. Defaults to "cannot prepare", so
     /// a call site that never wires it gets today's destructive cancel rather
     /// than a spool with no provenance.
-    package let prepareEscapeRecovery: PrepareEscapeRecovery
+    /// #2087: the marker writer AND the failure notice, as one value so a
+    /// call site cannot wire one and forget the other.
+    package let escapeRecovery: EscapeRecoveryConnectors
 
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
@@ -219,7 +224,8 @@ public enum KernelDictationDriverFactory {
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
-      prepareEscapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
+      escapeRecovery: EscapeRecoveryConnectors = EscapeRecoveryConnectors(
+        writeMarker: { _, _, _ in false }, unavailableNotice: {})
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
@@ -235,7 +241,7 @@ public enum KernelDictationDriverFactory {
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
       self.egOneRuntime = egOneRuntime
       self.batchDecodeFaultController = batchDecodeFaultController
-      self.prepareEscapeRecovery = prepareEscapeRecovery
+      self.escapeRecovery = escapeRecovery
     }
   }
 
@@ -311,7 +317,7 @@ public enum KernelDictationDriverFactory {
       dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
       egOneRuntime: inputs.egOneRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
-      prepareEscapeRecovery: inputs.prepareEscapeRecovery)
+      escapeRecovery: inputs.escapeRecovery)
   }
 
   /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
@@ -346,7 +352,7 @@ public enum KernelDictationDriverFactory {
       dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
       egOneRuntime: inputs.egOneRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
-      prepareEscapeRecovery: inputs.prepareEscapeRecovery)
+      escapeRecovery: inputs.escapeRecovery)
   }
 
   /// Engine-agnostic assembler. The two package entry points construct their
@@ -368,7 +374,8 @@ public enum KernelDictationDriverFactory {
     dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
-    prepareEscapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
+    escapeRecovery: EscapeRecoveryConnectors = EscapeRecoveryConnectors(
+      writeMarker: { _, _, _ in false }, unavailableNotice: {})
   ) -> KernelDictationDriver {
     // #1803: prepare the English word oracle off the heart path. Its one-time
     // setup measures 105.6 ms cold — language resolution plus a tag-scheme
@@ -457,14 +464,23 @@ public enum KernelDictationDriverFactory {
       adapter: adapter,
       steps: limbSteps,
       textProcessingRunner: textProcessingRunner,
-      save: { transcript in
+      save: { transcript, disposition in
         // #1167 Live-UAT seam: force a storage failure so the best-effort save
         // path is exercised end-to-end (paste still lands, pill shows). DEBUG
         // only — never compiled into release.
         #if DEBUG
           if let fault = KernelDictationDriverFactory.injectedSaveFault() { throw fault }
         #endif
-        try transcriptStore.save(transcript)
+        // #2087: the ONE place that decides which namespace a finished take
+        // lands in. Exhaustive on purpose — a new disposition must come here
+        // and choose, rather than defaulting into permanent History, which is
+        // the failure this feature cannot have.
+        switch disposition {
+        case .ordinary:
+          try transcriptStore.save(transcript)
+        case .escapeRecovery, .abandonedEscapeRecovery:
+          try transcriptStore.savePending(transcript)
+        }
       },
       deliverPaste: { request in await PasteCascadeExecutor().deliver(request) },
       pasteCompletionRegistry: pasteCompletionRegistry,
@@ -485,7 +501,17 @@ public enum KernelDictationDriverFactory {
       deliver: wiring.deliver,
       // #2087: storage injection, alongside the other three. Inert until chunk 7
       // calls it; chunk 12 is where a user can reach that call.
-      prepareEscapeRecovery: prepareEscapeRecovery,
+      prepareEscapeRecovery: escapeRecovery.writeMarker,
+      // #2087: the funnel's first event, routed the same way every other
+      // kernel-side telemetry closure is.
+      // #2087 Q4: injected from the composition root, exactly as the marker
+      // writer is — the factory owns no UI.
+      escapeRecoveryStartedTelemetry: { backend, provider, durationMs, takeID in
+        TelemetryService.shared.escapeRecoveryStarted(
+          asrBackend: backend, polishProvider: provider,
+          recordingDurationMs: durationMs, takeID: takeID)
+      },
+      escapeRecoveryUnavailableNotice: escapeRecovery.unavailableNotice,
       engineMutationScope: engineMutationScope,
       // Production wedge-stall window — `RecordingSessionKernel` defaults
       // to 2 ticks (test-only value); with the wiring's 100ms tick clock

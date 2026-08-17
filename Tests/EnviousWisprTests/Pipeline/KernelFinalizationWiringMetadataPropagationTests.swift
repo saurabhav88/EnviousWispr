@@ -44,7 +44,7 @@ import Testing
         llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
         emojiRestore: EmojiRestoreStep()),
       textProcessingRunner: TextProcessingRunner(),
-      save: { saved.transcript = $0 },
+      save: { transcript, _ in saved.transcript = transcript },
       deliverPaste: { _ in
         PasteDeliveryResult(
           tier: .cgEvent, durationMs: 1,
@@ -56,7 +56,7 @@ import Testing
     // entry's id equals the debug audio-archive folder name. Assert the closure
     // honors the passed id rather than defaulting a fresh UUID.
     let mintedID = UUID()
-    try await wiring.store("hi", mintedID)
+    try await wiring.store("hi", mintedID, .ordinary)
 
     let transcript = try #require(saved.transcript)
     #expect(transcript.id == mintedID)

@@ -430,6 +430,28 @@ final class TranscriptCoordinator {
     return current.displayText
   }
 
+  /// Everything the pill needs to restore a held row, or nil if it may not be
+  /// restored (#2087).
+  ///
+  /// ONE authority rather than three lookups at the call site, because the
+  /// refusal must be indivisible: text, age and join key have to describe the
+  /// SAME row at the SAME instant, and a caller that fetched them separately
+  /// could paste text while reporting a different row's age — or, worse, paste a
+  /// row that lapsed between the second lookup and the third.
+  ///
+  /// Refuses on the same rule `textForDelivery` uses, and for the same reason: a
+  /// recovery can lapse between the pill appearing and the press, and pasting a
+  /// snapshot would hand back text the user was told had gone.
+  func restorableHeldRow(id: UUID) -> (text: String, stampedAt: Date, takeID: String?)? {
+    let now = Date()
+    guard
+      let row = transcripts.first(where: { $0.id == id }),
+      let stampedAt = row.escapeRecoveredAt,
+      Self.isVisible(row, at: now)
+    else { return nil }
+    return (row.displayText, stampedAt, row.escapeRecoveryTakeID)
+  }
+
   /// Make a held recovery permanent (#2087).
   ///
   /// Inert, not merely harmless, when the row is no longer offerable: the store

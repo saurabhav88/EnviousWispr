@@ -188,6 +188,15 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// inspect kernel internals (`RecordingSessionKernelTests`).
   var testKernel: RecordingSessionKernel { kernel }
 
+  /// #2087: the config `.start` freezes, and the cancel origin `.cancel` sends.
+  ///
+  /// Both are knobs because Escape Recovery's activation is decided by exactly
+  /// these two facts — the setting as frozen at recording start, and whether the
+  /// user reached for the shortcut or the button. Defaults reproduce the
+  /// pre-#2087 simulator behaviour, so every existing scenario is unchanged.
+  var sessionConfigForTesting: DictationSessionConfig = .testDefault()
+  var cancelOriginForTesting: RecordingCancelOrigin = .systemOrFault
+
   /// The kernel's per-session telemetry side-channel, held so a test can read
   /// what the kernel stamped (#1408: `interruptionCause`). Production shares ONE
   /// instance across the kernel, the finalization wiring, and the lifecycle sink;
@@ -232,6 +241,10 @@ final class KernelRecordingSession: RecordingSessionDriving {
     // #1408: the floor's regression guard needs the minimum-recording gate ARMED
     // (the inventory zeroes it, see the note at the `minimumRecordingTicks`
     // argument below). Defaulted so every existing scenario is unchanged.
+    // #2087: the marker writer the activation branch consults. Defaults to
+    // REFUSING, which is the fail-closed production default — a scenario that
+    // wants recovery to proceed with a real spool must say so explicitly.
+    prepareEscapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
     minimumRecordingTicks: Int = 0,
     // #1317: deterministic by default (`true`) — real scenarios exercising
     // the muted/unknown fail-closed path override this explicitly. Avoids
@@ -281,7 +294,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
         if limb.forceEmptyAfterProcessing { return "" }
         return raw
       },
-      store: { [storeLog] text, _ in
+      store: { [storeLog] text, _, _ in
         storeLog.storedTexts.append(text)
         // #1167: a throwing save models the best-effort store seam. The kernel
         // ABSORBS the throw (records it on the finalization outcome) and still
@@ -290,7 +303,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
         // retained to exercise that the kernel swallows a store throw.
         if limb.storageWriteFails { throw KernelLimbError.storageFailed }
       },
-      deliver: { text in
+      deliver: { text, _ in
         switch paste.attemptPaste(text) {
         case .pasted: return .pasted
         case .clipboardOnly, .none: return .clipboardOnly
@@ -309,6 +322,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
       // advance the FakeClock between start and stop, so a positive
       // minimum-recording threshold would discard most scenarios. The
       // dedicated #4 coverage lives in `ConductorParitySeamTests`.
+      prepareEscapeRecovery: prepareEscapeRecovery,
       engineMutationScope: .alwaysAllowedForTesting,
       minimumRecordingTicks: minimumRecordingTicks,
       captureTelemetry: captureTelemetry,
@@ -367,11 +381,11 @@ final class KernelRecordingSession: RecordingSessionDriving {
       // `vad.setCurrentSessionID(sid)` in `runForwardPath` (was a simulator-only
       // manual stamp before; that hid the production gap where the kernel never
       // wired the call).
-      kernel.start(config: .testDefault())
+      kernel.start(config: sessionConfigForTesting)
     case .stop:
       kernel.requestStop()
     case .cancel:
-      kernel.cancel()
+      kernel.cancel(origin: cancelOriginForTesting)
     case .reset:
       kernel.reset()
     case .preWarm:

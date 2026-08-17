@@ -187,8 +187,23 @@ struct KernelFinalizationWiring {
   let processText:
     @MainActor (_ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void)
       async throws -> String
-  let store: @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void
-  let deliver: @MainActor (_ text: String) async -> KernelDeliveryOutcome
+  /// Both take the kernel's `FinalizationDisposition` (#2087).
+  ///
+  /// ONE kernel-owned decision read by both, rather than the kernel branching
+  /// before it calls them: `store` is what BUILDS the `Transcript`, so a caller
+  /// that decided pending-vs-permanent separately would leave two places that
+  /// must agree about one row.
+  ///
+  /// `runFinalizing` orders process → store → deliver → conclude, and storage
+  /// runs BEFORE delivery, which is why a delivery-only flag cannot express
+  /// this: by the time delivery saw it, the row would already be in permanent
+  /// History.
+  let store:
+    @MainActor (_ text: String, _ transcriptID: UUID, _ disposition: FinalizationDisposition)
+      async throws -> Void
+  let deliver:
+    @MainActor (_ text: String, _ disposition: FinalizationDisposition) async ->
+      KernelDeliveryOutcome
   let currentTick: @MainActor () -> UInt64
   let sleepTicks: @MainActor (Int) async -> Void
 
@@ -202,7 +217,11 @@ struct KernelFinalizationWiring {
     adapter: any ASREngineAdapter,
     steps: LimbSteps,
     textProcessingRunner: TextProcessingRunner,
-    save: @escaping @MainActor (Transcript) throws -> Void,
+    // Takes the disposition so the INJECTION SITE owns which namespace a row
+    // lands in. The alternative — a second `savePending` closure — makes it
+    // possible to wire one and forget the other, and the failure would be a row
+    // written to permanent History by a feature promising to hold it for a day.
+    save: @escaping @MainActor (Transcript, FinalizationDisposition) throws -> Void,
     deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult,
     // Caret reader seam. Production reads the live focused field; tests inject
     // deterministic context so the real composition path can be driven without
@@ -426,7 +445,7 @@ struct KernelFinalizationWiring {
     // and finishes `.completed`. The crash-recovery spool is retained (cleanup is
     // gated on `historySaved`), so History self-heals on next launch. Clipboard
     // behavior is unchanged (`pipeline-mechanics.md` RULE: clipboard-restore-is-sacred).
-    store = { text, transcriptID in
+    store = { text, transcriptID, disposition in
       let transcript = Transcript(
         id: transcriptID,
         text: outcome.rawText ?? text,
@@ -454,10 +473,21 @@ struct KernelFinalizationWiring {
         // with a permanent crossed-out microphone would tell the user something
         // that did not happen. This badge is durable and unfixable after the
         // fact, so it takes the strictest predicate.
-        inputDeviceWasRemoved: telemetryState.interruptionCause?.isDeviceLoss == true)
+        inputDeviceWasRemoved: telemetryState.interruptionCause?.isDeviceLoss == true,
+        // #2087: stamped ONLY for an escape recovery, and the stamp is the
+        // moment the user pressed cancel — carried on the disposition, not
+        // read here. The 24-hour window the user was promised starts at the
+        // keypress; a long transcription must not silently spend part of it.
+        //
+        // `escapeRecoveryTakeID` persists the join key because these events can
+        // fire hours later, after a relaunch, when the in-memory take id is
+        // long gone.
+        escapeRecoveredAt: disposition.escapeRecoveryTriggeredAt,
+        escapeRecoveryTakeID:
+          disposition.isEscapeRecovery ? telemetryState.takeID : nil)
       outcome.transcript = transcript
       do {
-        try save(transcript)
+        try save(transcript, disposition)
         outcome.historySaved = true
         outcome.historySaveError = nil
       } catch {
@@ -474,7 +504,7 @@ struct KernelFinalizationWiring {
     // paste prefs, map `PasteDeliveryResult` -> `KernelDeliveryOutcome`, emit
     // the paste-completion event only on a real delivered paste
     // on a real delivered paste.
-    deliver = { text in
+    deliver = { text, disposition in
       let pasteStart = CFAbsoluteTimeGetCurrent()
       let config = context.config
       var pasteResult: PasteDeliveryResult?
@@ -494,7 +524,22 @@ struct KernelFinalizationWiring {
       // (integration review).
       outcome.languageResolutionSource = nil
       outcome.languageConfidenceBucket = nil
-      if config?.autoPasteToActiveApp == true {
+      if disposition.isEscapeRecovery {
+        // HELD, not delivered. The user pressed cancel, so nothing is pasted and
+        // nothing touches the clipboard — the row is already saved to `pending/`
+        // and the pill offers it.
+        //
+        // `.suppressed`, never `.clipboardOnly`. Reporting clipboard-only would
+        // be a lie about where the text went AND can raise the clipboard
+        // fallback overlay, telling the user to press paste for something that
+        // was never put there.
+        //
+        // The epilogue below still runs. Skipping the whole closure would leave
+        // `pipelineEndedAtSeconds` nil for every escape-recovered take, which
+        // silently breaks latency reporting — a metric regression invisible
+        // until someone queries it and finds a hole shaped like this feature.
+        deliveryOutcome = .suppressed
+      } else if config?.autoPasteToActiveApp == true {
         // ONE cumulative terminal-resolution budget for this whole delivery,
         // created here and reused by every commit-boundary revalidation. A fresh
         // budget per route would let the total the user waits for grow with the
@@ -942,7 +987,13 @@ struct KernelFinalizationWiring {
       // regardless of cascade tier, including clipboard-only + auto-copy.
       // Source session id + LID-shape from `adapter.lastASRDiagnostics`
       // (per-session captured in adapter at `beginSession`).
-      if adapter.capabilities.supportsLanguageDetection {
+      //
+      // #2087: NOT for a suppressed delivery. This signpost names a clipboard
+      // WRITE, and an escape recovery performs none — emitting it would put a
+      // measurement of an event that did not happen into the timeline the
+      // clipboard path is judged by. The pre-#2087 comment above is about which
+      // PASTE tiers emit; every one of them wrote to the clipboard.
+      if adapter.capabilities.supportsLanguageDetection, !disposition.isEscapeRecovery {
         Self.emitLIDClipboardWriteSignpost(
           diagnostics: (adapter as? any ASREngineTelemetryProviding)?.lastASRDiagnostics)
       }

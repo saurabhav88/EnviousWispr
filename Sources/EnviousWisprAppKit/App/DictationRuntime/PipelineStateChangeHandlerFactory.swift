@@ -37,6 +37,20 @@ enum PipelineStateChangeHandlerFactory {
     /// because the payload carries main-actor AX handles the `Sendable` intent
     /// cannot. No-op default keeps every existing construction site unchanged.
     var presentEscapeRecoveryPill: @MainActor (CancelUndoPayload) -> Void = { _ in }
+    /// #2087: put the held row into History's in-memory list. It is already on
+    /// disk by the time this runs — the kernel's storage step wrote it to the
+    /// pending namespace — so this is the in-session view catching up, not a
+    /// second write. Without it a held recovery is invisible until the next
+    /// launch, and the 24-hour offer would quietly begin with the user unable
+    /// to see the thing being offered.
+    var appendPendingTranscript: @MainActor (Transcript) -> Void = { _ in }
+    /// #2087: the completion half of the funnel. Takes the terminal outcome AND
+    /// the row it describes, and reads every number from that row rather than
+    /// from the driver — the driver holds whatever take is current at emission
+    /// time, which after a fast follow-up recording is a different one.
+    /// Nil transcript for the terminals that have no row.
+    var reportEscapeRecoveryCompleted:
+      @MainActor (EscapeRecoveryTerminalOutcome, Transcript?) -> Void = { _, _ in }
   }
 
   static func make(backendLabel: String, deps: Deps) -> PipelineStateChangeHandler {
@@ -92,10 +106,17 @@ enum PipelineStateChangeHandlerFactory {
       // feature's own promise unreachable while everything still compiled.
       //
       // A dedicated seam rather than `showOverlay`, because `OverlayIntent` is
-      // `Sendable` and cannot carry main-actor AX handles. `appendPendingTranscript`
-      // and `reportEscapeRecoveryCompleted` keep their no-op defaults; chunks 9
-      // and 11 own the pending row and the telemetry.
-      presentEscapeRecoveryPill: { payload in deps.presentEscapeRecoveryPill(payload) }
+      // `Sendable` and cannot carry main-actor AX handles.
+      // Both wired at activation (chunk 12). They carried no-op defaults through
+      // chunks 6-11 so the transport could ship without behaviour, and leaving
+      // either defaulted here is the shape of bug this feature cannot have: a
+      // held row nobody can see, or a funnel missing the event that says it
+      // worked.
+      appendPendingTranscript: { transcript in deps.appendPendingTranscript(transcript) },
+      presentEscapeRecoveryPill: { payload in deps.presentEscapeRecoveryPill(payload) },
+      reportEscapeRecoveryCompleted: { outcome, transcript in
+        deps.reportEscapeRecoveryCompleted(outcome, transcript)
+      }
     )
   }
 }

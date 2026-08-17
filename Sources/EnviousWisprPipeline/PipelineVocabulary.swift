@@ -55,6 +55,14 @@ public enum RecordingWarningReason: Equatable, Sendable {
   case polishFailed
   /// The dictation was pasted but the history write threw. Carries the reason.
   case historySaveFailed(reason: String)
+  /// #2087: Escape Recovery was on and the take could NOT be kept, so the
+  /// ordinary destructive cancel ran instead.
+  ///
+  /// Surfaced rather than silent, which was the adjudicated call: with the
+  /// toggle ON the user is expecting a recovery, so saying nothing lets them
+  /// believe one happened. This is NOT the recovery pill — there is nothing to
+  /// offer, and a button that restores nothing is worse than a sentence.
+  case escapeRecoveryUnavailable
   /// The degraded-lead retry recovered this take by trimming a poisoned opening.
   case salvagedBeginning
   /// Capture died mid-recording; the pasted text is what survived. `disclosure`
@@ -174,7 +182,6 @@ public enum OverlayIntent: Equatable, Sendable {
   case escapeRecovery(transcriptID: UUID)
 }
 
-
 /// Commit this session's spool to Escape Recovery, returning whether it worked
 /// (#2087).
 ///
@@ -194,6 +201,32 @@ public enum OverlayIntent: Equatable, Sendable {
 public typealias PrepareEscapeRecovery = @MainActor (
   _ recoverySessionID: String, _ triggeredAt: Date, _ takeID: String?
 ) -> Bool
+
+/// The two things the app layer must give the kernel for Escape Recovery.
+///
+/// ONE value rather than two parallel init arguments, because they must be
+/// wired together or not at all: a marker writer with no notice fails closed
+/// SILENTLY, and a notice with no writer announces a failure that cannot
+/// happen. Bundling makes "wire one, forget the other" unrepresentable rather
+/// than merely discouraged — and this feature has already shipped that exact
+/// half-connection twice, in the pill's Paste button and in the completion slot.
+@MainActor
+public struct EscapeRecoveryConnectors {
+  /// Named `writeMarker`, NOT `prepare`. `prepare` is tracked vocabulary in
+  /// the engine-mutation inventory, and an unrelated property borrowing that
+  /// word puts noise into a table whose value is that every entry is a real
+  /// engine mutation. The freeze test caught it, which is the job.
+  public let writeMarker: PrepareEscapeRecovery
+  public let unavailableNotice: @MainActor () -> Void
+
+  public init(
+    writeMarker: @escaping PrepareEscapeRecovery,
+    unavailableNotice: @escaping @MainActor () -> Void
+  ) {
+    self.writeMarker = writeMarker
+    self.unavailableNotice = unavailableNotice
+  }
+}
 
 /// What a finalizing session IS, for the run that is finishing (#2087).
 ///
@@ -239,6 +272,20 @@ enum FinalizationDisposition: Equatable, Sendable {
     switch self {
     case .ordinary: false
     case .escapeRecovery, .abandonedEscapeRecovery: true
+    }
+  }
+
+  /// When the user pressed cancel, or nil for an ordinary take (#2087).
+  ///
+  /// The stamp a pending row is written with, so the 24-hour window starts at
+  /// the KEYPRESS rather than at finalization. Reading a fresh `Date()` at the
+  /// storage step instead would silently hand back the minutes a long
+  /// transcription spent, which is the part of the promise most likely to
+  /// matter on exactly the takes people cancel.
+  var escapeRecoveryTriggeredAt: Date? {
+    switch self {
+    case .ordinary: nil
+    case .escapeRecovery(let at), .abandonedEscapeRecovery(let at): at
     }
   }
 }
