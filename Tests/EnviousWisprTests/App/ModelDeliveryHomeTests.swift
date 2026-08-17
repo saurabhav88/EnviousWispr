@@ -364,6 +364,57 @@ struct ModelDeliveryHomeTests {
     func record() { mutex.withLock { value += 1 } }
   }
 
+  // MARK: - #2137 cloud review: the delivery kill switch
+
+  /// The Download door must honour `modelDelivery.whisper_kit.enabled`.
+  ///
+  /// `ensureAvailable()` does NOT enforce the flag itself — the primary WhisperKit
+  /// door guards `handle.isEnabled()` immediately before calling it
+  /// (`WhisperKitDeliveryWiring.swift:74,125`). This door did not, so an operator
+  /// who had disabled the whole family could still have a 217 MB preview fetch
+  /// start, bypassing the relaunch-free rollback the flag exists to provide.
+  ///
+  /// Asserted BOTH ways in one test, because either half alone is satisfiable by
+  /// the opposite bug: flag-off must publish nothing, and flag-on must still
+  /// reach the controller. A one-way test would pass against a door welded shut,
+  /// which breaks the feature for every user to protect against a flag almost
+  /// nobody sets.
+  ///
+  /// The flag store is injected. Writing a real kill switch into the shared suite
+  /// to test it would leave an operational flag set on a developer's machine.
+  @Test("the preview Download door honours the whisper_kit kill switch, both ways")
+  func previewDownloadHonoursTheKillSwitch() async throws {
+    func home(enabled: Bool) throws -> ModelDeliveryHome {
+      let suite = try #require(UserDefaults(suiteName: "ew-2137-killswitch-\(UUID().uuidString)"))
+      suite.set(enabled, forKey: "modelDelivery.whisper_kit.enabled")
+      return ModelDeliveryHome(
+        engineMutationScope: .live(
+          tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+        manifestBundle: try Self.manifestBundle(),
+        appSupportOverride: try Self.tempAppSupport(),
+        deliveryFlagDefaults: suite)
+    }
+
+    let off = try home(enabled: false)
+    for _ in 0..<400 { await Task.yield() }
+    let offBaseline = off.previewStateUpdatesForTests
+    off.startPreviewDownload()
+    for _ in 0..<2000 { await Task.yield() }
+    #expect(
+      off.previewStateUpdatesForTests == offBaseline,
+      "the kill switch is off but the download door still reached delivery")
+
+    let on = try home(enabled: true)
+    for _ in 0..<400 { await Task.yield() }
+    let onBaseline = on.previewStateUpdatesForTests
+    on.startPreviewDownload()
+    for _ in 0..<4000 where on.previewStateUpdatesForTests == onBaseline { await Task.yield() }
+    #expect(
+      on.previewStateUpdatesForTests > onBaseline,
+      "with the flag ON the door must still reach delivery; a welded-shut door would pass the assertion above"
+    )
+  }
+
   // MARK: - #2123 whole-diff review: the launch probe
 
   /// Launching must PROBE delivery state, not merely wire an observer to it.

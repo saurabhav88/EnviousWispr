@@ -113,9 +113,15 @@ public final class ModelDeliveryHome {
   ///   running it has ever used the feature. Parakeet's ASR cache is deliberately
   ///   NOT rerouted: it comes from `AsrModels.defaultCacheDirectory` and is not
   ///   part of what the probe touches.
+  /// - Parameter deliveryFlagDefaults: where the delivery kill switches are read
+  ///   from. Production never passes it, so both handles fall back to the shared
+  ///   suite exactly as before. Tests pass an in-memory suite, because the guard
+  ///   in `startPreviewDownload` reads this and the only alternative way to
+  ///   exercise it would be writing an operational kill switch into the real
+  ///   store on a developer's machine.
   init(
     engineMutationScope: EngineMutationScope, manifestBundle: Bundle,
-    appSupportOverride: URL? = nil
+    appSupportOverride: URL? = nil, deliveryFlagDefaults: UserDefaults? = nil
   ) {
     self.engineMutationScope = engineMutationScope
     let appSupportRoot =
@@ -162,7 +168,7 @@ public final class ModelDeliveryHome {
       whisperKitRegistration = registration
       Task { await controller.sweepSupersededStaging(registration) }
       whisperKitHandle = WhisperKitDeliveryHandle(
-        controller: controller, registration: registration)
+        controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       let home = self
       Task { await home.recordFirstRunBaseline(for: registration) }
     } catch {
@@ -210,7 +216,7 @@ public final class ModelDeliveryHome {
       whisperPreviewRegistration = registration
       Task { await controller.sweepSupersededStaging(registration) }
       whisperPreviewHandle = WhisperKitDeliveryHandle(
-        controller: controller, registration: registration)
+        controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       let previewHome = self
       let previewIdentity = manifest.identity
       // The launch PROBE (#2123 whole-diff review).
@@ -362,8 +368,34 @@ public final class ModelDeliveryHome {
   /// that the heart never loads, so taking the claim would let a preview
   /// download block a dictation from switching engines — the limb interfering
   /// with the heart, which is the one thing this feature must never do.
+  /// **Honours the WhisperKit family kill switch** (#2137 cloud review). The
+  /// primary WhisperKit download door guards `handle.isEnabled()` immediately
+  /// before `ensureAvailable()` (`WhisperKitDeliveryWiring.swift:74,125`), because
+  /// `ensureAvailable` does NOT enforce the flag itself. This door did not, so
+  /// with `modelDelivery.whisper_kit.enabled` set false an operator had disabled
+  /// the whole family and this path would still start a 217 MB fetch — bypassing
+  /// the relaunch-free delivery rollback that flag exists to provide.
+  ///
+  /// The preview model IS in that family (same `whisper_kit` registration family,
+  /// differing only by variant), so one flag correctly covers both.
+  ///
+  /// Deliberately guards only the DOWNLOAD door. Cancel and Remove stay reachable
+  /// with the flag off: a kill switch on delivery must not trap a user with a
+  /// model they cannot cancel or delete, and neither starts network work.
   public func startPreviewDownload() {
     guard let handle = whisperPreviewHandle else { return }
+    guard handle.isEnabled() else {
+      // Logged rather than silent: a Download button that does nothing is
+      // otherwise indistinguishable from a broken one, and the flag is remote,
+      // so whoever debugs this will not know it was set.
+      Task {
+        await AppLogger.shared.log(
+          "Preview download refused: the whisper_kit delivery kill switch is off "
+            + "(modelDelivery.whisper_kit.enabled = false)",
+          level: .info, category: "Delivery")
+      }
+      return
+    }
     Task { _ = await handle.ensureAvailable() }
   }
 
