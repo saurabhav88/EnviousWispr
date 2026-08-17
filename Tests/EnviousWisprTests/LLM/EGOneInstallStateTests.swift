@@ -13,14 +13,18 @@ import Testing
   /// time and indistinguishable, to a user, from the app being broken.
   @Test func pausedStatesAcceptADownloadStart() {
     #expect(EGOneInstallState.paused.acceptsDownloadStart)
-    #expect(EGOneInstallState.updatePaused(resumable: true, targetVersion: "1.1").acceptsDownloadStart)
-    #expect(EGOneInstallState.updatePaused(resumable: false, targetVersion: "1.1").acceptsDownloadStart)
+    #expect(
+      EGOneInstallState.updatePaused(resumable: true, targetVersion: "1.1").acceptsDownloadStart)
+    #expect(
+      EGOneInstallState.updatePaused(resumable: false, targetVersion: "1.1").acceptsDownloadStart)
   }
 
   /// Two-way control: the in-flight and finished states must REFUSE, or the
   /// property is just "true" wearing a name and proves nothing above.
   @Test func inFlightAndInstalledStatesRefuseADownloadStart() {
-    #expect(EGOneInstallState.downloading(fractionCompleted: 0.5).acceptsDownloadStart == false)
+    #expect(
+      EGOneInstallState.downloading(fractionCompleted: 0.5, upgradeTo: nil).acceptsDownloadStart
+        == false)
     #expect(EGOneInstallState.verifying.acceptsDownloadStart == false)
     #expect(EGOneInstallState.installed(version: "1.1").acceptsDownloadStart == false)
   }

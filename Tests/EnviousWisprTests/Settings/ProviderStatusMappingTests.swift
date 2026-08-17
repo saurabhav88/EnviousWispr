@@ -86,7 +86,7 @@ struct ProviderStatusMappingTests {
   /// skip the case that matters.
   nonisolated static let everyEGOneState: [EGOneInstallState] = [
     .notInstalled,
-    .downloading(fractionCompleted: 0.4),
+    .downloading(fractionCompleted: 0.4, upgradeTo: nil),
     .verifying,
     .installed(version: "1.1"),
     .installed(version: nil),
@@ -254,7 +254,7 @@ struct ProviderStatusMappingTests {
 
   @Test("EG-1 downloading → Downloading / needs-setup")
   func egOneDownloading() {
-    let s = status(for: .egOne, egOneInstall: .downloading(fractionCompleted: 0.4))
+    let s = status(for: .egOne, egOneInstall: .downloading(fractionCompleted: 0.4, upgradeTo: nil))
     #expect(s.label == "Downloading")
     #expect(s.tone == .needsSetup)
   }
@@ -408,5 +408,42 @@ struct ProviderStatusMappingTests {
   @Test("Off provider → neutral, never a real engine status")
   func offProvider() {
     #expect(status(for: .none).tone == .unavailable)
+  }
+
+  /// An UPGRADE download must be distinguishable from a FIRST install while the
+  /// bytes are moving (founder, from Live UAT 2026-08-17).
+  ///
+  /// Both rendered the identical sentence — "Downloading EG-1 (2.9 GB)" — so a
+  /// user who already had EG-1 could not tell a 2.9 GB upgrade from a 2.9 GB
+  /// fresh install, and was never told which version was arriving. Same defect
+  /// as the row this change began with, one state further along.
+  ///
+  /// BOTH ARMS, because a label that appeared unconditionally would satisfy the
+  /// upgrade arm while mislabelling every first install as an upgrade — a
+  /// worse bug than the one being fixed, and invisible to a one-armed test.
+  @MainActor
+  @Test func onlyAnUpgradeDownloadCarriesAVersionLabel() {
+    let upgrading = EGOneRowPresentation.forState(
+      .downloading(fractionCompleted: 0.4, upgradeTo: "1.1"))
+    #expect(
+      upgrading.versionLabel == "EG-1 V1.1",
+      "an upgrade in flight did not name the version arriving")
+
+    let firstInstall = EGOneRowPresentation.forState(
+      .downloading(fractionCompleted: 0.4, upgradeTo: nil))
+    #expect(
+      firstInstall.versionLabel == nil,
+      "a first install was labelled as an upgrade, which is a worse lie than the missing label")
+
+    // A manifest carrying a blank display version must render NOTHING, never
+    // "EG-1 V" with an empty tail. Same rule already enforced for `installed`.
+    let blank = EGOneRowPresentation.forState(
+      .downloading(fractionCompleted: 0.4, upgradeTo: ""))
+    #expect(blank.versionLabel == nil, "a blank display version rendered a dangling label")
+
+    // Cancel stays reachable throughout: an upgrade the user cannot stop is
+    // how a resumable download becomes an unresumable one.
+    #expect(upgrading.primaryAction == "Cancel")
+    #expect(firstInstall.primaryAction == "Cancel")
   }
 }

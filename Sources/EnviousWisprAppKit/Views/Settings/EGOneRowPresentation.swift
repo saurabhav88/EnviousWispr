@@ -67,8 +67,14 @@ struct EGOneRowPresentation: Equatable {
         // manifest this bundle does not contain, so any number here would be
         // invented. The target version above is a different thing.
         versionLabel: nil)
-    case .downloading:
-      return .init(message: "", primaryAction: "Cancel", showsRemove: false, versionLabel: nil)
+    case .downloading(_, let upgradeTo):
+      // The progress row owns its own sentence (it needs the live fraction),
+      // so `message` stays empty. But the VERSION belongs here with every
+      // other version decision, so one test covers "blank display version
+      // renders nothing" for this state too rather than only for installed.
+      return .init(
+        message: "", primaryAction: "Cancel", showsRemove: false,
+        versionLabel: upgradeTo.flatMap { $0.isEmpty ? nil : "EG-1 V\($0)" })
     case .verifying:
       return .init(message: "", primaryAction: nil, showsRemove: false, versionLabel: nil)
     case .installed(let version):

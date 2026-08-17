@@ -90,8 +90,12 @@ enum ProviderStatusMapping {
     // surface, and a calm chip beside an alarmed row is worse than either.
     case .updatePaused:
       return ProviderStatus(label: "Update paused", tone: .error)
-    case .downloading:
-      return ProviderStatus(label: "Downloading", tone: .needsSetup)
+    // Same agreement rule as `updatePaused` above: when the detailed row says
+    // "Upgrading to EG-1 V1.1", a chip reading "Downloading" describes a
+    // different event beside it. The chip is narrower, not softer.
+    case .downloading(_, let upgradeTo):
+      return ProviderStatus(
+        label: upgradeTo == nil ? "Downloading" : "Upgrading", tone: .needsSetup)
     case .verifying:
       return ProviderStatus(label: "Verifying", tone: .needsSetup)
     case .failed:

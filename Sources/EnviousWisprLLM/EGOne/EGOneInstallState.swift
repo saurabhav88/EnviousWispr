@@ -11,7 +11,23 @@ import Foundation
 /// describes what the settings row shows.
 public enum EGOneInstallState: Sendable, Equatable {
   case notInstalled
-  case downloading(fractionCompleted: Double)
+  /// Bytes moving. `upgradeTo` is the DISPLAY version being installed when this
+  /// download REPLACES a working older revision, and nil for a first install
+  /// (founder, 2026-08-17, from Live UAT).
+  ///
+  /// Without it the progress row read "Downloading EG-1 (2.9 GB)" for both
+  /// cases, so a user who already had EG-1 could not tell an upgrade from a
+  /// fresh 2.9 GB install and was never told which version was arriving. That
+  /// is the same defect #2109 exists to fix — two different situations
+  /// rendering the identical sentence — one state further along than the row
+  /// this change originally covered.
+  ///
+  /// The adapter cannot populate this: it maps each progress tick statelessly
+  /// and has no memory of the state it came from. `EGOneRuntime`, the single
+  /// UI-state owner, fills it in from the PREVIOUS state. Deriving it from disk
+  /// here instead would read a marker and stat up to eight files on every
+  /// progress tick, on the UI path.
+  case downloading(fractionCompleted: Double, upgradeTo: String?)
   case verifying
   /// Installed and current. The payload is the user-facing DISPLAY version
   /// (e.g. "1.1"), optional because a manifest without one renders no label

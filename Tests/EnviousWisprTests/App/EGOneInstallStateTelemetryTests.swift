@@ -35,7 +35,7 @@ import Testing
     #expect(
       EGOnePausedInstallState.projection(of: .updatePaused(resumable: false, targetVersion: "1.1")) == .updatePaused)
     for state: EGOneInstallState in [
-      .notInstalled, .downloading(fractionCompleted: 0.5), .verifying,
+      .notInstalled, .downloading(fractionCompleted: 0.5, upgradeTo: nil), .verifying,
       .installed(version: "1.1"), .failed(.network),
     ] {
       #expect(EGOnePausedInstallState.projection(of: state) == nil, "\(state) must not project")

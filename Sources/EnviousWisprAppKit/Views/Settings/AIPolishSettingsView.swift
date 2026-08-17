@@ -1474,11 +1474,24 @@ struct AIPolishSettingsView: View {
           Button(action) { egOne.startDownload() }
         }
       }
-    case .downloading(let fraction):
+    case .downloading(let fraction, _):
       VStack(alignment: .leading, spacing: 4) {
         ProgressView(value: max(0, min(1, fraction))) {
-          Text("Downloading EG-1 (2.9 GB)")
-            .font(.stHelper)
+          // An UPGRADE says so and names the version arriving; a first install
+          // keeps the original sentence (founder, 2026-08-17, from Live UAT).
+          // Both used to read "Downloading EG-1 (2.9 GB)", so a user who
+          // already had EG-1 could not tell a 2.9 GB upgrade from a 2.9 GB
+          // first install and was never told which version was coming.
+          //
+          // The version comes from `presentation.versionLabel`, composed from
+          // the manifest — never a literal here. A revision ships as a manifest
+          // edit with no Swift change, so a hard-coded number would keep naming
+          // the previous model after the real one moved on.
+          Text(
+            presentation.versionLabel.map { "Upgrading to \($0) (2.9 GB)" }
+              ?? "Downloading EG-1 (2.9 GB)"
+          )
+          .font(.stHelper)
         }
         if let action = presentation.primaryAction {
           Button(action) { egOne.cancelDownload() }

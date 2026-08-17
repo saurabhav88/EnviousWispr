@@ -202,7 +202,51 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     applyInstallState(state)
   }
 
-  private func applyInstallState(_ state: EGOneInstallState) {
+  /// Display version of an upgrade whose download is currently in flight, or
+  /// nil when the download in flight is a FIRST install (#2109, founder
+  /// 2026-08-17).
+  ///
+  /// Deliberately process-scoped and NOT persisted, which is the opposite
+  /// choice from `lastPausedProjection` one screen down, so the difference is
+  /// worth stating. That one measures a DURATION that outlives the process, so
+  /// forgetting it across launches makes an exit unpairable. This one describes
+  /// bytes moving right now: a download does not survive a quit, and a stale
+  /// value read back at launch would label a fresh first install as an upgrade.
+  /// Forgetting is the correct behaviour here.
+  private var upgradeDownloadInFlight: String?
+
+  private func applyInstallState(_ rawState: EGOneInstallState) {
+    // ENRICH BEFORE ANYTHING ELSE READS THE STATE, including the dedupe guard
+    // below — otherwise the first tick and the enriched second tick differ only
+    // in a field the guard does not compare, and the row keeps the unenriched
+    // copy for the whole download.
+    //
+    // Upgrade-ness is a property of where we CAME FROM: `updatePaused` means a
+    // working older revision is installed, so a download starting from there
+    // replaces it. The adapter maps each tick statelessly and cannot see that.
+    var state = rawState
+    switch rawState {
+    case .updatePaused(_, let targetVersion):
+      upgradeDownloadInFlight = targetVersion
+    case .downloading(let fraction, _):
+      if let target = upgradeDownloadInFlight {
+        state = .downloading(fractionCompleted: fraction, upgradeTo: target)
+      }
+    case .installed, .notInstalled, .failed, .paused:
+      // Every TERMINAL resting place clears it. `.verifying` is deliberately
+      // absent: it sits between the last download tick and admission, and
+      // clearing there would drop the label for the final stretch. `.paused`
+      // and `.notInstalled` are first-install states by definition — a cancel
+      // that leaves an older revision intact maps to `.updatePaused`, not to
+      // either of these.
+      upgradeDownloadInFlight = nil
+    case .verifying:
+      break
+    }
+    applyEnrichedInstallState(state)
+  }
+
+  private func applyEnrichedInstallState(_ state: EGOneInstallState) {
     // PAUSED-RESIDENCY RECONCILIATION RUNS FIRST, before the UI dedupe below.
     //
     // The order matters and is not cosmetic (whole-diff review). At launch
