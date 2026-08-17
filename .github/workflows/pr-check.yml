@@ -61,15 +61,11 @@ jobs:
       - name: Verify third-party notices are in sync
         run: scripts/ci/gen-third-party-notices.sh --check
 
-      # #2141: report what the suite protects, and require a NEW suite to say which of the four things it
-      # is. The audit that prompted this found 978 tests being counted as safety for the user that protect
-      # something else, and ZERO tests crossing a real boundary — nobody chose that, nothing ever showed
-      # the split. Printing it on every PR is the primary remedy; the ratchet only stops the drift
-      # resuming. Reads committed files with git and grep only, so it is seconds and runs unconditionally
-      # rather than behind a paths filter that can drift out of sync (same reasoning as the notices gate).
-      # Owner: .claude/rules/testing-philosophy.md
-      - name: Test inventory — what does the suite protect?
-        run: scripts/test-inventory.sh --check
+      # #2141's test-inventory gate deliberately has NO step here. It is a Swift test
+      # (`TestInventoryFreezeTests`) parsing with SwiftParser, so it runs inside this lane's existing
+      # `xcodebuild test` — no new step, no new required check, no aggregator clause. The shell version
+      # that did live here was a hand-rolled Swift lexer and took eleven review findings before it was
+      # replaced; see that suite's header.
 
       - name: Verify environment
         if: steps.changes.outputs.needs_build == 'true'
