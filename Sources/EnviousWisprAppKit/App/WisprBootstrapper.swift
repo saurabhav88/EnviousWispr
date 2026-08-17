@@ -284,7 +284,10 @@ public final class WisprBootstrapper {
       let adapter = EGOneDeliveryAdapter(
         controller: modelDelivery.controller,
         registration: registration,
-        version: egOneManifest?.version ?? deliveryManifest.identity.revision)
+        // #2109: the USER-FACING label, not the internal revision. nil when the
+        // manifest carries none — the row then shows no version rather than
+        // printing `v3-eg2` at someone.
+        version: egOneManifest?.resolvedDisplayVersion)
       egOneAdapter = adapter
 
       let coordinator = EGOneUpgradeCoordinator(

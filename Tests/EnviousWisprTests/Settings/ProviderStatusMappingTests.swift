@@ -44,6 +44,172 @@ struct ProviderStatusMappingTests {
     #expect(s.tone == .needsSetup)
   }
 
+  // MARK: - Paused states (#2109)
+
+  /// An interrupted FIRST install. The user chose to stop and their progress
+  /// is kept, so the chip must read as setup-pending, never as an error —
+  /// this used to arrive here as `.failed` and paint the error tone.
+  @Test("EG-1 paused → Paused / needs-setup")
+  func egOnePaused() {
+    let s = status(for: .egOne, egOneInstall: .paused)
+    #expect(s.label == "Paused")
+    #expect(s.tone == .needsSetup)
+  }
+
+  /// A working older revision is on disk but the pinned one is not, so AI
+  /// cleanup is genuinely OFF. The chip must agree with the detailed row
+  /// rather than reassure: a calm chip beside an alarmed row is worse than
+  /// either alone, because it teaches the user to distrust the screen. This is
+  /// the silently-off state #2109 exists to surface.
+  @Test(arguments: [true, false])
+  func egOneUpdatePausedReadsAsNeedingAttention(_ resumable: Bool) {
+    let s = status(for: .egOne, egOneInstall: .updatePaused(resumable: resumable))
+    #expect(s.label == "Update paused")
+    #expect(s.tone == .error)
+  }
+
+  /// Two-way control on the pair above: the two paused states must NOT collapse
+  /// to the same chip. `paused` means "nothing works yet, finish when you like";
+  /// `updatePaused` means "something that was working has stopped". A mapping
+  /// that returned one tone for both would pass each test above in isolation.
+  @Test("the two paused states are distinguishable at the chip")
+  func pausedAndUpdatePausedDoNotCollapse() {
+    let paused = status(for: .egOne, egOneInstall: .paused)
+    let updatePaused = status(for: .egOne, egOneInstall: .updatePaused(resumable: true))
+    #expect(paused.label != updatePaused.label)
+    #expect(paused.tone != updatePaused.tone)
+  }
+
+  // MARK: - Rail and row agreement (#2109)
+
+  /// Every EG-1 install state, so the agreement checks below cannot silently
+  /// skip the case that matters.
+  nonisolated static let everyEGOneState: [EGOneInstallState] = [
+    .notInstalled,
+    .downloading(fractionCompleted: 0.4),
+    .verifying,
+    .installed(version: "1.1"),
+    .installed(version: nil),
+    .paused,
+    .updatePaused(resumable: true),
+    .updatePaused(resumable: false),
+    .failed(.network),
+  ]
+
+  /// THE agreement invariant, and the reason the row's copy was extracted into
+  /// a value at all: the chip and the row render the same state through two
+  /// independent code paths. Compile-time exhaustiveness forces both to HANDLE
+  /// every case and does nothing to make them AGREE — a reassuring chip beside
+  /// an alarmed row is worse than either being wrong alone, because it teaches
+  /// the user to distrust the screen.
+  ///
+  /// Stated as a property rather than a table of expected pairs: a table would
+  /// just restate both implementations and pass whatever they happened to say.
+  @Test("ready chip if and only if the model is actually serving")
+  func railReadyMatchesRowServing() {
+    for state in Self.everyEGOneState {
+      let chip = status(for: .egOne, egOneInstall: state, egOneHealth: .green)
+      let isInstalled: Bool = { if case .installed = state { return true } else { return false } }()
+      #expect(
+        (chip.tone == .ready) == isInstalled,
+        "\(state): chip ready tone must track installed exactly")
+    }
+  }
+
+  /// Anything the chip flags as needing attention must give the user something
+  /// to DO in the row. A red chip beside a row with no action is a dead end.
+  @Test("an attention-seeking chip always has a row action behind it")
+  func attentionStatesOfferAnAction() {
+    for state in Self.everyEGOneState {
+      let chip = status(for: .egOne, egOneInstall: state, egOneHealth: .green)
+      guard chip.tone == .error || chip.tone == .needsSetup else { continue }
+      let row = EGOneRowPresentation.forState(state)
+      // `verifying` is the one legitimate exception: it is transient and
+      // resolves on its own, so there is nothing for the user to do.
+      if case .verifying = state { continue }
+      #expect(
+        row.primaryAction != nil,
+        "\(state): chip asks for attention but the row offers no action")
+    }
+  }
+
+  /// Remove Model appears exactly when a usable model is on disk. The
+  /// `updatePaused` row is the case worth pinning: a full model IS present, and
+  /// the help centre promises users can delete models to reclaim storage.
+  @Test("remove is offered exactly when bytes are on disk")
+  func removeOfferedOnlyWithAModelPresent() {
+    for state in Self.everyEGOneState {
+      let row = EGOneRowPresentation.forState(state)
+      let hasModelOnDisk: Bool = {
+        switch state {
+        case .installed, .updatePaused: return true
+        case .notInstalled, .downloading, .verifying, .paused, .failed: return false
+        }
+      }()
+      #expect(
+        row.showsRemove == hasModelOnDisk,
+        "\(state): Remove Model offered without a model, or withheld with one")
+    }
+  }
+
+  /// The properties above are necessary and NOT sufficient: they would all
+  /// still pass with "Resume upgrade" and "Finish upgrade" REVERSED, or with
+  /// reassuring copy on `updatePaused`. Both would be user-visibly wrong and
+  /// invisible to a property test, so the founder-decided wording is pinned
+  /// directly here.
+  ///
+  /// The pairing is the point. `resumable` means the user already started the
+  /// download, so the verb must be Resume; not-resumable means they have not,
+  /// so it must be Finish. Swapping them tells people to resume something they
+  /// never began.
+  @Test("the paused actions are pinned to the right state")
+  func pausedActionsUseTheDecidedWording() {
+    #expect(EGOneRowPresentation.forState(.paused).primaryAction == "Resume")
+    #expect(
+      EGOneRowPresentation.forState(.updatePaused(resumable: true)).primaryAction
+        == "Resume upgrade")
+    #expect(
+      EGOneRowPresentation.forState(.updatePaused(resumable: false)).primaryAction
+        == "Finish upgrade")
+    // Never "Install": the user already has a working model, and Install reads
+    // as a new product to acquire — Frank's stated failure mode.
+    #expect(
+      EGOneRowPresentation.forState(.updatePaused(resumable: false)).primaryAction?
+        .contains("Install") == false)
+  }
+
+  /// Both update messages must SAY that cleanup is off. A reassuring string
+  /// here would satisfy every structural invariant while hiding the exact
+  /// condition #2109 exists to surface.
+  @Test("the update messages state that cleanup is paused")
+  func updateMessagesSayCleanupIsPaused() {
+    for resumable in [true, false] {
+      let message = EGOneRowPresentation.forState(.updatePaused(resumable: resumable)).message
+      #expect(message.contains("AI cleanup is paused"), "\(resumable): message must not reassure")
+      // The download size is deliberately absent: leading with 2.9 GB to
+      // someone who already has a working model reads as a cost, not a fix.
+      #expect(message.contains("GB") == false, "\(resumable): size must not lead this row")
+    }
+  }
+
+  /// The version label, composed where it is tested rather than in the view.
+  @Test("the version label renders only when there is something honest to show")
+  func versionLabelSuppressesNilAndBlank() {
+    #expect(EGOneRowPresentation.forState(.installed(version: "1.1")).versionLabel == "EG-1 V1.1")
+    #expect(EGOneRowPresentation.forState(.installed(version: nil)).versionLabel == nil)
+    #expect(EGOneRowPresentation.forState(.installed(version: "")).versionLabel == nil)
+  }
+
+  /// The two paused rows must not read identically. One means "nothing works
+  /// yet"; the other means "something that WAS working has stopped".
+  @Test("the paused rows say different things")
+  func pausedRowsAreDistinguishable() {
+    let paused = EGOneRowPresentation.forState(.paused)
+    let update = EGOneRowPresentation.forState(.updatePaused(resumable: true))
+    #expect(paused.message != update.message)
+    #expect(paused.primaryAction != update.primaryAction)
+  }
+
   @Test("EG-1 downloading → Downloading / needs-setup")
   func egOneDownloading() {
     let s = status(for: .egOne, egOneInstall: .downloading(fractionCompleted: 0.4))

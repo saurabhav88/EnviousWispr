@@ -80,6 +80,16 @@ enum ProviderStatusMapping {
     switch install {
     case .notInstalled:
       return ProviderStatus(label: "Not installed", tone: .needsSetup)
+    // #2109: an interrupted first install. The user chose to stop and their
+    // progress is kept, so this is a setup state, never an error.
+    case .paused:
+      return ProviderStatus(label: "Paused", tone: .needsSetup)
+    // A working older model is on disk but the pinned one is not, so cleanup
+    // is genuinely off. The chip must AGREE with the detailed row rather than
+    // reassure — this is exactly the silently-off state #2109 exists to
+    // surface, and a calm chip beside an alarmed row is worse than either.
+    case .updatePaused:
+      return ProviderStatus(label: "Update paused", tone: .error)
     case .downloading:
       return ProviderStatus(label: "Downloading", tone: .needsSetup)
     case .verifying:

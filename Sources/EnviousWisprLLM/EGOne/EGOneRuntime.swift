@@ -140,6 +140,13 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // stream. Reactively re-activating here would loop: an in-flight
     // activation's own `ensureAvailable()` republishes `.admitted` → `.installed`
     // while the server is still `.stopped` (grounded r2 P1).
+    // #2109: the single transition owner. The adapter has TWO publication
+    // paths — the seed and the observer — so neither of them is the
+    // authority; both converge here. Comparing before storing makes a
+    // republish of the SAME state a no-op, which is what lets the telemetry
+    // emit added in a later chunk fire once per real transition rather than
+    // once per settings-window open.
+    guard installState != state else { return }
     installState = state
     recomputeHealth()
   }
@@ -162,6 +169,13 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
     switch installState {
     case .notInstalled: health = .red(reason: "download_required")
+    // #2109: an interrupted first install is not a failure — the user chose
+    // it, and their progress is kept. Yellow, not red.
+    case .paused: health = .yellow(reason: "download_paused")
+    // A working older revision is on disk but the pinned one is not, so polish
+    // is genuinely unavailable. RED is correct and deliberate: this is exactly
+    // the silently-off state #2109 exists to stop hiding.
+    case .updatePaused: health = .red(reason: "update_required")
     case .downloading: health = .yellow(reason: "downloading")
     case .verifying: health = .yellow(reason: "verifying")
     case .failed(let failure): health = .red(reason: failure.rawValue)
@@ -184,10 +198,9 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// through the shared engine now, not from here.
   public func startDownload() {
     guard let delivery else { return }
-    switch installState {
-    case .notInstalled, .failed: break
-    case .downloading, .verifying, .installed: return
-    }
+    // #2109: the decision lives on the state itself, exhaustively, so a future
+    // case cannot silently render a button that does nothing when pressed.
+    guard installState.acceptsDownloadStart else { return }
     Task {
       let outcome = await delivery.ensureAvailable()
       // A user-initiated download that completes while EG-1 is the selected

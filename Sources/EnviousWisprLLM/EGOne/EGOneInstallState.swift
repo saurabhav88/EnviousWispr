@@ -13,8 +13,45 @@ public enum EGOneInstallState: Sendable, Equatable {
   case notInstalled
   case downloading(fractionCompleted: Double)
   case verifying
-  case installed(version: String)
+  /// Installed and current. The payload is the user-facing DISPLAY version
+  /// (e.g. "1.1"), optional because a manifest without one renders no label
+  /// rather than falling back to the internal revision (#2109).
+  case installed(version: String?)
+  /// An interrupted FIRST install: no working model, resumable partials on
+  /// disk. Ported from the founder ruling of 2026-07-17 already shipped for
+  /// Parakeet and WhisperKit (`WhisperKitDownloadState.paused`) — paused,
+  /// Resume anytime. EG-1 was the only engine of the three without it, and
+  /// presented a deliberate cancel as a failure with a Try Again button.
+  case paused
+  /// A working OLDER revision is installed and the pinned revision is not, so
+  /// AI cleanup is off until this completes (#2109). Distinct from
+  /// `notInstalled`, which this used to be rendered as — byte-identically to
+  /// a user who never had EG-1 at all.
+  ///
+  /// `resumable` separates "continue what you started" from "start the
+  /// update". It is a presentation distinction only and never gates
+  /// behaviour; both variants offer the same action, worded differently.
+  case updatePaused(resumable: Bool)
   case failed(EGOneDownloadFailure)
+
+  /// Whether pressing the row's primary button should START a fetch.
+  ///
+  /// Named as a property rather than left inline in `EGOneRuntime.startDownload`
+  /// because of the failure it prevents (#2109): a state missing from that
+  /// guard renders its button and then silently does nothing when pressed.
+  /// That is invisible in review, invisible at compile time, and reads to a
+  /// user as the app ignoring them. Exhaustive here, so a future case cannot
+  /// be added without answering the question.
+  ///
+  /// The in-flight states return false because the shared controller
+  /// single-flights per identity: a second press would join the same attempt,
+  /// so refusing early is equivalent and cheaper.
+  var acceptsDownloadStart: Bool {
+    switch self {
+    case .notInstalled, .failed, .paused, .updatePaused: return true
+    case .downloading, .verifying, .installed: return false
+    }
+  }
 }
 
 /// EG-1 download-failure vocabulary for user-facing copy (settings row copy in
