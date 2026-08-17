@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprServices
 import SwiftUI
@@ -22,11 +23,122 @@ struct LivePreviewSettingsView: View {
   /// download must outlive view churn. This page only renders it.
   let packs: LivePreviewPacksModel
 
+  /// #2123: the preview model's download lifecycle. Optional for the same reason
+  /// the speech-engine page's is — a preview or a test may render this page with
+  /// no delivery home in the environment.
+  @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
+
   /// View-local too: a search box is about what this page is SHOWING, not about the catalogue,
   /// so the model has no reason to know it exists.
   @State private var searchText: String = ""
 
-  private var isSupported: Bool { ApplePreviewEngineResolver.isSupportedOnThisSystem }
+  /// One engine card: selectable, with at most one action.
+  ///
+  /// Selecting is deliberately SEPARATE from acting. Tapping the card chooses the
+  /// engine; the button downloads, cancels, resumes, retries or removes. Choosing
+  /// an engine must never start a 217 MB download by itself — the founder's Gate 1
+  /// decision, and the reason the two are different gestures.
+  @ViewBuilder
+  private func engineCard(
+    _ card: LivePreviewEnginePresentation.Card,
+    choice: LivePreviewEngineChoice
+  ) -> some View {
+    HStack(alignment: .top, spacing: 11) {
+      // **The selectable area is its OWN control, and stops before the button.**
+      // An `onTapGesture` wrapped around the whole row made Download also select
+      // the engine, and `.accessibilityElement(children: .combine)` merged the two
+      // into a single element — so "selecting and downloading are separate
+      // gestures" was true of the intent and false of the code.
+      Button {
+        settings.livePreviewEngine = choice
+      } label: {
+        HStack(alignment: .top, spacing: 11) {
+          SettingsRowIcon(systemName: card.isSelected ? "checkmark.circle.fill" : "circle")
+          VStack(alignment: .leading, spacing: 4) {
+            Text(card.title).settingsRowLabel()
+            Text(card.description).settingsReadingCopy()
+            if let unavailability = card.unavailability {
+              Text(unavailability).settingsReadingCopy()
+            }
+            if let progress = card.progress {
+              ProgressView(value: progress)
+            }
+          }
+          // **Inside the label, not beside the button.** With the spacer outside,
+          // the button was only as wide as its icon and text, so tapping the blank
+          // part of the card selected nothing — a card that looks selectable
+          // across its whole width and is not. The rectangular content shape makes
+          // that whole area hittable rather than just the drawn glyphs.
+          Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityAddTraits(card.isSelected ? [.isSelected] : [])
+      if let action = card.action {
+        // Removal is bordered, everything else prominent: the destructive action
+        // should not be the most inviting thing on the card.
+        if action == .remove {
+          Button(Self.label(for: action)) { perform(action) }.buttonStyle(.bordered)
+        } else {
+          Button(Self.label(for: action)) { perform(action) }.buttonStyle(.borderedProminent)
+        }
+      }
+    }
+  }
+
+  private static func label(for action: LivePreviewEnginePresentation.Action) -> String {
+    switch action {
+    case .download: return "Download"
+    case .cancelDownload: return "Cancel"
+    case .resumeDownload: return "Resume"
+    case .retryDownload: return "Try Again"
+    case .remove: return "Remove"
+    }
+  }
+
+  private func perform(_ action: LivePreviewEnginePresentation.Action) {
+    guard let modelDelivery else { return }
+    switch action {
+    // Download, resume and retry are one operation to the delivery layer; only
+    // the word on the button differs, and the card already chose it.
+    case .download, .resumeDownload, .retryDownload:
+      modelDelivery.startPreviewDownload()
+    case .cancelDownload:
+      modelDelivery.cancelPreviewDownload()
+    case .remove:
+      // Wired in the next chunk; the card cannot produce this yet unless the
+      // model is admitted, and removal has its own confirmation question.
+      break
+    }
+  }
+
+  /// Whether APPLE's engine can run here. Still the gate for the pack list and
+  /// the active-language summary, which are about Apple's packs specifically.
+  private var isAppleSupported: Bool { ApplePreviewEngineResolver.isSupportedOnThisSystem }
+
+  /// Whether the universal engine was composable in this build.
+  private var universalExists: Bool {
+    guard let modelDelivery else { return false }
+    // Registration is not enough: a route also needs the bundled tokenizer, and a
+    // build missing it would otherwise enable the toggle and offer a Download for
+    // an engine that could never run.
+    return WhisperPreviewDeliveryWiring.isComposable(modelDelivery: modelDelivery)
+  }
+
+  /// Whether APPLE is the engine actually in use. Apple-specific claims — the
+  /// active-language summary and the "In use" pack badge — are only true then.
+  private var isUsingApple: Bool { settings.livePreviewEngine == .apple }
+
+  /// **Whether the FEATURE can run at all, which is not the same question.**
+  ///
+  /// The toggle used to be disabled on `isAppleSupported`, so below macOS 26 a
+  /// user could not switch the preview on — correct while Apple's was the only
+  /// engine, and the exact dead end #2077 exists to remove now that a second
+  /// engine has no OS floor. Gating the feature on one engine's rule is what
+  /// `live-preview.md` warns against.
+  private var anyEngineAvailable: Bool { isAppleSupported || universalExists }
 
   /// The toggle's own value, NOT whether a preview could run. Anything the page says about a live
   /// preview is false while this is off, and it is off by default.
@@ -44,14 +156,43 @@ struct LivePreviewSettingsView: View {
                 Text(LivePreviewSettingsCopy.toggleLabel).settingsRowLabel()
               }
               .toggleStyle(BrandedToggleStyle())
-              .disabled(!isSupported)
+              .disabled(!anyEngineAvailable)
               Text(LivePreviewSettingsCopy.toggleDescription)
                 .settingsReadingCopy()
-              if !isSupported {
+              // Only when NEITHER engine can run. Below macOS 26 with the
+              // universal engine available this sentence would be false, and it
+              // was the only thing the page said there.
+              if !anyEngineAvailable {
                 Text(LivePreviewSettingsCopy.needsNewerMacOS)
                   .settingsReadingCopy()
               }
             }
+          }
+        }
+      }
+
+      // ── #2123: which engine draws the preview ────────────────────────
+      //
+      // Above the pack list, because it decides whether that list is even
+      // relevant: the packs belong to Apple's engine only.
+      //
+      // Both cards ALWAYS render, including the one that cannot run here.
+      // Hiding the unavailable option reads as a bug — the user knows the app
+      // has two engines — and the card is where the reason lives.
+      BrandedSection(header: LivePreviewEngineCopy.sectionHeader) {
+        BrandedRow(showDivider: false) {
+          VStack(alignment: .leading, spacing: 10) {
+            engineCard(
+              LivePreviewEnginePresentation.appleCard(
+                isSelected: settings.livePreviewEngine == .apple,
+                isSupported: isAppleSupported),
+              choice: .apple)
+            engineCard(
+              LivePreviewEnginePresentation.universalCard(
+                isSelected: settings.livePreviewEngine == .universal,
+                routeExists: universalExists,
+                state: modelDelivery?.whisperPreviewState ?? .notReady),
+              choice: .universal)
           }
         }
       }
@@ -66,7 +207,11 @@ struct LivePreviewSettingsView: View {
       // but false. Switching the toggle on reveals it, which also makes the section read as a
       // consequence of the toggle above it. The list below stays visible either way, so a pack
       // can still be downloaded before turning the feature on.
-      if isSupported, isPreviewOn, let active = packs.active {
+      // Gated on the SELECTED engine too (#2123): this summary and the "In use"
+      // badge below describe Apple's packs. With the universal engine chosen they
+      // would state, confidently and wrongly, which Apple pack is producing the
+      // words on screen.
+      if isAppleSupported, isUsingApple, isPreviewOn, let active = packs.active {
         BrandedSection(header: LivePreviewSettingsCopy.activeHeader) {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 10) {
@@ -82,8 +227,9 @@ struct LivePreviewSettingsView: View {
       }
 
       // Hidden entirely below macOS 26: there are no Apple packs to manage, and an empty list
-      // under a disabled toggle would read as something being broken.
-      if isSupported {
+      // under a disabled toggle would read as something being broken. Still APPLE's
+      // question — the universal engine carries its own languages and has no packs.
+      if isAppleSupported {
         BrandedSection(header: LivePreviewSettingsCopy.packsHeader) {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 10) {
@@ -111,7 +257,7 @@ struct LivePreviewSettingsView: View {
     // is covered without knowing this page exists. `swiftui-view-patterns.md`
     // RULE: swiftui-task-id-cancellation is the house rule for exactly this.
     .task(id: settings.languageMode) {
-      guard isSupported else { return }
+      guard isAppleSupported else { return }
       // Re-read on EVERY appearance. The model outlives this page now, so without this a
       // returning user would see the snapshot from whenever they last opened it — past a download
       // that finished meanwhile, past a macOS purge of a staged asset. The catalogue exists
@@ -242,8 +388,15 @@ struct LivePreviewSettingsView: View {
   /// Gated on the toggle for the same reason the section above is: "In use" is a claim about a
   /// running preview, and nothing runs while the feature is off. The badge and the section read
   /// the same `isPreviewOn`, so they cannot disagree about whether a language is live.
+  ///
+  /// **And on the chosen ENGINE (#2123).** These are Apple's packs. With the
+  /// universal engine selected, no Apple pack is producing anything, so the badge
+  /// would name a language that is not the one on screen — the same
+  /// false-not-merely-stale status the toggle gate was added to prevent, one
+  /// engine later. Reads `isUsingApple`, the same value as the section above, so
+  /// the two still cannot disagree.
   private func isActive(_ pack: LivePreviewPack) -> Bool {
-    guard isPreviewOn, case .ready(let tag, _) = packs.active else { return false }
+    guard isUsingApple, isPreviewOn, case .ready(let tag, _) = packs.active else { return false }
     return tag == pack.tag
   }
 

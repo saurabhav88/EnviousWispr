@@ -22,9 +22,30 @@ import Foundation
 @MainActor
 enum WhisperPreviewDeliveryWiring {
 
-  /// Build the preview engine's route, or nil when the bundled manifest failed to
-  /// load — the same can't-happen-in-release condition the sibling registrations
-  /// guard.
+  /// Where the bundled tokenizer lives, or nil if this build did not ship one.
+  ///
+  /// **One authority, because the UI needs the same answer.** The picker asks
+  /// whether the universal engine exists at all; asking only whether the model is
+  /// REGISTERED would enable the toggle and offer a Download for an engine that
+  /// can never run, since a route also needs this. Cloud review found exactly
+  /// that gap.
+  static func bundledTokenizerDirectory() -> URL? {
+    Bundle.main.url(forResource: "WhisperPreviewTokenizer", withExtension: nil)
+  }
+
+  /// Whether a universal route can be composed in this build at all — the same
+  /// two conditions `makeRoute` checks, asked without building anything.
+  ///
+  /// The UI needs this answer BEFORE it offers a control: asking only whether the
+  /// model is REGISTERED would enable the toggle and offer a Download for an
+  /// engine that could never run, because a route also needs the tokenizer.
+  static func isComposable(modelDelivery: ModelDeliveryHome) -> Bool {
+    modelDelivery.whisperPreviewRegistration != nil && bundledTokenizerDirectory() != nil
+  }
+
+  /// Build the preview engine's route, or nil when this build cannot compose one
+  /// — no delivery registration, or no bundled tokenizer. The same
+  /// can't-happen-in-release condition the sibling registrations guard.
   ///
   /// **Nil means UNAVAILABLE IN THIS BUILD, not not-installed** (#2123). The
   /// caller renders `engineUnavailableInThisBuild`, which offers no user remedy,
@@ -38,10 +59,7 @@ enum WhisperPreviewDeliveryWiring {
   ) -> LivePreviewEngineRoute? {
     guard let registration = modelDelivery.whisperPreviewRegistration else { return nil }
 
-    guard
-      let tokenizerDirectory = Bundle.main.url(
-        forResource: "WhisperPreviewTokenizer", withExtension: nil)
-    else {
+    guard let tokenizerDirectory = bundledTokenizerDirectory() else {
       // No tokenizer, no engine. Refusing here is deliberate: WhisperKit's
       // tokenizer search runs independently of `download: false`, so a nil
       // folder can reach the network, and the app's other bundled tokenizer is

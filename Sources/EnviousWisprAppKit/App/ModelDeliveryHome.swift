@@ -311,6 +311,29 @@ public final class ModelDeliveryHome {
 
   /// Settings-row Resume / Try Again: re-enters the single door (resume-aware
   /// by construction — staged partials survive a cancel).
+  // MARK: - #2123: the preview model's own controls
+
+  /// Start, resume or retry the preview model's download — one method, because
+  /// from the delivery layer's side those are the same operation and only the
+  /// user-facing verb differs (the card decides which word to show).
+  ///
+  /// **No mutation claim, unlike Parakeet's.** That claim serializes changes to
+  /// the ENGINE the heart transcribes with; this model is a display-only limb
+  /// that the heart never loads, so taking the claim would let a preview
+  /// download block a dictation from switching engines — the limb interfering
+  /// with the heart, which is the one thing this feature must never do.
+  public func startPreviewDownload() {
+    guard let handle = whisperPreviewHandle else { return }
+    Task { _ = await handle.ensureAvailable() }
+  }
+
+  /// Stop a download in flight. Safe when nothing is running: the controller
+  /// reports `nothingToCancel` and no state moves.
+  public func cancelPreviewDownload() {
+    guard let handle = whisperPreviewHandle else { return }
+    Task { await handle.cancelActiveFetch() }
+  }
+
   public func resumeParakeetDownload() {
     guard let handle = parakeetHandle else { return }
     Task { [weak self] in

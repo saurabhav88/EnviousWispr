@@ -137,6 +137,32 @@ import Testing
     }
   }
 
+  // MARK: - The action a button performs
+
+  /// Download, Resume and Try Again are three WORDS for one operation, and the
+  /// mapping must not drift: the card picks the word from the delivery state,
+  /// and all three have to reach the same call. A future edit that routes
+  /// "Try Again" somewhere else would leave a button that looks right and does
+  /// nothing.
+  @Test("the three download verbs are one operation, and cancel is not")
+  func downloadVerbsCollapseToOneOperation() {
+    let starting: Set<LivePreviewEnginePresentation.Action> = [
+      .download, .resumeDownload, .retryDownload,
+    ]
+    // Each verb is produced by a real state, so none of them is unreachable copy.
+    #expect(universal(.notReady).action == .download)
+    #expect(universal(.cancelled(resumable: true)).action == .resumeDownload)
+    #expect(
+      universal(.failed(DeliveryFailure(reason: .source5xx, detail: "t"))).action == .retryDownload)
+    #expect(starting.count == 3, "control: the three verbs are distinct cases")
+
+    // And the two that are NOT starting a download.
+    #expect(
+      universal(.downloading(fractionCompleted: 0.5, bytesWritten: 1, totalBytes: 2)).action
+        == .cancelDownload)
+    #expect(universal(.admitted).action == .remove)
+  }
+
   /// Every case of the delivery state, listed once.
   ///
   /// Hand-maintained because `DeliveryState` has associated values and cannot be

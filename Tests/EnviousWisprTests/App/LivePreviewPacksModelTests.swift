@@ -363,13 +363,19 @@ struct LivePreviewPacksModelTests {
     // The load must be reachable on EVERY appearance. Checking for one wrong spelling was too
     // narrow: a mutant guarding on a different condition entirely walked straight through it.
     // The only condition allowed here is the macOS-support gate.
+    //
+    // #2123 renamed it `isAppleSupported`. That is not cosmetic: the page now has
+    // TWO availability questions, and this list is what stops the catalogue load
+    // being re-gated on the wrong one. These are Apple's packs, so it is Apple's
+    // gate — gating on the feature's availability would try to read a pack
+    // catalogue on a Mac that has none.
     let guards =
       body
       .split(separator: "\n")
       .filter { $0.contains("guard ") }
       .map { $0.trimmingCharacters(in: .whitespaces) }
     #expect(
-      guards == ["guard isSupported else { return }"],
+      guards == ["guard isAppleSupported else { return }"],
       """
       the page must re-read on every appearance; any extra condition here means a retained window \
       can keep showing its first snapshot, past finished downloads and past a macOS purge. \
