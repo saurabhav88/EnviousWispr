@@ -415,12 +415,30 @@ import Testing
       availableDiskBytes: { _ in .max })
 
     let entered = AsyncStream<Void>.makeStream()
-    let release = AsyncStream<Void>.makeStream()
+    // THE PARK MUST SURVIVE CANCELLATION, and an `AsyncStream` iterator does
+    // not (cloud-review P1 on the first version of this fix).
+    //
+    // `cancel` fires the draining signal and then IMMEDIATELY calls
+    // `task.cancel()`. An attempt parked in `AsyncStream.Iterator.next()`
+    // returns `nil` on cancellation, so it finishes, `await task.value`
+    // returns, and `drainingTask` is cleared — possibly before this test's
+    // waiter has reacquired the actor. That reintroduces the very
+    // intermittency this change exists to remove, one mechanism over: version
+    // one failed by STARVATION, this would fail by the window CLOSING early.
+    //
+    // `withCheckedContinuation` (non-throwing) is not cancellation-aware, so
+    // the attempt stays parked until the test opens the gate explicitly. The
+    // drain window is then held open BY CONSTRUCTION rather than by winning a
+    // race.
+    //
+    // `sweepNeverDeletesStagingForAnAttemptInFlight` keeps the plain
+    // `AsyncStream` park deliberately: it asserts BEFORE it cancels, so the
+    // cancellation never closes a window it still needs.
+    let gate = CancellationInsensitiveGate()
     await controller.setBeforeExistingCacheValidationForTesting {
       entered.continuation.yield()
       entered.continuation.finish()
-      var iterator = release.stream.makeAsyncIterator()
-      _ = await iterator.next()
+      await gate.wait()
     }
     async let attempt = controller.ensureModelAvailable(draining)
     let didEnter = await withDeadline(seconds: 5) {
@@ -473,8 +491,9 @@ import Testing
       exists(drainingStaging),
       "the sweep deleted staging for an attempt that is still draining")
 
-    release.continuation.yield()
-    release.continuation.finish()
+    // Open the gate only now — after the sweep has run against a window this
+    // test held open deliberately.
+    await gate.open()
     _ = await cancelled
     _ = await attempt
 
@@ -608,5 +627,31 @@ import Testing
       exists(superseded) == false,
       "an unset kill switch froze the sweep, so no ordinary user would ever reclaim abandoned downloads"
     )
+  }
+}
+
+/// A park that CANCELLATION CANNOT OPEN.
+///
+/// `AsyncStream.Iterator.next()` returns `nil` when its task is cancelled, so a
+/// test parking on one cannot hold a window open across a `cancel()` — the
+/// subject finishes early and the state under test is gone before the
+/// assertion runs. `withCheckedContinuation` (non-throwing) has no
+/// cancellation path, so the only way out is `open()`.
+///
+/// Not a clock wait and not a poll: the waiter suspends until explicitly
+/// resumed. Use it when the test must OWN when the subject proceeds.
+actor CancellationInsensitiveGate {
+  private var continuation: CheckedContinuation<Void, Never>?
+  private var isOpen = false
+
+  func wait() async {
+    if isOpen { return }
+    await withCheckedContinuation { continuation = $0 }
+  }
+
+  func open() {
+    isOpen = true
+    continuation?.resume()
+    continuation = nil
   }
 }
