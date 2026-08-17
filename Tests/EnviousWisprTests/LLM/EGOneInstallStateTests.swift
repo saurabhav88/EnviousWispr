@@ -13,8 +13,8 @@ import Testing
   /// time and indistinguishable, to a user, from the app being broken.
   @Test func pausedStatesAcceptADownloadStart() {
     #expect(EGOneInstallState.paused.acceptsDownloadStart)
-    #expect(EGOneInstallState.updatePaused(resumable: true).acceptsDownloadStart)
-    #expect(EGOneInstallState.updatePaused(resumable: false).acceptsDownloadStart)
+    #expect(EGOneInstallState.updatePaused(resumable: true, targetVersion: "1.1").acceptsDownloadStart)
+    #expect(EGOneInstallState.updatePaused(resumable: false, targetVersion: "1.1").acceptsDownloadStart)
   }
 
   /// Two-way control: the in-flight and finished states must REFUSE, or the

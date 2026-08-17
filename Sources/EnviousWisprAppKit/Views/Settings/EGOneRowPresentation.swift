@@ -37,19 +37,35 @@ struct EGOneRowPresentation: Equatable {
       return .init(
         message: "Download paused. Resume anytime.",
         primaryAction: "Resume", showsRemove: false, versionLabel: nil)
-    case .updatePaused(let resumable):
+    case .updatePaused(let resumable, let targetVersion):
+      // Composed from the manifest's version, never a literal. A new revision
+      // ships as a manifest edit with no Swift change, so a hard-coded "V1.1"
+      // would keep naming the previous model after the real one moved on —
+      // confidently wrong, which is worse than saying nothing.
+      let target = targetVersion.map { "EG-1 V\($0)" } ?? "the new EG-1"
       return .init(
         message: resumable
-          ? "AI cleanup is paused. Your upgrade to EG-1 V1.1 stopped part-way."
-          : "AI cleanup is paused until EG-1 V1.1 finishes installing.",
+          ? "AI cleanup is paused. Your upgrade to \(target) stopped part-way."
+          : "AI cleanup is paused until \(target) finishes installing.",
         primaryAction: resumable ? "Resume upgrade" : "Finish upgrade",
-        // A full model IS on disk and the help centre promises users can remove
-        // models to reclaim storage. Withdrawing the control here would make
-        // shipped documentation false.
-        showsRemove: true,
-        // No version label: the installed revision is the OLD one, whose
-        // manifest this app bundle does not contain, so any number here would
-        // be invented.
+        // NO Remove button here, and this reverses an earlier decision of mine.
+        // I added it arguing the help centre promises users can remove models
+        // to reclaim storage. That promise is real, but `remove()` deletes the
+        // CURRENT manifest's files and marker — and in this state the current
+        // revision is precisely what is NOT installed. Pressing it would leave
+        // the older model's gigabytes and its marker untouched and return the
+        // row to this same state: a button that visibly does nothing, which is
+        // the exact defect fixed for Resume elsewhere in this change.
+        //
+        // Hiding it restores the behaviour that shipped before this change
+        // (there was no Remove button in this state), so no promise is broken
+        // that was not already. Reclaiming a superseded revision on demand
+        // needs prior-marker removal, which does not exist yet — tracked
+        // rather than faked.
+        showsRemove: false,
+        // No version label: the INSTALLED revision is the old one, whose
+        // manifest this bundle does not contain, so any number here would be
+        // invented. The target version above is a different thing.
         versionLabel: nil)
     case .downloading:
       return .init(message: "", primaryAction: "Cancel", showsRemove: false, versionLabel: nil)

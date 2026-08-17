@@ -67,7 +67,10 @@ public enum EGOnePausedInstallState: String, Sendable, Equatable {
   static func projection(of state: EGOneInstallState) -> EGOnePausedInstallState? {
     switch state {
     case .paused: return .paused
-    case .updatePaused(let resumable): return resumable ? .updatePausedResumable : .updatePaused
+    case .updatePaused(let resumable, _):
+      // The target version is deliberately NOT projected: telemetry keeps a
+      // closed property set, and a version string would make it unbounded.
+      return resumable ? .updatePausedResumable : .updatePaused
     case .notInstalled, .downloading, .verifying, .installed, .failed: return nil
     }
   }

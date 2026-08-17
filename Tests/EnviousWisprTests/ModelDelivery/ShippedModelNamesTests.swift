@@ -185,4 +185,67 @@ import Testing
       Self.firstCollision([stable, stableNewerRevision].map(Self.uniquenessKey)) != nil,
       "two identities differing only by revision must collide, or the sweep could delete a live download")
   }
+
+  // MARK: - Variant suffix safety (whole-diff review)
+
+  /// The staging match ends with `hasSuffix("-\(variant)")`, so a variant that
+  /// is a SUFFIX of another is ambiguous in the same way a prefix name is:
+  /// sweeping `foo` would also match a directory for `bar-foo` and delete its
+  /// resumable bytes. The family+name+variant uniqueness freeze does not catch
+  /// it, because those variants genuinely differ.
+  @Test func noShippedVariantIsASuffixOfAnotherForTheSameModel() {
+    for (key, variants) in ShippedModelNames.variants {
+      let sorted = Array(variants).sorted()
+      for a in sorted {
+        #expect(a.isEmpty == false, "\(key): an empty variant makes the suffix match everything")
+        for b in sorted where a != b {
+          #expect(
+            b.hasSuffix(a) == false,
+            "\(key): variant \"\(a)\" is a suffix of \"\(b)\", so a sweep for one would match the other's staging and delete its resumable bytes")
+        }
+      }
+    }
+  }
+
+  /// Two-way control, driving the same rule against the collision it forbids.
+  @Test func theVariantSuffixRuleRejectsAnOverlappingPair() {
+    let colliding = ["foo", "bar-foo"].sorted()
+    var caught = false
+    for a in colliding {
+      for b in colliding where a != b {
+        if b.hasSuffix(a) { caught = true }
+      }
+    }
+    #expect(caught, "the suffix rule cannot detect the overlap it exists to forbid")
+
+    // And it must NOT fire on the real shipped WhisperKit pair, which is
+    // neither a prefix nor a suffix of the other.
+    let shipped = ["openai_whisper-large-v3-v20240930_turbo", "openai_whisper-small_216MB"]
+    for a in shipped {
+      for b in shipped where a != b {
+        #expect(b.hasSuffix(a) == false, "the shipped pair must not be flagged")
+      }
+    }
+  }
+
+  /// The variant registry must not drift from what ships.
+  @Test func everyBundledVariantIsRegistered() throws {
+    let repoRoot = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
+    for resource in [
+      "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
+    ] {
+      let url = resourceDir.appendingPathComponent("\(resource).json")
+      let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity
+      let key = ShippedModelNames.variantKey(family: identity.family, name: identity.name)
+      #expect(
+        ShippedModelNames.variants[key]?.contains(identity.variant) == true,
+        "\(resource) ships variant \(identity.variant) for \(key), which is not registered")
+    }
+  }
 }

@@ -242,7 +242,7 @@ public final class EGOneDeliveryAdapter {
       let seeded: EGOneInstallState =
         await controller.isAdmitted(registration)
         ? .installed(version: version)
-        : Self.notServingState(for: registration)
+        : Self.notServingState(for: registration, version: version)
       await MainActor.run { [weak self] in
         guard let self, seedSeq > self.lastAppliedInstallSeq else { return }
         self.lastAppliedInstallSeq = seedSeq
@@ -310,7 +310,7 @@ public final class EGOneDeliveryAdapter {
   ) -> EGOneInstallState {
     switch state {
     case .notReady:
-      return Self.notServingState(for: registration)
+      return Self.notServingState(for: registration, version: version)
     case .preparing:
       // Existing-cache validation / staging setup reads as "verifying" in the
       // EG-1 row (yellow).
@@ -326,7 +326,7 @@ public final class EGOneDeliveryAdapter {
       // `.failed(.cancelled)`, which rendered a red row with a Try Again
       // button for something the user chose. Which paused state it is depends
       // on whether a working older revision survives underneath.
-      return Self.notServingState(for: registration)
+      return Self.notServingState(for: registration, version: version)
     case .failed(let failure):
       return .failed(Self.mapFailure(failure.reason))
     }
@@ -342,11 +342,14 @@ public final class EGOneDeliveryAdapter {
   /// exists to stop hiding — so it is checked first and reported whether or
   /// not partials exist.
   nonisolated static func notServingState(
-    for registration: DeliveryRegistration
+    for registration: DeliveryRegistration, version: String?
   ) -> EGOneInstallState {
     let facts = Self.diskFacts(for: registration)
     if facts.olderRevisionSurvives {
-      return .updatePaused(resumable: facts.hasPartials)
+      // The TARGET version travels with the state so copy never hard-codes a
+      // model release: a revision ships as a manifest edit with no Swift
+      // change, and a literal would then name the wrong version confidently.
+      return .updatePaused(resumable: facts.hasPartials, targetVersion: version)
     }
     return facts.hasPartials ? .paused : .notInstalled
   }

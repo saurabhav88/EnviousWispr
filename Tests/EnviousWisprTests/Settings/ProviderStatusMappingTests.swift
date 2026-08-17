@@ -63,7 +63,7 @@ struct ProviderStatusMappingTests {
   /// the silently-off state #2109 exists to surface.
   @Test(arguments: [true, false])
   func egOneUpdatePausedReadsAsNeedingAttention(_ resumable: Bool) {
-    let s = status(for: .egOne, egOneInstall: .updatePaused(resumable: resumable))
+    let s = status(for: .egOne, egOneInstall: .updatePaused(resumable: resumable, targetVersion: "1.1"))
     #expect(s.label == "Update paused")
     #expect(s.tone == .error)
   }
@@ -75,7 +75,7 @@ struct ProviderStatusMappingTests {
   @Test("the two paused states are distinguishable at the chip")
   func pausedAndUpdatePausedDoNotCollapse() {
     let paused = status(for: .egOne, egOneInstall: .paused)
-    let updatePaused = status(for: .egOne, egOneInstall: .updatePaused(resumable: true))
+    let updatePaused = status(for: .egOne, egOneInstall: .updatePaused(resumable: true, targetVersion: "1.1"))
     #expect(paused.label != updatePaused.label)
     #expect(paused.tone != updatePaused.tone)
   }
@@ -91,8 +91,8 @@ struct ProviderStatusMappingTests {
     .installed(version: "1.1"),
     .installed(version: nil),
     .paused,
-    .updatePaused(resumable: true),
-    .updatePaused(resumable: false),
+    .updatePaused(resumable: true, targetVersion: "1.1"),
+    .updatePaused(resumable: false, targetVersion: "1.1"),
     .failed(.network),
   ]
 
@@ -142,8 +142,11 @@ struct ProviderStatusMappingTests {
       let row = EGOneRowPresentation.forState(state)
       let hasModelOnDisk: Bool = {
         switch state {
-        case .installed, .updatePaused: return true
-        case .notInstalled, .downloading, .verifying, .paused, .failed: return false
+        // `updatePaused` is deliberately FALSE: a model is on disk, but
+        // `remove()` targets the current manifest, which is not the installed
+        // revision in that state, so the button could not remove it.
+        case .installed: return true
+        case .updatePaused, .notInstalled, .downloading, .verifying, .paused, .failed: return false
         }
       }()
       #expect(
@@ -166,15 +169,15 @@ struct ProviderStatusMappingTests {
   func pausedActionsUseTheDecidedWording() {
     #expect(EGOneRowPresentation.forState(.paused).primaryAction == "Resume")
     #expect(
-      EGOneRowPresentation.forState(.updatePaused(resumable: true)).primaryAction
+      EGOneRowPresentation.forState(.updatePaused(resumable: true, targetVersion: "1.1")).primaryAction
         == "Resume upgrade")
     #expect(
-      EGOneRowPresentation.forState(.updatePaused(resumable: false)).primaryAction
+      EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "1.1")).primaryAction
         == "Finish upgrade")
     // Never "Install": the user already has a working model, and Install reads
     // as a new product to acquire — Frank's stated failure mode.
     #expect(
-      EGOneRowPresentation.forState(.updatePaused(resumable: false)).primaryAction?
+      EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "1.1")).primaryAction?
         .contains("Install") == false)
   }
 
@@ -184,7 +187,7 @@ struct ProviderStatusMappingTests {
   @Test("the update messages state that cleanup is paused")
   func updateMessagesSayCleanupIsPaused() {
     for resumable in [true, false] {
-      let message = EGOneRowPresentation.forState(.updatePaused(resumable: resumable)).message
+      let message = EGOneRowPresentation.forState(.updatePaused(resumable: resumable, targetVersion: "1.1")).message
       #expect(message.contains("AI cleanup is paused"), "\(resumable): message must not reassure")
       // The download size is deliberately absent: leading with 2.9 GB to
       // someone who already has a working model reads as a cost, not a fix.
@@ -200,12 +203,51 @@ struct ProviderStatusMappingTests {
     #expect(EGOneRowPresentation.forState(.installed(version: "")).versionLabel == nil)
   }
 
+  /// The upgrade copy is COMPOSED from the manifest's version, never a
+  /// literal. A new EG-2/EG-3 revision ships as a manifest edit with no Swift
+  /// change, so a hard-coded "V1.1" would keep naming the previous model after
+  /// the real one moved on — confidently wrong, which is worse than silent.
+  @Test func upgradeCopyFollowsTheTargetVersion() {
+    let next = EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "2.0"))
+    #expect(next.message.contains("EG-1 V2.0"))
+    #expect(next.message.contains("V1.1") == false, "copy still names a hard-coded version")
+
+    let resuming = EGOneRowPresentation.forState(
+      .updatePaused(resumable: true, targetVersion: "2.0"))
+    #expect(resuming.message.contains("EG-1 V2.0"))
+  }
+
+  /// No target version means generic copy, not a placeholder and not a stale
+  /// literal.
+  @Test func upgradeCopyWithoutAVersionStaysGeneric() {
+    let unknown = EGOneRowPresentation.forState(
+      .updatePaused(resumable: false, targetVersion: nil))
+    #expect(unknown.message.contains("the new EG-1"))
+    #expect(unknown.message.contains("V") == false, "a nil version must not render a version token")
+  }
+
+  /// Remove Model is NOT offered while an upgrade is pending. `remove()`
+  /// deletes the CURRENT manifest's files, and in this state the current
+  /// revision is exactly what is not installed — the button would leave the
+  /// older model's gigabytes untouched and return the row to this state.
+  @Test func removeIsNotOfferedWhileAnUpgradeIsPending() {
+    for resumable in [true, false] {
+      let row = EGOneRowPresentation.forState(
+        .updatePaused(resumable: resumable, targetVersion: "1.1"))
+      #expect(
+        row.showsRemove == false,
+        "Remove is offered in a state where it cannot remove the installed model")
+    }
+    // Two-way control: it IS offered where it works.
+    #expect(EGOneRowPresentation.forState(.installed(version: "1.1")).showsRemove)
+  }
+
   /// The two paused rows must not read identically. One means "nothing works
   /// yet"; the other means "something that WAS working has stopped".
   @Test("the paused rows say different things")
   func pausedRowsAreDistinguishable() {
     let paused = EGOneRowPresentation.forState(.paused)
-    let update = EGOneRowPresentation.forState(.updatePaused(resumable: true))
+    let update = EGOneRowPresentation.forState(.updatePaused(resumable: true, targetVersion: "1.1"))
     #expect(paused.message != update.message)
     #expect(paused.primaryAction != update.primaryAction)
   }

@@ -92,7 +92,7 @@ import Testing
       }
     }
     #expect(
-      seeded == .updatePaused(resumable: false),
+      seeded == .updatePaused(resumable: false, targetVersion: "1.1"),
       "a cold launch owing an upgrade must seed updatePaused, not notInstalled")
   }
 
@@ -211,7 +211,7 @@ import Testing
     let runtime = EGOneRuntime(
       manifest: runtimeManifest(), serverBinaryURL: nil, delivery: adapter)
 
-    let expected = EGOneInstallState.updatePaused(resumable: resumable)
+    let expected = EGOneInstallState.updatePaused(resumable: resumable, targetVersion: "1.1")
     let reached = await withDeadline(seconds: 5) {
       while true {
         if await MainActor.run(body: { runtime.installState == expected }) { return true }

@@ -31,7 +31,15 @@ public enum EGOneInstallState: Sendable, Equatable {
   /// `resumable` separates "continue what you started" from "start the
   /// update". It is a presentation distinction only and never gates
   /// behaviour; both variants offer the same action, worded differently.
-  case updatePaused(resumable: Bool)
+  ///
+  /// `targetVersion` is the display version of the revision being upgraded TO,
+  /// carried rather than hard-coded in copy. A new EG-2/EG-3 revision ships by
+  /// editing two JSON manifests and no Swift at all
+  /// (`eg1-operations.md` RULE: eg1-hot-swap-contract), so a literal in a
+  /// string would keep naming the old version after the model changed — worse
+  /// than no version, because it would confidently name the wrong one. nil
+  /// renders copy with no version rather than a placeholder.
+  case updatePaused(resumable: Bool, targetVersion: String?)
   case failed(EGOneDownloadFailure)
 
   /// Whether pressing the row's primary button should START a fetch.

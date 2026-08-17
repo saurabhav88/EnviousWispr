@@ -30,10 +30,10 @@ import Testing
   @Test func onlyPausedStatesProject() {
     #expect(EGOnePausedInstallState.projection(of: .paused) == .paused)
     #expect(
-      EGOnePausedInstallState.projection(of: .updatePaused(resumable: true))
+      EGOnePausedInstallState.projection(of: .updatePaused(resumable: true, targetVersion: "1.1"))
         == .updatePausedResumable)
     #expect(
-      EGOnePausedInstallState.projection(of: .updatePaused(resumable: false)) == .updatePaused)
+      EGOnePausedInstallState.projection(of: .updatePaused(resumable: false, targetVersion: "1.1")) == .updatePaused)
     for state: EGOneInstallState in [
       .notInstalled, .downloading(fractionCompleted: 0.5), .verifying,
       .installed(version: "1.1"), .failed(.network),
@@ -48,8 +48,8 @@ import Testing
   /// not landing. One name would hide which.
   @Test func theTwoUpdateSituationsAreDistinguishable() {
     #expect(
-      EGOnePausedInstallState.projection(of: .updatePaused(resumable: true))
-        != EGOnePausedInstallState.projection(of: .updatePaused(resumable: false)))
+      EGOnePausedInstallState.projection(of: .updatePaused(resumable: true, targetVersion: "1.1"))
+        != EGOnePausedInstallState.projection(of: .updatePaused(resumable: false, targetVersion: "1.1")))
   }
 
   /// The version never reaches telemetry: the projection carries no payload,
@@ -124,7 +124,7 @@ import Testing
 
     let settled = await withDeadline(seconds: 5) {
       while true {
-        if await MainActor.run(body: { runtime.installState == .updatePaused(resumable: false) }) {
+        if await MainActor.run(body: { runtime.installState == .updatePaused(resumable: false, targetVersion: "1.1") }) {
           return true
         }
         await Task.yield()
@@ -140,7 +140,7 @@ import Testing
       await Task.yield()
     }
     let stillPaused = await MainActor.run {
-      runtime.installState == .updatePaused(resumable: false)
+      runtime.installState == .updatePaused(resumable: false, targetVersion: "1.1")
     }
     try #require(stillPaused == true, "the probe changed the resting state, so this proves nothing")
 

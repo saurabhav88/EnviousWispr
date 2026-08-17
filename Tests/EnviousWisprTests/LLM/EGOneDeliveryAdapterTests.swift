@@ -179,7 +179,7 @@ import Testing
     defer { cold.cleanup() }
     let coldReg = try Self.shardedFixtureRegistration(
       install: cold.install, metadata: cold.metadata)
-    #expect(EGOneDeliveryAdapter.notServingState(for: coldReg) == .notInstalled)
+    #expect(EGOneDeliveryAdapter.notServingState(for: coldReg, version: "1.1") == .notInstalled)
 
     // 2. Partials only: an interrupted FIRST install. Resume, not a failure.
     let interrupted = try makeTempDirs()
@@ -187,7 +187,7 @@ import Testing
     let interruptedReg = try Self.shardedFixtureRegistration(
       install: interrupted.install, metadata: interrupted.metadata)
     try Self.seedStagedPartials(interruptedReg)
-    #expect(EGOneDeliveryAdapter.notServingState(for: interruptedReg) == .paused)
+    #expect(EGOneDeliveryAdapter.notServingState(for: interruptedReg, version: "1.1") == .paused)
 
     // 3. A surviving older revision, upgrade not started: cleanup is off and
     //    the user has never pressed anything.
@@ -196,7 +196,7 @@ import Testing
     let owedReg = try Self.shardedFixtureRegistration(
       install: owed.install, metadata: owed.metadata)
     try Self.seedSurvivingOlderRevision(owedReg)
-    #expect(EGOneDeliveryAdapter.notServingState(for: owedReg) == .updatePaused(resumable: false))
+    #expect(EGOneDeliveryAdapter.notServingState(for: owedReg, version: "1.1") == .updatePaused(resumable: false, targetVersion: "1.1"))
 
     // 4. A surviving older revision AND partials: they started the upgrade and
     //    stopped. This is the Resume-upgrade row.
@@ -206,7 +206,7 @@ import Testing
       install: started.install, metadata: started.metadata)
     try Self.seedSurvivingOlderRevision(startedReg)
     try Self.seedStagedPartials(startedReg)
-    #expect(EGOneDeliveryAdapter.notServingState(for: startedReg) == .updatePaused(resumable: true))
+    #expect(EGOneDeliveryAdapter.notServingState(for: startedReg, version: "1.1") == .updatePaused(resumable: true, targetVersion: "1.1"))
   }
 
   /// A cancel is a DECISION, not a failure. It used to map to

@@ -46,4 +46,29 @@ enum ShippedModelNames {
   static var families: Set<ModelFamily> {
     Set(current.keys).union(retired.keys)
   }
+
+  /// Every VARIANT ever shipped, keyed by family and name (#2109, whole-diff
+  /// review).
+  ///
+  /// The staging match ends with `hasSuffix("-\(variant)")`, which is
+  /// ambiguous in exactly the same way the name prefix is: sweeping variant
+  /// `foo` also matches a directory for variant `bar-foo`, and the
+  /// family+name+variant uniqueness freeze permits that pair because the
+  /// variants ARE different. So an unrelated model's resumable bytes could be
+  /// deleted. An EMPTY variant is worse still — the suffix becomes the empty
+  /// string and matches everything in the family.
+  ///
+  /// Frozen for the same reason as the names: make the collision impossible to
+  /// author rather than detectable after the deletion.
+  static let variants: [String: Set<String>] = [
+    "eg_one|eg-1": ["q5km"],
+    "parakeet|parakeet-tdt-0.6b-v3-coreml": ["int8"],
+    "whisper_kit|whisperkit-coreml": [
+      "openai_whisper-large-v3-v20240930_turbo", "openai_whisper-small_216MB",
+    ],
+  ]
+
+  static func variantKey(family: ModelFamily, name: String) -> String {
+    "\(family.rawValue)|\(name)"
+  }
 }
