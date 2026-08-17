@@ -23,7 +23,7 @@ import Testing
   /// property is just "true" wearing a name and proves nothing above.
   @Test func inFlightAndInstalledStatesRefuseADownloadStart() {
     #expect(
-      EGOneInstallState.downloading(fractionCompleted: 0.5, upgradeTo: nil).acceptsDownloadStart
+      EGOneInstallState.downloading(fractionCompleted: 0.5, upgrade: nil).acceptsDownloadStart
         == false)
     #expect(EGOneInstallState.verifying.acceptsDownloadStart == false)
     #expect(EGOneInstallState.installed(version: "1.1").acceptsDownloadStart == false)

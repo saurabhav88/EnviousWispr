@@ -29,7 +29,7 @@ import Testing
       EGOneDeliveryAdapter.map(
         .downloading(fractionCompleted: 0.5, bytesWritten: 5, totalBytes: 10), version: "1.1",
         registration: reg)
-        == .downloading(fractionCompleted: 0.5, upgradeTo: nil))
+        == .downloading(fractionCompleted: 0.5, upgrade: nil))
     #expect(EGOneDeliveryAdapter.map(.verifying, version: "1.1", registration: reg) == .verifying)
     #expect(
       EGOneDeliveryAdapter.map(.admitted, version: "1.1", registration: reg)

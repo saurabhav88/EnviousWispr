@@ -1,5 +1,32 @@
 import Foundation
 
+/// What a download in flight is REPLACING, when it replaces anything (#2109).
+///
+/// Two facts, deliberately not collapsed into one optional string. A bare
+/// `String?` cannot distinguish "this is a first install" from "this is an
+/// upgrade whose manifest carries no display version", and both cloud-review
+/// P2s on this feature were that conflation surfacing in different states:
+/// a blank `displayVersion` erased the upgrade entirely, and the row fell back
+/// to the FIRST-INSTALL sentence for an upgrade in progress.
+///
+/// `.unnamed` renders the same fallback the paused row already uses ("the new
+/// EG-1") rather than degrading into a different state's copy.
+public enum EGOneUpgradeContext: Sendable, Equatable {
+  /// Upgrading, and the manifest names the version arriving.
+  case named(String)
+  /// Upgrading, but the manifest carries no usable display version. Still an
+  /// upgrade — say so without inventing a number.
+  case unnamed
+
+  /// Builds from a manifest's optional display version. A blank or
+  /// whitespace-only value is `.unnamed`, never `.named("")`, so no caller can
+  /// render a dangling "EG-1 V".
+  public init(displayVersion: String?) {
+    let trimmed = displayVersion?.trimmingCharacters(in: .whitespacesAndNewlines)
+    self = (trimmed?.isEmpty == false) ? .named(trimmed!) : .unnamed
+  }
+}
+
 /// The EG-1 install-state vocabulary the settings UI renders (#1348 Phase 3).
 ///
 /// Formerly `EGOneModelStore.InstallState`; relocated here when EG-1's private
@@ -11,8 +38,8 @@ import Foundation
 /// describes what the settings row shows.
 public enum EGOneInstallState: Sendable, Equatable {
   case notInstalled
-  /// Bytes moving. `upgradeTo` is the DISPLAY version being installed when this
-  /// download REPLACES a working older revision, and nil for a first install
+  /// Bytes moving. `upgrade` describes what this download REPLACES: non-nil
+  /// when it supersedes a working older revision, nil for a first install
   /// (founder, 2026-08-17, from Live UAT).
   ///
   /// Without it the progress row read "Downloading EG-1 (2.9 GB)" for both
@@ -27,7 +54,7 @@ public enum EGOneInstallState: Sendable, Equatable {
   /// UI-state owner, fills it in from the PREVIOUS state. Deriving it from disk
   /// here instead would read a marker and stat up to eight files on every
   /// progress tick, on the UI path.
-  case downloading(fractionCompleted: Double, upgradeTo: String?)
+  case downloading(fractionCompleted: Double, upgrade: EGOneUpgradeContext?)
   case verifying
   /// Installed and current. The payload is the user-facing DISPLAY version
   /// (e.g. "1.1"), optional because a manifest without one renders no label

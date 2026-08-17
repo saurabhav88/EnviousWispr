@@ -35,7 +35,7 @@ import Testing
     #expect(
       EGOnePausedInstallState.projection(of: .updatePaused(resumable: false, targetVersion: "1.1")) == .updatePaused)
     for state: EGOneInstallState in [
-      .notInstalled, .downloading(fractionCompleted: 0.5, upgradeTo: nil), .verifying,
+      .notInstalled, .downloading(fractionCompleted: 0.5, upgrade: nil), .verifying,
       .installed(version: "1.1"), .failed(.network),
     ] {
       #expect(EGOnePausedInstallState.projection(of: state) == nil, "\(state) must not project")
@@ -250,5 +250,60 @@ import Testing
     #expect(
       recorded.all == ["none"],
       "a pause resolved while the app was closed never emitted its exit: \(recorded.all)")
+  }
+
+
+  /// A retry after a failed upgrade is STILL an upgrade.
+  ///
+  /// Cloud-review P2 on 5fdd0d53. `.failed` accepts `startDownload()`, so Try
+  /// Again re-enters `.downloading`. Clearing the upgrade marker on `.failed`
+  /// made that retry render as a FIRST INSTALL — dropping the label exactly
+  /// when a user is already having a bad time, and a network blip mid-upgrade
+  /// is the ordinary case, not an exotic one.
+  ///
+  /// Drives a real `EGOneRuntime` through the whole sequence rather than
+  /// asserting on the enum, because the bug lives in the runtime's transition
+  /// bookkeeping and an enum-level test cannot see it.
+  @MainActor
+  @Test func aRetryAfterAFailedUpgradeStillReadsAsAnUpgrade() throws {
+    let suite = "eg1-upgrade-retry-\(UUID().uuidString)"
+    let store = try #require(UserDefaults(suiteName: suite))
+    defer { store.removePersistentDomain(forName: suite) }
+
+    let runtime = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
+
+    runtime.applyInstallStateForTesting(.updatePaused(resumable: false, targetVersion: "1.1"))
+    runtime.applyInstallStateForTesting(.downloading(fractionCompleted: 0.2, upgrade: nil))
+    #expect(
+      runtime.installState == .downloading(fractionCompleted: 0.2, upgrade: .named("1.1")),
+      "the upgrade label never reached the first download tick")
+
+    // The network drops.
+    runtime.applyInstallStateForTesting(.failed(.network))
+
+    // Try Again. The adapter maps statelessly and passes nil, exactly as in
+    // production; the runtime must still know this is an upgrade.
+    runtime.applyInstallStateForTesting(.downloading(fractionCompleted: 0.05, upgrade: nil))
+    #expect(
+      runtime.installState == .downloading(fractionCompleted: 0.05, upgrade: .named("1.1")),
+      "a retry after a failed upgrade rendered as a first install")
+
+    // CONTROL, the other direction: a genuine first install must NEVER acquire
+    // an upgrade label, or the fix trades one wrong sentence for another.
+    let fresh = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
+    fresh.applyInstallStateForTesting(.notInstalled)
+    fresh.applyInstallStateForTesting(.downloading(fractionCompleted: 0.3, upgrade: nil))
+    #expect(
+      fresh.installState == .downloading(fractionCompleted: 0.3, upgrade: nil),
+      "a first install was labelled an upgrade")
+
+    // And completing the upgrade clears it, so the NEXT first install is clean.
+    runtime.applyInstallStateForTesting(.installed(version: "1.1"))
+    runtime.applyInstallStateForTesting(.downloading(fractionCompleted: 0.1, upgrade: nil))
+    #expect(
+      runtime.installState == .downloading(fractionCompleted: 0.1, upgrade: nil),
+      "the upgrade label outlived the upgrade that set it")
   }
 }

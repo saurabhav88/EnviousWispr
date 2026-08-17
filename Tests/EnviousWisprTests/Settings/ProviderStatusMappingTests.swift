@@ -86,7 +86,7 @@ struct ProviderStatusMappingTests {
   /// skip the case that matters.
   nonisolated static let everyEGOneState: [EGOneInstallState] = [
     .notInstalled,
-    .downloading(fractionCompleted: 0.4, upgradeTo: nil),
+    .downloading(fractionCompleted: 0.4, upgrade: nil),
     .verifying,
     .installed(version: "1.1"),
     .installed(version: nil),
@@ -254,7 +254,7 @@ struct ProviderStatusMappingTests {
 
   @Test("EG-1 downloading → Downloading / needs-setup")
   func egOneDownloading() {
-    let s = status(for: .egOne, egOneInstall: .downloading(fractionCompleted: 0.4, upgradeTo: nil))
+    let s = status(for: .egOne, egOneInstall: .downloading(fractionCompleted: 0.4, upgrade: nil))
     #expect(s.label == "Downloading")
     #expect(s.tone == .needsSetup)
   }
@@ -424,13 +424,13 @@ struct ProviderStatusMappingTests {
   @MainActor
   @Test func onlyAnUpgradeDownloadCarriesAVersionLabel() {
     let upgrading = EGOneRowPresentation.forState(
-      .downloading(fractionCompleted: 0.4, upgradeTo: "1.1"))
+      .downloading(fractionCompleted: 0.4, upgrade: .named("1.1")))
     #expect(
       upgrading.versionLabel == "EG-1 V1.1",
       "an upgrade in flight did not name the version arriving")
 
     let firstInstall = EGOneRowPresentation.forState(
-      .downloading(fractionCompleted: 0.4, upgradeTo: nil))
+      .downloading(fractionCompleted: 0.4, upgrade: nil))
     #expect(
       firstInstall.versionLabel == nil,
       "a first install was labelled as an upgrade, which is a worse lie than the missing label")
@@ -438,12 +438,42 @@ struct ProviderStatusMappingTests {
     // A manifest carrying a blank display version must render NOTHING, never
     // "EG-1 V" with an empty tail. Same rule already enforced for `installed`.
     let blank = EGOneRowPresentation.forState(
-      .downloading(fractionCompleted: 0.4, upgradeTo: ""))
+      .downloading(fractionCompleted: 0.4, upgrade: EGOneUpgradeContext(displayVersion: "")))
     #expect(blank.versionLabel == nil, "a blank display version rendered a dangling label")
 
     // Cancel stays reachable throughout: an upgrade the user cannot stop is
     // how a resumable download becomes an unresumable one.
     #expect(upgrading.primaryAction == "Cancel")
     #expect(firstInstall.primaryAction == "Cancel")
+  }
+
+
+  /// A manifest with NO display version still describes an UPGRADE.
+  ///
+  /// Cloud-review P2 on 5fdd0d53. `displayVersion` is optional by contract, and
+  /// a bare `String?` marker could not tell "not an upgrade" from "an upgrade I
+  /// cannot name" — so a blank one erased the upgrade and the row fell back to
+  /// the FIRST-INSTALL sentence while an upgrade was running.
+  @MainActor
+  @Test func anUnnamedUpgradeStillReadsAsAnUpgrade() {
+    let unnamed = EGOneRowPresentation.forState(
+      .downloading(fractionCompleted: 0.4, upgrade: .unnamed))
+    #expect(
+      unnamed.versionLabel == "the new EG-1",
+      "an upgrade with no display version fell back to first-install copy")
+
+    // The same fallback the PAUSED row already uses, so the two states do not
+    // describe one situation with two vocabularies.
+    let paused = EGOneRowPresentation.forState(
+      .updatePaused(resumable: false, targetVersion: nil))
+    #expect(
+      paused.message.contains("the new EG-1"),
+      "paused-row fallback wording drifted from the downloading row's")
+
+    // And a blank string must land on `.unnamed`, never `.named("")`.
+    #expect(EGOneUpgradeContext(displayVersion: "") == .unnamed)
+    #expect(EGOneUpgradeContext(displayVersion: "   ") == .unnamed)
+    #expect(EGOneUpgradeContext(displayVersion: "1.1") == .named("1.1"))
+    #expect(EGOneUpgradeContext(displayVersion: nil) == .unnamed)
   }
 }

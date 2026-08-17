@@ -316,11 +316,11 @@ public final class EGOneDeliveryAdapter {
       // EG-1 row (yellow).
       return .verifying
     case .downloading(let fraction, _, _):
-      // `upgradeTo` is nil HERE BY DESIGN, not by omission. This mapping is
+      // `upgrade` is nil HERE BY DESIGN, not by omission. This mapping is
       // stateless and per-tick; whether the download replaces a working older
       // revision is a fact about the state we came FROM. `EGOneRuntime` owns
       // that and enriches this value.
-      return .downloading(fractionCompleted: fraction, upgradeTo: nil)
+      return .downloading(fractionCompleted: fraction, upgrade: nil)
     case .verifying:
       return .verifying
     case .admitted:

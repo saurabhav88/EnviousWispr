@@ -213,7 +213,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// bytes moving right now: a download does not survive a quit, and a stale
   /// value read back at launch would label a fresh first install as an upgrade.
   /// Forgetting is the correct behaviour here.
-  private var upgradeDownloadInFlight: String?
+  private var upgradeDownloadInFlight: EGOneUpgradeContext?
 
   private func applyInstallState(_ rawState: EGOneInstallState) {
     // ENRICH BEFORE ANYTHING ELSE READS THE STATE, including the dedupe guard
@@ -227,20 +227,32 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     var state = rawState
     switch rawState {
     case .updatePaused(_, let targetVersion):
-      upgradeDownloadInFlight = targetVersion
+      // An upgrade is owed. Record it EVEN WITHOUT A VERSION: a manifest with
+      // no `displayVersion` still means an upgrade, and storing a bare nil here
+      // erased that fact entirely, so the row fell back to the FIRST-INSTALL
+      // sentence mid-upgrade (cloud review P2 on 5fdd0d53).
+      upgradeDownloadInFlight = EGOneUpgradeContext(displayVersion: targetVersion)
     case .downloading(let fraction, _):
-      if let target = upgradeDownloadInFlight {
-        state = .downloading(fractionCompleted: fraction, upgradeTo: target)
+      if let upgrade = upgradeDownloadInFlight {
+        state = .downloading(fractionCompleted: fraction, upgrade: upgrade)
       }
-    case .installed, .notInstalled, .failed, .paused:
-      // Every TERMINAL resting place clears it. `.verifying` is deliberately
-      // absent: it sits between the last download tick and admission, and
-      // clearing there would drop the label for the final stretch. `.paused`
-      // and `.notInstalled` are first-install states by definition — a cancel
-      // that leaves an older revision intact maps to `.updatePaused`, not to
-      // either of these.
+    case .installed, .notInstalled, .paused:
+      // Cleared only where the upgrade is genuinely OVER or was never running.
+      // `.paused` and `.notInstalled` are first-install states by construction:
+      // `notServingState` checks a surviving older revision FIRST, so a
+      // cancelled UPGRADE maps to `.updatePaused` and never lands here.
       upgradeDownloadInFlight = nil
+    case .failed:
+      // DELIBERATELY NOT CLEARED (cloud review P2 on 5fdd0d53). `.failed`
+      // accepts `startDownload()`, so Try Again after a network blip re-enters
+      // `.downloading` — and clearing here made that retry render as a first
+      // install, dropping the upgrade label exactly when a user is already
+      // having a bad time. Harmless for a genuine first install, where nothing
+      // was ever set.
+      break
     case .verifying:
+      // Sits between the last download tick and admission; clearing would drop
+      // the label for the final stretch.
       break
     }
     applyEnrichedInstallState(state)
