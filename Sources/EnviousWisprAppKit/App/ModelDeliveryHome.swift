@@ -97,6 +97,8 @@ public final class ModelDeliveryHome {
           .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true))
       parakeetIdentity = identity
       parakeetRegistration = registration
+      // #2119: reclaim staging abandoned by a superseded revision of THIS model.
+      Task { await controller.sweepSupersededStaging(registration) }
       parakeetHandle = ParakeetDeliveryHandle(controller: controller, registration: registration)
       wireObservers(identity: identity)
     } catch {
@@ -123,6 +125,7 @@ public final class ModelDeliveryHome {
         metadataDirectory: appSupport.appendingPathComponent(
           "EnviousWispr/ModelDelivery", isDirectory: true))
       whisperKitRegistration = registration
+      Task { await controller.sweepSupersededStaging(registration) }
       whisperKitHandle = WhisperKitDeliveryHandle(
         controller: controller, registration: registration)
       let home = self
@@ -171,6 +174,7 @@ public final class ModelDeliveryHome {
         metadataDirectory: appSupport.appendingPathComponent(
           "EnviousWispr/ModelDelivery", isDirectory: true))
       whisperPreviewRegistration = registration
+      Task { await controller.sweepSupersededStaging(registration) }
       whisperPreviewHandle = WhisperKitDeliveryHandle(
         controller: controller, registration: registration)
       let previewHome = self

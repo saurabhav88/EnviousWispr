@@ -1454,6 +1454,12 @@ struct AIPolishSettingsView: View {
       .fixedSize(horizontal: false, vertical: true)
     }
 
+    // One presentation value for the whole row (#2109). Hoisted above the
+    // switch deliberately: when only some branches consumed it, the remaining
+    // mappings were still ASSERTED by the agreement tests while the real row
+    // rendered something else, so the tests described a value the UI did not
+    // use. Every branch now reads from the tested value.
+    let presentation = EGOneRowPresentation.forState(egOne.installState)
     switch egOne.installState {
     case .notInstalled:
       HStack {
@@ -1464,17 +1470,72 @@ struct AIPolishSettingsView: View {
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)
         Spacer()
-        Button("Download EG-1") { egOne.startDownload() }
+        if let action = presentation.primaryAction {
+          Button(action) { egOne.startDownload() }
+        }
       }
-    case .downloading(let fraction):
+    case .downloading(let fraction, _):
       VStack(alignment: .leading, spacing: 4) {
         ProgressView(value: max(0, min(1, fraction))) {
-          Text("Downloading EG-1 (2.9 GB)")
+          // An UPGRADE says so and names the version arriving; a first install
+          // keeps the original sentence (founder, 2026-08-17, from Live UAT).
+          // Both used to read "Downloading EG-1 (2.9 GB)", so a user who
+          // already had EG-1 could not tell a 2.9 GB upgrade from a 2.9 GB
+          // first install and was never told which version was coming.
+          //
+          // The version comes from `presentation.versionLabel`, composed from
+          // the manifest — never a literal here. A revision ships as a manifest
+          // edit with no Swift change, so a hard-coded number would keep naming
+          // the previous model after the real one moved on.
+          Text(
+            presentation.versionLabel.map { "Upgrading to \($0) (2.9 GB)" }
+              ?? "Downloading EG-1 (2.9 GB)"
+          )
+          .font(.stHelper)
+        }
+        if let action = presentation.primaryAction {
+          Button(action) { egOne.cancelDownload() }
+            .buttonStyle(.borderless)
             .font(.stHelper)
         }
-        Button("Cancel") { egOne.cancelDownload() }
-          .buttonStyle(.borderless)
+      }
+    // #2109: an interrupted FIRST install. Ported from the founder ruling of
+    // 2026-07-17 already shipped for Parakeet and WhisperKit — paused, Resume
+    // anytime. This used to render through the failure branch with a red row
+    // and a Try Again button, for something the user deliberately chose.
+    case .paused:
+      VStack(alignment: .leading, spacing: 4) {
+        Text(presentation.message)
           .font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+        if let action = presentation.primaryAction {
+          Button(action) { egOne.startDownload() }
+        }
+      }
+    // A working older EG-1 is installed and the pinned one is not, so AI
+    // cleanup is off until this finishes. The old revision is deliberately
+    // NOT named: this app bundle does not contain its manifest, so any name
+    // for it would be invented.
+    case .updatePaused:
+      VStack(alignment: .leading, spacing: 4) {
+        Text(presentation.message)
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        HStack {
+          if let action = presentation.primaryAction {
+            Button(action) { egOne.startDownload() }
+          }
+          Spacer()
+          if presentation.showsRemove {
+            Button("Remove Model") {
+              egOne.removeModel()
+              settings.llmProvider = .appleIntelligence
+            }
+            .buttonStyle(.borderless)
+            .font(.stHelper)
+          }
+        }
       }
     case .verifying:
       HStack {
@@ -1488,10 +1549,27 @@ struct AIPolishSettingsView: View {
         .font(.stHelper)
         .foregroundStyle(.stError)
         .fixedSize(horizontal: false, vertical: true)
-      Button("Try Again") { egOne.startDownload() }
+      if let action = presentation.primaryAction {
+        Button(action) { egOne.startDownload() }
+      }
     case .installed:
       HStack {
         Text("Status:")
+        // #2109: the version, as a quiet secondary label. Deliberately not
+        // prominent — Priya and Dr. Vasquez want to know which model they are
+        // on, Frank and Meera must be able to ignore it entirely, and nobody
+        // is being asked to make a decision here.
+        //
+        // Composed by `EGOneRowPresentation`, not here, so the same value the
+        // tests assert is the value that renders. nil and blank both render
+        // NOTHING: an absent label is honest, "Unknown version" is a string
+        // Frank should never see, and `EG-1 V` with an empty tail reads as a
+        // rendering bug.
+        if let versionLabel = presentation.versionLabel {
+          Text(versionLabel)
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextSecondary)
+        }
         Spacer()
         egOneHealthLabel
         Button {
@@ -1509,12 +1587,14 @@ struct AIPolishSettingsView: View {
           .foregroundStyle(Color.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
-      Button("Remove Model") {
-        egOne.removeModel()
-        settings.llmProvider = .appleIntelligence
+      if presentation.showsRemove {
+        Button("Remove Model") {
+          egOne.removeModel()
+          settings.llmProvider = .appleIntelligence
+        }
+        .buttonStyle(.borderless)
+        .font(.stHelper)
       }
-      .buttonStyle(.borderless)
-      .font(.stHelper)
     }
   }
 

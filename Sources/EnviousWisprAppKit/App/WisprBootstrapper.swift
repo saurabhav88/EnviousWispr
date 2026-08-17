@@ -284,7 +284,7 @@ public final class WisprBootstrapper {
       let adapter = EGOneDeliveryAdapter(
         controller: modelDelivery.controller,
         registration: registration,
-        version: egOneManifest?.version ?? deliveryManifest.identity.revision)
+        version: egOneManifest?.resolvedDisplayVersion)  // #2109: label, not revision
       egOneAdapter = adapter
 
       let coordinator = EGOneUpgradeCoordinator(
@@ -308,6 +308,7 @@ public final class WisprBootstrapper {
       // decides if the completed replacement boots the server (PR #1500 P1).
       let delivery = modelDelivery
       Task {
+        await delivery.controller.sweepSupersededStaging(egOneUpgrade.registration)  // #2119
         await delivery.recordFirstRunBaseline(for: egOneUpgrade.registration)
         await egOneUpgrade.coordinator.runLaunch()
         egOneRuntime.activateAfterAutomaticReplacementIfNeeded()

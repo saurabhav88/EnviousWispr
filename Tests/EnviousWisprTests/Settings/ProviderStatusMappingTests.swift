@@ -44,9 +44,224 @@ struct ProviderStatusMappingTests {
     #expect(s.tone == .needsSetup)
   }
 
+  // MARK: - Paused states (#2109)
+
+  /// An interrupted FIRST install. The user chose to stop and their progress
+  /// is kept, so the chip must read as setup-pending, never as an error —
+  /// this used to arrive here as `.failed` and paint the error tone.
+  @Test("EG-1 paused → Paused / needs-setup")
+  func egOnePaused() {
+    let s = status(for: .egOne, egOneInstall: .paused)
+    #expect(s.label == "Paused")
+    #expect(s.tone == .needsSetup)
+  }
+
+  /// A working older revision is on disk but the pinned one is not, so AI
+  /// cleanup is genuinely OFF. The chip must agree with the detailed row
+  /// rather than reassure: a calm chip beside an alarmed row is worse than
+  /// either alone, because it teaches the user to distrust the screen. This is
+  /// the silently-off state #2109 exists to surface.
+  @Test(arguments: [true, false])
+  func egOneUpdatePausedReadsAsNeedingAttention(_ resumable: Bool) {
+    let s = status(
+      for: .egOne, egOneInstall: .updatePaused(resumable: resumable, targetVersion: "1.1"))
+    #expect(s.label == "Update paused")
+    #expect(s.tone == .error)
+  }
+
+  /// Two-way control on the pair above: the two paused states must NOT collapse
+  /// to the same chip. `paused` means "nothing works yet, finish when you like";
+  /// `updatePaused` means "something that was working has stopped". A mapping
+  /// that returned one tone for both would pass each test above in isolation.
+  @Test("the two paused states are distinguishable at the chip")
+  func pausedAndUpdatePausedDoNotCollapse() {
+    let paused = status(for: .egOne, egOneInstall: .paused)
+    let updatePaused = status(
+      for: .egOne, egOneInstall: .updatePaused(resumable: true, targetVersion: "1.1"))
+    #expect(paused.label != updatePaused.label)
+    #expect(paused.tone != updatePaused.tone)
+  }
+
+  // MARK: - Rail and row agreement (#2109)
+
+  /// Every EG-1 install state, so the agreement checks below cannot silently
+  /// skip the case that matters.
+  nonisolated static let everyEGOneState: [EGOneInstallState] = [
+    .notInstalled,
+    .downloading(fractionCompleted: 0.4, upgrade: nil),
+    .verifying,
+    .installed(version: "1.1"),
+    .installed(version: nil),
+    .paused,
+    .updatePaused(resumable: true, targetVersion: "1.1"),
+    .updatePaused(resumable: false, targetVersion: "1.1"),
+    .failed(.network),
+  ]
+
+  /// THE agreement invariant, and the reason the row's copy was extracted into
+  /// a value at all: the chip and the row render the same state through two
+  /// independent code paths. Compile-time exhaustiveness forces both to HANDLE
+  /// every case and does nothing to make them AGREE — a reassuring chip beside
+  /// an alarmed row is worse than either being wrong alone, because it teaches
+  /// the user to distrust the screen.
+  ///
+  /// Stated as a property rather than a table of expected pairs: a table would
+  /// just restate both implementations and pass whatever they happened to say.
+  @Test("ready chip if and only if the model is actually serving")
+  func railReadyMatchesRowServing() {
+    for state in Self.everyEGOneState {
+      let chip = status(for: .egOne, egOneInstall: state, egOneHealth: .green)
+      let isInstalled: Bool = { if case .installed = state { return true } else { return false } }()
+      #expect(
+        (chip.tone == .ready) == isInstalled,
+        "\(state): chip ready tone must track installed exactly")
+    }
+  }
+
+  /// Anything the chip flags as needing attention must give the user something
+  /// to DO in the row. A red chip beside a row with no action is a dead end.
+  @Test("an attention-seeking chip always has a row action behind it")
+  func attentionStatesOfferAnAction() {
+    for state in Self.everyEGOneState {
+      let chip = status(for: .egOne, egOneInstall: state, egOneHealth: .green)
+      guard chip.tone == .error || chip.tone == .needsSetup else { continue }
+      let row = EGOneRowPresentation.forState(state)
+      // `verifying` is the one legitimate exception: it is transient and
+      // resolves on its own, so there is nothing for the user to do.
+      if case .verifying = state { continue }
+      #expect(
+        row.primaryAction != nil,
+        "\(state): chip asks for attention but the row offers no action")
+    }
+  }
+
+  /// Remove Model appears exactly when a usable model is on disk. The
+  /// `updatePaused` row is the case worth pinning: a full model IS present, and
+  /// the help centre promises users can delete models to reclaim storage.
+  @Test("remove is offered exactly when bytes are on disk")
+  func removeOfferedOnlyWithAModelPresent() {
+    for state in Self.everyEGOneState {
+      let row = EGOneRowPresentation.forState(state)
+      let hasModelOnDisk: Bool = {
+        switch state {
+        // `updatePaused` is deliberately FALSE: a model is on disk, but
+        // `remove()` targets the current manifest, which is not the installed
+        // revision in that state, so the button could not remove it.
+        case .installed: return true
+        case .updatePaused, .notInstalled, .downloading, .verifying, .paused, .failed: return false
+        }
+      }()
+      #expect(
+        row.showsRemove == hasModelOnDisk,
+        "\(state): Remove Model offered without a model, or withheld with one")
+    }
+  }
+
+  /// The properties above are necessary and NOT sufficient: they would all
+  /// still pass with "Resume upgrade" and "Finish upgrade" REVERSED, or with
+  /// reassuring copy on `updatePaused`. Both would be user-visibly wrong and
+  /// invisible to a property test, so the founder-decided wording is pinned
+  /// directly here.
+  ///
+  /// The pairing is the point. `resumable` means the user already started the
+  /// download, so the verb must be Resume; not-resumable means they have not,
+  /// so it must be Finish. Swapping them tells people to resume something they
+  /// never began.
+  @Test("the paused actions are pinned to the right state")
+  func pausedActionsUseTheDecidedWording() {
+    #expect(EGOneRowPresentation.forState(.paused).primaryAction == "Resume")
+    #expect(
+      EGOneRowPresentation.forState(.updatePaused(resumable: true, targetVersion: "1.1"))
+        .primaryAction
+        == "Resume upgrade")
+    #expect(
+      EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "1.1"))
+        .primaryAction
+        == "Finish upgrade")
+    // Never "Install": the user already has a working model, and Install reads
+    // as a new product to acquire — Frank's stated failure mode.
+    #expect(
+      EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "1.1"))
+        .primaryAction?
+        .contains("Install") == false)
+  }
+
+  /// Both update messages must SAY that cleanup is off. A reassuring string
+  /// here would satisfy every structural invariant while hiding the exact
+  /// condition #2109 exists to surface.
+  @Test("the update messages state that cleanup is paused")
+  func updateMessagesSayCleanupIsPaused() {
+    for resumable in [true, false] {
+      let message = EGOneRowPresentation.forState(
+        .updatePaused(resumable: resumable, targetVersion: "1.1")
+      ).message
+      #expect(message.contains("AI cleanup is paused"), "\(resumable): message must not reassure")
+      // The download size is deliberately absent: leading with 2.9 GB to
+      // someone who already has a working model reads as a cost, not a fix.
+      #expect(message.contains("GB") == false, "\(resumable): size must not lead this row")
+    }
+  }
+
+  /// The version label, composed where it is tested rather than in the view.
+  @Test("the version label renders only when there is something honest to show")
+  func versionLabelSuppressesNilAndBlank() {
+    #expect(EGOneRowPresentation.forState(.installed(version: "1.1")).versionLabel == "EG-1 V1.1")
+    #expect(EGOneRowPresentation.forState(.installed(version: nil)).versionLabel == nil)
+    #expect(EGOneRowPresentation.forState(.installed(version: "")).versionLabel == nil)
+  }
+
+  /// The upgrade copy is COMPOSED from the manifest's version, never a
+  /// literal. A new EG-2/EG-3 revision ships as a manifest edit with no Swift
+  /// change, so a hard-coded "V1.1" would keep naming the previous model after
+  /// the real one moved on — confidently wrong, which is worse than silent.
+  @Test func upgradeCopyFollowsTheTargetVersion() {
+    let next = EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "2.0"))
+    #expect(next.message.contains("EG-1 V2.0"))
+    #expect(next.message.contains("V1.1") == false, "copy still names a hard-coded version")
+
+    let resuming = EGOneRowPresentation.forState(
+      .updatePaused(resumable: true, targetVersion: "2.0"))
+    #expect(resuming.message.contains("EG-1 V2.0"))
+  }
+
+  /// No target version means generic copy, not a placeholder and not a stale
+  /// literal.
+  @Test func upgradeCopyWithoutAVersionStaysGeneric() {
+    let unknown = EGOneRowPresentation.forState(
+      .updatePaused(resumable: false, targetVersion: nil))
+    #expect(unknown.message.contains("the new EG-1"))
+    #expect(unknown.message.contains("V") == false, "a nil version must not render a version token")
+  }
+
+  /// Remove Model is NOT offered while an upgrade is pending. `remove()`
+  /// deletes the CURRENT manifest's files, and in this state the current
+  /// revision is exactly what is not installed — the button would leave the
+  /// older model's gigabytes untouched and return the row to this state.
+  @Test func removeIsNotOfferedWhileAnUpgradeIsPending() {
+    for resumable in [true, false] {
+      let row = EGOneRowPresentation.forState(
+        .updatePaused(resumable: resumable, targetVersion: "1.1"))
+      #expect(
+        row.showsRemove == false,
+        "Remove is offered in a state where it cannot remove the installed model")
+    }
+    // Two-way control: it IS offered where it works.
+    #expect(EGOneRowPresentation.forState(.installed(version: "1.1")).showsRemove)
+  }
+
+  /// The two paused rows must not read identically. One means "nothing works
+  /// yet"; the other means "something that WAS working has stopped".
+  @Test("the paused rows say different things")
+  func pausedRowsAreDistinguishable() {
+    let paused = EGOneRowPresentation.forState(.paused)
+    let update = EGOneRowPresentation.forState(.updatePaused(resumable: true, targetVersion: "1.1"))
+    #expect(paused.message != update.message)
+    #expect(paused.primaryAction != update.primaryAction)
+  }
+
   @Test("EG-1 downloading → Downloading / needs-setup")
   func egOneDownloading() {
-    let s = status(for: .egOne, egOneInstall: .downloading(fractionCompleted: 0.4))
+    let s = status(for: .egOne, egOneInstall: .downloading(fractionCompleted: 0.4, upgrade: nil))
     #expect(s.label == "Downloading")
     #expect(s.tone == .needsSetup)
   }
@@ -200,5 +415,81 @@ struct ProviderStatusMappingTests {
   @Test("Off provider → neutral, never a real engine status")
   func offProvider() {
     #expect(status(for: .none).tone == .unavailable)
+  }
+
+  /// An UPGRADE download must be distinguishable from a FIRST install while the
+  /// bytes are moving (founder, from Live UAT 2026-08-17).
+  ///
+  /// Both rendered the identical sentence — "Downloading EG-1 (2.9 GB)" — so a
+  /// user who already had EG-1 could not tell a 2.9 GB upgrade from a 2.9 GB
+  /// fresh install, and was never told which version was arriving. Same defect
+  /// as the row this change began with, one state further along.
+  ///
+  /// BOTH ARMS, because a label that appeared unconditionally would satisfy the
+  /// upgrade arm while mislabelling every first install as an upgrade — a
+  /// worse bug than the one being fixed, and invisible to a one-armed test.
+  @MainActor
+  @Test func onlyAnUpgradeDownloadCarriesAVersionLabel() throws {
+    let upgrading = EGOneRowPresentation.forState(
+      .downloading(fractionCompleted: 0.4, upgrade: .named("1.1")))
+    #expect(
+      upgrading.versionLabel == "EG-1 V1.1",
+      "an upgrade in flight did not name the version arriving")
+
+    let firstInstall = EGOneRowPresentation.forState(
+      .downloading(fractionCompleted: 0.4, upgrade: nil))
+    #expect(
+      firstInstall.versionLabel == nil,
+      "a first install was labelled as an upgrade, which is a worse lie than the missing label")
+
+    // A blank display version must never produce a DANGLING "EG-1 V" — that is
+    // what this assertion has always been about. It used to demand `nil`, which
+    // conflated "do not print a half-written version" with "do not say this is
+    // an upgrade"; the second was wrong and is what the cloud-review P2 named.
+    // A blank version now reads as an UNNAMED upgrade, so assert the property
+    // rather than the old value.
+    let blank = EGOneRowPresentation.forState(
+      .downloading(fractionCompleted: 0.4, upgrade: EGOneUpgradeContext(displayVersion: "")))
+    let blankLabel = try #require(blank.versionLabel)
+    #expect(
+      !blankLabel.hasPrefix("EG-1 V"),
+      "a blank display version rendered a dangling version label: \(blankLabel)")
+    #expect(
+      blankLabel == "the new EG-1",
+      "a blank display version stopped reading as an upgrade")
+
+    // Cancel stays reachable throughout: an upgrade the user cannot stop is
+    // how a resumable download becomes an unresumable one.
+    #expect(upgrading.primaryAction == "Cancel")
+    #expect(firstInstall.primaryAction == "Cancel")
+  }
+
+  /// A manifest with NO display version still describes an UPGRADE.
+  ///
+  /// Cloud-review P2 on 5fdd0d53. `displayVersion` is optional by contract, and
+  /// a bare `String?` marker could not tell "not an upgrade" from "an upgrade I
+  /// cannot name" — so a blank one erased the upgrade and the row fell back to
+  /// the FIRST-INSTALL sentence while an upgrade was running.
+  @MainActor
+  @Test func anUnnamedUpgradeStillReadsAsAnUpgrade() {
+    let unnamed = EGOneRowPresentation.forState(
+      .downloading(fractionCompleted: 0.4, upgrade: .unnamed))
+    #expect(
+      unnamed.versionLabel == "the new EG-1",
+      "an upgrade with no display version fell back to first-install copy")
+
+    // The same fallback the PAUSED row already uses, so the two states do not
+    // describe one situation with two vocabularies.
+    let paused = EGOneRowPresentation.forState(
+      .updatePaused(resumable: false, targetVersion: nil))
+    #expect(
+      paused.message.contains("the new EG-1"),
+      "paused-row fallback wording drifted from the downloading row's")
+
+    // And a blank string must land on `.unnamed`, never `.named("")`.
+    #expect(EGOneUpgradeContext(displayVersion: "") == .unnamed)
+    #expect(EGOneUpgradeContext(displayVersion: "   ") == .unnamed)
+    #expect(EGOneUpgradeContext(displayVersion: "1.1") == .named("1.1"))
+    #expect(EGOneUpgradeContext(displayVersion: nil) == .unnamed)
   }
 }

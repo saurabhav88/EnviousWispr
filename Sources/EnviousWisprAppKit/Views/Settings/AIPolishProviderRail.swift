@@ -80,8 +80,22 @@ enum ProviderStatusMapping {
     switch install {
     case .notInstalled:
       return ProviderStatus(label: "Not installed", tone: .needsSetup)
-    case .downloading:
-      return ProviderStatus(label: "Downloading", tone: .needsSetup)
+    // #2109: an interrupted first install. The user chose to stop and their
+    // progress is kept, so this is a setup state, never an error.
+    case .paused:
+      return ProviderStatus(label: "Paused", tone: .needsSetup)
+    // A working older model is on disk but the pinned one is not, so cleanup
+    // is genuinely off. The chip must AGREE with the detailed row rather than
+    // reassure — this is exactly the silently-off state #2109 exists to
+    // surface, and a calm chip beside an alarmed row is worse than either.
+    case .updatePaused:
+      return ProviderStatus(label: "Update paused", tone: .error)
+    // Same agreement rule as `updatePaused` above: when the detailed row says
+    // "Upgrading to EG-1 V1.1", a chip reading "Downloading" describes a
+    // different event beside it. The chip is narrower, not softer.
+    case .downloading(_, let upgrade):
+      return ProviderStatus(
+        label: upgrade == nil ? "Downloading" : "Upgrading", tone: .needsSetup)
     case .verifying:
       return ProviderStatus(label: "Verifying", tone: .needsSetup)
     case .failed:

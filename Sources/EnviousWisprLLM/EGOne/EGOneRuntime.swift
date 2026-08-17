@@ -16,12 +16,64 @@ public protocol EGOneEndpointProviding: AnyObject {
 ///
 /// #1348 Phase 3: EG-1's DOWNLOAD lifecycle telemetry now flows through the
 /// shared delivery engine (`model_delivery.*` with `family=eg1`), so the old
-/// `downloadStarted/Completed/Failed` cases are gone. Only server HEALTH
-/// remains here — it is a runtime probe result with no delivery equivalent.
-/// Transition-only (debounced by construction — fired from a state didSet,
-/// identical states never re-fire).
+/// `downloadStarted/Completed/Failed` cases are gone. What remains here is
+/// server HEALTH — a runtime probe result with no delivery equivalent — and,
+/// since #2109, PAUSED RESIDENCY, which likewise has no delivery equivalent:
+/// the delivery funnel reports moments (a cancel happened), never how long a
+/// user then sat unable to polish.
+/// Transition-only, by two different mechanisms: health is guarded in its
+/// `didSet`, paused residency by its projection tracker in
+/// `applyInstallState`. Naming both matters — a reader who assumes the didSet
+/// guard covers everything would conclude paused telemetry is debounced by
+/// construction, when it is debounced by a tracker that deliberately skips
+/// `.verifying`.
 public enum EGOneRuntimeEvent: Sendable, Equatable {
   case healthChanged(from: String, to: String, reason: String?)
+  /// The user ENTERED or LEFT a paused install state (#2109). `nil` means
+  /// they left one.
+  ///
+  /// Deliberately narrower than "the install state changed", and the narrowing
+  /// is the whole design. A general state-changed event double-counts: the
+  /// settings-open activation path runs `adoptIfPresent`, which CYCLES the
+  /// state (`updatePaused → verifying → updatePaused`), so every visit to the
+  /// AI settings panel would have emitted twice. The metric would have read as
+  /// a growing population of affected users while actually counting panel
+  /// visits — plausible, actionable, and wrong. Measured, not theorised: the
+  /// observed sequence across three probes was update_paused, verifying,
+  /// update_paused, verifying, update_paused, verifying, update_paused.
+  ///
+  /// `.verifying` is therefore IGNORED rather than mapped: it is an adoption
+  /// probe artefact, not a state a user rests in. Every other non-paused state
+  /// maps to `nil`, so entry and exit are both observable and nothing in
+  /// between generates traffic.
+  ///
+  /// Named for the STATE, never a cause. An event called `upgrade_stalled` or
+  /// `polish_silently_off` would be a causal claim about a state with more
+  /// than one producer, and would count a deliberate decline as a malfunction
+  /// — the #2066 defect, avoided at design time.
+  case pausedInstallStateChanged(EGOnePausedInstallState?)
+}
+
+/// The closed vocabulary for paused-residency telemetry (#2109). A raw String
+/// so the analytics value is declared HERE and cannot drift when a Swift case
+/// is renamed — a silently changed value splits every historical query in two.
+public enum EGOnePausedInstallState: String, Sendable, Equatable {
+  case paused
+  case updatePaused = "update_paused"
+  case updatePausedResumable = "update_paused_resumable"
+
+  /// The paused projection of an install state, or nil when the user is not in
+  /// one. `.verifying` has no projection at all — see the event's own doc.
+  static func projection(of state: EGOneInstallState) -> EGOnePausedInstallState? {
+    switch state {
+    case .paused: return .paused
+    case .updatePaused(let resumable, _):
+      // The target version is deliberately NOT projected: telemetry keeps a
+      // closed property set, and a version string would make it unbounded.
+      return resumable ? .updatePausedResumable : .updatePaused
+    case .notInstalled, .downloading, .verifying, .installed, .failed: return nil
+    }
+  }
 }
 
 /// Single owner of the EG-1 inference server and its delivery adapter (#1271,
@@ -88,10 +140,21 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// adapter exists before launch activation calls it (#1348 §Decision A
   /// construction-order fix). A nil adapter (bundled-manifest load failure)
   /// is a RED limb state, never a crash.
-  public init(manifest: EGOneManifest?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?) {
+  public init(
+    manifest: EGOneManifest?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?,
+    defaults: UserDefaults? = nil
+  ) {
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
     self.delivery = delivery
+    self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    // Restore the paused projection from the last launch (#2109, whole-diff
+    // review). Without this the tracker is in-memory only, so a user who
+    // leaves an upgrade paused and quits emits a fresh ENTRY on every launch
+    // with no matching exit — the eventual exit then has several candidate
+    // starts and the duration this event exists to measure is uncomputable.
+    self.lastPausedProjection = (self.defaults.string(forKey: Self.pausedProjectionKey))
+      .flatMap(EGOnePausedInstallState.init(rawValue:))
     self.server = EGOneServerManager()
     if let manifest {
       self.activationBlockers = manifest.activationBlockers()
@@ -132,7 +195,98 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
   }
 
-  private func applyInstallState(_ state: EGOneInstallState) {
+  /// Test seam for the residency tracker (#2109). Internal: the cross-launch
+  /// behaviour cannot be driven through the adapter, because the defect is
+  /// about a NEW process seeing persisted state.
+  func applyInstallStateForTesting(_ state: EGOneInstallState) {
+    applyInstallState(state)
+  }
+
+  /// Display version of an upgrade whose download is currently in flight, or
+  /// nil when the download in flight is a FIRST install (#2109, founder
+  /// 2026-08-17).
+  ///
+  /// Deliberately process-scoped and NOT persisted, which is the opposite
+  /// choice from `lastPausedProjection` one screen down, so the difference is
+  /// worth stating. That one measures a DURATION that outlives the process, so
+  /// forgetting it across launches makes an exit unpairable. This one describes
+  /// bytes moving right now: a download does not survive a quit, and a stale
+  /// value read back at launch would label a fresh first install as an upgrade.
+  /// Forgetting is the correct behaviour here.
+  private var upgradeDownloadInFlight: EGOneUpgradeContext?
+
+  private func applyInstallState(_ rawState: EGOneInstallState) {
+    // ENRICH BEFORE ANYTHING ELSE READS THE STATE, including the dedupe guard
+    // below — otherwise the first tick and the enriched second tick differ only
+    // in a field the guard does not compare, and the row keeps the unenriched
+    // copy for the whole download.
+    //
+    // Upgrade-ness is a property of where we CAME FROM: `updatePaused` means a
+    // working older revision is installed, so a download starting from there
+    // replaces it. The adapter maps each tick statelessly and cannot see that.
+    var state = rawState
+    switch rawState {
+    case .updatePaused(_, let targetVersion):
+      // An upgrade is owed. Record it EVEN WITHOUT A VERSION: a manifest with
+      // no `displayVersion` still means an upgrade, and storing a bare nil here
+      // erased that fact entirely, so the row fell back to the FIRST-INSTALL
+      // sentence mid-upgrade (cloud review P2 on 5fdd0d53).
+      upgradeDownloadInFlight = EGOneUpgradeContext(displayVersion: targetVersion)
+    case .downloading(let fraction, _):
+      if let upgrade = upgradeDownloadInFlight {
+        state = .downloading(fractionCompleted: fraction, upgrade: upgrade)
+      }
+    case .installed, .notInstalled, .paused:
+      // Cleared only where the upgrade is genuinely OVER or was never running.
+      // `.paused` and `.notInstalled` are first-install states by construction:
+      // `notServingState` checks a surviving older revision FIRST, so a
+      // cancelled UPGRADE maps to `.updatePaused` and never lands here.
+      upgradeDownloadInFlight = nil
+    case .failed:
+      // DELIBERATELY NOT CLEARED (cloud review P2 on 5fdd0d53). `.failed`
+      // accepts `startDownload()`, so Try Again after a network blip re-enters
+      // `.downloading` — and clearing here made that retry render as a first
+      // install, dropping the upgrade label exactly when a user is already
+      // having a bad time. Harmless for a genuine first install, where nothing
+      // was ever set.
+      break
+    case .verifying:
+      // Sits between the last download tick and admission; clearing would drop
+      // the label for the final stretch.
+      break
+    }
+    applyEnrichedInstallState(state)
+  }
+
+  private func applyEnrichedInstallState(_ state: EGOneInstallState) {
+    // PAUSED-RESIDENCY RECONCILIATION RUNS FIRST, before the UI dedupe below.
+    //
+    // The order matters and is not cosmetic (whole-diff review). At launch
+    // `installState` starts `.notInstalled`, and a user who resolved their
+    // pause while the app was closed gets a seed of `.notInstalled` too — the
+    // same value. The UI guard would early-return on that equality and the
+    // persisted pause would never close, leaving an entry with no exit for the
+    // life of the install. Reconciling above the guard lets a non-paused
+    // launch close a pause carried over from a previous one.
+    //
+    // `.verifying` is skipped entirely rather than mapped to nil: the
+    // settings-open probe cycles updatePaused → verifying → updatePaused, and
+    // treating the middle leg as a real value would emit an exit and a
+    // re-entry on every visit to the panel. Measured behaviour, not a guess.
+    if case .verifying = state {
+      // Deliberately not `return`: the UI still needs the state below.
+    } else {
+      let projection = EGOnePausedInstallState.projection(of: state)
+      if projection != lastPausedProjection {
+        // Only when a paused state is involved on one side or the other. Two
+        // non-paused states in succession are none of this event's business.
+        if projection != nil || lastPausedProjection != nil {
+          onEvent?(.pausedInstallStateChanged(projection))
+        }
+        lastPausedProjection = projection
+      }
+    }
+
     // Pure UI projection: the install-state stream drives the settings row and
     // health only. Server activation is triggered by EXPLICIT actions — launch
     // (`startIfActiveProvider`), provider switch, settings-open, and a
@@ -140,9 +294,34 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // stream. Reactively re-activating here would loop: an in-flight
     // activation's own `ensureAvailable()` republishes `.admitted` → `.installed`
     // while the server is still `.stopped` (grounded r2 P1).
+    //
+    // #2109: the single UI-state owner. The adapter has TWO publication sites
+    // — the launch seed and the observer replay — so neither is the authority;
+    // both converge here. This guard makes a republish of the SAME state a
+    // no-op for the UI, and that is ALL it does. Telemetry above deliberately
+    // sits outside it.
+    guard installState != state else { return }
     installState = state
     recomputeHealth()
   }
+
+  /// Last paused projection reported to telemetry (#2109). Tracked separately
+  /// from `installState` because `.verifying` deliberately does not update it,
+  /// and PERSISTED because a pause outlives the process: the whole point is a
+  /// duration, and a tracker that resets on launch cannot pair an exit with
+  /// the entry it belongs to.
+  private var lastPausedProjection: EGOnePausedInstallState? {
+    didSet {
+      if let raw = lastPausedProjection?.rawValue {
+        defaults.set(raw, forKey: Self.pausedProjectionKey)
+      } else {
+        defaults.removeObject(forKey: Self.pausedProjectionKey)
+      }
+    }
+  }
+
+  private static let pausedProjectionKey = "eg1.pausedInstallProjection"
+  private let defaults: UserDefaults
 
   private var serverState: EGOneServerManager.ServerState = .stopped
   private func applyServerState(_ state: EGOneServerManager.ServerState) {
@@ -162,6 +341,13 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
     switch installState {
     case .notInstalled: health = .red(reason: "download_required")
+    // #2109: an interrupted first install is not a failure — the user chose
+    // it, and their progress is kept. Yellow, not red.
+    case .paused: health = .yellow(reason: "download_paused")
+    // A working older revision is on disk but the pinned one is not, so polish
+    // is genuinely unavailable. RED is correct and deliberate: this is exactly
+    // the silently-off state #2109 exists to stop hiding.
+    case .updatePaused: health = .red(reason: "update_required")
     case .downloading: health = .yellow(reason: "downloading")
     case .verifying: health = .yellow(reason: "verifying")
     case .failed(let failure): health = .red(reason: failure.rawValue)
@@ -184,10 +370,9 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// through the shared engine now, not from here.
   public func startDownload() {
     guard let delivery else { return }
-    switch installState {
-    case .notInstalled, .failed: break
-    case .downloading, .verifying, .installed: return
-    }
+    // #2109: the decision lives on the state itself, exhaustively, so a future
+    // case cannot silently render a button that does nothing when pressed.
+    guard installState.acceptsDownloadStart else { return }
     Task {
       let outcome = await delivery.ensureAvailable()
       // A user-initiated download that completes while EG-1 is the selected

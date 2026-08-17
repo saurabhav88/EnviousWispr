@@ -19,14 +19,16 @@ public final class EGOneDeliveryAdapter {
   private let controller: ModelDeliveryController
   private let registration: DeliveryRegistration
   private let defaults: UserDefaults
-  /// Version string surfaced as `.installed(version:)` (the runtime manifest's
-  /// version, e.g. `v1`); the delivery identity's revision carries the same.
-  private let version: String
+  /// USER-FACING display label surfaced as `.installed(version:)`, e.g. "1.1"
+  /// rendered as "EG-1 V1.1" (#2109). Optional: a manifest without one shows
+  /// no label rather than falling back to the internal revision, which is a
+  /// path component (`v3-eg2`) and not a thing to put in front of a user.
+  private let version: String?
 
   public init(
     controller: ModelDeliveryController,
     registration: DeliveryRegistration,
-    version: String,
+    version: String?,
     defaults: UserDefaults? = nil
   ) {
     self.controller = controller
@@ -212,13 +214,48 @@ public final class EGOneDeliveryAdapter {
     let identity = registration.manifest.identity
     let version = version
     let sequencer = InstallStateSequencer()
+    let registration = registration
     Task {
+      // SEED FIRST, THEN OBSERVE (#2109). The order is inverted from what it
+      // used to be, and the inversion is the whole reason `updatePaused` is
+      // reachable at all.
+      //
+      // `addStateObserver` replays only identities already present in the
+      // controller's `entries`, and an entry exists only once something has
+      // touched that identity. A user sitting on a PRIOR revision with no
+      // fetch in flight has no entry, so the observer never fires for them —
+      // and the old seed was gated on `isAdmitted`, which is false for exactly
+      // that user because the pinned revision is the thing they lack. Neither
+      // path published anything, so the row kept `EGOneRuntime`'s initial
+      // `.notInstalled` and the paused-update state could never appear on a
+      // cold launch, which is the only moment it matters.
+      //
+      // Seeding first is also what makes the ordering safe. The previous
+      // comment here reasoned that the seed must come AFTER registration so it
+      // outranks the replay's `.notReady` — correct when the seed could only
+      // ever be `.installed` for an admitted cache, and WRONG now that the
+      // seed carries a disk-derived guess, because a guess must never outrank
+      // live truth. Attaching second means any already-running attempt is
+      // replayed with a LATER sequence number and wins, and if nothing is
+      // running there is no entry, no replay, and the seed stands.
+      let seedSeq = sequencer.next()
+      let seeded: EGOneInstallState =
+        await controller.isAdmitted(registration)
+        ? .installed(version: version)
+        : Self.notServingState(for: registration, version: version)
+      await MainActor.run { [weak self] in
+        guard let self, seedSeq > self.lastAppliedInstallSeq else { return }
+        self.lastAppliedInstallSeq = seedSeq
+        if case .installed = seeded { self.legacyDidAdmit?() }
+        onState(seeded)
+      }
+
       await controller.addStateObserver { [weak self] observedIdentity, state in
         guard observedIdentity == identity else { return }
         // Mint the sequence on the controller actor (publish order); apply on
         // MainActor only if newer than the last applied (drop reordered hops).
         let seq = sequencer.next()
-        let mapped = Self.map(state, version: version)
+        let mapped = Self.map(state, version: version, registration: registration)
         Task { @MainActor in
           guard let self, seq > self.lastAppliedInstallSeq else { return }
           self.lastAppliedInstallSeq = seq
@@ -231,17 +268,6 @@ public final class EGOneDeliveryAdapter {
           }
 
           onState(mapped)
-        }
-      }
-      // Seed from the marker AFTER registration (so this seq outranks the
-      // replay's `.notReady`): an admitted cache shows Installed at startup.
-      if await controller.isAdmitted(registration) {
-        let seq = sequencer.next()
-        await MainActor.run { [weak self] in
-          guard let self, seq > self.lastAppliedInstallSeq else { return }
-          self.lastAppliedInstallSeq = seq
-          self.legacyDidAdmit?()
-          onState(.installed(version: version))
         }
       }
     }
@@ -261,27 +287,75 @@ public final class EGOneDeliveryAdapter {
 
   // MARK: - Mapping (DeliveryState → EG-1 UI vocabulary)
 
-  nonisolated static func map(_ state: DeliveryState, version: String) -> EGOneInstallState {
+  /// Disk truth the mapper needs, read once per mapping call.
+  ///
+  /// Both reads are SYNCHRONOUS by construction (#2109): `map` runs inside the
+  /// controller's state-observer callback, between minting a sequence number
+  /// and applying it on the MainActor, so it cannot await. Adding a suspension
+  /// there would open the exact window `InstallStateSequencer` exists to close.
+  nonisolated static func diskFacts(
+    for registration: DeliveryRegistration
+  ) -> (hasPartials: Bool, olderRevisionSurvives: Bool) {
+    (
+      hasPartials: ModelDeliveryController.hasStagedPartialsOnDisk(registration),
+      olderRevisionSurvives: PriorRevisionAdmission.supersededInstallSurvives(
+        identity: registration.manifest.identity,
+        metadataDirectory: registration.metadataDirectory,
+        installDirectory: registration.installDirectory)
+    )
+  }
+
+  nonisolated static func map(
+    _ state: DeliveryState, version: String?, registration: DeliveryRegistration
+  ) -> EGOneInstallState {
     switch state {
     case .notReady:
-      return .notInstalled
+      return Self.notServingState(for: registration, version: version)
     case .preparing:
       // Existing-cache validation / staging setup reads as "verifying" in the
       // EG-1 row (yellow).
       return .verifying
     case .downloading(let fraction, _, _):
-      return .downloading(fractionCompleted: fraction)
+      // `upgrade` is nil HERE BY DESIGN, not by omission. This mapping is
+      // stateless and per-tick; whether the download replaces a working older
+      // revision is a fact about the state we came FROM. `EGOneRuntime` owns
+      // that and enriches this value.
+      return .downloading(fractionCompleted: fraction, upgrade: nil)
     case .verifying:
       return .verifying
     case .admitted:
       return .installed(version: version)
     case .cancelled:
-      // The EG-1 row shows a paused/saved state via the .cancelled failure
-      // copy ("Download canceled. Your progress is saved.").
-      return .failed(.cancelled)
+      // #2109: a cancel is a user DECISION, not a failure. It used to map to
+      // `.failed(.cancelled)`, which rendered a red row with a Try Again
+      // button for something the user chose. Which paused state it is depends
+      // on whether a working older revision survives underneath.
+      return Self.notServingState(for: registration, version: version)
     case .failed(let failure):
       return .failed(Self.mapFailure(failure.reason))
     }
+  }
+
+  /// The three ways EG-1 can be not-serving, separated by DISK truth rather
+  /// than by how we got here (#2109). `.notReady` and `.cancelled` both land
+  /// here because the user-visible question is identical in both: is there a
+  /// working model underneath, and is there a download to resume?
+  ///
+  /// Order matters. A surviving older revision is the strongest signal — it
+  /// means AI cleanup was working and has stopped, which is the thing #2109
+  /// exists to stop hiding — so it is checked first and reported whether or
+  /// not partials exist.
+  nonisolated static func notServingState(
+    for registration: DeliveryRegistration, version: String?
+  ) -> EGOneInstallState {
+    let facts = Self.diskFacts(for: registration)
+    if facts.olderRevisionSurvives {
+      // The TARGET version travels with the state so copy never hard-codes a
+      // model release: a revision ships as a manifest edit with no Swift
+      // change, and a literal would then name the wrong version confidently.
+      return .updatePaused(resumable: facts.hasPartials, targetVersion: version)
+    }
+    return facts.hasPartials ? .paused : .notInstalled
   }
 
   /// Map the shared engine's closed failure taxonomy onto EG-1's existing UI

@@ -34,7 +34,7 @@ You can remove local models you no longer need to recover storage, and you can d
 
 **Remove a WhisperKit model.** Open **Transcription** and use **Remove Model**.
 
-**Remove EG-1.** EG-1 is the polish model EnviousWispr built. Open **AI Polish** and use the remove button there.
+**Remove EG-1.** EG-1 is the polish model EnviousWispr built. Open **AI Polish** and use the remove button there. The button appears once EG-1 is installed and ready. If a newer EG-1 is waiting to install, that row offers the upgrade instead, and the remove button comes back once the upgrade finishes.
 
 **Remove Ollama models.** Local Ollama models are removed from that same **AI Polish** page. Hosted Ollama models cannot be removed because there is nothing on your Mac to remove.
 
