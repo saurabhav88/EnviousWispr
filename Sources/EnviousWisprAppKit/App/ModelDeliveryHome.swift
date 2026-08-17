@@ -379,9 +379,23 @@ public final class ModelDeliveryHome {
   /// The preview model IS in that family (same `whisper_kit` registration family,
   /// differing only by variant), so one flag correctly covers both.
   ///
-  /// Deliberately guards only the DOWNLOAD door. Cancel and Remove stay reachable
-  /// with the flag off: a kill switch on delivery must not trap a user with a
-  /// model they cannot cancel or delete, and neither starts network work.
+  /// Adds a guard only to THIS door, because the other two doors already carry
+  /// the family's answer and they do not agree with each other:
+  ///
+  /// - `cancelActiveFetch()` is NOT gated (`WhisperKitModelDelivery.swift:111`),
+  ///   so Cancel stays reachable with the flag off. That is the right shape — a
+  ///   kill switch on delivery must not strand a user mid-download with no way
+  ///   to stop it, and cancelling starts no network work.
+  /// - `remove()` IS gated and returns `false` without touching the controller
+  ///   (`WhisperKitModelDelivery.swift:124`). That is deliberate and owned
+  ///   there: the flag stands down the WHOLE delivery layer, deletions included
+  ///   (EG-1 §16.6 precedent). So with the flag off the user genuinely CANNOT
+  ///   remove the model, and the model staying on disk is the intended
+  ///   consequence of an operator freezing delivery, not a defect here.
+  ///
+  /// Do not "fix" that asymmetry from this file. Changing `remove()` would
+  /// change a shared primitive the main transcription model also uses, against
+  /// its owner's stated intent.
   public func startPreviewDownload() {
     guard let handle = whisperPreviewHandle else { return }
     guard handle.isEnabled() else {
@@ -484,12 +498,33 @@ public final class ModelDeliveryHome {
       self?.removalStepsForTests.append("drain")
       if let substitute = self?.deletePreviewModelOverrideForTests {
         await substitute()
-      } else {
-        _ = await handle.remove()
+      } else if await handle.remove() == false {
+        // `remove()` refuses when the family kill switch is off and deletes
+        // nothing (`WhisperKitModelDelivery.swift:124`, deliberate). Logged for
+        // the same reason the download refusal is: the flag is set remotely, so
+        // whoever reads the "Remove does nothing" report cannot otherwise tell a
+        // stood-down delivery layer from a broken button.
+        //
+        // KNOWN LIMIT, deliberately not widened here: the user still sees no
+        // explanation, only a Remove that leaves the model in place. Surfacing
+        // one needs new user-facing copy and a new card state, which is a
+        // product decision rather than a review fix.
+        self?.removalStepsForTests.append("refused")
+        await AppLogger.shared.log(
+          "Preview removal deleted nothing: the whisper_kit delivery kill switch "
+            + "is off (modelDelivery.whisper_kit.enabled = false)",
+          level: .info, category: "Delivery")
       }
       self?.removalStepsForTests.append("delete")
       // Only now may a preview run again: until the marker is deleted, a
       // resolution would still read the model as admitted.
+      //
+      // Runs UNCONDITIONALLY, including on the refusal above, and that is not an
+      // oversight. This signal means "no longer removing", never "removal
+      // succeeded" — it clears `isRemovingModel` in the coordinator. Skipping it
+      // on a refusal would leave that suppression latched forever and kill Live
+      // Preview for the rest of the launch, trading a model that will not delete
+      // for a feature that will not run.
       self?.previewRemovalDidFinish?()
       self?.removalStepsForTests.append("finish")
       self?.removalTask = nil

@@ -415,6 +415,85 @@ struct ModelDeliveryHomeTests {
     )
   }
 
+  /// A refused removal must still END the removal, or Live Preview dies for the
+  /// rest of the launch.
+  ///
+  /// `remove()` returns `false` without touching the controller when the family
+  /// kill switch is off (`WhisperKitModelDelivery.swift:124`) — deliberate, and
+  /// owned there: the flag stands down the whole delivery layer, deletions
+  /// included. So the model legitimately stays on disk. What is NOT legitimate
+  /// is what that does to the finish callback.
+  ///
+  /// `previewRemovalDidFinish` means "no longer removing", never "removal
+  /// succeeded" — it clears `isRemovingModel` in the coordinator. Making it
+  /// conditional on success is the obvious-looking reading of a discarded result,
+  /// and it latches removal suppression forever: the model will not delete AND
+  /// the feature will not run. This pins the sequence so that reading cannot land
+  /// silently.
+  ///
+  /// Both directions, because "the steps completed" alone is satisfiable by a
+  /// build that never consults the flag at all: flag-off must record `refused`,
+  /// flag-on must NOT, and both must reach `finish`.
+  ///
+  /// **The real `remove()` runs here, unlike the ordering tests above, which
+  /// substitute it.** That is safe only because `appSupportOverride` roots BOTH
+  /// the preview model's `installDirectory` and its `metadataDirectory`
+  /// (`ModelDeliveryHome.swift:196-210`), so the flag-on half deletes inside a
+  /// temp directory rather than the developer's installed 217 MB model.
+  @Test("a kill-switch-refused preview removal still finishes, both ways")
+  func refusedPreviewRemovalStillFinishes() async throws {
+    func home(enabled: Bool) throws -> ModelDeliveryHome {
+      let suite = try #require(UserDefaults(suiteName: "ew-2137-rmswitch-\(UUID().uuidString)"))
+      suite.set(enabled, forKey: "modelDelivery.whisper_kit.enabled")
+      return ModelDeliveryHome(
+        engineMutationScope: .live(
+          tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+        manifestBundle: try Self.manifestBundle(),
+        appSupportOverride: try Self.tempAppSupport(),
+        deliveryFlagDefaults: suite)
+    }
+
+    // **Observes the CALLBACK, never the `finish` step marker**, and that
+    // distinction is the whole test. `removalStepsForTests.append("finish")` is
+    // a separate statement AFTER the callback, so it records that control
+    // reached that line — not that the callback ran. Asserting the step array
+    // passed against the exact mutation this test exists to catch (suppressing
+    // the callback on a refusal), because the marker still landed. A proxy one
+    // statement away from the subject is not an observation of it.
+    @MainActor final class Finishes {
+      private(set) var count = 0
+      func record() { count += 1 }
+    }
+
+    let off = try home(enabled: false)
+    let offFinishes = Finishes()
+    off.previewRemovalDidFinish = { offFinishes.record() }
+    for _ in 0..<400 { await Task.yield() }
+    off.removePreviewModel()
+    for _ in 0..<4000 where offFinishes.count == 0 { await Task.yield() }
+    #expect(
+      offFinishes.count == 1,
+      "a refused removal must still fire the finish callback; latching suppression kills Live Preview for the launch"
+    )
+    #expect(
+      off.removalStepsForTests.contains("refused"),
+      "control: with the flag OFF the removal must actually have been refused")
+
+    let on = try home(enabled: true)
+    let onFinishes = Finishes()
+    on.previewRemovalDidFinish = { onFinishes.record() }
+    for _ in 0..<400 { await Task.yield() }
+    on.removePreviewModel()
+    for _ in 0..<4000 where onFinishes.count == 0 { await Task.yield() }
+    #expect(
+      onFinishes.count == 1,
+      "with the flag ON removal must still finish exactly once")
+    #expect(
+      !on.removalStepsForTests.contains("refused"),
+      "with the flag ON removal must NOT be refused; a build ignoring the flag would pass the OFF half above"
+    )
+  }
+
   // MARK: - #2123 whole-diff review: the launch probe
 
   /// Launching must PROBE delivery state, not merely wire an observer to it.
