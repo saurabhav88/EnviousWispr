@@ -288,7 +288,22 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
       // Nothing starts mid-removal: the files are about to go, and resolving now
       // would reload the model from a marker that has not been deleted yet.
+      //
+      // **Freeze the recording as DISABLED rather than returning bare** (#2137
+      // cloud review). Returning without a snapshot left this the one suppressed
+      // path whose decision was not sticky: the overlay forwards duplicate
+      // `.recording` pushes, so if removal finished mid-recording,
+      // `endRemovalSuppression()` cleared the guard and the next duplicate push
+      // sailed past BOTH guards — `recordingSnapshot` still nil, `isRemovingModel`
+      // now false — and started a preview partway through a recording that began
+      // with it suppressed. That is the exact behaviour the snapshot guard above
+      // exists to prevent for every other disabled path.
+      //
+      // Cleared on the matching `setRecording(false)` like any other snapshot, so
+      // the NEXT recording decides afresh and a user who removes a model mid-take
+      // is not suppressed beyond that take.
       guard !isRemovingModel else {
+        recordingSnapshot = RecordingSnapshot(route: selectedRoute(), enabled: false)
         display = .off
         return
       }

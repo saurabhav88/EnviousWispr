@@ -27,7 +27,10 @@ private func previewRoute(
   supported: Bool = true,
   _ resolve: @escaping LivePreviewEngineResolver
 ) -> () -> LivePreviewEngineRoute {
-  { LivePreviewEngineRoute(telemetryEngineID: "universal", isSupportedOnThisSystem: { supported }, resolve: resolve) }
+  {
+    LivePreviewEngineRoute(
+      telemetryEngineID: "universal", isSupportedOnThisSystem: { supported }, resolve: resolve)
+  }
 }
 
 @MainActor
@@ -272,11 +275,27 @@ struct LivePreviewCoordinatorTests {
 
     // And once removal ends, previews work again — otherwise this passes against
     // a feature that is simply broken from then on.
-    coordinator.setRecording(false)
+    // **Removal finishing MID-RECORDING must not start a preview in the take that
+    // began suppressed** (#2137 cloud review). The overlay forwards duplicate
+    // `.recording` pushes, so a second `setRecording(true)` with no intervening
+    // `false` is the real shape here, not a contrivance. Before the fix this path
+    // stored no snapshot, so once `endRemovalSuppression()` cleared the guard the
+    // duplicate push sailed past both checks and started a preview partway
+    // through the recording.
     coordinator.endRemovalSuppression()
     coordinator.setRecording(true)
+    for _ in 0..<300 { await Task.yield() }
+    #expect(
+      opens.count == 1,
+      "removal ending mid-recording started a preview in a take that began suppressed")
+
+    // And the NEXT recording decides afresh — otherwise the fix above would be a
+    // permanent suppression rather than a per-take one, which is the same feature
+    // broken in the opposite direction.
+    coordinator.setRecording(false)
+    coordinator.setRecording(true)
     for _ in 0..<2000 where opens.count < 2 { await Task.yield() }
-    #expect(opens.count == 2, "previews must resume once removal has finished")
+    #expect(opens.count == 2, "previews must resume on the recording after removal finished")
   }
 
   // MARK: - #2123 G1: the outcome metric
@@ -604,7 +623,6 @@ struct LivePreviewCoordinatorTests {
       "reporting unsupported would make the pill go quietly blank instead of saying why")
   }
 
-
   /// Switching engines releases the one being switched away from — while the
   /// preview is still ON, which is what makes this a separate entry point from
   /// the disabled path rather than a second caller of it.
@@ -796,7 +814,6 @@ struct LivePreviewCoordinatorTests {
     for _ in 0..<2000 where opens.count < 2 { await Task.yield() }
     #expect(opens.count == 2, "the next recording must use the newly chosen engine")
   }
-
 
   /// The pill's SIZE and the words in it must never disagree about the engine.
   ///
@@ -1595,7 +1612,12 @@ struct LivePreviewCoordinatorTests {
       private var opened = 0
       var enginesMade: Int { mutex.withLock { made } }
       var sessionsOpened: Int { mutex.withLock { opened } }
-      func recordEngine() -> Int { mutex.withLock { made += 1; return made } }
+      func recordEngine() -> Int {
+        mutex.withLock {
+          made += 1
+          return made
+        }
+      }
       func recordOpen() { mutex.withLock { opened += 1 } }
     }
 
@@ -1712,7 +1734,12 @@ struct LivePreviewCoordinatorTests {
       private var entered = 0
       var enginesMade: Int { mutex.withLock { made } }
       var opensEntered: Int { mutex.withLock { entered } }
-      func recordEngine() -> Int { mutex.withLock { made += 1; return made } }
+      func recordEngine() -> Int {
+        mutex.withLock {
+          made += 1
+          return made
+        }
+      }
       func enterOpen() { mutex.withLock { entered += 1 } }
     }
 
