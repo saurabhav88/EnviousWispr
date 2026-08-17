@@ -27,7 +27,7 @@ private func previewRoute(
   supported: Bool = true,
   _ resolve: @escaping LivePreviewEngineResolver
 ) -> () -> LivePreviewEngineRoute {
-  { LivePreviewEngineRoute(isSupportedOnThisSystem: { supported }, resolve: resolve) }
+  { LivePreviewEngineRoute(telemetryEngineID: "universal", isSupportedOnThisSystem: { supported }, resolve: resolve) }
 }
 
 @MainActor
@@ -279,6 +279,265 @@ struct LivePreviewCoordinatorTests {
     #expect(opens.count == 2, "previews must resume once removal has finished")
   }
 
+  // MARK: - #2123 G1: the outcome metric
+
+  /// The event has to name the engine that ACTUALLY ran, and carry nothing else.
+  ///
+  /// A refusal produces no candidate, so the engine name comes from the route —
+  /// which is why routes carry an id at all. And "blocked" is the outcome that
+  /// matters most for the downloadable engine, since not-installed is its
+  /// commonest refusal: an event that could not name the engine there would fail
+  /// to answer the one question it exists for.
+  ///
+  /// The property COUNT is asserted, not just the values. An event that starts
+  /// carrying a refusal reason, a language, or anything else about what the user
+  /// was doing must fail this.
+  @Test("a refused preview reports which engine refused, and nothing more")
+  func blockedOutcomeNamesTheEngine() async throws {
+    let waiter = TelemetryEventWaiter()
+    TelemetryService.shared.testEventHook = { @Sendable event in
+      MainActor.assumeIsolated { waiter.record(event) }
+    }
+    defer { TelemetryService.shared.testEventHook = nil }
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: {
+        LivePreviewEngineRoute(
+          telemetryEngineID: "universal",
+          isSupportedOnThisSystem: { true },
+          resolve: { _ in .blocked(.modelNotInstalled) })
+      }
+    )
+
+    coordinator.setRecording(true)
+    let event = try await waiter.waitForEvent(named: "live_preview.outcome")
+
+    // The CLOSED value, not the candidate key's `whisper_preview#<digest>`: a
+    // per-revision engine string would be a high-cardinality property rather
+    // than a dimension anyone can group by.
+    #expect(event.stringProps["engine"] == "universal")
+    #expect(event.stringProps["outcome"] == "blocked")
+    #expect(
+      event.stringProps.count == 2,
+      "the event grew a property: \(event.stringProps.keys.sorted())")
+  }
+
+  /// A preview that RUNS reports started, exactly once, with the closed engine
+  /// value. Testing only the refusal left three of four call sites unprotected —
+  /// a mutation at any of them stayed green.
+  @Test("a running preview reports started exactly once")
+  func startedOutcomeIsReportedOnce() async throws {
+    let waiter = TelemetryEventWaiter()
+    TelemetryService.shared.testEventHook = { @Sendable event in
+      MainActor.assumeIsolated { waiter.record(event) }
+    }
+    defer { TelemetryService.shared.testEventHook = nil }
+
+    final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
+            makeEngine: { ReadyEngine() }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    let event = try await waiter.waitForEvent(named: "live_preview.outcome")
+    #expect(event.stringProps["outcome"] == "started")
+    // The candidate key here deliberately CARRIES a digest. The event must not.
+    #expect(
+      event.stringProps["engine"] == "universal",
+      "the artifact identity leaked into the engine field")
+
+    // **"Once" has to be ASSERTED.** Waiting for the first event proves one
+    // arrived, not that a second did not — the name claimed a property the test
+    // did not check, which is the shape of a test that reads as stronger than it is.
+    for _ in 0..<300 { await Task.yield() }
+    let outcomes = waiter.events.filter { $0.name == "live_preview.outcome" }
+    #expect(outcomes.count == 1, "expected exactly one outcome, got \(outcomes.count)")
+  }
+
+  /// A session abandoned WHILE OPENING must report nothing at all.
+  ///
+  /// `openSession` suspends. If the recording ends in that window the session is
+  /// torn down immediately and the user never saw a preview, so counting it as
+  /// `started` would inflate the metric with previews that did not happen.
+  ///
+  /// Mutation control: remove the `isCurrent` guard around the `started` report
+  /// and this fails on a non-zero count.
+  @Test("a preview abandoned while opening reports nothing")
+  func staleOpenReportsNothing() async throws {
+    let waiter = TelemetryEventWaiter()
+    TelemetryService.shared.testEventHook = { @Sendable event in
+      MainActor.assumeIsolated { waiter.record(event) }
+    }
+    defer { TelemetryService.shared.testEventHook = nil }
+
+    final class Gate: @unchecked Sendable {
+      private let mutex = NSLock()
+      private var waiterC: CheckedContinuation<Void, Never>?
+      private var isOpen = false
+      private var entered = false
+      var hasEntered: Bool { mutex.withLock { entered } }
+      func wait() async {
+        mutex.withLock { entered = true }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let open: Bool = mutex.withLock {
+            if isOpen { return true }
+            waiterC = c
+            return false
+          }
+          if open { c.resume() }
+        }
+      }
+      func open() {
+        let w: CheckedContinuation<Void, Never>? = mutex.withLock {
+          isOpen = true
+          let w = waiterC
+          waiterC = nil
+          return w
+        }
+        w?.resume()
+      }
+    }
+    let opening = Gate()
+
+    final class SlowOpenEngine: LivePreviewEngine, @unchecked Sendable {
+      let gate: Gate
+      init(gate: Gate) { self.gate = gate }
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        await gate.wait()
+        struct Idle: LivePreviewEngineSession {
+          func feed(_ samples: [Float]) async {}
+          func end() async {}
+        }
+        return Idle()
+      }
+    }
+
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
+            makeEngine: { SlowOpenEngine(gate: opening) }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    for _ in 0..<2000 where !opening.hasEntered { await Task.yield() }
+    #expect(opening.hasEntered, "control: the open must be in flight")
+
+    // The recording ends while the open is still suspended.
+    coordinator.setRecording(false)
+    opening.open()
+    for _ in 0..<500 { await Task.yield() }
+
+    let outcomes = waiter.events.filter { $0.name == "live_preview.outcome" }
+    #expect(
+      outcomes.isEmpty,
+      "a preview the user never saw was counted: \(outcomes.map { $0.stringProps })")
+  }
+
+  /// An engine that cannot prepare reports `prepare_failed` rather than nothing.
+  @Test("a preview that cannot prepare reports prepare_failed")
+  func prepareFailureIsReported() async throws {
+    let waiter = TelemetryEventWaiter()
+    TelemetryService.shared.testEventHook = { @Sendable event in
+      MainActor.assumeIsolated { waiter.record(event) }
+    }
+    defer { TelemetryService.shared.testEventHook = nil }
+
+    struct Boom: Error {}
+    final class FailingEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws { throw Boom() }
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw Boom()
+      }
+    }
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
+            makeEngine: { FailingEngine() }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    let event = try await waiter.waitForEvent(named: "live_preview.outcome")
+    #expect(event.stringProps["outcome"] == "prepare_failed")
+    #expect(event.stringProps["engine"] == "universal")
+  }
+
+  /// An engine that prepares but cannot open a session reports `open_failed` —
+  /// a different outcome from failing to prepare, because they send you to
+  /// different places when the graph moves.
+  @Test("a preview that cannot open a session reports open_failed")
+  func openFailureIsReported() async throws {
+    let waiter = TelemetryEventWaiter()
+    TelemetryService.shared.testEventHook = { @Sendable event in
+      MainActor.assumeIsolated { waiter.record(event) }
+    }
+    defer { TelemetryService.shared.testEventHook = nil }
+
+    struct Boom: Error {}
+    final class OpenFailsEngine: LivePreviewEngine, @unchecked Sendable {
+      func prepare() async throws {}
+      func openSession(
+        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw Boom()
+      }
+    }
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(
+          LivePreviewEngineCandidate(
+            key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
+            makeEngine: { OpenFailsEngine() }))
+      }
+    )
+
+    coordinator.setRecording(true)
+    let event = try await waiter.waitForEvent(named: "live_preview.outcome")
+    #expect(event.stringProps["outcome"] == "open_failed")
+    #expect(event.stringProps["engine"] == "universal")
+  }
+
   // MARK: - #2123: one engine decision per recording
 
   /// The selection itself: which route serves which choice, and what happens when
@@ -291,6 +550,7 @@ struct LivePreviewCoordinatorTests {
   @Test("the chosen engine is the one that answers, and a missing one never becomes Apple")
   func routeSelectionNeverSubstitutesApple() async {
     let apple = LivePreviewEngineRoute(
+      telemetryEngineID: "apple",
       isSupportedOnThisSystem: { true },
       resolve: { _ in
         .ready(
@@ -299,6 +559,7 @@ struct LivePreviewCoordinatorTests {
             makeEngine: { fatalError("not built in this test") }))
       })
     let universal = LivePreviewEngineRoute(
+      telemetryEngineID: "universal",
       isSupportedOnThisSystem: { true },
       resolve: { _ in
         .ready(
@@ -568,6 +829,7 @@ struct LivePreviewCoordinatorTests {
         // behave once it switches on a setting.
         let id = choice.current
         return LivePreviewEngineRoute(
+          telemetryEngineID: "universal",
           isSupportedOnThisSystem: { true },
           resolve: { _ in
             seen.record(id)

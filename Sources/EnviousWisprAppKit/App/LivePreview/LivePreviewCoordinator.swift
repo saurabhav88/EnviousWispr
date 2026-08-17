@@ -2,6 +2,7 @@ import AVFoundation
 import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprPostProcessing
+import EnviousWisprServices
 import Foundation
 
 /// Read-only access to the audio the capture manager has already stored.
@@ -398,6 +399,12 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
     guard case .ready(let candidate) = resolution else {
       if case .blocked(let reason) = resolution {
+        // The engine that REFUSED, from the route that answered — there is no
+        // candidate here, so the persisted choice is the only identity available.
+        // Always the ROUTE's closed id. The candidate key carries artifact
+        // identity, so reporting that would make this field high-cardinality —
+        // a new value on every model revision.
+        reportOutcome("blocked", engine: route.telemetryEngineID)
         display = .unavailable(Self.sentence(for: reason))
         // **A blocked engine must not stay cached (#2108).**
         //
@@ -429,6 +436,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
     guard await ensurePrepared(candidate), let engine = preparedEngine else {
       guard isCurrent(generation) else { return }
+      reportOutcome("prepare_failed", engine: route.telemetryEngineID)
       display = .unavailable(LivePreviewCopy.notReady)
       await Self.log("not ready for \(candidate.key.engine)/\(candidate.key.commitment)")
       return
@@ -471,6 +479,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       session = try await engine.openSession(lookups: correctorLookups, onText: publish)
     } catch {
       guard isCurrent(generation) else { return }
+      reportOutcome("open_failed", engine: route.telemetryEngineID)
       display = .unavailable(LivePreviewCopy.notReady)
       await Self.log("session refused to start: \(error)")
       return
@@ -503,6 +512,13 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // below. The task above still ends its session on this path.
     if isCurrent(generation) { liveTeardown = live }
 
+    // **Only for a recording that is still current.** `openSession` suspends, and
+    // a recording that ended — or a removal that started — while it was open
+    // leaves a session that is immediately torn down. Counting that as "started"
+    // would inflate the metric with previews the user never saw.
+    if isCurrent(generation) {
+      reportOutcome("started", engine: route.telemetryEngineID)
+    }
     await Self.log(
       "session started, engine=\(candidate.key.engine) on=\(candidate.key.commitment)")
     await live.value
@@ -711,6 +727,20 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     preparationTask = nil
     preparedEngine = nil
     preparedKey = nil
+  }
+
+  /// Report what this recording's preview did, exactly once (#2123).
+  ///
+  /// The engine name comes from the ROUTE's closed telemetry id — `apple` or
+  /// `universal` — and NOT from the resolved candidate's key.
+  ///
+  /// An earlier version of this comment said the opposite, and so did three of
+  /// the four call sites: the candidate key carries artifact identity, so the
+  /// universal engine reported `whisper_preview#<digest>` and the field gained a
+  /// new value on every model revision. A closed vocabulary is a dimension
+  /// someone can group by; the key is not.
+  private func reportOutcome(_ outcome: String, engine: String) {
+    TelemetryService.shared.livePreviewOutcome(engine: engine, outcome: outcome)
   }
 
   /// One log seam so every preview line carries the same category and the whole

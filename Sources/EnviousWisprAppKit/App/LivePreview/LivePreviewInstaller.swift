@@ -152,6 +152,10 @@ enum LivePreviewInstaller {
   /// because there is none — the fix is a release-build resource check, not a
   /// button.
   private static let unavailableInThisBuild = LivePreviewEngineRoute(
+    // The card the user selected is the universal one, so that is what a refusal
+    // here must report — the stand-in exists precisely because that engine could
+    // not be composed.
+    telemetryEngineID: "universal",
     isSupportedOnThisSystem: { true },
     resolve: { _ in .blocked(.engineUnavailableInThisBuild) }
   )

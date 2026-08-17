@@ -1721,6 +1721,33 @@ public final class TelemetryService {
     PostHogSDK.shared.capture(event, properties: properties)
   }
 
+  /// #2123: which preview engine ran, and how far it got.
+  ///
+  /// NOT "whether it produced anything" — `started` proves a session opened, not
+  /// that any words reached the pill. A heard-nothing signal would be a different
+  /// event with a different meaning.
+  ///
+  /// **Exactly two properties, and the bound is deliberate.** Settings telemetry
+  /// already reports whether the preview is switched ON; it cannot say which
+  /// engine that adoption runs on, which is the question that decides whether
+  /// shipping a 217 MB download was worth it. A refusal REASON was drafted as a
+  /// third property and cut: the reasons are a closed set today but they name
+  /// language and streaming state, and this event fires once per recording, so
+  /// it is the wrong place to start describing what a user was doing.
+  ///
+  /// Never a language, a model path, preview text, or any dictated content —
+  /// `sentry-operations.md` RULE: telemetry-privacy-boundary. The shape crosses
+  /// the network; what was said never does.
+  public func livePreviewOutcome(engine: String, outcome: String) {
+    let event = "live_preview.outcome"
+    let properties = ["engine": engine, "outcome": outcome]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(name: event, stringProps: properties, boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture(event, properties: properties)
+  }
+
   /// #1348 Phase 2: owned model-delivery funnel (`model_delivery.*`, D3
   /// schema). Content-free by construction: identity fields come from OUR
   /// bundled manifest, reasons/details are closed string sets, and no user

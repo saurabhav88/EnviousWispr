@@ -215,6 +215,20 @@ package enum LivePreviewEngineResolution: Sendable {
 /// feature exists to remove.
 package struct LivePreviewEngineRoute: Sendable {
 
+  /// Which engine this route speaks for, as a CLOSED telemetry vocabulary:
+  /// exactly `apple` or `universal`.
+  ///
+  /// **Deliberately NOT the candidate key's engine string.** That key carries
+  /// artifact identity — the universal engine's is `whisper_preview#<digest>` —
+  /// so reporting it would put a new value in the field on every model revision,
+  /// which is a high-cardinality property rather than a dimension anyone can
+  /// group by. The signed plan says `engine = apple|universal`; this is that.
+  ///
+  /// It also answers the one caller with no candidate to read: a REFUSED
+  /// resolution never produces a `LivePreviewEngineCandidate`, and "refused" is
+  /// the most interesting outcome the downloadable engine has.
+  package let telemetryEngineID: String
+
   /// Static capability only: does this Mac have what the engine fundamentally
   /// requires. NOT "is it ready right now" — anything that can change while the app
   /// runs, such as whether a model has been downloaded, belongs in `resolve`.
@@ -223,9 +237,11 @@ package struct LivePreviewEngineRoute: Sendable {
   package let resolve: LivePreviewEngineResolver
 
   package init(
+    telemetryEngineID: String,
     isSupportedOnThisSystem: @escaping @Sendable () -> Bool,
     resolve: @escaping LivePreviewEngineResolver
   ) {
+    self.telemetryEngineID = telemetryEngineID
     self.isSupportedOnThisSystem = isSupportedOnThisSystem
     self.resolve = resolve
   }
