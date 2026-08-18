@@ -75,6 +75,9 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.universalLockedHelp,
       LivePreviewSettingsCopy.universalAuto,
       LivePreviewSettingsCopy.universalAutoHelp,
+      // r8: paused variants, which must describe rather than promise.
+      LivePreviewSettingsCopy.universalLockedPaused("German"),
+      LivePreviewSettingsCopy.universalAutoPaused,
       LivePreviewSettingsCopy.tableColumnLanguage,
       LivePreviewSettingsCopy.tableColumnSource,
       LivePreviewSettingsCopy.tableColumnStatus,
@@ -271,6 +274,53 @@ struct LivePreviewSettingsCopyTests {
       #expect(
         description.lowercased().contains("nothing looks different"),
         "each engine's copy must separate this setting from Live Preview: \(description)")
+    }
+  }
+
+  /// **The four cells of the universal row, because the SELECTION is the subject.**
+  ///
+  /// Cloud review r8: with Live transcription streaming, `WhisperPreviewEngineResolver`
+  /// returns `.blocked(.heartIsStreaming)` and the hero correctly reads "Paused",
+  /// while this row went on saying "Your words will appear in German" and "The
+  /// preview detects your language as you speak". One page asserted a fact and
+  /// denied it a few points lower.
+  ///
+  /// Asserting only that the paused strings avoid a promise verb would pass
+  /// unchanged if the view stopped consulting the refusal, so these assert the
+  /// mapping from (language, streaming) to the string actually chosen.
+  @Test("The universal row promises output only when the engine is not paused")
+  func universalRowPromisesOnlyWhenRunning() {
+    #expect(
+      LivePreviewSettingsCopy.universalRowLabel(languageName: "German", heartIsStreaming: false)
+        == LivePreviewSettingsCopy.universalLocked("German"),
+      "a locked language with nothing blocking must promise output")
+    #expect(
+      LivePreviewSettingsCopy.universalRowLabel(languageName: "German", heartIsStreaming: true)
+        == LivePreviewSettingsCopy.universalLockedPaused("German"),
+      "a locked language must be described, not promised, while the preview is paused")
+    #expect(
+      LivePreviewSettingsCopy.universalRowLabel(languageName: nil, heartIsStreaming: false)
+        == LivePreviewSettingsCopy.universalAuto,
+      "Auto with nothing blocking must say detection is happening")
+    #expect(
+      LivePreviewSettingsCopy.universalRowLabel(languageName: nil, heartIsStreaming: true)
+        == LivePreviewSettingsCopy.universalAutoPaused,
+      "Auto must not claim detection is happening while the preview is paused")
+  }
+
+  /// The paused strings must still NAME the language, because the row exists so a
+  /// user locked to the wrong one can see it. Silencing the row while paused would
+  /// hide the setting exactly when the preview is not running to reveal it.
+  @Test("Paused copy still names the configured language and claims no output")
+  func pausedCopyDescribesWithoutPromising() {
+    let paused = LivePreviewSettingsCopy.universalLockedPaused("German")
+    #expect(paused.contains("German"), "the paused label must still name the lock: \(paused)")
+    for promise in ["will appear", "detects your language"] {
+      for string in [paused, LivePreviewSettingsCopy.universalAutoPaused] {
+        #expect(
+          !string.lowercased().contains(promise),
+          "paused copy must not promise output: \(string)")
+      }
     }
   }
 }

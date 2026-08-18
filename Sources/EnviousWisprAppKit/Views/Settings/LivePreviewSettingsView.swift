@@ -89,7 +89,7 @@ struct LivePreviewSettingsView: View {
       // The universal preview refuses to run while the heart decodes
       // continuously. Read live rather than snapshotted, for the same reason the
       // resolver reads it live: the answer must be current.
-      heartIsStreaming: WhisperPreviewDeliveryWiring.heartIsStreaming(settings: settings),
+      heartIsStreaming: heartIsStreaming,
       // `currentActive`, like every other consumer. It is nil both when nothing
       // has resolved yet and when what resolved is stale; the flag below tells
       // the mapping which, and the mapping checks the flag first. No consumer
@@ -103,6 +103,17 @@ struct LivePreviewSettingsView: View {
       // leaves `active` describing the previous one. Compare what it was resolved
       // FOR against what is selected NOW rather than assuming they agree.
       activeDescribesAnotherLanguage: activeDescribesAnotherLanguage)
+  }
+
+  /// **The ONE place the streaming refusal is read, for the same reason
+  /// `currentActive` is the one place staleness is decided.**
+  ///
+  /// Two consumers now: the hero summary, and the universal language row, which
+  /// must stop promising output while the resolver is refusing. Read live rather
+  /// than snapshotted because the resolver reads it live — a snapshot taken at
+  /// view build time can disagree with what pressing record actually does.
+  private var heartIsStreaming: Bool {
+    WhisperPreviewDeliveryWiring.heartIsStreaming(settings: settings)
   }
 
   /// **The ONE place staleness is decided, and every consumer of the resolved
@@ -432,11 +443,21 @@ struct LivePreviewSettingsView: View {
             switch settings.languageMode {
             case .locked(let code):
               let entry = LanguageCatalog.entry(for: code)
-              Text(LivePreviewSettingsCopy.universalLocked(entry.englishName))
-                .settingsRowLabel()
+              // Describe the lock while paused; promise output only when the
+              // resolver would actually deliver it. The help line is unchanged
+              // because it states where the setting lives, which stays true.
+              Text(
+                LivePreviewSettingsCopy.universalRowLabel(
+                  languageName: entry.englishName, heartIsStreaming: heartIsStreaming)
+              )
+              .settingsRowLabel()
               Text(LivePreviewSettingsCopy.universalLockedHelp).settingsHelperCopy()
             case .auto:
-              Text(LivePreviewSettingsCopy.universalAuto).settingsRowLabel()
+              Text(
+                LivePreviewSettingsCopy.universalRowLabel(
+                  languageName: nil, heartIsStreaming: heartIsStreaming)
+              )
+              .settingsRowLabel()
               Text(LivePreviewSettingsCopy.universalAutoHelp).settingsHelperCopy()
             }
           }

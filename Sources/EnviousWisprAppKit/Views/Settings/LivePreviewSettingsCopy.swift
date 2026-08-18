@@ -326,6 +326,54 @@ enum LivePreviewSettingsCopy {
   static let universalAutoHelp =
     "On Auto this engine works out the language itself, so there is nothing to set."
 
+  /// **Paused variants. The row must DESCRIBE the configuration, never promise
+  /// output, whenever the engine is refused.**
+  ///
+  /// `WhisperPreviewEngineResolver` returns `.blocked(.heartIsStreaming)` before
+  /// it asks anything else, so with Live transcription streaming the universal
+  /// preview will not run at all. The hero card reports that correctly. The row
+  /// below it did not: it went on saying "Your words will appear in German" and
+  /// "The preview detects your language as you speak" while nothing would appear
+  /// and nothing was being detected, so one page stated a fact and denied it a
+  /// few points lower. Cloud review r8.
+  ///
+  /// The split is present tense versus configuration. "Will appear" and
+  /// "detects" are claims about what is happening NOW and only the resolver can
+  /// license them; "is set to" is a claim about what the user chose, which stays
+  /// true while paused and is exactly what the row exists to show — a user
+  /// locked to the wrong language needs to SEE that lock most when the preview
+  /// is not running to reveal it.
+  ///
+  /// Scoped to the universal engine deliberately. Apple's route cannot be
+  /// blocked this way (`LivePreviewPacksModel` documents that refusal as
+  /// unreachable for it), so `activeReady` keeps its promise and must not be
+  /// "fixed" to match. Ref: live-preview.md RULE:
+  /// the-status-card-may-only-claim-what-its-inputs-prove.
+  static func universalLockedPaused(_ name: String) -> String {
+    "The preview is set to \(name)."
+  }
+  static let universalAutoPaused =
+    "The preview is set to detect your language as you speak."
+
+  /// **The selection itself, so the CHOICE is testable rather than only the
+  /// strings.**
+  ///
+  /// A guard that asserts the paused strings contain no promise verb tests the
+  /// vocabulary and not the wiring: it passes unchanged if the view stops
+  /// consulting the refusal and always renders the promising branch. This
+  /// function is the subject, and its four cells are the whole behaviour.
+  ///
+  /// `languageName` is nil for Auto. The view resolves the catalog entry; this
+  /// stays free of that dependency so a test can call it directly.
+  static func universalRowLabel(languageName: String?, heartIsStreaming: Bool) -> String {
+    switch (languageName, heartIsStreaming) {
+    case (.some(let name), true): return universalLockedPaused(name)
+    case (.some(let name), false): return universalLocked(name)
+    case (.none, true): return universalAutoPaused
+    case (.none, false): return universalAuto
+    }
+  }
+
   /// Says the consequence out loud. Picking a language here is not a
   /// preview-only setting: it sets the DICTATION language, on a different page.
   /// A button that silently edits another page's setting is how a user loses
