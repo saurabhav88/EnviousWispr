@@ -103,8 +103,22 @@ struct ClipboardIsolationFreezeTests {
   /// needs type resolution this suite does not do. The durable fix is to give the executor the same
   /// injected clipboard seam `KernelFinalizationWiring` already has, which is a production change and
   /// has its own issue.
+  /// ENUMERATED, not collected from review reports. Every `NSPasteboard.general` in `Sources/` is:
+  ///
+  ///   PasteService.pasteToActiveApp                    WRITE   banned above (no board parameter)
+  ///   PasteCascadeExecutor.deliver                     WRITE   here (via a no-board copyToClipboard)
+  ///   AIAvailabilityCoordinator.copyDiagnosticsToClipboard  WRITE   here
+  ///   PasteCascadeExecutor  (changeCount)              READ    harmless; reads clobber nothing
+  ///   DiagnosticsSettingsView, OnboardingV2View        WRITE   inside SwiftUI `body`, which a unit
+  ///                                                            test cannot practically invoke
+  ///
+  /// Re-derive with `grep -rn "NSPasteboard\.general" Sources/` and classify each hit write/read and
+  /// reachable/not. Two entries here arrived as separate review findings before the enumeration was
+  /// done, which is the lesson: **a missing member and a clean file are the same observation from
+  /// inside a guard**, so the set has to be derived rather than accumulated.
   private static let boardReachingTypes: [String: Set<String>] = [
-    "PasteCascadeExecutor": ["deliver"]
+    "PasteCascadeExecutor": ["deliver"],
+    "AIAvailabilityCoordinator": ["copyDiagnosticsToClipboard"],
   ]
 
   /// Argument labels that name a board explicitly.
@@ -200,6 +214,12 @@ struct ClipboardIsolationFreezeTests {
         return identifierText(reference.baseName)
       }
       if let member = unwrappedBase?.as(MemberAccessExprSyntax.self) {
+        // `T.self` is a metatype spelling of `T`, so resolving it to "self" loses the type entirely —
+        // `NSPasteboard.self.general` and `PasteCascadeExecutor.self.init()` both hid behind it. Look
+        // through it, same as every other transparent spelling.
+        if identifierText(member.declName.baseName) == "self" {
+          return trailingName(of: member.base)
+        }
         return identifierText(member.declName.baseName)
       }
       return nil
@@ -234,6 +254,37 @@ struct ClipboardIsolationFreezeTests {
     /// board reached by inference (`let pb = makeBoard()`), by alias, or through a helper's return type
     /// still walks past, because catching those needs type resolution this suite deliberately does not
     /// do. That is why it is the THIRD layer and the required seam is the mechanism.
+    /// `(.general as NSPasteboard).clearContents()` — the CAST supplies the contextual type, so there is
+    /// no annotated binding for the variable visitor to read and the member's base is nil. Explicit
+    /// syntax, not inference: the type is written right there.
+    ///
+    /// **It arrives as a SEQUENCE, not an `AsExprSyntax`.** `SwiftParser` does not fold operators
+    /// without an operator table, so `x as T` parses as `SequenceExprSyntax` holding the expression, an
+    /// `UnresolvedAsExprSyntax`, and a `TypeExprSyntax`. An `AsExprSyntax` visitor never fires on
+    /// unfolded source and reports clean — which is exactly what this suite's own paired row caught,
+    /// after review had reported only the spelling. The parser hands you what the LANGUAGE wrote, not
+    /// what a compiler pass would later resolve it to.
+    override func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
+      let elements = Array(node.elements)
+      guard elements.contains(where: { $0.is(UnresolvedAsExprSyntax.self) }),
+        elements.contains(where: {
+          guard let type = $0.as(TypeExprSyntax.self) else { return false }
+          return Self.typeName(of: type.type) == "NSPasteboard"
+        }),
+        elements.contains(where: {
+          guard let member = Self.unwrapped($0).as(MemberAccessExprSyntax.self),
+            member.base == nil
+          else { return false }
+          return Self.identifierText(member.declName.baseName) == "general"
+        })
+      else { return .visitChildren }
+      violations.append(
+        Violation(
+          file: file, line: line(node),
+          reason: "casts the developer's real clipboard into place (`.general as NSPasteboard`)"))
+      return .visitChildren
+    }
+
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
       for binding in node.bindings {
         guard let annotation = binding.typeAnnotation?.type,
@@ -649,10 +700,16 @@ struct ClipboardIsolationFreezeTests {
       (#"func f() async { _ = await PasteCascadeExecutor.init().deliver(request) }"#, 1),
       (#"func f() async { _ = await (PasteCascadeExecutor.init)().deliver(request) }"#, 1),
       (#"func f() async { _ = await (PasteCascadeExecutor()).deliver(request) }"#, 1),
+      (#"func f() async { _ = await PasteCascadeExecutor.self.init().deliver(request) }"#, 1),
+      (#"func f() { AIAvailabilityCoordinator().copyDiagnosticsToClipboard() }"#, 1),
+      (#"func f() { NSPasteboard.self.general.clearContents() }"#, 1),
+      (#"func f() { (.general as NSPasteboard).clearContents() }"#, 1),
       // Safe halves: a different method on that type, and `deliver` on anything else.
       (#"func f() { _ = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(x) }"#, 0),
       (#"func f() async { _ = await wiring.deliver("hello") }"#, 0),
       (#"func f() async { _ = await pasteSink.deliver(request) }"#, 0),
+      (#"func f() { AIAvailabilityCoordinator().refresh() }"#, 0),
+      (#"func f() { (board as NSPasteboard).clearContents() }"#, 0),
     ])
   func aBoardReachingMethodOnAnotherTypeIsBanned(source: String, expected: Int) {
     let hits = Self.violations(inSource: source, file: "Some.swift")
