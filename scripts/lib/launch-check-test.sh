@@ -31,7 +31,7 @@ trap cleanup EXIT
 ok()  { PASS=$((PASS+1)); printf '  PASS  %s\n' "$1"; }
 bad() { FAIL=$((FAIL+1)); printf '  FAIL  %s — %s\n' "$1" "$2"; }
 
-# A fake bundle whose executable is a long-lived script named exactly like the
+# A fake bundle whose executable is a long-lived symlink named exactly like the
 # real one, at a path long enough that `ps -o comm=` would truncate it — which is
 # the whole reason this uses `ps -ww -o command=`.
 make_bundle() { # <name>
@@ -138,28 +138,30 @@ else
   bad "termination detection" "still reporting a pid after the process was killed"
 fi
 
-# --- 6. NEGATIVE: the pgrep PREFILTER self-matches, and the filter must reject it
+# --- 6. NEGATIVE: a prefilter FALSE POSITIVE must be rejected by the filter ----
 # `pgrep -f <pattern>` matches the pattern against every command line INCLUDING
-# the shell that is running the pgrep, because the pattern is in that shell's own
-# argv. Observed live 2026-08-18 by a peer session whose occupancy check returned
-# two PIDs, both of which were shells asking the same question.
-# This is why `ew_launched_pids` cannot use pgrep alone: the `ps -ww -o command=`
-# filter is what rejects the self-match, and nothing tested that until now.
-self_match_seen=0
-while IFS= read -r p; do
-  [ -n "$p" ] || continue
-  self_match_seen=1
-done < <(pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" 2>/dev/null || true)
-
+# the shell running the pgrep, because the pattern sits in that shell's own argv.
+# Observed live 2026-08-18: a peer session's occupancy check returned two PIDs and
+# both were shells asking the same question. `ew_launched_pids` uses that same
+# prefilter, so the `ps -ww -o command=` filter is the only thing rejecting it.
+#
+# The first version of this case asserted "no pid for a bundle that never existed"
+# and PASSED EVEN WHEN THE PREFILTER MATCHED NOTHING — it proved absence of a
+# false positive that was never generated, which is the same class of defect the
+# rest of this file exists to catch. Now the prefilter is STUBBED to return a
+# guaranteed false positive (this shell's own pid), and a marker proves it ran.
 APP_NEVER="$TMP/never-existed/EnviousWispr Local.app"
-if [ -z "$(ew_launched_pids "$APP_NEVER")" ]; then
-  if [ "$self_match_seen" = "1" ]; then
-    ok "pgrep self-match is REJECTED by the executable filter (prefilter did match)"
-  else
-    ok "no pid reported for a bundle that never existed (prefilter matched nothing)"
-  fi
+PREFILTER_CALLED="$TMP/.pgrep-called"
+pgrep() {
+  : > "$PREFILTER_CALLED"
+  printf '%s\n' "$$"
+}
+actual="$(ew_launched_pids "$APP_NEVER")"
+unset -f pgrep
+if [ -f "$PREFILTER_CALLED" ] && [ -z "$actual" ]; then
+  ok "prefilter false positive is REJECTED by the executable filter"
 else
-  bad "pgrep self-match rejection" "reported a pid for a bundle that never existed"
+  bad "prefilter false-positive rejection" "marker or rejection missing: '$actual'"
 fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"

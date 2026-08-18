@@ -13,7 +13,7 @@
 # a function that regenerates unconditionally, which is the useless half. Every
 # case below therefore has a twin asserting the OTHER direction.
 #
-# The generator is STUBBED via `EW_TUIST_GENERATE_CMD` and counted. Nothing here
+# The test overrides ew_run_tuist_generate directly and counts its calls. Nothing here
 # runs Tuist, touches a real checkout, or needs a network — it is pure logic.
 #
 # Run: bash scripts/lib/ensure-generated-test.sh
