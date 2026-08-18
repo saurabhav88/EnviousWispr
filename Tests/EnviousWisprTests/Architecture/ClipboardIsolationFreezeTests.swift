@@ -48,7 +48,9 @@ import Testing
 // violation of it, and a guard that cannot tell those apart fires on the very
 // document explaining why it exists
 // (validation-discipline.md RULE: false-positives-not-gates-train-evasion).
-@Suite("Clipboard isolation freeze (#2146)")
+/// Drift Guard: this freezes a call-site inventory in our own test tree. When it fails, no USER sees
+/// anything — a DEVELOPER's clipboard is at risk. Layers 1 and 2 above are what protect the outcome.
+@Suite("Clipboard isolation freeze (#2146)", .tags(.driftGuard))
 struct ClipboardIsolationFreezeTests {
 
   /// The one suite allowed to touch clipboard capability, because it is the
@@ -94,6 +96,24 @@ struct ClipboardIsolationFreezeTests {
       converter.location(for: node.positionAfterSkippingLeadingTrivia).line
     }
 
+    /// The trailing name of a base expression: `NSPasteboard` from either `NSPasteboard` or
+    /// `AppKit.NSPasteboard`.
+    ///
+    /// Requiring a BARE `DeclReferenceExprSyntax` here meant a module-qualified spelling walked past
+    /// this guard. That is the same defect #2150's inventory gate carried at its own attribute
+    /// comparison, and the shape is worth naming because a parser does not prevent it: A COMPARISON
+    /// NARROWER THAN THE LANGUAGE. It fails QUIETLY — the write still lands on the developer's real
+    /// clipboard, and the scan reports clean.
+    ///
+    /// Deliberately NOT resolved further. An alias (`typealias PB = NSPasteboard`) or a helper that
+    /// returns the board still walks past, which is why this suite is the THIRD layer and not the fix:
+    /// the required `copyToClipboard` seam is what makes the mistake unwriteable.
+    private static func trailingName(of base: ExprSyntax?) -> String? {
+      if let reference = base?.as(DeclReferenceExprSyntax.self) { return reference.baseName.text }
+      if let member = base?.as(MemberAccessExprSyntax.self) { return member.declName.baseName.text }
+      return nil
+    }
+
     /// Direct access to the process-global board, in any test file.
     ///
     /// Node-based, so `let pb = NSPasteboard\n  .general` is ONE member-access
@@ -101,8 +121,7 @@ struct ClipboardIsolationFreezeTests {
     /// missed entirely, reporting a clean pass on a live write.
     override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
       if node.declName.baseName.text == "general",
-        let base = node.base?.as(DeclReferenceExprSyntax.self),
-        base.baseName.text == "NSPasteboard"
+        Self.trailingName(of: node.base) == "NSPasteboard"
       {
         violations.append(
           Violation(
@@ -114,8 +133,7 @@ struct ClipboardIsolationFreezeTests {
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
       guard let callee = node.calledExpression.as(MemberAccessExprSyntax.self),
-        let base = callee.base?.as(DeclReferenceExprSyntax.self),
-        base.baseName.text == "PasteService",
+        Self.trailingName(of: callee.base) == "PasteService",
         ClipboardIsolationFreezeTests.clipboardFunctions.contains(callee.declName.baseName.text)
       else { return .visitChildren }
 
@@ -342,5 +360,46 @@ struct ClipboardIsolationFreezeTests {
       inSource: ##"func f() { let s = #"NSPasteboard.general"# }"##,
       file: "Some.swift")
     #expect(hits.isEmpty)
+  }
+
+  // MARK: Module-qualified spellings
+  //
+  // The axis is HOW THE BASE IS WRITTEN, swept over both matchers. Bare and module-qualified are the
+  // same thing to the compiler, so a guard that accepts only the bare form fails quietly. Each caught
+  // row is paired with a near-identical row that must still pass, so a matcher widened until it stops
+  // discriminating fails here rather than looking clean.
+
+  @Test(
+    "a module-qualified base is the same access and is caught",
+    arguments: [
+      "func f() { let pb = AppKit.NSPasteboard.general; pb.clearContents() }",
+      "func f() { let snap = EnviousWisprServices.PasteService.saveClipboard() }",
+      "func f() { let pb = AppKit\n  .NSPasteboard\n  .general }",
+    ])
+  func catchesModuleQualifiedAccess(source: String) {
+    let hits = Self.violations(inSource: source, file: "Some.swift")
+    #expect(hits.count == 1, "a module-qualified spelling walked past the guard: \(source)")
+  }
+
+  @Test(
+    "a DIFFERENT type whose trailing name is not ours still passes",
+    arguments: [
+      // Rejected halves: matching the trailing name must not match a different type entirely.
+      "func f() { let x = MyThing.general }",
+      "func f() { let x = Some.OtherService.saveClipboard() }",
+      "func f() { let x = pasteboard.general }",
+    ])
+  func doesNotFireOnUnrelatedTypes(source: String) {
+    #expect(
+      Self.violations(inSource: source, file: "Some.swift").isEmpty,
+      "the guard fired on an unrelated type: \(source)")
+  }
+
+  @Test("a module-qualified call that DOES name its board still passes")
+  func allowsQualifiedBoardedCall() {
+    let hits = Self.violations(
+      inSource: #"func f() { EnviousWisprServices.PasteService.copyToClipboard("x", to: pb) }"#,
+      file: "PasteServiceClipboardTests.swift")
+    #expect(hits.isEmpty, "widening the base match must not un-bless an explicit board")
   }
 }
