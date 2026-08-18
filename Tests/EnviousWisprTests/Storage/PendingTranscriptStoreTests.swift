@@ -478,6 +478,56 @@ import Testing
       "an expired row must still block a second replay of its spool")
   }
 
+  // MARK: - Promotions that left a shadow
+
+  /// A Keep the user pressed must never be counted as an expiry.
+  ///
+  /// `promotePending` writes the permanent row FIRST and removes the pending
+  /// file second, deliberately — a crash between the two keeps the text rather
+  /// than losing it. The cost is that a failed removal, or a crash, leaves the
+  /// stamped copy beside its permanent twin. Twenty-four hours later the sweep
+  /// would see a stamped row past its window and report it expired, for a
+  /// dictation the user explicitly chose to keep.
+  ///
+  /// The text is safe either way; what breaks is the kept-versus-expired ratio,
+  /// which is the one number this funnel exists to produce — and it breaks in
+  /// the direction that makes the feature look worse than it is.
+  @Test("a promoted row's leftover pending copy is swept without an expiry receipt")
+  func shadowOfAPromotedRowIsNotAnExpiry() async throws {
+    let (store, dir) = makeStore()
+    let longAgo = Date(timeIntervalSinceNow: -(25 * 60 * 60))
+    let row = pendingRow(at: longAgo)
+    try store.savePending(row)
+    // The permanent twin, exactly as a successful promotion leaves it.
+    try store.save(row)
+
+    let swept = try await store.deleteExpiredPending()
+
+    #expect(
+      swept.expired.isEmpty,
+      "the user pressed Keep; reporting an expiry would understate the one ratio")
+    #expect(
+      swept.deletedIDs.contains(row.id),
+      "the shadow is still litter and must be cleared, receipt or no receipt")
+    let shadow = dir.appendingPathComponent("pending/\(row.id.uuidString).json")
+    #expect(!FileManager.default.fileExists(atPath: shadow.path))
+  }
+
+  /// The control. Without a permanent twin the SAME row is a real expiry, so the
+  /// suppression above cannot be satisfied by suppressing everything.
+  @Test("an expired row with no permanent twin still earns its receipt")
+  func genuineExpiryStillReports() async throws {
+    let (store, _) = makeStore()
+    let row = pendingRow(at: Date(timeIntervalSinceNow: -(25 * 60 * 60)))
+    try store.savePending(row)
+
+    let swept = try await store.deleteExpiredPending()
+
+    #expect(
+      swept.expired.map(\.takeID) == [row.escapeRecoveryTakeID],
+      "nothing promoted this one, so it genuinely aged out")
+  }
+
   // MARK: - Interrupted writes
 
   /// A killed write strands the whole transcript under a name the sweep could

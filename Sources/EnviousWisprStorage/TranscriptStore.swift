@@ -221,6 +221,9 @@ public final class TranscriptStore {
       return PendingSweepResult(deletedIDs: [], expired: [])
     }
     let retention = AppConstants.pendingTranscriptRetention
+    // The ROOT namespace, so the sweep can tell a genuinely expired row from a
+    // shadow left behind by a promotion that already succeeded.
+    let root = directory
     #if DEBUG
       let gate = Self.sweepGateForTesting
     #endif
@@ -231,7 +234,8 @@ public final class TranscriptStore {
         // from "the winner finished first anyway".
         await gate?()
       #endif
-      return Self.sweepExpired(in: dir, now: now, retention: retention)
+      return Self.sweepExpired(
+        in: dir, permanentDir: root, now: now, retention: retention)
     }
     sweepGeneration &+= 1
     let generation = sweepGeneration
@@ -277,7 +281,7 @@ public final class TranscriptStore {
   /// calling back into an isolated method would hop straight back and block
   /// exactly what it was meant to protect.
   private nonisolated static func sweepExpired(
-    in dir: URL, now: Date, retention: TimeInterval
+    in dir: URL, permanentDir: URL, now: Date, retention: TimeInterval
   ) -> PendingSweepResult {
     let fm = FileManager.default
     var reported: [ExpiredPendingRow] = []
@@ -293,6 +297,32 @@ public final class TranscriptStore {
         deletedIDs: [], expired: [], unremovable: 0, walkComplete: false)
     }
     for candidate in candidates where !candidate.isLive {
+      // A SHADOW, not an expiry (cloud review). `promotePending` writes the
+      // permanent row first and removes the pending file second, so a crash or a
+      // failed removal in between leaves the stamped copy beside its permanent
+      // twin. Twenty-four hours later this loop would see a stamped row past its
+      // window and emit `escape_recovery.expired` for a dictation the user
+      // pressed KEEP on — the text is safe either way, but the kept-versus-
+      // expired ratio is the one number this funnel exists to produce, and it
+      // would be wrong in the direction that makes the feature look worse.
+      //
+      // Deleted (it is litter) and NOT reported (nothing expired). Checked by
+      // FILE rather than by loading the row: this runs off the main actor, and
+      // existence is the whole question.
+      if FileManager.default.fileExists(
+        atPath: permanentDir.appendingPathComponent(
+          candidate.url.lastPathComponent).path)
+      {
+        try? fm.removeItem(at: candidate.url)
+        if fm.fileExists(atPath: candidate.url.path) {
+          unremovable += 1
+        } else if let id = UUID(
+          uuidString: candidate.url.deletingPathExtension().lastPathComponent)
+        {
+          deleted.insert(id)
+        }
+        continue
+      }
       // `removeItem`, NOT `unlink`. A corrupt entry can be a DIRECTORY named
       // `<uuid>.json` — `decodePending` classifies it `.invalid` and the sweep
       // must clear it or it accumulates forever. `unlink(2)` fails on a
