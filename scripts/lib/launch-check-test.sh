@@ -22,7 +22,11 @@ PASS=0; FAIL=0; TMP=""; PIDS=()
 cleanup() {
   local p
   for p in "${PIDS[@]+"${PIDS[@]}"}"; do kill "$p" 2>/dev/null || true; done
-  sleep 0.2
+  # Reap each job so the shell does not print "Terminated: 15" after the summary.
+  # bash 3.2 reports killed background jobs on stderr, which reads as a FAILURE
+  # immediately below a passing count — a cosmetic line that misrepresents the
+  # result is worth removing.
+  for p in "${PIDS[@]+"${PIDS[@]}"}"; do wait "$p" 2>/dev/null || true; done
   for p in "${PIDS[@]+"${PIDS[@]}"}"; do kill -9 "$p" 2>/dev/null || true; done
   [ -n "$TMP" ] && [ -d "$TMP" ] && rm -rf "$TMP"
 }
