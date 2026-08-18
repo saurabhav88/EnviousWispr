@@ -146,6 +146,31 @@ final class LivePreviewPacksModel {
 
   /// The one way any path asks "which language is live". Reads the mode itself, so no caller can
   /// hand it a stale one.
+  /// Resolve, and KEEP resolving while the language moves underneath us.
+  ///
+  /// #2154, cloud review r4. The install path is the only writer that runs while
+  /// `load()` is refused (it guards on `installingTag`), so if the language
+  /// changes during an install NOTHING re-resolves for the new one: the
+  /// language-keyed `.task` calls `load()`, is turned away, and the install then
+  /// publishes an answer correctly stamped as being for the OLD language. The
+  /// consumers then refuse — correctly, no false claim — but they refuse
+  /// FOREVER, because the trigger that would fix it is structurally blocked.
+  ///
+  /// So the install path corrects itself rather than depending on an external
+  /// trigger that cannot fire. Bounded, because each pass either agrees with the
+  /// current mode or observes a NEWER one, and a user cannot change the language
+  /// faster than the resolver returns indefinitely; the cap makes that a
+  /// guarantee rather than an argument, and exhausting it publishes the honest
+  /// stale pair, which the consumers already handle.
+  private func resolveSettledActive() async -> (ActiveLanguage, LanguageMode) {
+    var attempt = 0
+    while true {
+      let (resolved, resolvedFor) = await resolveCurrentActive()
+      attempt += 1
+      guard resolvedFor != currentMode(), attempt < 3 else { return (resolved, resolvedFor) }
+    }
+  }
+
   private func resolveCurrentActive() async -> (ActiveLanguage, LanguageMode) {
     // **The mode is captured BEFORE the await and returned WITH the value.**
     // Reading `currentMode()` again after the resolver returns would stamp the
@@ -227,7 +252,7 @@ final class LivePreviewPacksModel {
       do {
         let refreshed = try await catalog.install(tag: tag)
         guard let self, !Task.isCancelled, self.generation == mine else { return }
-        let (resolved, resolvedFor) = await self.resolveCurrentActive()
+        let (resolved, resolvedFor) = await self.resolveSettledActive()
         guard !Task.isCancelled, self.generation == mine else { return }
         self.state = Self.state(for: refreshed)
         self.active = resolved
@@ -247,7 +272,7 @@ final class LivePreviewPacksModel {
         // Republished here too: Apple can install the pack and THEN throw, so this branch reaches
         // the same "the language just arrived" state the success branch does. Leaving it out kept
         // the summary saying the language was missing over a row that had installed.
-        let (resolved, resolvedFor) = await self.resolveCurrentActive()
+        let (resolved, resolvedFor) = await self.resolveSettledActive()
         guard !Task.isCancelled, self.generation == mine else { return }
         self.installingTag = nil
         // Only call it a failure if the pack is STILL missing. Apple can install successfully and
