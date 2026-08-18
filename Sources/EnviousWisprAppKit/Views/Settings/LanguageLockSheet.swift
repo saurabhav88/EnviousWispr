@@ -6,8 +6,9 @@ import SwiftUI
 ///
 /// Surfaces the engine's supported languages with a search field and an
 /// optional "Recent" section driven by the persisted `SessionLanguageMemory`
-/// usage cache. Tapping a row sets `languageMode = .locked(code)` and
-/// dismisses. The sheet is a settings detail, never an interrupt: nothing
+/// usage cache. Tapping a language row sets `languageMode = .locked(code)`; the
+/// Auto row above them sets `.auto`, so the sheet can both set and clear a lock.
+/// Either way it dismisses. The sheet is a settings detail, never an interrupt: nothing
 /// here blocks dictation.
 struct LanguageLockSheet: View {
   @Environment(SettingsManager.self) private var settings
@@ -43,6 +44,9 @@ struct LanguageLockSheet: View {
 
         ScrollView {
           VStack(alignment: .leading, spacing: 16) {
+            if searchText.isEmpty {
+              autoDetectSection
+            }
             if !recents.isEmpty && searchText.isEmpty {
               recentSection
             }
@@ -53,7 +57,12 @@ struct LanguageLockSheet: View {
         }
       }
       .background(Color.stPageBg)
-      .navigationTitle("Lock language")
+      // "Lock language" while the first row CLEARS the lock is the sheet
+      // contradicting itself, the same defect r8 and r9 fixed on the page that
+      // opens it. This title is true of both actions and of both presenters —
+      // and it matches the Change button's copy, which already says out loud
+      // that this sets the DICTATION language, not a preview-only one.
+      .navigationTitle("Dictation language")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("Cancel") { dismiss() }
@@ -83,6 +92,65 @@ struct LanguageLockSheet: View {
         .frame(height: 1),
       alignment: .bottom
     )
+  }
+
+  /// **The way BACK. Without it this sheet is a one-way door.**
+  ///
+  /// Cloud review r11: #2154 put a Change button on the Live Preview page that
+  /// opens this sheet, and every row here assigns `.locked(code)`. So a user on
+  /// Auto could lock a language from that page and had no way to undo it there —
+  /// the only Auto control lives on the Transcription page as a separate toggle,
+  /// which is a different page they have no reason to look at. An affordance that
+  /// can set a state and not clear it is worse than no affordance, because it
+  /// strands the people who trusted it.
+  ///
+  /// Placed FIRST rather than in the list: it is not a language, and sorting it
+  /// among them would hide the escape route in a scroll of 99 rows. Hidden while
+  /// searching for the same reason recents are — typing means looking for a
+  /// specific language.
+  @ViewBuilder
+  private var autoDetectSection: some View {
+    let isAuto: Bool = {
+      if case .auto = settings.languageMode { return true }
+      return false
+    }()
+
+    VStack(alignment: .leading, spacing: 6) {
+      Text("Automatic")
+        .font(.stSectionHeader)
+        .foregroundStyle(.stTextSecondary)
+
+      VStack(spacing: 0) {
+        Button {
+          selectAuto()
+        } label: {
+          HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+              Text("Auto-detect language")
+                .settingsRowLabel()
+              Text("Work out the language from what you say.")
+                .font(.stHelper)
+                .foregroundStyle(.stTextSecondary)
+            }
+            Spacer()
+            if isAuto {
+              Image(systemName: "checkmark")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.stAccent)
+            }
+          }
+          .padding(.horizontal, 14)
+          .padding(.vertical, 10)
+          .contentShape(Rectangle())
+          .background(isAuto ? Color.stAccent.opacity(0.06) : Color.clear)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Auto-detect language")
+        .accessibilityValue(isAuto ? "selected" : "")
+      }
+      .background(Color.stSectionBg)
+      .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
   }
 
   @ViewBuilder
@@ -212,31 +280,24 @@ struct LanguageLockSheet: View {
   // MARK: - Actions
 
   private func select(_ entry: LanguageCatalog.Entry) {
-    // W6 telemetry: record the mode transition before we mutate settings so
-    // we can read the prior value for `from_lang`.
-    let fromLang: String
-    switch settings.languageMode {
-    case .auto:
-      fromLang = "auto"
-    case .locked(let prior):
-      fromLang = prior
-    }
-    // Reason classification: the sheet only distinguishes "first_time" (never
-    // locked before) from "preference" (user actively changing a lock). The
-    // "after_bad_detect" path is reserved for the passive-chip CTA (future
-    // hook) so we do not mis-label a Settings-driven change.
-    let reason: String
-    if case .auto = settings.languageMode {
-      reason = "first_time"
-    } else {
-      reason = "preference"
-    }
+    apply(.locked(entry.code))
+  }
 
-    settings.languageMode = .locked(entry.code)
+  /// The way back out of a lock. Same path as `select(_:)` so the two can never
+  /// report differently.
+  private func selectAuto() {
+    apply(.auto)
+  }
+
+  /// Reads the telemetry decision BEFORE mutating settings, because both fields
+  /// describe a transition and the prior value is gone afterwards.
+  private func apply(_ next: LanguageMode) {
+    let event = LanguageLockOptions.lockTelemetry(from: settings.languageMode, to: next)
+    settings.languageMode = next
     TelemetryService.shared.trackManualLockUsed(
-      fromLang: fromLang,
-      toLang: entry.code,
-      reason: reason
+      fromLang: event.fromLang,
+      toLang: event.toLang,
+      reason: event.reason
     )
     dismiss()
   }

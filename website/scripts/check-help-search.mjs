@@ -57,6 +57,19 @@ const ADVERSARIAL = [
   ['dont want to hold the key', 'hands-free-mode-long-dictation', ['customizing-your-hotkey']],
   ['unins', 'uninstalling-enviouswispr', []],
   ['not working paste', 'paste-not-working', []],
+  // #2154: two features whose names are nearly the same sentence. Live Preview
+  // SHOWS words on screen and changes nothing; Live transcription WRITES text
+  // into your document. Search sent both intents to the second one until the
+  // Live Preview article existed, which is the bug #2134 was filed for.
+  //
+  // BOTH directions are pinned deliberately. The failure mode of fixing a
+  // routing bug is over-correcting it, and a one-way pin cannot see that: it
+  // would stay green while every "write text as I talk" query started landing
+  // on the preview article instead.
+  ['see my words as i speak', 'live-preview-words-on-screen', ['live-transcription-streaming-asr']],
+  ['words on screen while i talk', 'live-preview-words-on-screen', ['live-transcription-streaming-asr']],
+  ['write text while i talk', 'live-transcription-streaming-asr', ['live-preview-words-on-screen']],
+  ['text appears while speaking', 'live-transcription-streaming-asr', ['live-preview-words-on-screen']],
 ];
 
 const OFFTOPIC = ['how do i print a document', 'buy a new macbook', 'reset my iphone'];

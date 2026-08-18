@@ -153,6 +153,31 @@ enum LivePreviewEnginePresentation {
   /// unknown, and inventing 0% would show a bar that never moves. A merely
   /// out-of-range finite value is clamped, since it is a real measurement that
   /// overshot.
+  /// What the universal engine's language row says, and the reason it lives HERE
+  /// rather than beside the strings it returns.
+  ///
+  /// It is a SELECTION, which is this type's job — the same argument the header
+  /// makes for the cards: an `if` chain in the view body can only be checked by
+  /// reading it. Keeping it in the copy file also left both paused strings
+  /// referenced from nowhere outside that file, which is precisely what
+  /// `LivePreviewPackCopyTests.everyStringIsActuallyUsed` exists to catch, and it
+  /// caught them. That guard is right: a string reachable only from its own
+  /// declaration file has no evidence of reaching a screen.
+  ///
+  /// Takes READINESS, never a single blocker. `engineWillProduceOutput` comes from
+  /// `LivePreviewStatusMapping.universalWillProduceOutput`, the same answer the
+  /// hero card derives its chip from. An earlier version took `heartIsStreaming`,
+  /// one of six reasons the preview will not run, and promised output for the
+  /// other five.
+  static func universalRowLabel(languageName: String?, engineWillProduceOutput: Bool) -> String {
+    switch (languageName, engineWillProduceOutput) {
+    case (.some(let name), true): return LivePreviewSettingsCopy.universalLocked(name)
+    case (.some(let name), false): return LivePreviewSettingsCopy.universalLockedPaused(name)
+    case (.none, true): return LivePreviewSettingsCopy.universalAuto
+    case (.none, false): return LivePreviewSettingsCopy.universalAutoPaused
+    }
+  }
+
   static func renderableProgress(_ fraction: Double) -> Double? {
     guard fraction.isFinite else { return nil }
     return min(max(fraction, 0), 1)
@@ -186,6 +211,14 @@ enum LivePreviewEnginePresentation {
 /// want different lengths.
 enum LivePreviewEngineCopy {
   static let sectionHeader = "Preview engine"
+
+  /// #2154. The two engines differ in OS floor, language coverage and download
+  /// size; a card cannot carry that comparison without becoming the article.
+  /// This is the first link from a settings page to the Help Centre, so the
+  /// destination has to exist before the link ships — it does, added in the same
+  /// change (#2134).
+  static let learnMoreLabel = "Learn more about engines"
+  static let learnMoreURL = "https://enviouswispr.com/help/live-preview-words-on-screen/"
 
   static let appleTitle = "Apple"
   static let appleDescription =

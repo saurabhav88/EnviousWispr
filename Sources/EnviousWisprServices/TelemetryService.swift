@@ -2336,7 +2336,12 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("language.detected", properties: props)
   }
 
-  /// Emitted when the user confirms a language in the Lock language sheet.
+  /// Emitted when the user confirms a choice in the Dictation language sheet.
+  ///
+  /// Both directions, not only locks: `toLang` carries `"auto"` when the user
+  /// returns to auto-detect, matching the value `fromLang` already used when
+  /// leaving it. A reading that counts only locks will undercount the sheet's
+  /// use and read a return to Auto as no event at all.
   /// `fromLang` is the prior mode ("auto" if unlocked, else prior ISO code).
   /// `reason` is one of: "first_time", "after_bad_detect", "preference".
   public func trackManualLockUsed(fromLang: String, toLang: String, reason: String) {

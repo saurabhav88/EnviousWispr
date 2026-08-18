@@ -134,4 +134,40 @@ struct LivePreviewPackPresentationTests {
       #expect(!heading.contains("–"), "en-dash in user-facing copy: \(heading)")
     }
   }
+
+  // MARK: - Availability column (#2154)
+
+  /// **Product Outcome.** The Availability column is what makes 54 rows scannable:
+  /// it answers "do I already have this" without reading the Status cell. It
+  /// replaced the two-card installed/downloadable split, so if it stops telling
+  /// the truth the table loses the only boundary it has.
+  @Test("Availability says On this Mac for what is installed and Available from Apple for what is not")
+  func availabilityDistinguishesInstalledFromDownloadable() {
+    let installed = LivePreviewPack(
+      tag: "en-US", nativeName: "English (US)", localizedName: "English (US)", isInstalled: true)
+    let available = LivePreviewPack(
+      tag: "fr-FR", nativeName: "Français (France)", localizedName: "French (France)",
+      isInstalled: false)
+
+    #expect(LivePreviewPackPresentation.availability(for: installed) == LivePreviewSettingsCopy.sourceSystem)
+    #expect(LivePreviewPackPresentation.availability(for: available) == LivePreviewSettingsCopy.sourceApple)
+    // The two must differ. A refactor collapsing them would leave a column that
+    // renders on every row and distinguishes nothing.
+    #expect(LivePreviewSettingsCopy.sourceSystem != LivePreviewSettingsCopy.sourceApple)
+  }
+
+  /// The column tracks `isInstalled` and nothing else — not the tag, not the
+  /// name. Pinned because the obvious wrong implementation (guessing from the
+  /// locale) would look right on a US machine and be wrong everywhere else.
+  @Test("Availability depends only on whether the pack is installed")
+  func availabilityIgnoresEverythingButInstalledness() {
+    for tag in ["en-US", "zh-CN", "hi-IN", "pt-BR"] {
+      let present = LivePreviewPack(
+        tag: tag, nativeName: tag, localizedName: tag, isInstalled: true)
+      let absent = LivePreviewPack(
+        tag: tag, nativeName: tag, localizedName: tag, isInstalled: false)
+      #expect(LivePreviewPackPresentation.availability(for: present) == LivePreviewSettingsCopy.sourceSystem)
+      #expect(LivePreviewPackPresentation.availability(for: absent) == LivePreviewSettingsCopy.sourceApple)
+    }
+  }
 }

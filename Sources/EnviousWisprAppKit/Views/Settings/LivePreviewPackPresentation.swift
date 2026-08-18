@@ -65,6 +65,28 @@ enum LivePreviewPackPresentation {
     value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
   }
 
+  /// What the table's Availability cell shows for a pack.
+  ///
+  /// #2154. **Named for what it COMPUTES, after a first draft called it
+  /// "Source" and was wrong about its own meaning.** It reads `isInstalled` and
+  /// nothing else, so downloading a language through this page flipped its cell
+  /// from "Apple" to "System" — telling the user the pack had come with macOS
+  /// when they had fetched it from Apple moments before. The model carries no
+  /// provenance to report; every one of these is an Apple pack either way.
+  ///
+  /// What it does answer is the question somebody scanning 54 rows is actually
+  /// asking: do I already have this. That is also the honest answer to "why
+  /// does this look like the list in System Settings" — it IS that list
+  /// (`live-preview.md` FACT: language-pack-downloads).
+  ///
+  /// A named function rather than an inline ternary in the view, so the rule is
+  /// testable and has one home — the same reason `groups(from:)` is here.
+  static func availability(for pack: LivePreviewPack) -> String {
+    pack.isInstalled
+      ? LivePreviewSettingsCopy.sourceSystem
+      : LivePreviewSettingsCopy.sourceApple
+  }
+
   /// Split, preserving the incoming order within each group.
   ///
   /// The catalogue already sorts alphabetically by the name the user reads, so re-sorting here

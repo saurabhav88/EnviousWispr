@@ -20,6 +20,19 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.4.5
 
+    // #2154. Existing users have no reason to reopen a settings page they have
+    // already configured, so a redesign reaches them only by accident without
+    // this. Added to the ALREADY-OPEN 2.4.5 group, which needs no
+    // `WhatsNewConstants` bump — bumping there would invent a release.
+    Entry(
+      id: "live-preview-settings-show-what-is-ready",
+      icon: "text.viewfinder",
+      title: "Live Preview settings now show what is ready",
+      description:
+        "The Live Preview page now tells you at a glance whether the feature is off, ready, waiting for a download, or unavailable for the language you picked, instead of leaving you to work it out from the settings below. You can change the dictation language from the same page, and every language available to the preview is now one table you can scan and search rather than two separate lists. The preview still never changes the text that gets pasted.",
+      version: "2.4.5"
+    ),
+
     Entry(
       id: "eg1-improved-corrections-and-lists",
       icon: "sparkles",
