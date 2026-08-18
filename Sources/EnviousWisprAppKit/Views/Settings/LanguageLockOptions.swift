@@ -55,17 +55,52 @@ enum LanguageLockOptions {
     let backendCodes = lockableCodes(for: backend)
     guard previewEngine == .apple else { return backendCodes }
 
-    let installed = Set(
-      installedPackTags.compactMap { tag -> String? in
-        let language = tag.split(separator: "-").first.map(String.init)
-        return language?.lowercased()
-      })
+    let installed = Set(installedPackTags.compactMap(catalogueCode(forPackTag:)))
 
     // nil means "no restriction from the backend", so the install set becomes the
     // whole restriction rather than being discarded.
     guard let backendCodes else { return installed }
     return backendCodes.intersection(installed)
   }
+
+  /// Apple's pack tag translated into this app's catalogue vocabulary, or nil if
+  /// the language is not one we can lock to.
+  ///
+  /// **A bare `split(separator: "-").first` silently loses languages, and the loss
+  /// is invisible.** Cloud review caught `nb-NO`: the subtag is `nb`, the catalogue
+  /// exposes Norwegian as `no`, so a user who downloaded Norwegian from the table
+  /// would not find it in the picker — breaking the exact promise this feature was
+  /// built on ("if they download it from the bottom selection table, it should then
+  /// pop up into the selector"). It fails as an ABSENCE, which is why no amount of
+  /// looking at the picker would explain it.
+  ///
+  /// The aliases are the cases where Apple's vocabulary and ours genuinely differ:
+  /// macro-language versus a specific written form, and the deprecated ISO codes
+  /// Foundation still emits for historical identifiers.
+  static func catalogueCode(forPackTag tag: String) -> String? {
+    let subtag = Locale(identifier: tag).language.languageCode?.identifier
+      ?? tag.split(separator: "-").first.map(String.init)
+      ?? tag
+    let lowered = subtag.lowercased()
+    return packTagAliases[lowered] ?? lowered
+  }
+
+  /// Pack subtag -> catalogue code, ONLY where the two vocabularies disagree.
+  ///
+  /// Deliberately small and explicit rather than clever: a wrong entry here sends a
+  /// user to a language they did not pick, which is worse than the row being
+  /// missing. Every entry is asserted against `LanguageCatalog` by test, so an
+  /// alias pointing at a code we do not carry fails the build rather than shipping.
+  static let packTagAliases: [String: String] = [
+    // Apple ships Norwegian as Bokmål; the catalogue carries the macro-language.
+    "nb": "no",
+    // Deprecated ISO-639 codes Foundation still returns for legacy identifiers.
+    "iw": "he",
+    "in": "id",
+    "ji": "yi",
+    // Filipino is Tagalog in the catalogue.
+    "fil": "tl",
+  ]
 
   /// What the sheet reports for a mode change, as one decision both of its
   /// actions read.

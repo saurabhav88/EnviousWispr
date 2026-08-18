@@ -292,4 +292,55 @@ struct LanguageLockOptionsTests {
       backend: .whisperKit, previewEngine: .apple, installedPackTags: [])
     #expect(codes == [], "empty, never nil — nil would mean unrestricted")
   }
+
+  /// **The alias table's own correctness, asserted against the catalogue.**
+  ///
+  /// An alias pointing at a code the catalogue does not carry would translate a
+  /// real pack into a language that cannot be locked — the same disappearance it
+  /// exists to prevent, one step later. This fails the build instead.
+  @Test("Every pack-tag alias resolves to a code the catalogue actually carries")
+  func aliasesResolveToRealCatalogueCodes() {
+    let catalogue = Set(LanguageCatalog.sortedByEnglishName.map(\.code))
+    #expect(catalogue.count > 50, "control: the catalogue was found and parsed")
+    for (packSubtag, catalogueCode) in LanguageLockOptions.packTagAliases {
+      #expect(
+        catalogue.contains(catalogueCode),
+        "alias \(packSubtag) -> \(catalogueCode) points at a code the catalogue does not carry")
+      #expect(
+        !catalogue.contains(packSubtag),
+        "alias \(packSubtag) is unnecessary: the catalogue already carries that code")
+    }
+  }
+
+  /// **The case cloud review caught, as a behaviour rather than a table lookup.**
+  ///
+  /// Apple ships Norwegian as `nb-NO`. A bare first-component split yields `nb`,
+  /// which the catalogue does not carry, so the language silently vanished from
+  /// the picker after the user downloaded it — breaking the one promise this
+  /// feature rests on.
+  @Test("A downloaded Norwegian pack appears in the picker despite the tag mismatch")
+  func norwegianPackSurvivesTagTranslation() {
+    #expect(
+      LanguageLockOptions.catalogueCode(forPackTag: "nb-NO") == "no",
+      "nb-NO must translate to the catalogue's Norwegian")
+
+    let codes = LanguageLockOptions.previewLockableCodes(
+      backend: .whisperKit, previewEngine: .apple,
+      installedPackTags: ["nb-NO"])
+    #expect(
+      codes?.contains("no") == true,
+      "a downloaded Norwegian pack must be offered by the picker")
+    #expect(codes?.contains("nb") != true, "and never under a code the catalogue lacks")
+  }
+
+  /// Ordinary tags must pass through untouched — the translation must not become a
+  /// second vocabulary of its own.
+  @Test("Ordinary pack tags translate to their plain language code")
+  func ordinaryTagsPassThrough() {
+    for (tag, expected) in [("en-US", "en"), ("de-DE", "de"), ("fr-FR", "fr"), ("pt-BR", "pt")] {
+      #expect(
+        LanguageLockOptions.catalogueCode(forPackTag: tag) == expected,
+        "\(tag) should translate to \(expected)")
+    }
+  }
 }
