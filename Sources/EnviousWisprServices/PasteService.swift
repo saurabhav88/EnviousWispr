@@ -122,22 +122,37 @@ public enum PasteService {
     )
   }
 
-  /// Copy text to the system clipboard.
-  public static func copyToClipboard(_ text: String) {
-    let pasteboard = NSPasteboard.general
+  // MARK: - Clipboard
+  //
+  // Every entry point below takes the board as a DEFAULTED parameter rather than
+  // reaching for `NSPasteboard.general` internally. Production passes nothing and
+  // gets the user's clipboard, exactly as before; tests pass an isolated
+  // `NSPasteboard.withUniqueName()` board so a test run can never write to the
+  // developer's real clipboard (#2146).
+  //
+  // The parameter is the whole fix, so do not "simplify" it away: with the
+  // singleton hard-coded here, seven tests wrote fixture text to the founder's
+  // clipboard and the change-count guard below then DECLINED to put it back,
+  // because a concurrently-running suite had advanced the count. The guard is
+  // correct; the shared board was the defect.
+
+  /// Copy text to the supplied pasteboard.
+  public static func copyToClipboard(_ text: String, to pasteboard: NSPasteboard = .general) {
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
   }
 
-  /// Copy text to clipboard and return the resulting change count.
-  public static func copyToClipboardReturningChangeCount(_ text: String) -> Int {
-    copyToClipboard(text)
-    return NSPasteboard.general.changeCount
+  /// Copy text to the supplied pasteboard and return its resulting change count.
+  public static func copyToClipboardReturningChangeCount(
+    _ text: String,
+    to pasteboard: NSPasteboard = .general
+  ) -> Int {
+    copyToClipboard(text, to: pasteboard)
+    return pasteboard.changeCount
   }
 
-  /// Capture the current pasteboard contents for later restoration.
-  public static func saveClipboard() -> ClipboardSnapshot {
-    let pasteboard = NSPasteboard.general
+  /// Capture the supplied pasteboard's contents for later restoration.
+  public static func saveClipboard(from pasteboard: NSPasteboard = .general) -> ClipboardSnapshot {
     var items: [[NSPasteboard.PasteboardType: Data]] = []
 
     for item in pasteboard.pasteboardItems ?? [] {
@@ -162,15 +177,25 @@ public enum PasteService {
   ///   - changeCountAfterPaste: The `changeCount` observed immediately after
   ///     our own paste write. Pass this value so we can detect if a clipboard
   ///     manager has modified the board before the restore fires.
-  public static func restoreClipboard(_ snapshot: ClipboardSnapshot, changeCountAfterPaste: Int) {
-    let pasteboard = NSPasteboard.general
+  ///   - pasteboard: Defaults to the user's clipboard. Tests pass an isolated board.
+  public static func restoreClipboard(
+    _ snapshot: ClipboardSnapshot,
+    changeCountAfterPaste: Int,
+    on pasteboard: NSPasteboard = .general
+  ) {
+    // Read once, up front. The unstructured logging `Task` below then captures
+    // an `Int` instead of the `NSPasteboard` reference, and the number it
+    // reports is the one the guard actually decided on rather than whatever the
+    // board holds by the time the task runs.
+    let observedChangeCount = pasteboard.changeCount
 
     // If the change count has advanced beyond what we set, a third-party
     // tool wrote to the clipboard — don't clobber their change.
-    guard pasteboard.changeCount == changeCountAfterPaste else {
+    guard observedChangeCount == changeCountAfterPaste else {
       Task {
         await AppLogger.shared.log(
-          "Clipboard restore skipped: changeCount advanced (expected \(changeCountAfterPaste), got \(pasteboard.changeCount))",
+          "Clipboard restore skipped: changeCount advanced "
+            + "(expected \(changeCountAfterPaste), got \(observedChangeCount))",
           level: .verbose, category: "PasteService"
         )
       }

@@ -67,6 +67,9 @@ jobs:
       # that did live here was a hand-rolled Swift lexer and took eleven review findings before it was
       # replaced; see that suite's header.
 
+      # #2146's clipboard guard followed the same path for the same reason: the shell scanner and its
+      # two CI steps are gone, and `ClipboardIsolationFreezeTests` parses with SwiftParser inside this
+      # lane's existing `xcodebuild test`.
       - name: Verify environment
         if: steps.changes.outputs.needs_build == 'true'
         run: |
