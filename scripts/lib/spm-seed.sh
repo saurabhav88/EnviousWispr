@@ -61,36 +61,6 @@ ew_seed_key() {
 
 ew_seed_dir() { printf '%s\n' "$EW_SEED_ROOT/$1/SourcePackages"; }
 
-# Move $1 to $2, but NEVER nest inside it.
-#
-# `[ ! -e "$dst" ] && mv "$src" "$dst"` is racy: if $dst appears between the test
-# and the rename, `mv` moves $src INSIDE $dst, producing a nested half-valid tree
-# that still passes a presence check. The window is small and real — another
-# invocation that could not get the lock takes the slow path, runs xcodebuild, and
-# xcodebuild creates the target.
-#
-# The reviewer proposed `renameatx_np` with RENAME_EXCL through a Python ctypes
-# call. Rejected as the FIX while adopting the FINDING: this function's entire
-# contract is that it can never fail a build, and a ctypes call into a
-# platform-specific libc symbol adds more failure surface than the race it closes
-# (a missing or broken `python3` would turn a cache miss into an error path).
-#
-# Instead: attempt the rename, then VERIFY it did not nest, and undo if it did.
-# Detection is exact — nesting puts $src's basename inside $dst — and the repair
-# leaves the other process's target untouched, which is correct because it owns it.
-ew_seed_move_or_undo() {
-  local src="$1" dst="$2" nested
-  [ -d "$src" ] || return 1
-  mv -f -- "$src" "$dst" 2>/dev/null || return 1
-  nested="$dst/$(basename "$src")"
-  if [ -e "$nested" ]; then
-    # We lost the race: $dst already existed and we landed inside it. Back out.
-    mv -f -- "$nested" "$src" 2>/dev/null || rm -rf "$nested" 2>/dev/null || true
-    return 1
-  fi
-  return 0
-}
-
 # A snapshot is usable only if it looks completely resolved. These are necessary
 # conditions, not sufficient ones — which is exactly why publication is atomic:
 # a reader must never be able to observe a partial tree in the first place.
@@ -103,11 +73,50 @@ ew_seed_is_complete() {
   return 0
 }
 
+# Move $1 to $2 ATOMICALLY, refusing if $2 already exists.
+#
+# `[ ! -e "$dst" ] && mv` is racy: if $dst appears between the test and the
+# rename, `mv` moves $src INSIDE $dst, producing a nested half-valid tree that
+# still passes a presence check. The window is real — an invocation that could not
+# get the lock takes the slow path, runs xcodebuild, and xcodebuild creates the
+# target.
+#
+# I first replaced that with detect-then-undo, and the chunk gate was right to
+# refuse it: the winner can OBSERVE the nested tree before the undo runs, and if
+# both the backout `mv` and its `rm` fallback fail, the nested directory is left
+# inside the winner's tree with nothing reporting it. `RENAME_EXCL` never mutates
+# the destination at all, so there is nothing to observe and nothing to undo.
+#
+# I also declined this originally on the grounds that a Python dependency could
+# "fail the build". That reasoning was WRONG and the gate corrected it: every
+# failure here — no python3, no `renameatx_np`, a nonzero rc — returns 1, and
+# every caller already treats 1 as a CACHE MISS and resolves normally. The
+# feature degrades to "no seeding"; it cannot break a build.
+# Verified on this machine 2026-08-18: refuses an existing destination (rc -1,
+# destination untouched, source still present) and succeeds into an absent one.
+ew_seed_rename_exclusive() {
+  python3 - "$1" "$2" <<'PYEOF' 2>/dev/null
+import ctypes, os, sys
+try:
+    fn = ctypes.CDLL(None).renameatx_np
+except Exception:
+    raise SystemExit(1)
+fn.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+RENAME_EXCL = 0x0004
+AT_FDCWD = -2
+try:
+    rc = fn(AT_FDCWD, os.fsencode(sys.argv[1]), AT_FDCWD, os.fsencode(sys.argv[2]), RENAME_EXCL)
+except Exception:
+    raise SystemExit(1)
+raise SystemExit(0 if rc == 0 else 1)
+PYEOF
+}
+
 # ew_seed_consume <project_root> <derived_data_path>
 # Clones a snapshot into an ABSENT target. Prints what it did and why; a silent
 # fast path is indistinguishable from a broken one.
 ew_seed_consume() {
-  local root="$1" dd="$2" key snap target tmp
+  local root="$1" dd="$2" key snap target tmp _stale
   target="$dd/SourcePackages"
 
   # Never overwrite an existing tree: xcodebuild owns it once it exists.
@@ -144,11 +153,17 @@ ew_seed_consume() {
   # that surfaces as a mystery build failure. A staging name nobody looks for
   # cannot be mistaken for a resolved tree.
   mkdir -p "$dd" 2>/dev/null || true
-  tmp="$dd/.SourcePackages.seed.$$"
+  # Sweep this key's stale consumer staging BEFORE copying. A SIGKILL leaves one
+  # behind with no handler, and nothing else reclaims local DerivedData staging —
+  # each is a full 3.6 GB. Safe here because we hold the key's lock.
+  for _stale in "$dd"/.SourcePackages.seed."$key".*; do
+    [ -e "$_stale" ] && rm -rf "$_stale" 2>/dev/null || true
+  done
+  tmp="$dd/.SourcePackages.seed.$key.$$"
   rm -rf "$tmp" 2>/dev/null || true
   ew_seed_track_temp "$tmp"
   if cp -Rc "$snap" "$tmp" 2>/dev/null && ew_seed_is_complete "$tmp" \
-     && ew_seed_move_or_undo "$tmp" "$target"; then
+     && ew_seed_rename_exclusive "$tmp" "$target"; then
     ew_seed_lock_release "$key"
     echo "==> Seeded packages from snapshot ${key:0:12} (copy-on-write)"
     return 0
@@ -196,7 +211,7 @@ ew_seed_publish() {
     # Same-filesystem rename is atomic, so a reader sees a complete snapshot or
     # nothing. Atomicity is not mutual exclusion, which is what the lock and the
     # re-check above provide.
-    if ew_seed_move_or_undo "$tmp" "$snap"; then
+    if ew_seed_rename_exclusive "$tmp" "$snap"; then
       ew_seed_lock_release "$key"
       echo "==> Published package seed snapshot ${key:0:12}"
       return 0

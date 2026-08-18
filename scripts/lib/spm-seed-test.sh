@@ -202,37 +202,96 @@ else
   bad "never fail a build" "consume=$rc_c publish=$rc_p"
 fi
 
-# --- THE NESTING RACE ---------------------------------------------------------
+# --- ATOMIC EXCLUSIVE RENAME --------------------------------------------------
 # `[ ! -e "$dst" ] && mv` is racy: if $dst appears between the test and the
 # rename, `mv` moves $src INSIDE $dst and produces a nested half-valid tree that
-# still passes a presence check. Simulated directly by pre-creating $dst.
+# still passes a presence check. RENAME_EXCL refuses at the syscall, so there is
+# no window and nothing to undo.
+#
+# An earlier detect-then-undo version was refused by review and correctly: the
+# winner can OBSERVE the nested tree before the undo runs, and if both the
+# backout and its fallback fail, the nested directory is left inside the winner's
+# tree with nothing reporting it. These cases assert the destination is NEVER
+# touched, which is the property undo could not provide.
 RACE="$TMPROOT/race"; mkdir -p "$RACE/src" "$RACE/dst"
 printf 'staged\n' > "$RACE/src/marker"
 printf 'THEIRS\n' > "$RACE/dst/marker"
-if ew_seed_move_or_undo "$RACE/src" "$RACE/dst"; then
-  bad "nesting race" "reported success moving into an existing directory"
+if ew_seed_rename_exclusive "$RACE/src" "$RACE/dst"; then
+  bad "exclusive rename" "reported success against an existing destination"
 else
-  ok "move REFUSES when the destination already exists (would have nested)"
+  ok "rename REFUSES an existing destination (no nesting window)"
 fi
-if [ ! -e "$RACE/dst/src" ]; then
-  ok "no nested directory is left inside the destination"
+if [ ! -e "$RACE/dst/src" ] && [ "$(cat "$RACE/dst/marker" 2>/dev/null)" = "THEIRS" ]; then
+  ok "the destination is NEVER mutated — nothing nested, winner's data intact"
 else
-  bad "nesting cleanup" "left $RACE/dst/src behind"
+  bad "destination integrity" "destination was modified by a refused rename"
 fi
-if [ "$(cat "$RACE/dst/marker" 2>/dev/null)" = "THEIRS" ]; then
-  ok "the other process's destination is left untouched (it owns it)"
+if [ -d "$RACE/src" ] && [ -f "$RACE/src/marker" ]; then
+  ok "the source survives a refused rename (caller can clean it up)"
 else
-  bad "destination integrity" "clobbered the winner's directory"
+  bad "source integrity" "source was consumed by a refused rename"
 fi
 
-# The positive twin: an ABSENT destination must still succeed, or the guard above
-# is just a function that always refuses.
+# The positive twin. Without it, a helper that always returns 1 — including one
+# whose python is missing — would pass every case above.
 RACE2="$TMPROOT/race2"; mkdir -p "$RACE2/src"
 printf 'staged\n' > "$RACE2/src/marker"
-if ew_seed_move_or_undo "$RACE2/src" "$RACE2/dst" && [ -f "$RACE2/dst/marker" ] && [ ! -e "$RACE2/src" ]; then
-  ok "move SUCCEEDS into an absent destination (the twin)"
+if ew_seed_rename_exclusive "$RACE2/src" "$RACE2/dst" && [ -f "$RACE2/dst/marker" ] && [ ! -e "$RACE2/src" ]; then
+  ok "rename SUCCEEDS into an absent destination (the twin)"
 else
-  bad "move positive case" "failed to move into an absent destination"
+  bad "rename positive case" "failed to move into an absent destination"
+fi
+
+# Every helper failure must be a CACHE MISS, never an error. This is the property
+# that makes the python dependency acceptable at all.
+if ew_seed_rename_exclusive "$TMPROOT/does-not-exist" "$TMPROOT/nowhere"; then
+  bad "missing source" "reported success for a source that does not exist"
+else
+  ok "a missing source returns failure (callers treat it as a cache miss)"
+fi
+
+# --- ATOMICITY UNDER A REAL RACE ----------------------------------------------
+# The cases above verify the CONTRACT (refuses existing, succeeds absent, never
+# mutates) and CANNOT distinguish an atomic rename from `[ ! -e ] && mv`, because
+# a single-threaded test cannot open the window between the check and the move.
+# Confirmed by mutation: the racy form passes every case above.
+#
+# Atomicity is only observable under a real race, so this races N processes into
+# ONE destination and asserts exactly one winner and zero nested directories.
+# With the racy form, a loser that passes its check before the winner's move
+# lands nests inside the destination.
+RACE3="$TMPROOT/race3"; mkdir -p "$RACE3"
+racers=24
+for i in $(seq 1 "$racers"); do
+  mkdir -p "$RACE3/src.$i"
+  printf 'from %s\n' "$i" > "$RACE3/src.$i/marker"
+done
+for i in $(seq 1 "$racers"); do
+  ( ew_seed_rename_exclusive "$RACE3/src.$i" "$RACE3/dst" && printf '%s\n' "$i" >> "$RACE3/winners" ) >/dev/null 2>&1 &
+done
+wait
+
+winner_count="$(wc -l < "$RACE3/winners" 2>/dev/null | tr -d ' ')"
+[ -n "$winner_count" ] || winner_count=0
+nested_count=0
+for _n in "$RACE3/dst"/src.*; do
+  [ -e "$_n" ] && nested_count=$((nested_count + 1))
+done
+
+if [ "$winner_count" = "1" ]; then
+  ok "exactly ONE of $racers concurrent renames wins"
+else
+  bad "concurrent winners" "expected exactly 1 winner, got $winner_count"
+fi
+if [ "$nested_count" -eq 0 ]; then
+  ok "NO loser nested inside the destination under a real $racers-way race"
+else
+  bad "concurrent nesting" "$nested_count loser(s) nested inside the destination"
+fi
+if [ -f "$RACE3/dst/marker" ]; then
+  ok "the destination holds exactly the winner's content"
+else
+  bad "race destination" "destination is not a valid moved tree"
 fi
 
 # --- staging is cleaned by the SAME handler as the locks ----------------------
@@ -249,8 +308,8 @@ else
 fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 23 ]; then
-  printf 'ERROR: expected at least 23 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 27 ]; then
+  printf 'ERROR: expected at least 27 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1
