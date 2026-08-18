@@ -294,7 +294,7 @@ enum LivePreviewSettingsCopy {
   /// `statusPausedDetail` below), the closed exception in
   /// `liveOnlyAppearsInApprovedProductNames`'s allowlist.
   ///
-  /// It names Live transcription as the REASON for the pause rather than
+  /// It names Faster Transcription as the REASON for the pause rather than
   /// calling this preview by that name, which is the distinction the guard
   /// draws. When #2155 renames that setting to "Faster Transcription", this
   /// string and the test's exception change together, in that PR.
@@ -302,9 +302,9 @@ enum LivePreviewSettingsCopy {
   /// Why the pause exists: the universal preview refuses to run while the heart
   /// decodes continuously, because concurrent decode was measured costing
   /// transcription 1.50x. Yielding is the design, not a defect.
-  static let pausedForLiveTranscription = "Paused while Live transcription is on"
+  static let pausedForFasterTranscription = "Paused while Faster Transcription is on"
   static let statusPausedDetail =
-    "Your dictation keeps its full speed. Turn Live transcription off to see the preview."
+    "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview."
 
   // MARK: - Language section (#2154)
 
@@ -330,7 +330,7 @@ enum LivePreviewSettingsCopy {
   /// output, whenever the engine is refused.**
   ///
   /// `WhisperPreviewEngineResolver` returns `.blocked(.heartIsStreaming)` before
-  /// it asks anything else, so with Live transcription streaming the universal
+  /// it asks anything else, so with Faster Transcription streaming the universal
   /// preview will not run at all. The hero card reports that correctly. The row
   /// below it did not: it went on saying "Your words will appear in German" and
   /// "The preview detects your language as you speak" while nothing would appear

@@ -118,7 +118,7 @@ struct LivePreviewStatusMappingTests {
   func streamingHeartBeatsAdmission() {
     let paused = summary(engine: .universal, universalState: .admitted, heartIsStreaming: true)
     #expect(paused.chip.tone == .needsSetup)
-    #expect(paused.chip.label == LivePreviewSettingsCopy.pausedForLiveTranscription)
+    #expect(paused.chip.label == LivePreviewSettingsCopy.pausedForFasterTranscription)
     // Control: the SAME inputs without streaming are the ready state, so this
     // test cannot pass because of some other term.
     #expect(summary(engine: .universal, universalState: .admitted).chip.tone == .ready)

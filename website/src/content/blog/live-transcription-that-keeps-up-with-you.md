@@ -36,6 +36,8 @@ Here is the part I find genuinely elegant. A word is only committed once two con
 
 This approach comes from a research group at Charles University that studies live speech translation, where the same problem shows up in a harder form. Their method, called [whisper_streaming](https://github.com/ufal/whisper_streaming), is the design we adapted. We benchmarked it against other candidates on real dictation before picking it; it won on both speed and text quality.
 
+**A note on the name:** in the app this setting is now called **Faster Transcription**, under Settings > Transcription. It does exactly what this post describes. The name changed because "live" was being read as "shows me my words as I speak", which is a different feature called Live Preview.
+
 By the time you release the key, nearly everything you said is already confirmed. The engine finishes the last unconfirmed words, and that is it. The end-of-dictation wait stops scaling with how long you spoke.
 
 And if anything goes wrong mid-recording, the engine keeps your full audio on the side and falls back to transcribing it in one pass, the traditional way. You always get your text. The fast path is never allowed to put your words at risk.

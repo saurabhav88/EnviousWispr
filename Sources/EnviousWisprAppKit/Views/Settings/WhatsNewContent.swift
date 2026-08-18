@@ -182,6 +182,14 @@ enum WhatsNewContent {
     ),
 
     Entry(
+      // **"Live transcription" here is CORRECT and must not be renamed.** #2155
+      // renamed that setting to Faster Transcription, and every other mention in
+      // the app moved with it. This one is a shipped release note describing
+      // v2.4.3, when the setting WAS called Live transcription. Rewriting it
+      // would make the historical record describe a name that did not exist at
+      // the time — the same exclude-list discipline dated audits and changelog
+      // rows get (workflow-process.md RULE: self-review-and-grep-before-codex).
+      // A future sweep for the old name will find this line; leave it.
       id: "smaller-repairs-recording-settings",
       icon: "wrench.and.screwdriver",
       title: "A handful of smaller repairs across recording and settings",

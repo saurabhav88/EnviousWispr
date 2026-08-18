@@ -295,9 +295,9 @@ struct SpeechEngineSettingsView: View {
       }
 
       // ── Section 4: Transcription Mode ────────────────────────────────
-      // #1276 Step 2 (PR-2): the "Live transcription" toggle now shows for both
+      // #1276 Step 2 (PR-2): the "Faster Transcription" toggle now shows for both
       // engines (it binds the same `useStreamingASR`). On WhisperKit with
-      // Auto-detect language, live transcription safely uses clean batch instead
+      // Auto-detect language, streaming safely uses clean batch instead
       // (the footnote explains why); a picked language streams.
       if settings.selectedBackend == .parakeet || settings.selectedBackend == .whisperKit {
         BrandedSection(header: "Transcription Mode") {
@@ -743,7 +743,7 @@ struct SpeechEngineSettingsView: View {
     .accessibilityLabel("Re-check model status")
   }
 
-  // MARK: - Live transcription help (#1337)
+  // MARK: - Faster Transcription help (#1337)
 
   /// Same shape as `spokenPunctuationHelpButton` deliberately: a real `Button`, never a
   /// hover-only reveal, so it is reachable by keyboard and VoiceOver. The two panels are

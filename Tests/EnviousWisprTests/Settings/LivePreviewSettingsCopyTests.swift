@@ -68,7 +68,7 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.statusBuildCannotRunLabel,
       LivePreviewSettingsCopy.statusBuildCannotRunDetail,
       LivePreviewSettingsCopy.statusBuildCannotRunDetailNoAlternative,
-      LivePreviewSettingsCopy.pausedForLiveTranscription,
+      LivePreviewSettingsCopy.pausedForFasterTranscription,
       LivePreviewSettingsCopy.statusPausedDetail,
       LivePreviewSettingsCopy.changeLanguageButton,
       LivePreviewSettingsCopy.changeLanguageHelp,
@@ -213,7 +213,7 @@ struct LivePreviewSettingsCopyTests {
   /// A list of banned phrases (`live transcription`, `live text`, ...) let
   /// "Your transcription appears live while you speak" through, which restates
   /// the other feature's promise almost verbatim; and it rejected this page's
-  /// own required label, "Paused while Live transcription is on". A blacklist
+  /// own required label, "Paused while Faster Transcription is on". A blacklist
   /// enumerates the collisions you imagined. An allowlist enumerates the uses
   /// you sanctioned, and only the second is closed under sentences nobody
   /// thought of.
@@ -225,7 +225,7 @@ struct LivePreviewSettingsCopyTests {
     // **The paused state is a PAIR, and the first draft of this guard allowed
     // only its label.** The full-suite run caught that immediately: the detail
     // line has to name the other setting too, because naming it IS the remedy
-    // ("turn Live transcription off"). A guard that permits the diagnosis and
+    // ("turn Faster Transcription off"). A guard that permits the diagnosis and
     // forbids the fix would have forced the copy to say what to do without
     // saying what to do it to.
     //
@@ -233,31 +233,35 @@ struct LivePreviewSettingsCopyTests {
     // not "any string about pausing" — widening it to a predicate is how an
     // allowlist quietly becomes the blacklist it replaced.
     let crossFeatureExplanations: Set<String> = [
-      LivePreviewSettingsCopy.pausedForLiveTranscription,
+      LivePreviewSettingsCopy.pausedForFasterTranscription,
       LivePreviewSettingsCopy.statusPausedDetail,
     ]
-    #expect(LivePreviewSettingsCopy.pausedForLiveTranscription == "Paused while Live transcription is on")
+    #expect(LivePreviewSettingsCopy.pausedForFasterTranscription == "Paused while Faster Transcription is on")
     #expect(
       LivePreviewSettingsCopy.statusPausedDetail
-        == "Your dictation keeps its full speed. Turn Live transcription off to see the preview.")
+        == "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview.")
 
     for string in allStrings {
       let lowered = string.lowercased()
-      let withoutApprovedNames =
-        lowered
-        .replacingOccurrences(of: "live preview", with: "")
-        .replacingOccurrences(of: "live transcription", with: "")
+      // **STRICTER after #2155, not weaker.** "Live transcription" used to be an
+      // approved name here and was exempted from the check below. The setting is
+      // now Faster Transcription, which contains no "live" at all, so the
+      // exemption is gone and ANY occurrence of the old name on this page now
+      // fails — including a partial revert of the rename that left this page
+      // behind. What replaced the removed allowlist is this: nothing is allowed
+      // to say it (GR-NEVER-WEAKEN-GUARDRAILS).
+      let withoutApprovedNames = lowered.replacingOccurrences(of: "live preview", with: "")
 
       #expect(
         !withoutApprovedNames.contains("live"),
-        "live may appear only inside the product name Live Preview, or the one permitted mention of Live transcription: \(string)")
+        "live may appear only inside the product name Live Preview: \(string)")
 
-      // Only ONE string may name the other feature at all. Any other mention is
-      // this preview borrowing the name that caused the original confusion.
-      if lowered.contains("live transcription") {
+      // The cross-feature mentions must name the setting by its CURRENT name, or
+      // this page tells the user to turn off a control that does not exist.
+      if crossFeatureExplanations.contains(string) {
         #expect(
-          crossFeatureExplanations.contains(string),
-          "only the paused-state label and its detail line may name Live transcription: \(string)")
+          string.contains("Faster Transcription"),
+          "a cross-feature explanation must name the setting as the user sees it: \(string)")
       }
     }
   }
@@ -279,7 +283,7 @@ struct LivePreviewSettingsCopyTests {
 
   /// **The four cells of the universal row, because the SELECTION is the subject.**
   ///
-  /// Cloud review r8: with Live transcription streaming, `WhisperPreviewEngineResolver`
+  /// Cloud review r8: with Faster Transcription streaming, `WhisperPreviewEngineResolver`
   /// returns `.blocked(.heartIsStreaming)` and the hero correctly reads "Paused",
   /// while this row went on saying "Your words will appear in German" and "The
   /// preview detects your language as you speak". One page asserted a fact and

@@ -28,9 +28,9 @@ Names, companies, and terms from your field are not in a general speech model.
 
 Parakeet, the transcription engine you start with, covers 25 European languages. For anything outside that, switch to WhisperKit under **Transcription** and pick your language. On WhisperKit, naming your language is more accurate than leaving it on auto-detect.
 
-### 5. Turn Live transcription off
+### 5. Turn Faster Transcription off
 
-If you switched Live transcription on, switch it back off under **Transcription**. On Parakeet, Live transcription measurably increases mistakes.
+If you switched Faster Transcription on, switch it back off under **Transcription**. On Parakeet, Faster Transcription measurably increases mistakes.
 
 ### 6. Work out which half went wrong
 
