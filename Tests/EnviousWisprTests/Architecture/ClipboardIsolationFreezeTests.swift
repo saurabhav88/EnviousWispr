@@ -108,6 +108,12 @@ struct ClipboardIsolationFreezeTests {
     /// Deliberately NOT resolved further. An alias (`typealias PB = NSPasteboard`) or a helper that
     /// returns the board still walks past, which is why this suite is the THIRD layer and not the fix:
     /// the required `copyToClipboard` seam is what makes the mistake unwriteable.
+    /// `SwiftSyntax` keeps the backticks on an escaped identifier, so `` `general` `` would not match a
+    /// literal comparison. Same normalisation the inventory gate settled on.
+    private static func identifierText(_ token: TokenSyntax) -> String {
+      token.identifier?.name ?? token.text
+    }
+
     private static func trailingName(of base: ExprSyntax?) -> String? {
       if let reference = base?.as(DeclReferenceExprSyntax.self) { return reference.baseName.text }
       if let member = base?.as(MemberAccessExprSyntax.self) { return member.declName.baseName.text }
@@ -151,12 +157,34 @@ struct ClipboardIsolationFreezeTests {
       // statement-wide search blesses `consume(from: x, snap: PasteService.saveClipboard())`,
       // where the `from:` belongs to a different call and the clipboard call
       // still defaults to the user's board.
-      let namesBoard = node.arguments.contains { argument in
+      let boardArguments = node.arguments.filter { argument in
         guard let label = argument.label?.text else { return false }
         return ClipboardIsolationFreezeTests.boardLabels.contains(label)
       }
 
-      if !namesBoard {
+      // NAMING a board is not the same as naming a SAFE one. `to: .general` is Swift's implicit-member
+      // spelling of `NSPasteboard.general` — the process-global board, written shorter — so the call
+      // satisfied the `to:` requirement while still overwriting the developer's clipboard, and the scan
+      // reported clean. Silent, and it defeats the one thing this suite exists to prevent.
+      //
+      // The base is nil for an implicit member, which is exactly why the qualified-base fix above could
+      // not see it: that one widened what counts as a base, and this is the case with NO base at all.
+      // Same class as every other finding in this arc — a spelling the compiler treats as identical.
+      let namesTheGlobalBoard = boardArguments.contains { argument in
+        guard let member = argument.expression.as(MemberAccessExprSyntax.self),
+          member.base == nil
+        else { return false }
+        return Self.identifierText(member.declName.baseName) == "general"
+      }
+
+      if namesTheGlobalBoard {
+        violations.append(
+          Violation(
+            file: file, line: line(node),
+            reason:
+              "PasteService.\(name) is handed `.general` — that IS the developer's real clipboard, just spelled shorter"
+          ))
+      } else if boardArguments.isEmpty {
         violations.append(
           Violation(
             file: file, line: line(node),
@@ -393,6 +421,28 @@ struct ClipboardIsolationFreezeTests {
     #expect(
       Self.violations(inSource: source, file: "Some.swift").isEmpty,
       "the guard fired on an unrelated type: \(source)")
+  }
+
+  /// The axis is WHAT THE BOARD ARGUMENT RESOLVES TO, not whether one was written. `.general` in a
+  /// board position is the real clipboard; a unique board is not. Each caught row is paired with the
+  /// near-identical safe row, so a matcher widened until it rejects every boarded call fails here.
+  @Test(
+    "an implicit .general in a board position is the real clipboard",
+    arguments: [
+      // (call as written inside the allowlisted suite, violations expected)
+      (#"PasteService.copyToClipboard("x", to: .general)"#, 1),
+      (#"_ = PasteService.saveClipboard(from: .general)"#, 1),
+      (#"PasteService.restoreClipboard(s, changeCountAfterPaste: 1, on: .general)"#, 1),
+      (#"PasteService.copyToClipboard("x", to: NSPasteboard.general)"#, 1),
+      // Safe halves: a unique board, however it is spelled, must still pass.
+      (#"PasteService.copyToClipboard("x", to: pb)"#, 0),
+      (#"PasteService.copyToClipboard("x", to: NSPasteboard.withUniqueName())"#, 0),
+      (#"_ = PasteService.saveClipboard(from: board)"#, 0),
+    ])
+  func implicitGeneralInABoardPositionIsCaught(call: String, expected: Int) {
+    let hits = Self.violations(
+      inSource: "func f() { \(call) }", file: "PasteServiceClipboardTests.swift")
+    #expect(hits.count == expected, "call: \(call) -> \(hits.map(\.description))")
   }
 
   @Test("a module-qualified call that DOES name its board still passes")
