@@ -611,9 +611,44 @@ else
   bad "marker ordering" "at rename time the marker was '$(cat "$MARKER_PROBE" 2>/dev/null)' — a kill in that window leaves an unrecoverable clone"
 fi
 
+# --- a missing Tuist pin FAILS the key, it does not invent a second cache ------
+# `${EW_TUIST_PIN:-tuist-unpinned}` looked defensive and was the opposite: an
+# unset pin produced a different, perfectly valid-looking key, so the cache split
+# into two namespaces and each published its own ~3.6 GB snapshot. Found on
+# 2026-08-18 by a real-tool proof that corrupted the WRONG snapshot — it sourced
+# this library without its sibling and got a different key, which is exactly the
+# production hazard the default was hiding.
+# A key that depends on which files a caller happened to source is not a key.
+( unset EW_TUIST_PIN; ew_seed_key "$ROOT" >/dev/null 2>&1 ); pin_rc=$?
+if [ "$pin_rc" -ne 0 ]; then
+  ok "an unset Tuist pin FAILS the key (no second cache namespace)"
+else
+  bad "unpinned key" "produced a usable key with no pin — the cache can silently split in two"
+fi
+
+# THE TWIN: with the pin present the key computes normally. Without it, a version
+# that simply always failed would look correct.
+if [ -n "$(ew_seed_key "$ROOT")" ]; then
+  ok "the key still computes normally when the pin IS set (the twin)"
+else
+  bad "pinned key" "failed to compute a key with the pin present"
+fi
+
+# AND THE CONSEQUENCE, which is the part that matters: a failed key must make
+# consume a plain cache MISS rather than an error. Slow and correct beats fast
+# and wrong, and nothing here may ever fail a build.
+DDP="$TMPROOT/ddpin"; mkdir -p "$DDP"
+( unset EW_TUIST_PIN; ew_seed_consume "$ROOT" "$DDP" ) > "$TMPROOT/pin.out" 2>&1; consume_rc=$?
+if [ "$consume_rc" -eq 0 ] && [ ! -e "$DDP/SourcePackages" ] \
+   && grep -q "could not compute seed key" "$TMPROOT/pin.out"; then
+  ok "an unset pin makes consume a plain cache MISS, announced, never a failure"
+else
+  bad "unpinned consume" "rc=$consume_rc target=$([ -e "$DDP/SourcePackages" ] && echo present || echo absent) out='$(cat "$TMPROOT/pin.out")'"
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 46 ]; then
-  printf 'ERROR: expected at least 46 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 49 ]; then
+  printf 'ERROR: expected at least 49 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

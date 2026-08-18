@@ -33,6 +33,11 @@
 _ew_seed_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/spm-seed-lock.sh
 . "$_ew_seed_here/spm-seed-lock.sh"
+# The Tuist pin is part of the cache key and is OWNED by ensure-generated.sh.
+# Sourcing it here rather than defaulting is what keeps one library from
+# inventing a second cache namespace — see the key function below.
+# shellcheck source=scripts/lib/ensure-generated.sh
+. "$_ew_seed_here/ensure-generated.sh"
 
 # Composite key. Used IDENTICALLY by publish, consume and purge — no path may key
 # on a subset, or a seed published under one identity is consumed under another.
@@ -54,7 +59,18 @@ ew_seed_key() {
       fi
       xcodebuild -version 2>/dev/null || printf 'no-xcodebuild\n'
       xcrun --sdk macosx --show-sdk-version 2>/dev/null || printf 'no-sdk\n'
-      printf '%s\n' "${EW_TUIST_PIN:-tuist-unpinned}"
+      # FAIL CLOSED ON A MISSING PIN, never substitute a placeholder.
+      # This read used to be `${EW_TUIST_PIN:-tuist-unpinned}`, which looks
+      # defensive and is the opposite: an unset pin produced a DIFFERENT,
+      # perfectly valid-looking key, so the cache silently split into two
+      # namespaces and each published its own ~3.6 GB snapshot. Measured
+      # 2026-08-18 — two snapshots were sitting in the cache and one of them was
+      # this defect, reachable by sourcing this library without its sibling.
+      # A key that depends on which files a caller happened to source is not a
+      # key. Failing here makes consume and publish take the ordinary cache-miss
+      # path, which is slow and correct, instead of fast and wrong.
+      [ -n "${EW_TUIST_PIN:-}" ] || exit 1
+      printf '%s\n' "$EW_TUIST_PIN"
     } | shasum -a 256 | awk '{print $1}'
   )
 }
