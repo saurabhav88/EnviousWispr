@@ -355,30 +355,6 @@ enum LivePreviewSettingsCopy {
   static let universalAutoPaused =
     "The preview is set to detect your language as you speak."
 
-  /// **The selection itself, so the CHOICE is testable rather than only the
-  /// strings.**
-  ///
-  /// A guard that asserts the paused strings contain no promise verb tests the
-  /// vocabulary and not the wiring: it passes unchanged if the view stops
-  /// consulting the refusal and always renders the promising branch. This
-  /// function is the subject, and its four cells are the whole behaviour.
-  ///
-  /// `languageName` is nil for Auto. The view resolves the catalog entry; this
-  /// stays free of that dependency so a test can call it directly.
-  /// Takes READINESS, never a single blocker. `engineWillProduceOutput` comes
-  /// from `LivePreviewStatusMapping.universalWillProduceOutput`, which is the
-  /// same answer the hero card derives its chip from. An earlier version of this
-  /// function took `heartIsStreaming`, which is one of at least six reasons the
-  /// preview will not run, and promised output for the other five.
-  static func universalRowLabel(languageName: String?, engineWillProduceOutput: Bool) -> String {
-    switch (languageName, engineWillProduceOutput) {
-    case (.some(let name), true): return universalLocked(name)
-    case (.some(let name), false): return universalLockedPaused(name)
-    case (.none, true): return universalAuto
-    case (.none, false): return universalAutoPaused
-    }
-  }
-
   /// Says the consequence out loud. Picking a language here is not a
   /// preview-only setting: it sets the DICTATION language, on a different page.
   /// A button that silently edits another page's setting is how a user loses

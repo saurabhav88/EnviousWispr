@@ -455,14 +455,14 @@ struct LivePreviewSettingsView: View {
               // resolver would actually deliver it. The help line is unchanged
               // because it states where the setting lives, which stays true.
               Text(
-                LivePreviewSettingsCopy.universalRowLabel(
+                LivePreviewEnginePresentation.universalRowLabel(
                   languageName: entry.englishName, engineWillProduceOutput: universalWillProduceOutput)
               )
               .settingsRowLabel()
               Text(LivePreviewSettingsCopy.universalLockedHelp).settingsHelperCopy()
             case .auto:
               Text(
-                LivePreviewSettingsCopy.universalRowLabel(
+                LivePreviewEnginePresentation.universalRowLabel(
                   languageName: nil, engineWillProduceOutput: universalWillProduceOutput)
               )
               .settingsRowLabel()

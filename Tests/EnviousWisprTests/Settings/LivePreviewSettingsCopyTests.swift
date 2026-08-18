@@ -291,19 +291,19 @@ struct LivePreviewSettingsCopyTests {
   @Test("The universal row promises output only when the engine is not paused")
   func universalRowPromisesOnlyWhenRunning() {
     #expect(
-      LivePreviewSettingsCopy.universalRowLabel(languageName: "German", engineWillProduceOutput: true)
+      LivePreviewEnginePresentation.universalRowLabel(languageName: "German", engineWillProduceOutput: true)
         == LivePreviewSettingsCopy.universalLocked("German"),
       "a locked language must promise output when the engine is ready")
     #expect(
-      LivePreviewSettingsCopy.universalRowLabel(languageName: "German", engineWillProduceOutput: false)
+      LivePreviewEnginePresentation.universalRowLabel(languageName: "German", engineWillProduceOutput: false)
         == LivePreviewSettingsCopy.universalLockedPaused("German"),
       "a locked language must be described, not promised, when the engine will not run")
     #expect(
-      LivePreviewSettingsCopy.universalRowLabel(languageName: nil, engineWillProduceOutput: true)
+      LivePreviewEnginePresentation.universalRowLabel(languageName: nil, engineWillProduceOutput: true)
         == LivePreviewSettingsCopy.universalAuto,
       "Auto must say detection is happening when the engine is ready")
     #expect(
-      LivePreviewSettingsCopy.universalRowLabel(languageName: nil, engineWillProduceOutput: false)
+      LivePreviewEnginePresentation.universalRowLabel(languageName: nil, engineWillProduceOutput: false)
         == LivePreviewSettingsCopy.universalAutoPaused,
       "Auto must not claim detection is happening when the engine will not run")
   }
