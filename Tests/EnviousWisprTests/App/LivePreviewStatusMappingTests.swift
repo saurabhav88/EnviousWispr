@@ -30,7 +30,8 @@ struct LivePreviewStatusMappingTests {
     universalState: DeliveryState = .admitted,
     heartIsStreaming: Bool = false,
     active: LivePreviewPacksModel.ActiveLanguage? = .ready(tag: "en-US", name: "English"),
-    anInstallIsInFlight: Bool = false
+    anInstallIsInFlight: Bool = false,
+    activeDescribesAnotherLanguage: Bool = false
   ) -> LivePreviewStatusMapping.Summary {
     LivePreviewStatusMapping.summary(
       isEnabled: isEnabled,
@@ -40,7 +41,8 @@ struct LivePreviewStatusMappingTests {
       universalState: universalState,
       heartIsStreaming: heartIsStreaming,
       active: active,
-      anInstallIsInFlight: anInstallIsInFlight)
+      anInstallIsInFlight: anInstallIsInFlight,
+      activeDescribesAnotherLanguage: activeDescribesAnotherLanguage)
   }
 
   // MARK: - The two answers that must never be wrong
@@ -250,6 +252,36 @@ struct LivePreviewStatusMappingTests {
     #expect(installing.chip.tone == .unavailable)
     #expect(installing.detail == LivePreviewSettingsCopy.statusInstallInFlightDetail)
     #expect(installing.chip.label != idle.chip.label)
+  }
+
+  /// **Cloud review r2, and a member of the staleness axis my first fix scoped
+  /// too narrowly.** `load()` cannot run during an install, and the page's
+  /// `.task(id:)` cannot force it, so changing the dictation language
+  /// mid-download leaves `active` describing the PREVIOUS language. The
+  /// `.needsDownload` case was already refused; `.ready` was not, and it is the
+  /// worse one — it reports the feature working for a language the user has
+  /// already navigated away from.
+  @Test("A language change mid-download invalidates every state, ready included")
+  func languageChangeInvalidatesEveryState() {
+    let states: [LivePreviewPacksModel.ActiveLanguage] = [
+      .ready(tag: "de-DE", name: "German"),
+      .needsDownload(name: "German"),
+      .unsupportedLanguage,
+      .unsupportedSystem,
+    ]
+    for state in states {
+      let s = summary(engine: .apple, active: state, activeDescribesAnotherLanguage: true)
+      #expect(
+        s.chip.label == LivePreviewSettingsCopy.statusCheckingLabel,
+        "a stale-language \(state) still asserted: \(s.chip.label)")
+      #expect(s.chip.tone != .ready, "a stale-language \(state) reported ready")
+      #expect(s.detail == LivePreviewSettingsCopy.statusLanguageChangedDetail)
+    }
+
+    // Control: the SAME states with the flag clear are NOT blanked, so this
+    // cannot pass by the mapping refusing everything.
+    #expect(
+      summary(engine: .apple, active: .ready(tag: "de-DE", name: "German")).chip.tone == .ready)
   }
 
   /// The deferral is scoped to the state whose input is stale. A resolved,

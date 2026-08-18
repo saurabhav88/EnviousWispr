@@ -55,6 +55,7 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.statusCheckingLabel,
       LivePreviewSettingsCopy.statusCheckingDetail,
       LivePreviewSettingsCopy.statusInstallInFlightDetail,
+      LivePreviewSettingsCopy.statusLanguageChangedDetail,
       LivePreviewSettingsCopy.statusNeedsLanguageDetail,
       LivePreviewSettingsCopy.statusUnsupportedLanguageLabel,
       LivePreviewSettingsCopy.statusUnsupportedLanguageDetail,

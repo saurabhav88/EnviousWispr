@@ -46,7 +46,8 @@ enum LivePreviewStatusMapping {
     universalState: DeliveryState,
     heartIsStreaming: Bool,
     active: LivePreviewPacksModel.ActiveLanguage?,
-    anInstallIsInFlight: Bool = false
+    anInstallIsInFlight: Bool = false,
+    activeDescribesAnotherLanguage: Bool = false
   ) -> Summary {
     // (1) Can ANYTHING run here? Asked first because "off" is not the useful
     // answer on a Mac where the switch could never help.
@@ -89,7 +90,8 @@ enum LivePreviewStatusMapping {
     case .apple:
       return apple(
         supported: appleSupported, active: active, universalIsAnOption: universalExists,
-        anInstallIsInFlight: anInstallIsInFlight)
+        anInstallIsInFlight: anInstallIsInFlight,
+        activeDescribesAnotherLanguage: activeDescribesAnotherLanguage)
     case .universal:
       return universal(
         exists: universalExists, state: universalState, heartIsStreaming: heartIsStreaming)
@@ -105,7 +107,8 @@ enum LivePreviewStatusMapping {
     supported: Bool,
     active: LivePreviewPacksModel.ActiveLanguage?,
     universalIsAnOption: Bool,
-    anInstallIsInFlight: Bool
+    anInstallIsInFlight: Bool,
+    activeDescribesAnotherLanguage: Bool
   ) -> Summary {
     guard supported else {
       return Summary(
@@ -114,6 +117,23 @@ enum LivePreviewStatusMapping {
         detail: universalIsAnOption
           ? LivePreviewSettingsCopy.statusNeedsMacOS26Detail
           : LivePreviewSettingsCopy.statusNeedsMacOS26DetailNoAlternative)
+    }
+
+    // **`active` can describe a language the user has already navigated away
+    // from, and then EVERY state built on it is wrong — including `.ready`.**
+    // `load()` refuses to run while an install is in flight, and the page's
+    // `.task(id: settings.languageMode)` cannot force it, so changing the
+    // dictation language mid-download leaves the resolved value describing the
+    // old one. An earlier fix scoped the staleness refusal to `.needsDownload`
+    // only; cloud review r2 found the `.ready` case, which is worse — it reports
+    // the feature working for a language that is no longer selected. Checked
+    // BEFORE the switch so it covers every state at once rather than one per
+    // review round.
+    guard !activeDescribesAnotherLanguage else {
+      return Summary(
+        chip: ProviderStatus(
+          label: LivePreviewSettingsCopy.statusCheckingLabel, tone: .unavailable),
+        detail: LivePreviewSettingsCopy.statusLanguageChangedDetail)
     }
 
     // `active` is nil until the first inventory read finishes. Refusing to

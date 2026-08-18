@@ -93,7 +93,12 @@ struct LivePreviewSettingsView: View {
       active: packs.active,
       // The model refuses to reload while an install runs, so `active` is stale
       // for that whole window and the card must not assert from it.
-      anInstallIsInFlight: packs.installingTag != nil)
+      anInstallIsInFlight: packs.installingTag != nil,
+      // `load()` cannot run during an install, so switching language mid-download
+      // leaves `active` describing the previous one. Compare what it was resolved
+      // FOR against what is selected NOW rather than assuming they agree.
+      activeDescribesAnotherLanguage: packs.resolvedMode != nil
+        && packs.resolvedMode != settings.languageMode)
   }
 
   private var showsApplePacks: Bool {

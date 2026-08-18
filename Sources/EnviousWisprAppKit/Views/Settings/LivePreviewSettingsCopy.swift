@@ -240,6 +240,11 @@ enum LivePreviewSettingsCopy {
   /// what lets the card say it without knowing.
   static let statusInstallInFlightDetail =
     "A language download is in progress. This updates when it finishes."
+  /// Shown when the dictation language changed while a download was running, so
+  /// the resolved language describes the previous choice. Says what is true
+  /// without pretending to know the new answer yet.
+  static let statusLanguageChangedDetail =
+    "Working out what your new language needs. This updates when the download finishes."
 
   static func statusNeedsLanguageLabel(_ languageName: String) -> String {
     "\(languageName) isn't downloaded yet"

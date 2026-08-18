@@ -38,6 +38,18 @@ final class LivePreviewPacksModel {
 
   private(set) var active: ActiveLanguage?
 
+  /// **The language `active` was resolved FOR**, so a reader can tell whether it
+  /// still describes the language currently selected.
+  ///
+  /// #2154, cloud review r2. `load()` refuses to run while an install is in
+  /// flight, and `.task(id: settings.languageMode)` cannot force it — so
+  /// changing the dictation language MID-DOWNLOAD leaves `active` describing the
+  /// language the user just navigated away from. Without this, a status card
+  /// reading `active` would report the OLD language as ready. Publishing the
+  /// mode beside the value is what lets a reader detect that, rather than every
+  /// reader inventing its own staleness heuristic.
+  private(set) var resolvedMode: LanguageMode?
+
   private(set) var state: LoadState = .loading
 
   /// The tag currently downloading, if any. One at a time: the UI shows one spinner, and Apple's
@@ -128,6 +140,7 @@ final class LivePreviewPacksModel {
     guard generation == mine else { return }
     failedTag = nil
     active = resolved
+    resolvedMode = currentMode()
     state = Self.state(for: packs)
   }
 
@@ -212,6 +225,7 @@ final class LivePreviewPacksModel {
         guard !Task.isCancelled, self.generation == mine else { return }
         self.state = Self.state(for: refreshed)
         self.active = resolved
+        self.resolvedMode = self.currentMode()
         self.installingTag = nil
       } catch {
         // Re-read rather than trusting the failure: Apple may have installed it and then thrown
@@ -238,6 +252,7 @@ final class LivePreviewPacksModel {
         self.failedTag = landed ? nil : tag
         self.state = Self.state(for: refreshed)
         self.active = resolved
+        self.resolvedMode = self.currentMode()
       }
     }
   }
