@@ -292,7 +292,21 @@ final class LivePreviewPacksModel {
         self.state = Self.state(for: refreshed)
         self.active = resolved
         self.resolvedMode = resolvedFor
-        await self.reloadIfStale(resolvedFor)
+        // **Only when there is no failure to preserve.** `load()` clears
+        // `failedTag` unconditionally — correctly, since a fresh read is the
+        // authority and a stale "Try again" beside a row the system now reports
+        // as Ready is the contradiction this branch already guards against. But
+        // calling it HERE would erase a failure one line after setting it, so a
+        // genuine download failure would lose its "Try again" and its
+        // explanation. Cloud review r6.
+        //
+        // Skipping it costs at most a stale-language "Checking" alongside a
+        // VISIBLE, actionable failure, and the page re-resolves on its next
+        // appearance. Losing the failure is worse than deferring the refresh:
+        // one is a delay, the other is a user who cannot tell the download broke.
+        if landed {
+          await self.reloadIfStale(resolvedFor)
+        }
       }
     }
   }
