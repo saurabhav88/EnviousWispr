@@ -308,22 +308,32 @@ export function formatAdoption(data, buckets) {
   // every day is how a reader learns to skip the section.
   {
     const er = data.escapeRecovery || {};
+    const attempts = er.attempts ?? 0;
     const kept = er.kept ?? 0;
-    if (kept > 0) {
+    // Keyed on ATTEMPTS, not keeps: a day where every attempt failed is the day
+    // this line most needs to appear, and keying on keeps would hide exactly
+    // that day.
+    if (attempts > 0) {
       const restored = er.restored ?? 0;
       const clipboardOnly = er.clipboardOnly ?? 0;
+      const failed = er.failed ?? 0;
       const people = er.keptUsers ?? 0;
-      // Plain sentence, no ratios or percentages: the counts are small while the
-      // feature is new, and a percentage of four events invites a conclusion the
-      // number cannot carry.
+      // Plain sentences, no ratios: the counts are small while the feature is
+      // new, and a percentage of four events invites a conclusion the number
+      // cannot carry.
       let line =
-        `Escape Recovery: ${kept} cancelled dictation${kept === 1 ? " was" : "s were"} kept ` +
-        `for ${people} ${people === 1 ? "person" : "people"}, and ${restored} ` +
-        `${restored === 1 ? "was" : "were"} taken back with Undo.`;
+        `Escape Recovery: ${attempts} cancelled dictation${attempts === 1 ? " was" : "s were"} ` +
+        `held, ${kept} saved for ${people} ${people === 1 ? "person" : "people"}, and ` +
+        `${restored} taken back with Undo.`;
+      if (failed > 0) {
+        line +=
+          ` ${failed} failed to save and the text was lost, which is a defect` +
+          ` rather than a user choice.`;
+      }
       if (clipboardOnly > 0) {
         line +=
-          ` ${clipboardOnly} of those could not reach the original app and went to ` +
-          `the clipboard instead.`;
+          ` ${clipboardOnly} restore${clipboardOnly === 1 ? "" : "s"} could not reach the ` +
+          `original app and went to the clipboard instead.`;
       }
       lines.push("", line);
     }

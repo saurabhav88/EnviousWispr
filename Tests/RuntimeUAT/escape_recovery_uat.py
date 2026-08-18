@@ -440,6 +440,19 @@ def main():
         print("Unlock the screen and run again.")
         return 2
 
+    # ORDER: the in-flight refusal comes FIRST. The migration launch below
+    # starts an instance and then stops every one of them, so running it
+    # ahead of this check would kill a developer's live recording — the
+    # exact thing the check exists to prevent, done by the step that runs
+    # before it.
+    # A dictation left live by an earlier run would be stopped by the first
+    # restart below, but it would also mean somebody is mid-recording right now
+    # -- say so and refuse, rather than quitting the app under them.
+    if app_is_running() and in_flight(max(0, log_length() - 400)):
+        print("REFUSING TO RUN: a dictation is live in the dev app right now.")
+        print("Stopping it here would end a recording this run did not start.")
+        return 2
+
     # THE ONE-TIME SETTINGS MIGRATION MUST RUN BEFORE WE SNAPSHOT ANYTHING.
     #
     # On a dev install that has not yet migrated, `SettingsDefaultsMigration`
@@ -459,14 +472,6 @@ def main():
         print("[migration] first launch since settings unification — running it before snapshotting")
         start_app()
         stop_app()
-
-    # A dictation left live by an earlier run would be stopped by the first
-    # restart below, but it would also mean somebody is mid-recording right now
-    # -- say so and refuse, rather than quitting the app under them.
-    if app_is_running() and in_flight(max(0, log_length() - 400)):
-        print("REFUSING TO RUN: a dictation is live in the dev app right now.")
-        print("Stopping it here would end a recording this run did not start.")
-        return 2
 
     # Captured BEFORE anything is written, so the `finally` restores rather
     # than resets. A developer running this must not lose their own shortcut.

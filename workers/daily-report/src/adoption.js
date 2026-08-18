@@ -134,12 +134,28 @@ export function createAdoptionSection(env, context, opts = {}) {
   // recovery numbers can never describe a different period from the totals
   // beside them.
   //
-  // `started` counts cancels that CHOSE recovery; `restored` counts the ones the
-  // user took back with Undo. That ratio is the question the feature has to
-  // answer — keeping text nobody asks for is a cost, not a success.
-  // `clipboard_only` is the closest thing to a failure signal we have: the
-  // original app had gone or refused focus, so the words went to the clipboard
-  // instead of back where they were dictated.
+  // THE COUNTS COME FROM `completed`, NOT `started`, and that is the difference
+  // between a true sentence and a false one. `started` fires when an eligible
+  // cancel SELECTS recovery; the take can still end with nothing kept, so
+  // counting it as "kept" was simply wrong. `EscapeRecoveryTerminalOutcome`
+  // draws the lines and this query must not redraw them:
+  //   saved                -> a keep, and the only outcome that can offer a pill
+  //   transcription_failed -> broke. A real failure.
+  //   save_failed          -> text existed, the durable write failed. A failure.
+  //   empty                -> no speech in the recording. NOT a failure; the
+  //                           enum says outright there is nothing to apologise for.
+  //   abandoned            -> the user cancelled again. A CHOICE, and the enum
+  //                           says it must never read as a failure in the data.
+  // So `er_failed` counts exactly the two that broke. Folding in `empty` or
+  // `abandoned` would manufacture a failure rate out of people using the
+  // feature exactly as designed.
+  //
+  // `er_attempts` rides along because attempts-versus-keeps is its own question,
+  // and a keep count with no denominator answers nothing.
+  // `clipboard_only` is a softer signal on the restore half: the original app
+  // had gone or refused focus, so the words reached the clipboard instead of
+  // the field. Still a restore, which is why it is reported separately from a
+  // failure rather than added to one.
   const totalsSql = `
     SELECT
       countIf(event = 'dictation.completed' AND properties.result = 'success')
@@ -147,14 +163,20 @@ export function createAdoptionSection(env, context, opts = {}) {
       uniqExactIf(distinct_id,
                   event = 'dictation.completed' AND properties.result = 'success')
         AS total_users,
-      countIf(event = 'escape_recovery.started') AS er_kept,
-      uniqExactIf(distinct_id, event = 'escape_recovery.started') AS er_kept_users,
+      countIf(event = 'escape_recovery.started') AS er_attempts,
+      countIf(event = 'escape_recovery.completed'
+              AND properties.outcome = 'saved') AS er_kept,
+      uniqExactIf(distinct_id, event = 'escape_recovery.completed'
+                  AND properties.outcome = 'saved') AS er_kept_users,
+      countIf(event = 'escape_recovery.completed'
+              AND properties.outcome IN ('transcription_failed', 'save_failed'))
+        AS er_failed,
       countIf(event = 'escape_recovery.restored') AS er_restored,
       countIf(event = 'escape_recovery.restored'
               AND properties.paste_result = 'clipboard_only') AS er_restored_clipboard_only
     FROM events
     WHERE event IN ('dictation.completed', 'escape_recovery.started',
-                    'escape_recovery.restored')
+                    'escape_recovery.completed', 'escape_recovery.restored')
       AND ${prod} AND ${win}`;
 
   // Engine (row 3) + polish tier-b fallback (row 4) share the same event
@@ -247,8 +269,10 @@ export function createAdoptionSection(env, context, opts = {}) {
         // separate degraded state to carry. If these are missing, the whole
         // report failed and nothing is rendered at all.
         escapeRecovery: {
+          attempts: rowsToObjects(totals)[0]?.er_attempts ?? 0,
           kept: rowsToObjects(totals)[0]?.er_kept ?? 0,
           keptUsers: rowsToObjects(totals)[0]?.er_kept_users ?? 0,
+          failed: rowsToObjects(totals)[0]?.er_failed ?? 0,
           restored: rowsToObjects(totals)[0]?.er_restored ?? 0,
           clipboardOnly: rowsToObjects(totals)[0]?.er_restored_clipboard_only ?? 0,
         },
