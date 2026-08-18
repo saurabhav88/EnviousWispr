@@ -187,6 +187,14 @@ enum LivePreviewEnginePresentation {
 enum LivePreviewEngineCopy {
   static let sectionHeader = "Preview engine"
 
+  /// #2154. The two engines differ in OS floor, language coverage and download
+  /// size; a card cannot carry that comparison without becoming the article.
+  /// This is the first link from a settings page to the Help Centre, so the
+  /// destination has to exist before the link ships — it does, added in the same
+  /// change (#2134).
+  static let learnMoreLabel = "Learn more about engines"
+  static let learnMoreURL = "https://enviouswispr.com/help/live-preview-words-on-screen/"
+
   static let appleTitle = "Apple"
   static let appleDescription =
     "Uses Apple's speech recognition. No separate preview-model download; some languages may "

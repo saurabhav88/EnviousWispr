@@ -121,7 +121,11 @@ import Testing
     #expect(nanCard.action == .cancelDownload, "control: it is still a running download")
   }
 
-  @Test("an installed engine offers removal, so 217 MB is reclaimable")
+  /// Renamed by #2154. It was called "so 217 MB is reclaimable" and asserted
+  /// only that Remove is offered — the number in its name was decorative, and it
+  /// passed whatever the copy said. The size claim now has a test that actually
+  /// binds it: `universalDescriptionMatchesShippedManifestSize` below.
+  @Test("an installed engine offers removal")
   func admittedOffersRemove() {
     let card = universal(.admitted)
     #expect(card.action == .remove)
@@ -229,4 +233,35 @@ import Testing
     .cancelled(resumable: false),
     .failed(DeliveryFailure(reason: .source5xx, detail: "test")),
   ]
+
+  /// #2154 — the public download size must be the size we actually ship.
+  ///
+  /// **Product Outcome.** "217 MB" is a claim a user decides on: it is the whole
+  /// cost of choosing the Universal engine. Nothing bound it. The manifest test
+  /// pinned `totalBytes == 217_350_763` and this file had a test with 217 MB in
+  /// its NAME that asserted something else entirely, so the copy could have said
+  /// any number and every test would still have passed
+  /// (`testing-philosophy.md` RULE: a-public-product-promise-needs-a-binding-test).
+  ///
+  /// Derives the number from the shipped manifest rather than restating it, so
+  /// there is exactly one authority. Decimal MB, matching how a download size is
+  /// quoted to users and how the copy was written.
+  @Test("the engine card's download size is the shipped manifest's size")
+  func universalDescriptionMatchesShippedManifestSize() throws {
+    let url = WhisperKitPreviewManifestTests.previewManifestURL
+    let manifest = try DeliveryManifest.load(from: Data(contentsOf: url))
+
+    let megabytes = Int((Double(manifest.totalBytes) / 1_000_000).rounded())
+    #expect(
+      LivePreviewEngineCopy.universalDescription.contains("\(megabytes) MB"),
+      "the card says a size the shipped manifest does not: manifest is \(manifest.totalBytes) bytes (\(megabytes) MB), copy reads: \(LivePreviewEngineCopy.universalDescription)")
+
+    // Two-way control. Without it, a copy string that happened to contain no
+    // size at all, or a manifest read that silently returned zero, would look
+    // like agreement.
+    #expect(megabytes > 0, "the manifest reported no size, so the check above proves nothing")
+    #expect(
+      !LivePreviewEngineCopy.universalDescription.contains("\(megabytes + 1) MB"),
+      "control: the copy should not also contain a neighbouring size")
+  }
 }

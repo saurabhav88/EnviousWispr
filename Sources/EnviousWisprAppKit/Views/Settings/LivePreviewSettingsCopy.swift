@@ -15,13 +15,27 @@ import Foundation
 ///
 /// Brand rule: no em-dashes or en-dashes in user-facing copy.
 enum LivePreviewSettingsCopy {
-  /// **Deliberately contains no "live".** The adjacent Transcription Mode section
-  /// already owns that word, and two settings both calling themselves live is the
-  /// confusion this issue was filed about. Renaming the OLDER one was measured and
-  /// rejected as a public-URL change (see `LiveTranscriptionCopy.toggleLabel`), so
-  /// the new setting is the one that gives up the word. "On-screen" also says the
-  /// true thing about it: this changes what you SEE, nothing else.
-  static let sectionHeader = "On-screen Preview"
+  /// **The feature's name, settled 2026-08-18.**
+  ///
+  /// This said "On-screen Preview" while the sidebar and page title said
+  /// "Live Preview" (`SettingsSection.swift`), so the page called itself two
+  /// things. The older draft gave up the word "live" to avoid colliding with the
+  /// "Live transcription" setting, which is the confusion #1988 was filed about
+  /// — but the nav had already taken the word back, in the two most visible
+  /// places on the page, where the copy guard could not see it.
+  ///
+  /// Founder decision: Live Preview everywhere. The collision is answered by
+  /// renaming the OTHER setting to "Faster Transcription" (#2155, ships
+  /// immediately after this), not by this one staying nameless.
+  static let sectionHeader = "Live Preview"
+
+  /// The hero card's headline.
+  ///
+  /// **Deliberately does not assert that the feature is on.** The mockup read
+  /// "Real-time feedback, always on"; it ships OFF with its switch directly
+  /// below, so that headline is false the first time anybody opens this page.
+  static let heroTitle = "Watch your words appear as you talk"
+
   static let toggleLabel = "Show words while I speak"
 
   /// Says four things, in the order a user cares about them: what they will see,
@@ -48,10 +62,15 @@ enum LivePreviewSettingsCopy {
   /// draft carried it as the phrase "preview only"; this one carries it as "never changes a
   /// character of what gets pasted". `LivePreviewSettingsCopyTests` accepts either wording and
   /// fails if a rewrite drops the claim entirely.
-  static let toggleDescription =
+  static let heroBody =
     "See your words in the recording pill as you talk, so you know EnviousWispr is hearing you. "
     + "It stays on your Mac, is discarded when the recording ends, and never changes a character "
     + "of what gets pasted."
+
+  /// The one line under the switch. The three claims above moved to `heroBody`
+  /// when the hero card took the top of the page (#2154); this is the mockup's
+  /// own wording for the row that remains.
+  static let toggleDescription = "See your words in the recording pill as you talk."
 
   /// Shown under the disabled toggle on older systems. Names the requirement and
   /// stops there: a user on macOS 14 cannot act on this beyond upgrading, and a
@@ -79,7 +98,7 @@ enum LivePreviewSettingsCopy {
 
   // MARK: - Which language is live (#2080)
 
-  /// Names what the section CONTAINS, like "On-Screen Preview" and "Languages" either side of it.
+  /// Names what the section CONTAINS, like "Live Preview" and "Languages" either side of it.
   /// "Right Now" named a moment instead, which told the reader nothing about what they would find.
   static let activeHeader = "Preview Language"
 
@@ -174,4 +193,93 @@ enum LivePreviewSettingsCopy {
   static func previewNeedsLanguagePack(_ languageName: String) -> String {
     "\(languageName) isn't downloaded yet. Open Settings to download it."
   }
+
+  // MARK: - Status card (#2154)
+
+  /// The card's right column, one label + one detail per state.
+  /// `LivePreviewStatusMapping` owns which one is shown; this owns the words.
+  ///
+  /// **Every label here claims READINESS and none claims that words are on
+  /// screen.** A correctly configured preview still shows nothing when the user
+  /// speaks a language it is not set to (`live-preview.md`
+  /// RULE: a-language-mismatch-shows-NOTHING-not-garbage), so "showing your
+  /// words" would be a promise this page cannot keep.
+
+  static let statusActiveLabel = "Live Preview is active"
+  static let statusActiveDetail = "Ready to show your words while you speak."
+
+  static let statusOffLabel = "Live Preview is off"
+  static let statusOffDetail = "Switch it on to see your words while you speak."
+
+  static let statusUnavailableLabel = "Not available on this Mac"
+  static let statusUnavailableDetail =
+    "Dictation itself works normally. Only the on-screen preview is unavailable."
+
+  static let statusNeedsMacOS26Label = "Apple's engine needs macOS 26"
+  static let statusNeedsMacOS26Detail =
+    "Pick the Universal engine below, which works on macOS 14 and later."
+
+  static let statusCheckingLabel = "Checking"
+  static let statusCheckingDetail = "Reading which languages are on this Mac."
+
+  static func statusNeedsLanguageLabel(_ languageName: String) -> String {
+    "\(languageName) isn't downloaded yet"
+  }
+  static let statusNeedsLanguageDetail = "Download it in the list below and the preview starts working."
+
+  static let statusUnsupportedLanguageLabel = "Apple can't preview this language"
+  static let statusUnsupportedLanguageDetail =
+    "Dictation still works normally. Try the Universal engine instead."
+
+  static let statusNeedsDownloadLabel = "Needs a download"
+  static let statusNeedsDownloadDetail = "Get the Universal engine from the card below."
+
+  static let statusGettingReadyLabel = "Getting ready"
+  static let statusGettingReadyDetail = "The Universal engine is downloading."
+
+  static let statusDownloadFailedLabel = "Download did not finish"
+  static let statusDownloadFailedDetail = "Check your connection and try again below."
+
+  static let statusBuildCannotRunLabel = "Can't run that engine"
+  static let statusBuildCannotRunDetail =
+    "This version of EnviousWispr is missing that engine's files. Pick Apple instead."
+
+  /// **One of exactly TWO strings permitted to name the other feature** (with
+  /// `statusPausedDetail` below), the closed exception in
+  /// `liveOnlyAppearsInApprovedProductNames`'s allowlist.
+  ///
+  /// It names Live transcription as the REASON for the pause rather than
+  /// calling this preview by that name, which is the distinction the guard
+  /// draws. When #2155 renames that setting to "Faster Transcription", this
+  /// string and the test's exception change together, in that PR.
+  ///
+  /// Why the pause exists: the universal preview refuses to run while the heart
+  /// decodes continuously, because concurrent decode was measured costing
+  /// transcription 1.50x. Yielding is the design, not a defect.
+  static let pausedForLiveTranscription = "Paused while Live transcription is on"
+  static let statusPausedDetail =
+    "Your dictation keeps its full speed. Turn Live transcription off to see the preview."
+
+  // MARK: - Language section (#2154)
+
+  static let changeLanguageButton = "Change"
+
+  /// Says the consequence out loud. Picking a language here is not a
+  /// preview-only setting: it sets the DICTATION language, on a different page.
+  /// A button that silently edits another page's setting is how a user loses
+  /// auto-detect without noticing.
+  static let changeLanguageHelp =
+    "This sets the language for dictation too, not just the preview."
+
+  // MARK: - Language table (#2154)
+
+  static let tableColumnLanguage = "Language"
+  static let tableColumnSource = "Source"
+  static let tableColumnStatus = "Status"
+
+  /// Where a language came from. "System" means it arrived with macOS; "Apple"
+  /// means it is one of Apple's downloads. Both are Apple's packs — the column
+  /// answers "do I already have this", which is what the user is scanning for.
+  static let sourceSystem = "System"
+  static let sourceApple = "Apple"
 }

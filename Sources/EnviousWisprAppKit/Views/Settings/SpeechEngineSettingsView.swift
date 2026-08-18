@@ -468,15 +468,16 @@ struct SpeechEngineSettingsView: View {
     return lockableLanguageCodes.contains(code)
   }
 
-  /// The codes the picker may offer. Restricted on the fast engine to what the
-  /// model is declared to transcribe — offering more would be a silent failure,
-  /// because an unclaimed code maps to no vendor language and the decoder
-  /// quietly falls back to auto-detect while the user believes they are locked.
+  /// The codes the picker may offer, for the ACTIVE backend.
+  ///
+  /// The rule itself moved to `LanguageLockOptions` (#2154) because Live Preview's
+  /// Change button opens the same sheet and needs the same set; a private property
+  /// on this view could not be reached from there. This stays as a one-line
+  /// convenience over the shared owner so the three readers below are unchanged.
+  /// **Do not reintroduce the switch here** — two copies of a rule whose failure
+  /// mode is silent is the defect `LanguageLockOptions` was created to prevent.
   private var lockableLanguageCodes: Set<String>? {
-    switch settings.selectedBackend {
-    case .whisperKit: return nil  // all 99
-    case .parakeet: return ParakeetBackend.lockableLanguageCodes
-    }
+    LanguageLockOptions.lockableCodes(for: settings.selectedBackend)
   }
 
   // MARK: - Language mode helpers
@@ -881,92 +882,5 @@ struct SpeechEngineSettingsView: View {
         .frame(maxWidth: 280, alignment: .leading)
     }
     .padding(16)
-  }
-}
-
-// MARK: - Engine selector card
-
-/// One selectable transcription-engine option: a lavender icon tile, a title,
-/// and a short description, laid out as a square card. The selected card carries
-/// the accent border and a filled accent check badge. Mirrors `AppearanceCard`
-/// so the two card selectors read as one family.
-private struct EngineCard: View {
-  let icon: String
-  let title: String
-  let tagline: String
-  /// Ordered (label, value) rows rendered as the card's little spec table.
-  let specs: [(label: String, value: String)]
-  let isSelected: Bool
-  let onSelect: () -> Void
-
-  var body: some View {
-    Button(action: onSelect) {
-      VStack(alignment: .leading, spacing: 12) {
-        HStack(spacing: 10) {
-          Image(systemName: icon)
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(.stAccent)
-            .frame(width: 20, alignment: .center)
-          Text(title)
-            .font(.stRowTitle)
-            .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
-          Spacer(minLength: 8)
-          if isSelected {
-            Image(systemName: "checkmark.circle.fill")
-              .font(.system(size: 20, weight: .semibold))
-              .foregroundStyle(Color.white, Color.stAccentSolid)
-          } else {
-            Circle()
-              .strokeBorder(Color.stDivider, lineWidth: 1.5)
-              .frame(width: 20, height: 20)
-          }
-        }
-
-        Text(tagline)
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-
-        // The little spec table: label on the left, value right-aligned, thin
-        // rules between rows. Both cards share the same row order so the two
-        // read as a side-by-side comparison.
-        VStack(spacing: 0) {
-          ForEach(Array(specs.enumerated()), id: \.offset) { index, row in
-            if index != 0 {
-              Divider().overlay(Color.stDivider)
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-              Text(row.label)
-                .font(.stHelper)
-                .foregroundStyle(.stTextTertiary)
-              Spacer(minLength: 12)
-              Text(row.value)
-                .font(.stHelper)
-                .fontWeight(.medium)
-                .foregroundStyle(.stTextBody)
-                .multilineTextAlignment(.trailing)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 8)
-          }
-        }
-      }
-      .padding(16)
-      .frame(maxWidth: .infinity, alignment: .topLeading)
-      .background(Color.stSectionBg)
-      .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-      .overlay(
-        RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-          .strokeBorder(
-            isSelected ? Color.stAccent : Color.stDivider,
-            lineWidth: isSelected ? 2 : 1)
-      )
-    }
-    .buttonStyle(.plain)
-    .animation(.easeInOut(duration: 0.15), value: isSelected)
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel(title)
-    .accessibilityValue(isSelected ? "Selected" : "")
-    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
 }

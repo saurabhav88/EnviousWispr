@@ -65,6 +65,22 @@ enum LivePreviewPackPresentation {
     value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
   }
 
+  /// Which column the table's Source cell shows for a pack.
+  ///
+  /// #2154. Both values describe Apple's packs — the distinction is whether the
+  /// Mac already HAS it. That is the question somebody scanning 54 rows is
+  /// actually asking, and it is also the honest answer to "why does our list
+  /// look like the one in System Settings": it IS that list
+  /// (`live-preview.md` FACT: language-pack-downloads).
+  ///
+  /// A named function rather than an inline ternary in the view, so the rule is
+  /// testable and has one home — the same reason `groups(from:)` is here.
+  static func source(for pack: LivePreviewPack) -> String {
+    pack.isInstalled
+      ? LivePreviewSettingsCopy.sourceSystem
+      : LivePreviewSettingsCopy.sourceApple
+  }
+
   /// Split, preserving the incoming order within each group.
   ///
   /// The catalogue already sorts alphabetically by the name the user reads, so re-sorting here
