@@ -38,6 +38,8 @@ PROJECT="EnviousWispr.xcodeproj"
 DEBUG_SCHEME="EnviousWispr"
 DEST='platform=macOS,arch=arm64'
 TEST_ARGS=(-only-testing:"$FILTER")
+DERIVED_DATA="${DERIVED_DATA_PATH:-$PROJECT_ROOT/.derivedData/Test}"
+mise x tuist@4.195.11 -- tuist generate --no-open
 run_lane() {
   xcodebuild test \\
     -project "$PROJECT" \\
@@ -51,6 +53,7 @@ run_lane() {
     "$@" \\
     "${TEST_ARGS[@]}" | tee "$PROJECT_ROOT/$log"
 }
+run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log
 """
 
 # The exact line the two directional drift cases add to or remove from the stub. Derived from the
@@ -167,6 +170,23 @@ check("a canonical script that ADDED a setting refuses the run",
       extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
           ONLY_ACTIVE, ONLY_ACTIVE + "    ENABLE_TESTABILITY=YES \\\\\n")})
 
+# Each of these is the drift class at an axis the first two review rounds did not reach. Enumerated
+# rather than waited for: two rounds of one shape is the signal to sweep the whole class yourself.
+check("a canonical Debug call site switched to Release refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="no longer has",
+      extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
+          'run_lane "$DEBUG_SCHEME" Debug', 'run_lane "$RELEASE_SCHEME" Release')})
+
+check("a canonical DerivedData default that moved refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="no longer has",
+      extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
+          ".derivedData/Test", ".derivedData/Somewhere")})
+
+check("a bumped tuist pin refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="no longer has",
+      extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
+          "tuist@4.195.11", "tuist@4.200.0")})
+
 check("a missing canonical script refuses the run",
       [dict(VALID_ROW)], expect_exit=2, expect_text="cannot confirm it is building the same thing",
       remove=["scripts/xcode-test.sh"])
@@ -181,6 +201,24 @@ check("an absolute target path is refused",
 check("a target escaping the worktree with .. is refused",
       [dict(VALID_ROW, file="../outside.swift")],
       expect_exit=2, expect_text="resolves OUTSIDE the worktree")
+
+# exit 1 means "a row survived". A missing recipe file must never be able to produce it.
+ran += 1
+with tempfile.TemporaryDirectory() as td:
+    tmp = make_tree(Path(td))
+    proc = subprocess.run(
+        [sys.executable, str(BATTERY), "--recipes", str(tmp / "nope.json"),
+         "--worktree", str(tmp), "--validate-only"],
+        capture_output=True, text=True,
+    )
+    out = proc.stdout + proc.stderr
+    if proc.returncode != 2 or "cannot read the recipe file" not in out:
+        failures.append(f"an unreadable recipe file should refuse with exit 2, got {proc.returncode}"
+                        f"\n{out.strip()[:300]}")
+    elif "Traceback" in out:
+        failures.append("an unreadable recipe file produced a traceback rather than a refusal")
+    else:
+        print("  ok  an unreadable recipe file refuses with exit 2, not a traceback")
 
 # --- flag-combination guard -----------------------------------------------------------------------
 ran += 1

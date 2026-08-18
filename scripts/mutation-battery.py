@@ -101,14 +101,32 @@ CANONICAL_TOKENS = {
     "-project", "-scheme", "-configuration", "-derivedDataPath", "-destination",
     "ARCHS=arm64", "VALID_ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES",
 }
-# Values that are shell expansions in the script and literals here; compared separately, by assignment.
+# Values that are shell expansions in the invocation and literals here, so they cannot be compared as
+# tokens. Two review rounds each found ONE more of these, so rather than wait for a third the axes were
+# enumerated exhaustively: every input that decides WHAT gets built and WHERE. Each line below is a
+# literal that must appear in the canonical script verbatim.
+#
+#   what project      -> PROJECT
+#   what scheme       -> DEBUG_SCHEME, and the CALL SITE that passes it (a scheme can be right while the
+#                        call passes the other one)
+#   what config       -> the call site again; `Lane.run_suite` hardcodes Debug, so a call site changed to
+#                        Release diverges while `run_lane` itself is untouched
+#   where it lands    -> DERIVED_DATA's default, which this runner reproduces as .derivedData/Test
+#   what destination  -> DEST
+#   how it filters    -> TEST_ARGS
+#   what generates it -> the pinned tuist version, which this runner invokes directly
 CANONICAL_ASSIGNMENTS = [
     'PROJECT="EnviousWispr.xcodeproj"',
     'DEBUG_SCHEME="EnviousWispr"',
     "DEST='platform=macOS,arch=arm64'",
     'TEST_ARGS=(-only-testing:"$FILTER")',
+    'DERIVED_DATA="${DERIVED_DATA_PATH:-$PROJECT_ROOT/.derivedData/Test}"',
+    'run_lane "$DEBUG_SCHEME" Debug',
+    "mise x tuist@4.195.11 -- tuist generate --no-open",
 ]
 INVOCATION_RE = re.compile(r"xcodebuild test\s*\\\n(.*?)\|\s*tee", re.DOTALL)
+# One definition, so the drift guard above and the call below cannot disagree about the version.
+TUIST_GENERATE_ARGV = ["mise", "x", "tuist@4.195.11", "--", "tuist", "generate", "--no-open"]
 
 
 class Refusal(Exception):
@@ -151,7 +169,7 @@ class Lane:
         if self.generated:
             return
         rc, out = run(
-            ["mise", "x", "tuist@4.195.11", "--", "tuist", "generate", "--no-open"],
+            TUIST_GENERATE_ARGV,
             cwd=self.worktree,
             log_path=self.log_dir / "tuist-generate.log",
         )
@@ -286,8 +304,16 @@ def recipes_from_issue(number: int, worktree: Path):
 
 def load_recipes(path: Path, worktree: Path, raw: str = None):
     where = "the issue body" if raw is not None else str(path)
+    if raw is None:
+        # A missing or unreadable file is a preflight refusal like any other. Left as an OSError it
+        # escapes as a traceback with exit 1, which the documented exit codes reserve for "a row
+        # SURVIVED" — the one status an unattended caller must not confuse with a real result.
+        try:
+            raw = path.read_text()
+        except OSError as exc:
+            raise Refusal(f"cannot read the recipe file {path}: {exc}")
     try:
-        data = json.loads(raw if raw is not None else path.read_text())
+        data = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise Refusal(f"the recipe in {where} is not valid JSON: {exc}")
     # Valid JSON is not the expected SHAPE. `[]`, `{"rows": [1]}`, or a row that is a string all parse
@@ -301,7 +327,7 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
     default_suite = data.get("suite_default")
     rows = data.get("rows") or []
     if not rows:
-        raise Refusal(f"{'the issue body' if raw is not None else path} declares no rows.")
+        raise Refusal(f"{where} declares no rows.")
     for i, row in enumerate(rows, 1):
         if not isinstance(row, dict):
             raise Refusal(f"row {i} is a {type(row).__name__}, not an object.")
@@ -367,8 +393,10 @@ def baseline(lane: Lane, suites, phase: str):
             problems.append(f"{suite}: did not compile ({log})")
         elif count is None or count < 1:
             problems.append(
-                f"{suite}: executed ZERO tests and reported success — the filter names a suite that "
-                f"does not exist. Read the name from its @Suite declaration. ({log})"
+                f"{suite}: executed ZERO tests and REPORTED SUCCESS. Nothing was mutated. The "
+                f"filter names a suite that does not exist here — renamed, moved to another target, "
+                f"or read off a filename rather than off its @Suite declaration. Left unchecked this "
+                f"is the worst failure the battery has, because every row would score SURVIVED ({log})"
             )
         elif rc != 0 or failures:
             problems.append(f"{suite}: {len(failures)} failing on an unmutated tree ({log})")
@@ -480,7 +508,11 @@ def main(argv=None):
                     if not compiled:
                         detail = f"mutant does not compile — proves nothing about the test ({log})"
                     elif count is None or count < 1:
-                        detail = f"executed ZERO tests — filter is wrong, not the test ({log})"
+                        detail = (
+                            f"executed ZERO tests, so this row is a verdict about nothing. Either the "
+                            f"suite was renamed and the recipe is stale, or the filter never matched. "
+                            f"Read the name off its @Suite declaration, never off the filename ({log})"
+                        )
                     elif any(row["expect_fail"] in line for line in failures):
                         verdict = "CAUGHT"
                         others = [l for l in failures if row["expect_fail"] not in l]
