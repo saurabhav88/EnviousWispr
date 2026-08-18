@@ -1361,6 +1361,47 @@ if _missing_sigs:
 else:
     print("  ok  every terminating signal is handled")
 
+# `Popen` creates the child in its own session BEFORE the pgid is stored. A signal landing in that
+# window saw _ACTIVE_LANE_PGID as None, re-raised, and left the group orphaned. The handled signals are
+# now blocked across spawn-and-register, and the previous mask restored rather than cleared.
+ran += 1
+_seen_mask = {}
+_real_mask = battery.signal.pthread_sigmask
+_real_popen = battery.subprocess.Popen
+
+
+def _watch_mask(how, mask=None):
+    if how == battery.signal.SIG_BLOCK:
+        _seen_mask["blocked"] = set(mask)
+    elif how == battery.signal.SIG_SETMASK:
+        _seen_mask["restored"] = True
+    return _real_mask(how, mask) if mask is not None else _real_mask(how, [])
+
+
+def _watch_popen(*a, **k):
+    # Blocked at the moment the child is created — that is the window under test.
+    _seen_mask["blocked_at_spawn"] = set(_real_mask(battery.signal.SIG_BLOCK, []))
+    return _real_popen(*a, **k)
+
+
+battery.signal.pthread_sigmask = _watch_mask
+battery.subprocess.Popen = _watch_popen
+try:
+    battery.run(["/bin/echo", "hi"], cwd=tempfile.gettempdir())
+finally:
+    battery.signal.pthread_sigmask = _real_mask
+    battery.subprocess.Popen = _real_popen
+
+_want = set(battery._HANDLED_SIGNALS)
+if not _want <= _seen_mask.get("blocked_at_spawn", set()):
+    failures.append("the handled signals are blocked across spawn-and-register — they were NOT at the "
+                    f"moment Popen ran: {sorted(_seen_mask.get('blocked_at_spawn', set()))}")
+elif not _seen_mask.get("restored"):
+    failures.append("the handled signals are blocked across spawn-and-register — the previous mask was "
+                    "never restored, so the caller's mask was widened")
+else:
+    print("  ok  the handled signals are blocked across spawn-and-register")
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")

@@ -241,7 +241,7 @@ def _install_restore_on_signal():
         # Ignore further signals FIRST. A second one arriving inside the restore loop re-enters this
         # handler and reaches the re-raise below before the remaining targets are copied back, so a
         # double Ctrl-C would leave files mutated.
-        for other in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT):
+        for other in _HANDLED_SIGNALS:
             signal.signal(other, signal.SIG_IGN)
         # Reap the lane FIRST. Restoring the file while xcodebuild's group survives leaves an orphan
         # running mutant tests and writing the shared DerivedData after we are gone — the file looks
@@ -252,7 +252,7 @@ def _install_restore_on_signal():
         signal.signal(signum, signal.SIG_DFL)
         os.kill(os.getpid(), signum)
 
-    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT):
+    for sig in _HANDLED_SIGNALS:
         signal.signal(sig, handler)
 
 
@@ -306,6 +306,9 @@ LANE_TIMEOUT_SECONDS = 1800
 # cleared when it ends, so EVERY exit path — timeout, cancellation, an unexpected exception — can reap
 # it. Fixing only the timeout path last round left cancellation orphaning the group; the defect was
 # never "the timeout is wrong", it was "an exit path does not reap".
+# One definition, so the spawn mask, the installer and the re-entrancy guard cannot drift apart.
+_HANDLED_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT)
+
 _ACTIVE_LANE_PGID = None
 
 
@@ -332,14 +335,24 @@ def run(cmd, cwd, log_path=None, timeout=None):
     Cloud review, PR #2158.
     """
     global _ACTIVE_LANE_PGID
-    proc = subprocess.Popen(
-        cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-        start_new_session=True,   # its own process group, so the kills below reach descendants
-    )
+    # BLOCK the handled signals across spawn-and-register. `Popen` creates the child in its own session
+    # BEFORE the pgid is stored, so a signal landing in that window sees `_ACTIVE_LANE_PGID` as None,
+    # re-raises, and leaves an isolated tuist/xcodebuild group running after the battery exits. The
+    # window is microseconds and the failure is SILENT — an orphan holding the shared DerivedData with
+    # nothing reporting it — which is the combination that earns a fix rather than a recorded limit.
+    _blocked = signal.pthread_sigmask(signal.SIG_BLOCK, _HANDLED_SIGNALS)
     try:
-        _ACTIVE_LANE_PGID = os.getpgid(proc.pid)
-    except ProcessLookupError:
-        _ACTIVE_LANE_PGID = None
+        proc = subprocess.Popen(
+            cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            start_new_session=True,   # its own process group, so the kills below reach descendants
+        )
+        try:
+            _ACTIVE_LANE_PGID = os.getpgid(proc.pid)
+        except ProcessLookupError:
+            _ACTIVE_LANE_PGID = None
+    finally:
+        # Restore rather than unconditionally unblock: never widen the caller's mask.
+        signal.pthread_sigmask(signal.SIG_SETMASK, _blocked)
     try:
         out, _ = proc.communicate(timeout=timeout)
         rc = proc.returncode
