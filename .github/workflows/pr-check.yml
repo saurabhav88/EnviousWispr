@@ -61,6 +61,12 @@ jobs:
       - name: Verify third-party notices are in sync
         run: scripts/ci/gen-third-party-notices.sh --check
 
+      # #2141's test-inventory gate deliberately has NO step here. It is a Swift test
+      # (`TestInventoryFreezeTests`) parsing with SwiftParser, so it runs inside this lane's existing
+      # `xcodebuild test` — no new step, no new required check, no aggregator clause. The shell version
+      # that did live here was a hand-rolled Swift lexer and took eleven review findings before it was
+      # replaced; see that suite's header.
+
       - name: Verify environment
         if: steps.changes.outputs.needs_build == 'true'
         run: |
@@ -200,6 +206,37 @@ jobs:
             exit 1
           fi
           echo "==> Xcode executed $TESTS_RUN tests (debug)"
+
+      # #2162: a red `build-debug` was undiagnosable from CI BY CONSTRUCTION, and both halves of that
+      # had to be true at once. This lane writes `xcode-test-debug.log` and an `.xcresult` and then
+      # discarded both, while only the RELEASE lane uploaded on failure — and `gh run view --log`
+      # truncates at roughly 6 MB, which a full Debug lane exceeds. The truncation is the dangerous
+      # half because it is SILENT: a failing run and a PASSING run produce an identical tail, so the
+      # step log carries no information about which one you are looking at. Three failures were chased
+      # on that non-evidence before a passing run was pulled as a control.
+      #
+      # This prints the failing lines themselves, which are small and therefore survive truncation.
+      # `if: failure()` so it costs a green run nothing, and `|| true` so a diagnostic can never be the
+      # thing that fails the lane.
+      - name: Report Debug test failures
+        if: failure()
+        run: |
+          echo "=== Swift Testing failures ==="
+          grep -aE "^.*(✘|recorded an issue).*$" xcode-test-debug.log | tail -80 || true
+          echo "=== compile errors ==="
+          grep -aE "error:" xcode-test-debug.log | tail -40 || true
+          echo "=== last 80 lines ==="
+          tail -80 xcode-test-debug.log || true
+
+      - name: Upload Debug test failure bundle
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: debug-test-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            xcode-test-debug.log
+            xcode-test-debug.xcresult
+          if-no-files-found: warn
 
       # #1600's coverage measurement MOVED to main-post-merge.yml's
       # debug-validation job in the CI-speed pass. It was informational by

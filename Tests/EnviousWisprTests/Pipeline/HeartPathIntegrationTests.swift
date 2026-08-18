@@ -12,13 +12,20 @@ import Testing
 @testable import EnviousWisprPipeline
 
 @MainActor
-@Suite("Heart Path Integration — Finalizer layer (mocked ASR + paste)")
+@Suite("Heart Path Integration — Finalizer layer (mocked ASR + paste)", .tags(.productOutcome))
 struct HeartPathIntegrationTests {
   // Scope note. The tests in this file exercise `KernelFinalizationWiring` with
   // mocked ASR and paste boundaries, plus one true the old Parakeet pipeline
-  // cancellation test. The full pipeline heart-path (audio capture through
-  // delivery) cannot be exercised end-to-end until the old Parakeet pipeline
-  // gains DI seams for the finalizer and paste executor (#394).
+  // cancellation test.
+  //
+  // This note used to say end-to-end coverage was blocked on #394. **#394 CLOSED 2026-04-20** and nobody
+  // returned, so the claim sat here for four months asserting a blocker that no longer existed — which is
+  // how the #2141 audit found the suite at ZERO tests crossing a real boundary while carrying 5,801
+  // tests. When you clear a blocker, grep for the tests that named it.
+  // Real-boundary coverage is now tracked work, NOT a blocked state: see
+  // `.claude/rules/testing-philosophy.md` RULE: the-heart-crosses-a-real-boundary-at-least-once.
+  // These four remain correct and useful at what they do; they are not, and never were, proof that
+  // dictation works.
   //
   // Do NOT add tests here that claim graceful ASR-failure degradation —
   // production currently terminates with .error on ASR failure (#392), and a
@@ -299,7 +306,8 @@ private final class HeartPathHarness {
   func run() async throws -> HeartPathHarnessResult {
     try await audioCapture.startEnginePhase()
     _ = try await audioCapture.beginCapturePhase()
-    let captureResult = await audioCapture.stopCapture(sessionID: audioCapture.currentCaptureSessionID)
+    let captureResult = await audioCapture.stopCapture(
+      sessionID: audioCapture.currentCaptureSessionID)
 
     // ONE adapter drives both transcription and the wiring, so the stored
     // language, duration and processing time come from the same result the

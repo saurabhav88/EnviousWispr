@@ -16,7 +16,7 @@ import Testing
 /// `actions`, `statusItem`); non-private `func`s `installStatusItem`,
 /// `updateIcon`, `renderMenu`, `iconState` (`init` is not a `func`,
 /// `currentViewState` is private). One allowed extension — `NSMenuDelegate`.
-@Suite struct MenuBarControllerCeilingsTests {
+@Suite(.tags(.driftGuard)) struct MenuBarControllerCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/MenuBarController.swift"
 

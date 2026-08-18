@@ -9,7 +9,7 @@ import Testing
 /// inventory does NOT execute in PR-2 (no kernel) — this proves the runner
 /// mechanics so PR-3 inherits a trusted harness.
 @MainActor
-@Suite("ScenarioRunner — harness self-test")
+@Suite("ScenarioRunner — harness self-test", .tags(.harnessContract))
 struct ScenarioRunnerTests {
 
   /// Build a context whose SUT is a stub scripted to model a clean success:

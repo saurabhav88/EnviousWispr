@@ -14,7 +14,7 @@ import Testing
 /// + `nonisolated`, so this suite is not `@MainActor` and calls them directly — no
 /// spy/delegate, no actor hop. Tests below pass `environment:` explicitly so
 /// assertions stay deterministic regardless of the test bundle's own identifier.
-@Suite("Sentry grouping fingerprints (#1144)")
+@Suite("Sentry grouping fingerprints (#1144)", .tags(.observabilityContract))
 struct SentryFingerprintTests {
 
   /// Fixed env value for tests that aren't specifically about env separation —

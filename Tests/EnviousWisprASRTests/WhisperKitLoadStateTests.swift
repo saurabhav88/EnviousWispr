@@ -21,7 +21,7 @@ private func dummyWarmupTask() -> Task<WarmupOutcome, Never> { Task { .completed
 
 private func tags(_ effects: [Effect]) -> [EffectTag] { effects.map(\.tag) }
 
-@Suite("WhisperKitLoadState — pure transition matrix (#1276 Step 1)")
+@Suite("WhisperKitLoadState — pure transition matrix (#1276 Step 1)", .tags(.productOutcome))
 struct WhisperKitLoadStateTests {
 
   // MARK: prepareRequested — single-flight 3-way decision (invariant #1)
