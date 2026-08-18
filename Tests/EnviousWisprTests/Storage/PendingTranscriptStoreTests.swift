@@ -12,7 +12,8 @@ import Testing
 /// offered, a corrupt row impersonating a fresh one, or a promotion that loses
 /// the text. Each has a test below.
 @MainActor
-@Suite struct PendingTranscriptStoreTests {
+/// Class: `.productOutcome` — a kept dictation is lost early, offered late, or never cleaned up.
+@Suite(.tags(.productOutcome)) struct PendingTranscriptStoreTests {
 
   private func makeStore() -> (TranscriptStore, URL) {
     let dir = FileManager.default.temporaryDirectory

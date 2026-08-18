@@ -28,7 +28,8 @@ import Testing
 /// Driven through the INSTALLED callback rather than by calling the finalizer,
 /// because the thing under test is the wiring `install()` performs.
 @MainActor
-@Suite("Cancel shortcut disarms after an abandonment (#2087)")
+/// Class: `.productOutcome` — a third press lands on a session that already granted the request.
+@Suite("Cancel shortcut disarms after an abandonment (#2087)", .tags(.productOutcome))
 struct HotkeyControllerAbandonmentDisarmTests {
 
   #if DEBUG

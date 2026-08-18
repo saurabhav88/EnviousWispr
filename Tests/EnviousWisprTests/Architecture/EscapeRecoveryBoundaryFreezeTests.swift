@@ -31,7 +31,8 @@ import Testing
 // the fact that `isEscapeRecoveryTranscribing` is the only capability any AppKit
 // consumer has been given a reason to want.
 
-@Suite struct EscapeRecoveryBoundaryFreezeTests {
+/// Class: `.driftGuard` — module boundaries are our own shape; it fails when we change our code.
+@Suite(.tags(.driftGuard)) struct EscapeRecoveryBoundaryFreezeTests {
 
   /// The `enum` keyword precedes the name only at the declaration; a usage such
   /// as `FinalizationDisposition.ordinary` is never preceded by `enum`.

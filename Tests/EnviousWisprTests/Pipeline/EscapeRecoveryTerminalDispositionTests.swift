@@ -16,7 +16,8 @@ import Testing
 /// The chain is kernel → snapshot → sink → event, and a test of any two
 /// adjacent links says nothing about the third.
 @MainActor
-@Suite("Escape Recovery terminal disposition (#2087)")
+/// Class: `.productOutcome` — storage and delivery disagree about what the take was.
+@Suite("Escape Recovery terminal disposition (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryTerminalDispositionTests {
 
   #if DEBUG

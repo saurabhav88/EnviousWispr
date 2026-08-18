@@ -12,7 +12,8 @@ import Testing
 /// indistinguishable from one that works, and the cost of that here is a
 /// cancelled dictation coming back as a permanent History row after a crash.
 @MainActor
-@Suite("Escape Recovery wiring (#2087)")
+/// Class: `.productOutcome` — a half-connected feature: a held row nobody can see, or a dead button.
+@Suite("Escape Recovery wiring (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryWiringTests {
 
   private func tempStore() -> RecoverySpoolStore {

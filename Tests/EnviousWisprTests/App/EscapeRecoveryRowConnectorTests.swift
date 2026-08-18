@@ -19,7 +19,8 @@ import Testing
 /// catches the wiring being DELETED or routed around, which is the failure that
 /// actually happened here. It cannot prove the rendered pixels are right, and it
 /// is not a substitute for the behavioural tests next door.
-@Suite("Escape Recovery row connectors (#2087)")
+/// Class: `.productOutcome` — the badge, Keep and Paste vanish from History while every rule test passes.
+@Suite("Escape Recovery row connectors (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryRowConnectorTests {
 
   private static let detailPath =

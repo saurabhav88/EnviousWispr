@@ -23,7 +23,8 @@ import Testing
 /// row the store would refuse to return — an already-expired one, above all —
 /// need the DEBUG seam, and those are grouped at the end.
 @MainActor
-@Suite("Escape Recovery history policy (#2087)")
+/// Class: `.productOutcome` — the badge, the countdown and whether a row is still offered at all.
+@Suite("Escape Recovery history policy (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryHistoryPolicyTests {
 
   // MARK: Fixtures

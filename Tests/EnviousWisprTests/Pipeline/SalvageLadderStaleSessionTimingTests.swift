@@ -20,7 +20,9 @@ import Testing
 /// #1725's cloud review fixed exactly this on the Phase-2 retry path. This is
 /// the one place that fix did not reach.
 @MainActor
-@Suite("Degraded-lead salvage: no timing stamp for a stale session")
+/// Class: `.observabilityContract` — a stale ladder corrupts the NEXT take's
+/// latency number, which no user sees.
+@Suite("Degraded-lead salvage: no timing stamp for a stale session", .tags(.observabilityContract))
 struct SalvageLadderStaleSessionTimingTests {
 
   #if DEBUG

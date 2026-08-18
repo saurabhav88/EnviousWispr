@@ -12,7 +12,8 @@ import Testing
 /// producing a row the store then rejected. Sharing the CONSTANTS would not have
 /// prevented that — two copies of the logic diverge the moment one side gains a
 /// condition. These tests pin the rule itself.
-@Suite("Pending admission rule (#2087)")
+/// Class: `.productOutcome` — text the user was told had gone comes back, or text still owed does not.
+@Suite("Pending admission rule (#2087)", .tags(.productOutcome))
 struct PendingAdmissionTests {
 
   private let now = Date(timeIntervalSince1970: 1_755_300_000)

@@ -17,7 +17,8 @@ import Testing
 #if DEBUG
 
   @MainActor
-  @Suite("Escape Recovery event payloads (#2087)")
+  /// Class: `.observabilityContract` — a dashboard would lie about the funnel; the user sees nothing.
+  @Suite("Escape Recovery event payloads (#2087)", .tags(.observabilityContract))
   struct EscapeRecoveryEventPayloadTests {
 
     /// Captures one event, then removes the hook so suites cannot leak into

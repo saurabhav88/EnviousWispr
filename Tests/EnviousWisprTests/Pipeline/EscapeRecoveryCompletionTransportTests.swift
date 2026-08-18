@@ -24,7 +24,8 @@ import Testing
 /// that cannot be shown to work. The slot's own contract needs no seam and is
 /// therefore checked in both build configurations.
 @MainActor
-@Suite("Escape Recovery completion transport (#2087)")
+/// Class: `.productOutcome` — the offer appears twice, or a stale one surfaces against a later dictation.
+@Suite("Escape Recovery completion transport (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryCompletionTransportTests {
 
   // MARK: The slot itself

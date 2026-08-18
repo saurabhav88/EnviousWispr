@@ -13,7 +13,8 @@ import Testing
 /// Enumerated rather than spot-checked, so a future `PipelineState` case cannot
 /// be added without deciding what the affordance does in it.
 @MainActor
-@Suite("Cancel affordance policy (#2087)")
+/// Class: `.productOutcome` — the user presses their cancel key and nothing happens, or it fires twice.
+@Suite("Cancel affordance policy (#2087)", .tags(.productOutcome))
 struct CancelAffordancePolicyTests {
 
   /// Every state, both capability values. The pairs are written out rather than

@@ -24,7 +24,8 @@ import Testing
 /// changing where a cancel routes, and that routing change is chunk 12's
 /// activation. These tests use the kernel's DEBUG disposition seam instead.
 @MainActor
-@Suite("Escape Recovery abandonment (#2087)")
+/// Class: `.productOutcome` — the same, from the kernel's side.
+@Suite("Escape Recovery abandonment (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryAbandonmentTests {
 
   #if DEBUG

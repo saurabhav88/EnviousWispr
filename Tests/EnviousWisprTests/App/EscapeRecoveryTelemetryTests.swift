@@ -16,7 +16,8 @@ import Testing
 /// must be the PERSISTED take id (these events fire hours later, possibly after
 /// a relaunch), and the payloads must carry no content.
 @MainActor
-@Suite("Escape Recovery telemetry (#2087)")
+/// Class: `.observabilityContract` — same: the events are how we judge the feature, not how it works.
+@Suite("Escape Recovery telemetry (#2087)", .tags(.observabilityContract))
 struct EscapeRecoveryTelemetryTests {
 
   private func makeStore() -> TranscriptStore {

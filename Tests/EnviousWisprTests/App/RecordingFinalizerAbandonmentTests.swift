@@ -31,7 +31,8 @@ import Testing
 /// calls; proving it needs the panel behind a seam, which is not this chunk's
 /// scope.
 @MainActor
-@Suite("RecordingFinalizer — abandonment (#2087)")
+/// Class: `.productOutcome` — an abandoned recovery keeps its overlay, or loses it while still working.
+@Suite("RecordingFinalizer — abandonment (#2087)", .tags(.productOutcome))
 struct RecordingFinalizerAbandonmentTests {
 
   #if DEBUG

@@ -11,7 +11,8 @@ import Testing
 /// SwiftUI `body` is not unit-drivable here — chunks 8 and 9 both paid for that
 /// — so these drive the decisions directly and the view renders what it is told.
 @MainActor
-@Suite("Escape Recovery row presentation (#2087)")
+/// Class: `.productOutcome` — the wording and the countdown a person reads.
+@Suite("Escape Recovery row presentation (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryRowPresentationTests {
 
   private let now = Date(timeIntervalSince1970: 1_800_000_000)

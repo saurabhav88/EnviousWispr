@@ -33,7 +33,8 @@ import Testing
 /// unit context, so the panel is not driven here; the wiring is asserted at the
 /// factory, which is where it is load-bearing.
 @MainActor
-@Suite("Escape Recovery pill (#2087)")
+/// Class: `.productOutcome` — the offer itself: the one visible promise the feature makes.
+@Suite("Escape Recovery pill (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryPillTests {
 
   @Test("the completion's whole payload reaches the panel, target included")

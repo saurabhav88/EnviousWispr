@@ -14,7 +14,8 @@ import Testing
 /// identities and count a cancelled take as a delivered one — both visible to
 /// the user, neither a crash.
 @MainActor
-@Suite("Escape Recovery plan routing (#2087)")
+/// Class: `.productOutcome` — one dictation appears twice in History under two identities.
+@Suite("Escape Recovery plan routing (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryPlanRoutingTests {
 
   // MARK: Planner

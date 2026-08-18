@@ -25,7 +25,8 @@ import Testing
 /// salvage ladder, no polish. So each test below asserts work NOT DONE, which is
 /// the only assertion a single missing net can fail.
 @MainActor
-@Suite("Escape Recovery abandonment at decode return points (#2087)")
+/// Class: `.productOutcome` — the user asks for the text to go and it arrives anyway.
+@Suite("Escape Recovery abandonment at decode return points (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryAbandonmentDecodeReturnTests {
 
   #if DEBUG
