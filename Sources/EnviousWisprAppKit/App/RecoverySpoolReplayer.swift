@@ -171,8 +171,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // ASR, because a marker we cannot trust must abort the whole replay rather
     // than be discovered after the expensive work.
     //
-    // Inert until chunk 12: nothing writes an Escape marker yet, so this is
-    // always `.absent` today and the path below is exactly today's behaviour.
+    // `.absent` for anyone who has not turned Escape Recovery on, which is the
+    // default, so the path below stays exactly today's behaviour for them.
     let escapeMarker = spoolStore.readEscapeMarker(for: id)
     if case .malformed = escapeMarker {
       // FAIL CLOSED, and note which way "closed" points here. The safe default
@@ -454,9 +454,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // Both paths append: History is where the user looks either way, and the
     // live Escape path appends its pending row too. What makes a pending row
     // LOOK pending — the Kept badge, the countdown, read-time expiry, exclusion
-    // from search — belongs to `TranscriptCoordinator` and ships in chunks 9-10.
-    // Until then this row is unreachable, because nothing writes an Escape
-    // marker before chunk 12.
+    // from search — belongs to `TranscriptCoordinator`, not to this replay.
     transcriptCoordinator.append(transcript)
 
     // Success. #1464: the coordinator deletes the spool (+ marker) + key on

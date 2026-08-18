@@ -696,16 +696,12 @@ final class RecordingOverlayPanel {
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
       showBluetoothAwareness()
-    // #2087 chunk 3 — VOCABULARY ONLY. Nothing constructs `.escapeRecovery`
-    // until chunk 12, so this arm is unreachable today. The announcement is
-    // posted here (the narrator already authors the words) and chunk 8 adds the
-    // visible pill, following `.passiveChip`'s post-dictation shape.
+    // #2087. The announcement is posted here (the narrator authors the words)
+    // beside the visible pill, following `.passiveChip`'s post-dictation shape.
     //
-    // Announcing without rendering is the safe half to ship first: if this arm
-    // were somehow reached now, a VoiceOver user is told the recording was kept
-    // and where to find it, which is TRUE — the row is saved before any pill is
-    // offered (#1897). The reverse split would show a Paste button with no
-    // spoken equivalent.
+    // The spoken form names History as well as Paste. The row is saved before
+    // any pill is offered (#1897), so a VoiceOver user who misses the dwell
+    // still has a true and unhurried way back to the text.
     case .escapeRecovery:
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,

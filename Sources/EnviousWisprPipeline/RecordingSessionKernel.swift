@@ -294,9 +294,8 @@ final class RecordingSessionKernel {
   /// #2087: commit this session's spool to Escape Recovery, or fail closed.
   ///
   /// Injected like `store` and `deliver` — the kernel owns WHEN a session's
-  /// provenance is committed, never HOW it is written. Inert until chunk 7 calls
-  /// it from the `.cancel` arm; chunk 12 makes that arm reachable.
-  // periphery:ignore - wired in chunk 5b, first called in chunk 7 (#2087)
+  /// provenance is committed, never HOW it is written. Its one caller is
+  /// `prepareEscapeRecoveryIfNeeded`, from the `.cancel` arm.
   private let prepareEscapeRecovery: PrepareEscapeRecovery
   /// #2087: fired the instant the recovery branch commits, with the ASR
   /// backend, the polish provider and how long the user had been speaking.
@@ -1109,11 +1108,10 @@ final class RecordingSessionKernel {
   /// What the session that is finishing IS (#2087). See `FinalizationDisposition`
   /// for why this is kernel-owned rather than read at delivery.
   ///
-  /// Session-scoped and reset in `resetSessionState()`. Still `.ordinary` for
-  /// every take today: the arm that would set `.escapeRecovery` is gated on the
-  /// setting chunk 12 ships. `.abandonedEscapeRecovery` is therefore reachable
-  /// only from `.escapeRecovery`, which is why abandonment cannot fire on an
-  /// ordinary cancel by mistake.
+  /// Session-scoped and reset in `resetSessionState()`. `.ordinary` for every
+  /// take unless the frozen setting is on AND the cancel came from the shortcut.
+  /// `.abandonedEscapeRecovery` is reachable only from `.escapeRecovery`, which
+  /// is why abandonment cannot fire on an ordinary cancel by mistake.
   private(set) var finalizationDisposition: FinalizationDisposition = .ordinary
 
   /// Conclude an abandoned Escape Recovery, if this session is one (#2087).

@@ -722,10 +722,9 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// must be gone. A caller branching on the disposition itself would have to
   /// remember that; a caller asking this cannot get it wrong.
   ///
-  /// Still `false` for every real take: the disposition only leaves `.ordinary`
-  /// when a cancel takes the recovery branch, and chunk 12 ships the setting that
-  /// makes that branch reachable. It was a hard-coded literal in chunk 3, before
-  /// there was a disposition to read.
+  /// `false` for every take the setting is off for, which is the default: the
+  /// disposition only leaves `.ordinary` when a cancel takes the recovery
+  /// branch, and that branch reads the frozen setting.
   public var isEscapeRecoveryTranscribing: Bool {
     guard case .escapeRecovery = kernel.finalizationDisposition else { return false }
     return kernel.deliveringPhase == .transcribing

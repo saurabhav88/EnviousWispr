@@ -358,7 +358,8 @@ final class TranscriptCoordinator {
         // Merged rather than re-sorted: both inputs are already newest-first,
         // and re-sorting the combined list could reorder permanent rows that
         // share a `createdAt`. With no held rows this returns `diskRows`
-        // unchanged, which is what makes the chunk inert.
+        // unchanged, so History is byte-identical for anyone who never turns
+        // Escape Recovery on.
         transcripts = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
         startPulseIfNeeded()
       } catch {
@@ -518,9 +519,9 @@ final class TranscriptCoordinator {
   /// NOT documented as stable, so its behaviour on tied `createdAt` values is
   /// unspecified — today's implementation happens to preserve input order, and
   /// nothing promises the next toolchain will. That makes the tie case a
-  /// silent, toolchain-dependent reordering of shipped History, caused by a
-  /// feature that is supposed to be inert. This merge specifies the answer
-  /// instead of inheriting it.
+  /// silent, toolchain-dependent reordering of shipped History, caused by an
+  /// opt-in feature the user may never have turned on. This merge specifies the
+  /// answer instead of inheriting it.
   ///
   /// Honest limit: because the current sort IS stable in practice, the two
   /// implementations differ observably only in which row wins a tie — which is

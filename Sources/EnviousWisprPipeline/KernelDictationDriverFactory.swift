@@ -499,8 +499,8 @@ public enum KernelDictationDriverFactory {
       processText: wiring.processText,
       store: wiring.store,
       deliver: wiring.deliver,
-      // #2087: storage injection, alongside the other three. Inert until chunk 7
-      // calls it; chunk 12 is where a user can reach that call.
+      // #2087: storage injection, alongside the other three. Reached only from
+      // the kernel's cancel branch, which the frozen setting gates.
       prepareEscapeRecovery: escapeRecovery.writeMarker,
       // #2087: the funnel's first event, routed the same way every other
       // kernel-side telemetry closure is.

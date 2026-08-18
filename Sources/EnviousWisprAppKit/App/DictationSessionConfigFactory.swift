@@ -74,7 +74,7 @@ enum DictationSessionConfigFactory {
       recoverySessionID: recoverySessionID,
       recoveryPayload: recoveryPayload,
       // #2087: frozen here, so the rules a recording ends under are the rules it
-      // started under. Nothing reads this until chunk 12 activates.
+      // started under. `RecordingSessionKernel`'s cancel branch is the reader.
       escapeRecoveryEnabled: settings.escapeRecoveryEnabled
     )
   }

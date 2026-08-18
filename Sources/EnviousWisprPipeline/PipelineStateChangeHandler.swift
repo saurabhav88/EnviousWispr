@@ -74,8 +74,8 @@ public final class PipelineStateChangeHandler {
     scheduleInterruptionWarning: @escaping @MainActor (
       _ disclosure: CompletionInterruptionDisclosure, _ alsoTrimmedLead: Bool
     ) -> Void = { _, _ in },
-    // #2087: no-op defaults so this chunk is inert and every existing call site
-    // is untouched. Chunks 8-11 supply the real implementations.
+    // #2087: no-op defaults, so a call site supplying none of the three behaves
+    // exactly as it did. `PipelineStateChangeHandlerFactory` supplies all three.
     appendPendingTranscript: @escaping @MainActor (Transcript) -> Void = { _ in },
     presentEscapeRecoveryPill: @escaping @MainActor (CancelUndoPayload) -> Void = { _ in },
     reportEscapeRecoveryCompleted: @escaping @MainActor (
@@ -115,10 +115,9 @@ public final class PipelineStateChangeHandler {
     // It splits here and only here: the sendable outcome goes into the plan, the
     // paste target stays behind. `PipelineStateChangePlan` is `Sendable` and
     // `AXUIElement` is a main-actor handle, so the plan can say THAT a pill is
-    // due and never what it points at. Nil in every build until a producer
-    // exists, and nil for every user until chunk 12 ships the setting that lets
-    // a cancel take the recovery branch at all — those are two separate gates,
-    // and conflating them is how "it is wired" gets mistaken for "it can fire".
+    // due and never what it points at. Nil for every user with the setting off,
+    // which is the default. Being wired is not the same as being able to fire,
+    // and conflating the two is how a dormant path gets read as a live one.
     escapeRecoveryCompletion: EscapeRecoveryCompletion? = nil
   ) {
     let plan = PipelineStateChangePlanner.plan(

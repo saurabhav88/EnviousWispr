@@ -35,8 +35,8 @@ enum CancelAffordancePolicy {
   /// Escape Recovery the same keypress means something new: discard the text
   /// this recovery is producing.
   ///
-  /// `isEscapeRecoveryTranscribing` is false for every take until chunk 12
-  /// ships the setting, so this returns today's answers unchanged.
+  /// `isEscapeRecoveryTranscribing` is false for every take the setting is off
+  /// for, which is the default, so those takes get today's answers unchanged.
   static func isShortcutEnabled(
     state: PipelineState,
     isEscapeRecoveryTranscribing: Bool
