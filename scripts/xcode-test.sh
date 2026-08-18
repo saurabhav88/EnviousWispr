@@ -16,6 +16,17 @@ set -euo pipefail
 #   scripts/xcode-test.sh --release       # also run the Release-config lane
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# #2157 chunk C: shared owner for conditional project generation.
+# shellcheck source=scripts/lib/ensure-generated.sh
+. "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
+# shellcheck source=scripts/lib/spm-seed.sh
+. "$PROJECT_ROOT/scripts/lib/spm-seed.sh"
+trap 'ew_seed_release_all' EXIT
+# bash exits on a signal WITHOUT running the EXIT trap, which would strand a
+# seed lock. Converting each signal into a normal exit makes EXIT run.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 DERIVED_DATA="${DERIVED_DATA_PATH:-$PROJECT_ROOT/.derivedData/Test}"
 PROJECT="EnviousWispr.xcodeproj"
 DEBUG_SCHEME="EnviousWispr"
@@ -35,8 +46,9 @@ done
 cd "$PROJECT_ROOT"
 mkdir -p "$PROJECT_ROOT/build"   # log dir for `tee` below; absent on a clean checkout
 
-# Generate the Xcode project (gitignored, never committed).
-mise x tuist@4.195.11 -- tuist generate --no-open
+# Generate the Xcode project (gitignored, never committed) — only when a
+# generation input actually changed (#2157 chunk C).
+ew_ensure_generated "$PROJECT_ROOT"
 
 TEST_ARGS=()
 [ -n "$FILTER" ] && TEST_ARGS=(-only-testing:"$FILTER")
@@ -54,6 +66,7 @@ run_lane() {  # $1=scheme  $2=config  $3=logfile  $4...=extra build settings
     -configuration "$config" \
     -derivedDataPath "$DERIVED_DATA" \
     -destination "$DEST" \
+    -onlyUsePackageVersionsFromResolvedFile \
     ARCHS=arm64 \
     VALID_ARCHS=arm64 \
     ONLY_ACTIVE_ARCH=YES \
@@ -69,7 +82,19 @@ run_lane() {  # $1=scheme  $2=config  $3=logfile  $4...=extra build settings
   echo "==> $config lane executed $n tests"
 }
 
+# #2157 chunk A: seed before the first lane resolves anything.
+ew_seed_consume "$PROJECT_ROOT" "$DERIVED_DATA"
+# Same fallback as the dev-app script: a seeded tree proves it resolves before
+# either lane depends on it, so a damaged clone degrades to a slow run instead of
+# a wedged DerivedData nobody can clear without deleting it by hand.
+ew_seed_resolve_or_unseed "$DERIVED_DATA" \
+  xcodebuild -resolvePackageDependencies \
+    -project "$PROJECT" \
+    -scheme "$DEBUG_SCHEME" \
+    -derivedDataPath "$DERIVED_DATA"
+
 run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log
+ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
 if [ "$RUN_RELEASE" = "1" ]; then
   run_lane "$RELEASE_SCHEME" Release build/xcode-test-release.log ENABLE_TESTABILITY=YES
 fi

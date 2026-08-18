@@ -19,6 +19,23 @@ set -euo pipefail
 # Usage: ./scripts/build-dev-app.sh   (no arguments)
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# #2157 chunk C: shared owner for conditional project generation. Sourced from
+# THIS worktree, never the main checkout — `scripts/` is tracked, so every
+# checkout has its own copy and each must generate its OWN project.
+# shellcheck source=scripts/lib/ensure-generated.sh
+. "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
+# shellcheck source=scripts/lib/launch-check.sh
+. "$PROJECT_ROOT/scripts/lib/launch-check.sh"
+# shellcheck source=scripts/lib/spm-seed.sh
+. "$PROJECT_ROOT/scripts/lib/spm-seed.sh"
+# ONE cleanup handler, releasing every seed lock this process owns. A second
+# `trap EXIT` would silently REPLACE this one rather than adding to it.
+trap 'ew_seed_release_all' EXIT
+# bash exits on a signal WITHOUT running the EXIT trap, which would strand a
+# seed lock. Converting each signal into a normal exit makes EXIT run.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 DERIVED_DATA="$PROJECT_ROOT/.derivedData/Dev"
 BUILT_APP="$DERIVED_DATA/Build/Products/Dev/EnviousWispr Local.app"
 APP_PATH="$PROJECT_ROOT/build/EnviousWispr Local.app"
@@ -76,10 +93,26 @@ for pid in $(dev_llama_pids); do
 done
 
 # ─── Step 3: Generate the Xcode project (gitignored, never committed) ─────────
-echo "==> Step 3: Generating Xcode project (Tuist)..."
-mise x tuist@4.195.11 -- tuist generate --no-open
+# #2157 chunk C: only regenerates when a generation INPUT changed. Measured 6.7 s
+# per invocation for a byte-identical `project.pbxproj` on a warm tree.
+echo "==> Step 3: Ensuring Xcode project is current (Tuist)..."
+ew_ensure_generated "$PROJECT_ROOT"
 
 # ─── Step 4: Build + sign the Dev configuration via Xcode ─────────────────────
+# #2157 chunk A: clone an already-resolved package tree instead of re-resolving
+# it. 46.5 s -> 1.9 s clone + 9.0 s validate, measured. Always a cache MISS on
+# any doubt: never fails the build.
+ew_seed_consume "$PROJECT_ROOT" "$DERIVED_DATA"
+
+# If THIS run seeded the tree, prove it resolves before the build depends on it.
+# A damaged clone that passed the shallow completeness check would otherwise kill
+# the build under `set -e` and leave the bad tree in place for every later run.
+ew_seed_resolve_or_unseed "$DERIVED_DATA" \
+  xcodebuild -resolvePackageDependencies \
+    -project EnviousWispr.xcodeproj \
+    -scheme "EnviousWispr-Dev" \
+    -derivedDataPath "$DERIVED_DATA"
+
 echo "==> Step 4: Building EnviousWispr-Dev (Dev config, self-signed)..."
 xcodebuild build \
   -project EnviousWispr.xcodeproj \
@@ -87,11 +120,17 @@ xcodebuild build \
   -configuration Dev \
   -derivedDataPath "$DERIVED_DATA" \
   -destination 'generic/platform=macOS' \
+  -onlyUsePackageVersionsFromResolvedFile \
   ARCHS=arm64 \
   ONLY_ACTIVE_ARCH=YES \
   VALID_ARCHS=arm64
 
 test -d "$BUILT_APP" || { echo "ERROR: built app not found at $BUILT_APP"; exit 1; }
+
+# Publish the now-resolved tree so the next fresh checkout clones it instead of
+# resolving. Only after a SUCCESSFUL build, so a half-resolved tree is never
+# promoted to a snapshot.
+ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
 
 # Strict verification BEFORE copying out of DerivedData (copies can pick up
 # FileProvider xattrs that break --strict; we copy with --norsrc + xattr -cr).
@@ -134,9 +173,26 @@ codesign --verify "$APP_PATH"
 # ─── Step 8: Launch ───────────────────────────────────────────────────────────
 echo "==> Step 8: Launching..."
 open "$APP_PATH"
-sleep 3
-# Verify launch by THIS worktree's executable path, not a global process-name
-# match (which could see a sibling worktree's or the prod app).
-this_worktree_pids() { pgrep -f "$APP_PATH/Contents/MacOS/EnviousWispr" 2>/dev/null || true; }
-[ -n "$(this_worktree_pids)" ] || { echo "ERROR: this worktree's dev app did not launch"; exit 1; }
+
+# #2157 chunk C: poll a SIGNAL instead of sleeping a fixed 3 s, and verify the
+# process is THIS worktree's app rather than matching text in a command line.
+# The check itself lives in scripts/lib/launch-check.sh so it can be TESTED — a
+# readiness check never observed failing is a check nobody has tested.
+# `f; rc=$?` DOES NOT WORK under `set -e`: the shell exits at the failing call,
+# before the assignment, so BOTH branches below were dead and the script died
+# silently — worse than the `if ! ...; then` form it replaced, which at least
+# printed. A conditional context is the only place a nonzero return survives.
+# Measured on this machine in both bash 5.3 and 3.2: the line after the capture
+# never runs, exit status 1 and 2 respectively.
+# LAUNCH-HANDLER-BEGIN (anchor for scripts/lib/launch-check-test.sh — keep)
+if ew_wait_for_launch "$APP_PATH"; then _launch_rc=0; else _launch_rc=$?; fi
+if [ "$_launch_rc" -eq 2 ]; then
+  echo "ERROR: could not determine whether the dev app launched — the process probe failed."
+  echo "       This says nothing about the app. Check \`pgrep\` before blaming the build."
+  exit 1
+elif [ "$_launch_rc" -ne 0 ]; then
+  echo "ERROR: this worktree's dev app did not launch"
+  exit 1
+fi
+# LAUNCH-HANDLER-END
 echo "==> EnviousWispr (dev) running ✓  ($APP_PATH)"
