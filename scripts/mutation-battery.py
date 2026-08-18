@@ -92,19 +92,36 @@ COMPILE_ERROR_RE = re.compile(r"^.*?: error: ", re.MULTILINE)
 # REFUSES rather than quietly measuring a differently-configured build. Reconcile deliberately; do not
 # silence it.
 CANONICAL_SCRIPT = "scripts/xcode-test.sh"
-CANONICAL_SETTINGS = [
+# The exact token set of the canonical `xcodebuild test` invocation, compared BOTH WAYS. A
+# presence-only check is one-directional and therefore blind in the direction that matters most: if the
+# canonical lane GAINS a build setting, an environment wrapper, or a flag, every fragment it already had
+# is still there, the guard stays green, and the battery quietly measures a differently-configured build
+# than the lane everyone else trusts. Cloud review, PR #2158.
+CANONICAL_TOKENS = {
+    "-project", "-scheme", "-configuration", "-derivedDataPath", "-destination",
+    "ARCHS=arm64", "VALID_ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES",
+}
+# Values that are shell expansions in the script and literals here; compared separately, by assignment.
+CANONICAL_ASSIGNMENTS = [
     'PROJECT="EnviousWispr.xcodeproj"',
     'DEBUG_SCHEME="EnviousWispr"',
     "DEST='platform=macOS,arch=arm64'",
-    "ARCHS=arm64",
-    "VALID_ARCHS=arm64",
-    "ONLY_ACTIVE_ARCH=YES",
     'TEST_ARGS=(-only-testing:"$FILTER")',
 ]
+INVOCATION_RE = re.compile(r"xcodebuild test\s*\\\n(.*?)\|\s*tee", re.DOTALL)
 
 
 class Refusal(Exception):
     """Preflight said no. The battery never started, so there is nothing to restore."""
+
+
+class _RowFailed(Exception):
+    """This row cannot produce a verdict. It is an ERROR, never a catch and never a survivor.
+
+    Raised rather than returned so the restore in the row's `finally` cannot be skipped, and caught
+    per-row so one broken row does not abort the run before the closing baseline check — that check is
+    what proves the tree came back, and losing it is worse than losing the remaining rows.
+    """
 
 
 def run(cmd, cwd, log_path=None, timeout=None):
@@ -177,14 +194,41 @@ def check_canonical_settings(worktree: Path):
             "confirm it is building the same thing the canonical entry point builds."
         )
     text = canonical.read_text()
-    missing = [frag for frag in CANONICAL_SETTINGS if frag not in text]
-    if missing:
+
+    missing_assignments = [frag for frag in CANONICAL_ASSIGNMENTS if frag not in text]
+
+    match = INVOCATION_RE.search(text)
+    if not match:
         raise Refusal(
-            f"{CANONICAL_SCRIPT} no longer contains settings this runner reproduces, so the battery "
-            "would measure a differently-configured build than the canonical lane:\n  "
-            + "\n  ".join(missing)
-            + "\n\nReconcile CANONICAL_SETTINGS and the Lane class with the script, deliberately. "
-            "Do not delete the guard to make this go away."
+            f"could not find the `xcodebuild test ... | tee` invocation in {CANONICAL_SCRIPT}. The "
+            "runner reproduces that command, so it cannot confirm it still matches. Fail closed."
+        )
+    # Keep flags and literal build settings; drop continuations and anything the shell expands, since
+    # those are compared through CANONICAL_ASSIGNMENTS above.
+    found = {
+        tok for tok in match.group(1).split()
+        if tok != "\\" and "$" not in tok and tok not in ('"$@"',)
+    }
+    missing_tokens = sorted(CANONICAL_TOKENS - found)
+    extra_tokens = sorted(found - CANONICAL_TOKENS)
+
+    if missing_assignments or missing_tokens or extra_tokens:
+        lines = []
+        if missing_assignments:
+            lines.append("  settings the runner expects and the script no longer has:")
+            lines += [f"    - {m}" for m in missing_assignments]
+        if missing_tokens:
+            lines.append("  invocation tokens the runner expects and the script no longer passes:")
+            lines += [f"    - {m}" for m in missing_tokens]
+        if extra_tokens:
+            lines.append("  tokens the script now passes and the runner does NOT reproduce:")
+            lines += [f"    + {m}" for m in extra_tokens]
+        raise Refusal(
+            f"{CANONICAL_SCRIPT} has drifted from what this runner reproduces, so the battery would "
+            "measure a differently-configured build than the canonical lane:\n"
+            + "\n".join(lines)
+            + "\n\nReconcile CANONICAL_TOKENS / CANONICAL_ASSIGNMENTS and the Lane class with the "
+            "script, deliberately. Do not delete the guard to make this go away."
         )
 
 
@@ -241,19 +285,32 @@ def recipes_from_issue(number: int, worktree: Path):
 
 
 def load_recipes(path: Path, worktree: Path, raw: str = None):
+    where = "the issue body" if raw is not None else str(path)
     try:
         data = json.loads(raw if raw is not None else path.read_text())
     except json.JSONDecodeError as exc:
-        where = f"issue body" if raw is not None else str(path)
         raise Refusal(f"the recipe in {where} is not valid JSON: {exc}")
+    # Valid JSON is not the expected SHAPE. `[]`, `{"rows": [1]}`, or a row that is a string all parse
+    # fine and then raise AttributeError deep in the loop. In the unattended --from-issue path that
+    # surfaces as a traceback rather than a refusal, which is the difference between "the recipe is
+    # wrong" and "the battery is broken".
+    if not isinstance(data, dict):
+        raise Refusal(f"the recipe in {where} must be a JSON object, got {type(data).__name__}.")
+    if "rows" in data and not isinstance(data["rows"], list):
+        raise Refusal(f"the recipe in {where} has a 'rows' that is not a list.")
     default_suite = data.get("suite_default")
     rows = data.get("rows") or []
     if not rows:
         raise Refusal(f"{'the issue body' if raw is not None else path} declares no rows.")
     for i, row in enumerate(rows, 1):
+        if not isinstance(row, dict):
+            raise Refusal(f"row {i} is a {type(row).__name__}, not an object.")
         for field in ("label", "file", "anchor", "replacement", "expect_fail"):
             if not row.get(field):
                 raise Refusal(f"row {i} is missing required field '{field}'.")
+            if not isinstance(row[field], str):
+                raise Refusal(
+                    f"row {i} field '{field}' must be a string, got {type(row[field]).__name__}.")
         row.setdefault("suite", default_suite)
         if not row["suite"]:
             raise Refusal(f"row {i} has no suite and no suite_default is set.")
@@ -263,14 +320,29 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
                 "'EnviousWisprTests/<SuiteName>', and <SuiteName> comes from the @Suite "
                 "declaration, never from the filename."
             )
-        target = worktree / row["file"]
+        # An absolute path, a `..`, or a symlink pointing out of the tree would let a recipe mutate a
+        # file the battery was never scoped to — and with --from-issue the recipe is data written by
+        # whoever authored the issue. Resolve BOTH sides and require containment; resolving is what
+        # catches the symlink, since a lexical check cannot.
+        if Path(row["file"]).is_absolute():
+            raise Refusal(f"row {i} file must be repo-relative, got an absolute path: {row['file']}")
+        target = (worktree / row["file"]).resolve()
+        wt = worktree.resolve()
+        if not (target == wt or wt in target.parents):
+            raise Refusal(
+                f"row {i} resolves OUTSIDE the worktree and will not be mutated:\n"
+                f"  recipe says: {row['file']}\n"
+                f"  resolves to: {target}\n"
+                f"  worktree:    {wt}"
+            )
         if not target.is_file():
             raise Refusal(f"row {i} target does not exist: {row['file']}")
+        row["_resolved"] = str(target)
         if row["anchor"] == row["replacement"]:
             raise Refusal(f"row {i} anchor and replacement are identical — it would mutate nothing.")
         # Check anchor presence and uniqueness HERE, against the clean tree, so a bad recipe costs
         # nothing. The row re-checks at apply time because an earlier row may share the file.
-        occurrences = target.read_text().count(row["anchor"])
+        occurrences = target.read_text().count(row["anchor"])  # target is the resolved, contained path
         if occurrences == 0:
             raise Refusal(
                 f"row {i} anchor not found in {row['file']} — the mutation would never be applied, "
@@ -305,7 +377,12 @@ def baseline(lane: Lane, suites, phase: str):
     return problems
 
 
-def main():
+def main_for_test(recipes: Path, worktree: Path):
+    """Entry point for the self-test's stubbed-lane cases. Same code path as the CLI."""
+    return main(["--recipes", str(recipes), "--worktree", str(worktree)])
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--recipes", type=Path, help="a recipe JSON file")
@@ -316,7 +393,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="validate recipes and baseline, mutate nothing")
     ap.add_argument("--validate-only", action="store_true",
                     help="preflight and recipe validation only — no xcodebuild, no baseline, no mutations")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.validate_only and (args.dry_run or args.row is not None):
         ap.error("--validate-only stops before any run; combining it with --dry-run or --row would "
                  "silently do less than the other flag promises.")
@@ -377,7 +454,7 @@ def main():
     print(f"\n[2/3] {len(rows)} mutation(s), one at a time")
     results = []
     for i, row in enumerate(rows, 1):
-        target = worktree / row["file"]
+        target = Path(row["_resolved"])
         backup = target.with_suffix(target.suffix + ".mutbak")
         tag = f"row{i:02d}"
         verdict, detail = "ERROR", "did not run"
@@ -395,7 +472,11 @@ def main():
                 if row["replacement"] not in target.read_text():
                     detail = "mutation did not land on re-read"
                 else:
-                    count, failures, compiled, log, rc_run, elapsed = lane.run_suite(row["suite"], tag)
+                    try:
+                        count, failures, compiled, log, rc_run, elapsed = lane.run_suite(
+                            row["suite"], tag)
+                    except Exception as exc:  # noqa: BLE001 — any lane failure is this row's problem
+                        raise _RowFailed(f"the lane raised {type(exc).__name__}: {exc}") from exc
                     if not compiled:
                         detail = f"mutant does not compile — proves nothing about the test ({log})"
                     elif count is None or count < 1:
@@ -415,6 +496,8 @@ def main():
                     else:
                         verdict = "SURVIVED"
                         detail = f"{count} tests still green with the code broken ({log})"
+        except _RowFailed as exc:
+            detail = str(exc)
         finally:
             shutil.copy2(backup, target)
             if not filecmp.cmp(backup, target, shallow=False):

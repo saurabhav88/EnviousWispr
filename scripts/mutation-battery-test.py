@@ -31,13 +31,33 @@ failures = []
 ran = 0
 
 
+# Mirrors the real scripts/xcode-test.sh closely enough for the drift guard to parse. Kept in this
+# shape deliberately: a stub that does not resemble the artifact under test proves nothing about it.
 CANONICAL_STUB = """#!/usr/bin/env bash
 PROJECT="EnviousWispr.xcodeproj"
 DEBUG_SCHEME="EnviousWispr"
 DEST='platform=macOS,arch=arm64'
 TEST_ARGS=(-only-testing:"$FILTER")
-ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+run_lane() {
+  xcodebuild test \\
+    -project "$PROJECT" \\
+    -scheme "$scheme" \\
+    -configuration "$config" \\
+    -derivedDataPath "$DERIVED_DATA" \\
+    -destination "$DEST" \\
+    ARCHS=arm64 \\
+    VALID_ARCHS=arm64 \\
+    ONLY_ACTIVE_ARCH=YES \\
+    "$@" \\
+    "${TEST_ARGS[@]}" | tee "$PROJECT_ROOT/$log"
+}
 """
+
+# The exact line the two directional drift cases add to or remove from the stub. Derived from the
+# stub itself rather than retyped, because a hand-typed copy of an escaped line is how both of
+# these cases silently tested nothing the first time.
+ONLY_ACTIVE = [l for l in CANONICAL_STUB.split("\n") if "ONLY_ACTIVE_ARCH" in l][0] + "\n"
+assert ONLY_ACTIVE in CANONICAL_STUB, "the stub line the drift cases edit must exist verbatim"
 
 
 def make_tree(tmp: Path):
@@ -131,13 +151,36 @@ check("a non-unique anchor is refused",
 # The runner reproduces scripts/xcode-test.sh's build settings rather than shelling out to it. That
 # buys two sources of truth, so drift must be loud: if the canonical script stops carrying a setting
 # this runner reproduces, the battery refuses rather than measuring a differently-configured build.
-check("a canonical script that has drifted refuses the run",
-      [dict(VALID_ROW)], expect_exit=2, expect_text="differently-configured build",
-      extra_files={"scripts/xcode-test.sh": "#!/usr/bin/env bash\n# settings removed\n"})
+check("a canonical script with its invocation gone refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="could not find the `xcodebuild test",
+      extra_files={"scripts/xcode-test.sh": "#!/usr/bin/env bash\n# gutted\n"})
+
+check("a canonical script that DROPPED a setting refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="no longer passes",
+      extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(ONLY_ACTIVE, "")})
+
+# The direction a presence-only check is blind to, and what cloud review flagged on PR #2158: the
+# lane GAINS a setting, everything the runner already knew about is still there, and a
+# one-directional guard stays green while the battery builds differently from the canonical lane.
+check("a canonical script that ADDED a setting refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="does NOT reproduce",
+      extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
+          ONLY_ACTIVE, ONLY_ACTIVE + "    ENABLE_TESTABILITY=YES \\\\\n")})
 
 check("a missing canonical script refuses the run",
       [dict(VALID_ROW)], expect_exit=2, expect_text="cannot confirm it is building the same thing",
       remove=["scripts/xcode-test.sh"])
+
+# A recipe arrives from an issue body, which is data someone else wrote. It may not reach out of
+# the worktree — an absolute path, a `..`, or a symlink would otherwise have the battery back up,
+# mutate and restore a file it was never scoped to.
+check("an absolute target path is refused",
+      [dict(VALID_ROW, file="/etc/hosts")],
+      expect_exit=2, expect_text="must be repo-relative")
+
+check("a target escaping the worktree with .. is refused",
+      [dict(VALID_ROW, file="../outside.swift")],
+      expect_exit=2, expect_text="resolves OUTSIDE the worktree")
 
 # --- flag-combination guard -----------------------------------------------------------------------
 ran += 1
@@ -209,6 +252,20 @@ check_raw("a malformed recipe in an issue body is refused as JSON, not as a cras
 check_raw("an issue body recipe with no rows is refused, and says so about the ISSUE",
           '{"rows": []}', expect_text="the issue body declares no rows")
 
+# Valid JSON is not the expected SHAPE. In the unattended --from-issue path these used to surface
+# as an AttributeError traceback, which reads as "the battery is broken" rather than "the recipe
+# is wrong".
+check_raw("a recipe that is a JSON array, not an object, is refused",
+          "[]", expect_text="must be a JSON object")
+check_raw("a recipe whose 'rows' is not a list is refused",
+          '{"rows": {"a": 1}}', expect_text="'rows' that is not a list")
+check_raw("a row that is a bare number is refused, not crashed on",
+          '{"rows": [1]}', expect_text="row 1 is a int, not an object")
+check_raw("a row field of the wrong type is refused",
+          '{"rows": [{"label": 5, "file": "Sources/Thing.swift", "anchor": "a",'
+          ' "replacement": "b", "expect_fail": "c", "suite": "T/S"}]}',
+          expect_text="must be a string")
+
 # The accepted counterpart, so the two refusals above are not a checker that rejects everything.
 ran += 1
 import tempfile as _tf2  # noqa: E402
@@ -260,6 +317,109 @@ check_issue("an issue carrying TWO recipe blocks is refused rather than picking 
             expect_text="carries 2 ```json blocks")
 check_issue("a failed `gh` call is refused, never treated as an empty issue",
             rc=1, body="could not resolve to an Issue", expect_text="could not read issue #2156")
+
+# --- the row loop, with the lane stubbed -----------------------------------------------------------
+# These drive the real mutate -> evaluate -> restore machinery against a real file on disk. Everything
+# in the loop is exercised EXCEPT the xcodebuild call itself, which is replaced by a stub returning the
+# shapes a real lane produces. That boundary is stated rather than blurred: a green here is NOT evidence
+# that the battery works end to end against a Swift suite, only that every decision around the call is
+# right. The remaining gap is closed by one real run, not by more stubs.
+import io  # noqa: E402
+import contextlib  # noqa: E402
+
+ORIGINAL = "let guarded = true\n"
+
+
+def drive_row(lane_result, *, expect_verdict, expect_detail, raise_instead=None):
+    """Run one row with a stubbed lane; return (verdict, detail, file_bytes_after)."""
+    import tempfile as _t
+    with _t.TemporaryDirectory() as td:
+        tmp = make_tree(Path(td))
+        target = tmp / "Sources" / "Thing.swift"
+        recipes = tmp / "r.json"
+        recipes.write_text(json.dumps({"rows": [dict(VALID_ROW)]}))
+
+        seen = {}
+
+        class StubLane:
+            def __init__(self, *a, **k):
+                pass
+
+            def generate_once(self):
+                pass
+
+            def run_suite(self, suite, tag):
+                # Prove the mutation was actually on disk at the moment the lane ran, rather than
+                # trusting the write. A row that restores too early would still look CAUGHT.
+                seen["content_during_run"] = target.read_text()
+                if raise_instead is not None:
+                    raise raise_instead
+                return lane_result
+
+        real_lane, real_baseline = battery.Lane, battery.baseline
+        battery.Lane = StubLane
+        battery.baseline = lambda lane, suites, phase: []
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = battery.main_for_test(recipes, tmp)
+        finally:
+            battery.Lane, battery.baseline = real_lane, real_baseline
+        return rc, buf.getvalue(), target.read_text(), seen.get("content_during_run")
+
+
+def check_row(name, lane_result, *, expect_marker, expect_rc, raise_instead=None):
+    global ran, failures
+    ran += 1
+    try:
+        rc, out, after, during = drive_row(lane_result, expect_verdict=None, expect_detail=None,
+                                           raise_instead=raise_instead)
+    except Exception as exc:
+        failures.append(f"{name}: driver raised {type(exc).__name__}: {exc}")
+        return
+    problems = []
+    if expect_marker not in out:
+        problems.append(f"report missing {expect_marker!r}")
+    if rc != expect_rc:
+        problems.append(f"exit {rc}, wanted {expect_rc}")
+    # The control that matters most: the file must be back to byte-identical on EVERY path.
+    if after != ORIGINAL:
+        problems.append(f"FILE NOT RESTORED — on disk: {after!r}")
+    if raise_instead is None and during != "let guarded = false\n":
+        problems.append(f"mutation was not on disk when the lane ran: {during!r}")
+    if problems:
+        failures.append(f"{name}: " + "; ".join(problems))
+    else:
+        print(f"  ok  {name}")
+
+
+# (count, failures, compiled, log, rc, elapsed)
+check_row("the named test failing scores CAUGHT",
+          (5, ["✘ Test \"the guard holds\" recorded an issue"], True, "log", 65, 3.0),
+          expect_marker="ok", expect_rc=0)
+
+check_row("the suite staying green scores SURVIVED, not a pass",
+          (5, [], True, "log", 0, 3.0),
+          expect_marker="SURV", expect_rc=1)
+
+check_row("a DIFFERENT test failing is SURVIVED — something else caught it, so this test is not the guard",
+          (5, ["✘ Test \"some other case\" recorded an issue"], True, "log", 65, 3.0),
+          expect_marker="SURV", expect_rc=1)
+
+check_row("zero executed tests is an ERROR, never a survivor and never a catch",
+          (0, [], True, "log", 0, 3.0),
+          expect_marker="ERR", expect_rc=1)
+
+check_row("no test summary at all is an ERROR",
+          (None, [], True, "log", 65, 3.0),
+          expect_marker="ERR", expect_rc=1)
+
+check_row("a mutant that does not compile is an ERROR — a red lane proves nothing if nothing ran",
+          (None, [], False, "log", 65, 3.0),
+          expect_marker="ERR", expect_rc=1)
+
+check_row("the file is restored even when the lane raises mid-row",
+          None, expect_marker="ERR", expect_rc=1, raise_instead=RuntimeError("lane exploded"))
 
 print()
 if failures:
