@@ -624,3 +624,231 @@ struct WrappingHStack: Layout {
     return (CGSize(width: totalWidth, height: y + rowHeight), positions)
   }
 }
+
+// MARK: - Engine selector card
+
+/// One selectable engine option: a lavender icon glyph, a title, a tagline, an
+/// optional spec table, and an optional action area. The selected card carries
+/// the accent border and a filled accent check badge. Mirrors `AppearanceCard`
+/// so the two card selectors read as one family.
+///
+/// **Shared since #2154.** It was `private` to `SpeechEngineSettingsView` with
+/// two invocations; Live Preview picks between two engines with the same
+/// gesture and had grown a visibly different shape for the same job on the page
+/// next door (#2136). Transcription passes neither new parameter, so its two
+/// cards must render exactly as before — asserted by a before/after capture in
+/// the #2154 Live UAT, not assumed.
+///
+/// **The footer sits OUTSIDE the selection button, and that is a correctness
+/// constraint rather than a layout preference.** Live Preview's own card
+/// already learned this: an `onTapGesture` around the whole row made Download
+/// also select the engine, and `.accessibilityElement(children: .combine)`
+/// merged the two into a single element, so "selecting and downloading are
+/// separate gestures" was true of the intent and false of the code. This card
+/// combines its children for VoiceOver, so anything actionable placed inside
+/// the button inherits that merge. Keyboard and VoiceOver users are the ones
+/// who pay, which is why the structure enforces it rather than a comment asking
+/// callers to be careful.
+///
+/// The `.padding(16)` lives INSIDE the button's label so the whole padded area
+/// stays tappable, exactly as it was before the extraction. Moving it to the
+/// outer container would have quietly shrunk the hit target by a 16pt ring on a
+/// page this change is not about.
+struct EngineCard<Footer: View>: View {
+  let icon: String
+  let title: String
+  let tagline: String
+  /// Ordered (label, value) rows rendered as the card's little spec table.
+  /// Empty renders no table, which is how Live Preview's cards opt out.
+  var specs: [(label: String, value: String)] = []
+  /// Why this engine cannot run right now, or nil when it can.
+  var unavailability: String? = nil
+  let isSelected: Bool
+  let onSelect: () -> Void
+  /// The action area: a Download/Cancel/Resume/Remove button, a progress bar,
+  /// or nothing. Rendered as a sibling of the selection button, never a child.
+  @ViewBuilder var footer: Footer
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button(action: onSelect) {
+        VStack(alignment: .leading, spacing: 12) {
+          HStack(spacing: 10) {
+            Image(systemName: icon)
+              .font(.system(size: 18, weight: .semibold))
+              .foregroundStyle(.stAccent)
+              .frame(width: 20, alignment: .center)
+            Text(title)
+              .font(.stRowTitle)
+              .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
+            Spacer(minLength: 8)
+            if isSelected {
+              Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Color.white, Color.stAccentSolid)
+            } else {
+              Circle()
+                .strokeBorder(Color.stDivider, lineWidth: 1.5)
+                .frame(width: 20, height: 20)
+            }
+          }
+
+          Text(tagline)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+          // The little spec table: label on the left, value right-aligned, thin
+          // rules between rows. Both cards share the same row order so the two
+          // read as a side-by-side comparison.
+          if !specs.isEmpty {
+            VStack(spacing: 0) {
+              ForEach(Array(specs.enumerated()), id: \.offset) { index, row in
+                if index != 0 {
+                  Divider().overlay(Color.stDivider)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                  Text(row.label)
+                    .font(.stHelper)
+                    .foregroundStyle(.stTextTertiary)
+                  Spacer(minLength: 12)
+                  Text(row.value)
+                    .font(.stHelper)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.stTextBody)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 8)
+              }
+            }
+          }
+
+          if let unavailability {
+            Text(unavailability)
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel(title)
+      // **The explicit label REPLACES the combined children, so without this the
+      // tagline and the unavailability reason are visible and inaudible.** On
+      // pre-macOS-26 systems, or a build missing the universal engine's files,
+      // the card stays selectable and a VoiceOver user is never told why it
+      // cannot be used — they select it and nothing happens. Same defect the
+      // card's own footer separation exists to prevent, one sense over.
+      .accessibilityHint(([tagline] + [unavailability].compactMap { $0 }).joined(separator: " "))
+      .accessibilityValue(isSelected ? "Selected" : "")
+      .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+
+      // EmptyView contributes no space in a VStack, so a caller that passes no
+      // footer gets the pre-extraction layout byte for byte.
+      footer
+    }
+    .frame(maxWidth: .infinity, alignment: .topLeading)
+    .background(Color.stSectionBg)
+    .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+        .strokeBorder(
+          isSelected ? Color.stAccent : Color.stDivider,
+          lineWidth: isSelected ? 2 : 1)
+    )
+    .animation(.easeInOut(duration: 0.15), value: isSelected)
+  }
+}
+
+extension EngineCard where Footer == EmptyView {
+  /// The Transcription page's call shape, unchanged from before the extraction.
+  init(
+    icon: String,
+    title: String,
+    tagline: String,
+    specs: [(label: String, value: String)] = [],
+    unavailability: String? = nil,
+    isSelected: Bool,
+    onSelect: @escaping () -> Void
+  ) {
+    self.init(
+      icon: icon,
+      title: title,
+      tagline: tagline,
+      specs: specs,
+      unavailability: unavailability,
+      isSelected: isSelected,
+      onSelect: onSelect,
+      footer: { EmptyView() })
+  }
+}
+
+// MARK: - Status chip
+
+// Moved here from `AIPolishProviderRail.swift` by #2154, unrenamed.
+//
+// AI Polish had the only "can I use this right now?" indicator in Settings, and
+// Live Preview needed the same thing. The first draft of #2154 proposed BUILDING
+// a second one, on a premise that turned out to be a truncated grep — which is
+// how a page ends up with two renderers of one concept. Moving beats copying.
+//
+// The names keep their `Provider` prefix DELIBERATELY. `ProviderStatusMapping`
+// constructs `ProviderStatus(...)` 27 times and an exact whole-word sweep finds
+// 41 type-bearing lines across `Sources/` and `Tests/`; renaming them buys no
+// user-visible or architectural benefit and churns a page #2154 does not
+// otherwise touch. A `typealias` bridge was considered and rejected as the
+// forwarding shim `GR-MIGRATION-COMPLETE` forbids.
+//
+// `ProviderStatusMapping` itself stays in the AI Polish file: it is that page's
+// state grid, not shared vocabulary. `AudioSettingsView.StatusPill` stays
+// private; consolidating it would edit a third page for a visual-only gain.
+
+/// Severity tone for a status chip. Rendered as a colored dot + text label —
+/// never color-only, for colorblind / low-vision users.
+enum ProviderStatusTone: Equatable {
+  case ready  // green — usable now
+  case needsSetup  // amber — one action away (download / key / start)
+  case unavailable  // neutral — not offered on this Mac / not checked
+  case error  // red — broken, needs attention
+
+  /// The brand semantic color for this tone. Semantic tokens only, never raw
+  /// `.red`/`.green` (SettingsDesignTokens).
+  var color: Color {
+    switch self {
+    case .ready: return .stSuccess
+    case .needsSetup: return .stWarning
+    case .unavailable: return .stTextTertiary
+    case .error: return .stError
+    }
+  }
+}
+
+/// A resolved status summary for one thing: the short label and its tone.
+struct ProviderStatus: Equatable {
+  let label: String
+  let tone: ProviderStatusTone
+}
+
+/// 7pt dot + short text label. Color from a single mapping; text ALWAYS
+/// present so status never depends on color alone.
+struct ProviderStatusChip: View {
+  let status: ProviderStatus
+
+  var body: some View {
+    HStack(spacing: 5) {
+      Circle()
+        .fill(status.tone.color)
+        .frame(width: 7, height: 7)
+      Text(status.label)
+        .font(.stHelper)
+        .foregroundStyle(status.tone.color)
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("Status: \(status.label)")
+  }
+}

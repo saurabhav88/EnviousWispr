@@ -418,11 +418,20 @@ import os
 
   @Test("deliver reports clipboardOnly for a copy-to-clipboard-only session")
   func deliverCopyOnly() async {
+    // #2146: this test takes the copy-only branch, so it copies. It never said so
+    // and never mentioned a clipboard, which is exactly why a name-based search
+    // for the defect missed it — the fail-closed seam default found it on the
+    // first run instead.
+    let recorder = ClipboardRecorder()
     let context = KernelSessionContext()
     context.config = .testDefault(autoCopyToClipboard: true, autoPasteToActiveApp: false)
-    let wiring = makeWiring(context: context, deliverPaste: { _ in Self.deliveredResult })
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { _ in Self.deliveredResult },
+      copyToClipboard: { recorder.record($0) })
     let outcome = await wiring.deliver("hello", .ordinary)
     #expect(outcome == .clipboardOnly, "no auto-paste => never .pasted")
+    #expect(recorder.copies == ["hello"], "clipboardOnly must mean it actually copied")
   }
 
   @Test("#1921 A clipboard-only delivery cannot inherit the previous session's language fields")
@@ -442,8 +451,11 @@ import os
 
     let context = KernelSessionContext()
     context.config = .testDefault(autoCopyToClipboard: true, autoPasteToActiveApp: false)
+    // #2146: copy-only, so it copies — incidental to what this test asserts, but
+    // it must be absorbed rather than reach the developer's real clipboard.
     let wiring = makeWiring(
-      outcome: outcome, context: context, deliverPaste: { _ in Self.deliveredResult })
+      outcome: outcome, context: context, deliverPaste: { _ in Self.deliveredResult },
+      copyToClipboard: { _ in })
 
     _ = await wiring.deliver("hello", .ordinary)
 
@@ -842,13 +854,10 @@ import os
 
   @Test("the copy-only branch emits no completion event and never calls the cascade")
   func completionEventSilentOnCopyOnly() async {
-    let priorSnapshot = PasteService.saveClipboard()
-    var endChangeCount = NSPasteboard.general.changeCount
-    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
-
     let registry = PasteCompletionRegistry()
     let observer = CapturingObserver()
     registry.subscribe(observer)
+    let recorder = ClipboardRecorder()
     let context = KernelSessionContext()
     context.config = .testDefault(autoCopyToClipboard: true, autoPasteToActiveApp: false)
     let wiring = makeWiring(
@@ -857,12 +866,16 @@ import os
         Issue.record("the cascade must not run on the copy-only path")
         return Self.deliveredResult
       },
-      registry: registry)
+      registry: registry,
+      copyToClipboard: { recorder.record($0) })
 
     _ = await wiring.deliver("hello", .ordinary)
-    endChangeCount = NSPasteboard.general.changeCount
 
     #expect(observer.events.isEmpty)
+    // The branch under test is the COPY-only one, so prove it copied. Previously
+    // implicit: the old version read the shared board, which a parallel suite
+    // could overwrite between the write and the read.
+    #expect(recorder.copies == ["hello"])
   }
 
   // MARK: - Clipboard wiring (migrated, #726)
@@ -889,15 +902,8 @@ import os
 
   @Test("copy-only writes the DISPLAY text to the clipboard, never the raw ASR text")
   func copyOnlyWritesDisplayText() async {
-    let pasteboard = NSPasteboard.general
-    let priorSnapshot = PasteService.saveClipboard()
-    let sentinel = "issue-726-prior-\(UUID().uuidString)"
-    pasteboard.clearContents()
-    pasteboard.setString(sentinel, forType: .string)
-    var endChangeCount = pasteboard.changeCount
-    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
-
     let polished = "POLISHED-\(UUID().uuidString)"
+    let recorder = ClipboardRecorder()
     let context = KernelSessionContext()
     context.config = .testDefault(autoCopyToClipboard: true, autoPasteToActiveApp: false)
     let wiring = makeWiring(
@@ -905,28 +911,26 @@ import os
       deliverPaste: { _ in
         Issue.record("the cascade must not run when auto-paste is off")
         return Self.deliveredResult
-      })
+      },
+      copyToClipboard: { recorder.record($0) })
 
     _ = await wiring.deliver(polished, .ordinary)
-    endChangeCount = pasteboard.changeCount
 
-    let after = pasteboard.string(forType: .string)
-    #expect(after == polished, "the clipboard must carry the display text")
-    #expect(after != sentinel, "the sentinel must have been replaced")
+    // #726's question — display text, not raw ASR — asked of the copy CALL rather
+    // than of a shared board's surviving contents. The old sentinel dance existed
+    // only to detect that something else had overwritten the board mid-test; with
+    // an injected recorder there is nothing else to detect.
+    #expect(recorder.copies == [polished], "the clipboard must carry the display text")
   }
 
   @Test("with both auto-paste and auto-copy off the clipboard is left untouched")
   func neitherFlagTouchesClipboard() async {
-    let pasteboard = NSPasteboard.general
-    let priorSnapshot = PasteService.saveClipboard()
-    let sentinel = "issue-726-untouched-\(UUID().uuidString)"
-    pasteboard.clearContents()
-    pasteboard.setString(sentinel, forType: .string)
-    var endChangeCount = pasteboard.changeCount
-    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
-
     let context = KernelSessionContext()
     context.config = .testDefault(autoCopyToClipboard: false, autoPasteToActiveApp: false)
+    // No `copyToClipboard:` argument on purpose. The helper's fail-closed default
+    // records an Issue if anything copies, so "the clipboard is left untouched" is
+    // now asserted by the seam itself rather than by reading a sentinel back off a
+    // board that a parallel suite could have rewritten.
     let wiring = makeWiring(
       context: context,
       deliverPaste: { _ in
@@ -935,19 +939,6 @@ import os
       })
 
     _ = await wiring.deliver("hello", .ordinary)
-    endChangeCount = pasteboard.changeCount
-
-    #expect(pasteboard.string(forType: .string) == sentinel)
-  }
-
-  /// Restore the pasteboard ONLY if nothing else wrote to it after our last
-  /// mutation. Mirrors the production `restoreClipboard` guard: a change count
-  /// past what we expect means a third-party tool owns the clipboard now.
-  private static func restorePasteboard(
-    _ snapshot: ClipboardSnapshot?, expectedChangeCount: Int
-  ) {
-    guard let snapshot else { return }
-    PasteService.restoreClipboard(snapshot, changeCountAfterPaste: expectedChangeCount)
   }
 
   // MARK: Helpers
@@ -1760,7 +1751,22 @@ import os
     resolveLanguage: (
       @Sendable (String?, Bool, String?, String, String) ->
         DictationLanguageResolver.Resolution
-    )? = nil
+    )? = nil,
+    // #2146 clipboard seam. FAIL-CLOSED on purpose, and the opposite of the
+    // production default: reaching the real clipboard from a test must be an
+    // explicit act, never something a test inherits by not mentioning it.
+    //
+    // Three tests in this suite used to write fixture text — including the
+    // literal "hello" — to the process-global board, which is the developer's own
+    // clipboard, and `restoreClipboard`'s change-count guard then declined to put
+    // it back whenever a parallel suite had touched it. The founder lost copies to
+    // this for months.
+    //
+    // A test that WANTS to observe the copy passes a recorder. A test that copies
+    // without meaning to now fails here instead of silently damaging the machine.
+    copyToClipboard: @escaping @MainActor (String) -> Void = { text in
+      Issue.record("unexpected clipboard copy: \(text)")
+    }
   ) -> KernelFinalizationWiring {
     KernelFinalizationWiring(
       outcome: outcome,
@@ -1791,7 +1797,19 @@ import os
         },
       pasteCompletionRegistry: registry,
       currentTime: currentTime,
-      telemetryState: telemetryState)
+      telemetryState: telemetryState,
+      copyToClipboard: copyToClipboard)
+  }
+
+  /// Records what the copy-only branch asked to put on the clipboard.
+  ///
+  /// A stronger assertion than the old real-pasteboard read, which could only
+  /// observe whatever survived the race between suites. This observes the call
+  /// itself, so it proves WHAT was copied and HOW MANY times.
+  @MainActor
+  private final class ClipboardRecorder {
+    private(set) var copies: [String] = []
+    func record(_ text: String) { copies.append(text) }
   }
 
   // MARK: Fallback metrics gate (#1624, widened #158)

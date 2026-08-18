@@ -50,7 +50,9 @@ import Testing
           tier: .cgEvent, durationMs: 1,
           outcome: .delivered(tier: .cgEvent, durationMs: 1))
       },
-      pasteCompletionRegistry: nil)
+      pasteCompletionRegistry: nil,
+      // #2146: absorbed, never the real clipboard.
+      copyToClipboard: { _ in })
 
     // #1230 — the kernel mints the id and threads it in so the saved History
     // entry's id equals the debug audio-archive folder name. Assert the closure

@@ -38,6 +38,18 @@ final class LivePreviewPacksModel {
 
   private(set) var active: ActiveLanguage?
 
+  /// **The language `active` was resolved FOR**, so a reader can tell whether it
+  /// still describes the language currently selected.
+  ///
+  /// #2154, cloud review r2. `load()` refuses to run while an install is in
+  /// flight, and `.task(id: settings.languageMode)` cannot force it — so
+  /// changing the dictation language MID-DOWNLOAD leaves `active` describing the
+  /// language the user just navigated away from. Without this, a status card
+  /// reading `active` would report the OLD language as ready. Publishing the
+  /// mode beside the value is what lets a reader detect that, rather than every
+  /// reader inventing its own staleness heuristic.
+  private(set) var resolvedMode: LanguageMode?
+
   private(set) var state: LoadState = .loading
 
   /// The tag currently downloading, if any. One at a time: the UI shows one spinner, and Apple's
@@ -124,17 +136,50 @@ final class LivePreviewPacksModel {
     let packs = await catalog.snapshot()
     // Ask the resolver the same question a recording asks, so the page reports what will really
     // happen rather than a second opinion assembled from the settings.
-    let resolved = await resolveCurrentActive()
+    let (resolved, resolvedFor) = await resolveCurrentActive()
     guard generation == mine else { return }
     failedTag = nil
     active = resolved
+    resolvedMode = resolvedFor
     state = Self.state(for: packs)
   }
 
   /// The one way any path asks "which language is live". Reads the mode itself, so no caller can
   /// hand it a stale one.
-  private func resolveCurrentActive() async -> ActiveLanguage {
-    await resolveActive(currentMode())
+  /// Resolve, and KEEP resolving while the language moves underneath us.
+  ///
+  /// #2154, cloud review r4. The install path is the only writer that runs while
+  /// `load()` is refused (it guards on `installingTag`), so if the language
+  /// changes during an install NOTHING re-resolves for the new one: the
+  /// language-keyed `.task` calls `load()`, is turned away, and the install then
+  /// publishes an answer correctly stamped as being for the OLD language. The
+  /// consumers then refuse — correctly, no false claim — but they refuse
+  /// FOREVER, because the trigger that would fix it is structurally blocked.
+  ///
+  /// So the install path corrects itself rather than depending on an external
+  /// trigger that cannot fire. Bounded, because each pass either agrees with the
+  /// current mode or observes a NEWER one, and a user cannot change the language
+  /// faster than the resolver returns indefinitely; the cap makes that a
+  /// guarantee rather than an argument. Exhausting it is NOT a terminal state:
+  /// the caller hands back to `load()` via `reloadIfStale`, which is unblocked
+  /// by then, so the cap costs one extra resolve rather than parking the page.
+  private func resolveSettledActive() async -> (ActiveLanguage, LanguageMode) {
+    var attempt = 0
+    while true {
+      let (resolved, resolvedFor) = await resolveCurrentActive()
+      attempt += 1
+      guard resolvedFor != currentMode(), attempt < 3 else { return (resolved, resolvedFor) }
+    }
+  }
+
+  private func resolveCurrentActive() async -> (ActiveLanguage, LanguageMode) {
+    // **The mode is captured BEFORE the await and returned WITH the value.**
+    // Reading `currentMode()` again after the resolver returns would stamp the
+    // answer with a mode that may have changed during the suspension, so the
+    // pair could claim to describe a language it was never resolved for — which
+    // defeats the entire point of publishing the mode. Cloud review r3.
+    let mode = currentMode()
+    return (await resolveActive(mode), mode)
   }
 
   /// The real resolution, through the same route the recording path uses.
@@ -208,11 +253,19 @@ final class LivePreviewPacksModel {
       do {
         let refreshed = try await catalog.install(tag: tag)
         guard let self, !Task.isCancelled, self.generation == mine else { return }
-        let resolved = await self.resolveCurrentActive()
+        let (resolved, resolvedFor) = await self.resolveSettledActive()
         guard !Task.isCancelled, self.generation == mine else { return }
         self.state = Self.state(for: refreshed)
         self.active = resolved
+        self.resolvedMode = resolvedFor
         self.installingTag = nil
+        // The cap above can return a stale pair if the language moved during
+        // every attempt. `installingTag` is nil NOW, so the ordinary reload is
+        // no longer refused — hand back to it rather than leaving the page
+        // parked on "Checking" until the user happens to navigate. Cloud review
+        // r5. This is what makes the cap a safety net rather than a correctness
+        // boundary: exceeding it costs one extra resolve, never a stuck state.
+        await self.reloadIfStale(resolvedFor)
       } catch {
         // Re-read rather than trusting the failure: Apple may have installed it and then thrown
         // on something else, and the list must show what the system says, not what we inferred.
@@ -227,7 +280,7 @@ final class LivePreviewPacksModel {
         // Republished here too: Apple can install the pack and THEN throw, so this branch reaches
         // the same "the language just arrived" state the success branch does. Leaving it out kept
         // the summary saying the language was missing over a row that had installed.
-        let resolved = await self.resolveCurrentActive()
+        let (resolved, resolvedFor) = await self.resolveSettledActive()
         guard !Task.isCancelled, self.generation == mine else { return }
         self.installingTag = nil
         // Only call it a failure if the pack is STILL missing. Apple can install successfully and
@@ -238,8 +291,35 @@ final class LivePreviewPacksModel {
         self.failedTag = landed ? nil : tag
         self.state = Self.state(for: refreshed)
         self.active = resolved
+        self.resolvedMode = resolvedFor
+        // **Only when there is no failure to preserve.** `load()` clears
+        // `failedTag` unconditionally — correctly, since a fresh read is the
+        // authority and a stale "Try again" beside a row the system now reports
+        // as Ready is the contradiction this branch already guards against. But
+        // calling it HERE would erase a failure one line after setting it, so a
+        // genuine download failure would lose its "Try again" and its
+        // explanation. Cloud review r6.
+        //
+        // Skipping it costs at most a stale-language "Checking" alongside a
+        // VISIBLE, actionable failure, and the page re-resolves on its next
+        // appearance. Losing the failure is worse than deferring the refresh:
+        // one is a delay, the other is a user who cannot tell the download broke.
+        if landed {
+          await self.reloadIfStale(resolvedFor)
+        }
       }
     }
+  }
+
+  /// Hand back to the ordinary reload when the settled answer is still stale.
+  ///
+  /// Only reachable after the install has cleared `installingTag`, which is
+  /// precisely when `load()` stops being refused, so this cannot recurse into
+  /// the blocked path it exists to escape. `load()` has its own generation
+  /// guard, so a newer reload still wins.
+  private func reloadIfStale(_ resolvedFor: LanguageMode) async {
+    guard resolvedFor != currentMode() else { return }
+    await load()
   }
 
   // **NOTHING happens when the page disappears, deliberately.**

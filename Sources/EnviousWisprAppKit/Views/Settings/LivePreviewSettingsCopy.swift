@@ -15,13 +15,27 @@ import Foundation
 ///
 /// Brand rule: no em-dashes or en-dashes in user-facing copy.
 enum LivePreviewSettingsCopy {
-  /// **Deliberately contains no "live".** The adjacent Transcription Mode section
-  /// already owns that word, and two settings both calling themselves live is the
-  /// confusion this issue was filed about. Renaming the OLDER one was measured and
-  /// rejected as a public-URL change (see `LiveTranscriptionCopy.toggleLabel`), so
-  /// the new setting is the one that gives up the word. "On-screen" also says the
-  /// true thing about it: this changes what you SEE, nothing else.
-  static let sectionHeader = "On-screen Preview"
+  /// **The feature's name, settled 2026-08-18.**
+  ///
+  /// This said "On-screen Preview" while the sidebar and page title said
+  /// "Live Preview" (`SettingsSection.swift`), so the page called itself two
+  /// things. The older draft gave up the word "live" to avoid colliding with the
+  /// "Live transcription" setting, which is the confusion #1988 was filed about
+  /// — but the nav had already taken the word back, in the two most visible
+  /// places on the page, where the copy guard could not see it.
+  ///
+  /// Founder decision: Live Preview everywhere. The collision is answered by
+  /// renaming the OTHER setting to "Faster Transcription" (#2155, ships
+  /// immediately after this), not by this one staying nameless.
+  static let sectionHeader = "Live Preview"
+
+  /// The hero card's headline.
+  ///
+  /// **Deliberately does not assert that the feature is on.** The mockup read
+  /// "Real-time feedback, always on"; it ships OFF with its switch directly
+  /// below, so that headline is false the first time anybody opens this page.
+  static let heroTitle = "Watch your words appear as you talk"
+
   static let toggleLabel = "Show words while I speak"
 
   /// Says four things, in the order a user cares about them: what they will see,
@@ -48,10 +62,15 @@ enum LivePreviewSettingsCopy {
   /// draft carried it as the phrase "preview only"; this one carries it as "never changes a
   /// character of what gets pasted". `LivePreviewSettingsCopyTests` accepts either wording and
   /// fails if a rewrite drops the claim entirely.
-  static let toggleDescription =
+  static let heroBody =
     "See your words in the recording pill as you talk, so you know EnviousWispr is hearing you. "
     + "It stays on your Mac, is discarded when the recording ends, and never changes a character "
     + "of what gets pasted."
+
+  /// The one line under the switch. The three claims above moved to `heroBody`
+  /// when the hero card took the top of the page (#2154); this is the mockup's
+  /// own wording for the row that remains.
+  static let toggleDescription = "See your words in the recording pill as you talk."
 
   /// Shown under the disabled toggle on older systems. Names the requirement and
   /// stops there: a user on macOS 14 cannot act on this beyond upgrading, and a
@@ -79,7 +98,7 @@ enum LivePreviewSettingsCopy {
 
   // MARK: - Which language is live (#2080)
 
-  /// Names what the section CONTAINS, like "On-Screen Preview" and "Languages" either side of it.
+  /// Names what the section CONTAINS, like "Live Preview" and "Languages" either side of it.
   /// "Right Now" named a moment instead, which told the reader nothing about what they would find.
   static let activeHeader = "Preview Language"
 
@@ -174,4 +193,189 @@ enum LivePreviewSettingsCopy {
   static func previewNeedsLanguagePack(_ languageName: String) -> String {
     "\(languageName) isn't downloaded yet. Open Settings to download it."
   }
+
+  // MARK: - Status card (#2154)
+
+  /// The card's right column, one label + one detail per state.
+  /// `LivePreviewStatusMapping` owns which one is shown; this owns the words.
+  ///
+  /// **Every label here claims READINESS and none claims that words are on
+  /// screen.** A correctly configured preview still shows nothing when the user
+  /// speaks a language it is not set to (`live-preview.md`
+  /// RULE: a-language-mismatch-shows-NOTHING-not-garbage), so "showing your
+  /// words" would be a promise this page cannot keep.
+
+  static let statusActiveLabel = "Live Preview is active"
+  static let statusActiveDetail = "Ready to show your words while you speak."
+
+  static let statusOffLabel = "Live Preview is off"
+  /// **Deliberately promises nothing about what happens next.** The off state is
+  /// checked BEFORE any engine detail, so switching on can land straight on
+  /// "needs a download" or a missing language pack. An earlier draft said
+  /// "switch it on to see your words while you speak", which is a promise this
+  /// card cannot keep for every user who reads it.
+  static let statusOffDetail = "Switch it on and this card will show whether anything else is needed."
+
+  // `statusUnavailableLabel` / `statusUnavailableDetail` were DELETED by #2154's
+  // final sweep, not merely unused. "Not available on this Mac" was returned
+  // from a guard reached by an OR of two independent causes — an old macOS and a
+  // defective app package — so it could not name either, and it accused the
+  // user's hardware for a build we shipped wrong. Each engine now answers with
+  // its own reason. Do not reintroduce a generic both-unavailable sentence: the
+  // condition that would produce it has no single honest wording.
+
+  static let statusNeedsMacOS26Label = "Apple's engine needs macOS 26"
+  /// Two details, for the same reason `statusUnsupportedLanguageDetail` has two:
+  /// pointing at the Universal card is only useful when that card can actually
+  /// help. A build shipped without its files makes the advice a dead end.
+  static let statusNeedsMacOS26Detail =
+    "Pick the Universal engine below, which works on macOS 14 and later."
+  static let statusNeedsMacOS26DetailNoAlternative =
+    "Dictation itself works normally. Only the on-screen preview is unavailable."
+
+  static let statusCheckingLabel = "Checking"
+  static let statusCheckingDetail = "Reading which languages are on this Mac."
+  /// Shown while a language download is running, when the resolved language is
+  /// stale by construction. True whichever language is downloading, which is
+  /// what lets the card say it without knowing.
+  static let statusInstallInFlightDetail =
+    "A language download is in progress. This updates when it finishes."
+  /// Shown when the dictation language changed while a download was running, so
+  /// the resolved language describes the previous choice. Says what is true
+  /// without pretending to know the new answer yet.
+  static let statusLanguageChangedDetail =
+    "Working out what your new language needs. This updates when the download finishes."
+
+  static func statusNeedsLanguageLabel(_ languageName: String) -> String {
+    "\(languageName) isn't downloaded yet"
+  }
+  static let statusNeedsLanguageDetail = "Download it in the list below and the preview starts working."
+
+  static let statusUnsupportedLanguageLabel = "Apple can't preview this language"
+  /// **Two details, because the advice is only true when the other engine
+  /// exists.** This state is reached with Apple selected and supported, which
+  /// says nothing about whether the universal engine is composable in this
+  /// build. Recommending it unconditionally would point a user at a card that
+  /// cannot help them. Found by enumerating the class after two review rounds,
+  /// not by either round.
+  static let statusUnsupportedLanguageDetail =
+    "Dictation still works normally. Try the Universal engine instead."
+  static let statusUnsupportedLanguageDetailNoAlternative =
+    "Dictation still works normally. Only the on-screen preview is unavailable for it."
+
+  static let statusNeedsDownloadLabel = "Needs a download"
+  static let statusNeedsDownloadDetail = "Get the Universal engine from the card below."
+
+  static let statusGettingReadyLabel = "Getting ready"
+  /// **State-neutral on purpose.** This label covers downloading, preparing AND
+  /// verifying, and the last two can be pure local work on files already on
+  /// disk. Saying "downloading" there announces a transfer that is not
+  /// happening, which is the same defect `packsLoading` was split out to fix.
+  static let statusGettingReadyDetail = "The Universal engine is being prepared."
+
+  /// The label only. **The DETAIL comes from `ModelDeliveryCopy.message`**,
+  /// because the right remedy depends on the reason: a full disk needs space
+  /// freed, not a connection checked. One owner for that mapping, not two.
+  static let statusDownloadFailedLabel = "Download did not finish"
+
+  static let statusBuildCannotRunLabel = "Can't run that engine"
+  static let statusBuildCannotRunDetail =
+    "This version of EnviousWispr is missing that engine's files. Pick Apple instead."
+  /// **The same defect with no fallback to offer, and it must not blame the
+  /// Mac.** Reached on macOS 14 or 15 with the universal engine selected and its
+  /// files missing: that Mac is perfectly capable of running this engine, and
+  /// the only thing wrong is the package we shipped. Saying "not available on
+  /// this Mac" there accuses the user's hardware for our mistake, and sends them
+  /// looking for an upgrade that would not help.
+  static let statusBuildCannotRunDetailNoAlternative =
+    "This version of EnviousWispr is missing that engine's files. Updating the app should restore it."
+
+  /// **One of exactly TWO strings permitted to name the other feature** (with
+  /// `statusPausedDetail` below), the closed exception in
+  /// `liveOnlyAppearsInApprovedProductNames`'s allowlist.
+  ///
+  /// It names Faster Transcription as the REASON for the pause rather than
+  /// calling this preview by that name, which is the distinction the guard
+  /// draws. When #2155 renames that setting to "Faster Transcription", this
+  /// string and the test's exception change together, in that PR.
+  ///
+  /// Why the pause exists: the universal preview refuses to run while the heart
+  /// decodes continuously, because concurrent decode was measured costing
+  /// transcription 1.50x. Yielding is the design, not a defect.
+  static let pausedForFasterTranscription = "Paused while Faster Transcription is on"
+  static let statusPausedDetail =
+    "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview."
+
+  // MARK: - Language section (#2154)
+
+  static let changeLanguageButton = "Change"
+
+  /// **The universal engine follows a LOCK, and only auto-detects on Auto.**
+  /// `WhisperPreviewEngineResolver` maps `.locked(code)` straight through to the
+  /// recognizer and only `.auto` becomes nil. An earlier draft of this page hid
+  /// the language control entirely on that engine, and the help article claimed
+  /// it always detects for itself — both wrong in the same direction, and the
+  /// user they stranded is the one locked to the wrong language with no way to
+  /// see or change it from here. Cloud/local review r7.
+  static func universalLocked(_ name: String) -> String {
+    "Your words will appear in \(name)."
+  }
+  static let universalLockedHelp =
+    "The preview follows the language you picked for dictation, under Transcription."
+  static let universalAuto = "The preview detects your language as you speak."
+  static let universalAutoHelp =
+    "On Auto this engine works out the language itself, so there is nothing to set."
+
+  /// **Paused variants. The row must DESCRIBE the configuration, never promise
+  /// output, whenever the engine is refused.**
+  ///
+  /// `WhisperPreviewEngineResolver` returns `.blocked(.heartIsStreaming)` before
+  /// it asks anything else, so with Faster Transcription streaming the universal
+  /// preview will not run at all. The hero card reports that correctly. The row
+  /// below it did not: it went on saying "Your words will appear in German" and
+  /// "The preview detects your language as you speak" while nothing would appear
+  /// and nothing was being detected, so one page stated a fact and denied it a
+  /// few points lower. Cloud review r8.
+  ///
+  /// The split is present tense versus configuration. "Will appear" and
+  /// "detects" are claims about what is happening NOW and only the resolver can
+  /// license them; "is set to" is a claim about what the user chose, which stays
+  /// true while paused and is exactly what the row exists to show — a user
+  /// locked to the wrong language needs to SEE that lock most when the preview
+  /// is not running to reveal it.
+  ///
+  /// Scoped to the universal engine deliberately. Apple's route cannot be
+  /// blocked this way (`LivePreviewPacksModel` documents that refusal as
+  /// unreachable for it), so `activeReady` keeps its promise and must not be
+  /// "fixed" to match. Ref: live-preview.md RULE:
+  /// the-status-card-may-only-claim-what-its-inputs-prove.
+  static func universalLockedPaused(_ name: String) -> String {
+    "The preview is set to \(name)."
+  }
+  static let universalAutoPaused =
+    "The preview is set to detect your language as you speak."
+
+  /// Says the consequence out loud. Picking a language here is not a
+  /// preview-only setting: it sets the DICTATION language, on a different page.
+  /// A button that silently edits another page's setting is how a user loses
+  /// auto-detect without noticing.
+  static let changeLanguageHelp =
+    "This sets the language for dictation too, not just the preview."
+
+  // MARK: - Language table (#2154)
+
+  static let tableColumnLanguage = "Language"
+  static let tableColumnStatus = "Status"
+
+  /// **Availability, NOT provenance, and the first draft got that wrong.**
+  ///
+  /// The column is computed from `isInstalled`, so downloading a language
+  /// through this very page flipped it from "Apple" to "System" — claiming the
+  /// pack had shipped with macOS when the user had just fetched it from Apple
+  /// thirty seconds earlier. The model carries availability and knows nothing
+  /// about origin, so the honest fix is to label what is actually computed.
+  /// Every one of these is an Apple pack either way.
+  static let tableColumnSource = "Availability"
+  static let sourceSystem = "On this Mac"
+  static let sourceApple = "Available from Apple"
 }

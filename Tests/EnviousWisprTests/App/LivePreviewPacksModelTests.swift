@@ -633,4 +633,49 @@ struct LivePreviewPacksModelTests {
       tags(model.state) == ["de-DE", "en-US", "it-IT"],
       "the refresh must still publish once done")
   }
+
+  /// #2154, cloud review r4. **Complements `installResolvesAgainstTheModeAtCompletion`,
+  /// which asserts the resolver is ASKED about the new language. This asserts the
+  /// answer it PUBLISHES is stamped for that language too.**
+  ///
+  /// The install path is the only writer that runs while `load()` is refused
+  /// (it guards on `installingTag`), so if the pair ends up stamped for the
+  /// abandoned language every consumer refuses it — correctly, no false claim —
+  /// but refuses FOREVER, because the trigger that would fix it is structurally
+  /// blocked. A stuck "Checking" is milder than a wrong answer and still a bug.
+  @Test("The pair an install publishes is stamped for the language the user ended on")
+  func installPublishesAPairStampedForTheCurrentLanguage() async {
+    let modeBox = ModeBox()
+    modeBox.value = .locked("it-IT")
+    let seen = SeenModes()
+    let catalog = ApplePackCatalog(
+      dependencies: .init(
+        supportedTags: { ["en-US", "it-IT", "de-DE"] },
+        installedTags: { ["en-US", "it-IT"] },
+        install: { _ in }
+      ),
+      claims: fakeClaims())
+
+    let model = LivePreviewPacksModel(
+      catalog: catalog,
+      resolveActive: { mode in
+        await seen.note(mode)
+        return .ready(tag: "it-IT", name: "Italian")
+      })
+    model.useMode { modeBox.value }
+    await model.load()
+
+    modeBox.value = .locked("de-DE")
+    model.install(tag: "it-IT")
+    await model.installTask?.value
+
+    #expect(
+      model.resolvedMode == .locked("de-DE"),
+      "the install published a pair stamped for the abandoned language: \(String(describing: model.resolvedMode))")
+
+    // Control: the resolver really was asked about the newer language, so this
+    // cannot pass by the stamp alone being overwritten without a re-resolve.
+    let observed = await seen.modes
+    #expect(observed.contains(.locked("de-DE")), "never resolved for the new language; saw \(observed)")
+  }
 }
