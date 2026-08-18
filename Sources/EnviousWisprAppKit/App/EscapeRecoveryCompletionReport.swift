@@ -79,7 +79,13 @@ enum EscapeRecoveryCompletionReport {
       outcome,
       metrics?.asrLatencySeconds.map { Int($0 * 1000) },
       metrics?.llmLatencySeconds.map { Int($0 * 1000) },
-      transcript.map { Int($0.processingTime * 1000) },
+      // END-TO-END, not `processingTime`. That field is copied straight from
+      // `adapter.lastResult.processingTime`, so it measures ASR alone — it
+      // would duplicate `asr_duration_ms` and understate every polished take,
+      // on a field whose name claims the whole recovery. `e2eSeconds` is the
+      // value this event has always meant; nil rather than a fallback to the
+      // ASR figure, because a wrong number here is worse than a missing one.
+      transcript?.metrics?.e2eSeconds.map { Int($0 * 1000) },
       transcript?.backendType.rawValue,
       takeID)
   }

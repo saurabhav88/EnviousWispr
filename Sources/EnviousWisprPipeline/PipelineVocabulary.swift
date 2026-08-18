@@ -176,9 +176,9 @@ public enum OverlayIntent: Equatable, Sendable {
   /// something that failed to save is a lie the user cannot detect.
   ///
   /// Sits beside the five existing post-dictation intents rather than reusing
-  /// `flashRecordingNotice`, whose `gotchas-audio.md`
-  /// RULE: in-panel-notice-not-new-overlay-intent scopes to *during* recording.
-  /// This fires after the session concluded.
+  /// `flashRecordingNotice`, which renders an in-panel banner scoped to *during*
+  /// a recording. This fires after the session concluded, when there is no panel
+  /// left to put a banner in.
   case escapeRecovery(transcriptID: UUID)
 }
 

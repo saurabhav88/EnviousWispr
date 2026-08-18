@@ -108,8 +108,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   var onAttemptMarkerWritten: (() -> Void)?
 
   /// Wall clock, injected so the #2087 expiry check is testable without waiting
-  /// 24 hours or reaching for real time in a test
-  /// (`swift-patterns.md` RULE: tests-no-real-time-scheduling-precision).
+  /// 24 hours. A test that slept on real time to cross this boundary would be
+  /// flaky by construction and would take a day to exercise the case that
+  /// matters.
   private let now: @Sendable () -> Date
 
   init(

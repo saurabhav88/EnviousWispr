@@ -29,6 +29,10 @@ struct EscapeRecoveryCompletionReportTests {
     var metrics = ExecutionMetrics()
     metrics.asrLatencySeconds = asrSeconds
     metrics.llmLatencySeconds = polishSeconds
+    // END-TO-END, which is what `duration_ms` means. `processingTime` is ASR
+    // only, so a fixture keyed to it would let the event go on duplicating
+    // `asr_duration_ms` without any test noticing.
+    metrics.e2eSeconds = processingTime
     return Transcript(
       text: "kept", processingTime: processingTime, backendType: .parakeet, metrics: metrics,
       escapeRecoveredAt: Date(), escapeRecoveryTakeID: takeID)

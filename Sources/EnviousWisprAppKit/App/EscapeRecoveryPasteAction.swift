@@ -135,14 +135,26 @@ enum EscapeRecoveryPasteAction {
   /// that actually happens — the app quit — is refused by the caller before this
   /// is reached.
   ///
-  /// A nil element returns TRUE and is not a failure: no target field was ever
-  /// captured, which is History's shipped behaviour and a documented normal
-  /// case. Refusing there would make the pill weaker than the button it sits
-  /// beside.
+  /// A nil TARGET APP returns true: nothing was ever captured, so there is
+  /// nothing to return to and the paste goes where focus is, exactly as
+  /// History's button does. A nil ELEMENT with a live app also returns true —
+  /// an app-only target is a documented normal case.
+  ///
+  /// What does NOT return true is a captured target we failed to reach. An
+  /// earlier revision returned true whenever no element was captured, whatever
+  /// activation did, so an app that refuses to come forward still got a
+  /// keystroke — sent to whoever is frontmost instead. The reasoning behind that
+  /// was right about History and wrong about the pill: History activates
+  /// nothing, so it promises nothing, while returning to the target app is the
+  /// entire reason this pill exists.
   @MainActor
   static func retargetWithAccessibility(_ payload: CancelUndoPayload) -> Bool {
-    if let app = payload.targetApp {
-      if !PasteService.forceActivateApp(pid: app.processIdentifier) { app.activate() }
+    guard let app = payload.targetApp else { return true }
+    // Both routes report. `forceActivateApp` is the AX path macOS 14+ needs for
+    // a background process; `activate()` is the fallback when Accessibility is
+    // refused, in which case the paste was never going to work anyway.
+    guard PasteService.forceActivateApp(pid: app.processIdentifier) || app.activate() else {
+      return false
     }
     guard let element = payload.targetElement else { return true }
     return PasteService.focusElement(element)
