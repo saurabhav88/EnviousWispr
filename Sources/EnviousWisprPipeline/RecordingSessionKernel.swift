@@ -1164,6 +1164,27 @@ final class RecordingSessionKernel {
   /// cancel already costs them, and never leaves a spool a later launch would
   /// replay into permanent History.
   ///
+  /// **KNOWN LIMIT, and it is SYMMETRIC with the destructive cancel rather than
+  /// introduced here (cloud review, 2026-08-18).** The marker is written on this
+  /// branch, which runs in the task `deliverRecordingExit(.cancel)` resumes — so
+  /// a process killed between the keypress being accepted and that task running
+  /// leaves an unmarked spool, and the next launch replays it as an ordinary
+  /// crash rescue into permanent History.
+  ///
+  /// Not fixed by writing the marker at the keypress instead, because that trades
+  /// one wrong outcome for another: the branch below can still REFUSE (a marker
+  /// write that fails for a real spool falls closed to the destructive cancel),
+  /// and a marker already on disk would then resurrect a deliberately destroyed
+  /// take as a pending row.
+  ///
+  /// The same window already governs an ordinary cancel, which deletes its spool
+  /// from the terminal's ending callback — also after the keypress, also
+  /// asynchronously — so a crash in that gap has always been able to replay a
+  /// cancelled dictation. This feature does not widen it. What the marker
+  /// protects is the LONG window this feature actually adds: the whole transcribe
+  /// and polish run, which is seconds to minutes rather than the sub-millisecond
+  /// gap between accepting a keypress and draining an exit.
+  ///
   /// - Returns: whether Escape Recovery may proceed.
   private func prepareEscapeRecoveryIfNeeded(triggeredAt: Date) -> Bool {
     guard let recoverySessionID = sessionConfig?.recoverySessionID else { return true }

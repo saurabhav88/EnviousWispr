@@ -476,4 +476,56 @@ import Testing
       try await store.pendingRecoverySessionIDs() == ["spool-stale"],
       "an expired row must still block a second replay of its spool")
   }
+
+  // MARK: - Interrupted writes
+
+  /// A killed write strands the whole transcript under a name the sweep could
+  /// not see (#2087, cloud review).
+  ///
+  /// `savePending` is temp-then-rename into `.<id>.tmp`, and the sweep
+  /// enumerated `.json` only — so a process killed between filling the temp file
+  /// and renaming it left a COMPLETE pending transcript that no later sweep ever
+  /// looked at. It outlived the 24-hour window indefinitely, which is exactly
+  /// what the setting's copy and the help centre both say does not happen. The
+  /// file is 0600 inside a 0700 directory so it was never exposed, but the
+  /// promise is about TIME, and retained is retained.
+  @Test("a stale interrupted write is swept")
+  func staleTempFileIsSwept() async throws {
+    let (store, dir) = makeStore()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let pending = dir.appendingPathComponent("pending", isDirectory: true)
+    try FileManager.default.createDirectory(at: pending, withIntermediateDirectories: true)
+    let stray = pending.appendingPathComponent(".\(UUID().uuidString).tmp")
+    try "the whole cancelled dictation".write(to: stray, atomically: true, encoding: .utf8)
+    // Older than the retention window, which is what makes it stale rather than
+    // a write in flight.
+    try FileManager.default.setAttributes(
+      [.modificationDate: Date(timeIntervalSinceNow: -(25 * 60 * 60))],
+      ofItemAtPath: stray.path)
+
+    _ = try await store.deleteExpiredPending()
+
+    #expect(
+      !FileManager.default.fileExists(atPath: stray.path),
+      "an interrupted write holds the same text as the row it was becoming")
+  }
+
+  /// The other direction, and the reason the sweep is age-gated rather than
+  /// clearing every `.tmp` on sight: a healthy write in progress looks exactly
+  /// like this, and deleting one would corrupt a save that was about to succeed.
+  @Test("a FRESH interrupted write is left alone")
+  func freshTempFileSurvives() async throws {
+    let (store, dir) = makeStore()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let pending = dir.appendingPathComponent("pending", isDirectory: true)
+    try FileManager.default.createDirectory(at: pending, withIntermediateDirectories: true)
+    let inFlight = pending.appendingPathComponent(".\(UUID().uuidString).tmp")
+    try "a save that is still happening".write(to: inFlight, atomically: true, encoding: .utf8)
+
+    _ = try await store.deleteExpiredPending()
+
+    #expect(
+      FileManager.default.fileExists(atPath: inFlight.path),
+      "seconds old is a live write, not litter")
+  }
 }

@@ -329,6 +329,32 @@ public final class TranscriptStore {
       if let id { deleted.insert(id) }
       if let receipt = candidate.expiredReceipt { reported.append(receipt) }
     }
+    // #2087, cloud review: an INTERRUPTED WRITE leaves the whole transcript on
+    // disk under a name this sweep cannot see. `write` is temp-then-rename into
+    // `.<id>.tmp`, and `pendingCandidates` filters `pathExtension == "json"`, so
+    // a process killed between fill and rename strands a complete pending
+    // transcript that no later sweep ever enumerates. It outlives the 24-hour
+    // window indefinitely, which is precisely what the setting's copy and the
+    // help centre both say does not happen. 0600 inside a 0700 directory, so it
+    // is not exposed — but retained is retained, and the promise is about time.
+    //
+    // Age-gated by the RETENTION WINDOW rather than swept on sight, because a
+    // `.tmp` is also what a healthy write in progress looks like: a live one is
+    // seconds old, and nothing legitimate leaves one for a day. Using the same
+    // constant as the rows themselves means there is one number to reason about.
+    if let strays = try? fm.contentsOfDirectory(
+      at: dir, includingPropertiesForKeys: [.contentModificationDateKey])
+    {
+      for stray in strays where stray.pathExtension == "tmp" {
+        let modified = (try? stray.resourceValues(forKeys: [.contentModificationDateKey]))?
+          .contentModificationDate
+        // No readable date means no evidence it is stale, so it is left alone:
+        // deleting a file that might be a write in flight is the worse error.
+        guard let modified, now.timeIntervalSince(modified) >= retention else { continue }
+        try? fm.removeItem(at: stray)
+        if fm.fileExists(atPath: stray.path) { unremovable += 1 }
+      }
+    }
     return PendingSweepResult(deletedIDs: deleted, expired: reported, unremovable: unremovable)
   }
 

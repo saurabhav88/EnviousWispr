@@ -43,8 +43,11 @@ TWO PRECONDITIONS, BOTH CHECKED, BOTH FAIL LOUDLY
    user-configurable — a different key is a supported configuration, not a test
    mode.
 
-Settings are restored in a `finally`, so an exception or a Ctrl-C still leaves
-the machine as it was found.
+Every preference it touches is snapshotted first and put back in a `finally`, so
+an exception or a Ctrl-C still leaves the machine as it was found — including for
+a developer who had already customised the cancel shortcut. Restoring is not the
+same as resetting, and an earlier revision did the second while claiming the
+first.
 """
 import os
 import subprocess
@@ -95,6 +98,30 @@ def defaults_write(key, value, kind="-int"):
 
 def defaults_delete(key):
     subprocess.run(["defaults", "delete", DOMAIN, key], check=False, capture_output=True)
+
+
+def defaults_read(key):
+    """The stored value, or None when the key is absent."""
+    out = subprocess.run(["defaults", "read", DOMAIN, key], capture_output=True, text=True)
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def snapshot(keys):
+    """What was there BEFORE, so `restore` puts back rather than resets."""
+    return {k: defaults_read(k) for k in keys}
+
+
+def restore(before):
+    """Put every key back to the value it held, deleting only what was absent.
+
+    Deleting unconditionally would silently reset a developer's own cancel
+    shortcut, which is a destructive tidy-up wearing the word "restore".
+    """
+    for key, value in before.items():
+        if value is None:
+            defaults_delete(key)
+        else:
+            subprocess.run(["defaults", "write", DOMAIN, key, value], check=False)
 
 
 def screen_is_locked():
@@ -171,6 +198,11 @@ def main():
         print("Unlock the screen and run again.")
         return 2
 
+    # Captured BEFORE anything is written, so the `finally` restores rather
+    # than resets. A developer running this must not lose their own shortcut.
+    before = snapshot(("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
+    print(f"prior settings: {before}")
+
     field_a = new_textedit_doc("field-a")
     field_b = new_textedit_doc("field-b")
     print(f"targets: A={field_a}  B={field_b}\n")
@@ -180,7 +212,12 @@ def main():
         print("[1] Setting OFF — cancel must discard, exactly as it always has")
         defaults_delete("escapeRecoveryEnabled")
         defaults_write("cancelKeyCode", LCTRL)
-        defaults_write("cancelModifiers", 0)
+        # `cancelModifiersRaw`, NOT `cancelModifiers`. That is the key
+        # `SettingsManager` reads and writes; the other name is read by nothing,
+        # so writing it leaves any existing modifiers in place and the binding
+        # stays Carbon-registrable — the exact condition the rebind exists to
+        # avoid, failing only on a machine that had a customised shortcut.
+        defaults_write("cancelModifiersRaw", 0)
         restart_app()
 
         base = log_length()
@@ -233,9 +270,8 @@ def main():
                   f"B={b_text[:60]!r} — focus moved, so a naive paste lands here")
 
     finally:
-        print("\n[restore] putting every setting back")
-        for key in ("cancelKeyCode", "cancelModifiers", "escapeRecoveryEnabled"):
-            defaults_delete(key)
+        print("\n[restore] putting every setting back to what it was")
+        restore(before)
         subprocess.run(["pkill", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
                        check=False, capture_output=True)
 
