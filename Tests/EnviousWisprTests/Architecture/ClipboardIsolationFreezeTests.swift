@@ -188,6 +188,16 @@ struct ClipboardIsolationFreezeTests {
         return unwrapped(inner)
       }
       if let cast = expr.as(AsExprSyntax.self) { return unwrapped(cast.expression) }
+      // The UNFOLDED cast too. `SwiftParser` leaves `x as T` as a sequence, so handling it in the
+      // `.general` visitor and not here left `(PasteService.self as PasteService.Type).copyToClipboard`
+      // resolving to nil. Learning that the parser does not fold and then applying it at ONE site is the
+      // same half-sweep this file has now corrected three times.
+      if let sequence = expr.as(SequenceExprSyntax.self),
+        sequence.elements.contains(where: { $0.is(UnresolvedAsExprSyntax.self) }),
+        let first = sequence.elements.first
+      {
+        return unwrapped(first)
+      }
       return expr
     }
 
@@ -305,6 +315,22 @@ struct ClipboardIsolationFreezeTests {
     /// The trailing component of a written type, so `AppKit.NSPasteboard` and an escaped spelling both
     /// resolve. Same rule as every other name in this file: never compared as raw text.
     private static func typeName(of type: TypeSyntax) -> String? {
+      // Transparent TYPE wrappers, for the same reason as the expression ones: `NSPasteboard?` and
+      // `(NSPasteboard)` name the same type, and `let pb: NSPasteboard? = .general` is the identical
+      // explicit binding already covered for the bare spelling.
+      if let optional = type.as(OptionalTypeSyntax.self) {
+        return typeName(of: optional.wrappedType)
+      }
+      if let forced = type.as(ImplicitlyUnwrappedOptionalTypeSyntax.self) {
+        return typeName(of: forced.wrappedType)
+      }
+      if let tuple = type.as(TupleTypeSyntax.self), tuple.elements.count == 1,
+        let inner = tuple.elements.first?.type
+      {
+        return typeName(of: inner)
+      }
+      // `T.Type` names T for our purposes — a metatype of the clipboard is still the clipboard's type.
+      if let meta = type.as(MetatypeTypeSyntax.self) { return typeName(of: meta.baseType) }
       if let identifier = type.as(IdentifierTypeSyntax.self) {
         return identifierText(identifier.name)
       }
@@ -704,6 +730,7 @@ struct ClipboardIsolationFreezeTests {
       (#"func f() { AIAvailabilityCoordinator().copyDiagnosticsToClipboard() }"#, 1),
       (#"func f() { NSPasteboard.self.general.clearContents() }"#, 1),
       (#"func f() { (.general as NSPasteboard).clearContents() }"#, 1),
+      (#"func f() { (PasteService.self as PasteService.Type).copyToClipboard("x") }"#, 1),
       // Safe halves: a different method on that type, and `deliver` on anything else.
       (#"func f() { _ = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(x) }"#, 0),
       (#"func f() async { _ = await wiring.deliver("hello") }"#, 0),
@@ -722,6 +749,9 @@ struct ClipboardIsolationFreezeTests {
       (#"func f() { let pb: NSPasteboard = .general; pb.clearContents() }"#, 1),
       (#"func f() { let pb: AppKit.NSPasteboard = .general }"#, 1),
       (#"func f() { let pb: NSPasteboard = (.general) }"#, 1),
+      (#"func f() { let pb: NSPasteboard? = .general }"#, 1),
+      (#"func f() { let pb: (NSPasteboard) = .general }"#, 1),
+      (#"func f() { let pb: NSPasteboard! = .general }"#, 1),
       // Safe halves: a unique board, and a `.general` on some other type entirely.
       (#"func f() { let pb: NSPasteboard = NSPasteboard.withUniqueName() }"#, 0),
       (#"func f() { let x: MyThing = .general }"#, 0),
