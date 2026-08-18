@@ -67,6 +67,21 @@ struct ClipboardIsolationFreezeTests {
     "restoreClipboard",
   ]
 
+  /// Entry points with NO board parameter at all, so no call from a test can be made safe.
+  ///
+  /// `pasteToActiveApp` reads `NSPasteboard.general` internally (`PasteService.swift:1361`), clears it,
+  /// writes to it, and then dispatches Cmd+V. There is nothing to pass and nothing to isolate, so the
+  /// only correct rule is that no test calls it — including the allowlisted suite, which is why this is
+  /// a separate set rather than another name in the one above.
+  ///
+  /// FOUND BY ENUMERATING THE SET, not by matching a spelling: every finding before this one was a
+  /// different way of writing a name the guard already knew, and this was a name it did not know. The
+  /// two failure modes look identical from inside the guard — it reports clean — so a spelling sweep can
+  /// never surface a missing member. Re-derive by listing `PasteService`'s static functions and asking
+  /// which reach `NSPasteboard.general` with no board parameter; that enumeration returns exactly this
+  /// one today, and the only other textual hit is the header comment explaining the seam.
+  private static let boardlessClipboardFunctions: Set<String> = ["pasteToActiveApp"]
+
   /// Argument labels that name a board explicitly.
   private static let boardLabels: Set<String> = ["to", "from", "on"]
 
@@ -171,12 +186,62 @@ struct ClipboardIsolationFreezeTests {
       return .visitChildren
     }
 
+    /// `let pb: NSPasteboard = .general` — the annotation makes the contextual type unambiguous, so
+    /// this needs no inference, only reading what the author already wrote. It compiles, it is the real
+    /// clipboard, and neither the member visitor (base is nil) nor the call visitor (there is no call)
+    /// saw it.
+    ///
+    /// KNOWN LIMIT, and the boundary is worth stating precisely: this reads an EXPLICIT annotation. A
+    /// board reached by inference (`let pb = makeBoard()`), by alias, or through a helper's return type
+    /// still walks past, because catching those needs type resolution this suite deliberately does not
+    /// do. That is why it is the THIRD layer and the required seam is the mechanism.
+    override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
+      for binding in node.bindings {
+        guard let annotation = binding.typeAnnotation?.type,
+          Self.typeName(of: annotation) == "NSPasteboard",
+          let initial = binding.initializer?.value,
+          let member = Self.unwrapped(initial).as(MemberAccessExprSyntax.self),
+          member.base == nil,
+          Self.identifierText(member.declName.baseName) == "general"
+        else { continue }
+        violations.append(
+          Violation(
+            file: file, line: line(node),
+            reason: "binds the developer's real clipboard (`: NSPasteboard = .general`)"))
+      }
+      return .visitChildren
+    }
+
+    /// The trailing component of a written type, so `AppKit.NSPasteboard` and an escaped spelling both
+    /// resolve. Same rule as every other name in this file: never compared as raw text.
+    private static func typeName(of type: TypeSyntax) -> String? {
+      if let identifier = type.as(IdentifierTypeSyntax.self) {
+        return identifierText(identifier.name)
+      }
+      if let member = type.as(MemberTypeSyntax.self) { return identifierText(member.name) }
+      return nil
+    }
+
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
       guard let callee = node.calledExpression.as(MemberAccessExprSyntax.self),
-        Self.trailingName(of: callee.base) == "PasteService",
-        ClipboardIsolationFreezeTests.clipboardFunctions.contains(
-          Self.identifierText(callee.declName.baseName))
+        Self.trailingName(of: callee.base) == "PasteService"
       else { return .visitChildren }
+
+      let calleeName = Self.identifierText(callee.declName.baseName)
+
+      if ClipboardIsolationFreezeTests.boardlessClipboardFunctions.contains(calleeName) {
+        violations.append(
+          Violation(
+            file: file, line: line(node),
+            reason:
+              "PasteService.\(calleeName) writes NSPasteboard.general internally and dispatches Cmd+V — no test may call it"
+          ))
+        return .visitChildren
+      }
+
+      guard ClipboardIsolationFreezeTests.clipboardFunctions.contains(calleeName) else {
+        return .visitChildren
+      }
 
       let name = Self.identifierText(callee.declName.baseName)
 
@@ -494,6 +559,36 @@ struct ClipboardIsolationFreezeTests {
     let hits = Self.violations(
       inSource: "func f() { \(call) }", file: "PasteServiceClipboardTests.swift")
     #expect(hits.count == expected, "call: \(call) -> \(hits.map(\.description))")
+  }
+
+  @Test(
+    "an entry point with no board parameter may not be called at all",
+    arguments: [
+      // (source, violations) — banned even in the allowlisted suite, because nothing can be passed.
+      (#"func f() { _ = PasteService.pasteToActiveApp("fixture") }"#, 1),
+      (##"func f() { _ = PasteService.`pasteToActiveApp`("fixture") }"##, 1),
+      (#"func f() { _ = EnviousWisprServices.PasteService.pasteToActiveApp("x") }"#, 1),
+      // Safe half: a same-named method on an unrelated type is not ours.
+      (#"func f() { _ = Other.pasteToActiveApp("x") }"#, 0),
+    ])
+  func aBoardlessEntryPointIsBannedOutright(source: String, expected: Int) {
+    let hits = Self.violations(inSource: source, file: "PasteServiceClipboardTests.swift")
+    #expect(hits.count == expected, "source: \(source) -> \(hits.map(\.description))")
+  }
+
+  @Test(
+    "a typed binding of .general is the real clipboard",
+    arguments: [
+      (#"func f() { let pb: NSPasteboard = .general; pb.clearContents() }"#, 1),
+      (#"func f() { let pb: AppKit.NSPasteboard = .general }"#, 1),
+      (#"func f() { let pb: NSPasteboard = (.general) }"#, 1),
+      // Safe halves: a unique board, and a `.general` on some other type entirely.
+      (#"func f() { let pb: NSPasteboard = NSPasteboard.withUniqueName() }"#, 0),
+      (#"func f() { let x: MyThing = .general }"#, 0),
+    ])
+  func aTypedBindingOfGeneralIsCaught(source: String, expected: Int) {
+    let hits = Self.violations(inSource: source, file: "Some.swift")
+    #expect(hits.count == expected, "source: \(source) -> \(hits.map(\.description))")
   }
 
   @Test("a module-qualified call that DOES name its board still passes")
