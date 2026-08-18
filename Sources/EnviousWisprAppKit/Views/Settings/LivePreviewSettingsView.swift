@@ -90,15 +90,42 @@ struct LivePreviewSettingsView: View {
       // continuously. Read live rather than snapshotted, for the same reason the
       // resolver reads it live: the answer must be current.
       heartIsStreaming: WhisperPreviewDeliveryWiring.heartIsStreaming(settings: settings),
-      active: packs.active,
+      // `currentActive`, like every other consumer. It is nil both when nothing
+      // has resolved yet and when what resolved is stale; the flag below tells
+      // the mapping which, and the mapping checks the flag first. No consumer
+      // reads `packs.active` directly, so there is no exception for the next
+      // reader to copy.
+      active: currentActive,
       // The model refuses to reload while an install runs, so `active` is stale
       // for that whole window and the card must not assert from it.
       anInstallIsInFlight: packs.installingTag != nil,
       // `load()` cannot run during an install, so switching language mid-download
       // leaves `active` describing the previous one. Compare what it was resolved
       // FOR against what is selected NOW rather than assuming they agree.
-      activeDescribesAnotherLanguage: packs.resolvedMode != nil
-        && packs.resolvedMode != settings.languageMode)
+      activeDescribesAnotherLanguage: activeDescribesAnotherLanguage)
+  }
+
+  /// **The ONE place staleness is decided, and every consumer of the resolved
+  /// language reads THIS rather than `packs.active`.**
+  ///
+  /// #2154, cloud review r3. An earlier fix guarded only the status card, so the
+  /// language panel still unwrapped `packs.active` directly and the "In use"
+  /// badge still derived from it — meaning a value known to describe the
+  /// PREVIOUS language kept driving two other surfaces. Three consumers with one
+  /// guard between them is not a fix, it is the first of three review rounds.
+  ///
+  /// nil means "we do not currently know", which every consumer already handles:
+  /// the card refuses, the panel hides, the badge marks nothing in use.
+  private var currentActive: LivePreviewPacksModel.ActiveLanguage? {
+    guard let mode = packs.resolvedMode, mode == settings.languageMode else { return nil }
+    return packs.active
+  }
+
+  /// True when the resolved value exists but describes a language the user has
+  /// since moved away from — the state the card reports rather than hides.
+  private var activeDescribesAnotherLanguage: Bool {
+    guard let mode = packs.resolvedMode else { return false }
+    return mode != settings.languageMode
   }
 
   private var showsApplePacks: Bool {
@@ -361,7 +388,9 @@ struct LivePreviewSettingsView: View {
   /// pack is producing words while the universal engine is the one drawing them.
   @ViewBuilder
   private var languageSection: some View {
-    if showsApplePacks, isPreviewOn, let active = packs.active {
+    // `currentActive`, never `packs.active` — a value resolved for a language the
+    // user has left must not describe this panel either.
+    if showsApplePacks, isPreviewOn, let active = currentActive {
       BrandedSection(header: LivePreviewSettingsCopy.activeHeader) {
         BrandedRow(showDivider: false) {
           VStack(alignment: .leading, spacing: 10) {
@@ -548,7 +577,8 @@ struct LivePreviewSettingsView: View {
   /// name a language that is not the one on screen. Both terms read the same
   /// values the section above does, so the two cannot disagree.
   private func isActive(_ pack: LivePreviewPack) -> Bool {
-    guard isUsingApple, isPreviewOn, case .ready(let tag, _) = packs.active else { return false }
+    // Same reason: an "In use" badge is a claim about the language running NOW.
+    guard isUsingApple, isPreviewOn, case .ready(let tag, _) = currentActive else { return false }
     return tag == pack.tag
   }
 

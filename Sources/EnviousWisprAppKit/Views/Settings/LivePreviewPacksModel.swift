@@ -136,18 +136,24 @@ final class LivePreviewPacksModel {
     let packs = await catalog.snapshot()
     // Ask the resolver the same question a recording asks, so the page reports what will really
     // happen rather than a second opinion assembled from the settings.
-    let resolved = await resolveCurrentActive()
+    let (resolved, resolvedFor) = await resolveCurrentActive()
     guard generation == mine else { return }
     failedTag = nil
     active = resolved
-    resolvedMode = currentMode()
+    resolvedMode = resolvedFor
     state = Self.state(for: packs)
   }
 
   /// The one way any path asks "which language is live". Reads the mode itself, so no caller can
   /// hand it a stale one.
-  private func resolveCurrentActive() async -> ActiveLanguage {
-    await resolveActive(currentMode())
+  private func resolveCurrentActive() async -> (ActiveLanguage, LanguageMode) {
+    // **The mode is captured BEFORE the await and returned WITH the value.**
+    // Reading `currentMode()` again after the resolver returns would stamp the
+    // answer with a mode that may have changed during the suspension, so the
+    // pair could claim to describe a language it was never resolved for — which
+    // defeats the entire point of publishing the mode. Cloud review r3.
+    let mode = currentMode()
+    return (await resolveActive(mode), mode)
   }
 
   /// The real resolution, through the same route the recording path uses.
@@ -221,11 +227,11 @@ final class LivePreviewPacksModel {
       do {
         let refreshed = try await catalog.install(tag: tag)
         guard let self, !Task.isCancelled, self.generation == mine else { return }
-        let resolved = await self.resolveCurrentActive()
+        let (resolved, resolvedFor) = await self.resolveCurrentActive()
         guard !Task.isCancelled, self.generation == mine else { return }
         self.state = Self.state(for: refreshed)
         self.active = resolved
-        self.resolvedMode = self.currentMode()
+        self.resolvedMode = resolvedFor
         self.installingTag = nil
       } catch {
         // Re-read rather than trusting the failure: Apple may have installed it and then thrown
@@ -241,7 +247,7 @@ final class LivePreviewPacksModel {
         // Republished here too: Apple can install the pack and THEN throw, so this branch reaches
         // the same "the language just arrived" state the success branch does. Leaving it out kept
         // the summary saying the language was missing over a row that had installed.
-        let resolved = await self.resolveCurrentActive()
+        let (resolved, resolvedFor) = await self.resolveCurrentActive()
         guard !Task.isCancelled, self.generation == mine else { return }
         self.installingTag = nil
         // Only call it a failure if the pack is STILL missing. Apple can install successfully and
@@ -252,7 +258,7 @@ final class LivePreviewPacksModel {
         self.failedTag = landed ? nil : tag
         self.state = Self.state(for: refreshed)
         self.active = resolved
-        self.resolvedMode = self.currentMode()
+        self.resolvedMode = resolvedFor
       }
     }
   }

@@ -98,4 +98,47 @@ struct LanguageLockOptionsTests {
       "positive control failed: the sweep cannot see the owner's own call, so its silence proves nothing"
     )
   }
+
+  /// #2154, cloud review r3. **Every consumer of the resolved language must read
+  /// the staleness owner, not `packs.active` directly.**
+  ///
+  /// An earlier fix guarded only the status card, so the language panel and the
+  /// "In use" badge kept deriving from a value known to describe the PREVIOUS
+  /// language. Three consumers with one guard between them is not a fix, it is
+  /// the first of three review rounds. This fails if a future consumer
+  /// reintroduces a direct read.
+  ///
+  /// Guards over source TEXT are weak by construction (an alias walks past
+  /// this), which is why it is paired with behavioural tests on the mapping
+  /// rather than standing alone. It catches the mistake actually made — copying
+  /// the obvious accessor — not every conceivable one.
+  @Test("Only the staleness owner reads the resolved language directly")
+  func everyConsumerGoesThroughTheStalenessOwner() throws {
+    let view = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent(
+        "Sources/EnviousWisprAppKit/Views/Settings/LivePreviewSettingsView.swift")
+    let source = try String(contentsOf: view, encoding: .utf8)
+
+    // Strip comments: the owner's own doc comment names the accessor it
+    // replaces, and a matcher that cannot tell an ACTION from PROSE about one is
+    // the precision failure this repo keeps hitting.
+    let code = source
+      .split(separator: "\n", omittingEmptySubsequences: false)
+      .filter {
+        let t = $0.trimmingCharacters(in: .whitespaces)
+        return !t.hasPrefix("//") && !t.hasPrefix("///")
+      }
+      .joined(separator: "\n")
+
+    let reads = code.components(separatedBy: "packs.active").count - 1
+    #expect(
+      reads == 1,
+      "expected exactly one direct read of the resolved language, inside the staleness owner; found \(reads)")
+
+    // Two-way control: the sweep can see the string at all, so a wrong path
+    // cannot pass as a clean result.
+    #expect(code.contains("currentActive"), "positive control: the owner is not in the file the sweep read")
+  }
 }
