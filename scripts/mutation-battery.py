@@ -397,6 +397,7 @@ class Lane:
         self.worktree = worktree
         self.derived_data = derived_data
         self.log_dir = log_dir
+        self.log_dir.mkdir(parents=True, exist_ok=True)
         self.generated = False
 
     def generate_once(self):
@@ -784,8 +785,10 @@ def main(argv=None):
     # the shared warm cache while an operator believed it was isolated — colliding with another lane,
     # or reusing different incremental artifacts. Cloud review, PR #2158.
     derived = Path(os.environ.get("DERIVED_DATA_PATH") or (worktree / ".derivedData" / "Test"))
+    # NOT created here: --validate-only is documented as running nothing and touching nothing, and an
+    # unconditional mkdir both breaks that promise and crashes on a read-only checkout. The Lane makes
+    # it when a lane is actually about to write a log.
     log_dir = worktree / "build" / "mutation-battery"
-    log_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"worktree: {worktree}")
     rc, branch = run(["git", "branch", "--show-current"], cwd=worktree)
@@ -913,7 +916,18 @@ def main(argv=None):
         except Exception as exc:  # noqa: BLE001 — any row failure is this row's problem, not the run's
             detail = f"row raised {type(exc).__name__}: {exc}"
         finally:
-            shutil.copy2(backup, target)
+            try:
+                shutil.copy2(backup, target)
+            except OSError as exc:
+                print(
+                    f"\nSTOPPING. Could not restore {target}: {exc}\n"
+                    f"The file is still MUTATED. Its original is at {backup} — copy it back by hand "
+                    f"before running anything else, including the test suite.",
+                    file=sys.stderr,
+                )
+                # Leave the backup in place: it is the only copy of the original.
+                _ACTIVE_RESTORES.pop(target, None)
+                return 1
             # `copy2` restores the original MODIFICATION TIME as well as the bytes, and that is a bug
             # here rather than a nicety. xcodebuild's incremental check is timestamp-based against a
             # deliberately WARM DerivedData: if the replacement happened to be the same SIZE as the

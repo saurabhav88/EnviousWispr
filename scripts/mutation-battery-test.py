@@ -1232,6 +1232,60 @@ try:
 finally:
     Path.write_text = _real_wt
 
+# The restore COPY itself can fail — disk full, destination unwritable. That used to escape the
+# `finally` before verification and backup cleanup, leaving the source MUTATED with its .mutbak
+# alongside and no controlled stop. Last round handled the restore producing WRONG BYTES; this is the
+# restore FAILING OUTRIGHT.
+ran += 1
+_real_copy = battery.shutil.copy2
+_copies = []
+
+
+def _copy_then_fail(src, dst, *a, **k):
+    _copies.append((str(src), str(dst)))
+    if str(src).endswith(".mutbak"):      # the RESTORE direction only; the backup must still be made
+        raise OSError(28, "No space left on device")
+    return _real_copy(src, dst, *a, **k)
+
+
+battery.shutil.copy2 = _copy_then_fail
+try:
+    try:
+        _rc, _out, _after, _during = drive_row((5, [], True, "log", 0, 3.0),
+                                               expect_verdict=None, expect_detail=None)
+    except BaseException as _esc:   # noqa: BLE001 — escaping IS the defect this case exists for
+        _rc, _out = -1, f"escaped as {type(_esc).__name__}"
+    if "STOPPING" not in _out or "still MUTATED" not in _out:
+        failures.append("a failing restore COPY stops with a recovery path — it did not: "
+                        + _out.strip()[:200])
+    elif _rc != 1:
+        failures.append(f"a failing restore COPY stops with a recovery path — exit {_rc}, wanted 1")
+    else:
+        print("  ok  a failing restore COPY stops with a recovery path")
+finally:
+    battery.shutil.copy2 = _real_copy
+
+# --validate-only is documented as running nothing and touching nothing. An unconditional mkdir broke
+# that promise and crashed on a read-only checkout.
+ran += 1
+with tempfile.TemporaryDirectory() as td:
+    tmp = make_tree(Path(td))
+    recipes = tmp / "r.json"
+    recipes.write_text(json.dumps({"rows": [dict(VALID_ROW)]}))
+    proc = subprocess.run(
+        [sys.executable, str(BATTERY), "--recipes", str(recipes),
+         "--worktree", str(tmp), "--validate-only"],
+        capture_output=True, text=True, env=NEUTRAL_ENV,
+    )
+    if proc.returncode != 0:
+        failures.append("--validate-only creates nothing in the worktree — it exited "
+                        f"{proc.returncode}")
+    elif (tmp / "build").exists():
+        failures.append("--validate-only creates nothing in the worktree — it created "
+                        "build/mutation-battery anyway")
+    else:
+        print("  ok  --validate-only creates nothing in the worktree")
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")
