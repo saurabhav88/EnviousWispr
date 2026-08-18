@@ -906,6 +906,41 @@ if _seen.get("derived") != _probe:
 else:
     print("  ok  the battery honours DERIVED_DATA_PATH like the canonical lane")
 
+# The dev-app refusal exists because concurrent app-log writes corrupt the AppLogger tests. That
+# reasoning is entirely about RUNNING tests, so a validation pass — which runs no lane and mutates
+# nothing — must not be refused for a condition that cannot affect it. Measured when a peer's UAT app
+# blocked a read-only recipe check.
+for _label, _will_run, _want_refusal in [
+    ("a run that WILL execute tests still refuses while a dev app is up", True, True),
+    ("a validate-only pass is NOT refused for a dev app it cannot be affected by", False, False),
+]:
+    ran += 1
+    _real_run3 = battery.run
+    # Report a live dev app whatever is asked, so the only variable is whether preflight consults it.
+    battery.run = lambda cmd, cwd, log_path=None, timeout=None: (0, "43962\n")
+    _real_canon = battery.check_canonical_settings
+    battery.check_canonical_settings = lambda wt: None
+    # The suite neutralises check_no_dev_app globally (line ~347) so unrelated cases do not depend on
+    # what else is running on the box. This case is ABOUT that check, so put the real one back.
+    _neutralised = battery.check_no_dev_app
+    battery.check_no_dev_app = _REAL_CHECK_NO_DEV_APP
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            _tmp = make_tree(Path(td))
+            try:
+                battery.preflight(_tmp, will_run_tests=_will_run)
+                _got = False
+            except battery.Refusal as exc:
+                _got = "A dev app is running" in str(exc)
+    finally:
+        battery.run = _real_run3
+        battery.check_canonical_settings = _real_canon
+        battery.check_no_dev_app = _neutralised
+    if _got != _want_refusal:
+        failures.append(f"{_label}: refused={_got}, wanted {_want_refusal}")
+    else:
+        print(f"  ok  {_label}")
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")

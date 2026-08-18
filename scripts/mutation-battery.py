@@ -412,9 +412,18 @@ def check_no_dev_app(worktree: Path):
         )
 
 
-def preflight(worktree: Path):
+def preflight(worktree: Path, *, will_run_tests: bool = True):
+    """`will_run_tests=False` for --validate-only, which runs no lane and mutates nothing.
+
+    The dev-app refusal exists because concurrent app-log writes corrupt the AppLogger tests and score
+    as mutants CAUGHT (#2080). That reasoning is entirely about RUNNING tests, so applying it to a
+    validation pass refuses a read-only check for a condition that cannot affect it — measured the first
+    time a peer's UAT app blocked a recipe validation that touches nothing. Scope a guard to the
+    situation its reasoning covers; a guard that refuses more than its reason supports trains bypasses.
+    """
     check_canonical_settings(worktree)
-    check_no_dev_app(worktree)
+    if will_run_tests:
+        check_no_dev_app(worktree)
     leftovers = list(worktree.rglob("*.mutbak"))
     if leftovers:
         raise Refusal(
@@ -648,7 +657,7 @@ def main(argv=None):
     print(f"branch:   {branch.strip()} @ {head.strip()[:12]}")
 
     try:
-        preflight(worktree)
+        preflight(worktree, will_run_tests=not args.validate_only)
         if args.from_issue is not None:
             print(f"recipe:   issue #{args.from_issue}")
             rows = load_recipes(None, worktree, raw=recipes_from_issue(args.from_issue, worktree))
