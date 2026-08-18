@@ -390,6 +390,16 @@ struct LivePreviewSettingsView: View {
   private var languageSection: some View {
     // `currentActive`, never `packs.active` — a value resolved for a language the
     // user has left must not describe this panel either.
+    // **The language control is NOT Apple-specific, and gating it on the pack
+    // list stranded universal users.** `showsApplePacks` correctly hides Apple's
+    // PACK TABLE on the other engine — those are Apple's languages. But the
+    // universal engine honours a LOCK too (`WhisperPreviewEngineResolver` maps
+    // `.locked(code)` straight through and only `.auto` becomes nil), so a user
+    // locked to the wrong language had no way to see or change it from the page
+    // that was telling them the preview was ready. Review r7.
+    if isPreviewOn, !isUsingApple {
+      universalLanguageSection
+    }
     if showsApplePacks, isPreviewOn, let active = currentActive {
       BrandedSection(header: LivePreviewSettingsCopy.activeHeader) {
         BrandedRow(showDivider: false) {
@@ -400,6 +410,44 @@ struct LivePreviewSettingsView: View {
             // whole problem was not knowing where the language comes from, and
             // an explanation you must first discover does not solve that.
             InsetNotice(text: LivePreviewSettingsCopy.activeExplainer)
+          }
+        }
+      }
+    }
+  }
+
+  /// The universal engine's language row.
+  ///
+  /// Deliberately simpler than Apple's: there is no pack to resolve, so there is
+  /// no needs-download or unsupported state to describe. What it must NOT do is
+  /// stay silent — this engine follows a lock, and the whole point of the row is
+  /// that a user locked to the wrong language can see it and change it.
+  @ViewBuilder
+  private var universalLanguageSection: some View {
+    BrandedSection(header: LivePreviewSettingsCopy.activeHeader) {
+      BrandedRow(showDivider: false) {
+        HStack(alignment: .top, spacing: 11) {
+          SettingsRowIcon(systemName: "globe")
+          VStack(alignment: .leading, spacing: 4) {
+            switch settings.languageMode {
+            case .locked(let code):
+              let entry = LanguageCatalog.entry(for: code)
+              Text(LivePreviewSettingsCopy.universalLocked(entry.englishName))
+                .settingsRowLabel()
+              Text(LivePreviewSettingsCopy.universalLockedHelp).settingsHelperCopy()
+            case .auto:
+              Text(LivePreviewSettingsCopy.universalAuto).settingsRowLabel()
+              Text(LivePreviewSettingsCopy.universalAutoHelp).settingsHelperCopy()
+            }
+          }
+          Spacer(minLength: 8)
+          VStack(alignment: .trailing, spacing: 3) {
+            Button(LivePreviewSettingsCopy.changeLanguageButton) { showLanguageSheet = true }
+              .controlSize(.small)
+            Text(LivePreviewSettingsCopy.changeLanguageHelp)
+              .settingsHelperCopy()
+              .multilineTextAlignment(.trailing)
+              .frame(maxWidth: 190, alignment: .trailing)
           }
         }
       }

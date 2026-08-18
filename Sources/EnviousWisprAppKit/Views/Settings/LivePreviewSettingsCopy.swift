@@ -310,6 +310,22 @@ enum LivePreviewSettingsCopy {
 
   static let changeLanguageButton = "Change"
 
+  /// **The universal engine follows a LOCK, and only auto-detects on Auto.**
+  /// `WhisperPreviewEngineResolver` maps `.locked(code)` straight through to the
+  /// recognizer and only `.auto` becomes nil. An earlier draft of this page hid
+  /// the language control entirely on that engine, and the help article claimed
+  /// it always detects for itself — both wrong in the same direction, and the
+  /// user they stranded is the one locked to the wrong language with no way to
+  /// see or change it from here. Cloud/local review r7.
+  static func universalLocked(_ name: String) -> String {
+    "Your words will appear in \(name)."
+  }
+  static let universalLockedHelp =
+    "The preview follows the language you picked for dictation, under Transcription."
+  static let universalAuto = "The preview detects your language as you speak."
+  static let universalAutoHelp =
+    "On Auto this engine works out the language itself, so there is nothing to set."
+
   /// Says the consequence out loud. Picking a language here is not a
   /// preview-only setting: it sets the DICTATION language, on a different page.
   /// A button that silently edits another page's setting is how a user loses

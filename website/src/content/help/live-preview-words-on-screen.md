@@ -50,9 +50,9 @@ This works differently on the two engines, and the difference only matters if yo
 
 **On Apple**, the preview follows the language you picked for dictation, under **Transcription**. On **Auto** it has nothing to follow yet, because it must commit to one language before you say your first word, so it goes by your Mac's language instead. Dictation still understands whatever you actually speak. Only the words on screen may come out in the wrong language until you pick one. You can change the language from the Live Preview page using the **Change** button beside it, which sets your dictation language everywhere, not just the preview.
 
-**On Universal**, there is nothing to set. The model works out which language you are speaking on its own, so **Auto** is not a problem for it and no Change button appears.
+**On Universal**, it depends on the same setting. If you have picked a language for dictation, the preview uses that one. If your dictation language is **Auto**, this engine works out the language itself as you speak, so Auto is not a problem for it. Either way the **Change** button is there if the language is wrong.
 
-The language section and the **Change** button are shown only when the Apple engine is selected and Live Preview is switched on, because they describe Apple's languages specifically.
+The list of downloadable languages further down is Apple's, so it only appears with the Apple engine selected. The language row and the **Change** button appear for both engines whenever Live Preview is switched on.
 
 ### If you see no words at all
 
