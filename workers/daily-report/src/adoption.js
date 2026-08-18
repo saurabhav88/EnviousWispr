@@ -155,10 +155,18 @@ export function createAdoptionSection(env, context, opts = {}) {
   //
   // `er_attempts` rides along because attempts-versus-keeps is its own question,
   // and a keep count with no denominator answers nothing.
-  // `clipboard_only` is a softer signal on the restore half: the original app
-  // had gone or refused focus, so the words reached the clipboard instead of
-  // the field. Still a restore, which is why it is reported separately from a
-  // failure rather than added to one.
+  // RESTORES ARE SPLIT BY `source`, because one event covers two buttons.
+  // `pill` is the three-second Undo; `history` is the Paste inside History,
+  // which the user reaches minutes or hours later and which reports `.pasted`
+  // unconditionally. Calling both "taken back with Undo" names a button the
+  // person did not press. History rows also stay available after a paste, so
+  // `history` can exceed the number of keeps in the same window — legitimately,
+  // and only confusing if the two are added together.
+  //
+  // `clipboard_only` is a softer signal across both: the original app had gone
+  // or refused focus, so the words reached the clipboard instead of the field.
+  // Still a restore, which is why it is reported apart from a failure rather
+  // than added to one.
   const totalsSql = `
     SELECT
       countIf(event = 'dictation.completed' AND properties.result = 'success')
@@ -175,7 +183,10 @@ export function createAdoptionSection(env, context, opts = {}) {
               AND properties.outcome = 'transcription_failed') AS er_failed_transcription,
       countIf(event = 'escape_recovery.completed'
               AND properties.outcome = 'save_failed') AS er_failed_save,
-      countIf(event = 'escape_recovery.restored') AS er_restored,
+      countIf(event = 'escape_recovery.restored'
+              AND properties.source = 'pill') AS er_undone,
+      countIf(event = 'escape_recovery.restored'
+              AND properties.source = 'history') AS er_from_history,
       countIf(event = 'escape_recovery.restored'
               AND properties.paste_result = 'clipboard_only') AS er_restored_clipboard_only
     FROM events
@@ -278,7 +289,8 @@ export function createAdoptionSection(env, context, opts = {}) {
           keptUsers: rowsToObjects(totals)[0]?.er_kept_users ?? 0,
           failedTranscription: rowsToObjects(totals)[0]?.er_failed_transcription ?? 0,
           failedSave: rowsToObjects(totals)[0]?.er_failed_save ?? 0,
-          restored: rowsToObjects(totals)[0]?.er_restored ?? 0,
+          undone: rowsToObjects(totals)[0]?.er_undone ?? 0,
+          fromHistory: rowsToObjects(totals)[0]?.er_from_history ?? 0,
           clipboardOnly: rowsToObjects(totals)[0]?.er_restored_clipboard_only ?? 0,
         },
       };

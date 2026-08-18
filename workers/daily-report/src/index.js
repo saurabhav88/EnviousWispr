@@ -319,21 +319,40 @@ export function formatAdoption(data, buckets) {
     const attempts = er.attempts ?? 0;
     const kept = er.kept ?? 0;
     const people = er.keptUsers ?? 0;
-    const restored = er.restored ?? 0;
+    const undone = er.undone ?? 0;
+    const fromHistory = er.fromHistory ?? 0;
     const clipboardOnly = er.clipboardOnly ?? 0;
     const failedTranscription = er.failedTranscription ?? 0;
     const failedSave = er.failedSave ?? 0;
 
     const clauses = [];
+    // ATTEMPTS AND SAVES ARE SEPARATE CLAUSES. A recovery can start just before
+    // the day boundary and complete just after it, so attempts=0 with kept>0 is
+    // reachable — and the previous revision nested the save inside the attempt
+    // clause, which omitted that success entirely.
     if (attempts > 0) {
       clauses.push(
-        `${attempts} cancelled dictation${attempts === 1 ? " was" : "s were"} held, ` +
-          `${kept} saved for ${people} ${people === 1 ? "person" : "people"}.`
+        `${attempts} cancelled dictation${attempts === 1 ? " was" : "s were"} held.`
       );
     }
-    if (restored > 0) {
+    if (kept > 0) {
       clauses.push(
-        `${restored} ${restored === 1 ? "was" : "were"} taken back with Undo.`
+        `${kept} ${kept === 1 ? "was" : "were"} saved for ${people} ` +
+          `${people === 1 ? "person" : "people"}.`
+      );
+    }
+    // Two buttons, one event. Naming them apart is not pedantry: they are
+    // reached differently and mean different things about the feature. The pill
+    // is the three-second offer working; History is the user going and finding
+    // it later, which is the fallback doing its job.
+    if (undone > 0) {
+      clauses.push(
+        `${undone} ${undone === 1 ? "was" : "were"} taken back with Undo.`
+      );
+    }
+    if (fromHistory > 0) {
+      clauses.push(
+        `${fromHistory} ${fromHistory === 1 ? "was" : "were"} pasted later from History.`
       );
     }
     // Named apart, because they are different defects and one is worse. A save
