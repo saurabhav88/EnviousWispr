@@ -164,6 +164,13 @@ CANONICAL_ASSIGNMENTS = [
 # Expansions the runner knows the contents of, because CANONICAL_ASSIGNMENTS pins each one. An
 # expansion NOT in this set hides arguments the runner cannot see, so it is a refusal rather than a
 # token to skip — the difference between "I checked and it matches" and "I could not look".
+# The expansions the canonical invocation must pass, IN ORDER. A set membership test accepted a lane
+# that had DELETED `"${TEST_ARGS[@]}"` — it would stop filtering to one suite and run everything — and
+# accepted `"$scheme"` and `"$config"` swapped, which builds a different configuration. An argument
+# list is defined by its order, so the comparison has to be ordered too. Cloud review, PR #2158.
+CANONICAL_EXPANSION_SEQUENCE = [
+    '"$PROJECT"', '"$scheme"', '"$config"', '"$DERIVED_DATA"', '"$DEST"', '"$@"', '"${TEST_ARGS[@]}"',
+]
 CANONICAL_EXPANSIONS = {
     '"$PROJECT"', '"$scheme"', '"$config"', '"$DERIVED_DATA"', '"$DEST"',
     '"$@"', '"${TEST_ARGS[@]}"',
@@ -224,6 +231,11 @@ def _restore_active(reason: str):
 
 def _install_restore_on_signal():
     def handler(signum, _frame):
+        # Ignore further signals FIRST. A second one arriving inside the restore loop re-enters this
+        # handler and reaches the re-raise below before the remaining targets are copied back, so a
+        # double Ctrl-C would leave files mutated.
+        for other in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT):
+            signal.signal(other, signal.SIG_IGN)
         # Reap the lane FIRST. Restoring the file while xcodebuild's group survives leaves an orphan
         # running mutant tests and writing the shared DerivedData after we are gone — the file looks
         # recovered and the machine is not. Fixing only the timeout path last round missed this exit.
@@ -233,7 +245,7 @@ def _install_restore_on_signal():
         signal.signal(signum, signal.SIG_DFL)
         os.kill(os.getpid(), signum)
 
-    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT):
         signal.signal(sig, handler)
 
 
@@ -488,11 +500,13 @@ def check_canonical_settings(worktree: Path):
     raw_tokens = [tok for tok in match.group(1).split() if tok != "\\"]
     expansions = [tok for tok in raw_tokens if "$" in tok]
     unknown_expansions = sorted(set(expansions) - CANONICAL_EXPANSIONS)
+    expansion_sequence = expansions if expansions != CANONICAL_EXPANSION_SEQUENCE else None
     found = {tok for tok in raw_tokens if "$" not in tok}
     missing_tokens = sorted(CANONICAL_TOKENS - found)
     extra_tokens = sorted(found - CANONICAL_TOKENS)
 
-    if missing_assignments or missing_tokens or extra_tokens or unknown_expansions or invocation_prefix:
+    if (missing_assignments or missing_tokens or extra_tokens or unknown_expansions
+            or invocation_prefix or expansion_sequence is not None):
         lines = []
         if missing_assignments:
             lines.append("  settings the runner expects and the script no longer has:")
@@ -500,6 +514,11 @@ def check_canonical_settings(worktree: Path):
         if missing_tokens:
             lines.append("  invocation tokens the runner expects and the script no longer passes:")
             lines += [f"    - {m}" for m in missing_tokens]
+        if expansion_sequence is not None:
+            lines.append("  the invocation's shell expansions are not the ones this runner "
+                         "reproduces, in order:")
+            lines.append(f"    expected: {CANONICAL_EXPANSION_SEQUENCE}")
+            lines.append(f"    found:    {expansion_sequence}")
         if extra_tokens:
             lines.append("  tokens the script now passes and the runner does NOT reproduce:")
             lines += [f"    + {m}" for m in extra_tokens]
@@ -819,6 +838,12 @@ def main(argv=None):
     lane = Lane(worktree, derived, log_dir)
     suites = {row["suite"] for row in rows}
 
+    # BEFORE anything can spawn a lane. Installed after the opening baseline, a signal during `tuist
+    # generate` or the baseline itself took Python's default action and left that child's process group
+    # orphaned on the shared DerivedData. Nothing is mutated yet, so the restore half is a no-op here —
+    # the reaping half is not.
+    _install_restore_on_signal()
+
     print(f"\n[1/3] baseline on a clean tree — {len(suites)} suite(s)")
     try:
         problems = baseline(lane, suites, "before")
@@ -838,7 +863,6 @@ def main(argv=None):
         print("\n--dry-run: recipes validated, baseline green, nothing mutated.")
         return 0
 
-    _install_restore_on_signal()
     print(f"\n[2/3] {len(rows)} mutation(s), one at a time")
     results = []
     for i, row in enumerate(rows, 1):

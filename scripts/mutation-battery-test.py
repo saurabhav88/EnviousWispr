@@ -316,6 +316,20 @@ with tempfile.TemporaryDirectory() as td:
     else:
         print("  ok  an unreadable recipe file refuses with exit 2, not a traceback")
 
+# The expansions were allowlisted but not REQUIRED and not tied to position, so a lane that DELETED
+# `"${TEST_ARGS[@]}"` (it would stop filtering and run everything) or SWAPPED scheme and config passed.
+# An argument list is defined by its order.
+check("a canonical lane that dropped the test filter refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="in order",
+      extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
+          '    "${TEST_ARGS[@]}" | tee', '    | tee')})
+
+check("a canonical lane with scheme and config swapped refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="in order",
+      extra_files={"scripts/xcode-test.sh": CANONICAL_STUB
+                   .replace('-scheme "$scheme"', '-scheme "$config"')
+                   .replace('-configuration "$config"', '-configuration "$scheme"')})
+
 # --- flag-combination guard -----------------------------------------------------------------------
 ran += 1
 with tempfile.TemporaryDirectory() as td:
@@ -1285,6 +1299,63 @@ with tempfile.TemporaryDirectory() as td:
                         "build/mutation-battery anyway")
     else:
         print("  ok  --validate-only creates nothing in the worktree")
+
+# The cancellation handler must be installed BEFORE anything can spawn a lane. Installed after the
+# opening baseline, a signal during `tuist generate` or the baseline itself took Python's default
+# action and orphaned that child's process group on the shared DerivedData.
+ran += 1
+_installed_at = []
+_real_sig = battery.signal.signal
+_real_base = battery.baseline
+battery.signal.signal = lambda sig, fn: _installed_at.append("handler")
+battery.baseline = lambda lane, suites, phase: (_installed_at.append(f"baseline-{phase}"), [])[1]
+
+
+class _NullLane:
+    def __init__(self, *a, **k):
+        pass
+
+    def generate_once(self):
+        _installed_at.append("generate")
+
+
+try:
+    _rl = battery.Lane
+    battery.Lane = _NullLane
+    with tempfile.TemporaryDirectory() as td:
+        tmp = make_tree(Path(td))
+        recipes = tmp / "r.json"
+        recipes.write_text(json.dumps({"rows": [dict(VALID_ROW)]}))
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            battery.main(["--recipes", str(recipes), "--worktree", str(tmp), "--dry-run"])
+finally:
+    battery.signal.signal = _real_sig
+    battery.baseline = _real_base
+    battery.Lane = _rl
+
+if "handler" not in _installed_at:
+    failures.append("cancellation handlers are installed before any lane can start — none was")
+elif _installed_at.index("handler") > _installed_at.index("baseline-before"):
+    failures.append("cancellation handlers are installed before any lane can start — they were "
+                    f"installed AFTER the opening baseline: {_installed_at}")
+else:
+    print("  ok  cancellation handlers are installed before any lane can start")
+
+# SIGQUIT (Ctrl-\ on a stuck overnight terminal) died by default action, leaving the file MUTATED.
+ran += 1
+_signals = []
+battery.signal.signal = lambda sig, fn: _signals.append(sig)
+try:
+    battery._install_restore_on_signal()
+finally:
+    battery.signal.signal = _real_sig
+_missing_sigs = [s for s in (battery.signal.SIGTERM, battery.signal.SIGINT,
+                             battery.signal.SIGHUP, battery.signal.SIGQUIT) if s not in _signals]
+if _missing_sigs:
+    failures.append("every terminating signal is handled — these are not: "
+                    + ", ".join(str(s) for s in _missing_sigs))
+else:
+    print("  ok  every terminating signal is handled")
 
 print()
 if failures:
