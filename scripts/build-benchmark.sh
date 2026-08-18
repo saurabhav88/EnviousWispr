@@ -36,14 +36,24 @@ set -uo pipefail
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/lib/ensure-generated.sh
 . "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
+# shellcheck source=scripts/lib/spm-seed.sh
+. "$PROJECT_ROOT/scripts/lib/spm-seed.sh"
+trap 'ew_seed_release_all' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 LANE="dev"
 COLD=0
+SEED=1
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --test) LANE="test"; shift ;;
     --cold) COLD=1; shift ;;
-    *) echo "usage: scripts/build-benchmark.sh [--test] [--cold]" >&2; exit 2 ;;
+    # Measuring the SAVING needs both sides. Without this there is no way to
+    # time an unseeded resolve once a snapshot exists for this key.
+    --no-seed) SEED=0; shift ;;
+    *) echo "usage: scripts/build-benchmark.sh [--test] [--cold] [--no-seed]" >&2; exit 2 ;;
   esac
 done
 
@@ -81,7 +91,34 @@ phase() { # name command...
 
 run_generate() { ew_ensure_generated "$PROJECT_ROOT"; }
 
+# Set by run_resolve so the report describes what HAPPENED rather than what was
+# asked for. Three outcomes, and the third is the one a single flag would hide.
+SEED_OUTCOME="SKIPPED (--no-seed)"
+
 run_resolve() {
+  # The shipped scripts seed, then resolve, then discard the clone and resolve
+  # again unseeded if it will not validate. Timing anything else measures a path
+  # that does not ship, which is the misattribution this script exists to end.
+  if [ "$SEED" = "1" ]; then
+    ew_seed_consume "$PROJECT_ROOT" "$DERIVED"
+  fi
+
+  if [ "$EW_SEED_CONSUMED" = "1" ]; then
+    SEED_OUTCOME="HIT (cloned an existing snapshot)"
+    ew_seed_resolve_or_unseed "$DERIVED" \
+      xcodebuild -resolvePackageDependencies \
+        -project EnviousWispr.xcodeproj -scheme "$SCHEME" \
+        -derivedDataPath "$DERIVED" || return $?
+    # The helper clears the flag when it discarded the clone, so the phase timing
+    # covers a clone AND a full re-resolve. Reporting that as a plain HIT would
+    # publish the slowest possible reading under the fastest possible label.
+    if [ "$EW_SEED_CONSUMED" != "1" ]; then
+      SEED_OUTCOME="HIT then DISCARDED (clone would not resolve; retried unseeded)"
+    fi
+    return 0
+  fi
+
+  [ "$SEED" = "1" ] && SEED_OUTCOME="MISS (no snapshot for this key; resolved from scratch)"
   xcodebuild -resolvePackageDependencies \
     -project EnviousWispr.xcodeproj -scheme "$SCHEME" \
     -derivedDataPath "$DERIVED"
@@ -92,11 +129,13 @@ run_build() {
     xcodebuild build-for-testing -project EnviousWispr.xcodeproj -scheme "$SCHEME" \
       -configuration "$CONFIG" -derivedDataPath "$DERIVED" \
       -destination 'platform=macOS,arch=arm64' \
+      -onlyUsePackageVersionsFromResolvedFile \
         ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
   else
     xcodebuild build -project EnviousWispr.xcodeproj -scheme "$SCHEME" \
       -configuration "$CONFIG" -derivedDataPath "$DERIVED" \
       -destination 'generic/platform=macOS' \
+      -onlyUsePackageVersionsFromResolvedFile \
         ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
   fi
 }
@@ -110,6 +149,10 @@ run_execute() {
 # --- Contention gate ----------------------------------------------------------
 # A timing taken while another build saturates the machine measures the machine,
 # not the code. Refuse rather than record a number nobody can compare.
+# KNOWN LIMIT, stated rather than implied by the refusal: this is an
+# INSTANTANEOUS absence, and a sequential battery is a chain of short builds
+# with gaps between them, so it can pass here mid-run. It catches the common
+# case (a build in flight) and cannot certify a quiet machine.
 if pgrep -x xcodebuild >/dev/null 2>&1 || pgrep -x tuist >/dev/null 2>&1; then
   echo "REFUSING: another xcodebuild/tuist is running — a contended timing is not comparable." >&2
   echo "Wait for it to clear, or accept that the number describes the machine, not the build." >&2
@@ -119,20 +162,31 @@ fi
 : > "$LOGDIR/phases.env"
 [ "$COLD" = "1" ] && { echo "==> Cold run: removing $DERIVED"; rm -rf "$DERIVED"; }
 
-SEED_STATE="n/a (chunk A not yet landed)"
+# Reported in TWO parts, because they answer different questions and a single
+# line conflated them. INTENT is known now; the OUTCOME is only known after the
+# resolve phase has run, and a hardcoded outcome is a number nobody can trust.
+if [ "$SEED" = "1" ]; then SEED_INTENT="enabled"; else SEED_INTENT="disabled (--no-seed)"; fi
 
 echo "=== EnviousWispr build benchmark — lane=$LANE config=$CONFIG cold=$COLD ==="
 echo "machine : $MACHINE / $CPU / ${CORES} cores / ${RAM_GB} GB"
 echo "toolchain: $XCODE| SDK $SDK | $EW_TUIST_PIN"
 echo "load at start: $LOADAVG"
-echo "seed     : $SEED_STATE"
+echo "seed     : $SEED_INTENT"
 echo "--- phases ---"
 
 # A phase that FAILED produces a meaningless duration. Exiting on it is what
 # stops this script reporting a confident number for a build that did not happen.
 phase generate run_generate || exit $?
 phase resolve  run_resolve  || exit $?
+# The OBSERVED outcome, read off the run rather than assumed. A benchmark that
+# says nothing about whether the cache hit cannot be compared with one that did.
+printf '  %-22s %s\n' "seed outcome" "$SEED_OUTCOME"
 phase build    run_build    || exit $?
+# Publish only after a successful build, exactly as the shipped scripts do, so
+# a half-resolved tree is never promoted. This DOES change what a later --cold
+# run measures: with a snapshot present, cold means "a fresh checkout that can
+# seed", which is the real cold path. Use --no-seed for the unseeded side.
+if [ "$SEED" = "1" ]; then ew_seed_publish "$PROJECT_ROOT" "$DERIVED"; fi
 if [ "$LANE" = "test" ]; then
   phase execute run_execute || exit $?
 fi

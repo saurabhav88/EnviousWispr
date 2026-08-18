@@ -172,6 +172,7 @@ ew_seed_consume() {
   if cp -Rc "$snap" "$tmp" 2>/dev/null && ew_seed_is_complete "$tmp" \
      && ew_seed_rename_exclusive "$tmp" "$target"; then
     ew_seed_lock_release "$key"
+    EW_SEED_CONSUMED=1
     echo "==> Seeded packages from snapshot ${key:0:12} (copy-on-write)"
     return 0
   fi
@@ -184,6 +185,54 @@ ew_seed_consume() {
   return 0
 }
 
+
+# Did the CURRENT process consume a seed? Read by `ew_seed_resolve_or_unseed`,
+# which is the only thing entitled to discard a tree it did not create.
+EW_SEED_CONSUMED=0
+
+# ew_seed_resolve_or_unseed <derived_data_path> <resolve command...>
+#
+# THE COMPLETENESS CHECK IS SHALLOW BY DESIGN, SO SOMETHING HAS TO CATCH WHAT IT
+# MISSES. `ew_seed_is_complete` tests for a workspace state file and a non-empty
+# artifacts directory — necessary conditions, never sufficient. A clone damaged
+# below that resolution passes it, and without this function the failure lands
+# inside `xcodebuild` under `set -e`: the build dies, the bad tree PERSISTS in
+# DerivedData, and every later run hits the identical wall until a human deletes
+# it by hand. That would make the library header's promise — every path fails
+# toward DOING THE WORK — false for exactly one path, which is worse than not
+# making the promise.
+#
+# WHY THIS RUNS AS ITS OWN RESOLVE STEP RATHER THAN RETRYING THE BUILD. A build
+# failure has many causes and a compile error is by far the commonest; retrying
+# THAT unseeded would re-resolve and rebuild for nothing, doubling the feedback
+# loop this whole change exists to shorten. `-resolvePackageDependencies` fails
+# only for package reasons, so the retry is both targeted and bounded — and it
+# only ever runs when THIS process seeded the tree.
+#
+# WHAT IT DELIBERATELY DOES NOT DO: it never deletes the shared SNAPSHOT. A
+# resolve can fail for reasons that are nothing to do with the seed (network, a
+# transient), and destroying a shared artifact on ambiguous evidence costs every
+# other checkout a full re-resolve. With this fallback in place a genuinely bad
+# snapshot degrades to "no seeding" for everyone rather than wedging anyone, so
+# leaving it alone is the cheaper wrong answer in the only direction that
+# matters. Known limit, stated rather than hidden: a bad snapshot keeps costing
+# one wasted clone per consumer until its key rolls.
+#
+# The retry carries no `-skipPackageUpdates`, so it is a full resolve and cannot
+# inherit whatever the discarded tree got wrong.
+ew_seed_resolve_or_unseed() {
+  local dd="$1"; shift
+  [ "$EW_SEED_CONSUMED" = "1" ] || return 0
+
+  if "$@"; then
+    return 0
+  fi
+
+  echo "==> Seeded package tree failed to resolve — discarding it and retrying unseeded"
+  rm -rf "$dd/SourcePackages"
+  EW_SEED_CONSUMED=0
+  "$@"
+}
 # ew_seed_publish <project_root> <derived_data_path>
 # Publishes a snapshot AFTER a successful resolve, if none exists for this key.
 ew_seed_publish() {

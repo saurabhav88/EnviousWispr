@@ -368,9 +368,75 @@ else
   bad "staging cleanup" "staging survived release_all"
 fi
 
+# --- a seeded tree that will not resolve is DISCARDED and retried unseeded -----
+# The completeness check is shallow on purpose, so something has to catch what it
+# misses. Without this, a damaged clone kills the build under `set -e` and STAYS
+# in DerivedData, so every later run hits the identical wall.
+# The fake resolver records each call and reports whether SourcePackages existed
+# at that moment — which is the only way to tell "it retried" from "it retried
+# against the same bad tree".
+FB="$TMPROOT/fallback"; mkdir -p "$FB"
+fake_resolve() {
+  if [ -e "$FB/SourcePackages" ]; then printf 'seeded\n' >> "$FB/calls"; else printf 'unseeded\n' >> "$FB/calls"; fi
+  [ -e "$FB/fail-while-seeded" ] && [ -e "$FB/SourcePackages" ] && return 1
+  return 0
+}
+
+mkdir -p "$FB/SourcePackages"; printf 'bad\n' > "$FB/SourcePackages/marker"
+: > "$FB/fail-while-seeded"; : > "$FB/calls"
+EW_SEED_CONSUMED=1
+ew_seed_resolve_or_unseed "$FB" fake_resolve; fb_rc=$?
+fb_calls="$(tr '\n' ',' < "$FB/calls")"
+if [ "$fb_rc" -eq 0 ] && [ "$fb_calls" = "seeded,unseeded," ] && [ ! -e "$FB/SourcePackages" ]; then
+  ok "a seeded tree that fails to resolve is discarded and the retry runs UNSEEDED"
+else
+  bad "unseed fallback" "rc=$fb_rc calls='$fb_calls' tree_present=$([ -e "$FB/SourcePackages" ] && echo yes || echo no)"
+fi
+
+# THE TWIN, and it is the half that binds: a tree this process did NOT seed is
+# somebody else's, and a resolve failure against it must propagate untouched. A
+# fallback that discarded any failing tree would delete a developer's own
+# DerivedData on an ordinary network failure.
+rm -rf "$FB/SourcePackages"; mkdir -p "$FB/SourcePackages"; printf 'theirs\n' > "$FB/SourcePackages/marker"
+: > "$FB/calls"
+EW_SEED_CONSUMED=0
+ew_seed_resolve_or_unseed "$FB" fake_resolve; fb_rc=$?
+if [ "$fb_rc" -eq 0 ] && [ ! -s "$FB/calls" ] && [ "$(cat "$FB/SourcePackages/marker" 2>/dev/null)" = "theirs" ]; then
+  ok "an UNSEEDED tree is never resolved, retried, or deleted by the fallback (the twin)"
+else
+  bad "unseed fallback scope" "rc=$fb_rc calls='$(tr '\n' ',' < "$FB/calls")' marker=$(cat "$FB/SourcePackages/marker" 2>/dev/null)"
+fi
+
+# A seeded tree that resolves FIRST TIME must not be touched, and must cost
+# exactly one resolve. A fallback that retried on success would double the
+# resolve it exists to save.
+rm -f "$FB/fail-while-seeded"; : > "$FB/calls"
+EW_SEED_CONSUMED=1
+ew_seed_resolve_or_unseed "$FB" fake_resolve; fb_rc=$?
+if [ "$fb_rc" -eq 0 ] && [ "$(wc -l < "$FB/calls" | tr -d ' ')" = "1" ] && [ -f "$FB/SourcePackages/marker" ]; then
+  ok "a seeded tree that resolves first time is kept, and costs exactly one resolve"
+else
+  bad "unseed fallback happy path" "rc=$fb_rc calls=$(wc -l < "$FB/calls" | tr -d ' ')"
+fi
+
+# A SECOND failure is a real failure and must propagate: at that point the tree is
+# already gone, so the problem is not the seed and swallowing it would report a
+# successful resolve for a build that cannot link.
+rm -rf "$FB/SourcePackages"; mkdir -p "$FB/SourcePackages"
+: > "$FB/fail-while-seeded"; : > "$FB/calls"
+always_fail() { printf 'call\n' >> "$FB/calls"; return 7; }
+EW_SEED_CONSUMED=1
+ew_seed_resolve_or_unseed "$FB" always_fail; fb_rc=$?
+if [ "$fb_rc" -ne 0 ] && [ "$(wc -l < "$FB/calls" | tr -d ' ')" = "2" ]; then
+  ok "a failure that survives the unseeded retry PROPAGATES (exit $fb_rc), after exactly 2 attempts"
+else
+  bad "unseed fallback propagation" "rc=$fb_rc calls=$(wc -l < "$FB/calls" | tr -d ' ')"
+fi
+EW_SEED_CONSUMED=0
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 31 ]; then
-  printf 'ERROR: expected at least 31 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 35 ]; then
+  printf 'ERROR: expected at least 35 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

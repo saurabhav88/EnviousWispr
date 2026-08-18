@@ -104,6 +104,15 @@ ew_ensure_generated "$PROJECT_ROOT"
 # any doubt: never fails the build.
 ew_seed_consume "$PROJECT_ROOT" "$DERIVED_DATA"
 
+# If THIS run seeded the tree, prove it resolves before the build depends on it.
+# A damaged clone that passed the shallow completeness check would otherwise kill
+# the build under `set -e` and leave the bad tree in place for every later run.
+ew_seed_resolve_or_unseed "$DERIVED_DATA" \
+  xcodebuild -resolvePackageDependencies \
+    -project EnviousWispr.xcodeproj \
+    -scheme "EnviousWispr-Dev" \
+    -derivedDataPath "$DERIVED_DATA"
+
 echo "==> Step 4: Building EnviousWispr-Dev (Dev config, self-signed)..."
 xcodebuild build \
   -project EnviousWispr.xcodeproj \

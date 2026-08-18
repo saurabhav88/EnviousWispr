@@ -84,6 +84,14 @@ run_lane() {  # $1=scheme  $2=config  $3=logfile  $4...=extra build settings
 
 # #2157 chunk A: seed before the first lane resolves anything.
 ew_seed_consume "$PROJECT_ROOT" "$DERIVED_DATA"
+# Same fallback as the dev-app script: a seeded tree proves it resolves before
+# either lane depends on it, so a damaged clone degrades to a slow run instead of
+# a wedged DerivedData nobody can clear without deleting it by hand.
+ew_seed_resolve_or_unseed "$DERIVED_DATA" \
+  xcodebuild -resolvePackageDependencies \
+    -project "$PROJECT" \
+    -scheme "$DEBUG_SCHEME" \
+    -derivedDataPath "$DERIVED_DATA"
 
 run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log
 ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
