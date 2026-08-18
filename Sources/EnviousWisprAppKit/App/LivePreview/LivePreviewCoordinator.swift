@@ -429,7 +429,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
         // exhaustively instead of waiting for the next round to surface one.
         //
         // Every refusal reason can persist for the rest of a session — the user
-        // turns live transcription on, or locks a language the model does not
+        // turns Faster Transcription on, or locks a language the model does not
         // cover, or removes the model. The prepared engine holds a loaded 217 MB
         // model that cannot serve ANY recording while the reason holds, so
         // keeping it is a pure cost. Re-preparing when the block clears costs one
@@ -906,10 +906,15 @@ enum LivePreviewCopy {
   /// chosen to download it yet.
   static let previewModelNotInstalled =
     "Download the preview model in Settings to see words appear."
-  /// #2108 Gate C. Live transcription already decodes continuously while you
-  /// speak, and a second decoder would slow it by half (measured). Says what is
-  /// happening rather than naming a setting the reader has to go and find.
-  static let heartIsStreaming = "On-screen preview pauses while live transcription is on."
+  /// #2108 Gate C. Faster Transcription already decodes continuously while you
+  /// speak, and a second decoder would slow it by half (measured).
+  ///
+  /// **This names the setting, and #2155 renamed it.** Missed by the first sweep
+  /// because `claim-sweep.sh` scoped itself to `Views/` and this copy lives under
+  /// `App/LivePreview/` — user-facing pill text outside the surface list. The tool
+  /// now covers this directory; the lesson is that a copy string is user-facing
+  /// because of where it is SHOWN, never because of which folder holds it.
+  static let heartIsStreaming = "On-screen preview pauses while Faster Transcription is on."
   /// No remedy offered ON PURPOSE. A build shipped without the engine's files is
   /// ours to fix, and a "Download" button here would point at nothing.
   static let engineUnavailableInThisBuild =
