@@ -303,39 +303,61 @@ export function formatAdoption(data, buckets) {
     lines.push(`Top 5 users by dictation volume: ${data.top5.map((u) => u.n).join(", ")}.`);
   }
 
-  // Escape Recovery (#2087). Omitted entirely on a day nobody used it, rather
-  // than printing three zeroes: this is an opt-in feature and an all-zero line
-  // every day is how a reader learns to skip the section.
+  // Escape Recovery (#2087). Built from INDEPENDENT clauses, each gated on its
+  // own count, because the counts are windowed independently and no one of them
+  // can stand for the others. A held row lives 24 hours by design, so a recovery
+  // saved yesterday and undone today lands in this window as a restore with no
+  // attempt beside it. Gating the whole line on attempts hid that day entirely,
+  // and gating the middle clause on it would have printed "0 saved for 0 people"
+  // on a day something really happened.
+  //
+  // Omitted entirely only when NOTHING happened, rather than printing a row of
+  // zeroes: this is opt-in, and an all-zero line every day is how a reader
+  // learns to skip a section.
   {
     const er = data.escapeRecovery || {};
     const attempts = er.attempts ?? 0;
     const kept = er.kept ?? 0;
-    // Keyed on ATTEMPTS, not keeps: a day where every attempt failed is the day
-    // this line most needs to appear, and keying on keeps would hide exactly
-    // that day.
+    const people = er.keptUsers ?? 0;
+    const restored = er.restored ?? 0;
+    const clipboardOnly = er.clipboardOnly ?? 0;
+    const failedTranscription = er.failedTranscription ?? 0;
+    const failedSave = er.failedSave ?? 0;
+
+    const clauses = [];
     if (attempts > 0) {
-      const restored = er.restored ?? 0;
-      const clipboardOnly = er.clipboardOnly ?? 0;
-      const failed = er.failed ?? 0;
-      const people = er.keptUsers ?? 0;
-      // Plain sentences, no ratios: the counts are small while the feature is
-      // new, and a percentage of four events invites a conclusion the number
-      // cannot carry.
-      let line =
-        `Escape Recovery: ${attempts} cancelled dictation${attempts === 1 ? " was" : "s were"} ` +
-        `held, ${kept} saved for ${people} ${people === 1 ? "person" : "people"}, and ` +
-        `${restored} taken back with Undo.`;
-      if (failed > 0) {
-        line +=
-          ` ${failed} failed to save and the text was lost, which is a defect` +
-          ` rather than a user choice.`;
-      }
-      if (clipboardOnly > 0) {
-        line +=
-          ` ${clipboardOnly} restore${clipboardOnly === 1 ? "" : "s"} could not reach the ` +
-          `original app and went to the clipboard instead.`;
-      }
-      lines.push("", line);
+      clauses.push(
+        `${attempts} cancelled dictation${attempts === 1 ? " was" : "s were"} held, ` +
+          `${kept} saved for ${people} ${people === 1 ? "person" : "people"}.`
+      );
+    }
+    if (restored > 0) {
+      clauses.push(
+        `${restored} ${restored === 1 ? "was" : "were"} taken back with Undo.`
+      );
+    }
+    // Named apart, because they are different defects and one is worse. A save
+    // failure lost text we already had.
+    if (failedSave > 0) {
+      clauses.push(
+        `${failedSave} ${failedSave === 1 ? "was" : "were"} transcribed and then lost ` +
+          `when the save failed, which is a defect rather than a user choice.`
+      );
+    }
+    if (failedTranscription > 0) {
+      clauses.push(
+        `${failedTranscription} could not be transcribed at all, so there was never ` +
+          `anything to save.`
+      );
+    }
+    if (clipboardOnly > 0) {
+      clauses.push(
+        `${clipboardOnly} restore${clipboardOnly === 1 ? "" : "s"} could not reach the ` +
+          `original app and went to the clipboard instead.`
+      );
+    }
+    if (clauses.length) {
+      lines.push("", `Escape Recovery: ${clauses.join(" ")}`);
     }
   }
 

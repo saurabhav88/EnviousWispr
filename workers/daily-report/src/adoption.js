@@ -146,9 +146,12 @@ export function createAdoptionSection(env, context, opts = {}) {
   //                           enum says outright there is nothing to apologise for.
   //   abandoned            -> the user cancelled again. A CHOICE, and the enum
   //                           says it must never read as a failure in the data.
-  // So `er_failed` counts exactly the two that broke. Folding in `empty` or
-  // `abandoned` would manufacture a failure rate out of people using the
-  // feature exactly as designed.
+  // The two that broke are counted SEPARATELY, because they are not the same
+  // defect and are not equally bad: a transcription failure loses a recording we
+  // never managed to read, while a save failure loses text we HAD and then
+  // dropped. Reporting both as "failed to save" describes the wrong one half the
+  // time. Folding in `empty` or `abandoned` would go further still and
+  // manufacture a failure rate out of people using the feature as designed.
   //
   // `er_attempts` rides along because attempts-versus-keeps is its own question,
   // and a keep count with no denominator answers nothing.
@@ -169,8 +172,9 @@ export function createAdoptionSection(env, context, opts = {}) {
       uniqExactIf(distinct_id, event = 'escape_recovery.completed'
                   AND properties.outcome = 'saved') AS er_kept_users,
       countIf(event = 'escape_recovery.completed'
-              AND properties.outcome IN ('transcription_failed', 'save_failed'))
-        AS er_failed,
+              AND properties.outcome = 'transcription_failed') AS er_failed_transcription,
+      countIf(event = 'escape_recovery.completed'
+              AND properties.outcome = 'save_failed') AS er_failed_save,
       countIf(event = 'escape_recovery.restored') AS er_restored,
       countIf(event = 'escape_recovery.restored'
               AND properties.paste_result = 'clipboard_only') AS er_restored_clipboard_only
@@ -272,7 +276,8 @@ export function createAdoptionSection(env, context, opts = {}) {
           attempts: rowsToObjects(totals)[0]?.er_attempts ?? 0,
           kept: rowsToObjects(totals)[0]?.er_kept ?? 0,
           keptUsers: rowsToObjects(totals)[0]?.er_kept_users ?? 0,
-          failed: rowsToObjects(totals)[0]?.er_failed ?? 0,
+          failedTranscription: rowsToObjects(totals)[0]?.er_failed_transcription ?? 0,
+          failedSave: rowsToObjects(totals)[0]?.er_failed_save ?? 0,
           restored: rowsToObjects(totals)[0]?.er_restored ?? 0,
           clipboardOnly: rowsToObjects(totals)[0]?.er_restored_clipboard_only ?? 0,
         },

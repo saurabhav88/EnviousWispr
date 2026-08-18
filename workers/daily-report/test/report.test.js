@@ -279,60 +279,78 @@ test("adoption section: golden fixture matches the founder-approved report shape
 
 const ER = (over = {}) => ({
   ...GOLDEN_DATA,
-  escapeRecovery: { attempts: 0, kept: 0, keptUsers: 0, failed: 0, restored: 0, clipboardOnly: 0, ...over },
+  escapeRecovery: {
+    attempts: 0, kept: 0, keptUsers: 0, failedTranscription: 0, failedSave: 0,
+    restored: 0, clipboardOnly: 0, ...over,
+  },
 });
 
 test("adoption section: Escape Recovery separates attempts, saves and undos", () => {
   const msg = formatAdoption(ER({ attempts: 9, kept: 7, keptUsers: 3, restored: 4 }), GOLDEN_BUCKETS).join("\n");
-  assert.match(
-    msg,
-    /Escape Recovery: 9 cancelled dictations were held, 7 saved for 3 people, and 4 taken back with Undo\./
-  );
-  // Absent clauses read as absent, never as a zero.
-  assert.doesNotMatch(msg, /failed to save/);
+  assert.match(msg, /Escape Recovery: 9 cancelled dictations were held, 7 saved for 3 people\./);
+  assert.match(msg, /4 were taken back with Undo\./);
+  assert.doesNotMatch(msg, /save failed/);
+  assert.doesNotMatch(msg, /could not be transcribed/);
   assert.doesNotMatch(msg, /could not reach the original app/);
   // Global copy rule: no em-dashes or en-dashes in anything a person reads.
   assert.doesNotMatch(msg, /[–—]/);
 });
 
-test("adoption section: a save failure is named as a defect, not folded into the counts", () => {
-  const msg = formatAdoption(ER({ attempts: 5, kept: 3, keptUsers: 2, failed: 2 }), GOLDEN_BUCKETS).join("\n");
-  assert.match(msg, /2 failed to save and the text was lost, which is a defect rather than a user choice\./);
-  assert.doesNotMatch(msg, /[–—]/);
+test("adoption section: a save failure says text was LOST, and names it a defect", () => {
+  const msg = formatAdoption(ER({ attempts: 5, kept: 3, keptUsers: 2, failedSave: 2 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /2 were transcribed and then lost when the save failed, which is a defect rather than a user choice\./);
+  assert.doesNotMatch(msg, /could not be transcribed/);
 });
 
-test("adoption section: a restore that missed its target app is reported apart from a failure", () => {
-  const msg = formatAdoption(ER({ attempts: 5, kept: 5, keptUsers: 2, restored: 5, clipboardOnly: 2 }), GOLDEN_BUCKETS).join("\n");
-  assert.match(msg, /2 restores could not reach the original app and went to the clipboard instead\./);
-  // Still a restore, so it must NOT be described as a failure to save.
-  assert.doesNotMatch(msg, /failed to save/);
+test("adoption section: a transcription failure is NOT described as a failed save", () => {
+  // The two are different defects and only one lost text we already had.
+  // Reporting a transcription failure as "failed to save" names the wrong one.
+  const msg = formatAdoption(ER({ attempts: 4, kept: 2, keptUsers: 1, failedTranscription: 2 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /2 could not be transcribed at all, so there was never anything to save\./);
+  assert.doesNotMatch(msg, /the save failed/);
+});
+
+test("adoption section: both failure kinds appear, each in its own words", () => {
+  const msg = formatAdoption(
+    ER({ attempts: 6, kept: 2, keptUsers: 1, failedSave: 1, failedTranscription: 3 }), GOLDEN_BUCKETS
+  ).join("\n");
+  assert.match(msg, /1 was transcribed and then lost when the save failed/);
+  assert.match(msg, /3 could not be transcribed at all/);
+});
+
+test("adoption section: a restore with no attempt in the window still reports", () => {
+  // A held row lives 24 hours, so a recovery saved yesterday and undone today
+  // lands here as a restore with no attempt beside it. Gating the line on
+  // attempts made that day vanish, and gating the middle clause on it would
+  // have printed "0 saved for 0 people" on a day something really happened.
+  const msg = formatAdoption(ER({ restored: 3 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /Escape Recovery: 3 were taken back with Undo\./);
+  assert.doesNotMatch(msg, /0 saved/);
+  assert.doesNotMatch(msg, /cancelled dictations were held/);
+});
+
+test("adoption section: a day where every attempt failed still reports", () => {
+  // Keyed on keeps, the worst possible day for this feature would print nothing.
+  const msg = formatAdoption(ER({ attempts: 4, kept: 0, failedTranscription: 4 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /4 cancelled dictations were held, 0 saved/);
+  assert.match(msg, /4 could not be transcribed at all/);
 });
 
 test("adoption section: singular wording throughout when every count is one", () => {
-  const msg = formatAdoption(ER({ attempts: 1, kept: 1, keptUsers: 1, restored: 1, clipboardOnly: 1 }), GOLDEN_BUCKETS).join("\n");
-  assert.match(msg, /1 cancelled dictation was held, 1 saved for 1 person, and 1 taken back with Undo\./);
+  const msg = formatAdoption(
+    ER({ attempts: 1, kept: 1, keptUsers: 1, restored: 1, clipboardOnly: 1 }), GOLDEN_BUCKETS
+  ).join("\n");
+  assert.match(msg, /1 cancelled dictation was held, 1 saved for 1 person\./);
+  assert.match(msg, /1 was taken back with Undo\./);
   assert.match(msg, /1 restore could not reach the original app/);
 });
 
-test("adoption section: a day where every attempt failed still reports, keyed on attempts", () => {
-  // The row that decides where the condition goes. Keyed on KEPT, the worst
-  // possible day for this feature would print nothing at all.
-  const msg = formatAdoption(ER({ attempts: 4, kept: 0, failed: 4 }), GOLDEN_BUCKETS).join("\n");
-  assert.match(msg, /Escape Recovery: 4 cancelled dictations were held, 0 saved/);
-  assert.match(msg, /4 failed to save/);
-});
-
-test("adoption section: a day with no attempts omits the line rather than printing zeroes", () => {
-  // An opt-in feature would otherwise print an all-zero line every day, which
-  // is how a reader learns to skip a section. Absence is the honest rendering.
+test("adoption section: a day with no recovery activity omits the line entirely", () => {
   const msg = formatAdoption(ER(), GOLDEN_BUCKETS).join("\n");
   assert.doesNotMatch(msg, /Escape Recovery/);
 });
 
 test("adoption section: a report predating the feature renders without it, and without throwing", () => {
-  // `escapeRecovery` absent entirely, as in every fixture written before this
-  // query existed. A formatter that throws here would take down the whole
-  // report for one optional line.
   const { escapeRecovery, ...withoutIt } = GOLDEN_DATA;
   const msg = formatAdoption(withoutIt, GOLDEN_BUCKETS).join("\n");
   assert.doesNotMatch(msg, /Escape Recovery/);
