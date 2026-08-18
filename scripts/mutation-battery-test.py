@@ -35,8 +35,13 @@ ran = 0
 # the code under test. The real check gets its own two-way case below, driven directly.
 import os as _os_env  # noqa: E402
 
-NEUTRAL_ENV = dict(_os_env.environ,
-                   EW_BATTERY_DEV_APP_PATTERN="ew-battery-self-test-matches-nothing")
+NEUTRAL_PATTERN = "ew-battery-self-test-matches-nothing"
+NEUTRAL_ENV = dict(_os_env.environ, EW_BATTERY_DEV_APP_PATTERN=NEUTRAL_PATTERN)
+# Set it in THIS process too, before the module is imported below. The subprocess cases get NEUTRAL_ENV
+# explicitly; the in-process cases read the module's own DEV_APP_PATTERN, which is resolved at import.
+# Without this the stubbed-lane rows fail whenever any session on the box has a dev app open — measured
+# exactly that way when a peer took the slot mid-suite.
+_os_env.environ["EW_BATTERY_DEV_APP_PATTERN"] = NEUTRAL_PATTERN
 
 
 # Mirrors the real scripts/xcode-test.sh closely enough for the drift guard to parse. Kept in this
@@ -249,7 +254,7 @@ check("a missing canonical script refuses the run",
 for _t in ("Project.swift", "Tuist/Config.swift", "Package.swift"):
     check(f"a recipe targeting {_t} is refused as out of scope",
           [dict(VALID_ROW, file=_t)],
-          expect_exit=2, expect_text="the generated Xcode project is BUILT FROM")
+          expect_exit=2, expect_text="which is outside Sources/")
 
 # The accepted counterpart: an ordinary Sources file with a similar-looking name must still pass.
 check("a Sources file whose name merely resembles a Tuist input is accepted",
@@ -260,9 +265,15 @@ check("an absolute target path is refused",
       [dict(VALID_ROW, file="/etc/hosts")],
       expect_exit=2, expect_text="must be repo-relative")
 
-check("a target escaping the worktree with .. is refused",
-      [dict(VALID_ROW, file="../outside.swift")],
+# Deliberately starts with Sources/ so it passes the allow-list and reaches the containment check —
+# otherwise the allow-list would catch it first and this case would silently stop testing containment.
+check("a target escaping the worktree via .. inside an allowed root is refused",
+      [dict(VALID_ROW, file="Sources/../../outside.swift")],
       expect_exit=2, expect_text="resolves OUTSIDE the worktree")
+
+check("a target outside the allowed roots is refused before containment is even considered",
+      [dict(VALID_ROW, file="../outside.swift")],
+      expect_exit=2, expect_text="which is outside Sources/")
 
 # exit 1 means "a row survived". A missing recipe file must never be able to produce it.
 ran += 1
@@ -606,6 +617,29 @@ with _t3.TemporaryDirectory() as td:
     else:
         print("  ok  a restored file is stamped NOW, so the next build cannot reuse mutant objects")
 
+# Preflight is a snapshot; an overnight battery is long. A dev app that starts after preflight and
+# stops before the closing baseline corrupts the AppLogger tests only DURING a mutant, which credits
+# the sabotage with a failure something else caused — a false CAUGHT, failing toward confidence.
+ran += 1
+_real_pids = battery.dev_app_pids
+battery.dev_app_pids = lambda wt: ["99999"]
+try:
+    rc, out, after, during = drive_row((5, [], True, "log", 0, 3.0),
+                                       expect_verdict=None, expect_detail=None)
+    problems = []
+    if "ERR" not in out or "appeared mid-run" not in out:
+        problems.append(f"row should ERROR naming the intruder; got: {out.strip()[:200]}")
+    if rc != 1:
+        problems.append(f"exit {rc}, wanted 1")
+    if after != ORIGINAL:
+        problems.append(f"file not restored: {after!r}")
+    if problems:
+        failures.append("a dev app appearing mid-run fails that row: " + "; ".join(problems))
+    else:
+        print("  ok  a dev app appearing mid-run fails that row")
+finally:
+    battery.dev_app_pids = _real_pids
+
 check_row("the file is restored even when the lane raises mid-row",
           None, expect_marker="ERR", expect_rc=1, raise_instead=RuntimeError("lane exploded"))
 
@@ -781,6 +815,30 @@ for _label, _rc, _out, _want in [
         failures.append(f"{_label}: refused={_refused}, wanted {_want}")
     else:
         print(f"  ok  {_label}")
+
+# The drift guard compares CANONICAL_TOKENS against scripts/xcode-test.sh. Nothing compared it against
+# the command this runner ACTUALLY issues — so reconciling the constant after an upstream change while
+# forgetting the command would leave the guard green and the battery building differently. That is the
+# guard's own failure mode, one level in.
+ran += 1
+_cmd = battery.Lane(Path("/tmp"), Path("/tmp/dd"), Path("/tmp/logs")).build_command("T/S")
+_missing = sorted(t for t in battery.CANONICAL_TOKENS if t not in _cmd)
+if _missing:
+    failures.append("every CANONICAL_TOKEN appears in the command this runner actually issues — it "
+                    "does NOT: the command is missing " + ", ".join(_missing))
+else:
+    print("  ok  every CANONICAL_TOKEN appears in the command this runner actually issues")
+
+ran += 1
+_flagish = {a for a in _cmd if a.startswith("-") and not a.startswith("-only-testing")
+            and a not in ("-project", "-scheme", "-configuration", "-derivedDataPath", "-destination")}
+_settings = {a for a in _cmd if "=" in a and a.split("=", 1)[0].isupper()}
+_extra = sorted((_flagish | _settings) - battery.CANONICAL_TOKENS)
+if _extra:
+    failures.append("the runner's command carries no setting the drift guard is blind to — it DOES: "
+                    + ", ".join(_extra) + " would move unnoticed")
+else:
+    print("  ok  the runner's command carries no setting the drift guard is blind to")
 
 print()
 if failures:

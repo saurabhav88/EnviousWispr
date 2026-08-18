@@ -164,15 +164,28 @@ INVOCATION_RE = re.compile(r"xcodebuild test\s*\\\n(.*?)\|\s*tee", re.DOTALL)
 # xcodebuild with its ambient environment, so any prefix means the canonical lane and the battery build
 # differently, and there is no list of prefixes worth maintaining.
 INVOCATION_PREFIX_RE = re.compile(r"^([^\n]*?)xcodebuild test\s*\\", re.MULTILINE)
-# Files the generated Xcode project is BUILT FROM. `generate_once` runs `tuist generate` a single time
-# and every row after reuses that project, which is correct only while a mutation changes file CONTENT
-# and never the project's shape. Mutating one of these changes target settings, dependencies or source
-# inclusion, and xcodebuild would keep consuming the CLEAN baseline's `.xcodeproj` — so the row would
-# report SURVIVED about a mutant the build never saw. The doc comment on `generate_once` asserted this
-# precondition from the start; nothing enforced it, which is the defect. Rejected at validation rather
-# than handled by regenerating, because a battery that silently changes cost per row is worse than one
-# that says a recipe is out of scope. Cloud review, PR #2158.
-TUIST_INPUTS = ("Project.swift", "Workspace.swift", "Tuist.swift", "Package.swift", "Tuist/")
+# WHAT A RECIPE MAY MUTATE — an ALLOW-list, deliberately, and the second attempt at this.
+#
+# Review round 6 found a recipe could target a Tuist input; the fix denied those by name. Round 7 then
+# found `Tests/` reachable the same way — the identical defect at a site the deny-list did not
+# enumerate. Two rounds of one shape is the signal to stop extending a list and INVERT it
+# (codex-cli.md RULE: enumerate-the-class-when-review-rounds-repeat). The question is no longer "which
+# paths are dangerous", which is unbounded and was wrong once per round, but "where is a mutation
+# MEANINGFUL", which has one answer: production Swift the filtered lane actually executes.
+#
+# What a deny-list would have had to keep growing to cover, and why none of it is a mutation target:
+#   Tests/**       breaking the test makes `expect_fail` go red and the row reports CAUGHT. That proves
+#                  only that breaking a test breaks it, while the report claims a PRODUCTION mutation
+#                  was detected — a false CAUGHT, the exact vacuity this tool exists to prevent.
+#   Project.swift, Workspace.swift, Tuist.swift, Package.swift, Tuist/**
+#                  the project is generated FROM these and `generate_once` reuses one project for every
+#                  row, so xcodebuild keeps consuming the baseline's `.xcodeproj` and the row reports
+#                  SURVIVED about a mutant the build never saw.
+#   scripts/**     including this runner: a battery mutating its own harness reports on itself.
+#   workers/**, website/**
+#                  real code, but nothing an `xcodebuild test` lane executes, so every row reports
+#                  SURVIVED regardless of the test's quality.
+MUTABLE_ROOTS = ("Sources/",)
 # One definition, so the drift guard above and the call below cannot disagree about the version.
 TUIST_GENERATE_ARGV = ["mise", "x", "tuist@4.195.11", "--", "tuist", "generate", "--no-open"]
 
@@ -260,9 +273,9 @@ class Lane:
         pure per-row overhead. Generate once.
 
         Safe ONLY because a mutation changes file CONTENT and never the project's SHAPE. That is a real
-        precondition, not a remark: `TUIST_INPUTS` above rejects recipes targeting the files the project
-        is generated from, because a mutation there would leave xcodebuild consuming the clean
-        baseline's `.xcodeproj` and the row would report SURVIVED about a mutant the build never saw."""
+        precondition, not a remark, and `MUTABLE_ROOTS` above is what enforces it: recipes may only
+        target production Swift under Sources/, so the files the project is generated FROM are
+        unreachable by construction rather than by a list someone must remember to extend."""
         if self.generated:
             return
         rc, out = run(
@@ -274,11 +287,11 @@ class Lane:
             raise Refusal(f"tuist generate failed (rc={rc}); see {self.log_dir/'tuist-generate.log'}")
         self.generated = True
 
-    def run_suite(self, suite: str, tag: str):
-        """Returns (count, failures, compiled, log_path). count is None when no summary was printed."""
-        self.generate_once()
-        log_path = self.log_dir / f"{tag}.log"
-        cmd = [
+    def build_command(self, suite: str):
+        """The invocation this runner issues. Extracted so the self-test can assert it agrees with
+        CANONICAL_TOKENS — the drift guard compares that constant against the SCRIPT, and nothing
+        compared it against the command actually run, so the two could silently disagree."""
+        return [
             "xcodebuild", "test",
             "-project", "EnviousWispr.xcodeproj",
             "-scheme", "EnviousWispr",
@@ -288,6 +301,12 @@ class Lane:
             "ARCHS=arm64", "VALID_ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES",
             f"-only-testing:{suite}",
         ]
+
+    def run_suite(self, suite: str, tag: str):
+        """Returns (count, failures, compiled, log_path). count is None when no summary was printed."""
+        self.generate_once()
+        log_path = self.log_dir / f"{tag}.log"
+        cmd = self.build_command(suite)
         started = time.monotonic()
         try:
             rc, out = run(cmd, cwd=self.worktree, log_path=log_path,
@@ -370,6 +389,12 @@ def check_canonical_settings(worktree: Path):
             "the Lane class with the script, deliberately. Do not delete the guard to make this go "
             "away."
         )
+
+
+def dev_app_pids(worktree: Path):
+    """Live pids, for the per-row recheck. Preflight raises; a mid-run appearance fails only that row."""
+    rc, out = run(["pgrep", "-f", DEV_APP_PATTERN], cwd=worktree)
+    return out.split() if rc == 0 and out.strip() else []
 
 
 def check_no_dev_app(worktree: Path):
@@ -502,18 +527,25 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
         # whoever authored the issue. Resolve BOTH sides and require containment; resolving is what
         # catches the symlink, since a lexical check cannot.
         rel = row["file"]
-        if rel in TUIST_INPUTS or any(
-            rel.startswith(t) if t.endswith("/") else rel.endswith("/" + t) for t in TUIST_INPUTS
-        ):
+        # Before the allow-list: no absolute path can start with an allowed root, so this check would
+        # be unreachable behind it — a guard nothing can arm. It also gives the precise message.
+        if Path(rel).is_absolute():
+            raise Refusal(f"row {i} file must be repo-relative, got an absolute path: {rel}")
+        if not any(rel.startswith(root) for root in MUTABLE_ROOTS):
             raise Refusal(
-                f"row {i} targets {rel}, which the generated Xcode project is BUILT FROM. This runner "
-                "generates once and reuses that project for every row, so a mutation there would "
-                "change the project's shape while xcodebuild kept consuming the clean baseline's "
-                "`.xcodeproj` — the row would report SURVIVED about a mutant the build never saw. "
-                "Out of scope for the battery; prove that kind of change with a full lane instead."
+                f"row {i} targets {rel}, which is outside {', '.join(MUTABLE_ROOTS)} — the only place a "
+                "mutation means anything here. A mutation must break PRODUCTION code the filtered lane "
+                "actually executes.\n"
+                "  Under Tests/ it would break the test itself, go red, and report CAUGHT, proving only "
+                "that breaking a test breaks it.\n"
+                "  In a Tuist input it would change the project's shape while xcodebuild kept using the "
+                "baseline's generated .xcodeproj, so the row would report SURVIVED about a mutant the "
+                "build never saw.\n"
+                "  Anywhere the lane does not execute, every row reports SURVIVED regardless of the "
+                "test's quality.\n"
+                "An allow-list on purpose: the deny-list it replaced was wrong once per review round. "
+                "Prove a change of that kind with a full lane instead."
             )
-        if Path(row["file"]).is_absolute():
-            raise Refusal(f"row {i} file must be repo-relative, got an absolute path: {row['file']}")
         target = (worktree / row["file"]).resolve()
         wt = worktree.resolve()
         if not (target == wt or wt in target.parents):
@@ -653,6 +685,19 @@ def main(argv=None):
         backup = target.with_suffix(target.suffix + ".mutbak")
         tag = f"row{i:02d}"
         verdict, detail = "ERROR", "did not run"
+        # Preflight is a SNAPSHOT and a battery is long — an overnight run is the whole point of this
+        # tool. A dev app that starts after preflight and stops before the closing baseline corrupts
+        # the AppLogger tests only DURING a mutant, producing a false CAUGHT: the sabotage is credited
+        # with a failure something else caused. That fails toward CONFIDENCE, so it is rechecked per
+        # row rather than once. Cloud review, PR #2158.
+        intruders = dev_app_pids(worktree)
+        if intruders:
+            detail = (f"a dev app appeared mid-run (pids {' '.join(intruders)}) — its app.log writes "
+                      f"corrupt the AppLogger tests, which scores as CAUGHT when nothing detected the "
+                      f"sabotage. Stop it and re-run this row.")
+            print(f"  [ ERR  ] row {i}: {row['label']}\n           {detail}")
+            results.append(("ERROR", row["label"], detail))
+            continue
         shutil.copy2(target, backup)
         _ACTIVE_RESTORES[target] = backup
         try:
