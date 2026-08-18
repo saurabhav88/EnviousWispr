@@ -30,7 +30,7 @@ https://github.com/user-attachments/assets/2655d632-1ad8-4a00-bac8-d6c3cc2f6aad
 
 ## What is this?
 
-EnviousWispr is a free AI dictation app for macOS that runs entirely on-device. It uses Whisper and Parakeet speech-to-text models on Apple Silicon to transcribe your voice locally, polishes the output with an optional LLM, and pastes clean text into whatever app you're working in. Transcription is sub-second; with optional AI polish, the full hotkey-to-paste flow typically lands in around a second and a half.
+EnviousWispr is a free AI dictation app for macOS that runs entirely on-device. It uses Whisper and Parakeet speech-to-text models on Apple Silicon to transcribe your voice locally, polishes the output with an optional LLM, and pastes clean text into whatever app you're working in. Transcription is sub-second; with optional AI polish, the full keybind-to-paste flow typically lands in around a second and a half.
 
 No cloud. No account required. No subscription. No audio ever leaves your Mac. Works fully offline.
 
@@ -50,11 +50,11 @@ It is open source under the GPLv3, actively maintained, and built to be a tool y
 ## How it works
 
 ```
-Press hotkey  -->  Record  -->  Transcribe  -->  Polish (optional)  -->  Paste
+Press keybind -->  Record  -->  Transcribe  -->  Polish (optional)  -->  Paste
     ~0ms          live        ~400-800ms         ~200-500ms            instant
 ```
 
-1. **Press your hotkey** from any app. Push-to-talk, toggle, or hands-free (double-press to lock for long-form), your choice.
+1. **Press your keybind** from any app. Push-to-talk, toggle, or hands-free (double-press to lock for long-form), your choice.
 2. **Speak naturally.** Silero VAD detects when you stop talking and ends recording automatically.
 3. **On-device transcription.** Choose Parakeet v3 (fastest, 25 European languages) or WhisperKit (99 languages, with automatic language detection).
 4. **AI polish** (optional). Clean up grammar, punctuation, and formatting. Runs fully on-device with EG-1 (our own custom model), Apple Intelligence (macOS 26+), or Ollama, or in the cloud via OpenAI or Gemini with your own API key.
@@ -110,7 +110,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - 😀 **Speak an emoji**: say the emoji's name followed by "emoji" (like "thumbs up emoji") and the glyph drops right in
 - ✋ **Voice Activity Detection** via Silero VAD that stops recording automatically when you stop talking
 - 📚 **Custom vocabulary and vocabulary packs** for names, brands, and technical terms the ASR might miss, plus one-tap import of names from your Contacts (which never leave your Mac)
-- ⌨️ **Global hotkey** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
+- ⌨️ **Global keybind** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
 - 📋 **Auto-paste** directly into the active app, or just copy to clipboard
 - 🕘 **Transcript history** for browsing, searching, and reviewing past dictations
 - 🧭 **Menu bar native** with minimal footprint
@@ -142,7 +142,7 @@ Or download manually:
 1. Download [EnviousWispr.dmg](https://enviouswispr.com/download?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme) from the latest release
 2. Drag to Applications, launch
 3. Grant **Microphone**, **Accessibility**, and (on first paste fallback) **Automation** permissions when prompted
-4. Set your preferred hotkey in Settings > Shortcuts
+4. Set your preferred keybind in Settings > Keybinds
 5. Start talking
 
 **Optional:** Turn on AI polish in Settings > AI Polish. Keep it fully on-device with Apple Intelligence (macOS 26+) or Ollama, or add an OpenAI or Gemini API key.
