@@ -84,8 +84,7 @@ run_generate() { ew_ensure_generated "$PROJECT_ROOT"; }
 run_resolve() {
   xcodebuild -resolvePackageDependencies \
     -project EnviousWispr.xcodeproj -scheme "$SCHEME" \
-    -derivedDataPath "$DERIVED" \
-    -onlyUsePackageVersionsFromResolvedFile
+    -derivedDataPath "$DERIVED"
 }
 
 run_build() {
@@ -93,14 +92,12 @@ run_build() {
     xcodebuild build-for-testing -project EnviousWispr.xcodeproj -scheme "$SCHEME" \
       -configuration "$CONFIG" -derivedDataPath "$DERIVED" \
       -destination 'platform=macOS,arch=arm64' \
-      -onlyUsePackageVersionsFromResolvedFile \
-      ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+        ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
   else
     xcodebuild build -project EnviousWispr.xcodeproj -scheme "$SCHEME" \
       -configuration "$CONFIG" -derivedDataPath "$DERIVED" \
       -destination 'generic/platform=macOS' \
-      -onlyUsePackageVersionsFromResolvedFile \
-      ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+        ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
   fi
 }
 
@@ -131,11 +128,13 @@ echo "load at start: $LOADAVG"
 echo "seed     : $SEED_STATE"
 echo "--- phases ---"
 
-phase generate run_generate || true
-phase resolve  run_resolve  || true
-phase build    run_build    || true
+# A phase that FAILED produces a meaningless duration. Exiting on it is what
+# stops this script reporting a confident number for a build that did not happen.
+phase generate run_generate || exit $?
+phase resolve  run_resolve  || exit $?
+phase build    run_build    || exit $?
 if [ "$LANE" = "test" ]; then
-  phase execute run_execute || true
+  phase execute run_execute || exit $?
 fi
 
 # shellcheck disable=SC1091

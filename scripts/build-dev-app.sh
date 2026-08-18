@@ -24,6 +24,8 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # checkout has its own copy and each must generate its OWN project.
 # shellcheck source=scripts/lib/ensure-generated.sh
 . "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
+# shellcheck source=scripts/lib/launch-check.sh
+. "$PROJECT_ROOT/scripts/lib/launch-check.sh"
 DERIVED_DATA="$PROJECT_ROOT/.derivedData/Dev"
 BUILT_APP="$DERIVED_DATA/Build/Products/Dev/EnviousWispr Local.app"
 APP_PATH="$PROJECT_ROOT/build/EnviousWispr Local.app"
@@ -142,38 +144,12 @@ codesign --verify "$APP_PATH"
 echo "==> Step 8: Launching..."
 open "$APP_PATH"
 
-# #2157 chunk C. Two defects fixed here, both of which made this check weaker
-# than it looked:
-#   1. `sleep 3` was a fixed wait, not a signal. It cost 3 s on every rebuild and
-#      still could not prove anything — the app is either up before it or not.
-#   2. `pgrep -f <path>` matches a REGEX against the whole command line, so it
-#      matches a SIBLING worktree's app whose command line contains this path as
-#      a substring, and any unrelated process that merely mentions it. It never
-#      resolved the executable. Resolve `ps -o comm=` and compare `pwd -P`
-#      normalised real paths instead — the /tmp vs /private/tmp spelling makes
-#      raw string comparison wrong.
-this_worktree_pids() {
-  local expected actual pid
-  expected="$(cd "$APP_PATH/Contents/MacOS" && pwd -P)/EnviousWispr"
-  while IFS= read -r pid; do
-    [ -n "$pid" ] || continue
-    actual="$(ps -o comm= -p "$pid" 2>/dev/null || true)"
-    if [ -n "$actual" ] && [ -d "$(dirname "$actual")" ]; then
-      actual="$(cd "$(dirname "$actual")" && pwd -P)/$(basename "$actual")"
-    fi
-    if [ "$actual" = "$expected" ]; then
-      printf '%s\n' "$pid"
-    fi
-  done < <(pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" 2>/dev/null || true)
-}
-
-launched=0
-for _ in $(seq 1 50); do
-  if [ -n "$(this_worktree_pids)" ]; then
-    launched=1
-    break
-  fi
-  sleep 0.1
-done
-[ "$launched" = "1" ] || { echo "ERROR: this worktree's dev app did not launch"; exit 1; }
+# #2157 chunk C: poll a SIGNAL instead of sleeping a fixed 3 s, and verify the
+# process is THIS worktree's app rather than matching text in a command line.
+# The check itself lives in scripts/lib/launch-check.sh so it can be TESTED — a
+# readiness check never observed failing is a check nobody has tested.
+if ! ew_wait_for_launch "$APP_PATH"; then
+  echo "ERROR: this worktree's dev app did not launch"
+  exit 1
+fi
 echo "==> EnviousWispr (dev) running ✓  ($APP_PATH)"

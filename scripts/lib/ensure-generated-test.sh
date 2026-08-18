@@ -40,11 +40,20 @@ new_fixture() {
   printf 'let y = 2\n' > "$FIXTURE/Tests/ModTests/ATests.swift"
   printf 'manifest\n' > "$FIXTURE/Project.swift"
   printf 'resolved\n' > "$FIXTURE/Package.resolved"
+  printf 'tuistcfg\n' > "$FIXTURE/Tuist.swift"
+  printf 'pkg\n' > "$FIXTURE/Package.swift"
+  mkdir -p "$FIXTURE/Tuist"
+  printf 'helper\n' > "$FIXTURE/Tuist/Helper.swift"
   printf 'pbx\n' > "$FIXTURE/EnviousWispr.xcodeproj/project.pbxproj"
   COUNT_FILE="$FIXTURE/.generate-count"
   : > "$COUNT_FILE"
-  export EW_TUIST_GENERATE_CMD="printf 'x\\n' >> '$COUNT_FILE'"
 }
+
+# Override the generation FUNCTION directly. The earlier version used an
+# `eval`-ed environment variable, which was an arbitrary-command seam reachable
+# in production for no benefit. Overriding the function is both safer and a more
+# faithful stub: it replaces exactly the call the subject makes.
+ew_run_tuist_generate() { printf 'x\n' >> "$COUNT_FILE"; }
 
 generate_count() { wc -l < "$COUNT_FILE" | tr -d ' '; }
 
@@ -112,6 +121,32 @@ check "changed Tuist pin regenerates" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/
 # shellcheck disable=SC2034
 EW_TUIST_PIN="tuist@4.195.11"
 
+new_fixture; settle
+printf 'tuistcfg changed\n' > "$FIXTURE/Tuist.swift"
+check "changed Tuist.swift regenerates" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
+
+new_fixture; settle
+printf 'pkg changed\n' > "$FIXTURE/Package.swift"
+check "changed Package.swift regenerates" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
+
+new_fixture; settle
+printf 'more\n' > "$FIXTURE/Tuist/Extra.swift"
+check "ADDED file under Tuist/ regenerates" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
+
+# THE NEWLINE COLLISION. Joining raw paths with newlines makes the sets
+# {"A\nTAIL","B"} and {"A","B\nTAIL"} sort to IDENTICAL text, so a rename between
+# those shapes would reuse a stale project — silently, surfacing later as
+# "Build input file cannot be found". Hashing each NUL-delimited path first makes
+# every entry fixed-width, so the collision is unreachable.
+new_fixture
+printf 'x\n' > "$FIXTURE/Sources/Mod/$(printf 'A\nTAIL')"
+printf 'x\n' > "$FIXTURE/Sources/Mod/B"
+settle
+rm -f "$FIXTURE/Sources/Mod/$(printf 'A\nTAIL')" "$FIXTURE/Sources/Mod/B"
+printf 'x\n' > "$FIXTURE/Sources/Mod/A"
+printf 'x\n' > "$FIXTURE/Sources/Mod/$(printf 'B\nTAIL')"
+check "newline-collision rename regenerates (key is not raw-joined)" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
+
 # --- Direction 2: MUST NOT regenerate ---------------------------------------
 # These are the twins. Without them, a function that always regenerates would
 # pass every case above and the check would be worth nothing.
@@ -154,8 +189,8 @@ fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 # Fail closed on an empty run: zero assertions is not a pass.
-if [ "$((PASS + FAIL))" -lt 16 ]; then
-  printf 'ERROR: expected at least 16 assertions, ran %s — the harness did not run fully\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 20 ]; then
+  printf 'ERROR: expected at least 20 assertions, ran %s — the harness did not run fully\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1
