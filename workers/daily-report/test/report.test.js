@@ -404,57 +404,110 @@ for (const [name, over, expected] of SOLO_COUNTS) {
   });
 }
 
-test("adoption section: the solo sweep is bound to the production query, not to a fixture", () => {
-  // THE FIRST VERSION OF THIS CHECK COMPARED THE SWEEP AGAINST `ER()`, WHICH IS
-  // A FIXTURE THIS FILE MAINTAINS. A column added to `totalsSql` and forgotten
-  // in the `escapeRecovery` mapping appears in NEITHER side, so the check passed
-  // on an omission it existed to catch — a completeness check that reads its own
-  // homework. Cloud review caught it.
+test("adoption section: every recovery column the query asks for reaches the formatter", async () => {
+  // THIRD MECHANISM FOR THIS CHECK, AND THE FIRST THAT IS NOT A TEXT MATCH.
   //
-  // The authority is the SQL. Reading the source is the only way to reach it:
-  // the query is a local const built per call, so nothing exports it, and a
-  // second hand-maintained list would just relocate the same defect.
-  const adoptionSrc = readFileSync(new URL("../src/adoption.js", import.meta.url), "utf8");
+  // v1 compared the sweep against a fixture this file maintains, so a column
+  // added to the query and forgotten in the mapping was absent from BOTH sides
+  // and passed. v2 read `adoption.js` as text, and review returned two more
+  // defects of the same kind rather than of the same instance: a future alias
+  // that is a PREFIX of an existing one (`er_kept_user` inside `er_kept_users`)
+  // satisfies a substring check, and a nested object inside the mapping ends the
+  // `},` slice early so later keys become invisible. Both are the mechanism
+  // failing, not the pattern — so the mechanism changed instead of the pattern
+  // being written a third time.
+  //
+  // Names are never compared here. The stub reads the query the code ACTUALLY
+  // sent, answers every column with a value unique to that column, and the
+  // assertion is that each value arrived. A column that is not carried has no
+  // way to smuggle its value through, whatever it is called, however it is
+  // spelled, and whatever the mapping's punctuation looks like.
+  const realFetch = globalThis.fetch;
+  let sentinels = null;
+  globalThis.fetch = async (url, init) => {
+    const target = String(url);
+    if (!target.includes("posthog.com")) return realFetch(url, init);
+    const body = JSON.parse(init.body);
+    const queryName = body.name.replace(/^daily_report_/, "");
+    const sql = body.query.query;
+    // Routed by NAME, and the recovery query identified by `net_dictations`
+    // rather than by a search for "er_" — that substring also appears inside
+    // `tier_a`, which sent an unrelated query down the recovery branch and the
+    // positive control caught it on the first run.
+    if (!sql.includes("net_dictations")) {
+      // The other queries keep exactly the shapes `mockPostHog` gives them, or
+      // this test fails for reasons that have nothing to do with what it checks.
+      if (queryName === "dev_ids") {
+        return new Response(JSON.stringify({ results: [], columns: ["distinct_id"] }), { status: 200 });
+      }
+      if (queryName === "engine_and_tier_b") {
+        return new Response(JSON.stringify({
+          results: [["u1", "parakeet", null]],
+          columns: ["distinct_id", "engine", "tier_b_provider"],
+        }), { status: 200 });
+      }
+      if (queryName === "tier_a") {
+        return new Response(JSON.stringify({
+          results: [["u1", "openai"]], columns: ["distinct_id", "provider"],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ results: [[0]], columns: ["c"] }), { status: 200 });
+    }
+    // The recovery-bearing query. Read its aliases from what was SENT.
+    const columns = [...sql.matchAll(/\bAS\s+([a-z_]+)/g)].map((m) => m[1]);
+    assert.ok(
+      columns.includes("net_dictations") && columns.some((c) => c.startsWith("er_")),
+      "positive control: the captured query must be the one carrying the recovery columns"
+    );
+    sentinels = new Map();
+    const row = columns.map((col, i) => {
+      // total_users must stay 1 to match the engine query's single row, or the
+      // completeness check downstream throws for an unrelated reason.
+      if (col === "total_users") return 1;
+      const value = 90_000 + i;
+      sentinels.set(col, value);
+      return value;
+    });
+    return new Response(JSON.stringify({ results: [row], columns }), { status: 200 });
+  };
 
-  const declared = [...adoptionSrc.matchAll(/\bAS\s+(er_[a-z_]+)/g)].map((m) => m[1]);
-  assert.ok(declared.length >= 7, `positive control: expected the er_* columns, found ${declared.length}`);
+  try {
+    const captured = await fetchAdoption();
+    assert.ok(sentinels, "the recovery query was never issued");
 
-  // Every column the query declares must be carried into the shape the
-  // formatter reads. The mapping is `camelCase: rowsToObjects(totals)[0]?.er_x`,
-  // so the column name appearing anywhere in that block is the binding.
-  // Sliced from INSIDE the braces: starting at `escapeRecovery: {` makes the
-  // block's own key one of its entries, and the key-extracting regex below then
-  // reports it as an eighth count that the fixture is missing. Caught on this
-  // check's first run.
-  const mappingOpen = adoptionSrc.indexOf("escapeRecovery: {");
-  const mappingBlock = adoptionSrc.slice(
-    mappingOpen + "escapeRecovery: {".length,
-    adoptionSrc.indexOf("},", mappingOpen)
-  );
-  const uncarried = declared.filter((col) => !mappingBlock.includes(col));
-  assert.deepEqual(uncarried, [], `declared in the query but never carried: ${uncarried.join(", ")}`);
+    const carried = captured.data.escapeRecovery;
+    const arrived = new Set(Object.values(carried));
+    const missing = [...sentinels.entries()]
+      .filter(([col]) => col.startsWith("er_"))
+      .filter(([, value]) => !arrived.has(value))
+      .map(([col]) => col);
 
-  // And every carried count must have a solo row. `keptUsers` is exempt by
-  // design: it QUALIFIES the kept clause ("N saved for M people") rather than
-  // gating a clause of its own, so driving it alone has no sentence to produce.
-  const swept = new Set(SOLO_COUNTS.map(([name]) => name));
-  const carried = Object.keys(ER().escapeRecovery);
-  const unswept = carried.filter((k) => k !== "keptUsers" && !swept.has(k));
-  assert.deepEqual(unswept, [], `these counts have no solo row: ${unswept.join(", ")}`);
+    assert.deepEqual(
+      missing, [],
+      `declared by the query and never carried to the formatter: ${missing.join(", ")}`
+    );
 
-  // Closing the loop the other way: the fixture must not invent counts the
-  // production mapping does not produce, or the sweep would be exercising
-  // imaginary data. Both sides are read from the source — comparing a COUNT of
-  // declared columns against a COUNT of fixture keys does not work, because the
-  // snake-to-camel rename is not mechanical (`er_restored_clipboard_only`
-  // becomes `clipboardOnly`), so the names have to come from the mapping block
-  // itself rather than be derived.
-  const mappedKeys = [...mappingBlock.matchAll(/^\s*([a-zA-Z]+):/gm)].map((m) => m[1]);
-  assert.ok(mappedKeys.length >= 7, `positive control: expected mapped keys, found ${mappedKeys.length}`);
-  assert.deepEqual(
-    [...carried].sort(), [...mappedKeys].sort(),
-    "the fixture and the production mapping must carry exactly the same counts"
-  );
+    // The other direction, so a mapping cannot satisfy this by carrying one
+    // column under several names: as many distinct values as recovery columns.
+    const recoveryColumns = [...sentinels.keys()].filter((c) => c.startsWith("er_"));
+    const distinctCarried = new Set(
+      Object.values(carried).filter((v) => typeof v === "number" && v >= 90_000)
+    );
+    assert.equal(
+      distinctCarried.size, recoveryColumns.length,
+      "each recovery column must arrive exactly once, under one key"
+    );
+
+    // And every carried count must have a solo row in the sweep above.
+    // `keptUsers` is exempt BY DESIGN and stated rather than skipped: it
+    // qualifies the kept clause ("N saved for M people") instead of gating a
+    // clause of its own, so driving it alone has no sentence to produce.
+    const swept = new Set(SOLO_COUNTS.map(([name]) => name));
+    const unswept = Object.keys(carried).filter((k) => k !== "keptUsers" && !swept.has(k));
+    assert.deepEqual(unswept, [], `these counts have no solo row: ${unswept.join(", ")}`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 test("adoption section: a report predating the feature renders without it, and without throwing", () => {
