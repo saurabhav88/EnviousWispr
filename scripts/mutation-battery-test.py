@@ -205,6 +205,14 @@ check("a bumped tuist pin refuses the run",
 # Round 3 of the drift class, at the axis the round-2 enumeration missed: it enumerated WHICH INPUTS
 # decide the build, not HOW an argument can arrive. An argument reaching xcodebuild through a variable
 # used to be dropped, so indirection read as absence.
+# The call site was matched as a PREFIX, so trailing positionals — which reach xcodebuild through
+# `"$@"`, accepted by the expansion allowlist without its contents being visible — slipped past.
+check("extra positional build settings on the canonical call site refuse the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="no longer has",
+      extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
+          'run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log',
+          'run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log ENABLE_TESTABILITY=YES')})
+
 check("an unrecognised shell expansion in the invocation refuses the run",
       [dict(VALID_ROW)], expect_exit=2, expect_text="cannot see",
       extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
@@ -369,6 +377,41 @@ def check_issue(name, *, rc, body, expect_text=None, expect_ok=False):
         failures.append(f"{name}: was ACCEPTED — it should have been refused")
 
 
+# The recipe may live in a COMMENT. github-light.md records that in this repo the body is often stale
+# and the adopted plan lives in comments, so a body-only read refuses correctly-filed work as a RULE
+# rather than an edge case — it fired on a peer's issue within an hour of the format existing.
+ran += 1
+_seen_cmd = {}
+
+
+def _capture_cmd(cmd, cwd, log_path=None, timeout=None):
+    _seen_cmd["cmd"] = cmd
+    return 0, 'body text\n```json\n{"rows": [1]}\n```\n'
+
+
+_real = battery.run
+battery.run = _capture_cmd
+try:
+    battery.recipes_from_issue(2156, Path("."))
+finally:
+    battery.run = _real
+
+_cmd = _seen_cmd.get("cmd", [])
+# The VALUE of --json is what decides what GitHub returns. Matching "comments" anywhere in the command
+# was vacuous: the jq expression names it either way, so unwiring --json left this case green. Its own
+# mutation control caught that.
+_json_value = _cmd[_cmd.index("--json") + 1] if "--json" in _cmd else ""
+if "comments" not in _json_value.split(","):
+    failures.append(
+        "the issue read asks for comments as well as the body: --json requested "
+        f"{_json_value!r}, so a recipe posted as a comment would be invisible")
+elif "body" not in _json_value.split(","):
+    failures.append(
+        "the issue read asks for comments as well as the body: --json requested "
+        f"{_json_value!r}, dropping the body — a recipe in the body would be invisible")
+else:
+    print("  ok  the issue read asks for comments as well as the body")
+
 check_issue("an issue with exactly one recipe block is accepted",
             rc=0, body='prose\n```json\n{"rows": [1]}\n```\n', expect_ok=True)
 check_issue("an issue carrying NO recipe block is refused",
@@ -479,6 +522,55 @@ check_row("a mutant that does not compile is an ERROR — a red lane proves noth
           (None, [], False, "log", 65, 3.0),
           expect_marker="ERR", expect_rc=1)
 
+# The most dangerous defect this tool has had, and it is invisible to a byte comparison. `copy2`
+# restores the original MODIFICATION TIME along with the bytes. Against warm DerivedData, a replacement
+# the SAME SIZE as its anchor therefore leaves a file that is byte-identical AND older than the object
+# compiled from the mutant, so the next row can run mutant code while every check reports clean.
+ran += 1
+_res = drive_row((5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0),
+                 expect_verdict=None, expect_detail=None)
+# drive_row returns (rc, out, after, during); re-run it capturing the file's mtime instead.
+import tempfile as _t3  # noqa: E402
+import os as _os  # noqa: E402
+with _t3.TemporaryDirectory() as td:
+    tmp = make_tree(Path(td))
+    target = tmp / "Sources" / "Thing.swift"
+    _os.utime(target, (1_000_000, 1_000_000))  # deliberately ancient
+    before_mtime = target.stat().st_mtime
+    recipes = tmp / "r.json"
+    # A replacement the SAME LENGTH as the anchor, so bytes-and-size tell you nothing.
+    same_len = dict(VALID_ROW, anchor="let guarded = true", replacement="let guarded = TRUE")
+    recipes.write_text(json.dumps({"rows": [same_len]}))
+
+    class _StubLane:
+        def __init__(self, *a, **k):
+            pass
+
+        def generate_once(self):
+            pass
+
+        def run_suite(self, suite, tag):
+            return (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0)
+
+    _rl, _rb = battery.Lane, battery.baseline
+    battery.Lane, battery.baseline = _StubLane, (lambda lane, suites, phase: [])
+    try:
+        import io as _io2, contextlib as _cl2
+        with _cl2.redirect_stdout(_io2.StringIO()), _cl2.redirect_stderr(_io2.StringIO()):
+            battery.main_for_test(recipes, tmp)
+    finally:
+        battery.Lane, battery.baseline = _rl, _rb
+
+    after_mtime = target.stat().st_mtime
+    if target.read_text() != "let guarded = true\n":
+        failures.append("same-length restore: content was not restored")
+    elif after_mtime <= before_mtime:
+        failures.append(
+            "a restored file is stamped NOW: it kept its OLD mtime instead, so a warm incremental "
+            "build can skip recompiling and the next row runs against mutant objects")
+    else:
+        print("  ok  a restored file is stamped NOW, so the next build cannot reuse mutant objects")
+
 check_row("the file is restored even when the lane raises mid-row",
           None, expect_marker="ERR", expect_rc=1, raise_instead=RuntimeError("lane exploded"))
 
@@ -505,6 +597,82 @@ else:
             "real lane.")
     else:
         print("  ok  the stubbed lane returns the same shape as the real one")
+
+# A mutation that removes a completion or cancellation path is among the most valuable to write and the
+# most likely to HANG. Unbounded, the unattended battery sits on that row all night and never reaches
+# its restore — leaving a mutated tree behind, which is the one outcome worse than a wrong verdict.
+ran += 1
+with tempfile.TemporaryDirectory() as td:
+    tmp = make_tree(Path(td))
+    target = tmp / "Sources" / "Thing.swift"
+    recipes = tmp / "r.json"
+    recipes.write_text(json.dumps({"rows": [dict(VALID_ROW)]}))
+
+    class _HangingLane:
+        def __init__(self, *a, **k):
+            pass
+
+        def generate_once(self):
+            pass
+
+        def run_suite(self, suite, tag):
+            raise battery._LaneTimedOut("the lane ran past 1800s and was killed")
+
+    _rl, _rb = battery.Lane, battery.baseline
+    battery.Lane, battery.baseline = _HangingLane, (lambda lane, suites, phase: [])
+    try:
+        import io as _io3, contextlib as _cl3
+        _buf = _io3.StringIO()
+        with _cl3.redirect_stdout(_buf), _cl3.redirect_stderr(_buf):
+            _rc = battery.main_for_test(recipes, tmp)
+        _out = _buf.getvalue()
+    finally:
+        battery.Lane, battery.baseline = _rl, _rb
+
+    if target.read_text() != "let guarded = true\n":
+        failures.append("a hanging lane left the tree MUTATED — the restore never ran")
+    elif _rc != 1 or "ERR" not in _out:
+        failures.append(f"a hanging lane should be a row ERROR with exit 1, got {_rc}")
+    else:
+        print("  ok  a hanging lane is a row ERROR and the tree is still restored")
+
+# The case above proves the row loop HANDLES a timeout. It does not prove the lane is bounded — its
+# stub raises the exception directly. These two prove the wiring, and neither reads source text.
+ran += 1
+with tempfile.TemporaryDirectory() as td:
+    try:
+        battery.run(["/bin/sleep", "5"], cwd=td, timeout=1)
+        failures.append("run() honours its timeout and kills the process: it ignored the timeout, so a "
+                        "hanging lane would never be killed")
+    except subprocess.TimeoutExpired:
+        print("  ok  run() honours its timeout and kills the process")
+    except Exception as exc:
+        failures.append(f"run() raised {type(exc).__name__} instead of TimeoutExpired: {exc}")
+
+ran += 1
+_seen_kwargs = {}
+
+
+def _capture(cmd, cwd, log_path=None, timeout=None):
+    _seen_kwargs["timeout"] = timeout
+    return 0, "Test run with 1 test\n"
+
+
+_real_run = battery.run
+battery.run = _capture
+try:
+    _lane = battery.Lane(Path("."), Path("."), Path("."))
+    _lane.generated = True  # skip tuist; this case is about the test lane's timeout only
+    _lane.run_suite("EnviousWisprTests/Whatever", "tag")
+finally:
+    battery.run = _real_run
+
+if _seen_kwargs.get("timeout") != battery.LANE_TIMEOUT_SECONDS:
+    failures.append(
+        "the lane passes LANE_TIMEOUT_SECONDS to the process it starts: it passed "
+        f"timeout={_seen_kwargs.get('timeout')!r} instead, so the bound exists but is not wired")
+else:
+    print("  ok  the lane passes LANE_TIMEOUT_SECONDS to the process it starts")
 
 print()
 if failures:

@@ -62,6 +62,7 @@ EXIT CODES
 import argparse
 import filecmp
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -121,7 +122,10 @@ CANONICAL_ASSIGNMENTS = [
     "DEST='platform=macOS,arch=arm64'",
     'TEST_ARGS=(-only-testing:"$FILTER")',
     'DERIVED_DATA="${DERIVED_DATA_PATH:-$PROJECT_ROOT/.derivedData/Test}"',
-    'run_lane "$DEBUG_SCHEME" Debug',
+    # The WHOLE line, not a prefix: `run_lane "$DEBUG_SCHEME" Debug build/... ENABLE_TESTABILITY=YES`
+    # still starts with the prefix, and those trailing positionals reach xcodebuild through `"$@"`,
+    # which the expansion allowlist accepts by name without seeing its contents.
+    'run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log\n',
     "mise x tuist@4.195.11 -- tuist generate --no-open",
 ]
 # Expansions the runner knows the contents of, because CANONICAL_ASSIGNMENTS pins each one. An
@@ -140,6 +144,10 @@ class Refusal(Exception):
     """Preflight said no. The battery never started, so there is nothing to restore."""
 
 
+class _LaneTimedOut(Exception):
+    """The lane was killed for running past its bound. Never a catch: a hang proves nothing."""
+
+
 class _RowFailed(Exception):
     """This row cannot produce a verdict. It is an ERROR, never a catch and never a survivor.
 
@@ -147,6 +155,14 @@ class _RowFailed(Exception):
     per-row so one broken row does not abort the run before the closing baseline check — that check is
     what proves the tree came back, and losing it is worse than losing the remaining rows.
     """
+
+
+# A mutation can make the code under test WAIT FOREVER — removing a completion path or a cancellation
+# is one of the most valuable things to mutate, and also the most likely to hang. Unbounded, the
+# unattended battery sits on that row all night and never reaches its restore or its closing baseline,
+# so it leaves a MUTATED TREE behind. The bound is generous: it exists to convert a hang into a row
+# ERROR, not to police a slow suite (validation-discipline.md `hang-guard-vs-latency-bound`).
+LANE_TIMEOUT_SECONDS = 1800
 
 
 def run(cmd, cwd, log_path=None, timeout=None):
@@ -199,7 +215,17 @@ class Lane:
             f"-only-testing:{suite}",
         ]
         started = time.monotonic()
-        rc, out = run(cmd, cwd=self.worktree, log_path=log_path)
+        try:
+            rc, out = run(cmd, cwd=self.worktree, log_path=log_path,
+                          timeout=LANE_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            elapsed = time.monotonic() - started
+            Path(log_path).write_text(
+                f"lane exceeded {LANE_TIMEOUT_SECONDS}s and was killed after {elapsed:.0f}s\n")
+            raise _LaneTimedOut(
+                f"the lane ran past {LANE_TIMEOUT_SECONDS}s and was killed. A mutation that removes a "
+                f"completion or cancellation path can hang the suite; that is a row ERROR, never a "
+                f"catch ({log_path})")
         elapsed = time.monotonic() - started
 
         counts = [int(n) for n in TEST_COUNT_RE.findall(out)]
@@ -228,8 +254,11 @@ def check_canonical_settings(worktree: Path):
             f"could not find the `xcodebuild test ... | tee` invocation in {CANONICAL_SCRIPT}. The "
             "runner reproduces that command, so it cannot confirm it still matches. Fail closed."
         )
-    # Keep flags and literal build settings; drop continuations and anything the shell expands, since
-    # those are compared through CANONICAL_ASSIGNMENTS above.
+    # Literal flags and build settings are compared as tokens, both ways. Shell EXPANSIONS cannot be
+    # compared that way, so they are allowlisted instead: each one in CANONICAL_EXPANSIONS has its
+    # contents pinned by CANONICAL_ASSIGNMENTS above, and an expansion outside that set hides arguments
+    # this runner cannot see. Silently dropping them was the round-3 defect — indirection read as
+    # absence.
     raw_tokens = [tok for tok in match.group(1).split() if tok != "\\"]
     expansions = [tok for tok in raw_tokens if "$" in tok]
     unknown_expansions = sorted(set(expansions) - CANONICAL_EXPANSIONS)
@@ -256,8 +285,9 @@ def check_canonical_settings(worktree: Path):
             f"{CANONICAL_SCRIPT} has drifted from what this runner reproduces, so the battery would "
             "measure a differently-configured build than the canonical lane:\n"
             + "\n".join(lines)
-            + "\n\nReconcile CANONICAL_TOKENS / CANONICAL_ASSIGNMENTS and the Lane class with the "
-            "script, deliberately. Do not delete the guard to make this go away."
+            + "\n\nReconcile CANONICAL_TOKENS / CANONICAL_ASSIGNMENTS / CANONICAL_EXPANSIONS and "
+            "the Lane class with the script, deliberately. Do not delete the guard to make this go "
+            "away."
         )
 
 
@@ -294,21 +324,31 @@ def recipes_from_issue(number: int, worktree: Path):
     Fails closed on zero or several fenced json blocks. Picking "the first one" would silently run a
     different recipe than the one a reader of the issue believes is running.
     """
+    # Body AND comments. github-light.md FACT: finding-issues records that in this repo "title/body
+    # often stale; adopted plan lives in comments" — so a recipe posted as a comment is the NORMAL
+    # case, not a mistake, and reading only the body would refuse correctly-filed work. The
+    # exactly-one rule below is what keeps that from being ambiguous, and it now spans both.
+    # Never bare `--comments`: in a non-TTY pipe it drops the body and prints nothing for zero
+    # comments, so a piped read of a recipe-in-body issue would look empty (cli/cli#2462).
     rc, out = run(
-        ["gh", "issue", "view", str(number), "--json", "body", "--jq", ".body"], cwd=worktree
+        ["gh", "issue", "view", str(number), "--json", "body,comments",
+         "--jq", '.body, (.comments[]?.body)'],
+        cwd=worktree,
     )
     if rc != 0:
         raise Refusal(f"could not read issue #{number}: {out.strip()[:300]}")
     blocks = FENCE_RE.findall(out)
     if not blocks:
         raise Refusal(
-            f"issue #{number} carries no ```json recipe block. A test-hardening issue without its "
-            "recipe cannot be acted on cold, which is the whole reason the recipe goes in the BODY."
+            f"issue #{number} carries no ```json recipe block in its body or any comment. A "
+            "test-hardening issue without its recipe cannot be acted on cold, which is the whole "
+            "reason the recipe is written into the issue."
         )
     if len(blocks) > 1:
         raise Refusal(
-            f"issue #{number} carries {len(blocks)} ```json blocks. Exactly one, or the run and the "
-            "issue disagree about what was tested."
+            f"issue #{number} carries {len(blocks)} ```json blocks across its body and comments. "
+            "Exactly one, or the run and the issue disagree about what was tested — edit the "
+            "superseded one out rather than adding a newer block beside it."
         )
     return blocks[0]
 
@@ -410,7 +450,11 @@ def baseline(lane: Lane, suites, phase: str):
     problems = []
     for suite in sorted(suites):
         tag = f"baseline-{phase}-{suite.replace('/', '_')}"
-        count, failures, compiled, log, rc, elapsed = lane.run_suite(suite, tag)
+        try:
+            count, failures, compiled, log, rc, elapsed = lane.run_suite(suite, tag)
+        except _LaneTimedOut as exc:
+            problems.append(f"{suite}: {exc}")
+            continue
         if not compiled:
             problems.append(f"{suite}: did not compile ({log})")
         elif count is None or count < 1:
@@ -554,6 +598,14 @@ def main(argv=None):
             detail = str(exc)
         finally:
             shutil.copy2(backup, target)
+            # `copy2` restores the original MODIFICATION TIME as well as the bytes, and that is a bug
+            # here rather than a nicety. xcodebuild's incremental check is timestamp-based against a
+            # deliberately WARM DerivedData: if the replacement happened to be the same SIZE as the
+            # anchor, the restored file is byte-identical AND older than the object compiled from the
+            # MUTANT, so the next row — or the closing baseline — can run against mutant code while
+            # every check here reports a clean tree. That fails toward false CAUGHT and false green,
+            # silently, for every row after it. Stamp the restore as NOW so the next build recompiles.
+            os.utime(target, None)
             if not filecmp.cmp(backup, target, shallow=False):
                 verdict, detail = "ERROR", "RESTORE FAILED — the tree is dirty, stop and inspect"
             else:
