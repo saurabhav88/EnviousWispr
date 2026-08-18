@@ -82,6 +82,31 @@ struct ClipboardIsolationFreezeTests {
   /// one today, and the only other textual hit is the header comment explaining the seam.
   private static let boardlessClipboardFunctions: Set<String> = ["pasteToActiveApp"]
 
+  /// Types OTHER than `PasteService` whose methods reach the real clipboard, keyed to the methods that
+  /// do it.
+  ///
+  /// THE SET WAS SCOPED TO ONE TYPE AND THE PROBLEM IS NOT. `PasteCascadeExecutor.deliver` calls
+  /// `PasteService.copyToClipboard(request.legacyText)` with no board on its clipboard-only fallback
+  /// (`PasteCascadeExecutor.swift:543`, and again at `:578`), which is CORRECT for production — that
+  /// path is meant to reach the user's clipboard — and lethal for a test, which reaches it through
+  /// `@testable import` and bypasses the required `KernelFinalizationWiring` seam entirely. Nine
+  /// no-board call sites live in that file.
+  ///
+  /// Re-derive rather than trust this list:
+  ///   grep -rn "PasteService\.\(copyToClipboard\|saveClipboard\|restoreClipboard\)" Sources/ \
+  ///     | grep -vE "to:|from:|on:"
+  /// Every hit is a production caller that legitimately wants the user's board; the question this set
+  /// answers is which of them a TEST can reach directly.
+  ///
+  /// KNOWN LIMIT, and it is why the real fix is elsewhere: this matches a LITERAL type base, so
+  /// `PasteCascadeExecutor().deliver(…)` is caught and a stored `executor.deliver(…)` is not — that
+  /// needs type resolution this suite does not do. The durable fix is to give the executor the same
+  /// injected clipboard seam `KernelFinalizationWiring` already has, which is a production change and
+  /// has its own issue.
+  private static let boardReachingTypes: [String: Set<String>] = [
+    "PasteCascadeExecutor": ["deliver"]
+  ]
+
   /// Argument labels that name a board explicitly.
   private static let boardLabels: Set<String> = ["to", "from", "on"]
 
@@ -157,6 +182,12 @@ struct ClipboardIsolationFreezeTests {
       // `` `NSPasteboard`.general `` unmatched — caught by this suite's own paired row rather than by
       // review, which is the whole reason the rows are generated over the axis instead of hand-picked.
       let unwrappedBase = base.map { unwrapped($0) }
+      // `PasteCascadeExecutor().deliver(…)` constructs inline, so the base is itself a CALL. Look
+      // through it to the type being constructed — the same "what does this resolve to" question the
+      // rest of this file asks about names.
+      if let call = unwrappedBase?.as(FunctionCallExprSyntax.self) {
+        return trailingName(of: call.calledExpression)
+      }
       if let reference = unwrappedBase?.as(DeclReferenceExprSyntax.self) {
         return identifierText(reference.baseName)
       }
@@ -223,9 +254,25 @@ struct ClipboardIsolationFreezeTests {
     }
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-      guard let callee = node.calledExpression.as(MemberAccessExprSyntax.self),
-        Self.trailingName(of: callee.base) == "PasteService"
-      else { return .visitChildren }
+      guard let callee = node.calledExpression.as(MemberAccessExprSyntax.self) else {
+        return .visitChildren
+      }
+      let baseName = Self.trailingName(of: callee.base)
+
+      if let base = baseName,
+        let banned = ClipboardIsolationFreezeTests.boardReachingTypes[base],
+        banned.contains(Self.identifierText(callee.declName.baseName))
+      {
+        violations.append(
+          Violation(
+            file: file, line: line(node),
+            reason:
+              "\(base).\(Self.identifierText(callee.declName.baseName)) reaches the real clipboard on its fallback path and bypasses the required wiring seam"
+          ))
+        return .visitChildren
+      }
+
+      guard baseName == "PasteService" else { return .visitChildren }
 
       let calleeName = Self.identifierText(callee.declName.baseName)
 
@@ -573,6 +620,21 @@ struct ClipboardIsolationFreezeTests {
     ])
   func aBoardlessEntryPointIsBannedOutright(source: String, expected: Int) {
     let hits = Self.violations(inSource: source, file: "PasteServiceClipboardTests.swift")
+    #expect(hits.count == expected, "source: \(source) -> \(hits.map(\.description))")
+  }
+
+  @Test(
+    "a board-reaching method on another type is banned too",
+    arguments: [
+      (#"func f() async { _ = await PasteCascadeExecutor().deliver(request) }"#, 1),
+      (#"func f() async { _ = await EnviousWisprPipeline.PasteCascadeExecutor().deliver(r) }"#, 1),
+      // Safe halves: a different method on that type, and `deliver` on anything else.
+      (#"func f() { _ = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(x) }"#, 0),
+      (#"func f() async { _ = await wiring.deliver("hello") }"#, 0),
+      (#"func f() async { _ = await pasteSink.deliver(request) }"#, 0),
+    ])
+  func aBoardReachingMethodOnAnotherTypeIsBanned(source: String, expected: Int) {
+    let hits = Self.violations(inSource: source, file: "Some.swift")
     #expect(hits.count == expected, "source: \(source) -> \(hits.map(\.description))")
   }
 
