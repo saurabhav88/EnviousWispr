@@ -261,7 +261,9 @@ struct TestInventoryFreezeTests {
       }
       guard let testAttribute = attribute(named: "Test", on: fn.attributes) else { continue }
       tests += 1
-      if tagNames(in: Syntax(testAttribute)).contains(TestClass.realBoundaryTag) { boundary += 1 }
+      if tagNames(inAttributeArguments: testAttribute).contains(TestClass.realBoundaryTag) {
+        boundary += 1
+      }
     }
   }
 
@@ -428,12 +430,13 @@ struct TestInventoryFreezeTests {
 
     for element in attributes {
       guard let ifConfig = element.as(IfConfigDeclSyntax.self) else {
-        unconditional.formUnion(tagNames(in: Syntax(element)))
+        guard let attr = element.as(AttributeSyntax.self) else { continue }
+        unconditional.formUnion(tagNames(inAttributeArguments: attr))
         continue
       }
       var perClause: [Set<String>] = ifConfig.clauses.map { clause in
-        guard let elements = clause.elements else { return [] }
-        return tagNames(in: Syntax(elements))
+        guard let elements = clause.elements?.as(AttributeListSyntax.self) else { return [] }
+        return tagNames(inAttributes: elements)
       }
       // No `#else` means a configuration in which this attribute does not exist at all.
       if !ifConfig.clauses.contains(where: { $0.poundKeyword.text == "#else" }) {
@@ -446,16 +449,32 @@ struct TestInventoryFreezeTests {
     return conditionalGroups.reduce(unconditional) { $0.union($1) }
   }
 
-  private static func tagNames(in syntax: Syntax) -> Set<String> {
+  /// Tags GIVEN DIRECTLY to an attribute as one of its trait arguments.
+  ///
+  /// Descending recursively was the last version and it was wrong in the quiet direction: the valid
+  /// `@Suite(.enabled(if: acceptsTags(.tags(.productOutcome))))` passes a `Tag.List` to a helper INSIDE
+  /// an enablement trait, and a recursive search finds that nested `tags` call and reads the suite as
+  /// tagged. It was given an enablement trait and no class at all. A trait argument is a POSITION, not
+  /// a substring, so this looks only at the attribute's own top-level arguments and never inside them.
+  private static func tagNames(inAttributeArguments attr: AttributeSyntax) -> Set<String> {
+    guard case let .argumentList(arguments)? = attr.arguments else { return [] }
     var found: Set<String> = []
-    if let call = syntax.as(FunctionCallExprSyntax.self),
-      let callee = call.calledExpression.as(MemberAccessExprSyntax.self),
-      isTagsTraitCallee(callee)
-    {
+    for argument in arguments {
+      guard let call = argument.expression.as(FunctionCallExprSyntax.self),
+        let callee = call.calledExpression.as(MemberAccessExprSyntax.self),
+        isTagsTraitCallee(callee)
+      else { continue }
       found.formUnion(memberAccessNames(in: Syntax(call.arguments)))
     }
-    for node in syntax.children(viewMode: .sourceAccurate) {
-      found.formUnion(tagNames(in: node))
+    return found
+  }
+
+  /// Tags declared by every attribute in a list, at the attribute's own argument position.
+  private static func tagNames(inAttributes list: AttributeListSyntax) -> Set<String> {
+    var found: Set<String> = []
+    for element in list {
+      guard let attr = element.as(AttributeSyntax.self) else { continue }
+      found.formUnion(tagNames(inAttributeArguments: attr))
     }
     return found
   }
@@ -554,6 +573,17 @@ struct TestInventoryFreezeTests {
       """
       \(rawTotal - parsedTotal) @Test attribute(s) were found but not attributed to any suite:
       \(mismatches.joined(separator: "\n"))
+
+      TWO KNOWN CAUSES, and neither means this walk is broken — both are forms it deliberately does not
+      model, recorded here so the message names the right subject instead of indicting the instrument:
+
+        1. A FREESTANDING test — `@Test func works() {}` at file scope, with no enclosing type. Swift
+           Testing accepts it. This gate cannot: a test outside a suite has no suite to declare a class,
+           which is the one thing every test here must do. Put it in a `@Suite` type.
+        2. A `@Test` attribute inside an attribute-list `#if`. Also valid Swift, also not modelled,
+           because the same declaration would then exist in some configurations and not others.
+
+      If neither applies, the traversal really has lost a test and the file above is where.
       """)
   }
 
@@ -615,6 +645,20 @@ struct TestInventoryFreezeTests {
       """
       suite(s) declare more than one class tag. A suite protects ONE of the four:
       \(ambiguous.map { "  \($0.file) :: \($0.qualifiedName) -> \($0.classes.map(\.rawValue))" }.joined(separator: "\n"))
+      """)
+
+    // A grandfathered suite that LATER declares a class must lose its baseline entry, or the ratchet
+    // silently regresses: delete the tag again and the stale key grandfathers it a second time, with no
+    // failure anywhere. The list is an exemption for suites that predate the rule, so an entry naming a
+    // suite that no longer needs one is a hole rather than dead weight.
+    let staleGrandfathering = records.filter { !$0.classes.isEmpty && baseline.contains($0.key) }
+    #expect(
+      staleGrandfathering.isEmpty,
+      """
+      \(staleGrandfathering.count) suite(s) declare a class AND are still grandfathered. Remove their
+      lines from scripts/test-inventory-baseline.txt — a stale exemption re-grandfathers the suite if
+      its tag is ever removed:
+      \(staleGrandfathering.map { "  \($0.file) :: \($0.qualifiedName)" }.joined(separator: "\n"))
       """)
 
     let undeclared = records.filter { $0.classes.isEmpty && !baseline.contains($0.key) }
