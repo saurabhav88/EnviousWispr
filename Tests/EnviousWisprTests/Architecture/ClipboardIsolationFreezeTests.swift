@@ -189,7 +189,7 @@ struct ClipboardIsolationFreezeTests {
         // `T.init()` spells the same construction as `T()`, and its callee is a member access named
         // `init` — so recursing naively answers "init". Look through the explicit initialiser to the
         // type, the same way `T()` is looked through.
-        if let member = call.calledExpression.as(MemberAccessExprSyntax.self),
+        if let member = unwrapped(call.calledExpression).as(MemberAccessExprSyntax.self),
           identifierText(member.declName.baseName) == "init"
         {
           return trailingName(of: member.base)
@@ -262,7 +262,10 @@ struct ClipboardIsolationFreezeTests {
     }
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-      guard let callee = node.calledExpression.as(MemberAccessExprSyntax.self) else {
+      // Unwrap here too. The rule is "what does the compiler treat as transparent", and it has to hold
+      // at EVERY expression this visitor inspects — `(executor.deliver)(request)` is the same call, and
+      // applying the rule at three sites and not the other two is how the class comes back.
+      guard let callee = Self.unwrapped(node.calledExpression).as(MemberAccessExprSyntax.self) else {
         return .visitChildren
       }
       let baseName = Self.trailingName(of: callee.base)
@@ -642,6 +645,10 @@ struct ClipboardIsolationFreezeTests {
     arguments: [
       (#"func f() async { _ = await PasteCascadeExecutor().deliver(request) }"#, 1),
       (#"func f() async { _ = await EnviousWisprPipeline.PasteCascadeExecutor().deliver(r) }"#, 1),
+      // Every transparent wrapper, at every position this visitor inspects.
+      (#"func f() async { _ = await PasteCascadeExecutor.init().deliver(request) }"#, 1),
+      (#"func f() async { _ = await (PasteCascadeExecutor.init)().deliver(request) }"#, 1),
+      (#"func f() async { _ = await (PasteCascadeExecutor()).deliver(request) }"#, 1),
       // Safe halves: a different method on that type, and `deliver` on anything else.
       (#"func f() { _ = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(x) }"#, 0),
       (#"func f() async { _ = await wiring.deliver("hello") }"#, 0),
