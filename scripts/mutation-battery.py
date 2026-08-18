@@ -124,6 +124,13 @@ CANONICAL_ASSIGNMENTS = [
     'run_lane "$DEBUG_SCHEME" Debug',
     "mise x tuist@4.195.11 -- tuist generate --no-open",
 ]
+# Expansions the runner knows the contents of, because CANONICAL_ASSIGNMENTS pins each one. An
+# expansion NOT in this set hides arguments the runner cannot see, so it is a refusal rather than a
+# token to skip — the difference between "I checked and it matches" and "I could not look".
+CANONICAL_EXPANSIONS = {
+    '"$PROJECT"', '"$scheme"', '"$config"', '"$DERIVED_DATA"', '"$DEST"',
+    '"$@"', '"${TEST_ARGS[@]}"',
+}
 INVOCATION_RE = re.compile(r"xcodebuild test\s*\\\n(.*?)\|\s*tee", re.DOTALL)
 # One definition, so the drift guard above and the call below cannot disagree about the version.
 TUIST_GENERATE_ARGV = ["mise", "x", "tuist@4.195.11", "--", "tuist", "generate", "--no-open"]
@@ -223,14 +230,14 @@ def check_canonical_settings(worktree: Path):
         )
     # Keep flags and literal build settings; drop continuations and anything the shell expands, since
     # those are compared through CANONICAL_ASSIGNMENTS above.
-    found = {
-        tok for tok in match.group(1).split()
-        if tok != "\\" and "$" not in tok and tok not in ('"$@"',)
-    }
+    raw_tokens = [tok for tok in match.group(1).split() if tok != "\\"]
+    expansions = [tok for tok in raw_tokens if "$" in tok]
+    unknown_expansions = sorted(set(expansions) - CANONICAL_EXPANSIONS)
+    found = {tok for tok in raw_tokens if "$" not in tok}
     missing_tokens = sorted(CANONICAL_TOKENS - found)
     extra_tokens = sorted(found - CANONICAL_TOKENS)
 
-    if missing_assignments or missing_tokens or extra_tokens:
+    if missing_assignments or missing_tokens or extra_tokens or unknown_expansions:
         lines = []
         if missing_assignments:
             lines.append("  settings the runner expects and the script no longer has:")
@@ -241,6 +248,10 @@ def check_canonical_settings(worktree: Path):
         if extra_tokens:
             lines.append("  tokens the script now passes and the runner does NOT reproduce:")
             lines += [f"    + {m}" for m in extra_tokens]
+        if unknown_expansions:
+            lines.append("  shell expansions whose contents this runner cannot see, so it cannot know")
+            lines.append("  whether it reproduces them:")
+            lines += [f"    ? {m}" for m in unknown_expansions]
         raise Refusal(
             f"{CANONICAL_SCRIPT} has drifted from what this runner reproduces, so the battery would "
             "measure a differently-configured build than the canonical lane:\n"
@@ -332,14 +343,25 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
         if not isinstance(row, dict):
             raise Refusal(f"row {i} is a {type(row).__name__}, not an object.")
         for field in ("label", "file", "anchor", "replacement", "expect_fail"):
-            if not row.get(field):
+            if field not in row or row[field] is None:
                 raise Refusal(f"row {i} is missing required field '{field}'.")
             if not isinstance(row[field], str):
                 raise Refusal(
                     f"row {i} field '{field}' must be a string, got {type(row[field]).__name__}.")
+            # `replacement` may legitimately be EMPTY: deleting an anchored statement or block is one
+            # of the most natural mutations there is, and a truthiness check classified that correctly
+            # typed value as missing. Every other field empty is still a mistake.
+            if field != "replacement" and not row[field]:
+                raise Refusal(f"row {i} is missing required field '{field}'.")
         row.setdefault("suite", default_suite)
         if not row["suite"]:
             raise Refusal(f"row {i} has no suite and no suite_default is set.")
+        if not isinstance(row["suite"], str):
+            raise Refusal(
+                f"row {i} suite must be a string, got {type(row['suite']).__name__}. "
+                "(A non-string here used to raise TypeError and exit 1, which the exit codes reserve "
+                "for a row SURVIVING.)"
+            )
         if "/" not in row["suite"]:
             raise Refusal(
                 f"row {i} suite '{row['suite']}' is not target-qualified. It must read "

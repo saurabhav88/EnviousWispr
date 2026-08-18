@@ -120,6 +120,10 @@ check("a bare suite name is refused as not target-qualified",
       [dict(VALID_ROW, suite="ThingTests")],
       expect_exit=2, expect_text="not target-qualified")
 
+check("a non-string suite is refused, not crashed on",
+      [dict(VALID_ROW, suite=1)],
+      expect_exit=2, expect_text="suite must be a string")
+
 check("no suite and no default is refused",
       [{k: v for k, v in VALID_ROW.items() if k != "suite"}],
       expect_exit=2, expect_text="no suite and no suite_default")
@@ -127,6 +131,17 @@ check("no suite and no default is refused",
 check("a target file that does not exist is refused",
       [dict(VALID_ROW, file="Sources/Absent.swift")],
       expect_exit=2, expect_text="target does not exist")
+
+check("an EMPTY replacement is accepted — deleting the anchored block is a real mutation",
+      [dict(VALID_ROW, replacement="")], expect_exit=0, expect_text="1 row(s) well-formed")
+
+check("a replacement that is absent entirely is still refused",
+      [{k: v for k, v in VALID_ROW.items() if k != "replacement"}],
+      expect_exit=2, expect_text="missing required field 'replacement'")
+
+check("an empty ANCHOR is still refused — only replacement may be empty",
+      [dict(VALID_ROW, anchor="")],
+      expect_exit=2, expect_text="missing required field 'anchor'")
 
 check("anchor identical to replacement is refused",
       [dict(VALID_ROW, replacement=VALID_ROW["anchor"])],
@@ -186,6 +201,14 @@ check("a bumped tuist pin refuses the run",
       [dict(VALID_ROW)], expect_exit=2, expect_text="no longer has",
       extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
           "tuist@4.195.11", "tuist@4.200.0")})
+
+# Round 3 of the drift class, at the axis the round-2 enumeration missed: it enumerated WHICH INPUTS
+# decide the build, not HOW an argument can arrive. An argument reaching xcodebuild through a variable
+# used to be dropped, so indirection read as absence.
+check("an unrecognised shell expansion in the invocation refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="cannot see",
+      extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
+          '    "$@" ', '    "${EXTRA_ARGS[@]}" ')})
 
 check("a missing canonical script refuses the run",
       [dict(VALID_ROW)], expect_exit=2, expect_text="cannot confirm it is building the same thing",
@@ -458,6 +481,30 @@ check_row("a mutant that does not compile is an ERROR — a red lane proves noth
 
 check_row("the file is restored even when the lane raises mid-row",
           None, expect_marker="ERR", expect_rc=1, raise_instead=RuntimeError("lane exploded"))
+
+# A double must refuse what the real tool refuses, and it must also RETURN what the real tool returns.
+# The stubbed lane above hands back a 6-tuple; if Lane.run_suite ever returns a different shape, every
+# row case would keep passing against a double that no longer resembles the thing it replaces — the
+# stub would be testing itself. Bind them by reading the real return statement.
+ran += 1
+import inspect  # noqa: E402
+import re as _re  # noqa: E402
+
+_src = inspect.getsource(battery.Lane.run_suite)
+_returns = _re.findall(r"^\s*return (.+)$", _src, _re.MULTILINE)
+if len(_returns) != 1:
+    failures.append("the stubbed lane returns the same shape as the real one: Lane.run_suite has "
+                    f"{len(_returns)} return statements; the stub assumes exactly 1")
+else:
+    _arity = len([t for t in _returns[0].split(",")])
+    if _arity != 6:
+        failures.append(
+            "the stubbed lane returns the same shape as the real one: "
+            f"Lane.run_suite now returns {_arity} values, but the stubbed-lane cases hand back 6. "
+            "Update the stub, or every row case is exercising a double that no longer resembles the "
+            "real lane.")
+    else:
+        print("  ok  the stubbed lane returns the same shape as the real one")
 
 print()
 if failures:
