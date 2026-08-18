@@ -88,6 +88,13 @@ ew_seed_process_identity() {
 
 ew_seed_lock_dir() { printf '%s\n' "$EW_SEED_ROOT/.locks/$1"; }
 
+# How old an abandoned lock must be before `ew_seed_lock_acquire` will reclaim it.
+# Generous on purpose: the cost of waiting is one slow resolve, and the cost of
+# reclaiming a lock whose owner is merely slow is two writers on one snapshot.
+# Liveness is checked as well as age, so this is a second line rather than the
+# only one.
+EW_SEED_LOCK_RECLAIM_AGE_MIN="${EW_SEED_LOCK_RECLAIM_AGE_MIN:-60}"
+
 # ew_seed_lock_acquire <key> -> 0 if held, 1 otherwise (busy, or anything unclear)
 ew_seed_lock_acquire() {
   local key="$1" dir _ew_started
@@ -96,7 +103,24 @@ ew_seed_lock_acquire() {
   # Atomic test-and-set. Never blocks and never retries: the caller takes the
   # slow path rather than waiting, because waiting could exceed the time the
   # cache was meant to save.
-  mkdir "$dir" 2>/dev/null || return 1
+  if ! mkdir "$dir" 2>/dev/null; then
+    # RECLAMATION NEEDS A SHIPPED CALLER. `ew_seed_lock_is_reclaimable` existed
+    # and its only caller was the gitignored purge script, so on a fresh clone or
+    # any other machine an abandoned lock was permanent: SIGKILL, power loss, or
+    # the small window this function itself has, and that key loses seeding
+    # forever with nothing to clear it. Same class as the cache that could only
+    # be pruned by an untracked script — a mechanism whose recovery lives outside
+    # the shipped tree has no recovery.
+    # Reclaim only what is PROVABLY abandoned: aged AND its recorded owner gone.
+    # Anything unreadable, unknown-version, or merely unresponsive is left alone,
+    # and a single retry keeps this from becoming a spin.
+    if ew_seed_lock_is_reclaimable "$key" "$EW_SEED_LOCK_RECLAIM_AGE_MIN"; then
+      rm -rf "$dir" 2>/dev/null || true
+      mkdir "$dir" 2>/dev/null || return 1
+    else
+      return 1
+    fi
+  fi
 
   # TRACK IT IMMEDIATELY, BEFORE ANY OTHER WORK. Registering after the owner
   # record was written left a window in which HUP/INT/TERM stranded a lock the

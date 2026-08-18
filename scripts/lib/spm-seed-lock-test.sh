@@ -343,9 +343,52 @@ else
 fi
 ew_seed_lock_release noidentity
 
+# --- an abandoned lock is reclaimed by ACQUIRE, in shipped code ---------------
+# `ew_seed_lock_is_reclaimable` existed and its only caller was the gitignored
+# purge script, so on a fresh clone or any other machine an abandoned lock was
+# PERMANENT and that key lost seeding forever. Same class as a cache that only an
+# untracked script could prune: a mechanism whose recovery lives outside the
+# shipped tree has no recovery.
+mkdir -p "$EW_SEED_ROOT/.locks/abandoned"
+{ printf 'version=%s\n' "$EW_SEED_LOCK_VERSION"
+  printf 'pid=%s\n' 999998
+  printf 'started=Thu Jan  1 00:00:00 2020\n'; } > "$EW_SEED_ROOT/.locks/abandoned/owner"
+touch -t 202001010000 "$EW_SEED_ROOT/.locks/abandoned"
+if ew_seed_lock_acquire abandoned >/dev/null 2>&1; then
+  ok "acquire RECLAIMS an aged lock whose owner is provably dead"
+else
+  bad "acquire reclaim" "an abandoned lock stayed locked forever — seeding lost for that key"
+fi
+ew_seed_lock_release abandoned
+
+# THE TWIN, and it is the one that matters: a lock held by a LIVE owner is never
+# stolen, however old. Without it, a reclaim-everything version looks correct.
+mkdir -p "$EW_SEED_ROOT/.locks/liveheld"
+{ printf 'version=%s\n' "$EW_SEED_LOCK_VERSION"
+  printf 'pid=%s\n' "$$"
+  printf 'started=%s\n' "$(ew_seed_process_identity "$$")"; } > "$EW_SEED_ROOT/.locks/liveheld/owner"
+touch -t 202001010000 "$EW_SEED_ROOT/.locks/liveheld"
+if ew_seed_lock_acquire liveheld >/dev/null 2>&1; then
+  bad "acquire reclaim scope" "stole a lock from a LIVE owner — two writers on one snapshot"
+else
+  ok "acquire never reclaims a lock whose owner is alive, however aged (the twin)"
+fi
+
+# A FRESH lock is not a candidate at all: age is what separates "abandoned" from
+# "somebody just took it".
+mkdir -p "$EW_SEED_ROOT/.locks/freshheld"
+{ printf 'version=%s\n' "$EW_SEED_LOCK_VERSION"
+  printf 'pid=%s\n' 999998
+  printf 'started=Thu Jan  1 00:00:00 2020\n'; } > "$EW_SEED_ROOT/.locks/freshheld/owner"
+if ew_seed_lock_acquire freshheld >/dev/null 2>&1; then
+  bad "acquire reclaim age" "reclaimed a lock taken moments ago"
+else
+  ok "a FRESH lock is never reclaimed by acquire, dead owner or not"
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 29 ]; then
-  printf 'ERROR: expected at least 29 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 32 ]; then
+  printf 'ERROR: expected at least 32 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

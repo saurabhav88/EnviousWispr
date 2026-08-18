@@ -249,11 +249,20 @@ ew_seed_consume() {
   tmp="$dd/.SourcePackages.seed.$key.$$"
   rm -rf "$tmp" 2>/dev/null || true
   ew_seed_track_temp "$tmp"
+  # THE MARKER GOES IN BEFORE THE RENAME, and the ordering is the whole point.
+  # Written afterwards, a kill between the rename and the write left a cloned tree
+  # with NO provenance — which a later run reads as ordinary DerivedData, so the
+  # unseeded recovery never arms and the build stays broken until somebody deletes
+  # the tree by hand. That is the exact failure the marker exists to prevent,
+  # reintroduced by the marker's own write.
+  # An atomic rename makes the tree and its marker appear together or not at all,
+  # which is the same fix the lock's owner record already needed one file over —
+  # a proven pattern that should have been ported rather than rediscovered.
   if cp -Rc "$snap" "$tmp" 2>/dev/null && ew_seed_is_complete "$tmp" \
+     && printf '%s\n' "$key" > "$tmp/$EW_SEED_PROVENANCE_FILE" 2>/dev/null \
      && ew_seed_rename_exclusive "$tmp" "$target"; then
     ew_seed_lock_release "$key"
     EW_SEED_CONSUMED=1
-    printf '%s\n' "$key" > "$target/$EW_SEED_PROVENANCE_FILE" 2>/dev/null || true
     # Mark the snapshot as USED, which is what the age bound in ew_seed_prune
     # reads. Without this, mtime means "when it was written" and a snapshot in
     # daily use would be pruned on its birthday.

@@ -573,9 +573,47 @@ else
 fi
 export EW_SEED_ROOT="$TMPROOT/spm-seed"
 
+# --- the marker is inside the tree BEFORE the rename --------------------------
+# Written afterwards, a kill between the rename and the write left a cloned tree
+# with NO provenance — which a later run reads as ordinary DerivedData, so the
+# recovery never arms and the build stays broken until somebody deletes the tree
+# by hand. The rename is what makes tree and marker appear together, so the
+# binding observation is whether the marker is present in the STAGING tree at the
+# moment the rename is asked for.
+#
+# The probe replaces `ew_seed_rename_exclusive` with a plain stub and then
+# RE-SOURCES the library to restore it. An earlier version saved the original
+# with `declare -f` and restored it with `eval`, which works in bash 5 and
+# DESTROYS the function in bash 3.2 — `declare -f` there does not round-trip a
+# body containing a heredoc, and the real function has one. Four unrelated cases
+# went red as a result. That is the fourth time in this branch that a harness
+# altered the subject it was measuring, so this case runs LAST and restores by
+# re-sourcing rather than by reconstructing anything.
+MARKER_PROBE="$TMPROOT/marker-probe"
+: > "$MARKER_PROBE"
+ew_seed_rename_exclusive() {
+  if [ -f "$1/$EW_SEED_PROVENANCE_FILE" ]; then
+    printf 'present\n' >> "$MARKER_PROBE"
+  else
+    printf 'absent\n' >> "$MARKER_PROBE"
+  fi
+  mv -f -- "$1" "$2" 2>/dev/null
+}
+DDM="$TMPROOT/ddmarker"; mkdir -p "$DDM"
+EW_SEED_CONSUMED=0
+ew_seed_consume "$ROOT" "$DDM" >/dev/null 2>&1
+# shellcheck source=scripts/lib/spm-seed.sh
+. "$HERE/spm-seed.sh"
+EW_SEED_CONSUMED=0
+if [ "$(cat "$MARKER_PROBE" 2>/dev/null)" = "present" ]; then
+  ok "the provenance marker is inside the tree BEFORE it is renamed into place"
+else
+  bad "marker ordering" "at rename time the marker was '$(cat "$MARKER_PROBE" 2>/dev/null)' — a kill in that window leaves an unrecoverable clone"
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 45 ]; then
-  printf 'ERROR: expected at least 45 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 46 ]; then
+  printf 'ERROR: expected at least 46 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1
