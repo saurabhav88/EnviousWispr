@@ -38,7 +38,14 @@ import Testing
 /// could not tell `OuterA.Inner` from `OuterB.Inner`. A parser prevents none of those. The answer was to
 /// enumerate the axes and route every name through one place, and this suite's own spec below sweeps
 /// their cross-product rather than one row per finding.
-@Suite("Test inventory — every suite declares what it protects (#2141)", .tags(.driftGuard))
+/// `.serialized` for RESOURCE reasons, not ordering ones. Three of these tests each walk all 471 test
+/// files and hold their syntax trees, and Swift Testing would otherwise run them CONCURRENTLY — three
+/// whole-tree parses live at once. That is free on a development Mac and is the kind of peak a
+/// constrained CI runner does not have to absorb. Nothing here depends on order; the suite simply has no
+/// use for parallelism and a real appetite for memory.
+@Suite(
+  "Test inventory — every suite declares what it protects (#2141)", .serialized,
+  .tags(.driftGuard))
 struct TestInventoryFreezeTests {
 
   // MARK: - Model
@@ -96,8 +103,11 @@ struct TestInventoryFreezeTests {
   /// earlier enumeration keyed on `@Suite` missed 14 files holding 146 tests.
   private static func suites(inFile path: String, relativeTo root: String) throws -> [SuiteRecord] {
     let source = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
-    let rel = path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : path
-    return suites(inSource: source, file: rel)
+    return suites(inSource: source, file: relativePath(of: path, under: root))
+  }
+
+  private static func relativePath(of path: String, under root: String) -> String {
+    path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : path
   }
 
   /// Resolves a file, then hands each suite the tag its own TYPE declared.
@@ -112,7 +122,13 @@ struct TestInventoryFreezeTests {
   /// in a DIFFERENT file inherits nothing and is reported undeclared. That direction is loud, names the
   /// file, and asks for a tag; no such split exists in this tree.
   private static func suites(inSource source: String, file: String) -> [SuiteRecord] {
-    let tree = Parser.parse(source: source)
+    suites(inTree: Parser.parse(source: source), file: file)
+  }
+
+  /// Takes an ALREADY-PARSED tree so a caller that needs two answers from one file pays for one parse.
+  /// `attributionReconciles` needs exactly that, and parsing twice there doubled the suite's peak
+  /// footprint for no gain.
+  private static func suites(inTree tree: SourceFileSyntax, file: String) -> [SuiteRecord] {
     var state = ParseState()
     collect(from: tree.statements.map(\.item), file: file, scope: Scope(), into: &state)
     return state.records.map { record in
@@ -196,7 +212,7 @@ struct TestInventoryFreezeTests {
 
     let qualifiedName = scope.qualifiedName(of: named.name)
     let identity = scope.identity(of: named.name)
-    let declared = tagNames(in: Syntax(named.attributes))
+    let declared = declaredTags(in: named.attributes)
     let classes = TestClass.allCases.filter { declared.contains($0.rawValue) }
     // Registered whether or not this declaration holds tests: a tag on a bodiless `@Suite struct S {}`
     // exists precisely so the tests in `extension S` can find it.
@@ -394,6 +410,42 @@ struct TestInventoryFreezeTests {
     return nil
   }
 
+  /// The classes an attribute list declares in EVERY configuration it can be built in.
+  ///
+  /// Swift permits `#if` INSIDE an attribute list, so one declaration can be tagged under `#if FEATURE`
+  /// and untagged under `#else`. Unioning across the clauses counted the tagged spelling for both and
+  /// let the untagged configuration through the ratchet — quiet, and the same branch-blindness the
+  /// declaration-level `#if` fix closed, one level further down. That is the eighth finding in this
+  /// class and the reason the class is stated at the top of this file rather than patched instance by
+  /// instance.
+  ///
+  /// INTERSECTION is the fail-closed answer: a suite must declare its class wherever it exists, so a
+  /// tag counts only if every clause declares it. A conditional with no `#else` intersects against the
+  /// empty set, because in that configuration the attribute is simply absent.
+  private static func declaredTags(in attributes: AttributeListSyntax) -> Set<String> {
+    var unconditional: Set<String> = []
+    var conditionalGroups: [Set<String>] = []
+
+    for element in attributes {
+      guard let ifConfig = element.as(IfConfigDeclSyntax.self) else {
+        unconditional.formUnion(tagNames(in: Syntax(element)))
+        continue
+      }
+      var perClause: [Set<String>] = ifConfig.clauses.map { clause in
+        guard let elements = clause.elements else { return [] }
+        return tagNames(in: Syntax(elements))
+      }
+      // No `#else` means a configuration in which this attribute does not exist at all.
+      if !ifConfig.clauses.contains(where: { $0.poundKeyword.text == "#else" }) {
+        perClause.append([])
+      }
+      let shared = perClause.dropFirst().reduce(perClause.first ?? []) { $0.intersection($1) }
+      conditionalGroups.append(shared)
+    }
+
+    return conditionalGroups.reduce(unconditional) { $0.union($1) }
+  }
+
   private static func tagNames(in syntax: Syntax) -> Set<String> {
     var found: Set<String> = []
     if let call = syntax.as(FunctionCallExprSyntax.self),
@@ -485,15 +537,15 @@ struct TestInventoryFreezeTests {
     var rawTotal = 0
     for case let url as URL in walker where url.pathExtension == "swift" {
       let source = try String(contentsOf: url, encoding: .utf8)
+      let rel = Self.relativePath(of: url.path, under: root)
+      // ONE parse, both answers. The two traversals must stay structurally independent — that is the
+      // whole point of this guard — but they have no reason to read the file twice.
       let tree = Parser.parse(source: source)
       let raw = Self.rawTestAttributeCount(in: Syntax(tree))
-      let attributed = try Self.suites(inFile: url.path, relativeTo: root)
-        .reduce(0) { $0 + $1.testCount }
+      let attributed = Self.suites(inTree: tree, file: rel).reduce(0) { $0 + $1.testCount }
       rawTotal += raw
       parsedTotal += attributed
       if raw != attributed {
-        let rel =
-          url.path.hasPrefix(root + "/") ? String(url.path.dropFirst(root.count + 1)) : url.path
         mismatches.append("  \(rel): attributed \(attributed), found \(raw)")
       }
     }
@@ -981,6 +1033,33 @@ struct TestInventoryFreezeTests {
     #expect(
       suite.classes.map(\.rawValue) == ["productOutcome"],
       "the declaration's tag did not reach its extension: \(declaration) + \(ext)")
+  }
+
+  /// The axis is WHERE THE `#if` SITS: around the declaration, or inside its attribute list. Both are
+  /// legal and both must fail closed, so each conditional shape is paired with the near-identical
+  /// unconditional one that must still be accepted.
+  @Test(
+    "a class counts only when every configuration declares it",
+    arguments: [
+      // (attributes as written above `struct S`, classes it declares in EVERY configuration)
+      ("@Suite(.tags(.productOutcome))", ["productOutcome"]),
+      ("#if FEATURE\n@Suite(.tags(.productOutcome))\n#else\n@Suite(.tags(.productOutcome))\n#endif",
+        ["productOutcome"]),
+      // Rejected halves: tagged in one configuration is not tagged.
+      ("#if FEATURE\n@Suite(.tags(.productOutcome))\n#else\n@Suite\n#endif", []),
+      ("#if FEATURE\n@Suite\n#else\n@Suite(.tags(.driftGuard))\n#endif", []),
+      // No `#else` at all: the attribute is absent in the other configuration.
+      ("#if FEATURE\n@Suite(.tags(.productOutcome))\n#endif", []),
+      // A DIFFERENT class per branch is not agreement either.
+      ("#if FEATURE\n@Suite(.tags(.productOutcome))\n#else\n@Suite(.tags(.driftGuard))\n#endif", []),
+    ])
+  func aClassCountsOnlyWhenEveryConfigurationDeclaresIt(
+    attributes: String, expected: [String]
+  ) throws {
+    let records = Self.parse(attributes + "\nstruct S { @Test func a() {} }")
+    let s = try #require(records.first { $0.name == "S" }, "no suite parsed for: \(attributes)")
+    #expect(s.testCount == 1, "attributes: \(attributes)")
+    #expect(s.classes.map(\.rawValue) == expected, "attributes: \(attributes)")
   }
 
   @Test("a tag never crosses mutually exclusive #if branches")
