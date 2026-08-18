@@ -47,6 +47,7 @@ RECIPE FORMAT (JSON; the same block that goes in the `test-hardening` issue body
     }
 
 USAGE
+    scripts/mutation-battery.py --from-issue 2156        # the overnight form: recipe from the issue
     scripts/mutation-battery.py --recipes recipes.json
     scripts/mutation-battery.py --recipes recipes.json --row 3      # one row, for iterating on a fix
     scripts/mutation-battery.py --recipes recipes.json --dry-run    # validate + baseline, no mutations
@@ -206,12 +207,49 @@ def preflight(worktree: Path):
         )
 
 
-def load_recipes(path: Path, worktree: Path):
-    data = json.loads(path.read_text())
+FENCE_RE = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
+
+
+def recipes_from_issue(number: int, worktree: Path):
+    """Pull the recipe out of a `test-hardening` issue body.
+
+    The issue IS the backlog (testing-philosophy.md RULE:
+    write-the-test-by-day-run-the-battery-by-night) — the founder hands out overnight work from the issue
+    list, so a recipe living in a repo file is invisible to that. This is what closes the loop: the
+    overnight session runs `--from-issue N` and never has to transcribe anything by hand.
+
+    Fails closed on zero or several fenced json blocks. Picking "the first one" would silently run a
+    different recipe than the one a reader of the issue believes is running.
+    """
+    rc, out = run(
+        ["gh", "issue", "view", str(number), "--json", "body", "--jq", ".body"], cwd=worktree
+    )
+    if rc != 0:
+        raise Refusal(f"could not read issue #{number}: {out.strip()[:300]}")
+    blocks = FENCE_RE.findall(out)
+    if not blocks:
+        raise Refusal(
+            f"issue #{number} carries no ```json recipe block. A test-hardening issue without its "
+            "recipe cannot be acted on cold, which is the whole reason the recipe goes in the BODY."
+        )
+    if len(blocks) > 1:
+        raise Refusal(
+            f"issue #{number} carries {len(blocks)} ```json blocks. Exactly one, or the run and the "
+            "issue disagree about what was tested."
+        )
+    return blocks[0]
+
+
+def load_recipes(path: Path, worktree: Path, raw: str = None):
+    try:
+        data = json.loads(raw if raw is not None else path.read_text())
+    except json.JSONDecodeError as exc:
+        where = f"issue body" if raw is not None else str(path)
+        raise Refusal(f"the recipe in {where} is not valid JSON: {exc}")
     default_suite = data.get("suite_default")
     rows = data.get("rows") or []
     if not rows:
-        raise Refusal(f"{path} declares no rows.")
+        raise Refusal(f"{'the issue body' if raw is not None else path} declares no rows.")
     for i, row in enumerate(rows, 1):
         for field in ("label", "file", "anchor", "replacement", "expect_fail"):
             if not row.get(field):
@@ -269,7 +307,10 @@ def baseline(lane: Lane, suites, phase: str):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--recipes", required=True, type=Path)
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--recipes", type=Path, help="a recipe JSON file")
+    src.add_argument("--from-issue", type=int, metavar="N",
+                     help="read the recipe from the ```json block in test-hardening issue #N")
     ap.add_argument("--worktree", type=Path, default=None)
     ap.add_argument("--row", type=int, default=None, help="run a single 1-indexed row")
     ap.add_argument("--dry-run", action="store_true", help="validate recipes and baseline, mutate nothing")
@@ -292,7 +333,11 @@ def main():
 
     try:
         preflight(worktree)
-        rows = load_recipes(args.recipes.resolve(), worktree)
+        if args.from_issue is not None:
+            print(f"recipe:   issue #{args.from_issue}")
+            rows = load_recipes(None, worktree, raw=recipes_from_issue(args.from_issue, worktree))
+        else:
+            rows = load_recipes(args.recipes.resolve(), worktree)
     except Refusal as exc:
         print(f"\nREFUSED — the battery did not start.\n\n{exc}", file=sys.stderr)
         return 2
