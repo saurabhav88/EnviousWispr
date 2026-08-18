@@ -19,6 +19,9 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # #2157 chunk C: shared owner for conditional project generation.
 # shellcheck source=scripts/lib/ensure-generated.sh
 . "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
+# shellcheck source=scripts/lib/spm-seed.sh
+. "$PROJECT_ROOT/scripts/lib/spm-seed.sh"
+trap 'ew_seed_release_all' EXIT
 DERIVED_DATA="${DERIVED_DATA_PATH:-$PROJECT_ROOT/.derivedData/Test}"
 PROJECT="EnviousWispr.xcodeproj"
 DEBUG_SCHEME="EnviousWispr"
@@ -73,7 +76,11 @@ run_lane() {  # $1=scheme  $2=config  $3=logfile  $4...=extra build settings
   echo "==> $config lane executed $n tests"
 }
 
+# #2157 chunk A: seed before the first lane resolves anything.
+ew_seed_consume "$PROJECT_ROOT" "$DERIVED_DATA"
+
 run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log
+ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
 if [ "$RUN_RELEASE" = "1" ]; then
   run_lane "$RELEASE_SCHEME" Release build/xcode-test-release.log ENABLE_TESTABILITY=YES
 fi

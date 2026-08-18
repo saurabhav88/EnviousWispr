@@ -26,6 +26,11 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
 # shellcheck source=scripts/lib/launch-check.sh
 . "$PROJECT_ROOT/scripts/lib/launch-check.sh"
+# shellcheck source=scripts/lib/spm-seed.sh
+. "$PROJECT_ROOT/scripts/lib/spm-seed.sh"
+# ONE cleanup handler, releasing every seed lock this process owns. A second
+# `trap EXIT` would silently REPLACE this one rather than adding to it.
+trap 'ew_seed_release_all' EXIT
 DERIVED_DATA="$PROJECT_ROOT/.derivedData/Dev"
 BUILT_APP="$DERIVED_DATA/Build/Products/Dev/EnviousWispr Local.app"
 APP_PATH="$PROJECT_ROOT/build/EnviousWispr Local.app"
@@ -89,6 +94,11 @@ echo "==> Step 3: Ensuring Xcode project is current (Tuist)..."
 ew_ensure_generated "$PROJECT_ROOT"
 
 # ─── Step 4: Build + sign the Dev configuration via Xcode ─────────────────────
+# #2157 chunk A: clone an already-resolved package tree instead of re-resolving
+# it. 46.5 s -> 1.9 s clone + 9.0 s validate, measured. Always a cache MISS on
+# any doubt: never fails the build.
+ew_seed_consume "$PROJECT_ROOT" "$DERIVED_DATA"
+
 echo "==> Step 4: Building EnviousWispr-Dev (Dev config, self-signed)..."
 xcodebuild build \
   -project EnviousWispr.xcodeproj \
@@ -101,6 +111,11 @@ xcodebuild build \
   VALID_ARCHS=arm64
 
 test -d "$BUILT_APP" || { echo "ERROR: built app not found at $BUILT_APP"; exit 1; }
+
+# Publish the now-resolved tree so the next fresh checkout clones it instead of
+# resolving. Only after a SUCCESSFUL build, so a half-resolved tree is never
+# promoted to a snapshot.
+ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
 
 # Strict verification BEFORE copying out of DerivedData (copies can pick up
 # FileProvider xattrs that break --strict; we copy with --norsrc + xattr -cr).
