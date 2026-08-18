@@ -971,6 +971,13 @@ else:
     print("  ok  a known issue is not counted as a real failure")
 
 # The accepted counterpart: the same named test on a RED lane is a genuine catch.
+# Through the ROW LOOP, which is where expect_fail is compared. The direct failed_test_identities
+# cases use exact set membership and so cannot detect substring matching returning here.
+check_row("a sibling whose name contains the expected one does not score CAUGHT",
+          (5, ['✘ Test "the guard holds under load" recorded an issue at F.swift:1:1'],
+           True, "log", 65, 3.0),
+          expect_marker="SURV", expect_rc=1)
+
 check_row("the same named test on a RED lane is still CAUGHT",
           (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0),
           expect_marker="ok", expect_rc=0)
@@ -1018,6 +1025,212 @@ finally:
         _probe.parent.rmdir()
     except OSError:
         pass
+
+# EVERY exit path must reap the lane, not just the timeout. Cancellation mid-lane used to restore the
+# file and leave xcodebuild's group running — the file looks recovered while an orphan keeps writing
+# the shared DerivedData. Fixing one exit path is not fixing the class.
+ran += 1
+_reaped = {}
+_real_reap = battery._reap_active_lane
+battery._reap_active_lane = lambda: _reaped.setdefault("called", True)
+_real_restore = battery._restore_active
+_order = []
+battery._restore_active = lambda why: _order.append("restore")
+battery._reap_active_lane = lambda: (_order.append("reap"), True)[1]
+try:
+    _h = None
+    _real_signal = battery.signal.signal
+
+    def _capture_signal(sig, fn):
+        nonlocal_h = fn
+        if sig == battery.signal.SIGTERM:
+            _reaped["handler"] = fn
+        return None
+
+    battery.signal.signal = _capture_signal
+    try:
+        battery._install_restore_on_signal()
+    finally:
+        battery.signal.signal = _real_signal
+    _h = _reaped.get("handler")
+    if _h is None:
+        failures.append("cancellation reaps the lane before restoring — no SIGTERM handler installed")
+    else:
+        _real_kill, battery.os.kill = battery.os.kill, lambda *a, **k: None
+        try:
+            _h(battery.signal.SIGTERM, None)
+        finally:
+            battery.os.kill = _real_kill
+        if _order[:2] != ["reap", "restore"]:
+            failures.append("cancellation reaps the lane before restoring — order was "
+                            f"{_order} rather than ['reap', 'restore']")
+        else:
+            print("  ok  cancellation reaps the lane before restoring")
+finally:
+    battery._reap_active_lane = _real_reap
+    battery._restore_active = _real_restore
+
+# A binary resource under Sources/ is a bad RECIPE, not a broken battery: read_text on a .wav raises
+# UnicodeDecodeError, which is a ValueError, so an OSError-only guard misses it and the unattended
+# command emits a traceback with exit 1 — the status reserved for a SURVIVED row.
+ran += 1
+with tempfile.TemporaryDirectory() as td:
+    _t = Path(td) / "resource.wav"
+    _t.write_bytes(b"\x00\xff\xfe RIFF not text at all \x00")
+    try:
+        battery.read_recipe_target(_t, "a binary target")
+        failures.append("a binary target is refused, not a traceback — it was ACCEPTED")
+    except battery.Refusal as exc:
+        if "is not text" not in str(exc):
+            failures.append(f"a binary target is refused, not a traceback — wrong message: {exc}")
+        else:
+            print("  ok  a binary target is refused, not a traceback")
+    except Exception as exc:
+        failures.append("a binary target is refused, not a traceback — it raised "
+                        f"{type(exc).__name__} instead of Refusal")
+
+# The accepted counterpart, so the helper is not simply rejecting everything.
+ran += 1
+with tempfile.TemporaryDirectory() as td:
+    _t = Path(td) / "ok.swift"
+    _t.write_text("let x = 1\n")
+    try:
+        assert battery.read_recipe_target(_t, "a text target") == "let x = 1\n"
+        print("  ok  an ordinary text target still reads")
+    except Exception as exc:
+        failures.append(f"an ordinary text target still reads — it did not: {exc}")
+
+# `expect_fail` is matched on test IDENTITY, not as a substring of the ✘ line. The line carries the
+# display name, the source path AND the expectation message, so substring matching produced three
+# false-CAUGHT paths — each of these is one of them, and each would have scored CAUGHT before.
+for _label, _lines, _expect, _want in [
+    ("a sibling whose name CONTAINS the expected one is not a match",
+     ['✘ Test "the guard holds under load" recorded an issue at F.swift:1:1'],
+     "the guard holds", False),
+    ("the expected test itself IS a match",
+     ['✘ Test "the guard holds" recorded an issue at F.swift:1:1'],
+     "the guard holds", True),
+    ("a match inside another test's MESSAGE does not count",
+     ['✘ Test "some other case" recorded an issue at F.swift:1:1: Expectation failed: budget == 3'],
+     "budget", False),
+    ("a match inside a FILE PATH does not count",
+     ['✘ Test "some other case" recorded an issue at BudgetTests.swift:1:1'],
+     "BudgetTests", False),
+    ("a SUITE verdict is never evidence about one test",
+     ['✘ Suite "LanguageLockDefaultCodeTests" failed after 0.1 seconds.'],
+     "LanguageLockDefaultCodeTests", False),
+    ("the bare function-name form is a match",
+     ['✘ Test unsupportedLegacyCodeIsNotResurrected() recorded an issue at F.swift:1:1'],
+     "unsupportedLegacyCodeIsNotResurrected", True),
+    ("a suite line alongside the real failure still resolves to the test",
+     ['✘ Suite "FooTests" failed after 0.1 seconds.',
+      '✘ Test "the guard holds" recorded an issue at F.swift:1:1'],
+     "the guard holds", True),
+]:
+    ran += 1
+    _got = _expect in battery.failed_test_identities(_lines)
+    if _got != _want:
+        failures.append(f"{_label}: matched={_got}, wanted {_want}")
+    else:
+        print(f"  ok  {_label}")
+
+# Only Swift is a mutation target. Sources/ also holds plists, strings, JSON and docs — readable text
+# the allow-list accepts, and nothing a filtered Swift lane executes, so such a row reports SURVIVED
+# however good the test is.
+check("a non-Swift text target under Sources/ is refused",
+      [dict(VALID_ROW, file="Sources/Info.plist")],
+      expect_exit=2, expect_text="which is not Swift",
+      extra_files={"Sources/Info.plist": "<plist/>\n"})
+
+# The accepted counterpart is VALID_ROW itself (Sources/Thing.swift), already covered above.
+
+# The leftover-backup preflight globs case-sensitively; the default APFS volume does not. A `.MUTBAK`
+# would be invisible to it and then silently overwritten and unlinked by a row.
+check("a leftover backup in different case is still caught",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="did not restore",
+      extra_files={"Sources/Thing.swift.MUTBAK": "let guarded = true\n"})
+
+# A failed restore must STOP the run. Continuing means the next row on that file backs up the MUTATED
+# file as its own baseline, so every later row runs sabotaged code — the 8/8-CAUGHT incident
+# reproduced mid-run, where the pre-run clean-tree control cannot see it.
+ran += 1
+_real_cmp = battery.filecmp.cmp
+battery.filecmp.cmp = lambda a, b, shallow=True: False
+_lanes = []
+with tempfile.TemporaryDirectory() as _td:
+    _tmp = make_tree(Path(_td))
+    _recipes = _tmp / "r.json"
+    # TWO rows: with one, the loop ends whether it stopped or finished, so the case could not tell
+    # the difference. The second row running is the observable consequence of NOT stopping.
+    _recipes.write_text(json.dumps({"rows": [dict(VALID_ROW, label="first"),
+                                             dict(VALID_ROW, label="second")]}))
+
+    class _CountingLane:
+        def __init__(self, *a, **k):
+            pass
+
+        def generate_once(self):
+            pass
+
+        def run_suite(self, suite, tag):
+            _lanes.append(tag)
+            return (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0)
+
+    _rl, _rb = battery.Lane, battery.baseline
+    battery.Lane, battery.baseline = _CountingLane, (lambda lane, suites, phase: [])
+    _buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_buf):
+            _rc = battery.main(["--recipes", str(_recipes), "--worktree", str(_tmp)])
+    finally:
+        battery.Lane, battery.baseline = _rl, _rb
+        battery.filecmp.cmp = _real_cmp
+    _out = _buf.getvalue()
+    if "RESTORE FAILED" not in _out:
+        failures.append("a failed restore stops the run — it was not even reported")
+    elif len(_lanes) != 1:
+        failures.append("a failed restore stops the run — it did NOT: row 2 ran anyway "
+                        f"(lanes: {_lanes}), so it would have backed up a MUTATED file")
+    elif _rc != 1:
+        failures.append(f"a failed restore stops the run — exit {_rc}, wanted 1")
+    else:
+        print("  ok  a failed restore stops the run")
+
+# Any exception in the row body must fail THAT ROW, not abort before the closing baseline — the check
+# that proves the tree came back. PermissionError on a read-only target is the reproducible case.
+# NOTE ON AIM: raising from the LANE cannot prove the broad catch — the row loop converts any lane
+# exception to _RowFailed first, so it never reaches `except Exception`. This raises from the WRITE,
+# which is outside that conversion and is the reproducible case (a read-only target).
+ran += 1
+_real_wt = Path.write_text
+
+
+def _boom(self, *a, **k):
+    # ONLY the mutation write to the target itself. Patching every .swift write breaks make_tree's
+    # fixture setup, and matching on the replacement TEXT also trips on the recipe JSON that contains
+    # it as data — both are different failures wearing this case's name.
+    if self.name == "Thing.swift" and a and "guarded = false" in str(a[0]):
+        raise PermissionError("read-only file system")
+    return _real_wt(self, *a, **k)
+
+
+try:
+    Path.write_text = _boom
+    try:
+        _rc, _out, _after, _during = drive_row((5, [], True, "log", 0, 3.0),
+                                               expect_verdict=None, expect_detail=None)
+    except BaseException as _esc:   # noqa: BLE001 — an escape IS the defect this case exists for
+        _rc, _out = -1, f"escaped as {type(_esc).__name__}"
+    if "ERR" not in _out or "PermissionError" not in _out:
+        failures.append("an unexpected exception fails the row rather than aborting the run — it did "
+                        f"not: {_out.strip()[:200]}")
+    elif _rc != 1:
+        failures.append(f"an unexpected exception fails the row rather than aborting the run — "
+                        f"exit {_rc}, wanted 1")
+    else:
+        print("  ok  an unexpected exception fails the row rather than aborting the run")
+finally:
+    Path.write_text = _real_wt
 
 print()
 if failures:

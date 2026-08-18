@@ -104,8 +104,14 @@ TEST_COUNT_RE = re.compile(r"Test run with (\d+) test")
 # Swift Testing prints ✘ for a KNOWN issue too, and the lane still exits 0. A test wrapped in
 # `withKnownIssue` is explicitly configured NOT to go red, so crediting it with detecting a mutation is
 # a false CAUGHT — the direction that fails toward confidence. Matched separately and excluded.
-KNOWN_ISSUE_RE = re.compile(r"✘ .*known issue.*")
+KNOWN_ISSUE_RE = re.compile(r"✘ .*[Kk]nown issue.*")
 FAILURE_LINE_RE = re.compile(r"✘ .*")
+# Swift Testing's two verdict shapes, plus the SUITE line that must never be read as a test failing.
+#   ✘ Test "display name" recorded an issue at File.swift:12:3: Expectation failed: ...
+#   ✘ Test functionName() recorded an issue ...
+#   ✘ Suite "SuiteName" failed after 0.1 seconds.
+TEST_VERDICT_RE = re.compile(r'^✘\s+Test\s+(?:"(?P<quoted>[^"]*)"|(?P<bare>[A-Za-z_][\w]*)\s*\()')
+SUITE_VERDICT_RE = re.compile(r'^✘\s+Suite\s')
 COMPILE_ERROR_RE = re.compile(r"^.*?: error: ", re.MULTILINE)
 
 
@@ -218,6 +224,10 @@ def _restore_active(reason: str):
 
 def _install_restore_on_signal():
     def handler(signum, _frame):
+        # Reap the lane FIRST. Restoring the file while xcodebuild's group survives leaves an orphan
+        # running mutant tests and writing the shared DerivedData after we are gone — the file looks
+        # recovered and the machine is not. Fixing only the timeout path last round missed this exit.
+        _reap_active_lane()
         _restore_active(f"signal {signum}")
         # Re-raise with the default action so the exit status still says we were killed.
         signal.signal(signum, signal.SIG_DFL)
@@ -225,6 +235,27 @@ def _install_restore_on_signal():
 
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(sig, handler)
+
+
+def read_recipe_target(path: Path, what: str) -> str:
+    """Read a file a RECIPE named, converting every failure into a Refusal.
+
+    A recipe is data someone else wrote, so every way its target can fail to read is a bad recipe
+    rather than a broken battery: missing, unreadable, or not text at all. `Sources/` holds binary
+    resources too, and `read_text` on a .wav raises UnicodeDecodeError — a ValueError, so an
+    OSError-only guard misses it and the unattended command emits a traceback with exit 1, the status
+    reserved for a SURVIVED row.
+    """
+    try:
+        return path.read_text()
+    except UnicodeDecodeError:
+        raise Refusal(
+            f"{what} is not text: {path}\n"
+            "A mutation edits source. Binary resources live under Sources/ too, and they are not "
+            "mutation targets — nothing in a filtered Swift lane reads them as code."
+        )
+    except OSError as exc:
+        raise Refusal(f"cannot read {what}: {path}: {exc}")
 
 
 class Refusal(Exception):
@@ -252,6 +283,26 @@ class _RowFailed(Exception):
 LANE_TIMEOUT_SECONDS = 1800
 
 
+# The process group of the lane currently running, or None. Registered before the lane starts and
+# cleared when it ends, so EVERY exit path — timeout, cancellation, an unexpected exception — can reap
+# it. Fixing only the timeout path last round left cancellation orphaning the group; the defect was
+# never "the timeout is wrong", it was "an exit path does not reap".
+_ACTIVE_LANE_PGID = None
+
+
+def _reap_active_lane():
+    """Kill the live lane's process group if there is one. Safe to call more than once."""
+    global _ACTIVE_LANE_PGID
+    pgid, _ACTIVE_LANE_PGID = _ACTIVE_LANE_PGID, None
+    if pgid is None:
+        return False
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+
 def run(cmd, cwd, log_path=None, timeout=None):
     """Run a command, optionally teeing to a per-row log. Never the shared fixed log path.
 
@@ -261,10 +312,15 @@ def run(cmd, cwd, log_path=None, timeout=None):
     their verdicts long after the source has been restored. The battery would look like it recovered.
     Cloud review, PR #2158.
     """
+    global _ACTIVE_LANE_PGID
     proc = subprocess.Popen(
         cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-        start_new_session=True,   # its own process group, so the kill below reaches descendants
+        start_new_session=True,   # its own process group, so the kills below reach descendants
     )
+    try:
+        _ACTIVE_LANE_PGID = os.getpgid(proc.pid)
+    except ProcessLookupError:
+        _ACTIVE_LANE_PGID = None
     try:
         out, _ = proc.communicate(timeout=timeout)
         rc = proc.returncode
@@ -272,9 +328,7 @@ def run(cmd, cwd, log_path=None, timeout=None):
         # Kill the GROUP, then re-raise. The raise is the existing contract — the row loop turns it into
         # a row ERROR with a timeout-specific message — and changing it here would have quietly widened
         # a bug fix into a behaviour change. Only the cleanup was wrong.
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
+        if not _reap_active_lane():
             proc.kill()
         try:
             out, _ = proc.communicate(timeout=10)
@@ -284,6 +338,8 @@ def run(cmd, cwd, log_path=None, timeout=None):
             Path(log_path).write_text(
                 (out or "") + f"\n[mutation-battery] timed out after {timeout}s; group killed\n")
         raise
+    finally:
+        _ACTIVE_LANE_PGID = None
     if log_path is not None:
         Path(log_path).write_text(out or "")
     return rc, out or ""
@@ -305,6 +361,33 @@ def classify_lane_output(out: str):
     known = set(KNOWN_ISSUE_RE.findall(out))
     failures = [ln for ln in FAILURE_LINE_RE.findall(out) if ln not in known]
     return count, failures
+
+
+def failed_test_identities(failure_lines):
+    """The set of TEST identities that failed — never suites, never message text.
+
+    `expect_fail` used to be matched with `in` against the whole ✘ line, which carries the display
+    name, the source path AND the expectation message. Three false-CAUGHT paths followed from that:
+    a sibling whose name merely CONTAINS the expected one; a short phrase matching some other test's
+    message or file path; and `✘ Suite "X" failed`, which Swift Testing prints whenever ANY member
+    fails, matching any expect_fail that is a substring of the suite name.
+
+    Identity is the quoted display name, or the bare function name for an unnamed @Test.
+    """
+    identities = set()
+    for line in failure_lines:
+        line = line.strip()
+        if SUITE_VERDICT_RE.match(line):
+            # A suite verdict is an aggregate, never evidence about one test. REDUNDANT today, and
+            # deliberately kept: TEST_VERDICT_RE already refuses to match a `✘ Suite` line, so a
+            # mutation control on this branch alone cannot fail — proven, not assumed. It stays as the
+            # explicit statement of intent, so loosening TEST_VERDICT_RE later cannot silently let
+            # suite lines through.
+            continue
+        m = TEST_VERDICT_RE.match(line)
+        if m:
+            identities.add(m.group("quoted") if m.group("quoted") is not None else m.group("bare"))
+    return identities
 
 
 class Lane:
@@ -470,7 +553,9 @@ def preflight(worktree: Path, *, will_run_tests: bool = True):
     check_canonical_settings(worktree)
     if will_run_tests:
         check_no_dev_app(worktree)
-    leftovers = list(worktree.rglob("*.mutbak"))
+    # Case-insensitive: the preflight glob is case-SENSITIVE but the default APFS volume is not, so a
+    # `.MUTBAK` would be invisible here and then silently overwritten and unlinked by a row.
+    leftovers = [q for q in worktree.rglob("*") if q.suffix.lower() == ".mutbak"]
     if leftovers:
         raise Refusal(
             "Backup files from an earlier battery are still on disk, so a previous run did not "
@@ -528,10 +613,7 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
         # A missing or unreadable file is a preflight refusal like any other. Left as an OSError it
         # escapes as a traceback with exit 1, which the documented exit codes reserve for "a row
         # SURVIVED" — the one status an unattended caller must not confuse with a real result.
-        try:
-            raw = path.read_text()
-        except OSError as exc:
-            raise Refusal(f"cannot read the recipe file {path}: {exc}")
+        raw = read_recipe_target(path, "the recipe file")
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -621,12 +703,20 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
             )
         if not target.is_file():
             raise Refusal(f"row {i} target does not exist: {row['file']}")
+        if target.suffix != ".swift":
+            raise Refusal(
+                f"row {i} targets {rel}, which is not Swift. A mutation must break code the filtered "
+                "lane EXECUTES; Sources/ also holds plists, strings, JSON and docs, and a row against "
+                "any of those reports SURVIVED however good the test is."
+            )
         row["_resolved"] = str(target)
         if row["anchor"] == row["replacement"]:
             raise Refusal(f"row {i} anchor and replacement are identical — it would mutate nothing.")
         # Check anchor presence and uniqueness HERE, against the clean tree, so a bad recipe costs
         # nothing. The row re-checks at apply time because an earlier row may share the file.
-        occurrences = target.read_text().count(row["anchor"])  # target is the resolved, contained path
+        # Reads the resolved, contained path through the helper, so a binary resource under Sources/
+        # is refused HERE — before any row runs — rather than raising mid-battery.
+        occurrences = read_recipe_target(target, f"row {i}'s target").count(row["anchor"])
         if occurrences == 0:
             raise Refusal(
                 f"row {i} anchor not found in {row['file']} — the mutation would never be applied, "
@@ -769,7 +859,7 @@ def main(argv=None):
         shutil.copy2(target, backup)
         _ACTIVE_RESTORES[target] = backup
         try:
-            src = target.read_text()
+            src = read_recipe_target(target, f"row {i}'s target")
             occurrences = src.count(row["anchor"])
             if occurrences == 0:
                 detail = "anchor not found — the mutation was never applied"
@@ -778,7 +868,7 @@ def main(argv=None):
             else:
                 target.write_text(src.replace(row["anchor"], row["replacement"], 1))
                 # Prove it landed by reading the file back rather than trusting the write.
-                if row["replacement"] not in target.read_text():
+                if row["replacement"] not in read_recipe_target(target, f"row {i}'s target"):
                     detail = "mutation did not land on re-read"
                 else:
                     try:
@@ -803,7 +893,7 @@ def main(argv=None):
                             f"was a KNOWN issue, which is a test configured not to fail — it cannot "
                             f"have detected the mutation ({log})"
                         )
-                    elif any(row["expect_fail"] in line for line in failures):
+                    elif row["expect_fail"] in failed_test_identities(failures):
                         verdict = "CAUGHT"
                         others = [l for l in failures if row["expect_fail"] not in l]
                         detail = f"{row['expect_fail']} went red in {elapsed:.0f}s"
@@ -818,8 +908,10 @@ def main(argv=None):
                     else:
                         verdict = "SURVIVED"
                         detail = f"{count} tests still green with the code broken ({log})"
-        except _RowFailed as exc:
+        except (_RowFailed, Refusal) as exc:
             detail = str(exc)
+        except Exception as exc:  # noqa: BLE001 — any row failure is this row's problem, not the run's
+            detail = f"row raised {type(exc).__name__}: {exc}"
         finally:
             shutil.copy2(backup, target)
             # `copy2` restores the original MODIFICATION TIME as well as the bytes, and that is a bug
@@ -832,8 +924,18 @@ def main(argv=None):
             os.utime(target, None)
             if not filecmp.cmp(backup, target, shallow=False):
                 verdict, detail = "ERROR", "RESTORE FAILED — the tree is dirty, stop and inspect"
+                results.append((verdict, row["label"], detail))
+                print(f"  [ ERR  ] row {i}: {row['label']}\n           {detail}")
+                print(
+                    f"\nSTOPPING. {target} could not be restored, so the next row would back up a "
+                    f"MUTATED file as its own baseline and every row after it would run sabotaged "
+                    f"code. Its backup is kept at {backup} — restore it by hand and inspect before "
+                    f"running anything else.",
+                    file=sys.stderr,
+                )
+                return 1
             else:
-                backup.unlink()
+                backup.unlink()   # verified byte-identical; on failure the backup is KEPT (above)
             _ACTIVE_RESTORES.pop(target, None)
         marker = {"CAUGHT": "  ok  ", "SURVIVED": " SURV ", "ERROR": " ERR  "}[verdict]
         print(f"  [{marker}] row {i}: {row['label']}\n           {detail}")
