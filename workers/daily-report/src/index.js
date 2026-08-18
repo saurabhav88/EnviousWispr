@@ -303,6 +303,32 @@ export function formatAdoption(data, buckets) {
     lines.push(`Top 5 users by dictation volume: ${data.top5.map((u) => u.n).join(", ")}.`);
   }
 
+  // Escape Recovery (#2087). Omitted entirely on a day nobody used it, rather
+  // than printing three zeroes: this is an opt-in feature and an all-zero line
+  // every day is how a reader learns to skip the section.
+  {
+    const er = data.escapeRecovery || {};
+    const kept = er.kept ?? 0;
+    if (kept > 0) {
+      const restored = er.restored ?? 0;
+      const clipboardOnly = er.clipboardOnly ?? 0;
+      const people = er.keptUsers ?? 0;
+      // Plain sentence, no ratios or percentages: the counts are small while the
+      // feature is new, and a percentage of four events invites a conclusion the
+      // number cannot carry.
+      let line =
+        `Escape Recovery: ${kept} cancelled dictation${kept === 1 ? " was" : "s were"} kept ` +
+        `for ${people} ${people === 1 ? "person" : "people"}, and ${restored} ` +
+        `${restored === 1 ? "was" : "were"} taken back with Undo.`;
+      if (clipboardOnly > 0) {
+        line +=
+          ` ${clipboardOnly} of those could not reach the original app and went to ` +
+          `the clipboard instead.`;
+      }
+      lines.push("", line);
+    }
+  }
+
   return lines;
 }
 

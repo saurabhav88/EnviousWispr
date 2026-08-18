@@ -266,6 +266,63 @@ test("adoption section: golden fixture matches the founder-approved report shape
   assert.doesNotMatch(msg, /temporarily unavailable/);
 });
 
+// ---- Escape Recovery in the daily report (#2087) --------------------------
+//
+// Founder ask, 2026-08-18: "we should be able to tell post hoc how often this
+// feature is being leveraged. And if for whatever reason it fails, we should
+// know also." The events already reached PostHog and nothing queried them, so
+// the feature was invisible in the one place he reads.
+
+test("adoption section: Escape Recovery reports how many were kept and how many taken back", () => {
+  const msg = formatAdoption(
+    { ...GOLDEN_DATA, escapeRecovery: { kept: 7, keptUsers: 3, restored: 4, clipboardOnly: 0 } },
+    GOLDEN_BUCKETS
+  ).join("\n");
+  assert.match(
+    msg,
+    /Escape Recovery: 7 cancelled dictations were kept for 3 people, and 4 were taken back with Undo\./
+  );
+  // The failure clause is absent when nothing failed, rather than reading "0".
+  assert.doesNotMatch(msg, /could not reach the original app/);
+  assert.doesNotMatch(msg, /[–—]/);
+});
+
+test("adoption section: Escape Recovery names the restores that missed their target app", () => {
+  const msg = formatAdoption(
+    { ...GOLDEN_DATA, escapeRecovery: { kept: 5, keptUsers: 2, restored: 5, clipboardOnly: 2 } },
+    GOLDEN_BUCKETS
+  ).join("\n");
+  assert.match(msg, /2 of those could not reach the original app and went to the clipboard instead\./);
+});
+
+test("adoption section: singular wording when exactly one dictation was kept for one person", () => {
+  const msg = formatAdoption(
+    { ...GOLDEN_DATA, escapeRecovery: { kept: 1, keptUsers: 1, restored: 1, clipboardOnly: 0 } },
+    GOLDEN_BUCKETS
+  ).join("\n");
+  assert.match(msg, /1 cancelled dictation was kept for 1 person, and 1 was taken back with Undo\./);
+});
+
+test("adoption section: a day with no recoveries omits the line rather than printing zeroes", () => {
+  // An opt-in feature would otherwise print an all-zero line every day, which
+  // is how a reader learns to skip a section. Absence is the honest rendering.
+  const msg = formatAdoption(
+    { ...GOLDEN_DATA, escapeRecovery: { kept: 0, keptUsers: 0, restored: 0, clipboardOnly: 0 } },
+    GOLDEN_BUCKETS
+  ).join("\n");
+  assert.doesNotMatch(msg, /Escape Recovery/);
+});
+
+test("adoption section: a report predating the feature renders without it, and without throwing", () => {
+  // `escapeRecovery` absent entirely, as it is in every stored fixture written
+  // before this query existed. A formatter that throws here would take down the
+  // whole report for a missing optional line.
+  const { escapeRecovery, ...withoutIt } = GOLDEN_DATA;
+  const msg = formatAdoption(withoutIt, GOLDEN_BUCKETS).join("\n");
+  assert.doesNotMatch(msg, /Escape Recovery/);
+  assert.match(msg, /Total users: 110 people used the app that day\./);
+});
+
 test("adoption section: zero-count buckets are omitted, not shown as '(0%)'", () => {
   const msg = formatAdoption(GOLDEN_DATA, {
     engineBuckets: { parakeet: 110, whisperKit: 0 },

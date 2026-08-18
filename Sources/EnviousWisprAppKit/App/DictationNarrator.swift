@@ -210,21 +210,26 @@ enum DictationNarrator {
       return "Bluetooth microphone detected. Wait a moment before speaking on a cold start."
     // #2087: no "Warning: " or "Error: " prefix — nothing went wrong. The
     // sentence names what happened and the one action, matching the pill's
-    // founder-locked copy (`Recording kept` · Paste). History is named because
-    // a VoiceOver user who misses a 3-second dwell needs the unhurried door,
-    // and the pill must never be the only way back to the text.
+    // founder-locked copy (`Transcript cancelled` · Undo). History is named
+    // because a VoiceOver user who misses a 3-second dwell needs the unhurried
+    // door, and the pill must never be the only way back to the text.
     case .escapeRecovery:
-      return "Recording kept. Press Paste to insert it, or find it in History."
+      return "Transcript cancelled. Press Undo to get it back, or find it in History."
     }
   }
 
   // MARK: - Fixed status-pill + window/badge/sidebar copy (E4, #1569). Byte-identical.
 
-  /// #2087, founder-locked. "kept" and not "saved": saved invites the question
-  /// of where, and the answer differs for 24 hours. Kept says the thing the user
-  /// needs in the second they have — it did not vanish.
-  static let escapeRecoveryPillTitle = "Recording kept"
-  static let escapeRecoveryPillAction = "Paste"
+  /// #2087, founder-locked (revised 2026-08-18 after hand-testing the build).
+  ///
+  /// Names the EVENT the user just caused, then offers the reversal. The earlier
+  /// pair — "Recording kept" · Paste — announced our internal outcome and named
+  /// a mechanism; the user's own act was cancelling, and "Undo" is the word for
+  /// taking that back. It also stops the button reading as a second, competing
+  /// paste beside History's, which does something different: History pastes
+  /// wherever you are NOW, this returns the text to where you were dictating.
+  static let escapeRecoveryPillTitle = "Transcript cancelled"
+  static let escapeRecoveryPillAction = "Undo"
 
   static let coldStartTitle = "Getting dictation ready…"
   static func coldStartSubtitle(engineLabel: String) -> String {

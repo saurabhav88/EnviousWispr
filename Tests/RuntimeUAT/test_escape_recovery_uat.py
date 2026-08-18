@@ -32,6 +32,17 @@ presses = []
 si = types.ModuleType("simulate_input")
 si.hold_key = lambda key, dur: presses.append(key)
 sys.modules["simulate_input"] = si
+# `ui_helpers` imports ApplicationServices at module scope, so importing the
+# harness pulls in PyObjC transitively and this "needs no app, no screen"
+# control would die on a plain Python before a single row ran. Stubbed for the
+# same reason the two live-only modules above are.
+uh = types.ModuleType("ui_helpers")
+uh.find_app_pid = lambda *a, **k: None
+uh.find_element = lambda *a, **k: None
+uh.get_attr = lambda *a, **k: None
+uh.get_ax_app = lambda *a, **k: None
+sys.modules["ui_helpers"] = uh
+
 w = types.ModuleType("wispr_eyes")
 w.tts = lambda *a, **k: "/dev/null"
 w.connect = lambda *a, **k: None
@@ -149,6 +160,12 @@ ok("the harness writes where the dev build READS", _m and uat.DOMAIN == _m.group
 print("\napply_settings read-back")
 # The guard that would have caught the wrong-domain bug. Stubbed at the process
 # boundary: what is under test is whether a value that did not land ABORTS.
+# Held BEFORE stubbing, because a later row tests `stop_app` ITSELF and a stub
+# left in place would make that row exercise the stub. It did, on the first run:
+# the guard reported as absent while it was working perfectly, which is the
+# "assertion never reaches its subject" failure in the harness rather than the
+# product. The row failing is what surfaced it.
+REAL_STOP_APP = uat.stop_app
 uat.stop_app = lambda: None
 uat.start_app = lambda: None
 STORE = {}
@@ -184,6 +201,45 @@ try:
        "the OFF phase would then run with the feature ON")
 except uat.Aborted as e:
     ok("a delete that goes nowhere ABORTS", True, str(e))
+
+print("\nunreadable is not empty")
+# The review finding, as a control. Every held-text assertion WANTS to see "",
+# so a lookup that fails to "" satisfies all of them while proving nothing.
+uat.field_text = lambda path: None
+try:
+    uat.readable("/tmp/whatever", "row")
+    ok("an unreadable field ABORTS", False, "it would have passed as 'empty'")
+except uat.Aborted as e:
+    ok("an unreadable field ABORTS", True, str(e)[:70])
+
+uat.field_text = lambda path: ""
+try:
+    ok("a genuinely empty field is returned, not refused", uat.readable("/tmp/x", "row") == "")
+except uat.Aborted as e:
+    ok("a genuinely empty field is returned, not refused", False, str(e))
+
+uat.field_text = lambda path: "hello"
+ok("control: text comes back unchanged", uat.readable("/tmp/x", "row") == "hello")
+
+print("\nstop_app fails closed")
+import subprocess as _sp
+_real_run = _sp.run
+_sp.run = lambda *a, **k: None
+uat.stop_app = REAL_STOP_APP   # the subject, not the stub an earlier row installed
+RUNNING[0] = True   # never dies, whatever we send it
+try:
+    uat.stop_app()
+    ok("an app that will not exit ABORTS", False,
+       "settings would then be written under a live app, which overwrites them on quit")
+except uat.Aborted as e:
+    ok("an app that will not exit ABORTS", True, str(e)[:70])
+RUNNING[0] = False  # exits promptly
+try:
+    uat.stop_app()
+    ok("control: an app that does exit is fine", True)
+except uat.Aborted as e:
+    ok("control: an app that does exit is fine", False, str(e))
+_sp.run = _real_run
 
 print("\n" + "=" * 56)
 print(f"{len(fails)} failed" if fails else "all rows passed")

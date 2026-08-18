@@ -274,7 +274,13 @@ def stop_app():
     """
     subprocess.run(["pkill", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
                    check=False, capture_output=True)
-    wait_for("the old instance to exit", lambda: not app_is_running(), deadline=15.0)
+    if not wait_for("the old instance to exit", lambda: not app_is_running(), deadline=15.0):
+        # FAIL CLOSED. The old code discarded this answer, so an app that
+        # ignored or outran SIGTERM left every later step operating under a live
+        # instance: settings written underneath it, a second instance launched
+        # beside it, and a restore it could overwrite on its own way out. The
+        # method's name claims the app is stopped, so it has to be true or raise.
+        raise Aborted("the dev app did not exit within 15s; refusing to touch settings under it")
 
 
 def start_app():
@@ -325,18 +331,28 @@ def field_text(path):
     `Paste cascade: tier=ax_direct, app=com.apple.TextEdit`. Every paste
     assertion in this harness was unfalsifiable: the empty answer it wanted was
     the only answer it could ever get.
+
+    **Returns None for CANNOT READ and "" only for GENUINELY EMPTY, because
+    collapsing the two rebuilds that same defect one layer up.** Without
+    Accessibility authorisation, or with a window title that does not match, or
+    an editor that exposes no text area, every lookup fails to "" — and "" is
+    exactly what the held-text assertions want to see. A successful product
+    paste would be reported as a product failure, and an invalid run would be
+    reported as a passing one. `readable` turns that into a loud refusal.
     """
     pid = find_app_pid("TextEdit")
     if pid is None:
-        return ""
+        return None
     want = os.path.basename(path)
     app = get_ax_app(pid)
     for window in (get_attr(app, "AXWindows") or []):
         if str(get_attr(window, "AXTitle") or "") != want:
             continue
         area = find_element(window, role="AXTextArea")
-        return str(get_attr(area, "AXValue") or "") if area else ""
-    return ""
+        if area is None:
+            return None
+        return str(get_attr(area, "AXValue") or "")
+    return None
 
 
 def focus(path):
@@ -350,6 +366,43 @@ def new_textedit_doc(name):
     open(path, "w").close()
     focus(path)
     return path
+
+
+def readable(path, label):
+    """The document's text, or an ABORT — never a silent empty string.
+
+    Every held-text assertion in this run wants to see "", so an unreadable
+    field would satisfy them all while proving nothing. Refusing here is the
+    difference between "the feature held the text" and "we could not look".
+    """
+    text = field_text(path)
+    if text is None:
+        raise Aborted(
+            f"{label}: could not read the document through accessibility. "
+            "Not an empty field — an unreadable one, and every assertion below "
+            "would have passed on it.")
+    return text
+
+
+def verify_can_read(path):
+    """Prove the field oracle WORKS before any verdict depends on it.
+
+    Thirty seconds at the start, and it is the difference between a run that
+    reports a product failure and a run that reports its own blindness. Writes
+    a known string into the document through the same route a paste would take,
+    reads it back through the oracle, then clears it.
+    """
+    marker = "ew-uat-oracle-check"
+    focus(path)
+    si.type_text(marker)
+    got = wait_for("the oracle to read back what we just typed",
+                   lambda: (field_text(path) or "").strip().endswith(marker),
+                   deadline=10.0)
+    # Leave the document as we found it whatever happened, so a failed control
+    # does not poison the assertions that follow it.
+    w.press_key("a", cmd=True)
+    w.press_key("delete")
+    return got
 
 
 def dictate_then_cancel(base):
@@ -387,6 +440,26 @@ def main():
         print("Unlock the screen and run again.")
         return 2
 
+    # THE ONE-TIME SETTINGS MIGRATION MUST RUN BEFORE WE SNAPSHOT ANYTHING.
+    #
+    # On a dev install that has not yet migrated, `SettingsDefaultsMigration`
+    # runs at startup and rewrites the shared domain FROM the dev domain: an
+    # explicit dev value overwrites ours, and a key the dev store lacks CLEARS
+    # ours. So a snapshot-then-launch order reads and verifies values that the
+    # very next launch discards, and the run proceeds against settings it never
+    # checked — the same silent wrong-settings failure this harness already had
+    # once, arriving by a different road.
+    #
+    # Burning one launch is the cheap fix: the sentinel lives in the DEV domain,
+    # so after one startup the migration is done for good.
+    sentinel = subprocess.run(
+        ["defaults", "read", "com.enviouswispr.app.dev", "didYieldToSharedDefaults_v1"],
+        capture_output=True, text=True)
+    if sentinel.returncode != 0:
+        print("[migration] first launch since settings unification — running it before snapshotting")
+        start_app()
+        stop_app()
+
     # A dictation left live by an earlier run would be stopped by the first
     # restart below, but it would also mean somebody is mid-recording right now
     # -- say so and refuse, rather than quitting the app under them.
@@ -402,7 +475,17 @@ def main():
 
     field_a = new_textedit_doc("field-a")
     field_b = new_textedit_doc("field-b")
-    print(f"targets: A={field_a}  B={field_b}\n")
+    print(f"targets: A={field_a}  B={field_b}")
+
+    # Before any verdict depends on reading a field, prove we CAN read one.
+    # Without this the run cannot tell "the feature held the text" from "the
+    # harness cannot see", and those two produce identical output.
+    if not verify_can_read(field_a):
+        print("REFUSING TO RUN: cannot read a TextEdit document through accessibility.")
+        print("Every held-text assertion would pass on that, proving nothing.")
+        print("Check that this Python has Accessibility authorization.")
+        return 2
+    print("[control] the field oracle reads back what is typed into it\n")
 
     # Bound before the try: the `finally` reads both, and an exception raised
     # before the first phase would otherwise fail INSIDE the cleanup -- losing
@@ -435,7 +518,7 @@ def main():
         check("off: the take is CANCELLED", "terminal cancelled" in off,
               "the disposition never leaves .ordinary with the setting off")
         check("off: nothing was kept", "escape recovery: keeping this take" not in off)
-        check("off: field A is untouched", field_text(field_a).strip() == "")
+        check("off: field A is untouched", readable(field_a, "off").strip() == "")
 
         # ---- ON path: the feature -----------------------------------------
         print("\n[2] Setting ON — cancel must KEEP the dictation")
@@ -454,7 +537,7 @@ def main():
         check("on: delivery was SUPPRESSED, not clipboard-only",
               "tier=clipboard_only" not in on,
               "a kept take is held; nothing is pasted, nothing touches the clipboard")
-        check("on: field A is still empty", field_text(field_a).strip() == "",
+        check("on: field A is still empty", readable(field_a, "on").strip() == "",
               "the text is HELD until the user asks for it")
 
         # ---- The item nothing else can cover: §11.1 item 3 -----------------
@@ -465,13 +548,18 @@ def main():
         else:
             focus(field_b)
             w.connect()
-            tapped = w.tap("Paste")
+            # The pill's button, whose label the founder renamed on 2026-08-18.
+            # Matched by TEXT, so a copy change breaks it silently and the
+            # failure reads as "the pill was unreachable" rather than "the label
+            # moved" -- keep this in step with
+            # `DictationNarrator.escapeRecoveryPillAction`.
+            tapped = w.tap("Undo")
             landed = wait_for("text to land in either field",
-                              lambda: bool(field_text(field_a).strip()
-                                           or field_text(field_b).strip()),
+                              lambda: bool((field_text(field_a) or "").strip()
+                                           or (field_text(field_b) or "").strip()),
                               deadline=20.0)
-            a_text = field_text(field_a).strip()
-            b_text = field_text(field_b).strip()
+            a_text = readable(field_a, "retarget A").strip()
+            b_text = readable(field_b, "retarget B").strip()
             check("retarget: the pill's Paste was reachable", bool(tapped))
             check("retarget: something was pasted", landed)
             check("retarget: text landed in the ORIGINAL field A", len(a_text) > 0,
@@ -494,10 +582,22 @@ def main():
         # developer's own app reads. Restoring under a live app hands it the
         # right values and then lets it overwrite them on the way out -- the
         # cleanup would be what destroys their cancel shortcut.
-        ensure_stopped(base, "cleaning up before quitting")
-        stop_app()
-        print("\n[restore] putting every setting back to what it was")
-        restore(before)
+        # NESTED, so the restore cannot be skipped by a failure above it.
+        # Flat, the promise in this file's header was false: an exception inside
+        # `ensure_stopped` -- a log read, a synthetic keypress -- escaped the
+        # `finally` before the settings went back, and these are the developer's
+        # REAL settings. The stop and the quit are best-effort; the restore is
+        # not optional.
+        try:
+            try:
+                ensure_stopped(base, "cleaning up before quitting")
+            finally:
+                stop_app()
+        except Exception as cleanup_error:  # noqa: BLE001 - reported, never swallowed
+            print(f"    (cleanup problem, restoring anyway: {cleanup_error})")
+        finally:
+            print("\n[restore] putting every setting back to what it was")
+            restore(before)
 
     passed = [n for n, s, _ in results if s == "PASS"]
     failed = [n for n, s, _ in results if s == "FAIL"]

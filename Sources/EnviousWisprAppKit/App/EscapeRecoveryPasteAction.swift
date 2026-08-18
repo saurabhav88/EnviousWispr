@@ -43,9 +43,11 @@ enum EscapeRecoveryPasteAction {
     targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true }
   ) {
     guard let row = restorable(payload.transcriptID) else {
-      // Lapsed between render and press. Silent: the row is already gone from
-      // the user's view, and a message about text they can no longer see would
-      // explain a state they cannot act on.
+      // Lapsed between render and press. Silent TO THE USER, whose row is
+      // already gone from view and who cannot act on the explanation — but no
+      // longer silent to us. A press that produced nothing is the single most
+      // likely thing a support conversation is about.
+      Self.log(outcome: "no-row", ageMs: nil, takeID: nil)
       return
     }
 
@@ -72,8 +74,8 @@ enum EscapeRecoveryPasteAction {
     // the vocabulary's own word for exactly this — "the target was gone, so the
     // text went to the clipboard instead. Still a restore."
     if targetHasQuit(payload) {
-      guard let takeID = row.takeID else { return }
-      report(Int(Date().timeIntervalSince(row.stampedAt) * 1000), .clipboardOnly, takeID)
+      Self.finish(
+        .clipboardOnly, stampedAt: row.stampedAt, takeID: row.takeID, report: report)
       return
     }
 
@@ -88,11 +90,18 @@ enum EscapeRecoveryPasteAction {
     // The text is already on the clipboard, so refusing costs nothing: the user
     // pastes it themselves, or takes it from History for the next 24 hours.
     guard retarget(payload) else {
-      guard let takeID = row.takeID else { return }
-      report(Int(Date().timeIntervalSince(row.stampedAt) * 1000), .clipboardOnly, takeID)
+      Self.finish(
+        .clipboardOnly, stampedAt: row.stampedAt, takeID: row.takeID, report: report)
       return
     }
-    NSApp.hide(nil)
+    // `NSApp?`, not `NSApp`. It is an implicitly-unwrapped optional and is nil
+    // in any process that is not a running application, so the bare form traps.
+    // Found 2026-08-18: this suite PASSES in a full run — something earlier
+    // brings `NSApplication` up — and CRASHES when run alone, which is an order
+    // dependency hiding in what looks like a settled test. Hiding ourselves is
+    // a courtesy so the target app is visible when the keystroke lands; the
+    // paste does not depend on it, so a nil app must skip it, never trap.
+    NSApp?.hide(nil)
     Task {
       try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
       PasteService.simulatePaste()
@@ -103,10 +112,56 @@ enum EscapeRecoveryPasteAction {
     // simulated paste gives no completion signal, so a failure value here would
     // be a guess presented as a measurement.
     //
-    // No take id means no join key, so the event is dropped rather than emitted
-    // unmatched — the same rule every other event in this funnel follows.
-    guard let takeID = row.takeID else { return }
-    report(Int(Date().timeIntervalSince(row.stampedAt) * 1000), .pasted, takeID)
+    Self.finish(.pasted, stampedAt: row.stampedAt, takeID: row.takeID, report: report)
+  }
+
+  /// Record the outcome once, on every path, to BOTH channels.
+  ///
+  /// Founder 2026-08-18: "we should be able to tell post hoc how often this
+  /// feature is being leveraged... and if for whatever reason it fails, we
+  /// should know". Two channels, because they answer questions neither can
+  /// answer alone: telemetry aggregates across users and is how the feature
+  /// earns its keep; the app log is the only thing a support conversation about
+  /// ONE user can read, and this path wrote nothing to it at all.
+  ///
+  /// **A MISSING TAKE ID NO LONGER SWALLOWS THE WHOLE EVENT.** It still
+  /// suppresses the TELEMETRY — no join key means an event that inflates a
+  /// denominator and answers nothing, the rule every event in this funnel
+  /// follows — but the restore is now LOGGED as the anomaly it is. The earlier
+  /// shape returned early, so the restore vanished from both channels at once:
+  /// a silent subtraction from the exact count the feature is judged on, and
+  /// invisible precisely because it never happens in a test.
+  private static func finish(
+    _ result: EscapeRecoveryPasteResult,
+    stampedAt: Date,
+    takeID: String?,
+    report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void
+  ) {
+    let ageMs = Int(Date().timeIntervalSince(stampedAt) * 1000)
+    log(outcome: result.rawValue, ageMs: ageMs, takeID: takeID)
+    guard let takeID else { return }
+    report(ageMs, result, takeID)
+  }
+
+  /// One line per restore attempt, describing its SHAPE and never its content.
+  ///
+  /// No transcript, no text, no target application: the privacy boundary is the
+  /// same here as everywhere else, and a debug log is still the user's machine.
+  /// `take` is our own opaque join key, not anything they said.
+  private static func log(outcome: String, ageMs: Int?, takeID: String?) {
+    let age = ageMs.map(String.init) ?? "n/a"
+    // The anomaly is carried by the TEXT, not by a level. `DebugLogLevel` has
+    // only info/verbose/debug — there is no error level to raise it to — and a
+    // marker that greps is worth more here anyway: whoever reads this file is
+    // searching it, not filtering by severity.
+    let take = takeID ?? "MISSING (restore not reported to telemetry)"
+    Task {
+      await AppLogger.shared.log(
+        "escape recovery restore: outcome=\(outcome) age_ms=\(age) take=\(take)",
+        level: .info,
+        category: "EscapeRecovery"
+      )
+    }
   }
 
   /// The production retarget: bring back the app, then the field.

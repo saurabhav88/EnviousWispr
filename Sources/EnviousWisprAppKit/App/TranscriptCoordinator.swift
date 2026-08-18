@@ -500,12 +500,25 @@ final class TranscriptCoordinator {
       // expired between render and click, and clearing the stamp anyway would
       // put an expired recovery on screen as permanent History — resurrecting
       // in the UI precisely the text the store just refused to write.
-      guard try store.promotePending(id: transcript.id) else { return }
+      guard try store.promotePending(id: transcript.id) else {
+        // The refusal is the interesting case and it was the silent one: the
+        // user pressed Keep, the row lapsed a moment earlier, and nothing
+        // anywhere recorded that the press happened. That is precisely the
+        // report a support conversation starts from.
+        Self.logKeep(outcome: "refused-not-offerable", takeID: transcript.escapeRecoveryTakeID)
+        return
+      }
       // #2087: only on a CONFIRMED promotion, and only with the persisted take
       // id. A `kept` event for a row that was not promoted would overstate the
       // one ratio this funnel exists to measure.
       if let takeID = transcript.escapeRecoveryTakeID, let stamped = transcript.escapeRecoveredAt {
         emitEscapeRecoveryKept(Int(Date().timeIntervalSince(stamped) * 1000), takeID)
+        Self.logKeep(outcome: "kept", takeID: takeID)
+      } else {
+        // Promoted, but with nothing to join it to. The user keeps their text
+        // either way — this records the bookkeeping gap rather than letting the
+        // Keep disappear from the count it belongs in.
+        Self.logKeep(outcome: "kept-unreported", takeID: nil)
       }
       guard let index = transcripts.firstIndex(where: { $0.id == transcript.id }) else { return }
       transcripts[index] = transcripts[index].promotedFromPending()
@@ -517,6 +530,23 @@ final class TranscriptCoordinator {
           level: .info, category: "TranscriptCoordinator"
         )
       }
+    }
+  }
+
+  /// One line per Keep press, on every outcome including the refusals.
+  ///
+  /// Founder 2026-08-18, on the sibling Undo path: we must be able to tell after
+  /// the fact how often this is used and when it fails. Telemetry answers that
+  /// across users; this answers it for the ONE user in front of you, which is
+  /// the only thing a support conversation can read. Shape only — no transcript
+  /// and no text — and `take` is our own opaque join key.
+  private static func logKeep(outcome: String, takeID: String?) {
+    let take = takeID ?? "MISSING (keep not reported to telemetry)"
+    Task {
+      await AppLogger.shared.log(
+        "escape recovery keep: outcome=\(outcome) take=\(take)",
+        level: .info, category: "EscapeRecovery"
+      )
     }
   }
 

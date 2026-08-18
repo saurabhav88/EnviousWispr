@@ -122,10 +122,40 @@ export function createAdoptionSection(env, context, opts = {}) {
     FROM events
     WHERE event = 'onboarding.completed' AND ${prod} AND ${win}`;
 
+  // Carries Escape Recovery (#2087) as well as the headline totals, in ONE
+  // query. An eighth adoption query would have taken the designed worst case
+  // from 44 outbound requests to 47, inside Cloudflare's cap of 50 but through
+  // the headroom floor the subrequest guard asserts — and that guard is right,
+  // so the query moved rather than the assertion.
+  //
+  // `net_dictations` and `total_users` are unchanged in meaning: `countIf` and
+  // `uniqExactIf` over the same predicate select exactly the set the narrower
+  // WHERE clause used to. The window and the environment filter are shared, so
+  // recovery numbers can never describe a different period from the totals
+  // beside them.
+  //
+  // `started` counts cancels that CHOSE recovery; `restored` counts the ones the
+  // user took back with Undo. That ratio is the question the feature has to
+  // answer — keeping text nobody asks for is a cost, not a success.
+  // `clipboard_only` is the closest thing to a failure signal we have: the
+  // original app had gone or refused focus, so the words went to the clipboard
+  // instead of back where they were dictated.
   const totalsSql = `
-    SELECT count() AS net_dictations, uniqExact(distinct_id) AS total_users
+    SELECT
+      countIf(event = 'dictation.completed' AND properties.result = 'success')
+        AS net_dictations,
+      uniqExactIf(distinct_id,
+                  event = 'dictation.completed' AND properties.result = 'success')
+        AS total_users,
+      countIf(event = 'escape_recovery.started') AS er_kept,
+      uniqExactIf(distinct_id, event = 'escape_recovery.started') AS er_kept_users,
+      countIf(event = 'escape_recovery.restored') AS er_restored,
+      countIf(event = 'escape_recovery.restored'
+              AND properties.paste_result = 'clipboard_only') AS er_restored_clipboard_only
     FROM events
-    WHERE event = 'dictation.completed' AND properties.result = 'success' AND ${prod} AND ${win}`;
+    WHERE event IN ('dictation.completed', 'escape_recovery.started',
+                    'escape_recovery.restored')
+      AND ${prod} AND ${win}`;
 
   // Engine (row 3) + polish tier-b fallback (row 4) share the same event
   // population, so one query resolves both per user.
@@ -213,6 +243,15 @@ export function createAdoptionSection(env, context, opts = {}) {
         geoDegraded: geoResult.degraded,
         top5: top5Result.degraded ? [] : rowsToObjects(top5Result.response),
         top5Degraded: top5Result.degraded,
+        // Rides on `totals`, which is the fail-loud query — so there is no
+        // separate degraded state to carry. If these are missing, the whole
+        // report failed and nothing is rendered at all.
+        escapeRecovery: {
+          kept: rowsToObjects(totals)[0]?.er_kept ?? 0,
+          keptUsers: rowsToObjects(totals)[0]?.er_kept_users ?? 0,
+          restored: rowsToObjects(totals)[0]?.er_restored ?? 0,
+          clipboardOnly: rowsToObjects(totals)[0]?.er_restored_clipboard_only ?? 0,
+        },
       };
 
       // When engineAndTierB itself degraded, activeIds is empty and tier-a is

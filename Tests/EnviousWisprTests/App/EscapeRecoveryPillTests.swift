@@ -191,12 +191,15 @@ struct EscapeRecoveryPillTests {
   }
 
   /// The founder-locked copy, asserted against its spoken equivalent. They have
-  /// to agree: the announcement promises a Paste action, so the button cannot be
-  /// relabelled without the sentence changing with it.
+  /// to agree: the announcement promises the button's action by name, so the
+  /// button cannot be relabelled without the sentence changing with it. It did
+  /// its job on 2026-08-18 — a rename of the title alone left the sentence
+  /// promising an action no button offered, and this is the assertion that
+  /// refused it.
   @Test("the pill's copy and its spoken announcement agree")
   func copyAgreesWithTheAnnouncement() {
-    #expect(DictationNarrator.escapeRecoveryPillTitle == "Recording kept")
-    #expect(DictationNarrator.escapeRecoveryPillAction == "Paste")
+    #expect(DictationNarrator.escapeRecoveryPillTitle == "Transcript cancelled")
+    #expect(DictationNarrator.escapeRecoveryPillAction == "Undo")
 
     let spoken = DictationNarrator.announcement(
       for: OverlayIntent.escapeRecovery(transcriptID: UUID()))

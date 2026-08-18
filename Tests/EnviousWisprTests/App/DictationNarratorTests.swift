@@ -239,7 +239,7 @@ import Testing
       ),
       (
         .escapeRecovery(transcriptID: UUID()),
-        "Recording kept. Press Paste to insert it, or find it in History."
+        "Transcript cancelled. Press Undo to get it back, or find it in History."
       ),
     ]
     for (intent, want) in cases {
@@ -264,8 +264,25 @@ import Testing
 
     #expect(!spoken.hasPrefix("Error:"), "nothing failed on this path")
     #expect(!spoken.hasPrefix("Warning:"), "nothing failed on this path")
-    #expect(!spoken.lowercased().contains("cancel"), "the take was kept, not cancelled")
-    #expect(spoken.contains("Paste"), "the one action must be named")
+
+    // The word "cancel" USED to be forbidden here, on the reasoning that the
+    // take was kept rather than cancelled. Founder decision 2026-08-18 reverses
+    // that: the copy now names the event the user caused — they did cancel —
+    // and then offers the reversal. Naming the act is not the same as
+    // announcing a loss, which is what this path must never do.
+    //
+    // So the guard moves from the WORD to the CLAIM. Saying "cancelled" is
+    // allowed; saying the text is gone is not, because it would be false and it
+    // is the one thing a listener cannot check for themselves.
+    for lie in ["discarded", "deleted", "lost", "thrown away"] {
+      #expect(
+        !spoken.lowercased().contains(lie),
+        "the text was kept — the announcement must never say it was \(lie)")
+    }
+
+    #expect(
+      spoken.contains(DictationNarrator.escapeRecoveryPillAction),
+      "the one action must be named, and named the same as the button")
     #expect(spoken.contains("History"), "the 24-hour door must be named, not only the pill")
   }
 

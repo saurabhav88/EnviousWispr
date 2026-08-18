@@ -22,7 +22,7 @@ A recording follows the setting as it stood when that recording started. Changin
 
 Your cancel shortcut, Escape by default, still stops the recording. Instead of discarding it, EnviousWispr transcribes and polishes it the same way it would any dictation, then holds the text rather than pasting it.
 
-A small **Recording kept** notice appears with a **Paste** button. Press it and the text goes into the app you were dictating into. If you miss the notice, nothing is lost: the dictation is waiting in your History.
+A small **Transcript cancelled** notice appears with an **Undo** button. Press it and the text goes into the app you were dictating into. If you miss the notice, nothing is lost: the dictation is waiting in your History.
 
 Two things follow from the recording being processed rather than thrown away.
 
