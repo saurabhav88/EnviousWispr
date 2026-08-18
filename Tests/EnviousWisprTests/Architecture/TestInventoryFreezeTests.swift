@@ -647,18 +647,25 @@ struct TestInventoryFreezeTests {
       \(ambiguous.map { "  \($0.file) :: \($0.qualifiedName) -> \($0.classes.map(\.rawValue))" }.joined(separator: "\n"))
       """)
 
-    // A grandfathered suite that LATER declares a class must lose its baseline entry, or the ratchet
-    // silently regresses: delete the tag again and the stale key grandfathers it a second time, with no
-    // failure anywhere. The list is an exemption for suites that predate the rule, so an entry naming a
-    // suite that no longer needs one is a hole rather than dead weight.
-    let staleGrandfathering = records.filter { !$0.classes.isEmpty && baseline.contains($0.key) }
+    // THE INVARIANT IS AN EQUALITY, not an avoidance: the baseline IS the set of suites that are
+    // untagged right now. Anything else in it is a REUSABLE EXEMPTION, and every way of acquiring one is
+    // quiet:
+    //   - a listed suite that later declares a class keeps its line, so deleting the tag re-grandfathers
+    //     it with nothing failing;
+    //   - a listed suite that is DELETED leaves its key behind forever, and a later suite added at the
+    //     same file and qualified name — a rename is enough — inherits the exemption;
+    //   - a key that never named anything passes indefinitely, so one can simply be written in advance.
+    // Checking only the first of those was the weaker half-answer; requiring correspondence to a
+    // currently-untagged record covers all three at once and needs no enumeration of them.
+    let untaggedKeys = Set(records.filter { $0.classes.isEmpty }.map(\.key))
+    let staleEntries = baseline.subtracting(untaggedKeys).sorted()
     #expect(
-      staleGrandfathering.isEmpty,
+      staleEntries.isEmpty,
       """
-      \(staleGrandfathering.count) suite(s) declare a class AND are still grandfathered. Remove their
-      lines from scripts/test-inventory-baseline.txt — a stale exemption re-grandfathers the suite if
-      its tag is ever removed:
-      \(staleGrandfathering.map { "  \($0.file) :: \($0.qualifiedName)" }.joined(separator: "\n"))
+      \(staleEntries.count) grandfather entr(y/ies) no longer name an untagged suite. Delete these lines
+      from scripts/test-inventory-baseline.txt — each one is an exemption a future suite can inherit by
+      landing at the same path and name:
+      \(staleEntries.map { "  " + $0.replacingOccurrences(of: "\t", with: " :: ") }.joined(separator: "\n"))
       """)
 
     let undeclared = records.filter { $0.classes.isEmpty && !baseline.contains($0.key) }
