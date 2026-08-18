@@ -527,11 +527,26 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
         # whoever authored the issue. Resolve BOTH sides and require containment; resolving is what
         # catches the symlink, since a lexical check cannot.
         rel = row["file"]
-        # Before the allow-list: no absolute path can start with an allowed root, so this check would
-        # be unreachable behind it — a guard nothing can arm. It also gives the precise message.
         if Path(rel).is_absolute():
             raise Refusal(f"row {i} file must be repo-relative, got an absolute path: {rel}")
-        if not any(rel.startswith(root) for root in MUTABLE_ROOTS):
+        # RESOLVE BEFORE DECIDING. A prefix check on the raw string answers a question about the
+        # STRING; every question worth asking here is about the FILE it names. `Sources/../Tests/x.swift`
+        # passes a lexical `startswith("Sources/")`, resolves inside the worktree, and lands in Tests/ —
+        # where breaking an assertion yields a false CAUGHT. Same bypass reaches Project.swift.
+        # Cloud review, PR #2158.
+        target = (worktree / rel).resolve()
+        wt = worktree.resolve()
+        if not (target == wt or wt in target.parents):
+            raise Refusal(
+                f"row {i} resolves OUTSIDE the worktree and will not be mutated:\n"
+                f"  recipe says: {rel}\n"
+                f"  resolves to: {target}\n"
+                f"  worktree:    {wt}"
+            )
+        if not any(
+            root_path == target or root_path in target.parents
+            for root_path in ((wt / r).resolve() for r in MUTABLE_ROOTS)
+        ):
             raise Refusal(
                 f"row {i} targets {rel}, which is outside {', '.join(MUTABLE_ROOTS)} — the only place a "
                 "mutation means anything here. A mutation must break PRODUCTION code the filtered lane "
@@ -543,17 +558,11 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
                 "build never saw.\n"
                 "  Anywhere the lane does not execute, every row reports SURVIVED regardless of the "
                 "test's quality.\n"
-                "An allow-list on purpose: the deny-list it replaced was wrong once per review round. "
-                "Prove a change of that kind with a full lane instead."
-            )
-        target = (worktree / row["file"]).resolve()
-        wt = worktree.resolve()
-        if not (target == wt or wt in target.parents):
-            raise Refusal(
-                f"row {i} resolves OUTSIDE the worktree and will not be mutated:\n"
-                f"  recipe says: {row['file']}\n"
-                f"  resolves to: {target}\n"
-                f"  worktree:    {wt}"
+                "An allow-list on purpose: the deny-list it replaced was wrong once per review round, "
+                "and it is applied to the RESOLVED path, so `Sources/../Tests/x.swift` cannot walk "
+                "through it. Prove a change of that kind with a full lane instead.\n"
+                f"  recipe says: {rel}\n"
+                f"  resolves to: {target}"
             )
         if not target.is_file():
             raise Refusal(f"row {i} target does not exist: {row['file']}")
@@ -625,7 +634,11 @@ def main(argv=None):
                  "silently do less than the other flag promises.")
 
     worktree = (args.worktree or Path(__file__).resolve().parent.parent).resolve()
-    derived = worktree / ".derivedData" / "Test"
+    # The canonical lane reads DERIVED_DATA_PATH with the same default (xcode-test.sh:19). The drift
+    # guard only compares that assignment's TEXT, so a battery ignoring the override would run against
+    # the shared warm cache while an operator believed it was isolated — colliding with another lane,
+    # or reusing different incremental artifacts. Cloud review, PR #2158.
+    derived = Path(os.environ.get("DERIVED_DATA_PATH") or (worktree / ".derivedData" / "Test"))
     log_dir = worktree / "build" / "mutation-battery"
     log_dir.mkdir(parents=True, exist_ok=True)
 

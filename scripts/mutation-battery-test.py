@@ -267,13 +267,36 @@ check("an absolute target path is refused",
 
 # Deliberately starts with Sources/ so it passes the allow-list and reaches the containment check —
 # otherwise the allow-list would catch it first and this case would silently stop testing containment.
+# The allow-list must be applied to the RESOLVED path, not the raw string. A lexical prefix check
+# answers a question about the STRING; `Sources/../Tests/x.swift` satisfies it, resolves INSIDE the
+# worktree, and lands in Tests/ — where breaking an assertion yields a false CAUGHT. Cloud review found
+# this walking straight through the allow-list added one round earlier.
+check("a path that walks out of an allowed root via .. is refused",
+      [dict(VALID_ROW, file="Sources/../Tests/FooTests.swift")],
+      expect_exit=2, expect_text="which is outside Sources/")
+
+check("the same bypass aimed at a Tuist input is refused",
+      [dict(VALID_ROW, file="Sources/../Project.swift")],
+      expect_exit=2, expect_text="which is outside Sources/")
+
+# The accepted counterpart: a `..` that stays inside an allowed root is fine, so the check is about
+# WHERE it lands rather than about the characters.
+check("a .. that resolves back inside an allowed root is accepted",
+      [dict(VALID_ROW, file="Sources/sub/../Thing.swift")],
+      expect_exit=0, expect_text="1 row(s) well-formed",
+      extra_files={"Sources/sub/placeholder.swift": "// keeps the directory\n"})
+
 check("a target escaping the worktree via .. inside an allowed root is refused",
       [dict(VALID_ROW, file="Sources/../../outside.swift")],
       expect_exit=2, expect_text="resolves OUTSIDE the worktree")
 
-check("a target outside the allowed roots is refused before containment is even considered",
-      [dict(VALID_ROW, file="../outside.swift")],
-      expect_exit=2, expect_text="which is outside Sources/")
+# Inside the worktree, so it passes containment and genuinely reaches the allow-list. `../outside.swift`
+# no longer exercises this: since the resolve-first reorder it is caught by containment, and its
+# containment case above already covers that.
+check("a target inside the worktree but outside the allowed roots is refused",
+      [dict(VALID_ROW, file="docs/notes.swift")],
+      expect_exit=2, expect_text="which is outside Sources/",
+      extra_files={"docs/notes.swift": "// not a mutation target\n"})
 
 # exit 1 means "a row survived". A missing recipe file must never be able to produce it.
 ran += 1
@@ -839,6 +862,49 @@ if _extra:
                     + ", ".join(_extra) + " would move unnoticed")
 else:
     print("  ok  the runner's command carries no setting the drift guard is blind to")
+
+# The canonical lane honours DERIVED_DATA_PATH (xcode-test.sh:19) and the drift guard only compares
+# that assignment's TEXT — so a battery ignoring the override would run against the shared warm cache
+# while an operator believed it was isolated. Read at call time, so no reload is needed.
+ran += 1
+_probe = "/tmp/ew-battery-derived-probe"
+_env_before = _os_env.environ.get("DERIVED_DATA_PATH")
+_os_env.environ["DERIVED_DATA_PATH"] = _probe
+_seen = {}
+
+
+class _ProbeLane:
+    def __init__(self, wt, derived, logs):
+        _seen["derived"] = str(derived)
+
+    def generate_once(self):
+        pass
+
+    def run_suite(self, suite, tag):
+        return (1, [], True, "log", 0, 1.0)
+
+
+_rl, _rb = battery.Lane, battery.baseline
+battery.Lane, battery.baseline = _ProbeLane, (lambda lane, suites, phase: [])
+try:
+    with tempfile.TemporaryDirectory() as td:
+        tmp = make_tree(Path(td))
+        recipes = tmp / "r.json"
+        recipes.write_text(json.dumps({"rows": [dict(VALID_ROW)]}))
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            battery.main(["--recipes", str(recipes), "--worktree", str(tmp), "--dry-run"])
+finally:
+    battery.Lane, battery.baseline = _rl, _rb
+    if _env_before is None:
+        _os_env.environ.pop("DERIVED_DATA_PATH", None)
+    else:
+        _os_env.environ["DERIVED_DATA_PATH"] = _env_before
+
+if _seen.get("derived") != _probe:
+    failures.append("the battery honours DERIVED_DATA_PATH like the canonical lane — it does NOT: "
+                    f"used {_seen.get('derived')!r} instead of {_probe!r}")
+else:
+    print("  ok  the battery honours DERIVED_DATA_PATH like the canonical lane")
 
 print()
 if failures:
