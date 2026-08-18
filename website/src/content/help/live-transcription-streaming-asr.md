@@ -4,7 +4,7 @@ description: "Whether to have text written while you are still speaking."
 category: "speech-engines"
 section: "Transcription"
 order: 4
-keywords: ["live", "live text", "see words as i speak", "real time", "realtime", "streaming", "as you talk", "preview"]
+keywords: ["live", "live text", "real time", "realtime", "streaming", "as you talk", "write while i talk", "text appears while speaking"]
 seeAlso: "live-transcription-that-keeps-up-with-you"
 updated: 2026-08-06
 ---
@@ -15,6 +15,8 @@ EnviousWispr normally writes your text once you stop talking. Live transcription
 ### Turning it on
 
 Go to **Settings** \> **Transcription** and switch on **Live transcription**. The question mark beside it explains what changes for the engine you are on.
+
+Looking for words on screen while you speak, rather than text written into your document? That is a different setting: see [Live Preview](/help/live-preview-words-on-screen/).
 
 ### Why you should leave it off on Parakeet
 
