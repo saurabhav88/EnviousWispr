@@ -245,9 +245,107 @@ else
   bad "acquire rollback" "rc=$_rc dir_present=$([ -e "$EW_SEED_ROOT/.locks/rollback" ] && echo yes || echo no) tracked=${#EW_SEED_HELD_LOCKS[@]} was=$_before"
 fi
 
+# --- liveness has THREE answers, and the third one used to be silent ----------
+# "Cannot tell" was collapsed into "dead". The identity helper printed a string
+# and an EMPTY string meant gone — but empty is also what a missing or failing
+# process tool produces, and the caller's comment said "provably dead". Reading
+# it that way takes the lock from a LIVE owner, which is the grant-too-often
+# direction: two writers on one snapshot, or a purge deleting a tree mid-clone.
+# Neither whole-diff review round found this; it came out of enumerating the
+# class the two rounds belonged to.
+live_id="$(ew_seed_process_identity "$$" 2>/dev/null)"; live_rc=$?
+if [ "$live_rc" -eq 0 ] && [ -n "$live_id" ]; then
+  ok "a LIVE pid returns 0 and an identity"
+else
+  bad "identity live" "rc=$live_rc id='$live_id' — a live pid did not report as alive"
+fi
+
+ew_seed_process_identity 999998 >/dev/null 2>&1; dead_rc=$?
+if [ "$dead_rc" -eq 1 ]; then
+  ok "an ABSENT pid returns 1 (provably dead)"
+else
+  bad "identity absent" "rc=$dead_rc — a dead pid did not report as provably absent"
+fi
+
+( EW_SEED_PS="$TMPROOT/no-such-tool"; ew_seed_process_identity "$$" >/dev/null 2>&1 ); broken_rc=$?
+if [ "$broken_rc" -eq 2 ]; then
+  ok "a BROKEN process tool returns 2 (could not tell) — never confused with dead"
+else
+  bad "identity indeterminate" "rc=$broken_rc — a broken tool did not report as indeterminate"
+fi
+
+# THE CONSEQUENCE, which is what actually matters: an aged lock whose owner
+# cannot be checked must be LEFT ALONE. Its pid is this very test process, so a
+# reclaim here would be stealing from a demonstrably live owner.
+mkdir -p "$EW_SEED_ROOT/.locks/livecheck"
+{ printf 'version=%s\n' "$EW_SEED_LOCK_VERSION"
+  printf 'pid=%s\n' "$$"
+  printf 'started=%s\n' "$(ew_seed_process_identity "$$")"; } > "$EW_SEED_ROOT/.locks/livecheck/owner"
+touch -t 202001010000 "$EW_SEED_ROOT/.locks/livecheck"
+warn_out="$( EW_SEED_PS="$TMPROOT/no-such-tool"; ew_seed_lock_is_reclaimable livecheck 60 2>&1 )"
+( EW_SEED_PS="$TMPROOT/no-such-tool"; ew_seed_lock_is_reclaimable livecheck 60 >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -ne 0 ]; then
+  ok "an aged lock whose owner CANNOT be checked is left alone (never assumed dead)"
+else
+  bad "indeterminate reclaim" "reclaimed a lock from an owner it could not check — this process is alive"
+fi
+if printf '%s' "$warn_out" | grep -q "could not determine whether pid"; then
+  ok "the could-not-check refusal is ANNOUNCED, not silent"
+else
+  bad "indeterminate warning" "refused silently: '$warn_out'"
+fi
+
+# THE TWIN: with a working tool and the same aged lock, a LIVE owner is still
+# refused. Without this, a fix that simply refuses everything looks correct.
+if ew_seed_lock_is_reclaimable livecheck 60 >/dev/null 2>&1; then
+  bad "live owner reclaim" "reclaimed a lock held by a live process"
+else
+  ok "an aged lock held by a LIVE owner is refused with a working tool too (the twin)"
+fi
+rm -rf "$EW_SEED_ROOT/.locks/livecheck"
+
+# --- a FAILED age probe is announced, not silently read as "not old enough" ----
+# `2>/dev/null` on a probe whose emptiness you interpret destroys the channel
+# separating "asked correctly, the answer is no" from "the question was
+# malformed". A malformed age argument makes `find` error; both readings refuse,
+# but only one of them says why.
+mkdir -p "$EW_SEED_ROOT/.locks/badage"
+printf 'version=%s\npid=%s\nstarted=x\n' "$EW_SEED_LOCK_VERSION" "$$" > "$EW_SEED_ROOT/.locks/badage/owner"
+warn_out="$(ew_seed_lock_is_reclaimable badage "not-a-number" 2>&1)"
+ew_seed_lock_is_reclaimable badage "not-a-number" >/dev/null 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$warn_out" | grep -q "age probe failed"; then
+  ok "a failed age probe refuses AND says so"
+else
+  bad "age probe" "rc=$rc out='$warn_out'"
+fi
+rm -rf "$EW_SEED_ROOT/.locks/badage"
+
+# --- acquire REFUSES rather than take a lock it could never release -----------
+# A lock whose owner record carries no start identity is refused by the judge for
+# the life of the machine, so writing one is strictly worse than not taking the
+# lock: a cache miss costs one slow resolve, an unreclaimable lock costs this key
+# its seeding forever. This case exists because a mutation control found the
+# guard untested — the fix was in place and nothing would have noticed it going.
+( EW_SEED_PS="$TMPROOT/no-such-tool"; ew_seed_lock_acquire noidentity >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -ne 0 ] && [ ! -e "$EW_SEED_ROOT/.locks/noidentity" ]; then
+  ok "acquire REFUSES when it cannot establish its own identity, and leaves nothing"
+else
+  bad "acquire without identity" "rc=$rc dir=$([ -e "$EW_SEED_ROOT/.locks/noidentity" ] && echo present || echo absent)"
+fi
+
+# THE TWIN: with a working tool the same key acquires normally and records a
+# start identity a judge can actually use.
+if ew_seed_lock_acquire noidentity >/dev/null 2>&1 \
+   && [ -n "$(sed -n 's/^started=//p' "$EW_SEED_ROOT/.locks/noidentity/owner")" ]; then
+  ok "acquire succeeds with a working tool and records a usable identity (the twin)"
+else
+  bad "acquire identity twin" "acquire failed or wrote an empty start identity"
+fi
+ew_seed_lock_release noidentity
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 20 ]; then
-  printf 'ERROR: expected at least 20 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 29 ]; then
+  printf 'ERROR: expected at least 29 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

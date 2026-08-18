@@ -46,7 +46,22 @@ ew_launched_pids() {
   done < <(pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" 2>/dev/null || true)
 }
 
-# ew_wait_for_launch <app_path> [deciseconds] -> 0 launched, 1 did not
+# ew_pgrep_usable -> 0 if `pgrep` answered the question, 1 if it could not.
+# `pgrep` exits 0 on a match, 1 on NO match, and >1 on an ERROR, and the `|| true`
+# above flattens all three into "no processes". That direction is the safe one —
+# it reports a launch failure rather than a phantom success — but it reports the
+# WRONG REASON, and "the dev app did not launch" sends the next reader looking at
+# the app when the problem is the probe. Same defect the benchmark's contention
+# gate had, in the same file family, which is why both are fixed together.
+ew_pgrep_usable() {
+  pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" >/dev/null 2>&1
+  case "$?" in
+    0|1) return 0 ;;
+    *)   return 1 ;;
+  esac
+}
+
+# ew_wait_for_launch <app_path> [deciseconds] -> 0 launched, 1 did NOT, 2 could not tell
 # Polls a SIGNAL (the process exists) instead of sleeping a fixed interval, so a
 # fast launch costs milliseconds and a failed one is still caught.
 ew_wait_for_launch() {
@@ -57,5 +72,11 @@ ew_wait_for_launch() {
     fi
     sleep 0.1
   done
+  # Distinguish "it did not launch" from "I could not tell". A transient probe
+  # failure self-corrects across 50 polls, so only a persistent one reaches here.
+  if ! ew_pgrep_usable; then
+    echo "ew_wait_for_launch: the process probe itself failed; this is not evidence the app did not launch" >&2
+    return 2
+  fi
   return 1
 }

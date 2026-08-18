@@ -178,7 +178,12 @@ open "$APP_PATH"
 # process is THIS worktree's app rather than matching text in a command line.
 # The check itself lives in scripts/lib/launch-check.sh so it can be TESTED — a
 # readiness check never observed failing is a check nobody has tested.
-if ! ew_wait_for_launch "$APP_PATH"; then
+ew_wait_for_launch "$APP_PATH"; _launch_rc=$?
+if [ "$_launch_rc" -eq 2 ]; then
+  echo "ERROR: could not determine whether the dev app launched — the process probe failed."
+  echo "       This says nothing about the app. Check \`pgrep\` before blaming the build."
+  exit 1
+elif [ "$_launch_rc" -ne 0 ]; then
   echo "ERROR: this worktree's dev app did not launch"
   exit 1
 fi

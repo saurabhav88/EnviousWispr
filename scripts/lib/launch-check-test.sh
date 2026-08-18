@@ -168,9 +168,42 @@ else
   bad "prefilter false-positive rejection" "marker or rejection missing: '$actual'"
 fi
 
+# --- "could not tell" is not "did not launch" ---------------------------------
+# `pgrep` exits 0 on a match, 1 on NO match and >1 on an ERROR, and the `|| true`
+# in ew_launched_pids flattens all three. The direction is safe — a probe failure
+# reports a launch failure rather than a phantom success — but the REASON is
+# wrong, and "the dev app did not launch" sends the next reader to inspect an app
+# that may be running perfectly. Same defect as the benchmark's contention gate.
+pgrep() { return 3; }
+ew_wait_for_launch "$TMP/absent.app" 1 >/dev/null 2>&1; rc=$?
+launch_warn="$(ew_wait_for_launch "$TMP/absent.app" 1 2>&1 >/dev/null)"
+unset -f pgrep
+if [ "$rc" -eq 2 ]; then
+  ok "a BROKEN process probe reports 'could not tell' (2), not 'did not launch' (1)"
+else
+  bad "launch probe error" "returned $rc; a probe failure is indistinguishable from a real launch failure"
+fi
+if printf '%s' "$launch_warn" | grep -q "not evidence the app did not launch"; then
+  ok "the could-not-tell case says so on stderr"
+else
+  bad "launch probe warning" "silent: '$launch_warn'"
+fi
+
+# THE TWIN: with a WORKING probe that finds nothing, this really is a launch
+# failure and must still report 1. Without it, a fix that returns 2 for
+# everything would look correct.
+pgrep() { return 1; }
+ew_wait_for_launch "$TMP/absent.app" 1 >/dev/null 2>&1; rc=$?
+unset -f pgrep
+if [ "$rc" -eq 1 ]; then
+  ok "a WORKING probe that finds nothing still reports 'did not launch' (the twin)"
+else
+  bad "launch negative" "returned $rc instead of 1"
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 8 ]; then
-  printf 'ERROR: expected at least 8 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 11 ]; then
+  printf 'ERROR: expected at least 11 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1
