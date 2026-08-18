@@ -24,6 +24,49 @@ import Foundation
 /// has no `@MainActor` isolation, and can be tested without a running app.
 enum LanguageLockOptions {
 
+  /// Which languages the LIVE PREVIEW page's picker may offer.
+  ///
+  /// **Founder, 2026-08-18: the picker lists what you can switch to RIGHT NOW; the
+  /// Languages table below it is the catalogue and the place you acquire one.**
+  /// "We already have the download selector at the bottom, which is an endless
+  /// scroll. It'd be silly for us to offer another option to download... if they
+  /// download it from the bottom selection table, it should then pop up into the
+  /// selector." So on Apple this is the INSTALLED set, and a table download makes
+  /// a language appear here — which is why the caller derives
+  /// `installedPackTags` from the packs model rather than snapshotting it.
+  ///
+  /// **It is an INTERSECTION, never a replacement, and that is load-bearing.**
+  /// This picker sets the DICTATION language, so a code outside the ASR backend's
+  /// lockable set is the #1678 silent failure: the lock looks set, the code maps
+  /// to no vendor language, and the decoder quietly auto-detects. Narrowing to
+  /// installed packs must therefore happen INSIDE that set, not instead of it.
+  ///
+  /// Universal is unrestricted by installs because it has none — one model covers
+  /// every language it claims, so the only limit there is the backend's.
+  ///
+  /// Pack tags are BCP-47 (`de-DE`); catalogue codes are ISO (`de`). The language
+  /// subtag is the join, lowercased, because Apple keys packs by locale and we
+  /// lock by language.
+  static func previewLockableCodes(
+    backend: ASRBackendType,
+    previewEngine: LivePreviewEngineChoice,
+    installedPackTags: [String]
+  ) -> Set<String>? {
+    let backendCodes = lockableCodes(for: backend)
+    guard previewEngine == .apple else { return backendCodes }
+
+    let installed = Set(
+      installedPackTags.compactMap { tag -> String? in
+        let language = tag.split(separator: "-").first.map(String.init)
+        return language?.lowercased()
+      })
+
+    // nil means "no restriction from the backend", so the install set becomes the
+    // whole restriction rather than being discarded.
+    guard let backendCodes else { return installed }
+    return backendCodes.intersection(installed)
+  }
+
   /// What the sheet reports for a mode change, as one decision both of its
   /// actions read.
   ///

@@ -207,4 +207,89 @@ struct LanguageLockOptionsTests {
         "the sheet must not emit the chip CTA's reason for \(from) -> \(to)")
     }
   }
+
+  // MARK: - Preview picker scope (founder 2026-08-18)
+
+  /// **The picker offers what you can switch to NOW; the table below is the
+  /// catalogue.** Founder: "we already have the download selector at the bottom,
+  /// which is an endless scroll. It'd be silly for us to offer another option to
+  /// download."
+  @Test("On Apple the picker offers only languages whose pack is installed")
+  func applyPickerIsInstalledOnly() {
+    let codes = LanguageLockOptions.previewLockableCodes(
+      backend: .whisperKit, previewEngine: .apple,
+      installedPackTags: ["en-US", "de-DE"])
+    #expect(codes == ["en", "de"], "only installed packs, as ISO language codes")
+    #expect(
+      codes?.contains("fr") != true,
+      "a language with no installed pack must not be offered")
+  }
+
+  /// **The reactivity IS the requirement, not an implementation detail.** Founder:
+  /// "if they download it from the bottom selection table, it should then pop up
+  /// into the selector." Same call, one more installed tag, one more offered code.
+  @Test("Downloading a pack makes that language available to the picker")
+  func downloadedPackAppearsInPicker() {
+    let before = LanguageLockOptions.previewLockableCodes(
+      backend: .whisperKit, previewEngine: .apple, installedPackTags: ["en-US"])
+    #expect(before?.contains("de") != true, "German is absent before its pack exists")
+
+    let after = LanguageLockOptions.previewLockableCodes(
+      backend: .whisperKit, previewEngine: .apple, installedPackTags: ["en-US", "de-DE"])
+    #expect(
+      after?.contains("de") == true,
+      "after the table installs German it must appear in the picker")
+  }
+
+  /// Universal has no per-language installs — one model covers everything it
+  /// claims — so the install set is irrelevant there and must not narrow it.
+  @Test("On Universal the picker ignores installed packs entirely")
+  func universalPickerIgnoresInstalls() {
+    let none = LanguageLockOptions.previewLockableCodes(
+      backend: .whisperKit, previewEngine: .universal, installedPackTags: [])
+    #expect(
+      none == LanguageLockOptions.lockableCodes(for: .whisperKit),
+      "Universal must offer the backend's whole set even with no packs installed")
+
+    let some = LanguageLockOptions.previewLockableCodes(
+      backend: .parakeet, previewEngine: .universal, installedPackTags: ["en-US"])
+    #expect(
+      some == LanguageLockOptions.lockableCodes(for: .parakeet),
+      "an installed Apple pack must not change what Universal offers")
+  }
+
+  /// **INTERSECTION, never replacement — this is the #1678 silent failure.** The
+  /// picker sets the DICTATION language, so a code outside the ASR backend's
+  /// lockable set produces a lock that looks set while the decoder auto-detects.
+  /// Narrowing to installed packs happens INSIDE that set.
+  @Test("The picker never offers a code the dictation engine cannot honour")
+  func neverEscapesTheBackendSet() {
+    guard let parakeet = LanguageLockOptions.lockableCodes(for: .parakeet) else {
+      Issue.record("expected Parakeet to restrict its lockable codes")
+      return
+    }
+    // Claim an installed pack for a language the fast engine does NOT claim.
+    let unclaimed = LanguageCatalog.sortedByEnglishName
+      .map(\.code).first { !parakeet.contains($0) }
+    guard let unclaimed else {
+      Issue.record("expected at least one catalogue code outside Parakeet's set")
+      return
+    }
+    let codes = LanguageLockOptions.previewLockableCodes(
+      backend: .parakeet, previewEngine: .apple,
+      installedPackTags: ["en-US", "\(unclaimed)-XX"])
+    #expect(
+      codes?.contains(unclaimed) != true,
+      "an installed pack for \(unclaimed) must not escape Parakeet's lockable set")
+    #expect(codes?.isSubset(of: parakeet) == true, "always a subset of the backend's set")
+  }
+
+  /// Nothing installed is a real state on a fresh Mac, and it must not crash or
+  /// silently fall back to "everything" — the picker simply offers Auto.
+  @Test("No installed packs offers nothing to lock, not everything")
+  func noInstalledPacksOffersNothing() {
+    let codes = LanguageLockOptions.previewLockableCodes(
+      backend: .whisperKit, previewEngine: .apple, installedPackTags: [])
+    #expect(codes == [], "empty, never nil — nil would mean unrestricted")
+  }
 }
