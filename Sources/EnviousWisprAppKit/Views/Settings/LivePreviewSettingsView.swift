@@ -194,12 +194,14 @@ struct LivePreviewSettingsView: View {
           VStack(alignment: .leading, spacing: 3) {
             Text(LivePreviewSettingsCopy.toggleLabel).settingsRowLabel()
             Text(LivePreviewSettingsCopy.toggleDescription).settingsHelperCopy()
-            // Only when NEITHER engine can run. Below macOS 26 with the
-            // universal engine available this sentence would be false, and it
-            // was once the only thing the page said there.
-            if !anyEngineAvailable {
-              Text(LivePreviewSettingsCopy.needsNewerMacOS).settingsHelperCopy()
-            }
+            // **The reason lives in the hero card now, and only there.**
+            // This row used to repeat `needsNewerMacOS` whenever neither engine
+            // could run — but that condition is an OR of two independent causes,
+            // so on macOS 14 with a defective build it told the user to upgrade
+            // macOS when upgrading would not have helped. The status card above
+            // states the SELECTED engine's own reason, which is specific by
+            // construction, and two places saying why is how they come to
+            // disagree.
           }
           Spacer(minLength: 12)
           Toggle("", isOn: $settings.livePreviewEnabled)

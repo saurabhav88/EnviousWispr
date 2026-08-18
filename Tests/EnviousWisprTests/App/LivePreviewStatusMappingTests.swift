@@ -125,10 +125,44 @@ struct LivePreviewStatusMappingTests {
 
   // MARK: - Precedence
 
-  @Test("Not-available-on-this-Mac outranks the switch being off")
-  func unavailableBeatsOff() {
-    let s = summary(isEnabled: false, appleSupported: false, universalExists: false)
-    #expect(s.chip.label == LivePreviewSettingsCopy.statusUnavailableLabel)
+  /// **The composite guard must name the SELECTED engine's reason, not blame the
+  /// Mac.** `!appleSupported && !universalExists` is reached by an old macOS, by
+  /// a defective package, or by both. On macOS 14 with the universal engine
+  /// selected and its files missing, that Mac is perfectly capable of running it
+  /// and the only thing wrong is our build — telling the user their Mac cannot
+  /// do it accuses their hardware for our mistake and sends them after an
+  /// upgrade that would not help. Found by the confirming review round, and the
+  /// axis it exposed (a branch reached by a composite condition, carrying a
+  /// message that names only one of its causes) is what the first enumeration
+  /// lacked.
+  @Test("With nothing available, each engine still gets its own reason")
+  func neitherAvailableStillNamesTheSelectedEnginesCause() {
+    let universal = summary(
+      isEnabled: false, engine: .universal, appleSupported: false, universalExists: false)
+    let apple = summary(
+      isEnabled: false, engine: .apple, appleSupported: false, universalExists: false)
+
+    #expect(universal.chip.label == LivePreviewSettingsCopy.statusBuildCannotRunLabel)
+    #expect(apple.chip.label == LivePreviewSettingsCopy.statusNeedsMacOS26Label)
+    #expect(universal.chip.label != apple.chip.label)
+
+    // Neither may blame the machine, and the universal case in particular must
+    // not, because the machine is fine for that engine.
+    #expect(universal.detail.lowercased().contains("this mac") == false)
+    // And neither may recommend the other engine, which is also unavailable.
+    #expect(universal.detail.contains("Apple") == false)
+    #expect(apple.detail.contains("Universal") == false)
+  }
+
+  /// The macOS-26 advice points at the Universal card, which only helps when
+  /// that card can. Same shape as the unsupported-language advice.
+  @Test("The macOS 26 advice only offers Universal when Universal exists")
+  func macOS26AdviceRespectsWhatIsAvailable() {
+    let withAlt = summary(engine: .apple, appleSupported: false, universalExists: true)
+    let without = summary(engine: .apple, appleSupported: false, universalExists: false)
+    #expect(withAlt.detail != without.detail)
+    #expect(withAlt.detail.contains("Universal"))
+    #expect(without.detail.contains("Universal") == false)
   }
 
   @Test("The switch being off outranks anything about engines")

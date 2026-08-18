@@ -49,11 +49,31 @@ enum LivePreviewStatusMapping {
   ) -> Summary {
     // (1) Can ANYTHING run here? Asked first because "off" is not the useful
     // answer on a Mac where the switch could never help.
+    //
+    // **An OR of two independent causes cannot name either one, and the generic
+    // sentence blamed the wrong party.** `!appleSupported || !universalExists`
+    // is reached by an old macOS, by a defective app package, or by both — and
+    // "Not available on this Mac" accuses the machine even when the Mac is
+    // perfectly capable and it is our build that shipped without the universal
+    // engine's manifest or tokenizer. So this defers to the SELECTED engine's
+    // own reason, which is specific by construction. Found by the confirming
+    // review round; the axis it exposed (a branch reached by a composite
+    // condition, carrying a message that names only one of its causes) is what
+    // the first enumeration lacked.
     guard appleSupported || universalExists else {
-      return Summary(
-        chip: ProviderStatus(
-          label: LivePreviewSettingsCopy.statusUnavailableLabel, tone: .unavailable),
-        detail: LivePreviewSettingsCopy.statusUnavailableDetail)
+      switch engine {
+      case .universal:
+        // The Mac is fine for this engine. Our package is not.
+        return Summary(
+          chip: ProviderStatus(
+            label: LivePreviewSettingsCopy.statusBuildCannotRunLabel, tone: .error),
+          detail: LivePreviewSettingsCopy.statusBuildCannotRunDetailNoAlternative)
+      case .apple:
+        return Summary(
+          chip: ProviderStatus(
+            label: LivePreviewSettingsCopy.statusNeedsMacOS26Label, tone: .needsSetup),
+          detail: LivePreviewSettingsCopy.statusNeedsMacOS26DetailNoAlternative)
+      }
     }
 
     // (2) The switch. Everything below describes a preview that would run, and
@@ -88,7 +108,9 @@ enum LivePreviewStatusMapping {
       return Summary(
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusNeedsMacOS26Label, tone: .needsSetup),
-        detail: LivePreviewSettingsCopy.statusNeedsMacOS26Detail)
+        detail: universalIsAnOption
+          ? LivePreviewSettingsCopy.statusNeedsMacOS26Detail
+          : LivePreviewSettingsCopy.statusNeedsMacOS26DetailNoAlternative)
     }
 
     // `active` is nil until the first inventory read finishes. Refusing to

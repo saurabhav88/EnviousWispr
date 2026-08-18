@@ -216,13 +216,22 @@ enum LivePreviewSettingsCopy {
   /// card cannot keep for every user who reads it.
   static let statusOffDetail = "Switch it on and this card will show whether anything else is needed."
 
-  static let statusUnavailableLabel = "Not available on this Mac"
-  static let statusUnavailableDetail =
-    "Dictation itself works normally. Only the on-screen preview is unavailable."
+  // `statusUnavailableLabel` / `statusUnavailableDetail` were DELETED by #2154's
+  // final sweep, not merely unused. "Not available on this Mac" was returned
+  // from a guard reached by an OR of two independent causes — an old macOS and a
+  // defective app package — so it could not name either, and it accused the
+  // user's hardware for a build we shipped wrong. Each engine now answers with
+  // its own reason. Do not reintroduce a generic both-unavailable sentence: the
+  // condition that would produce it has no single honest wording.
 
   static let statusNeedsMacOS26Label = "Apple's engine needs macOS 26"
+  /// Two details, for the same reason `statusUnsupportedLanguageDetail` has two:
+  /// pointing at the Universal card is only useful when that card can actually
+  /// help. A build shipped without its files makes the advice a dead end.
   static let statusNeedsMacOS26Detail =
     "Pick the Universal engine below, which works on macOS 14 and later."
+  static let statusNeedsMacOS26DetailNoAlternative =
+    "Dictation itself works normally. Only the on-screen preview is unavailable."
 
   static let statusCheckingLabel = "Checking"
   static let statusCheckingDetail = "Reading which languages are on this Mac."
@@ -262,6 +271,14 @@ enum LivePreviewSettingsCopy {
   static let statusBuildCannotRunLabel = "Can't run that engine"
   static let statusBuildCannotRunDetail =
     "This version of EnviousWispr is missing that engine's files. Pick Apple instead."
+  /// **The same defect with no fallback to offer, and it must not blame the
+  /// Mac.** Reached on macOS 14 or 15 with the universal engine selected and its
+  /// files missing: that Mac is perfectly capable of running this engine, and
+  /// the only thing wrong is the package we shipped. Saying "not available on
+  /// this Mac" there accuses the user's hardware for our mistake, and sends them
+  /// looking for an upgrade that would not help.
+  static let statusBuildCannotRunDetailNoAlternative =
+    "This version of EnviousWispr is missing that engine's files. Updating the app should restore it."
 
   /// **One of exactly TWO strings permitted to name the other feature** (with
   /// `statusPausedDetail` below), the closed exception in
