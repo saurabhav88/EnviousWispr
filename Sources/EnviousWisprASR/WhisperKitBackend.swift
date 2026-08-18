@@ -19,6 +19,35 @@ import Foundation
 /// `MLComputeUnits` semantics on each device (WhisperKit forces CPU-only on the
 /// Simulator). The transcript-quality parity vs the prior ANE path is verified
 /// by live UAT before merge (#879 Phase C gate).
+///
+/// DO NOT "upgrade" this to `.cpuAndNeuralEngine`. The move is tempting because
+/// #1830 pinned the output-safety classifier TO the Neural Engine to fix #1226,
+/// and that reasoning does not transfer between models — Core ML repartitions
+/// per model and per device. Measured on Mac17,7 / M5 Max / macOS 26.4
+/// (2026-08-18, #1572) against this exact variant through the pinned CLI: the
+/// ANE placement LOSES TEXT on 5 of 25 multilingual clips, including an empty
+/// string where `.cpuAndGPU` returns the correct word, stable across three
+/// repeats. That sweep is two-placement. On the separate five-clip run that
+/// exercised all FOUR placements, `.cpuAndGPU`, `.all` and `.cpuOnly` agreed
+/// with each other on every clip and only the ANE differed — which is also what
+/// stops "the shipped path diverges" being the reading; the odd one out is the
+/// ANE. The loss lands on short non-Latin utterances, which is the population
+/// this backend exists to serve, so a whole-corpus average hides it. Cold
+/// specialization also got WORSE on newer silicon, not better: ~126-158s ANE vs
+/// 5-18s here, against ~109s vs ~13s on M4. Note that `.cpuAndNeuralEngine` is
+/// the LIBRARY's own default for both encoder and decoder on macOS 14+
+/// (`ModelComputeOptions.init`, pinned `argmax-oss-swift` 1.0.0), so the degraded
+/// placement is what you get by ceasing to override — this pin is load-bearing,
+/// not redundant with upstream.
+///
+/// What that measurement did NOT cover, stated here rather than deferred, since a
+/// comment declaring a question closed suppresses the next check instead of
+/// merely failing it: it compares placements AGAINST EACH OTHER, not against
+/// reference transcripts, so it bounds divergence and says nothing about absolute
+/// accuracy. One machine, one OS version, one model variant. A new variant or a
+/// new macOS major reopens it — Core ML repartitions per device, so re-measure
+/// rather than reason from this note. Detail:
+/// `.claude/knowledge/whisperkit-research.md` FACT: compute-options.
 private let dictationComputeOptions = ModelComputeOptions(
   melCompute: .cpuAndGPU,
   audioEncoderCompute: .cpuAndGPU,
