@@ -134,6 +134,7 @@ CANONICAL_SCRIPT = "scripts/xcode-test.sh"
 CANONICAL_TOKENS = {
     "-project", "-scheme", "-configuration", "-derivedDataPath", "-destination",
     "ARCHS=arm64", "VALID_ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES",
+    "-onlyUsePackageVersionsFromResolvedFile",
 }
 # Values that are shell expansions in the invocation and literals here, so they cannot be compared as
 # tokens. Two review rounds each found ONE more of these, so rather than wait for a third the axes were
@@ -159,7 +160,7 @@ CANONICAL_ASSIGNMENTS = [
     # still starts with the prefix, and those trailing positionals reach xcodebuild through `"$@"`,
     # which the expansion allowlist accepts by name without seeing its contents.
     'run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log\n',
-    "mise x tuist@4.195.11 -- tuist generate --no-open",
+    'ew_ensure_generated "$PROJECT_ROOT"',
 ]
 # Expansions the runner knows the contents of, because CANONICAL_ASSIGNMENTS pins each one. An
 # expansion NOT in this set hides arguments the runner cannot see, so it is a refusal rather than a
@@ -204,7 +205,13 @@ INVOCATION_PREFIX_RE = re.compile(r"^([^\n]*?)xcodebuild test\s*\\", re.MULTILIN
 #                  SURVIVED regardless of the test's quality.
 MUTABLE_ROOTS = ("Sources/",)
 # One definition, so the drift guard above and the call below cannot disagree about the version.
-TUIST_GENERATE_ARGV = ["mise", "x", "tuist@4.195.11", "--", "tuist", "generate", "--no-open"]
+# #2178 moved generation into `scripts/lib/ensure-generated.sh`, which skips `tuist generate` unless an
+# input hash changed (6.7s -> 0.06s, project.pbxproj byte-identical). Invoked through the script's own
+# helper rather than reproducing the pin, so the version lives in exactly one place — the duplication
+# this runner is stuck with is the INVOCATION, and it should not grow a second copy of the toolchain
+# pin as well.
+TUIST_GENERATE_ARGV = ["bash", "-c",
+                       'source scripts/lib/ensure-generated.sh && ew_ensure_generated "$PWD"']
 
 
 # A row's restore lives in a `finally`, and Python's DEFAULT action for SIGTERM does not run it: the
@@ -442,6 +449,7 @@ class Lane:
             "-configuration", "Debug",
             "-derivedDataPath", str(self.derived_data),
             "-destination", "platform=macOS,arch=arm64",
+            "-onlyUsePackageVersionsFromResolvedFile",
             "ARCHS=arm64", "VALID_ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES",
             f"-only-testing:{suite}",
         ]

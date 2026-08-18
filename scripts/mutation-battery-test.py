@@ -52,7 +52,7 @@ DEBUG_SCHEME="EnviousWispr"
 DEST='platform=macOS,arch=arm64'
 TEST_ARGS=(-only-testing:"$FILTER")
 DERIVED_DATA="${DERIVED_DATA_PATH:-$PROJECT_ROOT/.derivedData/Test}"
-mise x tuist@4.195.11 -- tuist generate --no-open
+ew_ensure_generated "$PROJECT_ROOT"
 run_lane() {
   xcodebuild test \\
     -project "$PROJECT" \\
@@ -60,6 +60,7 @@ run_lane() {
     -configuration "$config" \\
     -derivedDataPath "$DERIVED_DATA" \\
     -destination "$DEST" \\
+    -onlyUsePackageVersionsFromResolvedFile \\
     ARCHS=arm64 \\
     VALID_ARCHS=arm64 \\
     ONLY_ACTIVE_ARCH=YES \\
@@ -210,10 +211,13 @@ check("a canonical DerivedData default that moved refuses the run",
       extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
           ".derivedData/Test", ".derivedData/Somewhere")})
 
-check("a bumped tuist pin refuses the run",
+# #2178 moved generation into a sourced helper, so the toolchain pin is no longer in this script and
+# a bumped-pin case would test nothing. What matters now is the generation CALL itself: if the lane
+# stops generating, the battery would run against a stale project.
+check("a canonical lane that no longer generates the project refuses the run",
       [dict(VALID_ROW)], expect_exit=2, expect_text="no longer has",
       extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
-          "tuist@4.195.11", "tuist@4.200.0")})
+          'ew_ensure_generated "$PROJECT_ROOT"', "# generation removed")})
 
 # Round 3 of the drift class, at the axis the round-2 enumeration missed: it enumerated WHICH INPUTS
 # decide the build, not HOW an argument can arrive. An argument reaching xcodebuild through a variable
