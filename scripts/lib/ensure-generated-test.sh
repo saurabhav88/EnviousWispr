@@ -170,6 +170,23 @@ new_fixture; settle
 ew_ensure_generated "$FIXTURE" >/dev/null
 check "repeated runs do NOT regenerate" 0 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
 
+# --- Fail-closed: a BROKEN key computation must regenerate --------------------
+# The key is computed by `find | perl | sort` inside a group piped to shasum. If
+# the middle command fails and nothing propagates it, `sort` succeeds on empty
+# input and the key becomes a STABLE HASH OF NOTHING — inputs never appear to
+# change, so the project is NEVER regenerated. That is the silent-wrong direction.
+# Measured 2026-08-18: without `pipefail` it emitted sha256("\n") as a confident
+# answer. The implementation now sets `pipefail` in its own subshell so it does
+# not depend on the caller, and `ew_ensure_generated` guards on STATUS.
+# This case also pins that the caller must check the STATUS and not merely whether
+# output is non-empty: a broken run still PRINTS a partial hash.
+new_fixture; settle
+_real_impl="$(declare -f ew_generation_key_impl)"
+eval "$(declare -f ew_generation_key_impl | sed 's/Digest::SHA=sha256_hex/Digest::NOPE=sha256_hex/')"
+broken_count="$(ew_ensure_generated "$FIXTURE" >/dev/null 2>&1; generate_count)"
+eval "$_real_impl"
+check "a BROKEN key computation regenerates (fails closed)" 1 "$broken_count"
+
 # --- Mutation control -------------------------------------------------------
 # A suite that cannot fail is indistinguishable from one that was deleted. Break
 # the key deliberately and require the no-change twin to go RED. If this control
@@ -189,8 +206,8 @@ fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 # Fail closed on an empty run: zero assertions is not a pass.
-if [ "$((PASS + FAIL))" -lt 20 ]; then
-  printf 'ERROR: expected at least 20 assertions, ran %s — the harness did not run fully\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 21 ]; then
+  printf 'ERROR: expected at least 21 assertions, ran %s — the harness did not run fully\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

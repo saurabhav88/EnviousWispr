@@ -53,6 +53,24 @@ EW_GENERATION_TREES=(Sources Tests Tuist)
 # than printing a PARTIAL key: a half-computed key that happens to match is worse
 # than no key, because it silently skips a needed regeneration.
 ew_generation_key() {
+  local root="$1"
+  # Runs entirely inside a SUBSHELL that sets its own `pipefail`. Correctness must
+  # not depend on the caller remembering it: without `pipefail`, a failure of the
+  # MIDDLE command in `find | perl | sort` is invisible — `sort` succeeds on empty
+  # input, `rows` comes back empty, and the key becomes a STABLE HASH OF NOTHING.
+  # That is the silent-wrong direction: a stable wrong key means the inputs never
+  # appear to change, so the project is NEVER regenerated and the build fails much
+  # later with "Build input file cannot be found".
+  # Measured 2026-08-18 with a deliberately missing perl module: with `pipefail`
+  # it fails closed; without it, it emitted sha256("\n") as a confident answer.
+  # `set -o` inside `( ... )` does not leak to the caller.
+  (
+    set -o pipefail
+    ew_generation_key_impl "$root"
+  )
+}
+
+ew_generation_key_impl() {
   local root="$1" f d digest rows
   {
     digest="$(printf '%s\0' "$EW_TUIST_PIN" | shasum -a 256)" || exit 1
