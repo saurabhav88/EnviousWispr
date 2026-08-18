@@ -242,6 +242,20 @@ check("a missing canonical script refuses the run",
 # A recipe arrives from an issue body, which is data someone else wrote. It may not reach out of
 # the worktree — an absolute path, a `..`, or a symlink would otherwise have the battery back up,
 # mutate and restore a file it was never scoped to.
+# `generate_once` reuses one generated project for every row, which is only sound while a mutation
+# changes file CONTENT rather than the project's SHAPE. A recipe targeting a Tuist input would leave
+# xcodebuild consuming the clean baseline's .xcodeproj, so the row reports SURVIVED about a mutant the
+# build never saw. A doc comment asserted this precondition from the start; nothing enforced it.
+for _t in ("Project.swift", "Tuist/Config.swift", "Package.swift"):
+    check(f"a recipe targeting {_t} is refused as out of scope",
+          [dict(VALID_ROW, file=_t)],
+          expect_exit=2, expect_text="the generated Xcode project is BUILT FROM")
+
+# The accepted counterpart: an ordinary Sources file with a similar-looking name must still pass.
+check("a Sources file whose name merely resembles a Tuist input is accepted",
+      [dict(VALID_ROW, file="Sources/Thing.swift")],
+      expect_exit=0, expect_text="1 row(s) well-formed")
+
 check("an absolute target path is refused",
       [dict(VALID_ROW, file="/etc/hosts")],
       expect_exit=2, expect_text="must be repo-relative")

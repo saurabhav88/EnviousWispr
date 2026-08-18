@@ -164,6 +164,15 @@ INVOCATION_RE = re.compile(r"xcodebuild test\s*\\\n(.*?)\|\s*tee", re.DOTALL)
 # xcodebuild with its ambient environment, so any prefix means the canonical lane and the battery build
 # differently, and there is no list of prefixes worth maintaining.
 INVOCATION_PREFIX_RE = re.compile(r"^([^\n]*?)xcodebuild test\s*\\", re.MULTILINE)
+# Files the generated Xcode project is BUILT FROM. `generate_once` runs `tuist generate` a single time
+# and every row after reuses that project, which is correct only while a mutation changes file CONTENT
+# and never the project's shape. Mutating one of these changes target settings, dependencies or source
+# inclusion, and xcodebuild would keep consuming the CLEAN baseline's `.xcodeproj` — so the row would
+# report SURVIVED about a mutant the build never saw. The doc comment on `generate_once` asserted this
+# precondition from the start; nothing enforced it, which is the defect. Rejected at validation rather
+# than handled by regenerating, because a battery that silently changes cost per row is worse than one
+# that says a recipe is out of scope. Cloud review, PR #2158.
+TUIST_INPUTS = ("Project.swift", "Workspace.swift", "Tuist.swift", "Package.swift", "Tuist/")
 # One definition, so the drift guard above and the call below cannot disagree about the version.
 TUIST_GENERATE_ARGV = ["mise", "x", "tuist@4.195.11", "--", "tuist", "generate", "--no-open"]
 
@@ -248,8 +257,12 @@ class Lane:
 
     def generate_once(self):
         """`tuist generate` output is byte-identical on a warm tree (measured 6.7s, M5 Max) so it is
-        pure per-row overhead. Generate once. Safe ONLY because a mutation changes file CONTENT, never
-        the file list — a recipe that adds or removes a file violates that and is rejected at load."""
+        pure per-row overhead. Generate once.
+
+        Safe ONLY because a mutation changes file CONTENT and never the project's SHAPE. That is a real
+        precondition, not a remark: `TUIST_INPUTS` above rejects recipes targeting the files the project
+        is generated from, because a mutation there would leave xcodebuild consuming the clean
+        baseline's `.xcodeproj` and the row would report SURVIVED about a mutant the build never saw."""
         if self.generated:
             return
         rc, out = run(
@@ -488,6 +501,17 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
         # file the battery was never scoped to — and with --from-issue the recipe is data written by
         # whoever authored the issue. Resolve BOTH sides and require containment; resolving is what
         # catches the symlink, since a lexical check cannot.
+        rel = row["file"]
+        if rel in TUIST_INPUTS or any(
+            rel.startswith(t) if t.endswith("/") else rel.endswith("/" + t) for t in TUIST_INPUTS
+        ):
+            raise Refusal(
+                f"row {i} targets {rel}, which the generated Xcode project is BUILT FROM. This runner "
+                "generates once and reuses that project for every row, so a mutation there would "
+                "change the project's shape while xcodebuild kept consuming the clean baseline's "
+                "`.xcodeproj` — the row would report SURVIVED about a mutant the build never saw. "
+                "Out of scope for the battery; prove that kind of change with a full lane instead."
+            )
         if Path(row["file"]).is_absolute():
             raise Refusal(f"row {i} file must be repo-relative, got an absolute path: {row['file']}")
         target = (worktree / row["file"]).resolve()
