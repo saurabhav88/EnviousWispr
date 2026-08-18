@@ -31,18 +31,31 @@ failures = []
 ran = 0
 
 
+CANONICAL_STUB = """#!/usr/bin/env bash
+PROJECT="EnviousWispr.xcodeproj"
+DEBUG_SCHEME="EnviousWispr"
+DEST='platform=macOS,arch=arm64'
+TEST_ARGS=(-only-testing:"$FILTER")
+ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+"""
+
+
 def make_tree(tmp: Path):
     (tmp / "Sources").mkdir(parents=True, exist_ok=True)
     (tmp / "Sources" / "Thing.swift").write_text("let guarded = true\n")
+    (tmp / "scripts").mkdir(parents=True, exist_ok=True)
+    (tmp / "scripts" / "xcode-test.sh").write_text(CANONICAL_STUB)
     return tmp
 
 
-def check(name, rows, *, expect_exit, expect_text=None, extra_files=None, top=None):
+def check(name, rows, *, expect_exit, expect_text=None, extra_files=None, top=None, remove=None):
     """Run --validate-only against a throwaway tree and assert the exit code and message."""
     global ran
     ran += 1
     with tempfile.TemporaryDirectory() as td:
         tmp = make_tree(Path(td))
+        for rel in (remove or []):
+            (tmp / rel).unlink()
         for rel, body in (extra_files or {}).items():
             p = tmp / rel
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -114,6 +127,17 @@ check("a non-unique anchor is refused",
       [dict(VALID_ROW, anchor="x")],
       expect_exit=2, expect_text="must be unique",
       extra_files={"Sources/Thing.swift": "let x = 1\nlet y = x + x\n"})
+
+# The runner reproduces scripts/xcode-test.sh's build settings rather than shelling out to it. That
+# buys two sources of truth, so drift must be loud: if the canonical script stops carrying a setting
+# this runner reproduces, the battery refuses rather than measuring a differently-configured build.
+check("a canonical script that has drifted refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="differently-configured build",
+      extra_files={"scripts/xcode-test.sh": "#!/usr/bin/env bash\n# settings removed\n"})
+
+check("a missing canonical script refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="cannot confirm it is building the same thing",
+      remove=["scripts/xcode-test.sh"])
 
 # --- flag-combination guard -----------------------------------------------------------------------
 ran += 1

@@ -80,6 +80,28 @@ FAILURE_LINE_RE = re.compile(r"✘ .*")
 COMPILE_ERROR_RE = re.compile(r"^.*?: error: ", re.MULTILINE)
 
 
+# The canonical logic-test entry point is scripts/xcode-test.sh (tools-and-apps.md
+# RULE: xcode-test-entrypoint). This runner deliberately does NOT shell out to it, for two reasons:
+# that script tees to a FIXED log path and SUMS every "Test run with N test" line it finds, so two
+# lanes writing it produce an inflated count; and it runs `tuist generate` unconditionally, 6.7s of
+# byte-identical output per row. Both are correct for a one-shot run and wrong for a battery.
+#
+# The cost of that deviation is TWO SOURCES OF TRUTH for the build settings, so it is paid for with a
+# fail-closed drift guard: if the canonical script's settings stop matching the ones below, the battery
+# REFUSES rather than quietly measuring a differently-configured build. Reconcile deliberately; do not
+# silence it.
+CANONICAL_SCRIPT = "scripts/xcode-test.sh"
+CANONICAL_SETTINGS = [
+    'PROJECT="EnviousWispr.xcodeproj"',
+    'DEBUG_SCHEME="EnviousWispr"',
+    "DEST='platform=macOS,arch=arm64'",
+    "ARCHS=arm64",
+    "VALID_ARCHS=arm64",
+    "ONLY_ACTIVE_ARCH=YES",
+    'TEST_ARGS=(-only-testing:"$FILTER")',
+]
+
+
 class Refusal(Exception):
     """Preflight said no. The battery never started, so there is nothing to restore."""
 
@@ -145,7 +167,28 @@ class Lane:
         return count, failures, compiled, log_path, rc, elapsed
 
 
+def check_canonical_settings(worktree: Path):
+    """Fail closed if scripts/xcode-test.sh has drifted from the flags this runner reproduces."""
+    canonical = worktree / CANONICAL_SCRIPT
+    if not canonical.is_file():
+        raise Refusal(
+            f"{CANONICAL_SCRIPT} is missing. This runner reproduces its build settings, so it cannot "
+            "confirm it is building the same thing the canonical entry point builds."
+        )
+    text = canonical.read_text()
+    missing = [frag for frag in CANONICAL_SETTINGS if frag not in text]
+    if missing:
+        raise Refusal(
+            f"{CANONICAL_SCRIPT} no longer contains settings this runner reproduces, so the battery "
+            "would measure a differently-configured build than the canonical lane:\n  "
+            + "\n  ".join(missing)
+            + "\n\nReconcile CANONICAL_SETTINGS and the Lane class with the script, deliberately. "
+            "Do not delete the guard to make this go away."
+        )
+
+
 def preflight(worktree: Path):
+    check_canonical_settings(worktree)
     rc, out = run(["pgrep", "-f", DEV_APP_PATTERN], cwd=worktree)
     if rc == 0 and out.strip():
         raise Refusal(
