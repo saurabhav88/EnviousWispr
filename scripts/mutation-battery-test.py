@@ -30,6 +30,14 @@ VALID_ROW = {
 failures = []
 ran = 0
 
+# A pattern that matches no process. The dev-app check is a machine-wide `pgrep`, so without this the
+# whole suite fails whenever any session has a dev app open — which is a property of the box, not of
+# the code under test. The real check gets its own two-way case below, driven directly.
+import os as _os_env  # noqa: E402
+
+NEUTRAL_ENV = dict(_os_env.environ,
+                   EW_BATTERY_DEV_APP_PATTERN="ew-battery-self-test-matches-nothing")
+
 
 # Mirrors the real scripts/xcode-test.sh closely enough for the drift guard to parse. Kept in this
 # shape deliberately: a stub that does not resemble the artifact under test proves nothing about it.
@@ -90,7 +98,7 @@ def check(name, rows, *, expect_exit, expect_text=None, extra_files=None, top=No
         proc = subprocess.run(
             [sys.executable, str(BATTERY), "--recipes", str(recipes),
              "--worktree", str(tmp), "--validate-only"],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=NEUTRAL_ENV,
         )
         out = proc.stdout + proc.stderr
         if proc.returncode != expect_exit:
@@ -218,6 +226,15 @@ check("an unrecognised shell expansion in the invocation refuses the run",
       extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
           '    "$@" ', '    "${EXTRA_ARGS[@]}" ')})
 
+# Fifth instance of the drift class, and answered as a BOUND rather than another enumerated axis: the
+# runner invokes xcodebuild with its ambient environment, so anything running BEFORE xcodebuild means
+# the canonical lane can use a different toolchain. Required to be empty; no prefix list to maintain.
+check("an environment prefix before xcodebuild refuses the run",
+      [dict(VALID_ROW)], expect_exit=2, expect_text="runs BEFORE xcodebuild",
+      extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
+          "  xcodebuild test \\",
+          "  DEVELOPER_DIR=/other/Xcode.app/Contents/Developer xcodebuild test \\")})
+
 check("a missing canonical script refuses the run",
       [dict(VALID_ROW)], expect_exit=2, expect_text="cannot confirm it is building the same thing",
       remove=["scripts/xcode-test.sh"])
@@ -240,7 +257,7 @@ with tempfile.TemporaryDirectory() as td:
     proc = subprocess.run(
         [sys.executable, str(BATTERY), "--recipes", str(tmp / "nope.json"),
          "--worktree", str(tmp), "--validate-only"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=NEUTRAL_ENV,
     )
     out = proc.stdout + proc.stderr
     if proc.returncode != 2 or "cannot read the recipe file" not in out:
@@ -260,7 +277,7 @@ with tempfile.TemporaryDirectory() as td:
     proc = subprocess.run(
         [sys.executable, str(BATTERY), "--recipes", str(recipes), "--worktree", str(tmp),
          "--validate-only", "--dry-run"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=NEUTRAL_ENV,
     )
     if proc.returncode == 0 or "silently do less" not in (proc.stdout + proc.stderr):
         failures.append("--validate-only with --dry-run should be refused, not silently narrowed")
@@ -276,6 +293,10 @@ import importlib.util  # noqa: E402
 _spec = importlib.util.spec_from_file_location("battery", BATTERY)
 battery = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(battery)
+# Same reason as NEUTRAL_ENV, for the in-process cases: the dev-app check is about the machine, and
+# every case that is not ABOUT it should not consult it. Its own case restores this and drives it.
+_REAL_CHECK_NO_DEV_APP = battery.check_no_dev_app
+battery.check_no_dev_app = lambda worktree: None
 
 
 def check_fence(name, body, *, expect_blocks):
@@ -673,6 +694,79 @@ if _seen_kwargs.get("timeout") != battery.LANE_TIMEOUT_SECONDS:
         f"timeout={_seen_kwargs.get('timeout')!r} instead, so the bound exists but is not wired")
 else:
     print("  ok  the lane passes LANE_TIMEOUT_SECONDS to the process it starts")
+
+# A row's restore lives in a `finally`, and Python's DEFAULT SIGTERM action does not run it — the
+# process dies where it stands and the production file stays MUTATED with a .mutbak beside it. An
+# overnight battery is precisely the thing that gets cancelled, so the restore is also reachable from a
+# signal handler. Driven directly rather than by killing a subprocess: what is under test is that the
+# registry restores, not that macOS delivers signals.
+ran += 1
+with tempfile.TemporaryDirectory() as td:
+    tmp = make_tree(Path(td))
+    target = tmp / "Sources" / "Thing.swift"
+    backup = target.with_suffix(target.suffix + ".mutbak")
+    import shutil as _sh
+    _sh.copy2(target, backup)
+    target.write_text("let guarded = false\n")            # a mutation is now live on disk
+    battery._ACTIVE_RESTORES[target] = backup
+
+    import io as _io4, contextlib as _cl4
+    with _cl4.redirect_stderr(_io4.StringIO()):
+        battery._restore_active("a simulated SIGTERM")
+
+    if target.read_text() != "let guarded = true\n":
+        failures.append("an interrupted row restores the file and clears its backup: it stayed "
+                        "MUTATED on disk")
+    elif backup.exists():
+        failures.append("an interrupted row restores the file and clears its backup: the .mutbak "
+                        "was left behind, which blocks the next run's preflight")
+    elif battery._ACTIVE_RESTORES:
+        failures.append("an interrupted row restores the file and clears its backup: the registry "
+                        "was not cleared")
+    else:
+        print("  ok  an interrupted row restores the file and clears its backup")
+
+# ...and the handler must actually be registered, or the restore above is unreachable in practice.
+ran += 1
+import signal as _sig  # noqa: E402
+
+_prev = {s_: _sig.getsignal(s_) for s_ in (_sig.SIGTERM, _sig.SIGINT, _sig.SIGHUP)}
+try:
+    battery._install_restore_on_signal()
+    _unhandled = [s_ for s_, _ in _prev.items()
+                  if _sig.getsignal(s_) in (_sig.SIG_DFL, _sig.default_int_handler)]
+    if _unhandled:
+        failures.append(
+            "the restore handler is registered for termination signals: "
+            f"{[s_.name for s_ in _unhandled]} still has its default action, so a cancelled run "
+            "leaves the tree mutated")
+    else:
+        print("  ok  the restore handler is registered for termination signals")
+finally:
+    for s_, h in _prev.items():
+        _sig.signal(s_, h)
+
+# The dev-app check itself, driven directly. A concurrent dev app corrupts the AppLogger tests, and
+# those failures score as mutants CAUGHT when nothing detected the sabotage (#2080) — it fails toward
+# CONFIDENCE, so it is a refusal rather than a warning, and it needs to be proven both ways.
+for _label, _rc, _out, _want in [
+    ("a running dev app refuses the whole run", 0, "43962\n", True),
+    ("no dev app lets the run proceed", 1, "", False),
+]:
+    ran += 1
+    _real_run2 = battery.run
+    battery.run = lambda cmd, cwd, log_path=None, timeout=None, _r=_rc, _o=_out: (_r, _o)
+    try:
+        _REAL_CHECK_NO_DEV_APP(Path("."))
+        _refused = False
+    except battery.Refusal as exc:
+        _refused = "A dev app is running" in str(exc)
+    finally:
+        battery.run = _real_run2
+    if _refused != _want:
+        failures.append(f"{_label}: refused={_refused}, wanted {_want}")
+    else:
+        print(f"  ok  {_label}")
 
 print()
 if failures:

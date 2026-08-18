@@ -6,7 +6,7 @@ WHY THIS EXISTS
     binds is to break the thing it names and watch it go red. That is cheap to describe and expensive
     to do by hand, so this runs it unattended.
 
-THE FOUR CONTROLS, none of which are optional
+THE CONTROLS, none of which are optional — each exists because a real run got it wrong
     1. CLEAN BEFORE, not tidy after. The baseline pass runs every named suite BEFORE the first mutation
        and requires green. A battery started on an already-poisoned tree reports a perfect score, and
        verified restores cannot catch that because the poisoning predates the harness (2026-08-17:
@@ -22,6 +22,20 @@ THE FOUR CONTROLS, none of which are optional
     4. A MUTANT THAT DOES NOT COMPILE IS AN ERROR, NOT A CATCH. A compile failure turns the lane red
        while proving nothing about the test. Detected as a red lane carrying `error:` and no test-run
        summary.
+    5. THE RESTORE IS STAMPED `NOW`. `copy2` returns the file's original MODIFICATION TIME too, and
+       against warm DerivedData a replacement the same SIZE as its anchor then leaves a byte-identical
+       file OLDER than the object compiled from the mutant — so the next row runs sabotaged code while
+       every check reports clean. Invisible to a byte comparison.
+    6. THE RESTORE SURVIVES BEING CANCELLED. The row's `finally` does not run under Python's default
+       SIGTERM action, so an interrupted overnight run would leave the file MUTATED. The in-flight
+       mutation is registered outside the try/finally and restored from a signal handler.
+    7. THE LANE IS BOUNDED. A mutation that removes a completion or cancellation path can hang the
+       suite; unbounded, the battery parks all night and never restores. A timeout is a row ERROR.
+    8. NO DEV APP MAY BE RUNNING. Concurrent writes to the app log corrupt the AppLogger tests, and
+       those failures score as mutants CAUGHT when nothing detected the sabotage (#2080) — it fails
+       toward CONFIDENCE, so it is a refusal rather than a warning.
+    9. THE CANONICAL BUILD SETTINGS MUST NOT HAVE DRIFTED. This runner reproduces `xcode-test.sh`'s
+       invocation rather than calling it; the guard is the price, and #2165 is the plan to delete both.
 
 WHAT IT CANNOT DO, stated so nobody reads a green report as more than it is
     A battery only ever tries the mutations its author imagined. It proves a test fires on the shapes
@@ -65,6 +79,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -75,7 +90,15 @@ from pathlib import Path
 # tests fail on a diff that touches no logging code (#2080). Inside a battery that scores as a mutant
 # CAUGHT when nothing detected the sabotage — it fails toward CONFIDENCE, which is the direction
 # nothing prompts you to check. So this is a refusal, not a warning.
-DEV_APP_PATTERN = "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"
+# Overridable ONLY so the self-test is not machine-wide. The check is a `pgrep` across the whole box,
+# so without a seam every case in the suite fails whenever ANY session has a dev app open — which
+# happened mid-run the night this was written, and produced a suite that half passed and half refused.
+# The DEFAULT is the real pattern, so an unset environment is the safe one; the override can only make
+# the check look at something else, never skip it, and it announces itself when used. Contrast #2145,
+# where a convenience DEFAULT silently reconnected an injected seam to production — the direction
+# matters more than the presence of a seam.
+DEV_APP_PATTERN = os.environ.get(
+    "EW_BATTERY_DEV_APP_PATTERN", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr")
 
 TEST_COUNT_RE = re.compile(r"Test run with (\d+) test")
 FAILURE_LINE_RE = re.compile(r"✘ .*")
@@ -136,8 +159,46 @@ CANONICAL_EXPANSIONS = {
     '"$@"', '"${TEST_ARGS[@]}"',
 }
 INVOCATION_RE = re.compile(r"xcodebuild test\s*\\\n(.*?)\|\s*tee", re.DOTALL)
+# Whatever sits between the start of the line and `xcodebuild` — an env prefix, a wrapper, a different
+# toolchain via DEVELOPER_DIR. Required to be EMPTY rather than enumerated: the runner invokes
+# xcodebuild with its ambient environment, so any prefix means the canonical lane and the battery build
+# differently, and there is no list of prefixes worth maintaining.
+INVOCATION_PREFIX_RE = re.compile(r"^([^\n]*?)xcodebuild test\s*\\", re.MULTILINE)
 # One definition, so the drift guard above and the call below cannot disagree about the version.
 TUIST_GENERATE_ARGV = ["mise", "x", "tuist@4.195.11", "--", "tuist", "generate", "--no-open"]
+
+
+# A row's restore lives in a `finally`, and Python's DEFAULT action for SIGTERM does not run it: the
+# process dies where it stands, leaving the production file MUTATED and a .mutbak beside it. That is the
+# worst state this tool can leave behind, and an overnight battery is exactly the thing someone cancels
+# — a terminal closing, a session ending, a job being killed. So the restore is also registered here,
+# outside the try/finally, and runs from the signal handler.
+_ACTIVE_RESTORES = {}
+
+
+def _restore_active(reason: str):
+    """Put every in-flight mutation back. Safe to call twice; the row's `finally` may also run."""
+    for target, backup in list(_ACTIVE_RESTORES.items()):
+        try:
+            if Path(backup).exists():
+                shutil.copy2(backup, target)
+                os.utime(target, None)
+                Path(backup).unlink()
+                print(f"  restored {target} after {reason}", file=sys.stderr)
+        except OSError as exc:  # nothing better to do while dying; say so rather than exit silently
+            print(f"  COULD NOT RESTORE {target} after {reason}: {exc}", file=sys.stderr)
+        _ACTIVE_RESTORES.pop(target, None)
+
+
+def _install_restore_on_signal():
+    def handler(signum, _frame):
+        _restore_active(f"signal {signum}")
+        # Re-raise with the default action so the exit status still says we were killed.
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, handler)
 
 
 class Refusal(Exception):
@@ -259,6 +320,9 @@ def check_canonical_settings(worktree: Path):
     # contents pinned by CANONICAL_ASSIGNMENTS above, and an expansion outside that set hides arguments
     # this runner cannot see. Silently dropping them was the round-3 defect — indirection read as
     # absence.
+    prefix_match = INVOCATION_PREFIX_RE.search(text)
+    invocation_prefix = (prefix_match.group(1).strip() if prefix_match else "")
+
     raw_tokens = [tok for tok in match.group(1).split() if tok != "\\"]
     expansions = [tok for tok in raw_tokens if "$" in tok]
     unknown_expansions = sorted(set(expansions) - CANONICAL_EXPANSIONS)
@@ -266,7 +330,7 @@ def check_canonical_settings(worktree: Path):
     missing_tokens = sorted(CANONICAL_TOKENS - found)
     extra_tokens = sorted(found - CANONICAL_TOKENS)
 
-    if missing_assignments or missing_tokens or extra_tokens or unknown_expansions:
+    if missing_assignments or missing_tokens or extra_tokens or unknown_expansions or invocation_prefix:
         lines = []
         if missing_assignments:
             lines.append("  settings the runner expects and the script no longer has:")
@@ -281,6 +345,10 @@ def check_canonical_settings(worktree: Path):
             lines.append("  shell expansions whose contents this runner cannot see, so it cannot know")
             lines.append("  whether it reproduces them:")
             lines += [f"    ? {m}" for m in unknown_expansions]
+        if invocation_prefix:
+            lines.append("  something now runs BEFORE xcodebuild, so the canonical lane may use a")
+            lines.append("  different environment or toolchain than this runner's ambient one:")
+            lines.append(f"    ! {invocation_prefix}")
         raise Refusal(
             f"{CANONICAL_SCRIPT} has drifted from what this runner reproduces, so the battery would "
             "measure a differently-configured build than the canonical lane:\n"
@@ -291,8 +359,11 @@ def check_canonical_settings(worktree: Path):
         )
 
 
-def preflight(worktree: Path):
-    check_canonical_settings(worktree)
+def check_no_dev_app(worktree: Path):
+    """Its own function so the self-test can drive it directly rather than through every case."""
+    if DEV_APP_PATTERN != "EnviousWispr Local.app/Contents/MacOS/EnviousWispr":
+        print(f"NOTE: dev-app check is using a non-default pattern: {DEV_APP_PATTERN!r}",
+              file=sys.stderr)
     rc, out = run(["pgrep", "-f", DEV_APP_PATTERN], cwd=worktree)
     if rc == 0 and out.strip():
         raise Refusal(
@@ -301,6 +372,11 @@ def preflight(worktree: Path):
             "sabotage (#2080). Stop every dev instance across ALL worktrees and re-run.\n"
             f"  pids: {' '.join(out.split())}"
         )
+
+
+def preflight(worktree: Path):
+    check_canonical_settings(worktree)
+    check_no_dev_app(worktree)
     leftovers = list(worktree.rglob("*.mutbak"))
     if leftovers:
         raise Refusal(
@@ -545,6 +621,7 @@ def main(argv=None):
         print("\n--dry-run: recipes validated, baseline green, nothing mutated.")
         return 0
 
+    _install_restore_on_signal()
     print(f"\n[2/3] {len(rows)} mutation(s), one at a time")
     results = []
     for i, row in enumerate(rows, 1):
@@ -553,6 +630,7 @@ def main(argv=None):
         tag = f"row{i:02d}"
         verdict, detail = "ERROR", "did not run"
         shutil.copy2(target, backup)
+        _ACTIVE_RESTORES[target] = backup
         try:
             src = target.read_text()
             occurrences = src.count(row["anchor"])
@@ -610,6 +688,7 @@ def main(argv=None):
                 verdict, detail = "ERROR", "RESTORE FAILED — the tree is dirty, stop and inspect"
             else:
                 backup.unlink()
+            _ACTIVE_RESTORES.pop(target, None)
         marker = {"CAUGHT": "  ok  ", "SURVIVED": " SURV ", "ERROR": " ERR  "}[verdict]
         print(f"  [{marker}] row {i}: {row['label']}\n           {detail}")
         results.append((verdict, row["label"], detail))
