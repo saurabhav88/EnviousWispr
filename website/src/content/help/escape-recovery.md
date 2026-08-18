@@ -33,7 +33,7 @@ The triple press of your recording keybind, which cancels a hands-free session, 
 
 ### The Cancel button still discards
 
-Clicking **Cancel** in the recording bar throws the recording away immediately, whether or not Escape Recovery is on. Only the shortcuts keep things. A button labelled Cancel should mean one thing, and your cancel key is also how people dismiss menus and back out of fields, which is the reason it is the one that recovers.
+Clicking **Cancel** in the recording bar throws the recording away immediately, whether or not Escape Recovery is on. Only the keybinds keep things. A button labelled Cancel should mean one thing, and your cancel key is also how people dismiss menus and back out of fields, which is the reason it is the one that recovers.
 
 ### Changing your mind while it is working
 
