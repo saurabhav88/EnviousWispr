@@ -210,6 +210,31 @@ enum LivePreviewStatusMapping {
 
   // MARK: - Universal
 
+  /// **The ONE answer to "will the universal preview actually produce words",
+  /// read by every surface that makes a claim about it.**
+  ///
+  /// Rounds r8 and r9 were the same defect twice: the language row gated its
+  /// promise on `heartIsStreaming` alone, so it went on saying "Your words will
+  /// appear in German" while the model was missing, downloading, verifying,
+  /// failed, or absent from the build — each of which the hero reported
+  /// correctly, four points higher on the same page. Fixing the second blocker
+  /// the way the first was fixed would have left a third.
+  ///
+  /// So a consumer never enumerates blockers. It asks this. The three inputs and
+  /// their ORDER match `universal(exists:state:heartIsStreaming:)` below, which
+  /// in turn copies `WhisperPreviewEngineResolver`; `universalReadinessAgreesWithTheHero`
+  /// holds them together across the whole cross-product, so a fourth blocker
+  /// added to one and not the other fails a test rather than shipping a page
+  /// that contradicts itself.
+  static func universalWillProduceOutput(
+    exists: Bool, state: DeliveryState, heartIsStreaming: Bool
+  ) -> Bool {
+    guard exists, !heartIsStreaming else { return false }
+    if case .admitted = state { return true }
+    return false
+  }
+
+
   private static func universal(
     exists: Bool, state: DeliveryState, heartIsStreaming: Bool
   ) -> Summary {

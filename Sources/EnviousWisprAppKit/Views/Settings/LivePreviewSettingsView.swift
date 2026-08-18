@@ -116,6 +116,14 @@ struct LivePreviewSettingsView: View {
     WhisperPreviewDeliveryWiring.heartIsStreaming(settings: settings)
   }
 
+  /// Readiness for the universal row, from the same owner the hero reads. Never
+  /// re-derive this from a blocker here: r8 and r9 were both a surface deciding
+  /// readiness for itself and reaching a different answer from the card above it.
+  private var universalWillProduceOutput: Bool {
+    LivePreviewStatusMapping.universalWillProduceOutput(
+      exists: universalExists, state: universalState, heartIsStreaming: heartIsStreaming)
+  }
+
   /// **The ONE place staleness is decided, and every consumer of the resolved
   /// language reads THIS rather than `packs.active`.**
   ///
@@ -448,14 +456,14 @@ struct LivePreviewSettingsView: View {
               // because it states where the setting lives, which stays true.
               Text(
                 LivePreviewSettingsCopy.universalRowLabel(
-                  languageName: entry.englishName, heartIsStreaming: heartIsStreaming)
+                  languageName: entry.englishName, engineWillProduceOutput: universalWillProduceOutput)
               )
               .settingsRowLabel()
               Text(LivePreviewSettingsCopy.universalLockedHelp).settingsHelperCopy()
             case .auto:
               Text(
                 LivePreviewSettingsCopy.universalRowLabel(
-                  languageName: nil, heartIsStreaming: heartIsStreaming)
+                  languageName: nil, engineWillProduceOutput: universalWillProduceOutput)
               )
               .settingsRowLabel()
               Text(LivePreviewSettingsCopy.universalAutoHelp).settingsHelperCopy()

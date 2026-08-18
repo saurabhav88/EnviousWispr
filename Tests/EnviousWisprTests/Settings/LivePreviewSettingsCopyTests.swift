@@ -291,21 +291,21 @@ struct LivePreviewSettingsCopyTests {
   @Test("The universal row promises output only when the engine is not paused")
   func universalRowPromisesOnlyWhenRunning() {
     #expect(
-      LivePreviewSettingsCopy.universalRowLabel(languageName: "German", heartIsStreaming: false)
+      LivePreviewSettingsCopy.universalRowLabel(languageName: "German", engineWillProduceOutput: true)
         == LivePreviewSettingsCopy.universalLocked("German"),
-      "a locked language with nothing blocking must promise output")
+      "a locked language must promise output when the engine is ready")
     #expect(
-      LivePreviewSettingsCopy.universalRowLabel(languageName: "German", heartIsStreaming: true)
+      LivePreviewSettingsCopy.universalRowLabel(languageName: "German", engineWillProduceOutput: false)
         == LivePreviewSettingsCopy.universalLockedPaused("German"),
-      "a locked language must be described, not promised, while the preview is paused")
+      "a locked language must be described, not promised, when the engine will not run")
     #expect(
-      LivePreviewSettingsCopy.universalRowLabel(languageName: nil, heartIsStreaming: false)
+      LivePreviewSettingsCopy.universalRowLabel(languageName: nil, engineWillProduceOutput: true)
         == LivePreviewSettingsCopy.universalAuto,
-      "Auto with nothing blocking must say detection is happening")
+      "Auto must say detection is happening when the engine is ready")
     #expect(
-      LivePreviewSettingsCopy.universalRowLabel(languageName: nil, heartIsStreaming: true)
+      LivePreviewSettingsCopy.universalRowLabel(languageName: nil, engineWillProduceOutput: false)
         == LivePreviewSettingsCopy.universalAutoPaused,
-      "Auto must not claim detection is happening while the preview is paused")
+      "Auto must not claim detection is happening when the engine will not run")
   }
 
   /// The paused strings must still NAME the language, because the row exists so a

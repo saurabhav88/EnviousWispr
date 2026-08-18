@@ -425,4 +425,57 @@ struct LivePreviewStatusMappingTests {
     // Positive control: the ready detail DOES make the weaker, true claim.
     #expect(LivePreviewSettingsCopy.statusActiveDetail.lowercased().contains("ready to show"))
   }
+
+  /// **The row and the hero may never disagree, across the WHOLE input space.**
+  ///
+  /// r8 and r9 were one defect found twice: the universal language row decided
+  /// readiness for itself from a SUBSET of the blockers, so it promised "Your
+  /// words will appear in German" while the card four points above it correctly
+  /// reported the model missing, downloading, verifying, failed, or absent from
+  /// the build. r8 gated the row on the streaming refusal; r9 found the other
+  /// five.
+  ///
+  /// Hand-picked rows are what let the second round happen, so this is generated:
+  /// every `DeliveryState` case, both `exists` values, both streaming values. A
+  /// seventh blocker added to the hero and not to `universalWillProduceOutput`
+  /// fails here instead of shipping a page that contradicts itself.
+  @Test("Universal row readiness agrees with the hero card in every state")
+  func universalReadinessAgreesWithTheHero() {
+    let everyState: [DeliveryState] = [
+      .notReady,
+      .preparing(validatingExistingCache: false),
+      .preparing(validatingExistingCache: true),
+      .downloading(fractionCompleted: 0.5, bytesWritten: 1, totalBytes: 2),
+      .verifying,
+      .admitted,
+      .cancelled(resumable: true),
+      .cancelled(resumable: false),
+      .failed(DeliveryFailure(reason: .source5xx, detail: "t")),
+    ]
+    var sawReady = false
+    var sawNotReady = false
+    for exists in [true, false] {
+      for streaming in [true, false] {
+        for state in everyState {
+          let rowPromises = LivePreviewStatusMapping.universalWillProduceOutput(
+            exists: exists, state: state, heartIsStreaming: streaming)
+          let heroSaysReady =
+            summary(
+              engine: .universal, universalExists: exists, universalState: state,
+              heartIsStreaming: streaming
+            ).chip.tone == .ready
+          #expect(
+            rowPromises == heroSaysReady,
+            """
+            row and hero disagree for exists=\(exists) streaming=\(streaming) \(state): \
+            row promises output=\(rowPromises), hero says ready=\(heroSaysReady)
+            """)
+          if rowPromises { sawReady = true } else { sawNotReady = true }
+        }
+      }
+    }
+    // Both verdicts must actually occur, or the agreement above is vacuous.
+    #expect(sawReady, "no input produced a ready verdict; the sweep proves nothing")
+    #expect(sawNotReady, "no input produced a blocked verdict; the sweep proves nothing")
+  }
 }

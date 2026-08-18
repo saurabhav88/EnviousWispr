@@ -365,12 +365,17 @@ enum LivePreviewSettingsCopy {
   ///
   /// `languageName` is nil for Auto. The view resolves the catalog entry; this
   /// stays free of that dependency so a test can call it directly.
-  static func universalRowLabel(languageName: String?, heartIsStreaming: Bool) -> String {
-    switch (languageName, heartIsStreaming) {
-    case (.some(let name), true): return universalLockedPaused(name)
-    case (.some(let name), false): return universalLocked(name)
-    case (.none, true): return universalAutoPaused
-    case (.none, false): return universalAuto
+  /// Takes READINESS, never a single blocker. `engineWillProduceOutput` comes
+  /// from `LivePreviewStatusMapping.universalWillProduceOutput`, which is the
+  /// same answer the hero card derives its chip from. An earlier version of this
+  /// function took `heartIsStreaming`, which is one of at least six reasons the
+  /// preview will not run, and promised output for the other five.
+  static func universalRowLabel(languageName: String?, engineWillProduceOutput: Bool) -> String {
+    switch (languageName, engineWillProduceOutput) {
+    case (.some(let name), true): return universalLocked(name)
+    case (.some(let name), false): return universalLockedPaused(name)
+    case (.none, true): return universalAuto
+    case (.none, false): return universalAutoPaused
     }
   }
 
