@@ -23,9 +23,9 @@ It's free. No account walls, no trial periods. You're a student, and your budget
 
 ## Step 2: Turn on hands-free mode
 
-For regular dictation, EnviousWispr uses a push-to-talk hotkey: hold to record, release to transcribe. That works great for quick notes, but during a lecture you don't want to hold down a key for 50 minutes.
+For regular dictation, EnviousWispr uses a push-to-talk keybind: hold to record, release to transcribe. That works great for quick notes, but during a lecture you don't want to hold down a key for 50 minutes.
 
-Switch to **hands-free mode** by double-pressing your hotkey. This locks recording on so you can speak without holding any keys. When you're done, press the hotkey once to stop, or triple-press to cancel. You speak, it listens and converts. No buttons to hold, no interruptions. Just focus on the lecture.
+Switch to **hands-free mode** by double-pressing your keybind. This locks recording on so you can speak without holding any keys. When you're done, press the keybind once to stop, or triple-press to cancel. You speak, it listens and converts. No buttons to hold, no interruptions. Just focus on the lecture.
 
 Hands-free mode detects natural pauses in your speech, so each thought gets processed as its own chunk. You'll see transcribed text appear as you go.
 
@@ -88,7 +88,7 @@ If you're ready to try voice notes for students, the setup takes less than five 
 
 1. [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr)
 2. Grant microphone access on first launch (the speech model downloads automatically)
-3. Double-press your hotkey to activate hands-free mode
+3. Double-press your keybind to activate hands-free mode
 5. Leave AI polish on and let it shape your notes as you speak
 6. Start your next lecture
 

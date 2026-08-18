@@ -20,7 +20,7 @@ final class KeyCaptureNSView: NSView {
   ///   in the recording branch. That is an absence of opportunity, not a guard.
   ///   #1987 removed the absence by making the enclosing control `.focusable()` so
   ///   the guidance popover could return focus to it, and the founder then hit the
-  ///   consequence in live UAT (2026-08-09): landing on the Shortcuts page and
+  ///   consequence in live UAT (2026-08-09): landing on the Keybinds page and
   ///   typing rebound the shortcut with no click and no "press a key" prompt.
   /// - `performKeyEquivalent` was already unsafe before #1987 and for a different
   ///   reason. See its own note below.
@@ -265,7 +265,7 @@ struct HotkeyRecorderView: View {
         }
         .buttonStyle(.plain)
         .help("Reset to default")
-        .accessibilityLabel("Reset shortcut to default")
+        .accessibilityLabel("Reset keybind to default")
       }
     }
   }
@@ -313,7 +313,7 @@ struct HotkeyRecorderView: View {
           .buttonStyle(.plain)
           .font(.stHelper)
           .foregroundStyle(.stAccent)
-          .accessibilityLabel("Reset shortcut to default")
+          .accessibilityLabel("Reset keybind to default")
       }
     }
   }

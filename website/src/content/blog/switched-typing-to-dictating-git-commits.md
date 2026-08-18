@@ -121,9 +121,9 @@ If you want to try dictating git commits, here's the minimal setup.
 1. [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr) and grant it microphone and accessibility permissions on first launch
 2. The speech model downloads automatically on first launch. No model selection needed.
 3. Leave AI polish on for direct, technical output; type your `type(scope):` prefix and dictate the body.
-4. Open your terminal, hold the hotkey, describe your change, release
+4. Open your terminal, hold the keybind, describe your change, release
 
-That's the whole workflow. Type the subject, hold the hotkey, speak the body, release. The cleaned-up body lands ready to paste under your subject line. EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr): no account, no API key, no subscription.
+That's the whole workflow. Type the subject, hold the keybind, speak the body, release. The cleaned-up body lands ready to paste under your subject line. EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr): no account, no API key, no subscription.
 
 ## Related Posts
 

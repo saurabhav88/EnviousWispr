@@ -25,7 +25,7 @@ EnviousWispr is a free, open-source dictation app for macOS. Installing it takes
 
 macOS may show a security warning because you downloaded the application from the internet. Click **Open** to proceed.
 
-EnviousWispr then walks you through setup. You will choose a speech engine, pick the hotkey you will hold down while dictating, and grant the macOS permissions it needs.
+EnviousWispr then walks you through setup. You will choose a speech engine, pick the keybind you will hold down while dictating, and grant the macOS permissions it needs.
 
 ### How you know it worked
 

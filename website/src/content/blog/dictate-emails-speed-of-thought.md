@@ -60,18 +60,18 @@ For executives handling material nonpublic information, attorney-client privileg
 
 The day-to-day experience is straightforward:
 
-1. **Hold the hotkey.** A single keypress you configure once. EnviousWispr starts recording.
+1. **Hold the keybind.** A single keypress you configure once. EnviousWispr starts recording.
 2. **Speak your email.** Talk naturally. Say "um" if you want. Pause to think. The LLM handles cleanup.
-3. **Release the hotkey.** Recording stops, transcription starts immediately on-device.
+3. **Release the keybind.** Recording stops, transcription starts immediately on-device.
 4. **Text appears in your email client.** In about a second or two on Apple Silicon, the polished text pastes directly into whatever app has focus. If you prefer, clipboard mode copies it instead.
 
 That's the entire loop. No app switching. No copy-paste from a separate dictation window. No waiting for a cloud round-trip. You stay in your email client the whole time.
 
-For longer emails or strategy memos, hands-free mode lets you lock recording by double-pressing your hotkey. Speak for as long as you need, and the text accumulates. Double-press again to stop, or triple-press to cancel.
+For longer emails or strategy memos, hands-free mode lets you lock recording by double-pressing your keybind. Speak for as long as you need, and the text accumulates. Double-press again to stop, or triple-press to cancel.
 
 ## What This Looks Like in Practice
 
-Picture your Tuesday morning on your M3 MacBook Pro. Three meetings between 9 and 11:30. Between each one, you have five to seven minutes. In that window, you open your inbox, hold the hotkey, and speak:
+Picture your Tuesday morning on your M3 MacBook Pro. Three meetings between 9 and 11:30. Between each one, you have five to seven minutes. In that window, you open your inbox, hold the keybind, and speak:
 
 *"Send a note to the product team. The board approved the Q3 roadmap with one change: we're pulling the enterprise tier launch forward to August. Lisa owns the GTM timeline. Ask her to have a revised plan by Friday."*
 
@@ -96,6 +96,6 @@ The speech model downloads automatically on first launch. After that initial set
 - [Dictation for Remote Workers Tired of Typing](/blog/dictation-remote-workers-tired-of-typing/). The same speed gain across Slack, tickets, docs, and async standups.
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 
-Set your hotkey. Open your email client. Hold, speak, release. Your first dictated email will be done before you finish reading this sentence.
+Set your keybind. Open your email client. Hold, speak, release. Your first dictated email will be done before you finish reading this sentence.
 
 *Comparing tools for email and quick replies? See [vs WisprFlow](/compare/wisprflow/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*

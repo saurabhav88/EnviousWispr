@@ -11,7 +11,7 @@ EnviousWispr keeps its transcription engine separate from the rest of the app, s
 
 ### If the speech engine stops
 
-The transcription engine runs in its own process. If that process hits an error and stops, the rest of EnviousWispr stays open. EnviousWispr starts the engine again when you press your hotkey for your next recording. There is nothing for you to do.
+The transcription engine runs in its own process. If that process hits an error and stops, the rest of EnviousWispr stays open. EnviousWispr starts the engine again when you press your keybind for your next recording. There is nothing for you to do.
 
 ### If the app itself quits
 

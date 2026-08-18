@@ -74,7 +74,7 @@ Here's what this looks like in practice across a typical day.
 
 ### The morning standup update
 
-You open your team's async standup channel in Slack. Instead of typing, you hold your hotkey and say:
+You open your team's async standup channel in Slack. Instead of typing, you hold your keybind and say:
 
 *"Yesterday I finished the API integration for the payments service and opened a PR. Today I'm picking up the notification system refactor. One blocker: I need design sign-off on the empty state before I can start the front-end work. Sarah, can you take a look at the Figma by end of day?"*
 
@@ -90,7 +90,7 @@ The LLM preserves the detail, adds reasonable paragraph breaks, and keeps the la
 
 ### The quick Slack reply
 
-A teammate asks: "Hey, do you think we should use the existing endpoint or build a new one for the dashboard?" You hold the hotkey:
+A teammate asks: "Hey, do you think we should use the existing endpoint or build a new one for the dashboard?" You hold the keybind:
 
 *"I'd go with a new endpoint. The existing one is doing too much already and adding dashboard queries to it is going to make it harder to optimize later. Plus the response shape is different enough that we'd end up with a bunch of conditional logic. Cleaner to keep them separate."*
 
@@ -98,7 +98,7 @@ That's the kind of reply that, when typed, often gets shortened to "New endpoint
 
 ## Getting started
 
-EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr). Just download and go. [Download EnviousWispr free](/#download) and set up your hotkey in minutes, or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).
+EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr). Just download and go. [Download EnviousWispr free](/#download) and set up your keybind in minutes, or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).
 
 ## Related Posts
 

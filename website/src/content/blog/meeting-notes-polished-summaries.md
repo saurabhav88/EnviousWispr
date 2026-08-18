@@ -16,17 +16,17 @@ Decisions, action items, owners, deadlines: all of it captured while the context
 
 EnviousWispr turns a 30-second voice dump into a structured meeting summary. Here's how it works in practice.
 
-You finish the meeting. You hold your hotkey (or tap the menu bar icon) and speak. Not carefully, not in full sentences. Just talk through what happened:
+You finish the meeting. You hold your keybind (or tap the menu bar icon) and speak. Not carefully, not in full sentences. Just talk through what happened:
 
 > "Met with product and sales about the Q3 launch timeline. Sarah confirmed the beta ships May 15. Mark owns the partner outreach deck, due by Friday. We agreed to cut the enterprise tier from the initial launch, revisit in Q4. I need to send the updated roadmap to the board by Thursday."
 
-Release the hotkey. EnviousWispr transcribes your audio on-device using speech recognition (via Core ML), then runs the result through the LLM post-processor for cleanup. A second or two later on Apple Silicon, you have clean text on your clipboard.
+Release the keybind. EnviousWispr transcribes your audio on-device using speech recognition (via Core ML), then runs the result through the LLM post-processor for cleanup. A second or two later on Apple Silicon, you have clean text on your clipboard.
 
 But the real leverage comes from what happens next.
 
 ## How do you turn dictated meeting notes into a structured summary?
 
-A structured meeting summary on Mac comes from two steps: dictate a 30-second voice dump while context is fresh, then let an LLM polish step clean it up. EnviousWispr handles both, and with Ollama, OpenAI, or Gemini polish on it also lays the result out into sections and bullets. Hold a hotkey, talk through what happened (decisions, owners, deadlines, open questions), and release. On-device speech recognition transcribes the audio in a second or two on Apple Silicon.
+A structured meeting summary on Mac comes from two steps: dictate a 30-second voice dump while context is fresh, then let an LLM polish step clean it up. EnviousWispr handles both, and with Ollama, OpenAI, or Gemini polish on it also lays the result out into sections and bullets. Hold a keybind, talk through what happened (decisions, owners, deadlines, open questions), and release. On-device speech recognition transcribes the audio in a second or two on Apple Silicon.
 
 The polish step turns that raw dump into clean, structured notes. It removes filler and fixes punctuation, which already produces something cleaner than most people type. With Ollama, OpenAI, or Gemini polish turned on, a longer debrief with decisions and action items gets laid out with sections and bullet points automatically; on the Apple Intelligence default, you get the same content as clean, readable prose. Either way, the way you speak guides the shape.
 
@@ -73,14 +73,14 @@ The polish matches what you said. A two-sentence Slack recap stays tight and con
 
 ## Making it part of your routine
 
-The executives who get the most out of this build a simple habit: the two-minute debrief. Meeting ends, you step out with your M3 MacBook Pro, hold the hotkey, and talk through the key points before they fade. It becomes reflexive, like checking your calendar or closing a browser tab.
+The executives who get the most out of this build a simple habit: the two-minute debrief. Meeting ends, you step out with your M3 MacBook Pro, hold the keybind, and talk through the key points before they fade. It becomes reflexive, like checking your calendar or closing a browser tab.
 
 A few tips for getting started:
 
 - **Start with high-stakes meetings.** Board reviews, strategy sessions, client calls, wherever the cost of lost context is highest.
 - **Keep your dictation loose.** Don't try to speak in polished sentences. The LLM handles cleanup. Just get the facts out.
 - **Let your words set the shape.** Say the structure out loud ("key decisions," "action items," "open questions"). With Ollama, OpenAI, or Gemini polish on, the summary comes back organized around those cues; on the Apple Intelligence default, it stays clean prose in the order you spoke.
-- **Use hands-free mode for longer debriefs.** If you need to talk through a complex meeting for two or three minutes, double-press your hotkey to lock recording so you don't have to hold a key the entire time.
+- **Use hands-free mode for longer debriefs.** If you need to talk through a complex meeting for two or three minutes, double-press your keybind to lock recording so you don't have to hold a key the entire time.
 
 ## Get started
 

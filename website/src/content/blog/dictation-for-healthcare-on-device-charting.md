@@ -14,7 +14,7 @@ This is the quiet tax of modern medicine. Documentation has crept past the appoi
 
 Dictation should fix this. The catch is that most dictation tools route your patient's name, history, and clinical findings through someone else's servers. For anyone working under HIPAA, that's a real conversation with the vendor, the BAA, and the IT department before you can even start. And the price tags on legacy medical dictation tools are not small.
 
-That's the gap on-device dictation closes. Hold a hotkey, speak your note, release. A second or two later, polished text lands in whatever EMR field has focus. The audio never leaves your Mac. There's no upload to negotiate, no third party to add to a BAA, no cloud round-trip to wait on.
+That's the gap on-device dictation closes. Hold a keybind, speak your note, release. A second or two later, polished text lands in whatever EMR field has focus. The audio never leaves your Mac. There's no upload to negotiate, no third party to add to a BAA, no cloud round-trip to wait on.
 
 ## Why most dictation tools are awkward for clinicians
 
@@ -48,7 +48,7 @@ Here's what this actually looks like inside a typical EMR session.
 
 ### SOAP notes in any EMR text field
 
-You finish with a patient. You walk back to your workstation. The EMR is already open with the chart focused. You click into the assessment field, hold your hotkey, and say:
+You finish with a patient. You walk back to your workstation. The EMR is already open with the chart focused. You click into the assessment field, hold your keybind, and say:
 
 > "Patient is a 58-year-old female presenting with two-week history of progressive shortness of breath on exertion. Denies chest pain, fever, or recent travel. Exam notable for bilateral lower extremity edema and a new S3 gallop. EKG shows new left bundle branch block. BNP elevated at 1,400. Likely new-onset heart failure with reduced ejection fraction; will start guideline-directed medical therapy and refer to cardiology for echo and further evaluation. Will follow up in two weeks."
 
@@ -60,7 +60,7 @@ EnviousWispr writes into whatever field has focus. That means it works in Epic's
 
 Referral letters are repetitive in shape and unique in content. You name the patient, summarize the relevant history, state the clinical question, and ask for the consultation. That's a paragraph or two of structured prose every time.
 
-Hold the hotkey and dictate the body. The polish step formats it as a clean letter. Speak it the way a letter reads (your greeting, the patient summary, the clinical question, your sign-off) and the polish keeps that shape, turning a spoken paragraph or two into a structured letter.
+Hold the keybind and dictate the body. The polish step formats it as a clean letter. Speak it the way a letter reads (your greeting, the patient summary, the clinical question, your sign-off) and the polish keeps that shape, turning a spoken paragraph or two into a structured letter.
 
 ### Discharge summaries before you leave
 
@@ -70,7 +70,7 @@ Dictate it section by section. Speak the admission course as you remember it. Sp
 
 ### Voice typing for the parts of the day that aren't clinical
 
-Charting is most of the writing, but it isn't all of it. Email replies to staff, message threads with referring physicians, drafts to the practice manager, end-of-day notes to yourself. All of it is faster spoken. Hold the hotkey, talk, release. Same workflow, different field.
+Charting is most of the writing, but it isn't all of it. Email replies to staff, message threads with referring physicians, drafts to the practice manager, end-of-day notes to yourself. All of it is faster spoken. Hold the keybind, talk, release. Same workflow, different field.
 
 ## Let your dictation shape the documentation
 
@@ -122,8 +122,8 @@ EnviousWispr is free to download. The source is open source on GitHub under GPLv
 1. [Download EnviousWispr](/#download), or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).
 2. Drag it to Applications. On first launch, grant microphone and accessibility permissions.
 3. The speech model downloads automatically. This takes a minute or two and is cached locally from then on.
-4. Pick a hotkey that doesn't collide with your EMR shortcuts. Hold to record, release to transcribe.
-5. Open your EMR, click into a chart field, hold the hotkey, and speak your first note. The polish step cleans it up and the text lands in the field.
+4. Pick a keybind that doesn't collide with your EMR shortcuts. Hold to record, release to transcribe.
+5. Open your EMR, click into a chart field, hold the keybind, and speak your first note. The polish step cleans it up and the text lands in the field.
 
 If you want SOAP structure or a referral-letter shape, just speak it that way (name the sections out loud) and the polish organizes around those cues. No setup required.
 

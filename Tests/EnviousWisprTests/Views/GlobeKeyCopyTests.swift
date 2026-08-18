@@ -50,12 +50,12 @@ import Testing
   }
 
   /// Load-bearing property 2: the closing line answers the question the popover
-  /// itself provokes, which is "did my shortcut fail to save?".
-  @Test("The copy reassures that the shortcut is set either way")
+  /// itself provokes, which is "did my keybind fail to save?".
+  @Test("The copy reassures that the keybind is set either way")
   func reassuranceIsPresent() {
     #expect(
       GlobeKeyCopy.reassurance
-        == "Your Globe key is set as your dictation shortcut either way. This only stops "
+        == "Your Globe key is set as your dictation keybind either way. This only stops "
         + "macOS doing its own thing at the same time.")
   }
 

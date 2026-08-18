@@ -10,7 +10,7 @@ author: "Saurabh Vaish"
 
 The biggest time sink in software development isn't writing code. It's everything around the code. PR descriptions, review comments, Slack threads, postmortems, design docs, README updates. Developers often spend a surprising share of their workday writing prose, not code, and most of that prose gets typed in the cracks between implementation work, breaking flow state every time.
 
-That context-switch cost is what makes voice input valuable for developers. Hold a hotkey, speak, release. Your words get transcribed on-device, cleaned up by optional AI polish, and pasted into whatever app has focus. The whole cycle takes a second or two on Apple Silicon. No cloud API, no uploaded audio.
+That context-switch cost is what makes voice input valuable for developers. Hold a keybind, speak, release. Your words get transcribed on-device, cleaned up by optional AI polish, and pasted into whatever app has focus. The whole cycle takes a second or two on Apple Silicon. No cloud API, no uploaded audio.
 
 Here's how that fits into a developer's actual day.
 
@@ -38,13 +38,13 @@ On the Apple Intelligence default, you get the same content as clean prose, with
 
 ## Real workflow: dictating a PR description
 
-Let's walk through a concrete example. You've just finished a feature branch that adds retry logic to an HTTP client. You switch to your browser, open the "Create Pull Request" page, click into the description field, and hold your hotkey.
+Let's walk through a concrete example. You've just finished a feature branch that adds retry logic to an HTTP client. You switch to your browser, open the "Create Pull Request" page, click into the description field, and hold your keybind.
 
 You say something like:
 
 > "This adds configurable retry logic to the HTTP client. Previously, failed requests would just throw immediately. Now the client retries up to three times with exponential backoff. The retry count and backoff multiplier are configurable via the client constructor. I considered using a middleware approach but went with direct integration because it's simpler and we don't need per-request retry policies yet. The main thing to watch in review is the timeout interaction: make sure the per-retry timeout doesn't stack with the overall request timeout."
 
-You release the hotkey. A second or two later, the post-processed text appears in the description field: punctuation fixed, filler words removed, structure tightened. The content is yours. The cleanup is automatic.
+You release the keybind. A second or two later, the post-processed text appears in the description field: punctuation fixed, filler words removed, structure tightened. The content is yours. The cleanup is automatic.
 
 That took maybe 20 seconds of speaking. Writing the same thing by hand, with the mental overhead of composing prose mid-flow, takes significantly longer.
 
@@ -62,7 +62,7 @@ Twenty seconds of speaking replaced five minutes of context-switching into prose
 
 Code review is where dictation saves the most friction. You're reading a diff, you spot something, and you need to leave a comment that's specific enough to be actionable. The old way: stop reading the diff, shift into writing mode, type out the comment, lose your place in the review.
 
-With dictation, you stay in reading mode. You hold the hotkey and say:
+With dictation, you stay in reading mode. You hold the keybind and say:
 
 > "This allocation happens inside the loop but the buffer size doesn't change between iterations. Move the allocation outside the loop and reuse the buffer. Should cut the allocations from N to 1."
 
@@ -94,11 +94,11 @@ For developers working on proprietary codebases, under NDA, or at companies with
 
 To set up for developer use:
 
-1. **Pick your hotkey.** Choose something that doesn't collide with your IDE shortcuts.
+1. **Pick your keybind.** Choose something that doesn't collide with your IDE shortcuts.
 2. **Leave polish on.** The polish handles most developer writing (review comments, ticket updates, README sections) without over-formalizing.
 3. **Speak the structure for the niches.** API docs, changelog entries, structured postmortems: name the sections and lists out loud, and with Ollama, OpenAI, or Gemini polish on the output comes back formatted.
 
-Hold the hotkey in GitHub, talk through your PR description, and the polished text lands ready to paste. Move to Slack and the same workflow handles a quick reply.
+Hold the keybind in GitHub, talk through your PR description, and the polished text lands ready to paste. Move to Slack and the same workflow handles a quick reply.
 
 ## Related Posts
 

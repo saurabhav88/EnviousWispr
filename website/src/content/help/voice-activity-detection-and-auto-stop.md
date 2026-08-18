@@ -8,7 +8,7 @@ keywords: ["auto stop", "stops on silence", "stops too early", "cuts me off", "p
 related: ["hands-free-mode-long-dictation", "first-word-gets-cut-off"]
 updated: 2026-08-06
 ---
-EnviousWispr can end a recording by itself once you stop talking, so you do not have to reach for your hotkey again. This is off by default and has to be switched on before it does anything.
+EnviousWispr can end a recording by itself once you stop talking, so you do not have to reach for your keybind again. This is off by default and has to be switched on before it does anything.
 
 ### Turning on auto-stop
 

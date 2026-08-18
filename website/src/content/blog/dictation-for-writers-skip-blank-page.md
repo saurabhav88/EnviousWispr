@@ -82,7 +82,7 @@ Instead of aiming for 500 words, aim for 10 minutes of continuous dictation. You
 
 ### Use Hands-Free Mode for Long Sessions
 
-For anything longer than a quick paragraph, use hands-free mode. Double-press your hotkey to lock recording instead of holding it the entire time. You can pace, pause to think, and keep going without worrying about key presses. It turns your MacBook Air or Mac Mini into a dictation station.
+For anything longer than a quick paragraph, use hands-free mode. Double-press your keybind to lock recording instead of holding it the entire time. You can pace, pause to think, and keep going without worrying about key presses. It turns your MacBook Air or Mac Mini into a dictation station.
 
 ### Edit in a Separate Pass
 

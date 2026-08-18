@@ -6,18 +6,18 @@ import SwiftUI
 /// pick a recording mode from two selectable cards, set the record key, then the
 /// cancel key. The mode cards mirror the transcription-engine cards so the two
 /// selectors read as one family; the hotkeys render as big edit buttons.
-struct ShortcutsSettingsView: View {
+struct KeybindsSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @State private var showGlobeGuidance = false
   /// Where keyboard and VoiceOver focus must return when the guidance closes.
   @AccessibilityFocusState private var guidanceReturnFocus: Bool
-  @FocusState private var recordingShortcutFocused: Bool
+  @FocusState private var recordingKeybindFocused: Bool
 
   /// Single dismissal path: closing the guidance ALWAYS returns focus to the
   /// control the user was operating, whichever way it was closed.
   private func dismissGlobeGuidance() {
     showGlobeGuidance = false
-    recordingShortcutFocused = true
+    recordingKeybindFocused = true
     guidanceReturnFocus = true
   }
 
@@ -25,9 +25,9 @@ struct ShortcutsSettingsView: View {
     @Bindable var settings = settings
 
     SettingsContentView {
-      // ── Transcribe shortcut ──────────────────────────────────────────
+      // ── Transcribe keybind ───────────────────────────────────────────
       VStack(alignment: .leading, spacing: 10) {
-        eyebrow("Transcribe Shortcut")
+        eyebrow("Transcribe Keybind")
 
         VStack(alignment: .leading, spacing: 16) {
           // Step 1 — recording mode as two selectable cards.
@@ -41,7 +41,7 @@ struct ShortcutsSettingsView: View {
               RecordingModeCard(
                 icon: "hand.tap.fill",
                 title: "Push to Talk",
-                description: "Hold the shortcut to record. Release to stop.",
+                description: "Hold the keybind to record. Release to stop.",
                 isSelected: settings.isPushToTalk
               ) {
                 settings.recordingMode = .pushToTalk
@@ -69,13 +69,13 @@ struct ShortcutsSettingsView: View {
 
           // Step 2 — the record key as a big edit button.
           ProminentHotkeyRow(
-            title: "2. Recording hotkey",
-            description: "This shortcut starts and stops recording.",
+            title: "2. Recording keybind",
+            description: "This keybind starts and stops recording.",
             keyCode: $settings.toggleKeyCode,
             modifiers: $settings.toggleModifiers,
             defaultKeyCode: ModifierKeyCodes.rightOption,
             defaultModifiers: [],
-            accessibilityLabel: "Recording shortcut",
+            accessibilityLabel: "Recording keybind",
             onBindingAccepted: { code, _ in
               // The claim is owned by SettingsManager, not by this view: onboarding
               // has a separate completion handler and would otherwise show the same
@@ -86,13 +86,13 @@ struct ShortcutsSettingsView: View {
             }
           )
           // `.focusable()` is load-bearing, not belt-and-braces (#1987): the
-          // shortcut surface is a plain view with `onTapGesture`, deliberately not
+          // keybind surface is a plain view with `onTapGesture`, deliberately not
           // a `Button`, so that a Button does not swallow the key events being
           // recorded. A non-focusable view accepts no keyboard focus, so binding
           // `@FocusState` to it alone would set a flag nothing honours and leave a
           // keyboard user stranded after the popover closed.
           .focusable()
-          .focused($recordingShortcutFocused)
+          .focused($recordingKeybindFocused)
           .accessibilityFocused($guidanceReturnFocus)
           .popover(isPresented: $showGlobeGuidance, arrowEdge: .bottom) {
             GlobeGuidancePopover(onDismiss: dismissGlobeGuidance)
@@ -114,13 +114,13 @@ struct ShortcutsSettingsView: View {
         eyebrow("Cancel Recording")
 
         ProminentHotkeyRow(
-          title: "Cancel hotkey",
+          title: "Cancel keybind",
           description: "Press to discard the current recording and return to idle.",
           keyCode: $settings.cancelKeyCode,
           modifiers: $settings.cancelModifiers,
           defaultKeyCode: 53,
           defaultModifiers: [],
-          accessibilityLabel: "Cancel shortcut"
+          accessibilityLabel: "Cancel keybind"
         )
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -247,7 +247,7 @@ private struct ProminentHotkeyRow: View {
   let defaultKeyCode: UInt16
   let defaultModifiers: NSEvent.ModifierFlags
   let accessibilityLabel: String
-  /// #1987 — nil on rows that are not the recording shortcut, so only the toggle
+  /// #1987 — nil on rows that are not the recording keybind, so only the toggle
   /// row can ever present the Globe guidance.
   var onBindingAccepted: ((UInt16, NSEvent.ModifierFlags) -> Void)?
 
@@ -291,7 +291,7 @@ private struct ProminentHotkeyRow: View {
 /// AppKit's default popover dismissal. The default closes the popover and leaves
 /// focus wherever it had taken it, so a keyboard user is dropped nowhere; the
 /// hosts route both Escape and the button through one dismissal that restores
-/// focus to the shortcut control.
+/// focus to the keybind control.
 struct GlobeGuidancePopover: View {
   let onDismiss: () -> Void
 

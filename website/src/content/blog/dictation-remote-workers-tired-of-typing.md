@@ -36,7 +36,7 @@ The physical cost is real. Wrist strain, forearm tension, shoulder tightness. Th
 
 The key shift is treating dictation not as a replacement for your keyboard but as a second input mode. You still type when it makes sense: editing, formatting, code, quick one-word replies. But for anything longer than a sentence or two, you speak instead.
 
-EnviousWispr makes this practical. Hold a hotkey, say what you need to say, release. A second or two later, the transcribed and cleaned-up text lands in the app you're already using. The transcription runs locally on your Mac using on-device speech recognition; nothing gets sent to an external server. Your recordings stay on your device.
+EnviousWispr makes this practical. Hold a keybind, say what you need to say, release. A second or two later, the transcribed and cleaned-up text lands in the app you're already using. The transcription runs locally on your Mac using on-device speech recognition; nothing gets sent to an external server. Your recordings stay on your device.
 
 That privacy piece matters more than you might think. Remote workers discuss sensitive topics all day: hiring decisions, performance feedback, product strategy, client details. If you wouldn't paste a message into a random web form, you probably shouldn't route it through a cloud transcription service either.
 
@@ -103,7 +103,7 @@ Working from home introduces a specific privacy concern with cloud dictation: ba
 
 EnviousWispr processes everything on-device. Your audio never leaves your Mac. If the microphone picks up something you didn't intend to transcribe, that audio stays local and gets discarded. There's no server log, no retention policy to wonder about.
 
-And since EnviousWispr only records when you're actively holding the hotkey, there's no always-on microphone to worry about. You control exactly when audio is captured.
+And since EnviousWispr only records when you're actively holding the keybind, there's no always-on microphone to worry about. You control exactly when audio is captured.
 
 ## Getting Started
 

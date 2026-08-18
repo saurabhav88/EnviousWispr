@@ -36,6 +36,6 @@ It warns you before it stops. A long cap is useless if it surprises you, so as y
 
 The hour does not change where the audio goes, which is still nowhere. The whole recording is transcribed on your Mac. No upload, no server, no account. That mattered to me at ten minutes and it matters more at sixty: an hour of you thinking out loud is exactly the kind of thing that should never leave your machine.
 
-Short notes still work the way they always did. Hold the hotkey, speak, release, paste. The hour is just there for the days you have more to say.
+Short notes still work the way they always did. Hold the keybind, speak, release, paste. The hour is just there for the days you have more to say.
 
 Talk naturally. Paste perfectly.

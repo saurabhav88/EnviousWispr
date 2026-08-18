@@ -23,7 +23,7 @@ The fix isn't to skip scripting. It's to dictate podcast scripts instead of typi
 
 ## Dictation That Keeps Your Voice
 
-EnviousWispr runs on-device speech recognition locally on your Mac via Core ML. You hold a hotkey, speak, release, and polished text appears in whatever app has focus. The whole round trip takes a second or two on Apple Silicon.
+EnviousWispr runs on-device speech recognition locally on your Mac via Core ML. You hold a keybind, speak, release, and polished text appears in whatever app has focus. The whole round trip takes a second or two on Apple Silicon.
 
 For podcast scripting, this means you can talk through your episode the way you'd explain it to a friend, and get that captured as text immediately. No separate recording app. No uploading audio to a cloud service. No waiting.
 
@@ -55,7 +55,7 @@ Check [how EnviousWispr's pipeline works](/how-it-works/) for the full picture o
 
 Push-to-talk is great for quick dictation: a paragraph here, a Slack reply there. But podcast scripts are longer. You don't want to hold a key for 10 minutes while you talk through an entire episode.
 
-Hands-free mode lets you lock recording by double-pressing your hotkey. Talk through your episode from top to bottom, and double-press again to stop (or triple-press to cancel). The text lands in your app, cleaned up by the post-processing pipeline.
+Hands-free mode lets you lock recording by double-pressing your keybind. Talk through your episode from top to bottom, and double-press again to stop (or triple-press to cancel). The text lands in your app, cleaned up by the post-processing pipeline.
 
 This is where voice to script dictation gets genuinely useful for podcasters. You can:
 
@@ -95,7 +95,7 @@ If you already have EnviousWispr installed, you can start dictating episode scri
 
 1. Open your writing app: whatever you use for scripts (Notion, Obsidian, Google Docs, a plain text editor)
 2. Leave polish on the default; it keeps your conversational tone intact while cleaning up filler words
-3. Hold the hotkey and talk through your next episode's cold open
+3. Hold the keybind and talk through your next episode's cold open
 4. Look at the output. Adjust how you say it. Try again
 
 If you don't have EnviousWispr yet, [download it free](https://enviouswispr.com/#download). No account, no subscription, runs on macOS Sonoma or later on any Apple Silicon Mac. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr) if you want to inspect it first. For longer scripts, switch to hands-free mode and talk through the whole episode without touching the keyboard.

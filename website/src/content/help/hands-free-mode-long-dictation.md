@@ -1,7 +1,7 @@
 ---
 title: "Hands-Free Mode (Long Dictation)"
 description: "For when you do not want to hold the key down: lock recording on and keep talking."
-category: "recording-and-hotkeys"
+category: "recording-and-keybinds"
 section: "Recording"
 order: 2
 keywords: ["hands free", "handsfree", "long dictation", "dont want to hold", "without holding", "let go", "keep recording", "long recording", "stop holding the key"]
@@ -12,9 +12,9 @@ Hands-free mode locks recording on, for when you do not want to hold the key dow
 
 ### Turning on hands-free mode
 
-EnviousWispr relies on a double tap of your hotkey to lock the recording in place. This works whenever you have push to talk selected as your recording mode.
+EnviousWispr relies on a double tap of your keybind to lock the recording in place. This works whenever you have push to talk selected as your recording mode.
 
-**Tap, then tap again.** Start your recording with a normal press of your hotkey, then press it a second time within half a second, before you let go.
+**Tap, then tap again.** Start your recording with a normal press of your keybind, then press it a second time within half a second, before you let go.
 
 The on-screen bar grows to confirm that recording is locked on. If the bar does not change, the second press came too late, and the recording ends as usual when you release the key. Try the double tap a little quicker.
 
@@ -22,7 +22,7 @@ The on-screen bar grows to confirm that recording is locked on. If the bar does 
 
 You have two choices when you finish speaking, depending on whether you want to keep what you said.
 
-**Press your hotkey once.** Stop recording and insert your text into the app you were working in.
+**Press your keybind once.** Stop recording and insert your text into the app you were working in.
 
 **Press Escape.** Stop recording and discard the audio without producing any text.
 

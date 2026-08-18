@@ -43,7 +43,7 @@ Getting started takes about five minutes:
 
 2. **Wait for the speech model.** The speech model downloads automatically on first launch. No model selection needed. The first download takes a few minutes. After that, it's cached locally.
 
-3. **Set your hotkey.** Pick a key combination that doesn't collide with your IDE shortcuts. Hold to record, release to transcribe; the cycle completes in a second or two.
+3. **Set your keybind.** Pick a key combination that doesn't collide with your IDE shortcuts. Hold to record, release to transcribe; the cycle completes in a second or two.
 
 4. **Leave the polish step on.** EnviousWispr's polish removes filler words, fixes punctuation, and keeps your voice. It works well across most developer writing (PRs, review comments, docs, Slack). A one-line Slack reply stays a line; with Ollama, OpenAI, or Gemini polish on, a longer explanation with cues like "first... then... finally" comes back as a structured list, while the Apple Intelligence default keeps it as clean prose.
 
@@ -65,13 +65,13 @@ Here's what that looks like in practice with the on-device polish:
 
 ### PR descriptions and commit messages
 
-You just finished a complex refactor. You know exactly what changed and why. Instead of typing a terse "refactored auth module" commit message, hold the hotkey and explain it: "Extracted the token refresh logic into a standalone service so it can be reused by both the API client and the webhook handler. Removed the circular dependency between AuthManager and NetworkClient."
+You just finished a complex refactor. You know exactly what changed and why. Instead of typing a terse "refactored auth module" commit message, hold the keybind and explain it: "Extracted the token refresh logic into a standalone service so it can be reused by both the API client and the webhook handler. Removed the circular dependency between AuthManager and NetworkClient."
 
 The post-processor cleans it up. You get a commit message that actually helps the next person reading the git log.
 
 ### Slack messages and code review comments
 
-Typing thoughtful code review comments takes time. Dictating them takes less. You can look at the diff, hold the hotkey, and say what you're thinking: "This function is doing too much. Consider splitting the validation step into its own method so it can be tested independently. Also, the error message on line forty-two doesn't include the actual value that failed validation."
+Typing thoughtful code review comments takes time. Dictating them takes less. You can look at the diff, hold the keybind, and say what you're thinking: "This function is doing too much. Consider splitting the validation step into its own method so it can be tested independently. Also, the error message on line forty-two doesn't include the actual value that failed validation."
 
 The LLM post-processor smooths the phrasing and fixes any verbal artifacts. The result reads like you took the time to write a careful review, because you did, just faster.
 
@@ -103,7 +103,7 @@ We cover this comparison in much more depth in [On-Device vs Cloud Dictation: Wh
 
 ## Getting started
 
-EnviousWispr is free and takes a few minutes to set up. [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). The speech model downloads automatically on first launch. Set your hotkey and start dictating. Zero accounts, zero subscriptions, zero cloud dependencies.
+EnviousWispr is free and takes a few minutes to set up. [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). The speech model downloads automatically on first launch. Set your keybind and start dictating. Zero accounts, zero subscriptions, zero cloud dependencies.
 
 If you want to understand the full transcription and post-processing pipeline before diving in, start with [How It Works](/how-it-works/).
 

@@ -22,7 +22,7 @@ A Bluetooth headset has a music mode and a microphone mode, and it cannot do bot
 
 That switch also takes a moment, which is why a first word can go missing if you start talking instantly.
 
-**Wait a beat before speaking.** Hold your hotkey for a moment before you start talking on the first recording after connecting.
+**Wait a beat before speaking.** Hold your keybind for a moment before you start talking on the first recording after connecting.
 
 If that drop in audio quality bothers you, record from your Mac's built-in microphone instead. Your headset then stays in music mode the whole time.
 
