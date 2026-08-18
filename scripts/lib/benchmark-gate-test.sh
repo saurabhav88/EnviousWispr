@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# scripts/lib/benchmark-gate-test.sh — two-way test for the benchmark's
-# contention gate (#2157).
+# scripts/lib/benchmark-gate-test.sh — tests for the two benchmark decisions
+# that are pure logic: the contention gate, and the seed-outcome classifier
+# (#2157).
 #
 # WHY THIS FILE EXISTS FOR TEN LINES OF SHELL
 # The gate decides whether a timing is worth recording. It got that wrong in the
@@ -68,9 +69,41 @@ done <<'ROWS'
 0 0 REFUSE both are running
 ROWS
 
+# --- the seed-outcome classifier ---------------------------------------------
+# Every wrong line this benchmark has printed was a wrong CLASSIFICATION, never a
+# wrong measurement: a hardcoded "chunk A not yet landed", then a MISS reported
+# for a warm tree the seed was never asked about. Both were unreachable from a
+# test while the decision sat inline beside `xcodebuild`, which is why it is now
+# a pure function — the shape of the fix, not just the fix.
+# The table is exhaustive over the inputs that can differ, and every row names
+# the outcome it must NOT be confused with.
+# shellcheck source=scripts/build-benchmark.sh
+eval "$(sed -n '/^ew_benchmark_seed_outcome() {/,/^}/p' "$TARGET")"
+if ! declare -f ew_benchmark_seed_outcome >/dev/null; then
+  echo "ERROR: could not extract ew_benchmark_seed_outcome from $TARGET." >&2
+  exit 1
+fi
+
+while IFS='|' read -r seed pre clone still want label; do
+  [ -n "${seed:-}" ] || continue
+  got="$(ew_benchmark_seed_outcome "$seed" "$pre" "$clone" "$still")"
+  case "$got" in
+    "$want"*) ok "$label -> ${want}" ;;
+    *) bad "$label" "got '$got', expected something starting '$want'" ;;
+  esac
+done <<'ROWS'
+0|0|0|0|SKIPPED|--no-seed outranks everything, even a warm tree
+0|1|1|1|SKIPPED|--no-seed still wins when the tree is warm and a clone exists
+1|1|0|0|WARM|a warm tree is NOT a miss: the seed was never consulted
+1|1|1|1|WARM|a warm tree is NOT a hit either, whatever the flag says
+1|0|1|1|HIT|a clone taken and kept
+1|0|1|0|HIT then DISCARDED|a clone taken and thrown away is NOT a plain hit
+1|0|0|0|MISS|no snapshot for this key
+ROWS
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 6 ]; then
-  printf 'ERROR: expected 6 rows, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 13 ]; then
+  printf 'ERROR: expected 13 rows, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

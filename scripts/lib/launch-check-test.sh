@@ -201,9 +201,68 @@ else
   bad "launch negative" "returned $rc instead of 1"
 fi
 
+# --- the CALLER's failure handler must be reachable under `set -e` ------------
+# `f; rc=$?` looks like it captures a status and does not: under `set -euo
+# pipefail` the shell exits at the failing call, before the assignment, so every
+# branch after it is dead. That shape shipped here briefly and was WORSE than the
+# `if ! f; then` form it replaced — the old one at least printed a message, and
+# the new one died silently. Cloud review caught it; nothing local could, because
+# both suites test the LIBRARY and the defect is in how the script CALLS it.
+#
+# So this reads the real handler out of `build-dev-app.sh` and runs it under the
+# same shell options with a stubbed launch check, asserting the branch is
+# REACHED. Extraction fails closed: an empty block would eval to nothing and
+# every row would pass having tested no code.
+CALLER="$HERE/../build-dev-app.sh"
+HANDLER="$(sed -n '/# LAUNCH-HANDLER-BEGIN/,/# LAUNCH-HANDLER-END/p' "$CALLER")"
+if [ -z "$HANDLER" ] || ! printf '%s' "$HANDLER" | grep -q "_launch_rc"; then
+  echo "ERROR: could not extract the launch handler from $CALLER — anchor drifted." >&2
+  exit 1
+fi
+
+# RUN THE HANDLER AS A REAL SCRIPT, never through `eval`. This was written with
+# `eval` first and the mutation control proved it VACUOUS: `eval` does not
+# reproduce `set -e`'s exit-on-failure for the enclosed list, so the broken shape
+# and the fixed one produced identical output and the case passed against both.
+# A test of a shell-option interaction has to run under that shell option for
+# real. The same mistake produced a wrong measurement earlier in this session,
+# which is what a control is for.
+reach() { # <stubbed return> -> the handler's own output
+  local probe="$TMP/handler-probe.sh"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'set -euo pipefail\n'
+    printf 'ew_wait_for_launch() { return %s; }\n' "$1"
+    printf 'APP_PATH="/nowhere.app"\n'
+    printf '%s\n' "$HANDLER"
+  } > "$probe"
+  bash "$probe" 2>&1 || true
+}
+
+out="$(reach 2)"
+if printf '%s' "$out" | grep -q "could not determine"; then
+  ok "the caller's could-not-tell branch is REACHED under set -e"
+else
+  bad "handler reachability (rc=2)" "handler produced '$out' — the branch is dead"
+fi
+
+out="$(reach 1)"
+if printf '%s' "$out" | grep -q "did not launch"; then
+  ok "the caller's did-not-launch branch is REACHED under set -e (the twin)"
+else
+  bad "handler reachability (rc=1)" "handler produced '$out' — the branch is dead"
+fi
+
+out="$(reach 0)"
+if ! printf '%s' "$out" | grep -qE "did not launch|could not determine"; then
+  ok "a successful launch takes NEITHER error branch"
+else
+  bad "handler success path" "a successful launch produced an error: '$out'"
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 11 ]; then
-  printf 'ERROR: expected at least 11 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 14 ]; then
+  printf 'ERROR: expected at least 14 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

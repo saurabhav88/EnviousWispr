@@ -92,36 +92,69 @@ phase() { # name command...
 run_generate() { ew_ensure_generated "$PROJECT_ROOT"; }
 
 # Set by run_resolve so the report describes what HAPPENED rather than what was
-# asked for. Three outcomes, and the third is the one a single flag would hide.
+# asked for. FIVE outcomes, and every one of them was at some point collapsed
+# into another: skipped, warm, hit, hit-then-discarded, miss.
 SEED_OUTCOME="SKIPPED (--no-seed)"
+
+# ew_benchmark_seed_outcome <seed> <pre_existing> <clone_taken> <still_seeded>
+#
+# A PURE FUNCTION so the truth table can be tested, because every wrong line this
+# script has printed was a wrong CLASSIFICATION rather than a wrong measurement,
+# and a classification tangled up with `xcodebuild` cannot be exercised. Order
+# matters: --no-seed outranks everything, warm outranks the seed states because
+# the seed was never consulted, and discarded outranks hit because the timing
+# then covers a clone AND a full re-resolve.
+ew_benchmark_seed_outcome() {
+  local seed="$1" pre_existing="$2" clone_taken="$3" still_seeded="$4"
+  if [ "$seed" != "1" ]; then
+    printf '%s\n' "SKIPPED (--no-seed)"; return 0
+  fi
+  if [ "$pre_existing" = "1" ]; then
+    printf '%s\n' "WARM (existing DerivedData; the seed was not consulted)"; return 0
+  fi
+  if [ "$clone_taken" = "1" ] && [ "$still_seeded" != "1" ]; then
+    printf '%s\n' "HIT then DISCARDED (clone would not resolve; retried unseeded)"; return 0
+  fi
+  if [ "$clone_taken" = "1" ]; then
+    printf '%s\n' "HIT (cloned an existing snapshot)"; return 0
+  fi
+  printf '%s\n' "MISS (no snapshot for this key; resolved from scratch)"
+}
 
 run_resolve() {
   # The shipped scripts seed, then resolve, then discard the clone and resolve
   # again unseeded if it will not validate. Timing anything else measures a path
   # that does not ship, which is the misattribution this script exists to end.
-  if [ "$SEED" = "1" ]; then
+  #
+  # WARM IS A THIRD OUTCOME, NOT A MISS. `ew_seed_consume` returns immediately
+  # when `SourcePackages` already exists, because xcodebuild owns that tree once
+  # it is there — so on any warm run the seed is never CONSULTED. Reporting that
+  # as MISS claimed a from-scratch resolve for a run that reused an existing
+  # tree, which is a false provenance line in the one script whose whole purpose
+  # is to stop those. Captured BEFORE consuming, because afterwards the two are
+  # indistinguishable.
+  local pre_existing=0
+  [ -e "$DERIVED/SourcePackages" ] && pre_existing=1
+  if [ "$SEED" = "1" ] && [ "$pre_existing" = "0" ]; then
     ew_seed_consume "$PROJECT_ROOT" "$DERIVED"
   fi
 
-  if [ "$EW_SEED_CONSUMED" = "1" ]; then
-    SEED_OUTCOME="HIT (cloned an existing snapshot)"
+  local clone_taken="$EW_SEED_CONSUMED"
+
+  if [ "$clone_taken" = "1" ]; then
     ew_seed_resolve_or_unseed "$DERIVED" \
       xcodebuild -resolvePackageDependencies \
         -project EnviousWispr.xcodeproj -scheme "$SCHEME" \
         -derivedDataPath "$DERIVED" || return $?
-    # The helper clears the flag when it discarded the clone, so the phase timing
-    # covers a clone AND a full re-resolve. Reporting that as a plain HIT would
-    # publish the slowest possible reading under the fastest possible label.
-    if [ "$EW_SEED_CONSUMED" != "1" ]; then
-      SEED_OUTCOME="HIT then DISCARDED (clone would not resolve; retried unseeded)"
-    fi
-    return 0
+  else
+    xcodebuild -resolvePackageDependencies \
+      -project EnviousWispr.xcodeproj -scheme "$SCHEME" \
+      -derivedDataPath "$DERIVED" || return $?
   fi
 
-  [ "$SEED" = "1" ] && SEED_OUTCOME="MISS (no snapshot for this key; resolved from scratch)"
-  xcodebuild -resolvePackageDependencies \
-    -project EnviousWispr.xcodeproj -scheme "$SCHEME" \
-    -derivedDataPath "$DERIVED"
+  # Classified AFTER the resolve, because the fallback can clear the flag and the
+  # timing then covers a clone AND a full re-resolve.
+  SEED_OUTCOME="$(ew_benchmark_seed_outcome "$SEED" "$pre_existing" "$clone_taken" "$EW_SEED_CONSUMED")"
 }
 
 run_build() {

@@ -178,7 +178,14 @@ open "$APP_PATH"
 # process is THIS worktree's app rather than matching text in a command line.
 # The check itself lives in scripts/lib/launch-check.sh so it can be TESTED — a
 # readiness check never observed failing is a check nobody has tested.
-ew_wait_for_launch "$APP_PATH"; _launch_rc=$?
+# `f; rc=$?` DOES NOT WORK under `set -e`: the shell exits at the failing call,
+# before the assignment, so BOTH branches below were dead and the script died
+# silently — worse than the `if ! ...; then` form it replaced, which at least
+# printed. A conditional context is the only place a nonzero return survives.
+# Measured on this machine in both bash 5.3 and 3.2: the line after the capture
+# never runs, exit status 1 and 2 respectively.
+# LAUNCH-HANDLER-BEGIN (anchor for scripts/lib/launch-check-test.sh — keep)
+if ew_wait_for_launch "$APP_PATH"; then _launch_rc=0; else _launch_rc=$?; fi
 if [ "$_launch_rc" -eq 2 ]; then
   echo "ERROR: could not determine whether the dev app launched — the process probe failed."
   echo "       This says nothing about the app. Check \`pgrep\` before blaming the build."
@@ -187,4 +194,5 @@ elif [ "$_launch_rc" -ne 0 ]; then
   echo "ERROR: this worktree's dev app did not launch"
   exit 1
 fi
+# LAUNCH-HANDLER-END
 echo "==> EnviousWispr (dev) running ✓  ($APP_PATH)"
