@@ -138,9 +138,33 @@ else
   bad "termination detection" "still reporting a pid after the process was killed"
 fi
 
+# --- 6. NEGATIVE: the pgrep PREFILTER self-matches, and the filter must reject it
+# `pgrep -f <pattern>` matches the pattern against every command line INCLUDING
+# the shell that is running the pgrep, because the pattern is in that shell's own
+# argv. Observed live 2026-08-18 by a peer session whose occupancy check returned
+# two PIDs, both of which were shells asking the same question.
+# This is why `ew_launched_pids` cannot use pgrep alone: the `ps -ww -o command=`
+# filter is what rejects the self-match, and nothing tested that until now.
+self_match_seen=0
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  self_match_seen=1
+done < <(pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" 2>/dev/null || true)
+
+APP_NEVER="$TMP/never-existed/EnviousWispr Local.app"
+if [ -z "$(ew_launched_pids "$APP_NEVER")" ]; then
+  if [ "$self_match_seen" = "1" ]; then
+    ok "pgrep self-match is REJECTED by the executable filter (prefilter did match)"
+  else
+    ok "no pid reported for a bundle that never existed (prefilter matched nothing)"
+  fi
+else
+  bad "pgrep self-match rejection" "reported a pid for a bundle that never existed"
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 7 ]; then
-  printf 'ERROR: expected at least 7 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 8 ]; then
+  printf 'ERROR: expected at least 8 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1
