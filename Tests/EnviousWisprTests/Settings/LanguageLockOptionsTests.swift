@@ -146,4 +146,65 @@ struct LanguageLockOptionsTests {
     // cannot pass as a clean result.
     #expect(code.contains("currentActive"), "positive control: the owner is not in the file the sweep read")
   }
+
+  /// **The sheet can now CLEAR a lock, and this is the whole of that behaviour
+  /// that is testable without a running app.**
+  ///
+  /// Cloud review r11: #2154 put a Change button on the Live Preview page which
+  /// opens `LanguageLockSheet`, and every row in it assigned `.locked(code)`. A
+  /// user who locked a language from that page had no way to undo it there — the
+  /// only Auto control was a separate toggle on a different page. An affordance
+  /// that sets a state and cannot clear it strands the people who trusted it.
+  ///
+  /// The rows are SwiftUI and out of reach, so what is asserted is the decision
+  /// both rows share: the transition a tap reports. All four directions, because
+  /// the reason classification is the part that can silently go wrong and the
+  /// return-to-Auto direction is the one that did not exist before.
+  @Test("Every language-mode transition reports the right telemetry")
+  func lockTelemetryCoversBothDirections() {
+    let firstLock = LanguageLockOptions.lockTelemetry(from: .auto, to: .locked("de"))
+    #expect(firstLock.fromLang == "auto")
+    #expect(firstLock.toLang == "de")
+    #expect(
+      firstLock.reason == "first_time",
+      "leaving Auto for the first lock is a first_time, not a preference change")
+
+    let changedMind = LanguageLockOptions.lockTelemetry(from: .locked("de"), to: .locked("fr"))
+    #expect(changedMind.fromLang == "de")
+    #expect(changedMind.toLang == "fr")
+    #expect(changedMind.reason == "preference", "swapping one lock for another is a preference")
+
+    let backToAuto = LanguageLockOptions.lockTelemetry(from: .locked("de"), to: .auto)
+    #expect(backToAuto.fromLang == "de")
+    #expect(
+      backToAuto.toLang == "auto",
+      "a return to Auto must use the same vocabulary fromLang already used for it")
+    #expect(
+      backToAuto.reason == "preference",
+      "returning to Auto is a change of mind and must never be reported as a first lock")
+
+    // Degenerate but reachable: the Auto row is tappable while already on Auto.
+    let noChange = LanguageLockOptions.lockTelemetry(from: .auto, to: .auto)
+    #expect(noChange.fromLang == "auto")
+    #expect(noChange.toLang == "auto")
+    #expect(
+      noChange.reason == "preference",
+      "re-confirming Auto is not a first lock; nothing was locked")
+  }
+
+  /// The reserved value must stay reserved. `after_bad_detect` belongs to the
+  /// passive chip CTA, and a Settings-driven change borrowing it would make the
+  /// two indistinguishable in the data.
+  @Test("The sheet never emits the reason reserved for the passive chip")
+  func neverEmitsReservedReason() {
+    let transitions: [(LanguageMode, LanguageMode)] = [
+      (.auto, .locked("de")), (.locked("de"), .locked("fr")),
+      (.locked("de"), .auto), (.auto, .auto),
+    ]
+    for (from, to) in transitions {
+      #expect(
+        LanguageLockOptions.lockTelemetry(from: from, to: to).reason != "after_bad_detect",
+        "the sheet must not emit the chip CTA's reason for \(from) -> \(to)")
+    }
+  }
 }

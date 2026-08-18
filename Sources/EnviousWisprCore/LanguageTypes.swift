@@ -51,7 +51,7 @@ public struct LanguageDetectionResult: Sendable, Equatable {
 
 /// Confidence tier used to gate prompt injection (see spec § Prompt injection).
 public enum LanguageConfidenceTier: String, Sendable, Equatable, Codable {
-  case locked  // user set Lock language
+  case locked  // user pinned a specific language
   case highAuto  // prob >= 0.80 AND margin >= 0.25
   case mediumAuto  // prob >= 0.65 AND margin >= 0.20
   case lowAuto  // below medium thresholds (no lexical prompt)

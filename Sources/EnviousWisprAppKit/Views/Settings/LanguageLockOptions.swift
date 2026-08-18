@@ -24,6 +24,52 @@ import Foundation
 /// has no `@MainActor` isolation, and can be tested without a running app.
 enum LanguageLockOptions {
 
+  /// What the sheet reports for a mode change, as one decision both of its
+  /// actions read.
+  ///
+  /// r11 added an Auto row, and with it a second copy of this classification
+  /// inside the view. Two copies of a telemetry decision is how a field starts
+  /// meaning different things depending on which control produced it — the
+  /// partial-port defect this file's own header was written about. So the
+  /// decision lives here, where it is pure and testable, and the view only
+  /// applies it.
+  ///
+  /// `toLang` carries `"auto"` for a return to auto-detect, matching the value
+  /// `fromLang` already used when leaving it, so one vocabulary covers both
+  /// directions.
+  ///
+  /// `reason` distinguishes a FIRST lock from a change of mind, and deliberately
+  /// never emits `"after_bad_detect"` — that value is reserved for the passive
+  /// chip CTA, and a Settings-driven change must not borrow it. Leaving Auto is
+  /// classified `first_time`; every other transition is `preference`, including
+  /// the return TO Auto, which is a user changing their mind rather than a first
+  /// encounter.
+  static func lockTelemetry(
+    from previous: LanguageMode, to next: LanguageMode
+  ) -> (fromLang: String, toLang: String, reason: String) {
+    let fromLang: String
+    var leavingAuto = false
+    switch previous {
+    case .auto:
+      fromLang = "auto"
+      leavingAuto = true
+    case .locked(let prior):
+      fromLang = prior
+    }
+
+    let toLang: String
+    switch next {
+    case .auto: toLang = "auto"
+    case .locked(let code): toLang = code
+    }
+
+    // A return to Auto is never a first lock, whatever the previous mode was.
+    var isFirstLock = leavingAuto
+    if case .auto = next { isFirstLock = false }
+
+    return (fromLang, toLang, isFirstLock ? "first_time" : "preference")
+  }
+
   /// Codes the picker may offer for `backend`, or `nil` for "no restriction".
   ///
   /// `nil` is not "none": `LanguageLockSheet` reads it as the multilingual
