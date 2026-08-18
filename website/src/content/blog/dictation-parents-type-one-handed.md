@@ -12,7 +12,7 @@ It's 7:15 AM. Your baby is asleep on your left arm. Your right thumb is pecking 
 
 Parents don't have a typing problem. They have a hands problem. And most productivity advice assumes you have two of them free, a quiet room, and an uninterrupted block of time. That's not your life right now. What you need is a way to turn speech into usable text without sitting down, without both hands, and without sending your family's background audio to a corporate server.
 
-That's what EnviousWispr does. Hold a hotkey, speak, release. A second or two later, polished text lands in whatever app you're using. Everything runs on your Mac; your recordings never leave your device.
+That's what EnviousWispr does. Hold a keybind, speak, release. A second or two later, polished text lands in whatever app you're using. Everything runs on your Mac; your recordings never leave your device.
 
 ## Why most dictation tools fall short for parents
 
@@ -28,7 +28,7 @@ EnviousWispr gives you two input modes, and which one you reach for depends on t
 
 ### Push-to-talk
 
-Hold a hotkey, speak, release. This is the default and the one you'll probably use most. It's predictable: the app only records while you hold the key. When your kid screams mid-sentence, just release the key and start again. Nothing gets transcribed that you didn't intend.
+Hold a keybind, speak, release. This is the default and the one you'll probably use most. It's predictable: the app only records while you hold the key. When your kid screams mid-sentence, just release the key and start again. Nothing gets transcribed that you didn't intend.
 
 Push-to-talk works well for:
 
@@ -39,7 +39,7 @@ Push-to-talk works well for:
 
 ### Hands-free mode
 
-Sometimes you need to talk for longer: drafting a detailed school email, brain-dumping a to-do list, or writing a message to a friend while both hands are occupied with a bottle and a burp cloth. Double-press your hotkey to lock recording. Speak as long as you need, then double-press again to stop (or triple-press to cancel).
+Sometimes you need to talk for longer: drafting a detailed school email, brain-dumping a to-do list, or writing a message to a friend while both hands are occupied with a bottle and a burp cloth. Double-press your keybind to lock recording. Speak as long as you need, then double-press again to stop (or triple-press to cancel).
 
 Since dictation is on-demand (it only records when you actively initiate it) privacy is built into the interaction model. When you're not dictating, nothing is listening.
 
@@ -67,7 +67,7 @@ Fifteen seconds of speaking, one hand free, baby undisturbed. The email is polis
 
 ### School and daycare emails
 
-The teacher sends a message asking if your kid can bring a specific item for a project. You're holding the baby and making oatmeal, MacBook Air open on the counter. Instead of trying to type one-handed: hold the hotkey, say "Hi Ms. Chen, yes we have egg cartons at home, I'll send two in with Liam tomorrow morning, thanks," release. EnviousWispr cleans it up, adds punctuation, and pastes it into your email. Done before the oatmeal is ready.
+The teacher sends a message asking if your kid can bring a specific item for a project. You're holding the baby and making oatmeal, MacBook Air open on the counter. Instead of trying to type one-handed: hold the keybind, say "Hi Ms. Chen, yes we have egg cartons at home, I'll send two in with Liam tomorrow morning, thanks," release. EnviousWispr cleans it up, adds punctuation, and pastes it into your email. Done before the oatmeal is ready.
 
 ### Meal planning and grocery lists
 
@@ -97,6 +97,6 @@ The first model download takes a few minutes. After that, you're set. Download i
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). Step-by-step setup guide.
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). Why your family's background audio should stay on your Mac.
 
-Hold the hotkey. Say what you need to say. Let go. That's the whole workflow, and it works just as well with one hand as it does with two.
+Hold the keybind. Say what you need to say. Let go. That's the whole workflow, and it works just as well with one hand as it does with two.
 
 *Looking at hands-free options? See [vs Apple Dictation](/compare/apple-dictation/), [vs Dragon](/compare/dragon/), or [browse all comparisons](/compare/).*

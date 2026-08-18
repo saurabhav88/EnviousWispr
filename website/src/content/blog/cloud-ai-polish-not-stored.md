@@ -69,7 +69,7 @@ The OpenAI request body is built in `Sources/EnviousWisprLLM/OpenAIConnector.swi
 
 ## What changes for you
 
-Nothing in your day-to-day. Hold the hotkey, speak, release. Polished text lands in your clipboard or pastes into the app you're using, the same as before.
+Nothing in your day-to-day. Hold the keybind, speak, release. Polished text lands in your clipboard or pastes into the app you're using, the same as before.
 
 What changed is what the cloud provider is asked not to retain when polish runs through your key. The provider's terms govern actual retention.
 

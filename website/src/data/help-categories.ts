@@ -29,8 +29,8 @@ export const HELP_CATEGORIES: readonly HelpCategory[] = [
     blurb: 'Something is not working. Start here.',
   },
   {
-    slug: 'recording-and-hotkeys',
-    label: 'Recording and Hotkeys',
+    slug: 'recording-and-keybinds',
+    label: 'Recording and Keybinds',
     blurb: 'Hold, tap, or go hands-free. Pick how you start and stop, and change the key.',
   },
   {

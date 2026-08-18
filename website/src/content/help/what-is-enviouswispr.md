@@ -8,15 +8,15 @@ keywords: ["what is it", "overview", "how does it work", "dictation app", "voice
 related: ["is-enviouswispr-free", "privacy-overview"]
 updated: 2026-08-06
 ---
-EnviousWispr is a free, open-source dictation application for macOS. You hold a hotkey, speak into your microphone, and your spoken words appear as written text in whatever application you are currently using.
+EnviousWispr is a free, open-source dictation application for macOS. You hold a keybind, speak into your microphone, and your spoken words appear as written text in whatever application you are currently using.
 
 ### How you use it
 
-You dictate by holding a hotkey while your cursor rests in a text field.
+You dictate by holding a keybind while your cursor rests in a text field.
 
 - **Click into a text field.** Click inside any window or document where you want your words to appear.
-- **Hold your hotkey and talk.** Press and hold the hotkey down, then speak your thoughts out loud.
-- **Release the hotkey.** Let go of the key when you finish speaking. The transcribed text appears at your cursor a moment later.
+- **Hold your keybind and talk.** Press and hold the keybind down, then speak your thoughts out loud.
+- **Release the keybind.** Let go of the key when you finish speaking. The transcribed text appears at your cursor a moment later.
 
 ### What you get
 

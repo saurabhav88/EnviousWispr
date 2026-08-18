@@ -23,7 +23,7 @@ Content creators think in spoken language. Sitting down to type after hours of r
 
 ## Dictate Your Episode Recap While It's Fresh
 
-Here's the workflow shift: instead of typing show notes, speak them. Right after you finish recording, while the episode is still fresh in your head, hold a hotkey, talk through what you covered, and release. EnviousWispr transcribes your speech on-device using speech recognition, cleans it up through the post-processing pipeline, and places polished text on your clipboard or pastes it directly into your CMS.
+Here's the workflow shift: instead of typing show notes, speak them. Right after you finish recording, while the episode is still fresh in your head, hold a keybind, talk through what you covered, and release. EnviousWispr transcribes your speech on-device using speech recognition, cleans it up through the post-processing pipeline, and places polished text on your clipboard or pastes it directly into your CMS.
 
 The whole cycle takes a second or two on Apple Silicon. You don't switch apps, you don't open a separate transcription tool, and you don't wait for a cloud service to process your audio.
 
@@ -32,7 +32,7 @@ This works because you already know what you want to say. You just recorded an e
 The basic flow:
 
 1. Finish recording your episode
-2. Hold the hotkey, speak your episode summary
+2. Hold the keybind, speak your episode summary
 3. Release. Transcribed, cleaned text lands in your editor.
 4. Repeat for each section: key topics, guest highlights, timestamps, links mentioned
 
@@ -88,7 +88,7 @@ The speech model downloads automatically on first launch. After that, it runs lo
 Here's what a podcast-to-blog workflow looks like end to end:
 
 1. **Record your episode** as usual in your preferred DAW on your Mac
-2. **Dictate show notes** immediately after recording. Hold the hotkey, speak a 2-3 minute recap of the episode, release.
+2. **Dictate show notes** immediately after recording. Hold the keybind, speak a 2-3 minute recap of the episode, release.
 3. **Post-processing cleans and formats** the output as structured show notes (summary, key topics, resources)
 4. **Paste into your podcast host.** The text is already on your clipboard or pasted directly into the focused app.
 5. **Dictate the blog version separately.** Speak the full post in your own words (a longer take), and the polish cleans it up the same way. It won't expand the recap for you, so say the post you want.

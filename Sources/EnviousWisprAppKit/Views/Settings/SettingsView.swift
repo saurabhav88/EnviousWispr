@@ -185,8 +185,8 @@ struct UnifiedWindowView: View {
       page(.audio) { AudioSettingsView() }
     case .recordingSounds:
       page(.recordingSounds) { RecordingSoundsSettingsView() }
-    case .shortcuts:
-      page(.shortcuts) { ShortcutsSettingsView() }
+    case .keybinds:
+      page(.keybinds) { KeybindsSettingsView() }
     case .aiPolish:
       page(.aiPolish) { AIPolishSettingsView() }
     case .wordCorrection:

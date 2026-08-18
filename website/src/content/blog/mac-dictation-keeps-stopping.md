@@ -17,7 +17,7 @@ faqs:
   - question: "How do I stop Mac dictation from ending when I pause?"
     answer: "Open System Settings, then Keyboard, then Dictation, and turn off the option that ends dictation when you stop speaking (the wording varies by macOS version). With it off, a thinking pause will not end the session, although the separate short-session cutoff still applies."
   - question: "Is there a way to dictate long passages on a Mac without it cutting out?"
-    answer: "Yes. A dedicated on-device tool removes both limits. EnviousWispr lets you lock recording with a double-press of your hotkey and speak naturally, with pauses, for up to about an hour per dictation. It then polishes the text and pastes it where you are working, and it runs on-device on Apple Silicon, so your voice never leaves your Mac."
+    answer: "Yes. A dedicated on-device tool removes both limits. EnviousWispr lets you lock recording with a double-press of your keybind and speak naturally, with pauses, for up to about an hour per dictation. It then polishes the text and pastes it where you are working, and it runs on-device on Apple Silicon, so your voice never leaves your Mac."
   - question: "Is the fix free?"
     answer: "Configuring the built-in dictation costs nothing. EnviousWispr is also free to download, with no account and no subscription, and it runs entirely on your Mac."
 ---
@@ -63,7 +63,7 @@ If you are trying to write by voice, full sentences and full paragraphs, with th
 
 That is what EnviousWispr is for. A few things make the difference:
 
-- **It does not quit when you pause.** Lock recording with a double-press of your hotkey, then speak naturally with as many thinking pauses as you need. Press once when you are done. (A triple-press cancels.) You do not have to hold a key down for every sentence.
+- **It does not quit when you pause.** Lock recording with a double-press of your keybind, then speak naturally with as many thinking pauses as you need. Press once when you are done. (A triple-press cancels.) You do not have to hold a key down for every sentence.
 - **It handles long passages.** You can dictate for up to about an hour at a stretch, not thirty seconds, so a full email or a paragraph of a draft comes out in one piece.
 - **Your first words are not clipped.** A short pre-roll buffer captures the very start of your speech, so you do not lose the first word the way quick-start dictation often does.
 - **The text comes out clean.** Optional AI polish removes filler words, fixes punctuation and capitalization, and formats the result, so what gets pasted is closer to what you meant than a raw transcript.

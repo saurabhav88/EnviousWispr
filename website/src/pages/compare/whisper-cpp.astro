@@ -33,15 +33,15 @@ const faqJsonLd = JSON.stringify({
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    { "@type": "Question", "name": "Is there a GUI for whisper.cpp on Mac?", "acceptedAnswer": { "@type": "Answer", "text": "whisper.cpp itself is a command-line tool with no GUI. Several third-party apps wrap whisper.cpp with a graphical interface. EnviousWispr uses purpose-built engines (Parakeet TDT, WhisperKit) optimized for Apple Silicon, wrapped in a native Mac app with a hold-to-talk hotkey and automatic clipboard pasting." } },
-    { "@type": "Question", "name": "Can I use whisper.cpp for live dictation on Mac?", "acceptedAnswer": { "@type": "Answer", "text": "whisper.cpp has a real-time streaming mode, but it outputs to the terminal. There is no hotkey, no clipboard integration, and no paste-into-app workflow. EnviousWispr provides the full dictation experience." } },
+    { "@type": "Question", "name": "Is there a GUI for whisper.cpp on Mac?", "acceptedAnswer": { "@type": "Answer", "text": "whisper.cpp itself is a command-line tool with no GUI. Several third-party apps wrap whisper.cpp with a graphical interface. EnviousWispr uses purpose-built engines (Parakeet TDT, WhisperKit) optimized for Apple Silicon, wrapped in a native Mac app with a hold-to-talk keybind and automatic clipboard pasting." } },
+    { "@type": "Question", "name": "Can I use whisper.cpp for live dictation on Mac?", "acceptedAnswer": { "@type": "Answer", "text": "whisper.cpp has a real-time streaming mode, but it outputs to the terminal. There is no keybind, no clipboard integration, and no paste-into-app workflow. EnviousWispr provides the full dictation experience." } },
     { "@type": "Question", "name": "Does EnviousWispr use whisper.cpp internally?", "acceptedAnswer": { "@type": "Answer", "text": "No. EnviousWispr uses Parakeet TDT (NVIDIA's CTC-based model) and WhisperKit (a Swift-native Whisper implementation via Core ML and the Neural Engine), not whisper.cpp's C/C++ approach." } },
     { "@type": "Question", "name": "Is EnviousWispr faster than whisper.cpp?", "acceptedAnswer": { "@type": "Answer", "text": "For live dictation on Apple Silicon Macs, EnviousWispr achieves a 0.43s median latency using engines tuned for the Neural Engine. whisper.cpp performance varies widely by model size, hardware, and build flags." } },
     { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line on GitHub. whisper.cpp is MIT licensed, which is more permissive for derivative works." } },
-    { "@type": "Question", "name": "What is the best whisper dictation tool for Mac?", "acceptedAnswer": { "@type": "Answer", "text": "If you want a developer library for scripting and batch processing, whisper.cpp is the standard. If you want a native Mac app with a hotkey, AI polish, custom words, and automatic clipboard pasting, EnviousWispr is built for that workflow." } },
+    { "@type": "Question", "name": "What is the best whisper dictation tool for Mac?", "acceptedAnswer": { "@type": "Answer", "text": "If you want a developer library for scripting and batch processing, whisper.cpp is the standard. If you want a native Mac app with a keybind, AI polish, custom words, and automatic clipboard pasting, EnviousWispr is built for that workflow." } },
     { "@type": "Question", "name": "Can whisper.cpp do AI polish or custom words?", "acceptedAnswer": { "@type": "Answer", "text": "No. whisper.cpp outputs raw transcription. Any post-processing requires additional tools or scripts. EnviousWispr includes AI polish and custom words as built-in features." } },
     { "@type": "Question", "name": "Do I need to know how to code to use EnviousWispr?", "acceptedAnswer": { "@type": "Answer", "text": "No. Download the DMG, drag to Applications, open, and start dictating. whisper.cpp requires comfort with the terminal, compiling from source, and managing model files manually." } },
-    { "@type": "Question", "name": "I already use whisper.cpp for dictation. Why would I switch?", "acceptedAnswer": { "@type": "Answer", "text": "If your whisper.cpp workflow already does everything you need, there is no reason to switch. But if you find yourself manually copying from the terminal, wishing for a hotkey, or wanting AI to clean up your text, EnviousWispr packages all of that into a single hold-to-talk experience." } },
+    { "@type": "Question", "name": "I already use whisper.cpp for dictation. Why would I switch?", "acceptedAnswer": { "@type": "Answer", "text": "If your whisper.cpp workflow already does everything you need, there is no reason to switch. But if you find yourself manually copying from the terminal, wishing for a keybind, or wanting AI to clean up your text, EnviousWispr packages all of that into a single hold-to-talk experience." } },
     { "@type": "Question", "name": "Can I use whisper.cpp and EnviousWispr together?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. They serve different purposes and do not conflict. Use EnviousWispr for live dictation while typing, and whisper.cpp for batch transcription of audio files, podcast processing, or integration into developer scripts." } },
   ]
 });
@@ -75,7 +75,7 @@ const breadcrumbJsonLd = JSON.stringify({
 
 <BaseLayout
   title="whisper.cpp vs EnviousWispr: Free Mac App, No Terminal"
-  description="whisper.cpp is a command-line tool. EnviousWispr is a free GPLv3 Mac app for on-device dictation: global hotkey, AI polish, paste anywhere. No terminal."
+  description="whisper.cpp is a command-line tool. EnviousWispr is a free GPLv3 Mac app for on-device dictation: global keybind, AI polish, paste anywhere. No terminal."
   activePage="compare"
   ogImage="/images/og/whisper-cpp.png"
   ogType="article"
@@ -272,7 +272,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <span class="vs-brand">whisper.cpp</span>
     </div>
     <h1 class="reveal">All the power of whisper.cpp. None of the terminal.</h1>
-    <p class="page-header-sub reveal">whisper.cpp proved on-device speech recognition works. EnviousWispr wraps that philosophy into a native Mac app with a hotkey, AI polish, and clipboard workflow.</p>
+    <p class="page-header-sub reveal">whisper.cpp proved on-device speech recognition works. EnviousWispr wraps that philosophy into a native Mac app with a keybind, AI polish, and clipboard workflow.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -323,7 +323,7 @@ const breadcrumbJsonLd = JSON.stringify({
                - GUI: none built-in; third-party wrappers exist
                - Models: OpenAI Whisper models, ggml format
                - CLI behavior: model loaded per invocation, output to stdout/file
-               - No clipboard, hotkey, AI polish, or custom vocabulary features
+               - No clipboard, keybind, AI polish, or custom vocabulary features
                - Community ecosystem: third-party GUIs, bindings for Python/Go/Rust/etc.
              Firsthand testing: whisper.cpp was not tested firsthand for this comparison.
              All claims are source-verified from the official repository.
@@ -355,7 +355,7 @@ const breadcrumbJsonLd = JSON.stringify({
             <td>On-device (CPU/GPU, any platform)</td>
           </tr>
           <tr>
-            <td>Hotkey activation</td>
+            <td>Keybind activation</td>
             <td><span class="table-check">Hold-to-talk</span>, release to transcribe, auto-paste</td>
             <td><span class="table-cross">None</span>. Manual CLI invocation per file.</td>
           </tr>
@@ -391,7 +391,7 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>First-word capture</td>
-            <td><span class="table-check">Pre-roll buffer</span> catches speech that starts before the hotkey press.</td>
+            <td><span class="table-check">Pre-roll buffer</span> catches speech that starts before the keybind press.</td>
             <td><span class="table-cross">N/A</span>. Processes pre-recorded files.</td>
           </tr>
           <tr>
@@ -449,11 +449,11 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🖱️</div>
         <div class="advantage-title">No terminal required</div>
-        <p class="advantage-desc">Download, open, hold your hotkey, speak. No compiling, no command flags, no audio format conversion. EnviousWispr handles the entire workflow from microphone to clipboard.</p>
+        <p class="advantage-desc">Download, open, hold your keybind, speak. No compiling, no command flags, no audio format conversion. EnviousWispr handles the entire workflow from microphone to clipboard.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⌨️</div>
-        <div class="advantage-title">Hold-to-talk hotkey</div>
+        <div class="advantage-title">Hold-to-talk keybind</div>
         <p class="advantage-desc">Hold a key to record, release to transcribe. Text appears in your active app instantly. whisper.cpp processes pre-recorded audio files. There is no live dictation workflow.</p>
       </div>
       <div class="advantage-card reveal">
@@ -496,7 +496,7 @@ const breadcrumbJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">1</div>
-          <div>Hold your hotkey and speak.</div>
+          <div>Hold your keybind and speak.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
@@ -580,7 +580,7 @@ const breadcrumbJsonLd = JSON.stringify({
         <div class="deep-dive-title">From speech to polished text in one step</div>
         <div class="deep-dive-body">
           <p>whisper.cpp gives you raw Whisper output in a terminal. You record audio separately, convert it to the right format, run a command, and read the result from stdout.</p>
-          <p>EnviousWispr captures speech, transcribes via Parakeet TDT or WhisperKit, corrects with fuzzy word matching, strips filler words, polishes with AI, and pastes into your active app. One hotkey press, one result.</p>
+          <p>EnviousWispr captures speech, transcribes via Parakeet TDT or WhisperKit, corrects with fuzzy word matching, strips filler words, polishes with AI, and pastes into your active app. One keybind press, one result.</p>
           <div class="deep-dive-detail">
             <strong>The pipeline:</strong> pre-roll buffer catches early speech, VAD detects voice activity, the warm engine transcribes instantly, custom words fix domain terms, AI polish cleans grammar and punctuation, three-tier paste delivers the text. All of this runs in under 1.5 seconds.
           </div>
@@ -646,7 +646,7 @@ const breadcrumbJsonLd = JSON.stringify({
         <p class="advantage-desc">whisper.cpp has bindings for Python, Go, Rust, Ruby, and more. A large community contributes optimizations, model conversions, and integrations. If you want to plug speech recognition into an existing toolchain, whisper.cpp has the broadest ecosystem.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want a ready-to-use Mac dictation app with a hotkey, AI polish, and clipboard workflow, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. If you want a developer library, <a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> is excellent.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want a ready-to-use Mac dictation app with a keybind, AI polish, and clipboard workflow, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. If you want a developer library, <a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> is excellent.</p>
   </div>
 </section>
 
@@ -660,11 +660,11 @@ const breadcrumbJsonLd = JSON.stringify({
     <div class="faq-list">
       <div class="faq-item reveal">
         <div class="faq-q">Is there a GUI for whisper.cpp on Mac?</div>
-        <p class="faq-a">whisper.cpp itself is a command-line tool with no GUI. Several third-party apps (VoiceInk, MacWhisper, and others) wrap whisper.cpp with a graphical interface. EnviousWispr takes a different approach: it uses purpose-built engines (Parakeet TDT, WhisperKit) optimized for Apple Silicon, wrapped in a native Mac app with a hold-to-talk hotkey and automatic clipboard pasting.</p>
+        <p class="faq-a">whisper.cpp itself is a command-line tool with no GUI. Several third-party apps (VoiceInk, MacWhisper, and others) wrap whisper.cpp with a graphical interface. EnviousWispr takes a different approach: it uses purpose-built engines (Parakeet TDT, WhisperKit) optimized for Apple Silicon, wrapped in a native Mac app with a hold-to-talk keybind and automatic clipboard pasting.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use whisper.cpp for live dictation on Mac?</div>
-        <p class="faq-a">whisper.cpp has a real-time streaming mode (<code>stream</code> example), but it outputs to the terminal. There is no hotkey, no clipboard integration, and no paste-into-app workflow. You would need to build that yourself or use an app like EnviousWispr that provides the full dictation experience.</p>
+        <p class="faq-a">whisper.cpp has a real-time streaming mode (<code>stream</code> example), but it outputs to the terminal. There is no keybind, no clipboard integration, and no paste-into-app workflow. You would need to build that yourself or use an app like EnviousWispr that provides the full dictation experience.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use whisper.cpp internally?</div>
@@ -680,7 +680,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What is the best whisper dictation tool for Mac?</div>
-        <p class="faq-a">It depends on what you need. If you want a developer library for scripting and batch processing, whisper.cpp is the standard. If you want a native Mac app with a hotkey, AI polish, custom words, and automatic clipboard pasting, <a href="/#download" style="color: var(--accent); text-decoration: underline;">EnviousWispr</a> is built for that workflow.</p>
+        <p class="faq-a">It depends on what you need. If you want a developer library for scripting and batch processing, whisper.cpp is the standard. If you want a native Mac app with a keybind, AI polish, custom words, and automatic clipboard pasting, <a href="/#download" style="color: var(--accent); text-decoration: underline;">EnviousWispr</a> is built for that workflow.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can whisper.cpp do AI polish or custom words?</div>
@@ -692,7 +692,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">I already use whisper.cpp for dictation. Why would I switch?</div>
-        <p class="faq-a">If your whisper.cpp workflow already does everything you need, there is no reason to switch. But if you find yourself manually copying from the terminal, wishing for a hotkey, wanting AI to clean up your text, or spending time on custom scripts to pipe output into apps, EnviousWispr packages all of that into a single hold-to-talk experience. The time savings compound with every dictation.</p>
+        <p class="faq-a">If your whisper.cpp workflow already does everything you need, there is no reason to switch. But if you find yourself manually copying from the terminal, wishing for a keybind, wanting AI to clean up your text, or spending time on custom scripts to pipe output into apps, EnviousWispr packages all of that into a single hold-to-talk experience. The time savings compound with every dictation.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use whisper.cpp under the hood?</div>

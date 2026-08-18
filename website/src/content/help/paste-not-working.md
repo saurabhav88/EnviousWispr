@@ -18,7 +18,7 @@ If the switch already looks on but nothing is typed, remove EnviousWispr from th
 
 ### 2. Check your cursor was in a text box
 
-EnviousWispr delivers text to whichever text field your cursor was in when you started recording. Click directly into your target text box first, then press your hotkey and begin speaking.
+EnviousWispr delivers text to whichever text field your cursor was in when you started recording. Click directly into your target text box first, then press your keybind and begin speaking.
 
 ### 3. The text went to a different app
 

@@ -27,7 +27,7 @@ There's a practical speed advantage too. Most people speak at 130-150 words per 
 
 Here's how EnviousWispr fits in. Instead of dictating raw text and then manually reorganizing it, the LLM post-processor cleans up your spoken thoughts into clean prose. For academic work, the polish tightens sentence structure and produces organized output from your rambling. With Ollama, OpenAI, or Gemini polish on, talking through points in sequence lays them out as structure; on the Apple Intelligence default, the same points come back as clean prose you can shape into an outline.
 
-Hold the hotkey, talk through your argument, and release. EnviousWispr transcribes your speech locally, runs it through the LLM post-processor, and delivers cleaned-up text. The whole thing takes a few seconds on any M-series chip.
+Hold the keybind, talk through your argument, and release. EnviousWispr transcribes your speech locally, runs it through the LLM post-processor, and delivers cleaned-up text. The whole thing takes a few seconds on any M-series chip.
 
 The default polish already produces clean prose that's easy to reorganize into an outline. The key insight is that speaking your argument out loud forces you to linearize it, and the structure emerges from how you naturally explain things.
 
@@ -35,7 +35,7 @@ Speaking with structure takes this further. When you signal your points out loud
 
 ## Walking through a real example
 
-Let's say you're writing a paper on why public libraries remain relevant in the digital age. You hold the hotkey and say something like:
+Let's say you're writing a paper on why public libraries remain relevant in the digital age. You hold the keybind and say something like:
 
 > "Okay so I think my main argument is that public libraries are still important even though everything is online now. First because they provide free internet access to people who can't afford it at home, which is a huge equity issue. Second, they're community spaces, like, people go there for job help, ESL classes, after-school programs, stuff that has nothing to do with books. And third, they curate information in a way that algorithms don't. Librarians help people find trustworthy sources instead of just whatever shows up first on Google."
 
@@ -68,7 +68,7 @@ Once you've got the basic pattern down, there are a few ways to build on it.
 
 ### Iterate by talking
 
-Your first spoken pass gives you the skeleton. But you can refine it the same way. Look at what you've got, notice a weak point, hold the hotkey again: "Actually, for section two I should focus more on the employment statistics. Libraries in low-income areas have higher job placement rates for people who use their career services." The post-processor cleans it up, and you drop it into your outline where it fits.
+Your first spoken pass gives you the skeleton. But you can refine it the same way. Look at what you've got, notice a weak point, hold the keybind again: "Actually, for section two I should focus more on the employment statistics. Libraries in low-income areas have higher job placement rates for people who use their career services." The post-processor cleans it up, and you drop it into your outline where it fits.
 
 ### Speak the structure your assignment needs
 
@@ -88,7 +88,7 @@ A few things make this approach a good fit for the student workflow.
 
 **It's fast to set up.** Download the `.dmg` and grant microphone access. The speech model downloads automatically on first launch; no model selection needed. The [getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/) walks through every step. After the initial download, everything runs instantly on-device.
 
-**It fits how students actually work.** You're not at a desk with perfect focus for eight hours. You're between classes with your MacBook Air, at the library, on the bus. Being able to hold a hotkey and talk through your essay structure in sixty seconds, then have a formatted outline waiting, fits the fragmented reality of student life better than sitting down for a formal outlining session.
+**It fits how students actually work.** You're not at a desk with perfect focus for eight hours. You're between classes with your MacBook Air, at the library, on the bus. Being able to hold a keybind and talk through your essay structure in sixty seconds, then have a formatted outline waiting, fits the fragmented reality of student life better than sitting down for a formal outlining session.
 
 ## Get started
 

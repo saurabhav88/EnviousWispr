@@ -926,7 +926,7 @@ def scan(toggle=False):
          ["Stop recording on silence", "Remove filler words"],
          ["Unload model after"], ["engine"], []),
         ("Microphone", [], ["Input"], [], []),
-        ("Shortcuts", [], [], [], []),
+        ("Keybinds", [], [], [], []),
         ("AI Polish", ["Deep reasoning"], ["Provider", "Model"],
          ["style"], ["Save", "Clear", "Refresh", "Copy Diagnostics"]),
         ("Your Words", ["Enable custom words"], [], [], []),

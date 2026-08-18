@@ -50,7 +50,7 @@ Together, that means the things that used to vanish (a whispered sentence, a sof
 
 This is worth saying plainly: there is no whisper mode and no sensitivity dial to find. We deliberately did not add one. A slider that asks you to guess the right setting for your room is a setting that is usually wrong, and we would rather the app just handle it.
 
-So the answer to "how do I turn on quiet capture" is simple: you do not. Hold your hotkey, speak as softly as the room asks for, and release.
+So the answer to "how do I turn on quiet capture" is simple: you do not. Hold your keybind, speak as softly as the room asks for, and release.
 
 ## Where this helps
 
@@ -67,7 +67,7 @@ We will be candid: this is the kind of improvement that should have been the beh
 
 ## What changes for you
 
-Nothing in the steps. Hold the hotkey, speak, release, and the polished text lands in your clipboard or pastes where you are working. What changed is the volume floor. The soft, the distant, and the whispered now make it in.
+Nothing in the steps. Hold the keybind, speak, release, and the polished text lands in your clipboard or pastes where you are working. What changed is the volume floor. The soft, the distant, and the whispered now make it in.
 
 ## Related posts
 

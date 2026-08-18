@@ -15,7 +15,7 @@ You dictate by holding a key, speaking, and letting go. Your first attempt takes
 
 **Open a text box.** Open any app you type in, such as Notes or Mail, and click into a text box so the cursor is blinking.
 
-**Press and hold.** Hold down your hotkey, which is the key you chose during setup.
+**Press and hold.** Hold down your keybind, which is the key you chose during setup.
 
 **Speak.** Talk at your normal pace, as you would to a person.
 

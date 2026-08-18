@@ -87,7 +87,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I use MacWhisper for dictation?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "MacWhisper has a real-time transcription mode, but its primary design is file-based transcription. EnviousWispr's entire pipeline is optimized for dictation latency, with hotkey activation, VAD, and direct clipboard paste delivering text in under a second."
+        "text": "MacWhisper has a real-time transcription mode, but its primary design is file-based transcription. EnviousWispr's entire pipeline is optimized for dictation latency, with keybind activation, VAD, and direct clipboard paste delivering text in under a second."
       }
     },
     {
@@ -420,7 +420,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Real-time dictation</td>
-            <td><span class="table-check">Yes</span> (hold hotkey, speak, release, text appears)</td>
+            <td><span class="table-check">Yes</span> (hold keybind, speak, release, text appears)</td>
             <td>Secondary feature; designed for post-recording transcription</td>
           </tr>
           <tr>
@@ -445,12 +445,12 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>First-word capture</td>
-            <td><span class="table-highlight">Pre-roll buffer</span> catches speech before you press the hotkey</td>
+            <td><span class="table-highlight">Pre-roll buffer</span> catches speech before you press the keybind</td>
             <td>N/A (file-based workflow)</td>
           </tr>
           <tr>
             <td>Hands-free dictation</td>
-            <td><span class="table-check">Yes</span> (hold or toggle hotkey modes)</td>
+            <td><span class="table-check">Yes</span> (hold or toggle keybind modes)</td>
             <td>N/A (manual file import workflow)</td>
           </tr>
           <tr>
@@ -543,7 +543,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎯</div>
         <div class="advantage-title">Purpose-built for dictation</div>
-        <p class="advantage-desc">Hold a hotkey, speak, release, text appears. That is the entire product. No file import dialogs, no batch queues, no export formats. One job, done well.</p>
+        <p class="advantage-desc">Hold a keybind, speak, release, text appears. That is the entire product. No file import dialogs, no batch queues, no export formats. One job, done well.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔑</div>
@@ -627,7 +627,7 @@ const faqJsonLd = JSON.stringify({
     <div class="section-head reveal">
       <div class="section-label-pill amber">Speed</div>
       <h2 class="section-title">Built for real-time, not batch</h2>
-      <p class="section-sub">EnviousWispr's pipeline is optimized for the moment between releasing your hotkey and seeing text. Every millisecond matters in dictation.</p>
+      <p class="section-sub">EnviousWispr's pipeline is optimized for the moment between releasing your keybind and seeing text. Every millisecond matters in dictation.</p>
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
@@ -664,10 +664,10 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-title">Real-time dictation workflow</div>
         <div class="deep-dive-body">
           <p>MacWhisper processes files after the fact: you import a recording, wait for transcription, then copy the result. That is a perfectly valid workflow for meetings, podcasts, and video content.</p>
-          <p>EnviousWispr works in real time. You hold a hotkey, speak, and release. In the background, a pre-roll audio buffer captures your first words before you even press the key. The ASR model stays warm in memory, so there is no cold-start delay. Voice activity detection trims silence automatically. Text is pasted directly into whatever app had focus.</p>
+          <p>EnviousWispr works in real time. You hold a keybind, speak, and release. In the background, a pre-roll audio buffer captures your first words before you even press the key. The ASR model stays warm in memory, so there is no cold-start delay. Voice activity detection trims silence automatically. Text is pasted directly into whatever app had focus.</p>
           <p>The difference is not just speed. It is the entire interaction model. You never leave your document, never switch apps, never copy-paste. Your voice becomes an input method, not a separate step.</p>
           <div class="deep-dive-detail">
-            <strong>How it works:</strong> Pre-roll buffer captures 300ms of audio before hotkey press so first words are never lost. Parakeet TDT model stays loaded in memory for instant inference. VAD-based silence trimming sends only speech to the model. Three-tier paste system (AX direct insertion, CGEvent Cmd+V, AppleScript fallback) delivers text to the active field with clipboard preservation.
+            <strong>How it works:</strong> Pre-roll buffer captures 300ms of audio before keybind press so first words are never lost. Parakeet TDT model stays loaded in memory for instant inference. VAD-based silence trimming sends only speech to the model. Three-tier paste system (AX direct insertion, CGEvent Cmd+V, AppleScript fallback) delivers text to the active field with clipboard preservation.
           </div>
         </div>
       </div>
@@ -753,7 +753,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use MacWhisper for dictation?</div>
-        <p class="faq-a">MacWhisper has a real-time transcription mode, but its primary design is file-based transcription. EnviousWispr's entire pipeline is optimized for dictation latency, with hotkey activation, VAD, and direct clipboard paste delivering text in under a second.</p>
+        <p class="faq-a">MacWhisper has a real-time transcription mode, but its primary design is file-based transcription. EnviousWispr's entire pipeline is optimized for dictation latency, with keybind activation, VAD, and direct clipboard paste delivering text in under a second.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What Mac do I need?</div>

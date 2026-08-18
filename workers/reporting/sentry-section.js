@@ -90,9 +90,9 @@ export const ERROR_CATEGORIES = Object.freeze({
   // plan had this as lost; grounded review corrected it.
   recovery_key_store_failed: { group: DEGRADED, deliveryProven: true, emitted: true, label: "crash-safety copy could not be armed" },
 
-  // The shortcut will not fire, but the event does not prove a dictation was
+  // The keybind will not fire, but the event does not prove a dictation was
   // ever attempted, so it cannot be counted as one that was lost.
-  hotkey_registration_failed: { group: DEGRADED, deliveryProven: true, emitted: true, label: "dictation shortcut could not be registered" },
+  hotkey_registration_failed: { group: DEGRADED, deliveryProven: true, emitted: true, label: "dictation keybind could not be registered" },
 
   // Heart failures. Terminal: no text reached the user.
   audio_capture_failed: { group: LOST, deliveryProven: true, emitted: true, label: "microphone capture failed" },

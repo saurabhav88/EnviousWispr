@@ -56,9 +56,9 @@ enum WhatsNewContent {
     Entry(
       id: "globe-key-dictation-hotkey",
       icon: "globe",
-      title: "Use the Globe key, or Fn, as your dictation shortcut",
+      title: "Use the Globe key, or Fn, as your dictation keybind",
       description:
-        "You can now use the Globe key, marked Fn on many Macs, as your dictation shortcut. Right Option stays exactly as it is unless you choose Globe. If macOS also opens emoji, switches your keyboard language, or starts its own dictation when you press it, go to System Settings, then Keyboard, then Press 🌐 key to, and choose Do Nothing.",
+        "You can now use the Globe key, marked Fn on many Macs, as your dictation keybind. Right Option stays exactly as it is unless you choose Globe. If macOS also opens emoji, switches your keyboard language, or starts its own dictation when you press it, go to System Settings, then Keyboard, then Press 🌐 key to, and choose Do Nothing.",
       version: "2.4.4"
     ),
 
@@ -194,7 +194,7 @@ enum WhatsNewContent {
       icon: "wrench.and.screwdriver",
       title: "A handful of smaller repairs across recording and settings",
       description:
-        "With Live transcription switched on, the last words you said could go missing while the transcript still looked complete. Settings could say your speech engine was ready before it actually was, so recording would not start. Hands-free mode could get stuck, leaving your shortcut doing nothing. Recovering a recording that was interrupted is more dependable. And the app runs more steadily on the newest Macs.",
+        "With Live transcription switched on, the last words you said could go missing while the transcript still looked complete. Settings could say your speech engine was ready before it actually was, so recording would not start. Hands-free mode could get stuck, leaving your keybind doing nothing. Recovering a recording that was interrupted is more dependable. And the app runs more steadily on the newest Macs.",
       version: "2.4.3"
     ),
 
@@ -495,7 +495,7 @@ enum WhatsNewContent {
       icon: "accessibility",
       title: "Built for VoiceOver and keyboard navigation",
       description:
-        "EnviousWispr now reads cleanly with VoiceOver and is fully operable from the keyboard. Its hotkey recorders, buttons, and update prompts announce themselves clearly and respond to keyboard control.",
+        "EnviousWispr now reads cleanly with VoiceOver and is fully operable from the keyboard. Its keybind recorders, buttons, and update prompts announce themselves clearly and respond to keyboard control.",
       version: "2.2.0"
     ),
     Entry(

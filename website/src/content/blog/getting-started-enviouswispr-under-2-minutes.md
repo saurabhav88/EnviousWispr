@@ -37,7 +37,7 @@ On first launch, macOS will ask for two permissions. Both are required, and both
 
 ### Microphone access
 
-macOS will show a standard permission dialog the first time EnviousWispr tries to record. Click **Allow**. This lets EnviousWispr hear you when you hold the hotkey. Your audio is processed locally via Core ML on Apple Silicon. The recording never leaves your device.
+macOS will show a standard permission dialog the first time EnviousWispr tries to record. Click **Allow**. This lets EnviousWispr hear you when you hold the keybind. Your audio is processed locally via Core ML on Apple Silicon. The recording never leaves your device.
 
 If you accidentally clicked **Don't Allow**, open **System Settings > Privacy & Security > Microphone** and toggle EnviousWispr on.
 
@@ -49,13 +49,13 @@ After toggling it on, you may need to restart EnviousWispr for the permission to
 
 Once both permissions are granted, you're ready to dictate.
 
-## Step 3: Hold the Hotkey, Speak, Release
+## Step 3: Hold the Keybind, Speak, Release
 
 This is the core loop, and it's as simple as it sounds:
 
-1. **Hold** the hotkey (the default is shown in the menu bar; you can change it later)
+1. **Hold** the keybind (the default is shown in the menu bar; you can change it later)
 2. **Speak** naturally. Full sentences, half-formed thoughts, stream of consciousness. Don't worry about filler words or grammar.
-3. **Release** the hotkey
+3. **Release** the keybind
 
 EnviousWispr records while you hold, transcribes when you release, runs the text through post-processing to clean up filler words and fix punctuation, and then pastes the polished result into whatever app has focus. The whole cycle takes a second or two on Apple Silicon.
 
@@ -99,11 +99,11 @@ Add names, technical terms, and company jargon to your personal dictionary. Envi
 
 ## What to Try Next
 
-Once you're comfortable with the basic hotkey workflow, there are a few features worth exploring.
+Once you're comfortable with the basic keybind workflow, there are a few features worth exploring.
 
 ### Hands-free mode
 
-Double-press your hotkey to lock recording for longer dictation sessions. You don't have to hold any key. Speak naturally for as long as you need, then triple-press to cancel or release to finish. This is especially useful for drafting an essay, capturing meeting notes, or working through a complex idea out loud.
+Double-press your keybind to lock recording for longer dictation sessions. You don't have to hold any key. Speak naturally for as long as you need, then triple-press to cancel or release to finish. This is especially useful for drafting an essay, capturing meeting notes, or working through a complex idea out loud.
 
 ### Clipboard mode
 
@@ -139,7 +139,7 @@ Now that you're set up, explore what EnviousWispr can do for your specific workf
 
 ## You're Up and Running
 
-That's the full setup, from install to your first dictation in under two minutes, with optional customization whenever you're ready for it. Free to download, no account required. A hotkey, your voice, and polished text in whatever app you're working in.
+That's the full setup, from install to your first dictation in under two minutes, with optional customization whenever you're ready for it. Free to download, no account required. A keybind, your voice, and polished text in whatever app you're working in.
 
 [Download EnviousWispr free](/#download) and start dictating, or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).
 

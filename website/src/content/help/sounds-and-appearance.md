@@ -23,6 +23,6 @@ You can also move the bar during a dictation.
 
 ### Recording sounds
 
-A short sound confirms when EnviousWispr starts and stops listening, which helps if you dictate without looking at the screen or you are unsure whether it registered your hotkey. Go to **Settings**, then select **Sounds**, and switch on **Play recording sounds**. This setting is off by default.
+A short sound confirms when EnviousWispr starts and stops listening, which helps if you dictate without looking at the screen or you are unsure whether it registered your keybind. Go to **Settings**, then select **Sounds**, and switch on **Play recording sounds**. This setting is off by default.
 
 **Preview a sound.** Select any of the sound pairings on the **Sounds** page and click the preview button to hear each one before you settle on it.
