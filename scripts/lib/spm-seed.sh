@@ -234,8 +234,19 @@ ew_seed_prune() {
 # that is about to stop existing.
 ew_seed_localise() { # <staging tree> <final SourcePackages path>
   local tree="$1" final="$2" donor f
-  # The donor prefix is discovered from the tree itself rather than assumed.
-  donor="$(/usr/bin/grep -rhoE "/Users/[^\"]*/\.derivedData/[A-Za-z0-9_-]+/SourcePackages" "$tree/workspace-state.json" 2>/dev/null | head -1)"
+  # DISCOVER THE DONOR BY STRUCTURE, NEVER BY ITS LOCATION. An earlier version
+  # matched `/Users/…/.derivedData/<lane>/SourcePackages`, which encodes two
+  # assumptions this repo already violates: releases build from `/tmp`
+  # (session-behavior.md RULE: root-stays-on-main), and `scripts/xcode-test.sh:30`
+  # honours a `DERIVED_DATA_PATH` override that can name any path at all. A
+  # snapshot published from either produces no match, localisation returns 1, and
+  # EVERY consumer silently discards its clone and resolves from scratch — the
+  # right direction, but a feature that has quietly stopped working reads exactly
+  # like one that is working.
+  # `artifacts/` is a fixed child of any resolved SourcePackages, so the text
+  # before it is the donor prefix wherever the tree lives.
+  donor="$(/usr/bin/grep -oE '/[^"]+/artifacts/' "$tree/workspace-state.json" 2>/dev/null | head -1)"
+  donor="${donor%/artifacts/}"
   [ -n "$donor" ] || return 1
   [ "$donor" = "$final" ] && return 0          # already local: nothing to do
   case "$donor" in */SourcePackages) ;; *) return 1 ;; esac

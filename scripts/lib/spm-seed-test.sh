@@ -151,6 +151,48 @@ if [ -f "$(ew_seed_dir "$KEY")/workspace-state.json" ]; then
 else
   bad "snapshot state" "publish dropped workspace-state.json; ew_seed_is_complete can no longer judge a snapshot"
 fi
+# THE DONOR NEED NOT LIVE UNDER /Users, AND ITS PATH NEED NOT LOOK LIKE
+# `.derivedData/<lane>`. Releases build from `/tmp`, and `xcode-test.sh` honours a
+# `DERIVED_DATA_PATH` override naming any path at all. A location-shaped
+# discovery finds nothing for those, returns 1, and every consumer silently falls
+# back to a full resolve — a feature that has stopped working, wearing the face of
+# one that works.
+ODD="/var/folders/zz/Odd Place/build-out/SourcePackages"
+T_ODD="$TMPROOT/odd"; mkdir -p "$T_ODD/artifacts/x" "$T_ODD/checkouts/pkg/.git/objects/info"
+printf '{"object":{"artifacts":[{"path":"%s/artifacts/x/A.xcframework"}]}}\n' "$ODD" > "$T_ODD/workspace-state.json"
+printf '%s/repositories/pkg-0000/objects\n' "$ODD" > "$T_ODD/checkouts/pkg/.git/objects/info/alternates"
+printf 'a\n' > "$T_ODD/artifacts/x/A.xcframework"
+if ew_seed_localise "$T_ODD" "/final/here/SourcePackages" \
+   && ! /usr/bin/grep -rq "Odd Place" "$T_ODD" 2>/dev/null \
+   && /usr/bin/grep -rq "/final/here/SourcePackages" "$T_ODD" 2>/dev/null; then
+  ok "a donor outside /Users, with no .derivedData in its path, is still localised"
+else
+  bad "donor discovery shape" "a donor not shaped like /Users/.../.derivedData/<lane> was not rewritten"
+fi
+
+# A REWRITTEN PATH MUST RESOLVE, NOT MERELY STOP NAMING THE DONOR. A string sweep
+# passes perfectly against a plausible-but-non-existent directory, and git only
+# discovers it the first time it needs an object — the valid-looking-default trap,
+# one directory over. An independent verifier ran this against the real fix and it
+# is the check neither of us would have written without `alternates` being found.
+alt="$T_ODD/checkouts/pkg/.git/objects/info/alternates"
+target="$(cat "$alt" 2>/dev/null)"
+case "$target" in
+  /final/here/SourcePackages/repositories/*) ok "the rewritten object store points where the payload actually lands" ;;
+  *) bad "alternates target" "rewritten to '$target', which is not under the receiving tree's repositories/" ;;
+esac
+
+# THE TWIN: a tree with nothing to discover must FAIL, not silently pass. Without
+# this, the case above would also pass against a localise that returns 0 for
+# everything.
+T_NONE="$TMPROOT/nodonor"; mkdir -p "$T_NONE"
+printf '{"object":{}}\n' > "$T_NONE/workspace-state.json"
+if ew_seed_localise "$T_NONE" "/final/here/SourcePackages"; then
+  bad "donor discovery twin" "localise returned 0 with no donor to find; a clone would be accepted unrewritten"
+else
+  ok "an undiscoverable donor FAILS localisation, so the caller drops the clone"
+fi
+
 if [ -f "$DD3/SourcePackages/workspace-state.json" ] \
    && ! /usr/bin/grep -rq "$DONOR_PREFIX" "$DD3/SourcePackages" 2>/dev/null \
    && /usr/bin/grep -q "$DD3/SourcePackages" "$DD3/SourcePackages/workspace-state.json" 2>/dev/null; then
