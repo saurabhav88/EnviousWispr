@@ -32,7 +32,7 @@ The app downloads its speech model on first launch. Until that download finishes
 
 ### 6. Was the recording very short?
 
-Very brief audio does not give the speech model enough to work with. A recording of well under a second may come back empty. Hold the hotkey a moment longer, and pause for a beat before you start speaking.
+Very brief audio does not give the speech model enough to work with. A recording of well under a second may come back empty. Hold the keybind a moment longer, and pause for a beat before you start speaking.
 
 ### 7. Were you quiet, or far from the microphone?
 

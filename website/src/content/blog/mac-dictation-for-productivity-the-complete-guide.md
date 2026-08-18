@@ -63,7 +63,7 @@ Read the workflow: [Dictation for developers: code reviews and PRs](/blog/dictat
 
 The minimum kit is a recent Apple Silicon Mac (M1 or newer), macOS 14 Sonoma or later, and a dictation tool that runs on-device. We are obviously biased: we make [EnviousWispr](/), which is free, on-device, and works offline. The principles below apply to any tool in the category.
 
-1. **Pick a hotkey you can hold without thinking.** Right Option, right Command, or a function key all work. Avoid hotkeys that conflict with apps you use daily.
+1. **Pick a keybind you can hold without thinking.** Right Option, right Command, or a function key all work. Avoid keybinds that conflict with apps you use daily.
 2. **Choose push-to-talk over hands-free** to start. You will accidentally trigger hands-free mode by talking on a call and end up with transcribed background noise pasted into Slack.
 3. **Pick an AI polish provider that matches your privacy posture.** Apple Intelligence runs on-device on supported Macs. Cloud polish (OpenAI, Gemini) is faster but sends the transcribed text to a server.
 4. **Test for one full work day before judging it.** The first hour feels weird. By the end of the day, you stop noticing that you are talking to your Mac.

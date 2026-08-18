@@ -32,9 +32,9 @@ The result: you speak a paragraph, and a second or two later on Apple Silicon, c
 
 ## How does hands-free mode work for keyboard-free dictation?
 
-Most dictation tools use a push-to-talk model. Hold a hotkey, speak, release. That works well for short bursts like a Slack reply, a quick note, or a search query. But if typing is painful, holding a key combination for extended periods isn't much better.
+Most dictation tools use a push-to-talk model. Hold a keybind, speak, release. That works well for short bursts like a Slack reply, a quick note, or a search query. But if typing is painful, holding a key combination for extended periods isn't much better.
 
-EnviousWispr's hands-free mode solves this. Double-press your hotkey to lock recording, then speak naturally without holding anything. Triple-press to cancel, or press once to finish and process your text.
+EnviousWispr's hands-free mode solves this. Double-press your keybind to lock recording, then speak naturally without holding anything. Triple-press to cancel, or press once to finish and process your text.
 
 For someone with RSI, this is the difference between a tool you can use for five minutes and a tool you can use all day. Hands-free mode turns EnviousWispr into a primary text input method, not a supplement to typing but a genuine replacement for the tasks that cause the most strain.
 
@@ -98,7 +98,7 @@ If you're dealing with RSI, the last thing you need is a setup process that invo
 
 1. **Download the app.** [Get EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr).
 2. **Grant permissions.** macOS will ask for microphone and accessibility access on first launch.
-3. **Start speaking.** Hold the hotkey and talk, or double-press to lock recording for extended dictation.
+3. **Start speaking.** Hold the keybind and talk, or double-press to lock recording for extended dictation.
 
 That's three steps from download to functional voice input. The speech model downloads automatically on first launch. Works out of the box with no account creation and no payment. EnviousWispr is free.
 

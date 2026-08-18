@@ -23,7 +23,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case livePreview
   case audio
   case recordingSounds
-  case shortcuts
+  case keybinds
   case aiPolish
   case wordCorrection
   case clipboard
@@ -45,7 +45,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .livePreview: return "Live Preview"
     case .audio: return "Microphone"
     case .recordingSounds: return "Sounds"
-    case .shortcuts: return "Shortcuts"
+    case .keybinds: return "Keybinds"
     case .aiPolish: return "AI Polish"
     case .wordCorrection: return "Your Words"
     case .clipboard: return "Clipboard"
@@ -67,7 +67,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .livePreview: return "text.viewfinder"
     case .audio: return "speaker.wave.2"
     case .recordingSounds: return "bell.and.waveform"
-    case .shortcuts: return "keyboard"
+    case .keybinds: return "keyboard"
     case .aiPolish: return "sparkles"
     case .wordCorrection: return "textformat.abc"
     case .clipboard: return "clipboard"
@@ -90,7 +90,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .livePreview: return "See your words on screen while you are still speaking."
     case .audio: return "Choose your input source and readiness behavior."
     case .recordingSounds: return "Play a short sound when recording starts and stops."
-    case .shortcuts: return "Set the hotkeys that start, stop, and cancel dictation."
+    case .keybinds: return "Set the keybinds that start, stop, and cancel dictation."
     case .aiPolish: return "Clean up and rewrite your dictation with AI."
     case .wordCorrection:
       return "Custom terms and vocabulary the app uses to recognize what you say."
@@ -108,7 +108,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   var group: SettingsGroup {
     switch self {
     case .history, .whatsNew, .appearance: return .app
-    case .speechEngine, .livePreview, .audio, .recordingSounds, .shortcuts: return .record
+    case .speechEngine, .livePreview, .audio, .recordingSounds, .keybinds: return .record
     case .aiPolish, .wordCorrection: return .process
     case .clipboard: return .output
     case .permissions, .checkForUpdates, .openSourceLicenses: return .system

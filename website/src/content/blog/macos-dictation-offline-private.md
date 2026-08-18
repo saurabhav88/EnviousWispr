@@ -62,9 +62,9 @@ That message was composed entirely by voice, processed on-device, and never left
 
 ## Hands-Free Mode for Extended Dictation
 
-The standard input method is push-to-talk: hold a hotkey, speak, release. That works well for short bursts like a quick reply, a search query, or a note.
+The standard input method is push-to-talk: hold a keybind, speak, release. That works well for short bursts like a quick reply, a search query, or a note.
 
-But if holding a key is difficult or painful, or if you need to dictate for longer stretches, hands-free mode is there. Double-press your hotkey to lock recording, then speak naturally without holding anything. Triple-press to cancel. When you're done, press the hotkey once to finish and process your text.
+But if holding a key is difficult or painful, or if you need to dictate for longer stretches, hands-free mode is there. Double-press your keybind to lock recording, then speak naturally without holding anything. Triple-press to cancel. When you're done, press the keybind once to finish and process your text.
 
 This matters for accessibility in a direct, practical way. If the reason you're using voice input is that your hands hurt, a tool that requires you to hold down a key for every sentence is solving the wrong problem. Hands-free mode removes that requirement entirely.
 
@@ -145,7 +145,7 @@ EnviousWispr downloads its speech recognition model automatically on first launc
 
 ### Configure for Hands-Free Use
 
-If you want to avoid holding keys, just double-press your hotkey to lock recording. No settings change needed. Speak naturally, then press once to finish or triple-press to cancel.
+If you want to avoid holding keys, just double-press your keybind to lock recording. No settings change needed. Speak naturally, then press once to finish or triple-press to cancel.
 
 ### Let the Polish Adapt
 

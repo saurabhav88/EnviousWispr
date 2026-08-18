@@ -1,6 +1,6 @@
 ---
 title: "EnviousWispr: Free Private AI Dictation for macOS"
-description: "EnviousWispr is free on-device AI dictation for macOS. No cloud, no account. Hold a hotkey, speak, and polished text lands on your clipboard in ~2 seconds."
+description: "EnviousWispr is free on-device AI dictation for macOS. No cloud, no account. Hold a keybind, speak, and polished text lands on your clipboard in ~2 seconds."
 pubDate: 2026-03-25
 updatedDate: 2026-04-04
 tags: ["announcement", "privacy", "dictation"]
@@ -17,7 +17,7 @@ Post-processing (correcting punctuation, cleaning up filler words, adjusting ton
 
 ## What it does
 
-The workflow is intentionally simple: hold a hotkey, speak, release. EnviousWispr records your audio, transcribes it, runs it through the post-processing pipeline, and places polished text on your clipboard, or pastes it directly into whatever app has focus. The whole cycle takes a second or two on Apple Silicon.
+The workflow is intentionally simple: hold a keybind, speak, release. EnviousWispr records your audio, transcribes it, runs it through the post-processing pipeline, and places polished text on your clipboard, or pastes it directly into whatever app has focus. The whole cycle takes a second or two on Apple Silicon.
 
 Here's what that looks like:
 
@@ -31,7 +31,7 @@ Spoken in ten seconds. Polished, structured, ready to send. Your audio never lef
 
 A few things that make it worth using day-to-day:
 
-- **Hands-free mode.** Double-press your hotkey to lock recording for longer dictation sessions. Triple-press to cancel.
+- **Hands-free mode.** Double-press your keybind to lock recording for longer dictation sessions. Triple-press to cancel.
 - **AI polish that keeps your voice.** The default polish step removes filler words, fixes punctuation, and tightens structure without flattening your phrasing.
 - **Polish that adapts to you.** No prompts to write. It cleans up filler and keeps your voice; speak a quick line and it stays a line. With Ollama, OpenAI, or Gemini polish on, rattle off a list and it comes back as bullet points, while the Apple Intelligence default keeps the same content as clean prose.
 - **Custom word dictionary.** Add names, technical terms, and jargon so the app gets your words right every time.
@@ -60,7 +60,7 @@ For a full breakdown, read [how on-device dictation compares to cloud services](
 
 The pipeline has four steps, and they run in parallel on Apple Silicon, which is what makes the end-to-end time roughly two seconds:
 
-1. **Record.** Hold the global hotkey (configurable), speak, release. EnviousWispr captures audio from your microphone with a pre-roll buffer so your first words are never clipped.
+1. **Record.** Hold the global keybind (configurable), speak, release. EnviousWispr captures audio from your microphone with a pre-roll buffer so your first words are never clipped.
 2. **Transcribe.** On-device speech recognition runs natively via Core ML on Apple Silicon. The primary engine handles English with streaming transcription that overlaps with recording. A secondary engine covers 100+ languages.
 3. **Polish.** Your choice of AI provider (OpenAI, Gemini, Ollama, Apple Intelligence, or none) removes filler words, fixes punctuation, and shapes the output to match how you speak.
 4. **Paste.** The polished text pastes directly into whatever app has keyboard focus. Your previous clipboard contents are preserved and restored automatically.
@@ -79,7 +79,7 @@ EnviousWispr is built for macOS users on Apple Silicon who produce a lot of text
 
 **Privacy-sensitive professions** (legal, medical, finance) dictate confidential content knowing it never leaves the device. No cloud policy to trust, no audit to worry about.
 
-**RSI and accessibility users** reduce keyboard load without giving up productivity. Hands-free mode lets you lock recording with a double-press so you don't have to hold any key. Useful for longer sessions or when holding a hotkey isn't comfortable.
+**RSI and accessibility users** reduce keyboard load without giving up productivity. Hands-free mode lets you lock recording with a double-press so you don't have to hold any key. Useful for longer sessions or when holding a keybind isn't comfortable.
 
 The one hard requirement: an Apple Silicon Mac (M1 or later) running macOS Sonoma 14+. The Neural Engine is what makes local transcription fast enough to feel instant. Intel Macs won't run it.
 

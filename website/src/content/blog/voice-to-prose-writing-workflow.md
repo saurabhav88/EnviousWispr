@@ -15,7 +15,7 @@ That's the gap a voice-to-prose workflow closes. You talk, the text appears, you
 
 Understanding what happens between your voice and the finished text helps you get better results. EnviousWispr runs a three-stage pipeline, entirely on your Mac:
 
-1. **Record.** Hold the hotkey, speak, release. The app captures raw audio from your microphone.
+1. **Record.** Hold the keybind, speak, release. The app captures raw audio from your microphone.
 2. **Transcribe.** Your speech is converted to text locally via Core ML, using on-device speech recognition. This is a literal transcription; every filler word, false start, and repeated phrase comes through.
 3. **Post-process.** An LLM cleans up the raw transcription. It strips filler words, fixes punctuation, corrects grammar, and keeps your voice. A short aside stays a clean line; a longer piece comes back as clean, readable prose (and, with Ollama, OpenAI, or Gemini polish on, with paragraph breaks and light structure).
 
@@ -61,11 +61,11 @@ Once the pipeline feels natural, the real productivity comes from how you struct
 
 Don't try to dictate an entire 1,500-word post in one take. Dictate a section at a time: a single argument, one anecdote, a few related points. Review what the LLM gave you. Adjust if needed. Then dictate the next chunk.
 
-This mirrors how most writers actually work. The hotkey-based flow supports it naturally: hold, speak a section, release, review, repeat.
+This mirrors how most writers actually work. The keybind-based flow supports it naturally: hold, speak a section, release, review, repeat.
 
 ### Use hands-free mode for freewriting
 
-When you're brainstorming or working through ideas, switch to hands-free mode by double-pressing your hotkey. This locks recording on without you holding any keys. Pace around the room, talk through your argument, let the ideas come without stopping to check output. Press the hotkey once to stop, or triple-press to cancel.
+When you're brainstorming or working through ideas, switch to hands-free mode by double-pressing your keybind. This locks recording on without you holding any keys. Pace around the room, talk through your argument, let the ideas come without stopping to check output. Press the keybind once to stop, or triple-press to cancel.
 
 Come back later and edit the transcript into something usable. This is especially good for working through writer's block. It's harder to stare at a blank page when words are appearing on screen as you think out loud.
 
@@ -97,7 +97,7 @@ The best workflow uses both. Dictate the rough draft. Type the edits. That's the
 
 [Download EnviousWispr free](https://enviouswispr.com/#download), no account, no subscription required. It takes a couple of minutes to set up on any Apple Silicon Mac running macOS Sonoma or later. On first launch, grant microphone access and the speech model downloads automatically. No model selection needed. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr).
 
-Then try this: open whatever you're working on, hold the hotkey, and talk through your next paragraph. See what comes back. The more you speak in your natural voice, the more the output matches how you write.
+Then try this: open whatever you're working on, hold the keybind, and talk through your next paragraph. See what comes back. The more you speak in your natural voice, the more the output matches how you write.
 
 ## Related Posts
 

@@ -30,7 +30,7 @@ struct StatusView: View {
           VStack(spacing: 4) {
             Text("Press the record button to start dictating.")
             if settings.hotkeyEnabled {
-              Text("Hotkey: \(dictationRuntime.hotkeyDescription)")
+              Text("Keybind: \(dictationRuntime.hotkeyDescription)")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             }

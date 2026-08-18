@@ -49,7 +49,7 @@ enum GlobeKeyCopy {
   ]
 
   static let reassurance =
-    "Your Globe key is set as your dictation shortcut either way. This only stops "
+    "Your Globe key is set as your dictation keybind either way. This only stops "
     + "macOS doing its own thing at the same time."
 
   static let dismissButton = "Got it"

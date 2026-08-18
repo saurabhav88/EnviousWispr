@@ -16,7 +16,7 @@ Every installation includes the complete feature set, with no hidden tiers and n
 
 - **Speech engines.** Both speech engines, and every language they cover.
 - **AI polish.** AI Polish, including the options that run entirely on your Mac.
-- **Recording modes.** Every recording mode, and hotkeys you can set to anything.
+- **Recording modes.** Every recording mode, and keybinds you can set to anything.
 - **Custom vocabulary.** Your own dictionary of custom words, plus ready-made vocabulary packs.
 - **History with no ceiling.** Unlimited dictation, and a History with no limit on how much it keeps.
 

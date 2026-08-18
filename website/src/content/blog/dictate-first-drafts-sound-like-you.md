@@ -62,7 +62,7 @@ Post-processing can run on-device (Apple Intelligence, EG-1, Ollama) or through 
 
 ### Step 3: Dictate Your First Draft
 
-Hold your hotkey. Start talking. Don't edit in your head; just speak. Release the hotkey when you're done with a thought. A second or two later on Apple Silicon, polished text lands in your writing app, cleaned up but still in your voice.
+Hold your keybind. Start talking. Don't edit in your head; just speak. Release the keybind when you're done with a thought. A second or two later on Apple Silicon, polished text lands in your writing app, cleaned up but still in your voice.
 
 That's it. No copying and pasting. No switching apps. The text pastes into the app that has focus, cleaned up while keeping your voice.
 
@@ -82,11 +82,11 @@ The voice is the same. The mess is gone. And the writer didn't type a single cha
 
 ### Morning Pages in Ulysses
 
-You open Ulysses. You hold the hotkey. You talk for three minutes about whatever's on your mind: messy, circular, half-formed. You release. The text appears in your editor with clean punctuation and paragraph breaks where you paused. The filler words are gone but your voice is still there. You didn't type a single character.
+You open Ulysses. You hold the keybind. You talk for three minutes about whatever's on your mind: messy, circular, half-formed. You release. The text appears in your editor with clean punctuation and paragraph breaks where you paused. The filler words are gone but your voice is still there. You didn't type a single character.
 
 ### Blog Drafting in iA Writer
 
-You have an outline. You dictate each section, one hotkey press at a time. The polish step cleans up each chunk into prose that still sounds like you. Each dictation chunk lands in iA Writer ready to edit. By the time you've walked through your outline, you have a 1,200-word rough draft that took fifteen minutes instead of an hour.
+You have an outline. You dictate each section, one keybind press at a time. The polish step cleans up each chunk into prose that still sounds like you. Each dictation chunk lands in iA Writer ready to edit. By the time you've walked through your outline, you have a 1,200-word rough draft that took fifteen minutes instead of an hour.
 
 ### Quick Slack Replies Between Writing Sessions
 
@@ -94,7 +94,7 @@ You switch to Slack. The default polish keeps things conversational without over
 
 ### Capturing Ideas on a Walk
 
-You're away from your desk but your Mac Mini is running at home. You come back, sit down, double-press your hotkey to lock recording, and dump every idea you had on your walk. The post-processor cleans it up while keeping your natural phrasing: lightly polished, captured. You'll shape it later.
+You're away from your desk but your Mac Mini is running at home. You come back, sit down, double-press your keybind to lock recording, and dump every idea you had on your walk. The post-processor cleans it up while keeping your natural phrasing: lightly polished, captured. You'll shape it later.
 
 ## Why Privacy Matters for Writers
 

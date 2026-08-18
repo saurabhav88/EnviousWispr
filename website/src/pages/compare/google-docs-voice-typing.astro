@@ -570,7 +570,7 @@ const breadcrumbJsonLd = JSON.stringify({
         <div class="deep-dive-title">Works in every app, not just Google Docs</div>
         <div class="deep-dive-body">
           <p>Google Docs Voice Typing is a feature inside Google Docs. It works well there, but only there. If you switch to Slack, an email client, VS Code, a terminal, or any other app, you lose dictation entirely. You have to copy text out of a Google Doc and paste it where you actually need it.</p>
-          <p>EnviousWispr is a system-wide dictation tool. Hold a hotkey, speak, and the transcribed text is pasted directly into whatever text field has focus. It works in every macOS application: native apps, Electron apps, web browsers, terminals, IDEs, messaging tools. There is no copy-paste detour.</p>
+          <p>EnviousWispr is a system-wide dictation tool. Hold a keybind, speak, and the transcribed text is pasted directly into whatever text field has focus. It works in every macOS application: native apps, Electron apps, web browsers, terminals, IDEs, messaging tools. There is no copy-paste detour.</p>
           <p>For people who write in many apps throughout the day, this is the core difference. Dictation should follow you across your workflow, not lock you into one browser tab.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> EnviousWispr captures the frontmost app and text field at recording start. After transcription, it re-activates that exact app and inserts text via the Accessibility API. If direct insertion fails, it falls back to simulated Cmd+V, then to AppleScript. Your clipboard is saved before the operation and restored after.

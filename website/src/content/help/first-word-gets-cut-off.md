@@ -31,7 +31,7 @@ Some situations need the microphone to wake from a completely inactive state, an
 
 If your speech keeps cutting off at the beginning, try these adjustments:
 
-- **Pause briefly.** Pause for a beat after pressing your hotkey, before you begin to speak.
+- **Pause briefly.** Pause for a beat after pressing your keybind, before you begin to speak.
 - **Change your readiness time.** Set Microphone Readiness to **60 sec** or **Always**.
 - **Use push to talk.** Holding the key down starts waking the microphone while you are still drawing breath.
 

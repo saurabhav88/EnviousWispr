@@ -1,6 +1,6 @@
 # EnviousWispr
 
-> Free, private voice-to-text for macOS. Hold a hotkey, speak, release. Polished text lands on your clipboard or pastes directly. Transcription runs on-device with Parakeet (25 European languages) or WhisperKit (99 languages). Optional AI polish can stay on-device with EG-1, Apple Intelligence, or a local Ollama model; Ollama also offers hosted models that run on its servers, and OpenAI, Gemini and Claude are optional bring-your-own-key cloud providers. No account, no subscription. Free download.
+> Free, private voice-to-text for macOS. Hold a keybind, speak, release. Polished text lands on your clipboard or pastes directly. Transcription runs on-device with Parakeet (25 European languages) or WhisperKit (99 languages). Optional AI polish can stay on-device with EG-1, Apple Intelligence, or a local Ollama model; Ollama also offers hosted models that run on its servers, and OpenAI, Gemini and Claude are optional bring-your-own-key cloud providers. No account, no subscription. Free download.
 
 Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.
 License: GNU General Public License v3 (GPLv3, open source on GitHub).
@@ -9,7 +9,7 @@ Last-updated: 2026-08-05
 
 ## Product
 
-- [How it works](https://enviouswispr.com/how-it-works/): The end-to-end pipeline: hotkey hold, audio capture, on-device ASR, optional LLM polish, clipboard or paste-to-app delivery.
+- [How it works](https://enviouswispr.com/how-it-works/): The end-to-end pipeline: keybind hold, audio capture, on-device ASR, optional LLM polish, clipboard or paste-to-app delivery.
 - [Homepage](https://enviouswispr.com/): Download, screenshots, core value proposition, system requirements (Apple Silicon, macOS 14+).
 - [Best dictation apps for Mac](https://enviouswispr.com/compare/best-dictation-apps-for-mac/): A practical 2026 guide to six Mac dictation options, with honest picks by workflow.
 - [Compare to alternatives](https://enviouswispr.com/compare/): Index of comparison pages vs WisprFlow, Superwhisper, Apple Dictation, Dragon, MacWhisper, Otter.ai, and others.
@@ -19,7 +19,7 @@ Last-updated: 2026-08-05
 - [Help centre](https://enviouswispr.com/help/): All 52 support articles, searchable, with the complete article list on the page.
 - [Getting Started](https://enviouswispr.com/help/getting-started/): System requirements, download and install, first dictation, granting microphone and accessibility permission, uninstalling.
 - [Troubleshooting](https://enviouswispr.com/help/troubleshooting/): No text appearing, inaccurate dictation, first word cut off, accessibility permission not sticking, recording that will not stop, Ollama and Apple Intelligence failures, app crashes.
-- [Recording and Hotkeys](https://enviouswispr.com/help/recording-and-hotkeys/): Push-to-talk, hands-free, toggle mode, changing the recording hotkey, cancelling a recording.
+- [Recording and Keybinds](https://enviouswispr.com/help/recording-and-keybinds/): Push-to-talk, hands-free, toggle mode, changing the recording keybind, cancelling a recording.
 - [Speech Engines](https://enviouswispr.com/help/speech-engines/): Parakeet versus WhisperKit, language coverage, downloading and managing models, live transcription.
 - [AI Polish](https://enviouswispr.com/help/ai-polish/): What polish does, choosing or disabling a provider, Apple Intelligence setup, running a local Ollama model offline, what hosted Ollama models send, context-aware polish, hallucination protection.
 - [Pasting Your Text](https://enviouswispr.com/help/pasting-your-text/): How text reaches the focused app, spacing and capitals at the cursor, clipboard preservation, what to do when paste fails.
@@ -35,7 +35,7 @@ Last-updated: 2026-08-05
 - [vs WisprFlow](https://enviouswispr.com/compare/wisprflow/): Free and on-device vs paid cloud subscription.
 - [vs Superwhisper](https://enviouswispr.com/compare/superwhisper/): Both on-device, different defaults and model coverage.
 - [vs Apple Dictation](https://enviouswispr.com/compare/apple-dictation/): How EnviousWispr extends what Apple ships built-in.
-- [vs MacWhisper](https://enviouswispr.com/compare/macwhisper/): Real-time hotkey dictation vs file-based transcription.
+- [vs MacWhisper](https://enviouswispr.com/compare/macwhisper/): Real-time keybind dictation vs file-based transcription.
 - [vs Otter.ai](https://enviouswispr.com/compare/otter-ai/): Personal dictation vs meeting transcription.
 - [vs Dragon](https://enviouswispr.com/compare/dragon/): Modern on-device alternative to legacy desktop dictation.
 - [vs Google Docs voice typing](https://enviouswispr.com/compare/google-docs-voice-typing/): System-wide vs Docs-only.

@@ -38,7 +38,7 @@ const faqJsonLd = JSON.stringify({
     { "@type": "Question", "name": "Does Willow Voice work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet TDT and WhisperKit run natively on Apple Silicon, delivering 0.43s median latency without any cloud dependency." } },
     { "@type": "Question", "name": "Does EnviousWispr work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider." } },
     { "@type": "Question", "name": "Will my audio be used for training?", "acceptedAnswer": { "@type": "Answer", "text": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else." } },
-    { "@type": "Question", "name": "Can I switch from Willow Voice easily?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS." } },
+    { "@type": "Question", "name": "Can I switch from Willow Voice easily?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS." } },
     { "@type": "Question", "name": "What Mac do I need?", "acceptedAnswer": { "@type": "Answer", "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast." } },
     { "@type": "Question", "name": "Does EnviousWispr use the cloud at all?", "acceptedAnswer": { "@type": "Answer", "text": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider, only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation." } },
     { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. Contributions are welcome." } },
@@ -680,7 +680,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Willow Voice easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
+        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What Mac do I need?</div>

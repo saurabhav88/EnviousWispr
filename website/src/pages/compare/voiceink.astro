@@ -95,7 +95,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I switch from VoiceInk to EnviousWispr easily?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS."
+        "text": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS."
       }
     },
     {
@@ -473,7 +473,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>First-word capture</td>
-            <td><span class="table-check">Pre-roll buffer</span> captures audio before you finish pressing the hotkey</td>
+            <td><span class="table-check">Pre-roll buffer</span> captures audio before you finish pressing the keybind</td>
             <td>Standard recording start</td>
           </tr>
           <tr>
@@ -503,7 +503,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Per-app settings</td>
-            <td>Global hotkey and settings</td>
+            <td>Global keybind and settings</td>
             <td><span class="table-highlight">Power Mode</span> with per-app prompts</td>
           </tr>
           <tr>
@@ -687,10 +687,10 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-title">Paste workflow that does not lose your text</div>
         <div class="deep-dive-body">
           <p>Dictation apps face a subtle problem: between when you stop recording and when text is pasted, you might switch apps, click a different field, or have something important on your clipboard. If the app does not account for this, your text ends up in the wrong place or overwrites what you had copied.</p>
-          <p>EnviousWispr captures which app had focus when you started recording. A pre-roll audio buffer ensures the very first word is never clipped, even if you start speaking before the hotkey is fully pressed. The ASR engine stays warm between recordings, so there is no cold-start delay.</p>
+          <p>EnviousWispr captures which app had focus when you started recording. A pre-roll audio buffer ensures the very first word is never clipped, even if you start speaking before the keybind is fully pressed. The ASR engine stays warm between recordings, so there is no cold-start delay.</p>
           <p>After transcription, the app re-activates the original target app and uses a three-tier paste system: Accessibility API direct insertion first, then simulated Cmd+V, then AppleScript as a last resort. Your clipboard contents are saved before the operation and restored after, so nothing is lost.</p>
           <div class="deep-dive-detail">
-            <strong>How it works:</strong> Pre-roll buffer captures ~200ms of audio before hotkey release. Warm engine keeps the ASR model loaded in memory. Three-tier paste (AX insertion, CGEvent Cmd+V, AppleScript) with clipboard snapshot and restoration. Target app reactivation uses Accessibility API force-activation to bypass macOS background process restrictions.
+            <strong>How it works:</strong> Pre-roll buffer captures ~200ms of audio before keybind release. Warm engine keeps the ASR model loaded in memory. Three-tier paste (AX insertion, CGEvent Cmd+V, AppleScript) with clipboard snapshot and restoration. Target app reactivation uses Accessibility API force-activation to bypass macOS background process restrictions.
           </div>
         </div>
       </div>
@@ -792,7 +792,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from VoiceInk easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
+        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What Mac do I need?</div>

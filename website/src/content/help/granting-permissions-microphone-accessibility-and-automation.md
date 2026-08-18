@@ -16,7 +16,7 @@ This permission allows EnviousWispr to hear your voice while you dictate.
 
 **Grant permission.** macOS asks the first time you record. If you missed the prompt, open **System Settings**, select **Privacy & Security**, click **Microphone**, and switch EnviousWispr on.
 
-You will know it worked when you hold your hotkey and the meter on the recording bar moves as you speak.
+You will know it worked when you hold your keybind and the meter on the recording bar moves as you speak.
 
 ### Accessibility
 
@@ -36,6 +36,6 @@ This permission is a fallback, requested only when the usual ways of pasting fai
 
 Declining this permission is fine, because most applications never require it.
 
-### Your hotkey needs no permission
+### Your keybind needs no permission
 
 The key you hold to record works everywhere on its own. These permissions are strictly about hearing your voice and delivering the text.

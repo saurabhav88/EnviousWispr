@@ -137,10 +137,10 @@ struct WhatsNewContentTests {
       "the #1987 Globe key entry is missing from What's New")
 
     #expect(entry.icon == "globe")
-    #expect(entry.title == "Use the Globe key, or Fn, as your dictation shortcut")
+    #expect(entry.title == "Use the Globe key, or Fn, as your dictation keybind")
     #expect(
       entry.description
-        == "You can now use the Globe key, marked Fn on many Macs, as your dictation shortcut. "
+        == "You can now use the Globe key, marked Fn on many Macs, as your dictation keybind. "
         + "Right Option stays exactly as it is unless you choose Globe. If macOS also opens "
         + "emoji, switches your keyboard language, or starts its own dictation when you press "
         + "it, go to System Settings, then Keyboard, then Press 🌐 key to, and choose Do "

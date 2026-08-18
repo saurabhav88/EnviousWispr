@@ -709,7 +709,7 @@ private struct ChecklistPhaseView: View {
   private static let items: [(title: String, subtitle: String)] = [
     ("Setting up speech model", "One-time setup"),
     ("Configuring on-device AI", "Apple Intelligence"),
-    ("Setting your hotkey", "Default: ⌥ Option"),
+    ("Setting your keybind", "Default: ⌥ Option"),
   ]
 
   var body: some View {
@@ -1296,11 +1296,11 @@ private struct PermissionRow: View {
 private struct ReadyScreenV2: View {
   @State private var showGlobeGuidance = false
   @AccessibilityFocusState private var guidanceReturnFocus: Bool
-  @FocusState private var shortcutFocused: Bool
+  @FocusState private var keybindFocused: Bool
 
   private func dismissGlobeGuidance() {
     showGlobeGuidance = false
-    shortcutFocused = true
+    keybindFocused = true
     guidanceReturnFocus = true
   }
 
@@ -1332,7 +1332,7 @@ private struct ReadyScreenV2: View {
         .kerning(-0.4)
         .padding(.bottom, 6)
 
-      Text("Tap the keycap to change your hotkey,\nthen press GET STARTED!")
+      Text("Tap the keycap to change your keybind,\nthen press GET STARTED!")
         .font(.obBody)
         .foregroundStyle(Color.obTextSecondary)
         .multilineTextAlignment(.center)
@@ -1354,7 +1354,7 @@ private struct ReadyScreenV2: View {
       // plain view, not a `Button`, so without `.focusable()` the focus binding
       // below would succeed in state while keyboard focus went nowhere.
       .focusable()
-      .focused($shortcutFocused)
+      .focused($keybindFocused)
       .accessibilityFocused($guidanceReturnFocus)
       .popover(isPresented: $showGlobeGuidance, arrowEdge: .bottom) {
         GlobeGuidancePopover(onDismiss: dismissGlobeGuidance)
@@ -1415,7 +1415,7 @@ private struct ReadyScreenV2: View {
             .foregroundStyle(Color.obTextPrimary)
             .kerning(0.5)
 
-          Text("Change your AI model, hotkey, and more in Settings.")
+          Text("Change your AI model, keybind, and more in Settings.")
             .font(.system(size: 13, weight: .regular))
             .foregroundStyle(Color.obTextSecondary)
             .multilineTextAlignment(.center)
@@ -1493,7 +1493,7 @@ private struct KeycapHotkeyView: View {
           .onTapGesture { toggleRecording() }
           .accessibilityElement(children: .combine)
           .accessibilityAddTraits(.isButton)
-          .accessibilityLabel("Dictation hotkey")
+          .accessibilityLabel("Dictation keybind")
           .accessibilityValue(
             isRecording
               ? "Recording, press a key combination"
@@ -1541,7 +1541,7 @@ private struct KeycapHotkeyView: View {
         if isRecording {
           (Text("Press ").foregroundStyle(Color.obTextSecondary)
             + Text("Esc").fontWeight(.semibold).foregroundStyle(Color.obTextPrimary)
-            + Text(" to cancel without changing your hotkey.").foregroundStyle(
+            + Text(" to cancel without changing your keybind.").foregroundStyle(
               Color.obTextSecondary))
             .font(.system(size: 12))
         } else {

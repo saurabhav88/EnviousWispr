@@ -368,7 +368,7 @@ struct SettingsDefaultsRoutingTests {
   /// it stops the next reader looking for the missing coverage.
   ///
   /// NOT COVERED HERE, deliberately, and on the founder's manual pass instead:
-  /// that `ShortcutsSettingsView` and `ReadyScreenV2` actually CALL this on an
+  /// that `KeybindsSettingsView` and `ReadyScreenV2` actually CALL this on an
   /// accepted bind. Both call sites live in SwiftUI view bodies that need a
   /// rendered hierarchy, so deleting either one leaves every test in this file
   /// green. A user who binds Globe and sees no explanation is the visible symptom.

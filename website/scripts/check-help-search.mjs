@@ -31,7 +31,7 @@ const mini = buildHelpIndex(docs);
 // measured. Four share no meaningful words with their article's title.
 const PINNED = [
   ['microphone not working', 'empty-or-missing-transcription'],
-  ['how do I change the key', 'customizing-your-hotkey'],
+  ['how do I change the key', 'customizing-your-keybind'],
   ['is this free', 'is-enviouswispr-free'],
   ['uninstall', 'uninstalling-enviouswispr'],
   ['airpods', 'bluetooth-and-airpods'],
@@ -53,8 +53,9 @@ const ADVERSARIAL = [
   ['set up apple intelligence', 'apple-intelligence-setup', ['apple-intelligence-not-available']],
   ['apple intelligence greyed out', 'apple-intelligence-not-available', ['apple-intelligence-setup']],
   ['is my text sent to openai', 'ai-polish-and-cloud-data', ['api-key-security', 'privacy-overview']],
-  ['change my hotkey', 'customizing-your-hotkey', ['push-to-talk-mode', 'toggle-mode']],
-  ['dont want to hold the key', 'hands-free-mode-long-dictation', ['customizing-your-hotkey']],
+  ['change my hotkey', 'customizing-your-keybind', ['push-to-talk-mode', 'toggle-mode']],
+  ['change my keybind', 'customizing-your-keybind', ['push-to-talk-mode', 'toggle-mode']],
+  ['dont want to hold the key', 'hands-free-mode-long-dictation', ['customizing-your-keybind']],
   ['unins', 'uninstalling-enviouswispr', []],
   ['not working paste', 'paste-not-working', []],
   // #2154: two features whose names are nearly the same sentence. Live Preview

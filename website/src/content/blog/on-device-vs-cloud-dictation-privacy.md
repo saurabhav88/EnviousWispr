@@ -95,7 +95,7 @@ For many people, especially those dictating work-related content on a Mac, on-de
 
 EnviousWispr is an on-device dictation app for macOS. It ships with two transcription backends: Parakeet for fast dictation across 25 European languages and WhisperKit for wider multi-language support. Both run natively via Core ML on Apple Silicon. Your audio is recorded, transcribed, and post-processed locally. Recordings never leave your Mac.
 
-Here's what the workflow looks like: hold a hotkey, speak, release. A second or two later, polished text lands on your clipboard or pastes directly into the app you're using. Post-processing (punctuation cleanup, filler word removal, light formatting) runs through your choice of AI provider: Apple Intelligence, EG-1, and Ollama for fully on-device, or OpenAI and Gemini if you prefer cloud. The polish shapes the output to match what you said, adapting per dictation with nothing to configure.
+Here's what the workflow looks like: hold a keybind, speak, release. A second or two later, polished text lands on your clipboard or pastes directly into the app you're using. Post-processing (punctuation cleanup, filler word removal, light formatting) runs through your choice of AI provider: Apple Intelligence, EG-1, and Ollama for fully on-device, or OpenAI and Gemini if you prefer cloud. The polish shapes the output to match what you said, adapting per dictation with nothing to configure.
 
 Here's what that looks like in practice:
 
@@ -111,7 +111,7 @@ A few specifics worth noting:
 
 - **No sign-up required.** No login, no account walls, and no telemetry on what you dictate.
 - **Free to download.** EnviousWispr is available on [GitHub](https://github.com/saurabhav88/EnviousWispr) at no cost.
-- **Hands-free mode.** Double-press the hotkey to lock recording for extended dictation sessions without holding a key.
+- **Hands-free mode.** Double-press the keybind to lock recording for extended dictation sessions without holding a key.
 - **Custom word dictionary.** Add names, technical terms, and jargon. Multi-pass fuzzy matching corrects misrecognitions automatically.
 - **Offline by default.** The app works with no internet connection. Network access is only needed if you choose a cloud AI provider for post-processing.
 
@@ -138,7 +138,7 @@ If you want to try on-device dictation on your Mac:
 1. [Download EnviousWispr free](https://enviouswispr.com/#download). No account required.
 2. Open the `.dmg` and drag the app to Applications.
 3. Grant microphone and accessibility permissions when prompted on first launch.
-4. Hold the hotkey, speak, release.
+4. Hold the keybind, speak, release.
 
 The speech model downloads automatically on first launch. After that, you're dictating privately, offline, with nothing standing between you and your text. The [getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/) walks through the full first-run setup in under two minutes. If you run into issues, [open an issue on GitHub](https://github.com/saurabhav88/EnviousWispr).
 
