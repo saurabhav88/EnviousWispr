@@ -27,8 +27,11 @@ import Foundation
 /// (2026-08-18, #1572) against this exact variant through the pinned CLI: the
 /// ANE placement LOSES TEXT on 5 of 25 multilingual clips, including an empty
 /// string where `.cpuAndGPU` returns the correct word, stable across three
-/// repeats. `.cpuAndGPU`, `.all` and `.cpuOnly` agree with each other on every
-/// clip. The loss lands on short non-Latin utterances, which is the population
+/// repeats. That sweep is two-placement. On the separate five-clip run that
+/// exercised all FOUR placements, `.cpuAndGPU`, `.all` and `.cpuOnly` agreed
+/// with each other on every clip and only the ANE differed — which is also what
+/// stops "the shipped path diverges" being the reading; the odd one out is the
+/// ANE. The loss lands on short non-Latin utterances, which is the population
 /// this backend exists to serve, so a whole-corpus average hides it. Cold
 /// specialization also got WORSE on newer silicon, not better: ~126-158s ANE vs
 /// 5-18s here, against ~109s vs ~13s on M4. Note that `.cpuAndNeuralEngine` is
