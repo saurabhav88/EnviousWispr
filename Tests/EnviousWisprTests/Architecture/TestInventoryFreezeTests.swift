@@ -31,8 +31,13 @@ import Testing
 /// so all eleven defects vanish as a class rather than one at a time. `swift-syntax` is a
 /// test-target-only SPM dependency; it never reaches the shipped app.
 ///
-/// The generated axis matrix that specified the old lexer is retained as this suite's spec:
-/// `.claude/tests/test-inventory-parser.test.sh`.
+/// The parser is not the end of it, and the rest is the more useful half. Rounds 5-7 found eight more
+/// defects with no lexical content at all, every one A COMPARISON NARROWER THAN THE LANGUAGE — a
+/// module-qualified attribute, a backtick-escaped identifier, trivia inside a qualified name, a
+/// same-basename method on an unrelated type, one identity in exclusive `#if` branches, and a key that
+/// could not tell `OuterA.Inner` from `OuterB.Inner`. A parser prevents none of those. The answer was to
+/// enumerate the axes and route every name through one place, and this suite's own spec below sweeps
+/// their cross-product rather than one row per finding.
 @Suite("Test inventory — every suite declares what it protects (#2141)", .tags(.driftGuard))
 struct TestInventoryFreezeTests {
 
@@ -48,19 +53,29 @@ struct TestInventoryFreezeTests {
 
   struct SuiteRecord {
     let file: String
+    /// The declaration's own name, for reading in a failure message.
     let name: String
-    /// The type's path within its file (`Outer.Inner`), which is how a declaration and its
-    /// EXTENSIONS recognise each other. The baseline is keyed by `key`, never by this.
+    /// The type PATH within the file — `Outer.Inner` — and what the grandfather list is keyed by.
+    ///
+    /// Keying on `name` alone could not tell `OuterA.Inner` from `OuterB.Inner`, so a NEW untagged
+    /// suite silently inherited a neighbour's grandfathering. Quiet direction, and the ratchet exists
+    /// precisely to stop that.
+    let qualifiedName: String
+    /// `qualifiedName` plus the `#if` branch the declaration sits in, which is how a declaration and
+    /// its EXTENSIONS recognise each other without a tag crossing between exclusive branches.
+    ///
+    /// Deliberately NOT the baseline key: a branch label embeds an `#if` CONDITION, so editing that
+    /// condition would silently make every suite under it look new.
     let identity: String
     let classes: [TestClass]
     let testCount: Int
     let boundaryCount: Int
 
-    var key: String { "\(file)\t\(name)" }
+    var key: String { "\(file)\t\(qualifiedName)" }
 
     func declaring(_ classes: [TestClass]) -> SuiteRecord {
       SuiteRecord(
-        file: file, name: name, identity: identity, classes: classes,
+        file: file, name: name, qualifiedName: qualifiedName, identity: identity, classes: classes,
         testCount: testCount, boundaryCount: boundaryCount)
     }
   }
@@ -108,8 +123,6 @@ struct TestInventoryFreezeTests {
     }
   }
 
-  /// Recurses so a nested helper type (a spy declared beside the tests) owns only its OWN `@Test`
-  /// members and never steals its parent's.
   /// Where a declaration sits: its enclosing types, and which `#if` branch it is inside.
   ///
   /// The branch half exists because every clause is traversed. Mutually exclusive branches can declare
@@ -128,8 +141,14 @@ struct TestInventoryFreezeTests {
     func entering(branch label: String) -> Scope {
       Scope(types: types, branches: branches + [label])
     }
+    /// The type path alone. Stable across an `#if` condition being edited, which is why the baseline
+    /// is keyed by this and resolution is not.
+    func qualifiedName(of name: String) -> String {
+      (types + [name]).joined(separator: ".")
+    }
+
     func identity(of name: String) -> String {
-      let path = (types + [name]).joined(separator: ".")
+      let path = qualifiedName(of: name)
       return branches.isEmpty ? path : branches.joined(separator: "|") + "|" + path
     }
   }
@@ -140,28 +159,20 @@ struct TestInventoryFreezeTests {
     }
   }
 
+  /// Recurses so a nested helper type (a spy declared beside the tests) owns only its OWN `@Test`
+  /// members and never steals its parent's.
   private static func collect(
     from items: [CodeBlockItemSyntax.Item], file: String, scope: Scope,
     into state: inout ParseState
   ) {
     for item in items {
-      guard let decl = item.as(DeclSyntax.self) else {
-        // `#if DEBUG` wraps 43 suites in this repo. Descend through it rather than treating the
-        // indentation it introduces as structure, which is what the text lexer got wrong.
-        if let ifConfig = item.as(StmtSyntax.self)?.as(ExpressionStmtSyntax.self)?
-          .expression.as(IfConfigDeclSyntax.self)
-        {
-          let labels = branchLabels(of: ifConfig)
-          for (index, clause) in ifConfig.clauses.enumerated() {
-            if let elements = clause.elements?.as(CodeBlockItemListSyntax.self) {
-              collect(
-                from: elements.map(\.item), file: file,
-                scope: scope.entering(branch: labels[index]), into: &state)
-            }
-          }
-        }
-        continue
-      }
+      // `#if DEBUG` wraps 43 suites in this repo, and it arrives here as a DECL item, so
+      // `collect(decl:)` is what descends through it. An earlier version also tried an
+      // expression-statement shape; the compiler rejects that cast outright — `IfConfigDeclSyntax` is
+      // not in the `ExprSyntaxProtocol` hierarchy — so the branch could never fire and only emitted a
+      // deprecation warning. Removed rather than left as reassuring dead code, with
+      // `ifConfigSuiteIsFound` covering the path that does run.
+      guard let decl = item.as(DeclSyntax.self) else { continue }
       collect(decl: decl, file: file, scope: scope, into: &state)
     }
   }
@@ -183,6 +194,7 @@ struct TestInventoryFreezeTests {
 
     guard let named = namedTypeDecl(decl) else { return }
 
+    let qualifiedName = scope.qualifiedName(of: named.name)
     let identity = scope.identity(of: named.name)
     let declared = tagNames(in: Syntax(named.attributes))
     let classes = TestClass.allCases.filter { declared.contains($0.rawValue) }
@@ -199,8 +211,8 @@ struct TestInventoryFreezeTests {
     if directTests > 0 {
       state.records.append(
         SuiteRecord(
-          file: file, name: named.name, identity: identity, classes: classes,
-          testCount: directTests, boundaryCount: directBoundary))
+          file: file, name: named.name, qualifiedName: qualifiedName, identity: identity,
+          classes: classes, testCount: directTests, boundaryCount: directBoundary))
     }
   }
 
@@ -291,7 +303,14 @@ struct TestInventoryFreezeTests {
   /// `SwiftSyntax` preserves the backticks in `text`, so every literal comparison in this file missed
   /// the escaped spelling — invisibly for `@`Test``, which made a whole suite vanish from the gate AND
   /// from the reconciliation guard.
-  private static func identifierText(_ token: TokenSyntax) -> String { unescaped(token.text) }
+  /// `identifier?.name` is SwiftSyntax's OWN canonical, escaping-stripped identifier, and it is what
+  /// `EngineMutationInventoryFreezeTests` already reached for after its round 1 — its comment there
+  /// calls it "the general fix, not a backtick special case", which is exactly right and is why this
+  /// file now matches rather than hand-rolling a second answer. It is nil for a non-identifier token,
+  /// so the manual strip stays as the fallback rather than as the mechanism.
+  private static func identifierText(_ token: TokenSyntax) -> String {
+    token.identifier?.name ?? unescaped(token.text)
+  }
 
   private static func unescaped(_ name: some StringProtocol) -> String {
     let text = String(name)
@@ -345,17 +364,41 @@ struct TestInventoryFreezeTests {
   /// Flags.productOutcome)` declares no class, and counting it as one lets an untagged suite pass the
   /// ratchet and corrupts the printed split. A trait that MENTIONS an identifier has not been given it.
   ///
-  /// The callee must also be a LEADING-DOT member access, which is how Swift Testing's trait is written
-  /// and reached. `CustomTrait.tags(.productOutcome)` is a different type's method that happens to share
-  /// a basename, and counting it declared a class that was never declared — meaning, not spelling, so
-  /// normalisation cannot reach it. A suite that spells the real trait with an explicit base is
-  /// therefore reported undeclared, which is the loud direction: it names the file and asks for a tag.
+  /// The callee must also RESOLVE TO SWIFT TESTING'S TRAIT, which is a question about meaning and not
+  /// about spelling, so normalisation cannot answer it. `CustomTrait.tags(.productOutcome)` is another
+  /// type's method that merely shares a basename, and counting it declared a class nobody declared.
+  ///
+  /// Requiring a leading dot was the first answer and it was WRONG IN THE EXPENSIVE DIRECTION: the real
+  /// trait also type-checks written out as `Tag.List.tags(...)` or `Testing.Tag.List.tags(...)`, and
+  /// rejecting those tells an author their correctly-tagged suite is untagged — a confident wrong
+  /// subject, which this repo ranks as the worst failure a check can have. The base is therefore
+  /// accepted when it is absent or IS that canonical list type, and nothing else.
+  private static let canonicalTagListBase = "Tag.List"
+
+  private static func isTagsTraitCallee(_ callee: MemberAccessExprSyntax) -> Bool {
+    guard identifierText(callee.declName.baseName) == "tags" else { return false }
+    guard let base = expressionIdentity(callee.base) else { return callee.base == nil }
+    return base == canonicalTagListBase || base.hasSuffix("." + canonicalTagListBase)
+  }
+
+  /// A dotted name for a base EXPRESSION — `Tag.List` from `Testing.Tag.List` — built from nodes, so
+  /// escaping and trivia are gone before anything is compared.
+  private static func expressionIdentity(_ expr: ExprSyntax?) -> String? {
+    if let reference = expr?.as(DeclReferenceExprSyntax.self) {
+      return identifierText(reference.baseName)
+    }
+    if let member = expr?.as(MemberAccessExprSyntax.self) {
+      guard let base = expressionIdentity(member.base) else { return nil }
+      return base + "." + identifierText(member.declName.baseName)
+    }
+    return nil
+  }
+
   private static func tagNames(in syntax: Syntax) -> Set<String> {
     var found: Set<String> = []
     if let call = syntax.as(FunctionCallExprSyntax.self),
       let callee = call.calledExpression.as(MemberAccessExprSyntax.self),
-      callee.base == nil,
-      identifierText(callee.declName.baseName) == "tags"
+      isTagsTraitCallee(callee)
     {
       found.formUnion(memberAccessNames(in: Syntax(call.arguments)))
     }
@@ -401,7 +444,9 @@ struct TestInventoryFreezeTests {
     let keys = Set(
       text.split(separator: "\n", omittingEmptySubsequences: true)
         .map(String.init)
-        .filter { !$0.hasPrefix("#") && !$0.trimmingCharacters(in: CharacterSet.whitespaces).isEmpty })
+        .filter {
+          !$0.hasPrefix("#") && !$0.trimmingCharacters(in: CharacterSet.whitespaces).isEmpty
+        })
     return keys
   }
 
@@ -419,7 +464,9 @@ struct TestInventoryFreezeTests {
     if let attr = syntax.as(AttributeSyntax.self), attributeBaseName(attr) == "Test" {
       n += 1
     }
-    for child in syntax.children(viewMode: .sourceAccurate) { n += rawTestAttributeCount(in: child) }
+    for child in syntax.children(viewMode: .sourceAccurate) {
+      n += rawTestAttributeCount(in: child)
+    }
     return n
   }
 
@@ -445,7 +492,8 @@ struct TestInventoryFreezeTests {
       rawTotal += raw
       parsedTotal += attributed
       if raw != attributed {
-        let rel = url.path.hasPrefix(root + "/") ? String(url.path.dropFirst(root.count + 1)) : url.path
+        let rel =
+          url.path.hasPrefix(root + "/") ? String(url.path.dropFirst(root.count + 1)) : url.path
         mismatches.append("  \(rel): attributed \(attributed), found \(raw)")
       }
     }
@@ -459,8 +507,22 @@ struct TestInventoryFreezeTests {
 
   /// Rewrites the grandfather list. Env-gated so CI can never regenerate the thing it is checking against
   /// — a baseline that rewrites itself on failure is not a baseline.
-  /// Run: `EW_WRITE_TEST_INVENTORY_BASELINE=1 scripts/xcode-test.sh --filter EnviousWisprTests/TestInventoryFreezeTests`
+  ///
+  /// Run, and the prefix is load-bearing:
+  /// ```
+  /// TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE=1 \
+  ///   scripts/xcode-test.sh --filter EnviousWisprTests/TestInventoryFreezeTests
+  /// ```
   /// then review the diff.
+  ///
+  /// **The recipe here used to omit `TEST_RUNNER_`, and that version SILENTLY DID NOTHING.** A plain
+  /// variable is set on `xcodebuild`, which does not forward it to the xctest process that evaluates
+  /// this condition; only the `TEST_RUNNER_`-prefixed form is passed through, with the prefix stripped.
+  /// So the test reported `skipped`, the run printed `** TEST SUCCEEDED **` and `EXIT=0`, and the
+  /// baseline was untouched — an operator following the documented recipe would read the green as
+  /// "nothing needed regenerating". Measured 2026-08-18, and it is this PR's own subject one layer
+  /// over: an instruction whose failure is indistinguishable from success. The condition reads the
+  /// UNPREFIXED name because that is what the runner receives.
   @Test(
     "regenerate the grandfather list",
     .enabled(if: ProcessInfo.processInfo.environment["EW_WRITE_TEST_INVENTORY_BASELINE"] == "1"))
@@ -470,12 +532,14 @@ struct TestInventoryFreezeTests {
       # Untagged suites grandfathered at the time of writing.
       # Keyed by "<path>\t<suite>" — a file-level list let an untagged suite ride along beside a tagged
       # one, and let a new suite be appended to a listed file.
-      # Regenerate: EW_WRITE_TEST_INVENTORY_BASELINE=1 scripts/xcode-test.sh --filter EnviousWisprTests/TestInventoryFreezeTests
+      # Regenerate: TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE=1 scripts/xcode-test.sh --filter EnviousWisprTests/TestInventoryFreezeTests
+      # (the TEST_RUNNER_ prefix is required — without it the test silently skips and the run still greens)
       # Removing a line is always allowed. Adding one needs a stated reason.
       """
     let body = records.map(\.key).sorted().joined(separator: "\n")
     try (header + "\n" + body + "\n").write(
-      to: RepoRoot.sourceURL("scripts/test-inventory-baseline.txt"), atomically: true, encoding: .utf8)
+      to: RepoRoot.sourceURL("scripts/test-inventory-baseline.txt"), atomically: true,
+      encoding: .utf8)
     print("Wrote \(records.count) grandfathered suites.")
   }
 
@@ -498,7 +562,7 @@ struct TestInventoryFreezeTests {
       ambiguous.isEmpty,
       """
       suite(s) declare more than one class tag. A suite protects ONE of the four:
-      \(ambiguous.map { "  \($0.file) :: \($0.name) -> \($0.classes.map(\.rawValue))" }.joined(separator: "\n"))
+      \(ambiguous.map { "  \($0.file) :: \($0.qualifiedName) -> \($0.classes.map(\.rawValue))" }.joined(separator: "\n"))
       """)
 
     let undeclared = records.filter { $0.classes.isEmpty && !baseline.contains($0.key) }
@@ -506,7 +570,7 @@ struct TestInventoryFreezeTests {
       undeclared.isEmpty,
       """
       \(undeclared.count) suite(s) declare no test class:
-      \(undeclared.map { "  \($0.file) :: \($0.name)" }.joined(separator: "\n"))
+      \(undeclared.map { "  \($0.file) :: \($0.qualifiedName)" }.joined(separator: "\n"))
 
       Add one tag: .productOutcome | .driftGuard | .observabilityContract | .harnessContract
       Decide with: "when this fails, the user sees ___." Can you finish it? .productOutcome.
@@ -745,9 +809,9 @@ struct TestInventoryFreezeTests {
       host == "in-type"
       ? "@Suite(.tags(.productOutcome)) struct S { \(attribute) func a() {} }"
       : """
-        @Suite(.tags(.productOutcome)) struct S {}
-        extension S { \(attribute) func a() {} }
-        """
+      @Suite(.tags(.productOutcome)) struct S {}
+      extension S { \(attribute) func a() {} }
+      """
 
     let holding = Self.parse(source).filter { $0.testCount > 0 }
     #expect(
@@ -793,6 +857,69 @@ struct TestInventoryFreezeTests {
     #expect(s.classes.map(\.rawValue) == expected, "traits: \(traits)")
   }
 
+  /// The axis is HOW THE TRAIT'S BASE IS WRITTEN. Requiring a leading dot was wrong in the expensive
+  /// direction — the canonical trait also type-checks written out, and rejecting it tells an author a
+  /// correctly-tagged suite is untagged. Each accepted base is paired with a near-identical rejected
+  /// one, so widening it until it stops discriminating fails here instead of looking clean.
+  @Test(
+    "the trait is recognised by what its base RESOLVES TO, not by whether one was written",
+    arguments: [
+      // (base as written before `.tags(...)`, does it declare the class)
+      ("", true),
+      ("Tag.List", true),
+      ("Testing.Tag.List", true),
+      ("Tag.`List`", true),
+      // Rejected halves: another type's method that merely shares the basename.
+      ("CustomTrait", false),
+      ("MyThing.List", false),
+      ("Tag", false),
+      ("List", false),
+    ])
+  func traitIsRecognisedByWhatItsBaseResolvesTo(base: String, declares: Bool) throws {
+    let records = Self.parse(
+      "@Suite(\(base).tags(.productOutcome)) struct S { @Test func a() {} }")
+    let s = try #require(records.first { $0.name == "S" }, "no suite parsed for base: \(base)")
+    #expect(
+      s.classes.map(\.rawValue) == (declares ? ["productOutcome"] : []),
+      "base \"\(base)\" was \(s.classes.isEmpty ? "rejected" : "accepted") and should not have been"
+    )
+  }
+
+  /// The axis is WHETHER THE GRANDFATHER KEY CAN TELL TWO SUITES APART. Keying on the bare name meant a
+  /// NEW untagged suite inherited a listed neighbour's exemption — quiet, and the exact drift the
+  /// ratchet exists to stop.
+  @Test("two same-named nested suites in one file get distinct grandfather keys")
+  func grandfatherKeysDistinguishQualifiedSuites() throws {
+    let records = Self.parse(
+      """
+      enum OuterA { struct Inner { @Test func a() {} } }
+      enum OuterB { struct Inner { @Test func b() {} } }
+      """)
+    let keys = Set(records.filter { $0.testCount > 0 }.map(\.key))
+    #expect(keys.count == 2, "both suites shared one key, so one rides in on the other's listing")
+    #expect(
+      keys == ["probe.swift\tOuterA.Inner", "probe.swift\tOuterB.Inner"],
+      "keys were \(keys.sorted())")
+  }
+
+  @Test("a grandfather key does NOT change when an #if condition is edited")
+  func grandfatherKeysAreStableAcrossIfConditionEdits() throws {
+    func keys(condition: String) -> Set<String> {
+      Set(
+        Self.parse(
+          """
+          #if \(condition)
+            struct S { @Test func a() {} }
+          #endif
+          """
+        ).filter { $0.testCount > 0 }.map(\.key))
+    }
+    // Resolution carries the branch so a tag cannot cross one; the KEY must not, or renaming a build
+    // flag would silently make every suite under it look new and fail the ratchet.
+    #expect(keys(condition: "DEBUG") == keys(condition: "RELEASE"))
+    #expect(keys(condition: "DEBUG") == ["probe.swift\tS"])
+  }
+
   @Test(
     "a real-boundary receipt comes from a tags trait, never from an enablement condition",
     arguments: [
@@ -820,7 +947,8 @@ struct TestInventoryFreezeTests {
       struct Untagged {}
       extension Untagged { @Test func c() {} }
       """)
-    let tagged = try #require(records.first { $0.name == "Tagged" }, "the extension's tests vanished")
+    let tagged = try #require(
+      records.first { $0.name == "Tagged" }, "the extension's tests vanished")
     #expect(tagged.classes.map(\.rawValue) == ["productOutcome"])
     #expect(tagged.testCount == 1)
     #expect(
