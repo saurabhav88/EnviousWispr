@@ -186,6 +186,14 @@ struct ClipboardIsolationFreezeTests {
       // through it to the type being constructed — the same "what does this resolve to" question the
       // rest of this file asks about names.
       if let call = unwrappedBase?.as(FunctionCallExprSyntax.self) {
+        // `T.init()` spells the same construction as `T()`, and its callee is a member access named
+        // `init` — so recursing naively answers "init". Look through the explicit initialiser to the
+        // type, the same way `T()` is looked through.
+        if let member = call.calledExpression.as(MemberAccessExprSyntax.self),
+          identifierText(member.declName.baseName) == "init"
+        {
+          return trailingName(of: member.base)
+        }
         return trailingName(of: call.calledExpression)
       }
       if let reference = unwrappedBase?.as(DeclReferenceExprSyntax.self) {
@@ -377,9 +385,15 @@ struct ClipboardIsolationFreezeTests {
     let prefix = RepoRoot.url.path + "/"
     while let url = enumerator.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
-      // This file's own fixtures are string literals, which the parser excludes
-      // structurally — but skip it anyway so the guard can never police itself.
-      guard url.lastPathComponent != "ClipboardIsolationFreezeTests.swift" else { continue }
+      // THIS FILE IS SCANNED TOO. It used to exempt itself "so the guard can never police itself",
+      // which was backwards: an instrument that stops checking one file reports clean about that file
+      // forever, and the one file guaranteed to contain clipboard vocabulary is this one. Real
+      // clipboard access added here would have overwritten the developer's board with the scan green.
+      //
+      // The exemption's stated reason was this suite's fixtures, and it was already unnecessary: the
+      // fixtures are string literals and the parser excludes those STRUCTURALLY, which is the same
+      // control the `prosePasses` and `multilineStringPasses` rows assert. Removing the skip therefore
+      // costs no false positives and closes a self-exemption.
       let source = try String(contentsOf: url, encoding: .utf8)
       scanned += 1
       found += violations(
