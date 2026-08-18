@@ -2,6 +2,7 @@
 // logic (no network). Run: node --test (from workers/daily-report/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import worker, {
   easternYesterdayWindowUTC,
   resolveReportWindow,
@@ -403,14 +404,57 @@ for (const [name, over, expected] of SOLO_COUNTS) {
   });
 }
 
-test("adoption section: the solo sweep covers every count the formatter reads", () => {
-  // The sweep is only exhaustive if its list matches the data. A count added to
-  // `escapeRecovery` without a row above would be swept by nothing, and this is
-  // the assertion that says so rather than leaving it to be noticed.
+test("adoption section: the solo sweep is bound to the production query, not to a fixture", () => {
+  // THE FIRST VERSION OF THIS CHECK COMPARED THE SWEEP AGAINST `ER()`, WHICH IS
+  // A FIXTURE THIS FILE MAINTAINS. A column added to `totalsSql` and forgotten
+  // in the `escapeRecovery` mapping appears in NEITHER side, so the check passed
+  // on an omission it existed to catch — a completeness check that reads its own
+  // homework. Cloud review caught it.
+  //
+  // The authority is the SQL. Reading the source is the only way to reach it:
+  // the query is a local const built per call, so nothing exports it, and a
+  // second hand-maintained list would just relocate the same defect.
+  const adoptionSrc = readFileSync(new URL("../src/adoption.js", import.meta.url), "utf8");
+
+  const declared = [...adoptionSrc.matchAll(/\bAS\s+(er_[a-z_]+)/g)].map((m) => m[1]);
+  assert.ok(declared.length >= 7, `positive control: expected the er_* columns, found ${declared.length}`);
+
+  // Every column the query declares must be carried into the shape the
+  // formatter reads. The mapping is `camelCase: rowsToObjects(totals)[0]?.er_x`,
+  // so the column name appearing anywhere in that block is the binding.
+  // Sliced from INSIDE the braces: starting at `escapeRecovery: {` makes the
+  // block's own key one of its entries, and the key-extracting regex below then
+  // reports it as an eighth count that the fixture is missing. Caught on this
+  // check's first run.
+  const mappingOpen = adoptionSrc.indexOf("escapeRecovery: {");
+  const mappingBlock = adoptionSrc.slice(
+    mappingOpen + "escapeRecovery: {".length,
+    adoptionSrc.indexOf("},", mappingOpen)
+  );
+  const uncarried = declared.filter((col) => !mappingBlock.includes(col));
+  assert.deepEqual(uncarried, [], `declared in the query but never carried: ${uncarried.join(", ")}`);
+
+  // And every carried count must have a solo row. `keptUsers` is exempt by
+  // design: it QUALIFIES the kept clause ("N saved for M people") rather than
+  // gating a clause of its own, so driving it alone has no sentence to produce.
   const swept = new Set(SOLO_COUNTS.map(([name]) => name));
   const carried = Object.keys(ER().escapeRecovery);
   const unswept = carried.filter((k) => k !== "keptUsers" && !swept.has(k));
   assert.deepEqual(unswept, [], `these counts have no solo row: ${unswept.join(", ")}`);
+
+  // Closing the loop the other way: the fixture must not invent counts the
+  // production mapping does not produce, or the sweep would be exercising
+  // imaginary data. Both sides are read from the source — comparing a COUNT of
+  // declared columns against a COUNT of fixture keys does not work, because the
+  // snake-to-camel rename is not mechanical (`er_restored_clipboard_only`
+  // becomes `clipboardOnly`), so the names have to come from the mapping block
+  // itself rather than be derived.
+  const mappedKeys = [...mappingBlock.matchAll(/^\s*([a-zA-Z]+):/gm)].map((m) => m[1]);
+  assert.ok(mappedKeys.length >= 7, `positive control: expected mapped keys, found ${mappedKeys.length}`);
+  assert.deepEqual(
+    [...carried].sort(), [...mappedKeys].sort(),
+    "the fixture and the production mapping must carry exactly the same counts"
+  );
 });
 
 test("adoption section: a report predating the feature renders without it, and without throwing", () => {
