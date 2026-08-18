@@ -114,9 +114,35 @@ struct ClipboardIsolationFreezeTests {
       token.identifier?.name ?? token.text
     }
 
+    /// Strips spellings that change the SYNTAX and not the VALUE: parentheses, a one-element tuple, and
+    /// an `as` coercion. `to: (.general)` is the same argument as `to: .general` and reaches the same
+    /// process-global board, but the parentheses put a `TupleExprSyntax` between the label and the
+    /// member so a direct cast finds nothing and the scan reports clean.
+    ///
+    /// This is the class this whole PR keeps meeting — a comparison narrower than the language — arriving
+    /// as WRAPPING rather than as naming. Ask of any expression check what the compiler considers
+    /// transparent.
+    private static func unwrapped(_ expr: ExprSyntax) -> ExprSyntax {
+      if let tuple = expr.as(TupleExprSyntax.self), tuple.elements.count == 1,
+        let inner = tuple.elements.first?.expression
+      {
+        return unwrapped(inner)
+      }
+      if let cast = expr.as(AsExprSyntax.self) { return unwrapped(cast.expression) }
+      return expr
+    }
+
     private static func trailingName(of base: ExprSyntax?) -> String? {
-      if let reference = base?.as(DeclReferenceExprSyntax.self) { return reference.baseName.text }
-      if let member = base?.as(MemberAccessExprSyntax.self) { return member.declName.baseName.text }
+      // `identifierText` on BOTH halves. Normalising the member name and not the base left
+      // `` `NSPasteboard`.general `` unmatched — caught by this suite's own paired row rather than by
+      // review, which is the whole reason the rows are generated over the axis instead of hand-picked.
+      let unwrappedBase = base.map { unwrapped($0) }
+      if let reference = unwrappedBase?.as(DeclReferenceExprSyntax.self) {
+        return identifierText(reference.baseName)
+      }
+      if let member = unwrappedBase?.as(MemberAccessExprSyntax.self) {
+        return identifierText(member.declName.baseName)
+      }
       return nil
     }
 
@@ -126,7 +152,10 @@ struct ClipboardIsolationFreezeTests {
     /// expression however it is wrapped — the case a line-oriented scanner
     /// missed entirely, reporting a clean pass on a live write.
     override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
-      if node.declName.baseName.text == "general",
+      // `identifierText` here as well as in the implicit-member check: `NSPasteboard.`general`` is the
+      // same property, and `TokenSyntax.text` keeps the backticks. Normalising in only one of the two
+      // places is how a "fixed" spelling class comes back.
+      if Self.identifierText(node.declName.baseName) == "general",
         Self.trailingName(of: node.base) == "NSPasteboard"
       {
         violations.append(
@@ -171,7 +200,7 @@ struct ClipboardIsolationFreezeTests {
       // not see it: that one widened what counts as a base, and this is the case with NO base at all.
       // Same class as every other finding in this arc — a spelling the compiler treats as identical.
       let namesTheGlobalBoard = boardArguments.contains { argument in
-        guard let member = argument.expression.as(MemberAccessExprSyntax.self),
+        guard let member = Self.unwrapped(argument.expression).as(MemberAccessExprSyntax.self),
           member.base == nil
         else { return false }
         return Self.identifierText(member.declName.baseName) == "general"
@@ -434,10 +463,16 @@ struct ClipboardIsolationFreezeTests {
       (#"_ = PasteService.saveClipboard(from: .general)"#, 1),
       (#"PasteService.restoreClipboard(s, changeCountAfterPaste: 1, on: .general)"#, 1),
       (#"PasteService.copyToClipboard("x", to: NSPasteboard.general)"#, 1),
+      // Wrapping and escaping change the syntax, not the board.
+      (#"PasteService.copyToClipboard("x", to: (.general))"#, 1),
+      (#"PasteService.copyToClipboard("x", to: ((.general)))"#, 1),
+      (##"PasteService.copyToClipboard("x", to: NSPasteboard.`general`)"##, 1),
+      (##"PasteService.copyToClipboard("x", to: `NSPasteboard`.general)"##, 1),
       // Safe halves: a unique board, however it is spelled, must still pass.
       (#"PasteService.copyToClipboard("x", to: pb)"#, 0),
       (#"PasteService.copyToClipboard("x", to: NSPasteboard.withUniqueName())"#, 0),
       (#"_ = PasteService.saveClipboard(from: board)"#, 0),
+      (#"PasteService.copyToClipboard("x", to: (pb))"#, 0),
     ])
   func implicitGeneralInABoardPositionIsCaught(call: String, expected: Int) {
     let hits = Self.violations(
