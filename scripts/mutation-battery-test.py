@@ -941,6 +941,84 @@ for _label, _will_run, _want_refusal in [
     else:
         print(f"  ok  {_label}")
 
+# Swift Testing prints ✘ for a KNOWN issue and the lane still exits 0. A test wrapped in
+# `withKnownIssue` is explicitly configured NOT to go red, so crediting it with detecting a mutation
+# is a false CAUGHT — the direction that fails toward confidence.
+check_row("a known issue on a GREEN lane is SURVIVED, never CAUGHT",
+          (5, ['✘ Test "the guard holds" recorded a known issue'], True, "log", 0, 3.0),
+          expect_marker="SURV", expect_rc=1)
+
+# The exclusion's own case: a RED lane where the ONLY mention of the named test is a known issue. If
+# known-issue lines counted as failures this would score CAUGHT; excluded, the row is correctly not a
+# catch — something else made the lane red. The rc gate cannot cover this one, because the lane IS red.
+# The exclusion itself, driven directly. The stubbed-lane cases replace run_suite wholesale, so
+# anything parsed inside it is unreachable from them — a case aimed there passes while testing nothing.
+ran += 1
+_out = (
+    "Test run with 5 tests\n"
+    '✘ Test "the guard holds" recorded a known issue\n'
+    '✘ Test "some other case" recorded an issue\n'
+)
+_c, _f = battery.classify_lane_output(_out)
+if _c != 5:
+    failures.append(f"a known issue is not counted as a real failure — wrong count {_c}")
+elif any("the guard holds" in ln for ln in _f):
+    failures.append("a known issue is not counted as a real failure — it WAS: a withKnownIssue line "
+                    "reached the failure list, so a test told to tolerate the break would be credited")
+elif not any("some other case" in ln for ln in _f):
+    failures.append("a known issue is not counted as a real failure — but a REAL failure was dropped")
+else:
+    print("  ok  a known issue is not counted as a real failure")
+
+# The accepted counterpart: the same named test on a RED lane is a genuine catch.
+check_row("the same named test on a RED lane is still CAUGHT",
+          (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0),
+          expect_marker="ok", expect_rc=0)
+
+# A timeout must kill the whole process GROUP. xcodebuild spawns the test runner as a descendant, so
+# killing only the parent leaves a hung mutant test process holding the shared DerivedData and writing
+# logs while later rows run — corrupting their verdicts after the source has been restored.
+ran += 1
+import subprocess as _sp, os as _os2, time as _t2
+# A UNIQUE path per run, and a SELF-TERMINATING child. Both matter: a mutation control on this very
+# guard breaks the group kill by design, which leaks the descendant — it reparents to init and keeps
+# writing forever. With a shared path that orphan then fails this case on every LATER run, so the test
+# reports a broken guard about code that is fine. Measured exactly that way. The bounded loop caps a
+# leaked orphan's life at ~10s; the unique path means it cannot poison anyone else meanwhile.
+_probe = Path(tempfile.mkdtemp(prefix="ew-battery-groupkill-")) / "probe"
+try:
+    # The child must NOT inherit the pipe: communicate() waits for every writer to close it, so an
+    # inherited stdout makes the post-kill wait last as long as the child does — which masks exactly
+    # the defect under test. Redirected, so the wait returns as soon as the parent is gone.
+    # The loop is bounded so a leaked orphan expires (the control breaks this guard by design, which
+    # leaks one), but LONGER than the sampling window below, or the child would finish on its own and
+    # the case would pass whether or not the group was killed. The finally sweeps any survivor.
+    battery.run(["/bin/sh", "-c",
+                 f"(for _ in $(seq 1 200); do echo x >> {_probe}; sleep 0.2; done >/dev/null 2>&1 &) ; "
+                 f"sleep 30"],
+                cwd=tempfile.gettempdir(), timeout=2)
+    failures.append("a timeout kills the whole process group — run() did not even time out")
+except _sp.TimeoutExpired:
+    _t2.sleep(1.0)
+    _size_after_kill = _probe.stat().st_size if _probe.exists() else 0
+    _t2.sleep(1.0)
+    _size_later = _probe.stat().st_size if _probe.exists() else 0
+    if _size_later != _size_after_kill:
+        failures.append("a timeout kills the whole process group, not just the direct child — it does "
+                        f"NOT: a descendant kept writing after the kill ({_size_after_kill} then "
+                        f"{_size_later} bytes)")
+    else:
+        print("  ok  a timeout kills the whole process group, not just the direct child")
+finally:
+    # Sweep any descendant that outlived the run — guaranteed to exist whenever the control breaks the
+    # group kill, and it would otherwise reparent to init and outlive the suite.
+    _sp.run(["pkill", "-9", "-f", str(_probe)], capture_output=True)
+    _probe.unlink(missing_ok=True)
+    try:
+        _probe.parent.rmdir()
+    except OSError:
+        pass
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")

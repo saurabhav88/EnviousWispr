@@ -101,6 +101,10 @@ DEV_APP_PATTERN = os.environ.get(
     "EW_BATTERY_DEV_APP_PATTERN", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr")
 
 TEST_COUNT_RE = re.compile(r"Test run with (\d+) test")
+# Swift Testing prints ✘ for a KNOWN issue too, and the lane still exits 0. A test wrapped in
+# `withKnownIssue` is explicitly configured NOT to go red, so crediting it with detecting a mutation is
+# a false CAUGHT — the direction that fails toward confidence. Matched separately and excluded.
+KNOWN_ISSUE_RE = re.compile(r"✘ .*known issue.*")
 FAILURE_LINE_RE = re.compile(r"✘ .*")
 COMPILE_ERROR_RE = re.compile(r"^.*?: error: ", re.MULTILINE)
 
@@ -249,14 +253,58 @@ LANE_TIMEOUT_SECONDS = 1800
 
 
 def run(cmd, cwd, log_path=None, timeout=None):
-    """Run a command, optionally teeing to a per-row log. Never the shared fixed log path."""
-    proc = subprocess.run(
-        cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout, check=False
+    """Run a command, optionally teeing to a per-row log. Never the shared fixed log path.
+
+    On timeout this kills the whole PROCESS GROUP, not just the direct child. `xcodebuild` spawns the
+    test runner as a descendant, so killing only the parent leaves a hung mutant test process alive —
+    still holding the shared DerivedData and still writing logs while later rows run, which corrupts
+    their verdicts long after the source has been restored. The battery would look like it recovered.
+    Cloud review, PR #2158.
+    """
+    proc = subprocess.Popen(
+        cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        start_new_session=True,   # its own process group, so the kill below reaches descendants
     )
-    out = proc.stdout + proc.stderr
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+        rc = proc.returncode
+    except subprocess.TimeoutExpired:
+        # Kill the GROUP, then re-raise. The raise is the existing contract — the row loop turns it into
+        # a row ERROR with a timeout-specific message — and changing it here would have quietly widened
+        # a bug fix into a behaviour change. Only the cleanup was wrong.
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
+        try:
+            out, _ = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            out = ""
+        if log_path is not None:
+            Path(log_path).write_text(
+                (out or "") + f"\n[mutation-battery] timed out after {timeout}s; group killed\n")
+        raise
     if log_path is not None:
-        Path(log_path).write_text(out)
-    return proc.returncode, out
+        Path(log_path).write_text(out or "")
+    return rc, out or ""
+
+
+def classify_lane_output(out: str):
+    """Split a lane's output into (executed count, REAL failure lines).
+
+    Extracted so it can be tested without a build: the self-test's stubbed lane replaces `run_suite`
+    wholesale, so anything parsed inside it is unreachable from those cases — a check aimed there would
+    pass while testing nothing.
+
+    Swift Testing prints ✘ for a KNOWN issue as well, and the lane still exits 0. A test wrapped in
+    `withKnownIssue` is explicitly configured NOT to go red, so counting that line as a failure credits
+    it with detecting a mutation it was told to tolerate — a false CAUGHT.
+    """
+    counts = [int(n) for n in TEST_COUNT_RE.findall(out)]
+    count = sum(counts) if counts else None
+    known = set(KNOWN_ISSUE_RE.findall(out))
+    failures = [ln for ln in FAILURE_LINE_RE.findall(out) if ln not in known]
+    return count, failures
 
 
 class Lane:
@@ -321,9 +369,7 @@ class Lane:
                 f"catch ({log_path})")
         elapsed = time.monotonic() - started
 
-        counts = [int(n) for n in TEST_COUNT_RE.findall(out)]
-        count = sum(counts) if counts else None
-        failures = FAILURE_LINE_RE.findall(out)
+        count, failures = classify_lane_output(out)
         # A red lane with compiler diagnostics and no test summary never ran the tests.
         compiled = not (count is None and COMPILE_ERROR_RE.search(out) is not None)
         return count, failures, compiled, log_path, rc, elapsed
@@ -747,6 +793,15 @@ def main(argv=None):
                             f"executed ZERO tests, so this row is a verdict about nothing. Either the "
                             f"suite was renamed and the recipe is stale, or the filter never matched. "
                             f"Read the name off its @Suite declaration, never off the filename ({log})"
+                        )
+                    elif rc_run == 0:
+                        # A green lane cannot have caught anything. Reached when the only ✘ lines were
+                        # known issues, which Swift Testing prints while still exiting 0.
+                        verdict = "SURVIVED"
+                        detail = (
+                            f"{count} tests and the lane exited GREEN with the code broken. Any ✘ here "
+                            f"was a KNOWN issue, which is a test configured not to fail — it cannot "
+                            f"have detected the mutation ({log})"
                         )
                     elif any(row["expect_fail"] in line for line in failures):
                         verdict = "CAUGHT"
