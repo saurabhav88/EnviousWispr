@@ -17,7 +17,7 @@ import os
 /// documents. Cloud review caught it after the serialization was added.
 ///
 /// The lock is held ACROSS the suspensions instead. This is the repo's own
-/// pattern, not a new invention: `LocaleReservations` exists for the identical
+/// pattern, not a new invention: `LocaleClaims` exists for the identical
 /// reason on a different subject, and its doc records that four rounds of
 /// one-defect-per-round were the signal that patching was the problem.
 ///

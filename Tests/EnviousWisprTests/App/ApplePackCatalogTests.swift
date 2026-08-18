@@ -16,6 +16,52 @@ struct ApplePackCatalogTests {
     func note(_ call: String) { calls.append(call) }
   }
 
+  /// A real `LocaleClaims` over a fake inventory, journalling every claim and release.
+  ///
+  /// The catalogue no longer carries its own reserve/release seams — #2145 found the recognizer's
+  /// copy and this one making different decisions about a claim neither owned — so these tests now
+  /// drive the SAME transaction production uses instead of a stand-in for it.
+  private func makeClaims(journal: Journal, reserved: [String] = []) -> LocaleClaims {
+    let box = ReservedBox(reserved)
+    return LocaleClaims(
+      inventory: LocaleInventory(
+        reserved: { await box.locales() },
+        reserve: { locale in
+          await journal.note("reserve:\(locale.identifier(.bcp47))")
+          return await box.add(locale.identifier(.bcp47))
+        },
+        release: { locale in
+          await journal.note("release:\(locale.identifier(.bcp47))")
+          return await box.remove(locale.identifier(.bcp47))
+        },
+        maximumReserved: { 5 }
+      ))
+  }
+
+  private actor InstalledBox {
+    private var tags: [String]
+    init(_ tags: [String]) { self.tags = tags }
+    var current: [String] { tags }
+    func add(_ tag: String) { tags.append(tag) }
+  }
+
+  private actor ReservedBox {
+    private var tags: [String]
+    init(_ tags: [String]) { self.tags = tags }
+    func locales() -> [Locale] { tags.map { Locale(identifier: $0) } }
+    func add(_ tag: String) -> Bool {
+      if tags.contains(tag) { return false }
+      tags.append(tag)
+      return true
+    }
+    func remove(_ tag: String) -> Bool {
+      guard let i = tags.firstIndex(of: tag) else { return false }
+      tags.remove(at: i)
+      return true
+    }
+    var current: [String] { tags }
+  }
+
   private func makeDeps(
     journal: Journal,
     supported: [String] = ["en-US", "fr-FR", "de-DE"],
@@ -31,8 +77,6 @@ struct ApplePackCatalogTests {
         await journal.note("installed")
         return installed
       },
-      reserve: { tag in await journal.note("reserve:\(tag)") },
-      release: { tag in await journal.note("release:\(tag)") },
       install: { tag in
         await journal.note("install:\(tag)")
         if installFails { throw LivePreviewError.localeUnavailable }
@@ -43,7 +87,8 @@ struct ApplePackCatalogTests {
   @Test("The snapshot marks exactly the installed languages, and enumerates without reserving")
   func snapshotMarksInstalledAndNeverReserves() async {
     let journal = Journal()
-    let catalog = ApplePackCatalog(dependencies: makeDeps(journal: journal))
+    let catalog = ApplePackCatalog(
+      dependencies: makeDeps(journal: journal), claims: makeClaims(journal: journal))
 
     let packs = await catalog.snapshot()
 
@@ -63,7 +108,8 @@ struct ApplePackCatalogTests {
   @Test("Installing reserves, installs, then releases, in that order")
   func installReservesInstallsReleases() async throws {
     let journal = Journal()
-    let catalog = ApplePackCatalog(dependencies: makeDeps(journal: journal))
+    let catalog = ApplePackCatalog(
+      dependencies: makeDeps(journal: journal), claims: makeClaims(journal: journal))
 
     _ = try await catalog.install(tag: "fr-FR")
 
@@ -81,7 +127,9 @@ struct ApplePackCatalogTests {
   @Test("A failed install still releases its reservation")
   func failedInstallStillReleases() async {
     let journal = Journal()
-    let catalog = ApplePackCatalog(dependencies: makeDeps(journal: journal, installFails: true))
+    let catalog = ApplePackCatalog(
+      dependencies: makeDeps(journal: journal, installFails: true),
+      claims: makeClaims(journal: journal))
 
     await #expect(throws: (any Error).self) {
       _ = try await catalog.install(tag: "fr-FR")
@@ -91,90 +139,59 @@ struct ApplePackCatalogTests {
     #expect(calls.contains("release:fr-FR"), "reservation leaked on the failure path: \(calls)")
   }
 
-  /// Review found this: the catalogue carried a SECOND, weaker copy of the reservation logic
-  /// that omitted the eviction step the recognizer already had. After previewing five different
-  /// languages the five slots are full, so the sixth Download would refuse and the button would
-  /// simply stop working for exactly the multilingual user this page exists for.
+  /// Review found this: the catalogue carried a SECOND, weaker copy of the reservation logic that
+  /// omitted the eviction step the recognizer already had, so after previewing five languages the
+  /// sixth Download refused and the button stopped working for exactly the multilingual user this
+  /// page exists for.
   ///
-  /// Asserted at the seam rather than against Apple: the point is that a full inventory does not
-  /// make installation impossible.
-  @Test("Installing still works when the reservation slots are already full")
+  /// #2145 removed the copy rather than aligning it: both halves now go through `LocaleClaims`.
+  /// The property this test protects is unchanged — a full table must not make installation
+  /// impossible — but it is now asserted against the real transaction.
+  @Test("Installing still works when the claim table is already full")
   func installSucceedsWhenReservationsAreFull() async throws {
     let journal = Journal()
-    let slots = FullSlots()
-    let deps = ApplePackCatalog.Dependencies(
-      supportedTags: { ["en-US", "fr-FR", "it-IT"] },
-      installedTags: { await slots.installed },
-      reserve: { tag in
-        await journal.note("reserve:\(tag)")
-        try await slots.reserve(tag)
-      },
-      release: { tag in
-        await journal.note("release:\(tag)")
-        await slots.release(tag)
-      },
-      install: { tag in
-        await journal.note("install:\(tag)")
-        await slots.markInstalled(tag)
-      }
-    )
-    let catalog = ApplePackCatalog(dependencies: deps)
+    let claims = makeClaims(journal: journal, reserved: ["a-AA", "b-BB", "c-CC", "d-DD"])
+    let installed = InstalledBox(["en-US"])
+    let catalog = ApplePackCatalog(
+      dependencies: .init(
+        supportedTags: { ["en-US", "fr-FR", "it-IT"] },
+        installedTags: { await installed.current },
+        install: { tag in await installed.add(tag) }
+      ),
+      claims: claims)
 
     let packs = try await catalog.install(tag: "it-IT")
 
     #expect(
       packs.first { $0.tag == "it-IT" }?.isInstalled == true,
-      "a full reservation table must not make installation impossible")
+      "a nearly-full claim table must not make installation impossible")
   }
 
-  /// Models Apple's five-slot table: a sixth claim must evict rather than refuse.
-  private actor FullSlots {
-    private var reserved: [String] = ["a", "b", "c", "d", "e"]
-    private(set) var installed: [String] = ["en-US"]
-    private let maximum = 5
-
-    func reserve(_ tag: String) async throws {
-      if reserved.contains(tag) { return }
-      if reserved.count >= maximum { reserved.removeFirst() }
-      guard reserved.count < maximum else { throw LivePreviewError.localeUnavailable }
-      reserved.append(tag)
-    }
-    func release(_ tag: String) { reserved.removeAll { $0 == tag } }
-    func markInstalled(_ tag: String) { installed.append(tag) }
-  }
-
-  /// The rule that eviction skips in-use claims is worth nothing unless the installer actually
-  /// REGISTERS its use, and that wiring is the half a unit test of the rule cannot see.
-  ///
-  /// Uses a tag no other suite touches, because the registry is process-wide and suites run in
-  /// parallel.
-  @Test("Installing registers its claim for the whole transfer, and gives it back afterwards")
+  /// The eviction rule is worth nothing unless the installer actually REGISTERS its use, and that
+  /// wiring is the half a unit test of the rule cannot see.
+  @Test("Installing holds its claim for the whole transfer, and gives it back afterwards")
   func installRegistersItsClaimWhileDownloading() async throws {
-    let tag = "qq-CATALOGTEST"
+    let tag = "qq-QQ"  // must survive BCP-47 normalisation: "qq-CATALOGTEST" collapses to "qq"
     let duringInstall = Gate()
     let releaseInstall = Gate()
     let observed = ObservedCount()
-    let released = ReleaseCount()
+    let journal = Journal()
+    let claims = makeClaims(journal: journal)
 
     let catalog = ApplePackCatalog(
       dependencies: .init(
         supportedTags: { [tag] },
         installedTags: { [tag] },
-        // Production's `reserve` routes to `ApplePreviewRecognizer.acquireLocaleForSession`, which
-        // registers the use atomically under the lock. The fake models that, or the test would
-        // be measuring its own omission rather than the catalogue.
-        reserve: { t in await LocaleReservations.shared.beginUse(t) },
-        release: { _ in await released.record() },
         install: { _ in
           // Mid-transfer: this is exactly when a recording could start and try to evict.
-          await observed.record(await LocaleReservations.shared.useCount(tag))
+          await observed.record(await claims.useCount(tag))
           await duringInstall.open()
           await releaseInstall.wait()
         }
-      ))
+      ),
+      claims: claims)
 
-    #expect(
-      await LocaleReservations.shared.useCount(tag) == 0, "control: nothing holds it beforehand")
+    #expect(await claims.useCount(tag) == 0, "control: nothing holds it beforehand")
 
     async let install: [LivePreviewPack] = catalog.install(tag: tag)
     #expect(await duringInstall.wait(), "the fake installer never ran")
@@ -185,90 +202,72 @@ struct ApplePackCatalogTests {
       await observed.value == 1,
       "the claim must be registered DURING the transfer, or eviction can take it mid-download")
     #expect(
-      await LocaleReservations.shared.useCount(tag) == 0,
+      await claims.useCount(tag) == 0,
       "and released afterwards, or the slot is locked for the rest of the process")
-    #expect(await released.count == 1, "with nobody else holding it, the reservation goes back")
+    #expect(
+      await journal.calls.contains("release:\(tag)"),
+      "with nobody else holding it, the system claim goes back — the #2145 receipt")
   }
 
   /// The other half, and the one that breaks a user: a recording can be transcribing the same
-  /// language this install reused, which is reachable whenever the row the user pressed was
-  /// stale. Releasing the shared system claim then takes the asset out from under an analyzer
-  /// that is still reading it.
-  @Test("Installing does not release a reservation another consumer is still using")
+  /// language this install reused, which is reachable whenever the row the user pressed was stale.
+  /// Releasing the shared system claim then takes the asset out from under an analyzer that is
+  /// still reading it.
+  @Test("Installing does not release a claim another consumer is still using")
   func installLeavesAReservationOthersStillNeed() async throws {
-    let tag = "qq-SHAREDTEST"
-    let released = ReleaseCount()
+    let tag = "zz-ZZ"  // ditto; a tag whose bcp47 form differs would key the registry elsewhere
+    let journal = Journal()
+    let claims = makeClaims(journal: journal)
 
     // A recording is already transcribing this language.
-    await LocaleReservations.shared.beginUse(tag)
-    defer { Task { await LocaleReservations.shared.endUse(tag) } }
+    try await claims.claim(Locale(identifier: tag), purpose: "session")
 
     let catalog = ApplePackCatalog(
       dependencies: .init(
         supportedTags: { [tag] },
         installedTags: { [tag] },
-        reserve: { t in await LocaleReservations.shared.beginUse(t) },
-        release: { _ in await released.record() },
         install: { _ in }
-      ))
+      ),
+      claims: claims)
 
     _ = try await catalog.install(tag: tag)
 
     #expect(
-      await released.count == 0,
+      await journal.calls.contains("release:\(tag)") == false,
       "releasing here drops the claim the in-flight recording is still reading assets through")
     #expect(
-      await LocaleReservations.shared.useCount(tag) == 1,
+      await claims.useCount(tag) == 1,
       "control: the recording's own registration survives the install")
+
+    await claims.finish(Locale(identifier: tag))
   }
 
-  /// Round 8: the release was NOT under the transaction lock, so a recording starting between the
-  /// count check and the release could have its claim dropped.
+  /// Round 8 of #2080 found the release sitting OUTSIDE the transaction lock, so a recording
+  /// starting between the count check and the release could have its claim dropped. That was a
+  /// property of the catalogue's own copy of the release path, and #2145 deleted that copy: there
+  /// is now one implementation, `LocaleClaims.finish`, which takes the lock before reading the
+  /// count and holds it past the release by construction.
   ///
-  /// **Asserted at SOURCE, deliberately.** The obvious behavioural test — have the fake's
-  /// `release` read the use count — passes identically with and without the lock, because nothing
-  /// in it competes for the interleaving; it would look like a regression test and prove nothing.
-  /// Driving a real interleaving would need a second task blocking on the very lock under test,
-  /// which pins a scheduling order rather than the property. What actually differs is that the
-  /// check and the release sit inside one locked section, so that is what is checked.
-  @Test("The download's release happens inside the reservation lock, not around it")
-  func releaseIsInsideTheTransactionLock() throws {
+  /// The source guard that used to live here is retargeted onto that method in
+  /// `LocaleClaimsTests.finishHoldsTheLockAcrossTheReleaseDecision`, because the property is now
+  /// about a function this file no longer contains.
+  @Test("The catalogue owns no claim policy of its own")
+  func catalogueCarriesNoClaimPolicy() throws {
     let url = RepoRoot.url.appending(
       path: "Sources/EnviousWisprLivePreview/Engines/ApplePackCatalog.swift")
     let source = LivePreviewNoAutoDownloadTests.codeOnly(
       try String(contentsOf: url, encoding: .utf8))
 
-    guard let start = source.range(of: "private func releaseIfUnused(") else {
-      Issue.record("releaseIfUnused not found; it was renamed or moved")
-      return
-    }
-    let rest = source[start.upperBound...]
-    let end = rest.range(of: "\n  }\n")?.lowerBound ?? rest.endIndex
-    let body = String(rest[..<end])
-
-    #expect(body.contains("endUse"), "control: the extracted body is the real release path")
     #expect(
-      body.contains("acquire()"),
-      """
-      the use check and the system release must be ONE locked step: unlocked, a recording can \
-      reserve between them and then lose the claim it just took
-      """)
-    guard
-      let locked = body.range(of: "acquire()")?.lowerBound,
-      let checked = body.range(of: "endUse")?.lowerBound,
-      let unlocked = body.range(of: "release()", options: .backwards)?.lowerBound
-    else {
-      Issue.record("could not locate the lock boundaries")
-      return
-    }
-    #expect(locked < checked, "the lock must be taken BEFORE the use count is read")
-    #expect(checked < unlocked, "and held until after the release decision has been acted on")
+      source.contains("claims.claim("), "control: the catalogue does still take a claim")
+    #expect(
+      source.contains("AssetInventory.release") == false,
+      "a second release path is how the two owners drifted apart in the first place")
+    #expect(
+      source.contains("reservedLocales") == false,
+      "capacity and eviction belong to LocaleClaims, not here")
   }
 
-  private actor ReleaseCount {
-    private(set) var count = 0
-    func record() { count += 1 }
-  }
 
   private actor ObservedCount {
     private(set) var value = -1
@@ -314,7 +313,8 @@ struct ApplePackCatalogTests {
   func installReturnsFreshState() async throws {
     let journal = Journal()
     let catalog = ApplePackCatalog(
-      dependencies: makeDeps(journal: journal, installed: ["en-US", "fr-FR"]))
+      dependencies: makeDeps(journal: journal, installed: ["en-US", "fr-FR"]),
+      claims: makeClaims(journal: journal))
 
     let packs = try await catalog.install(tag: "fr-FR")
 
@@ -386,7 +386,7 @@ struct LivePreviewNoAutoDownloadTests {
     // Two-way controls, one per body: prove each extraction found real code rather than an empty
     // string, which would make the assertions above pass vacuously.
     #expect(
-      bodies["func prepare() async throws {"]?.contains("acquireLocaleForSession") == true,
+      bodies["func prepare() async throws {"]?.contains("LocaleClaims.shared.claim(") == true,
       "control: the wrapper body must be real code")
     #expect(
       bodies["func performPrepare() async throws {"]?.contains("DictationTranscriber") == true,
@@ -421,12 +421,20 @@ struct LivePreviewNoAutoDownloadTests {
       body.contains("startSession"),
       "control: the extracted body must be real code, not an empty string")
     #expect(
-      body.contains("acquireLocaleForSession"),
+      body.contains("LocaleClaims.shared.claim("),
       """
-      openSession must re-assert the reservation AND register the session's use. A cached engine \
-      skips prepare() forever, so a claim evicted by another language's download is never retaken \
-      and preview fails with a missing-asset error that looks like a missing download.
+      openSession must re-assert the claim AND register the session's use. A cached engine skips \
+      prepare() forever, so a claim evicted by another language's download is never retaken and \
+      preview fails with a missing-asset error that looks like a missing download.
       """)
+    // The other half, added after the confirming review noted the guard asserted only acquisition:
+    // a claim taken here and not handed back on BOTH exits is the leak this whole issue is about.
+    #expect(
+      body.components(separatedBy: "LocaleClaims.shared.finish(").count - 1 == 1,
+      "the failure path must hand the claim back; the success path transfers it to the handle")
+    #expect(
+      body.contains("claimedLocale: locale"),
+      "success must transfer cleanup to the handle, or nothing ever releases it")
   }
 
   @Test("The only installer in the module is the catalogue the user drives")

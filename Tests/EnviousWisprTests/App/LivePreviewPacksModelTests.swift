@@ -15,6 +15,36 @@ import Testing
 @MainActor
 struct LivePreviewPacksModelTests {
 
+  /// A claim owner over a fake inventory. Required now that `ApplePackCatalog` has no `.shared`
+  /// default: cloud review on PR #2153 found that a catalogue with injected dependencies but no
+  /// claims silently reached the process-wide live `AssetInventory`, so a fully-faked-looking test
+  /// took a REAL claim on whatever machine ran it.
+  private func fakeClaims() -> LocaleClaims {
+    let box = TagBox()
+    return LocaleClaims(
+      inventory: LocaleInventory(
+        reserved: { await box.locales() },
+        reserve: { await box.add($0.identifier(.bcp47)) },
+        release: { await box.remove($0.identifier(.bcp47)) },
+        maximumReserved: { 5 }
+      ))
+  }
+
+  private actor TagBox {
+    private var tags: [String] = []
+    func locales() -> [Locale] { tags.map { Locale(identifier: $0) } }
+    func add(_ t: String) -> Bool {
+      if tags.contains(t) { return false }
+      tags.append(t)
+      return true
+    }
+    func remove(_ t: String) -> Bool {
+      guard let i = tags.firstIndex(of: t) else { return false }
+      tags.remove(at: i)
+      return true
+    }
+  }
+
   /// A one-shot latch. Deterministic hand-off between the test and the model's task, so no test
   /// here sleeps or polls on the happy path.
   ///
@@ -100,13 +130,12 @@ struct LivePreviewPacksModelTests {
           // whether the row is allowed to call itself failed.
           return landedAnyway ? ["en-US", "de-DE", "it-IT"] : ["en-US", "de-DE"]
         },
-        reserve: { _ in },
-        release: { _ in },
         install: { tag in
           await calls.noteInstall(tag)
           throw LivePreviewError.localeUnavailable
         }
-      ))
+      ),
+        claims: fakeClaims())
   }
 
   /// These tests are about the pack LIST, not about which language resolves. A stub keeps them
@@ -142,10 +171,9 @@ struct LivePreviewPacksModelTests {
         installedTags: {
           await script.isInstalled ? ["en-US", "it-IT"] : ["en-US"]
         },
-        reserve: { _ in },
-        release: { _ in },
         install: { _ in await script.markInstalled() }
-      ))
+      ),
+        claims: fakeClaims())
     let model = LivePreviewPacksModel(
       catalog: catalog, resolveActive: { _ in await script.next() })
 
@@ -174,13 +202,12 @@ struct LivePreviewPacksModelTests {
       dependencies: .init(
         supportedTags: { ["en-US", "it-IT"] },
         installedTags: { await script.isInstalled ? ["en-US", "it-IT"] : ["en-US"] },
-        reserve: { _ in },
-        release: { _ in },
         install: { _ in
           await script.markInstalled()
           throw LivePreviewError.localeUnavailable
         }
-      ))
+      ),
+        claims: fakeClaims())
     let model = LivePreviewPacksModel(
       catalog: catalog, resolveActive: { _ in await script.next() })
 
@@ -209,10 +236,9 @@ struct LivePreviewPacksModelTests {
       dependencies: .init(
         supportedTags: { ["en-US", "it-IT"] },
         installedTags: { ["en-US", "it-IT"] },
-        reserve: { _ in },
-        release: { _ in },
         install: { _ in }
-      ))
+      ),
+        claims: fakeClaims())
     let model = LivePreviewPacksModel(
       catalog: catalog,
       resolveActive: { mode in

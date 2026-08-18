@@ -45,8 +45,7 @@ import Speech
 ///    input waits forever. Only finalize when audio was actually fed.
 /// 3. Skipping `bestAvailableAudioFormat` crashes inside Apple's framework with
 ///    EXC_BREAKPOINT and no error, which reads like a caller bug.
-/// 4. Installing a language is NOT the same as claiming it. See
-///    `reserveLocale(_:)`.
+/// 4. Installing a language is NOT the same as claiming it. See `LocaleClaims`.
 @available(macOS 26.0, *)
 actor ApplePreviewRecognizer: LivePreviewEngine {
 
@@ -136,15 +135,14 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // is present. Registering protects it; the single `do/catch` below is what keeps the balance
     // honest, because `prepare()` has five exits and an earlier version that registered here
     // leaked one per prepared language.
-    try await Self.acquireLocaleForSession(locale)
-    let claimedTag = locale.identifier(.bcp47)
+    try await LocaleClaims.shared.claim(locale, purpose: "prepare")
     do {
       try await performPrepare()
     } catch {
-      await Self.endUse(claimedTag)
+      await LocaleClaims.shared.finish(locale)
       throw error
     }
-    // **Give the claim BACK, system reservation included.**
+    // **Give the claim BACK.**
     //
     // Keeping it was a warm-up optimisation, and it was the source of every eviction race in this
     // file: each language you previewed left a claim behind, so a multilingual user reached
@@ -152,19 +150,19 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // somebody else's. Recordings already return theirs when they end; warm-up was the one path
     // that did not.
     //
-    // What this establishes, exactly: held claims are now proportional to work IN FLIGHT rather
-    // than to the number of languages ever previewed. Before, previewing your sixth language was
-    // enough to reach the cap and stay there for the rest of the process; now nothing accumulates
-    // across recordings. Three code paths register a claim — warm-up (here), `openSession`, and
-    // the catalogue's download — each releasing on every exit.
+    // What this was SUPPOSED to establish — held claims proportional to work in flight rather than
+    // to the number of languages ever previewed — was false until #2145, because the release
+    // underneath handed macOS a `Locale` it could not match and did nothing at all. The wording is
+    // kept as a record of the trap: an invariant asserted in a comment is not an invariant, and this
+    // one survived four review rounds and two releases. It holds now because `LocaleClaims` reads
+    // the authority back instead of trusting a return flag.
     //
-    // NOT established, and deliberately not claimed: that the cap of five is now unreachable. That
-    // would need a bound on concurrent work, and there is none at this layer — the one-download-
-    // at-a-time rule lives in the settings model, not here. Eviction therefore remains a real path
-    // and keeps its tests; this change removes the accumulation that made it routine.
+    // Still NOT claimed: that the cap of five is unreachable. That would need a bound on concurrent
+    // work, and there is none at this layer — the one-download-at-a-time rule lives in the settings
+    // model. Eviction remains a real path and keeps its tests.
     //
-    // The cost is one inventory call at `openSession`, which already re-acquires anyway.
-    await Self.endUse(claimedTag)
+    // The cost is measured: ~3 ms to return a claim, 0.3 ms to take it again at `openSession`.
+    await LocaleClaims.shared.finish(locale)
   }
 
   /// The warm-up itself. Runs inside `prepare()`'s registration.
@@ -216,115 +214,6 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // rather than a finalize: trap 2's hang applies to FINALIZING an analyzer that
     // received no input, not to cancelling one.
     await warmAnalyzer.cancelAndFinishNow()
-  }
-
-  /// Claim a locale for this process before transcribing in it.
-  ///
-  /// **Installing is not provisioning, and skipping this does not fail at install.**
-  /// The installer reports success and `installedLocales` lists the language; the
-  /// failure arrives later at transcription as "No GeneralASR asset for language
-  /// de", which reads as a missing download and sends the investigation the wrong
-  /// way. Cost three rounds on #1988 before it was understood.
-  ///
-  /// `maximumReservedLocales` is 5 on macOS 26.6 and exceeding it is a runtime
-  /// refusal (`SFSpeechError` code 11), so a sixth claim evicts the oldest rather
-  /// than throwing. The reservation is per-app and does not survive the process.
-  /// **Serialized as a whole, because read/evict/reserve is a TRANSACTION.** Two callers share
-  /// it now — a recording claiming the language it is about to transcribe, and the settings page
-  /// claiming one it is about to download — and pressing Download does not stop the record key
-  /// working. Both suspend three times inside here, so without the lock both can act on the same
-  /// five-slot reading, both decide to evict, or one reserve into a table the other just filled
-  /// and take Apple's refusal while capacity was recoverable. Whoever loses fails silently: no
-  /// preview, or a download that did not happen.
-  ///
-  /// The lock is held ACROSS the suspensions. An actor would not do — see `LocaleReservations`
-  /// for why reentrancy makes actor isolation the wrong tool for this specific job.
-  ///
-  /// **Reserving and registering the USE are ONE step, both under the lock.** A claim taken and
-  /// then evicted before it is consumed is worth nothing, and the lock cannot stay held across a
-  /// 30-second download, so the registration is what protects it afterwards. Registering after
-  /// unlocking would leave the claim reading as unused for exactly as long as it takes the next
-  /// caller through the lock to evict it — the same defect as no registration at all, only
-  /// harder to see. Doing both here means no caller can forget the pairing.
-  ///
-  /// **Every caller must pair this with `LocaleReservations.shared.endUse`**, and release the
-  /// system reservation only when that returns zero.
-  package static func reserveLocale(_ locale: Locale) async throws {
-    await LocaleReservations.shared.acquire()
-    do {
-      try await performReservation(locale)
-    } catch {
-      await LocaleReservations.shared.release()
-      throw error
-    }
-    await LocaleReservations.shared.release()
-  }
-
-  /// Reserve AND register a long-lived use, in ONE locked step. **Caller MUST pair this with
-  /// `endUse`.**
-  ///
-  /// **Two entry points, because one of them cannot be balanced safely.** `prepare()` leaves
-  /// through five exits (three guards, a catch, and the end), so making IT register a use meant
-  /// balancing all five — and the version that tried leaked one registration per prepared
-  /// language, monotonically, until the registry considered everything in use and the eviction
-  /// protection silently degraded to its fallback. Splitting the API makes that leak
-  /// unexpressible rather than handled: `reserveLocale` registers nothing and needs no pairing,
-  /// and only a caller with a clear end (a session, a download) takes the registering variant.
-  ///
-  /// Registration stays INSIDE the lock, which is the whole reason this is not two calls: between
-  /// an unlocked reserve and a later register, the claim reads as unused and the next caller
-  /// through the lock can evict it.
-  ///
-  /// A claim taken by `reserveLocale` may therefore be evicted before it is used. That is
-  /// acceptable: it is a warm-up optimisation, and every consumer that actually depends on it
-  /// takes it again here.
-  package static func acquireLocaleForSession(_ locale: Locale) async throws {
-    await LocaleReservations.shared.acquire()
-    do {
-      try await performReservation(locale)
-      await LocaleReservations.shared.beginUse(locale.identifier(.bcp47))
-    } catch {
-      await LocaleReservations.shared.release()
-      throw error
-    }
-    await LocaleReservations.shared.release()
-  }
-
-  /// The transaction itself. Runs only under `LocaleReservations`' lock.
-  private static func performReservation(_ locale: Locale) async throws {
-    let wanted = locale.identifier(.bcp47)
-    let already = await AssetInventory.reservedLocales
-    if already.contains(where: { $0.identifier(.bcp47) == wanted }) { return }
-    if already.count >= AssetInventory.maximumReservedLocales {
-      // Never evict a claim someone is still using. Apple's inventory knows only "reserved or
-      // not", so this asks the one thing that knows "still needed" — otherwise the sixth
-      // download can take the language the current recording is transcribing, and the preview
-      // dies with a missing-asset error that reads as a missing download.
-      let candidates = await LocaleReservations.shared.evictable(
-        from: already.map { $0.identifier(.bcp47) })
-      if let victim = candidates.first {
-        _ = await AssetInventory.release(reservedLocale: Locale(identifier: victim))
-      }
-    }
-    // The Bool matters, but it is NOT a success flag, and reading it as one was a
-    // defect of its own. Measured against the real API: reserving a locale that is
-    // already reserved returns FALSE, not true. So false means "did not newly
-    // reserve", which covers both a genuine refusal and the entirely healthy case
-    // where the claim was already held — including where the early-return check
-    // above missed it because Apple reports an equivalent identifier variant.
-    //
-    // Treating false as failure would disable the preview on a machine that has
-    // exactly the reservation it needs. Treating it as success would restore the
-    // original defect: `prepare()` reporting ready for a locale never claimed, then
-    // being CACHED, so every later recording reuses a broken recognizer and the
-    // failure surfaces far away as a missing-asset complaint.
-    //
-    // Ask the authority instead of inferring from the return value.
-    if try await AssetInventory.reserve(locale: locale) { return }
-    let nowReserved = await AssetInventory.reservedLocales
-    guard nowReserved.contains(where: { $0.identifier(.bcp47) == wanted }) else {
-      throw LivePreviewError.localeUnavailable
-    }
   }
 
   /// Turn our ISO 639-1 language code into one of the recognizer's locales, or nil
@@ -383,39 +272,25 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // slot too, so downloading a language can evict the very locale this engine is previewing.
     //
     // Losing it is silent HERE and surfaces far away as "No GeneralASR asset for language
-    // <x>", which reads as a missing download and sends the investigation the wrong way — see
-    // the note on `reserveLocale`, where that cost three rounds on #1988. The engine now
-    // guarantees its own precondition instead of trusting that nothing disturbed it, which
-    // covers every way a claim can be lost rather than only the one we found.
+    // <x>", which reads as a missing download and sends the investigation the wrong way — that
+    // cost three rounds on #1988. The engine guarantees its own precondition instead of trusting
+    // that nothing disturbed it, which covers every way a claim can be lost rather than only the
+    // one we found.
     //
-    // Cheap: `acquireLocaleForSession` returns immediately when the claim is already held, so the
+    // Cheap: claiming returns immediately when the claim is already held (0.2 ms measured), so the
     // steady state is one inventory read per recording and no eviction.
-    // Reserving also REGISTERS this session's use, atomically, so the claim cannot be evicted
-    // between being taken and being used. Released in `ApplePreviewSessionHandle.end()`, which
-    // the coordinator always calls — and if some path ever fails to, `evictable(from:)` fails
-    // soft rather than refusing every future download.
-    try await Self.acquireLocaleForSession(locale)
-    let tag = locale.identifier(.bcp47)
+    // Claiming also REGISTERS this session's use, atomically, so the claim cannot be evicted
+    // between being taken and being used. Released in `ApplePreviewSessionHandle.end()`, which the
+    // coordinator always calls.
+    try await LocaleClaims.shared.claim(locale, purpose: "session")
     do {
       let session = try await startSession(lookups: lookups, onText: onText)
-      return ApplePreviewSessionHandle(recognizer: self, session: session, reservedTag: tag)
+      return ApplePreviewSessionHandle(
+        recognizer: self, session: session, claimedLocale: locale)
     } catch {
-      await Self.endUse(tag)
+      await LocaleClaims.shared.finish(locale)
       throw error
     }
-  }
-
-  /// Give up one consumer's claim, releasing the system reservation only when nobody is left.
-  ///
-  /// **The zero check is the point.** A recording ending must not drop a claim a download is
-  /// still using, and vice versa — they legitimately overlap on the same language.
-  static func endUse(_ tag: String) async {
-    await LocaleReservations.shared.acquire()
-    let remaining = await LocaleReservations.shared.endUse(tag)
-    if remaining == 0 {
-      _ = await AssetInventory.release(reservedLocale: Locale(identifier: tag))
-    }
-    await LocaleReservations.shared.release()
   }
 
   /// Open a session. `onText` is called on every result with the text the user
@@ -702,8 +577,13 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
 struct ApplePreviewSessionHandle: LivePreviewEngineSession {
   let recognizer: ApplePreviewRecognizer
   let session: ApplePreviewRecognizer.Session
-  /// The claim this session depends on, released back to the eviction pool when it ends.
-  let reservedTag: String
+  /// The locale whose use was registered, given back when the session ends.
+  ///
+  /// The `Locale`, not its tag: `LocaleClaims` converts it to a BCP-47 key and then selects the
+  /// inventory's OWN object, or an ICU-spelled fallback, before asking macOS to release. Handing a
+  /// tag round-tripped through `Locale(identifier:)` straight to macOS is exactly the spelling
+  /// mismatch that made every release in this app a no-op (#2145).
+  let claimedLocale: Locale
 
   func feed(_ samples: [Float]) async {
     await recognizer.feed(samples, session: session)
@@ -713,7 +593,7 @@ struct ApplePreviewSessionHandle: LivePreviewEngineSession {
     await recognizer.endSession(session)
     // After the analyzer is finished, never before: until then this locale's assets are still
     // being read and evicting the claim would break the recording in flight.
-    await ApplePreviewRecognizer.endUse(reservedTag)
+    await LocaleClaims.shared.finish(claimedLocale)
   }
 }
 
