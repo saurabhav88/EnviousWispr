@@ -42,12 +42,27 @@ EW_TUIST_PIN="${EW_TUIST_PIN:-tuist@4.195.11}"
 EW_GENERATION_MANIFESTS=(
   Project.swift
   Tuist.swift
+  Workspace.swift
   Package.swift
   Package.resolved
 )
 
 # Trees whose FILE SET changes what Tuist generates.
-EW_GENERATION_TREES=(Sources Tests Tuist)
+EW_GENERATION_TREES=(Sources Tests)
+
+# CODE TREES ARE HASHED BY CONTENT, AND THEY ARE A DIFFERENT KIND OF INPUT.
+# `Tuist/**/*.swift` holds project-description HELPERS: their code decides what
+# gets generated, so editing one changes the project while adding or removing no
+# source file at all. File-list hashing is right for `Sources`/`Tests`, where
+# Tuist captures globs, and WRONG here — it would reuse a stale project after a
+# helper edit, and the build would fail later wearing some other error's clothes.
+# One rule was being applied to two kinds of input that need different rules.
+# CI already draws this line: `.github/actions/xcode-ci-setup/action.yml` hashes
+# `Tuist/**/*.swift` CONTENTS in its cache key.
+# LATENT TODAY, FIXED ANYWAY: neither `Tuist/` nor `Workspace.swift` exists in
+# this repo yet. Both are hypothetical until someone adds one — and the failure
+# would be SILENT, which is the case this repo says to write code for.
+EW_GENERATION_CODE_TREES=(Tuist)
 
 # Prints a sha256 over every generation input. Fails (non-zero, no output) rather
 # than printing a PARTIAL key: a half-computed key that happens to match is worse
@@ -77,7 +92,12 @@ ew_generation_key_impl() {
     printf 'pin:%s\n' "${digest%% *}"
     for f in "${EW_GENERATION_MANIFESTS[@]}"; do
       [ -f "$root/$f" ] || continue
-      digest="$(shasum -a 256 "$root/$f")" || exit 1
+      # Read from STDIN so the CHECKOUT PATH is not part of the hash. `shasum
+      # <file>` prints "<hash>  <path>", so hashing that output makes the same
+      # manifest produce a different key in a differently-named worktree —
+      # harmless for correctness, since the key is only ever compared within one
+      # checkout, but it forces a needless regenerate after a move or rename.
+      digest="$(shasum -a 256 < "$root/$f")" || exit 1
       printf 'manifest:%s:%s\n' "$f" "${digest%% *}"
     done
     for d in "${EW_GENERATION_TREES[@]}"; do
@@ -87,6 +107,21 @@ ew_generation_key_impl() {
         perl -0MDigest::SHA=sha256_hex -ne 'chomp; print sha256_hex($_), "\n"' |
         LC_ALL=C sort)" || exit 1
       printf 'tree:%s\n%s\n' "$d" "$rows"
+    done
+    for d in "${EW_GENERATION_CODE_TREES[@]}"; do
+      [ -d "$root/$d" ] || continue
+      # Path AND content for each file, so a rename and an edit both move the key.
+      # Same NUL-delimited, hash-each-token construction as above: joining raw
+      # paths would let a newline in a filename forge a collision.
+      rows="$(find "$root/$d" -type f -print0 |
+        perl -0MDigest::SHA=sha256_hex -ne '
+          chomp;
+          open(my $fh, "<:raw", $_) or exit 1;
+          local $/; my $body = <$fh>; close $fh;
+          print sha256_hex($_), ":", sha256_hex(defined $body ? $body : ""), "\n";
+        ' |
+        LC_ALL=C sort)" || exit 1
+      printf 'codetree:%s\n%s\n' "$d" "$rows"
     done
   } | shasum -a 256 | awk '{print $1}'
 }

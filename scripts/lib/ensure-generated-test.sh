@@ -147,6 +147,40 @@ printf 'x\n' > "$FIXTURE/Sources/Mod/A"
 printf 'x\n' > "$FIXTURE/Sources/Mod/$(printf 'B\nTAIL')"
 check "newline-collision rename regenerates (key is not raw-joined)" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
 
+# A PROJECT-DESCRIPTION HELPER IS A DIFFERENT KIND OF INPUT, and the rule that
+# is right for `Sources`/`Tests` is wrong for it. Tuist captures source globs at
+# generation time, so a content edit under `Sources` changes nothing about the
+# project — but `Tuist/**/*.swift` is CODE THAT BUILDS THE PROJECT, so editing it
+# changes the output while adding and removing no file at all. Hashing the file
+# list alone reused a stale project and the build failed later wearing some other
+# error's clothes. CI already drew this line: `xcode-ci-setup/action.yml` hashes
+# these contents in its cache key.
+new_fixture; settle
+printf 'helper  // edited body\n' > "$FIXTURE/Tuist/Helper.swift"
+check "CONTENT-only Tuist HELPER edit DOES regenerate" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
+
+new_fixture; settle
+printf 'another\n' > "$FIXTURE/Tuist/Extra.swift"
+check "adding a Tuist helper DOES regenerate" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
+
+new_fixture; settle
+mv "$FIXTURE/Tuist/Helper.swift" "$FIXTURE/Tuist/Renamed.swift"
+check "renaming a Tuist helper DOES regenerate" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
+
+# `Workspace.swift` is a manifest CI hashes and this key did not list at all, so
+# adding one would have been invisible. Absent from the repo today; the failure
+# would be silent the moment somebody adds it, which is the case this repo says
+# to write code for.
+new_fixture; settle
+printf 'workspace\n' > "$FIXTURE/Workspace.swift"
+check "adding Workspace.swift DOES regenerate" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
+
+new_fixture
+printf 'workspace\n' > "$FIXTURE/Workspace.swift"
+settle
+printf 'workspace  // edited\n' > "$FIXTURE/Workspace.swift"
+check "editing Workspace.swift DOES regenerate" 1 "$(ew_ensure_generated "$FIXTURE" >/dev/null; generate_count)"
+
 # --- Direction 2: MUST NOT regenerate ---------------------------------------
 # These are the twins. Without them, a function that always regenerates would
 # pass every case above and the check would be worth nothing.
@@ -206,8 +240,8 @@ fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 # Fail closed on an empty run: zero assertions is not a pass.
-if [ "$((PASS + FAIL))" -lt 21 ]; then
-  printf 'ERROR: expected at least 21 assertions, ran %s — the harness did not run fully\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 26 ]; then
+  printf 'ERROR: expected at least 26 assertions, ran %s — the harness did not run fully\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

@@ -61,13 +61,39 @@ ew_pgrep_usable() {
   esac
 }
 
-# ew_wait_for_launch <app_path> [deciseconds] -> 0 launched, 1 did NOT, 2 could not tell
-# Polls a SIGNAL (the process exists) instead of sleeping a fixed interval, so a
-# fast launch costs milliseconds and a failed one is still caught.
+# ew_wait_for_launch <app_path> [deciseconds] [stability_deciseconds]
+#   -> 0 launched AND still alive, 1 did NOT launch or died on startup, 2 could not tell
+#
+# TWO PHASES, because APPEARING AND SURVIVING ARE DIFFERENT CLAIMS.
+# Phase one polls for the process, which is the fast part: a healthy launch is
+# detected in milliseconds instead of the fixed 3 s sleep this replaced.
+# Phase two then requires it to STILL BE THERE a moment later.
+#
+# Phase two is not padding — dropping it was a REGRESSION this change introduced.
+# An app that starts and crashes during initialisation is observed exactly once,
+# and the old `sleep 3` happened to catch that because it looked afterwards. The
+# poll looked EARLIER and reported `running` milliseconds before the process
+# exited. Faster and wrong.
+#
+# The stability window is deliberately shorter than the old sleep: it starts only
+# once the process exists, whereas the 3 s was paid before looking at all. A
+# healthy launch now costs roughly the window; a crash-on-startup is caught
+# instead of reported as success.
+#
+# It also re-reads the PID SET rather than trusting the first one. A process that
+# dies and is replaced by a relaunch is still a live app; a process that simply
+# dies is not, and only re-asking can tell them apart.
 ew_wait_for_launch() {
-  local app_path="$1" tries="${2:-50}" i
+  local app_path="$1" tries="${2:-50}" stable="${3:-8}" i j
   for ((i = 0; i < tries; i++)); do
     if [ -n "$(ew_launched_pids "$app_path")" ]; then
+      for ((j = 0; j < stable; j++)); do
+        sleep 0.1
+        if [ -z "$(ew_launched_pids "$app_path")" ]; then
+          echo "ew_wait_for_launch: the app appeared and then exited during startup" >&2
+          return 1
+        fi
+      done
       return 0
     fi
     sleep 0.1

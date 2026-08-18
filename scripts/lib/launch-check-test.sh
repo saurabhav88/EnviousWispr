@@ -121,8 +121,17 @@ else
 fi
 
 # --- 4. POSITIVE: wait returns quickly for an already-running app -------------
+# MEASURES THE DETECTION PATH ONLY, so the stability window is set to its minimum
+# here. This is not a raised budget dressed up: the window is a SEPARATE cost
+# with its own case below ("still costs less than the fixed 3s sleep"), and
+# folding the two into one number measures neither.
+# It went flaky at 1/8 when the window landed in this case's budget, and the
+# cause is worth keeping: `date +%s` has ONE-SECOND granularity, so 0.8 s of real
+# work straddles two boundaries and reads as 2. A sub-second cost cannot be
+# bounded by a whole-second clock at all — the assertion was measuring the phase
+# of the clock as much as the code.
 start=$(date +%s)
-if ew_wait_for_launch "$APP_A" 50; then
+if ew_wait_for_launch "$APP_A" 50 1; then
   elapsed=$(( $(date +%s) - start ))
   if [ "$elapsed" -le 1 ]; then
     ok "already-running app is detected immediately (${elapsed}s, not a fixed 3s wait)"
@@ -260,9 +269,59 @@ else
   bad "handler success path" "a successful launch produced an error: '$out'"
 fi
 
+# --- APPEARING AND SURVIVING ARE DIFFERENT CLAIMS -----------------------------
+# An app that starts and crashes during initialisation is observed exactly once.
+# The fixed 3 s sleep this check replaced caught that by accident, because it
+# looked afterwards; the first version of the poll looked EARLIER and reported
+# success milliseconds before the process exited — faster and wrong. A regression
+# introduced by the very change that made the check fast.
+# The fixture is a bundle whose executable exits on its own shortly after launch,
+# which is what a crash-on-startup looks like from outside.
+APP_CRASH="$(make_bundle crashes-on-startup)"
+"$APP_CRASH/Contents/MacOS/EnviousWispr" 0.3 >/dev/null 2>&1 &
+CRASH_PID=$!
+PIDS+=("$CRASH_PID")
+# ONE invocation, with rc and stderr captured together. Calling twice would be
+# wrong rather than merely wasteful: by the second call the process is long gone,
+# so it takes the never-appeared path and reports the same failure for a
+# completely different reason — a green that says nothing about the crash case.
+# stability window of 10 deciseconds, comfortably longer than the 0.3 s life.
+ew_wait_for_launch "$APP_CRASH" 20 10 2>"$TMP/crash.err" >/dev/null; crash_rc=$?
+crash_warn="$(cat "$TMP/crash.err")"
+if [ "$crash_rc" -eq 1 ]; then
+  ok "an app that appears and then EXITS during startup reports failure, not success"
+else
+  bad "crash on startup" "returned $crash_rc — a process seen once was treated as a successful launch"
+fi
+if printf '%s' "$crash_warn" | grep -q "appeared and then exited"; then
+  ok "the crash-on-startup failure NAMES itself, not just 'did not launch'"
+else
+  bad "crash message" "reported failure without distinguishing a crash from a no-show: '$crash_warn'"
+fi
+
+# THE TWIN, and without it a check that simply always failed would look correct:
+# a genuinely long-lived app must still pass, and must not be slowed to the old
+# fixed sleep. The window starts only once the process EXISTS, where the 3 s was
+# paid before looking at all.
+APP_LIVE="$(make_bundle survives-startup)"
+launch "$APP_LIVE"
+live_start=$(date +%s)
+ew_wait_for_launch "$APP_LIVE" 20 10 >/dev/null 2>&1; live_rc=$?
+live_elapsed=$(( $(date +%s) - live_start ))
+if [ "$live_rc" -eq 0 ]; then
+  ok "an app that stays up still reports success (the twin)"
+else
+  bad "live launch" "returned $live_rc for a process that is still running"
+fi
+if [ "$live_elapsed" -le 3 ]; then
+  ok "a healthy launch still costs less than the fixed 3s sleep it replaced (${live_elapsed}s)"
+else
+  bad "stability cost" "took ${live_elapsed}s — the stability window should start only once the process exists"
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 14 ]; then
-  printf 'ERROR: expected at least 14 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 18 ]; then
+  printf 'ERROR: expected at least 18 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1
