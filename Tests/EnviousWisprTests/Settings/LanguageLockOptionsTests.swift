@@ -19,6 +19,11 @@ import Testing
 /// the lift exists to prevent — this feature has already paid for one partial
 /// port (`ApplePackCatalog` carried a second copy of the locale claim logic
 /// without its evict-at-cap step, and the sixth Download silently refused).
+/// Class: **Product Outcome.** "When this fails, the user sees ___" completes as
+/// "a language lock they set and are not getting" — the picker accepts a code the
+/// engine cannot honour, the decoder silently falls back to auto-detect, and
+/// nothing on screen says so (#1678).
+@Suite(.tags(.productOutcome))
 @MainActor
 struct LanguageLockOptionsTests {
 

@@ -17,6 +17,11 @@ import Testing
 /// reading it, and the two cells that would have gone wrong silently — the
 /// unresolved-language case and the streaming refusal — are exactly the ones a
 /// reader skips.
+/// Class: **Product Outcome.** "When this fails, the user sees ___" completes as
+/// "a false claim about whether their preview works" — either the page says it is
+/// ready when nothing will appear, or it says something is wrong when the preview
+/// is fine. Both send somebody to the wrong place.
+@Suite(.tags(.productOutcome))
 @MainActor
 struct LivePreviewStatusMappingTests {
 
