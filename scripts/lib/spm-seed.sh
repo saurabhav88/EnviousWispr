@@ -240,9 +240,17 @@ ew_seed_localise() { # <staging tree> <final SourcePackages path>
   [ "$donor" = "$final" ] && return 0          # already local: nothing to do
   case "$donor" in */SourcePackages) ;; *) return 1 ;; esac
 
-  # /usr/bin/grep, NEVER the shell's `grep`: this environment aliases it to a
-  # ugrep shim that skips DOT-DIRECTORIES, so it reports 1 file here where the
-  # real grep reports 36. Every path that matters lives inside `.git/`.
+  # /usr/bin/grep, NEVER the shell's `grep`. This environment aliases `grep` to a
+  # ugrep shim carrying `--exclude-dir=.git` (plus .svn/.hg/.bzr/.jj/.sl) and
+  # `--ignore-files`, so it reports 1 file here where the real grep reports 36 —
+  # 35 of them inside `.git/`, which is where a checkout's object-store pointer
+  # lives by construction.
+  # IT IS NOT "SKIPS HIDDEN FILES", and the wrong version of this misleads:
+  # `--hidden` is ON, so `.hidden/` and `.dotfile` ARE searched (measured both
+  # ways). What is invisible is anything inside a VCS ADMIN directory, or inside
+  # a gitignored path — and the second half is DATA-dependent, so the same
+  # command from two checkouts can return different results with no error and no
+  # clue. No pattern refinement reaches either case.
   while IFS= read -r f; do
     [ -f "$f" ] || continue
     LC_ALL=C /usr/bin/sed -i '' "s|$donor|$final|g" "$f" 2>/dev/null || return 1
