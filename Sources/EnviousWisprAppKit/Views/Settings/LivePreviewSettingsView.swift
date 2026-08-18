@@ -105,6 +105,23 @@ struct LivePreviewSettingsView: View {
       activeDescribesAnotherLanguage: activeDescribesAnotherLanguage)
   }
 
+  /// Installed Apple packs, read LIVE from the model rather than snapshotted.
+  ///
+  /// The reactivity is the founder's actual requirement, not an implementation
+  /// detail: "if they download it from the bottom selection table, it should then
+  /// pop up into the selector." `install(tag:)` republishes the loaded list on its
+  /// way out, so a computed property re-evaluates and the sheet's next open — or
+  /// its current render — sees the new language. A stored copy taken when the page
+  /// appeared would show a language the user just downloaded as still missing.
+  ///
+  /// Empty while loading or on a read failure, which is correct: `.failed` means we
+  /// could not ask macOS, and offering a language we cannot confirm is installed is
+  /// the claim this page is not allowed to make.
+  private var installedPackTags: [String] {
+    guard case .loaded(let packs) = self.packs.state else { return [] }
+    return packs.filter(\.isInstalled).map(\.tag)
+  }
+
   /// **The ONE place the streaming refusal is read, for the same reason
   /// `currentActive` is the one place staleness is decided.**
   ///
@@ -193,7 +210,10 @@ struct LivePreviewSettingsView: View {
       // decoder falls back to auto-detect while the user believes they are
       // locked (#1678).
       LanguageLockSheet(
-        lockableCodes: LanguageLockOptions.lockableCodes(for: settings.selectedBackend))
+        lockableCodes: LanguageLockOptions.previewLockableCodes(
+          backend: settings.selectedBackend,
+          previewEngine: settings.livePreviewEngine,
+          installedPackTags: installedPackTags))
     }
   }
 
@@ -420,18 +440,22 @@ struct LivePreviewSettingsView: View {
       universalLanguageSection
     }
     if showsApplePacks, isPreviewOn, let active = currentActive {
+      // **TWO containers, not one — founder 2026-08-18, comparing the shipped
+      // page against his mockup: "you combined it into 1 container instead of
+      // keeping it 2 containers."** The language row is a CONTROL you act on; the
+      // explainer is background you read once. Folding them into a single card
+      // made the row look like a paragraph with a button in it, and buried the
+      // thing the user came here to change.
+      //
+      // Always visible rather than behind a disclosure: the whole problem was not
+      // knowing where the language comes from, and an explanation you must first
+      // discover does not solve that.
       BrandedSection(header: LivePreviewSettingsCopy.activeHeader) {
         BrandedRow(showDivider: false) {
-          VStack(alignment: .leading, spacing: 10) {
-            activeSummary(active)
-            // `InsetNotice` is the app's existing idiom for a quiet explanation
-            // inside a card. Always visible rather than behind a disclosure: the
-            // whole problem was not knowing where the language comes from, and
-            // an explanation you must first discover does not solve that.
-            InsetNotice(text: LivePreviewSettingsCopy.activeExplainer)
-          }
+          activeSummary(active)
         }
       }
+      InsetNotice(text: LivePreviewSettingsCopy.activeExplainer)
     }
   }
 
