@@ -99,7 +99,7 @@ struct TestInventoryFreezeTests {
   private static func suites(inSource source: String, file: String) -> [SuiteRecord] {
     let tree = Parser.parse(source: source)
     var state = ParseState()
-    collect(from: tree.statements.map(\.item), file: file, parent: [], into: &state)
+    collect(from: tree.statements.map(\.item), file: file, scope: Scope(), into: &state)
     return state.records.map { record in
       guard record.classes.isEmpty, let carried = state.tagCarriers[record.identity] else {
         return record
@@ -110,8 +110,38 @@ struct TestInventoryFreezeTests {
 
   /// Recurses so a nested helper type (a spy declared beside the tests) owns only its OWN `@Test`
   /// members and never steals its parent's.
+  /// Where a declaration sits: its enclosing types, and which `#if` branch it is inside.
+  ///
+  /// The branch half exists because every clause is traversed. Mutually exclusive branches can declare
+  /// the SAME type — a tagged `S` under `#if FEATURE` and an untagged `S` under `#else` — and pooling
+  /// their tags by name alone let the untagged one inherit a tag it never declared, silently, in either
+  /// configuration. Identity therefore includes the branch, so a tag never crosses one.
+  /// Consequence, and it is the loud direction: a suite declared inside `#if` whose extension sits
+  /// outside it resolves to nothing and is reported undeclared.
+  private struct Scope {
+    var types: [String] = []
+    var branches: [String] = []
+
+    func entering(type name: String) -> Scope {
+      Scope(types: types + [name], branches: branches)
+    }
+    func entering(branch label: String) -> Scope {
+      Scope(types: types, branches: branches + [label])
+    }
+    func identity(of name: String) -> String {
+      let path = (types + [name]).joined(separator: ".")
+      return branches.isEmpty ? path : branches.joined(separator: "|") + "|" + path
+    }
+  }
+
+  private static func branchLabels(of ifConfig: IfConfigDeclSyntax) -> [String] {
+    ifConfig.clauses.enumerated().map { index, clause in
+      "\(index):\(clause.poundKeyword.text):\(clause.condition?.trimmedDescription ?? "")"
+    }
+  }
+
   private static func collect(
-    from items: [CodeBlockItemSyntax.Item], file: String, parent: [String],
+    from items: [CodeBlockItemSyntax.Item], file: String, scope: Scope,
     into state: inout ParseState
   ) {
     for item in items {
@@ -121,25 +151,31 @@ struct TestInventoryFreezeTests {
         if let ifConfig = item.as(StmtSyntax.self)?.as(ExpressionStmtSyntax.self)?
           .expression.as(IfConfigDeclSyntax.self)
         {
-          for clause in ifConfig.clauses {
+          let labels = branchLabels(of: ifConfig)
+          for (index, clause) in ifConfig.clauses.enumerated() {
             if let elements = clause.elements?.as(CodeBlockItemListSyntax.self) {
-              collect(from: elements.map(\.item), file: file, parent: parent, into: &state)
+              collect(
+                from: elements.map(\.item), file: file,
+                scope: scope.entering(branch: labels[index]), into: &state)
             }
           }
         }
         continue
       }
-      collect(decl: decl, file: file, parent: parent, into: &state)
+      collect(decl: decl, file: file, scope: scope, into: &state)
     }
   }
 
   private static func collect(
-    decl: DeclSyntax, file: String, parent: [String], into state: inout ParseState
+    decl: DeclSyntax, file: String, scope: Scope, into state: inout ParseState
   ) {
     if let ifConfig = decl.as(IfConfigDeclSyntax.self) {
-      for clause in ifConfig.clauses {
+      let labels = branchLabels(of: ifConfig)
+      for (index, clause) in ifConfig.clauses.enumerated() {
         if let elements = clause.elements?.as(CodeBlockItemListSyntax.self) {
-          collect(from: elements.map(\.item), file: file, parent: parent, into: &state)
+          collect(
+            from: elements.map(\.item), file: file,
+            scope: scope.entering(branch: labels[index]), into: &state)
         }
       }
       return
@@ -147,7 +183,7 @@ struct TestInventoryFreezeTests {
 
     guard let named = namedTypeDecl(decl) else { return }
 
-    let identity = (parent + [named.name]).joined(separator: ".")
+    let identity = scope.identity(of: named.name)
     let declared = tagNames(in: Syntax(named.attributes))
     let classes = TestClass.allCases.filter { declared.contains($0.rawValue) }
     // Registered whether or not this declaration holds tests: a tag on a bodiless `@Suite struct S {}`
@@ -157,7 +193,7 @@ struct TestInventoryFreezeTests {
     var directTests = 0
     var directBoundary = 0
     countMembers(
-      named.members, file: file, parent: parent + [named.name],
+      named.members, file: file, scope: scope.entering(type: named.name),
       tests: &directTests, boundary: &directBoundary, into: &state)
 
     if directTests > 0 {
@@ -175,15 +211,16 @@ struct TestInventoryFreezeTests {
   /// like one hoisted its tests out of their suite: 144 tests across 14 files vanished, including two
   /// suites that reported ZERO. Caught by the reconciliation guard, not by reading the code.
   private static func countMembers(
-    _ members: MemberBlockItemListSyntax, file: String, parent: [String],
+    _ members: MemberBlockItemListSyntax, file: String, scope: Scope,
     tests: inout Int, boundary: inout Int, into state: inout ParseState
   ) {
     for member in members {
       if let ifConfig = member.decl.as(IfConfigDeclSyntax.self) {
-        for clause in ifConfig.clauses {
+        let labels = branchLabels(of: ifConfig)
+        for (index, clause) in ifConfig.clauses.enumerated() {
           if let nested = clause.elements?.as(MemberBlockItemListSyntax.self) {
             countMembers(
-              nested, file: file, parent: parent,
+              nested, file: file, scope: scope.entering(branch: labels[index]),
               tests: &tests, boundary: &boundary, into: &state)
           }
         }
@@ -191,7 +228,7 @@ struct TestInventoryFreezeTests {
       }
       guard let fn = member.decl.as(FunctionDeclSyntax.self) else {
         // Nested type: recurse, so its tests belong to IT.
-        collect(decl: member.decl, file: file, parent: parent, into: &state)
+        collect(decl: member.decl, file: file, scope: scope, into: &state)
         continue
       }
       guard let testAttribute = attribute(named: "Test", on: fn.attributes) else { continue }
@@ -206,36 +243,86 @@ struct TestInventoryFreezeTests {
     let members: MemberBlockItemListSyntax
   }
 
+  /// Every name here comes through `identifierText` / `typeIdentity`, so a declaration and its
+  /// extension recognise each other however either is spelled.
   private static func namedTypeDecl(_ decl: DeclSyntax) -> NamedType? {
     if let d = decl.as(StructDeclSyntax.self) {
-      return NamedType(name: d.name.text, attributes: d.attributes, members: d.memberBlock.members)
+      return NamedType(
+        name: identifierText(d.name), attributes: d.attributes, members: d.memberBlock.members)
     }
     if let d = decl.as(ClassDeclSyntax.self) {
-      return NamedType(name: d.name.text, attributes: d.attributes, members: d.memberBlock.members)
+      return NamedType(
+        name: identifierText(d.name), attributes: d.attributes, members: d.memberBlock.members)
     }
     if let d = decl.as(EnumDeclSyntax.self) {
-      return NamedType(name: d.name.text, attributes: d.attributes, members: d.memberBlock.members)
+      return NamedType(
+        name: identifierText(d.name), attributes: d.attributes, members: d.memberBlock.members)
     }
     if let d = decl.as(ActorDeclSyntax.self) {
-      return NamedType(name: d.name.text, attributes: d.attributes, members: d.memberBlock.members)
+      return NamedType(
+        name: identifierText(d.name), attributes: d.attributes, members: d.memberBlock.members)
     }
     if let d = decl.as(ExtensionDeclSyntax.self) {
       return NamedType(
-        name: d.extendedType.trimmedDescription, attributes: d.attributes,
-        members: d.memberBlock.members)
+        name: typeIdentity(d.extendedType) ?? d.extendedType.trimmedDescription,
+        attributes: d.attributes, members: d.memberBlock.members)
     }
     return nil
   }
 
-  /// The last component of an attribute's written name.
+  // MARK: - Names
+  //
+  // ONE PLACE READS A NAME, because two review rounds returned six findings that were all the same
+  // defect: A COMPARISON NARROWER THAN THE LANGUAGE. Switching from a lexer to a parser killed the
+  // eleven LEXICAL variants at once and did nothing for these, because these are spellings the compiler
+  // accepts as identical and a literal `==` does not. The set is enumerated rather than discovered one
+  // round at a time (codex-cli.md RULE: enumerate-the-class-when-review-rounds-repeat):
+  //
+  //   a. a backtick-escaped identifier      `Test`, `tags`, `productOutcome`, `Inner`
+  //   b. module or type qualification       Testing.Test
+  //   c. trivia inside a qualified name     Outer . Inner
+  //   d. the same basename on another type  CustomTrait.tags(...) is not Swift Testing's trait
+  //   e. one identity in exclusive #if branches, where a tag on one must not reach the other
+  //
+  // a-c are spelling and are normalised here. d and e are MEANING and are handled where they are read.
+
+  /// An identifier token's name with its escaping removed: `` `Test` `` and `Test` are one name.
   ///
-  /// An attribute may be MODULE-QUALIFIED — `@Testing.Test` is the same attribute as `@Test`, and
-  /// comparing the whole written name did not see it. `rawTestAttributeCount` repeated the identical
-  /// comparison, so the reconciliation guard AGREED with the mistake: a second traversal isolates only
-  /// the defects the two traversals do not SHARE, which is why both now read the name through here.
+  /// `SwiftSyntax` preserves the backticks in `text`, so every literal comparison in this file missed
+  /// the escaped spelling — invisibly for `@`Test``, which made a whole suite vanish from the gate AND
+  /// from the reconciliation guard.
+  private static func identifierText(_ token: TokenSyntax) -> String { unescaped(token.text) }
+
+  private static func unescaped(_ name: some StringProtocol) -> String {
+    let text = String(name)
+    guard text.count >= 2, text.hasPrefix("`"), text.hasSuffix("`") else { return text }
+    return String(text.dropFirst().dropLast())
+  }
+
+  /// A type's dotted name, built from its NODES rather than its description.
+  ///
+  /// Reading `trimmedDescription` carried whatever trivia the author wrote, so the legal `Outer . Inner`
+  /// did not match the `Outer.Inner` its own nested declaration produced. Walking the type structurally
+  /// removes the trivia and the escaping in one pass.
+  private static func typeIdentity(_ type: TypeSyntax) -> String? {
+    if let identifier = type.as(IdentifierTypeSyntax.self) {
+      return identifierText(identifier.name)
+    }
+    if let member = type.as(MemberTypeSyntax.self), let base = typeIdentity(member.baseType) {
+      return base + "." + identifierText(member.name)
+    }
+    return nil
+  }
+
+  /// The last component of an attribute's name: `Test` from `@Test`, `@Testing.Test`, ``@`Test` `` or
+  /// ``@Testing.`Test` ``. All four are the same attribute to the compiler.
+  ///
+  /// `rawTestAttributeCount` reads through here too. It repeated an identical comparison once and so
+  /// AGREED with the mistake instead of contradicting it — a second traversal isolates only the defects
+  /// the two traversals do not SHARE, which is the entire reason it exists.
   private static func attributeBaseName(_ attr: AttributeSyntax) -> String {
-    let written = attr.attributeName.trimmedDescription
-    return String(written.split(separator: ".").last ?? Substring(written))
+    let written = typeIdentity(attr.attributeName) ?? attr.attributeName.trimmedDescription
+    return unescaped(written.split(separator: ".").last ?? Substring(written))
   }
 
   private static func attribute(named name: String, on list: AttributeListSyntax)
@@ -257,11 +344,18 @@ struct TestInventoryFreezeTests {
   /// Reading EVERY member access was the next mistake, and it failed quietly: `.enabled(if:
   /// Flags.productOutcome)` declares no class, and counting it as one lets an untagged suite pass the
   /// ratchet and corrupts the printed split. A trait that MENTIONS an identifier has not been given it.
+  ///
+  /// The callee must also be a LEADING-DOT member access, which is how Swift Testing's trait is written
+  /// and reached. `CustomTrait.tags(.productOutcome)` is a different type's method that happens to share
+  /// a basename, and counting it declared a class that was never declared — meaning, not spelling, so
+  /// normalisation cannot reach it. A suite that spells the real trait with an explicit base is
+  /// therefore reported undeclared, which is the loud direction: it names the file and asks for a tag.
   private static func tagNames(in syntax: Syntax) -> Set<String> {
     var found: Set<String> = []
     if let call = syntax.as(FunctionCallExprSyntax.self),
       let callee = call.calledExpression.as(MemberAccessExprSyntax.self),
-      callee.declName.baseName.text == "tags"
+      callee.base == nil,
+      identifierText(callee.declName.baseName) == "tags"
     {
       found.formUnion(memberAccessNames(in: Syntax(call.arguments)))
     }
@@ -274,7 +368,7 @@ struct TestInventoryFreezeTests {
   private static func memberAccessNames(in syntax: Syntax) -> Set<String> {
     var found: Set<String> = []
     if let member = syntax.as(MemberAccessExprSyntax.self) {
-      found.insert(member.declName.baseName.text)
+      found.insert(identifierText(member.declName.baseName))
     }
     for node in syntax.children(viewMode: .sourceAccurate) {
       found.formUnion(memberAccessNames(in: node))
@@ -636,13 +730,17 @@ struct TestInventoryFreezeTests {
 
   @Test(
     "a test is recognised by its attribute's last component, wherever the suite's body lives",
-    arguments: ["@Test", "@Testing.Test", "@TestOnly", "@Testing.Suite"],
+    arguments: [
+      "@Test", "@`Test`", "@Testing.Test", "@Testing.`Test`", "@TestOnly", "@Testing.Suite",
+    ],
     ["in-type", "extension"])
   func attributeSpellingTimesHostSite(attribute: String, host: String) throws {
-    // `@Testing.Test` is the SAME attribute as `@Test`. A longer name is a different one. Matching the
-    // last component accepts `@AnyModule.Test` too, which can only ever over-count — and over-counting
+    // Qualification and escaping are the two ways Swift spells this one attribute, so all four accepted
+    // forms are the SAME attribute to the compiler. A longer name is a different attribute. Matching the
+    // last component also accepts `@AnyModule.Test`, which can only ever over-count — and over-counting
     // asks for a tag by name, the loud direction.
-    let expected = ["@Test": 1, "@Testing.Test": 1][attribute] ?? 0
+    let expected =
+      ["@Test": 1, "@`Test`": 1, "@Testing.Test": 1, "@Testing.`Test`": 1][attribute] ?? 0
     let source =
       host == "in-type"
       ? "@Suite(.tags(.productOutcome)) struct S { \(attribute) func a() {} }"
@@ -675,8 +773,16 @@ struct TestInventoryFreezeTests {
       (".tags([.driftGuard])", ["driftGuard"]),
       ("\"titled\", .tags(.harnessContract)", ["harnessContract"]),
       (".serialized, .tags(.observabilityContract)", ["observabilityContract"]),
+      // Escaping is spelling, not meaning: all three of these ARE the trait.
+      (".`tags`(.productOutcome)", ["productOutcome"]),
+      (".tags(.`productOutcome`)", ["productOutcome"]),
+      (".`tags`(.`driftGuard`)", ["driftGuard"]),
       // Rejected halves: a trait that MENTIONS a class name has not been given it.
       (".enabled(if: Flags.productOutcome)", []),
+      // A different type's method that merely SHARES the basename is not Swift Testing's trait. This one
+      // is meaning rather than spelling, so no amount of normalising reaches it — the base must be absent.
+      ("CustomTrait.tags(.productOutcome)", []),
+      ("Testing.Tag.tags(.harnessContract)", []),
       (".enabled(if: Flags.driftGuard), .serialized", []),
       (".bug(\"https://example.invalid\", \"observabilityContract\")", []),
       ("\"titled\"", []),
@@ -721,6 +827,54 @@ struct TestInventoryFreezeTests {
       try #require(records.first { $0.name == "Untagged" }).classes.isEmpty,
       "a neighbouring suite's tag leaked across types")
     #expect(try #require(records.first { $0.name == "Neighbour" }).testCount == 1)
+  }
+
+  @Test(
+    "a declaration and its extension recognise each other however either is SPELLED",
+    arguments: [
+      // (suite declaration, its extension) — every pair is one tagged suite holding one test.
+      ("@Suite(.tags(.productOutcome)) struct S {}", "extension S { @Test func a() {} }"),
+      ("@Suite(.tags(.productOutcome)) struct `S` {}", "extension S { @Test func a() {} }"),
+      ("@Suite(.tags(.productOutcome)) struct S {}", "extension `S` { @Test func a() {} }"),
+      (
+        "enum Outer { @Suite(.tags(.productOutcome)) struct Inner {} }",
+        "extension Outer . Inner { @Test func a() {} }"
+      ),
+      (
+        "enum Outer { @Suite(.tags(.productOutcome)) struct `Inner` {} }",
+        "extension Outer.Inner { @Test func a() {} }"
+      ),
+    ])
+  func identityIsSpellingIndependent(declaration: String, ext: String) throws {
+    let records = Self.parse(declaration + "\n" + ext)
+    let holding = records.filter { $0.testCount > 0 }
+    let suite = try #require(holding.first, "the extension's test reached no suite: \(ext)")
+    #expect(holding.count == 1)
+    #expect(
+      suite.classes.map(\.rawValue) == ["productOutcome"],
+      "the declaration's tag did not reach its extension: \(declaration) + \(ext)")
+  }
+
+  @Test("a tag never crosses mutually exclusive #if branches")
+  func tagsDoNotPoolAcrossIfConfigBranches() throws {
+    let records = Self.parse(
+      """
+      #if FEATURE
+        @Suite(.tags(.productOutcome)) struct S {}
+        extension S { @Test func a() {} }
+      #else
+        struct S {}
+        extension S { @Test func b() {} }
+      #endif
+      """)
+    let holding = records.filter { $0.testCount > 0 }
+    #expect(holding.count == 2, "expected one suite per branch, got \(holding.map(\.name))")
+    #expect(
+      holding.filter { $0.classes.isEmpty }.count == 1,
+      "the untagged branch inherited a tag it never declared")
+    #expect(
+      holding.filter { $0.classes.map(\.rawValue) == ["productOutcome"] }.count == 1,
+      "the tagged branch lost its own tag")
   }
 
   @Test("a nested suite and its extension recognise each other by QUALIFIED name")
