@@ -33,7 +33,10 @@ struct EscapeRecoveryRestoreTests {
       payload: payload,
       restorable: { _ in row },
       report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
-      retarget: { spy.retargeted.append($0.transcriptID) })
+      retarget: {
+        spy.retargeted.append($0.transcriptID)
+        return true
+      })
   }
 
   /// The pill's whole reason to exist over History.
@@ -108,7 +111,10 @@ struct EscapeRecoveryRestoreTests {
       payload: payload,
       restorable: { _ in ("kept", Date(), "take-1") },
       report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
-      retarget: { spy.retargeted.append($0.transcriptID) },
+      retarget: {
+        spy.retargeted.append($0.transcriptID)
+        return true
+      },
       targetHasQuit: { _ in true })
 
     #expect(
@@ -136,11 +142,47 @@ struct EscapeRecoveryRestoreTests {
       payload: payload,
       restorable: { _ in ("kept", Date(), "take-1") },
       report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
-      retarget: { spy.retargeted.append($0.transcriptID) },
+      retarget: {
+        spy.retargeted.append($0.transcriptID)
+        return true
+      },
       targetHasQuit: { _ in false })
 
     #expect(spy.retargeted == [payload.transcriptID])
     #expect(spy.reports.first?.result == .pasted)
+  }
+
+  /// The app survived; the FIELD did not.
+  ///
+  /// One level finer than the terminated case above, and the same harm. The
+  /// view closed, the document was shut, the element refuses focus — and a
+  /// keystroke sent anyway lands in whatever that app has focused now. The user
+  /// dictated into one box and the words arrive in another.
+  ///
+  /// Refusing costs nothing: the text is already on the clipboard and the row
+  /// stands in History for 24 hours.
+  @Test("a retarget that failed is never followed by a keystroke")
+  func failedRetargetDoesNotPaste() {
+    let spy = Spy()
+    let payload = CancelUndoPayload(
+      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+
+    EscapeRecoveryPasteAction.paste(
+      payload: payload,
+      restorable: { _ in ("kept", Date(), "take-1") },
+      report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
+      retarget: {
+        spy.retargeted.append($0.transcriptID)
+        return false
+      },
+      targetHasQuit: { _ in false })
+
+    #expect(
+      spy.retargeted == [payload.transcriptID],
+      "control: it was attempted — this is about the ANSWER being read, not skipped")
+    #expect(
+      spy.reports.first?.result == .clipboardOnly,
+      "the words stay on the clipboard rather than landing in the wrong field")
   }
 
   // MARK: History's door

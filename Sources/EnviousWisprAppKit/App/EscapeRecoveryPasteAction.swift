@@ -39,7 +39,7 @@ enum EscapeRecoveryPasteAction {
     payload: CancelUndoPayload,
     restorable: (UUID) -> (text: String, stampedAt: Date, takeID: String?)?,
     report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
-    retarget: @MainActor (CancelUndoPayload) -> Void = Self.retargetWithAccessibility,
+    retarget: @MainActor (CancelUndoPayload) -> Bool = Self.retargetWithAccessibility,
     targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true }
   ) {
     guard let row = restorable(payload.transcriptID) else {
@@ -77,7 +77,21 @@ enum EscapeRecoveryPasteAction {
       return
     }
 
-    retarget(payload)
+    // A RETARGET THAT FAILED MUST NOT BE FOLLOWED BY A KEYSTROKE.
+    //
+    // The app can be alive while the FIELD is gone: the view closed, the
+    // document was shut, the element refuses focus. `focusElement` says so, and
+    // ignoring it sent Cmd-V anyway — into whatever that app has focused now.
+    // The user dictated into one box and the words arrive in another, which is
+    // the same harm as the terminated case one branch above, one level finer.
+    //
+    // The text is already on the clipboard, so refusing costs nothing: the user
+    // pastes it themselves, or takes it from History for the next 24 hours.
+    guard retarget(payload) else {
+      guard let takeID = row.takeID else { return }
+      report(Int(Date().timeIntervalSince(row.stampedAt) * 1000), .clipboardOnly, takeID)
+      return
+    }
     NSApp.hide(nil)
     Task {
       try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
@@ -108,13 +122,29 @@ enum EscapeRecoveryPasteAction {
   /// Then the FIELD, which is the half that is easy to drop. Restoring the app
   /// alone hands the caret back to wherever that app last left it, and after a
   /// cancel that is frequently a different field — so the user's words arrive
-  /// somewhere they never dictated them. A nil element is normal and documented,
-  /// not a failure: an app-only target still pastes wherever focus lands.
+  /// somewhere they never dictated them.
+  ///
+  /// - Returns: whether the caller may paste. False means a field WAS captured
+  ///   and could not be focused, so the place those words belong is gone and a
+  ///   keystroke would put them somewhere else.
+  ///
+  /// **What this verifies, stated rather than implied.** The FIELD, because
+  /// `AXUIElementSetAttributeValue` returns a definite answer. NOT that the app
+  /// came frontmost: `forceActivateApp` reports only its own call, and polling
+  /// `isActive` afterwards is a race with no clean settle. The app-level failure
+  /// that actually happens — the app quit — is refused by the caller before this
+  /// is reached.
+  ///
+  /// A nil element returns TRUE and is not a failure: no target field was ever
+  /// captured, which is History's shipped behaviour and a documented normal
+  /// case. Refusing there would make the pill weaker than the button it sits
+  /// beside.
   @MainActor
-  static func retargetWithAccessibility(_ payload: CancelUndoPayload) {
+  static func retargetWithAccessibility(_ payload: CancelUndoPayload) -> Bool {
     if let app = payload.targetApp {
       if !PasteService.forceActivateApp(pid: app.processIdentifier) { app.activate() }
     }
-    if let element = payload.targetElement { PasteService.focusElement(element) }
+    guard let element = payload.targetElement else { return true }
+    return PasteService.focusElement(element)
   }
 }
