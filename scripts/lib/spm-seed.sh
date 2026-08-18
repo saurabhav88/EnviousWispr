@@ -211,6 +211,53 @@ ew_seed_prune() {
 # ew_seed_consume <project_root> <derived_data_path>
 # Clones a snapshot into an ABSENT target. Prints what it did and why; a silent
 # fast path is indistinguishable from a broken one.
+# Rewrite every ABSOLUTE path a cloned tree inherited from the worktree that
+# produced it. Returns 1 if it cannot be done completely, which callers treat as
+# "discard the clone and resolve normally".
+#
+# A resolved SourcePackages is FULL of self-references, not just one index:
+# measured on the live snapshot, 36 files carry the donor's path — the
+# `workspace-state.json` index, plus five `.git` files in each of seven checkouts
+# (`config`, `objects/info/alternates`, and three `logs/` entries). The
+# load-bearing one is `objects/info/alternates`, which points a checkout's object
+# store at the donor's `repositories/<pkg>-<hash>/objects`. The snapshot carries
+# `repositories/` too, so after the rewrite each checkout borrows from ITS OWN
+# copy; without it, a checkout whose donor worktree has been deleted has no
+# object store at all.
+#
+# ONE prefix covers every case — the donor's `.../.derivedData/<lane>/SourcePackages`
+# — so this is a single substitution rather than a format-aware edit, and it does
+# not need to understand SwiftPM's or git's file formats.
+#
+# $2 is the FINAL destination, never the staging directory: the tree is renamed
+# after this runs, so rewriting to the staging path would bake in a directory
+# that is about to stop existing.
+ew_seed_localise() { # <staging tree> <final SourcePackages path>
+  local tree="$1" final="$2" donor f
+  # The donor prefix is discovered from the tree itself rather than assumed.
+  donor="$(/usr/bin/grep -rhoE "/Users/[^\"]*/\.derivedData/[A-Za-z0-9_-]+/SourcePackages" "$tree/workspace-state.json" 2>/dev/null | head -1)"
+  [ -n "$donor" ] || return 1
+  [ "$donor" = "$final" ] && return 0          # already local: nothing to do
+  case "$donor" in */SourcePackages) ;; *) return 1 ;; esac
+
+  # /usr/bin/grep, NEVER the shell's `grep`: this environment aliases it to a
+  # ugrep shim that skips DOT-DIRECTORIES, so it reports 1 file here where the
+  # real grep reports 36. Every path that matters lives inside `.git/`.
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    LC_ALL=C /usr/bin/sed -i '' "s|$donor|$final|g" "$f" 2>/dev/null || return 1
+  done <<EOF
+$(/usr/bin/grep -rl "$donor" "$tree" 2>/dev/null)
+EOF
+
+  # FAIL CLOSED: prove no donor path survived. A partial rewrite is worse than
+  # none — it builds, and then fails somewhere unrelated.
+  if /usr/bin/grep -rq "$donor" "$tree" 2>/dev/null; then
+    return 1
+  fi
+  return 0
+}
+
 ew_seed_consume() {
   local root="$1" dd="$2" key snap target tmp _stale
   target="$dd/SourcePackages"
@@ -274,7 +321,45 @@ ew_seed_consume() {
   # An atomic rename makes the tree and its marker appear together or not at all,
   # which is the same fix the lock's owner record already needed one file over —
   # a proven pattern that should have been ported rather than rediscovered.
+  # STRIP THE STATE FILE BEFORE HANDING THE TREE OVER, and this is the whole
+  # reason the clone is safe to reuse across worktrees.
+  #
+  # `workspace-state.json` is an INDEX, and it stores ABSOLUTE paths: measured on
+  # the live snapshot, 11 of them across `artifacts[].path`,
+  # `prebuilts[].checkoutPath` and `prebuilts[].path`, every one baked to the
+  # worktree that produced the snapshot. Cloned into a different tree it names
+  # directories that belong to somebody else, or — once the donor worktree is
+  # removed — directories that do not exist at all.
+  #
+  # THE FAILURE IS NOT A SLOW BUILD, WHICH IS WHAT THE REST OF THIS FILE
+  # PROMISES. The clone succeeds, the completeness check passes, the resolve
+  # succeeds, and `xcodebuild` then fails with `There is no XCFramework found
+  # at <other worktree>/...` — a hard TEST FAILED, zero test failures, accusing
+  # a missing dependency. The next reader goes looking at the dependency graph.
+  # Measured 2026-08-18 on main at 7e4b8cff: a peer session hit it in a fresh
+  # worktree on a comment-only change, and only spotted the cause because the
+  # donor worktree's NAME was sitting inside the error string.
+  #
+  # Dropping it loses nothing. The expensive payload — checkouts and artifacts,
+  # ~3.6 GB — is tree-INDEPENDENT and arrives intact; the state file is a cheap
+  # index over content that is already correctly in place, and SwiftPM rebuilds
+  # it for THIS tree during the resolve that `ew_seed_resolve_or_unseed` already
+  # runs. Verified by a path-SHAPE sweep of the whole snapshot rather than a
+  # search for the donor's name: exactly ONE file references this machine. The
+  # other 139 hits are Sentry's vendored dSYM relocation maps pointing at
+  # `/Users/runner`, which are identical in every checkout and inert here.
+  #
+  # Removed AFTER `ew_seed_is_complete`, never before: that check uses this file
+  # as its marker for "a real resolved tree rather than a partial copy", so
+  # stripping it first would make every snapshot look incomplete.
+  #
+  # GENERAL FORM, and it is the half this design missed: `ew_seed_key` was made
+  # independent of the creating tree, and nothing asked the same question of what
+  # the snapshot CONTAINS. **When you make an artifact position-independent, ask
+  # it again of everything inside it.** Applies to any cached, cloned, snapshotted
+  # or vendored tree, not just this one.
   if cp -Rc "$snap" "$tmp" 2>/dev/null && ew_seed_is_complete "$tmp" \
+     && ew_seed_localise "$tmp" "$target" \
      && printf '%s\n' "$key" > "$tmp/$EW_SEED_PROVENANCE_FILE" 2>/dev/null \
      && ew_seed_rename_exclusive "$tmp" "$target"; then
     ew_seed_lock_release "$key"

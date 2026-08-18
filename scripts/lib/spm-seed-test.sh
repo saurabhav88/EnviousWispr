@@ -33,9 +33,14 @@ mkdir -p "$ROOT"
 printf '{"pins":[]}\n' > "$ROOT/Package.resolved"
 
 # A tree shaped like a resolved SourcePackages.
+DONOR_PREFIX="/Users/nobody/Developer/DonorTree/.derivedData/Test/SourcePackages"
 make_tree() { # <path>
-  mkdir -p "$1/artifacts/sentry-cocoa" "$1/checkouts" "$1/repositories"
-  printf '{"object":{}}\n' > "$1/workspace-state.json"
+  mkdir -p "$1/artifacts/sentry-cocoa" "$1/checkouts/pkg/.git/objects/info" "$1/repositories"
+  # Shaped like a REAL resolved tree: the index plus a git checkout whose object
+  # store is an absolute path into the donor. The `.git` half is what the shell's
+  # ugrep shim cannot see, and it is the half that breaks a build.
+  printf '{"object":{"artifacts":[{"path":"%s/artifacts/sentry-cocoa/Sentry.xcframework"}]}}\n' "$DONOR_PREFIX" > "$1/workspace-state.json"
+  printf '%s/repositories/pkg-0000/objects\n' "$DONOR_PREFIX" > "$1/checkouts/pkg/.git/objects/info/alternates"
   printf 'artifact\n' > "$1/artifacts/sentry-cocoa/Sentry.xcframework"
   printf 'checkout\n' > "$1/checkouts/marker"
 }
@@ -120,10 +125,38 @@ fi
 
 DD3="$TMPROOT/dd3"
 out="$(ew_seed_consume "$ROOT" "$DD3" 2>&1)"
-if ew_seed_is_complete "$DD3/SourcePackages" && printf '%s' "$out" | grep -q "Seeded packages"; then
-  ok "consume clones the snapshot into an absent target"
+# The EXPENSIVE payload must arrive; `ew_seed_is_complete` is deliberately NOT
+# the assertion here, because a consumed tree no longer carries the state file
+# that check uses as its marker. Assert the content instead.
+if [ -d "$DD3/SourcePackages/artifacts" ] && [ -n "$(ls -A "$DD3/SourcePackages/artifacts" 2>/dev/null)" ] \
+   && [ -d "$DD3/SourcePackages/checkouts" ] && printf '%s' "$out" | grep -q "Seeded packages"; then
+  ok "consume clones the snapshot's payload into an absent target"
 else
-  bad "consume" "target incomplete or unannounced: '$out'"
+  bad "consume" "target missing payload or unannounced: '$out'"
+fi
+
+# THE #2178 REGRESSION. `workspace-state.json` is an INDEX holding ABSOLUTE paths
+# baked to the worktree that produced the snapshot. Cloned verbatim it names
+# another tree's directories — or, once that worktree is deleted, directories that
+# exist nowhere — and the failure is NOT the slow path this file promises
+# everywhere else: the clone succeeds, the resolve succeeds, and `xcodebuild` then
+# dies with `There is no XCFramework found at <other worktree>/...`, a hard
+# TEST FAILED with zero failing tests, accusing a dependency.
+#
+# TWO-WAY, because "absent" alone would also pass against a clone that copied
+# nothing at all: the donor's file must be PRESENT in the snapshot and ABSENT
+# from the consumed tree.
+if [ -f "$(ew_seed_dir "$KEY")/workspace-state.json" ]; then
+  ok "the snapshot still carries its own state file (its completeness marker)"
+else
+  bad "snapshot state" "publish dropped workspace-state.json; ew_seed_is_complete can no longer judge a snapshot"
+fi
+if [ -f "$DD3/SourcePackages/workspace-state.json" ] \
+   && ! /usr/bin/grep -rq "$DONOR_PREFIX" "$DD3/SourcePackages" 2>/dev/null \
+   && /usr/bin/grep -q "$DD3/SourcePackages" "$DD3/SourcePackages/workspace-state.json" 2>/dev/null; then
+  ok "#2178: every donor path is rewritten to the consuming tree"
+else
+  bad "#2178 donor path leak" "consumed tree still names the donor, or was not rewritten to its own path"
 fi
 
 # The REAL clone must leave the provenance marker, naming the key it came from.
