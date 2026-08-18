@@ -293,7 +293,25 @@ public struct RecoverySpoolStore: Sendable {
   /// discarding the output instead.
   public func readEscapeMarker(for recoverySessionID: String) -> EscapeMarkerRead {
     let url = escapeMarkerURL(for: recoverySessionID)
-    guard FileManager.default.fileExists(atPath: url.path) else { return .absent }
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      // AN INTERRUPTED WRITE IS EVIDENCE, NOT ABSENCE (cloud review).
+      //
+      // `writeEscapeMarker` is temp-then-rename, so a process killed between
+      // creating `.<id>.escape.tmp` and renaming it leaves that temp file and no
+      // marker. Reading that as `.absent` says "ordinary dictation", and launch
+      // replay then saves a take the user CANCELLED as a permanent History row
+      // — the exact outcome this mechanism exists to prevent, reached through
+      // the mechanism's own writer.
+      //
+      // `.malformed` rather than an attempt to decode it: the temp file may be
+      // half-written by construction, and the caller's malformed branch already
+      // does the right thing — abort the replay and discard the spool, which
+      // costs the user precisely what pressing cancel already costs them. The
+      // one thing that must never happen here is silently proceeding.
+      let tmpURL = directory.appendingPathComponent(
+        ".\(recoverySessionID).\(RecoveryConstants.escapeMarkerFileExtension).tmp")
+      return FileManager.default.fileExists(atPath: tmpURL.path) ? .malformed : .absent
+    }
     guard let data = try? Data(contentsOf: url) else { return .malformed }
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
@@ -340,6 +358,14 @@ public struct RecoverySpoolStore: Sendable {
 
   /// Delete a spool's Escape marker. Idempotent — a missing marker is success.
   public func deleteEscapeMarker(for recoverySessionID: String) throws {
+    // The interrupted-write temp file goes too, and FIRST. `readEscapeMarker`
+    // now reads its presence as `.malformed` — evidence a recovery had begun —
+    // so leaving one behind after the spool is gone would make every later read
+    // for that id fail closed forever. Best-effort: it usually does not exist,
+    // and its absence is the normal case rather than an error.
+    try? FileManager.default.removeItem(
+      at: directory.appendingPathComponent(
+        ".\(recoverySessionID).\(RecoveryConstants.escapeMarkerFileExtension).tmp"))
     let url = escapeMarkerURL(for: recoverySessionID)
     do {
       try FileManager.default.removeItem(at: url)

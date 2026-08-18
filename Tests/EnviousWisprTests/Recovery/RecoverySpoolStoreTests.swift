@@ -462,6 +462,58 @@ struct RecoverySpoolStoreTests {
       "the spool is destroyed — a survivor with no marker replays as permanent History")
   }
 
+  /// An interrupted marker write is EVIDENCE, not absence.
+  ///
+  /// `writeEscapeMarker` is temp-then-rename, so a process killed between
+  /// creating `.<id>.escape.tmp` and renaming it leaves the temp file and no
+  /// marker. Reading that as `.absent` says "ordinary dictation", and launch
+  /// replay then saves a take the user CANCELLED as a permanent History row —
+  /// the exact outcome this mechanism exists to prevent, reached through the
+  /// mechanism's own writer.
+  ///
+  /// `.malformed` because the temp file may be half-written by construction, and
+  /// the caller's malformed branch already aborts the replay and discards the
+  /// spool. That costs the user exactly what pressing cancel already costs them.
+  @Test("escape marker: an interrupted write reads as malformed, never absent")
+  func interruptedMarkerWriteIsNotAbsence() throws {
+    let store = makeStore()
+    let tmp = store.directoryURL.appendingPathComponent(
+      ".interrupted.\(RecoveryConstants.escapeMarkerFileExtension).tmp")
+    try Data("{\"partial\":".utf8).write(to: tmp)
+
+    #expect(
+      store.readEscapeMarker(for: "interrupted") == .malformed,
+      "absent would replay a cancelled dictation into permanent History")
+  }
+
+  /// The control: with no temp file and no marker, absence still means absence.
+  /// Without this the guard above could be satisfied by calling everything
+  /// malformed, which would fail closed on every ordinary crash recovery and
+  /// discard text nobody cancelled.
+  @Test("escape marker: a spool with no marker at all is still absent")
+  func noMarkerIsStillAbsent() throws {
+    let store = makeStore()
+
+    #expect(store.readEscapeMarker(for: "ordinary") == .absent)
+  }
+
+  /// The temp file must go when the marker does, or a later read for that id
+  /// fails closed forever on evidence of a recovery whose spool is long gone.
+  @Test("escape marker: deletion clears an interrupted write too")
+  func deletionClearsTheTempMarker() throws {
+    let store = makeStore()
+    let tmp = store.directoryURL.appendingPathComponent(
+      ".stale.\(RecoveryConstants.escapeMarkerFileExtension).tmp")
+    try Data("{\"partial\":".utf8).write(to: tmp)
+
+    try store.deleteEscapeMarker(for: "stale")
+
+    #expect(!FileManager.default.fileExists(atPath: tmp.path))
+    #expect(
+      store.readEscapeMarker(for: "stale") == .absent,
+      "and the id reads clean again, rather than failing closed forever")
+  }
+
   @Test("escape marker: written 0600 and never listed as a spool")
   func escapeMarkerPermissionsAndScan() throws {
     let store = makeStore()
