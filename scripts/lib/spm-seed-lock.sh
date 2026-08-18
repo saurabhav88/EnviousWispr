@@ -84,14 +84,14 @@ ew_seed_lock_acquire() {
 }
 
 ew_seed_lock_release() {
-  local key="$1" dir i out
+  local key="$1" dir i kept
   dir="$(ew_seed_lock_dir "$key")"
   rm -rf "$dir" 2>/dev/null || true
-  out=()
+  kept=()
   for i in ${EW_SEED_HELD_LOCKS[@]+"${EW_SEED_HELD_LOCKS[@]}"}; do
-    [ "$i" = "$dir" ] || out[${#out[@]}]="$i"
+    [ "$i" = "$dir" ] || kept[${#kept[@]}]="$i"
   done
-  EW_SEED_HELD_LOCKS=(${out[@]+"${out[@]}"})
+  EW_SEED_HELD_LOCKS=(${kept[@]+"${kept[@]}"})
 }
 
 ew_seed_release_all() {

@@ -70,6 +70,7 @@ ew_seed_release_all
 if [ -z "$(ls -A "$EW_SEED_ROOT/.locks" 2>/dev/null)" ]; then
   ok "release_all clears every lock this process owns"
 else
+# shellcheck disable=SC2012  # a diagnostic message in a test; filenames are ours
   bad "release_all" "locks survived: $(ls "$EW_SEED_ROOT/.locks" 2>/dev/null | tr '\n' ' ')"
 fi
 

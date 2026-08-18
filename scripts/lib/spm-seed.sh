@@ -94,8 +94,14 @@ ew_seed_is_complete() {
 # feature degrades to "no seeding"; it cannot break a build.
 # Verified on this machine 2026-08-18: refuses an existing destination (rc -1,
 # destination untouched, source still present) and succeeds into an absent one.
+# The `|| return 1` and explicit `return 0` are LOAD-BEARING, not style. Without
+# them the function returns python3's own exit status, so a wrapper or launcher
+# exiting 42 (or a missing interpreter exiting 127) propagates a status the
+# comment above says cannot happen. Callers happen to treat any nonzero as a
+# cache miss, so the behaviour was already safe and the CONTRACT was false —
+# which is the kind of claim the next reader builds on. Normalised here.
 ew_seed_rename_exclusive() {
-  python3 - "$1" "$2" <<'PYEOF' 2>/dev/null
+  python3 - "$1" "$2" <<'PYEOF' 2>/dev/null || return 1
 import ctypes, os, sys
 try:
     fn = ctypes.CDLL(None).renameatx_np
@@ -110,6 +116,7 @@ except Exception:
     raise SystemExit(1)
 raise SystemExit(0 if rc == 0 else 1)
 PYEOF
+  return 0
 }
 
 # ew_seed_consume <project_root> <derived_data_path>

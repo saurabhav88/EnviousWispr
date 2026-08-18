@@ -126,6 +126,30 @@ else
   bad "consume" "target incomplete or unannounced: '$out'"
 fi
 
+# --- consume sweeps ITS OWN key's orphaned staging, and only its own -----------
+# A SIGKILL leaves a consumer staging copy behind with no handler to remove it,
+# and each is a full 3.6 GB. Consume sweeps them under the key's lock. The
+# SECOND half of this case is the one that binds: a sweep that removed every
+# `.SourcePackages.seed.*` would pass the first assertion while deleting a
+# CONCURRENT consumer's in-flight copy for a different key. Only a pair of an
+# accepted and a rejected input shows the boundary is real.
+DD9="$TMPROOT/dd9"; mkdir -p "$DD9"
+SWEEPKEY="$(ew_seed_key "$ROOT")"
+mkdir -p "$DD9/.SourcePackages.seed.$SWEEPKEY.orphan" "$DD9/.SourcePackages.seed.otherkey.orphan"
+printf 'stale\n' > "$DD9/.SourcePackages.seed.$SWEEPKEY.orphan/marker"
+printf 'in-flight\n' > "$DD9/.SourcePackages.seed.otherkey.orphan/marker"
+ew_seed_consume "$ROOT" "$DD9" >/dev/null 2>&1
+if [ ! -e "$DD9/.SourcePackages.seed.$SWEEPKEY.orphan" ]; then
+  ok "consume removes orphaned staging for ITS OWN key"
+else
+  bad "staging sweep" "same-key orphan survived consume"
+fi
+if [ -f "$DD9/.SourcePackages.seed.otherkey.orphan/marker" ]; then
+  ok "consume leaves ANOTHER key's staging untouched (the twin)"
+else
+  bad "staging sweep scope" "consume deleted staging belonging to a different key"
+fi
+
 # --- consume must NOT overwrite an existing tree -------------------------------
 DD4="$TMPROOT/dd4"; mkdir -p "$DD4/SourcePackages"
 printf 'MINE\n' > "$DD4/SourcePackages/marker"
@@ -250,6 +274,21 @@ else
   ok "a missing source returns failure (callers treat it as a cache miss)"
 fi
 
+
+# The helper must return EXACTLY 1 on failure, never the interpreter's own exit
+# status. A wrapper or launcher exiting 42 — or a missing interpreter exiting
+# 127 — used to propagate straight through, which made the documented contract
+# false even though every caller happened to treat any nonzero as a cache miss.
+# A comment nobody can rely on is the kind of claim the next reader builds on.
+FAKEBIN="$TMPROOT/fakebin"; mkdir -p "$FAKEBIN"
+printf '#!/bin/sh\nexit 42\n' > "$FAKEBIN/python3"; chmod +x "$FAKEBIN/python3"
+( PATH="$FAKEBIN:$PATH"; ew_seed_rename_exclusive "$TMPROOT/a" "$TMPROOT/b" ); rc_norm=$?
+if [ "$rc_norm" -eq 1 ]; then
+  ok "an interpreter exiting 42 is normalised to exactly 1"
+else
+  bad "return contract" "expected 1, got $rc_norm (the interpreter status leaked)"
+fi
+
 # --- ATOMICITY UNDER A REAL RACE ----------------------------------------------
 # The cases above verify the CONTRACT (refuses existing, succeeds absent, never
 # mutates) and CANNOT distinguish an atomic rename from `[ ! -e ] && mv`, because
@@ -266,10 +305,32 @@ for i in $(seq 1 "$racers"); do
   mkdir -p "$RACE3/src.$i"
   printf 'from %s\n' "$i" > "$RACE3/src.$i/marker"
 done
+mkdir -p "$RACE3/done"
 for i in $(seq 1 "$racers"); do
-  ( ew_seed_rename_exclusive "$RACE3/src.$i" "$RACE3/dst" && printf '%s\n' "$i" >> "$RACE3/winners" ) >/dev/null 2>&1 &
+  (
+    if ew_seed_rename_exclusive "$RACE3/src.$i" "$RACE3/dst"; then
+      printf '%s\n' "$i" >> "$RACE3/winners"
+    fi
+    # Written on BOTH paths, AFTER the helper returns. Bare `wait` proves only
+    # that the jobs which STARTED have finished — if 23 of the 24 never launch,
+    # "exactly one winner and zero nested" is still true and the race never
+    # happened. A completion count is the only thing that separates "24 racers,
+    # one winner" from "1 racer, one winner", and those are the two readings the
+    # assertions below cannot tell apart.
+    : > "$RACE3/done/$i"
+  ) >/dev/null 2>&1 &
 done
 wait
+
+completed=0
+for _d in "$RACE3/done"/*; do
+  [ -e "$_d" ] && completed=$((completed + 1))
+done
+if [ "$completed" -eq "$racers" ]; then
+  ok "all $racers racers actually ran (the race is not vacuous)"
+else
+  bad "race completion" "expected $racers completions, got $completed"
+fi
 
 winner_count="$(wc -l < "$RACE3/winners" 2>/dev/null | tr -d ' ')"
 [ -n "$winner_count" ] || winner_count=0
@@ -308,8 +369,8 @@ else
 fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 27 ]; then
-  printf 'ERROR: expected at least 27 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 31 ]; then
+  printf 'ERROR: expected at least 31 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1
